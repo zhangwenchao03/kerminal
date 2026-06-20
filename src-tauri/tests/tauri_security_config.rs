@@ -52,7 +52,7 @@ fn tauri_config_enables_strict_production_csp_and_dev_csp() {
 }
 
 #[test]
-fn default_capability_grants_core_and_custom_titlebar_window_access_to_main_window() {
+fn default_capability_grants_window_access_and_updater_permissions_to_main_window() {
     let capability = read_json(manifest_dir().join("capabilities/default.json"));
 
     assert_eq!(capability["identifier"], "default");
@@ -62,6 +62,8 @@ fn default_capability_grants_core_and_custom_titlebar_window_access_to_main_wind
         serde_json::json!([
             "core:default",
             "dialog:default",
+            "process:default",
+            "updater:default",
             "core:window:allow-start-dragging",
             "core:window:allow-minimize",
             "core:window:allow-toggle-maximize",
@@ -72,7 +74,7 @@ fn default_capability_grants_core_and_custom_titlebar_window_access_to_main_wind
     let permissions = capability["permissions"]
         .as_array()
         .expect("permissions must be an array");
-    let forbidden_prefixes = ["opener:", "fs:", "shell:", "process:", "http:"];
+    let forbidden_prefixes = ["opener:", "fs:", "shell:", "http:"];
     for permission in permissions {
         let permission = permission
             .as_str()
