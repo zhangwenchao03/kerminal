@@ -25,6 +25,7 @@ use uuid::Uuid;
 
 const READ_BUFFER_SIZE: usize = 8192;
 const TERMINAL_CONTEXT_BUFFER_BYTES: usize = 64 * 1024;
+const LOG_REDACTION_PENDING_CHARS: usize = 4096;
 
 type ChildHandle = Box<dyn Child + Send + Sync>;
 type MasterHandle = Box<dyn MasterPty + Send>;
@@ -356,6 +357,7 @@ impl TerminalSession {
         let active_log = ActiveTerminalLog {
             bytes_written: header.len() as u64,
             file,
+            pending_text: String::new(),
             path,
             started_at,
         };
@@ -372,7 +374,7 @@ impl TerminalSession {
         let Some(mut active_log) = log_sink.take() else {
             return Ok(TerminalSessionLogState::inactive());
         };
-        active_log.file.flush()?;
+        active_log.flush_pending()?;
         Ok(active_log.state(false))
     }
 
@@ -391,12 +393,44 @@ impl TerminalSession {
 struct ActiveTerminalLog {
     bytes_written: u64,
     file: File,
+    pending_text: String,
     path: PathBuf,
     started_at: String,
 }
 
 impl ActiveTerminalLog {
     fn append(&mut self, data: &str) -> AppResult<()> {
+        self.pending_text.push_str(data);
+        let Some(flush_end) = self.redactable_prefix_end() else {
+            return Ok(());
+        };
+        let remaining = self.pending_text.split_off(flush_end);
+        let data = std::mem::replace(&mut self.pending_text, remaining);
+        self.write_redacted(&data)
+    }
+
+    fn flush_pending(&mut self) -> AppResult<()> {
+        if !self.pending_text.is_empty() {
+            let data = std::mem::take(&mut self.pending_text);
+            self.write_redacted(&data)?;
+        }
+        self.file.flush()?;
+        Ok(())
+    }
+
+    fn redactable_prefix_end(&self) -> Option<usize> {
+        if let Some(line_end) = self
+            .pending_text
+            .rfind('\n')
+            .map(|index| index + '\n'.len_utf8())
+        {
+            return Some(line_end);
+        }
+
+        split_prefix_before_tail(&self.pending_text, LOG_REDACTION_PENDING_CHARS)
+    }
+
+    fn write_redacted(&mut self, data: &str) -> AppResult<()> {
         let (data, _) = redact_terminal_text(data);
         self.file.write_all(data.as_bytes())?;
         self.bytes_written += data.len() as u64;
@@ -411,6 +445,17 @@ impl ActiveTerminalLog {
             bytes_written: self.bytes_written,
         }
     }
+}
+
+fn split_prefix_before_tail(input: &str, tail_chars: usize) -> Option<usize> {
+    let split_char_index = input.chars().count().checked_sub(tail_chars)?;
+    if split_char_index == 0 {
+        return None;
+    }
+    input
+        .char_indices()
+        .nth(split_char_index)
+        .map(|(byte_index, _)| byte_index)
 }
 
 #[allow(clippy::too_many_arguments)]
