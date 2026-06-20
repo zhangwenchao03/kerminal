@@ -44,7 +44,7 @@ fn bearer_regex() -> &'static Regex {
 fn api_key_regex() -> &'static Regex {
     static REGEX: OnceLock<Regex> = OnceLock::new();
     REGEX.get_or_init(|| {
-        Regex::new(r"(?i)(^|[^A-Za-z0-9_-])(sk-[A-Za-z0-9_-]{10,})([^A-Za-z0-9_-]|$)")
+        Regex::new(r"(?i)(^|\\[rnt]|[^A-Za-z0-9_-])(sk-[A-Za-z0-9_-]{10,})([^A-Za-z0-9_-]|$)")
             .expect("api key regex must be valid")
     })
 }
@@ -60,5 +60,15 @@ mod tests {
         assert!(changed);
         assert!(!redacted.contains("sk-terminal-secret-12345"));
         assert!(redacted.contains("prefix [已脱敏:api-key] suffix"));
+    }
+
+    #[test]
+    fn redacts_sk_tokens_after_escaped_newline() {
+        let (redacted, changed) =
+            redact_terminal_text(r"printf 'TOKEN=value\nsk-terminal-secret-12345\n'");
+
+        assert!(changed);
+        assert!(!redacted.contains("sk-terminal-secret-12345"));
+        assert!(redacted.contains(r"\n[已脱敏:api-key]\n"));
     }
 }
