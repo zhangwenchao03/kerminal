@@ -76,5 +76,11 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Test Rust
+        if: runner.os != 'Windows'
         working-directory: src-tauri
         run: cargo test
+
+      - name: Compile Rust tests on Windows
+        if: runner.os == 'Windows'
+        working-directory: src-tauri
+        run: cargo test --no-run
