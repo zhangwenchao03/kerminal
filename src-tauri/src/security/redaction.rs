@@ -17,7 +17,9 @@ pub fn redact_terminal_text(input: &str) -> (String, bool) {
         .replace_all(&secret_assignment, "${1}[已脱敏]")
         .to_string();
     let api_key = api_key_regex()
-        .replace_all(&bearer, "[已脱敏:api-key]")
+        .replace_all(&bearer, |captures: &regex::Captures<'_>| {
+            format!("{}[已脱敏:api-key]{}", &captures[1], &captures[3])
+        })
         .to_string();
 
     let redacted = api_key != input;
@@ -42,6 +44,21 @@ fn bearer_regex() -> &'static Regex {
 fn api_key_regex() -> &'static Regex {
     static REGEX: OnceLock<Regex> = OnceLock::new();
     REGEX.get_or_init(|| {
-        Regex::new(r"\bsk-[A-Za-z0-9_-]{10,}\b").expect("api key regex must be valid")
+        Regex::new(r"(?i)(^|[^A-Za-z0-9_-])(sk-[A-Za-z0-9_-]{10,})([^A-Za-z0-9_-]|$)")
+            .expect("api key regex must be valid")
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::redact_terminal_text;
+
+    #[test]
+    fn redacts_hyphenated_sk_tokens() {
+        let (redacted, changed) = redact_terminal_text("prefix sk-terminal-secret-12345 suffix");
+
+        assert!(changed);
+        assert!(!redacted.contains("sk-terminal-secret-12345"));
+        assert!(redacted.contains("prefix [已脱敏:api-key] suffix"));
+    }
 }
