@@ -1,0 +1,560 @@
+import { afterEach, beforeEach, vi } from "vitest";
+import { defaultAppSettings } from "../settings/settingsModel";
+import type { TerminalOutputEvent } from "../../lib/terminalApi";
+import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeScheduler";
+
+const mocks = vi.hoisted(() => {
+  const terminalInstances: MockTerminal[] = [];
+  const fitInstances: MockFitAddon[] = [];
+  const searchInstances: MockSearchAddon[] = [];
+  const api = {
+    closeTerminal: vi.fn(),
+    createSerialTerminalSession: vi.fn(),
+    createSshTerminalSession: vi.fn(),
+    createTelnetTerminalSession: vi.fn(),
+    createTerminalSession: vi.fn(),
+    getTerminalLogState: vi.fn(),
+    listTerminalSuggestions: vi.fn(),
+    recordCommandHistory: vi.fn(),
+    recordTerminalSuggestionAuditEvent: vi.fn(),
+    recordTerminalSuggestionFeedback: vi.fn(),
+    refreshTerminalGitSuggestions: vi.fn(),
+    refreshTerminalRemoteCommandSuggestions: vi.fn(),
+    refreshTerminalRemoteHistorySuggestions: vi.fn(),
+    refreshTerminalRemotePathSuggestions: vi.fn(),
+    resizeTerminal: vi.fn(),
+    startTerminalLog: vi.fn(),
+    stopTerminalLog: vi.fn(),
+    writeTerminal: vi.fn(),
+  };
+  let latestOutputHandler: ((event: TerminalOutputEvent) => void) | undefined;
+
+  class MockTerminal {
+    buffer: {
+      active: {
+        baseY: number;
+        cursorX: number;
+        cursorY: number;
+        getLine: ReturnType<typeof vi.fn>;
+        getNullCell: ReturnType<typeof vi.fn>;
+        length: number;
+        type: "normal" | "alternate";
+        viewportY: number;
+      };
+      alternate: {
+        baseY: number;
+        cursorX: number;
+        cursorY: number;
+        getLine: ReturnType<typeof vi.fn>;
+        getNullCell: ReturnType<typeof vi.fn>;
+        length: number;
+        type: "normal" | "alternate";
+        viewportY: number;
+      };
+      normal: {
+        baseY: number;
+        cursorX: number;
+        cursorY: number;
+        getLine: ReturnType<typeof vi.fn>;
+        getNullCell: ReturnType<typeof vi.fn>;
+        length: number;
+        type: "normal" | "alternate";
+        viewportY: number;
+      };
+      onBufferChange: ReturnType<typeof vi.fn>;
+    };
+    cols = 80;
+    clear = vi.fn();
+    rows = 24;
+    dispose = vi.fn();
+    focus = vi.fn();
+    getSelection = vi.fn(() => "selected output");
+    loadAddon = vi.fn();
+    onDataCallback: ((data: string) => void) | undefined;
+    onScrollCallback: ((viewportY: number) => void) | undefined;
+    onSelectionChangeCallback: (() => void) | undefined;
+    onWriteParsedCallback: (() => void) | undefined;
+    open = vi.fn((container: HTMLElement) => {
+      const screen = document.createElement("div");
+      screen.className = "xterm-screen";
+      const rows = document.createElement("div");
+      rows.className = "xterm-rows";
+      for (let index = 0; index < 30; index += 1) {
+        const row = document.createElement("div");
+        row.textContent = `row ${index}`;
+        rows.append(row);
+      }
+      screen.append(rows);
+      container.append(screen);
+    });
+    options: Record<string, unknown>;
+    paste = vi.fn();
+    private nextMarkerId = 1;
+    private nextMarkerLine = 0;
+    selectAll = vi.fn();
+    write = vi.fn();
+
+    constructor(options: Record<string, unknown>) {
+      this.options = options;
+      const normalBuffer = {
+        baseY: 0,
+        cursorX: 0,
+        cursorY: 0,
+        getLine: vi.fn(),
+        getNullCell: vi.fn(),
+        length: 30,
+        type: "normal" as const,
+        viewportY: 0,
+      };
+      const alternateBuffer = {
+        baseY: 0,
+        cursorX: 0,
+        cursorY: 0,
+        getLine: vi.fn(),
+        getNullCell: vi.fn(),
+        length: 30,
+        type: "alternate" as const,
+        viewportY: 0,
+      };
+      this.buffer = {
+        active: normalBuffer,
+        alternate: alternateBuffer,
+        normal: normalBuffer,
+        onBufferChange: vi.fn((callback: () => void) => {
+          this.onBufferChangeCallback = callback;
+          return { dispose: vi.fn() };
+        }),
+      };
+      terminalInstances.push(this);
+    }
+
+    onData(callback: (data: string) => void) {
+      this.onDataCallback = callback;
+      return { dispose: vi.fn() };
+    }
+
+    onSelectionChange(callback: () => void) {
+      this.onSelectionChangeCallback = callback;
+      return { dispose: vi.fn() };
+    }
+
+    onBufferChangeCallback: (() => void) | undefined;
+
+    onScroll(callback: (viewportY: number) => void) {
+      this.onScrollCallback = callback;
+      return { dispose: vi.fn() };
+    }
+
+    onWriteParsed(callback: () => void) {
+      this.onWriteParsedCallback = callback;
+      return { dispose: vi.fn() };
+    }
+
+    registerMarker() {
+      const marker = {
+        dispose: vi.fn(),
+        id: this.nextMarkerId,
+        line: this.nextMarkerLine,
+        onDispose: vi.fn(() => ({ dispose: vi.fn() })),
+      };
+      this.nextMarkerId += 1;
+      this.nextMarkerLine += 3;
+      this.buffer.active.length = Math.max(
+        this.buffer.active.length,
+        marker.line + 4,
+      );
+      return marker;
+    }
+
+    emitSelectionChange() {
+      this.onSelectionChangeCallback?.();
+    }
+  }
+
+  class MockFitAddon {
+    dispose = vi.fn();
+    fit = vi.fn();
+    proposeDimensions = vi.fn(() => ({ cols: 100, rows: 30 }));
+
+    constructor() {
+      fitInstances.push(this);
+    }
+  }
+
+  class MockSearchAddon {
+    clearDecorations = vi.fn();
+    dispose = vi.fn();
+    findNext = vi.fn(() => true);
+    findPrevious = vi.fn(() => true);
+    listener:
+      | ((event: { resultCount: number; resultIndex: number }) => void)
+      | undefined;
+    onDidChangeResults = vi.fn(
+      (
+        listener: (event: { resultCount: number; resultIndex: number }) => void,
+      ) => {
+        this.listener = listener;
+        return { dispose: vi.fn() };
+      },
+    );
+
+    constructor() {
+      searchInstances.push(this);
+    }
+
+    emitResults(resultCount: number, resultIndex: number) {
+      this.listener?.({ resultCount, resultIndex });
+    }
+  }
+
+  return {
+    api,
+    fitInstances,
+    getLatestOutputHandler: () => latestOutputHandler,
+    MockFitAddon,
+    MockSearchAddon,
+    MockTerminal,
+    searchInstances,
+    setLatestOutputHandler: (
+      handler: ((event: TerminalOutputEvent) => void) | undefined,
+    ) => {
+      latestOutputHandler = handler;
+    },
+    terminalInstances,
+  };
+});
+
+vi.mock("@xterm/xterm", () => ({
+  Terminal: mocks.MockTerminal,
+}));
+
+vi.mock("@xterm/addon-fit", () => ({
+  FitAddon: mocks.MockFitAddon,
+}));
+
+vi.mock("@xterm/addon-search", () => ({
+  SearchAddon: mocks.MockSearchAddon,
+}));
+
+vi.mock("../../lib/terminalApi", () => ({
+  closeTerminal: (...args: unknown[]) => mocks.api.closeTerminal(...args),
+  createSerialTerminalSession: (...args: unknown[]) =>
+    mocks.api.createSerialTerminalSession(...args),
+  createSshTerminalSession: (...args: unknown[]) =>
+    mocks.api.createSshTerminalSession(...args),
+  createTelnetTerminalSession: (...args: unknown[]) =>
+    mocks.api.createTelnetTerminalSession(...args),
+  createTerminalSession: (...args: unknown[]) =>
+    mocks.api.createTerminalSession(...args),
+  getTerminalLogState: (...args: unknown[]) =>
+    mocks.api.getTerminalLogState(...args),
+  resizeTerminal: (...args: unknown[]) => mocks.api.resizeTerminal(...args),
+  startTerminalLog: (...args: unknown[]) => mocks.api.startTerminalLog(...args),
+  stopTerminalLog: (...args: unknown[]) => mocks.api.stopTerminalLog(...args),
+  writeTerminal: (...args: unknown[]) => mocks.api.writeTerminal(...args),
+}));
+
+vi.mock("../../lib/commandHistoryApi", () => ({
+  recordCommandHistory: (...args: unknown[]) =>
+    mocks.api.recordCommandHistory(...args),
+}));
+
+vi.mock("../../lib/terminalSuggestionApi", () => ({
+  listTerminalSuggestions: (...args: unknown[]) =>
+    mocks.api.listTerminalSuggestions(...args),
+  recordTerminalSuggestionFeedback: (...args: unknown[]) =>
+    mocks.api.recordTerminalSuggestionFeedback(...args),
+  recordTerminalSuggestionAuditEvent: (...args: unknown[]) =>
+    mocks.api.recordTerminalSuggestionAuditEvent(...args),
+  refreshTerminalGitSuggestions: (...args: unknown[]) =>
+    mocks.api.refreshTerminalGitSuggestions(...args),
+  refreshTerminalRemoteCommandSuggestions: (...args: unknown[]) =>
+    mocks.api.refreshTerminalRemoteCommandSuggestions(...args),
+  refreshTerminalRemoteHistorySuggestions: (...args: unknown[]) =>
+    mocks.api.refreshTerminalRemoteHistorySuggestions(...args),
+  refreshTerminalRemotePathSuggestions: (...args: unknown[]) =>
+    mocks.api.refreshTerminalRemotePathSuggestions(...args),
+}));
+
+function installClipboardMock() {
+  const clipboard = {
+    readText: vi.fn().mockResolvedValue("echo pasted\r"),
+    writeText: vi.fn().mockResolvedValue(undefined),
+  };
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: clipboard,
+  });
+  return clipboard;
+}
+
+function setTerminalBufferLines(
+  terminal: (typeof mocks.terminalInstances)[number],
+  lines: Record<number, string>,
+  cursorY: number,
+) {
+  terminal.buffer.active.cursorY = cursorY;
+  terminal.buffer.active.getLine.mockImplementation((line: number) => {
+    const text = lines[line];
+    if (typeof text !== "string") {
+      return undefined;
+    }
+    return {
+      translateToString: vi.fn(() => text),
+    };
+  });
+}
+
+function mockElementBox(
+  element: HTMLElement,
+  metrics: {
+    clientHeight?: number;
+    clientWidth?: number;
+    height?: number;
+    offsetLeft?: number;
+    offsetTop?: number;
+    rectLeft?: number;
+    rectTop?: number;
+    width?: number;
+  },
+) {
+  if (typeof metrics.clientHeight === "number") {
+    Object.defineProperty(element, "clientHeight", {
+      configurable: true,
+      value: metrics.clientHeight,
+    });
+  }
+  if (typeof metrics.clientWidth === "number") {
+    Object.defineProperty(element, "clientWidth", {
+      configurable: true,
+      value: metrics.clientWidth,
+    });
+  }
+  if (typeof metrics.offsetLeft === "number") {
+    Object.defineProperty(element, "offsetLeft", {
+      configurable: true,
+      value: metrics.offsetLeft,
+    });
+  }
+  if (typeof metrics.offsetTop === "number") {
+    Object.defineProperty(element, "offsetTop", {
+      configurable: true,
+      value: metrics.offsetTop,
+    });
+  }
+
+  const width = metrics.width ?? 0;
+  const height = metrics.height ?? 0;
+  const left = metrics.rectLeft ?? 0;
+  const top = metrics.rectTop ?? 0;
+  Object.defineProperty(element, "getBoundingClientRect", {
+    configurable: true,
+    value: () =>
+      ({
+        bottom: top + height,
+        height,
+        left,
+        right: left + width,
+        top,
+        width,
+        x: left,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect,
+  });
+}
+
+function terminalAppearanceWithInlineSuggestion(
+  inlineSuggestion: Partial<
+    typeof defaultAppSettings.terminal.inlineSuggestion
+  >,
+) {
+  return {
+    ...defaultAppSettings.terminal,
+    inlineSuggestion: {
+      ...defaultAppSettings.terminal.inlineSuggestion,
+      ...inlineSuggestion,
+      providers: {
+        ...defaultAppSettings.terminal.inlineSuggestion.providers,
+        ...(inlineSuggestion.providers ?? {}),
+      },
+    },
+  };
+}
+
+beforeEach(() => {
+  terminalSuggestionProbeScheduler.reset();
+  mocks.terminalInstances.length = 0;
+  mocks.fitInstances.length = 0;
+  mocks.searchInstances.length = 0;
+  mocks.setLatestOutputHandler(undefined);
+  mocks.api.createSerialTerminalSession.mockReset();
+  mocks.api.createSshTerminalSession.mockReset();
+  mocks.api.createTelnetTerminalSession.mockReset();
+  mocks.api.createTerminalSession.mockReset();
+  mocks.api.getTerminalLogState.mockReset();
+  mocks.api.listTerminalSuggestions.mockReset();
+  mocks.api.recordCommandHistory.mockReset();
+  mocks.api.recordTerminalSuggestionAuditEvent.mockReset();
+  mocks.api.recordTerminalSuggestionFeedback.mockReset();
+  mocks.api.refreshTerminalGitSuggestions.mockReset();
+  mocks.api.refreshTerminalRemoteCommandSuggestions.mockReset();
+  mocks.api.refreshTerminalRemoteHistorySuggestions.mockReset();
+  mocks.api.refreshTerminalRemotePathSuggestions.mockReset();
+  mocks.api.writeTerminal.mockReset();
+  mocks.api.resizeTerminal.mockReset();
+  mocks.api.closeTerminal.mockReset();
+  mocks.api.startTerminalLog.mockReset();
+  mocks.api.stopTerminalLog.mockReset();
+  mocks.api.listTerminalSuggestions.mockResolvedValue([]);
+  mocks.api.refreshTerminalGitSuggestions.mockResolvedValue({
+    cachedAtUnixMs: 1760000000000,
+    cwd: "/srv/app",
+    entryCount: 0,
+    hostId: "host-prod",
+    ttlSeconds: 60,
+  });
+  mocks.api.refreshTerminalRemoteCommandSuggestions.mockResolvedValue({
+    cachedAtUnixMs: 1760000000000,
+    commandCount: 0,
+    hostId: "host-prod",
+    ttlSeconds: 300,
+  });
+  mocks.api.refreshTerminalRemoteHistorySuggestions.mockResolvedValue({
+    cachedAtUnixMs: 1760000000000,
+    commandCount: 0,
+    hostId: "host-prod",
+    ttlSeconds: 900,
+  });
+  mocks.api.refreshTerminalRemotePathSuggestions.mockResolvedValue({
+    cachedAtUnixMs: 1760000000000,
+    entryCount: 0,
+    hostId: "host-prod",
+    path: "/srv/app",
+    ttlSeconds: 30,
+  });
+  mocks.api.createTerminalSession.mockImplementation(
+    async (_request, onOutput) => {
+      mocks.setLatestOutputHandler(
+        onOutput as (event: TerminalOutputEvent) => void,
+      );
+      mocks.getLatestOutputHandler()?.({
+        data: "hello from pty",
+        kind: "data",
+        sessionId: "session-1",
+      });
+      return {
+        cols: 80,
+        id: "session-1",
+        rows: 24,
+        shell: "powershell.exe",
+        status: "running",
+      };
+    },
+  );
+  mocks.api.createSshTerminalSession.mockImplementation(
+    async (_request, onOutput) => {
+      mocks.setLatestOutputHandler(
+        onOutput as (event: TerminalOutputEvent) => void,
+      );
+      mocks.getLatestOutputHandler()?.({
+        data: "hello from ssh",
+        kind: "data",
+        sessionId: "ssh-session-1",
+      });
+      return {
+        cols: 80,
+        id: "ssh-session-1",
+        rows: 24,
+        shell: "ssh",
+        status: "running",
+      };
+    },
+  );
+  mocks.api.createTelnetTerminalSession.mockImplementation(
+    async (_request, onOutput) => {
+      mocks.setLatestOutputHandler(
+        onOutput as (event: TerminalOutputEvent) => void,
+      );
+      mocks.getLatestOutputHandler()?.({
+        data: "hello from telnet",
+        kind: "data",
+        sessionId: "telnet-session-1",
+      });
+      return {
+        cols: 80,
+        id: "telnet-session-1",
+        rows: 24,
+        shell: "telnet",
+        status: "running",
+      };
+    },
+  );
+  mocks.api.createSerialTerminalSession.mockImplementation(
+    async (_request, onOutput) => {
+      mocks.setLatestOutputHandler(
+        onOutput as (event: TerminalOutputEvent) => void,
+      );
+      mocks.getLatestOutputHandler()?.({
+        data: "hello from serial",
+        kind: "data",
+        sessionId: "serial-session-1",
+      });
+      return {
+        cols: 80,
+        id: "serial-session-1",
+        rows: 24,
+        shell: "plink",
+        status: "running",
+      };
+    },
+  );
+  mocks.api.writeTerminal.mockResolvedValue(undefined);
+  mocks.api.resizeTerminal.mockResolvedValue(undefined);
+  mocks.api.closeTerminal.mockResolvedValue(undefined);
+  mocks.api.getTerminalLogState.mockResolvedValue({
+    active: false,
+    bytesWritten: 0,
+  });
+  mocks.api.startTerminalLog.mockResolvedValue({
+    active: true,
+    bytesWritten: 128,
+    path: "C:\\Users\\dev\\.kerminal\\logs\\sessions\\session-1.log",
+    startedAt: "1760000000",
+  });
+  mocks.api.stopTerminalLog.mockResolvedValue({
+    active: false,
+    bytesWritten: 256,
+    path: "C:\\Users\\dev\\.kerminal\\logs\\sessions\\session-1.log",
+    startedAt: "1760000000",
+  });
+  mocks.api.recordCommandHistory.mockResolvedValue({
+    entry: null,
+    recorded: true,
+    skipReason: null,
+  });
+  mocks.api.recordTerminalSuggestionFeedback.mockResolvedValue({
+    recorded: true,
+  });
+  mocks.api.recordTerminalSuggestionAuditEvent.mockResolvedValue({
+    eventId: "audit-1",
+    recorded: true,
+  });
+  installClipboardMock();
+});
+
+afterEach(() => {
+  terminalSuggestionProbeScheduler.reset();
+  vi.useRealTimers();
+  vi.clearAllMocks();
+});
+
+
+export {
+  defaultAppSettings,
+  installClipboardMock,
+  mockElementBox,
+  mocks,
+  setTerminalBufferLines,
+  terminalAppearanceWithInlineSuggestion,
+};

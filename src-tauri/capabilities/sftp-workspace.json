@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "sftp-workspace",
+  "description": "Detached SFTP workspace windows use the same app IPC and dialog baseline without gaining window-creation permissions.",
+  "windows": ["sftp-workspace-*"],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close"
+  ]
+}

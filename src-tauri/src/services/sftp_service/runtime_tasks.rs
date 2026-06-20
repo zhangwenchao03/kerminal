@@ -1,0 +1,566 @@
+use std::{
+    path::PathBuf,
+    sync::{atomic::AtomicBool, Arc},
+};
+
+use tokio::fs;
+
+use super::*;
+
+impl SftpService {
+    pub(super) async fn run_transfer_now(
+        &self,
+        storage: &SqliteStore,
+        credentials: &CredentialService,
+        paths: &KerminalPaths,
+        request: SftpManagedTransferRequest,
+    ) -> AppResult<bool> {
+        let settings = load_sftp_runtime_settings(storage)?;
+        let endpoint = resolve_endpoint(storage, credentials, paths, &request.host_id)?;
+        let request = normalize_managed_transfer_request(request)?;
+        let progress = TransferProgress::detached();
+        let _transfer_permit = self
+            .transfer_limiter
+            .clone()
+            .acquire(request.host_id.clone(), settings, progress.clone())
+            .await?;
+        self.backend
+            .transfer(endpoint, request, progress, settings)
+            .await?;
+        Ok(true)
+    }
+
+    pub(super) fn spawn_transfer_task(
+        &self,
+        transfer_id: String,
+        endpoint: SftpEndpoint,
+        request: SftpManagedTransferRequest,
+        settings: SftpRuntimeSettings,
+        cancel_requested: Arc<AtomicBool>,
+        event_emitter: Option<TransferEventEmitter>,
+    ) {
+        let backend = self.backend.clone();
+        let transfers = self.transfers.clone();
+        let transfer_limiter = self.transfer_limiter.clone();
+        let host_id = request.host_id.clone();
+
+        tokio::spawn(async move {
+            let progress = TransferProgress::tracked(
+                transfer_id.clone(),
+                transfers.clone(),
+                cancel_requested,
+                event_emitter,
+            );
+
+            let transfer_permit = match transfer_limiter
+                .acquire(host_id, settings, progress.clone())
+                .await
+            {
+                Ok(permit) => permit,
+                Err(_) if progress.is_cancelled() => {
+                    progress.cancel();
+                    return;
+                }
+                Err(error) => {
+                    progress.fail(error.to_string());
+                    return;
+                }
+            };
+
+            if progress.is_cancelled() {
+                progress.cancel();
+                drop(transfer_permit);
+                return;
+            }
+
+            progress.mark_running();
+            let result = backend
+                .transfer(endpoint, request, progress.clone(), settings)
+                .await;
+            match result {
+                Ok(()) if progress.is_cancelled() => progress.cancel(),
+                Ok(()) => progress.succeed(),
+                Err(error) if progress.is_cancelled() => progress.cancel_with_message(&error),
+                Err(error) => progress.fail(error.to_string()),
+            }
+            drop(transfer_permit);
+        });
+    }
+
+    pub(super) fn spawn_remote_copy_task(&self, task: RemoteCopyTaskInput) {
+        let RemoteCopyTaskInput {
+            transfer_id,
+            source_endpoint,
+            target_endpoint,
+            request,
+            temp_root,
+            settings,
+            cancel_requested,
+            event_emitter,
+        } = task;
+        let backend = self.backend.clone();
+        let transfers = self.transfers.clone();
+        let transfer_limiter = self.transfer_limiter.clone();
+
+        tokio::spawn(async move {
+            let progress = TransferProgress::tracked(
+                transfer_id.clone(),
+                transfers.clone(),
+                cancel_requested,
+                event_emitter,
+            );
+            let result = if should_stage_remote_copy(&request, settings) {
+                run_staged_remote_copy(StagedRemoteCopyTask {
+                    backend,
+                    transfer_limiter,
+                    source_endpoint,
+                    target_endpoint,
+                    request,
+                    temp_root,
+                    transfer_id,
+                    settings,
+                    progress: progress.clone(),
+                })
+                .await
+            } else {
+                run_streamed_remote_copy(
+                    backend,
+                    transfer_limiter,
+                    source_endpoint,
+                    target_endpoint,
+                    request,
+                    settings,
+                    progress.clone(),
+                )
+                .await
+            };
+
+            match result {
+                Ok(()) if progress.is_cancelled() => progress.cancel(),
+                Ok(()) => progress.succeed(),
+                Err(error) if progress.is_cancelled() => progress.cancel_with_message(&error),
+                Err(error) => progress.fail(error.to_string()),
+            }
+        });
+    }
+
+    pub(super) fn spawn_archive_download_task(&self, task: ArchiveDownloadTaskInput) {
+        let ArchiveDownloadTaskInput {
+            transfer_id,
+            endpoint,
+            request,
+            temp_root,
+            settings,
+            cancel_requested,
+            event_emitter,
+        } = task;
+        let backend = self.backend.clone();
+        let transfers = self.transfers.clone();
+        let transfer_limiter = self.transfer_limiter.clone();
+
+        tokio::spawn(async move {
+            let progress = TransferProgress::tracked(
+                transfer_id.clone(),
+                transfers.clone(),
+                cancel_requested,
+                event_emitter,
+            );
+            let job_temp_dir = temp_root.join("sftp-archive-download").join(&transfer_id);
+            let archive_root_name =
+                remote_path_file_name(&request.source_remote_path, request.kind);
+            let local_stage_path = job_temp_dir.join(&archive_root_name);
+            let local_stage = local_stage_path.to_string_lossy().into_owned();
+            let target_local_path = PathBuf::from(&request.target_local_path);
+
+            let result = async {
+                let transfer_permit = transfer_limiter
+                    .acquire(request.host_id.clone(), settings, progress.clone())
+                    .await?;
+                if progress.is_cancelled() {
+                    drop(transfer_permit);
+                    return Err(AppError::Sftp("传输已取消".to_owned()));
+                }
+                progress.mark_running();
+                backend
+                    .transfer(
+                        endpoint,
+                        SftpManagedTransferRequest {
+                            direction: SftpTransferDirection::Download,
+                            host_id: request.host_id.clone(),
+                            kind: request.kind,
+                            local_path: local_stage,
+                            remote_path: request.source_remote_path.clone(),
+                        },
+                        progress.clone(),
+                        settings,
+                    )
+                    .await?;
+                drop(transfer_permit);
+
+                progress.ensure_not_cancelled()?;
+                let zip_cancel = progress.cancel_requested.clone();
+                tokio::task::spawn_blocking(move || {
+                    zip_local_path_to_file(
+                        &local_stage_path,
+                        &target_local_path,
+                        &archive_root_name,
+                        request.kind,
+                        zip_cancel,
+                    )
+                })
+                .await
+                .map_err(|error| AppError::Sftp(format!("ZIP 归档任务失败: {error}")))??;
+                Ok(())
+            }
+            .await;
+
+            let _ = fs::remove_dir_all(&job_temp_dir).await;
+            match result {
+                Ok(()) if progress.is_cancelled() => progress.cancel(),
+                Ok(()) => progress.succeed(),
+                Err(error) if progress.is_cancelled() => progress.cancel_with_message(&error),
+                Err(error) => progress.fail(error.to_string()),
+            }
+        });
+    }
+
+    pub(super) fn spawn_archive_upload_task(&self, task: ArchiveUploadTaskInput) {
+        let ArchiveUploadTaskInput {
+            transfer_id,
+            endpoint,
+            request,
+            temp_root,
+            settings,
+            cancel_requested,
+            event_emitter,
+        } = task;
+        let backend = self.backend.clone();
+        let transfers = self.transfers.clone();
+        let transfer_limiter = self.transfer_limiter.clone();
+
+        tokio::spawn(async move {
+            let progress = TransferProgress::tracked(
+                transfer_id.clone(),
+                transfers.clone(),
+                cancel_requested,
+                event_emitter,
+            );
+            let job_temp_dir = temp_root.join("sftp-archive-upload").join(&transfer_id);
+            let source_local_path = PathBuf::from(&request.source_local_path);
+            let archive_root_name = local_path_file_name(&source_local_path, request.kind);
+            let local_stage_path = job_temp_dir.join(format!(
+                "{}.zip",
+                zip_safe_entry_name(&archive_root_name, "archive")
+            ));
+            let local_stage = local_stage_path.to_string_lossy().into_owned();
+
+            let result = async {
+                progress.mark_running();
+                let zip_cancel = progress.cancel_requested.clone();
+                let zip_source_path = source_local_path.clone();
+                let zip_target_path = local_stage_path.clone();
+                tokio::task::spawn_blocking(move || {
+                    zip_local_path_to_file(
+                        &zip_source_path,
+                        &zip_target_path,
+                        &archive_root_name,
+                        request.kind,
+                        zip_cancel,
+                    )
+                })
+                .await
+                .map_err(|error| AppError::Sftp(format!("ZIP 归档任务失败: {error}")))??;
+
+                progress.ensure_not_cancelled()?;
+                let transfer_permit = transfer_limiter
+                    .acquire(request.host_id.clone(), settings, progress.clone())
+                    .await?;
+                backend
+                    .transfer(
+                        endpoint,
+                        SftpManagedTransferRequest {
+                            direction: SftpTransferDirection::Upload,
+                            host_id: request.host_id.clone(),
+                            kind: SftpTransferKind::File,
+                            local_path: local_stage,
+                            remote_path: request.target_remote_path.clone(),
+                        },
+                        progress.clone(),
+                        settings,
+                    )
+                    .await?;
+                drop(transfer_permit);
+                Ok(())
+            }
+            .await;
+
+            let _ = fs::remove_dir_all(&job_temp_dir).await;
+            match result {
+                Ok(()) if progress.is_cancelled() => progress.cancel(),
+                Ok(()) => progress.succeed(),
+                Err(error) if progress.is_cancelled() => progress.cancel_with_message(&error),
+                Err(error) => progress.fail(error.to_string()),
+            }
+        });
+    }
+
+    pub(super) fn spawn_clipboard_download_task(&self, task: ClipboardDownloadTaskInput) {
+        let ClipboardDownloadTaskInput {
+            transfer_id,
+            endpoint,
+            request,
+            target_local_path,
+            settings,
+            cancel_requested,
+            copy_to_clipboard,
+            event_emitter,
+        } = task;
+        let backend = self.backend.clone();
+        let transfers = self.transfers.clone();
+        let transfer_limiter = self.transfer_limiter.clone();
+
+        tokio::spawn(async move {
+            let progress = TransferProgress::tracked(
+                transfer_id.clone(),
+                transfers.clone(),
+                cancel_requested,
+                event_emitter,
+            );
+            let target_local_path_string = target_local_path.to_string_lossy().into_owned();
+
+            let result = async {
+                if let Some(parent) = target_local_path
+                    .parent()
+                    .filter(|path| !path.as_os_str().is_empty())
+                {
+                    fs::create_dir_all(parent).await?;
+                }
+
+                let transfer_permit = transfer_limiter
+                    .acquire(request.host_id.clone(), settings, progress.clone())
+                    .await?;
+                if progress.is_cancelled() {
+                    drop(transfer_permit);
+                    return Err(AppError::Sftp("传输已取消".to_owned()));
+                }
+                progress.mark_running();
+                backend
+                    .transfer(
+                        endpoint,
+                        SftpManagedTransferRequest {
+                            direction: SftpTransferDirection::Download,
+                            host_id: request.host_id.clone(),
+                            kind: request.kind,
+                            local_path: target_local_path_string,
+                            remote_path: request.source_remote_path.clone(),
+                        },
+                        progress.clone(),
+                        settings,
+                    )
+                    .await?;
+                drop(transfer_permit);
+
+                progress.ensure_not_cancelled()?;
+                if copy_to_clipboard {
+                    let clipboard_target = target_local_path.clone();
+                    tokio::task::spawn_blocking(move || {
+                        write_local_file_clipboard(&[clipboard_target])
+                    })
+                    .await
+                    .map_err(|error| {
+                        AppError::Sftp(format!("写入系统文件剪贴板失败: {error}"))
+                    })??;
+                }
+                Ok(())
+            }
+            .await;
+
+            match result {
+                Ok(()) if progress.is_cancelled() => progress.cancel(),
+                Ok(()) => progress.succeed(),
+                Err(error) if progress.is_cancelled() => progress.cancel_with_message(&error),
+                Err(error) => progress.fail(error.to_string()),
+            }
+        });
+    }
+}
+
+pub(super) fn should_stage_remote_copy(
+    request: &SftpRemoteCopyRequest,
+    settings: SftpRuntimeSettings,
+) -> bool {
+    if request.source_host_id != request.target_host_id {
+        return settings.global_transfers < 2;
+    }
+    request.kind == SftpTransferKind::Directory
+        && is_remote_descendant_path(&request.source_remote_path, &request.target_remote_path)
+}
+
+async fn run_streamed_remote_copy(
+    backend: Arc<dyn SftpBackend>,
+    transfer_limiter: Arc<TransferLimiter>,
+    source_endpoint: SftpEndpoint,
+    target_endpoint: SftpEndpoint,
+    request: SftpRemoteCopyRequest,
+    settings: SftpRuntimeSettings,
+    progress: TransferProgress,
+) -> AppResult<()> {
+    let host_ids = if request.source_host_id == request.target_host_id {
+        vec![request.source_host_id.clone()]
+    } else {
+        vec![
+            request.source_host_id.clone(),
+            request.target_host_id.clone(),
+        ]
+    };
+    let transfer_permits = transfer_limiter
+        .acquire_many(host_ids, settings, progress.clone())
+        .await?;
+    if progress.is_cancelled() {
+        drop(transfer_permits);
+        return Err(AppError::Sftp("传输已取消".to_owned()));
+    }
+    progress.mark_running();
+    backend
+        .remote_copy(
+            source_endpoint,
+            target_endpoint,
+            request,
+            progress,
+            settings,
+        )
+        .await?;
+    drop(transfer_permits);
+    Ok(())
+}
+
+async fn run_staged_remote_copy(task: StagedRemoteCopyTask) -> AppResult<()> {
+    let StagedRemoteCopyTask {
+        backend,
+        transfer_limiter,
+        source_endpoint,
+        target_endpoint,
+        request,
+        temp_root,
+        transfer_id,
+        settings,
+        progress,
+    } = task;
+    let job_temp_dir = temp_root.join("sftp-remote-copy").join(&transfer_id);
+    let local_stage_path = job_temp_dir.join(remote_path_file_name(
+        &request.source_remote_path,
+        request.kind,
+    ));
+    let local_stage = local_stage_path.to_string_lossy().into_owned();
+
+    let result = async {
+        let source_permit = transfer_limiter
+            .acquire(request.source_host_id.clone(), settings, progress.clone())
+            .await?;
+        if progress.is_cancelled() {
+            drop(source_permit);
+            return Err(AppError::Sftp("传输已取消".to_owned()));
+        }
+        progress.mark_running();
+        let source_progress =
+            TransferProgress::detached_with_cancel(progress.cancel_requested.clone());
+        backend
+            .transfer(
+                source_endpoint,
+                SftpManagedTransferRequest {
+                    direction: SftpTransferDirection::Download,
+                    host_id: request.source_host_id.clone(),
+                    kind: request.kind,
+                    local_path: local_stage.clone(),
+                    remote_path: request.source_remote_path.clone(),
+                },
+                source_progress,
+                settings,
+            )
+            .await?;
+        drop(source_permit);
+
+        progress.ensure_not_cancelled()?;
+        let target_permit = transfer_limiter
+            .acquire(request.target_host_id.clone(), settings, progress.clone())
+            .await?;
+        backend
+            .transfer(
+                target_endpoint,
+                SftpManagedTransferRequest {
+                    direction: SftpTransferDirection::Upload,
+                    host_id: request.target_host_id.clone(),
+                    kind: request.kind,
+                    local_path: local_stage,
+                    remote_path: request.target_remote_path.clone(),
+                },
+                progress,
+                settings,
+            )
+            .await?;
+        drop(target_permit);
+        Ok(())
+    }
+    .await;
+
+    let _ = fs::remove_dir_all(&job_temp_dir).await;
+    result
+}
+
+struct StagedRemoteCopyTask {
+    backend: Arc<dyn SftpBackend>,
+    transfer_limiter: Arc<TransferLimiter>,
+    pub(super) source_endpoint: SftpEndpoint,
+    pub(super) target_endpoint: SftpEndpoint,
+    pub(super) request: SftpRemoteCopyRequest,
+    pub(super) temp_root: PathBuf,
+    pub(super) transfer_id: String,
+    pub(super) settings: SftpRuntimeSettings,
+    progress: TransferProgress,
+}
+
+#[derive(Debug)]
+pub(super) struct RemoteCopyTaskInput {
+    pub(super) transfer_id: String,
+    pub(super) source_endpoint: SftpEndpoint,
+    pub(super) target_endpoint: SftpEndpoint,
+    pub(super) request: SftpRemoteCopyRequest,
+    pub(super) temp_root: PathBuf,
+    pub(super) settings: SftpRuntimeSettings,
+    pub(super) cancel_requested: Arc<AtomicBool>,
+    pub(super) event_emitter: Option<TransferEventEmitter>,
+}
+
+#[derive(Debug)]
+pub(super) struct ArchiveDownloadTaskInput {
+    pub(super) transfer_id: String,
+    pub(super) endpoint: SftpEndpoint,
+    pub(super) request: SftpArchiveDownloadRequest,
+    pub(super) temp_root: PathBuf,
+    pub(super) settings: SftpRuntimeSettings,
+    pub(super) cancel_requested: Arc<AtomicBool>,
+    pub(super) event_emitter: Option<TransferEventEmitter>,
+}
+
+#[derive(Debug)]
+pub(super) struct ArchiveUploadTaskInput {
+    pub(super) transfer_id: String,
+    pub(super) endpoint: SftpEndpoint,
+    pub(super) request: SftpArchiveUploadRequest,
+    pub(super) temp_root: PathBuf,
+    pub(super) settings: SftpRuntimeSettings,
+    pub(super) cancel_requested: Arc<AtomicBool>,
+    pub(super) event_emitter: Option<TransferEventEmitter>,
+}
+
+#[derive(Debug)]
+pub(super) struct ClipboardDownloadTaskInput {
+    pub(super) transfer_id: String,
+    pub(super) endpoint: SftpEndpoint,
+    pub(super) request: SftpClipboardDownloadRequest,
+    pub(super) target_local_path: PathBuf,
+    pub(super) settings: SftpRuntimeSettings,
+    pub(super) cancel_requested: Arc<AtomicBool>,
+    pub(super) copy_to_clipboard: bool,
+    pub(super) event_emitter: Option<TransferEventEmitter>,
+}

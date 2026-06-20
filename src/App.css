@@ -1,0 +1,189 @@
+@import "tailwindcss";
+@import "streamdown/styles.css";
+
+@source "../node_modules/streamdown/dist/*.js";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --app-bg: 245 245 247;
+  --app-bg-secondary: 250 250 250;
+  --app-panel: 255 255 255;
+  --app-text: 29 29 31;
+  --app-text-muted: 60 60 67;
+  --app-border: 0 0 0;
+  --app-accent: 10 132 255;
+  --app-scrollbar-thumb: 113 113 122;
+  --app-scrollbar-thumb-hover: 82 82 91;
+  --app-scrollbar-thumb-opacity: 0.32;
+  --app-scrollbar-thumb-hover-opacity: 0.5;
+  --radius-control: 0.75rem;
+  --radius-card: 1rem;
+  --radius-panel: 1.25rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --radius: 0.625rem;
+  color-scheme: light;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Segoe UI", system-ui, sans-serif;
+  color: rgb(var(--app-text));
+  background: rgb(var(--app-bg));
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+.dark {
+  --app-bg: 16 16 18;
+  --app-bg-secondary: 28 28 30;
+  --app-panel: 28 28 30;
+  --app-text: 245 245 247;
+  --app-text-muted: 235 235 245;
+  --app-border: 255 255 255;
+  --app-accent: 10 132 255;
+  --app-scrollbar-thumb: 212 212 216;
+  --app-scrollbar-thumb-hover: 244 244 245;
+  --app-scrollbar-thumb-opacity: 0.22;
+  --app-scrollbar-thumb-hover-opacity: 0.38;
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --border: oklch(0.269 0 0);
+  --input: oklch(0.269 0 0);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --radius: 0.625rem;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+  scrollbar-color: rgb(var(--app-scrollbar-thumb) / var(--app-scrollbar-thumb-opacity))
+    transparent;
+  scrollbar-width: thin;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  color: rgb(var(--app-text));
+  background: rgb(var(--app-bg));
+  overflow: hidden;
+}
+
+.kerminal-scrollbar {
+  scrollbar-gutter: stable;
+}
+
+*:not(.scrollbar-none)::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+*:not(.scrollbar-none)::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*:not(.scrollbar-none)::-webkit-scrollbar-thumb {
+  background-clip: content-box;
+  background-color: rgb(
+    var(--app-scrollbar-thumb) / var(--app-scrollbar-thumb-opacity)
+  );
+  border: 3px solid transparent;
+  border-radius: 999px;
+  min-height: 1.75rem;
+}
+
+*:not(.scrollbar-none):hover::-webkit-scrollbar-thumb {
+  background-color: rgb(
+    var(--app-scrollbar-thumb-hover) /
+      var(--app-scrollbar-thumb-hover-opacity)
+  );
+}
+
+*:not(.scrollbar-none)::-webkit-scrollbar-corner,
+*:not(.scrollbar-none)::-webkit-scrollbar-track-piece {
+  background: transparent;
+}
+
+*:not(.scrollbar-none)::-webkit-scrollbar-button {
+  display: none;
+  height: 0;
+  width: 0;
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.kerminal-ai-markdown {
+  color: inherit;
+  font-size: inherit;
+  line-height: 1.6;
+}
+
+.kerminal-ai-markdown :where(p, ul, ol, pre, table, blockquote) {
+  margin-block: 0.45rem;
+}
+
+.kerminal-ai-markdown :where(p:first-child, ul:first-child, ol:first-child, pre:first-child) {
+  margin-top: 0;
+}
+
+.kerminal-ai-markdown :where(p:last-child, ul:last-child, ol:last-child, pre:last-child) {
+  margin-bottom: 0;
+}
+
+.kerminal-ai-markdown :where(pre, table) {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.kerminal-ai-markdown :where(code) {
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+}

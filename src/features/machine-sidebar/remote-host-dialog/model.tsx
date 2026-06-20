@@ -1,0 +1,285 @@
+import {
+  Box,
+  Cable,
+  Monitor,
+  Network,
+  PanelTop,
+  Settings,
+  SquareTerminal,
+  Terminal,
+  Waypoints,
+  type LucideIcon,
+} from "lucide-react";
+import type { SelectOption } from "../../../components/ui/select";
+import type {
+  DockerContainerListRequest,
+  DockerContainerSummary,
+} from "../../../lib/dockerApi";
+import type {
+  RemoteHost,
+  RemoteHostAuthType,
+  RemoteHostCreateRequest,
+  RemoteHostUpdateRequest,
+  SshProxyProtocol,
+  SshTunnelKind,
+} from "../../../lib/remoteHostApi";
+import type { Machine, MachineGroup } from "../../workspace/types";
+
+export interface RemoteHostCreateDialogProps {
+  defaultGroupId?: string;
+  defaultMode?: ConnectionMode;
+  editingHost?: RemoteHost;
+  editingLocalMachine?: Machine;
+  groups: MachineGroup[];
+  open: boolean;
+  onAddDockerContainer?: (
+    request: DockerContainerCreateRequest,
+  ) => void | Promise<void>;
+  onClose: () => void;
+  onCreateLocal?: (options?: LocalTerminalCreateOptions) => void | Promise<void>;
+  onCreateHost: (request: RemoteHostCreateRequest) => Promise<RemoteHost>;
+  onListDockerContainers?: (
+    request: DockerContainerListRequest,
+  ) => Promise<DockerContainerSummary[]>;
+  onUpdateHost?: (request: RemoteHostUpdateRequest) => Promise<RemoteHost>;
+  onUpdateLocal?: (
+    machineId: string,
+    options: LocalTerminalCreateOptions,
+  ) => void | Promise<void>;
+  onCreated?: (host: RemoteHost) => void | Promise<void>;
+}
+
+export type ConnectionMode =
+  | "ssh"
+  | "local"
+  | "docker"
+  | "rdp"
+  | "telnet"
+  | "serial"
+  | "ftp"
+  | "s3"
+  | "smb"
+  | "vnc"
+  | "webdav";
+
+export type DialogSection =
+  | "properties"
+  | "auth"
+  | "proxy"
+  | "tunnel"
+  | "jump"
+  | "terminal"
+  | "transfer"
+  | "environment"
+  | "display"
+  | "gateway"
+  | "resources"
+  | "serial"
+  | "experience";
+
+export interface LocalTerminalCreateOptions {
+  args?: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+  groupId?: string;
+  shell?: string;
+  title?: string;
+}
+
+export interface DockerContainerCreateRequest {
+  container: DockerContainerSummary;
+  groupId?: string;
+  shell?: string;
+  user?: string;
+  workdir?: string;
+}
+
+export interface SectionTab {
+  Icon: LucideIcon;
+  description?: string;
+  id: DialogSection;
+  label: string;
+}
+
+export interface LocalShellPreset {
+  args: string[];
+  id: string;
+  label: string;
+  shell: string;
+}
+
+export const DEFAULT_LOCAL_SHELL_PRESET_ID = "default";
+export const CUSTOM_LOCAL_SHELL_PRESET_ID = "custom";
+
+export const localShellFallbackPresets: LocalShellPreset[] = [
+  { args: [], id: "pwsh", label: "PowerShell 7", shell: "pwsh.exe" },
+  {
+    args: [],
+    id: "windows-powershell",
+    label: "Windows PowerShell",
+    shell: "powershell.exe",
+  },
+  { args: [], id: "cmd", label: "Command Prompt", shell: "cmd.exe" },
+  { args: [], id: "git-bash", label: "Git Bash", shell: "bash.exe" },
+  { args: [], id: "wsl", label: "WSL", shell: "wsl.exe" },
+];
+
+export const protocolTabs: Array<{
+  Icon: LucideIcon;
+  id: ConnectionMode;
+  label: string;
+}> = [
+  { Icon: SquareTerminal, id: "ssh", label: "SSH" },
+  { Icon: Box, id: "docker", label: "Docker" },
+  { Icon: Terminal, id: "local", label: "Local" },
+  { Icon: Monitor, id: "rdp", label: "RDP" },
+  { Icon: Cable, id: "telnet", label: "Telnet" },
+  { Icon: Cable, id: "serial", label: "Serial" },
+];
+
+export const sectionTabsByMode: Partial<Record<ConnectionMode, SectionTab[]>> = {
+  ssh: [
+    { Icon: Settings, id: "properties", label: "属性" },
+    { Icon: Waypoints, id: "proxy", label: "代理" },
+    { Icon: Network, id: "jump", label: "跳板机" },
+  ],
+  local: [
+    { Icon: Monitor, id: "properties", label: "属性" },
+    { Icon: Terminal, id: "environment", label: "终端" },
+  ],
+  docker: [
+    { Icon: Box, id: "properties", label: "容器" },
+    { Icon: Terminal, id: "terminal", label: "进入选项" },
+  ],
+  rdp: [
+    { Icon: Monitor, id: "properties", label: "属性" },
+    { Icon: PanelTop, id: "display", label: "显示" },
+  ],
+  telnet: [
+    { Icon: Settings, id: "properties", label: "属性" },
+  ],
+  serial: [
+    { Icon: Settings, id: "properties", label: "属性" },
+    { Icon: Cable, id: "serial", label: "串口" },
+  ],
+};
+
+export const serialDataBitOptions: SelectOption[] = [
+  { label: "5", value: "5" },
+  { label: "6", value: "6" },
+  { label: "7", value: "7" },
+  { label: "8", value: "8" },
+];
+
+export const serialStopBitOptions: SelectOption[] = [
+  { label: "1", value: "1" },
+  { label: "2", value: "2" },
+];
+
+export const serialParityOptions: SelectOption[] = [
+  { label: "None", value: "none" },
+  { label: "Odd", value: "odd" },
+  { label: "Even", value: "even" },
+];
+
+export const serialFlowOptions: SelectOption[] = [
+  { label: "None", value: "none" },
+  { label: "XON/XOFF", value: "xonxoff" },
+  { label: "RTS/CTS", value: "rtscts" },
+];
+
+export const authOptions: Array<{
+  label: string;
+  helper: string;
+  value: RemoteHostAuthType;
+}> = [
+  {
+    helper: "优先复用系统 ssh-agent 和默认密钥。",
+    label: "SSH Agent",
+    value: "agent",
+  },
+  {
+    helper: "使用私钥路径、已有凭据引用，或将私钥内容保存到系统凭据仓库。",
+    label: "密钥",
+    value: "key",
+  },
+  {
+    helper: "将密码保存到系统凭据仓库，主机配置只保存引用。",
+    label: "密码",
+    value: "password",
+  },
+];
+
+export const proxyProtocolOptions: Array<{
+  label: string;
+  value: SshProxyProtocol;
+}> = [
+  { label: "No", value: "none" },
+  { label: "HTTP CONNECT", value: "http" },
+  { label: "SOCKS5", value: "socks5" },
+];
+
+export const tunnelKindOptions: Array<{ label: string; value: SshTunnelKind }> = [
+  { label: "Local", value: "local" },
+  { label: "Remote", value: "remote" },
+  { label: "Dynamic", value: "dynamic" },
+];
+
+export const terminalEncodingOptions = ["UTF-8", "GB18030", "Big5", "Shift_JIS", "ISO-8859-1"];
+export const terminalTypeOptions = ["xterm-256color", "xterm", "vt100", "linux"];
+
+export const LAST_DOCKER_HOST_STORAGE_KEY =
+  "kerminal.remote-host-dialog.last-docker-host-id";
+export const DEFAULT_GROUP_LABEL = "默认分组";
+
+export function readRememberedDockerHostId(sshMachines: Machine[]) {
+  try {
+    const rememberedHostId = window.localStorage.getItem(
+      LAST_DOCKER_HOST_STORAGE_KEY,
+    );
+    return rememberedHostId &&
+      sshMachines.some((machine) => machine.id === rememberedHostId)
+      ? rememberedHostId
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+export function rememberDockerHostId(hostId: string) {
+  try {
+    if (hostId) {
+      window.localStorage.setItem(LAST_DOCKER_HOST_STORAGE_KEY, hostId);
+      return;
+    }
+    window.localStorage.removeItem(LAST_DOCKER_HOST_STORAGE_KEY);
+  } catch {
+    // localStorage may be unavailable in restricted browser contexts.
+  }
+}
+
+export function buildGroupOptions(groups: MachineGroup[]) {
+  const options = groups.map((group) => ({
+    label: group.title,
+    value: group.id,
+  }));
+  const hasDefaultGroup = groups.some(
+    (group) => group.title.trim() === DEFAULT_GROUP_LABEL,
+  );
+  return hasDefaultGroup
+    ? options
+    : [{ label: DEFAULT_GROUP_LABEL, value: "" }, ...options];
+}
+
+export function initialTargetGroupId(
+  groups: MachineGroup[],
+  defaultGroupId: string | undefined,
+) {
+  if (defaultGroupId && groups.some((group) => group.id === defaultGroupId)) {
+    return defaultGroupId;
+  }
+
+  return (
+    groups.find((group) => group.title.trim() === DEFAULT_GROUP_LABEL)?.id ?? ""
+  );
+}
