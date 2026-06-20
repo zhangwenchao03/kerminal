@@ -38,7 +38,7 @@ http = "1"
 axum = "0.8"
 tokio-util = "0.7"
 tauri-plugin-dialog = "2"
-rfd = "0.16.0"
+rfd = { version = "0.16.0", default-features = false }
 async-trait = "0.1"
 futures = "0.3"
 russh = "0.61.2"
