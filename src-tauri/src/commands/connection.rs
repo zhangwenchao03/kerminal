@@ -2,11 +2,14 @@
 //!
 //! @author kongweiguang
 
-use std::{
-    fs,
-    io::Write,
-    process::{Command, Stdio},
-};
+use std::fs;
+
+#[cfg(target_os = "windows")]
+use std::io::Write;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+use std::process::Command;
+#[cfg(target_os = "windows")]
+use std::process::Stdio;
 
 use uuid::Uuid;
 
@@ -167,12 +170,12 @@ fn format_rdp_full_address(host: &str, port: u16) -> String {
 }
 
 fn encrypted_rdp_password(password: Option<&str>) -> AppResult<Option<String>> {
-    let Some(password) = password.map(str::trim).filter(|value| !value.is_empty()) else {
-        return Ok(None);
-    };
-
     #[cfg(target_os = "windows")]
     {
+        let Some(password) = password.map(str::trim).filter(|value| !value.is_empty()) else {
+            return Ok(None);
+        };
+
         let mut child = Command::new("powershell")
             .args([
                 "-NoProfile",
@@ -205,6 +208,7 @@ fn encrypted_rdp_password(password: Option<&str>) -> AppResult<Option<String>> {
 
     #[cfg(not(target_os = "windows"))]
     {
+        let _ = password;
         Ok(None)
     }
 }

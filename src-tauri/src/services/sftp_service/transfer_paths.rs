@@ -204,6 +204,7 @@ pub(super) fn write_local_file_clipboard(_paths: &[PathBuf]) -> AppResult<()> {
     ))
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(super) fn classify_clipboard_local_paths(
     paths: Vec<PathBuf>,
 ) -> AppResult<Vec<SftpLocalPathInfo>> {
