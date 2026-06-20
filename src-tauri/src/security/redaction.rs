@@ -64,8 +64,7 @@ mod tests {
 
     #[test]
     fn redacts_sk_tokens_after_escaped_newline() {
-        let (redacted, changed) =
-            redact_terminal_text(r"printf 'TOKEN=value\nsk-terminal-secret-12345\n'");
+        let (redacted, changed) = redact_terminal_text(r"prefix\nsk-terminal-secret-12345\nsuffix");
 
         assert!(changed);
         assert!(!redacted.contains("sk-terminal-secret-12345"));
