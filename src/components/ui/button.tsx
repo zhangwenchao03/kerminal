@@ -4,16 +4,16 @@ import type { ButtonHTMLAttributes } from "react";
 import { cn } from "../../lib/cn";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition-[background-color,border-color,color,transform,opacity,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A84FF]/20 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]",
+  "kerminal-pressable kerminal-focus-ring inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium disabled:pointer-events-none disabled:opacity-45",
   {
     variants: {
       variant: {
         primary:
           "bg-[#0A84FF] text-white shadow-sm shadow-[#0A84FF]/20 hover:brightness-105",
         secondary:
-          "border border-black/10 bg-white/70 text-zinc-800 shadow-sm shadow-black/[0.03] hover:bg-white/95 dark:border-white/10 dark:bg-white/8 dark:text-zinc-100 dark:shadow-black/20 dark:hover:bg-white/12",
+          "kerminal-solid-surface border text-zinc-800 hover:bg-[var(--surface-field-hover)] dark:text-zinc-100",
         ghost:
-          "text-zinc-600 hover:bg-black/5 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-white/8 dark:hover:text-zinc-50",
+          "text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50",
         danger:
           "text-red-600 hover:bg-red-500/10 hover:text-red-700 dark:text-red-300 dark:hover:text-red-200",
       },

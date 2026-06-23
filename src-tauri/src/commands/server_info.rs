@@ -16,9 +16,8 @@ pub async fn server_info_snapshot(
 ) -> Result<ServerInfoSnapshot, String> {
     state
         .server_info()
-        .snapshot_with_credentials(
+        .snapshot_native(
             state.storage(),
-            state.credentials(),
             state.paths(),
             state.ssh_commands(),
             request,

@@ -5,6 +5,7 @@ import {
   normalizeAppSettings,
   resolveThemeMode,
   terminalColorSchemeForTheme,
+  terminalFontOptions,
   terminalFontWeightValue,
 } from "./settingsModel";
 
@@ -30,6 +31,7 @@ describe("settingsModel", () => {
       backgroundImagePath: "",
       backgroundOpacity: 100,
       interfaceLanguage: "system",
+      windowOpacity: 100,
     });
     expect(settings.terminal).toMatchObject({
       autoReconnect: true,
@@ -74,6 +76,7 @@ describe("settingsModel", () => {
         backgroundImagePath: " C:/Pictures/bg.png ",
         backgroundOpacity: 999,
         interfaceLanguage: "fr",
+        windowOpacity: 12,
       },
       interfaceDensity: "tiny",
       terminal: {
@@ -126,6 +129,7 @@ describe("settingsModel", () => {
       backgroundImagePath: "C:/Pictures/bg.png",
       backgroundOpacity: 100,
       interfaceLanguage: defaultAppSettings.appearance.interfaceLanguage,
+      windowOpacity: 35,
     });
     expect(settings.interfaceDensity).toBe(defaultAppSettings.interfaceDensity);
     expect(settings.themeMode).toBe(defaultAppSettings.themeMode);
@@ -217,6 +221,52 @@ describe("settingsModel", () => {
     expect(terminalFontWeightValue("normal")).toBe(400);
     expect(terminalFontWeightValue("medium")).toBe(500);
     expect(terminalFontWeightValue("bold")).toBe(600);
+  });
+
+  it("offers visually distinct terminal font choices with stable fallbacks", () => {
+    expect(terminalFontOptions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "JetBrains Mono",
+          value: expect.stringContaining("JetBrains Mono"),
+        }),
+        expect.objectContaining({
+          label: "JetBrainsMono Nerd Font",
+          value: expect.stringContaining("JetBrainsMono Nerd Font"),
+        }),
+        expect.objectContaining({
+          label: "Fira Code",
+          value: expect.stringContaining("Fira Code"),
+        }),
+        expect.objectContaining({
+          label: "Hack",
+          value: expect.stringContaining("Hack"),
+        }),
+        expect.objectContaining({
+          label: "Source Code Pro",
+          value: expect.stringContaining("Source Code Pro"),
+        }),
+        expect.objectContaining({
+          label: "Iosevka Term",
+          value: expect.stringContaining("Iosevka Term"),
+        }),
+        expect.objectContaining({
+          label: "Consolas",
+          value: expect.stringContaining("Consolas"),
+        }),
+        expect.objectContaining({
+          label: "Lucida Console",
+          value: expect.stringContaining("Lucida Console"),
+        }),
+        expect.objectContaining({
+          label: "Courier New",
+          value: expect.stringContaining("Courier New"),
+        }),
+      ]),
+    );
+    expect(terminalFontOptions.map((option) => option.value)).toContain(
+      defaultAppSettings.terminal.fontFamily,
+    );
   });
 
   it("enriches legacy keybinding payloads with platform bindings", () => {

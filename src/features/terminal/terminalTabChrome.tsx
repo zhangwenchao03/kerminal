@@ -44,12 +44,19 @@ export type TerminalTabContextMenuPayload =
 
 const CONTEXT_MENU_MARGIN = 8;
 const tabGroupColors = [
-  "bg-pink-500/22 text-pink-700 ring-pink-500/24 dark:bg-pink-400/22 dark:text-pink-100 dark:ring-pink-300/24",
-  "bg-violet-500/22 text-violet-700 ring-violet-500/24 dark:bg-violet-400/22 dark:text-violet-100 dark:ring-violet-300/24",
-  "bg-sky-500/22 text-sky-700 ring-sky-500/24 dark:bg-sky-400/22 dark:text-sky-100 dark:ring-sky-300/24",
-  "bg-emerald-500/22 text-emerald-700 ring-emerald-500/24 dark:bg-emerald-400/22 dark:text-emerald-100 dark:ring-emerald-300/24",
-  "bg-amber-500/22 text-amber-700 ring-amber-500/24 dark:bg-amber-400/22 dark:text-amber-100 dark:ring-amber-300/24",
+  "bg-pink-500/12 text-pink-700 ring-pink-500/18 dark:bg-pink-400/12 dark:text-pink-100 dark:ring-pink-300/18",
+  "bg-violet-500/12 text-violet-700 ring-violet-500/18 dark:bg-violet-400/12 dark:text-violet-100 dark:ring-violet-300/18",
+  "bg-sky-500/12 text-sky-700 ring-sky-500/18 dark:bg-sky-400/12 dark:text-sky-100 dark:ring-sky-300/18",
+  "bg-emerald-500/12 text-emerald-700 ring-emerald-500/18 dark:bg-emerald-400/12 dark:text-emerald-100 dark:ring-emerald-300/18",
+  "bg-amber-500/12 text-amber-700 ring-amber-500/18 dark:bg-amber-400/12 dark:text-amber-100 dark:ring-amber-300/18",
 ];
+
+const terminalTabIdleClassName =
+  "border-[var(--border-subtle)] bg-[var(--surface-solid)] text-zinc-600 shadow-sm shadow-black/5 hover:border-sky-500/25 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:shadow-black/20 dark:hover:border-sky-300/25 dark:hover:text-zinc-100";
+const terminalTabMenuItemClassName =
+  "kerminal-focus-ring kerminal-pressable flex w-full items-center rounded-lg px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-45";
+const terminalTabMenuIdleClassName =
+  "text-zinc-700 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-zinc-50";
 
 export function TerminalTabButton({
   active,
@@ -75,11 +82,11 @@ export function TerminalTabButton({
   return (
     <div
       className={cn(
-        "flex h-9 items-center gap-2 rounded-t-xl border px-2.5 text-sm transition",
+        "relative z-30 flex h-9 items-center gap-2 rounded-xl border px-2.5 text-sm transition-[background-color,border-color,box-shadow,color,transform] duration-150",
         compact ? "max-w-[190px]" : "shrink-0",
         active
-          ? "-mb-px border-black/8 border-b-transparent bg-[#f1f1f4] text-zinc-950 dark:border-white/8 dark:border-b-transparent dark:bg-[#18181a] dark:text-zinc-50"
-          : "border-transparent text-zinc-500 hover:bg-black/5 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-white/7 dark:hover:text-zinc-100",
+          ? "border-sky-500/60 bg-sky-500/14 text-sky-800 shadow-md shadow-sky-500/15 ring-1 ring-sky-400/30 dark:border-sky-300/45 dark:bg-sky-400/16 dark:text-sky-50 dark:ring-sky-300/25"
+          : terminalTabIdleClassName,
       )}
       onContextMenu={onContextMenu}
     >
@@ -91,7 +98,10 @@ export function TerminalTabButton({
       />
       <button
         aria-pressed={active}
-        className={cn("truncate", compact ? "max-w-[104px]" : "max-w-[160px]")}
+        className={cn(
+          "kerminal-focus-ring min-w-0 truncate rounded-md text-left",
+          compact ? "max-w-[104px]" : "max-w-[160px]",
+        )}
         onClick={() => onSelectTab(tab.id)}
         type="button"
       >
@@ -100,7 +110,7 @@ export function TerminalTabButton({
       {showClose ? (
         <button
           aria-label={`关闭 ${tab.title} tab`}
-          className="rounded-md p-0.5 text-zinc-500 hover:bg-black/5 hover:text-zinc-900 dark:hover:bg-white/10 dark:hover:text-zinc-100"
+          className="kerminal-focus-ring kerminal-pressable rounded-md p-0.5 text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-900 dark:hover:text-zinc-100"
           onClick={(event) => {
             event.stopPropagation();
             onCloseTab(tab.id);
@@ -130,7 +140,7 @@ export function TerminalTabGroupHeader({
       aria-expanded={!collapsed}
       aria-label={collapsed ? `展开 ${group.title} 标签组` : `折叠 ${group.title} 标签组`}
       className={cn(
-        "flex h-7 max-w-[148px] items-center gap-1.5 rounded-lg px-2 text-xs font-medium ring-1 transition hover:brightness-105",
+        "kerminal-focus-ring kerminal-pressable flex h-9 max-w-[190px] items-center gap-2 rounded-xl px-2.5 text-sm font-medium ring-1 hover:brightness-105",
         group.colorClassName,
       )}
       onClick={onToggle}
@@ -280,9 +290,9 @@ export function CloseTabsConfirmationDialog({
         </>
       }
       description={`将关闭 ${tabCount} 个终端标签，相关分屏会一并结束。`}
-      maxWidthClassName="max-w-md"
       onClose={onClose}
       open={tabCount > 0}
+      size="compact"
       title="确认关闭标签"
     >
       <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-100">
@@ -333,13 +343,13 @@ export function TerminalTabRenameDialog({
 
   return (
     <ModalShell
-      maxWidthClassName="max-w-md"
       onClose={onClose}
       open={Boolean(tab)}
+      size="compact"
       title="重命名标签"
     >
       <form className="space-y-4" onSubmit={submit}>
-        <div className="rounded-2xl border border-black/8 bg-black/[0.03] p-4 dark:border-white/8 dark:bg-white/6">
+        <div className="kerminal-muted-surface rounded-2xl border p-4">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Pencil className="h-4 w-4 text-sky-500 dark:text-sky-300" />
             标签信息
@@ -350,7 +360,7 @@ export function TerminalTabRenameDialog({
             </span>
             <input
               autoFocus
-              className="mt-1 h-9 w-full rounded-xl border border-black/10 bg-white/86 px-3 text-sm outline-none transition focus:border-sky-500/50 focus:ring-4 focus:ring-sky-500/15 dark:border-white/10 dark:bg-black/20"
+              className="kerminal-field-surface mt-1 h-9 w-full rounded-xl border px-3 text-sm"
               onChange={(event) => {
                 setTitle(event.currentTarget.value);
                 setError(null);
@@ -360,7 +370,10 @@ export function TerminalTabRenameDialog({
             />
           </label>
           {error ? (
-            <p className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
+            <p
+              className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300"
+              role="alert"
+            >
               {error}
             </p>
           ) : null}
@@ -393,10 +406,10 @@ function TerminalTabMenuItem({
   return (
     <button
       className={cn(
-        "flex w-full items-center rounded-lg px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-45",
+        terminalTabMenuItemClassName,
         danger
           ? "text-red-600 hover:bg-red-500/10 hover:text-red-700 dark:text-red-300 dark:hover:text-red-200"
-          : "text-zinc-700 hover:bg-black/5 hover:text-zinc-950 dark:text-zinc-200 dark:hover:bg-white/8 dark:hover:text-zinc-50",
+          : terminalTabMenuIdleClassName,
       )}
       disabled={disabled}
       onClick={onClick}

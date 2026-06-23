@@ -6,8 +6,11 @@ use rusqlite::Connection;
 
 use crate::error::{AppError, AppResult};
 
+#[path = "migrations_ai_conversations.rs"]
+mod migrations_ai_conversations;
+
 /// 当前 SQLite schema 版本。
-pub const CURRENT_SCHEMA_VERSION: u32 = 19;
+pub const CURRENT_SCHEMA_VERSION: u32 = 30;
 
 /// 执行所有待应用 migration。
 pub fn migrate(conn: &mut Connection) -> AppResult<()> {
@@ -95,6 +98,52 @@ pub fn migrate(conn: &mut Connection) -> AppResult<()> {
     if version < 19 {
         migrate_to_v19(conn)?;
     }
+
+    if version < 20 {
+        migrations_ai_conversations::migrate_to_v20(conn)?;
+    }
+
+    if version < 21 {
+        migrations_ai_conversations::migrate_to_v21(conn)?;
+    }
+
+    if version < 22 {
+        migrate_to_v22(conn)?;
+    }
+
+    if version < 23 {
+        migrations_ai_conversations::migrate_to_v23(conn)?;
+    }
+
+    if version < 24 {
+        migrations_ai_conversations::migrate_to_v24(conn)?;
+    }
+
+    if version < 25 {
+        migrations_ai_conversations::migrate_to_v25(conn)?;
+    }
+
+    if version < 26 {
+        migrate_to_v26(conn)?;
+    }
+
+    if version < 27 {
+        migrations_ai_conversations::migrate_to_v27(conn)?;
+    }
+
+    if version < 28 {
+        migrate_to_v28(conn)?;
+    }
+
+    if version < 29 {
+        migrate_to_v29(conn)?;
+    }
+
+    if version < 30 {
+        migrate_to_v30(conn)?;
+    }
+
+    ensure_port_forward_sessions_schema(conn)?;
 
     Ok(())
 }
@@ -900,3 +949,129 @@ fn migrate_to_v19(conn: &mut Connection) -> AppResult<()> {
 
     Ok(())
 }
+
+fn migrate_to_v22(conn: &mut Connection) -> AppResult<()> {
+    let has_ai_tool_audits = table_exists(conn, "ai_tool_audits")?;
+    let tx = conn.transaction()?;
+
+    if has_ai_tool_audits {
+        tx.execute_batch(
+            "
+            ALTER TABLE ai_tool_audits
+                ADD COLUMN audit_context_json TEXT;
+            ",
+        )?;
+    }
+
+    tx.pragma_update(None, "user_version", 22)?;
+    tx.commit()?;
+
+    Ok(())
+}
+
+fn migrate_to_v26(conn: &mut Connection) -> AppResult<()> {
+    let tx = conn.transaction()?;
+
+    tx.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS local_file_operation_audits (
+            id                   TEXT PRIMARY KEY NOT NULL,
+            operation            TEXT NOT NULL CHECK (operation IN ('delete')),
+            path                 TEXT NOT NULL,
+            kind                 TEXT NOT NULL CHECK (kind IN ('file', 'directory')),
+            root_path            TEXT,
+            parent_path          TEXT,
+            recursive            INTEGER NOT NULL DEFAULT 0 CHECK (recursive IN (0, 1)),
+            confirmation_matched INTEGER NOT NULL DEFAULT 1 CHECK (confirmation_matched IN (0, 1)),
+            status               TEXT NOT NULL CHECK (status IN ('succeeded', 'failed')),
+            error                TEXT,
+            created_at_unix_ms   INTEGER NOT NULL,
+            created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_local_file_operation_audits_created
+            ON local_file_operation_audits(created_at_unix_ms DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_local_file_operation_audits_operation_status
+            ON local_file_operation_audits(operation, status, created_at_unix_ms DESC);
+        ",
+    )?;
+
+    tx.pragma_update(None, "user_version", 26)?;
+    tx.commit()?;
+
+    Ok(())
+}
+
+fn migrate_to_v28(conn: &mut Connection) -> AppResult<()> {
+    let has_ai_tool_audits = table_exists(conn, "ai_tool_audits")?;
+    let tx = conn.transaction()?;
+
+    if has_ai_tool_audits {
+        tx.execute_batch(
+            "
+            ALTER TABLE ai_tool_audits
+                ADD COLUMN observation_json TEXT;
+            ",
+        )?;
+    }
+
+    tx.pragma_update(None, "user_version", 28)?;
+    tx.commit()?;
+
+    Ok(())
+}
+
+fn migrate_to_v29(conn: &mut Connection) -> AppResult<()> {
+    let tx = conn.transaction()?;
+
+    tx.execute_batch(PORT_FORWARD_SESSIONS_SCHEMA)?;
+
+    tx.pragma_update(None, "user_version", 29)?;
+    tx.commit()?;
+
+    Ok(())
+}
+
+fn migrate_to_v30(conn: &mut Connection) -> AppResult<()> {
+    let has_remote_hosts = table_exists(conn, "remote_hosts")?;
+    let tx = conn.transaction()?;
+
+    if has_remote_hosts {
+        tx.execute_batch(
+            "
+            ALTER TABLE remote_hosts
+                ADD COLUMN credential_secret TEXT;
+            ",
+        )?;
+    }
+
+    tx.pragma_update(None, "user_version", 30)?;
+    tx.commit()?;
+
+    Ok(())
+}
+
+fn ensure_port_forward_sessions_schema(conn: &Connection) -> AppResult<()> {
+    conn.execute_batch(PORT_FORWARD_SESSIONS_SCHEMA)?;
+    Ok(())
+}
+
+const PORT_FORWARD_SESSIONS_SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS port_forward_sessions (
+    id              TEXT PRIMARY KEY NOT NULL,
+    host_id         TEXT NOT NULL,
+    status          TEXT NOT NULL CHECK (status IN ('running', 'exited')),
+    summary_json    TEXT NOT NULL,
+    created_at_unix TEXT NOT NULL,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(host_id) REFERENCES remote_hosts(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_port_forward_sessions_host
+    ON port_forward_sessions(host_id, status, CAST(created_at_unix AS INTEGER));
+
+CREATE INDEX IF NOT EXISTS idx_port_forward_sessions_created
+    ON port_forward_sessions(CAST(created_at_unix AS INTEGER));
+";

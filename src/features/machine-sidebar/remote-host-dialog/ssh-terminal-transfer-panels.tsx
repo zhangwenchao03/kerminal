@@ -185,7 +185,7 @@ export function SshTransferPanel({
   return (
     <div className="grid gap-3">
       <FieldRow label="SFTP">
-        <div className="flex h-10 items-center justify-between gap-3 rounded-xl border border-black/10 bg-white/86 px-3 text-sm text-zinc-600 dark:border-white/10 dark:bg-black/20 dark:text-zinc-300">
+        <div className="kerminal-field-surface flex h-10 items-center justify-between gap-3 rounded-xl border px-3 text-sm text-zinc-600 dark:text-zinc-300">
           <span>启用文件传输</span>
           <Switch
             aria-label="启用 SFTP"

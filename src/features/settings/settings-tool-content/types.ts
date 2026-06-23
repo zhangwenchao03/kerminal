@@ -1,4 +1,4 @@
-import type { AppSettings } from "../settingsModel";
+import type { AppSettings, ResolvedTheme } from "../settingsModel";
 import type { McpGatewayManifest } from "../../tool-panel/toolRegistryModel";
 
 export type SettingsSaveState = "idle" | "saving" | "saved" | "error";
@@ -11,6 +11,7 @@ export type McpTransportDefinition = McpGatewayManifest["transports"][number];
 
 export interface SettingsToolContentProps {
   initialSectionId?: SettingsSectionId;
+  resolvedTheme?: ResolvedTheme;
   settings: AppSettings;
   saveError?: string | null;
   saveState?: SettingsSaveState;

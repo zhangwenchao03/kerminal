@@ -1,125 +1,123 @@
-# Kerminal
+<div align="center">
+  <img src="docs/assets/kerminal-icon.png" width="76" alt="Kerminal logo" />
+  <h1>Kerminal</h1>
+  <p><strong>一个面向多机器、多终端、多文件操作的本地智能终端工作台。</strong></p>
+  <p>
+    <sub>Terminal · SSH · Docker · SFTP · Port Forwarding · Network Assist · Agent Run · MCP / Skills</sub>
+  </p>
+</div>
 
-Kerminal 是一个多平台开发者终端工作台，目标是把本地终端、SSH/SFTP、分屏、主机管理、脚本片段、服务器信息和 AI Agent 放在同一个桌面应用里。
+![Kerminal live workspace](docs/assets/kerminal-hero.png)
 
-当前技术栈：
+Kerminal 不是再造一个终端窗口。它把机器、容器、终端会话、文件传输、端口转发、系统状态、命令片段、工作流和 AI Agent 放进同一个桌面工作区，让你围绕“目标机器”完成连接、操作、观察、协作和复盘。
 
-- Tauri 2 + Rust
-- React 19 + TypeScript + Vite
-- Tailwind CSS + shadcn/ui 风格组件 + lucide-react
-- xterm.js 终端渲染
-- SQLite 本地持久化，数据目录为 `~/.kerminal`
+## 一眼看懂
 
-## 开发命令
+| 你正在做的事 | 过去通常要打开 | 在 Kerminal 里 |
+| --- | --- | --- |
+| 同时看多台机器 | 终端、SSH 客户端、远程桌面、串口工具 | 左侧主机树统一管理 Local、SSH、Docker、RDP、Telnet、Serial |
+| 改配置、传日志、拉产物 | SFTP 客户端、文件管理器、命令行 scp | 双栏 SFTP 工作台、传输队列、进度、失败和取消状态 |
+| 临时打通服务或网络 | 手写 `ssh -L/-R/-D`、代理脚本、远端环境变量 | 主机级 SSH 隧道、网络助手、HTTP/SOCKS 代理注入和会话管理 |
+| 排查服务器问题 | 监控面板、`top`、`df`、`nvidia-smi` | CPU、内存、磁盘、网络、进程、运行体检、GPU 摘要同屏查看 |
+| 让 AI 帮忙处理终端上下文 | 复制输出到聊天窗口 | Agent 直接理解当前会话，通过 Agent Run 调工具、读结果、等待确认并继续 |
 
-```powershell
-npm install
-npm run dev
-npm run tauri dev
-```
+## 产品爆点
 
-## 验证命令
+**从终端变成工作区。**
+一个 tab 可以容纳分屏终端、广播命令、命令块、当前机器、右侧工具和 Agent。机器不再只是 hostname，而是带有协议、标签、认证、文件、指标、端口和操作历史的工作对象。
 
-```powershell
-npm run typecheck
-npm run test:frontend
-npm run test:rust
-npm run build
-npm run check:ssh-command-ghost
-npm run verify:command-suggestion-latency
-npm run verify:terminal-ghost-visual
-npm run verify:terminal-ghost-app
-npm run verify:terminal-ghost-frame
-```
+**Docker 是一等目标。**
+容器可以像 SSH 主机一样进入侧栏，直接围绕容器打开终端、文件和系统信息。你不用在 `docker exec`、SFTP 和日志窗口之间来回跳。
 
-`check:ssh-command-ghost` 是 SSH 远程命令灰色提示的本地生产门禁，会串联终端输入/渲染目标测试、混合 provider 延迟门禁、本地 russh SSH/SFTP loopback smoke、本机 OpenSSH password terminal loopback smoke，以及 ghost overlay 帧预算、静态视觉、真实 xterm alternate-screen 和完整 React/Vite 应用链路检查。
+**GPU 状态不是附属信息。**
+服务器信息面板能展示 GPU 名称、驱动、显存、占用和温度摘要，适合开发、推理、训练和远程排障场景。
 
-`verify:command-suggestion-latency` 会用 10k history、5k remote commands、1k remote paths 和 1k Git refs 的本地缓存 fixture 跑非 ignored Rust 门禁，要求 history/spec、remoteCommand、remotePath 和 Git provider 查询的 median/max 延迟保持在预算内。
+**SSH 隧道不再只是一串参数。**
+本机访问主机服务、主机访问本机服务、本机 SOCKS 出口主机、主机使用本机网络，都能在右栏用左右端点和会话列表管理。网络助手可以生成 HTTP/SOCKS 代理地址，注入当前 SSH 终端，也能让同主机后续新终端自动使用。
 
-`verify:terminal-ghost-visual` 会生成 headless Chrome 截图和 JSON 断言，覆盖亮/暗主题下 ASCII 输入以及中文宽字符输入后的灰色后缀对齐和可读性。
+**AI 有边界。**
+Kerminal Agent 可以读取当前工作台上下文，也可以通过工具做事。Agent Run 会把模型判断、工具调用、结构化 observation、等待确认、取消和重试上一步串成一条可见时间线；高风险工具仍受确认链路、策略和审计约束。
 
-`verify:terminal-ghost-app` 会启动真实 Vite 应用并用 headless Chrome 驱动 SSH pane，使用 fake Tauri IPC 返回 remoteCommand 候选，断言 DOM overlay、`data-provider=remoteCommand`、RightArrow 接受反馈和写入路径。
+## 最新界面快照
 
-本地 loopback SSH/SFTP 灰色提示 smoke 不需要外部主机，会在本机启动临时 russh + SFTP server，覆盖 native russh 凭据执行、app `known_hosts`、远端 shell history 只读缓存、remoteCommand/remotePath/Git 刷新、慢响应/大输出/大目录下的缓存条数上限、刷新失败不破坏已有缓存，以及关闭 server 后的 SQLite cache-only 查询：
+以下截图来自当前运行界面采集，用来展示 Kerminal 的核心操作面。
 
-```powershell
-npm run smoke:ssh-suggestions:loopback
-```
+<table>
+  <tr>
+    <td width="50%">
+      <strong>连接管理</strong><br />
+      Local、SSH、Docker、RDP、Telnet、Serial 在一个入口里配置。
+      <br /><br />
+      <img src="docs/assets/kerminal-connect.png" alt="Kerminal connection dialog" />
+    </td>
+    <td width="50%">
+      <strong>Docker 目标</strong><br />
+      选择已有 SSH 主机，读取容器列表，把容器加入工作区。
+      <br /><br />
+      <img src="docs/assets/kerminal-docker.png" alt="Kerminal Docker target dialog" />
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <strong>GPU 与系统状态</strong><br />
+      CPU、内存、磁盘、网络、进程和 GPU 摘要围绕当前机器展示。
+      <br /><br />
+      <img src="docs/assets/kerminal-gpu.png" alt="Kerminal GPU and system monitor" />
+    </td>
+    <td width="50%">
+      <strong>SFTP 传输工作台</strong><br />
+      本地文件、远端目录和传输队列在同一视图里跟踪。
+      <br /><br />
+      <img src="docs/assets/kerminal-sftp.png" alt="Kerminal SFTP transfer workbench" />
+    </td>
+  </tr>
+</table>
 
-Windows 开发机如果已有 WSL 发行版且其中已安装 OpenSSH Server、`ssh-keygen`、`git` 和 `sh`，可以运行临时真实 sshd smoke。脚本会在 WSL 内创建临时 `sshd`、Git repo、远端 history 和 PATH 命令，复用真实 SSH/SFTP smoke，并强制验证 POSIX `sh` builtin 候选的 `source=posixBuiltin` metadata；结束后清理临时 sshd 和密钥。可用 `KERMINAL_WSL_SMOKE_DISTRO=<distro>` 指定发行版：
+**设置与个性化。** 深色、浅色、跟随系统、界面密度、终端外观、AI 模型、MCP/Skills、SFTP 和快捷键集中调整。
 
-```powershell
-npm run smoke:ssh-suggestions:wsl
-```
+![Kerminal settings](docs/assets/kerminal-settings.png)
 
-受限 `/bin/sh` 环境可以运行最小 PATH smoke。该模式的临时 sshd 只暴露一个包含 `sh` 的 PATH，不要求 Git、history 或 PATH 命令候选命中，只验证 remoteCommand 通过真实 OpenSSH 链路仍能返回 POSIX builtin 灰色提示：
+## 能力地图
 
-```powershell
-npm run smoke:ssh-suggestions:wsl:posix
-```
+| 能力 | 用户得到什么 |
+| --- | --- |
+| 多协议主机 | Local、SSH、Docker/Podman 容器目标、RDP、Telnet、Serial；支持分组、标签、密码/私钥/agent、代理、跳板机和配置检查 |
+| 终端工作台 | 多标签、多分屏、左右/上下布局、关闭分屏、批量发送、命令块折叠、命令块复制、搜索、右键菜单、断开重连和输出保护 |
+| 智能输入 | 本地历史、远端命令、远端路径、Git ref、灰色补全提示、命令片段、变量填参和可复用 workflow |
+| 文件操作 | SFTP 双栏浏览、上传下载、目录传输、跨主机复制、ZIP 上传/下载、冲突预检、`overwrite` / `skip` / `rename` 策略、传输队列、远程文本预览和远程工作区编辑 |
+| 网络与隧道 | SSH local/remote/dynamic forwarding、主机网络助手、本机受管 HTTP CONNECT proxy、远端 SOCKS、当前终端注入、后续新终端自动注入和用户级配置脚本 |
+| 机器观测 | CPU、核心占用、内存、Swap、磁盘、网络接口、进程、运行体检、诊断包、GPU 名称/驱动/显存/占用/温度 |
+| 容器操作 | Docker/Podman 容器列表、容器目标入侧栏、容器终端、容器文件和容器维度系统信息 |
+| AI 协作 | Kerminal Agent、Agent Run 时间线、当前终端解析、最近主机解析、受控工具调用、审批后续跑、取消/重试、AI 审计、MCP/Skills 和模型配置 |
+| 本地数据 | 工作区、会话、历史、审计、主机和设置本地持久化；SSH 密码和内联私钥按主机记录保存，编辑主机时可直接查看 |
+| 个性化 | 深色、浅色、跟随系统、界面密度、透明材质、背景图、终端字体和配色、快捷键、SFTP 性能、AI 与 MCP 设置 |
 
-交互式 SSH terminal 的 password 自动响应也有本地 loopback smoke。该入口只需要本机 OpenSSH client，不需要 WSL、外部测试主机、远端 fish/zsh 插件或远端联网；测试会在进程内启动 russh loopback server，验证 Kerminal 的 `SshTerminalService -> TerminalManager -> OpenSSH PTY` 路径能使用保存密码登录、写入 ASCII/UTF-8 中文命令、错密不进入 shell，并确保输出不泄露保存密码：
+## 典型使用路径
 
-```powershell
-npm run smoke:ssh-terminal:password:loopback
-```
+1. 在左侧添加 SSH 主机、Docker 容器、Serial/Telnet 设备或 RDP 目标。
+2. 打开一个工作区 tab，用分屏同时看日志、跑命令和观察另一个目标。
+3. 通过 SFTP 工作台上传配置、下载日志、处理冲突，或在远程工作区里直接编辑文本文件。
+4. 用 SSH 隧道把本机服务暴露给主机，或让主机通过网络助手临时使用本机网络出口。
+5. 在系统面板查看 CPU、内存、磁盘、网络、进程和 GPU 状态。
+6. 让 Agent 基于当前上下文提出下一步，必要时通过受控工具执行操作；确认后 Agent Run 会继续读结果和推进后续步骤。
+7. 在审计和日志里回看 AI 做过什么、命令做过什么、文件传输和隧道会话发生了什么。
 
-Windows 开发机如果 WSL 可用 root 用户，并且发行版中有 OpenSSH Server、`ssh-keygen`、`useradd`、`chpasswd` 和 `sh`，可以运行真实 OpenSSH password 交互终端 smoke。脚本会在 WSL 内创建临时用户、一次性密码和临时 `sshd`，通过 Kerminal 的交互式 SSH terminal 路径自动响应 password prompt，写入 ASCII 和 UTF-8 中文 PTY 命令并断言输出不泄露密码；结束后删除临时用户、sshd 和目录：
+## 本地边界
 
-```powershell
-npm run smoke:ssh-terminal:password:wsl
-```
+Kerminal 是本地桌面应用，默认把工作区状态、会话、主机、文件传输、AI 审计和设置保存在本机。当前 SSH 密码和内联私钥随远程主机记录明文保存和展示，用于 SSH、SFTP、Docker 容器、端口转发、命令建议和 AI remote host 路径复用同一份认证信息。生产主机、破坏性命令、远程写操作、文件删除和外部发布仍需要通过 Kerminal 的风险确认与审计链路。
 
-错误保存密码路径也有真实 OpenSSH smoke。脚本会使用临时主机的真实密码启动 `sshd`，但让 Kerminal 保存一个错误密码，验证自动响应只走失败路径、不进入已认证 shell，并且输出不泄露错误密码：
+## 适合谁
 
-```powershell
-npm run smoke:ssh-terminal:password:wsl:wrong
-```
+- 经常同时操作本机、跳板机、云服务器、GPU 机器、容器、开发板和串口设备的人。
+- 希望把终端、文件、监控、脚本和 AI 协作收进一个本地工作台的人。
+- 不想让 AI 获得无限 shell 权限，但又希望它能真正参与排障和开发流程的人。
 
-真实 SSH/SFTP 灰色提示 smoke 需要显式配置一台非生产测试主机，默认不会静默通过：
+## 设计取向
 
-```powershell
-$env:RUN_KERMINAL_SSH_SMOKE = "1"
-$env:KERMINAL_SSH_SMOKE_HOST = "127.0.0.1"
-$env:KERMINAL_SSH_SMOKE_USER = "dev"
-$env:KERMINAL_SSH_SMOKE_PASSWORD = "<password>"
-npm run smoke:ssh-suggestions
-```
+Kerminal 追求的是克制、密度和可控。界面不靠大面积装饰吸引注意力，而是把高频操作留在手边：主机在左，工作区在中间，工具和 Agent 在右。复杂环境会变多，但你的上下文不该变散。
 
-也可以用 `KERMINAL_SSH_SMOKE_PRIVATE_KEY`、`KERMINAL_SSH_SMOKE_KEY_PATH` 或 `KERMINAL_SSH_SMOKE_AUTH=agent` 认证；加密内联私钥可设置 `KERMINAL_SSH_SMOKE_PRIVATE_KEY_PASSPHRASE`。该全链路 smoke 会同时跑 remoteCommand/Git/远端 shell history 的 native russh 探测和 SFTP 路径探测，用来证明不依赖远端 fish/zsh 插件或本机 OpenSSH password helper。可选变量：`KERMINAL_SSH_SMOKE_PORT`、`KERMINAL_SSH_SMOKE_CWD`、`KERMINAL_SSH_SMOKE_PATH`、`KERMINAL_SSH_SMOKE_COMMAND_PREFIX`、`KERMINAL_SSH_SMOKE_BUILTIN_COMMAND`、`KERMINAL_SSH_SMOKE_BUILTIN_PREFIX`、`KERMINAL_SSH_SMOKE_PATH_PREFIX`、`KERMINAL_SSH_SMOKE_GIT_PREFIX`、`KERMINAL_SSH_SMOKE_HISTORY_PREFIX`；设置 `KERMINAL_SSH_SMOKE_HISTORY_PREFIX` 时会强制断言远端 shell history 候选命中，否则只断言刷新链路和审计记录。
+## 开源协议
 
-真实 OpenSSH password 交互终端 smoke 也可以指向外部非生产主机，默认同样保持非零门禁。它会走 `SshTerminalService -> TerminalManager -> OpenSSH PTY`，验证保存密码自动响应、ASCII/UTF-8 中文命令写入和输出脱敏：
+Kerminal 源代码以 GNU Affero General Public License v3.0 only（AGPL-3.0-only）授权，详见 [LICENSE](LICENSE)。
 
-```powershell
-$env:RUN_KERMINAL_SSH_TERMINAL_PASSWORD_SMOKE = "1"
-$env:KERMINAL_SSH_TERMINAL_SMOKE_HOST = "127.0.0.1"
-$env:KERMINAL_SSH_TERMINAL_SMOKE_USER = "dev"
-$env:KERMINAL_SSH_TERMINAL_SMOKE_PASSWORD = "<password>"
-npm run smoke:ssh-terminal:password
-```
-
-可选变量：`KERMINAL_SSH_TERMINAL_SMOKE_PORT`、`KERMINAL_SSH_TERMINAL_SMOKE_KNOWN_HOST_LINE`、`KERMINAL_SSH_TERMINAL_SMOKE_READY_MARKER` 和 `KERMINAL_SSH_TERMINAL_SMOKE_EXPECT_AUTH_FAILURE=1`。未提供 known_hosts 行时测试会尝试用本机 `ssh-keyscan` 获取主机公钥。设置 `EXPECT_AUTH_FAILURE=1` 时，提供的 password 会被当作错误保存密码，测试会断言认证失败且不泄露该值。
-
-## 发布与自动更新
-
-桌面端发布使用 GitHub Releases。推送 `vX.Y.Z` tag 后，
-`.github/workflows/release.yml` 会在 Windows、Linux、macOS x64 和 macOS
-arm64 上构建安装包，并上传 Tauri updater 需要的签名产物和 `latest.json`。
-
-```powershell
-git tag v0.1.0
-git push origin main
-git push origin v0.1.0
-```
-
-Updater 签名私钥不要提交到仓库。CI 需要配置：
-
-```text
-TAURI_SIGNING_PRIVATE_KEY
-TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-```
-
-`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 在当前无密码私钥配置下可以留空。
-
-完整产品计划在本地 Updeng 文档中维护，公开仓库只提交源码、构建配置和发布说明。
-
+Kerminal 名称、Logo、图标、截图和其它品牌资产不随 AGPL 授权，未经许可不得用于表示官方版本、官方背书或造成来源混淆；详见 [TRADEMARKS.md](TRADEMARKS.md)。

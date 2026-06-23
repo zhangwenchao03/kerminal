@@ -7,11 +7,19 @@ use russh::{
     server::{Auth, Msg, Server as _, Session},
     Channel, ChannelId,
 };
-use std::{io::Cursor, net::SocketAddr, path::Path, sync::Arc};
+use std::{
+    io::Cursor,
+    net::SocketAddr,
+    path::Path,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+};
 use tempfile::tempdir;
-use tokio::net::TcpListener;
+use tokio::{io, net::TcpListener};
 
-use crate::services::credential_service::{CredentialService, MemoryCredentialVault};
+use crate::models::remote_host::SshJumpHostOptions;
 
 #[derive(Debug)]
 struct LoopbackCommandServer {
@@ -26,6 +34,20 @@ impl Drop for LoopbackCommandServer {
     }
 }
 
+#[derive(Debug)]
+struct LoopbackJumpServer {
+    addr: SocketAddr,
+    direct_tcpip_requests: Arc<AtomicUsize>,
+    host_key: PublicKey,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for LoopbackJumpServer {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
 #[derive(Clone)]
 struct LoopbackSshCommandServer;
 
@@ -33,6 +55,17 @@ struct LoopbackSshCommandServer;
 struct LoopbackSshCommandSession {
     exec_command: Option<String>,
     script: Vec<u8>,
+}
+
+#[derive(Clone)]
+struct LoopbackSshJumpServer {
+    direct_tcpip_requests: Arc<AtomicUsize>,
+    target_addr: SocketAddr,
+}
+
+struct LoopbackSshJumpSession {
+    direct_tcpip_requests: Arc<AtomicUsize>,
+    target_addr: SocketAddr,
 }
 
 impl russh::server::Server for LoopbackSshCommandServer {
@@ -106,6 +139,56 @@ impl russh::server::Handler for LoopbackSshCommandSession {
     }
 }
 
+impl russh::server::Server for LoopbackSshJumpServer {
+    type Handler = LoopbackSshJumpSession;
+
+    fn new_client(&mut self, _peer_addr: Option<SocketAddr>) -> Self::Handler {
+        LoopbackSshJumpSession {
+            direct_tcpip_requests: Arc::clone(&self.direct_tcpip_requests),
+            target_addr: self.target_addr,
+        }
+    }
+}
+
+impl russh::server::Handler for LoopbackSshJumpSession {
+    type Error = russh::Error;
+
+    async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
+        if user == "jump" && password == "jump-secret" {
+            Ok(Auth::Accept)
+        } else {
+            Ok(Auth::reject())
+        }
+    }
+
+    async fn channel_open_direct_tcpip(
+        &mut self,
+        channel: Channel<Msg>,
+        host_to_connect: &str,
+        port_to_connect: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        _session: &mut Session,
+    ) -> Result<bool, Self::Error> {
+        if host_to_connect != self.target_addr.ip().to_string()
+            || port_to_connect != u32::from(self.target_addr.port())
+        {
+            return Ok(false);
+        }
+
+        self.direct_tcpip_requests.fetch_add(1, Ordering::SeqCst);
+        let target_addr = self.target_addr;
+        tokio::spawn(async move {
+            if let Ok(mut target_stream) = tokio::net::TcpStream::connect(target_addr).await {
+                let mut channel_stream = channel.into_stream();
+                let _ = io::copy_bidirectional(&mut channel_stream, &mut target_stream).await;
+            }
+        });
+
+        Ok(true)
+    }
+}
+
 async fn start_loopback_command_server() -> LoopbackCommandServer {
     let listener = TcpListener::bind(("127.0.0.1", 0))
         .await
@@ -133,6 +216,39 @@ async fn start_loopback_command_server() -> LoopbackCommandServer {
     }
 }
 
+async fn start_loopback_jump_server(target_addr: SocketAddr) -> LoopbackJumpServer {
+    let listener = TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("bind loopback jump server");
+    let addr = listener.local_addr().expect("loopback jump address");
+    let private_key = PrivateKey::random(&mut rand::rng(), keys::Algorithm::Ed25519)
+        .expect("generate loopback jump host key");
+    let host_key = private_key.public_key().clone();
+    let config = russh::server::Config {
+        auth_rejection_time: Duration::from_millis(0),
+        auth_rejection_time_initial: Some(Duration::from_millis(0)),
+        keys: vec![private_key],
+        maximum_packet_size: 65_535,
+        ..Default::default()
+    };
+    let direct_tcpip_requests = Arc::new(AtomicUsize::new(0));
+    let counters = Arc::clone(&direct_tcpip_requests);
+    let task = tokio::spawn(async move {
+        let mut server = LoopbackSshJumpServer {
+            direct_tcpip_requests: counters,
+            target_addr,
+        };
+        let _ = server.run_on_socket(Arc::new(config), &listener).await;
+    });
+
+    LoopbackJumpServer {
+        addr,
+        direct_tcpip_requests,
+        host_key,
+        task,
+    }
+}
+
 fn remote_host(auth_type: RemoteHostAuthType) -> RemoteHost {
     RemoteHost {
         id: "host-1".to_owned(),
@@ -142,7 +258,9 @@ fn remote_host(auth_type: RemoteHostAuthType) -> RemoteHost {
         port: 2222,
         username: "deploy".to_owned(),
         auth_type,
-        credential_ref: Some("credential:ssh/dev".to_owned()),
+        credential_ref: (auth_type == RemoteHostAuthType::Key)
+            .then(|| "/home/deploy/.ssh/id_ed25519".to_owned()),
+        credential_secret: None,
         tags: vec!["dev".to_owned()],
         production: false,
         ssh_options: Default::default(),
@@ -154,8 +272,10 @@ fn remote_host(auth_type: RemoteHostAuthType) -> RemoteHost {
 
 #[test]
 fn build_plan_uses_parameterized_openssh_args_without_credentials() {
+    let mut host = remote_host(RemoteHostAuthType::Key);
+    host.credential_ref = None;
     let plan = build_ssh_command_plan_with_executable(
-        &remote_host(RemoteHostAuthType::Key),
+        &host,
         "ssh".to_owned(),
         SshCommandRequest {
             host_id: "host-1".to_owned(),
@@ -228,47 +348,42 @@ fn build_plan_rejects_control_characters_in_identity_file_path() {
 }
 
 #[test]
-fn native_auth_material_loads_password_from_vault() {
-    let credentials = test_credentials(&[("credential:ssh/dev/password", "s3cret")]);
+fn native_auth_material_uses_plaintext_password_from_host() {
     let mut host = remote_host(RemoteHostAuthType::Password);
-    host.credential_ref = Some("credential:ssh/dev/password".to_owned());
+    host.credential_secret = Some("s3cret".to_owned());
 
-    match resolve_native_auth_material(&host, &credentials).expect("resolve password auth") {
+    match resolve_native_auth_material(&host).expect("resolve password auth") {
         NativeSshAuthMaterial::Password(password) => assert_eq!(password, "s3cret"),
         _ => panic!("expected password auth material"),
     }
 }
 
 #[test]
-fn native_auth_material_decodes_inline_private_key_json() {
-    let secret = serde_json::json!({
-        "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----",
-        "passphrase": "secret-passphrase"
-    })
-    .to_string();
-    let credentials = test_credentials(&[("credential:ssh/dev/private-key", &secret)]);
+fn native_auth_material_uses_plaintext_inline_private_key_from_host() {
     let mut host = remote_host(RemoteHostAuthType::Key);
-    host.credential_ref = Some("credential:ssh/dev/private-key".to_owned());
+    host.credential_ref = None;
+    host.credential_secret = Some(
+        "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----".to_owned(),
+    );
 
-    match resolve_native_auth_material(&host, &credentials).expect("resolve private key auth") {
+    match resolve_native_auth_material(&host).expect("resolve private key auth") {
         NativeSshAuthMaterial::PrivateKey(NativeSshPrivateKey::Pem {
             content,
             passphrase,
         }) => {
             assert!(content.contains("OPENSSH PRIVATE KEY"));
-            assert_eq!(passphrase.as_deref(), Some("secret-passphrase"));
+            assert_eq!(passphrase, None);
         }
         _ => panic!("expected inline private key auth material"),
     }
 }
 
 #[test]
-fn native_auth_material_keeps_key_path_out_of_vault() {
-    let credentials = test_credentials(&[]);
+fn native_auth_material_uses_key_path_from_host() {
     let mut host = remote_host(RemoteHostAuthType::Key);
     host.credential_ref = Some("/home/deploy/.ssh/id_ed25519".to_owned());
 
-    match resolve_native_auth_material(&host, &credentials).expect("resolve key path auth") {
+    match resolve_native_auth_material(&host).expect("resolve key path auth") {
         NativeSshAuthMaterial::PrivateKey(NativeSshPrivateKey::Path(path)) => {
             assert_eq!(path, Path::new("/home/deploy/.ssh/id_ed25519"));
         }
@@ -278,13 +393,12 @@ fn native_auth_material_keeps_key_path_out_of_vault() {
 
 #[test]
 fn native_auth_material_rejects_missing_password_before_connect() {
-    let credentials = test_credentials(&[]);
     let mut host = remote_host(RemoteHostAuthType::Password);
-    host.credential_ref = Some("credential:ssh/dev/password".to_owned());
+    host.credential_secret = None;
 
     assert!(matches!(
-        resolve_native_auth_material(&host, &credentials),
-        Err(AppError::Credential(_))
+        resolve_native_auth_material(&host),
+        Err(AppError::InvalidInput(_))
     ));
 }
 
@@ -300,15 +414,13 @@ async fn native_command_executes_against_loopback_ssh_server() {
         paths.root.join("known_hosts"),
     )
     .expect("trust loopback host key");
-    let credentials = test_credentials(&[("credential:ssh/dev/password", "secret")]);
     let mut host = remote_host(RemoteHostAuthType::Password);
     host.host = "127.0.0.1".to_owned();
     host.port = server.addr.port();
-    host.credential_ref = Some("credential:ssh/dev/password".to_owned());
+    host.credential_secret = Some("secret".to_owned());
 
     let execution = build_native_command_execution(
         &host,
-        &credentials,
         &paths,
         SshCommandRequest {
             host_id: host.id.clone(),
@@ -331,19 +443,75 @@ async fn native_command_executes_against_loopback_ssh_server() {
 }
 
 #[tokio::test]
+async fn native_command_executes_through_loopback_jump_host() {
+    let target = start_loopback_command_server().await;
+    let jump = start_loopback_jump_server(target.addr).await;
+    let home = tempdir().expect("create temp home");
+    let paths = KerminalPaths::from_home_dir(home.path());
+    let known_hosts_path = paths.root.join("known_hosts");
+    keys::known_hosts::learn_known_hosts_path(
+        "127.0.0.1",
+        jump.addr.port(),
+        &jump.host_key,
+        &known_hosts_path,
+    )
+    .expect("trust jump host key");
+    keys::known_hosts::learn_known_hosts_path(
+        "127.0.0.1",
+        target.addr.port(),
+        &target.host_key,
+        &known_hosts_path,
+    )
+    .expect("trust target host key");
+
+    let mut host = remote_host(RemoteHostAuthType::Password);
+    host.host = "127.0.0.1".to_owned();
+    host.port = target.addr.port();
+    host.credential_secret = Some("secret".to_owned());
+    host.ssh_options.jump_hosts = vec![SshJumpHostOptions {
+        name: "loopback jump".to_owned(),
+        host: "127.0.0.1".to_owned(),
+        port: jump.addr.port(),
+        username: "jump".to_owned(),
+        auth_type: RemoteHostAuthType::Password,
+        credential_ref: None,
+        credential_secret: Some("jump-secret".to_owned()),
+    }];
+
+    let execution = build_native_command_execution(
+        &host,
+        &paths,
+        SshCommandRequest {
+            host_id: host.id.clone(),
+            command: "printf through-jump".to_owned(),
+            timeout_seconds: Some(5),
+            max_output_bytes: Some(1024),
+        },
+    )
+    .expect("build native command execution");
+    let output = execute_native_ssh_command(&host, execution)
+        .await
+        .expect("execute native command through jump");
+
+    assert!(output.success);
+    assert_eq!(output.exit_code, Some(0));
+    assert_eq!(output.stdout, "exec=sh -s\nscript=printf through-jump\n");
+    assert_eq!(output.stderr, "loopback stderr\n");
+    assert_eq!(jump.direct_tcpip_requests.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn native_command_rejects_untrusted_loopback_host_key() {
     let server = start_loopback_command_server().await;
     let home = tempdir().expect("create temp home");
     let paths = KerminalPaths::from_home_dir(home.path());
-    let credentials = test_credentials(&[("credential:ssh/dev/password", "secret")]);
     let mut host = remote_host(RemoteHostAuthType::Password);
     host.host = "127.0.0.1".to_owned();
     host.port = server.addr.port();
-    host.credential_ref = Some("credential:ssh/dev/password".to_owned());
+    host.credential_secret = Some("secret".to_owned());
 
     let execution = build_native_command_execution(
         &host,
-        &credentials,
         &paths,
         SshCommandRequest {
             host_id: host.id.clone(),
@@ -413,15 +581,4 @@ fn limited_output_buffer_captures_prefix_and_tracks_truncation() {
     assert_eq!(output.text, "abcde");
     assert_eq!(output.captured_bytes, 5);
     assert!(output.truncated);
-}
-
-fn test_credentials(entries: &[(&str, &str)]) -> CredentialService {
-    let vault = Arc::new(MemoryCredentialVault::new());
-    let credentials = CredentialService::with_vault(vault);
-    for (credential_ref, secret) in entries {
-        credentials
-            .set_secret(credential_ref, secret)
-            .expect("store test credential");
-    }
-    credentials
 }

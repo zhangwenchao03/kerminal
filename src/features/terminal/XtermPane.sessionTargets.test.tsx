@@ -247,4 +247,64 @@ describe("XtermPane session targets and appearance", () => {
     });
   });
 
+  it("updates an existing xterm instance when terminal font settings change", async () => {
+    const { rerender } = render(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={{
+          ...defaultAppSettings.terminal,
+          fontFamily: "Cascadia Mono, monospace",
+          fontSize: 14,
+          fontWeight: "normal",
+        }}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mocks.api.createTerminalSession).toHaveBeenCalled();
+    });
+
+    const terminal = mocks.terminalInstances[0];
+    const terminalElement = screen.getByLabelText("本地 PowerShell xterm 终端");
+    expect(terminal.options).toMatchObject({
+      fontFamily: "Cascadia Mono, monospace",
+      fontSize: 14,
+      fontWeight: 400,
+    });
+    expect(terminalElement).toHaveStyle({
+      fontFamily: "Cascadia Mono, monospace",
+    });
+
+    rerender(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={{
+          ...defaultAppSettings.terminal,
+          fontFamily: "JetBrains Mono, monospace",
+          fontSize: 18,
+          fontWeight: "bold",
+        }}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(terminal.options).toMatchObject({
+        fontFamily: "JetBrains Mono, monospace",
+        fontSize: 18,
+        fontWeight: 600,
+      });
+    });
+    expect(terminalElement).toHaveStyle({
+      fontFamily: "JetBrains Mono, monospace",
+    });
+    expect(terminal.refresh).toHaveBeenCalledWith(0, 23);
+    expect(mocks.terminalInstances).toHaveLength(1);
+  });
+
 });

@@ -7,6 +7,7 @@ export type ToolCategory =
   | "remoteHost"
   | "ssh"
   | "sftp"
+  | "container"
   | "portForward"
   | "serverInfo"
   | "snippet"

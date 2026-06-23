@@ -28,6 +28,8 @@ import { McpEmptyState } from "./mcp-catalog";
 import { TextAreaSetting, TextSetting } from "./shared-controls";
 
 const LEGACY_CODEX_SKILLS_DIRECTORY = "~/.codex/skills";
+const customMcpSecondaryButtonClass =
+  "kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex items-center justify-center gap-1.5 rounded-lg border text-zinc-600 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-300";
 
 const customMcpTransportOptions: Array<{
   label: string;
@@ -73,19 +75,19 @@ export function CustomMcpServerDialog({
 
   return (
     <ModalShell
-      bodyClassName="bg-zinc-50/70 dark:bg-black/20"
+      bodyClassName="bg-[var(--surface-muted)]"
       description="填写 MCP server 的身份、连接方式、鉴权和说明；保存后在卡片里刷新工具。"
       footer={
         <>
           <button
-            className="inline-flex h-9 items-center justify-center rounded-xl border border-black/10 bg-white/80 px-3 text-sm text-zinc-700 transition hover:bg-black/[0.04] dark:border-white/10 dark:bg-white/8 dark:text-zinc-200 dark:hover:bg-white/12"
+            className="kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex h-9 items-center justify-center rounded-xl border px-3 text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] dark:text-zinc-200"
             onClick={onClose}
             type="button"
           >
             取消
           </button>
           <button
-            className="inline-flex h-9 items-center justify-center rounded-xl bg-sky-500 px-3 text-sm font-medium text-white shadow-sm shadow-sky-500/20 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-sky-400 dark:text-zinc-950"
+            className="kerminal-focus-ring kerminal-pressable inline-flex h-9 items-center justify-center rounded-xl bg-sky-500 px-3 text-sm font-medium text-white shadow-sm shadow-sky-500/20 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-sky-400 dark:text-zinc-950"
             disabled={!canSubmit}
             onClick={onSubmit}
             type="button"
@@ -94,9 +96,9 @@ export function CustomMcpServerDialog({
           </button>
         </>
       }
-      maxWidthClassName="max-w-5xl"
       onClose={onClose}
       open
+      size="large"
       title="添加 MCP Server"
     >
       <CustomMcpServerConfigFields onUpdate={onUpdate} server={server} />
@@ -123,14 +125,14 @@ export function CustomMcpServerCard({
     update({ tools });
 
   return (
-    <div className="min-w-0 rounded-xl border border-black/8 bg-white/75 p-4 shadow-sm shadow-black/5 dark:border-white/8 dark:bg-white/6 dark:shadow-black/20">
+    <div className="kerminal-solid-surface min-w-0 rounded-xl border p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <div className="min-w-0 truncate text-sm font-semibold text-zinc-900 dark:text-zinc-100">
               {server.name}
             </div>
-            <span className="rounded-full bg-black/[0.04] px-2 py-1 font-mono text-[11px] text-zinc-500 dark:bg-white/8 dark:text-zinc-400">
+            <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface-field)] px-2 py-1 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
               {server.id}
             </span>
             <span className="rounded-full bg-sky-500/10 px-2 py-1 text-[11px] font-medium text-sky-700 dark:text-sky-200">
@@ -146,7 +148,7 @@ export function CustomMcpServerCard({
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           <button
             aria-label={`刷新 MCP Server ${server.id} 工具`}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-black/10 bg-white/80 px-2 text-xs text-zinc-600 transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/8 dark:text-zinc-300 dark:hover:bg-white/12"
+            className={cn(customMcpSecondaryButtonClass, "h-8 px-2 text-xs")}
             disabled={refreshing}
             onClick={onRefreshTools}
             type="button"
@@ -163,7 +165,7 @@ export function CustomMcpServerCard({
           />
           <button
             aria-label={`删除 MCP Server ${server.id}`}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-black/10 bg-white/80 text-zinc-500 transition hover:bg-rose-500/10 hover:text-rose-600 dark:border-white/10 dark:bg-white/8 dark:text-zinc-300"
+            className="kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex h-8 w-8 items-center justify-center rounded-lg border text-zinc-500 transition hover:bg-rose-500/10 hover:text-rose-600 dark:text-zinc-300"
             onClick={onDelete}
             type="button"
           >
@@ -175,18 +177,21 @@ export function CustomMcpServerCard({
       <CustomMcpServerConfigFields onUpdate={onUpdate} server={server} />
 
       {server.lastDiscoveryError ? (
-        <div className="mt-3 rounded-xl border border-rose-300/25 bg-rose-500/10 px-3 py-2 text-xs leading-5 text-rose-700 dark:text-rose-100">
+        <div
+          className="mt-3 rounded-xl border border-rose-300/25 bg-rose-500/10 px-3 py-2 text-xs leading-5 text-rose-700 dark:text-rose-100"
+          role="alert"
+        >
           {server.lastDiscoveryError}
         </div>
       ) : null}
 
-      <div className="mt-3 rounded-xl border border-black/8 bg-black/[0.025] p-3 dark:border-white/8 dark:bg-black/20">
+      <div className="kerminal-muted-surface mt-3 rounded-xl border p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
             <Wrench className="h-4 w-4 text-zinc-400" />
             Server tools
           </div>
-          <span className="rounded-full bg-black/[0.04] px-2 py-1 text-[11px] text-zinc-500 dark:bg-white/8 dark:text-zinc-400">
+          <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface-field)] px-2 py-1 text-[11px] text-zinc-500 dark:text-zinc-400">
             {server.tools.length} discovered
           </span>
         </div>
@@ -227,7 +232,7 @@ function CustomMcpServerConfigFields({
 
   return (
     <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
-      <section className="min-w-0 rounded-xl border border-black/8 bg-black/[0.025] p-3 dark:border-white/8 dark:bg-black/20">
+      <section className="kerminal-muted-surface min-w-0 rounded-xl border p-3">
         <div className="flex items-center gap-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400">
           <Hash className="h-3.5 w-3.5" />
           Server identity
@@ -251,7 +256,7 @@ function CustomMcpServerConfigFields({
         />
       </section>
 
-      <section className="min-w-0 rounded-xl border border-black/8 bg-black/[0.025] p-3 dark:border-white/8 dark:bg-black/20">
+      <section className="kerminal-muted-surface min-w-0 rounded-xl border p-3">
         <div className="flex items-center gap-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400">
           <Network className="h-3.5 w-3.5" />
           Connection
@@ -261,15 +266,15 @@ function CustomMcpServerConfigFields({
             <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
               Transport
             </span>
-            <div className="mt-1 grid grid-cols-2 overflow-hidden rounded-xl border border-black/10 bg-black/[0.03] p-0.5 dark:border-white/10 dark:bg-black/20">
+            <div className="kerminal-muted-surface mt-1 grid grid-cols-2 overflow-hidden rounded-xl border p-0.5">
               {customMcpTransportOptions.map((option) => (
                 <button
                   aria-pressed={server.transport === option.value}
                   className={cn(
-                    "h-9 truncate rounded-lg px-2 text-xs font-medium transition",
+                    "kerminal-focus-ring kerminal-pressable h-9 truncate rounded-lg px-2 text-xs font-medium transition",
                     server.transport === option.value
-                      ? "bg-white text-zinc-950 shadow-sm dark:bg-white/12 dark:text-zinc-50"
-                      : "text-zinc-500 hover:bg-white/50 dark:text-zinc-400 dark:hover:bg-white/8",
+                      ? "bg-[var(--surface-field-hover)] text-zinc-950 shadow-sm shadow-black/5 dark:text-zinc-50"
+                      : "text-zinc-500 hover:bg-[var(--surface-hover)] dark:text-zinc-400",
                   )}
                   key={option.value}
                   onClick={() => update({ transport: option.value })}
@@ -336,7 +341,7 @@ function CustomMcpServerToolRow({
     onUpdate({ ...tool, ...patch });
 
   return (
-    <div className="rounded-xl border border-black/8 bg-white/70 p-3 dark:border-white/8 dark:bg-white/6">
+    <div className="kerminal-solid-surface rounded-xl border p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
@@ -411,14 +416,14 @@ export function CustomMcpSkillDirectoryCard({
     onUpdate({ ...directory, ...patch });
 
   return (
-    <div className="rounded-xl border border-black/8 bg-white/75 p-4 shadow-sm shadow-black/5 dark:border-white/8 dark:bg-white/6 dark:shadow-black/20">
+    <div className="kerminal-solid-surface rounded-xl border p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
               Skill root
             </div>
-            <span className="rounded-full bg-black/[0.04] px-2 py-1 font-mono text-[11px] text-zinc-500 dark:bg-white/8 dark:text-zinc-400">
+            <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface-field)] px-2 py-1 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
               {directory.id}
             </span>
           </div>
@@ -448,17 +453,20 @@ export function CustomMcpSkillDirectoryCard({
           </p>
         </div>
 
-        <div className="min-w-0 rounded-xl border border-cyan-500/15 bg-zinc-950 px-3 py-3 text-cyan-50 shadow-inner shadow-black/40 dark:border-cyan-300/15">
-          <div className="flex items-center gap-2 text-xs font-medium text-cyan-300">
-            <Terminal className="h-3.5 w-3.5" />
+        <div className="kerminal-muted-surface min-w-0 rounded-xl border px-3 py-3 text-zinc-700 dark:text-zinc-200">
+          <div className="flex items-center gap-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+            <Terminal className="h-3.5 w-3.5 text-sky-500 dark:text-sky-300" />
             skills root
           </div>
-          <code className="mt-2 block break-all rounded-lg bg-white/8 px-2 py-2 font-mono text-xs leading-5 text-cyan-100">
+          <code className="kerminal-field-surface mt-2 block break-all rounded-lg border px-2 py-2 font-mono text-xs leading-5 text-zinc-700 dark:text-zinc-200">
             {directory.path || DEFAULT_CUSTOM_SKILLS_DIRECTORY}
           </code>
           <div className="mt-3 grid gap-2">
             <button
-              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-2 text-xs font-medium text-cyan-50 transition hover:bg-cyan-300/16"
+              className={cn(
+                customMcpSecondaryButtonClass,
+                "h-8 px-2 text-xs font-medium",
+              )}
               onClick={onChoose}
               type="button"
             >
@@ -466,7 +474,10 @@ export function CustomMcpSkillDirectoryCard({
               选择文件夹
             </button>
             <button
-              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-cyan-300/20 bg-white/8 px-2 text-xs font-medium text-cyan-50 transition hover:bg-white/12"
+              className={cn(
+                customMcpSecondaryButtonClass,
+                "h-8 px-2 text-xs font-medium",
+              )}
               onClick={onOpen}
               type="button"
             >
@@ -511,11 +522,15 @@ function isAppDefaultSkillDirectoryPath(
     DEFAULT_CUSTOM_SKILLS_DIRECTORY,
     LEGACY_CODEX_SKILLS_DIRECTORY,
     appSkillsDirectory,
-  ].some((candidate) => comparableSkillDirectoryPath(candidate) === normalizedPath);
+  ].some(
+    (candidate) => comparableSkillDirectoryPath(candidate) === normalizedPath,
+  );
 }
 
 function sameSkillDirectoryPath(left: string, right: string) {
-  return comparableSkillDirectoryPath(left) === comparableSkillDirectoryPath(right);
+  return (
+    comparableSkillDirectoryPath(left) === comparableSkillDirectoryPath(right)
+  );
 }
 
 function comparableSkillDirectoryPath(path: string) {

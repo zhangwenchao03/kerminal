@@ -19,7 +19,7 @@ export function TextSetting({
       </span>
       <input
         aria-label={label}
-        className="mt-1 h-9 w-full rounded-xl border border-black/10 bg-white/80 px-3 text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-sky-500/50 focus:ring-4 focus:ring-sky-500/15 dark:border-white/10 dark:bg-black/20 dark:text-zinc-100"
+        className="kerminal-field-surface mt-1 h-9 w-full rounded-xl border px-3 text-sm text-zinc-950 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500"
         onChange={(event) => onChange(event.currentTarget.value)}
         value={value}
       />
@@ -43,7 +43,7 @@ export function TextAreaSetting({
       </span>
       <textarea
         aria-label={label}
-        className="mt-1 min-h-20 w-full resize-y rounded-xl border border-black/10 bg-white/80 px-3 py-2 text-sm leading-6 text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-sky-500/50 focus:ring-4 focus:ring-sky-500/15 dark:border-white/10 dark:bg-black/20 dark:text-zinc-100"
+        className="kerminal-field-surface mt-1 min-h-20 w-full resize-y rounded-xl border px-3 py-2 text-sm leading-6 text-zinc-950 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500"
         onChange={(event) => onChange(event.currentTarget.value)}
         value={value}
       />
@@ -62,7 +62,7 @@ export function SettingsMetricItem({
   value: string;
 }) {
   return (
-    <div className="rounded-xl border border-black/8 bg-black/[0.025] p-3 dark:border-white/8 dark:bg-black/20">
+    <div className="kerminal-muted-surface rounded-xl border p-3">
       <div className="flex items-center gap-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
         <Icon className="h-3.5 w-3.5" />
         {label}
@@ -88,7 +88,7 @@ export function PolicyToggle({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="flex min-h-11 items-center justify-between gap-3 rounded-xl border border-black/8 bg-black/[0.03] px-3 py-2 text-sm text-zinc-700 dark:border-white/8 dark:bg-black/20 dark:text-zinc-300">
+    <div className="kerminal-muted-surface flex min-h-11 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300">
       <span className="flex min-w-0 items-center gap-2">
         {Icon ? <Icon className="h-4 w-4 shrink-0 text-zinc-400" /> : null}
         <span className="min-w-0 text-left leading-5">{label}</span>
@@ -126,7 +126,7 @@ export function NumberSetting({
       <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
         {label}
       </span>
-      <div className="mt-1 flex h-9 items-center rounded-xl border border-black/10 bg-white/80 px-2 focus-within:border-sky-500/50 focus-within:ring-4 focus-within:ring-sky-500/15 dark:border-white/10 dark:bg-black/20">
+      <div className="kerminal-field-surface mt-1 flex h-9 items-center rounded-xl border px-2">
         <input
           aria-label={label}
           className="min-w-0 flex-1 bg-transparent px-1 text-sm text-zinc-950 outline-none dark:text-zinc-100"
@@ -166,7 +166,13 @@ function scaledStorageValue(value: number, scale: number) {
   return scale === 1 ? value : Math.round(value * scale);
 }
 
-export function KeybindingCell({ label, value }: { label: string; value: string }) {
+export function KeybindingCell({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
   return (
     <div className="min-w-0 lg:text-right">
       <div className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">

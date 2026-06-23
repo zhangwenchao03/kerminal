@@ -63,16 +63,6 @@ impl CredentialService {
         format!("credential:llm/{provider_id}/api-key")
     }
 
-    /// 生成 SSH 主机密码的稳定凭据引用。
-    pub fn ssh_password_ref(host_id: &str) -> String {
-        format!("credential:ssh/{host_id}/password")
-    }
-
-    /// 生成 SSH 主机私钥内容的稳定凭据引用。
-    pub fn ssh_private_key_ref(host_id: &str) -> String {
-        format!("credential:ssh/{host_id}/private-key")
-    }
-
     /// 保存 secret。
     pub fn set_secret(&self, credential_ref: &str, secret: &str) -> AppResult<()> {
         validate_credential_ref(credential_ref)?;

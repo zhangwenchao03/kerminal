@@ -27,6 +27,7 @@ pub fn agent_profile() -> McpAgentProfile {
                 "读取当前终端状态，建议或准备本地终端输入、分屏、tab 切换和工具面板切换。",
                 vec![ToolCategory::Terminal, ToolCategory::Workspace],
                 &[
+                    "terminal.resolve_current",
                     "terminal.write",
                     "terminal.create",
                     "workspace.split_pane",
@@ -45,9 +46,11 @@ pub fn agent_profile() -> McpAgentProfile {
                     ToolCategory::PortForward,
                 ],
                 &[
+                    "remote_host.last_used",
                     "remote_host.tree",
                     "ssh.connect",
                     "ssh.command",
+                    "ssh.command_on_resolved_host",
                     "server_info.snapshot",
                 ],
             ),
@@ -133,6 +136,7 @@ pub fn agent_skills() -> Vec<McpSkillDefinition> {
             ],
             &[
                 "terminal.create",
+                "terminal.resolve_current",
                 "terminal.write",
                 "terminal.resize",
                 "terminal.list",
@@ -187,6 +191,7 @@ pub fn agent_skills() -> Vec<McpSkillDefinition> {
             ],
             &[
                 "remote_host.create",
+                "remote_host.last_used",
                 "remote_host.group_list",
                 "remote_host.tree",
                 "remote_host.group_create",
@@ -196,6 +201,7 @@ pub fn agent_skills() -> Vec<McpSkillDefinition> {
                 "remote_host.delete",
                 "ssh.connect",
                 "ssh.command",
+                "ssh.command_on_resolved_host",
                 "connection.rdp_open",
             ],
             "远程操作默认先读后写；生产、权限提升、停止服务、批量变更等必须拆成可确认步骤。",

@@ -62,6 +62,8 @@ export interface TerminalSessionSummary {
   rows: number;
   pid?: number;
   status: TerminalSessionStatus;
+  targetRef?: string;
+  targetToken?: string;
 }
 
 export interface TerminalSessionLogState {
@@ -316,6 +318,7 @@ function createBrowserPreviewSession(
     cols: request.cols,
     rows: request.rows,
     status: "running",
+    targetRef: "local",
   };
 }
 

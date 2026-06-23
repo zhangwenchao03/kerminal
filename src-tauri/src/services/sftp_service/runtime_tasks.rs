@@ -1,9 +1,11 @@
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{atomic::AtomicBool, Arc},
 };
 
 use tokio::fs;
+
+use crate::models::sftp::SftpTransferConflictPolicy;
 
 use super::*;
 
@@ -11,12 +13,11 @@ impl SftpService {
     pub(super) async fn run_transfer_now(
         &self,
         storage: &SqliteStore,
-        credentials: &CredentialService,
         paths: &KerminalPaths,
         request: SftpManagedTransferRequest,
     ) -> AppResult<bool> {
         let settings = load_sftp_runtime_settings(storage)?;
-        let endpoint = resolve_endpoint(storage, credentials, paths, &request.host_id)?;
+        let endpoint = resolve_endpoint(storage, paths, &request.host_id)?;
         let request = normalize_managed_transfer_request(request)?;
         let progress = TransferProgress::detached();
         let _transfer_permit = self
@@ -44,7 +45,7 @@ impl SftpService {
         let transfer_limiter = self.transfer_limiter.clone();
         let host_id = request.host_id.clone();
 
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let progress = TransferProgress::tracked(
                 transfer_id.clone(),
                 transfers.clone(),
@@ -102,7 +103,7 @@ impl SftpService {
         let transfers = self.transfers.clone();
         let transfer_limiter = self.transfer_limiter.clone();
 
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let progress = TransferProgress::tracked(
                 transfer_id.clone(),
                 transfers.clone(),
@@ -158,7 +159,7 @@ impl SftpService {
         let transfers = self.transfers.clone();
         let transfer_limiter = self.transfer_limiter.clone();
 
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let progress = TransferProgress::tracked(
                 transfer_id.clone(),
                 transfers.clone(),
@@ -181,6 +182,7 @@ impl SftpService {
                     return Err(AppError::Sftp("传输已取消".to_owned()));
                 }
                 progress.mark_running();
+                progress.mark_phase("downloading", Some(request.source_remote_path.clone()));
                 backend
                     .transfer(
                         endpoint,
@@ -190,6 +192,8 @@ impl SftpService {
                             kind: request.kind,
                             local_path: local_stage,
                             remote_path: request.source_remote_path.clone(),
+                            conflict_policy: SftpTransferConflictPolicy::Overwrite,
+                            view_scope: None,
                         },
                         progress.clone(),
                         settings,
@@ -198,14 +202,21 @@ impl SftpService {
                 drop(transfer_permit);
 
                 progress.ensure_not_cancelled()?;
+                progress.mark_phase(
+                    "archiving",
+                    Some(target_local_path.to_string_lossy().into_owned()),
+                );
+                let archive_kind =
+                    archive_kind_for_staged_path(&local_stage_path, request.kind).await;
                 let zip_cancel = progress.cancel_requested.clone();
-                tokio::task::spawn_blocking(move || {
-                    zip_local_path_to_file(
+                tauri::async_runtime::spawn_blocking(move || {
+                    zip_local_path_to_file_with_conflict(
                         &local_stage_path,
                         &target_local_path,
                         &archive_root_name,
-                        request.kind,
+                        archive_kind,
                         zip_cancel,
+                        request.conflict_policy,
                     )
                 })
                 .await
@@ -238,7 +249,7 @@ impl SftpService {
         let transfers = self.transfers.clone();
         let transfer_limiter = self.transfer_limiter.clone();
 
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let progress = TransferProgress::tracked(
                 transfer_id.clone(),
                 transfers.clone(),
@@ -256,10 +267,14 @@ impl SftpService {
 
             let result = async {
                 progress.mark_running();
+                progress.mark_phase(
+                    "archiving",
+                    Some(source_local_path.to_string_lossy().into_owned()),
+                );
                 let zip_cancel = progress.cancel_requested.clone();
                 let zip_source_path = source_local_path.clone();
                 let zip_target_path = local_stage_path.clone();
-                tokio::task::spawn_blocking(move || {
+                tauri::async_runtime::spawn_blocking(move || {
                     zip_local_path_to_file(
                         &zip_source_path,
                         &zip_target_path,
@@ -272,6 +287,7 @@ impl SftpService {
                 .map_err(|error| AppError::Sftp(format!("ZIP 归档任务失败: {error}")))??;
 
                 progress.ensure_not_cancelled()?;
+                progress.mark_phase("uploading", Some(request.target_remote_path.clone()));
                 let transfer_permit = transfer_limiter
                     .acquire(request.host_id.clone(), settings, progress.clone())
                     .await?;
@@ -284,6 +300,8 @@ impl SftpService {
                             kind: SftpTransferKind::File,
                             local_path: local_stage,
                             remote_path: request.target_remote_path.clone(),
+                            conflict_policy: request.conflict_policy,
+                            view_scope: None,
                         },
                         progress.clone(),
                         settings,
@@ -319,7 +337,7 @@ impl SftpService {
         let transfers = self.transfers.clone();
         let transfer_limiter = self.transfer_limiter.clone();
 
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let progress = TransferProgress::tracked(
                 transfer_id.clone(),
                 transfers.clone(),
@@ -353,6 +371,8 @@ impl SftpService {
                             kind: request.kind,
                             local_path: target_local_path_string,
                             remote_path: request.source_remote_path.clone(),
+                            conflict_policy: SftpTransferConflictPolicy::Overwrite,
+                            view_scope: None,
                         },
                         progress.clone(),
                         settings,
@@ -363,7 +383,7 @@ impl SftpService {
                 progress.ensure_not_cancelled()?;
                 if copy_to_clipboard {
                     let clipboard_target = target_local_path.clone();
-                    tokio::task::spawn_blocking(move || {
+                    tauri::async_runtime::spawn_blocking(move || {
                         write_local_file_clipboard(&[clipboard_target])
                     })
                     .await
@@ -473,6 +493,8 @@ async fn run_staged_remote_copy(task: StagedRemoteCopyTask) -> AppResult<()> {
                     kind: request.kind,
                     local_path: local_stage.clone(),
                     remote_path: request.source_remote_path.clone(),
+                    conflict_policy: SftpTransferConflictPolicy::Overwrite,
+                    view_scope: None,
                 },
                 source_progress,
                 settings,
@@ -493,6 +515,8 @@ async fn run_staged_remote_copy(task: StagedRemoteCopyTask) -> AppResult<()> {
                     kind: request.kind,
                     local_path: local_stage,
                     remote_path: request.target_remote_path.clone(),
+                    conflict_policy: request.conflict_policy,
+                    view_scope: None,
                 },
                 progress,
                 settings,
@@ -505,6 +529,17 @@ async fn run_staged_remote_copy(task: StagedRemoteCopyTask) -> AppResult<()> {
 
     let _ = fs::remove_dir_all(&job_temp_dir).await;
     result
+}
+
+async fn archive_kind_for_staged_path(
+    staged_path: &Path,
+    requested_kind: SftpTransferKind,
+) -> SftpTransferKind {
+    match fs::metadata(staged_path).await {
+        Ok(metadata) if metadata.is_dir() => SftpTransferKind::Directory,
+        Ok(metadata) if metadata.is_file() => SftpTransferKind::File,
+        _ => requested_kind,
+    }
 }
 
 struct StagedRemoteCopyTask {

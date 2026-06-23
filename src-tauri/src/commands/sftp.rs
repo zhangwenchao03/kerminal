@@ -10,8 +10,8 @@ use crate::{
         SftpLocalPathInfo, SftpManagedTransferRequest, SftpPathRequest, SftpPathStat,
         SftpPreviewRequest, SftpReadTextFileRequest, SftpReadTextFileResponse,
         SftpRemoteCopyRequest, SftpRenameRequest, SftpTransferCancelRequest, SftpTransferRequest,
-        SftpTransferSummary, SftpTrustHostKeyRequest, SftpWriteTextFileRequest,
-        SftpWriteTextFileResponse,
+        SftpTransferScopeRequest, SftpTransferSummary, SftpTrustHostKeyRequest,
+        SftpWriteTextFileRequest, SftpWriteTextFileResponse,
     },
     state::AppState,
 };
@@ -25,7 +25,7 @@ pub async fn sftp_list_directory(
 ) -> Result<SftpDirectoryListing, String> {
     state
         .sftp()
-        .list_directory(state.storage(), state.credentials(), state.paths(), request)
+        .list_directory(state.storage(), state.paths(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -38,7 +38,7 @@ pub async fn sftp_create_directory(
 ) -> Result<bool, String> {
     state
         .sftp()
-        .create_directory(state.storage(), state.credentials(), state.paths(), request)
+        .create_directory(state.storage(), state.paths(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -51,7 +51,7 @@ pub async fn sftp_preview_file(
 ) -> Result<SftpFilePreview, String> {
     state
         .sftp()
-        .preview_file(state.storage(), state.credentials(), state.paths(), request)
+        .preview_file(state.storage(), state.paths(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -64,7 +64,7 @@ pub async fn sftp_read_text_file(
 ) -> Result<SftpReadTextFileResponse, String> {
     state
         .sftp()
-        .read_text_file(state.storage(), state.credentials(), state.paths(), request)
+        .read_text_file(state.storage(), state.paths(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -77,7 +77,7 @@ pub async fn sftp_write_text_file(
 ) -> Result<SftpWriteTextFileResponse, String> {
     state
         .sftp()
-        .write_text_file(state.storage(), state.credentials(), state.paths(), request)
+        .write_text_file(state.storage(), state.paths(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -90,7 +90,7 @@ pub async fn sftp_stat_path(
 ) -> Result<SftpPathStat, String> {
     state
         .sftp()
-        .stat_path(state.storage(), state.credentials(), state.paths(), request)
+        .stat_path(state.storage(), state.paths(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -103,7 +103,7 @@ pub async fn sftp_delete(
 ) -> Result<bool, String> {
     state
         .sftp()
-        .delete(state.storage(), state.credentials(), state.paths(), request)
+        .delete(state.storage(), state.paths(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -116,7 +116,7 @@ pub async fn sftp_rename(
 ) -> Result<bool, String> {
     state
         .sftp()
-        .rename(state.storage(), state.credentials(), state.paths(), request)
+        .rename(state.storage(), state.paths(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -129,7 +129,7 @@ pub async fn sftp_chmod(
 ) -> Result<bool, String> {
     state
         .sftp()
-        .chmod(state.storage(), state.credentials(), state.paths(), request)
+        .chmod(state.storage(), state.paths(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -142,7 +142,7 @@ pub async fn sftp_upload(
 ) -> Result<bool, String> {
     state
         .sftp()
-        .upload(state.storage(), state.credentials(), state.paths(), request)
+        .upload(state.storage(), state.paths(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -155,7 +155,7 @@ pub async fn sftp_upload_directory(
 ) -> Result<bool, String> {
     state
         .sftp()
-        .upload_directory(state.storage(), state.credentials(), state.paths(), request)
+        .upload_directory(state.storage(), state.paths(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -168,7 +168,7 @@ pub async fn sftp_download(
 ) -> Result<bool, String> {
     state
         .sftp()
-        .download(state.storage(), state.credentials(), state.paths(), request)
+        .download(state.storage(), state.paths(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -181,7 +181,7 @@ pub async fn sftp_download_directory(
 ) -> Result<bool, String> {
     state
         .sftp()
-        .download_directory(state.storage(), state.credentials(), state.paths(), request)
+        .download_directory(state.storage(), state.paths(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -195,13 +195,7 @@ pub fn sftp_enqueue_transfer(
 ) -> Result<SftpTransferSummary, String> {
     state
         .sftp()
-        .enqueue_transfer_for_window(
-            state.storage(),
-            state.credentials(),
-            state.paths(),
-            request,
-            window,
-        )
+        .enqueue_transfer_for_window(state.storage(), state.paths(), request, window)
         .map_err(|error| error.to_string())
 }
 
@@ -214,13 +208,7 @@ pub fn sftp_enqueue_remote_copy(
 ) -> Result<SftpTransferSummary, String> {
     state
         .sftp()
-        .enqueue_remote_copy_for_window(
-            state.storage(),
-            state.credentials(),
-            state.paths(),
-            request,
-            window,
-        )
+        .enqueue_remote_copy_for_window(state.storage(), state.paths(), request, window)
         .map_err(|error| error.to_string())
 }
 
@@ -233,13 +221,7 @@ pub fn sftp_enqueue_archive_download(
 ) -> Result<SftpTransferSummary, String> {
     state
         .sftp()
-        .enqueue_archive_download_for_window(
-            state.storage(),
-            state.credentials(),
-            state.paths(),
-            request,
-            window,
-        )
+        .enqueue_archive_download_for_window(state.storage(), state.paths(), request, window)
         .map_err(|error| error.to_string())
 }
 
@@ -252,13 +234,7 @@ pub fn sftp_enqueue_archive_upload(
 ) -> Result<SftpTransferSummary, String> {
     state
         .sftp()
-        .enqueue_archive_upload_for_window(
-            state.storage(),
-            state.credentials(),
-            state.paths(),
-            request,
-            window,
-        )
+        .enqueue_archive_upload_for_window(state.storage(), state.paths(), request, window)
         .map_err(|error| error.to_string())
 }
 
@@ -271,22 +247,19 @@ pub fn sftp_enqueue_clipboard_download(
 ) -> Result<SftpTransferSummary, String> {
     state
         .sftp()
-        .enqueue_clipboard_download_for_window(
-            state.storage(),
-            state.credentials(),
-            state.paths(),
-            request,
-            window,
-        )
+        .enqueue_clipboard_download_for_window(state.storage(), state.paths(), request, window)
         .map_err(|error| error.to_string())
 }
 
 /// 列出当前 SFTP 传输队列。
 #[tauri::command]
-pub fn sftp_list_transfers(state: State<'_, AppState>) -> Result<Vec<SftpTransferSummary>, String> {
+pub fn sftp_list_transfers(
+    state: State<'_, AppState>,
+    request: Option<SftpTransferScopeRequest>,
+) -> Result<Vec<SftpTransferSummary>, String> {
     state
         .sftp()
-        .list_transfers()
+        .list_transfers_for_scope(request.unwrap_or_default())
         .map_err(|error| error.to_string())
 }
 
@@ -307,10 +280,11 @@ pub fn sftp_cancel_transfer(
 #[tauri::command]
 pub fn sftp_clear_completed_transfers(
     state: State<'_, AppState>,
+    request: Option<SftpTransferScopeRequest>,
 ) -> Result<Vec<SftpTransferSummary>, String> {
     state
         .sftp()
-        .clear_completed_transfers()
+        .clear_completed_transfers_for_scope(request.unwrap_or_default())
         .map_err(|error| error.to_string())
 }
 

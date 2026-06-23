@@ -1,9 +1,21 @@
 import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
 import type {
   AiCommandExecutionVisibility,
+  AiChatAttachmentModelInput,
+  AiChatAttachmentVisionStatus,
+  AiChatAttachmentVisionUsage,
   AiChatResponse,
   AiChatStreamStep,
+  AiChatVisionUsageReport,
 } from "../../../lib/aiAgentApi";
+import type {
+  AiAgentRunSnapshot,
+  AiAgentRunStatus,
+  AiAgentRunStep,
+  AiAgentRunStepKind,
+  AiAgentRunStepStatus,
+} from "../../../lib/aiAgentRunApi";
+import type { AiConversationScopeKind } from "../../../lib/aiConversationApi";
 import type {
   AiToolAuditExport,
   AiToolPendingInvocation,
@@ -19,6 +31,12 @@ export type AuditActionState = "idle" | "exporting" | "clearing";
 export type ChatState = "idle" | "sending";
 export type ChatMessageRole = "assistant" | "user";
 export type ChatMessageStatus = "complete" | "error" | "streaming";
+export type AiChatAttachmentKind = "diagnostic" | "file" | "image";
+export type AiChatAttachmentStatus =
+  | "available"
+  | "missing"
+  | "redacted"
+  | "unsupported";
 
 export const AUDIT_PANEL_LIMIT = 20;
 export const AUDIT_EXPORT_LIMIT = 100;
@@ -26,8 +44,6 @@ export const CONVERSATION_STORAGE_KEY = "kerminal.ai.conversations.v1";
 export const COMMAND_VISIBILITY_STORAGE_KEY = "kerminal.ai.command-visibility.v1";
 export const MAX_CONVERSATIONS = 24;
 export const MAX_MESSAGES_PER_CONVERSATION = 80;
-export const TRANSCRIPT_MESSAGE_LIMIT = 10;
-export const TRANSCRIPT_CHAR_LIMIT = 6000;
 
 export interface AiToolContentProps {
   activeTab?: TerminalTab;
@@ -54,14 +70,22 @@ export interface ConversationState {
 
 export interface AiConversation {
   createdAt: number;
+  hostId?: string | null;
   id: string;
   messages: AiChatMessage[];
+  paneId?: string | null;
+  scopeKind?: AiConversationScopeKind;
+  scopeRefJson?: string | null;
+  tabId?: string | null;
+  targetKey?: string | null;
   title: string;
   updatedAt: number;
 }
 
 export interface AiChatMessage {
+  attachments?: AiChatAttachment[];
   content: string;
+  contextSnapshotId?: string | null;
   contextUsed?: boolean;
   createdAt: number;
   id: string;
@@ -73,6 +97,46 @@ export interface AiChatMessage {
   status?: ChatMessageStatus;
   toolCount?: number;
   pendingInvocations?: AiToolPendingInvocation[];
+  visionUsage?: AiChatVisionUsageReport;
+}
+
+export interface AiChatAttachment {
+  assetPath?: string | null;
+  height?: number | null;
+  id: string;
+  kind: AiChatAttachmentKind;
+  localPreviewUrl?: string | null;
+  mimeType: string;
+  missingReason?: string | null;
+  ocrText?: string | null;
+  originalName: string;
+  originalPath?: string | null;
+  redactionSummary?: string | null;
+  sizeBytes: number;
+  status: AiChatAttachmentStatus;
+  storageMode?: string | null;
+  thumbnailPath?: string | null;
+  visionUsage?: string | null;
+  width?: number | null;
+}
+
+export interface AiAgentRunTimelineItem {
+  detail?: string;
+  id: string;
+  label: string;
+  status: AiAgentRunStepStatus;
+  toolId?: string | null;
+}
+
+export interface AiAgentRunViewModel {
+  canCancel: boolean;
+  canRetry: boolean;
+  finalMessage: string | null;
+  items: AiAgentRunTimelineItem[];
+  runId: string;
+  status: AiAgentRunStatus;
+  statusLabel: string;
+  statusTone: string;
 }
 
 export function loadConversationState(): ConversationState {
@@ -221,6 +285,7 @@ export function completeAssistantMessage(
   draft: AiChatMessage,
   response: AiChatResponse,
 ): AiChatMessage {
+  const visionUsage = normalizeVisionUsageReport(response.visionUsage);
   return {
     ...draft,
     contextUsed: response.contextUsed,
@@ -232,6 +297,7 @@ export function completeAssistantMessage(
     status: "complete",
     toolCount: response.toolCount,
     pendingInvocations: response.pendingInvocations,
+    ...(visionUsage ? { visionUsage } : {}),
   };
 }
 
@@ -302,6 +368,48 @@ export function updateConversationMessage(
   }));
 }
 
+export interface AiConversationRouteSelectionTarget {
+  hostId?: string | null;
+  id: string;
+  paneId?: string | null;
+  scopeRefJson?: string | null;
+  tabId?: string | null;
+  targetKey?: string | null;
+}
+
+interface AiConversationRouteSelectionSlot {
+  createRequest: {
+    hostId?: string;
+    paneId?: string;
+    tabId?: string;
+    targetKey?: string;
+  };
+  slotKey: string;
+  targetRefJson: string;
+}
+
+export function resolveAiConversationRouteSelection(
+  target: AiConversationRouteSelectionTarget,
+  slot: AiConversationRouteSelectionSlot,
+) {
+  const rowTargetRef = parseConversationRouteRef(target.scopeRefJson);
+  const slotTargetRef = parseConversationRouteRef(slot.targetRefJson);
+  const rowTargetKey = normalizeRouteText(target.targetKey) ?? targetKeyFromRouteRef(rowTargetRef) ?? hostTargetKey(target.hostId);
+  const slotTargetKey = normalizeRouteText(slot.createRequest.targetKey) ?? targetKeyFromRouteRef(slotTargetRef) ?? hostTargetKey(slot.createRequest.hostId) ?? slot.slotKey;
+  const rowPaneId = normalizeRouteText(target.paneId) ?? rowTargetRef.paneId;
+  const slotPaneId = normalizeRouteText(slot.createRequest.paneId) ?? slotTargetRef.paneId;
+  const rowTabId = normalizeRouteText(target.tabId) ?? rowTargetRef.tabId;
+  const slotTabId = normalizeRouteText(slot.createRequest.tabId) ?? slotTargetRef.tabId;
+  const focusTabId = rowTabId && rowTabId !== slotTabId ? rowTabId : undefined;
+  const targetMismatch = Boolean(rowTargetKey && slotTargetKey && rowTargetKey !== slotTargetKey);
+  const paneMismatch = Boolean(rowPaneId && rowPaneId !== slotPaneId);
+
+  return {
+    focusTabId,
+    shouldActivateCurrentSlot: !focusTabId && !targetMismatch && !paneMismatch,
+  };
+}
+
 export function upsertProcessStep(
   steps: AiChatStreamStep[] | undefined,
   nextStep: AiChatStreamStep,
@@ -355,28 +463,6 @@ export function limitMessages(messages: AiChatMessage[]) {
   return messages.slice(-MAX_MESSAGES_PER_CONVERSATION);
 }
 
-export function buildConversationPrompt(previousMessages: AiChatMessage[], message: string) {
-  if (previousMessages.length === 0) {
-    return message;
-  }
-
-  const transcript = previousMessages
-    .slice(-TRANSCRIPT_MESSAGE_LIMIT)
-    .map((item) => `${item.role === "user" ? "用户" : "AI"}: ${item.content}`)
-    .join("\n\n")
-    .slice(-TRANSCRIPT_CHAR_LIMIT);
-
-  return [
-    "请基于以下本地会话历史继续回答。不要重复历史内容，优先处理最后一个用户问题。",
-    "",
-    "<history>",
-    transcript,
-    "</history>",
-    "",
-    `用户最新问题: ${message}`,
-  ].join("\n");
-}
-
 export function buildConversationTitle(message: string) {
   const normalized = message.replace(/\s+/g, " ").trim();
   if (normalized.length <= 24) {
@@ -400,8 +486,14 @@ export function normalizeConversation(value: unknown): AiConversation | null {
 
   return {
     createdAt,
+    hostId: normalizeNullableText(value.hostId),
     id: value.id,
     messages: limitMessages(messages),
+    paneId: normalizeNullableText(value.paneId),
+    scopeKind: normalizeConversationScopeKind(value.scopeKind),
+    scopeRefJson: normalizeNullableText(value.scopeRefJson),
+    tabId: normalizeNullableText(value.tabId),
+    targetKey: normalizeNullableText(value.targetKey),
     title: typeof value.title === "string" ? value.title : "历史对话",
     updatedAt,
   };
@@ -417,8 +509,19 @@ export function normalizeMessage(value: unknown): AiChatMessage | null {
     return null;
   }
 
+  const attachments = Array.isArray(value.attachments)
+    ? value.attachments
+        .map(normalizeAttachment)
+        .filter((attachment): attachment is AiChatAttachment =>
+          Boolean(attachment),
+        )
+    : [];
+  const visionUsage = normalizeVisionUsageReport(value.visionUsage);
+
   return {
+    ...(attachments.length > 0 ? { attachments } : {}),
     content: value.content,
+    contextSnapshotId: normalizeNullableText(value.contextSnapshotId),
     contextUsed:
       typeof value.contextUsed === "boolean" ? value.contextUsed : undefined,
     createdAt: normalizeTimestamp(value.createdAt),
@@ -433,13 +536,55 @@ export function normalizeMessage(value: unknown): AiChatMessage | null {
     role: value.role,
     status: value.role === "assistant" ? "complete" : undefined,
     toolCount: typeof value.toolCount === "number" ? value.toolCount : undefined,
+    ...(visionUsage ? { visionUsage } : {}),
+  };
+}
+
+export function normalizeAttachment(value: unknown): AiChatAttachment | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    (value.kind !== "image" &&
+      value.kind !== "file" &&
+      value.kind !== "diagnostic") ||
+    typeof value.mimeType !== "string" ||
+    typeof value.originalName !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    assetPath: normalizeNullableText(value.assetPath),
+    height: normalizeNullableNumber(value.height),
+    id: value.id,
+    kind: value.kind,
+    mimeType: value.mimeType,
+    missingReason: normalizeNullableText(value.missingReason),
+    ocrText: normalizeNullableText(value.ocrText),
+    originalName: value.originalName,
+    originalPath: normalizeNullableText(value.originalPath),
+    redactionSummary: normalizeNullableText(value.redactionSummary),
+    sizeBytes:
+      typeof value.sizeBytes === "number" && Number.isFinite(value.sizeBytes)
+        ? Math.max(0, value.sizeBytes)
+        : 0,
+    status: normalizeAttachmentStatus(value.status),
+    storageMode: normalizeNullableText(value.storageMode),
+    thumbnailPath: normalizeNullableText(value.thumbnailPath),
+    visionUsage: normalizeNullableText(value.visionUsage),
+    width: normalizeNullableNumber(value.width),
   };
 }
 
 export function serializeConversation(conversation: AiConversation) {
   return {
     ...conversation,
-    messages: conversation.messages.map(({ pendingInvocations, ...message }) => message),
+    messages: conversation.messages.map(({ pendingInvocations, ...message }) => ({
+      ...message,
+      attachments: message.attachments?.map(
+        ({ localPreviewUrl: _localPreviewUrl, ...attachment }) => attachment,
+      ),
+    })),
   };
 }
 
@@ -452,7 +597,10 @@ export function isBlankConversation(conversation: AiConversation) {
 }
 
 export function hasConversationHistoryContent(conversation: AiConversation) {
-  return conversation.messages.some((message) => message.content.trim().length > 0);
+  return conversation.messages.some(
+    (message) =>
+      message.content.trim().length > 0 || (message.attachments?.length ?? 0) > 0,
+  );
 }
 
 export function normalizeHistorySearchQuery(query: string) {
@@ -472,7 +620,22 @@ export function conversationMatchesHistoryQuery(
       message.model ?? "",
       message.providerName ?? "",
       message.role === "user" ? "用户" : "AI",
+      ...visionUsageSearchText(message.visionUsage),
+      ...(message.attachments ?? []).flatMap((attachment) => [
+        attachment.originalName,
+        attachment.mimeType,
+        attachment.status,
+        attachment.kind,
+        attachment.ocrText ?? "",
+        attachment.redactionSummary ?? "",
+      ]),
     ]),
+    conversation.scopeKind ?? "",
+    conversation.scopeRefJson ?? "",
+    conversation.targetKey ?? "",
+    conversation.hostId ?? "",
+    conversation.tabId ?? "",
+    conversation.paneId ?? "",
   ]
     .join(" ")
     .toLocaleLowerCase();
@@ -494,6 +657,196 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function normalizeNullableText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function normalizeRouteText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function parseConversationRouteRef(
+  value: string | null | undefined,
+): { kind?: string; machineId?: string; paneId?: string; tabId?: string } {
+  if (!value) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!isRecord(parsed)) {
+      return {};
+    }
+    return {
+      kind: normalizeRouteText(parsed.kind),
+      machineId: normalizeRouteText(parsed.machineId),
+      paneId: normalizeRouteText(parsed.paneId),
+      tabId: normalizeRouteText(parsed.tabId),
+    };
+  } catch {
+    return {};
+  }
+}
+
+function targetKeyFromRouteRef(ref: {
+  kind?: string;
+  machineId?: string;
+  paneId?: string;
+  tabId?: string;
+}) {
+  if (ref.kind === "pane" && ref.paneId) {
+    return `pane:${ref.paneId}`;
+  }
+  if (ref.kind === "tab" && ref.tabId) {
+    return `tab:${ref.tabId}`;
+  }
+  if (ref.kind === "host" && ref.machineId) {
+    return hostTargetKey(ref.machineId);
+  }
+  if (ref.kind === "none") {
+    return "no-context";
+  }
+  return undefined;
+}
+
+function hostTargetKey(hostId: string | null | undefined) {
+  const normalized = normalizeRouteText(hostId);
+  return normalized ? `host:${normalized}` : undefined;
+}
+
+function normalizeNullableNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, value)
+    : null;
+}
+
+function normalizeAttachmentStatus(value: unknown): AiChatAttachmentStatus {
+  if (
+    value === "available" ||
+    value === "missing" ||
+    value === "redacted" ||
+    value === "unsupported"
+  ) {
+    return value;
+  }
+  return "available";
+}
+
+function normalizeVisionUsageReport(
+  value: unknown,
+): AiChatVisionUsageReport | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const attachments = Array.isArray(value.attachments)
+    ? value.attachments
+        .map(normalizeVisionAttachmentStatus)
+        .filter((status): status is AiChatAttachmentVisionStatus =>
+          Boolean(status),
+        )
+    : [];
+  if (attachments.length === 0) {
+    return undefined;
+  }
+  return {
+    attachments,
+    providerSupportsVision: value.providerSupportsVision === true,
+    visionAdapterEnabled: value.visionAdapterEnabled === true,
+  };
+}
+
+function normalizeVisionAttachmentStatus(
+  value: unknown,
+): AiChatAttachmentVisionStatus | null {
+  if (!isRecord(value) || typeof value.id !== "string" || !value.id.trim()) {
+    return null;
+  }
+  return {
+    effectiveUsage:
+      normalizeAttachmentVisionUsage(value.effectiveUsage) ?? "notSent",
+    id: value.id,
+    modelInput: normalizeAttachmentModelInput(value.modelInput),
+    requestedUsage:
+      normalizeAttachmentVisionUsage(value.requestedUsage) ?? "notSent",
+    warning: normalizeNullableText(value.warning),
+  };
+}
+
+function normalizeAttachmentVisionUsage(
+  value: unknown,
+): AiChatAttachmentVisionUsage | null {
+  if (
+    value === "visionInput" ||
+    value === "ocrOnly" ||
+    value === "metadataOnly" ||
+    value === "blocked" ||
+    value === "notSent"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function normalizeAttachmentModelInput(
+  value: unknown,
+): AiChatAttachmentModelInput {
+  if (
+    value === "visionInput" ||
+    value === "textContext" ||
+    value === "notSent"
+  ) {
+    return value;
+  }
+  return "notSent";
+}
+
+function normalizeConversationScopeKind(
+  value: unknown,
+): AiConversationScopeKind | undefined {
+  if (
+    value === "noContext" ||
+    value === "followFocus" ||
+    value === "lockedPane" ||
+    value === "lockedHost" ||
+    value === "workspaceTask"
+  ) {
+    return value;
+  }
+  return undefined;
+}
+
+function visionUsageSearchText(report: AiChatMessage["visionUsage"]) {
+  if (!report?.attachments.length) {
+    return [];
+  }
+  const hasVisionInput = report.attachments.some(
+    (attachment) => attachment.modelInput === "visionInput",
+  );
+  const hasTextContext = report.attachments.some(
+    (attachment) => attachment.modelInput === "textContext",
+  );
+  const hasWarning = report.attachments.some((attachment) =>
+    Boolean(attachment.warning),
+  );
+  const summary = hasVisionInput
+    ? "图片已进入模型 视觉模型 visionInput"
+    : hasTextContext
+      ? "图片文本上下文 OCR metadata textContext"
+      : "图片未发送 notSent";
+  return [
+    summary,
+    hasWarning ? "图片降级 warning" : "",
+    report.providerSupportsVision ? "providerSupportsVision" : "providerNoVision",
+    report.visionAdapterEnabled ? "visionAdapterEnabled" : "visionAdapterDisabled",
+    ...report.attachments.flatMap((attachment) => [
+      attachment.id,
+      attachment.requestedUsage,
+      attachment.effectiveUsage,
+      attachment.modelInput,
+      attachment.warning ?? "",
+    ]),
+  ];
+}
+
 export function formatHistoryTime(timestamp: number) {
   const deltaSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
   if (deltaSeconds < 60) {
@@ -513,6 +866,113 @@ export function formatHistoryTime(timestamp: number) {
 
 export function compactId(value: string) {
   return value.length > 12 ? `${value.slice(0, 8)}...` : value;
+}
+
+export function buildAiAgentRunViewModel({
+  finalMessage,
+  snapshot,
+}: {
+  finalMessage?: string | null;
+  snapshot: AiAgentRunSnapshot;
+}): AiAgentRunViewModel {
+  const finalStep = [...snapshot.steps]
+    .reverse()
+    .find((step) => step.kind === "final" && step.summary?.trim());
+  const normalizedFinal =
+    finalMessage?.trim() ||
+    finalStep?.summary?.trim() ||
+    null;
+
+  return {
+    canCancel:
+      snapshot.run.status === "running" ||
+      snapshot.run.status === "waitingApproval",
+    canRetry:
+      snapshot.run.status === "blocked" ||
+      snapshot.run.status === "cancelled",
+    finalMessage: normalizedFinal,
+    items: snapshot.steps.map(aiAgentRunStepToTimelineItem),
+    runId: snapshot.run.id,
+    status: snapshot.run.status,
+    statusLabel: aiAgentRunStatusLabel(snapshot.run.status),
+    statusTone: aiAgentRunStatusTone(snapshot.run.status),
+  };
+}
+
+export function aiAgentRunStepToTimelineItem(
+  step: AiAgentRunStep,
+): AiAgentRunTimelineItem {
+  return {
+    detail: aiAgentRunStepDetail(step),
+    id: step.id,
+    label: aiAgentRunStepKindLabel(step.kind),
+    status: step.status,
+    toolId: step.toolId,
+  };
+}
+
+export function aiAgentRunStatusLabel(status: AiAgentRunStatus) {
+  const labels: Record<AiAgentRunStatus, string> = {
+    blocked: "已阻塞",
+    cancelled: "已取消",
+    completed: "已完成",
+    running: "运行中",
+    waitingApproval: "等待确认",
+  };
+  return labels[status];
+}
+
+export function aiAgentRunStatusTone(status: AiAgentRunStatus) {
+  const tones: Record<AiAgentRunStatus, string> = {
+    blocked:
+      "border-rose-400/25 bg-rose-500/10 text-rose-700 dark:text-rose-100",
+    cancelled:
+      "border-zinc-400/25 bg-zinc-500/10 text-zinc-700 dark:text-zinc-200",
+    completed:
+      "border-emerald-400/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-100",
+    running:
+      "border-sky-400/25 bg-sky-500/10 text-sky-700 dark:text-sky-100",
+    waitingApproval:
+      "border-amber-400/25 bg-amber-500/10 text-amber-700 dark:text-amber-100",
+  };
+  return tones[status];
+}
+
+export function aiAgentRunStepStatusTone(status: AiAgentRunStepStatus) {
+  const tones: Record<AiAgentRunStepStatus, string> = {
+    blocked:
+      "text-rose-600 dark:text-rose-200",
+    cancelled:
+      "text-zinc-500 dark:text-zinc-300",
+    failed:
+      "text-rose-600 dark:text-rose-200",
+    pending:
+      "text-zinc-500 dark:text-zinc-300",
+    running:
+      "text-sky-600 dark:text-sky-200",
+    succeeded:
+      "text-emerald-600 dark:text-emerald-200",
+    waitingApproval:
+      "text-amber-600 dark:text-amber-200",
+  };
+  return tones[status];
+}
+
+function aiAgentRunStepKindLabel(kind: AiAgentRunStepKind) {
+  const labels: Record<AiAgentRunStepKind, string> = {
+    approval: "确认",
+    error: "阻塞",
+    final: "最终回复",
+    model: "模型判断",
+    observation: "工具结果",
+    plan: "计划",
+    toolCall: "工具调用",
+  };
+  return labels[kind];
+}
+
+function aiAgentRunStepDetail(step: AiAgentRunStep) {
+  return step.summary?.trim() || step.toolId || undefined;
 }
 
 export function formatBytes(bytes: number) {

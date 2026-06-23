@@ -16,7 +16,11 @@ export function normalizeSshOptionsForForm(options: SshOptions | undefined): Ssh
       options?.jumpHosts?.map((jumpHost) =>
         normalizeJumpHostDraft({
           authType: jumpHost.authType ?? "agent",
-          credentialRef: jumpHost.credentialRef,
+          credentialRef: normalizePrivateKeyPath(jumpHost.credentialRef),
+          credentialSecret:
+            (jumpHost.authType ?? "agent") === "agent"
+              ? undefined
+              : trimOptional(jumpHost.credentialSecret),
           host: jumpHost.host ?? "",
           name: jumpHost.name ?? "",
           port: jumpHost.port ?? 22,
@@ -26,7 +30,7 @@ export function normalizeSshOptionsForForm(options: SshOptions | undefined): Ssh
     proxy: {
       ...defaults.proxy,
       ...options?.proxy,
-      credentialRef: trimOptional(options?.proxy?.credentialRef),
+      credentialRef: undefined,
       host: trimOptional(options?.proxy?.host),
       username: trimOptional(options?.proxy?.username),
     },
@@ -73,7 +77,7 @@ export function normalizeSshOptionsForRequest(options: SshOptions): SshOptions {
       ? createDefaultSshOptions().proxy
       : {
           ...normalized.proxy,
-          credentialRef: trimOptional(normalized.proxy.credentialRef),
+          credentialRef: undefined,
           host: trimOptional(normalized.proxy.host),
           username: trimOptional(normalized.proxy.username),
         };
@@ -117,7 +121,11 @@ export function normalizeTunnelDraft(tunnel: SshTunnelOptions): SshTunnelOptions
 export function normalizeJumpHostDraft(jumpHost: SshJumpHostOptions): SshJumpHostOptions {
   return {
     authType: jumpHost.authType,
-    credentialRef: trimOptional(jumpHost.credentialRef),
+    credentialRef: normalizePrivateKeyPath(jumpHost.credentialRef),
+    credentialSecret:
+      jumpHost.authType === "agent"
+        ? undefined
+        : trimOptional(jumpHost.credentialSecret),
     host: trimText(jumpHost.host),
     name: trimText(jumpHost.name),
     port: jumpHost.port,
@@ -132,6 +140,11 @@ export function trimText(value: string | undefined) {
 export function trimOptional(value: string | undefined) {
   const trimmed = value?.trim();
   return trimmed || undefined;
+}
+
+export function normalizePrivateKeyPath(value: string | undefined) {
+  const trimmed = trimOptional(value);
+  return trimmed?.startsWith("credential:") ? undefined : trimmed;
 }
 
 export function optionalNumber(value: string) {
@@ -184,7 +197,8 @@ export function buildSshRequest({
 }): RemoteHostCreateRequest {
   return {
     authType,
-    credentialRef: credentialRef.trim() || undefined,
+    credentialRef:
+      authType === "key" ? normalizePrivateKeyPath(credentialRef) : undefined,
     credentialSecret: credentialSecret.trim() ? credentialSecret : undefined,
     groupId: groupId || undefined,
     host: host.trim(),
@@ -356,17 +370,16 @@ export function validateSshRequest(request: RemoteHostCreateRequest) {
   }
   if (
     request.authType === "password" &&
-    !request.credentialSecret &&
-    !request.credentialRef
+    !request.credentialSecret
   ) {
-    return "密码认证需要输入密码或已有凭据引用。";
+    return "密码认证需要输入 SSH 密码。";
   }
   if (
     request.authType === "key" &&
     !request.credentialSecret &&
     !request.credentialRef
   ) {
-    return "密钥认证需要填写私钥路径、已有凭据引用或私钥内容。";
+    return "密钥认证需要填写私钥路径或私钥内容。";
   }
   return validatePort(request.port) ?? validateSshOptions(request.sshOptions);
 }
@@ -388,6 +401,16 @@ export function validateSshOptions(options: SshOptions | undefined) {
     }
     if (!jumpHost.username) {
       return `第 ${index + 1} 个跳板机需要填写用户名。`;
+    }
+    if (jumpHost.authType === "password" && !jumpHost.credentialSecret) {
+      return `第 ${index + 1} 个跳板机密码认证需要输入 SSH 密码。`;
+    }
+    if (
+      jumpHost.authType === "key" &&
+      !jumpHost.credentialRef &&
+      !jumpHost.credentialSecret
+    ) {
+      return `第 ${index + 1} 个跳板机密钥认证需要填写私钥路径或私钥内容。`;
     }
     const portError = validatePort(jumpHost.port);
     if (portError) {

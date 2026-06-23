@@ -50,6 +50,7 @@ fn confirm_history_search_returns_matching_command_summary() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("confirm history search");
@@ -85,6 +86,7 @@ fn confirm_diagnostics_runtime_health_returns_redacted_summary() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("confirm diagnostics runtime health");
@@ -119,6 +121,7 @@ fn confirm_diagnostics_create_bundle_writes_redacted_bundle_and_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("confirm diagnostics create bundle");
@@ -160,6 +163,7 @@ fn confirm_workspace_split_records_successful_client_dispatch_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("approve workspace split");
@@ -190,6 +194,7 @@ fn confirm_workspace_focus_tab_records_successful_client_dispatch_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("approve workspace focus tab");
@@ -220,6 +225,7 @@ fn confirm_workspace_open_tool_records_successful_client_dispatch_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("approve workspace open tool");
@@ -253,6 +259,7 @@ fn confirm_terminal_create_records_client_dispatch_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("approve terminal create");
@@ -287,6 +294,7 @@ fn confirm_ssh_connect_records_client_dispatch_audit_for_saved_host() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("approve ssh connect");
@@ -320,6 +328,7 @@ fn confirm_ssh_connect_unknown_host_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("unknown ssh host should become audit record");
@@ -356,6 +365,7 @@ fn confirm_ssh_command_unknown_host_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("unknown ssh command host should become audit record");
@@ -392,6 +402,7 @@ fn audit_preserves_dangerous_ssh_command_risk_summary() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: false,
+                audit_context: None,
             },
         )
         .expect("reject dangerous ssh command");
@@ -445,6 +456,7 @@ fn confirm_server_info_snapshot_unknown_host_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("unknown server info host should become audit record");

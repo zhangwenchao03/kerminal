@@ -46,10 +46,47 @@ import {
   isPinnedMachineGroup,
   machineIcon,
   machineTitle,
+  sidebarDisplayStatus,
   statusTitle,
 } from "./MachineSidebar.parts";
+import {
+  MACHINE_GROUP_MENU_DOMAIN,
+  MACHINE_SIDEBAR_ROOT_MENU_DOMAIN,
+  machineSidebarMenuDomainForContextMenu,
+} from "./machineSidebarMenuModel";
 
 export type { ConnectionOpenOptions } from "./MachineSidebar.shared";
+
+const sidebarContextMenuSurfaceClassName =
+  "kerminal-floating-enter fixed z-[1000] w-56 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] p-1.5 text-sm shadow-2xl shadow-black/20 backdrop-blur-xl dark:shadow-black/50";
+const sidebarAccentIconButtonClassName =
+  "kerminal-pressable h-8 w-8 rounded-lg text-sky-600 hover:bg-[var(--surface-hover)] dark:text-sky-300";
+const sidebarIconButtonClassName =
+  "kerminal-pressable h-8 w-8 rounded-lg text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50";
+const sidebarSearchInputClassName =
+  "kerminal-field-surface h-9 w-full rounded-xl border pl-9 pr-3 text-sm text-zinc-950 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600";
+const sidebarGroupButtonClassName =
+  "kerminal-focus-ring kerminal-pressable mb-1 flex h-8 w-full items-center justify-between rounded-lg px-2 text-left text-xs font-medium text-zinc-500 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-100";
+const sidebarCountBadgeClassName =
+  "rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[11px] text-zinc-500 dark:text-zinc-400";
+const sidebarMachineButtonBaseClassName =
+  "kerminal-focus-ring kerminal-pressable flex min-h-[52px] w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition";
+const sidebarMachineDraggingClassName =
+  "scale-[0.98] bg-sky-500/6 opacity-35 ring-2 ring-dashed ring-sky-400/70 dark:bg-sky-400/8";
+const sidebarMachineSelectedClassName =
+  "bg-[var(--surface-selected)] text-zinc-950 shadow-sm shadow-sky-950/5 ring-1 ring-sky-500/15 dark:text-zinc-50 dark:ring-sky-300/15";
+const sidebarMachineIdleClassName =
+  "text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50";
+const sidebarStatusDotClassName =
+  "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-[var(--surface-nav-glass)]";
+const sidebarTagBadgeClassName =
+  "max-w-[84px] truncate rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] text-zinc-500 dark:text-zinc-400";
+const sidebarEmptyStateClassName =
+  "kerminal-muted-surface rounded-2xl border border-dashed px-3 py-6 text-center text-sm text-zinc-500";
+const sidebarFooterClassName =
+  "flex items-center justify-between border-t border-[var(--border-subtle)] px-4 py-3";
+const sidebarSettingsSelectedClassName =
+  "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100";
 
 
 export function MachineSidebar({
@@ -453,9 +490,7 @@ export function MachineSidebar({
       ? createPortal(
           <div
             aria-label="主机操作菜单"
-            className={cn(
-              "fixed z-50 w-56 rounded-xl border border-black/10 bg-white p-1.5 text-sm shadow-xl shadow-black/15 dark:border-white/10 dark:bg-zinc-950",
-            )}
+            className={sidebarContextMenuSurfaceClassName}
             onClick={(event) => event.stopPropagation()}
             onContextMenu={(event) => {
               event.preventDefault();
@@ -463,6 +498,9 @@ export function MachineSidebar({
             }}
             ref={contextMenuRef}
             role="menu"
+            data-menu-domain={machineSidebarMenuDomainForContextMenu(
+              contextMenu.type,
+            )}
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >
             {contextMenu.type === "root" ? (
@@ -471,6 +509,8 @@ export function MachineSidebar({
                   disabled={!onAddConnection}
                   icon={<Plus className="h-4 w-4" />}
                   label="添加连接"
+                  menuAction="addConnection"
+                  menuDomain={MACHINE_SIDEBAR_ROOT_MENU_DOMAIN}
                   onClick={() =>
                     runMenuAction(() => onAddConnection?.({ mode: "ssh" }))
                   }
@@ -479,6 +519,8 @@ export function MachineSidebar({
                   disabled={!onAddGroup}
                   icon={<FolderPlus className="h-4 w-4" />}
                   label="新建分组"
+                  menuAction="addGroup"
+                  menuDomain={MACHINE_SIDEBAR_ROOT_MENU_DOMAIN}
                   onClick={() => runMenuAction(onAddGroup)}
                 />
               </>
@@ -489,6 +531,8 @@ export function MachineSidebar({
                   disabled={!onAddMachine}
                   icon={<Plus className="h-4 w-4" />}
                   label="添加连接到此分组"
+                  menuAction="addMachineToGroup"
+                  menuDomain={MACHINE_GROUP_MENU_DOMAIN}
                   onClick={() =>
                     runMenuAction(() => onAddMachine?.(contextGroup.id))
                   }
@@ -497,6 +541,8 @@ export function MachineSidebar({
                   disabled={!onEditGroup}
                   icon={<Pencil className="h-4 w-4" />}
                   label="重命名分组"
+                  menuAction="editGroup"
+                  menuDomain={MACHINE_GROUP_MENU_DOMAIN}
                   onClick={() =>
                     runMenuAction(() => onEditGroup?.(contextGroup.id))
                   }
@@ -505,6 +551,8 @@ export function MachineSidebar({
                   disabled={!onPinGroup}
                   icon={<Pin className="h-4 w-4" />}
                   label={contextGroupPinned ? "取消置顶" : "置顶分组"}
+                  menuAction="togglePinGroup"
+                  menuDomain={MACHINE_GROUP_MENU_DOMAIN}
                   onClick={() =>
                     runMenuAction(() =>
                       onPinGroup?.(contextGroup.id, !contextGroupPinned),
@@ -516,6 +564,8 @@ export function MachineSidebar({
                   disabled={!onDeleteGroup}
                   icon={<Trash2 className="h-4 w-4" />}
                   label="删除分组"
+                  menuAction="deleteGroup"
+                  menuDomain={MACHINE_GROUP_MENU_DOMAIN}
                   onClick={() =>
                     runMenuAction(() => onDeleteGroup?.(contextGroup.id))
                   }
@@ -524,6 +574,8 @@ export function MachineSidebar({
                   disabled={!onAddGroup}
                   icon={<FolderPlus className="h-4 w-4" />}
                   label="新建分组"
+                  menuAction="addGroup"
+                  menuDomain={MACHINE_GROUP_MENU_DOMAIN}
                   onClick={() => runMenuAction(onAddGroup)}
                 />
               </>
@@ -612,7 +664,7 @@ export function MachineSidebar({
   return (
     <aside
       aria-label="主机侧边栏"
-      className="relative flex h-full w-full min-w-[220px] flex-col border-r border-black/8 bg-white/78 backdrop-blur-xl dark:border-white/8 dark:bg-zinc-950/78"
+      className="kerminal-material-nav relative flex h-full w-full min-w-[220px] flex-col border-r"
       onContextMenu={(event) => openContextMenu(event, { type: "root" })}
     >
       <div className="space-y-3 px-4 pb-3 pt-4">
@@ -628,7 +680,7 @@ export function MachineSidebar({
           <div className="flex shrink-0 items-center gap-1">
             <Button
               aria-label="打开 SFTP 传输工作台"
-              className="h-8 w-8 rounded-lg text-sky-600 dark:text-sky-300"
+              className={sidebarAccentIconButtonClassName}
               disabled={!onOpenTransferWorkbench}
               onClick={onOpenTransferWorkbench}
               size="icon"
@@ -641,7 +693,7 @@ export function MachineSidebar({
             <Button
               aria-label={groupToggleLabel}
               aria-pressed={allGroupsCollapsed}
-              className="h-8 w-8 rounded-lg text-zinc-500 dark:text-zinc-400"
+              className={sidebarIconButtonClassName}
               disabled={groups.length === 0}
               onClick={toggleAllGroups}
               size="icon"
@@ -660,7 +712,7 @@ export function MachineSidebar({
             className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500"
           />
           <input
-            className="h-9 w-full rounded-xl border border-black/8 bg-white/80 pl-9 pr-3 text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-sky-400/50 focus:ring-4 focus:ring-sky-500/10 dark:border-white/8 dark:bg-white/6 dark:text-zinc-100 dark:placeholder:text-zinc-600"
+            className={sidebarSearchInputClassName}
             onChange={(event) => onSearchChange(event.currentTarget.value)}
             placeholder="搜索主机、分组或标签..."
             value={search}
@@ -688,7 +740,7 @@ export function MachineSidebar({
             >
               <button
                 aria-expanded={!collapsed}
-                className="mb-1 flex h-8 w-full items-center justify-between rounded-lg px-2 text-left text-xs font-medium text-zinc-500 transition hover:bg-black/5 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-white/7 dark:hover:text-zinc-100"
+                className={sidebarGroupButtonClassName}
                 onClick={() => toggleGroup(group.id)}
                 type="button"
               >
@@ -707,7 +759,7 @@ export function MachineSidebar({
                       松开移入
                     </span>
                   ) : null}
-                  <span className="rounded-full bg-black/5 px-2 py-0.5 text-[11px] text-zinc-500 dark:bg-white/8 dark:text-zinc-400">
+                  <span className={sidebarCountBadgeClassName}>
                     {group.machines.length}
                   </span>
                 </span>
@@ -717,9 +769,10 @@ export function MachineSidebar({
                   {group.machines.map((machine) => {
                     const selected = machine.id === selectedMachineId;
                     const Icon = machineIcon(machine, group);
-                    const displayStatus = openMachineIdSet.has(machine.id)
-                      ? "online"
-                      : machine.status;
+                    const displayStatus = sidebarDisplayStatus(
+                      machine,
+                      openMachineIdSet.has(machine.id),
+                    );
 
                     return (
                       <button
@@ -728,13 +781,13 @@ export function MachineSidebar({
                         }
                         aria-pressed={selected}
                         className={cn(
-                          "flex min-h-[52px] w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition",
+                          sidebarMachineButtonBaseClassName,
                           onMoveMachine && "cursor-grab active:cursor-grabbing",
                           draggingMachineId === machine.id &&
-                            "scale-[0.98] bg-sky-500/6 opacity-35 ring-2 ring-dashed ring-sky-400/70 dark:bg-sky-400/8",
+                            sidebarMachineDraggingClassName,
                           selected
-                            ? "bg-black/7 text-zinc-950 shadow-sm dark:bg-white/12 dark:text-zinc-50"
-                            : "text-zinc-600 hover:bg-black/5 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-white/7 dark:hover:text-zinc-50",
+                            ? sidebarMachineSelectedClassName
+                            : sidebarMachineIdleClassName,
                         )}
                         key={machine.id}
                         onClick={() => handleMachineClick(machine)}
@@ -768,7 +821,7 @@ export function MachineSidebar({
                           <Icon className="h-4 w-4" />
                           <span
                             className={cn(
-                              "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-zinc-950",
+                              sidebarStatusDotClassName,
                               statusClasses[displayStatus],
                             )}
                             title={statusTitle(displayStatus)}
@@ -785,7 +838,7 @@ export function MachineSidebar({
                             <span className="mt-1 flex min-w-0 flex-wrap gap-1">
                               {machine.tags.slice(0, 3).map((tag) => (
                                 <span
-                                  className="max-w-[84px] truncate rounded-md bg-black/5 px-1.5 py-0.5 text-[10px] text-zinc-500 dark:bg-white/8 dark:text-zinc-400"
+                                  className={sidebarTagBadgeClassName}
                                   key={tag}
                                 >
                                   {tag}
@@ -809,19 +862,18 @@ export function MachineSidebar({
         })}
 
         {visibleGroups.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-black/10 px-3 py-6 text-center text-sm text-zinc-500 dark:border-white/10">
+          <div className={sidebarEmptyStateClassName}>
             没有匹配的主机。
           </div>
         ) : null}
       </div>
 
-      <div className="flex items-center justify-between border-t border-black/8 px-4 py-3 dark:border-white/8">
+      <div className={sidebarFooterClassName}>
         <Button
           aria-label="打开设置"
           aria-pressed={settingsSelected}
           className={cn(
-            settingsSelected &&
-              "bg-sky-500/12 text-sky-700 dark:bg-sky-400/15 dark:text-sky-100",
+            settingsSelected && sidebarSettingsSelectedClassName,
           )}
           onClick={onOpenSettings}
           size="sm"

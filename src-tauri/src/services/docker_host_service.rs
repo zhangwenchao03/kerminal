@@ -21,10 +21,7 @@ use crate::{
         terminal::{TerminalCreateRequest, TerminalOutputEvent, TerminalSessionSummary},
     },
     paths::KerminalPaths,
-    services::{
-        credential_service::CredentialService, ssh_command_service::SshCommandService,
-        terminal_manager::TerminalManager,
-    },
+    services::{ssh_command_service::SshCommandService, terminal_manager::TerminalManager},
     storage::SqliteStore,
 };
 use serde_json::Value;
@@ -97,7 +94,6 @@ impl DockerHostService {
     pub async fn list_containers(
         &self,
         storage: &SqliteStore,
-        credentials: &CredentialService,
         paths: &KerminalPaths,
         ssh_commands: &SshCommandService,
         request: DockerContainerListRequest,
@@ -105,9 +101,8 @@ impl DockerHostService {
         let host_id = normalize_required("SSH 主机 id", &request.host_id)?;
         let command = build_container_list_script(request.runtime, request.include_stopped);
         let output = ssh_commands
-            .execute_with_credentials(
+            .execute_native(
                 storage,
-                credentials,
                 paths,
                 SshCommandRequest {
                     host_id: host_id.clone(),
@@ -146,7 +141,6 @@ impl DockerHostService {
     pub async fn list_directory(
         &self,
         storage: &SqliteStore,
-        credentials: &CredentialService,
         paths: &KerminalPaths,
         ssh_commands: &SshCommandService,
         request: DockerContainerPathRequest,
@@ -154,7 +148,6 @@ impl DockerHostService {
         let request = normalize_path_request(request)?;
         let output = execute_container_script(
             storage,
-            credentials,
             paths,
             ssh_commands,
             ContainerScriptRequest {
@@ -190,7 +183,6 @@ LC_ALL=C ls -la
     pub async fn preview_file(
         &self,
         storage: &SqliteStore,
-        credentials: &CredentialService,
         paths: &KerminalPaths,
         ssh_commands: &SshCommandService,
         request: DockerContainerPreviewRequest,
@@ -200,7 +192,6 @@ LC_ALL=C ls -la
         let preview_args = [request.path.clone(), max_bytes.to_string()];
         let output = execute_container_script(
             storage,
-            credentials,
             paths,
             ssh_commands,
             ContainerScriptRequest {
@@ -241,20 +232,18 @@ dd if="$target" bs=1 count="$max_bytes" 2>/dev/null
     pub async fn read_text_file(
         &self,
         storage: &SqliteStore,
-        credentials: &CredentialService,
         paths: &KerminalPaths,
         ssh_commands: &SshCommandService,
         request: DockerContainerReadTextFileRequest,
     ) -> AppResult<DockerContainerReadTextFileResponse> {
         let request = normalize_read_text_file_request(request)?;
-        read_container_text_file(storage, credentials, paths, ssh_commands, request).await
+        read_container_text_file(storage, paths, ssh_commands, request).await
     }
 
     /// 写入容器内文本文件供工作区编辑器使用。
     pub async fn write_text_file(
         &self,
         storage: &SqliteStore,
-        credentials: &CredentialService,
         paths: &KerminalPaths,
         ssh_commands: &SshCommandService,
         request: DockerContainerWriteTextFileRequest,
@@ -265,7 +254,7 @@ dd if="$target" bs=1 count="$max_bytes" 2>/dev/null
 
         if request.create && !request.overwrite_on_conflict {
             if let Ok(existing_revision) =
-                container_file_revision(storage, credentials, paths, ssh_commands, &request).await
+                container_file_revision(storage, paths, ssh_commands, &request).await
             {
                 return Err(AppError::Docker(format!(
                     "容器文件已存在，不能按新建方式覆盖: {} ({:?})",
@@ -276,7 +265,7 @@ dd if="$target" bs=1 count="$max_bytes" 2>/dev/null
 
         let current_revision =
             if request.expected_revision.is_some() || request.overwrite_on_conflict {
-                container_file_revision(storage, credentials, paths, ssh_commands, &request)
+                container_file_revision(storage, paths, ssh_commands, &request)
                     .await
                     .ok()
             } else {
@@ -310,8 +299,7 @@ dd if="$target" bs=1 count="$max_bytes" 2>/dev/null
         let _ = fs::remove_file(&temp_path);
         upload_result?;
 
-        let revision =
-            container_file_revision(storage, credentials, paths, ssh_commands, &request).await?;
+        let revision = container_file_revision(storage, paths, ssh_commands, &request).await?;
         Ok(DockerContainerWriteTextFileResponse {
             host_id: request.host_id,
             container_id: request.container_id,
@@ -327,7 +315,6 @@ dd if="$target" bs=1 count="$max_bytes" 2>/dev/null
     pub async fn create_directory(
         &self,
         storage: &SqliteStore,
-        credentials: &CredentialService,
         paths: &KerminalPaths,
         ssh_commands: &SshCommandService,
         request: DockerContainerPathRequest,
@@ -336,7 +323,6 @@ dd if="$target" bs=1 count="$max_bytes" 2>/dev/null
         ensure_not_root_for_write(&request.path)?;
         execute_container_script(
             storage,
-            credentials,
             paths,
             ssh_commands,
             ContainerScriptRequest {
@@ -359,7 +345,6 @@ mkdir -p "$target"
     pub async fn delete_path(
         &self,
         storage: &SqliteStore,
-        credentials: &CredentialService,
         paths: &KerminalPaths,
         ssh_commands: &SshCommandService,
         request: DockerContainerDeleteRequest,
@@ -377,7 +362,6 @@ rm -f "$target"
         };
         execute_container_script(
             storage,
-            credentials,
             paths,
             ssh_commands,
             ContainerScriptRequest {
@@ -398,7 +382,6 @@ rm -f "$target"
     pub async fn rename_path(
         &self,
         storage: &SqliteStore,
-        credentials: &CredentialService,
         paths: &KerminalPaths,
         ssh_commands: &SshCommandService,
         request: DockerContainerRenameRequest,
@@ -409,7 +392,6 @@ rm -f "$target"
         let rename_args = [request.from_path, request.to_path];
         execute_container_script(
             storage,
-            credentials,
             paths,
             ssh_commands,
             ContainerScriptRequest {
@@ -433,7 +415,6 @@ mv "$from_path" "$to_path"
     pub async fn chmod_path(
         &self,
         storage: &SqliteStore,
-        credentials: &CredentialService,
         paths: &KerminalPaths,
         ssh_commands: &SshCommandService,
         request: DockerContainerChmodRequest,
@@ -443,7 +424,6 @@ mv "$from_path" "$to_path"
         let chmod_args = [request.path, request.mode];
         execute_container_script(
             storage,
-            credentials,
             paths,
             ssh_commands,
             ContainerScriptRequest {

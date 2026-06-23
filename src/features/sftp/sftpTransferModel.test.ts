@@ -9,8 +9,12 @@ import type { SftpTransferSummary } from "../../lib/sftpApi";
 import { fileNameFromPath, formatFileSize } from "./sftpFileUtils";
 import {
   activeTransferCount,
+  canCancelTransfer,
+  canClearFinishedTransfers,
   formatTransferBytes,
   isFinishedTransfer,
+  mergeTransferSnapshot,
+  replaceTransferQueue,
   sortTransfers,
   transferPathSummary,
   transferPercentLabel,
@@ -69,6 +73,52 @@ describe("sftpTransferModel", () => {
     expect(upsertTransfer([original], replacement)).toEqual([replacement]);
   });
 
+  it("merges a transfer snapshot without mutating the existing queue", () => {
+    const original = transfer({
+      bytesTransferred: 20,
+      createdAt: 3,
+      id: "same",
+      status: "queued",
+    });
+    const newerRunning = transfer({
+      createdAt: 1,
+      id: "newer-running",
+      status: "running",
+    });
+    const replacement = transfer({
+      bytesTransferred: 80,
+      createdAt: 2,
+      id: "same",
+      status: "failed",
+    });
+    const queue = [original, newerRunning];
+
+    const merged = mergeTransferSnapshot(queue, replacement);
+
+    expect(queue).toEqual([original, newerRunning]);
+    expect(merged.map((item) => item.id)).toEqual(["newer-running", "same"]);
+    expect(merged[1]).toBe(replacement);
+  });
+
+  it("sorts replacement queue results without mutating the backend result", () => {
+    const running = transfer({
+      createdAt: 1,
+      id: "running",
+      status: "running",
+    });
+    const queued = transfer({
+      createdAt: 5,
+      id: "queued",
+      status: "queued",
+    });
+    const backendQueue = [queued, running];
+
+    const replaced = replaceTransferQueue(backendQueue);
+
+    expect(backendQueue).toEqual([queued, running]);
+    expect(replaced.map((item) => item.id)).toEqual(["running", "queued"]);
+  });
+
   it("calculates percent boundaries for unknown, overrun, and completed totals", () => {
     expect(
       transferProgressPercent(
@@ -83,6 +133,20 @@ describe("sftpTransferModel", () => {
         transfer({ bytesTransferred: 0, status: "succeeded", totalBytes: 0 }),
       ),
     ).toBe(100);
+  });
+
+  it("keeps archive zip writing visible after the remote download reaches its byte total", () => {
+    const archiving = transfer({
+      bytesTransferred: 100,
+      operation: "archiveDownload",
+      phase: "archiving",
+      status: "running",
+      totalBytes: 100,
+    });
+
+    expect(transferProgressPercent(archiving)).toBe(96);
+    expect(transferPercentLabel(archiving)).toBe("压缩中");
+    expect(transferStatusLabel(archiving.status, archiving.phase)).toBe("压缩中");
   });
 
   it("formats status, title, path, percent, and byte summaries", () => {
@@ -126,6 +190,47 @@ describe("sftpTransferModel", () => {
     expect(transferTitle(remoteCopy)).toBe("app.log");
     expect(transferPathSummary(remoteCopy)).toBe(
       "left:/tmp/app.log -> right:/var/log/app.log",
+    );
+  });
+
+  it("labels legacy snake_case remote endpoints without showing undefined", () => {
+    const archiveDownload = transfer({
+      operation: "archiveDownload",
+      source: {
+        host_id: "source-host",
+        host_label: "dev",
+        kind: "remote",
+        path: "/bwy/app/abc/.codex/jdk-21.0.2",
+      } as unknown as SftpTransferSummary["source"],
+      target: {
+        kind: "local",
+        path: "C:\\Users\\24052\\Downloads\\jdk-21.0.2.zip",
+      },
+    });
+
+    expect(transferPathSummary(archiveDownload)).toBe(
+      "dev:/bwy/app/abc/.codex/jdk-21.0.2 -> C:\\Users\\24052\\Downloads\\jdk-21.0.2.zip",
+    );
+  });
+
+  it("falls back from placeholder endpoint labels before rendering paths", () => {
+    const archiveDownload = transfer({
+      operation: "archiveDownload",
+      source: {
+        host_id: "source-host",
+        host_label: "undefined",
+        hostLabel: "null",
+        kind: "remote",
+        path: "/bwy/app/abc/.codex/jdk-21.0.2",
+      } as unknown as SftpTransferSummary["source"],
+      target: {
+        kind: "local",
+        path: "C:\\Users\\24052\\Downloads\\jdk-21.0.2.zip",
+      },
+    });
+
+    expect(transferPathSummary(archiveDownload)).toBe(
+      "source-host:/bwy/app/abc/.codex/jdk-21.0.2 -> C:\\Users\\24052\\Downloads\\jdk-21.0.2.zip",
     );
   });
 
@@ -174,6 +279,47 @@ describe("sftpTransferModel", () => {
       "failed",
       "canceled",
     ]);
+  });
+
+  it("allows cancel only for queued or running transfers without a pending cancel request", () => {
+    expect(canCancelTransfer(transfer({ status: "queued" }))).toBe(true);
+    expect(canCancelTransfer(transfer({ status: "running" }))).toBe(true);
+    expect(
+      canCancelTransfer(
+        transfer({ cancelRequested: true, status: "queued" }),
+      ),
+    ).toBe(false);
+    expect(
+      canCancelTransfer(
+        transfer({ cancelRequested: true, status: "running" }),
+      ),
+    ).toBe(false);
+    expect(canCancelTransfer(transfer({ status: "succeeded" }))).toBe(false);
+    expect(canCancelTransfer(transfer({ status: "failed" }))).toBe(false);
+    expect(canCancelTransfer(transfer({ status: "canceled" }))).toBe(false);
+  });
+
+  it("allows clearing only when the transfer queue contains finished tasks", () => {
+    expect(
+      canClearFinishedTransfers([
+        transfer({ id: "queued", status: "queued" }),
+        transfer({ id: "running", status: "running" }),
+      ]),
+    ).toBe(false);
+    expect(
+      canClearFinishedTransfers([
+        transfer({ id: "queued", status: "queued" }),
+        transfer({ id: "succeeded", status: "succeeded" }),
+      ]),
+    ).toBe(true);
+    expect(
+      canClearFinishedTransfers([transfer({ id: "failed", status: "failed" })]),
+    ).toBe(true);
+    expect(
+      canClearFinishedTransfers([
+        transfer({ id: "canceled", status: "canceled" }),
+      ]),
+    ).toBe(true);
   });
 
   it("formats file names and sizes used by transfer labels", () => {

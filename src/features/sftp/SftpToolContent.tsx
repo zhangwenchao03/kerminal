@@ -1,31 +1,28 @@
 import {
+  type SetStateAction,
   useCallback,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
 } from "react";
 import { listDockerContainerDirectory } from "../../lib/containerFilesApi";
 import {
   listSftpDirectory,
-  listSftpTransfers,
-  trustSftpHostKey,
   type SftpEntry,
-  type SftpTransferSummary,
 } from "../../lib/sftpApi";
-import { executeSshCommand } from "../../lib/sshCommandApi";
 import type { Machine } from "../workspace/types";
-import { sortTransfers, upsertTransfer } from "./sftpTransferModel";
+import { SftpTransferConflictDialog } from "./SftpTransferConflictDialog";
 import { SftpBrowserView } from "./sftp-tool-content/SftpBrowserView";
 import { useSftpTransferActions } from "./sftp-tool-content/useSftpTransferActions";
+import { useSftpContextMenuActions } from "./sftp-tool-content/useSftpContextMenuActions";
+import { useSftpLocalUploadDropActions } from "./sftp-tool-content/useSftpLocalUploadDropActions";
 import { useSftpDialogActions } from "./sftp-tool-content/useSftpDialogActions";
-import { buildSftpCwdTrackingSetupScript } from "./sftp-tool-content/sftpCwdTrackingScript";
-import {
-  clampContextMenuPosition,
-  detachedWorkspaceLabel,
-  detachedWorkspaceUrl,
-  isRunningInTauriWebview,
-} from "./sftp-tool-content/sftpDragDropModel";
+import { useSftpRemoteSetupActions } from "./sftp-tool-content/useSftpRemoteSetupActions";
+import { useSftpTransferSync } from "./sftp-tool-content/useSftpTransferSync";
+import { useSftpWorkspaceDialogActions } from "./sftp-tool-content/useSftpWorkspaceDialogActions";
+import { clampContextMenuPosition } from "./sftp-tool-content/sftpDragDropModel";
 import {
   isHiddenEntry,
   transferKindFromEntry,
@@ -36,28 +33,34 @@ import {
   resolveFileTarget,
 } from "./sftp-tool-content/sftpFileTargetModel";
 import {
-  errorMessage,
-  isFollowableRemotePath,
-  normalizeRemotePath,
-  parentRemotePath,
-} from "./sftp-tool-content/sftpPathModel";
-import { nextSelectedEntryPaths } from "./sftp-tool-content/sftpSelectionModel";
+  normalizeFollowedRemotePath,
+  resolveFollowedRemotePathChange,
+  resolveFollowTerminalDirectoryToggle,
+} from "./sftp-tool-content/sftpFollowDirectoryModel";
+import { normalizeRemotePath } from "./sftp-tool-content/sftpPathModel";
+import {
+  initialSftpRemoteBrowserState,
+  nextSftpRemoteBrowserRequestId,
+  normalizeSftpRemoteBrowserError,
+  resolveSftpRemoteBrowserSetState,
+  sftpRemoteBrowserReducer,
+  type SftpRemoteBrowserAction,
+} from "./sftp-tool-content/sftpRemoteBrowserModel";
+import {
+  nextContextMenuSelection,
+  nextSelectedEntryPaths,
+} from "./sftp-tool-content/sftpSelectionModel";
+import type { SftpWorkbenchClipboard } from "./sftpTransferClipboardModel";
 import type {
-  RemoteDirectoryListing,
   SftpClipboard,
   SftpContextMenuEvent,
   SftpContextMenuState,
   SftpDialogAction,
-  SftpMenuAction,
   SftpSelectionEvent,
   SftpStatus,
   SftpTransferTarget,
-  SftpWorkspaceDialog,
 } from "./sftp-tool-content/types";
-import {
-  SFTP_TRANSFER_UPDATED_EVENT,
-  TRANSIENT_ERROR_STATUS_MS,
-} from "./sftp-tool-content/types";
+import { TRANSIENT_ERROR_STATUS_MS } from "./sftp-tool-content/types";
 
 export type { SftpClipboard, SftpClipboardEntry } from "./sftp-tool-content/types";
 
@@ -71,7 +74,9 @@ export function SftpToolContent({
   showLocalTransferActions = true,
   showTransferStatusBar = true,
   sftpClipboard: controlledSftpClipboard,
+  transferViewScope,
   transferTarget,
+  workbenchClipboard,
 }: {
   active?: boolean;
   compactHeader?: boolean;
@@ -82,16 +87,16 @@ export function SftpToolContent({
   showLocalTransferActions?: boolean;
   showTransferStatusBar?: boolean;
   sftpClipboard?: SftpClipboard | null;
+  transferViewScope?: string | null;
   transferTarget?: SftpTransferTarget;
+  workbenchClipboard?: SftpWorkbenchClipboard | null;
 }) {
-  const [listing, setListing] = useState<RemoteDirectoryListing | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pathDraft, setPathDraft] = useState("/");
+  const [remoteBrowserState, dispatchRemoteBrowser] = useReducer(
+    sftpRemoteBrowserReducer,
+    initialSftpRemoteBrowserState,
+  );
   const [showHiddenFiles, setShowHiddenFiles] = useState(true);
   const [followTerminalDirectory, setFollowTerminalDirectory] = useState(false);
-  const [cwdTrackingSetupBusy, setCwdTrackingSetupBusy] = useState(false);
-  const [hostKeyTrustBusy, setHostKeyTrustBusy] = useState(false);
   const [operationStatus, setOperationStatus] = useState<SftpStatus | null>(
     null,
   );
@@ -101,18 +106,6 @@ export function SftpToolContent({
   const [dialogBusy, setDialogBusy] = useState(false);
   const [dialogStatus, setDialogStatus] = useState<SftpStatus | null>(null);
   const [contextMenu, setContextMenu] = useState<SftpContextMenuState | null>(null);
-  const [workspaceDialog, setWorkspaceDialog] =
-    useState<SftpWorkspaceDialog | null>(null);
-  const [workspaceDirty, setWorkspaceDirty] = useState(false);
-  const [workspaceCloseBlocked, setWorkspaceCloseBlocked] = useState(false);
-  const [workspacePopoutBusy, setWorkspacePopoutBusy] = useState(false);
-  const [transfers, setTransfers] = useState<SftpTransferSummary[]>([]);
-  const [selectedEntryPath, setSelectedEntryPath] = useState<string | null>(
-    null,
-  );
-  const [selectedEntryPaths, setSelectedEntryPaths] = useState<Set<string>>(
-    () => new Set(),
-  );
   const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
   const [uncontrolledSftpClipboard, setUncontrolledSftpClipboard] =
     useState<SftpClipboard | null>(null);
@@ -122,7 +115,8 @@ export function SftpToolContent({
   const [remoteDownloadDropActive, setRemoteDownloadDropActive] =
     useState(false);
   const lastAutoFollowedPathRef = useRef<string | undefined>(undefined);
-  const completedTransferIdsRef = useRef(new Set<string>());
+  const followTerminalDirectoryRef = useRef(followTerminalDirectory);
+  const remoteBrowserStateRef = useRef(remoteBrowserState);
   const dropZoneRef = useRef<HTMLDivElement | null>(null);
   const remoteDragEntriesRef = useRef<SftpEntry[]>([]);
   const uploadMenuRef = useRef<HTMLDivElement | null>(null);
@@ -149,12 +143,48 @@ export function SftpToolContent({
     },
     [onSftpClipboardChange],
   );
+  const {
+    closeWorkspaceDialog,
+    openEditorEntry,
+    openWorkspaceDirectory,
+    resetWorkspaceDialog,
+    setWorkspaceCloseBlocked,
+    setWorkspaceDirty,
+    setWorkspaceExpanded,
+    workspaceCloseBlocked,
+    workspaceDialog,
+    workspaceDirty,
+    workspaceExpanded,
+  } = useSftpWorkspaceDialogActions({
+    fileTarget,
+    setContextMenu,
+    setDialogAction,
+    setDialogStatus,
+    setOperationStatus,
+  });
 
+  followTerminalDirectoryRef.current = followTerminalDirectory;
+  remoteBrowserStateRef.current = remoteBrowserState;
+  const dispatchRemoteBrowserAction = useCallback(
+    (action: SftpRemoteBrowserAction) => {
+      remoteBrowserStateRef.current = sftpRemoteBrowserReducer(
+        remoteBrowserStateRef.current,
+        action,
+      );
+      dispatchRemoteBrowser(action);
+    },
+    [],
+  );
+  const {
+    error,
+    listing,
+    loading,
+    pathDraft,
+    selectedEntryPath,
+    selectedEntryPaths,
+  } = remoteBrowserState;
   const currentPath = listing?.path ?? "/";
-  const followedPath = followedRemotePath?.trim();
-  const normalizedFollowedPath = isFollowableRemotePath(followedPath)
-    ? normalizeRemotePath(followedPath)
-    : undefined;
+  const normalizedFollowedPath = normalizeFollowedRemotePath(followedRemotePath);
   const entries = listing?.entries ?? [];
   const visibleEntries = useMemo(
     () =>
@@ -176,14 +206,56 @@ export function SftpToolContent({
     () => selectedEntries.filter((entry) => transferKindFromEntry(entry)),
     [selectedEntries],
   );
-  const visibleTransfers = useMemo(
-    () =>
-      fileTarget?.kind === "ssh"
-        ? transfers.filter((transfer) => transfer.hostId === fileTarget.hostId)
-        : [],
-    [fileTarget, transfers],
+  const nextRemoteBrowserRequestId = useCallback(() => {
+    const requestId = nextSftpRemoteBrowserRequestId(
+      remoteBrowserStateRef.current.requestId,
+    );
+    remoteBrowserStateRef.current = {
+      ...remoteBrowserStateRef.current,
+      requestId,
+    };
+    return requestId;
+  }, []);
+  const setPathDraft = useCallback((value: SetStateAction<string>) => {
+    dispatchRemoteBrowserAction({
+      pathDraft: resolveSftpRemoteBrowserSetState(
+        remoteBrowserStateRef.current.pathDraft,
+        value,
+      ),
+      type: "path-draft-changed",
+    });
+  }, [dispatchRemoteBrowserAction]);
+  const setSelectedEntryPath = useCallback(
+    (value: SetStateAction<string | null>) => {
+      dispatchRemoteBrowserAction({
+        selectedEntryPath: resolveSftpRemoteBrowserSetState(
+          remoteBrowserStateRef.current.selectedEntryPath,
+          value,
+        ),
+        type: "selection-anchor-changed",
+      });
+    },
+    [dispatchRemoteBrowserAction],
   );
-
+  const setSelectedEntryPaths = useCallback(
+    (value: SetStateAction<Set<string>>) => {
+      const current = remoteBrowserStateRef.current;
+      const nextEntryPaths = resolveSftpRemoteBrowserSetState(
+        current.selectedEntryPaths,
+        value,
+      );
+      const currentEntryPath = current.selectedEntryPath;
+      dispatchRemoteBrowserAction({
+        selectedEntryPath:
+          currentEntryPath && nextEntryPaths.has(currentEntryPath)
+            ? currentEntryPath
+            : (nextEntryPaths.values().next().value ?? null),
+        selectedEntryPaths: nextEntryPaths,
+        type: "selection-changed",
+      });
+    },
+    [dispatchRemoteBrowserAction],
+  );
   useEffect(() => {
     onCurrentPathChange?.(currentPath);
   }, [currentPath, onCurrentPathChange]);
@@ -227,18 +299,22 @@ export function SftpToolContent({
         return;
       }
       if (!fileTarget) {
-        setListing(null);
+        dispatchRemoteBrowserAction({
+          requestId: nextRemoteBrowserRequestId(),
+          type: "target-reset",
+        });
         return;
       }
 
       const nextPath = normalizeRemotePath(path);
-      setLoading(true);
-      setError(null);
+      const requestId = nextRemoteBrowserRequestId();
+      dispatchRemoteBrowserAction({
+        requestId,
+        type: "load-started",
+      });
       setContextMenu(null);
       setDialogAction(null);
       setDialogStatus(null);
-      setSelectedEntryPath(null);
-      setSelectedEntryPaths(new Set());
       try {
         const nextListing =
           fileTarget.kind === "ssh"
@@ -252,163 +328,113 @@ export function SftpToolContent({
                 path: nextPath,
                 runtime: fileTarget.runtime,
               });
-        setListing(normalizeDirectoryListing(nextListing));
+        dispatchRemoteBrowserAction({
+          listing: normalizeDirectoryListing(nextListing),
+          requestId,
+          type: "load-succeeded",
+        });
       } catch (nextError) {
-        const message =
-          nextError instanceof Error ? nextError.message : String(nextError);
-        setError(message);
-      } finally {
-        setLoading(false);
+        dispatchRemoteBrowserAction({
+          error: normalizeSftpRemoteBrowserError(nextError),
+          requestId,
+          type: "load-failed",
+        });
       }
     },
-    [active, fileTarget],
+    [
+      active,
+      dispatchRemoteBrowserAction,
+      fileTarget,
+      nextRemoteBrowserRequestId,
+    ],
+  );
+  const {
+    cwdTrackingSetupBusy,
+    hostKeyTrustBusy,
+    setupRemoteCwdTracking,
+    trustHostKey,
+  } = useSftpRemoteSetupActions({
+    currentPath,
+    fileTarget,
+    loadDirectory,
+    setContextMenu,
+    setDialogAction,
+    setDialogStatus,
+    setOperationStatus,
+  });
+  const setFollowTerminalDirectoryFromView = useCallback(
+    (value: SetStateAction<boolean>) => {
+      const current = followTerminalDirectoryRef.current;
+      const next = resolveSftpRemoteBrowserSetState(current, value);
+      const decision = resolveFollowTerminalDirectoryToggle({
+        currentEnabled: current,
+        hasFileTarget: Boolean(fileTarget),
+        lastAutoFollowedPath: lastAutoFollowedPathRef.current,
+        nextEnabled: next,
+        normalizedFollowedPath,
+      });
+      followTerminalDirectoryRef.current = decision.enabled;
+      setFollowTerminalDirectory(decision.enabled);
+      lastAutoFollowedPathRef.current = decision.nextLastAutoFollowedPath;
+      if (decision.clearOperationStatus) {
+        setOperationStatus(null);
+      }
+      if (decision.loadPath) {
+        void loadDirectory(decision.loadPath);
+      }
+    },
+    [fileTarget, loadDirectory, normalizedFollowedPath],
   );
 
   useEffect(() => {
-    setListing(null);
-    setError(null);
+    dispatchRemoteBrowserAction({
+      requestId: nextRemoteBrowserRequestId(),
+      type: "target-reset",
+    });
     setOperationStatus(null);
     setDialogAction(null);
     setDialogStatus(null);
     setContextMenu(null);
     lastAutoFollowedPathRef.current = undefined;
-    setWorkspaceDialog(null);
-    setWorkspaceDirty(false);
-    setWorkspaceCloseBlocked(false);
-    setSelectedEntryPath(null);
-    setSelectedEntryPaths(new Set());
+    resetWorkspaceDialog();
     setDragDropActive(false);
     setRemoteDownloadDragActive(false);
     setRemoteDownloadDropActive(false);
     remoteDragEntriesRef.current = [];
-    setHostKeyTrustBusy(false);
-    setTransfers([]);
-    completedTransferIdsRef.current.clear();
     if (fileTarget) {
       void loadDirectory(fileTarget.initialPath);
     }
-  }, [fileTarget, loadDirectory]);
+  }, [
+    dispatchRemoteBrowserAction,
+    fileTarget,
+    loadDirectory,
+    nextRemoteBrowserRequestId,
+    resetWorkspaceDialog,
+  ]);
 
-  const refreshTransfers = useCallback(async () => {
-    if (!active || !fileTarget || fileTarget.kind !== "ssh") {
-      setTransfers([]);
-      return;
-    }
-    const nextTransfers = await listSftpTransfers();
-    setTransfers(sortTransfers(nextTransfers));
-  }, [active, fileTarget]);
-
-  useEffect(() => {
-    if (!active || !fileTarget || fileTarget.kind !== "ssh") {
-      setTransfers([]);
-      return undefined;
-    }
-
-    let disposed = false;
-    const loadTransfers = async () => {
-      try {
-        const nextTransfers = await listSftpTransfers();
-        if (!disposed) {
-          setTransfers(sortTransfers(nextTransfers));
-        }
-      } catch {
-        if (!disposed) {
-          setTransfers([]);
-        }
-      }
-    };
-
-    void loadTransfers();
-    const intervalId = window.setInterval(loadTransfers, 900);
-    return () => {
-      disposed = true;
-      window.clearInterval(intervalId);
-    };
-  }, [active, fileTarget]);
+  const { refreshTransfers, setTransfers, visibleTransfers } =
+    useSftpTransferSync({
+      active,
+      currentPath,
+      fileTarget,
+      loadDirectory,
+      viewScope: transferViewScope,
+    });
 
   useEffect(() => {
-    if (
-      !active ||
-      !fileTarget ||
-      fileTarget.kind !== "ssh" ||
-      !isRunningInTauriWebview()
-    ) {
-      return undefined;
+    const decision = resolveFollowedRemotePathChange({
+      enabled: followTerminalDirectory,
+      hasFileTarget: Boolean(fileTarget),
+      lastAutoFollowedPath: lastAutoFollowedPathRef.current,
+      normalizedFollowedPath,
+    });
+    lastAutoFollowedPathRef.current = decision.nextLastAutoFollowedPath;
+    if (decision.clearOperationStatus) {
+      setOperationStatus(null);
     }
-
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-    void import("@tauri-apps/api/event")
-      .then(({ listen }) =>
-        listen<SftpTransferSummary>(SFTP_TRANSFER_UPDATED_EVENT, (event) => {
-          if (disposed || event.payload.hostId !== fileTarget.hostId) {
-            return;
-          }
-          setTransfers((current) =>
-            sortTransfers(upsertTransfer(current, event.payload)),
-          );
-        }),
-      )
-      .then((nextUnlisten) => {
-        if (disposed) {
-          nextUnlisten();
-          return;
-        }
-        unlisten = nextUnlisten;
-      })
-      .catch(() => {
-        // Polling remains the fallback when the Tauri event channel is unavailable.
-      });
-
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [active, fileTarget]);
-
-  useEffect(() => {
-    for (const transfer of visibleTransfers) {
-      if (
-        transfer.status === "succeeded" &&
-        !completedTransferIdsRef.current.has(transfer.id)
-      ) {
-        completedTransferIdsRef.current.add(transfer.id);
-        if (
-          transfer.direction === "upload" &&
-          parentRemotePath(transfer.remotePath) === currentPath
-        ) {
-          void loadDirectory(currentPath);
-        }
-      }
-      if (transfer.status === "failed" || transfer.status === "canceled") {
-        completedTransferIdsRef.current.add(transfer.id);
-      }
+    if (decision.loadPath) {
+      void loadDirectory(decision.loadPath);
     }
-  }, [currentPath, loadDirectory, visibleTransfers]);
-
-  useEffect(() => {
-    if (
-      !followTerminalDirectory ||
-      !normalizedFollowedPath ||
-      !fileTarget
-    ) {
-      if (!followTerminalDirectory || !normalizedFollowedPath) {
-        lastAutoFollowedPathRef.current = undefined;
-      }
-      return;
-    }
-
-    if (normalizedFollowedPath === lastAutoFollowedPathRef.current) {
-      return;
-    }
-
-    lastAutoFollowedPathRef.current = normalizedFollowedPath;
-    if (normalizedFollowedPath === currentPath) {
-      return;
-    }
-
-    setOperationStatus(null);
-    void loadDirectory(normalizedFollowedPath);
   }, [
     currentPath,
     followTerminalDirectory,
@@ -416,10 +442,6 @@ export function SftpToolContent({
     normalizedFollowedPath,
     fileTarget,
   ]);
-
-  useEffect(() => {
-    setPathDraft(currentPath);
-  }, [currentPath]);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -451,9 +473,20 @@ export function SftpToolContent({
     entry: SftpEntry | null,
   ) => {
     const position = clampContextMenuPosition(clientX, clientY);
-    if (entry && !selectedEntryPaths.has(entry.path)) {
-      setSelectedEntryPath(entry.path);
-      setSelectedEntryPaths(new Set([entry.path]));
+    const currentSelection = {
+      selectedEntryPath: remoteBrowserStateRef.current.selectedEntryPath,
+      selectedEntryPaths: remoteBrowserStateRef.current.selectedEntryPaths,
+    };
+    const nextSelection = nextContextMenuSelection(
+      currentSelection,
+      entry?.path ?? null,
+    );
+    if (nextSelection !== currentSelection) {
+      dispatchRemoteBrowserAction({
+        selectedEntryPath: nextSelection.selectedEntryPath,
+        selectedEntryPaths: nextSelection.selectedEntryPaths,
+        type: "selection-changed",
+      });
     }
     setContextMenu({
       entry,
@@ -506,149 +539,11 @@ export function SftpToolContent({
     void loadDirectory(nextPath);
   };
 
-  const openWorkspaceDirectory = (path: string) => {
-    if (!fileTarget) {
-      return;
-    }
-
-    setContextMenu(null);
-    setDialogAction(null);
-    setDialogStatus(null);
-    setOperationStatus(null);
-    setWorkspaceDirty(false);
-    setWorkspaceCloseBlocked(false);
-    setWorkspaceDialog({
-      openCommand: null,
-      rootPath: normalizeRemotePath(path),
-    });
-  };
-
-  const openEditorEntry = (entry: SftpEntry) => {
-    if (entry.kind !== "file") {
-      setOperationStatus({
-        kind: "info",
-        message: "只有普通文件支持打开到编辑器。",
-      });
-      return;
-    }
-
-    if (!fileTarget) {
-      return;
-    }
-
-    setContextMenu(null);
-    setDialogAction(null);
-    setDialogStatus(null);
-    setOperationStatus(null);
-    setWorkspaceDirty(false);
-    setWorkspaceCloseBlocked(false);
-    setWorkspaceDialog({
-      openCommand: { nonce: Date.now(), path: entry.path },
-      rootPath: parentRemotePath(entry.path),
-    });
-  };
-
-  const closeWorkspaceDialog = () => {
-    if (
-      workspaceDirty &&
-      !window.confirm("工作区有未保存修改，关闭会丢失这些修改。仍然关闭？")
-    ) {
-      setWorkspaceCloseBlocked(true);
-      return;
-    }
-    setWorkspaceDialog(null);
-    setWorkspaceDirty(false);
-    setWorkspaceCloseBlocked(false);
-  };
-
-  const openDetachedWorkspaceWindow = async () => {
-    if (!workspaceDialog || !fileTarget || fileTarget.kind !== "ssh") {
-      return;
-    }
-
-    if (
-      workspaceDirty &&
-      !window.confirm(
-        "独立窗口会重新从远端打开工作区，当前弹框里未保存的修改不会带过去。仍然弹出？",
-      )
-    ) {
-      setWorkspaceCloseBlocked(true);
-      return;
-    }
-
-    const windowUrl = detachedWorkspaceUrl(fileTarget.hostId, workspaceDialog);
-    setWorkspacePopoutBusy(true);
-    setOperationStatus({ kind: "info", message: "正在打开独立工作区窗口..." });
-
-    try {
-      if (isRunningInTauriWebview()) {
-        const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-        const detachedWindow = new WebviewWindow(
-          detachedWorkspaceLabel(fileTarget.hostId),
-          {
-            center: true,
-            decorations: true,
-            dragDropEnabled: false,
-            focus: true,
-            height: 760,
-            minHeight: 560,
-            minWidth: 900,
-            resizable: true,
-            title: `Kerminal 工作区 - ${workspaceDialog.rootPath}`,
-            url: windowUrl,
-            width: 1180,
-          },
-        );
-
-        void detachedWindow.once("tauri://created", () => {
-          setWorkspacePopoutBusy(false);
-          setOperationStatus({
-            kind: "success",
-            message: "已弹出独立工作区窗口。",
-          });
-          setWorkspaceDialog(null);
-          setWorkspaceDirty(false);
-          setWorkspaceCloseBlocked(false);
-        });
-        void detachedWindow.once("tauri://error", (event) => {
-          setWorkspacePopoutBusy(false);
-          setOperationStatus({
-            kind: "error",
-            message: `独立工作区窗口打开失败：${errorMessage(event.payload)}`,
-          });
-        });
-        return;
-      }
-
-      const opened = window.open(
-        windowUrl,
-        "_blank",
-        "popup,width=1180,height=760",
-      );
-      if (!opened) {
-        throw new Error("浏览器阻止了弹出窗口。");
-      }
-      setOperationStatus({ kind: "success", message: "已弹出独立工作区窗口。" });
-      setWorkspaceDialog(null);
-      setWorkspaceDirty(false);
-      setWorkspaceCloseBlocked(false);
-    } catch (nextError) {
-      setWorkspacePopoutBusy(false);
-      setOperationStatus({
-        kind: "error",
-        message: `独立工作区窗口打开失败：${errorMessage(nextError)}`,
-      });
-    } finally {
-      if (!isRunningInTauriWebview()) {
-        setWorkspacePopoutBusy(false);
-      }
-    }
-  };
-
-
   const {
     cancelTransfer,
     clearFinishedTransfers,
+    closeTransferConflictDialog,
+    confirmTransferConflictPolicy,
     copyRemotePath,
     copySelectedRemoteItem,
     downloadEntry,
@@ -662,15 +557,15 @@ export function SftpToolContent({
     handleRemoteDownloadDrop,
     handleSftpKeyDown,
     pasteSftpClipboard,
+    pendingTransferConflict,
     startRemoteEntryDrag,
     transferSelectedEntriesToTarget,
     uploadLocalArchive,
+    uploadDroppedLocalPaths,
     uploadLocalDirectory,
     uploadLocalFile,
   } = useSftpTransferActions({
-    active,
     currentPath,
-    dropZoneRef,
     fileTarget,
     loadDirectory,
     refreshTransfers,
@@ -691,72 +586,19 @@ export function SftpToolContent({
     sftpClipboard,
     transferableSelectedEntries,
     transferTarget,
+    viewScope: transferViewScope,
+    workbenchClipboard,
   });
 
-
-  const trustHostKey = async () => {
-    if (!fileTarget || fileTarget.kind !== "ssh") {
-      return;
-    }
-
-    setHostKeyTrustBusy(true);
-    setOperationStatus(null);
-    try {
-      const summary = await trustSftpHostKey({ hostId: fileTarget.hostId });
-      await loadDirectory(currentPath);
-      setOperationStatus({
-        kind: "success",
-        message: `已信任主机密钥：${summary.host}:${summary.port}`,
-      });
-    } catch (nextError) {
-      setOperationStatus({
-        kind: "error",
-        message: `信任主机密钥失败：${errorMessage(nextError)}`,
-      });
-    } finally {
-      setHostKeyTrustBusy(false);
-    }
-  };
-
-  const setupRemoteCwdTracking = async () => {
-    if (!fileTarget || fileTarget.kind !== "ssh") {
-      return;
-    }
-
-    setContextMenu(null);
-    setDialogAction(null);
-    setDialogStatus(null);
-    setOperationStatus({
-      kind: "info",
-      message: "正在写入远端 shell 配置...",
-    });
-    setCwdTrackingSetupBusy(true);
-    try {
-      const output = await executeSshCommand({
-        command: buildSftpCwdTrackingSetupScript(),
-        hostId: fileTarget.hostId,
-        maxOutputBytes: 4096,
-        timeoutSeconds: 15,
-      });
-      if (!output.success) {
-        const details = (output.stderr || output.stdout).trim();
-        throw new Error(
-          details || `远端命令退出码：${output.exitCode ?? "未知"}`,
-        );
-      }
-      setOperationStatus({
-        kind: "success",
-        message: "已写入远端配置。重新登录或 source 对应 shell 配置后生效。",
-      });
-    } catch (nextError) {
-      setOperationStatus({
-        kind: "error",
-        message: `自动设置失败：${errorMessage(nextError)}`,
-      });
-    } finally {
-      setCwdTrackingSetupBusy(false);
-    }
-  };
+  useSftpLocalUploadDropActions({
+    active,
+    currentPath,
+    dropZoneRef,
+    fileTarget,
+    setDragDropActive,
+    setOperationStatus,
+    uploadDroppedLocalPaths,
+  });
 
 
   const {
@@ -777,97 +619,35 @@ export function SftpToolContent({
     setOperationStatus,
   });
 
-  const executeContextMenuAction = (action: SftpMenuAction) => {
-    const entry = contextMenu?.entry ?? null;
-    setContextMenu(null);
-
-    if (action === "refresh") {
-      setOperationStatus(null);
-      void loadDirectory(currentPath);
-      return;
-    }
-    if (action === "toggleHidden") {
-      setShowHiddenFiles((current) => !current);
-      return;
-    }
-    if (action === "copyPath") {
-      void copyRemotePath(entry?.path ?? currentPath);
-      return;
-    }
-    if (action === "copyItem" && entry) {
-      copySelectedRemoteItem(entry);
-      return;
-    }
-    if (action === "pasteClipboard") {
-      void pasteSftpClipboard(
-        entry && entry.kind === "directory" ? entry.path : currentPath,
-      );
-      return;
-    }
-    if (action === "uploadFile") {
-      void uploadLocalFile(currentPath);
-      return;
-    }
-    if (action === "uploadDirectory") {
-      void uploadLocalDirectory(currentPath);
-      return;
-    }
-    if (action === "uploadFileArchive") {
-      void uploadLocalArchive("file", currentPath);
-      return;
-    }
-    if (action === "uploadDirectoryArchive") {
-      void uploadLocalArchive("directory", currentPath);
-      return;
-    }
-    if (action === "newDirectory") {
-      openNewDirectoryDialog();
-      return;
-    }
-
-    if (!entry) {
-      return;
-    }
-
-    if (action === "open" && entry.kind === "directory") {
-      setOperationStatus(null);
-      void loadDirectory(entry.path);
-    }
-    if (action === "workspace" && entry.kind === "directory") {
-      openWorkspaceDirectory(entry.path);
-    }
-    if (action === "preview") {
-      openEditorEntry(entry);
-    }
-    if (action === "download") {
-      void downloadEntry(entry);
-    }
-    if (action === "downloadArchive") {
-      void downloadEntryAsArchive(entry);
-    }
-    if (action === "downloadClipboard") {
-      void downloadEntryToLocalClipboard(entry);
-    }
-    if (action === "uploadFileInto") {
-      void uploadLocalFile(entry.path);
-    }
-    if (action === "uploadDirectoryInto") {
-      void uploadLocalDirectory(entry.path);
-    }
-    if (action === "rename") {
-      openRenameDialog(entry);
-    }
-    if (action === "chmod") {
-      openChmodDialog(entry);
-    }
-    if (action === "delete") {
-      openDeleteDialog(entry);
-    }
-  };
+  const { executeContextMenuAction } = useSftpContextMenuActions({
+    contextMenu,
+    copyRemotePath,
+    copySelectedRemoteItem,
+    currentPath,
+    downloadEntry,
+    downloadEntryAsArchive,
+    downloadEntryToLocalClipboard,
+    loadDirectory,
+    openChmodDialog,
+    openDeleteDialog,
+    openEditorEntry,
+    openNewDirectoryDialog,
+    openRenameDialog,
+    openWorkspaceDirectory,
+    pasteSftpClipboard,
+    setContextMenu,
+    setOperationStatus,
+    setShowHiddenFiles,
+    transferSelectedEntriesToTarget,
+    uploadLocalArchive,
+    uploadLocalDirectory,
+    uploadLocalFile,
+  });
 
 
   return (
-    <SftpBrowserView
+    <>
+      <SftpBrowserView
       cancelTransfer={cancelTransfer}
       clearFinishedTransfers={clearFinishedTransfers}
       closeWorkspaceDialog={closeWorkspaceDialog}
@@ -902,10 +682,8 @@ export function SftpToolContent({
       normalizedFollowedPath={normalizedFollowedPath}
       openContextMenu={openContextMenu}
       openContextMenuFromPress={openContextMenuFromPress}
-      openDetachedWorkspaceWindow={openDetachedWorkspaceWindow}
       openEditorEntry={openEditorEntry}
       openNewDirectoryDialog={openNewDirectoryDialog}
-      openWorkspaceDirectory={openWorkspaceDirectory}
       operationStatus={operationStatus}
       pathDraft={pathDraft}
       remoteDownloadDragActive={remoteDownloadDragActive}
@@ -917,13 +695,14 @@ export function SftpToolContent({
       setContextMenu={setContextMenu}
       setDialogAction={setDialogAction}
       setDialogStatus={setDialogStatus}
-      setFollowTerminalDirectory={setFollowTerminalDirectory}
+      setFollowTerminalDirectory={setFollowTerminalDirectoryFromView}
       setOperationStatus={setOperationStatus}
       setPathDraft={setPathDraft}
       setShowHiddenFiles={setShowHiddenFiles}
       setUploadMenuOpen={setUploadMenuOpen}
       setWorkspaceCloseBlocked={setWorkspaceCloseBlocked}
       setWorkspaceDirty={setWorkspaceDirty}
+      setWorkspaceExpanded={setWorkspaceExpanded}
       setupRemoteCwdTracking={setupRemoteCwdTracking}
       showHiddenFiles={showHiddenFiles}
       showLocalTransferActions={showLocalTransferActions}
@@ -945,8 +724,17 @@ export function SftpToolContent({
       workspaceCloseBlocked={workspaceCloseBlocked}
       workspaceDialog={workspaceDialog}
       workspaceDirty={workspaceDirty}
-      workspacePopoutBusy={workspacePopoutBusy}
-      workspaceTarget={workspaceTarget}
-    />
+      workspaceExpanded={workspaceExpanded}
+        workspaceTarget={workspaceTarget}
+      />
+      <SftpTransferConflictDialog
+        conflictCount={pendingTransferConflict?.conflictCount ?? 0}
+        onClose={closeTransferConflictDialog}
+        onConfirm={(policy) => {
+          void confirmTransferConflictPolicy(policy);
+        }}
+        open={Boolean(pendingTransferConflict)}
+      />
+    </>
   );
 }

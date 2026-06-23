@@ -54,6 +54,7 @@ export function SftpActionDialog({
       maxWidthClassName="max-w-xl"
       onClose={onClose}
       open={Boolean(action)}
+      size="small"
       title={dialogActionTitle(action)}
     >
       {action.kind === "mkdir" ? (
@@ -125,10 +126,12 @@ function PathInput({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-medium text-zinc-500">{label}</span>
+      <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+        {label}
+      </span>
       <input
         aria-label={label}
-        className="mt-1 h-9 w-full rounded-xl border border-black/8 bg-white/80 px-3 font-mono text-xs text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-sky-400/50 focus:ring-4 focus:ring-sky-400/10 dark:border-white/[0.08] dark:bg-zinc-950/70 dark:text-zinc-100 dark:placeholder:text-zinc-600"
+        className="kerminal-field-surface mt-1 h-9 w-full rounded-xl border px-3 font-mono text-xs text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600"
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         spellCheck={false}
@@ -141,15 +144,23 @@ function PathInput({
 function ReadonlyPath({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-xs font-medium text-zinc-500">{label}</div>
-      <div className="mt-1 break-all rounded-xl border border-black/8 bg-black/[0.03] px-3 py-2 font-mono text-xs text-zinc-700 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-zinc-300">
+      <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+        {label}
+      </div>
+      <div className="kerminal-muted-surface mt-1 break-all rounded-xl border px-3 py-2 font-mono text-xs text-zinc-700 dark:text-zinc-300">
         {value}
       </div>
     </div>
   );
 }
 
-export function StatusMessage({ status }: { status: SftpStatus | null }) {
+export function StatusMessage({
+  className,
+  status,
+}: {
+  className?: string;
+  status: SftpStatus | null;
+}) {
   if (!status) {
     return null;
   }
@@ -164,6 +175,7 @@ export function StatusMessage({ status }: { status: SftpStatus | null }) {
           "border-emerald-300/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-100",
         status.kind === "info" &&
           "border-sky-300/30 bg-sky-500/10 text-sky-700 dark:text-sky-100",
+        className,
       )}
       role={status.kind === "error" ? "alert" : "status"}
     >

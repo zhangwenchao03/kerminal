@@ -16,6 +16,7 @@ import {
   resizeTerminal,
   startTerminalLog,
   stopTerminalLog,
+  writeTerminal,
   type TerminalSessionLogState,
 } from "../../lib/terminalApi";
 import type { RemoteTargetRef } from "../../lib/targetModel";
@@ -47,6 +48,10 @@ import {
   type TerminalCommandBlockView,
 } from "./terminalCommandBlocks";
 import {
+  clearTerminalCommandBlocks,
+  syncTerminalCommandPromptBlocks,
+} from "./terminalCommandBlockLifecycle";
+import {
   createTerminalInputModelState,
   type TerminalInputModelState,
 } from "./terminalInputModel";
@@ -72,6 +77,9 @@ export {
   collectSubmittedCommands,
 } from "./XtermPane.helpers";
 import { installXtermPaneRuntime } from "./XtermPane.runtime";
+
+const TERMINAL_CLEAR_SCREEN_INPUT = "\x0c";
+const TERMINAL_FRONTEND_CLEAR_SCREEN_SEQUENCE = "\x1b[H\x1b[2J\x1b[3J";
 
 interface XtermPaneProps {
   args?: string[];
@@ -132,6 +140,9 @@ export function XtermPane({
   const onCurrentCwdChangeRef = useRef(onCurrentCwdChange);
   const onOutputHistoryChangeRef = useRef(onOutputHistoryChange);
   const outputHistoryRef = useRef(outputHistory);
+  const promptLineRef = useRef<number | undefined>(undefined);
+  const manualClearSyncFrameRef = useRef<number | null>(null);
+  const suppressCommandBlockSyncRef = useRef(false);
   const reconnectSessionRef = useRef<(() => Promise<void>) | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -183,6 +194,9 @@ export function XtermPane({
   );
 
   const syncCommandBlockViews = useCallback(() => {
+    if (suppressCommandBlockSyncRef.current) {
+      return;
+    }
     const terminal = terminalRef.current;
     if (!terminal) {
       setCommandBlockViews([]);
@@ -190,12 +204,31 @@ export function XtermPane({
     }
 
     const activeBuffer = terminal.buffer.active;
+    const promptLine = resolveTerminalPromptLine(
+      terminal,
+      inputBufferRef.current,
+    );
+    promptLineRef.current = promptLine;
+    if (
+      typeof promptLine === "number" &&
+      terminal.buffer.active.type === "normal"
+    ) {
+      syncTerminalCommandPromptBlocks({
+        commandBlockCounterRef,
+        commandBlocksRef,
+        onEndMarkerDispose: syncCommandBlockViews,
+        onStartMarkerDispose: syncCommandBlockViews,
+        paneId,
+        promptLine,
+        terminal,
+      });
+    }
     const nextViews = buildTerminalCommandBlockViews(commandBlocksRef.current, {
       activeBufferType: activeBuffer.type,
       bufferLength: activeBuffer.length,
       cols: terminal.cols,
       contentBottomLine: resolveTerminalContentBottomLine(terminal),
-      promptLine: resolveTerminalPromptLine(terminal, inputBufferRef.current),
+      promptLine,
       rowHeight: resolveTerminalRowHeight(
         containerRef.current,
         terminalAppearanceRef.current,
@@ -210,14 +243,47 @@ export function XtermPane({
     );
   }, []);
 
-  const clearCommandBlocks = useCallback(() => {
-    const blocks = commandBlocksRef.current;
-    commandBlocksRef.current = [];
-    for (const block of blocks) {
-      block.marker.dispose();
+  const scheduleCommandBlockViewsSync = useCallback(() => {
+    if (manualClearSyncFrameRef.current !== null) {
+      return;
     }
-    setCommandBlockViews([]);
-    setCommandBlockNotice(null);
+    manualClearSyncFrameRef.current =
+      typeof window.requestAnimationFrame === "function"
+        ? window.requestAnimationFrame(() => {
+            manualClearSyncFrameRef.current = null;
+            syncCommandBlockViews();
+          })
+        : window.setTimeout(() => {
+            manualClearSyncFrameRef.current = null;
+            syncCommandBlockViews();
+          }, 16);
+  }, [syncCommandBlockViews]);
+
+  useEffect(
+    () => () => {
+      const frameId = manualClearSyncFrameRef.current;
+      if (frameId === null) {
+        return;
+      }
+      if (typeof window.cancelAnimationFrame === "function") {
+        window.cancelAnimationFrame(frameId);
+      } else {
+        window.clearTimeout(frameId);
+      }
+      manualClearSyncFrameRef.current = null;
+    },
+    [],
+  );
+
+  const clearCommandBlocks = useCallback(() => {
+    suppressCommandBlockSyncRef.current = true;
+    try {
+      clearTerminalCommandBlocks(commandBlocksRef);
+      setCommandBlockViews([]);
+      setCommandBlockNotice(null);
+    } finally {
+      suppressCommandBlockSyncRef.current = false;
+    }
   }, []);
 
   useEffect(() => {
@@ -265,6 +331,7 @@ export function XtermPane({
       outputHistoryRef,
       paneId,
       profileId,
+      promptLineRef,
       reconnectSessionRef,
       remoteHostId,
       remoteHostProduction,
@@ -322,6 +389,10 @@ export function XtermPane({
     terminal.options.macOptionIsMeta = terminalAppearance.macOptionIsMeta;
     terminal.options.scrollback = terminalAppearance.scrollback;
     terminal.options.theme = terminalTheme;
+    if (containerRef.current) {
+      containerRef.current.style.fontFamily = terminalAppearance.fontFamily;
+    }
+    terminal.refresh?.(0, Math.max(0, terminal.rows - 1));
     fitAddonRef.current?.fit();
     const dimensions = fitAddonRef.current?.proposeDimensions();
     const sessionId = sessionIdRef.current;
@@ -427,8 +498,18 @@ export function XtermPane({
       } else if (action === "selectAll") {
         terminal?.selectAll?.();
       } else if (action === "clear") {
-        terminal?.clear?.();
         clearCommandBlocks();
+        if (sessionId) {
+          void writeTerminal(sessionId, TERMINAL_CLEAR_SCREEN_INPUT);
+          scheduleCommandBlockViewsSync();
+        } else {
+          terminal?.write?.(TERMINAL_FRONTEND_CLEAR_SCREEN_SEQUENCE, () => {
+            scheduleCommandBlockViewsSync();
+          });
+          if (!terminal?.write) {
+            scheduleCommandBlockViewsSync();
+          }
+        }
       } else if (action === "search") {
         setSearchOpen(true);
       } else if (action === "startLog") {
@@ -458,6 +539,7 @@ export function XtermPane({
       startLogging,
       stopLogging,
       clearCommandBlocks,
+      scheduleCommandBlockViewsSync,
     ],
   );
 
@@ -600,11 +682,13 @@ export function XtermPane({
         blocks={commandBlockViews}
         onAction={executeCommandBlockAction}
       />
-      <div
-        aria-label={`${title} xterm 终端`}
-        className="h-full min-h-0 w-full overflow-hidden py-2 pl-6 pr-3"
-        ref={containerRef}
-      />
+      <div className="h-full min-h-0 w-full overflow-hidden py-2 pl-6 pr-3">
+        <div
+          aria-label={`${title} xterm 终端`}
+          className="h-full min-h-0 w-full overflow-hidden"
+          ref={containerRef}
+        />
+      </div>
       {ghostSuggestion ? (
         <div
           aria-label="终端命令灰色提示"
@@ -623,7 +707,7 @@ export function XtermPane({
           {ghostSuggestion.suffix}
         </div>
       ) : null}
-      <div className="pointer-events-none absolute right-3 top-2 rounded-md border border-black/8 bg-white/70 px-2 py-1 text-[11px] text-zinc-500 dark:border-white/8 dark:bg-black/30 dark:text-zinc-400">
+      <div className="kerminal-muted-surface pointer-events-none absolute right-3 top-2 rounded-md border px-2 py-1 text-[11px] text-zinc-500 backdrop-blur-xl dark:text-zinc-400">
         {stateLabel(connectionState)}
       </div>
       {logState.active ? (
@@ -638,7 +722,7 @@ export function XtermPane({
       {logNotice ? (
         <div
           aria-label="终端日志提示"
-          className="pointer-events-none absolute bottom-3 left-3 max-w-[min(560px,calc(100%-1.5rem))] truncate rounded-md border border-black/8 bg-white/85 px-2 py-1 text-[11px] text-zinc-500 shadow-sm dark:border-white/8 dark:bg-black/35 dark:text-zinc-300"
+          className="kerminal-muted-surface pointer-events-none absolute bottom-3 left-3 max-w-[min(560px,calc(100%-1.5rem))] truncate rounded-md border px-2 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-xl dark:text-zinc-300"
           role="status"
           title={logNotice}
         >
@@ -648,7 +732,7 @@ export function XtermPane({
       {commandBlockNotice ? (
         <div
           aria-label="命令块操作提示"
-          className="pointer-events-none absolute left-3 max-w-[min(560px,calc(100%-1.5rem))] truncate rounded-md border border-black/8 bg-white/85 px-2 py-1 text-[11px] text-zinc-500 shadow-sm dark:border-white/8 dark:bg-black/35 dark:text-zinc-300"
+          className="kerminal-muted-surface pointer-events-none absolute left-3 max-w-[min(560px,calc(100%-1.5rem))] truncate rounded-md border px-2 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-xl dark:text-zinc-300"
           role="status"
           style={{ bottom: logNotice ? 40 : 12 }}
           title={commandBlockNotice}
@@ -676,7 +760,6 @@ export function XtermPane({
           canDisconnect={connectionState === "connected"}
           canCopy={contextMenu.canCopy}
           canReconnect={connectionState !== "connecting"}
-          isLogging={logState.active}
           onAction={executeContextMenuAction}
           onClose={() => setContextMenu(null)}
           position={contextMenu.position}
@@ -685,4 +768,3 @@ export function XtermPane({
     </div>
   );
 }
-

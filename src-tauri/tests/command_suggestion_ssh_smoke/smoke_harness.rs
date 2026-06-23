@@ -2,7 +2,6 @@ use super::*;
 
 pub(super) struct SmokeHarness {
     _home: TempDir,
-    pub(super) credentials: CredentialService,
     pub(super) history: CommandHistoryService,
     pub(super) paths: KerminalPaths,
     pub(super) remote_hosts: RemoteHostService,
@@ -17,10 +16,8 @@ impl SmokeHarness {
         let home = tempdir().expect("create temporary Kerminal home");
         let paths = KerminalPaths::from_home_dir(home.path());
         let storage = SqliteStore::open(&paths).expect("open temporary SQLite store");
-        let credentials = CredentialService::with_vault(Arc::new(MemoryCredentialVault::new()));
         Self {
             _home: home,
-            credentials,
             history: CommandHistoryService::new(),
             paths,
             remote_hosts: RemoteHostService::new(),
@@ -44,9 +41,8 @@ impl SmokeHarness {
         production: bool,
     ) -> kerminal_lib::models::remote_host::RemoteHost {
         self.remote_hosts
-            .create_host_with_credentials(
+            .create_host(
                 &self.storage,
-                &self.credentials,
                 RemoteHostCreateRequest {
                     auth_type: config.auth_type,
                     credential_ref: config.credential_ref.clone(),
@@ -161,23 +157,11 @@ impl SmokeConfig {
         let inline_key = env::var("KERMINAL_SSH_SMOKE_PRIVATE_KEY")
             .ok()
             .filter(|value| !value.trim().is_empty());
-        let inline_key_passphrase = env::var("KERMINAL_SSH_SMOKE_PRIVATE_KEY_PASSPHRASE")
-            .ok()
-            .filter(|value| !value.trim().is_empty());
 
         let (auth_type, credential_ref, credential_secret) = if let Some(password) = password {
             (RemoteHostAuthType::Password, None, Some(password))
         } else if let Some(private_key) = inline_key {
-            let secret = inline_key_passphrase
-                .map(|passphrase| {
-                    serde_json::json!({
-                        "privateKey": private_key,
-                        "passphrase": passphrase,
-                    })
-                    .to_string()
-                })
-                .unwrap_or(private_key);
-            (RemoteHostAuthType::Key, None, Some(secret))
+            (RemoteHostAuthType::Key, None, Some(private_key))
         } else if let Some(key_path) = key_path {
             (
                 RemoteHostAuthType::Key,

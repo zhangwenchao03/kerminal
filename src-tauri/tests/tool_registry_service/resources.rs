@@ -28,6 +28,16 @@ fn mcp_gateway_reads_allowlisted_resources_and_rejects_unknown_uri() {
         tool_registry.content["protocol"],
         "kerminal-mcp/resource/tool-registry"
     );
+    let expected_mcp_tools =
+        serde_json::to_value(gateway.list_tools(&tools)).expect("serialize mcp tools");
+    assert_eq!(
+        tool_registry.content["toolCount"],
+        serde_json::json!(expected_mcp_tools["tools"]
+            .as_array()
+            .expect("expected tools")
+            .len())
+    );
+    assert_eq!(tool_registry.content["tools"], expected_mcp_tools["tools"]);
     assert!(
         tool_registry.content["toolCount"]
             .as_u64()

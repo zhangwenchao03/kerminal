@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn loopback_ssh_sftp_provider_chain_uses_native_credentials_and_cache_only_query() {
+async fn loopback_ssh_sftp_provider_chain_uses_plaintext_host_auth_and_cache_only_query() {
     let remote_root = tempdir().expect("create loopback remote root");
     let repo_dir = remote_root.path().join("srv").join("repo");
     std_fs::create_dir_all(&repo_dir).expect("create loopback repo directory");
@@ -40,7 +40,6 @@ async fn loopback_ssh_sftp_provider_chain_uses_native_credentials_and_cache_only
         .suggestions
         .refresh_remote_commands(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.ssh_commands,
             CommandSuggestionRemoteCommandRefreshRequest {
@@ -57,7 +56,6 @@ async fn loopback_ssh_sftp_provider_chain_uses_native_credentials_and_cache_only
         .suggestions
         .refresh_remote_history(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.ssh_commands,
             CommandSuggestionRemoteHistoryRefreshRequest {
@@ -74,7 +72,6 @@ async fn loopback_ssh_sftp_provider_chain_uses_native_credentials_and_cache_only
         .suggestions
         .refresh_remote_paths(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.sftp,
             CommandSuggestionRemotePathRefreshRequest {
@@ -93,7 +90,6 @@ async fn loopback_ssh_sftp_provider_chain_uses_native_credentials_and_cache_only
         .suggestions
         .refresh_git_refs(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.ssh_commands,
             CommandSuggestionGitRefreshRequest {

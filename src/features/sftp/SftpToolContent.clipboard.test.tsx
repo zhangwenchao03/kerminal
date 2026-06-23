@@ -14,9 +14,9 @@ import {  createDragDataTransfer,
   sshMachine,
   stageSshMachine,
 } from "./SftpToolContent.testSupport";
-import { SftpToolContent } from "./SftpToolContent";
-
-describe("SftpToolContent clipboard and selection", () => {
+import { SftpToolContent } from "./SftpToolContent";
+
+describe("SftpToolContent clipboard and selection", () => {
   it("copies and pastes a selected remote item with keyboard shortcuts", async () => {
     const user = userEvent.setup();
 
@@ -37,12 +37,12 @@ describe("SftpToolContent clipboard and selection", () => {
       expect(sftpApiMocks.enqueueSftpRemoteCopy).toHaveBeenCalledWith({
         kind: "file",
         sourceHostId: "prod-api",
-        sourceRemotePath: "/var/log/app.log",
-        targetHostId: "prod-api",
-        targetRemotePath: "/var/log/app.copy.log",
-      }),
+        sourceRemotePath: "/var/log/app.log",
+        targetHostId: "prod-api",
+        targetRemotePath: "/var/log/app.copy.log",
+      }),
     );
-    expect(await screen.findByText(/已加入远程复制队列/)).toBeInTheDocument();
+    expect(screen.queryByText(/已加入远程复制队列/)).not.toBeInTheDocument();
   });
 
   it("copies and pastes multiple selected remote items with keyboard shortcuts", async () => {
@@ -71,19 +71,19 @@ describe("SftpToolContent clipboard and selection", () => {
       expect(sftpApiMocks.enqueueSftpRemoteCopy).toHaveBeenCalledWith({
         kind: "file",
         sourceHostId: "prod-api",
-        sourceRemotePath: "/var/log/app.log",
-        targetHostId: "prod-api",
-        targetRemotePath: "/var/log/app.copy.log",
-      }),
+        sourceRemotePath: "/var/log/app.log",
+        targetHostId: "prod-api",
+        targetRemotePath: "/var/log/app.copy.log",
+      }),
     );
     expect(sftpApiMocks.enqueueSftpRemoteCopy).toHaveBeenCalledWith({
       kind: "file",
       sourceHostId: "prod-api",
-      sourceRemotePath: "/var/log/current",
-      targetHostId: "prod-api",
-      targetRemotePath: "/var/log/current.copy",
-    });
-    expect(await screen.findByText(/app.log、current/)).toBeInTheDocument();
+      sourceRemotePath: "/var/log/current",
+      targetHostId: "prod-api",
+      targetRemotePath: "/var/log/current.copy",
+    });
+    expect(screen.queryByText(/已加入.*队列/)).not.toBeInTheDocument();
   });
 
   it("selects a visible range with Shift without opening directories", async () => {
@@ -134,18 +134,18 @@ describe("SftpToolContent clipboard and selection", () => {
     expect(sftpApiMocks.enqueueSftpTransfer).toHaveBeenCalledWith({
       direction: "download",
       hostId: "prod-api",
-      kind: "file",
-      localPath: "/Users/me/Downloads/app.log",
-      remotePath: "/var/log/app.log",
-    });
+      kind: "file",
+      localPath: "/Users/me/Downloads/app.log",
+      remotePath: "/var/log/app.log",
+    });
     expect(sftpApiMocks.enqueueSftpTransfer).toHaveBeenCalledWith({
       direction: "download",
       hostId: "prod-api",
-      kind: "file",
-      localPath: "/Users/me/Downloads/current",
-      remotePath: "/var/log/current",
-    });
-    expect(await screen.findByText(/已加入批量下载队列：2 个远程项目/)).toBeInTheDocument();
+      kind: "file",
+      localPath: "/Users/me/Downloads/current",
+      remotePath: "/var/log/current",
+    });
+    expect(screen.queryByText(/已加入批量下载队列：2 个远程项目/)).not.toBeInTheDocument();
   });
 
   it("downloads selected remote items when they are dragged onto the panel", async () => {
@@ -179,18 +179,18 @@ describe("SftpToolContent clipboard and selection", () => {
     expect(sftpApiMocks.enqueueSftpTransfer).toHaveBeenCalledWith({
       direction: "download",
       hostId: "prod-api",
-      kind: "file",
-      localPath: "/Users/me/Downloads/app.log",
-      remotePath: "/var/log/app.log",
-    });
+      kind: "file",
+      localPath: "/Users/me/Downloads/app.log",
+      remotePath: "/var/log/app.log",
+    });
     expect(sftpApiMocks.enqueueSftpTransfer).toHaveBeenCalledWith({
       direction: "download",
       hostId: "prod-api",
-      kind: "file",
-      localPath: "/Users/me/Downloads/current",
-      remotePath: "/var/log/current",
-    });
-    expect(await screen.findByText(/已加入批量下载队列：2 个远程项目/)).toBeInTheDocument();
+      kind: "file",
+      localPath: "/Users/me/Downloads/current",
+      remotePath: "/var/log/current",
+    });
+    expect(screen.queryByText(/已加入批量下载队列：2 个远程项目/)).not.toBeInTheDocument();
   });
 
   it("uploads system clipboard files with Ctrl+V when the SFTP clipboard is empty", async () => {
@@ -213,20 +213,20 @@ describe("SftpToolContent clipboard and selection", () => {
     expect(sftpApiMocks.enqueueSftpTransfer).toHaveBeenCalledWith({
       direction: "upload",
       hostId: "prod-api",
-      kind: "file",
-      localPath: "/Users/me/release.tgz",
-      remotePath: "/release.tgz",
-    });
+      kind: "file",
+      localPath: "/Users/me/release.tgz",
+      remotePath: "/release.tgz",
+    });
     expect(sftpApiMocks.enqueueSftpTransfer).toHaveBeenCalledWith({
       direction: "upload",
       hostId: "prod-api",
-      kind: "directory",
-      localPath: "/Users/me/dist",
-      remotePath: "/dist",
-    });
-    expect(
-      await screen.findByText(/已加入剪贴板上传队列：2 个本地项目/),
-    ).toBeInTheDocument();
+      kind: "directory",
+      localPath: "/Users/me/dist",
+      remotePath: "/dist",
+    });
+    expect(
+      screen.queryByText(/已加入剪贴板上传队列：2 个本地项目/),
+    ).not.toBeInTheDocument();
   });
 
   it("shows an empty clipboard message when Ctrl+V finds no SFTP or system files", async () => {
@@ -270,12 +270,12 @@ describe("SftpToolContent clipboard and selection", () => {
       expect(sftpApiMocks.enqueueSftpRemoteCopy).toHaveBeenCalledWith({
         kind: "file",
         sourceHostId: "prod-api",
-        sourceRemotePath: "/var/log/app.log",
-        targetHostId: "stage-api",
-        targetRemotePath: "/app.log",
-      }),
+        sourceRemotePath: "/var/log/app.log",
+        targetHostId: "stage-api",
+        targetRemotePath: "/app.log",
+      }),
     );
-    expect(await screen.findByText(/已加入跨主机传输队列/)).toBeInTheDocument();
+    expect(screen.queryByText(/已加入跨主机传输队列/)).not.toBeInTheDocument();
   });
 
   it("shows transfer progress and cancels a running transfer", async () => {
@@ -315,9 +315,9 @@ describe("SftpToolContent clipboard and selection", () => {
     await user.click(screen.getByRole("button", { name: "取消传输 app.log" }));
 
     await waitFor(() =>
-      expect(sftpApiMocks.cancelSftpTransfer).toHaveBeenCalledWith({
-        transferId: "transfer-running",
-      }),
+      expect(sftpApiMocks.cancelSftpTransfer).toHaveBeenCalledWith({
+        transferId: "transfer-running",
+      }),
     );
     expect(await screen.findByText("已请求取消传输。")).toBeInTheDocument();
   });

@@ -44,6 +44,72 @@ pub struct TerminalSecretInputResponse {
     pub max_responses: u8,
 }
 
+/// 后端内部的多敏感输入自动响应计划。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TerminalSecretInputPlan {
+    /// 按预期出现顺序排列的敏感输入条目。
+    pub entries: Vec<TerminalSecretInputEntry>,
+}
+
+impl TerminalSecretInputPlan {
+    /// 返回终端输出、快照和日志都需要脱敏的敏感值。
+    pub fn redact_values(&self) -> Vec<String> {
+        let mut values = Vec::new();
+        for entry in &self.entries {
+            push_unique_redact_value(&mut values, &entry.response);
+            for value in &entry.redact_values {
+                push_unique_redact_value(&mut values, value);
+            }
+        }
+        values
+    }
+}
+
+impl From<TerminalSecretInputResponse> for TerminalSecretInputPlan {
+    fn from(response: TerminalSecretInputResponse) -> Self {
+        Self {
+            entries: vec![TerminalSecretInputEntry::from(response)],
+        }
+    }
+}
+
+/// 后端内部的单个敏感输入自动响应条目。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalSecretInputEntry {
+    /// 条目的稳定 id，用于 route plan 和测试断言区分来源。
+    pub id: String,
+    /// 条目的用户或日志可读标签；不得包含 secret。
+    pub label: String,
+    /// 输出中触发自动响应的提示文本片段，大小写不敏感。
+    pub prompt_markers: Vec<String>,
+    /// 要写入 PTY 的敏感内容，不包含回车。
+    pub response: String,
+    /// 如果远端异常回显敏感内容，输出事件、快照和日志中要精确替换的值。
+    pub redact_values: Vec<String>,
+    /// 最多自动响应次数。
+    pub max_responses: usize,
+}
+
+impl From<TerminalSecretInputResponse> for TerminalSecretInputEntry {
+    fn from(response: TerminalSecretInputResponse) -> Self {
+        Self {
+            id: "legacy-secret".to_owned(),
+            label: "secret".to_owned(),
+            prompt_markers: response.prompt_markers,
+            response: response.response,
+            redact_values: response.redact_values,
+            max_responses: usize::from(response.max_responses),
+        }
+    }
+}
+
+fn push_unique_redact_value(values: &mut Vec<String>, value: &str) {
+    if value.is_empty() || values.iter().any(|existing| existing == value) {
+        return;
+    }
+    values.push(value.to_owned());
+}
+
 /// 创建 SSH 远程终端会话的请求参数。
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -186,6 +252,10 @@ pub struct TerminalSessionSummary {
     pub pid: Option<u32>,
     /// 会话运行状态。
     pub status: TerminalSessionStatus,
+    /// 后端按会话创建来源生成的目标引用，用于和前端 pane binding 交叉校验。
+    pub target_ref: Option<String>,
+    /// 后端签发的目标绑定 capability token；前端只能原样透传，不能生成。
+    pub target_token: Option<String>,
 }
 
 /// 当前终端会话日志记录状态。
@@ -212,6 +282,21 @@ impl TerminalSessionLogState {
             bytes_written: 0,
         }
     }
+}
+
+/// 本地终端会话的后端目标引用。
+pub fn local_terminal_target_ref() -> String {
+    "local".to_owned()
+}
+
+/// 远程主机类终端会话的后端目标引用。
+pub fn host_terminal_target_ref(kind: &str, host_id: &str) -> String {
+    format!("{}:{}", kind.trim(), host_id.trim())
+}
+
+/// 容器终端会话的后端目标引用。
+pub fn docker_container_terminal_target_ref(host_id: &str, container_id: &str) -> String {
+    format!("dockerContainer:{}:{}", host_id.trim(), container_id.trim())
 }
 
 /// 终端最近输出快照，用于 AI 上下文预览和 Kerminal Agent 输入。

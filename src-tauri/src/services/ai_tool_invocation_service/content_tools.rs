@@ -13,6 +13,7 @@ pub(super) fn execute_connection_rdp_open(
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_rdp_open_result_for_ai(&result)),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -50,6 +51,7 @@ pub(super) fn execute_snippet_list(
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_snippets_for_ai(&snippets)),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -71,6 +73,7 @@ pub(super) fn execute_snippet_update(
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_snippet_write_for_ai("已更新", &snippet)),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -94,6 +97,7 @@ pub(super) fn execute_snippet_delete(
                 truncate_string(&snippet_id)
             )),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Ok(false) => failure(format!("脚本片段不存在或未删除：{snippet_id}。")),
         Err(error) => failure(error.to_string()),
@@ -156,6 +160,7 @@ pub(super) fn execute_workflow_list(
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_workflows_for_ai(&workflows)),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -177,6 +182,7 @@ pub(super) fn execute_workflow_update(
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_workflow_write_for_ai("已更新", &workflow)),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -200,6 +206,7 @@ pub(super) fn execute_workflow_delete(
                 truncate_string(&workflow_id)
             )),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Ok(false) => failure(format!("命令工作流不存在或未删除：{workflow_id}。")),
         Err(error) => failure(error.to_string()),
@@ -255,6 +262,7 @@ pub(super) fn execute_history_record(
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_history_record_result_for_ai(&result)),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -275,6 +283,7 @@ pub(super) fn execute_history_delete(
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(format!("命令历史已删除：{}。", truncate_string(&entry_id))),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Ok(false) => failure(format!("命令历史不存在或未删除：{entry_id}。")),
         Err(error) => failure(error.to_string()),
@@ -290,6 +299,7 @@ pub(super) fn execute_history_clear(
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(format!("命令历史已清空，共删除 {count} 条记录。")),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -340,6 +350,7 @@ pub(super) fn execute_snippet_create(
                 }
             )),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -365,6 +376,7 @@ pub(super) fn execute_workflow_create(
                 workflow_scope_label(workflow.scope)
             )),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -385,6 +397,7 @@ pub(super) fn execute_history_search(
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_command_history_for_ai(&entries)),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }

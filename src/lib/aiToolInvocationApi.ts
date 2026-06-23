@@ -5,6 +5,9 @@ import type {
   ToolRiskLevel,
 } from "../features/tool-panel/toolRegistryModel";
 import { isToolId } from "../features/workspace/types";
+import { previewTools } from "./toolRegistryPreview";
+
+type BrowserPreviewTool = (typeof previewTools)[number];
 
 export type AiToolInvocationStatus =
   | "pending"
@@ -17,11 +20,16 @@ export interface AiToolPrepareRequest {
   arguments?: Record<string, unknown>;
   requestedBy?: string;
   reason?: string;
+  conversationId?: string | null;
+  conversationSlotJson?: string | null;
+  runId?: string | null;
+  stepId?: string | null;
 }
 
 export interface AiToolConfirmRequest {
   invocationId: string;
   approved: boolean;
+  auditContext?: AiToolAuditContext | null;
 }
 
 export interface AiToolAuditListOptions {
@@ -65,6 +73,16 @@ export interface AiToolPendingInvocation {
   requiresConfirmation: boolean;
   status: AiToolInvocationStatus;
   createdAt: string;
+  conversationId?: string | null;
+  conversationSlotJson?: string | null;
+  runId?: string | null;
+  stepId?: string | null;
+}
+
+export interface AiToolPendingContextUpdateRequest {
+  invocationId: string;
+  conversationId?: string | null;
+  conversationSlotJson?: string | null;
 }
 
 export interface AiToolAuditRecord {
@@ -81,6 +99,26 @@ export interface AiToolAuditRecord {
   error?: string | null;
   createdAt: string;
   completedAt: string;
+  auditContext?: AiToolAuditContext | null;
+  observationJson?: unknown | null;
+}
+
+export interface AiToolAuditContext {
+  attachmentIds?: string[];
+  assistantMessageId?: string | null;
+  contextSnapshotId?: string | null;
+  conversationId?: string | null;
+  hostId?: string | null;
+  paneId?: string | null;
+  routeMode?: string | null;
+  scopeKind?: string | null;
+  scopeRefJson?: string | null;
+  tabId?: string | null;
+  targetKey?: string | null;
+  targetRefJson?: string | null;
+  userMessageId?: string | null;
+  runId?: string | null;
+  stepId?: string | null;
 }
 
 export interface AiToolAuditExport {
@@ -128,6 +166,41 @@ export async function confirmAiToolInvocation(
   }
 
   return invoke<AiToolAuditRecord>("ai_tool_confirm", { request });
+}
+
+export async function listAiToolPendingInvocations(): Promise<
+  AiToolPendingInvocation[]
+> {
+  if (!isTauri()) {
+    return Array.from(browserPreviewPendingInvocations.values());
+  }
+
+  return invoke<AiToolPendingInvocation[]>("ai_tool_pending_list");
+}
+
+export async function updateAiToolPendingContext(
+  request: AiToolPendingContextUpdateRequest,
+): Promise<AiToolPendingInvocation> {
+  const normalizedRequest = normalizePendingContextUpdateRequest(request);
+  if (!isTauri()) {
+    const pending = browserPreviewPendingInvocations.get(
+      normalizedRequest.invocationId,
+    );
+    if (!pending) {
+      throw new Error("待确认工具调用不存在");
+    }
+    const updated = {
+      ...pending,
+      conversationId: normalizedRequest.conversationId ?? null,
+      conversationSlotJson: normalizedRequest.conversationSlotJson ?? null,
+    };
+    browserPreviewPendingInvocations.set(updated.id, updated);
+    return updated;
+  }
+
+  return invoke<AiToolPendingInvocation>("ai_tool_pending_update_context", {
+    request: normalizedRequest,
+  });
 }
 
 export async function listAiToolAudits(
@@ -180,8 +253,31 @@ function normalizePrepareRequest(
   return {
     ...request,
     arguments: request.arguments ?? {},
+    conversationId: normalizeNullableText(request.conversationId),
+    conversationSlotJson: normalizeNullableText(request.conversationSlotJson),
+    runId: normalizeNullableText(request.runId),
+    stepId: normalizeNullableText(request.stepId),
     toolId: request.toolId.trim(),
   };
+}
+
+function normalizePendingContextUpdateRequest(
+  request: AiToolPendingContextUpdateRequest,
+): AiToolPendingContextUpdateRequest {
+  const invocationId = request.invocationId.trim();
+  if (!invocationId) {
+    throw new Error("待确认工具调用 id 不能为空");
+  }
+  return {
+    invocationId,
+    conversationId: normalizeNullableText(request.conversationId),
+    conversationSlotJson: normalizeNullableText(request.conversationSlotJson),
+  };
+}
+
+function normalizeNullableText(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
 }
 
 function auditListInvokeArgs(options?: AiToolAuditListOptions) {
@@ -208,16 +304,21 @@ function normalizeAuditLimit(value: number | undefined, defaultLimit: number) {
 function browserPreviewPending(
   request: ReturnType<typeof normalizePrepareRequest>,
 ): AiToolPendingInvocation {
-  const toolTitle = toolTitleFor(request.toolId);
+  const tool = browserPreviewToolDefinition(request.toolId);
+  const toolTitle = tool?.title ?? request.toolId;
   const riskSummary = commandRiskSummary(request);
-  const risk = browserPreviewRisk(request.toolId, riskSummary);
-  const confirmation = browserPreviewConfirmation(risk, riskSummary);
+  const risk = browserPreviewRisk(tool, riskSummary);
+  const confirmation = browserPreviewConfirmation(tool, risk, riskSummary);
   return {
     argumentsSummary: summarizeArguments(request.arguments),
-    audit: browserPreviewAuditPolicy(request.toolId, risk),
+    audit: browserPreviewAuditPolicy(tool, risk),
     clientAction: clientActionForPreview(request),
     confirmation,
     createdAt: currentUnixTimestamp(),
+    conversationId: request.conversationId ?? null,
+    conversationSlotJson: request.conversationSlotJson ?? null,
+    runId: request.runId ?? null,
+    stepId: request.stepId ?? null,
     id: `browser-tool-call-${Date.now().toString(36)}`,
     reason: request.reason ?? null,
     requestedBy: request.requestedBy ?? "browser-preview",
@@ -235,6 +336,7 @@ function browserPreviewAudit(request: AiToolConfirmRequest): AiToolAuditRecord {
   const pending = browserPreviewPendingInvocations.get(request.invocationId);
   browserPreviewPendingInvocations.delete(request.invocationId);
   return {
+    auditContext: request.auditContext ?? null,
     argumentsSummary: pending?.argumentsSummary ?? "无参数",
     completedAt: now,
     confirmation: pending?.confirmation ?? "contextual",
@@ -353,7 +455,10 @@ function browserPreviewResultSummary(
   if (pending?.toolId === "ssh.connect") {
     return "SSH 终端已批准打开，浏览器预览已模拟创建远程 tab。";
   }
-  if (pending?.toolId === "ssh.command") {
+  if (
+    pending?.toolId === "ssh.command" ||
+    pending?.toolId === "ssh.command_on_resolved_host"
+  ) {
     return "远程命令已执行，浏览器预览已模拟返回 stdout/stderr 摘要。";
   }
   if (pending?.toolId === "connection.rdp_open") {
@@ -461,175 +566,49 @@ function browserPreviewResultSummary(
   return "浏览器预览已模拟执行，真实应用会通过 Tauri/Rust 受控执行。";
 }
 
-function toolTitleFor(toolId: string) {
-  const labels: Record<string, string> = {
-    "connection.rdp_open": "打开 RDP 连接",
-    "diagnostics.create_bundle": "生成诊断包",
-    "diagnostics.runtime_health": "读取运行体检",
-    "history.clear": "清空命令历史",
-    "history.delete": "删除命令历史",
-    "history.record": "记录命令历史",
-    "history.search": "搜索命令历史",
-    "llm_provider.create": "创建模型 Provider",
-    "llm_provider.delete": "删除模型 Provider",
-    "llm_provider.list": "列出模型 Provider",
-    "llm_provider.test": "测试模型 Provider",
-    "llm_provider.update": "更新模型 Provider",
-    "profile.create": "创建终端配置",
-    "profile.delete": "删除终端配置",
-    "profile.detect_shells": "探测可用 Shell",
-    "profile.list": "列出终端配置",
-    "profile.update": "更新终端配置",
-    "port_forward.close": "关闭端口转发",
-    "port_forward.create": "创建端口转发",
-    "port_forward.list": "列出端口转发",
-    "remote_host.create": "创建远程主机",
-    "remote_host.delete": "删除远程主机",
-    "remote_host.group_create": "创建远程主机分组",
-    "remote_host.group_delete": "删除远程主机分组",
-    "remote_host.group_list": "列出远程主机分组",
-    "remote_host.group_update": "更新远程主机分组",
-    "remote_host.tree": "读取远程主机树",
-    "remote_host.update": "更新远程主机",
-    "server_info.snapshot": "读取服务器信息",
-    "ssh.command": "执行远程命令",
-    "ssh.connect": "打开 SSH 终端",
-    "settings.get": "读取设置",
-    "settings.update_ai_security": "更新 AI 安全策略",
-    "settings.update_theme": "更新主题",
-    "settings.update_terminal_appearance": "更新终端外观",
-    "sftp.chmod": "修改远程权限",
-    "sftp.create_directory": "创建远程目录",
-    "sftp.delete": "删除远程文件",
-    "sftp.download": "下载远程文件",
-    "sftp.download_directory": "下载远程目录",
-    "sftp.list": "列出远程目录",
-    "sftp.move": "移动远程路径",
-    "sftp.preview": "预览远程文件",
-    "sftp.rename": "重命名远程路径",
-    "sftp.transfer.cancel": "取消 SFTP 传输任务",
-    "sftp.transfer.clear_completed": "清理已结束 SFTP 任务",
-    "sftp.transfer.enqueue": "创建 SFTP 传输任务",
-    "sftp.transfer.list": "列出 SFTP 传输任务",
-    "sftp.upload": "上传本地文件",
-    "sftp.upload_directory": "上传本地目录",
-    "snippet.create": "创建脚本片段",
-    "snippet.delete": "删除脚本片段",
-    "snippet.list": "列出脚本片段",
-    "snippet.update": "更新脚本片段",
-    "terminal.create": "新建终端",
-    "terminal.close": "关闭终端会话",
-    "terminal.list": "列出终端会话",
-    "terminal.log.start": "开始终端日志",
-    "terminal.log.state": "读取终端日志状态",
-    "terminal.log.stop": "停止终端日志",
-    "terminal.resize": "调整终端尺寸",
-    "terminal.write": "写入终端",
-    "workflow.create": "创建命令工作流",
-    "workflow.delete": "删除命令工作流",
-    "workflow.list": "列出命令工作流",
-    "workflow.update": "更新命令工作流",
-    "workspace.focus_tab": "切换终端 tab",
-    "workspace.open_tool": "打开工具面板",
-    "workspace.split_pane": "分割当前分屏",
-  };
-  return labels[toolId] ?? toolId;
-}
-
 function browserPreviewRisk(
-  toolId: string,
+  tool: BrowserPreviewTool | undefined,
   riskSummary: string | null,
 ): ToolRiskLevel {
   if (riskSummary) {
     return "destructive";
   }
-  if (
-    [
-      "history.clear",
-      "history.delete",
-      "llm_provider.delete",
-      "profile.delete",
-      "remote_host.delete",
-      "remote_host.group_delete",
-      "sftp.delete",
-      "snippet.delete",
-      "terminal.close",
-      "workflow.delete",
-    ].includes(toolId)
-  ) {
-    return "destructive";
-  }
-  if (
-    [
-      "diagnostics.runtime_health",
-      "history.search",
-      "llm_provider.list",
-      "llm_provider.test",
-      "port_forward.list",
-      "profile.detect_shells",
-      "profile.list",
-      "remote_host.group_list",
-      "remote_host.tree",
-      "settings.get",
-      "snippet.list",
-      "sftp.transfer.list",
-      "terminal.list",
-      "terminal.log.state",
-      "workflow.list",
-    ].includes(toolId)
-  ) {
-    return "read";
-  }
-  if (
-    toolId === "connection.rdp_open" ||
-    toolId === "remote_host.create" ||
-    toolId === "remote_host.update" ||
-    toolId === "port_forward.close" ||
-    toolId === "port_forward.create" ||
-    toolId === "server_info.snapshot" ||
-    toolId === "sftp.chmod" ||
-    toolId === "sftp.create_directory" ||
-    toolId === "sftp.download_directory" ||
-    toolId === "ssh.command" ||
-    toolId === "sftp.download" ||
-    toolId === "sftp.list" ||
-    toolId === "sftp.move" ||
-    toolId === "sftp.preview" ||
-    toolId === "sftp.rename" ||
-    toolId === "sftp.transfer.cancel" ||
-    toolId === "sftp.transfer.enqueue" ||
-    toolId === "sftp.upload" ||
-    toolId === "sftp.upload_directory" ||
-    toolId === "ssh.connect"
-  ) {
-    return "remote";
-  }
-  return "write";
+  return tool?.risk ?? "write";
 }
 
 function browserPreviewAuditPolicy(
-  toolId: string,
+  tool: BrowserPreviewTool | undefined,
   risk: ToolRiskLevel,
 ): ToolAuditPolicy {
   if (
-    toolId === "settings.update_ai_security" ||
-    toolId === "sftp.delete" ||
-    toolId === "history.clear" ||
-    (toolId === "ssh.command" && risk === "destructive")
+    (tool?.id === "ssh.command" || tool?.id === "ssh.command_on_resolved_host") &&
+    risk === "destructive"
   ) {
     return "full";
   }
-  return "summary";
+  return tool?.audit ?? (risk === "destructive" ? "full" : "summary");
 }
 
 function browserPreviewConfirmation(
+  tool: BrowserPreviewTool | undefined,
   risk: ToolRiskLevel,
   riskSummary: string | null,
 ): ToolConfirmationPolicy {
-  if (risk === "read" && !riskSummary) {
+  if (riskSummary) {
+    return "always";
+  }
+  return tool?.confirmation ?? defaultConfirmationForRisk(risk);
+}
+
+function browserPreviewToolDefinition(toolId: string) {
+  return previewTools.find((tool) => tool.enabled && tool.id === toolId);
+}
+
+function defaultConfirmationForRisk(risk: ToolRiskLevel): ToolConfirmationPolicy {
+  if (risk === "read") {
     return "auto";
   }
-  if (riskSummary || risk === "remote" || risk === "batch" || risk === "destructive") {
+  if (risk === "remote" || risk === "batch" || risk === "destructive") {
     return "always";
   }
   return "contextual";
@@ -789,7 +768,11 @@ function isSensitiveKey(key: string) {
 function commandRiskSummary(
   request: ReturnType<typeof normalizePrepareRequest>,
 ) {
-  if (request.toolId !== "terminal.write" && request.toolId !== "ssh.command") {
+  if (
+    request.toolId !== "terminal.write" &&
+    request.toolId !== "ssh.command" &&
+    request.toolId !== "ssh.command_on_resolved_host"
+  ) {
     return null;
   }
   const data =
@@ -853,11 +836,11 @@ function commandRiskSummary(
     return null;
   }
   const prefix =
-    request.toolId === "ssh.command" ? "远程命令风险" : "终端写入命令风险";
+    request.toolId === "terminal.write" ? "终端写入命令风险" : "远程命令风险";
   const guidance =
-    request.toolId === "ssh.command"
-      ? "请确认目标 SSH 主机、用户和工作目录后再执行。"
-      : "请确认目标 session、主机和工作目录后再执行。";
+    request.toolId === "terminal.write"
+      ? "请确认目标 session、主机和工作目录后再执行。"
+      : "请确认目标 SSH 主机、用户和工作目录后再执行。";
   return `${prefix}：${[...new Set(findings)].join("、")}。${guidance}`;
 }
 

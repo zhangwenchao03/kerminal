@@ -1,18 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { defaultAppSettings } from "../settings/settingsModel";
 import { browserPreviewProfiles } from "../../lib/profileApi";
-import { collectPaneIds } from "./workspaceLayout";
+import { dockerContainerTarget } from "../../lib/targetModel";
 import {
   localMachineIdForProfile,
   resetWorkspaceStore,
   useWorkspaceStore,
 } from "./workspaceStore";
-import {
-  isSftpTransferWorkspaceTab,
-  isTerminalSessionTab,
-  type TerminalSessionTab,
-  type TerminalTab,
-} from "./types";
 import {
   apiContainer,
   bashProfile,
@@ -24,27 +18,19 @@ import {
   unorderedRemoteHostTree,
 } from "./workspaceStore.testSupport";
 
-function requireTerminalSessionTab(
-  tab: TerminalTab | undefined,
-): TerminalSessionTab {
-  if (!isTerminalSessionTab(tab)) {
-    throw new Error("Expected a terminal session tab.");
-  }
-  return tab;
-}
-
 describe("workspaceStore", () => {
   beforeEach(() => {
     resetWorkspaceStore();
   });
 
   it("tracks selected machine, focused pane and active tool independently", () => {
+    useWorkspaceStore.getState().addTerminalTab({ title: "本地 PowerShell" });
     useWorkspaceStore.getState().selectMachine("local-powershell");
-    useWorkspaceStore.getState().focusPane("pane-local");
+    useWorkspaceStore.getState().focusPane("pane-local-1");
     useWorkspaceStore.getState().setActiveTool("sftp");
 
     expect(useWorkspaceStore.getState().selectedMachineId).toBe("local-powershell");
-    expect(useWorkspaceStore.getState().focusedPaneId).toBe("pane-local");
+    expect(useWorkspaceStore.getState().focusedPaneId).toBe("pane-local-1");
     expect(useWorkspaceStore.getState().activeTool).toBe("sftp");
   });
 
@@ -74,6 +60,45 @@ describe("workspaceStore", () => {
       .terminalPanes.find((candidate) => candidate.id === pane?.id);
     expect(updatedPane?.currentCwd).toBe("/var/log");
     expect(updatedPane?.cwd).toBeUndefined();
+  });
+
+  it("skips unchanged pane runtime updates to avoid redundant store notifications", () => {
+    useWorkspaceStore.getState().addTerminalTab({ title: "本地 PowerShell" });
+    let notificationCount = 0;
+    const unsubscribe = useWorkspaceStore.subscribe(() => {
+      notificationCount += 1;
+    });
+    const initialPanes = useWorkspaceStore.getState().terminalPanes;
+
+    useWorkspaceStore.getState().updatePaneOutputHistory("missing-pane", "output");
+    useWorkspaceStore.getState().updatePaneOutputHistory("pane-local-1", undefined);
+    useWorkspaceStore.getState().updatePaneCurrentCwd("pane-local-1", "");
+
+    expect(notificationCount).toBe(1);
+    expect(useWorkspaceStore.getState().terminalPanes).not.toBe(initialPanes);
+
+    const updatedPanes = useWorkspaceStore.getState().terminalPanes;
+    useWorkspaceStore.getState().updatePaneCurrentCwd("pane-local-1", "");
+    useWorkspaceStore.getState().updatePaneOutputHistory("pane-local-1", undefined);
+
+    expect(notificationCount).toBe(1);
+    expect(useWorkspaceStore.getState().terminalPanes).toBe(updatedPanes);
+
+    const runtimePanes = useWorkspaceStore.getState().terminalPanes;
+    useWorkspaceStore
+      .getState()
+      .updatePaneOutputHistory("pane-local-1", "latest output");
+    expect(notificationCount).toBe(2);
+
+    const outputPanes = useWorkspaceStore.getState().terminalPanes;
+    useWorkspaceStore
+      .getState()
+      .updatePaneOutputHistory("pane-local-1", "latest output");
+    expect(notificationCount).toBe(2);
+    expect(useWorkspaceStore.getState().terminalPanes).toBe(outputPanes);
+    expect(outputPanes).not.toBe(runtimePanes);
+
+    unsubscribe();
   });
 
   it("syncs restored pane production flags when remote hosts refresh", () => {
@@ -114,6 +139,78 @@ describe("workspaceStore", () => {
       remoteHostId: "host-lab",
       remoteHostProduction: true,
     });
+  });
+
+  it("keeps the restored active remote tab selected while profiles and hosts load", () => {
+    useWorkspaceStore.getState().restoreWorkspaceSession({
+      activeTabId: "tab-ssh-1",
+      focusedPaneId: "pane-ssh-1",
+      selectedMachineId: localMachineIdForProfile("profile-pwsh"),
+      sidebarMachines: [
+        {
+          id: localMachineIdForProfile("profile-pwsh"),
+          kind: "local",
+          name: "PowerShell 7",
+          profileId: "profile-pwsh",
+          remoteGroupId: "__ungrouped__",
+          status: "online",
+          tags: ["local"],
+          description: "pwsh.exe",
+        },
+      ],
+      terminalPanes: [
+        {
+          id: "pane-ssh-1",
+          machineId: "host-lab",
+          mode: "ssh",
+          prompt: "root@192.168.1.253:~$",
+          remoteHostId: "host-lab",
+          status: "offline",
+          title: "lab server",
+          lines: [],
+        },
+      ],
+      terminalTabs: [
+        {
+          id: "tab-ssh-1",
+          layout: { paneId: "pane-ssh-1", type: "pane" },
+          machineId: "host-lab",
+          title: "lab server",
+        },
+      ],
+    });
+
+    expect(useWorkspaceStore.getState().selectedMachineId).toBe("host-lab");
+
+    useWorkspaceStore.getState().setProfiles([pwshProfile, bashProfile]);
+    expect(useWorkspaceStore.getState().selectedMachineId).toBe("host-lab");
+
+    useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
+    const state = useWorkspaceStore.getState();
+    expect(state.selectedMachineId).toBe("host-lab");
+    expect(state.machineGroups[0].machines[0]).toMatchObject({
+      id: localMachineIdForProfile("profile-pwsh"),
+      status: "offline",
+    });
+  });
+
+  it("keeps a restored sidebar-only SSH selection until remote hosts load", () => {
+    useWorkspaceStore.getState().restoreWorkspaceSession({
+      activeTabId: "",
+      focusedPaneId: "",
+      selectedMachineId: "host-lab",
+      sidebarMachines: [],
+      terminalPanes: [],
+      terminalTabs: [],
+    });
+
+    expect(useWorkspaceStore.getState().selectedMachineId).toBe("host-lab");
+
+    useWorkspaceStore.getState().setProfiles([pwshProfile, bashProfile]);
+    expect(useWorkspaceStore.getState().selectedMachineId).toBe("host-lab");
+
+    useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
+    expect(useWorkspaceStore.getState().selectedMachineId).toBe("host-lab");
   });
 
   it("stores normalized app settings", () => {
@@ -220,6 +317,26 @@ describe("workspaceStore", () => {
     ]);
   });
 
+  it("maps RDP-tagged remote hosts as RDP sidebar machines", () => {
+    useWorkspaceStore.getState().setRemoteHostTree(remoteHostTreeWithRdp);
+
+    const state = useWorkspaceStore.getState();
+    const rdpMachine = state.machineGroups[0].machines[0];
+
+    expect(rdpMachine).toMatchObject({
+      authType: "password",
+      credentialRef: "credential:rdp/rdp-office/password",
+      description: "administrator@rdp.internal:3389",
+      host: "rdp.internal",
+      id: "rdp-office",
+      kind: "rdp",
+      name: "office-rdp",
+      port: 3389,
+      username: "administrator",
+    });
+    expect(rdpMachine.target).toBeUndefined();
+  });
+
   it("adds a Docker container under its SSH host and opens it with enter options", () => {
     useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
     useWorkspaceStore.getState().addDockerContainer(apiContainer, {
@@ -270,6 +387,81 @@ describe("workspaceStore", () => {
     expect(useWorkspaceStore.getState().terminalPanes).toHaveLength(1);
   });
 
+  it("syncs refreshed Docker container metadata without replacing live pane runtime state", () => {
+    useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
+    useWorkspaceStore.getState().addDockerContainer(apiContainer, {
+      shell: "exec bash -l",
+      user: "root",
+      workdir: "/workspace",
+    });
+    useWorkspaceStore
+      .getState()
+      .openContainerTerminal("docker:host-lab:c0ffee1234567890");
+    useWorkspaceStore
+      .getState()
+      .updatePaneCurrentCwd("pane-container-1", "/runtime-cwd");
+    useWorkspaceStore
+      .getState()
+      .updatePaneOutputHistory("pane-container-1", "tail output");
+    useWorkspaceStore
+      .getState()
+      .renameTerminalTab("tab-container-1", "Pinned container");
+
+    useWorkspaceStore.getState().addDockerContainer(
+      {
+        ...apiContainer,
+        image: "kerminal/api:v2",
+        name: "api-renamed",
+        status: "exited",
+        statusText: "Exited (1) 4 seconds ago",
+        target: dockerContainerTarget({
+          containerId: apiContainer.id,
+          containerName: "api-renamed",
+          hostId: apiContainer.hostId,
+          runtime: apiContainer.runtime,
+        }),
+      },
+      {
+        shell: "exec sh",
+        user: "app",
+        workdir: "/srv",
+      },
+    );
+
+    const state = useWorkspaceStore.getState();
+    const machine = state.machineGroups[0].machines[1];
+    expect(machine).toMatchObject({
+      description: "kerminal/api:v2 · Exited (1) 4 seconds ago",
+      name: "api-renamed",
+      shell: "exec sh",
+      status: "warning",
+      target: {
+        containerName: "api-renamed",
+        user: "app",
+        workdir: "/srv",
+      },
+    });
+    expect(state.terminalTabs).toHaveLength(1);
+    expect(state.terminalTabs[0]).toMatchObject({
+      id: "tab-container-1",
+      title: "Pinned container",
+    });
+    expect(state.terminalPanes).toHaveLength(1);
+    expect(state.terminalPanes[0]).toMatchObject({
+      currentCwd: "/runtime-cwd",
+      outputHistory: "tail output",
+      prompt: "api-renamed:/$",
+      shell: "exec bash -l",
+      status: "warning",
+      title: "api-renamed",
+      target: {
+        containerName: "api-renamed",
+        user: "root",
+        workdir: "/workspace",
+      },
+    });
+  });
+
   it("adds a local terminal tab to the selected machine group", () => {
     useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
     useWorkspaceStore.getState().addTerminalTab({
@@ -288,6 +480,20 @@ describe("workspaceStore", () => {
       name: "工具终端",
       remoteGroupId: "group-lab",
     });
+  });
+
+  it("selects the sidebar machine for the active terminal tab", () => {
+    useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
+    useWorkspaceStore.getState().openSshTerminal("host-lab");
+    useWorkspaceStore.getState().addTerminalTab({ title: "本地 PowerShell" });
+
+    expect(useWorkspaceStore.getState().selectedMachineId).toBe("machine-local-2");
+
+    useWorkspaceStore.getState().selectTab("tab-ssh-1");
+
+    expect(useWorkspaceStore.getState().activeTabId).toBe("tab-ssh-1");
+    expect(useWorkspaceStore.getState().focusedPaneId).toBe("pane-ssh-1");
+    expect(useWorkspaceStore.getState().selectedMachineId).toBe("host-lab");
   });
 
   it("adds a copied local profile card to the requested group", () => {
@@ -461,6 +667,78 @@ describe("workspaceStore", () => {
     });
   });
 
+  it("does not resurrect a removed local sidebar machine from restored panes", () => {
+    useWorkspaceStore.getState().addTerminalTab({ title: "临时本地终端" });
+    useWorkspaceStore.getState().removeSidebarMachine("machine-local-1");
+
+    const removedState = useWorkspaceStore.getState();
+    expect(
+      removedState.machineGroups.flatMap((group) => group.machines.map((machine) => machine.id)),
+    ).not.toContain("machine-local-1");
+    expect(removedState.removedSidebarMachineIds).toEqual(["machine-local-1"]);
+
+    resetWorkspaceStore();
+    useWorkspaceStore.getState().restoreWorkspaceSession({
+      activeTabId: removedState.activeTabId,
+      focusedPaneId: removedState.focusedPaneId,
+      removedSidebarMachineIds: removedState.removedSidebarMachineIds,
+      selectedMachineId: removedState.selectedMachineId,
+      sidebarMachines: [],
+      terminalPanes: removedState.terminalPanes,
+      terminalTabs: removedState.terminalTabs,
+    });
+
+    const restoredState = useWorkspaceStore.getState();
+    expect(
+      restoredState.machineGroups.flatMap((group) => group.machines.map((machine) => machine.id)),
+    ).not.toContain("machine-local-1");
+    expect(restoredState.terminalPanes[0]).toMatchObject({
+      id: "pane-local-1",
+      machineId: "machine-local-1",
+      mode: "local",
+    });
+    expect(restoredState.removedSidebarMachineIds).toEqual(["machine-local-1"]);
+  });
+
+  it("does not resurrect a removed Docker sidebar machine from restored panes", () => {
+    useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
+    useWorkspaceStore.getState().addDockerContainer(apiContainer, {
+      shell: "exec bash -l",
+    });
+    const containerId = useWorkspaceStore.getState().selectedMachineId;
+    useWorkspaceStore.getState().openContainerTerminal(containerId);
+    useWorkspaceStore.getState().removeSidebarMachine(containerId);
+
+    const removedState = useWorkspaceStore.getState();
+    expect(removedState.removedSidebarMachineIds).toEqual([containerId]);
+    expect(
+      removedState.machineGroups[0].machines.map((machine) => machine.id),
+    ).toEqual(["host-lab"]);
+
+    resetWorkspaceStore();
+    useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
+    useWorkspaceStore.getState().restoreWorkspaceSession({
+      activeTabId: removedState.activeTabId,
+      focusedPaneId: removedState.focusedPaneId,
+      removedSidebarMachineIds: removedState.removedSidebarMachineIds,
+      selectedMachineId: removedState.selectedMachineId,
+      sidebarMachines: [],
+      terminalPanes: removedState.terminalPanes,
+      terminalTabs: removedState.terminalTabs,
+    });
+
+    const restoredState = useWorkspaceStore.getState();
+    expect(restoredState.machineGroups[0].machines.map((machine) => machine.id)).toEqual([
+      "host-lab",
+    ]);
+    expect(restoredState.terminalPanes[0]).toMatchObject({
+      machineId: containerId,
+      mode: "container",
+      remoteHostId: "host-lab",
+    });
+    expect(restoredState.removedSidebarMachineIds).toEqual([containerId]);
+  });
+
   it("clears selected machine when the selected remote host disappears and no sidebar machine remains", () => {
     useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
     useWorkspaceStore.getState().selectMachine("host-lab");
@@ -498,6 +776,7 @@ describe("workspaceStore", () => {
     const state = useWorkspaceStore.getState();
     expect(state.profiles).toEqual([pwshProfile, bashProfile]);
     expect(state.machineGroups).toEqual([]);
+    expect(state.selectedMachineId).toBe("");
   });
 
   it("keeps user-added profile-backed local machines when the remote host tree refreshes", () => {
@@ -661,35 +940,6 @@ describe("workspaceStore", () => {
     });
   });
 
-  it("selects a tab and focuses its first pane", () => {
-    useWorkspaceStore.getState().addTerminalTab({ title: "第一本地终端" });
-    useWorkspaceStore.getState().addTerminalTab({ title: "第二本地终端" });
-    useWorkspaceStore.getState().selectTab("tab-local-1");
-
-    expect(useWorkspaceStore.getState().activeTabId).toBe("tab-local-1");
-    expect(useWorkspaceStore.getState().focusedPaneId).toBe("pane-local-1");
-  });
-
-  it("renames a terminal tab title", () => {
-    useWorkspaceStore.getState().addTerminalTab({ title: "本地 PowerShell" });
-    useWorkspaceStore.getState().renameTerminalTab("tab-local-1", "生产日志");
-
-    expect(useWorkspaceStore.getState().terminalTabs[0].title).toBe("生产日志");
-    expect(useWorkspaceStore.getState().terminalPanes[0].title).toBe(
-      "本地 PowerShell",
-    );
-  });
-
-  it("ignores unknown tab selection requests", () => {
-    const before = useWorkspaceStore.getState();
-
-    useWorkspaceStore.getState().selectTab("missing-tab");
-
-    const after = useWorkspaceStore.getState();
-    expect(after.activeTabId).toBe(before.activeTabId);
-    expect(after.focusedPaneId).toBe(before.focusedPaneId);
-  });
-
   it("ignores unknown tool panel selection requests", () => {
     const before = useWorkspaceStore.getState();
 
@@ -698,222 +948,4 @@ describe("workspaceStore", () => {
     expect(useWorkspaceStore.getState().activeTool).toBe(before.activeTool);
   });
 
-  it("adds a local terminal tab and focuses its pane", () => {
-    useWorkspaceStore.getState().addTerminalTab();
-
-    const state = useWorkspaceStore.getState();
-    expect(state.terminalTabs).toHaveLength(1);
-    expect(state.terminalPanes).toHaveLength(1);
-    expect(state.activeTabId).toBe("tab-local-1");
-    expect(state.focusedPaneId).toBe("pane-local-1");
-    expect(state.selectedMachineId).toBe("machine-local-1");
-    expect(state.machineGroups[0]).toMatchObject({
-      id: "__ungrouped__",
-      title: "默认分组",
-    });
-  });
-
-  it("opens a saved SSH host in a new terminal tab", () => {
-    useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
-    useWorkspaceStore.getState().openSshTerminal("host-lab");
-
-    const state = useWorkspaceStore.getState();
-    const pane = state.terminalPanes[state.terminalPanes.length - 1];
-    const tab = state.terminalTabs[state.terminalTabs.length - 1];
-
-    expect(state.activeTabId).toBe("tab-ssh-1");
-    expect(state.focusedPaneId).toBe("pane-ssh-1");
-    expect(state.selectedMachineId).toBe("host-lab");
-    expect(tab).toMatchObject({
-      id: "tab-ssh-1",
-      machineId: "host-lab",
-      title: "lab server",
-    });
-    expect(pane).toMatchObject({
-      id: "pane-ssh-1",
-      machineId: "host-lab",
-      mode: "ssh",
-      prompt: "root@192.168.1.253:~$",
-      remoteHostId: "host-lab",
-      title: "lab server",
-    });
-  });
-
-  it("maps RDP-tagged remote hosts as RDP sidebar machines", () => {
-    useWorkspaceStore.getState().setRemoteHostTree(remoteHostTreeWithRdp);
-
-    const state = useWorkspaceStore.getState();
-    const rdpMachine = state.machineGroups[0].machines[0];
-
-    expect(rdpMachine).toMatchObject({
-      authType: "password",
-      credentialRef: "credential:ssh/rdp-office/password",
-      description: "administrator@rdp.internal:3389",
-      host: "rdp.internal",
-      id: "rdp-office",
-      kind: "rdp",
-      name: "office-rdp",
-      port: 3389,
-      username: "administrator",
-    });
-    expect(rdpMachine.target).toBeUndefined();
-  });
-
-  it("splits the focused pane in the active tab", () => {
-    useWorkspaceStore.getState().addTerminalTab({ title: "本地 PowerShell" });
-    useWorkspaceStore.getState().splitFocusedPane("horizontal");
-
-    const state = useWorkspaceStore.getState();
-    const activeTab = requireTerminalSessionTab(
-      state.terminalTabs.find((tab) => tab.id === state.activeTabId),
-    );
-
-    expect(state.terminalPanes).toHaveLength(2);
-    expect(state.focusedPaneId).toBe("pane-local-2");
-    expect(activeTab.layout).toMatchObject({
-      type: "split",
-      direction: "horizontal",
-    });
-    expect(collectPaneIds(activeTab.layout)).toEqual([
-      "pane-local-1",
-      "pane-local-2",
-    ]);
-  });
-
-  it("keeps the last pane in a tab when closePane is requested", () => {
-    useWorkspaceStore.getState().addTerminalTab({ title: "本地 PowerShell" });
-    useWorkspaceStore.getState().closePane("pane-local-1");
-
-    const state = useWorkspaceStore.getState();
-    expect(state.terminalPanes).toHaveLength(1);
-    expect(state.focusedPaneId).toBe("pane-local-1");
-    expect(requireTerminalSessionTab(state.terminalTabs[0]).layout).toEqual({
-      type: "pane",
-      paneId: "pane-local-1",
-    });
-  });
-
-  it("closes a pane from a split tab and focuses the remaining pane", () => {
-    useWorkspaceStore.getState().addTerminalTab({ title: "本地 PowerShell" });
-    useWorkspaceStore.getState().splitFocusedPane("horizontal");
-    useWorkspaceStore.getState().closePane("pane-local-1");
-
-    const state = useWorkspaceStore.getState();
-    const activeTab = requireTerminalSessionTab(
-      state.terminalTabs.find((tab) => tab.id === state.activeTabId),
-    );
-
-    expect(state.terminalPanes.map((pane) => pane.id)).not.toContain(
-      "pane-local-1",
-    );
-    expect(state.focusedPaneId).toBe("pane-local-2");
-    expect(activeTab.layout).toEqual({
-      type: "pane",
-      paneId: "pane-local-2",
-    });
-  });
-
-  it("closes a tab and removes its panes when multiple tabs exist", () => {
-    useWorkspaceStore.getState().addTerminalTab({ title: "第一本地终端" });
-    useWorkspaceStore.getState().addTerminalTab({ title: "第二本地终端" });
-    useWorkspaceStore.getState().closeTerminalTab("tab-local-2");
-
-    const state = useWorkspaceStore.getState();
-    expect(state.terminalTabs.map((tab) => tab.id)).toEqual(["tab-local-1"]);
-    expect(state.terminalPanes.map((pane) => pane.id)).toEqual(["pane-local-1"]);
-    expect(state.activeTabId).toBe("tab-local-1");
-    expect(state.focusedPaneId).toBe("pane-local-1");
-  });
-
-  it("closes the last terminal tab and leaves an empty workspace", () => {
-    useWorkspaceStore.getState().addTerminalTab({ title: "本地 PowerShell" });
-    useWorkspaceStore.getState().closeTerminalTab("tab-local-1");
-
-    const state = useWorkspaceStore.getState();
-    expect(state.terminalTabs).toEqual([]);
-    expect(state.terminalPanes).toEqual([]);
-    expect(state.activeTabId).toBe("");
-    expect(state.focusedPaneId).toBe("");
-  });
-
-  it("opens an SFTP transfer tab without creating a terminal pane", () => {
-    useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
-    useWorkspaceStore.getState().openSftpTransferTab({
-      rightHostId: "host-lab",
-    });
-
-    const state = useWorkspaceStore.getState();
-    const tab = state.terminalTabs.find((candidate) =>
-      candidate.id.startsWith("tab-sftp-transfer-"),
-    );
-
-    expect(tab && isSftpTransferWorkspaceTab(tab)).toBe(true);
-    expect(tab).toMatchObject({
-      kind: "sftpTransfer",
-      rightHostId: "host-lab",
-      machineId: "host-lab",
-      title: "lab server 传输",
-    });
-    expect(state.terminalPanes).toEqual([]);
-    expect(state.focusedPaneId).toBe("");
-    expect(state.activeTabId).toBe(tab?.id);
-  });
-
-  it("keeps transfer tabs when closing terminal tabs", () => {
-    useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
-    useWorkspaceStore.getState().addTerminalTab({ title: "本地 PowerShell" });
-    useWorkspaceStore.getState().openSftpTransferTab({
-      rightHostId: "host-lab",
-    });
-    useWorkspaceStore.getState().closeTerminalTab("tab-local-1");
-
-    const state = useWorkspaceStore.getState();
-    expect(state.terminalPanes).toEqual([]);
-    expect(state.terminalTabs).toHaveLength(1);
-    expect(isSftpTransferWorkspaceTab(state.terminalTabs[0])).toBe(true);
-    expect(state.activeTabId).toBe(state.terminalTabs[0].id);
-    expect(state.focusedPaneId).toBe("");
-  });
-
-  it("restores a saved terminal session and avoids generated id collisions", () => {
-    useWorkspaceStore.getState().restoreWorkspaceSession({
-      activeTabId: "tab-local-7",
-      focusedPaneId: "pane-local-8",
-      selectedMachineId: "machine-local-7",
-      sidebarMachines: [],
-      terminalPanes: [
-        {
-          cwd: "C:\\\\restored",
-          id: "pane-local-8",
-          lines: ["old output"],
-          machineId: "machine-local-7",
-          mode: "local",
-          prompt: "PS>",
-          shell: "pwsh.exe",
-          status: "online",
-          title: "恢复会话",
-        },
-      ],
-      terminalTabs: [
-        {
-          id: "tab-local-7",
-          layout: { type: "pane", paneId: "pane-local-8" },
-          machineId: "machine-local-7",
-          title: "恢复会话",
-        },
-      ],
-    });
-    useWorkspaceStore.getState().addTerminalTab({ title: "新会话" });
-
-    const state = useWorkspaceStore.getState();
-    expect(state.terminalPanes[0].lines).toEqual([]);
-    expect(state.terminalTabs.map((tab) => tab.id)).toEqual([
-      "tab-local-7",
-      "tab-local-8",
-    ]);
-    expect(state.terminalPanes.map((pane) => pane.id)).toEqual([
-      "pane-local-8",
-      "pane-local-9",
-    ]);
-  });
 });

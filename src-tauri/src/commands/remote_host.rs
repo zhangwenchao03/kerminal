@@ -75,7 +75,7 @@ pub fn remote_host_create(
 ) -> Result<RemoteHost, String> {
     state
         .remote_hosts()
-        .create_host_with_credentials(state.storage(), state.credentials(), request)
+        .create_host(state.storage(), request)
         .map_err(|error| error.to_string())
 }
 
@@ -87,7 +87,7 @@ pub fn remote_host_update(
 ) -> Result<RemoteHost, String> {
     state
         .remote_hosts()
-        .update_host_with_credentials(state.storage(), state.credentials(), request)
+        .update_host(state.storage(), request)
         .map_err(|error| error.to_string())
 }
 

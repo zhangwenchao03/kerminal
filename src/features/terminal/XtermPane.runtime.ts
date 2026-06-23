@@ -4,29 +4,32 @@ import { Terminal as XtermTerminal } from "@xterm/xterm";
 import { closeTerminal, createDockerContainerTerminalSession, createSerialTerminalSession, createSshTerminalSession, createTelnetTerminalSession, createTerminalSession, getTerminalLogState, resizeTerminal, writeTerminal } from "../../lib/terminalApi";
 import type { TerminalOutputEvent } from "../../lib/terminalApi";
 import { recordCommandHistory } from "../../lib/commandHistoryApi";
-import { listTerminalSuggestions, recordTerminalSuggestionAuditEvent, recordTerminalSuggestionFeedback } from "../../lib/terminalSuggestionApi";
-import type { CommandSuggestionProvider } from "../../lib/terminalSuggestionApi";
-import type { TerminalAppearance } from "../settings/settingsModel";
-import { registerTerminalPaneSession, updateTerminalPaneSessionCwd, unregisterTerminalPaneSession } from "./terminalSessionRegistry";
+import { listTerminalSuggestions, recordTerminalSuggestionFeedback } from "../../lib/terminalSuggestionApi";
+import { markTerminalPaneSessionDisconnected, markTerminalPaneSessionReconnected, registerTerminalPaneSession, updateTerminalPaneSessionCwd, unregisterTerminalPaneSession } from "./terminalSessionRegistry";
 import { createTerminalOutputWriter } from "./terminalOutputWriter";
-import { appendCommandBlockOutput, createTerminalCommandBlock } from "./terminalCommandBlocks";
-import type { TerminalCommandBlock } from "./terminalCommandBlocks";
+import { appendCommandBlockOutput } from "./terminalCommandBlocks";
+import {
+  clearTerminalCommandBlocks,
+  closeLatestTerminalCommandBlock,
+  submitTerminalCommandBlock,
+} from "./terminalCommandBlockLifecycle";
 import { applyTerminalInputData, createTerminalInputModelState, terminalSuggestionEligibility, updateTerminalInputBufferKind } from "./terminalInputModel";
 import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeScheduler";
-import { appendTerminalOutputHistory } from "../workspace/workspaceSession";
+import { createTerminalRemoteSuggestionPrewarm } from "./terminalRemoteSuggestionPrewarm";
+import { createTerminalOutputHistoryBuffer } from "./terminalOutputHistoryBuffer";
 import { buildTerminalCreateRequest, collectCurrentDirOscSequences, errorMessage, isRightArrowInput, resolveGhostSuggestionLayout, terminalGhostSuggestionEqual, terminalSuggestionProviders, type TerminalGhostSuggestion } from "./XtermPane.helpers";
+import { registerCommandBlockClearHandlers, terminalSessionFailureLabel, terminalSessionTargetKind } from "./XtermPane.runtime.helpers";
 
-const COMMAND_BLOCKS_MAX_COUNT = 240;
+const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000;
 
 export function installXtermPaneRuntime(params: any) {
-  const { args, commandBlockCounterRef, commandBlocksRef, containerRef, cwd, cwdTrackingBufferRef, currentCwdRef, disconnectSessionRef, env, fitAddonRef, focusedRef, ghostSuggestionRef, inputBufferRef, inputModelRef, onCurrentCwdChangeRef, onOutputHistoryChangeRef, outputHistoryRef, paneId, profileId, reconnectSessionRef, remoteHostId, remoteHostProduction, searchAddonRef, sessionIdRef, setCommandBlockNotice, setCommandBlockViews, setConnectionState, setGhostSuggestion, setLogNotice, setLogState, setSearchResults, shell, syncCommandBlockViews, target, terminalAppearance, terminalAppearanceRef, terminalFontWeight, terminalRef, terminalTheme } = params;
+  const { args, commandBlockCounterRef, commandBlocksRef, containerRef, cwd, cwdTrackingBufferRef, currentCwdRef, disconnectSessionRef, env, fitAddonRef, focusedRef, ghostSuggestionRef, inputBufferRef, inputModelRef, onCurrentCwdChangeRef, onOutputHistoryChangeRef, outputHistoryRef, paneId, profileId, promptLineRef, reconnectSessionRef, remoteHostId, remoteHostProduction, searchAddonRef, sessionIdRef, setCommandBlockNotice, setCommandBlockViews, setConnectionState, setGhostSuggestion, setLogNotice, setLogState, setSearchResults, shell, syncCommandBlockViews, target, terminalAppearance, terminalAppearanceRef, terminalFontWeight, terminalRef, terminalTheme } = params;
     const container = containerRef.current;
     if (!container) {
       return undefined;
     }
 
     let disposed = false;
-    let historyFlushTimer: number | null = null;
     let reconnectTimer: number | null = null;
     let resizeObserver: ResizeObserver | undefined;
     let sessionRun = 0;
@@ -58,38 +61,60 @@ export function installXtermPaneRuntime(params: any) {
     const searchAddon = new SearchAddon({ highlightLimit: 1000 });
     fitAddonRef.current = fitAddon;
     searchAddonRef.current = searchAddon;
-    const registerCommandBlock = (command: string) => {
-      const marker = terminal.registerMarker(0);
-      if (!marker) {
-        return;
+    const shouldPreserveCommandBlockForOriginEraseBelow = () => {
+      const block = commandBlocksRef.current[commandBlocksRef.current.length - 1];
+      if (!block || block.endMarker || isClearScreenCommand(block.command)) {
+        return false;
       }
-      const index = commandBlockCounterRef.current;
-      commandBlockCounterRef.current += 1;
-      const block = createTerminalCommandBlock({
-        command,
-        id: `${paneId}-command-block-${index + 1}`,
-        index,
-        marker,
-      });
-      const nextBlocks = [...commandBlocksRef.current, block];
-      const prunedBlocks = nextBlocks.slice(
-        0,
-        Math.max(0, nextBlocks.length - COMMAND_BLOCKS_MAX_COUNT),
+      return (
+        Date.now() - block.createdAt <=
+        ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS
       );
-      commandBlocksRef.current = nextBlocks.slice(-COMMAND_BLOCKS_MAX_COUNT);
-      for (const prunedBlock of prunedBlocks) {
-        prunedBlock.marker.dispose();
-      }
-      marker.onDispose(() => {
-        if (disposed) {
-          return;
-        }
-        commandBlocksRef.current = commandBlocksRef.current.filter(
-          (current: TerminalCommandBlock) => current.id !== block.id,
-        );
+    };
+    const closeCurrentCommandBlock = () => {
+      if (
+        closeLatestTerminalCommandBlock({
+          commandBlocksRef,
+          onEndMarkerDispose: () => {
+            if (!disposed) {
+              scheduleCommandBlockViewSync();
+            }
+          },
+          terminal,
+        })
+      ) {
         scheduleCommandBlockViewSync();
-      });
+      }
+    };
+    const clearCommandBlocks = () => {
+      clearTerminalCommandBlocks(commandBlocksRef);
+      setCommandBlockViews([]);
+      setCommandBlockNotice(null);
       scheduleCommandBlockViewSync();
+    };
+    const registerCommandBlock = (command: string) => {
+      if (
+        submitTerminalCommandBlock({
+          command,
+          commandBlockCounterRef,
+          commandBlocksRef,
+          onEndMarkerDispose: () => {
+            if (!disposed) {
+              scheduleCommandBlockViewSync();
+            }
+          },
+          onStartMarkerDispose: () => {
+            if (!disposed) {
+              scheduleCommandBlockViewSync();
+            }
+          },
+          paneId,
+          promptLine: promptLineRef.current,
+          terminal,
+        })
+      ) {
+        scheduleCommandBlockViewSync();
+      }
     };
     const clearCommandBlockViewSyncFrame = () => {
       if (commandBlockViewSyncFrame === null) {
@@ -127,48 +152,6 @@ export function installXtermPaneRuntime(params: any) {
         suggestionTimer = null;
       }
     };
-    const remoteProbeSkipReason = (
-      inlineSuggestion: TerminalAppearance["inlineSuggestion"],
-    ) => {
-      if (!inlineSuggestion.remoteProbeEnabled) {
-        return "remote-probe-disabled";
-      }
-      if (
-        remoteHostProduction &&
-        inlineSuggestion.productionHostPolicy === "restricted"
-      ) {
-        return "production-host-restricted";
-      }
-      return undefined;
-    };
-    const recordRemoteProbeScheduleSkipped = ({
-      cwd,
-      path,
-      provider,
-      reason,
-    }: {
-      cwd?: string;
-      path?: string;
-      provider: CommandSuggestionProvider;
-      reason: string;
-    }) => {
-      void recordTerminalSuggestionAuditEvent({
-        cwd,
-        decision: "skipped",
-        eventKind: "remoteProbeSchedule",
-        metadata: {
-          productionHost: String(remoteHostProduction),
-          productionHostPolicy:
-            terminalAppearanceRef.current.inlineSuggestion.productionHostPolicy,
-        },
-        paneId,
-        path,
-        provider,
-        reason,
-        remoteHostId,
-        target: "ssh",
-      }).catch(() => undefined);
-    };
     const updateGhostSuggestion = (suggestion: TerminalGhostSuggestion) => {
       ghostSuggestionRef.current = suggestion;
       setGhostSuggestion((current: TerminalGhostSuggestion | null) =>
@@ -181,142 +164,13 @@ export function installXtermPaneRuntime(params: any) {
         current === null ? current : null,
       );
     };
-    const scheduleGitSuggestionRefresh = (path: string | undefined) => {
-      const inlineSuggestion = terminalAppearanceRef.current.inlineSuggestion;
-      const hostId =
-        target?.kind === "dockerContainer" ||
-        target?.kind === "telnet" ||
-        target?.kind === "serial"
-          ? undefined
-          : remoteHostId;
-      const cwd = path?.trim();
-      if (
-        !inlineSuggestion.enabled ||
-        !inlineSuggestion.providers.git ||
-        !hostId ||
-        !cwd ||
-        target?.kind === "dockerContainer" || target?.kind === "serial"
-      ) {
-        return;
-      }
-      const skipReason = remoteProbeSkipReason(inlineSuggestion);
-      if (skipReason) {
-        recordRemoteProbeScheduleSkipped({
-          cwd,
-          provider: "git",
-          reason: skipReason,
-        });
-        return;
-      }
-      terminalSuggestionProbeScheduler.scheduleGit({
-        cwd,
-        delayMs: 750,
-        hostId,
-        maxEntries: 500,
-        ownerId: paneId,
-        ttlSeconds: 60,
-      });
-    };
-    const scheduleRemoteCommandSuggestionRefresh = () => {
-      const inlineSuggestion = terminalAppearanceRef.current.inlineSuggestion;
-      const hostId =
-        target?.kind === "dockerContainer" ||
-        target?.kind === "telnet" ||
-        target?.kind === "serial"
-          ? undefined
-          : remoteHostId;
-      if (
-        !inlineSuggestion.enabled ||
-        !inlineSuggestion.providers.remoteCommand ||
-        !hostId ||
-        target?.kind === "dockerContainer" || target?.kind === "serial"
-      ) {
-        return;
-      }
-      const skipReason = remoteProbeSkipReason(inlineSuggestion);
-      if (skipReason) {
-        recordRemoteProbeScheduleSkipped({
-          provider: "remoteCommand",
-          reason: skipReason,
-        });
-        return;
-      }
-      terminalSuggestionProbeScheduler.scheduleRemoteCommand({
-        delayMs: 500,
-        hostId,
-        maxEntries: 1500,
-        ownerId: paneId,
-        ttlSeconds: 300,
-      });
-    };
-    const scheduleRemoteHistorySuggestionRefresh = () => {
-      const inlineSuggestion = terminalAppearanceRef.current.inlineSuggestion;
-      const hostId =
-        target?.kind === "dockerContainer" ||
-        target?.kind === "telnet" ||
-        target?.kind === "serial"
-          ? undefined
-          : remoteHostId;
-      if (
-        !inlineSuggestion.enabled ||
-        !inlineSuggestion.providers.history ||
-        !hostId ||
-        target?.kind === "dockerContainer" || target?.kind === "serial"
-      ) {
-        return;
-      }
-      const skipReason = remoteProbeSkipReason(inlineSuggestion);
-      if (skipReason) {
-        recordRemoteProbeScheduleSkipped({
-          provider: "history",
-          reason: skipReason,
-        });
-        return;
-      }
-      terminalSuggestionProbeScheduler.scheduleRemoteHistory({
-        delayMs: 650,
-        hostId,
-        maxEntries: 1000,
-        ownerId: paneId,
-        ttlSeconds: 900,
-      });
-    };
-    const scheduleRemotePathSuggestionRefresh = (path: string | undefined) => {
-      const inlineSuggestion = terminalAppearanceRef.current.inlineSuggestion;
-      const hostId =
-        target?.kind === "dockerContainer" ||
-        target?.kind === "telnet" ||
-        target?.kind === "serial"
-          ? undefined
-          : remoteHostId;
-      const normalizedPath = path?.trim();
-      if (
-        !inlineSuggestion.enabled ||
-        !inlineSuggestion.providers.remotePath ||
-        !hostId ||
-        !normalizedPath ||
-        target?.kind === "dockerContainer" || target?.kind === "serial"
-      ) {
-        return;
-      }
-      const skipReason = remoteProbeSkipReason(inlineSuggestion);
-      if (skipReason) {
-        recordRemoteProbeScheduleSkipped({
-          path: normalizedPath,
-          provider: "remotePath",
-          reason: skipReason,
-        });
-        return;
-      }
-      terminalSuggestionProbeScheduler.scheduleRemotePath({
-        delayMs: 250,
-        hostId,
-        maxEntries: 250,
-        ownerId: paneId,
-        path: normalizedPath,
-        ttlSeconds: 30,
-      });
-    };
+    const remoteSuggestionPrewarm = createTerminalRemoteSuggestionPrewarm({
+      paneId,
+      remoteHostId,
+      remoteHostProduction,
+      target,
+      terminalAppearanceRef,
+    });
     const clearGhostSuggestion = () => {
       clearSuggestionTimer();
       suggestionRequestRun += 1;
@@ -506,17 +360,12 @@ export function installXtermPaneRuntime(params: any) {
       if (isRightArrowInput(data) && acceptGhostSuggestion(sessionId)) {
         return;
       }
-      void writeTerminal(sessionId, data);
       const collected = applyTerminalInputData(inputModelRef.current, data);
       inputModelRef.current = updateTerminalInputBufferKind(
         collected.state,
         terminal.buffer.active.type,
       );
       inputBufferRef.current = inputModelRef.current.command;
-      if (collected.commands.length === 0) {
-        scheduleCommandBlockViewSync();
-        scheduleGhostSuggestion();
-      }
       for (const command of collected.commands) {
         const dismissedSuggestion = ghostSuggestionRef.current;
         clearGhostSuggestion();
@@ -559,6 +408,11 @@ export function installXtermPaneRuntime(params: any) {
           target: historyTarget,
         });
       }
+      void writeTerminal(sessionId, data);
+      if (collected.commands.length === 0) {
+        scheduleCommandBlockViewSync();
+        scheduleGhostSuggestion();
+      }
     });
     const selectionDisposable = terminal.onSelectionChange(() => {
       if (!terminalAppearanceRef.current.selectionCopy) {
@@ -584,16 +438,21 @@ export function installXtermPaneRuntime(params: any) {
       refreshGhostSuggestionLayout();
     });
     const writeParsedDisposable = terminal.onWriteParsed(() => {
-      scheduleCommandBlockViewSync();
+      clearCommandBlockViewSyncFrame();
+      syncCommandBlockViews();
       refreshGhostSuggestionLayout();
     });
     const bufferChangeDisposable = terminal.buffer.onBufferChange(() => {
+      const nextBufferType = terminal.buffer.active.type;
+      if (nextBufferType === "alternate") {
+        closeCurrentCommandBlock();
+      }
       inputModelRef.current = updateTerminalInputBufferKind(
         inputModelRef.current,
-        terminal.buffer.active.type,
+        nextBufferType,
       );
       inputBufferRef.current = inputModelRef.current.command;
-      if (terminal.buffer.active.type === "alternate") {
+      if (nextBufferType === "alternate") {
         clearGhostSuggestion();
       } else {
         refreshGhostSuggestionLayout();
@@ -602,38 +461,20 @@ export function installXtermPaneRuntime(params: any) {
     });
     terminal.open(container);
     terminalRef.current = terminal;
+    const commandBlockClearHandlersDisposable = registerCommandBlockClearHandlers(
+      terminal,
+      clearCommandBlocks,
+      {
+        shouldPreserveOriginEraseBelow:
+          shouldPreserveCommandBlockForOriginEraseBelow,
+      },
+    );
     const outputWriter = createTerminalOutputWriter(terminal);
     outputWriter.writeNow(outputHistoryRef.current ?? "");
-
-    const flushOutputHistory = () => {
-      if (historyFlushTimer !== null) {
-        window.clearTimeout(historyFlushTimer);
-        historyFlushTimer = null;
-      }
-      onOutputHistoryChangeRef.current?.(outputHistoryRef.current);
-    };
-
-    const scheduleOutputHistoryFlush = () => {
-      if (historyFlushTimer !== null) {
-        return;
-      }
-      historyFlushTimer = window.setTimeout(() => {
-        historyFlushTimer = null;
-        onOutputHistoryChangeRef.current?.(outputHistoryRef.current);
-      }, 100);
-    };
-
-    const appendOutputHistory = (data: string) => {
-      const nextHistory = appendTerminalOutputHistory(
-        outputHistoryRef.current,
-        data,
-      );
-      if (nextHistory === outputHistoryRef.current) {
-        return;
-      }
-      outputHistoryRef.current = nextHistory;
-      scheduleOutputHistoryFlush();
-    };
+    const outputHistoryBuffer = createTerminalOutputHistoryBuffer({
+      onOutputHistoryChangeRef,
+      outputHistoryRef,
+    });
 
     const fitAndResize = () => {
       fitAddon.fit();
@@ -745,18 +586,19 @@ export function installXtermPaneRuntime(params: any) {
                 currentCwdRef.current = nextCwd;
                 updateTerminalPaneSessionCwd(paneId, nextCwd);
                 onCurrentCwdChangeRef.current?.(nextCwd);
-                scheduleGitSuggestionRefresh(nextCwd);
-                scheduleRemotePathSuggestionRefresh(nextCwd);
+                remoteSuggestionPrewarm.scheduleGit(nextCwd);
+                remoteSuggestionPrewarm.scheduleRemotePath(nextCwd);
               }
             }
           }
           appendCommandBlockOutput(commandBlocksRef.current, event.data);
           outputWriter.write(event.data);
-          appendOutputHistory(event.data);
+          outputHistoryBuffer.append(event.data);
           return;
         }
         if (event.kind === "closed") {
           clearGhostSuggestion();
+          markTerminalPaneSessionDisconnected(paneId, event.sessionId);
           clearSessionState(event.sessionId);
           outputWriter.writeNow("\r\n会话已结束。\r\n");
           setConnectionState("closed");
@@ -764,6 +606,7 @@ export function installXtermPaneRuntime(params: any) {
           return;
         }
         clearGhostSuggestion();
+        markTerminalPaneSessionDisconnected(paneId, event.sessionId);
         outputWriter.writeNow(`\r\n终端输出读取失败：${event.data}\r\n`);
         setConnectionState("error");
         scheduleReconnect();
@@ -830,6 +673,12 @@ export function installXtermPaneRuntime(params: any) {
         }
         sessionIdRef.current = session.id;
         registerTerminalPaneSession(paneId, session.id, {
+          containerId:
+            target?.kind === "dockerContainer" ? target.containerId : undefined,
+          containerRuntime:
+            target?.kind === "dockerContainer"
+              ? (target.runtime ?? "docker")
+              : undefined,
           cwd: currentCwdRef.current ?? cwd,
           profileId,
           remoteHostId:
@@ -839,22 +688,18 @@ export function installXtermPaneRuntime(params: any) {
               ? target.hostId
               : remoteHostId,
           shell,
-          target:
-            target?.kind === "dockerContainer"
-              ? "dockerContainer"
-              : target?.kind === "telnet"
-                ? "telnet"
-                : target?.kind === "serial"
-                  ? "serial"
-                : remoteHostId
-                ? "ssh"
-                : "local",
+          target: terminalSessionTargetKind(target, remoteHostId),
+          targetRef: session.targetRef,
+          targetToken: session.targetToken,
         });
+        if (reason === "reconnect") {
+          markTerminalPaneSessionReconnected(paneId, session.id);
+        }
         setConnectionState("connected");
-        scheduleGitSuggestionRefresh(currentCwdRef.current ?? cwd);
-        scheduleRemoteCommandSuggestionRefresh();
-        scheduleRemoteHistorySuggestionRefresh();
-        scheduleRemotePathSuggestionRefresh(currentCwdRef.current ?? cwd);
+        remoteSuggestionPrewarm.scheduleGit(currentCwdRef.current ?? cwd);
+        remoteSuggestionPrewarm.scheduleRemoteCommand();
+        remoteSuggestionPrewarm.scheduleRemoteHistory();
+        remoteSuggestionPrewarm.scheduleRemotePath(currentCwdRef.current ?? cwd);
         void getTerminalLogState(session.id)
           .then((nextState) => {
             if (
@@ -883,17 +728,7 @@ export function installXtermPaneRuntime(params: any) {
           return;
         }
         outputWriter.writeNow(
-          `\r\n${
-            target?.kind === "dockerContainer"
-              ? "容器会话启动失败"
-              : target?.kind === "telnet"
-                ? "Telnet 会话启动失败"
-                : target?.kind === "serial"
-                  ? "Serial 会话启动失败"
-              : remoteHostId
-                ? "SSH 会话启动失败"
-                : "本地终端启动失败"
-          }：${errorMessage(error)}\r\n`,
+          `\r\n${terminalSessionFailureLabel(target, remoteHostId)}：${errorMessage(error)}\r\n`,
         );
         setConnectionState("error");
       }
@@ -912,6 +747,7 @@ export function installXtermPaneRuntime(params: any) {
         return;
       }
 
+      markTerminalPaneSessionDisconnected(paneId, sessionId);
       clearSessionState(sessionId);
       setLogNotice(null);
       inputBufferRef.current = "";
@@ -951,13 +787,14 @@ export function installXtermPaneRuntime(params: any) {
       terminalSuggestionProbeScheduler.cancelOwner(paneId);
       clearSuggestionTimer();
       clearCommandBlockViewSyncFrame();
-      flushOutputHistory();
+      outputHistoryBuffer.dispose();
       inputDisposable.dispose();
       selectionDisposable.dispose();
       searchResultDisposable.dispose();
       scrollDisposable.dispose();
       writeParsedDisposable.dispose();
       bufferChangeDisposable.dispose();
+      commandBlockClearHandlersDisposable.dispose();
       const sessionId = sessionIdRef.current;
       sessionIdRef.current = null;
       reconnectSessionRef.current = null;
@@ -977,4 +814,8 @@ export function installXtermPaneRuntime(params: any) {
       setLogState({ active: false, bytesWritten: 0 });
       setLogNotice(null);
     };
+}
+
+function isClearScreenCommand(command: string) {
+  return /^(?:clear|cls|clear-host|reset)(?:\s|$)/i.test(command.trim());
 }

@@ -9,7 +9,7 @@ pub(crate) use kerminal_lib::{
     error::AppError,
     models::{
         ai_tool_invocation::{
-            AiToolAuditListRequest, AiToolAuditRecord, AiToolClientActionKind,
+            AiToolAuditContext, AiToolAuditListRequest, AiToolAuditRecord, AiToolClientActionKind,
             AiToolConfirmRequest, AiToolInvocationStatus, AiToolPrepareRequest,
         },
         command_history::{
@@ -120,6 +120,10 @@ pub(crate) fn prepare_request(tool_id: &str, arguments: serde_json::Value) -> Ai
         arguments,
         requested_by: Some("test-agent".to_owned()),
         reason: Some("验证受控工具调用链路".to_owned()),
+        conversation_id: None,
+        conversation_slot_json: None,
+        run_id: None,
+        step_id: None,
     }
 }
 
@@ -190,6 +194,7 @@ pub(crate) fn create_test_remote_host_group(state: &AppState) -> RemoteHostGroup
 pub(crate) fn ai_tool_execution_context(state: &AppState) -> AiToolExecutionContext<'_> {
     AiToolExecutionContext {
         terminals: state.terminals(),
+        terminal_session_bindings: state.terminal_session_bindings(),
         command_history: state.command_history(),
         credentials: state.credentials(),
         settings: state.settings(),
@@ -199,7 +204,9 @@ pub(crate) fn ai_tool_execution_context(state: &AppState) -> AiToolExecutionCont
         server_info: state.server_info(),
         diagnostics: state.diagnostics(),
         sftp: state.sftp(),
+        docker_hosts: state.docker_hosts(),
         port_forwards: state.port_forwards(),
+        local_network_proxy: state.local_network_proxy(),
         snippets: state.snippets(),
         workflows: state.workflows(),
         ssh_commands: state.ssh_commands(),
@@ -222,6 +229,7 @@ pub(crate) fn confirm_tool(
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .unwrap_or_else(|error| panic!("confirm {tool_id}: {error}"))
@@ -251,6 +259,7 @@ pub(crate) fn interactive_shell_request() -> TerminalCreateRequest {
 pub(crate) fn sample_arguments_for_tool(tool_id: &str) -> serde_json::Value {
     match tool_id {
         "terminal.create" => json!({ "cols": 100, "rows": 30 }),
+        "terminal.resolve_current" => json!({ "paneId": "pane-test" }),
         "terminal.write" => json!({ "sessionId": "session-1", "data": "echo ai\n" }),
         "terminal.resize" => json!({ "sessionId": "session-1", "cols": 100, "rows": 30 }),
         "terminal.list" => json!({}),
@@ -329,6 +338,17 @@ pub(crate) fn sample_arguments_for_tool(tool_id: &str) -> serde_json::Value {
             "tags": ["ai"],
             "production": false
         }),
+        "remote_host.ensure" => json!({
+            "groupName": "AI Group",
+            "name": "AI Host",
+            "host": "dev.internal",
+            "port": 22,
+            "username": "deploy",
+            "authType": "agent",
+            "tags": ["ai"],
+            "production": false
+        }),
+        "remote_host.last_used" => json!({ "target": "ssh" }),
         "remote_host.group_list" => json!({}),
         "remote_host.tree" => json!({}),
         "remote_host.group_create" => json!({ "name": "AI Group" }),
@@ -351,7 +371,9 @@ pub(crate) fn sample_arguments_for_tool(tool_id: &str) -> serde_json::Value {
         }),
         "remote_host.delete" => json!({ "hostId": "host-test" }),
         "ssh.connect" => json!({ "hostId": "host-test", "cols": 100, "rows": 30 }),
+        "ssh.ensure_connected" => json!({ "hostId": "host-test", "cols": 100, "rows": 30 }),
         "ssh.command" => json!({ "hostId": "host-test", "command": "uname -a" }),
+        "ssh.command_on_resolved_host" => json!({ "hostId": "host-test", "command": "uname -a" }),
         "connection.rdp_open" => json!({
             "name": "AI RDP",
             "host": "rdp.internal",
@@ -403,6 +425,22 @@ pub(crate) fn sample_arguments_for_tool(tool_id: &str) -> serde_json::Value {
         "sftp.transfer.list" => json!({}),
         "sftp.transfer.cancel" => json!({ "transferId": "transfer-test" }),
         "sftp.transfer.clear_completed" => json!({}),
+        "container.list" => {
+            json!({ "hostId": "host-test", "runtime": "docker", "includeStopped": true })
+        }
+        "container.files.list" => json!({
+            "hostId": "host-test",
+            "containerId": "container-test",
+            "runtime": "docker",
+            "path": "/app"
+        }),
+        "container.files.preview" => json!({
+            "hostId": "host-test",
+            "containerId": "container-test",
+            "runtime": "docker",
+            "path": "/app/README.md",
+            "maxBytes": 512
+        }),
         "server_info.snapshot" => json!({ "hostId": "host-test" }),
         "diagnostics.runtime_health" => json!({}),
         "diagnostics.create_bundle" => json!({}),

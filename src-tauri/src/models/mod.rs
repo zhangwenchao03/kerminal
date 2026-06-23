@@ -3,7 +3,9 @@
 //! @author kongweiguang
 
 pub mod ai_agent;
+pub mod ai_agent_run;
 pub mod ai_context;
+pub mod ai_conversation;
 pub mod ai_tool_invocation;
 pub mod command_history;
 pub mod command_suggestion;

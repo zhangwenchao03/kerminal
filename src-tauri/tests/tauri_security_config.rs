@@ -104,6 +104,7 @@ fn main_window_uses_app_drawn_titlebar_with_file_drop_events_for_sftp() {
 
     assert_eq!(main_window["title"], "Kerminal");
     assert_eq!(main_window["decorations"], false);
+    assert_eq!(main_window["transparent"], true);
     assert_eq!(main_window["dragDropEnabled"], true);
 }
 

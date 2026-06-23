@@ -42,7 +42,7 @@ describe("RemoteHostCreateDialog", () => {
     await user.clear(screen.getByLabelText("标签"));
     await user.type(screen.getByLabelText("标签"), "ssh, ubuntu");
     await chooseSelectOption(user, "认证方式", "密钥");
-    fireEvent.change(screen.getByLabelText("私钥路径或引用"), {
+    fireEvent.change(screen.getByLabelText("私钥路径"), {
       target: { value: "/home/ubuntu/.ssh/id_ed25519" },
     });
     await user.click(screen.getByRole("button", { name: "确认" }));
@@ -83,12 +83,12 @@ describe("RemoteHostCreateDialog", () => {
     expect(onCreateHost).not.toHaveBeenCalled();
   });
 
-  it("passes password secrets for keychain-backed SSH authentication", async () => {
+  it("passes plaintext password secrets for SSH authentication", async () => {
     const user = userEvent.setup();
     const onCreateHost = vi.fn().mockResolvedValue({
       ...createdHost,
       authType: "password",
-      credentialRef: "credential:ssh/host-1/password",
+      credentialSecret: "s3cr3t",
     } satisfies RemoteHost);
 
     render(
@@ -105,7 +105,10 @@ describe("RemoteHostCreateDialog", () => {
     await user.type(screen.getByLabelText("主机"), "10.0.0.9");
     await user.type(screen.getByLabelText("用户名"), "deploy");
     await chooseSelectOption(user, "认证方式", "密码");
-    await user.type(screen.getByLabelText("SSH 密码"), "s3cr3t");
+    expect(screen.queryByLabelText("SSH 密码凭据引用")).not.toBeInTheDocument();
+    const passwordInput = screen.getByLabelText("SSH 密码");
+    expect(passwordInput).toHaveAttribute("type", "text");
+    await user.type(passwordInput, "s3cr3t");
     await user.click(screen.getByRole("button", { name: "确认" }));
 
     expect(onCreateHost).toHaveBeenCalledWith({
@@ -192,15 +195,11 @@ describe("RemoteHostCreateDialog", () => {
       target: { value: "1080" },
     });
     await user.type(screen.getByLabelText("代理用户名"), "proxy-user");
-    await user.type(
-      screen.getByLabelText("代理凭据引用"),
-      "credential:ssh/proxy/password",
-    );
-
     await user.click(screen.getByRole("button", { name: "跳板机" }));
     await user.type(screen.getByLabelText("跳板机名称"), "bastion");
     await user.type(screen.getByLabelText("跳板机主机"), "bastion.internal");
     await user.type(screen.getByLabelText("跳板机用户名"), "ops");
+    expect(screen.queryByLabelText("跳板机凭据引用")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "添加跳板机" }));
 
     await user.click(screen.getByRole("button", { name: "确认" }));
@@ -220,6 +219,7 @@ describe("RemoteHostCreateDialog", () => {
           {
             authType: "agent",
             credentialRef: undefined,
+            credentialSecret: undefined,
             host: "bastion.internal",
             name: "bastion",
             port: 22,
@@ -227,7 +227,7 @@ describe("RemoteHostCreateDialog", () => {
           },
         ],
         proxy: {
-          credentialRef: "credential:ssh/proxy/password",
+          credentialRef: undefined,
           host: "proxy.internal",
           port: 1080,
           protocol: "socks5",
@@ -290,6 +290,7 @@ describe("RemoteHostCreateDialog", () => {
           {
             authType: "agent",
             credentialRef: undefined,
+            credentialSecret: undefined,
             host: "10.0.0.8",
             name: "db-prod",
             port: 22,
@@ -325,6 +326,10 @@ describe("RemoteHostCreateDialog", () => {
     expect(screen.queryByRole("button", { name: "隧道" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "终端" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "传输" })).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("root")).toBe(screen.getByLabelText("用户名"));
+    expect(
+      screen.queryByText("SSH 密码和内联私钥会保存在主机记录里。"),
+    ).not.toBeInTheDocument();
     const protocolBar = screen.getByRole("button", { name: "SSH" }).parentElement;
     expect(
       Array.from(protocolBar?.children ?? []).map((child) =>
@@ -628,6 +633,50 @@ describe("RemoteHostCreateDialog", () => {
     });
   });
 
+  it("prefills plaintext SSH password and inline private key when editing", () => {
+    const passwordHost: RemoteHost = {
+      ...createdHost,
+      authType: "password",
+      credentialRef: undefined,
+      credentialSecret: "visible-password",
+    };
+    const { unmount } = render(
+      <RemoteHostCreateDialog
+        editingHost={passwordHost}
+        groups={groups}
+        onClose={vi.fn()}
+        onCreateHost={vi.fn()}
+        onUpdateHost={vi.fn()}
+        open
+      />,
+    );
+
+    expect(screen.getByLabelText("SSH 密码")).toHaveAttribute("type", "text");
+    expect(screen.getByLabelText("SSH 密码")).toHaveValue("visible-password");
+
+    unmount();
+
+    render(
+      <RemoteHostCreateDialog
+        editingHost={{
+          ...createdHost,
+          authType: "key",
+          credentialRef: undefined,
+          credentialSecret: "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n",
+        }}
+        groups={groups}
+        onClose={vi.fn()}
+        onCreateHost={vi.fn()}
+        onUpdateHost={vi.fn()}
+        open
+      />,
+    );
+
+    expect(screen.getByLabelText("私钥内容")).toHaveValue(
+      "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n",
+    );
+  });
+
   it("updates an existing SSH host from the same dialog", async () => {
     const user = userEvent.setup();
     const editingHost: RemoteHost = {
@@ -680,13 +729,12 @@ describe("RemoteHostCreateDialog", () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(updatedHost));
   });
 
-  it("saves an RDP connection to the host list with keychain-backed password", async () => {
+  it("saves an RDP connection to the host list with password metadata", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
     const savedRdpHost: RemoteHost = {
       authType: "password",
       createdAt: "now",
-      credentialRef: "credential:ssh/rdp-1/password",
       groupId: "group-dev",
       host: "rdp.internal",
       id: "rdp-1",

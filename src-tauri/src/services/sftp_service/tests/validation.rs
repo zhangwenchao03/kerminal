@@ -1,4 +1,5 @@
 use super::*;
+use crate::services::sftp_service::transfer_paths::validate_local_path;
 
 #[test]
 fn normalize_preview_bytes_uses_safe_bounds() {
@@ -34,6 +35,22 @@ fn normalize_remote_path_rejects_control_characters() {
 }
 
 #[test]
+fn validate_local_path_strips_windows_verbatim_prefixes() {
+    assert_eq!(
+        validate_local_path(r"\\?\C:\dev\rust\kerminal\node_modules").expect("drive path"),
+        r"C:\dev\rust\kerminal\node_modules"
+    );
+    assert_eq!(
+        validate_local_path(r"\?\C:\dev\rust\kerminal\node_modules").expect("malformed drive path"),
+        r"C:\dev\rust\kerminal\node_modules"
+    );
+    assert_eq!(
+        validate_local_path(r"\\?\UNC\nas\share\dist").expect("unc path"),
+        r"\\nas\share\dist"
+    );
+}
+
+#[test]
 fn normalize_remote_copy_request_rejects_unsafe_boundaries() {
     let base_request = SftpRemoteCopyRequest {
         source_host_id: "source-host".to_owned(),
@@ -41,6 +58,8 @@ fn normalize_remote_copy_request_rejects_unsafe_boundaries() {
         target_host_id: "target-host".to_owned(),
         target_remote_path: "/srv/app/".to_owned(),
         kind: SftpTransferKind::File,
+        conflict_policy: SftpTransferConflictPolicy::Overwrite,
+        view_scope: None,
     };
 
     let cross_host_same_path =
@@ -92,6 +111,53 @@ fn normalize_remote_copy_request_rejects_unsafe_boundaries() {
 }
 
 #[test]
+fn remote_copy_request_deserializes_default_conflict_policy() {
+    let request: SftpRemoteCopyRequest = serde_json::from_value(serde_json::json!({
+        "sourceHostId": "source-host",
+        "sourceRemotePath": "/var/log/app.log",
+        "targetHostId": "target-host",
+        "targetRemotePath": "/srv/app/app.log",
+        "kind": "file",
+        "viewScope": null
+    }))
+    .expect("deserialize remote copy request");
+
+    assert_eq!(
+        request.conflict_policy,
+        SftpTransferConflictPolicy::Overwrite
+    );
+}
+
+#[test]
+fn archive_requests_deserialize_default_conflict_policy() {
+    let download: SftpArchiveDownloadRequest = serde_json::from_value(serde_json::json!({
+        "hostId": "source-host",
+        "sourceRemotePath": "/var/log",
+        "targetLocalPath": "C:/tmp/log.zip",
+        "kind": "directory",
+        "viewScope": null
+    }))
+    .expect("deserialize archive download request");
+    let upload: SftpArchiveUploadRequest = serde_json::from_value(serde_json::json!({
+        "hostId": "target-host",
+        "sourceLocalPath": "C:/tmp/logs",
+        "targetRemotePath": "/uploads/logs.zip",
+        "kind": "directory",
+        "viewScope": null
+    }))
+    .expect("deserialize archive upload request");
+
+    assert_eq!(
+        download.conflict_policy,
+        SftpTransferConflictPolicy::Overwrite
+    );
+    assert_eq!(
+        upload.conflict_policy,
+        SftpTransferConflictPolicy::Overwrite
+    );
+}
+
+#[test]
 fn shell_single_quote_escapes_remote_path_for_rm_rf() {
     assert_eq!(shell_single_quote("/srv/app data"), "'/srv/app data'");
     assert_eq!(
@@ -134,6 +200,8 @@ fn remote_copy_staging_policy_uses_safe_fallback_only_when_needed() {
         target_host_id: "target-host".to_owned(),
         target_remote_path: "/srv/app/app.log".to_owned(),
         kind: SftpTransferKind::File,
+        conflict_policy: SftpTransferConflictPolicy::Overwrite,
+        view_scope: None,
     };
     let nested_same_host_directory = SftpRemoteCopyRequest {
         source_host_id: "source-host".to_owned(),
@@ -141,6 +209,8 @@ fn remote_copy_staging_policy_uses_safe_fallback_only_when_needed() {
         target_host_id: "source-host".to_owned(),
         target_remote_path: "/srv/app/copy".to_owned(),
         kind: SftpTransferKind::Directory,
+        conflict_policy: SftpTransferConflictPolicy::Overwrite,
+        view_scope: None,
     };
 
     assert!(

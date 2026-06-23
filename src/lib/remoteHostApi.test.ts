@@ -236,27 +236,43 @@ describe("remoteHostApi", () => {
     ]);
   });
 
-  it("normalizes credential secrets without storing them in browser host state", async () => {
+  it("stores credential secrets in browser preview host state", async () => {
     isTauriMock.mockReturnValue(false);
-    const { createRemoteHost, listRemoteHostTree } = await import(
+    const { createRemoteHost, listRemoteHostTree, updateRemoteHost } = await import(
       "./remoteHostApi"
     );
 
-    await createRemoteHost({
+    const host = await createRemoteHost({
       authType: "password",
       credentialSecret: "s3cr3t",
       host: "secret.internal",
       name: "secret",
       username: "deploy",
     });
+    expect(host.credentialSecret).toBe("s3cr3t");
+    await expect(listRemoteHostTree()).resolves.toMatchObject([
+      {
+        hosts: [
+          {
+            credentialSecret: "s3cr3t",
+          },
+        ],
+      },
+    ]);
+
+    await updateRemoteHost({
+      ...host,
+      credentialSecret: "updated-s3cr3t",
+      sortOrder: host.sortOrder,
+    });
 
     const tree = await listRemoteHostTree();
     expect(tree[0].hosts[0]).toMatchObject({
       authType: "password",
       credentialRef: undefined,
+      credentialSecret: "updated-s3cr3t",
       host: "secret.internal",
       name: "secret",
     });
-    expect(tree[0].hosts[0]).not.toHaveProperty("credentialSecret");
   });
 });

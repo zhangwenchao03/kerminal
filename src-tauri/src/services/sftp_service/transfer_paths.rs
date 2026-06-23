@@ -37,6 +37,8 @@ pub(super) fn normalize_managed_transfer_request(
         local_path: validate_local_path(&request.local_path)?,
         direction: request.direction,
         kind: request.kind,
+        conflict_policy: request.conflict_policy,
+        view_scope: normalize_view_scope(request.view_scope)?,
     })
 }
 
@@ -57,6 +59,8 @@ pub(super) fn normalize_remote_copy_request(
         target_host_id: request.target_host_id,
         target_remote_path,
         kind: request.kind,
+        conflict_policy: request.conflict_policy,
+        view_scope: normalize_view_scope(request.view_scope)?,
     })
 }
 
@@ -68,6 +72,8 @@ pub(super) fn normalize_archive_download_request(
         source_remote_path: normalize_non_root_remote_path(&request.source_remote_path)?,
         target_local_path: validate_local_path(&request.target_local_path)?,
         kind: request.kind,
+        conflict_policy: request.conflict_policy,
+        view_scope: normalize_view_scope(request.view_scope)?,
     })
 }
 
@@ -79,6 +85,8 @@ pub(super) fn normalize_archive_upload_request(
         source_local_path: validate_local_path(&request.source_local_path)?,
         target_remote_path: normalize_non_root_remote_path(&request.target_remote_path)?,
         kind: request.kind,
+        conflict_policy: request.conflict_policy,
+        view_scope: normalize_view_scope(request.view_scope)?,
     })
 }
 
@@ -89,7 +97,23 @@ pub(super) fn normalize_clipboard_download_request(
         host_id: request.host_id,
         source_remote_path: normalize_non_root_remote_path(&request.source_remote_path)?,
         kind: request.kind,
+        view_scope: normalize_view_scope(request.view_scope)?,
     })
+}
+
+fn normalize_view_scope(view_scope: Option<String>) -> AppResult<Option<String>> {
+    view_scope
+        .map(|value| {
+            validate_sftp_text("传输视图 scope", &value)?;
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(trimmed.to_owned()))
+            }
+        })
+        .transpose()
+        .map(Option::flatten)
 }
 
 pub(super) fn normalize_remote_path(path: &str) -> AppResult<String> {
@@ -122,7 +146,25 @@ pub(super) fn validate_local_path(path: &str) -> AppResult<String> {
     if trimmed.is_empty() {
         return Err(AppError::InvalidInput("本地路径不能为空".to_owned()));
     }
-    Ok(trimmed.to_owned())
+    Ok(normalize_local_path_text(trimmed))
+}
+
+fn normalize_local_path_text(path: &str) -> String {
+    strip_windows_verbatim_prefix(path).unwrap_or_else(|| path.to_owned())
+}
+
+fn strip_windows_verbatim_prefix(path: &str) -> Option<String> {
+    let path = path
+        .strip_prefix("\\\\?\\")
+        .or_else(|| path.strip_prefix("\\?\\"))
+        .or_else(|| path.strip_prefix("\\\\.\\"))
+        .or_else(|| path.strip_prefix("\\.\\"))?;
+
+    Some(
+        path.strip_prefix("UNC\\")
+            .map(|rest| format!("\\\\{rest}"))
+            .unwrap_or_else(|| path.to_owned()),
+    )
 }
 
 pub(super) fn classify_local_paths(

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -21,27 +21,38 @@ describe("TerminalContextMenu", () => {
     expect(menu).toHaveStyle({ left: "120px", top: "80px" });
     expect(screen.getByRole("menuitem", { name: /复制/ })).toBeEnabled();
     expect(screen.getByRole("menuitem", { name: /粘贴/ })).toBeEnabled();
-    expect(screen.getByRole("menuitem", { name: "开始记录日志" })).toBeEnabled();
-    expect(screen.getByRole("menuitem", { name: "打开日志" })).toBeEnabled();
     expect(screen.getByRole("menuitem", { name: "重新连接" })).toBeEnabled();
     expect(screen.getByRole("menuitem", { name: "断开连接" })).toBeEnabled();
     expect(screen.getByRole("menuitem", { name: "左右分屏" })).toBeEnabled();
+    expect(
+      screen.queryByRole("menuitem", { name: "开始记录日志" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "打开日志" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "打开设置" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "新建本地终端" })).not.toBeInTheDocument();
   });
 
-  it("renders stop log action while terminal logging is active", () => {
+  it("does not render terminal log actions", () => {
     render(
       <TerminalContextMenu
         canCopy
-        isLogging
         onAction={vi.fn()}
         onClose={vi.fn()}
         position={{ x: 0, y: 0 }}
       />,
     );
 
-    expect(screen.getByRole("menuitem", { name: "停止记录日志" })).toBeEnabled();
+    expect(
+      screen.queryByRole("menuitem", { name: "开始记录日志" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "停止记录日志" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "打开日志" }),
+    ).not.toBeInTheDocument();
   });
 
   it("disables copy without a terminal selection", () => {
@@ -90,13 +101,11 @@ describe("TerminalContextMenu", () => {
     await user.click(screen.getByRole("menuitem", { name: "清屏" }));
     await user.click(screen.getByRole("menuitem", { name: "重新连接" }));
     await user.click(screen.getByRole("menuitem", { name: "断开连接" }));
-    await user.click(screen.getByRole("menuitem", { name: "开始记录日志" }));
     await user.keyboard("{Escape}");
 
     expect(onAction).toHaveBeenCalledWith("clear");
     expect(onAction).toHaveBeenCalledWith("reconnect");
     expect(onAction).toHaveBeenCalledWith("disconnect");
-    expect(onAction).toHaveBeenCalledWith("startLog");
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -112,10 +121,29 @@ describe("TerminalContextMenu", () => {
 
     const menu = screen.getByRole("menu", { name: "终端右键菜单" });
     expect(menu).toHaveClass("rounded-xl");
-    expect(menu).toHaveClass("shadow-xl");
+    expect(menu).toHaveClass("shadow-2xl");
     expect(
       screen.queryByRole("button", { name: "关闭菜单" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("closes from Escape even when a terminal layer stops bubbling", () => {
+    const onClose = vi.fn();
+
+    render(
+      <TerminalContextMenu
+        canCopy
+        onAction={vi.fn()}
+        onClose={onClose}
+        position={{ x: 0, y: 0 }}
+      />,
+    );
+
+    const menu = screen.getByRole("menu", { name: "终端右键菜单" });
+    menu.addEventListener("keydown", (event) => event.stopPropagation());
+    fireEvent.keyDown(menu, { key: "Escape" });
+
+    expect(onClose).toHaveBeenCalled();
   });
 
   it("maps split menu actions to workspace split directions", () => {

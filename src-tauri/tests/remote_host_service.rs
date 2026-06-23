@@ -2,8 +2,6 @@
 //!
 //! @author kongweiguang
 
-use std::sync::Arc;
-
 use kerminal_lib::{
     error::AppError,
     models::remote_host::{
@@ -12,7 +10,6 @@ use kerminal_lib::{
         SshProxyProtocol, SshTunnelKind, SshTunnelOptions,
     },
     paths::KerminalPaths,
-    services::credential_service::{CredentialService, MemoryCredentialVault},
     state::AppState,
 };
 use tempfile::{tempdir, TempDir};
@@ -30,7 +27,7 @@ fn initialization_starts_without_remote_host_groups() {
 }
 
 #[test]
-fn create_host_persists_tags_credential_ref_and_production_flag() {
+fn create_host_persists_tags_private_key_path_and_production_flag() {
     let (_home, state) = test_state();
     let group = state
         .remote_hosts()
@@ -85,16 +82,13 @@ fn create_host_persists_tags_credential_ref_and_production_flag() {
 }
 
 #[test]
-fn create_password_host_saves_secret_in_vault_and_only_persists_ref() {
+fn create_password_host_saves_plaintext_secret_on_host() {
     let (_home, state) = test_state();
-    let vault = Arc::new(MemoryCredentialVault::new());
-    let credentials = CredentialService::with_vault(vault.clone());
 
     let host = state
         .remote_hosts()
-        .create_host_with_credentials(
+        .create_host(
             state.storage(),
-            &credentials,
             RemoteHostCreateRequest {
                 group_id: None,
                 name: "password host".to_owned(),
@@ -111,33 +105,25 @@ fn create_password_host_saves_secret_in_vault_and_only_persists_ref() {
         )
         .expect("create password host");
 
-    let credential_ref = host
-        .credential_ref
-        .as_deref()
-        .expect("generated credential ref");
-    assert_eq!(
-        credential_ref,
-        format!("credential:ssh/{}/password", host.id)
-    );
-    assert!(vault.contains(credential_ref));
-    assert_eq!(
-        credentials
-            .get_secret(credential_ref)
-            .expect("read secret")
-            .as_deref(),
-        Some("s3cr3t")
-    );
+    assert_eq!(host.credential_ref, None);
+    assert_eq!(host.credential_secret.as_deref(), Some("s3cr3t"));
+
+    let reloaded = state
+        .storage()
+        .remote_host_by_id(&host.id)
+        .expect("load host")
+        .expect("host exists");
+    assert_eq!(reloaded.credential_secret.as_deref(), Some("s3cr3t"));
 }
 
 #[test]
-fn create_host_persists_ssh_options_without_plaintext_secrets() {
+fn create_host_persists_ssh_options() {
     let (_home, state) = test_state();
     let mut ssh_options = SshOptions::default();
     ssh_options.proxy.protocol = SshProxyProtocol::Socks5;
     ssh_options.proxy.host = Some("proxy.internal".to_owned());
     ssh_options.proxy.port = Some(1080);
     ssh_options.proxy.username = Some("proxy-user".to_owned());
-    ssh_options.proxy.credential_ref = Some("credential:ssh/proxy/password".to_owned());
     ssh_options.tunnels.push(SshTunnelOptions {
         name: "db".to_owned(),
         kind: SshTunnelKind::Local,
@@ -152,7 +138,8 @@ fn create_host_persists_ssh_options_without_plaintext_secrets() {
         port: 22,
         username: "ops".to_owned(),
         auth_type: RemoteHostAuthType::Key,
-        credential_ref: Some("credential:ssh/bastion/key".to_owned()),
+        credential_ref: Some("/home/ops/.ssh/bastion".to_owned()),
+        credential_secret: None,
     });
     ssh_options.terminal.connect_timeout_seconds = 45;
     ssh_options.terminal.keepalive_seconds = 30;
@@ -179,21 +166,21 @@ fn create_host_persists_ssh_options_without_plaintext_secrets() {
         )
         .expect("create host with ssh options");
 
-    assert_eq!(host.ssh_options, ssh_options);
+    let mut expected_options = ssh_options.clone();
+    expected_options.proxy.credential_ref = None;
+    assert_eq!(host.ssh_options, expected_options);
 
     let reloaded = state
         .storage()
         .remote_host_by_id(&host.id)
         .expect("load host")
         .expect("host exists");
-    assert_eq!(reloaded.ssh_options, ssh_options);
+    assert_eq!(reloaded.ssh_options, expected_options);
 }
 
 #[test]
-fn update_key_host_saves_private_key_content_in_vault() {
+fn update_key_host_saves_private_key_content_as_plaintext_secret() {
     let (_home, state) = test_state();
-    let vault = Arc::new(MemoryCredentialVault::new());
-    let credentials = CredentialService::with_vault(vault.clone());
     let host = state
         .remote_hosts()
         .create_host(
@@ -216,9 +203,8 @@ fn update_key_host_saves_private_key_content_in_vault() {
 
     let updated = state
         .remote_hosts()
-        .update_host_with_credentials(
+        .update_host(
             state.storage(),
-            &credentials,
             RemoteHostUpdateRequest {
                 id: host.id,
                 group_id: None,
@@ -227,7 +213,7 @@ fn update_key_host_saves_private_key_content_in_vault() {
                 port: 22,
                 username: "deploy".to_owned(),
                 auth_type: RemoteHostAuthType::Key,
-                credential_ref: host.credential_ref,
+                credential_ref: None,
                 credential_secret: Some("-----BEGIN OPENSSH PRIVATE KEY-----\n...\n".to_owned()),
                 tags: Vec::new(),
                 production: false,
@@ -237,15 +223,11 @@ fn update_key_host_saves_private_key_content_in_vault() {
         )
         .expect("update key host");
 
-    let credential_ref = updated
-        .credential_ref
-        .as_deref()
-        .expect("generated credential ref");
+    assert_eq!(updated.credential_ref, None);
     assert_eq!(
-        credential_ref,
-        format!("credential:ssh/{}/private-key", updated.id)
+        updated.credential_secret.as_deref(),
+        Some("-----BEGIN OPENSSH PRIVATE KEY-----\n...\n")
     );
-    assert!(vault.contains(credential_ref));
 }
 
 #[test]
@@ -303,8 +285,8 @@ fn update_group_and_host_persist_changes() {
                 port: 2222,
                 username: "deploy".to_owned(),
                 auth_type: RemoteHostAuthType::Password,
-                credential_ref: Some("credential:ssh/dev-api".to_owned()),
-                credential_secret: None,
+                credential_ref: None,
+                credential_secret: Some("updated-password".to_owned()),
                 tags: vec!["dev".to_owned(), "api".to_owned()],
                 production: true,
                 ssh_options: Default::default(),
@@ -318,6 +300,10 @@ fn update_group_and_host_persist_changes() {
     assert_eq!(updated_host.port, 2222);
     assert_eq!(updated_host.username, "deploy");
     assert_eq!(updated_host.auth_type, RemoteHostAuthType::Password);
+    assert_eq!(
+        updated_host.credential_secret.as_deref(),
+        Some("updated-password")
+    );
     assert!(updated_host.production);
 }
 

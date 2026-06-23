@@ -12,13 +12,16 @@ import {
   renameSftpPath,
   type SftpEntry,
 } from "../../../lib/sftpApi";
-import { getDialogActionBlocker } from "./sftpDialogModel";
+import {
+  buildSftpDialogActionPlan,
+  getDialogActionBlocker,
+  type SftpDialogOperation,
+} from "./sftpDialogModel";
 import {
   defaultRenamePath,
   errorMessage,
   joinRemotePath,
   modeFromPermissions,
-  resolveRemoteInputPath,
 } from "./sftpPathModel";
 import type {
   SftpContextMenuState,
@@ -50,6 +53,39 @@ export function useSftpDialogActions({
   setDialogStatus,
   setOperationStatus,
 }: UseSftpDialogActionsArgs) {
+  const runDialogOperation = async (operation: SftpDialogOperation) => {
+    if (operation.targetKind === "ssh") {
+      if (operation.kind === "mkdir") {
+        await createSftpDirectory(operation.request);
+        return;
+      }
+      if (operation.kind === "rename") {
+        await renameSftpPath(operation.request);
+        return;
+      }
+      if (operation.kind === "chmod") {
+        await chmodSftpPath(operation.request);
+        return;
+      }
+      await deleteSftpPath(operation.request);
+      return;
+    }
+
+    if (operation.kind === "mkdir") {
+      await createDockerContainerDirectory(operation.request);
+      return;
+    }
+    if (operation.kind === "rename") {
+      await renameDockerContainerPath(operation.request);
+      return;
+    }
+    if (operation.kind === "chmod") {
+      await chmodDockerContainerPath(operation.request);
+      return;
+    }
+    await deleteDockerContainerPath(operation.request);
+  };
+
   const openNewDirectoryDialog = () => {
     setContextMenu(null);
     setDialogStatus(null);
@@ -103,95 +139,14 @@ export function useSftpDialogActions({
     setDialogStatus(null);
     setOperationStatus(null);
     try {
-      if (dialogAction.kind === "mkdir") {
-        const path = resolveRemoteInputPath(currentPath, dialogAction.path);
-        if (fileTarget.kind === "ssh") {
-          await createSftpDirectory({
-            hostId: fileTarget.hostId,
-            path,
-          });
-        } else {
-          await createDockerContainerDirectory({
-            containerId: fileTarget.containerId,
-            hostId: fileTarget.hostId,
-            path,
-            runtime: fileTarget.runtime,
-          });
-        }
-        await loadDirectory(currentPath);
-        setOperationStatus({ kind: "success", message: `目录已创建：${path}` });
-      }
-
-      if (dialogAction.kind === "rename") {
-        const toPath = resolveRemoteInputPath(currentPath, dialogAction.toPath);
-        if (fileTarget.kind === "ssh") {
-          await renameSftpPath({
-            fromPath: dialogAction.entry.path,
-            hostId: fileTarget.hostId,
-            toPath,
-          });
-        } else {
-          await renameDockerContainerPath({
-            containerId: fileTarget.containerId,
-            fromPath: dialogAction.entry.path,
-            hostId: fileTarget.hostId,
-            runtime: fileTarget.runtime,
-            toPath,
-          });
-        }
-        await loadDirectory(currentPath);
-        setOperationStatus({
-          kind: "success",
-          message: `已重命名：${dialogAction.entry.path} -> ${toPath}`,
-        });
-      }
-
-      if (dialogAction.kind === "chmod") {
-        if (fileTarget.kind === "ssh") {
-          await chmodSftpPath({
-            hostId: fileTarget.hostId,
-            mode: dialogAction.mode.trim(),
-            path: dialogAction.entry.path,
-          });
-        } else {
-          await chmodDockerContainerPath({
-            containerId: fileTarget.containerId,
-            hostId: fileTarget.hostId,
-            mode: dialogAction.mode.trim(),
-            path: dialogAction.entry.path,
-            runtime: fileTarget.runtime,
-          });
-        }
-        await loadDirectory(currentPath);
-        setOperationStatus({
-          kind: "success",
-          message: `权限已修改：${dialogAction.entry.path}`,
-        });
-      }
-
-      if (dialogAction.kind === "delete") {
-        if (fileTarget.kind === "ssh") {
-          await deleteSftpPath({
-            directory: dialogAction.entry.kind === "directory",
-            hostId: fileTarget.hostId,
-            path: dialogAction.entry.path,
-          });
-        } else {
-          await deleteDockerContainerPath({
-            containerId: fileTarget.containerId,
-            directory: dialogAction.entry.kind === "directory",
-            hostId: fileTarget.hostId,
-            path: dialogAction.entry.path,
-            runtime: fileTarget.runtime,
-          });
-        }
-        await loadDirectory(currentPath);
-        setOperationStatus({
-          kind: "success",
-          message: `已删除：${dialogAction.entry.path}`,
-        });
-      }
-
+      const plan = buildSftpDialogActionPlan({
+        action: dialogAction,
+        currentPath,
+        fileTarget,
+      });
+      await runDialogOperation(plan.operation);
+      await loadDirectory(plan.reloadPath);
+      setOperationStatus(plan.successStatus);
       setDialogAction(null);
     } catch (nextError) {
       setDialogStatus({

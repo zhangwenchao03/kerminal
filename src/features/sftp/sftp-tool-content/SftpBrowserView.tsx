@@ -7,9 +7,10 @@ import {
   Download,
   Eye,
   EyeOff,
-  ExternalLink,
   FolderOpen,
   FolderPlus,
+  Maximize2,
+  Minimize2,
   RefreshCw,
   Settings2,
   Terminal,
@@ -56,6 +57,12 @@ const LazyRemoteWorkspaceEditor = lazy(async () => {
   return { default: module.RemoteWorkspaceEditor };
 });
 
+const sftpDividerClassName =
+  "mx-1 hidden h-5 w-px bg-[var(--border-subtle)] min-[420px]:block";
+
+const sftpUploadMenuItemClassName =
+  "kerminal-focus-ring kerminal-pressable flex h-8 w-full items-center gap-2 rounded-xl px-2 text-left text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-zinc-50";
+
 type SftpBrowserViewProps = {
   cancelTransfer: (transferId: string) => Promise<void>;
   clearFinishedTransfers: () => Promise<void>;
@@ -94,10 +101,8 @@ type SftpBrowserViewProps = {
     event: SftpContextMenuEvent,
     entry: SftpEntry | null,
   ) => void;
-  openDetachedWorkspaceWindow: () => Promise<void>;
   openEditorEntry: (entry: SftpEntry) => void;
   openNewDirectoryDialog: () => void;
-  openWorkspaceDirectory: (path: string) => void;
   operationStatus: SftpStatus | null;
   pathDraft: string;
   remoteDownloadDragActive: boolean;
@@ -116,6 +121,7 @@ type SftpBrowserViewProps = {
   setUploadMenuOpen: Dispatch<SetStateAction<boolean>>;
   setWorkspaceCloseBlocked: Dispatch<SetStateAction<boolean>>;
   setWorkspaceDirty: Dispatch<SetStateAction<boolean>>;
+  setWorkspaceExpanded: Dispatch<SetStateAction<boolean>>;
   setupRemoteCwdTracking: () => Promise<void>;
   showHiddenFiles: boolean;
   showLocalTransferActions: boolean;
@@ -140,7 +146,7 @@ type SftpBrowserViewProps = {
   workspaceCloseBlocked: boolean;
   workspaceDialog: SftpWorkspaceDialog | null;
   workspaceDirty: boolean;
-  workspacePopoutBusy: boolean;
+  workspaceExpanded: boolean;
   workspaceTarget: RemoteTargetRef | null;
 };
 
@@ -179,10 +185,8 @@ export function SftpBrowserView({
   normalizedFollowedPath,
   openContextMenu,
   openContextMenuFromPress,
-  openDetachedWorkspaceWindow,
   openEditorEntry,
   openNewDirectoryDialog,
-  openWorkspaceDirectory,
   operationStatus,
   pathDraft,
   remoteDownloadDragActive,
@@ -201,6 +205,7 @@ export function SftpBrowserView({
   setUploadMenuOpen,
   setWorkspaceCloseBlocked,
   setWorkspaceDirty,
+  setWorkspaceExpanded,
   setupRemoteCwdTracking,
   showHiddenFiles,
   showLocalTransferActions,
@@ -222,7 +227,7 @@ export function SftpBrowserView({
   workspaceCloseBlocked,
   workspaceDialog,
   workspaceDirty,
-  workspacePopoutBusy,
+  workspaceExpanded,
   workspaceTarget,
 }: SftpBrowserViewProps) {
   const pathInputId = useId();
@@ -230,7 +235,7 @@ export function SftpBrowserView({
   if (!fileTarget) {
     return (
       <section className="flex h-full min-h-0 flex-col p-3 text-sm text-zinc-600 dark:text-zinc-400">
-        <div className="rounded-2xl border border-black/8 bg-white/70 p-4 shadow-sm dark:border-white/8 dark:bg-white/6">
+        <div className="kerminal-solid-surface rounded-2xl border p-4">
           <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
             SFTP
           </div>
@@ -252,13 +257,13 @@ export function SftpBrowserView({
     >
       <header
         className={cn(
-          "shrink-0 border-b border-black/8 bg-white/55 backdrop-blur-xl dark:border-white/8 dark:bg-zinc-950/30",
+          "kerminal-material-nav shrink-0 border-b",
           compactHeader ? "p-2" : "p-3",
         )}
       >
         <div
           className={cn(
-            "border border-black/8 bg-white/70 shadow-sm dark:border-white/8 dark:bg-white/6",
+            "kerminal-solid-surface border",
             compactHeader ? "rounded-xl px-2.5 py-2" : "rounded-2xl p-3",
           )}
         >
@@ -277,7 +282,7 @@ export function SftpBrowserView({
             </label>
             <input
               className={cn(
-                "min-w-0 flex-1 rounded-lg border border-transparent bg-transparent font-mono text-zinc-900 outline-none transition placeholder:text-zinc-400 hover:border-black/10 hover:bg-black/[0.03] focus:border-sky-400/45 focus:bg-white focus:ring-4 focus:ring-sky-500/10 dark:text-zinc-50 dark:placeholder:text-zinc-600 dark:hover:border-white/10 dark:hover:bg-white/[0.04] dark:focus:bg-zinc-950",
+                "kerminal-field-surface min-w-0 flex-1 rounded-lg border font-mono text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-50 dark:placeholder:text-zinc-600",
                 compactHeader ? "px-1.5 py-1 text-[13px]" : "px-2 py-1 text-sm",
               )}
               id={pathInputId}
@@ -293,7 +298,7 @@ export function SftpBrowserView({
             />
             <Button
               aria-label="跳转远程路径"
-              className="h-8 w-8 rounded-lg px-0"
+              className="kerminal-muted-surface h-8 w-8 rounded-lg border px-0 text-zinc-600 hover:bg-[var(--surface-hover)] dark:text-zinc-300"
               disabled={loading}
               size="sm"
               title="跳转"
@@ -309,7 +314,7 @@ export function SftpBrowserView({
             </div>
           ) : null}
           {!compactHeader ? (
-            <div className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-zinc-950/[0.04] px-2 py-1.5 dark:border-emerald-400/20 dark:bg-emerald-400/[0.04]">
+            <div className="kerminal-muted-surface mt-3 flex items-center gap-2 rounded-xl border px-2 py-1.5">
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-300">
                 <Terminal className="h-3.5 w-3.5" />
               </div>
@@ -322,7 +327,7 @@ export function SftpBrowserView({
                     className={cn(
                       "h-1.5 w-1.5 rounded-full",
                       followTerminalDirectory
-                        ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.85)]"
+                        ? "bg-emerald-400"
                         : "bg-zinc-400 dark:bg-zinc-600",
                     )}
                   />
@@ -335,7 +340,7 @@ export function SftpBrowserView({
                 {supportsSftpAdvancedActions ? (
                   <Button
                     aria-label="自动设置 SFTP 目录跟随"
-                    className="h-7 w-7 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-0 text-emerald-700 hover:border-emerald-500/35 hover:bg-emerald-500/15 hover:text-emerald-800 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-300 dark:hover:border-emerald-300/35 dark:hover:bg-emerald-300/15 dark:hover:text-emerald-200"
+                    className="kerminal-focus-ring kerminal-pressable h-7 w-7 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-0 text-emerald-700 hover:border-emerald-500/35 hover:bg-emerald-500/15 hover:text-emerald-800 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-300 dark:hover:border-emerald-300/35 dark:hover:bg-emerald-300/15 dark:hover:text-emerald-200"
                     disabled={cwdTrackingSetupBusy}
                     onClick={() => void setupRemoteCwdTracking()}
                     size="sm"
@@ -355,10 +360,10 @@ export function SftpBrowserView({
                   aria-checked={followTerminalDirectory}
                   aria-label="跟随终端目录"
                   className={cn(
-                    "relative h-5 w-9 shrink-0 rounded-full border transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-500/20",
+                    "kerminal-focus-ring kerminal-pressable relative h-5 w-9 shrink-0 rounded-full border transition",
                     followTerminalDirectory
                       ? "border-emerald-400/50 bg-emerald-500"
-                      : "border-zinc-400/25 bg-zinc-200 dark:border-white/10 dark:bg-zinc-800",
+                      : "border-[var(--border-strong)] bg-[var(--surface-muted)]",
                   )}
                   onClick={() =>
                     setFollowTerminalDirectory((current) => !current)
@@ -419,8 +424,9 @@ export function SftpBrowserView({
               }
               label={showHiddenFiles ? "隐藏隐藏文件" : "显示隐藏文件"}
               onClick={() => setShowHiddenFiles((current) => !current)}
+              pressed={showHiddenFiles}
             />
-            <div className="mx-1 hidden h-5 w-px bg-black/10 dark:bg-white/10 min-[420px]:block" />
+            <div className={sftpDividerClassName} />
             {showLocalTransferActions ? (
               <div className="relative" ref={uploadMenuRef}>
                 <ToolbarButton
@@ -430,15 +436,16 @@ export function SftpBrowserView({
                   icon={<Upload className="h-3.5 w-3.5" />}
                   label="上传"
                   onClick={() => setUploadMenuOpen((current) => !current)}
+                  pressed={uploadMenuOpen}
                 />
                 {uploadMenuOpen ? (
                   <div
                     aria-label="上传菜单"
-                    className="absolute left-0 top-9 z-40 w-40 overflow-hidden rounded-xl border border-black/10 bg-white/95 p-1.5 text-zinc-900 shadow-xl shadow-black/15 backdrop-blur dark:border-white/10 dark:bg-zinc-950/95 dark:text-zinc-100"
+                    className="kerminal-floating-surface kerminal-floating-enter absolute left-0 top-9 z-40 w-44 overflow-hidden rounded-2xl border p-1.5 text-zinc-900 dark:text-zinc-100"
                     role="menu"
                   >
                     <button
-                      className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-sm text-zinc-700 transition hover:bg-black/5 hover:text-zinc-950 dark:text-zinc-200 dark:hover:bg-white/8 dark:hover:text-zinc-50"
+                      className={sftpUploadMenuItemClassName}
                       onClick={() => {
                         setUploadMenuOpen(false);
                         void uploadLocalFile();
@@ -450,7 +457,7 @@ export function SftpBrowserView({
                       <span className="min-w-0 flex-1 truncate">上传文件</span>
                     </button>
                     <button
-                      className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-sm text-zinc-700 transition hover:bg-black/5 hover:text-zinc-950 dark:text-zinc-200 dark:hover:bg-white/8 dark:hover:text-zinc-50"
+                      className={sftpUploadMenuItemClassName}
                       onClick={() => {
                         setUploadMenuOpen(false);
                         void uploadLocalDirectory();
@@ -473,7 +480,7 @@ export function SftpBrowserView({
             />
             {showLocalTransferActions ? (
               <>
-                <div className="mx-1 hidden h-5 w-px bg-black/10 dark:bg-white/10 min-[420px]:block" />
+                <div className={sftpDividerClassName} />
                 <ToolbarButton
                   ariaLabel="下载选中项目"
                   disabled={transferableSelectedEntries.length === 0}
@@ -488,7 +495,7 @@ export function SftpBrowserView({
               </>
             ) : transferTarget ? (
               <>
-                <div className="mx-1 hidden h-5 w-px bg-black/10 dark:bg-white/10 min-[420px]:block" />
+                <div className={sftpDividerClassName} />
                 <ToolbarButton
                   ariaLabel={
                     transferTarget.side === "right" ? "传到右侧" : "传到左侧"
@@ -519,14 +526,13 @@ export function SftpBrowserView({
                 }`}
           </div>
         </div>
-
-        <StatusMessage status={operationStatus} />
       </header>
 
       <div className="min-h-0 flex-1 p-3">
         <div
           className={cn(
-            "relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-black/8 bg-white/60 shadow-sm transition dark:border-white/8 dark:bg-white/6",
+            "relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border transition",
+            !dragDropActive && !remoteDownloadDropActive && "kerminal-solid-surface",
             dragDropActive &&
               "border-sky-400/55 bg-sky-500/10 ring-4 ring-sky-400/15 dark:border-sky-300/45 dark:bg-sky-300/10",
             remoteDownloadDropActive &&
@@ -544,7 +550,7 @@ export function SftpBrowserView({
         >
           {remoteDownloadDragActive ? (
             <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-emerald-500/10 backdrop-blur-[1px]">
-              <div className="flex items-center gap-2 rounded-xl border border-emerald-300/45 bg-white/95 px-4 py-3 text-sm font-medium text-emerald-700 shadow-lg dark:bg-zinc-950/95 dark:text-emerald-100">
+              <div className="kerminal-floating-surface flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-medium text-emerald-700 dark:text-emerald-100">
                 <Download className="h-4 w-4" />
                 {remoteDragEntriesRef.current.length > 1
                   ? `释放下载 ${remoteDragEntriesRef.current.length} 项`
@@ -553,12 +559,12 @@ export function SftpBrowserView({
             </div>
           ) : dragDropActive ? (
             <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-sky-500/10 backdrop-blur-[1px]">
-              <div className="rounded-xl border border-sky-300/45 bg-white/95 px-4 py-3 text-sm font-medium text-sky-700 shadow-lg dark:bg-zinc-950/95 dark:text-sky-100">
+              <div className="kerminal-floating-surface rounded-2xl border px-4 py-3 text-sm font-medium text-sky-700 dark:text-sky-100">
                 释放以上传到 {currentPath}
               </div>
             </div>
           ) : null}
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-black/8 px-3 py-2.5 dark:border-white/[0.06]">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-3 py-2.5">
             <div>
               <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
                 远程目录
@@ -571,7 +577,7 @@ export function SftpBrowserView({
               </div>
             </div>
             {error ? null : (
-              <span className="rounded-lg border border-black/8 bg-black/[0.03] px-2 py-1 text-xs text-zinc-500 dark:border-white/8 dark:bg-white/6">
+              <span className="kerminal-muted-surface rounded-lg border px-2 py-1 text-xs text-zinc-500 dark:text-zinc-400">
                 {listing ? "已连接" : "等待中"}
               </span>
             )}
@@ -579,37 +585,43 @@ export function SftpBrowserView({
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             {loading ? (
-              <div className="px-3 py-10 text-center text-sm text-zinc-500">
+              <div
+                className="kerminal-muted-surface m-3 rounded-xl border px-3 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400"
+                role="status"
+              >
                 正在读取远程目录...
               </div>
             ) : null}
             {error ? (
-              <div className="m-3 rounded-xl border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100">
+              <div
+                className="m-3 rounded-xl border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100"
+                role="alert"
+              >
                 <div>{error}</div>
                 {supportsSftpAdvancedActions ? (
                   <div className="mt-2 flex justify-end">
-                  <Button
-                    aria-label="信任 SFTP 主机密钥"
-                    className="h-8 rounded-md border border-rose-300/30 bg-white/70 px-2 text-xs text-rose-700 hover:bg-white dark:border-rose-200/20 dark:bg-rose-950/30 dark:text-rose-100 dark:hover:bg-rose-900/45"
-                    disabled={hostKeyTrustBusy}
-                    onClick={() => void trustHostKey()}
-                    size="sm"
-                    type="button"
-                    variant="ghost"
-                  >
-                    {hostKeyTrustBusy ? (
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Check className="h-3.5 w-3.5" />
-                    )}
-                    信任主机密钥
-                  </Button>
+                    <Button
+                      aria-label="信任 SFTP 主机密钥"
+                      className="kerminal-focus-ring kerminal-pressable h-8 rounded-lg border border-rose-300/30 bg-rose-500/10 px-2 text-xs text-rose-700 hover:bg-rose-500/15 dark:border-rose-200/20 dark:text-rose-100 dark:hover:bg-rose-400/15"
+                      disabled={hostKeyTrustBusy}
+                      onClick={() => void trustHostKey()}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      {hostKeyTrustBusy ? (
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Check className="h-3.5 w-3.5" />
+                      )}
+                      信任主机密钥
+                    </Button>
                   </div>
                 ) : null}
               </div>
             ) : null}
             {!loading && !error && listing && visibleEntries.length === 0 ? (
-              <div className="px-3 py-10 text-center text-sm text-zinc-500">
+              <div className="kerminal-muted-surface m-3 rounded-xl border px-3 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
                 {entries.length === 0
                   ? "当前目录为空。"
                   : "当前筛选下没有可见项目。"}
@@ -617,7 +629,7 @@ export function SftpBrowserView({
             ) : null}
             {!loading && !error && visibleEntries.length > 0 ? (
               <div>
-                <div className="grid grid-cols-[minmax(0,1fr)_5.75rem] gap-2 border-b border-black/8 bg-black/[0.025] px-3 py-2 text-xs font-medium text-zinc-500 dark:border-white/[0.06] dark:bg-white/[0.035] min-[560px]:grid-cols-[minmax(0,1fr)_4.25rem_5.75rem] min-[720px]:grid-cols-[minmax(0,1fr)_4.75rem_4.25rem_5.75rem]">
+                <div className="kerminal-muted-surface grid grid-cols-[minmax(0,1fr)_5.75rem] gap-2 border-b px-3 py-2 text-xs font-medium text-zinc-500 dark:text-zinc-400 min-[560px]:grid-cols-[minmax(0,1fr)_4.25rem_5.75rem] min-[720px]:grid-cols-[minmax(0,1fr)_4.75rem_4.25rem_5.75rem]">
                   <span className="pl-6">名称</span>
                   <span className="hidden text-right min-[720px]:block">
                     权限
@@ -627,7 +639,7 @@ export function SftpBrowserView({
                     时间
                   </span>
                 </div>
-                <div className="divide-y divide-black/8 dark:divide-white/[0.06]">
+                <div className="divide-y divide-[var(--border-subtle)]">
                   {visibleEntries.map((entry) => (
                     <SftpEntryRow
                       contextMenuOpen={contextMenu?.entry?.path === entry.path}
@@ -643,7 +655,6 @@ export function SftpBrowserView({
                       onDragEnd={finishRemoteEntryDrag}
                       onDragStart={(event) => startRemoteEntryDrag(event, entry)}
                       onOpenDirectory={loadDirectory}
-                      onOpenWorkspaceDirectory={openWorkspaceDirectory}
                       onPreviewFile={() => openEditorEntry(entry)}
                       onSelect={(event) => selectEntry(entry, event)}
                       previewing={false}
@@ -656,6 +667,8 @@ export function SftpBrowserView({
           </div>
         </div>
       </div>
+
+      <SftpOperationStatusBar status={operationStatus} />
 
       {showTransferStatusBar ? (
         <SftpTransferStatusBar
@@ -687,7 +700,7 @@ export function SftpBrowserView({
           workspaceDirty ? (
             <div className="mr-auto text-xs text-amber-700 dark:text-amber-200">
               {workspaceCloseBlocked
-                ? "工作区有未保存修改，确认后可以关闭或弹出独立窗口。"
+                ? "工作区有未保存修改，确认后可以关闭。"
                 : "有未保存修改。"}
             </div>
           ) : null
@@ -695,25 +708,24 @@ export function SftpBrowserView({
         headerActions={
           workspaceDialog && supportsSftpAdvancedActions ? (
             <Button
-              aria-label="弹出独立工作区窗口"
+              aria-label={workspaceExpanded ? "还原工作区" : "放大工作区"}
               className="h-8 w-8 rounded-md px-0"
-              disabled={workspacePopoutBusy}
-              onClick={() => void openDetachedWorkspaceWindow()}
+              onClick={() => setWorkspaceExpanded((current) => !current)}
               size="sm"
-              title="弹出为独立窗口"
+              title={workspaceExpanded ? "还原工作区" : "放大工作区"}
               type="button"
               variant="ghost"
             >
-              {workspacePopoutBusy ? (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              {workspaceExpanded ? (
+                <Minimize2 className="h-3.5 w-3.5" />
               ) : (
-                <ExternalLink className="h-3.5 w-3.5" />
+                <Maximize2 className="h-3.5 w-3.5" />
               )}
             </Button>
           ) : null
         }
         bodyClassName="p-2"
-        layout="workspace"
+        layout={workspaceExpanded ? "fullscreen" : "workspace"}
         onClose={closeWorkspaceDialog}
         open={Boolean(workspaceDialog)}
         title="远程工作区"
@@ -748,10 +760,27 @@ export function SftpBrowserView({
               position={{ x: contextMenu.x, y: contextMenu.y }}
               showHiddenFiles={showHiddenFiles}
               supportsAdvancedActions={supportsSftpAdvancedActions}
+              transferTargetSide={transferTarget?.side}
             />,
             document.body,
           )
         : null}
     </section>
+  );
+}
+
+function SftpOperationStatusBar({ status }: { status: SftpStatus | null }) {
+  if (!status) {
+    return null;
+  }
+
+  return (
+    <div
+      aria-label="SFTP 操作状态"
+      className="kerminal-material-nav shrink-0 border-t px-3 py-2"
+      data-testid="sftp-operation-status"
+    >
+      <StatusMessage className="mt-0" status={status} />
+    </div>
   );
 }

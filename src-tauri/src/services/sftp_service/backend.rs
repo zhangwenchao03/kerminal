@@ -5,23 +5,14 @@
 use std::{
     io,
     path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
 };
 
 use async_trait::async_trait;
-use russh::{
-    client,
-    keys::{
-        self, agent::AgentIdentity, load_secret_key, PrivateKey, PrivateKeyWithHashAlg, PublicKey,
-    },
-    ChannelMsg,
-};
+use russh::ChannelMsg;
 use russh_sftp::{
     client::{Config as NativeSftpConfig, SftpSession},
     protocol::FileAttributes,
 };
-use serde::Deserialize;
 use tokio::io::AsyncReadExt;
 
 use crate::{
@@ -36,10 +27,10 @@ use crate::{
         },
     },
     paths::KerminalPaths,
-    services::credential_service::CredentialService,
     storage::SqliteStore,
 };
 
+use super::native_ssh::{connect_native_ssh_chain, NativeSftpSshConnection};
 use super::remote_text::{
     read_remote_text_file, sftp_entry_from_native, sftp_entry_kind_rank, stat_remote_path,
     write_remote_text_file,
@@ -102,13 +93,6 @@ pub(super) enum SftpPrivateKey {
         content: String,
         passphrase: Option<String>,
     },
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct StoredPrivateKey {
-    private_key: String,
-    passphrase: Option<String>,
 }
 
 #[async_trait]
@@ -386,6 +370,7 @@ impl SftpBackend for RusshSftpBackend {
                     &request.remote_path,
                     &progress,
                     settings,
+                    request.conflict_policy,
                     true,
                 )
                 .await
@@ -397,6 +382,7 @@ impl SftpBackend for RusshSftpBackend {
                     &request.remote_path,
                     &progress,
                     settings,
+                    request.conflict_policy,
                 )
                 .await
             }
@@ -407,6 +393,7 @@ impl SftpBackend for RusshSftpBackend {
                     Path::new(&request.local_path),
                     &progress,
                     settings,
+                    request.conflict_policy,
                     true,
                 )
                 .await
@@ -418,6 +405,7 @@ impl SftpBackend for RusshSftpBackend {
                     Path::new(&request.local_path),
                     &progress,
                     settings,
+                    request.conflict_policy,
                 )
                 .await
             }
@@ -444,6 +432,7 @@ impl SftpBackend for RusshSftpBackend {
                         &request.target_remote_path,
                         &progress,
                         settings,
+                        request.conflict_policy,
                         true,
                     )
                     .await
@@ -456,6 +445,7 @@ impl SftpBackend for RusshSftpBackend {
                         &request.target_remote_path,
                         &progress,
                         settings,
+                        request.conflict_policy,
                     )
                     .await
                 }
@@ -472,6 +462,7 @@ impl SftpBackend for RusshSftpBackend {
                     &request.target_remote_path,
                     &progress,
                     settings,
+                    request.conflict_policy,
                     true,
                 )
                 .await
@@ -484,6 +475,7 @@ impl SftpBackend for RusshSftpBackend {
                     &request.target_remote_path,
                     &progress,
                     settings,
+                    request.conflict_policy,
                 )
                 .await
             }
@@ -492,68 +484,21 @@ impl SftpBackend for RusshSftpBackend {
 }
 
 struct NativeSftpConnection {
-    _ssh: client::Handle<NativeClientHandler>,
+    _ssh: NativeSftpSshConnection,
     sftp: SftpSession,
-}
-
-#[derive(Debug)]
-pub(super) struct NativeClientHandler {
-    pub(super) host: String,
-    pub(super) port: u16,
-    pub(super) known_hosts_path: PathBuf,
-    pub(super) host_key_policy: HostKeyPolicy,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(super) enum HostKeyPolicy {
-    RequireKnown,
-    TrustUnknown,
-}
-
-impl client::Handler for NativeClientHandler {
-    type Error = russh::Error;
-
-    async fn check_server_key(
-        &mut self,
-        server_public_key: &PublicKey,
-    ) -> Result<bool, Self::Error> {
-        match keys::known_hosts::check_known_hosts_path(
-            &self.host,
-            self.port,
-            server_public_key,
-            &self.known_hosts_path,
-        ) {
-            Ok(true) => Ok(true),
-            Ok(false) => match self.host_key_policy {
-                HostKeyPolicy::RequireKnown => Ok(false),
-                HostKeyPolicy::TrustUnknown => Ok(keys::known_hosts::learn_known_hosts_path(
-                    &self.host,
-                    self.port,
-                    server_public_key,
-                    &self.known_hosts_path,
-                )
-                .is_ok()),
-            },
-            Err(_) => Ok(false),
-        }
-    }
 }
 
 async fn connect_native_sftp(
     endpoint: &SftpEndpoint,
     settings: SftpRuntimeSettings,
 ) -> AppResult<NativeSftpConnection> {
-    let mut ssh = connect_native_ssh(
-        &endpoint.host,
-        endpoint.known_hosts_path.clone(),
-        HostKeyPolicy::RequireKnown,
-        settings,
-    )
-    .await?;
+    let connection = connect_native_ssh_chain(endpoint, settings).await?;
 
-    authenticate_native_sftp(&mut ssh, endpoint).await?;
-
-    let channel = ssh.channel_open_session().await.map_err(native_ssh_error)?;
+    let channel = connection
+        .target()
+        .channel_open_session()
+        .await
+        .map_err(native_ssh_error)?;
     channel
         .request_subsystem(true, "sftp")
         .await
@@ -568,46 +513,10 @@ async fn connect_native_sftp(
     )
     .await
     .map_err(native_sftp_error)?;
-    Ok(NativeSftpConnection { _ssh: ssh, sftp })
-}
-
-async fn connect_native_ssh(
-    host: &RemoteHost,
-    known_hosts_path: PathBuf,
-    host_key_policy: HostKeyPolicy,
-    settings: SftpRuntimeSettings,
-) -> AppResult<client::Handle<NativeClientHandler>> {
-    let config = client::Config {
-        inactivity_timeout: Some(Duration::from_secs(settings.timeout_seconds)),
-        ..Default::default()
-    };
-    let handler = NativeClientHandler {
-        host: host.host.clone(),
-        port: host.port,
-        known_hosts_path,
-        host_key_policy,
-    };
-    client::connect(Arc::new(config), (host.host.as_str(), host.port), handler)
-        .await
-        .map_err(native_ssh_error)
-}
-
-pub(super) async fn trust_native_host_key(
-    host: &RemoteHost,
-    known_hosts_path: &Path,
-    settings: SftpRuntimeSettings,
-) -> AppResult<()> {
-    let ssh = connect_native_ssh(
-        host,
-        known_hosts_path.to_path_buf(),
-        HostKeyPolicy::TrustUnknown,
-        settings,
-    )
-    .await?;
-    let _ = ssh
-        .disconnect(russh::Disconnect::ByApplication, "host key trusted", "")
-        .await;
-    Ok(())
+    Ok(NativeSftpConnection {
+        _ssh: connection,
+        sftp,
+    })
 }
 
 async fn remove_remote_directory_with_shell(
@@ -617,16 +526,13 @@ async fn remove_remote_directory_with_shell(
 ) -> AppResult<()> {
     validate_remote_directory_shell_delete_path(path)?;
     let script = format!("rm -rf -- {}\n", shell_single_quote(path));
-    let mut ssh = connect_native_ssh(
-        &endpoint.host,
-        endpoint.known_hosts_path.clone(),
-        HostKeyPolicy::RequireKnown,
-        settings,
-    )
-    .await?;
-    authenticate_native_sftp(&mut ssh, endpoint).await?;
+    let connection = connect_native_ssh_chain(endpoint, settings).await?;
 
-    let mut channel = ssh.channel_open_session().await.map_err(native_ssh_error)?;
+    let mut channel = connection
+        .target()
+        .channel_open_session()
+        .await
+        .map_err(native_ssh_error)?;
     channel
         .exec(true, "sh -s")
         .await
@@ -676,9 +582,7 @@ async fn remove_remote_directory_with_shell(
     }
 
     let _ = channel.close().await;
-    let _ = ssh
-        .disconnect(russh::Disconnect::ByApplication, "directory deleted", "")
-        .await;
+    connection.disconnect("directory deleted").await;
 
     if exec_request_failed {
         return Err(AppError::Sftp("远端拒绝执行目录递归删除命令".to_owned()));
@@ -736,125 +640,13 @@ fn push_limited_bytes(buffer: &mut Vec<u8>, bytes: &[u8], max_bytes: usize) {
     buffer.extend_from_slice(&bytes[..bytes.len().min(remaining)]);
 }
 
-async fn authenticate_native_sftp(
-    ssh: &mut client::Handle<NativeClientHandler>,
-    endpoint: &SftpEndpoint,
-) -> AppResult<()> {
-    let username = endpoint.host.username.clone();
-    let authenticated = match &endpoint.auth {
-        SftpAuthMaterial::Password(password) => ssh
-            .authenticate_password(username, password.clone())
-            .await
-            .map_err(native_ssh_error)?
-            .success(),
-        SftpAuthMaterial::PrivateKey(private_key) => {
-            let key = load_private_key(private_key)?;
-            let hash = ssh
-                .best_supported_rsa_hash()
-                .await
-                .map_err(native_ssh_error)?
-                .flatten();
-            ssh.authenticate_publickey(username, PrivateKeyWithHashAlg::new(Arc::new(key), hash))
-                .await
-                .map_err(native_ssh_error)?
-                .success()
-        }
-        SftpAuthMaterial::Agent => authenticate_with_agent(ssh, username).await?,
-    };
-
-    if authenticated {
-        Ok(())
-    } else {
-        Err(AppError::Sftp(format!(
-            "SSH 认证失败: {}@{}:{}",
-            endpoint.host.username, endpoint.host.host, endpoint.host.port
-        )))
-    }
-}
-
-async fn authenticate_with_agent(
-    ssh: &mut client::Handle<NativeClientHandler>,
-    username: String,
-) -> AppResult<bool> {
-    let mut agent = connect_agent().await?;
-    let identities = agent.request_identities().await.map_err(agent_error)?;
-    for identity in identities {
-        let key = match &identity {
-            AgentIdentity::PublicKey { key, .. } => key.clone(),
-            AgentIdentity::Certificate { .. } => identity.public_key().into_owned(),
-        };
-        let hash = ssh
-            .best_supported_rsa_hash()
-            .await
-            .map_err(native_ssh_error)?
-            .flatten();
-        let result = ssh
-            .authenticate_publickey_with(username.clone(), key, hash, &mut agent)
-            .await
-            .map_err(|error| AppError::Sftp(format!("SSH agent 认证失败: {error}")))?;
-        if result.success() {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-#[cfg(unix)]
-async fn connect_agent() -> AppResult<
-    keys::agent::client::AgentClient<Box<dyn keys::agent::client::AgentStream + Send + Unpin>>,
-> {
-    keys::agent::client::AgentClient::connect_env()
-        .await
-        .map(|client| client.dynamic())
-        .map_err(agent_error)
-}
-
-#[cfg(windows)]
-async fn connect_agent() -> AppResult<
-    keys::agent::client::AgentClient<Box<dyn keys::agent::client::AgentStream + Send + Unpin>>,
-> {
-    const OPENSSH_AGENT_PIPE: &str = r"\\.\pipe\openssh-ssh-agent";
-
-    match keys::agent::client::AgentClient::connect_named_pipe(OPENSSH_AGENT_PIPE).await {
-        Ok(client) => Ok(client.dynamic()),
-        Err(openssh_error) => keys::agent::client::AgentClient::connect_pageant()
-            .await
-            .map(|client| client.dynamic())
-            .map_err(|pageant_error| {
-                AppError::Sftp(format!(
-                    "SSH agent 连接失败: OpenSSH agent ({OPENSSH_AGENT_PIPE}) {openssh_error}; Pageant {pageant_error}"
-                ))
-            }),
-    }
-}
-
-#[cfg(not(any(unix, windows)))]
-async fn connect_agent() -> AppResult<
-    keys::agent::client::AgentClient<Box<dyn keys::agent::client::AgentStream + Send + Unpin>>,
-> {
-    Err(AppError::Sftp(
-        "当前平台不支持 SSH agent 认证，请改用密码或私钥凭据".to_owned(),
-    ))
-}
-
-fn load_private_key(private_key: &SftpPrivateKey) -> AppResult<PrivateKey> {
-    match private_key {
-        SftpPrivateKey::Path(path) => load_secret_key(path, None).map_err(key_error),
-        SftpPrivateKey::Pem {
-            content,
-            passphrase,
-        } => keys::decode_secret_key(content, passphrase.as_deref()).map_err(key_error),
-    }
-}
-
 pub(super) fn resolve_endpoint(
     storage: &SqliteStore,
-    credentials: &CredentialService,
     paths: &KerminalPaths,
     host_id: &str,
 ) -> AppResult<SftpEndpoint> {
     let host = resolve_host(storage, host_id)?;
-    let auth = resolve_auth_material(&host, credentials)?;
+    let auth = resolve_auth_material(&host)?;
     Ok(SftpEndpoint {
         host,
         auth,
@@ -872,28 +664,26 @@ pub(super) fn resolve_host(storage: &SqliteStore, host_id: &str) -> AppResult<Re
         .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {host_id}")))
 }
 
-fn resolve_auth_material(
-    host: &RemoteHost,
-    credentials: &CredentialService,
-) -> AppResult<SftpAuthMaterial> {
+fn resolve_auth_material(host: &RemoteHost) -> AppResult<SftpAuthMaterial> {
     match host.auth_type {
         RemoteHostAuthType::Agent => Ok(SftpAuthMaterial::Agent),
         RemoteHostAuthType::Password => {
-            let credential_ref = required_credential_ref(host)?;
-            let password = credentials.get_secret(credential_ref)?.ok_or_else(|| {
-                AppError::Credential(format!("未找到 SSH 密码凭据: {credential_ref}"))
-            })?;
+            let password = required_credential_secret(host, "密码认证需要保存明文 SSH 密码")?;
             Ok(SftpAuthMaterial::Password(password))
         }
         RemoteHostAuthType::Key => {
+            if let Some(secret) = normalized_credential_secret(host) {
+                return Ok(SftpAuthMaterial::PrivateKey(SftpPrivateKey::Pem {
+                    content: secret.to_owned(),
+                    passphrase: None,
+                }));
+            }
             let credential_ref = required_credential_ref(host)?;
             if credential_ref.starts_with("credential:") {
-                let secret = credentials.get_secret(credential_ref)?.ok_or_else(|| {
-                    AppError::Credential(format!("未找到 SSH 私钥凭据: {credential_ref}"))
-                })?;
-                return Ok(SftpAuthMaterial::PrivateKey(parse_private_key_secret(
-                    &secret,
-                )));
+                return Err(AppError::InvalidInput(
+                    "SSH 主机不再支持 credential: 私钥引用，请保存私钥路径或明文私钥内容"
+                        .to_owned(),
+                ));
             }
             Ok(SftpAuthMaterial::PrivateKey(SftpPrivateKey::Path(
                 PathBuf::from(credential_ref),
@@ -906,19 +696,19 @@ fn required_credential_ref(host: &RemoteHost) -> AppResult<&str> {
     host.credential_ref
         .as_deref()
         .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| AppError::InvalidInput("该 SSH 认证方式需要配置凭据引用".to_owned()))
+        .ok_or_else(|| AppError::InvalidInput("密钥认证需要保存私钥路径或明文私钥内容".to_owned()))
 }
 
-fn parse_private_key_secret(secret: &str) -> SftpPrivateKey {
-    serde_json::from_str::<StoredPrivateKey>(secret)
-        .map(|stored| SftpPrivateKey::Pem {
-            content: stored.private_key,
-            passphrase: stored.passphrase,
-        })
-        .unwrap_or_else(|_| SftpPrivateKey::Pem {
-            content: secret.to_owned(),
-            passphrase: None,
-        })
+fn required_credential_secret(host: &RemoteHost, message: &str) -> AppResult<String> {
+    normalized_credential_secret(host)
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| AppError::InvalidInput(message.to_owned()))
+}
+
+fn normalized_credential_secret(host: &RemoteHost) -> Option<&str> {
+    host.credential_secret
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
 }
 
 fn native_ssh_error(error: russh::Error) -> AppError {
@@ -931,12 +721,4 @@ pub(super) fn native_sftp_error(error: russh_sftp::client::error::Error) -> AppE
 
 pub(super) fn io_sftp_error(error: io::Error) -> AppError {
     AppError::Sftp(format!("SFTP 本地 I/O 失败: {error}"))
-}
-
-fn key_error(error: keys::Error) -> AppError {
-    AppError::Sftp(format!("SSH 私钥加载失败: {error}"))
-}
-
-fn agent_error(error: keys::Error) -> AppError {
-    AppError::Sftp(format!("SSH agent 连接失败: {error}"))
 }

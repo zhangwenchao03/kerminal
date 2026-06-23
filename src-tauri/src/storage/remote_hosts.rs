@@ -43,8 +43,10 @@ pub(crate) struct RemoteHostWrite {
     pub username: String,
     /// 认证方式。
     pub auth_type: RemoteHostAuthType,
-    /// 凭据引用。
+    /// 私钥路径。
     pub credential_ref: Option<String>,
+    /// SSH 密码或内联私钥内容，按用户选择明文保存。
+    pub credential_secret: Option<String>,
     /// 标签。
     pub tags: Vec<String>,
     /// 是否生产主机。
@@ -231,9 +233,10 @@ impl SqliteStore {
                 "
                 INSERT INTO remote_hosts (
                     id, group_id, name, host, port, username, auth_type,
-                    credential_ref, tags_json, production, ssh_options_json, sort_order
+                    credential_ref, credential_secret, tags_json, production, ssh_options_json,
+                    sort_order
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
                 ",
                 params![
                     host.id.as_str(),
@@ -244,6 +247,7 @@ impl SqliteStore {
                     host.username.as_str(),
                     host.auth_type.as_str(),
                     host.credential_ref.as_deref(),
+                    host.credential_secret.as_deref(),
                     tags_json,
                     bool_to_i64(host.production),
                     ssh_options_json,
@@ -274,10 +278,11 @@ impl SqliteStore {
                     username = ?6,
                     auth_type = ?7,
                     credential_ref = ?8,
-                    tags_json = ?9,
-                    production = ?10,
-                    ssh_options_json = ?11,
-                    sort_order = ?12,
+                    credential_secret = ?9,
+                    tags_json = ?10,
+                    production = ?11,
+                    ssh_options_json = ?12,
+                    sort_order = ?13,
                     updated_at = datetime('now')
                 WHERE id = ?1
                 ",
@@ -290,6 +295,7 @@ impl SqliteStore {
                     host.username.as_str(),
                     host.auth_type.as_str(),
                     host.credential_ref.as_deref(),
+                    host.credential_secret.as_deref(),
                     tags_json,
                     bool_to_i64(host.production),
                     ssh_options_json,
@@ -329,7 +335,8 @@ fn list_hosts_by_group(conn: &Connection, group_id: &str) -> AppResult<Vec<Remot
     let mut stmt = conn.prepare(
         "
         SELECT id, group_id, name, host, port, username, auth_type, credential_ref,
-               tags_json, production, ssh_options_json, sort_order, created_at, updated_at
+               credential_secret, tags_json, production, ssh_options_json, sort_order,
+               created_at, updated_at
         FROM remote_hosts
         WHERE group_id = ?1
         ORDER BY sort_order ASC, name ASC
@@ -346,7 +353,8 @@ fn list_ungrouped_hosts(conn: &Connection) -> AppResult<Vec<RemoteHost>> {
     let mut stmt = conn.prepare(
         "
         SELECT id, group_id, name, host, port, username, auth_type, credential_ref,
-               tags_json, production, ssh_options_json, sort_order, created_at, updated_at
+               credential_secret, tags_json, production, ssh_options_json, sort_order,
+               created_at, updated_at
         FROM remote_hosts
         WHERE group_id IS NULL
         ORDER BY sort_order ASC, name ASC
@@ -391,7 +399,8 @@ fn query_host_by_id_optional(conn: &Connection, host_id: &str) -> AppResult<Opti
         .query_row(
             "
             SELECT id, group_id, name, host, port, username, auth_type, credential_ref,
-                   tags_json, production, ssh_options_json, sort_order, created_at, updated_at
+                   credential_secret, tags_json, production, ssh_options_json, sort_order,
+                   created_at, updated_at
             FROM remote_hosts
             WHERE id = ?1
             ",
@@ -433,9 +442,9 @@ fn group_from_row(row: &Row<'_>) -> rusqlite::Result<RemoteHostGroup> {
 
 fn host_from_row(row: &Row<'_>) -> rusqlite::Result<RemoteHost> {
     let auth_type_text: String = row.get(6)?;
-    let tags_json: String = row.get(8)?;
-    let production: i64 = row.get(9)?;
-    let ssh_options_json: String = row.get(10)?;
+    let tags_json: String = row.get(9)?;
+    let production: i64 = row.get(10)?;
+    let ssh_options_json: String = row.get(11)?;
     let port: i64 = row.get(4)?;
     let auth_type =
         RemoteHostAuthType::try_from(auth_type_text.as_str()).map_err(text_to_sqlite_error)?;
@@ -451,12 +460,13 @@ fn host_from_row(row: &Row<'_>) -> rusqlite::Result<RemoteHost> {
         username: row.get(5)?,
         auth_type,
         credential_ref: row.get(7)?,
+        credential_secret: row.get(8)?,
         tags,
         production: production == 1,
         ssh_options,
-        sort_order: row.get(11)?,
-        created_at: row.get(12)?,
-        updated_at: row.get(13)?,
+        sort_order: row.get(12)?,
+        created_at: row.get(13)?,
+        updated_at: row.get(14)?,
     })
 }
 

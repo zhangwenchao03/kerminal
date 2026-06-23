@@ -14,7 +14,8 @@ use kerminal_lib::{
         },
         tool_registry::{
             McpDefinitionOrigin, McpPromptRenderRequest, McpResourceReadRequest,
-            McpTransportStatus, ToolAuditPolicy, ToolConfirmationPolicy, ToolRiskLevel,
+            McpTransportStatus, ToolAuditPolicy, ToolCategory, ToolConfirmationPolicy,
+            ToolRiskLevel,
         },
     },
     services::{
@@ -105,6 +106,8 @@ fn custom_mcp_settings(skill_directory: &str) -> AiMcpSettings {
     }
 }
 
+#[path = "tool_registry_service/contract.rs"]
+mod contract;
 #[path = "tool_registry_service/custom_mcp.rs"]
 mod custom_mcp;
 #[path = "tool_registry_service/prompts.rs"]
@@ -152,8 +155,46 @@ fn registry_lists_core_tools_with_risk_and_confirmation_policy() {
         "number"
     );
     assert_eq!(
+        ssh_command.input_schema["properties"]["proxyUrl"]["type"],
+        "string"
+    );
+    assert_eq!(
+        ssh_command.input_schema["properties"]["proxyProtocol"]["enum"],
+        serde_json::json!(["http", "socks5"])
+    );
+    assert_eq!(
         ssh_command.input_schema["required"],
         serde_json::json!(["hostId", "command"])
+    );
+
+    let ssh_command_on_resolved_host = tools
+        .iter()
+        .find(|tool| tool.id == "ssh.command_on_resolved_host")
+        .expect("ssh command on resolved host tool");
+    assert_eq!(ssh_command_on_resolved_host.risk, ToolRiskLevel::Remote);
+    assert_eq!(
+        ssh_command_on_resolved_host.confirmation,
+        ToolConfirmationPolicy::Always
+    );
+    assert_eq!(
+        ssh_command_on_resolved_host.input_schema["properties"]["hostId"]["type"],
+        "string"
+    );
+    assert_eq!(
+        ssh_command_on_resolved_host.input_schema["properties"]["groupName"]["type"],
+        "string"
+    );
+    assert_eq!(
+        ssh_command_on_resolved_host.input_schema["properties"]["command"]["type"],
+        "string"
+    );
+    assert_eq!(
+        ssh_command_on_resolved_host.input_schema["properties"]["proxyProtocol"]["enum"],
+        serde_json::json!(["http", "socks5"])
+    );
+    assert_eq!(
+        ssh_command_on_resolved_host.input_schema["required"],
+        serde_json::json!(["command"])
     );
 
     let sftp_rename = tools
@@ -296,6 +337,26 @@ fn registry_lists_core_tools_with_risk_and_confirmation_policy() {
         .expect("port_forward.list tool");
     assert_eq!(port_forward_list.risk, ToolRiskLevel::Read);
     assert_eq!(port_forward_list.confirmation, ToolConfirmationPolicy::Auto);
+
+    let port_forward_create = tools
+        .iter()
+        .find(|tool| tool.id == "port_forward.create")
+        .expect("port_forward.create tool");
+    assert_eq!(port_forward_create.risk, ToolRiskLevel::Remote);
+    assert_eq!(
+        port_forward_create.input_schema["properties"]["purpose"]["enum"],
+        serde_json::json!(["generic", "hostNetworkAssist"])
+    );
+    assert_eq!(
+        port_forward_create.input_schema["properties"]["proxyApplyScope"]["enum"],
+        serde_json::json!([
+            "none",
+            "currentTerminal",
+            "futureTerminals",
+            "userProfile",
+            "toolOnly"
+        ])
+    );
 
     let port_forward_close = tools
         .iter()

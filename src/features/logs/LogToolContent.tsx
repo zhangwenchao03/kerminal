@@ -8,7 +8,13 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { Button } from "../../components/ui/button";
 import { Select, type SelectOption } from "../../components/ui/select";
 import {
@@ -21,7 +27,6 @@ import {
   type CommandHistoryTarget,
 } from "../../lib/commandHistoryApi";
 import { cn } from "../../lib/cn";
-import { DiagnosticsBundleCard } from "../tool-panel/DiagnosticsBundleCard";
 import type { TerminalPane } from "../workspace/types";
 
 const COMMAND_HISTORY_LIMIT = 100;
@@ -37,10 +42,14 @@ const SOURCE_FILTER_OPTIONS: SelectOption[] = [
 ];
 
 interface LogToolContentProps {
+  diagnosticsBundleNotice?: ReactNode;
   focusedPane?: TerminalPane;
 }
 
-export function LogToolContent({ focusedPane }: LogToolContentProps) {
+export function LogToolContent({
+  diagnosticsBundleNotice,
+  focusedPane,
+}: LogToolContentProps) {
   const [entries, setEntries] = useState<CommandHistoryEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -140,9 +149,9 @@ export function LogToolContent({ focusedPane }: LogToolContentProps) {
 
   return (
     <section className="space-y-3">
-      <DiagnosticsBundleCard />
+      {diagnosticsBundleNotice}
 
-      <section className="rounded-lg border border-black/8 bg-white/80 p-3 shadow-sm shadow-black/5 dark:border-white/8 dark:bg-white/6 dark:shadow-black/20">
+      <section className="kerminal-solid-surface rounded-lg border p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
@@ -150,7 +159,8 @@ export function LogToolContent({ focusedPane }: LogToolContentProps) {
               命令历史
             </div>
             <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-              只显示当前终端提交的命令；疑似包含密钥、密码或 token 的命令会被跳过。
+              只显示当前终端提交的命令；疑似包含密钥、密码或 token
+              的命令会被跳过。
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -162,9 +172,7 @@ export function LogToolContent({ focusedPane }: LogToolContentProps) {
               title="刷新命令历史"
               variant="ghost"
             >
-              <RefreshCw
-                className={cn("h-4 w-4", loading && "animate-spin")}
-              />
+              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
             </Button>
             <Button
               aria-label="清空命令历史"
@@ -180,7 +188,7 @@ export function LogToolContent({ focusedPane }: LogToolContentProps) {
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-          <span className="rounded-md border border-black/8 bg-black/[0.03] px-2 py-1 dark:border-white/8 dark:bg-black/20">
+          <span className="kerminal-muted-surface rounded-md border px-2 py-1">
             {historyScope.label}
           </span>
           <span className="min-w-0 truncate font-mono">
@@ -198,7 +206,7 @@ export function LogToolContent({ focusedPane }: LogToolContentProps) {
             <span className="sr-only">搜索命令历史</span>
             <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-zinc-400 dark:text-zinc-500" />
             <input
-              className="h-9 w-full rounded-lg border border-black/8 bg-white/70 pl-9 pr-9 text-sm text-zinc-900 outline-none transition focus:border-sky-500/50 focus:ring-4 focus:ring-sky-500/15 dark:border-white/10 dark:bg-white/8 dark:text-zinc-100"
+              className="kerminal-field-surface h-9 w-full rounded-lg border pl-9 pr-9 text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500"
               onChange={(event) => updateQuery(event.target.value)}
               placeholder="搜索命令、目录或主机"
               value={query}
@@ -206,7 +214,7 @@ export function LogToolContent({ focusedPane }: LogToolContentProps) {
             {query ? (
               <button
                 aria-label="清空命令搜索"
-                className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-md text-zinc-400 transition hover:bg-black/5 hover:text-zinc-700 dark:hover:bg-white/8 dark:hover:text-zinc-100"
+                className="kerminal-focus-ring kerminal-pressable absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-md text-zinc-400 transition hover:bg-[var(--surface-hover)] hover:text-zinc-700 dark:hover:text-zinc-100"
                 onClick={() => updateQuery("")}
                 type="button"
               >
@@ -219,7 +227,7 @@ export function LogToolContent({ focusedPane }: LogToolContentProps) {
             <ListFilter className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-zinc-400 dark:text-zinc-500" />
             <Select
               aria-label="历史来源"
-              buttonClassName="rounded-lg border-black/8 bg-white/70 pl-9 text-sm text-zinc-900 focus-visible:border-sky-500/50 focus-visible:ring-sky-500/15 dark:border-white/10 dark:bg-white/8 dark:text-zinc-100"
+              buttonClassName="rounded-lg pl-9 text-sm text-zinc-900 dark:text-zinc-100"
               onValueChange={(nextSource) =>
                 updateSource(nextSource as CommandHistorySource | "")
               }
@@ -239,8 +247,8 @@ export function LogToolContent({ focusedPane }: LogToolContentProps) {
         </div>
       ) : null}
 
-      <section className="overflow-hidden rounded-lg border border-black/8 bg-white/80 shadow-sm shadow-black/5 dark:border-white/8 dark:bg-white/6 dark:shadow-black/20">
-        <div className="flex items-center justify-between gap-3 border-b border-black/8 px-3 py-2 dark:border-white/8">
+      <section className="kerminal-solid-surface overflow-hidden rounded-lg border">
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-3 py-2">
           <div className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
             最近记录
           </div>
@@ -265,14 +273,14 @@ export function LogToolContent({ focusedPane }: LogToolContentProps) {
         {entries.length > 0 ? (
           <>
             <div className="overflow-x-auto">
-              <div className="grid min-w-[760px] grid-cols-[92px_minmax(180px,1fr)_160px_120px_40px] gap-3 border-b border-black/8 bg-black/[0.025] px-3 py-2 text-xs font-medium text-zinc-500 dark:border-white/[0.06] dark:bg-white/[0.035] dark:text-zinc-400">
+              <div className="kerminal-muted-surface grid min-w-[760px] grid-cols-[92px_minmax(180px,1fr)_160px_120px_40px] gap-3 border-b px-3 py-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 <span>类型</span>
                 <span>命令</span>
                 <span>上下文</span>
                 <span>时间</span>
                 <span className="text-right">操作</span>
               </div>
-              <div className="divide-y divide-black/8 dark:divide-white/[0.06]">
+              <div className="divide-y divide-black/8 dark:divide-white/[0.08]">
                 {pageEntries.map((entry) => (
                   <div
                     className="grid min-w-[760px] grid-cols-[92px_minmax(180px,1fr)_160px_120px_40px] items-center gap-3 px-3 py-2 text-sm"
@@ -287,7 +295,7 @@ export function LogToolContent({ focusedPane }: LogToolContentProps) {
                       </span>
                     </div>
                     <code
-                      className="block truncate rounded-md bg-black/[0.04] px-2 py-1.5 font-mono text-xs text-zinc-800 dark:bg-black/25 dark:text-zinc-200"
+                      className="kerminal-muted-surface block truncate rounded-md px-2 py-1.5 font-mono text-xs text-zinc-800 dark:text-zinc-200"
                       title={entry.command}
                     >
                       {entry.command}
@@ -319,7 +327,7 @@ export function LogToolContent({ focusedPane }: LogToolContentProps) {
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 border-t border-black/8 px-3 py-2 text-xs text-zinc-500 dark:border-white/8 dark:text-zinc-400 min-[560px]:flex-row min-[560px]:items-center min-[560px]:justify-between">
+            <div className="flex flex-col gap-2 border-t border-[var(--border-subtle)] px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400 min-[560px]:flex-row min-[560px]:items-center min-[560px]:justify-between">
               <span>
                 每页 {COMMAND_HISTORY_PAGE_SIZE} 条，最多加载{" "}
                 {COMMAND_HISTORY_LIMIT} 条最近记录

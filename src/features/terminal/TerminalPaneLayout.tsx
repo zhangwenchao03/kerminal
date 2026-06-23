@@ -33,6 +33,80 @@ interface TerminalPaneLayoutProps {
   terminalAppearance: TerminalAppearance;
 }
 
+type NormalizedTerminalSplitLayout = Extract<
+  TerminalLayoutNode,
+  { type: "split" }
+>;
+
+function normalizeRootLayout(
+  layout: TerminalLayoutNode,
+): NormalizedTerminalSplitLayout {
+  if (layout.type === "split") {
+    return layout;
+  }
+
+  return {
+    children: [layout],
+    direction: "horizontal",
+    id: `root-${layout.paneId}`,
+    type: "split",
+  };
+}
+
+function TerminalPaneLayoutNode({
+  focusedPaneId,
+  layout,
+  onClosePane,
+  onCurrentCwdChange,
+  onFocusPane,
+  onOpenLogs,
+  onOutputHistoryChange,
+  onSplitPane,
+  panesById,
+  resolvedTheme,
+  terminalAppearance,
+}: TerminalPaneLayoutProps) {
+  if (layout.type !== "pane") {
+    return (
+      <TerminalPaneLayout
+        focusedPaneId={focusedPaneId}
+        layout={layout}
+        onClosePane={onClosePane}
+        onCurrentCwdChange={onCurrentCwdChange}
+        onFocusPane={onFocusPane}
+        onOpenLogs={onOpenLogs}
+        onOutputHistoryChange={onOutputHistoryChange}
+        onSplitPane={onSplitPane}
+        panesById={panesById}
+        resolvedTheme={resolvedTheme}
+        terminalAppearance={terminalAppearance}
+      />
+    );
+  }
+
+  const pane = panesById.get(layout.paneId);
+  if (!pane) {
+    return null;
+  }
+
+  return (
+    <TerminalPaneErrorBoundary onOpenLogs={onOpenLogs} pane={pane}>
+      <TerminalPaneCard
+        focused={pane.id === focusedPaneId}
+        onClosePane={onClosePane}
+        onCurrentCwdChange={onCurrentCwdChange}
+        onFocusPane={onFocusPane}
+        onOpenLogs={onOpenLogs}
+        onOutputHistoryChange={onOutputHistoryChange}
+        onSplitPane={onSplitPane}
+        pane={pane}
+        resolvedTheme={resolvedTheme}
+        terminalAppearance={terminalAppearance}
+      />
+    </TerminalPaneErrorBoundary>
+  );
+}
+
 export function TerminalPaneLayout({
   focusedPaneId,
   layout,
@@ -46,36 +120,14 @@ export function TerminalPaneLayout({
   resolvedTheme,
   terminalAppearance,
 }: TerminalPaneLayoutProps) {
-  if (layout.type === "pane") {
-    const pane = panesById.get(layout.paneId);
-    if (!pane) {
-      return null;
-    }
-
-    return (
-      <TerminalPaneErrorBoundary onOpenLogs={onOpenLogs} pane={pane}>
-        <TerminalPaneCard
-          focused={pane.id === focusedPaneId}
-          onClosePane={onClosePane}
-          onCurrentCwdChange={onCurrentCwdChange}
-          onFocusPane={onFocusPane}
-          onOpenLogs={onOpenLogs}
-          onOutputHistoryChange={onOutputHistoryChange}
-          onSplitPane={onSplitPane}
-          pane={pane}
-          resolvedTheme={resolvedTheme}
-          terminalAppearance={terminalAppearance}
-        />
-      </TerminalPaneErrorBoundary>
-    );
-  }
+  const normalizedLayout = normalizeRootLayout(layout);
 
   return (
     <ResizablePanelGroup
-      direction={layout.direction}
-      id={layout.id}
+      direction={normalizedLayout.direction}
+      id={normalizedLayout.id}
     >
-      {layout.children.map((child, index) => {
+      {normalizedLayout.children.map((child, index) => {
         const childKey = child.type === "pane" ? child.paneId : child.id;
 
         return (
@@ -87,11 +139,11 @@ export function TerminalPaneLayout({
               />
             ) : null}
             <ResizablePanel
-              defaultSize={`${100 / layout.children.length}%`}
+              defaultSize={`${100 / normalizedLayout.children.length}%`}
               key={childKey}
               minSize="20%"
             >
-              <TerminalPaneLayout
+              <TerminalPaneLayoutNode
                 focusedPaneId={focusedPaneId}
                 layout={child}
                 onClosePane={onClosePane}
@@ -100,10 +152,10 @@ export function TerminalPaneLayout({
                 onOpenLogs={onOpenLogs}
                 onOutputHistoryChange={onOutputHistoryChange}
                 onSplitPane={onSplitPane}
-	                panesById={panesById}
-	                resolvedTheme={resolvedTheme}
-	                terminalAppearance={terminalAppearance}
-	              />
+                panesById={panesById}
+                resolvedTheme={resolvedTheme}
+                terminalAppearance={terminalAppearance}
+              />
             </ResizablePanel>
           </Fragment>
         );

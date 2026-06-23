@@ -15,37 +15,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Detect Updeng scaffold
-        id: scaffold
-        shell: bash
-        run: |
-          if [ -f .updeng/scripts/updeng-project-doctor.mjs ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "Updeng scaffold is not committed; skipping project checks."
-          fi
-
       - name: Setup Node
-        if: ${{ steps.scaffold.outputs.present == 'true' }}
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Install project dependencies
-        if: ${{ steps.scaffold.outputs.present == 'true' && hashFiles('package-lock.json') != '' }}
+        if: ${{ hashFiles('package-lock.json') != '' }}
         run: npm ci
 
       - name: Check Updeng project scaffold
-        if: ${{ steps.scaffold.outputs.present == 'true' }}
-        run: node .updeng/scripts/updeng-project-doctor.mjs
+        shell: bash
+        run: |
+          if [ -x node_modules/.bin/updeng ]; then
+            npx --no-install updeng doctor
+          else
+            npm exec --yes --package @kong/updeng@0.1.0 -- updeng doctor
+          fi
 
       - name: Check artifact templates
-        if: ${{ steps.scaffold.outputs.present == 'true' }}
-        run: node .updeng/scripts/updeng-artifacts.mjs list
+        shell: bash
+        run: |
+          if [ -x node_modules/.bin/updeng ]; then
+            npx --no-install updeng artifacts list
+          else
+            npm exec --yes --package @kong/updeng@0.1.0 -- updeng artifacts list
+          fi
 
       - name: Detect Updeng change
-        if: ${{ steps.scaffold.outputs.present == 'true' }}
         id: change
         shell: bash
         run: |
@@ -64,18 +61,18 @@ jobs:
 
           function stateFor(changeId) {
             try {
-              return JSON.parse(fs.readFileSync(path.join('.updeng', 'data', 'changes', changeId, 'state.json'), 'utf8'));
+              return JSON.parse(fs.readFileSync(path.join('.updeng', 'docs', 'changes', changeId, 'state.json'), 'utf8'));
             } catch {
               return null;
             }
           }
 
           let changeId = process.env.UPDENG_CHANGE_ID || yamlScalar(path.join('.updeng', 'state.yaml'), 'active_change');
-          if (!changeId && fs.existsSync(path.join('.updeng', 'data', 'changes'))) {
-            const candidates = fs.readdirSync(path.join('.updeng', 'data', 'changes'), { withFileTypes: true })
+          if (!changeId && fs.existsSync(path.join('.updeng', 'docs', 'changes'))) {
+            const candidates = fs.readdirSync(path.join('.updeng', 'docs', 'changes'), { withFileTypes: true })
               .filter((entry) => entry.isDirectory())
               .map((entry) => {
-                const statePath = path.join('.updeng', 'data', 'changes', entry.name, 'state.json');
+                const statePath = path.join('.updeng', 'docs', 'changes', entry.name, 'state.json');
                 const mtimeMs = fs.existsSync(statePath) ? fs.statSync(statePath).mtimeMs : 0;
                 return { id: entry.name, state: stateFor(entry.name), mtimeMs };
               })
@@ -89,7 +86,7 @@ jobs:
           NODE
 
       - name: Run strict Updeng verification
-        if: ${{ steps.scaffold.outputs.present == 'true' && steps.change.outputs.change_id != '' }}
+        if: ${{ steps.change.outputs.change_id != '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -106,14 +103,14 @@ jobs:
           fi
 
       - name: Check verification evidence
-        if: ${{ steps.scaffold.outputs.present == 'true' && steps.change.outputs.change_id != '' }}
+        if: ${{ steps.change.outputs.change_id != '' }}
         shell: bash
         run: |
           node <<'NODE'
           const fs = require('fs');
           const path = require('path');
           const changeId = process.env.CHANGE_ID;
-          const filePath = path.join('.updeng', 'data', 'changes', changeId, 'verification.json');
+          const filePath = path.join('.updeng', 'docs', 'changes', changeId, 'verification.json');
           if (!fs.existsSync(filePath)) {
             throw new Error(`Missing verification evidence: ${filePath}`);
           }

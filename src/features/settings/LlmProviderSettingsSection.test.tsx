@@ -20,7 +20,9 @@ async function chooseSelectOption(
   optionName: string,
 ) {
   await user.click(screen.getByRole("combobox", { name: label }));
-  await user.click(screen.getByRole("option", { name: new RegExp(`^${optionName}`) }));
+  await user.click(
+    screen.getByRole("option", { name: new RegExp(`^${optionName}`) }),
+  );
 }
 
 const provider: LlmProvider = {
@@ -52,6 +54,29 @@ describe("LlmProviderSettingsSection", () => {
     apiMock.listLlmProviders.mockReset();
     apiMock.testLlmProvider.mockReset();
     apiMock.updateLlmProvider.mockReset();
+  });
+
+  it("announces provider loading instead of showing an empty state early", async () => {
+    apiMock.listLlmProviders.mockReturnValue(new Promise(() => undefined));
+
+    render(<LlmProviderSettingsSection />);
+
+    expect(await screen.findByText("LLM Provider")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("正在读取 API 环境");
+    expect(screen.queryByText(/还没有 API 环境/)).not.toBeInTheDocument();
+  });
+
+  it("announces provider load failures in the provider list area", async () => {
+    apiMock.listLlmProviders.mockRejectedValue(
+      new Error("provider store unavailable"),
+    );
+
+    render(<LlmProviderSettingsSection />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "provider store unavailable",
+    );
+    expect(screen.queryByText(/还没有 API 环境/)).not.toBeInTheDocument();
   });
 
   it("renders an empty Chinese state and creates a provider with an API key", async () => {
@@ -94,7 +119,9 @@ describe("LlmProviderSettingsSection", () => {
     expect(screen.getByRole("status")).toHaveTextContent(
       "API key 不会在界面回显",
     );
-    expect(screen.queryByDisplayValue("sk-secret-value")).not.toBeInTheDocument();
+    expect(
+      screen.queryByDisplayValue("sk-secret-value"),
+    ).not.toBeInTheDocument();
   });
 
   it("loads an existing provider and runs dry validation", async () => {
@@ -120,7 +147,9 @@ describe("LlmProviderSettingsSection", () => {
     expect(screen.getByLabelText("API 地址")).toHaveValue(
       "https://api.example.com/v1",
     );
-    expect(screen.getByPlaceholderText("已保存，留空则保持不变")).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("已保存，留空则保持不变"),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "测试配置" }));
 

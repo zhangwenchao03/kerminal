@@ -1,7 +1,10 @@
 use super::*;
 use crate::models::{
     remote_host::{RemoteHost, RemoteHostAuthType},
-    sftp::{SftpEntry, SftpEntryKind, SftpFileRevision, SftpLocalPathKind, SftpTransferEndpoint},
+    sftp::{
+        SftpEntry, SftpEntryKind, SftpFileRevision, SftpLocalPathKind, SftpTransferConflictPolicy,
+        SftpTransferEndpoint,
+    },
 };
 use async_trait::async_trait;
 use russh::{
@@ -35,9 +38,13 @@ pub(super) mod support;
 
 mod archive_clipboard;
 mod native_backend;
+mod native_jump_backend;
 mod transfer_queue;
 mod validation;
 
 use fake_backend::FakeSftpBackend;
-use loopback::start_loopback_sftp_server;
+use loopback::{
+    start_loopback_sftp_jump_server, start_loopback_sftp_server,
+    start_loopback_sftp_server_with_symlinks,
+};
 use support::{eventually, test_endpoint, test_transfer_request};

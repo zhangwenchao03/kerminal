@@ -1,9 +1,4 @@
-import {
-  ChevronDown,
-  RefreshCw,
-  Timer,
-  type LucideIcon,
-} from "lucide-react";
+import { ChevronDown, RefreshCw, Timer, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
@@ -34,7 +29,7 @@ export function SystemMetricCard({
   const hasValue = value !== undefined && value !== null && value !== false;
 
   return (
-    <section className="rounded-2xl border border-black/8 bg-white/80 p-4 shadow-sm shadow-black/5 dark:border-white/8 dark:bg-white/6 dark:shadow-black/20">
+    <section className="kerminal-solid-surface rounded-2xl border p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <Icon className="h-4 w-4 shrink-0 text-emerald-500 dark:text-emerald-300" />
@@ -103,7 +98,7 @@ export function SystemOverviewCard({
   title: string;
 }) {
   return (
-    <section className="rounded-2xl border border-black/8 bg-white/80 p-4 shadow-sm shadow-black/5 dark:border-white/8 dark:bg-white/6 dark:shadow-black/20">
+    <section className="kerminal-solid-surface rounded-2xl border p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
@@ -123,7 +118,9 @@ export function SystemOverviewCard({
               size="icon"
               variant="ghost"
             >
-              <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
+              <RefreshCw
+                className={cn("h-4 w-4", refreshing && "animate-spin")}
+              />
             </Button>
           ) : null}
         </div>
@@ -146,7 +143,7 @@ export function SystemOverviewTile({
   value?: string;
 }) {
   return (
-    <div className="min-w-0 rounded-xl bg-black/[0.03] p-3 dark:bg-black/20">
+    <div className="kerminal-muted-surface min-w-0 rounded-xl border p-3">
       <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
         {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
         <span>{label}</span>
@@ -160,7 +157,7 @@ export function SystemOverviewTile({
 
 export function SystemMeterBar({ value }: { value: number }) {
   return (
-    <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/[0.08] dark:bg-black/30">
+    <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--surface-hover)]">
       <div
         className="h-full rounded-full bg-emerald-500 dark:bg-emerald-400"
         style={{ width: `${clampPercent(value)}%` }}

@@ -83,7 +83,7 @@ export function DockerPropertiesPanel({
               ]}
               value={runtime}
             />
-            <div className="flex h-10 items-center justify-between gap-3 rounded-xl border border-black/10 bg-white/86 px-3 text-sm text-zinc-600 dark:border-white/10 dark:bg-black/20 dark:text-zinc-300">
+            <div className="kerminal-field-surface flex h-10 items-center justify-between gap-3 rounded-xl border px-3 text-sm text-zinc-600 dark:text-zinc-300">
               <span>包含停止容器</span>
               <Switch
                 aria-label="包含停止容器"
@@ -95,7 +95,7 @@ export function DockerPropertiesPanel({
         </FieldRow>
       </div>
 
-      <div className="rounded-2xl border border-black/8 bg-white/72 p-4 dark:border-white/8 dark:bg-white/6">
+      <div className="kerminal-solid-surface rounded-2xl border p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
@@ -144,10 +144,10 @@ export function DockerPropertiesPanel({
                 <button
                   aria-pressed={selected}
                   className={[
-                    "grid gap-1 rounded-xl border px-3 py-2 text-left transition",
+                    "kerminal-focus-ring kerminal-pressable grid gap-1 rounded-xl border px-3 py-2 text-left transition",
                     selected
-                      ? "border-sky-500/50 bg-sky-500/10 text-sky-800 dark:border-sky-300/40 dark:bg-sky-400/14 dark:text-sky-100"
-                      : "border-black/8 bg-white/80 text-zinc-700 hover:bg-black/[0.04] dark:border-white/8 dark:bg-white/5 dark:text-zinc-200 dark:hover:bg-white/8",
+                      ? "border-sky-500/50 bg-[var(--surface-selected)] text-sky-800 dark:border-sky-300/40 dark:text-sky-100"
+                      : "border-[var(--border-subtle)] text-zinc-700 hover:bg-[var(--surface-hover)] dark:text-zinc-200",
                   ].join(" ")}
                   key={container.id}
                   onClick={() => setSelectedContainerId(container.id)}
@@ -250,8 +250,8 @@ export function DockerHostSearchSelect({
         aria-haspopup="listbox"
         aria-label="主机"
         className={[
-          "flex h-10 w-full items-center justify-between gap-3 rounded-xl border px-3 text-left text-sm shadow-inner transition duration-150",
-          "border-black/10 bg-white/86 text-zinc-900 hover:bg-white dark:border-white/10 dark:bg-black/20 dark:text-zinc-100 dark:hover:bg-white/8",
+          "kerminal-field-surface kerminal-focus-ring flex h-10 w-full items-center justify-between gap-3 rounded-xl border px-3 text-left text-sm",
+          "text-zinc-900 dark:text-zinc-100",
           machines.length === 0 ? "cursor-not-allowed opacity-60" : "",
         ].join(" ")}
         disabled={machines.length === 0}
@@ -281,7 +281,7 @@ export function DockerHostSearchSelect({
 
       {open ? (
         <div
-          className="absolute left-0 top-[calc(100%+0.375rem)] z-50 w-full overflow-hidden rounded-2xl border border-white/50 bg-white/95 p-2 text-sm text-zinc-950 shadow-[0_18px_50px_rgba(0,0,0,0.16)] backdrop-blur-2xl dark:border-white/10 dark:bg-zinc-950/95 dark:text-zinc-100 dark:shadow-black/50"
+          className="kerminal-floating-enter absolute left-0 top-[calc(100%+0.375rem)] z-[1000] w-full overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] p-2 text-sm text-zinc-950 shadow-2xl shadow-black/20 backdrop-blur-xl dark:text-zinc-100 dark:shadow-black/50"
           id={listboxId}
           role="listbox"
         >
@@ -294,7 +294,7 @@ export function DockerHostSearchSelect({
             <input
               aria-label="搜索主机"
               autoFocus
-              className="h-9 w-full rounded-xl border border-black/10 bg-white/90 pl-8 pr-3 text-sm outline-none transition placeholder:text-zinc-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 dark:border-white/10 dark:bg-black/30 dark:text-zinc-100"
+              className={`${inputClassName} pl-8 pr-3`}
               onChange={(event) => setQuery(event.currentTarget.value)}
               onKeyDown={(event) => {
                 if (event.key === "Escape") {
@@ -326,8 +326,8 @@ export function DockerHostSearchSelect({
                     className={[
                       "flex w-full items-start justify-between gap-3 rounded-xl px-2.5 py-2 text-left transition-colors duration-150",
                       selected
-                        ? "bg-[#0A84FF]/10 text-[#0A5FC8] dark:bg-[#0A84FF]/18 dark:text-sky-100"
-                        : "text-zinc-700 hover:bg-black/[0.045] dark:text-zinc-300 dark:hover:bg-white/8",
+                        ? "bg-[var(--surface-selected)] text-[#0A5FC8] dark:text-sky-100"
+                        : "text-zinc-700 hover:bg-[var(--surface-hover)] dark:text-zinc-300",
                     ].join(" ")}
                     key={machine.id}
                     onClick={() => selectMachine(machine.id)}
@@ -401,7 +401,7 @@ export function DockerTerminalOptionsPanel({
           value={workdir}
         />
       </FieldRow>
-      <div className="rounded-2xl border border-black/8 bg-white/72 p-4 dark:border-white/8 dark:bg-white/6">
+      <div className="kerminal-solid-surface rounded-2xl border p-4">
         <div className="flex items-start gap-3">
           <Terminal className="mt-0.5 h-4 w-4 text-sky-500 dark:text-sky-300" />
           <p className="min-w-0 text-sm leading-6 text-zinc-500 dark:text-zinc-400">

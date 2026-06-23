@@ -109,6 +109,9 @@ const mocks = vi.hoisted(() => {
   }
 
   return {
+    appTitleBar: {
+      renderCount: 0,
+    },
     commandHistoryApi: {
       recordCommandHistory: vi.fn(),
     },
@@ -166,6 +169,34 @@ const mocks = vi.hoisted(() => {
 export function getKerminalShellTestMocks() {
   return mocks;
 }
+
+vi.mock("./AppTitleBar", () => ({
+  AppTitleBar: ({
+    className,
+    leftPanelCollapsed = false,
+    onLeftPanelCollapsedChange,
+  }: {
+    className?: string;
+    leftPanelCollapsed?: boolean;
+    onLeftPanelCollapsedChange?: (collapsed: boolean) => void;
+  }) => {
+    mocks.appTitleBar.renderCount += 1;
+    return (
+      <header className={className} data-tauri-drag-region>
+        {onLeftPanelCollapsedChange ? (
+          <button
+            aria-label={
+              leftPanelCollapsed ? "展开主机侧边栏" : "折叠主机侧边栏"
+            }
+            aria-pressed={leftPanelCollapsed}
+            onClick={() => onLeftPanelCollapsedChange(!leftPanelCollapsed)}
+            type="button"
+          />
+        ) : null}
+      </header>
+    );
+  },
+}));
 
 vi.mock("@xterm/xterm", () => ({
   Terminal: mocks.MockTerminal,
@@ -309,19 +340,49 @@ vi.mock("../features/sftp/SftpToolContent", () => ({
   ),
 }));
 
-vi.mock("../features/sftp/SftpTransferWorkbench", () => ({
-  SftpTransferWorkbench: ({
+vi.mock("../features/sftp/LazySftpTransferWorkbench", () => ({
+  LazySftpTransferWorkbench: ({
+    createdHostTarget,
     initialLeftHostId,
     initialRightHostId,
     lockedLeftHostId,
+    onCreateSshHost,
+    workspaceTabId,
   }: {
+    createdHostTarget?: {
+      hostId: string;
+      sequence: number;
+      side: "left" | "right";
+      workspaceTabId?: string;
+    };
     initialLeftHostId?: string;
     initialRightHostId?: string;
     lockedLeftHostId?: string;
+    onCreateSshHost?: (request: {
+      side: "left" | "right";
+      workspaceTabId?: string;
+    }) => void;
+    workspaceTabId?: string;
   }) => (
     <div aria-label="SFTP 传输工作台">
       left:{initialLeftHostId ?? "none"} right:{initialRightHostId ?? "none"} locked:
       {lockedLeftHostId ?? "none"}
+      <span>
+        created:{createdHostTarget?.workspaceTabId ?? "none"}:
+        {createdHostTarget?.side ?? "none"}:{createdHostTarget?.hostId ?? "none"}
+      </span>
+      <button
+        onClick={() => onCreateSshHost?.({ side: "left", workspaceTabId })}
+        type="button"
+      >
+        从左侧新建 SSH 主机
+      </button>
+      <button
+        onClick={() => onCreateSshHost?.({ side: "right", workspaceTabId })}
+        type="button"
+      >
+        从右侧新建 SSH 主机
+      </button>
     </div>
   ),
 }));
@@ -420,7 +481,7 @@ export const rdpRemoteHostTree = [
       {
         authType: "password",
         createdAt: "2026-06-19 10:00:00",
-        credentialRef: "credential:ssh/rdp-office/password",
+        credentialRef: "credential:rdp/rdp-office/password",
         groupId: "group-office",
         host: "rdp.internal",
         id: "rdp-office",

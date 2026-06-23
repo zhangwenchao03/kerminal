@@ -26,6 +26,7 @@ fn audit_preserves_terminal_write_risk_summary() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: false,
+                audit_context: None,
             },
         )
         .expect("reject dangerous terminal write");
@@ -57,6 +58,7 @@ fn confirm_rejects_pending_invocation_without_execution() {
             AiToolConfirmRequest {
                 invocation_id: pending.id.clone(),
                 approved: false,
+                audit_context: None,
             },
         )
         .expect("reject pending invocation");
@@ -70,6 +72,69 @@ fn confirm_rejects_pending_invocation_without_execution() {
             .expect("load settings")
             .theme_mode,
         ThemeMode::Dark
+    );
+}
+
+#[test]
+fn confirm_persists_audit_context_for_list_and_export() {
+    let (_home, state) = setup_state();
+    let pending = state
+        .ai_tools()
+        .prepare(
+            state.tools(),
+            prepare_request("settings.update_theme", json!({ "themeMode": "light" })),
+        )
+        .expect("prepare theme update");
+    let audit_context = AiToolAuditContext {
+        attachment_ids: vec!["att-ssh-screenshot".to_owned()],
+        assistant_message_id: Some("msg-assistant".to_owned()),
+        context_snapshot_id: Some("ctx-1".to_owned()),
+        conversation_id: Some("conversation-prod".to_owned()),
+        host_id: Some("ssh-prod".to_owned()),
+        pane_id: Some("pane-prod".to_owned()),
+        route_mode: Some("followWorkspaceTarget".to_owned()),
+        scope_kind: Some("lockedPane".to_owned()),
+        scope_ref_json: Some("{\"paneId\":\"pane-prod\"}".to_owned()),
+        tab_id: Some("tab-prod".to_owned()),
+        target_key: Some("pane:pane-prod".to_owned()),
+        target_ref_json: Some("{\"kind\":\"pane\"}".to_owned()),
+        user_message_id: Some("msg-user".to_owned()),
+        run_id: Some("run-prod".to_owned()),
+        step_id: Some("step-theme".to_owned()),
+    };
+
+    let audit = state
+        .ai_tools()
+        .confirm(
+            ai_tool_execution_context(&state),
+            AiToolConfirmRequest {
+                invocation_id: pending.id.clone(),
+                approved: false,
+                audit_context: Some(audit_context.clone()),
+            },
+        )
+        .expect("reject pending invocation with audit context");
+    let listed = state
+        .ai_tools()
+        .list_audits_with_request(
+            state.storage(),
+            Some(AiToolAuditListRequest { limit: Some(1) }),
+        )
+        .expect("list audits with context");
+    let exported = state
+        .ai_tools()
+        .export_audits(
+            state.storage(),
+            Some(AiToolAuditListRequest { limit: Some(1) }),
+        )
+        .expect("export audits with context");
+
+    assert_eq!(audit.invocation_id, pending.id);
+    assert_eq!(audit.audit_context.as_ref(), Some(&audit_context));
+    assert_eq!(listed[0].audit_context.as_ref(), Some(&audit_context));
+    assert_eq!(
+        exported.records[0].audit_context.as_ref(),
+        Some(&audit_context)
     );
 }
 
@@ -91,6 +156,7 @@ fn confirm_updates_theme_setting_after_approval() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("approve theme update");
@@ -173,6 +239,7 @@ fn confirm_terminal_appearance_update_persists_patch_and_keeps_other_settings() 
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("approve terminal appearance update");
@@ -216,6 +283,7 @@ fn confirm_terminal_appearance_update_invalid_value_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("invalid setting should become failed audit");
@@ -254,6 +322,7 @@ fn confirm_terminal_appearance_update_rejection_does_not_change_settings() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: false,
+                audit_context: None,
             },
         )
         .expect("reject terminal appearance update");
@@ -291,6 +360,7 @@ fn confirm_terminal_write_missing_session_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("terminal execution failure should become audit record");
@@ -319,6 +389,7 @@ fn audit_list_returns_newest_records_first() {
             AiToolConfirmRequest {
                 invocation_id: first.id,
                 approved: false,
+                audit_context: None,
             },
         )
         .expect("reject first");
@@ -337,6 +408,7 @@ fn audit_list_returns_newest_records_first() {
             AiToolConfirmRequest {
                 invocation_id: second.id,
                 approved: false,
+                audit_context: None,
             },
         )
         .expect("reject second");
@@ -367,6 +439,7 @@ fn audit_list_respects_requested_limit() {
             AiToolConfirmRequest {
                 invocation_id: first.id,
                 approved: false,
+                audit_context: None,
             },
         )
         .expect("reject first");
@@ -385,6 +458,7 @@ fn audit_list_respects_requested_limit() {
             AiToolConfirmRequest {
                 invocation_id: second.id,
                 approved: false,
+                audit_context: None,
             },
         )
         .expect("reject second");
@@ -426,6 +500,7 @@ fn audit_export_returns_newest_records_and_metadata() {
             AiToolConfirmRequest {
                 invocation_id: first.id,
                 approved: false,
+                audit_context: None,
             },
         )
         .expect("reject first");
@@ -444,6 +519,7 @@ fn audit_export_returns_newest_records_and_metadata() {
             AiToolConfirmRequest {
                 invocation_id: second.id,
                 approved: false,
+                audit_context: None,
             },
         )
         .expect("reject second");
@@ -479,6 +555,7 @@ fn audit_clear_removes_persisted_records() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: false,
+                audit_context: None,
             },
         )
         .expect("reject audit");
@@ -522,6 +599,7 @@ fn audit_list_survives_app_state_reopen() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: false,
+                audit_context: None,
             },
         )
         .expect("reject risky terminal write");

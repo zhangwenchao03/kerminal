@@ -295,7 +295,7 @@ export function RdpPropertiesPanel({
           aria-label="密码"
           className={inputClassName}
           onChange={(event) => setRdpPassword(event.currentTarget.value)}
-          placeholder="可选；确认后保存到系统凭据仓库"
+          placeholder="可选；确认后随主机配置保存"
           type="password"
           value={rdpPassword}
         />
@@ -331,7 +331,7 @@ export function RdpDisplayPanel({
   return (
     <div className="grid gap-3">
       <FieldRow label="模式">
-        <div className="flex h-10 items-center justify-between gap-3 rounded-xl border border-black/10 bg-white/86 px-3 text-sm text-zinc-600 dark:border-white/10 dark:bg-black/20 dark:text-zinc-300">
+        <div className="kerminal-field-surface flex h-10 items-center justify-between gap-3 rounded-xl border px-3 text-sm text-zinc-600 dark:text-zinc-300">
           <span>全屏</span>
           <Switch
             aria-label="全屏"

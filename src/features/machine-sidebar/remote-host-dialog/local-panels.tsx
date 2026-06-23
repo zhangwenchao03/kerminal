@@ -175,7 +175,7 @@ export function LocalPropertiesPanel({
           value={localArgs}
         />
       </FieldRow>
-      <div className="rounded-2xl border border-black/8 bg-white/72 p-4 dark:border-white/8 dark:bg-white/6">
+      <div className="kerminal-solid-surface rounded-2xl border p-4">
         <div className="flex items-start gap-3">
           <Monitor className="mt-0.5 h-4 w-4 text-sky-500 dark:text-sky-300" />
           <p className="min-w-0 text-sm leading-6 text-zinc-500 dark:text-zinc-400">

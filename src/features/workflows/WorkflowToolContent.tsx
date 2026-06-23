@@ -17,16 +17,21 @@ import {
   deleteWorkflow,
   listWorkflows,
   type CommandWorkflow,
-  type CommandWorkflowStep,
   type WorkflowScope,
 } from "../../lib/workflowApi";
-import {
-  extractSnippetVariables,
-  renderSnippetCommand,
-} from "../snippets/snippetVariables";
 import { writeWorkflowCommand } from "../terminal/terminalSessionRegistry";
 import type { TerminalPane } from "../workspace/types";
-import type { CommandHistoryTarget } from "../../lib/commandHistoryApi";
+import {
+  buildWorkflowRunState,
+  completeWorkflowStepExecution,
+  failWorkflowStepExecution,
+  getWorkflowRunPreview,
+  prepareWorkflowStepExecution,
+  startWorkflowStepExecution,
+  updateWorkflowRunConfirmation,
+  updateWorkflowRunVariable,
+  type WorkflowRunState,
+} from "./workflowRunModel";
 
 interface WorkflowToolContentProps {
   activeTabId?: string;
@@ -56,14 +61,37 @@ const workflowStepScopeOptions = [
   ...workflowScopeOptions,
 ];
 
-interface WorkflowRunState {
-  confirmedStepId: string | null;
-  error: string | null;
-  nextStepIndex: number;
-  sending: boolean;
-  status: string | null;
-  values: Record<string, string>;
-  workflowId: string;
+const workflowPanelClassName = "kerminal-solid-surface rounded-2xl border p-4";
+
+const workflowMutedPanelClassName =
+  "kerminal-muted-surface rounded-2xl border p-4 text-sm text-zinc-500 dark:text-zinc-400";
+
+const workflowInputClassName =
+  "kerminal-field-surface h-9 w-full rounded-xl border px-3 text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
+
+const workflowSearchInputClassName =
+  "kerminal-field-surface h-9 w-full rounded-xl border pl-9 pr-3 text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
+
+const workflowMonoInputClassName =
+  "kerminal-field-surface h-9 w-full rounded-xl border px-3 font-mono text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
+
+const workflowTextareaClassName =
+  "kerminal-field-surface min-h-20 w-full resize-y rounded-xl border px-3 py-2 font-mono text-xs leading-5 text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
+
+function workflowNoticeClassName(
+  kind: "error" | "success" | "warning",
+  className?: string,
+) {
+  return cn(
+    "rounded-xl border px-3 py-2 text-sm",
+    kind === "error" &&
+      "border-rose-300/25 bg-rose-500/10 text-rose-700 dark:text-rose-100",
+    kind === "success" &&
+      "border-emerald-300/20 bg-emerald-400/10 text-emerald-700 dark:text-emerald-100",
+    kind === "warning" &&
+      "border-amber-300/20 bg-amber-400/10 text-amber-700 dark:text-amber-100",
+    className,
+  );
 }
 
 export function WorkflowToolContent({
@@ -83,6 +111,10 @@ export function WorkflowToolContent({
   const [title, setTitle] = useState("本地质量检查");
   const [workflowScope, setWorkflowScope] = useState<WorkflowScope>("local");
   const [workflows, setWorkflows] = useState<CommandWorkflow[]>([]);
+  const hasActiveWorkflowFilters = Boolean(query.trim() || filterScope);
+  const workflowEmptyMessage = hasActiveWorkflowFilters
+    ? "当前筛选下没有命令工作流。"
+    : "暂无命令工作流。";
 
   const loadWorkflows = useCallback(async () => {
     setLoading(true);
@@ -187,20 +219,11 @@ export function WorkflowToolContent({
   };
 
   const openWorkflowRunPanel = (workflow: CommandWorkflow) => {
-    const variables = extractWorkflowVariables(workflow);
     setRunState((current) => {
       if (current?.workflowId === workflow.id) {
         return null;
       }
-      return {
-        confirmedStepId: null,
-        error: null,
-        nextStepIndex: 0,
-        sending: false,
-        status: null,
-        values: buildWorkflowVariableValues(variables),
-        workflowId: workflow.id,
-      };
+      return buildWorkflowRunState(workflow);
     });
   };
 
@@ -213,15 +236,7 @@ export function WorkflowToolContent({
       if (!current || current.workflowId !== workflowId) {
         return current;
       }
-      return {
-        ...current,
-        error: null,
-        status: null,
-        values: {
-          ...current.values,
-          [name]: value,
-        },
-      };
+      return updateWorkflowRunVariable(current, name, value);
     });
   };
 
@@ -230,12 +245,7 @@ export function WorkflowToolContent({
       if (!current || current.workflowId !== workflowId) {
         return current;
       }
-      return {
-        ...current,
-        confirmedStepId: checked ? stepId : null,
-        error: null,
-        status: null,
-      };
+      return updateWorkflowRunConfirmation(current, stepId, checked);
     });
   };
 
@@ -243,77 +253,16 @@ export function WorkflowToolContent({
     workflow: CommandWorkflow,
     state: WorkflowRunState,
   ) => {
-    const step = workflow.steps[state.nextStepIndex];
-    if (!step) {
-      setRunState({
-        ...state,
-        error: null,
-        sending: false,
-        status: "工作流步骤已全部发送。",
-      });
+    const plan = prepareWorkflowStepExecution(workflow, state, focusedPane);
+    if (plan.kind !== "ready") {
+      setRunState(plan.state);
       return;
     }
 
-    const stepVariables = extractSnippetVariables(step.command);
-    const normalizedValues = buildWorkflowVariableValues(
-      extractWorkflowVariables(workflow),
-      state.values,
-    );
-    const missingVariables = stepVariables.filter(
-      (name) => !normalizedValues[name]?.trim(),
-    );
-    const blocker = getWorkflowStepBlocker(workflow, step, focusedPane);
-    if (blocker || missingVariables.length > 0) {
-      setRunState({
-        ...state,
-        error:
-          blocker ??
-          `请先填写变量：${missingVariables.map((name) => `{{${name}}}`).join(", ")}`,
-        sending: false,
-        status: null,
-        values: normalizedValues,
-      });
-      return;
-    }
-    if (
-      step.requiresConfirmation &&
-      state.confirmedStepId !== step.id
-    ) {
-      setRunState({
-        ...state,
-        error: "该步骤需要先勾选确认后再执行。",
-        sending: false,
-        status: null,
-        values: normalizedValues,
-      });
-      return;
-    }
-
-    const renderedCommand = renderSnippetCommand(
-      step.command,
-      normalizedValues,
-    ).trim();
-    if (!renderedCommand) {
-      setRunState({
-        ...state,
-        error: "步骤渲染后为空，无法发送。",
-        sending: false,
-        status: null,
-        values: normalizedValues,
-      });
-      return;
-    }
-
-    setRunState({
-      ...state,
-      error: null,
-      sending: true,
-      status: null,
-      values: normalizedValues,
-    });
+    setRunState(startWorkflowStepExecution(state, plan.values));
     try {
       const result = await writeWorkflowCommand({
-        command: renderedCommand,
+        command: plan.command,
         paneId: focusedPane?.id ?? "",
         tabId: activeTabId,
       });
@@ -325,35 +274,22 @@ export function WorkflowToolContent({
         );
       }
 
-      const nextStepIndex = state.nextStepIndex + 1;
-      setRunState({
-        confirmedStepId: null,
-        error: null,
-        nextStepIndex,
-        sending: false,
-        status:
-          nextStepIndex >= workflow.steps.length
-            ? `工作流已发送完毕，共 ${workflow.steps.length} 步。`
-            : `已发送步骤 ${state.nextStepIndex + 1} 到 ${
-                focusedPane?.title ?? "当前分屏"
-              }。`,
-        values: normalizedValues,
-        workflowId: workflow.id,
-      });
+      setRunState(
+        completeWorkflowStepExecution({
+          focusedPaneTitle: focusedPane?.title,
+          state,
+          values: plan.values,
+          workflow,
+        }),
+      );
     } catch (nextError) {
-      setRunState({
-        ...state,
-        error: nextError instanceof Error ? nextError.message : String(nextError),
-        sending: false,
-        status: null,
-        values: normalizedValues,
-      });
+      setRunState(failWorkflowStepExecution(state, nextError, plan.values));
     }
   };
 
   return (
     <section className="space-y-3">
-      <div className="rounded-2xl border border-black/8 bg-white/80 p-4 shadow-sm shadow-black/5 dark:border-white/8 dark:bg-white/6 dark:shadow-black/20">
+      <div className={workflowPanelClassName}>
         <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
           <ListChecks className="h-4 w-4 text-violet-500 dark:text-violet-300" />
           工作流
@@ -367,7 +303,7 @@ export function WorkflowToolContent({
             <span className="sr-only">搜索工作流</span>
             <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
             <input
-              className="h-9 w-full rounded-xl border border-black/8 bg-white/70 pl-9 pr-3 text-sm text-zinc-900 outline-none transition focus:border-sky-500/50 focus:ring-4 focus:ring-sky-500/15 dark:border-white/10 dark:bg-white/8 dark:text-zinc-100"
+              className={workflowSearchInputClassName}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="搜索工作流、步骤或标签"
               value={query}
@@ -384,7 +320,7 @@ export function WorkflowToolContent({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-black/8 bg-white/80 p-4 shadow-sm shadow-black/5 dark:border-white/8 dark:bg-white/6 dark:shadow-black/20">
+      <div className={workflowPanelClassName}>
         <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
           <Plus className="h-4 w-4 text-emerald-500 dark:text-emerald-300" />
           新建工作流
@@ -392,14 +328,14 @@ export function WorkflowToolContent({
         <div className="mt-3 space-y-2">
           <input
             aria-label="工作流标题"
-            className="h-9 w-full rounded-xl border border-black/8 bg-white/70 px-3 text-sm text-zinc-900 outline-none transition focus:border-sky-500/50 focus:ring-4 focus:ring-sky-500/15 dark:border-white/10 dark:bg-white/8 dark:text-zinc-100"
+            className={workflowInputClassName}
             onChange={(event) => setTitle(event.target.value)}
             placeholder="工作流标题"
             value={title}
           />
           <input
             aria-label="工作流说明"
-            className="h-9 w-full rounded-xl border border-black/8 bg-white/70 px-3 text-sm text-zinc-900 outline-none transition focus:border-sky-500/50 focus:ring-4 focus:ring-sky-500/15 dark:border-white/10 dark:bg-white/8 dark:text-zinc-100"
+            className={workflowInputClassName}
             onChange={(event) => setDescription(event.target.value)}
             placeholder="说明，可选"
             value={description}
@@ -407,7 +343,7 @@ export function WorkflowToolContent({
           <div className="grid grid-cols-[1fr_auto] gap-2">
             <input
               aria-label="工作流标签"
-              className="h-9 w-full rounded-xl border border-black/8 bg-white/70 px-3 text-sm text-zinc-900 outline-none transition focus:border-sky-500/50 focus:ring-4 focus:ring-sky-500/15 dark:border-white/10 dark:bg-white/8 dark:text-zinc-100"
+              className={workflowInputClassName}
               onChange={(event) => setTags(event.target.value)}
               placeholder="标签，用英文逗号分隔"
               value={tags}
@@ -454,7 +390,7 @@ export function WorkflowToolContent({
 
       {error ? (
         <div
-          className="rounded-2xl border border-rose-300/25 bg-rose-500/10 p-4 text-sm text-rose-700 dark:text-rose-100"
+          className={workflowNoticeClassName("error", "rounded-2xl p-4")}
           role="alert"
         >
           {error}
@@ -463,14 +399,12 @@ export function WorkflowToolContent({
 
       <div className="space-y-2">
         {loading && workflows.length === 0 ? (
-          <div className="rounded-2xl border border-black/8 bg-white/80 p-4 text-sm text-zinc-500 dark:border-white/8 dark:bg-white/6 dark:text-zinc-400">
+          <div className={workflowMutedPanelClassName} role="status">
             正在加载工作流...
           </div>
         ) : null}
-        {!loading && workflows.length === 0 ? (
-          <div className="rounded-2xl border border-black/8 bg-white/80 p-4 text-sm text-zinc-500 dark:border-white/8 dark:bg-white/6 dark:text-zinc-400">
-            暂无命令工作流。
-          </div>
+        {!loading && !error && workflows.length === 0 ? (
+          <div className={workflowMutedPanelClassName}>{workflowEmptyMessage}</div>
         ) : null}
         {workflows.map((workflow) => (
           <WorkflowCard
@@ -510,7 +444,7 @@ function DraftStepEditor({
   const stepNumber = index + 1;
 
   return (
-    <div className="rounded-2xl border border-black/8 bg-black/[0.03] p-3 dark:border-white/8 dark:bg-black/20">
+    <div className="kerminal-muted-surface rounded-2xl border p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
           步骤 {stepNumber}
@@ -528,21 +462,21 @@ function DraftStepEditor({
       <div className="mt-2 space-y-2">
         <input
           aria-label={`步骤 ${stepNumber} 标题`}
-          className="h-9 w-full rounded-xl border border-black/8 bg-white/70 px-3 text-sm text-zinc-900 outline-none transition focus:border-sky-500/50 focus:ring-4 focus:ring-sky-500/15 dark:border-white/10 dark:bg-white/8 dark:text-zinc-100"
+          className={workflowInputClassName}
           onChange={(event) => onUpdate(step.id, { title: event.target.value })}
           placeholder="步骤标题"
           value={step.title}
         />
         <textarea
           aria-label={`步骤 ${stepNumber} 命令`}
-          className="min-h-20 w-full resize-y rounded-xl border border-black/8 bg-white/70 px-3 py-2 font-mono text-xs leading-5 text-zinc-900 outline-none transition focus:border-sky-500/50 focus:ring-4 focus:ring-sky-500/15 dark:border-white/10 dark:bg-white/8 dark:text-zinc-100"
+          className={workflowTextareaClassName}
           onChange={(event) => onUpdate(step.id, { command: event.target.value })}
           placeholder="命令，可使用 {{变量}}"
           value={step.command}
         />
         <input
           aria-label={`步骤 ${stepNumber} 说明`}
-          className="h-9 w-full rounded-xl border border-black/8 bg-white/70 px-3 text-sm text-zinc-900 outline-none transition focus:border-sky-500/50 focus:ring-4 focus:ring-sky-500/15 dark:border-white/10 dark:bg-white/8 dark:text-zinc-100"
+          className={workflowInputClassName}
           onChange={(event) =>
             onUpdate(step.id, { description: event.target.value })
           }
@@ -558,7 +492,7 @@ function DraftStepEditor({
             options={workflowStepScopeOptions}
             value={step.scope}
           />
-          <div className="inline-flex h-9 items-center gap-2 rounded-xl border border-black/8 bg-white/70 px-3 text-xs text-zinc-600 dark:border-white/10 dark:bg-white/8 dark:text-zinc-300">
+          <div className="kerminal-muted-surface inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs text-zinc-600 dark:text-zinc-300">
             <Switch
               aria-label={`步骤 ${stepNumber} 执行前确认`}
               checked={step.requiresConfirmation}
@@ -608,32 +542,21 @@ function WorkflowCard({
   runState: WorkflowRunState | null;
   workflow: CommandWorkflow;
 }) {
-  const variables = useMemo(() => extractWorkflowVariables(workflow), [workflow]);
-  const values = buildWorkflowVariableValues(variables, runState?.values);
-  const nextStep = runState ? workflow.steps[runState.nextStepIndex] : null;
-  const nextRenderedCommand = nextStep
-    ? renderSnippetCommand(nextStep.command, values).trim()
-    : "";
-  const nextStepBlocker = nextStep
-    ? getWorkflowStepBlocker(workflow, nextStep, focusedPane)
-    : null;
-  const nextStepMissingVariables = nextStep
-    ? extractSnippetVariables(nextStep.command).filter(
-        (name) => !values[name]?.trim(),
-      )
-    : [];
-  const canExecute =
-    Boolean(runState) &&
-    Boolean(nextStep) &&
-    !runState?.sending &&
-    !nextStepBlocker &&
-    nextStepMissingVariables.length === 0 &&
-    Boolean(nextRenderedCommand) &&
-    (!nextStep?.requiresConfirmation ||
-      runState?.confirmedStepId === nextStep.id);
+  const runPreview = useMemo(
+    () => getWorkflowRunPreview(workflow, runState, focusedPane),
+    [focusedPane, runState, workflow],
+  );
+  const {
+    blocker: nextStepBlocker,
+    canExecute,
+    nextRenderedCommand,
+    nextStep,
+    values,
+    variables,
+  } = runPreview;
 
   return (
-    <article className="rounded-2xl border border-black/8 bg-white/80 p-4 shadow-sm shadow-black/5 dark:border-white/8 dark:bg-white/6 dark:shadow-black/20">
+    <article className={workflowPanelClassName}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50">
@@ -652,7 +575,7 @@ function WorkflowCard({
       <ol className="mt-3 space-y-2">
         {workflow.steps.map((step, index) => (
           <li
-            className="rounded-xl bg-black/[0.04] p-3 dark:bg-black/25"
+            className="kerminal-muted-surface rounded-xl border p-3"
             key={step.id}
           >
             <div className="flex items-start justify-between gap-2">
@@ -676,7 +599,7 @@ function WorkflowCard({
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {workflow.tags.map((tag) => (
           <span
-            className="inline-flex items-center gap-1 rounded-full border border-black/8 bg-black/[0.03] px-2 py-0.5 text-xs text-zinc-500 dark:border-white/8 dark:bg-white/6 dark:text-zinc-400"
+            className="kerminal-muted-surface inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs text-zinc-500 dark:text-zinc-400"
             key={tag}
           >
             <Tag className="h-3 w-3" />
@@ -686,13 +609,14 @@ function WorkflowCard({
         <div className="ml-auto flex gap-2">
           <Button
             aria-label={`运行工作流 ${workflow.title}`}
+            aria-pressed={Boolean(runState)}
             disabled={workflow.steps.length === 0}
             onClick={() => onOpenRunPanel(workflow)}
             size="sm"
             variant="primary"
           >
             <Send className="h-4 w-4" />
-            运行
+            {runState ? "收起" : "运行"}
           </Button>
           <Button
             aria-label={`删除工作流 ${workflow.title}`}
@@ -708,7 +632,7 @@ function WorkflowCard({
       </div>
 
       {runState ? (
-        <div className="mt-3 rounded-2xl border border-black/8 bg-black/[0.03] p-3 dark:border-white/8 dark:bg-black/20">
+        <div className="kerminal-muted-surface kerminal-floating-enter mt-3 rounded-2xl border p-3">
           {variables.length > 0 ? (
             <div className="space-y-2">
               {variables.map((name) => (
@@ -718,7 +642,7 @@ function WorkflowCard({
                   </span>
                   <input
                     aria-label={`工作流变量 ${name}`}
-                    className="mt-1 h-9 w-full rounded-xl border border-black/8 bg-white/80 px-3 font-mono text-sm text-zinc-900 outline-none transition focus:border-sky-500/50 focus:ring-4 focus:ring-sky-500/15 dark:border-white/10 dark:bg-white/8 dark:text-zinc-100"
+                    className={cn(workflowMonoInputClassName, "mt-1")}
                     onChange={(event) =>
                       onVariableChange(
                         workflow.id,
@@ -738,7 +662,7 @@ function WorkflowCard({
               下一步
             </div>
             {nextStep ? (
-              <div className="mt-1 rounded-xl bg-white/70 p-3 dark:bg-black/30">
+              <div className="kerminal-solid-surface mt-1 rounded-xl border p-3">
                 <div className="text-sm font-medium text-zinc-800 dark:text-zinc-100">
                   {runState.nextStepIndex + 1}. {nextStep.title}
                 </div>
@@ -747,14 +671,14 @@ function WorkflowCard({
                 </pre>
               </div>
             ) : (
-              <div className="mt-1 rounded-xl bg-white/70 p-3 text-sm text-zinc-500 dark:bg-black/30 dark:text-zinc-400">
+              <div className="kerminal-solid-surface mt-1 rounded-xl border p-3 text-sm text-zinc-500 dark:text-zinc-400">
                 工作流步骤已全部发送。
               </div>
             )}
           </div>
 
           {nextStep?.requiresConfirmation ? (
-            <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-100">
+            <div className={workflowNoticeClassName("warning", "mt-3 flex items-center justify-between gap-3")}>
               <span>执行前确认：{nextStep.title}</span>
               <Switch
                 aria-label={`确认执行步骤 ${nextStep.title}`}
@@ -771,13 +695,13 @@ function WorkflowCard({
           ) : null}
 
           {nextStepBlocker ? (
-            <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-100">
+            <p className={workflowNoticeClassName("warning", "mt-3 text-xs")}>
               {nextStepBlocker}
             </p>
           ) : null}
           {runState.error ? (
             <div
-              className="mt-3 rounded-xl border border-rose-300/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100"
+              className={workflowNoticeClassName("error", "mt-3")}
               role="alert"
             >
               {runState.error}
@@ -785,7 +709,7 @@ function WorkflowCard({
           ) : null}
           {runState.status ? (
             <div
-              className="mt-3 rounded-xl border border-emerald-300/20 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-100"
+              className={workflowNoticeClassName("success", "mt-3")}
               role="status"
             >
               {runState.status}
@@ -799,61 +723,13 @@ function WorkflowCard({
             size="sm"
             variant="primary"
           >
-            <Send className={cn("h-4 w-4", runState.sending && "animate-pulse")} />
+            <Send className="h-4 w-4" />
             {runState.sending ? "发送中" : "执行下一步"}
           </Button>
         </div>
       ) : null}
     </article>
   );
-}
-
-function extractWorkflowVariables(workflow: CommandWorkflow) {
-  const variables = new Set<string>();
-  for (const step of workflow.steps) {
-    for (const variable of extractSnippetVariables(step.command)) {
-      variables.add(variable);
-    }
-  }
-  return Array.from(variables);
-}
-
-function buildWorkflowVariableValues(
-  variables: string[],
-  values: Record<string, string> = {},
-) {
-  return Object.fromEntries(variables.map((name) => [name, values[name] ?? ""]));
-}
-
-function getWorkflowStepBlocker(
-  workflow: CommandWorkflow,
-  step: CommandWorkflowStep,
-  focusedPane?: TerminalPane,
-) {
-  const target = getPaneCommandTarget(focusedPane);
-  if (!target) {
-    return "当前没有可发送的终端分屏。";
-  }
-
-  const scope = step.scope ?? workflow.scope;
-  if (scope !== "any" && scope !== target) {
-    return scope === "ssh"
-      ? "该步骤仅适用于 SSH 终端，请先聚焦 SSH 分屏。"
-      : "该步骤仅适用于本地终端，请先聚焦本地分屏。";
-  }
-  return null;
-}
-
-function getPaneCommandTarget(
-  focusedPane?: TerminalPane,
-): CommandHistoryTarget | null {
-  if (focusedPane?.mode === "local") {
-    return "local";
-  }
-  if (focusedPane?.mode === "ssh") {
-    return "ssh";
-  }
-  return null;
 }
 
 function scopeLabel(scope: WorkflowScope) {

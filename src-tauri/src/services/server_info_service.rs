@@ -22,8 +22,8 @@ use crate::{
     },
     paths::KerminalPaths,
     services::{
-        credential_service::CredentialService, docker_host_service::build_container_exec_script,
-        process_command::silent_command, ssh_command_service::SshCommandService,
+        docker_host_service::build_container_exec_script, process_command::silent_command,
+        ssh_command_service::SshCommandService,
     },
     storage::SqliteStore,
 };
@@ -65,11 +65,10 @@ impl ServerInfoService {
         self.snapshot_target(host, target)
     }
 
-    /// 使用 Kerminal 凭据仓库采集当前 SSH 主机或容器目标的系统信息快照。
-    pub async fn snapshot_with_credentials(
+    /// 使用远程主机记录里的 SSH 认证信息采集 SSH 主机或容器目标的系统信息快照。
+    pub async fn snapshot_native(
         &self,
         storage: &SqliteStore,
-        credentials: &CredentialService,
         paths: &KerminalPaths,
         ssh_commands: &SshCommandService,
         request: ServerInfoRequest,
@@ -83,7 +82,7 @@ impl ServerInfoService {
             .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {host_id}")))?;
         let command_request = build_server_info_command_request(&host, &target)?;
         let output = ssh_commands
-            .execute_with_credentials(storage, credentials, paths, command_request)
+            .execute_native(storage, paths, command_request)
             .await
             .map_err(server_info_transport_error)?;
 

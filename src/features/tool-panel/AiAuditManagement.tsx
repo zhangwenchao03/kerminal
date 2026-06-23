@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
 import type {
+  AiToolAuditContext,
   AiToolAuditRecord,
   AiToolInvocationStatus,
 } from "../../lib/aiToolInvocationApi";
@@ -30,8 +31,23 @@ interface AiAuditManagementProps {
   onCancelClear: () => void;
   onConfirmClear: () => void;
   onExport: () => void;
+  onOpenContext?: (request: AiAuditContextOpenRequest) => void;
   onRefresh: () => void;
   onRequestClear: () => void;
+}
+
+export type AiAuditContextOpenTarget =
+  | "assistantMessage"
+  | "attachments"
+  | "contextSnapshot"
+  | "conversation"
+  | "userMessage";
+
+export interface AiAuditContextOpenRequest {
+  attachmentIds?: string[];
+  audit: AiToolAuditRecord;
+  context: AiToolAuditContext;
+  target: AiAuditContextOpenTarget;
 }
 
 export function AiAuditManagement({
@@ -42,6 +58,7 @@ export function AiAuditManagement({
   onCancelClear,
   onConfirmClear,
   onExport,
+  onOpenContext,
   onRefresh,
   onRequestClear,
 }: AiAuditManagementProps) {
@@ -52,7 +69,10 @@ export function AiAuditManagement({
     () => filterAudits(audits, query),
     [audits, query],
   );
-  const totalPages = Math.max(1, Math.ceil(filteredAudits.length / AUDIT_PAGE_SIZE));
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredAudits.length / AUDIT_PAGE_SIZE),
+  );
   const activePage = Math.min(page, totalPages);
   const pageStart = (activePage - 1) * AUDIT_PAGE_SIZE;
   const pageAudits = filteredAudits.slice(pageStart, pageStart + AUDIT_PAGE_SIZE);
@@ -70,7 +90,7 @@ export function AiAuditManagement({
 
   return (
     <div className="mt-4 space-y-3">
-      <div className="rounded-lg border border-black/8 bg-white/80 p-3 dark:border-white/8 dark:bg-white/6">
+      <div className="kerminal-solid-surface rounded-lg border p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
@@ -119,15 +139,16 @@ export function AiAuditManagement({
           <span className="sr-only">搜索工具审计</span>
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-zinc-400 dark:text-zinc-500" />
           <input
-            className="h-9 w-full rounded-lg border border-black/8 bg-white/70 pl-9 pr-9 text-sm text-zinc-900 outline-none transition focus:border-sky-500/50 focus:ring-4 focus:ring-sky-500/15 dark:border-white/10 dark:bg-white/8 dark:text-zinc-100"
+            className="kerminal-field-surface h-9 w-full rounded-lg border pl-9 pr-9 text-sm text-zinc-900 dark:text-zinc-100"
             onChange={(event) => updateQuery(event.target.value)}
             placeholder="搜索工具、状态、风险或摘要"
+            type="search"
             value={query}
           />
           {query ? (
             <button
               aria-label="清空审计搜索"
-              className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-md text-zinc-400 transition hover:bg-black/5 hover:text-zinc-700 dark:hover:bg-white/8 dark:hover:text-zinc-100"
+              className="kerminal-focus-ring kerminal-pressable absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-md text-zinc-400 transition hover:bg-[var(--surface-hover)] hover:text-zinc-700 dark:hover:text-zinc-100"
               onClick={() => updateQuery("")}
               type="button"
             >
@@ -173,8 +194,8 @@ export function AiAuditManagement({
         </div>
       ) : null}
 
-      <section className="overflow-hidden rounded-lg border border-black/8 bg-white/80 dark:border-white/8 dark:bg-white/6">
-        <div className="flex items-center justify-between gap-3 border-b border-black/8 px-3 py-2 dark:border-white/8">
+      <section className="kerminal-solid-surface overflow-hidden rounded-lg border">
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-3 py-2">
           <div className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
             审计列表
           </div>
@@ -199,20 +220,22 @@ export function AiAuditManagement({
         {filteredAudits.length > 0 ? (
           <>
             <div className="overflow-x-auto">
-              <div className="grid min-w-[820px] grid-cols-[96px_170px_minmax(220px,1fr)_88px_120px] gap-3 border-b border-black/8 bg-black/[0.025] px-3 py-2 text-xs font-medium text-zinc-500 dark:border-white/[0.06] dark:bg-white/[0.035] dark:text-zinc-400">
+              <div className="kerminal-muted-surface grid min-w-[1120px] grid-cols-[96px_160px_minmax(220px,1fr)_minmax(260px,0.9fr)_88px_120px] gap-3 border-b px-3 py-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 <span>状态</span>
                 <span>工具</span>
                 <span>摘要</span>
+                <span>上下文</span>
                 <span>风险</span>
                 <span>完成时间</span>
               </div>
-              <div className="divide-y divide-black/8 dark:divide-white/[0.06]">
+              <div className="divide-y divide-[var(--border-subtle)]">
                 {pageAudits.map((audit) => {
                   const summary = auditSummary(audit);
+                  const contextItems = auditContextItems(audit.auditContext);
 
                   return (
                     <div
-                      className="grid min-w-[820px] grid-cols-[96px_170px_minmax(220px,1fr)_88px_120px] items-center gap-3 px-3 py-2 text-sm"
+                      className="grid min-w-[1120px] grid-cols-[96px_160px_minmax(220px,1fr)_minmax(260px,0.9fr)_88px_120px] items-center gap-3 px-3 py-2 text-sm"
                       key={audit.id}
                     >
                       <span
@@ -253,6 +276,24 @@ export function AiAuditManagement({
                           </div>
                         ) : null}
                       </div>
+                      <div className="min-w-0">
+                        {contextItems.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {contextItems.map((item) =>
+                              renderAuditContextItem({
+                                audit,
+                                context: audit.auditContext,
+                                item,
+                                onOpenContext,
+                              }),
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-zinc-400 dark:text-zinc-500">
+                            无会话上下文
+                          </span>
+                        )}
+                      </div>
                       <span className="truncate text-xs text-zinc-500 dark:text-zinc-400">
                         {riskLabel(audit.risk)}
                       </span>
@@ -268,7 +309,7 @@ export function AiAuditManagement({
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 border-t border-black/8 px-3 py-2 text-xs text-zinc-500 dark:border-white/8 dark:text-zinc-400 min-[560px]:flex-row min-[560px]:items-center min-[560px]:justify-between">
+            <div className="flex flex-col gap-2 border-t border-[var(--border-subtle)] px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400 min-[560px]:flex-row min-[560px]:items-center min-[560px]:justify-between">
               <span>每页 {AUDIT_PAGE_SIZE} 条</span>
               <div className="flex items-center gap-1">
                 <Button
@@ -324,12 +365,145 @@ function filterAudits(audits: AiToolAuditRecord[], query: string) {
       audit.confirmation,
       statusLabel(audit.status),
       riskLabel(audit.risk),
+      ...auditContextSearchValues(audit.auditContext),
     ].some((value) => value?.toLowerCase().includes(normalizedQuery)),
   );
 }
 
 function auditSummary(audit: AiToolAuditRecord) {
   return audit.resultSummary ?? audit.error ?? audit.argumentsSummary;
+}
+
+function auditContextItems(
+  context: AiToolAuditContext | null | undefined,
+): AuditContextItem[] {
+  if (!context) {
+    return [];
+  }
+
+  return [
+    contextItem("会话", context.conversationId, "conversation"),
+    contextItem("主机", context.hostId),
+    contextItem("Tab", context.tabId),
+    contextItem("Pane", context.paneId),
+    contextItem("快照", context.contextSnapshotId, "contextSnapshot"),
+    contextItem("用户消息", context.userMessageId, "userMessage"),
+    contextItem("AI消息", context.assistantMessageId, "assistantMessage"),
+    contextItem("目标", context.targetKey),
+    attachmentContextItem(context.attachmentIds),
+  ].filter((item): item is AuditContextItem => item !== null);
+}
+
+function contextItem(
+  label: string,
+  value: string | null | undefined,
+  target?: AiAuditContextOpenTarget,
+): AuditContextItem | null {
+  if (!value) {
+    return null;
+  }
+  return {
+    label,
+    target,
+    title: value,
+    value: truncateContextValue(value),
+  };
+}
+
+function attachmentContextItem(
+  attachmentIds: string[] | undefined,
+): AuditContextItem | null {
+  if (!attachmentIds?.length) {
+    return null;
+  }
+  return {
+    attachmentIds,
+    label: "附件",
+    target: "attachments",
+    title: attachmentIds.join(", "),
+    value: `${attachmentIds.length} 个`,
+  };
+}
+
+interface AuditContextItem {
+  attachmentIds?: string[];
+  label: string;
+  target?: AiAuditContextOpenTarget;
+  title?: string;
+  value: string;
+}
+
+function renderAuditContextItem({
+  audit,
+  context,
+  item,
+  onOpenContext,
+}: {
+  audit: AiToolAuditRecord;
+  context: AiToolAuditContext | null | undefined;
+  item: AuditContextItem;
+  onOpenContext?: (request: AiAuditContextOpenRequest) => void;
+}) {
+  const content = `${item.label}: ${item.value}`;
+  const key = `${audit.id}-${item.label}-${item.value}`;
+  const title = item.title ?? item.value;
+  const className =
+    "max-w-full truncate rounded-md border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-1.5 py-0.5 text-[11px] leading-4 text-zinc-600 dark:text-zinc-300";
+  if (!context || !item.target || !onOpenContext) {
+    return (
+      <span className={className} key={key} title={title}>
+        {content}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      aria-label={`打开审计上下文 ${item.label} ${title}`}
+      className={`${className} kerminal-focus-ring kerminal-pressable hover:bg-[var(--surface-hover)] hover:text-zinc-800 dark:hover:text-zinc-100`}
+      key={key}
+      onClick={() =>
+        onOpenContext({
+          audit,
+          context,
+          target: item.target as AiAuditContextOpenTarget,
+          ...(item.attachmentIds ? { attachmentIds: item.attachmentIds } : {}),
+        })
+      }
+      title={`打开 ${content}`}
+      type="button"
+    >
+      {content}
+    </button>
+  );
+}
+
+function auditContextSearchValues(
+  context: AiToolAuditContext | null | undefined,
+) {
+  if (!context) {
+    return [];
+  }
+
+  return [
+    context.conversationId,
+    context.userMessageId,
+    context.assistantMessageId,
+    context.contextSnapshotId,
+    context.hostId,
+    context.tabId,
+    context.paneId,
+    context.routeMode,
+    context.scopeKind,
+    context.scopeRefJson,
+    context.targetKey,
+    context.targetRefJson,
+    ...(context.attachmentIds ?? []),
+  ];
+}
+
+function truncateContextValue(value: string) {
+  return value.length > 28 ? `${value.slice(0, 25)}...` : value;
 }
 
 function statusLabel(status: AiToolInvocationStatus) {

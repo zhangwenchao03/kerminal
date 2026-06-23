@@ -4,14 +4,11 @@
 
 use kerminal_lib::{
     models::{
-        remote_host::{RemoteHostAuthType, RemoteHostCreateRequest},
+        remote_host::{RemoteHostAuthType, RemoteHostCreateRequest, SshJumpHostOptions},
         terminal::{SshTerminalCreateRequest, TerminalOutputEvent, TerminalOutputKind},
     },
     paths::KerminalPaths,
-    services::{
-        credential_service::{CredentialService, MemoryCredentialVault},
-        terminal_manager::TerminalManager,
-    },
+    services::terminal_manager::TerminalManager,
     state::AppState,
 };
 use russh::{
@@ -20,11 +17,14 @@ use russh::{
     Channel, ChannelId, Pty,
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     env, fs,
     net::SocketAddr,
     process::Command,
-    sync::{mpsc, Arc},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        mpsc, Arc,
+    },
     time::{Duration, Instant},
 };
 use tempfile::{tempdir, TempDir};
@@ -40,9 +40,12 @@ const READY_MARKER_ENV: &str = "KERMINAL_SSH_TERMINAL_SMOKE_READY_MARKER";
 const EXPECT_AUTH_FAILURE_ENV: &str = "KERMINAL_SSH_TERMINAL_SMOKE_EXPECT_AUTH_FAILURE";
 const COMMAND_MARKER: &str = "kerminal-password-command-ok";
 const UNICODE_COMMAND_MARKER: &str = "kerminal-unicode-部署-完成";
+const LOOPBACK_UNICODE_REQUEST_MARKER: &str = "kerminal-loopback-unicode-request";
 const LOOPBACK_READY_MARKER: &str = "kerminal-loopback-login-ready";
 const LOOPBACK_USER: &str = "deploy";
 const LOOPBACK_PASSWORD: &str = "secret";
+const LOOPBACK_JUMP_USER: &str = "jump";
+const LOOPBACK_JUMP_PASSWORD: &str = "jump-secret";
 
 #[test]
 fn local_russh_loopback_password_terminal_auto_login_smoke() {
@@ -61,15 +64,13 @@ fn local_russh_loopback_password_terminal_auto_login_smoke() {
         ready_marker: Some(LOOPBACK_READY_MARKER.to_owned()),
         expect_auth_failure: false,
     };
-    let (_home, state, credentials, credential_ref) =
-        create_loopback_terminal_harness(&server, &config.password);
-    let host_id = create_remote_host(&state, &config, credential_ref);
+    let (_home, state) = create_loopback_terminal_harness(&server);
+    let host_id = create_remote_host(&state, &config);
     let (sender, receiver) = mpsc::channel();
     let summary = state
         .ssh_terminals()
         .create_session(
             state.storage(),
-            &credentials,
             state.paths(),
             state.terminals(),
             SshTerminalCreateRequest {
@@ -89,7 +90,67 @@ fn local_russh_loopback_password_terminal_auto_login_smoke() {
     assert!(output.contains(UNICODE_COMMAND_MARKER), "{output:?}");
     assert!(
         !output.contains(&config.password),
-        "terminal output must not leak password credential: {output:?}",
+        "terminal output must not echo saved password: {output:?}",
+    );
+}
+
+#[test]
+fn local_russh_loopback_password_jump_terminal_auto_login_smoke() {
+    if !open_ssh_client_available() {
+        eprintln!(
+            "skipping local loopback SSH jump terminal smoke: OpenSSH client is not available"
+        );
+        return;
+    }
+
+    let target = LoopbackTerminalServer::start();
+    let jump = LoopbackTerminalJumpServer::start(target.addr);
+    let config = PasswordSmokeConfig {
+        host: "127.0.0.1".to_owned(),
+        port: target.addr.port(),
+        username: LOOPBACK_USER.to_owned(),
+        password: LOOPBACK_PASSWORD.to_owned(),
+        known_host_line: None,
+        ready_marker: Some(LOOPBACK_READY_MARKER.to_owned()),
+        expect_auth_failure: false,
+    };
+    let (_home, state) = create_loopback_terminal_harness(&target);
+    trust_loopback_host_key(state.paths(), "127.0.0.1", jump.addr.port(), &jump.host_key)
+        .expect("trust loopback jump host key");
+    let host_id = create_remote_host_with_password_jump(&state, &config, &jump);
+    let (sender, receiver) = mpsc::channel();
+    let summary = state
+        .ssh_terminals()
+        .create_session(
+            state.storage(),
+            state.paths(),
+            state.terminals(),
+            SshTerminalCreateRequest {
+                host_id,
+                cols: 96,
+                rows: 28,
+            },
+            move |event| sender.send(event).is_ok(),
+        )
+        .expect("create local loopback SSH password jump terminal session");
+
+    let result = run_smoke_terminal_flow(state.terminals(), &summary.id, &receiver, &config);
+    let _ = state.terminals().close(&summary.id);
+    let output = result.expect("run local loopback SSH password jump terminal flow");
+
+    assert!(output.contains(COMMAND_MARKER), "{output:?}");
+    assert!(output.contains(UNICODE_COMMAND_MARKER), "{output:?}");
+    assert!(
+        !output.contains(&config.password),
+        "terminal output must not echo target password: {output:?}",
+    );
+    assert!(
+        !output.contains(LOOPBACK_JUMP_PASSWORD),
+        "terminal output must not echo jump password: {output:?}",
+    );
+    assert!(
+        jump.direct_tcpip_requests.load(Ordering::SeqCst) >= 1,
+        "OpenSSH ProxyCommand must open direct-tcpip through the jump host",
     );
 }
 
@@ -110,15 +171,13 @@ fn local_russh_loopback_wrong_password_stays_unauthenticated() {
         ready_marker: Some(LOOPBACK_READY_MARKER.to_owned()),
         expect_auth_failure: true,
     };
-    let (_home, state, credentials, credential_ref) =
-        create_loopback_terminal_harness(&server, &config.password);
-    let host_id = create_remote_host(&state, &config, credential_ref);
+    let (_home, state) = create_loopback_terminal_harness(&server);
+    let host_id = create_remote_host(&state, &config);
     let (sender, receiver) = mpsc::channel();
     let summary = state
         .ssh_terminals()
         .create_session(
             state.storage(),
-            &credentials,
             state.paths(),
             state.terminals(),
             SshTerminalCreateRequest {
@@ -144,7 +203,7 @@ fn local_russh_loopback_wrong_password_stays_unauthenticated() {
     );
     assert!(
         !output.contains(&config.password),
-        "terminal output must not leak password credential: {output:?}",
+        "terminal output must not echo saved password: {output:?}",
     );
 }
 
@@ -166,18 +225,12 @@ fn real_openssh_password_terminal_auto_login_smoke() {
     let state = AppState::initialize_with_paths(paths).expect("initialize app state");
     trust_smoke_host_key(state.paths(), &config).expect("trust smoke host key");
 
-    let credentials = CredentialService::with_vault(Arc::new(MemoryCredentialVault::new()));
-    let credential_ref = "credential:ssh/smoke/terminal-password";
-    credentials
-        .set_secret(credential_ref, &config.password)
-        .expect("store password smoke credential");
-    let host_id = create_remote_host(&state, &config, credential_ref);
+    let host_id = create_remote_host(&state, &config);
     let (sender, receiver) = mpsc::channel();
     let summary = state
         .ssh_terminals()
         .create_session(
             state.storage(),
-            &credentials,
             state.paths(),
             state.terminals(),
             SshTerminalCreateRequest {
@@ -212,7 +265,7 @@ fn real_openssh_password_terminal_auto_login_smoke() {
     }
     assert!(
         !output.contains(&config.password),
-        "terminal output must not leak password credential: {output:?}",
+        "terminal output must not echo saved password: {output:?}",
     );
 }
 
@@ -222,28 +275,29 @@ fn open_ssh_client_available() -> bool {
         .is_ok()
 }
 
-fn create_loopback_terminal_harness(
-    server: &LoopbackTerminalServer,
-    password: &str,
-) -> (TempDir, AppState, CredentialService, &'static str) {
+fn create_loopback_terminal_harness(server: &LoopbackTerminalServer) -> (TempDir, AppState) {
     let home = tempdir().expect("create temp loopback terminal home");
     let paths = KerminalPaths::from_home_dir(home.path());
     let state = AppState::initialize_with_paths(paths).expect("initialize loopback app state");
     fs::create_dir_all(&state.paths().root).expect("create loopback app root");
-    keys::known_hosts::learn_known_hosts_path(
+    trust_loopback_host_key(
+        state.paths(),
         "127.0.0.1",
         server.addr.port(),
         &server.host_key,
-        state.paths().root.join("known_hosts"),
     )
     .expect("trust loopback SSH host key");
 
-    let credentials = CredentialService::with_vault(Arc::new(MemoryCredentialVault::new()));
-    let credential_ref = "credential:ssh/smoke/loopback-terminal-password";
-    credentials
-        .set_secret(credential_ref, password)
-        .expect("store loopback terminal password credential");
-    (home, state, credentials, credential_ref)
+    (home, state)
+}
+
+fn trust_loopback_host_key(
+    paths: &KerminalPaths,
+    host: &str,
+    port: u16,
+    host_key: &PublicKey,
+) -> Result<(), keys::Error> {
+    keys::known_hosts::learn_known_hosts_path(host, port, host_key, paths.root.join("known_hosts"))
 }
 
 #[derive(Debug)]
@@ -296,11 +350,130 @@ impl Drop for LoopbackTerminalServer {
     }
 }
 
+#[derive(Debug)]
+struct LoopbackTerminalJumpServer {
+    addr: SocketAddr,
+    host_key: PublicKey,
+    direct_tcpip_requests: Arc<AtomicUsize>,
+    task: tokio::task::JoinHandle<()>,
+    _runtime: Runtime,
+}
+
+impl LoopbackTerminalJumpServer {
+    fn start(target_addr: SocketAddr) -> Self {
+        let runtime = Runtime::new().expect("create loopback SSH jump runtime");
+        let (addr, host_key, direct_tcpip_requests, task) = runtime.block_on(async {
+            let listener = TcpListener::bind(("127.0.0.1", 0))
+                .await
+                .expect("bind loopback SSH jump server");
+            let addr = listener
+                .local_addr()
+                .expect("read loopback SSH jump address");
+            let private_key = PrivateKey::random(&mut rand::rng(), keys::Algorithm::Ed25519)
+                .expect("generate loopback SSH jump host key");
+            let host_key = private_key.public_key().clone();
+            let direct_tcpip_requests = Arc::new(AtomicUsize::new(0));
+            let config = russh::server::Config {
+                auth_rejection_time: Duration::from_millis(0),
+                auth_rejection_time_initial: Some(Duration::from_millis(0)),
+                keys: vec![private_key],
+                maximum_packet_size: 65_535,
+                ..Default::default()
+            };
+            let requests = Arc::clone(&direct_tcpip_requests);
+            let task = tokio::spawn(async move {
+                let mut server = LoopbackTerminalJumpServerState {
+                    direct_tcpip_requests: requests,
+                    target_addr,
+                };
+                let _ = server.run_on_socket(Arc::new(config), &listener).await;
+            });
+            (addr, host_key, direct_tcpip_requests, task)
+        });
+
+        Self {
+            addr,
+            host_key,
+            direct_tcpip_requests,
+            task,
+            _runtime: runtime,
+        }
+    }
+}
+
+impl Drop for LoopbackTerminalJumpServer {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+struct LoopbackTerminalJumpServerState {
+    direct_tcpip_requests: Arc<AtomicUsize>,
+    target_addr: SocketAddr,
+}
+
+struct LoopbackTerminalJumpSession {
+    direct_tcpip_requests: Arc<AtomicUsize>,
+    target_addr: SocketAddr,
+}
+
+impl russh::server::Server for LoopbackTerminalJumpServerState {
+    type Handler = LoopbackTerminalJumpSession;
+
+    fn new_client(&mut self, _peer_addr: Option<SocketAddr>) -> Self::Handler {
+        LoopbackTerminalJumpSession {
+            direct_tcpip_requests: Arc::clone(&self.direct_tcpip_requests),
+            target_addr: self.target_addr,
+        }
+    }
+}
+
+impl russh::server::Handler for LoopbackTerminalJumpSession {
+    type Error = russh::Error;
+
+    async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
+        if user == LOOPBACK_JUMP_USER && password == LOOPBACK_JUMP_PASSWORD {
+            Ok(Auth::Accept)
+        } else {
+            Ok(Auth::reject())
+        }
+    }
+
+    async fn channel_open_direct_tcpip(
+        &mut self,
+        channel: Channel<Msg>,
+        host_to_connect: &str,
+        port_to_connect: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        _session: &mut Session,
+    ) -> Result<bool, Self::Error> {
+        if host_to_connect != self.target_addr.ip().to_string()
+            || port_to_connect != u32::from(self.target_addr.port())
+        {
+            return Ok(false);
+        }
+
+        self.direct_tcpip_requests.fetch_add(1, Ordering::SeqCst);
+        let target_addr = self.target_addr;
+        tokio::spawn(async move {
+            if let Ok(mut target_stream) = tokio::net::TcpStream::connect(target_addr).await {
+                let mut channel_stream = channel.into_stream();
+                let _ =
+                    tokio::io::copy_bidirectional(&mut channel_stream, &mut target_stream).await;
+            }
+        });
+
+        Ok(true)
+    }
+}
+
 #[derive(Clone)]
 struct LoopbackInteractiveSshServer;
 
 struct LoopbackInteractiveSshSession {
     channels: HashMap<ChannelId, Channel<Msg>>,
+    escape_sequence_channels: HashSet<ChannelId>,
     line_buffers: HashMap<ChannelId, String>,
 }
 
@@ -310,6 +483,7 @@ impl russh::server::Server for LoopbackInteractiveSshServer {
     fn new_client(&mut self, _peer_addr: Option<SocketAddr>) -> Self::Handler {
         LoopbackInteractiveSshSession {
             channels: HashMap::new(),
+            escape_sequence_channels: HashSet::new(),
             line_buffers: HashMap::new(),
         }
     }
@@ -385,7 +559,13 @@ impl russh::server::Handler for LoopbackInteractiveSshSession {
     ) -> Result<(), Self::Error> {
         let text = String::from_utf8_lossy(data);
         for character in text.chars() {
+            if self.consume_escape_sequence_character(channel, character) {
+                continue;
+            }
             match character {
+                '\u{001b}' => {
+                    self.escape_sequence_channels.insert(channel);
+                }
                 '\r' | '\n' => {
                     let line = self.line_buffers.entry(channel).or_default();
                     if line.is_empty() {
@@ -411,6 +591,16 @@ impl russh::server::Handler for LoopbackInteractiveSshSession {
 }
 
 impl LoopbackInteractiveSshSession {
+    fn consume_escape_sequence_character(&mut self, channel: ChannelId, character: char) -> bool {
+        if !self.escape_sequence_channels.contains(&channel) {
+            return false;
+        }
+        if character.is_ascii_alphabetic() || character == '~' {
+            self.escape_sequence_channels.remove(&channel);
+        }
+        true
+    }
+
     fn handle_command(
         &mut self,
         channel: ChannelId,
@@ -425,12 +615,21 @@ impl LoopbackInteractiveSshSession {
             return Ok(());
         }
 
-        let output = if command.contains(UNICODE_COMMAND_MARKER) {
-            UNICODE_COMMAND_MARKER
-        } else if command.contains(COMMAND_MARKER) {
-            COMMAND_MARKER
+        let mut output = Vec::new();
+        if command.contains(COMMAND_MARKER) {
+            output.push(COMMAND_MARKER);
+        }
+        let unicode_marker_escape = posix_printf_octal_escape(UNICODE_COMMAND_MARKER);
+        if command.contains(UNICODE_COMMAND_MARKER)
+            || command.contains(&unicode_marker_escape)
+            || command.contains(LOOPBACK_UNICODE_REQUEST_MARKER)
+        {
+            output.push(UNICODE_COMMAND_MARKER);
+        }
+        let output = if output.is_empty() {
+            "ok".to_owned()
         } else {
-            "ok"
+            output.join("\r\n")
         };
         session.data(channel, format!("{output}\r\n$ ").into_bytes())?;
         Ok(())
@@ -526,19 +725,15 @@ fn scan_host_key(config: &PasswordSmokeConfig) -> Result<String, String> {
     Ok(known_host_line)
 }
 
-fn create_remote_host(
-    state: &AppState,
-    config: &PasswordSmokeConfig,
-    credential_ref: &str,
-) -> String {
+fn create_remote_host(state: &AppState, config: &PasswordSmokeConfig) -> String {
     state
         .remote_hosts()
         .create_host(
             state.storage(),
             RemoteHostCreateRequest {
                 auth_type: RemoteHostAuthType::Password,
-                credential_ref: Some(credential_ref.to_owned()),
-                credential_secret: None,
+                credential_ref: None,
+                credential_secret: Some(config.password.clone()),
                 group_id: None,
                 host: config.host.clone(),
                 name: "OpenSSH password smoke".to_owned(),
@@ -550,6 +745,41 @@ fn create_remote_host(
             },
         )
         .expect("create password smoke remote host")
+        .id
+}
+
+fn create_remote_host_with_password_jump(
+    state: &AppState,
+    config: &PasswordSmokeConfig,
+    jump: &LoopbackTerminalJumpServer,
+) -> String {
+    let mut request = RemoteHostCreateRequest {
+        auth_type: RemoteHostAuthType::Password,
+        credential_ref: None,
+        credential_secret: Some(config.password.clone()),
+        group_id: None,
+        host: config.host.clone(),
+        name: "OpenSSH password jump smoke".to_owned(),
+        port: config.port,
+        production: false,
+        ssh_options: Default::default(),
+        tags: vec!["smoke".to_owned(), "jump".to_owned()],
+        username: config.username.clone(),
+    };
+    request.ssh_options.jump_hosts.push(SshJumpHostOptions {
+        auth_type: RemoteHostAuthType::Password,
+        credential_ref: None,
+        credential_secret: Some(LOOPBACK_JUMP_PASSWORD.to_owned()),
+        host: "127.0.0.1".to_owned(),
+        name: "Loopback jump".to_owned(),
+        port: jump.addr.port(),
+        username: LOOPBACK_JUMP_USER.to_owned(),
+    });
+
+    state
+        .remote_hosts()
+        .create_host(state.storage(), request)
+        .expect("create password jump smoke remote host")
         .id
 }
 
@@ -580,8 +810,14 @@ fn run_smoke_terminal_flow(
         std::thread::sleep(Duration::from_millis(1000));
     }
 
+    let smoke_command = if config.ready_marker.as_deref() == Some(LOOPBACK_READY_MARKER) {
+        format!("echo {COMMAND_MARKER} {LOOPBACK_UNICODE_REQUEST_MARKER}\r")
+    } else {
+        let unicode_marker_escape = posix_printf_octal_escape(UNICODE_COMMAND_MARKER);
+        format!("printf '%s\\n{unicode_marker_escape}\\n' '{COMMAND_MARKER}'\r")
+    };
     terminals
-        .write(session_id, &format!("echo {COMMAND_MARKER}\r"))
+        .write(session_id, &smoke_command)
         .map_err(|error| error.to_string())?;
     let received = collect_until_output(
         terminals,
@@ -592,12 +828,6 @@ fn run_smoke_terminal_flow(
         Duration::from_secs(10),
     )?;
 
-    terminals
-        .write(
-            session_id,
-            &format!("printf '{UNICODE_COMMAND_MARKER}\\n'\r"),
-        )
-        .map_err(|error| error.to_string())?;
     collect_until_output(
         terminals,
         session_id,
@@ -635,6 +865,13 @@ fn run_expected_auth_failure_flow(
         }
     }
     Ok(received)
+}
+
+fn posix_printf_octal_escape(text: &str) -> String {
+    text.as_bytes()
+        .iter()
+        .map(|byte| format!("\\{byte:03o}"))
+        .collect()
 }
 
 fn collect_any_data(
@@ -722,6 +959,10 @@ fn collect_until_output(
     mut received: String,
     timeout: Duration,
 ) -> Result<String, String> {
+    if received.contains(expected) {
+        return Ok(received);
+    }
+
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
         let remaining = deadline.saturating_duration_since(Instant::now());

@@ -1,13 +1,4 @@
-import {
-  AlertTriangle,
-  Check,
-  ChevronDown,
-  Columns2,
-  Copy,
-  PanelBottom,
-  Send,
-  SplitSquareHorizontal,
-} from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -21,7 +12,6 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
 import type {
   InterfaceDensity,
@@ -31,6 +21,7 @@ import type {
 import {
   analyzeBroadcastCommand,
   canBroadcastCommand,
+  isBroadcastCommandTargetMode,
   type BroadcastCommandAnalysis,
 } from "./broadcastCommandPolicy";
 import { collectPaneIds } from "../workspace/workspaceLayout";
@@ -41,6 +32,8 @@ import type {
 } from "../workspace/types";
 import { isTerminalSessionTab } from "../workspace/types";
 import { TerminalPaneLayout } from "./TerminalPaneLayout";
+import { TerminalEmptyState } from "./TerminalEmptyState";
+import { TerminalBroadcastBar } from "./TerminalBroadcastBar";
 import {
   buildTerminalTabGroups,
   clampContextMenuPosition,
@@ -53,6 +46,15 @@ import {
   type TerminalTabContextMenu,
   type TerminalTabContextMenuPayload,
 } from "./terminalTabChrome";
+
+const terminalFloatingPanelClassName =
+  "kerminal-floating-enter fixed z-[1000] border border-[var(--border-subtle)] bg-[var(--surface-overlay)] text-sm shadow-2xl shadow-black/20 backdrop-blur-xl dark:shadow-black/50";
+const terminalOverviewItemClassName =
+  "kerminal-focus-ring kerminal-pressable flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left";
+const terminalOverviewIdleClassName =
+  "text-zinc-700 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-zinc-50";
+const TAB_OVERVIEW_ALWAYS_SHOW_COUNT = 9;
+const TAB_OVERVIEW_OVERFLOW_TOLERANCE = 1;
 
 export interface BroadcastCommandRequest {
   command: string;
@@ -81,7 +83,10 @@ interface TerminalWorkspaceProps {
   onBroadcastDraftChange: (draft: string) => void;
   onClosePane: (paneId: string) => void;
   onCloseTab: (tabId: string) => void;
+  onCreateTerminal?: () => void;
   onFocusPane: (paneId: string) => void;
+  onOpenAiTool?: () => void;
+  onOpenConnection?: () => void;
   onPaneCurrentCwdChange?: (paneId: string, cwd: string) => void;
   onPaneOutputHistoryChange?: (
     paneId: string,
@@ -89,6 +94,7 @@ interface TerminalWorkspaceProps {
   ) => void;
   onOpenLogs?: () => void;
   onRenameTab: (tabId: string, title: string) => void;
+  reserveRightTitleBarControls?: boolean;
   renderCustomTab?: (tab: TerminalTab, active: boolean) => ReactNode;
   onSelectTab: (tabId: string) => void;
   onSplitPane: (direction: TerminalSplitDirection) => void;
@@ -104,11 +110,15 @@ export function TerminalWorkspace({
   onBroadcastDraftChange,
   onClosePane,
   onCloseTab,
+  onCreateTerminal,
   onFocusPane,
+  onOpenAiTool,
+  onOpenConnection,
   onPaneCurrentCwdChange,
   onPaneOutputHistoryChange,
   onOpenLogs,
   onRenameTab,
+  reserveRightTitleBarControls = true,
   renderCustomTab,
   onSelectTab,
   onSplitPane,
@@ -131,6 +141,9 @@ export function TerminalWorkspace({
   const tabOverviewButtonRef = useRef<HTMLButtonElement>(null);
   const tabOverviewMenuRef = useRef<HTMLDivElement>(null);
   const [tabOverviewOpen, setTabOverviewOpen] = useState(false);
+  const [tabOverviewAvailable, setTabOverviewAvailable] = useState(
+    () => tabs.length >= TAB_OVERVIEW_ALWAYS_SHOW_COUNT,
+  );
   const [tabOverviewPosition, setTabOverviewPosition] = useState({
     x: 0,
     y: 0,
@@ -151,12 +164,7 @@ export function TerminalWorkspace({
     () =>
       activePaneIds.flatMap((paneId) => {
         const pane = panesById.get(paneId);
-        if (
-          !pane ||
-          (pane.mode !== "local" &&
-            pane.mode !== "ssh" &&
-            pane.mode !== "container")
-        ) {
+        if (!pane || !isBroadcastCommandTargetMode(pane.mode)) {
           return [];
         }
         return [
@@ -215,6 +223,18 @@ export function TerminalWorkspace({
     contentRightInset > 0
       ? ({ marginRight: contentRightInset } satisfies CSSProperties)
       : undefined;
+  const shouldShowTabOverview =
+    tabs.length > 1 && tabOverviewAvailable;
+
+  const updateTabOverviewAvailability = useCallback(() => {
+    const tabList = tabListRef.current;
+    const hasHorizontalOverflow = tabList
+      ? tabList.scrollWidth - tabList.clientWidth > TAB_OVERVIEW_OVERFLOW_TOLERANCE
+      : false;
+    setTabOverviewAvailable(
+      tabs.length >= TAB_OVERVIEW_ALWAYS_SHOW_COUNT || hasHorizontalOverflow,
+    );
+  }, [tabs.length]);
 
   useEffect(() => {
     setCollapsedTabGroupIds((current) => {
@@ -228,6 +248,45 @@ export function TerminalWorkspace({
       return next;
     });
   }, [tabGroups]);
+
+  useLayoutEffect(() => {
+    updateTabOverviewAvailability();
+    const frameId =
+      typeof window.requestAnimationFrame === "function"
+        ? window.requestAnimationFrame(updateTabOverviewAvailability)
+        : undefined;
+    const tabList = tabListRef.current;
+
+    window.addEventListener("resize", updateTabOverviewAvailability);
+    if (!tabList || typeof ResizeObserver === "undefined") {
+      return () => {
+        if (frameId !== undefined) {
+          window.cancelAnimationFrame(frameId);
+        }
+        window.removeEventListener("resize", updateTabOverviewAvailability);
+      };
+    }
+
+    const resizeObserver = new ResizeObserver(updateTabOverviewAvailability);
+    resizeObserver.observe(tabList);
+    for (const child of Array.from(tabList.children)) {
+      resizeObserver.observe(child);
+    }
+
+    return () => {
+      if (frameId !== undefined) {
+        window.cancelAnimationFrame(frameId);
+      }
+      window.removeEventListener("resize", updateTabOverviewAvailability);
+      resizeObserver.disconnect();
+    };
+  }, [tabGroups, updateTabOverviewAvailability]);
+
+  useEffect(() => {
+    if (!shouldShowTabOverview && tabOverviewOpen) {
+      setTabOverviewOpen(false);
+    }
+  }, [shouldShowTabOverview, tabOverviewOpen]);
 
   useEffect(() => {
     if (hasActiveSplit) {
@@ -410,6 +469,13 @@ export function TerminalWorkspace({
     void executeBroadcast(broadcastAnalysis);
   }, [broadcastAnalysis, executeBroadcast]);
 
+  const confirmPendingBroadcast = useCallback(() => {
+    if (!pendingBroadcast) {
+      return;
+    }
+    void executeBroadcast(pendingBroadcast);
+  }, [executeBroadcast, pendingBroadcast]);
+
   const handleDraftChange = useCallback(
     (draft: string) => {
       setPendingBroadcast(null);
@@ -515,7 +581,8 @@ export function TerminalWorkspace({
           <div
             aria-label="终端标签操作菜单"
             className={cn(
-              "fixed z-50 w-56 rounded-xl border border-black/10 bg-white p-1.5 text-sm shadow-xl shadow-black/15 dark:border-white/10 dark:bg-zinc-950",
+              terminalFloatingPanelClassName,
+              "w-56 rounded-xl p-1.5 shadow-xl",
             )}
             onClick={(event) => event.stopPropagation()}
             onContextMenu={(event) => {
@@ -558,18 +625,19 @@ export function TerminalWorkspace({
           <div
             aria-label="所有终端标签"
             className={cn(
-              "fixed z-50 w-72 overflow-hidden rounded-2xl border border-black/10 bg-white/96 text-sm shadow-2xl shadow-black/20 backdrop-blur-xl dark:border-white/10 dark:bg-zinc-950/96",
+              terminalFloatingPanelClassName,
+              "w-72 overflow-hidden rounded-2xl",
             )}
             onClick={(event) => event.stopPropagation()}
             ref={tabOverviewMenuRef}
             role="menu"
             style={{ left: tabOverviewPosition.x, top: tabOverviewPosition.y }}
           >
-            <div className="flex items-center justify-between border-b border-black/8 px-3 py-2.5 dark:border-white/8">
+            <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-3 py-2.5">
               <div className="font-medium text-zinc-950 dark:text-zinc-50">
                 所有标签
               </div>
-              <div className="rounded-full bg-black/5 px-2 py-0.5 text-xs text-zinc-500 dark:bg-white/8 dark:text-zinc-400">
+              <div className="rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-xs text-zinc-500 dark:text-zinc-400">
                 {tabs.length} 个
               </div>
             </div>
@@ -583,10 +651,10 @@ export function TerminalWorkspace({
                   <button
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition",
+                      terminalOverviewItemClassName,
                       active
-                        ? "bg-sky-500/12 text-sky-700 dark:bg-sky-400/16 dark:text-sky-100"
-                        : "text-zinc-700 hover:bg-black/5 hover:text-zinc-950 dark:text-zinc-200 dark:hover:bg-white/8 dark:hover:text-zinc-50",
+                        ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
+                        : terminalOverviewIdleClassName,
                     )}
                     key={tab.id}
                     onClick={() => selectTabFromOverview(tab.id)}
@@ -615,19 +683,20 @@ export function TerminalWorkspace({
   return (
     <main
       aria-label="终端工作区"
-      className="flex h-full w-full min-w-0 flex-col overflow-hidden bg-[#f1f1f4] dark:bg-[#18181a]"
+      className="kerminal-terminal-surface flex h-full w-full min-w-0 flex-col overflow-hidden"
       data-density={interfaceDensity}
     >
       <div
         className={cn(
-          "relative flex items-end border-b border-black/8 bg-white/72 pl-2 pr-40 pt-1 backdrop-blur-xl dark:border-white/8 dark:bg-[#111113]/92",
+          "kerminal-material-nav relative z-20 flex items-center border-b border-[var(--border-subtle)] pl-2 pt-1 shadow-[inset_0_-1px_0_var(--border-subtle)]",
+          reserveRightTitleBarControls ? "pr-40" : "pr-2",
           tabBarHeightClass,
         )}
         data-tauri-drag-region
       >
         <div
           aria-label="终端标签栏"
-          className="scrollbar-none flex min-w-0 flex-1 items-end gap-1 overflow-x-auto overflow-y-hidden overscroll-x-contain"
+          className="scrollbar-none flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden overscroll-x-contain"
           data-tauri-drag-region
           onWheel={handleTabListWheel}
           ref={tabListRef}
@@ -659,10 +728,10 @@ export function TerminalWorkspace({
             return (
               <div
                 className={cn(
-                  "flex h-9 shrink-0 items-center gap-1 rounded-t-xl border px-1.5 transition",
+                  "flex h-9 shrink-0 items-center gap-1 rounded-xl border px-1.5 transition-[background-color,border-color,box-shadow]",
                   groupActive
-                    ? "-mb-px border-black/8 border-b-transparent bg-[#f1f1f4] dark:border-white/8 dark:border-b-transparent dark:bg-[#18181a]"
-                    : "border-transparent bg-transparent hover:bg-black/[0.03] dark:hover:bg-white/[0.04]",
+                    ? "border-sky-500/50 bg-sky-500/12 shadow-md shadow-sky-500/15 ring-1 ring-sky-400/25 dark:border-sky-300/40 dark:bg-sky-400/14 dark:ring-sky-300/20"
+                    : "border-[var(--border-subtle)] bg-[var(--surface-solid)] shadow-sm shadow-black/5 hover:border-sky-500/25 hover:bg-[var(--surface-hover)] dark:shadow-black/20 dark:hover:border-sky-300/25",
                 )}
                 key={group.id}
               >
@@ -702,21 +771,24 @@ export function TerminalWorkspace({
             );
           })}
         </div>
-        <button
-          aria-expanded={tabOverviewOpen}
-          aria-label="查看所有标签"
-          className={cn(
-            "absolute bottom-1 right-28 z-20 flex h-8 w-8 items-center justify-center rounded-xl border border-black/8 bg-white/80 text-zinc-500 shadow-sm shadow-black/10 backdrop-blur transition hover:bg-white hover:text-zinc-950 dark:border-white/8 dark:bg-zinc-900/90 dark:text-zinc-400 dark:shadow-black/30 dark:hover:bg-zinc-800 dark:hover:text-zinc-100",
-            tabOverviewOpen &&
-              "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:bg-sky-400/15 dark:text-sky-100",
-          )}
-          onClick={toggleTabOverview}
-          ref={tabOverviewButtonRef}
-          title="查看所有标签"
-          type="button"
-        >
-          <ChevronDown className="h-4 w-4" />
-        </button>
+        {shouldShowTabOverview ? (
+          <button
+            aria-expanded={tabOverviewOpen}
+            aria-label="查看所有标签"
+            className={cn(
+              "kerminal-focus-ring kerminal-pressable kerminal-muted-surface absolute bottom-1 z-20 flex h-8 w-8 items-center justify-center rounded-xl border text-zinc-500 shadow-sm shadow-black/10 backdrop-blur hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:shadow-black/30 dark:hover:text-zinc-100",
+              reserveRightTitleBarControls ? "right-28" : "right-3",
+              tabOverviewOpen &&
+                "border-sky-500/30 bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100",
+            )}
+            onClick={toggleTabOverview}
+            ref={tabOverviewButtonRef}
+            title="查看所有标签"
+            type="button"
+          >
+            <ChevronDown className="h-4 w-4" />
+          </button>
+        ) : null}
       </div>
       {contextMenuElement}
       {tabOverviewElement}
@@ -732,102 +804,24 @@ export function TerminalWorkspace({
       />
 
       {hasActiveSplit ? (
-        <div
-          className={cn(
-            "flex items-center gap-2 border-b border-black/8 transition-[margin-right] duration-200 ease-out dark:border-white/8",
-            toolbarPaddingClass,
-          )}
+        <TerminalBroadcastBar
+          analysis={broadcastAnalysis}
+          draft={broadcastDraft}
+          error={broadcastError}
+          focusedPaneId={focusedPaneId}
+          onCancelPending={() => setPendingBroadcast(null)}
+          onClosePane={onClosePane}
+          onConfirmPending={confirmPendingBroadcast}
+          onDraftChange={handleDraftChange}
+          onRequestBroadcast={requestBroadcast}
+          onSplitPane={onSplitPane}
+          pendingAnalysis={pendingBroadcast}
+          sending={sendingBroadcast}
+          status={broadcastStatus}
           style={contentInsetStyle}
-        >
-          <Button
-            aria-label="左右分屏"
-            onClick={() => onSplitPane("horizontal")}
-            size="sm"
-            variant="secondary"
-          >
-            <Columns2 className="h-4 w-4" />
-            左右
-          </Button>
-          <Button
-            aria-label="上下分屏"
-            onClick={() => onSplitPane("vertical")}
-            size="sm"
-            variant="secondary"
-          >
-            <PanelBottom className="h-4 w-4" />
-            上下
-          </Button>
-          <Button
-            aria-label="关闭当前分屏"
-            onClick={() => onClosePane(focusedPaneId)}
-            size="sm"
-            variant="ghost"
-          >
-            <SplitSquareHorizontal className="h-4 w-4" />
-            关闭分屏
-          </Button>
-          <label className="sr-only" htmlFor="broadcast-command">
-            批量命令
-          </label>
-          <input
-            className="h-9 min-w-0 flex-1 rounded-xl border border-black/8 bg-white/80 px-3 font-mono text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-sky-400/50 focus:ring-4 focus:ring-sky-500/10 dark:border-white/8 dark:bg-black/20 dark:text-zinc-100 dark:placeholder:text-zinc-600"
-            id="broadcast-command"
-            onChange={(event) => handleDraftChange(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                requestBroadcast();
-              }
-            }}
-            placeholder="向所有分屏发送命令..."
-            value={broadcastDraft}
-          />
-          <span className="hidden shrink-0 rounded-lg bg-black/5 px-2 py-1 text-xs text-zinc-500 dark:bg-white/7 xl:inline">
-            {broadcastTargets.length} 个目标
-          </span>
-          <Button size="sm" variant="secondary">
-            <Copy className="h-4 w-4" />
-            片段
-          </Button>
-          <Button
-            disabled={!canBroadcastCommand(broadcastAnalysis) || sendingBroadcast}
-            onClick={requestBroadcast}
-            size="sm"
-            variant="primary"
-          >
-            <Send className="h-4 w-4" />
-            {sendingBroadcast ? "发送中" : "发送到全部"}
-          </Button>
-        </div>
-      ) : null}
-
-      {hasActiveSplit && pendingBroadcast ? (
-        <div
-          className="transition-[margin-right] duration-200 ease-out"
-          style={contentInsetStyle}
-        >
-          <BroadcastConfirmation
-            analysis={pendingBroadcast}
-            disabled={sendingBroadcast}
-            onCancel={() => setPendingBroadcast(null)}
-            onConfirm={() => void executeBroadcast(pendingBroadcast)}
-          />
-        </div>
-      ) : null}
-
-      {hasActiveSplit && (broadcastStatus || broadcastError) ? (
-        <div
-          className={cn(
-            "border-b border-black/8 px-3 py-2 text-sm transition-[margin-right] duration-200 ease-out dark:border-white/8",
-            broadcastError
-              ? "bg-rose-500/10 text-rose-100"
-              : "bg-emerald-500/10 text-emerald-100",
-          )}
-          role={broadcastError ? "alert" : "status"}
-          style={contentInsetStyle}
-        >
-          {broadcastError ?? broadcastStatus}
-        </div>
+          targetCount={broadcastTargets.length}
+          toolbarPaddingClass={toolbarPaddingClass}
+        />
       ) : null}
 
       <div
@@ -869,7 +863,7 @@ export function TerminalWorkspace({
                   />
                 ) : (
                   renderCustomTab?.(tab, active) ?? (
-                    <div className="flex h-full items-center justify-center rounded-2xl border border-black/8 bg-white/60 text-sm text-zinc-500 dark:border-white/8 dark:bg-white/5 dark:text-zinc-400">
+                    <div className="kerminal-solid-surface flex h-full items-center justify-center rounded-2xl border text-sm text-zinc-500 dark:text-zinc-400">
                       此标签暂不可用。
                     </div>
                   )
@@ -878,71 +872,13 @@ export function TerminalWorkspace({
             );
           })
         ) : (
-          <div className="flex h-full items-center justify-center rounded-2xl border border-black/8 bg-white/60 text-sm text-zinc-500 dark:border-white/8 dark:bg-white/5">
-            暂无终端 tab
-          </div>
+          <TerminalEmptyState
+            onCreateTerminal={onCreateTerminal}
+            onOpenAiTool={onOpenAiTool}
+            onOpenConnection={onOpenConnection}
+          />
         )}
       </div>
     </main>
-  );
-}
-
-function BroadcastConfirmation({
-  analysis,
-  disabled,
-  onCancel,
-  onConfirm,
-}: {
-  analysis: BroadcastCommandAnalysis;
-  disabled: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <div
-      aria-label="确认批量发送"
-      className="border-b border-amber-300/20 bg-amber-500/10 px-3 py-3"
-      role="dialog"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-sm font-medium text-amber-100">
-            <AlertTriangle className="h-4 w-4" />
-            确认批量发送
-          </div>
-          <div className="mt-2 truncate rounded-lg bg-black/10 px-3 py-2 font-mono text-sm text-zinc-900 dark:bg-black/25 dark:text-zinc-100">
-            {analysis.command}
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {analysis.reasons.map((reason) => (
-              <span
-                className="rounded-lg border border-amber-300/20 bg-amber-300/10 px-2 py-1 text-xs text-amber-100"
-                key={reason}
-              >
-                {reason}
-              </span>
-            ))}
-          </div>
-        </div>
-        <div className="flex shrink-0 gap-2">
-          <Button
-            disabled={disabled}
-            onClick={onCancel}
-            size="sm"
-            variant="ghost"
-          >
-            取消
-          </Button>
-          <Button
-            disabled={disabled}
-            onClick={onConfirm}
-            size="sm"
-            variant="primary"
-          >
-            确认发送
-          </Button>
-        </div>
-      </div>
-    </div>
   );
 }

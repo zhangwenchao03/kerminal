@@ -199,12 +199,12 @@ export const authOptions: Array<{
     value: "agent",
   },
   {
-    helper: "使用私钥路径、已有凭据引用，或将私钥内容保存到系统凭据仓库。",
+    helper: "使用私钥路径，或把私钥内容随主机记录明文保存。",
     label: "密钥",
     value: "key",
   },
   {
-    helper: "将密码保存到系统凭据仓库，主机配置只保存引用。",
+    helper: "把 SSH 密码随主机记录明文保存，编辑时直接显示。",
     label: "密码",
     value: "password",
   },

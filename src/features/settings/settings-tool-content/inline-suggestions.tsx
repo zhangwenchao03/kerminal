@@ -30,6 +30,12 @@ import type {
   SuggestionTelemetryLoadState,
 } from "./types";
 
+const inlineSuggestionButtonClassName =
+  "kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border px-2 text-xs text-zinc-600 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-300";
+const inlineSuggestionActionButtonClassName =
+  "kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-3 text-xs text-zinc-600 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-300";
+const inlineSuggestionTileClassName = "kerminal-muted-surface rounded-xl border";
+
 export function InlineSuggestionPolicyStatus({
   inlineSuggestion,
 }: {
@@ -75,7 +81,10 @@ export function InlineSuggestionPolicyStatus({
         const Icon = item.icon;
         return (
           <div
-            className="flex min-h-9 items-center justify-between gap-3 rounded-lg border border-black/8 bg-white/55 px-2.5 py-2 dark:border-white/8 dark:bg-white/6"
+            className={cn(
+              inlineSuggestionTileClassName,
+              "flex min-h-9 items-center justify-between gap-3 px-2.5 py-2",
+            )}
             key={item.label}
           >
             <span className="flex min-w-0 items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
@@ -89,7 +98,7 @@ export function InlineSuggestionPolicyStatus({
                   ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
                   : item.tone === "sky"
                     ? "bg-sky-500/10 text-sky-700 dark:text-sky-100"
-                    : "bg-black/[0.04] text-zinc-500 dark:bg-white/8 dark:text-zinc-400",
+                    : "bg-[var(--surface-hover)] text-zinc-500 dark:text-zinc-400",
               )}
             >
               {item.value}
@@ -113,7 +122,12 @@ export function InlineSuggestionProviderToggle({
   onChange: (enabled: boolean) => void;
 }) {
   return (
-    <div className="flex min-h-10 items-center justify-between gap-3 rounded-lg border border-black/8 bg-white/65 px-3 py-2 text-sm text-zinc-700 dark:border-white/8 dark:bg-white/6 dark:text-zinc-300">
+    <div
+      className={cn(
+        inlineSuggestionTileClassName,
+        "flex min-h-10 items-center justify-between gap-3 px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300",
+      )}
+    >
       <span className="flex min-w-0 items-center gap-2">
         <Icon className="h-4 w-4 shrink-0 text-zinc-400" />
         <span className="min-w-0 truncate text-left leading-5">{label}</span>
@@ -197,7 +211,7 @@ export function InlineSuggestionTelemetryPanel({
   };
 
   return (
-    <div className="rounded-lg border border-black/8 bg-black/[0.025] p-3 dark:border-white/8 dark:bg-black/20">
+    <div className={cn(inlineSuggestionTileClassName, "p-3")}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
           <Activity className="h-4 w-4 text-zinc-400" />
@@ -206,7 +220,7 @@ export function InlineSuggestionTelemetryPanel({
         <div className="flex flex-wrap items-center gap-2">
           <button
             aria-label="复制灰色提示诊断"
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-black/10 bg-white/80 px-2 text-xs text-zinc-600 transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/8 dark:text-zinc-300 dark:hover:bg-white/12"
+            className={inlineSuggestionButtonClassName}
             disabled={copyState === "copying"}
             onClick={handleCopyExport}
             type="button"
@@ -220,7 +234,7 @@ export function InlineSuggestionTelemetryPanel({
           </button>
           <button
             aria-label="刷新灰色提示诊断"
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-black/10 bg-white/80 px-2 text-xs text-zinc-600 transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/8 dark:text-zinc-300 dark:hover:bg-white/12"
+            className={inlineSuggestionButtonClassName}
             disabled={state === "loading"}
             onClick={onRefresh}
             type="button"
@@ -261,7 +275,7 @@ export function InlineSuggestionTelemetryPanel({
             />
           </div>
 
-          <div className="mt-3 border-t border-black/8 pt-3 dark:border-white/8">
+          <div className="mt-3 border-t border-[var(--border-subtle)] pt-3">
             <div className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
               数据保留
             </div>
@@ -278,7 +292,7 @@ export function InlineSuggestionTelemetryPanel({
               />
               <button
                 aria-label="清理灰色提示过期诊断"
-                className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-black/10 bg-white/80 px-3 text-xs text-zinc-600 transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/8 dark:text-zinc-300 dark:hover:bg-white/12"
+                className={inlineSuggestionActionButtonClassName}
                 disabled={cleanupRunning}
                 onClick={onCleanupExpired}
                 type="button"
@@ -288,7 +302,7 @@ export function InlineSuggestionTelemetryPanel({
               </button>
               <button
                 aria-label="重置灰色提示聚合统计"
-                className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-black/10 bg-white/80 px-3 text-xs text-zinc-600 transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/8 dark:text-zinc-300 dark:hover:bg-white/12"
+                className={inlineSuggestionActionButtonClassName}
                 disabled={cleanupRunning}
                 onClick={onResetTelemetry}
                 type="button"
@@ -323,7 +337,7 @@ export function InlineSuggestionTelemetryPanel({
 
           <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-2">
             {activeProviders.length === 0 ? (
-              <div className="col-span-full rounded-lg border border-dashed border-black/10 px-3 py-3 text-center text-xs text-zinc-500 dark:border-white/10 dark:text-zinc-400">
+              <div className="kerminal-muted-surface col-span-full rounded-xl border border-dashed px-3 py-3 text-center text-xs text-zinc-500 dark:text-zinc-400">
                 暂无运行期数据
               </div>
             ) : (
@@ -349,7 +363,7 @@ function InlineSuggestionTelemetryMetric({
   value: number | string;
 }) {
   return (
-    <div className="rounded-lg border border-black/8 bg-white/55 px-3 py-2 dark:border-white/8 dark:bg-white/6">
+    <div className={cn(inlineSuggestionTileClassName, "px-3 py-2")}>
       <div className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
         {label}
       </div>
@@ -370,7 +384,12 @@ function RetentionDaysInput({
   value: number;
 }) {
   return (
-    <label className="flex min-h-10 items-center justify-between gap-2 rounded-lg border border-black/8 bg-white/55 px-3 py-2 dark:border-white/8 dark:bg-white/6">
+    <label
+      className={cn(
+        "kerminal-field-surface",
+        "flex min-h-10 items-center justify-between gap-2 rounded-xl border px-3 py-2",
+      )}
+    >
       <span className="shrink-0 text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
         {label}
       </span>
@@ -412,12 +431,12 @@ function InlineSuggestionProviderTelemetryRow({
     provider.queryCount > 0 ? `${provider.averageElapsedMs.toFixed(1)} ms` : "-";
 
   return (
-    <div className="grid gap-2 rounded-lg border border-black/8 bg-white/55 px-3 py-2 text-xs dark:border-white/8 dark:bg-white/6">
+    <div className={cn(inlineSuggestionTileClassName, "grid gap-2 px-3 py-2 text-xs")}>
       <div className="flex items-center justify-between gap-2">
         <span className="font-medium text-zinc-700 dark:text-zinc-200">
           {commandSuggestionProviderLabels[provider.provider]}
         </span>
-        <span className="rounded-full bg-black/[0.04] px-2 py-0.5 text-[11px] text-zinc-500 dark:bg-white/8 dark:text-zinc-400">
+        <span className="rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
           {provider.queryCount} 次
         </span>
       </div>

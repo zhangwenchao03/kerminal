@@ -18,10 +18,14 @@ const mocks = vi.hoisted(() => {
     recordCommandHistory: vi.fn(),
     recordTerminalSuggestionAuditEvent: vi.fn(),
     recordTerminalSuggestionFeedback: vi.fn(),
+    registerTerminalSessionBinding: vi.fn(),
     refreshTerminalGitSuggestions: vi.fn(),
     refreshTerminalRemoteCommandSuggestions: vi.fn(),
     refreshTerminalRemoteHistorySuggestions: vi.fn(),
     refreshTerminalRemotePathSuggestions: vi.fn(),
+    markTerminalSessionBindingDisconnected: vi.fn(),
+    markTerminalSessionBindingReady: vi.fn(),
+    closeTerminalSessionBinding: vi.fn(),
     resizeTerminal: vi.fn(),
     startTerminalLog: vi.fn(),
     stopTerminalLog: vi.fn(),
@@ -88,14 +92,55 @@ const mocks = vi.hoisted(() => {
       container.append(screen);
     });
     options: Record<string, unknown>;
+    parser: {
+      csiHandlers: Map<string, (params: Array<number | number[]>) => boolean>;
+      escHandlers: Map<string, () => boolean>;
+      registerCsiHandler: ReturnType<typeof vi.fn>;
+      registerEscHandler: ReturnType<typeof vi.fn>;
+    };
     paste = vi.fn();
+    refresh = vi.fn();
     private nextMarkerId = 1;
-    private nextMarkerLine = 0;
     selectAll = vi.fn();
-    write = vi.fn();
+    write = vi.fn((_data: string, callback?: () => void) => {
+      callback?.();
+    });
 
     constructor(options: Record<string, unknown>) {
       this.options = options;
+      const csiHandlers = new Map<
+        string,
+        (params: Array<number | number[]>) => boolean
+      >();
+      const escHandlers = new Map<string, () => boolean>();
+      this.parser = {
+        csiHandlers,
+        escHandlers,
+        registerCsiHandler: vi.fn(
+          (
+            identifier: { final: string; prefix?: string },
+            handler: (params: Array<number | number[]>) => boolean,
+          ) => {
+            const key = `${identifier.prefix ?? ""}${identifier.final}`;
+            csiHandlers.set(key, handler);
+            return {
+              dispose: vi.fn(() => {
+                csiHandlers.delete(key);
+              }),
+            };
+          },
+        ),
+        registerEscHandler: vi.fn(
+          (identifier: { final: string }, handler: () => boolean) => {
+            escHandlers.set(identifier.final, handler);
+            return {
+              dispose: vi.fn(() => {
+                escHandlers.delete(identifier.final);
+              }),
+            };
+          },
+        ),
+      };
       const normalBuffer = {
         baseY: 0,
         cursorX: 0,
@@ -150,20 +195,59 @@ const mocks = vi.hoisted(() => {
       return { dispose: vi.fn() };
     }
 
-    registerMarker() {
+    registerMarker(cursorYOffset = 0) {
+      const activeBuffer = this.buffer.active;
+      const line = Math.max(
+        0,
+        activeBuffer.baseY + activeBuffer.cursorY + cursorYOffset,
+      );
+      const disposeListeners = new Set<() => void>();
       const marker = {
-        dispose: vi.fn(),
+        dispose: vi.fn(() => {
+          if (marker.isDisposed) {
+            return;
+          }
+          marker.isDisposed = true;
+          marker.line = -1;
+          for (const listener of disposeListeners) {
+            listener();
+          }
+          disposeListeners.clear();
+        }),
         id: this.nextMarkerId,
-        line: this.nextMarkerLine,
-        onDispose: vi.fn(() => ({ dispose: vi.fn() })),
+        isDisposed: false,
+        line,
+        onDispose: vi.fn((listener: () => void) => {
+          if (marker.isDisposed) {
+            listener();
+            return { dispose: vi.fn() };
+          }
+          disposeListeners.add(listener);
+          return {
+            dispose: vi.fn(() => {
+              disposeListeners.delete(listener);
+            }),
+          };
+        }),
       };
       this.nextMarkerId += 1;
-      this.nextMarkerLine += 3;
       this.buffer.active.length = Math.max(
         this.buffer.active.length,
         marker.line + 4,
       );
       return marker;
+    }
+
+    triggerEsc(final: string) {
+      return this.parser.escHandlers.get(final)?.();
+    }
+
+    triggerCsi(
+      final: string,
+      params: Array<number | number[]> = [0],
+      prefix = "",
+    ) {
+      return this.parser.csiHandlers.get(`${prefix}${final}`)?.(params);
     }
 
     emitSelectionChange() {
@@ -276,6 +360,17 @@ vi.mock("../../lib/terminalSuggestionApi", () => ({
     mocks.api.refreshTerminalRemotePathSuggestions(...args),
 }));
 
+vi.mock("../../lib/paneSessionTraceApi", () => ({
+  closeTerminalSessionBinding: (...args: unknown[]) =>
+    mocks.api.closeTerminalSessionBinding(...args),
+  markTerminalSessionBindingDisconnected: (...args: unknown[]) =>
+    mocks.api.markTerminalSessionBindingDisconnected(...args),
+  markTerminalSessionBindingReady: (...args: unknown[]) =>
+    mocks.api.markTerminalSessionBindingReady(...args),
+  registerTerminalSessionBinding: (...args: unknown[]) =>
+    mocks.api.registerTerminalSessionBinding(...args),
+}));
+
 function installClipboardMock() {
   const clipboard = {
     readText: vi.fn().mockResolvedValue("echo pasted\r"),
@@ -293,7 +388,13 @@ function setTerminalBufferLines(
   lines: Record<number, string>,
   cursorY: number,
 ) {
+  terminal.buffer.active.baseY = 0;
   terminal.buffer.active.cursorY = cursorY;
+  terminal.buffer.active.length = Math.max(
+    terminal.buffer.active.length,
+    cursorY + 1,
+    ...Object.keys(lines).map((line) => Number(line) + 1),
+  );
   terminal.buffer.active.getLine.mockImplementation((line: number) => {
     const text = lines[line];
     if (typeof text !== "string") {
@@ -397,10 +498,14 @@ beforeEach(() => {
   mocks.api.recordCommandHistory.mockReset();
   mocks.api.recordTerminalSuggestionAuditEvent.mockReset();
   mocks.api.recordTerminalSuggestionFeedback.mockReset();
+  mocks.api.registerTerminalSessionBinding.mockReset();
   mocks.api.refreshTerminalGitSuggestions.mockReset();
   mocks.api.refreshTerminalRemoteCommandSuggestions.mockReset();
   mocks.api.refreshTerminalRemoteHistorySuggestions.mockReset();
   mocks.api.refreshTerminalRemotePathSuggestions.mockReset();
+  mocks.api.markTerminalSessionBindingDisconnected.mockReset();
+  mocks.api.markTerminalSessionBindingReady.mockReset();
+  mocks.api.closeTerminalSessionBinding.mockReset();
   mocks.api.writeTerminal.mockReset();
   mocks.api.resizeTerminal.mockReset();
   mocks.api.closeTerminal.mockReset();
@@ -540,6 +645,10 @@ beforeEach(() => {
     eventId: "audit-1",
     recorded: true,
   });
+  mocks.api.registerTerminalSessionBinding.mockResolvedValue(undefined);
+  mocks.api.markTerminalSessionBindingDisconnected.mockResolvedValue(undefined);
+  mocks.api.markTerminalSessionBindingReady.mockResolvedValue(undefined);
+  mocks.api.closeTerminalSessionBinding.mockResolvedValue(undefined);
   installClipboardMock();
 });
 

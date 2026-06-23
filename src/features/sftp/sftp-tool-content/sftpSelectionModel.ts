@@ -1,6 +1,11 @@
 import type { SftpEntry } from "../../../lib/sftpApi";
 import type { SftpSelectionEvent } from "./types";
 
+export type SftpSelectionState = {
+  selectedEntryPath: string | null;
+  selectedEntryPaths: Set<string>;
+};
+
 export function nextSelectedEntryPaths(
   entries: SftpEntry[],
   currentSelection: Set<string>,
@@ -38,4 +43,18 @@ export function selectionRangePaths(
   const start = Math.min(anchorIndex, clickedIndex);
   const end = Math.max(anchorIndex, clickedIndex);
   return entries.slice(start, end + 1).map((entry) => entry.path);
+}
+
+export function nextContextMenuSelection(
+  currentSelection: SftpSelectionState,
+  entryPath: string | null,
+): SftpSelectionState {
+  if (!entryPath || currentSelection.selectedEntryPaths.has(entryPath)) {
+    return currentSelection;
+  }
+
+  return {
+    selectedEntryPath: entryPath,
+    selectedEntryPaths: new Set([entryPath]),
+  };
 }

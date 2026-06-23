@@ -65,6 +65,7 @@ fn confirm_sftp_upload_unknown_host_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("unknown sftp host should become audit record");
@@ -103,6 +104,7 @@ fn confirm_sftp_upload_invalid_remote_path_arg_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("invalid sftp upload should become audit record");
@@ -141,6 +143,7 @@ fn confirm_sftp_upload_empty_local_path_records_failed_audit_before_spawn() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("empty local path upload should become audit record");
@@ -179,6 +182,7 @@ fn confirm_sftp_upload_root_remote_path_records_failed_audit_before_spawn() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("root path upload should become audit record");
@@ -251,6 +255,7 @@ fn confirm_sftp_download_unknown_host_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("unknown sftp host should become audit record");
@@ -289,6 +294,7 @@ fn confirm_sftp_download_invalid_local_path_arg_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("invalid sftp download should become audit record");
@@ -327,6 +333,7 @@ fn confirm_sftp_download_empty_local_path_records_failed_audit_before_spawn() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("empty local path download should become audit record");
@@ -365,6 +372,7 @@ fn confirm_sftp_download_root_remote_path_records_failed_audit_before_spawn() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("root path download should become audit record");
@@ -435,6 +443,7 @@ fn confirm_sftp_delete_unknown_host_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("unknown sftp host should become audit record");
@@ -473,6 +482,7 @@ fn confirm_sftp_delete_invalid_directory_arg_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("invalid sftp delete should become audit record");
@@ -511,6 +521,7 @@ fn confirm_sftp_delete_root_path_records_failed_audit_before_spawn() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("root path delete should become audit record");

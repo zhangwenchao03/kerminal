@@ -38,6 +38,33 @@ describe("MachineSidebar", () => {
     expect(screen.queryByText("虚拟机")).not.toBeInTheDocument();
   });
 
+  it("shows local machines as unopened until a terminal session is open", () => {
+    const { rerender } = render(
+      <MachineSidebar
+        groups={localSidebarGroups}
+        onSearchChange={vi.fn()}
+        onSelectMachine={vi.fn()}
+        search=""
+        selectedMachineId="local-powershell"
+      />,
+    );
+
+    expect(screen.getByTitle("未打开会话")).toBeInTheDocument();
+
+    rerender(
+      <MachineSidebar
+        groups={localSidebarGroups}
+        onSearchChange={vi.fn()}
+        onSelectMachine={vi.fn()}
+        openMachineIds={["local-powershell"]}
+        search=""
+        selectedMachineId="local-powershell"
+      />,
+    );
+
+    expect(screen.getByTitle("已打开会话")).toBeInTheDocument();
+  });
+
   it("collapses and expands all groups from the header action", async () => {
     const user = userEvent.setup();
 

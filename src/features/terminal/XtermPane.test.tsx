@@ -47,6 +47,12 @@ describe("XtermPane sessions and command blocks", () => {
       "min-h-0",
     );
     expect(screen.getByLabelText("本地 PowerShell xterm 终端")).not.toHaveClass(
+      "py-2",
+    );
+    expect(
+      screen.getByLabelText("本地 PowerShell xterm 终端").parentElement,
+    ).toHaveClass("py-2");
+    expect(screen.getByLabelText("本地 PowerShell xterm 终端")).not.toHaveClass(
       "min-h-[260px]",
     );
   });
@@ -202,7 +208,7 @@ describe("XtermPane sessions and command blocks", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps the current command line rail color while typing before enter", async () => {
+  it("keeps the first empty enter rail anchored after prompt redraw", async () => {
     render(
       <XtermPane
         focused
@@ -221,54 +227,494 @@ describe("XtermPane sessions and command blocks", () => {
     setTerminalBufferLines(
       terminal,
       {
-        0: "ubuntu@ubuntu:~$ ls",
-        1: "geo-guard kong plugin_config.json",
-        2: "ubuntu@ubuntu:~$",
+        0: "PS C:\\Users\\24052>",
       },
-      2,
+      0,
     );
 
     act(() => {
-      terminal.onDataCallback?.("ls\r");
+      terminal.onWriteParsedCallback?.();
     });
 
-    const lsRail = await screen.findByLabelText("折叠命令块 ls");
-    const currentRail =
-      await screen.findByLabelText("当前命令行色条 当前命令行");
-    const lsColor = (lsRail as HTMLElement).style.backgroundColor;
-    const currentColor = (currentRail as HTMLElement).style.backgroundColor;
-    expect(currentColor).not.toBe(lsColor);
-
-    setTerminalBufferLines(
-      terminal,
-      {
-        0: "ubuntu@ubuntu:~$ ls",
-        1: "geo-guard kong plugin_config.json",
-        2: "ubuntu@ubuntu:~$ g",
-      },
-      2,
-    );
-    act(() => {
-      terminal.onDataCallback?.("g");
-    });
-
-    await waitFor(() => {
-      const typingRail = screen.getByLabelText(
-        "当前命令行色条 当前命令行",
-      ) as HTMLElement;
-      expect(typingRail.style.backgroundColor).toBe(currentColor);
-      expect(typingRail.style.backgroundColor).not.toBe(lsColor);
-    });
-    expect(screen.queryByLabelText("折叠命令块 g")).not.toBeInTheDocument();
+    expect(
+      await screen.findByLabelText("当前命令行色条 当前命令行"),
+    ).toBeInTheDocument();
+    expect(
+      commandRailTop(
+        screen.getByLabelText("当前命令行色条 当前命令行") as HTMLElement,
+      ),
+    ).toBe(0);
 
     act(() => {
       terminal.onDataCallback?.("\r");
     });
 
-    const submittedRail = await screen.findByLabelText("折叠命令块 g");
-    expect((submittedRail as HTMLElement).style.backgroundColor).toBe(
-      currentColor,
+    const pendingEmptyEnterRail =
+      await screen.findByLabelText("折叠命令块 空命令");
+    expect(commandRailTop(pendingEmptyEnterRail as HTMLElement)).toBe(0);
+    expect(
+      screen.queryByLabelText("当前命令行色条 当前命令行"),
+    ).not.toBeInTheDocument();
+
+    act(() => {
+      mocks.getLatestOutputHandler()?.({
+        data: "\r\nPS C:\\Users\\24052>",
+        kind: "data",
+        sessionId: "session-1",
+      });
+    });
+    setTerminalBufferLines(
+      terminal,
+      {
+        0: "PS C:\\Users\\24052>",
+        1: "PS C:\\Users\\24052>",
+      },
+      1,
     );
+
+    act(() => {
+      terminal.onWriteParsedCallback?.();
+    });
+
+    const emptyEnterRail = await screen.findByLabelText("折叠命令块 空命令");
+    expect(commandRailTop(emptyEnterRail as HTMLElement)).toBe(0);
+    expect(commandRailHeight(emptyEnterRail as HTMLElement)).toBeGreaterThan(
+      17,
+    );
+    const currentPromptRail = screen.getByLabelText(
+      "当前命令行色条 当前命令行",
+    );
+    expect(commandRailTop(currentPromptRail as HTMLElement)).toBeCloseTo(
+      commandRailHeight(emptyEnterRail as HTMLElement),
+    );
+  });
+
+  it("anchors an empty enter before synchronous terminal output redraws the prompt", async () => {
+    render(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    const terminal = mocks.terminalInstances[0];
+    setTerminalBufferLines(
+      terminal,
+      {
+        0: "ubuntu@ubuntu:~$",
+      },
+      0,
+    );
+    act(() => {
+      terminal.onWriteParsedCallback?.();
+    });
+
+    const firstPromptRail = await screen.findByLabelText(
+      "当前命令行色条 当前命令行",
+    );
+    const firstPromptTop = commandRailTop(firstPromptRail as HTMLElement);
+
+    mocks.api.writeTerminal.mockImplementationOnce(() => {
+      setTerminalBufferLines(
+        terminal,
+        {
+          0: "ubuntu@ubuntu:~$",
+          1: "ubuntu@ubuntu:~$",
+        },
+        1,
+      );
+      terminal.onWriteParsedCallback?.();
+      return Promise.resolve();
+    });
+
+    act(() => {
+      terminal.onDataCallback?.("\r");
+    });
+
+    const emptyEnterRail = await screen.findByLabelText("折叠命令块 空命令");
+    expect(commandRailTop(emptyEnterRail as HTMLElement)).toBe(firstPromptTop);
+  });
+
+  it("anchors the first empty enter block to the previously detected prompt line", async () => {
+    render(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    const terminal = mocks.terminalInstances[0];
+    setTerminalBufferLines(
+      terminal,
+      {
+        0: "Last login: Sat Jun 20 22:27:25",
+        1: "(base) [root@shuziren ~]#",
+      },
+      1,
+    );
+    act(() => {
+      terminal.onWriteParsedCallback?.();
+    });
+
+    const firstPromptRail = await screen.findByLabelText(
+      "当前命令行色条 当前命令行",
+    );
+    const firstPromptTop = commandRailTop(firstPromptRail as HTMLElement);
+
+    setTerminalBufferLines(
+      terminal,
+      {
+        0: "Last login: Sat Jun 20 22:27:25",
+        1: "(base) [root@shuziren ~]#",
+        2: "(base) [root@shuziren ~]#",
+      },
+      2,
+    );
+    act(() => {
+      terminal.onDataCallback?.("\r");
+    });
+
+    const emptyEnterRail = await screen.findByLabelText("折叠命令块 空命令");
+    expect(commandRailTop(emptyEnterRail as HTMLElement)).toBe(firstPromptTop);
+    expect(commandRailHeight(emptyEnterRail as HTMLElement)).toBeGreaterThan(
+      17,
+    );
+    const currentPromptRail = screen.getByLabelText(
+      "当前命令行色条 当前命令行",
+    );
+    expect(commandRailTop(currentPromptRail as HTMLElement)).toBeCloseTo(
+      firstPromptTop + commandRailHeight(emptyEnterRail as HTMLElement),
+    );
+  });
+
+  it("keeps the first empty enter block and opens the next prompt rail", async () => {
+    render(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    const terminal = mocks.terminalInstances[0];
+    const registerMarker = vi.spyOn(terminal, "registerMarker");
+    setTerminalBufferLines(
+      terminal,
+      {
+        0: "*** System restart required ***",
+        1: "Last login: Sun Jun 21 07:02:58 2026 from 172.16.10.123",
+        2: "ubuntu@ubuntu:~$",
+      },
+      2,
+    );
+    act(() => {
+      terminal.onWriteParsedCallback?.();
+    });
+
+    const firstPromptRail = await screen.findByLabelText(
+      "当前命令行色条 当前命令行",
+    );
+    const firstPromptTop = commandRailTop(firstPromptRail as HTMLElement);
+    expect(registerMarker.mock.calls.map(([offset]) => offset)).toEqual([0]);
+
+    setTerminalBufferLines(
+      terminal,
+      {
+        0: "*** System restart required ***",
+        1: "Last login: Sun Jun 21 07:02:58 2026 from 172.16.10.123",
+        2: "ubuntu@ubuntu:~$",
+        3: "ubuntu@ubuntu:~$",
+      },
+      3,
+    );
+    act(() => {
+      terminal.onDataCallback?.("\r");
+    });
+
+    const emptyEnterRail = await screen.findByLabelText("折叠命令块 空命令");
+    expect(commandRailTop(emptyEnterRail as HTMLElement)).toBe(firstPromptTop);
+    const currentPromptRail = screen.getByLabelText(
+      "当前命令行色条 当前命令行",
+    );
+    expect(commandRailTop(currentPromptRail as HTMLElement)).toBeCloseTo(
+      firstPromptTop + commandRailHeight(emptyEnterRail as HTMLElement),
+    );
+    expect(registerMarker.mock.calls.map(([offset]) => offset)).toEqual([
+      0,
+      -1,
+      0,
+    ]);
+  });
+
+  it("keeps each empty SSH enter rail when opening successive prompts", async () => {
+    render(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="SSH ubuntu"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    const terminal = mocks.terminalInstances[0];
+    setTerminalBufferLines(
+      terminal,
+      {
+        0: "*** System restart required ***",
+        1: "Last login: Sun Jun 21 08:49:48 2026 from 172.16.10.123",
+        2: "ubuntu@ubuntu:~$",
+      },
+      2,
+    );
+    act(() => {
+      terminal.onWriteParsedCallback?.();
+    });
+
+    const firstPromptRail = await screen.findByLabelText(
+      "当前命令行色条 当前命令行",
+    );
+    const rowHeight = commandRailHeight(firstPromptRail as HTMLElement);
+    expect(commandRailTop(firstPromptRail as HTMLElement)).toBeCloseTo(
+      rowHeight * 2,
+    );
+
+    act(() => {
+      terminal.onDataCallback?.("\r");
+    });
+    setTerminalBufferLines(
+      terminal,
+      {
+        0: "*** System restart required ***",
+        1: "Last login: Sun Jun 21 08:49:48 2026 from 172.16.10.123",
+        2: "ubuntu@ubuntu:~$",
+        3: "ubuntu@ubuntu:~$",
+      },
+      3,
+    );
+    act(() => {
+      terminal.onWriteParsedCallback?.();
+    });
+
+    let emptyRails = await screen.findAllByLabelText("折叠命令块 空命令");
+    expect(
+      emptyRails.map((rail) => commandRailTop(rail as HTMLElement)),
+    ).toEqual([rowHeight * 2]);
+    expect(
+      commandRailTop(
+        screen.getByLabelText("当前命令行色条 当前命令行") as HTMLElement,
+      ),
+    ).toBeCloseTo(rowHeight * 3);
+
+    act(() => {
+      terminal.onDataCallback?.("\r");
+    });
+    setTerminalBufferLines(
+      terminal,
+      {
+        0: "*** System restart required ***",
+        1: "Last login: Sun Jun 21 08:49:48 2026 from 172.16.10.123",
+        2: "ubuntu@ubuntu:~$",
+        3: "ubuntu@ubuntu:~$",
+        4: "ubuntu@ubuntu:~$",
+      },
+      4,
+    );
+    act(() => {
+      terminal.onWriteParsedCallback?.();
+    });
+
+    emptyRails = await screen.findAllByLabelText("折叠命令块 空命令");
+    expect(
+      emptyRails.map((rail) => commandRailTop(rail as HTMLElement)),
+    ).toEqual([rowHeight * 2, rowHeight * 3]);
+    expect(
+      commandRailTop(
+        screen.getByLabelText("当前命令行色条 当前命令行") as HTMLElement,
+      ),
+    ).toBeCloseTo(rowHeight * 4);
+  });
+
+  it("closes the previous command block before opening the next one", async () => {
+    render(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    const terminal = mocks.terminalInstances[0];
+    const registerMarker = vi.spyOn(terminal, "registerMarker");
+
+    act(() => {
+      terminal.onDataCallback?.("pwd\r");
+      terminal.onDataCallback?.("ls\r");
+    });
+
+    expect(registerMarker.mock.calls.map(([offset]) => offset)).toEqual([
+      0,
+      -1,
+      0,
+    ]);
+    expect(await screen.findByLabelText("折叠命令块 pwd")).toBeInTheDocument();
+    expect(await screen.findByLabelText("折叠命令块 ls")).toBeInTheDocument();
+  });
+
+  it("clears command block rails when the terminal receives RIS reset", async () => {
+    render(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    const terminal = mocks.terminalInstances[0];
+    act(() => {
+      terminal.onDataCallback?.("pwd\r");
+    });
+
+    expect(await screen.findByLabelText("折叠命令块 pwd")).toBeInTheDocument();
+
+    act(() => {
+      expect(terminal.triggerEsc("c")).toBe(false);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("折叠命令块 pwd")).not.toBeInTheDocument();
+    });
+  });
+
+  it("clears command block rails when the terminal erases the display", async () => {
+    render(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    const terminal = mocks.terminalInstances[0];
+    act(() => {
+      terminal.onDataCallback?.("pwd\r");
+      terminal.onDataCallback?.("clear\r");
+    });
+
+    expect(await screen.findByLabelText("折叠命令块 pwd")).toBeInTheDocument();
+    expect(await screen.findByLabelText("折叠命令块 clear")).toBeInTheDocument();
+
+    act(() => {
+      expect(terminal.triggerCsi("J", [2])).toBe(false);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("折叠命令块 pwd")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("折叠命令块 clear")).not.toBeInTheDocument();
+    });
+
+    act(() => {
+      terminal.onDataCallback?.("ls\r");
+    });
+
+    expect(await screen.findByLabelText("折叠命令块 ls")).toBeInTheDocument();
+
+    act(() => {
+      expect(terminal.triggerCsi("J", [3])).toBe(false);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("折叠命令块 ls")).not.toBeInTheDocument();
+    });
+  });
+
+  it("restores folded terminal rows when the terminal erases the display", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    const terminal = mocks.terminalInstances[0];
+    act(() => {
+      terminal.onDataCallback?.("pwd\r");
+      mocks.getLatestOutputHandler()?.({
+        data: "C:/dev/rust/kerminal\r\n",
+        kind: "data",
+        sessionId: "session-1",
+      });
+    });
+
+    await user.click(await screen.findByLabelText("折叠命令块 pwd"));
+    const terminalRows = screen
+      .getByLabelText("本地 PowerShell xterm 终端")
+      .querySelectorAll<HTMLElement>(".xterm-rows > div");
+    await waitFor(() => {
+      expect(terminalRows[1]).toHaveStyle({ visibility: "hidden" });
+      expect(terminalRows[2].style.transform).toContain("translateY(-");
+    });
+
+    act(() => {
+      expect(terminal.triggerCsi("J", [2])).toBe(false);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("展开命令块 pwd")).not.toBeInTheDocument();
+      expect(terminalRows[1].style.visibility).toBe("");
+      expect(terminalRows[2].style.transform).toBe("");
+    });
   });
 
   it("collects submitted commands from terminal input chunks", () => {
@@ -286,3 +732,15 @@ describe("XtermPane sessions and command blocks", () => {
   });
 
 });
+
+function commandRailTop(rail: HTMLElement) {
+  const top = Number.parseFloat(rail.parentElement?.style.top ?? "");
+  expect(Number.isFinite(top)).toBe(true);
+  return top;
+}
+
+function commandRailHeight(rail: HTMLElement) {
+  const height = Number.parseFloat(rail.parentElement?.style.height ?? "");
+  expect(Number.isFinite(height)).toBe(true);
+  return height;
+}

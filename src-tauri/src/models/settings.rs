@@ -12,8 +12,17 @@ use crate::{
 
 mod keybindings;
 mod normalization;
+mod sftp_performance;
 
 pub use self::keybindings::default_keybindings;
+pub use self::sftp_performance::{
+    SftpPerformanceSettings, DEFAULT_SFTP_GLOBAL_TRANSFERS, DEFAULT_SFTP_HOST_TRANSFERS,
+    DEFAULT_SFTP_PACKET_BYTES, DEFAULT_SFTP_PIPELINE_DEPTH, DEFAULT_SFTP_TIMEOUT_SECONDS,
+    MAX_SFTP_GLOBAL_TRANSFERS, MAX_SFTP_HOST_TRANSFERS, MAX_SFTP_PACKET_BYTES,
+    MAX_SFTP_PIPELINE_DEPTH, MAX_SFTP_TIMEOUT_SECONDS, MIN_SFTP_GLOBAL_TRANSFERS,
+    MIN_SFTP_HOST_TRANSFERS, MIN_SFTP_PACKET_BYTES, MIN_SFTP_PIPELINE_DEPTH,
+    MIN_SFTP_TIMEOUT_SECONDS,
+};
 
 use self::normalization::{
     normalize_custom_skill_directory_path, normalize_identifier, normalize_name_values,
@@ -27,36 +36,6 @@ pub const DEFAULT_AI_CONTEXT_OUTPUT_BYTES: usize = 12 * 1024;
 pub const MIN_AI_CONTEXT_OUTPUT_BYTES: usize = 512;
 /// AI 上下文最近输出最大字节数。
 pub const MAX_AI_CONTEXT_OUTPUT_BYTES: usize = 24 * 1024;
-/// SFTP 全局传输并发默认值。
-pub const DEFAULT_SFTP_GLOBAL_TRANSFERS: usize = 4;
-/// SFTP 全局传输并发最小值。
-pub const MIN_SFTP_GLOBAL_TRANSFERS: usize = 1;
-/// SFTP 全局传输并发最大值。
-pub const MAX_SFTP_GLOBAL_TRANSFERS: usize = 16;
-/// SFTP 单主机传输并发默认值。
-pub const DEFAULT_SFTP_HOST_TRANSFERS: usize = 2;
-/// SFTP 单主机传输并发最小值。
-pub const MIN_SFTP_HOST_TRANSFERS: usize = 1;
-/// SFTP 单主机传输并发最大值。
-pub const MAX_SFTP_HOST_TRANSFERS: usize = 8;
-/// SFTP pipelined 读写默认深度。
-pub const DEFAULT_SFTP_PIPELINE_DEPTH: usize = 64;
-/// SFTP pipelined 读写最小深度。
-pub const MIN_SFTP_PIPELINE_DEPTH: usize = 1;
-/// SFTP pipelined 读写最大深度。
-pub const MAX_SFTP_PIPELINE_DEPTH: usize = 256;
-/// SFTP 单包最大字节数默认值。
-pub const DEFAULT_SFTP_PACKET_BYTES: u32 = 256 * 1024;
-/// SFTP 单包最大字节数最小值。
-pub const MIN_SFTP_PACKET_BYTES: u32 = 32 * 1024;
-/// SFTP 单包最大字节数最大值。
-pub const MAX_SFTP_PACKET_BYTES: u32 = 256 * 1024;
-/// SFTP 请求超时默认秒数。
-pub const DEFAULT_SFTP_TIMEOUT_SECONDS: u16 = 30;
-/// SFTP 请求超时最小秒数。
-pub const MIN_SFTP_TIMEOUT_SECONDS: u16 = 5;
-/// SFTP 请求超时最大秒数。
-pub const MAX_SFTP_TIMEOUT_SECONDS: u16 = 300;
 /// 终端 inline suggestion 诊断保留最小天数。
 pub const MIN_TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS: u32 = 1;
 /// 终端 inline suggestion 诊断保留最大天数。
@@ -335,7 +314,7 @@ impl Default for TerminalAppearance {
             dark_color_scheme: TerminalColorScheme::Kerminal,
             font_family: r#""JetBrains Mono", "SF Mono", "Cascadia Code", Consolas, monospace"#
                 .to_string(),
-            font_size: 13,
+            font_size: 15,
             font_weight: TerminalFontWeight::Normal,
             mac_option_is_meta: false,
             line_height: 1.35,
@@ -370,6 +349,9 @@ pub struct AppearanceSettings {
     /// 背景图层不透明度百分比。
     #[serde(default = "default_background_opacity")]
     pub background_opacity: u8,
+    /// 应用窗口材料不透明度百分比。
+    #[serde(default = "default_window_opacity")]
+    pub window_opacity: u8,
 }
 
 impl Default for AppearanceSettings {
@@ -380,6 +362,7 @@ impl Default for AppearanceSettings {
             background_fit: BackgroundImageFit::Cover,
             background_image_path: String::new(),
             background_opacity: default_background_opacity(),
+            window_opacity: default_window_opacity(),
         }
     }
 }
@@ -636,62 +619,6 @@ impl AiSecuritySettings {
     }
 }
 
-/// SFTP 传输和连接性能设置。
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct SftpPerformanceSettings {
-    /// 全局同时运行的 SFTP 传输任务数量。
-    #[serde(default = "default_sftp_global_transfers")]
-    pub global_transfers: usize,
-    /// 单个远程主机同时运行的 SFTP 传输任务数量。
-    #[serde(default = "default_sftp_host_transfers")]
-    pub host_transfers: usize,
-    /// 单文件上传/下载 pipelined 读写深度。
-    #[serde(default = "default_sftp_pipeline_depth")]
-    pub pipeline_depth: usize,
-    /// SFTP 协议单包最大字节数。
-    #[serde(default = "default_sftp_packet_bytes")]
-    pub packet_bytes: u32,
-    /// SSH/SFTP 连接和请求超时秒数。
-    #[serde(default = "default_sftp_timeout_seconds")]
-    pub timeout_seconds: u16,
-}
-
-impl Default for SftpPerformanceSettings {
-    fn default() -> Self {
-        Self {
-            global_transfers: DEFAULT_SFTP_GLOBAL_TRANSFERS,
-            host_transfers: DEFAULT_SFTP_HOST_TRANSFERS,
-            pipeline_depth: DEFAULT_SFTP_PIPELINE_DEPTH,
-            packet_bytes: DEFAULT_SFTP_PACKET_BYTES,
-            timeout_seconds: DEFAULT_SFTP_TIMEOUT_SECONDS,
-        }
-    }
-}
-
-impl SftpPerformanceSettings {
-    /// 返回经过范围归一化的 SFTP 性能设置。
-    pub fn normalized(mut self) -> Self {
-        self.global_transfers = self
-            .global_transfers
-            .clamp(MIN_SFTP_GLOBAL_TRANSFERS, MAX_SFTP_GLOBAL_TRANSFERS);
-        self.host_transfers = self
-            .host_transfers
-            .clamp(MIN_SFTP_HOST_TRANSFERS, MAX_SFTP_HOST_TRANSFERS)
-            .min(self.global_transfers);
-        self.pipeline_depth = self
-            .pipeline_depth
-            .clamp(MIN_SFTP_PIPELINE_DEPTH, MAX_SFTP_PIPELINE_DEPTH);
-        self.packet_bytes = self
-            .packet_bytes
-            .clamp(MIN_SFTP_PACKET_BYTES, MAX_SFTP_PACKET_BYTES);
-        self.timeout_seconds = self
-            .timeout_seconds
-            .clamp(MIN_SFTP_TIMEOUT_SECONDS, MAX_SFTP_TIMEOUT_SECONDS);
-        self
-    }
-}
-
 /// Kerminal 应用设置。
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -744,6 +671,7 @@ impl AppSettings {
             ));
         }
         self.appearance.background_opacity = self.appearance.background_opacity.min(100);
+        self.appearance.window_opacity = self.appearance.window_opacity.clamp(35, 100);
         self.terminal.font_family = self.terminal.font_family.trim().to_string();
 
         if self.terminal.font_family.is_empty() {
@@ -926,6 +854,10 @@ fn default_background_opacity() -> u8 {
     100
 }
 
+fn default_window_opacity() -> u8 {
+    100
+}
+
 fn default_command_timeout_seconds() -> u16 {
     30
 }
@@ -952,24 +884,4 @@ fn default_custom_mcp_confirmation() -> ToolConfirmationPolicy {
 
 fn default_custom_mcp_audit() -> ToolAuditPolicy {
     ToolAuditPolicy::Summary
-}
-
-fn default_sftp_global_transfers() -> usize {
-    DEFAULT_SFTP_GLOBAL_TRANSFERS
-}
-
-fn default_sftp_host_transfers() -> usize {
-    DEFAULT_SFTP_HOST_TRANSFERS
-}
-
-fn default_sftp_pipeline_depth() -> usize {
-    DEFAULT_SFTP_PIPELINE_DEPTH
-}
-
-fn default_sftp_packet_bytes() -> u32 {
-    DEFAULT_SFTP_PACKET_BYTES
-}
-
-fn default_sftp_timeout_seconds() -> u16 {
-    DEFAULT_SFTP_TIMEOUT_SECONDS
 }

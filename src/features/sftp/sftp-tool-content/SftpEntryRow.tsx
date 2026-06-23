@@ -1,4 +1,4 @@
-import { useEffect, useRef, type DragEvent as ReactDragEvent } from "react";
+import type { DragEvent as ReactDragEvent } from "react";
 import { Archive, Check, ExternalLink, FileText, FolderOpen } from "lucide-react";
 import { cn } from "../../../lib/cn";
 import type { SftpEntry } from "../../../lib/sftpApi";
@@ -8,7 +8,6 @@ import {
   formatEntrySize,
   transferKindFromEntry,
 } from "./sftpEntryModel";
-import { isExtendedSelectionEvent } from "./sftpDragDropModel";
 import type { SftpContextMenuEvent, SftpSelectionEvent } from "./types";
 
 export function SftpEntryRow({
@@ -20,7 +19,6 @@ export function SftpEntryRow({
   onDragEnd,
   onDragStart,
   onOpenDirectory,
-  onOpenWorkspaceDirectory,
   onPreviewFile,
   onSelect,
   previewing,
@@ -34,7 +32,6 @@ export function SftpEntryRow({
   onDragEnd: () => void;
   onDragStart: (event: ReactDragEvent<HTMLElement>) => void;
   onOpenDirectory: (path: string) => Promise<void>;
-  onOpenWorkspaceDirectory: (path: string) => void;
   onPreviewFile: () => void;
   onSelect: (event?: SftpSelectionEvent) => void;
   previewing: boolean;
@@ -50,34 +47,15 @@ export function SftpEntryRow({
         : entry.kind === "other"
           ? Archive
           : FileText;
-  const directoryOpenTimerRef = useRef<number | null>(null);
-
-  const cancelQueuedDirectoryOpen = () => {
-    if (directoryOpenTimerRef.current !== null) {
-      window.clearTimeout(directoryOpenTimerRef.current);
-      directoryOpenTimerRef.current = null;
-    }
-  };
-
-  const queueDirectoryOpen = () => {
-    cancelQueuedDirectoryOpen();
-    directoryOpenTimerRef.current = window.setTimeout(() => {
-      directoryOpenTimerRef.current = null;
-      void onOpenDirectory(entry.path);
-    }, 180);
-  };
-
-  useEffect(() => cancelQueuedDirectoryOpen, []);
-
   return (
     <div
       className={cn(
-        "grid min-h-11 w-full grid-cols-[minmax(0,1fr)_5.75rem] items-center gap-2 px-3 py-2 text-left text-sm transition min-[560px]:grid-cols-[minmax(0,1fr)_4.25rem_5.75rem] min-[720px]:grid-cols-[minmax(0,1fr)_4.75rem_4.25rem_5.75rem]",
+        "grid min-h-11 w-full grid-cols-[minmax(0,1fr)_5.75rem] items-center gap-2 px-3 py-2 text-left text-sm transition-colors min-[560px]:grid-cols-[minmax(0,1fr)_4.25rem_5.75rem] min-[720px]:grid-cols-[minmax(0,1fr)_4.75rem_4.25rem_5.75rem]",
         (contextMenuOpen || selected) &&
-          "bg-sky-500/12 ring-1 ring-inset ring-sky-400/20 dark:bg-white/[0.08] dark:ring-white/10",
+          "bg-[var(--surface-selected)] ring-1 ring-inset ring-sky-400/25 dark:ring-sky-300/20",
         isDirectory
-          ? "text-zinc-900 hover:bg-sky-500/[0.07] dark:text-zinc-100"
-          : "text-zinc-800 hover:bg-black/[0.035] dark:text-zinc-200 dark:hover:bg-white/[0.045]",
+          ? "text-zinc-900 hover:bg-[var(--surface-hover)] dark:text-zinc-100"
+          : "text-zinc-800 hover:bg-[var(--surface-hover)] dark:text-zinc-200",
       )}
       aria-selected={contextMenuOpen || selected}
       data-sftp-entry-row
@@ -97,22 +75,18 @@ export function SftpEntryRow({
             : `${entryKindLabel(entry.kind)} ${entry.name}`
         }
         className={cn(
-          "flex min-w-0 items-center gap-2.5 text-left",
+          "kerminal-focus-ring flex min-w-0 items-center gap-2.5 rounded-lg px-1 py-0.5 text-left",
           isDirectory || isRegularFile ? "cursor-pointer" : "cursor-default",
         )}
         onClick={(event) => {
           event.stopPropagation();
           onSelect(event);
-          if (isDirectory && !isExtendedSelectionEvent(event)) {
-            queueDirectoryOpen();
-          }
         }}
         onContextMenu={onContextMenu}
         onDoubleClick={(event) => {
           event.stopPropagation();
           if (isDirectory) {
-            cancelQueuedDirectoryOpen();
-            onOpenWorkspaceDirectory(entry.path);
+            void onOpenDirectory(entry.path);
             return;
           }
           if (isRegularFile) {
@@ -156,13 +130,13 @@ export function SftpEntryRow({
           {entry.name}
         </span>
       </button>
-      <span className="hidden truncate text-right font-mono text-[11px] text-zinc-500 min-[720px]:block">
+      <span className="hidden truncate text-right font-mono text-[11px] text-zinc-500 dark:text-zinc-400 min-[720px]:block">
         {entry.permissions ?? "-"}
       </span>
-      <span className="hidden truncate text-right font-mono text-[11px] text-zinc-500 min-[560px]:block">
+      <span className="hidden truncate text-right font-mono text-[11px] text-zinc-500 dark:text-zinc-400 min-[560px]:block">
         {formatEntrySize(entry)}
       </span>
-      <span className="truncate text-right font-mono text-[11px] text-zinc-500">
+      <span className="truncate text-right font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
         {formatEntryModified(entry.modified)}
       </span>
     </div>

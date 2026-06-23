@@ -4,7 +4,6 @@ impl CommandSuggestionService {
     pub async fn refresh_remote_paths(
         &self,
         storage: &SqliteStore,
-        credentials: &CredentialService,
         paths: &KerminalPaths,
         sftp: &SftpService,
         request: CommandSuggestionRemotePathRefreshRequest,
@@ -30,7 +29,6 @@ impl CommandSuggestionService {
         let result = match sftp
             .list_directory(
                 storage,
-                credentials,
                 paths,
                 SftpListDirectoryRequest {
                     host_id: request.host_id.clone(),
@@ -71,7 +69,6 @@ impl CommandSuggestionService {
     pub async fn refresh_remote_commands(
         &self,
         storage: &SqliteStore,
-        credentials: &CredentialService,
         paths: &KerminalPaths,
         ssh_commands: &SshCommandService,
         request: CommandSuggestionRemoteCommandRefreshRequest,
@@ -95,9 +92,8 @@ impl CommandSuggestionService {
         }
         let result = async {
             let output = ssh_commands
-                .execute_with_credentials(
+                .execute_native(
                     storage,
-                    credentials,
                     paths,
                     SshCommandRequest {
                         command: REMOTE_COMMAND_DISCOVERY_SCRIPT.to_owned(),
@@ -147,7 +143,6 @@ impl CommandSuggestionService {
     pub async fn refresh_remote_history(
         &self,
         storage: &SqliteStore,
-        credentials: &CredentialService,
         paths: &KerminalPaths,
         ssh_commands: &SshCommandService,
         request: CommandSuggestionRemoteHistoryRefreshRequest,
@@ -171,9 +166,8 @@ impl CommandSuggestionService {
         }
         let result = async {
             let output = ssh_commands
-                .execute_with_credentials(
+                .execute_native(
                     storage,
-                    credentials,
                     paths,
                     SshCommandRequest {
                         command: REMOTE_HISTORY_DISCOVERY_SCRIPT.to_owned(),
@@ -223,7 +217,6 @@ impl CommandSuggestionService {
     pub async fn refresh_git_refs(
         &self,
         storage: &SqliteStore,
-        credentials: &CredentialService,
         paths: &KerminalPaths,
         ssh_commands: &SshCommandService,
         request: CommandSuggestionGitRefreshRequest,
@@ -248,9 +241,8 @@ impl CommandSuggestionService {
         }
         let result = async {
             let output = ssh_commands
-                .execute_with_credentials(
+                .execute_native(
                     storage,
-                    credentials,
                     paths,
                     SshCommandRequest {
                         command: git_discovery_script(&request.cwd)?,

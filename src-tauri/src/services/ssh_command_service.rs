@@ -18,17 +18,15 @@ use russh::{
     },
     ChannelMsg,
 };
-use serde::Deserialize;
 
 use crate::{
     error::{AppError, AppResult},
     models::{
-        remote_host::{RemoteHost, RemoteHostAuthType},
+        remote_host::{RemoteHost, RemoteHostAuthType, SshJumpHostOptions},
         ssh_command::{SshCommandOutput, SshCommandRequest},
     },
     paths::KerminalPaths,
-    services::credential_service::CredentialService,
-    services::process_command::silent_command,
+    services::{process_command::silent_command, ssh_route_plan::build_ssh_route_plan},
     storage::SqliteStore,
 };
 
@@ -65,19 +63,18 @@ impl SshCommandService {
 
     /// 在已保存 SSH 主机上通过 native russh 执行非交互命令。
     ///
-    /// 该路径用于需要读取 Kerminal 凭据仓库的调用方，支持 password、内联私钥和
-    /// 私钥路径，不把 secret 暴露到本地进程参数。
-    pub async fn execute_with_credentials(
+    /// 该路径使用远程主机记录里的明文密码、内联私钥或私钥路径执行命令，
+    /// 不把 secret 暴露到本地进程参数。
+    pub async fn execute_native(
         &self,
         storage: &SqliteStore,
-        credentials: &CredentialService,
         paths: &KerminalPaths,
         request: SshCommandRequest,
     ) -> AppResult<SshCommandOutput> {
         let host = storage
             .remote_host_by_id(&request.host_id)?
             .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {}", request.host_id)))?;
-        let execution = build_native_command_execution(&host, credentials, paths, request)?;
+        let execution = build_native_command_execution(&host, paths, request)?;
         execute_native_ssh_command(&host, execution).await
     }
 }
@@ -98,11 +95,24 @@ pub struct SshCommandPlan {
 }
 
 struct NativeSshCommandExecution {
-    auth: NativeSshAuthMaterial,
-    known_hosts_path: PathBuf,
+    jumps: Vec<NativeSshHopExecution>,
     max_output_bytes: usize,
     script: String,
+    target: NativeSshHopExecution,
     timeout_seconds: u64,
+}
+
+struct NativeSshHopExecution {
+    auth: NativeSshAuthMaterial,
+    host: String,
+    known_hosts_path: PathBuf,
+    port: u16,
+    username: String,
+}
+
+struct NativeSshConnectionChain {
+    jumps: Vec<client::Handle<NativeCommandClientHandler>>,
+    target: client::Handle<NativeCommandClientHandler>,
 }
 
 enum NativeSshAuthMaterial {
@@ -117,13 +127,6 @@ enum NativeSshPrivateKey {
         content: String,
         passphrase: Option<String>,
     },
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct StoredPrivateKey {
-    private_key: String,
-    passphrase: Option<String>,
 }
 
 #[derive(Debug)]
@@ -195,15 +198,22 @@ fn build_ssh_command_plan(
 
 fn build_native_command_execution(
     host: &RemoteHost,
-    credentials: &CredentialService,
     paths: &KerminalPaths,
     request: SshCommandRequest,
 ) -> AppResult<NativeSshCommandExecution> {
+    let _route_plan = build_ssh_route_plan(host)?;
+    let known_hosts_path = paths.root.join("known_hosts");
     Ok(NativeSshCommandExecution {
-        auth: resolve_native_auth_material(host, credentials)?,
-        known_hosts_path: paths.root.join("known_hosts"),
+        jumps: host
+            .ssh_options
+            .jump_hosts
+            .iter()
+            .enumerate()
+            .map(|(index, jump)| build_native_jump_execution(index, jump, known_hosts_path.clone()))
+            .collect::<AppResult<Vec<_>>>()?,
         max_output_bytes: normalize_output_bytes(request.max_output_bytes),
         script: normalize_command_script(&request.command)?,
+        target: build_native_target_execution(host, known_hosts_path)?,
         timeout_seconds: normalize_timeout_seconds(request.timeout_seconds),
     })
 }
@@ -230,11 +240,13 @@ async fn execute_native_ssh_command_inner(
     host: &RemoteHost,
     execution: NativeSshCommandExecution,
 ) -> AppResult<SshCommandOutput> {
-    let mut ssh =
-        connect_native_ssh(host, execution.known_hosts_path, execution.timeout_seconds).await?;
-    authenticate_native_ssh(&mut ssh, host, &execution.auth).await?;
+    let connection = connect_native_command_target(&execution).await?;
 
-    let mut channel = ssh.channel_open_session().await.map_err(native_ssh_error)?;
+    let mut channel = connection
+        .target
+        .channel_open_session()
+        .await
+        .map_err(native_ssh_error)?;
     channel
         .exec(true, "sh -s")
         .await
@@ -279,9 +291,15 @@ async fn execute_native_ssh_command_inner(
     }
 
     let _ = channel.close().await;
-    let _ = ssh
+    let _ = connection
+        .target
         .disconnect(russh::Disconnect::ByApplication, "command completed", "")
         .await;
+    for jump in connection.jumps.into_iter().rev() {
+        let _ = jump
+            .disconnect(russh::Disconnect::ByApplication, "command completed", "")
+            .await;
+    }
 
     if exec_request_failed {
         return Err(AppError::SshCommand(
@@ -311,9 +329,73 @@ async fn execute_native_ssh_command_inner(
     })
 }
 
-async fn connect_native_ssh(
+fn build_native_target_execution(
     host: &RemoteHost,
     known_hosts_path: PathBuf,
+) -> AppResult<NativeSshHopExecution> {
+    Ok(NativeSshHopExecution {
+        auth: resolve_native_auth_material(host)?,
+        host: required_native_text(&host.host, "目标主机 host")?,
+        known_hosts_path,
+        port: required_native_port(host.port, "目标主机 port")?,
+        username: required_native_text(&host.username, "目标主机 username")?,
+    })
+}
+
+fn build_native_jump_execution(
+    index: usize,
+    jump: &SshJumpHostOptions,
+    known_hosts_path: PathBuf,
+) -> AppResult<NativeSshHopExecution> {
+    let label = format!("跳板主机 jump-{index}");
+    Ok(NativeSshHopExecution {
+        auth: resolve_native_jump_auth_material(jump, &label)?,
+        host: required_native_text(&jump.host, &format!("{label} host"))?,
+        known_hosts_path,
+        port: required_native_port(jump.port, &format!("{label} port"))?,
+        username: required_native_text(&jump.username, &format!("{label} username"))?,
+    })
+}
+
+async fn connect_native_command_target(
+    execution: &NativeSshCommandExecution,
+) -> AppResult<NativeSshConnectionChain> {
+    if execution.jumps.is_empty() {
+        let mut target = connect_native_ssh(&execution.target, execution.timeout_seconds).await?;
+        authenticate_native_ssh(&mut target, &execution.target).await?;
+        return Ok(NativeSshConnectionChain {
+            jumps: Vec::new(),
+            target,
+        });
+    }
+
+    let mut jumps = Vec::with_capacity(execution.jumps.len());
+    let mut upstream = connect_native_ssh(&execution.jumps[0], execution.timeout_seconds).await?;
+    authenticate_native_ssh(&mut upstream, &execution.jumps[0]).await?;
+
+    for jump in execution.jumps.iter().skip(1) {
+        let mut next =
+            connect_native_ssh_through_direct_tcpip(&upstream, jump, execution.timeout_seconds)
+                .await?;
+        authenticate_native_ssh(&mut next, jump).await?;
+        jumps.push(upstream);
+        upstream = next;
+    }
+
+    let mut target = connect_native_ssh_through_direct_tcpip(
+        &upstream,
+        &execution.target,
+        execution.timeout_seconds,
+    )
+    .await?;
+    authenticate_native_ssh(&mut target, &execution.target).await?;
+    jumps.push(upstream);
+
+    Ok(NativeSshConnectionChain { jumps, target })
+}
+
+async fn connect_native_ssh(
+    hop: &NativeSshHopExecution,
     timeout_seconds: u64,
 ) -> AppResult<client::Handle<NativeCommandClientHandler>> {
     let config = client::Config {
@@ -321,22 +403,49 @@ async fn connect_native_ssh(
         ..Default::default()
     };
     let handler = NativeCommandClientHandler {
-        host: host.host.clone(),
-        port: host.port,
-        known_hosts_path,
+        host: hop.host.clone(),
+        port: hop.port,
+        known_hosts_path: hop.known_hosts_path.clone(),
     };
-    client::connect(Arc::new(config), (host.host.as_str(), host.port), handler)
+    client::connect(Arc::new(config), (hop.host.as_str(), hop.port), handler)
+        .await
+        .map_err(native_ssh_error)
+}
+
+async fn connect_native_ssh_through_direct_tcpip(
+    upstream: &client::Handle<NativeCommandClientHandler>,
+    hop: &NativeSshHopExecution,
+    timeout_seconds: u64,
+) -> AppResult<client::Handle<NativeCommandClientHandler>> {
+    let channel = upstream
+        .channel_open_direct_tcpip(hop.host.clone(), u32::from(hop.port), "127.0.0.1", 0)
+        .await
+        .map_err(|error| {
+            AppError::SshCommand(format!(
+                "无法通过跳板打开 direct-tcpip 到 {}@{}:{}: {error}",
+                hop.username, hop.host, hop.port
+            ))
+        })?;
+    let config = client::Config {
+        inactivity_timeout: Some(Duration::from_secs(timeout_seconds)),
+        ..Default::default()
+    };
+    let handler = NativeCommandClientHandler {
+        host: hop.host.clone(),
+        port: hop.port,
+        known_hosts_path: hop.known_hosts_path.clone(),
+    };
+    client::connect_stream(Arc::new(config), channel.into_stream(), handler)
         .await
         .map_err(native_ssh_error)
 }
 
 async fn authenticate_native_ssh(
     ssh: &mut client::Handle<NativeCommandClientHandler>,
-    host: &RemoteHost,
-    auth: &NativeSshAuthMaterial,
+    hop: &NativeSshHopExecution,
 ) -> AppResult<()> {
-    let username = host.username.clone();
-    let authenticated = match auth {
+    let username = hop.username.clone();
+    let authenticated = match &hop.auth {
         NativeSshAuthMaterial::Password(password) => ssh
             .authenticate_password(username, password.clone())
             .await
@@ -362,7 +471,7 @@ async fn authenticate_native_ssh(
     } else {
         Err(AppError::SshCommand(format!(
             "SSH 认证失败: {}@{}:{}",
-            host.username, host.host, host.port
+            hop.username, hop.host, hop.port
         )))
     }
 }
@@ -432,28 +541,64 @@ async fn connect_agent() -> AppResult<
     ))
 }
 
-fn resolve_native_auth_material(
-    host: &RemoteHost,
-    credentials: &CredentialService,
-) -> AppResult<NativeSshAuthMaterial> {
+fn resolve_native_auth_material(host: &RemoteHost) -> AppResult<NativeSshAuthMaterial> {
     match host.auth_type {
         RemoteHostAuthType::Agent => Ok(NativeSshAuthMaterial::Agent),
         RemoteHostAuthType::Password => {
-            let credential_ref = required_credential_ref(host)?;
-            let password = credentials.get_secret(credential_ref)?.ok_or_else(|| {
-                AppError::Credential(format!("未找到 SSH 密码凭据: {credential_ref}"))
-            })?;
+            let password = required_credential_secret(host, "密码认证需要保存明文 SSH 密码")?;
             Ok(NativeSshAuthMaterial::Password(password))
         }
         RemoteHostAuthType::Key => {
+            if let Some(secret) = normalized_credential_secret(host) {
+                return Ok(NativeSshAuthMaterial::PrivateKey(
+                    NativeSshPrivateKey::Pem {
+                        content: secret.to_owned(),
+                        passphrase: None,
+                    },
+                ));
+            }
             let credential_ref = required_credential_ref(host)?;
             if credential_ref.starts_with("credential:") {
-                let secret = credentials.get_secret(credential_ref)?.ok_or_else(|| {
-                    AppError::Credential(format!("未找到 SSH 私钥凭据: {credential_ref}"))
-                })?;
-                return Ok(NativeSshAuthMaterial::PrivateKey(
-                    parse_native_private_key_secret(&secret),
+                return Err(AppError::InvalidInput(
+                    "SSH 主机不再支持 credential: 私钥引用，请保存私钥路径或明文私钥内容"
+                        .to_owned(),
                 ));
+            }
+            validate_identity_file_path(credential_ref)?;
+            Ok(NativeSshAuthMaterial::PrivateKey(
+                NativeSshPrivateKey::Path(PathBuf::from(credential_ref)),
+            ))
+        }
+    }
+}
+
+fn resolve_native_jump_auth_material(
+    jump: &SshJumpHostOptions,
+    label: &str,
+) -> AppResult<NativeSshAuthMaterial> {
+    match jump.auth_type {
+        RemoteHostAuthType::Agent => Ok(NativeSshAuthMaterial::Agent),
+        RemoteHostAuthType::Password => {
+            let password = required_jump_credential_secret(
+                jump,
+                &format!("{label} 密码认证需要保存明文 SSH 密码"),
+            )?;
+            Ok(NativeSshAuthMaterial::Password(password))
+        }
+        RemoteHostAuthType::Key => {
+            if let Some(secret) = normalized_jump_credential_secret(jump) {
+                return Ok(NativeSshAuthMaterial::PrivateKey(
+                    NativeSshPrivateKey::Pem {
+                        content: secret.to_owned(),
+                        passphrase: None,
+                    },
+                ));
+            }
+            let credential_ref = required_jump_credential_ref(jump, label)?;
+            if credential_ref.starts_with("credential:") {
+                return Err(AppError::InvalidInput(format!(
+                    "{label} 不再支持 credential: 私钥引用，请保存私钥路径或明文私钥内容"
+                )));
             }
             validate_identity_file_path(credential_ref)?;
             Ok(NativeSshAuthMaterial::PrivateKey(
@@ -468,19 +613,61 @@ fn required_credential_ref(host: &RemoteHost) -> AppResult<&str> {
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| AppError::InvalidInput("该 SSH 认证方式需要配置凭据引用".to_owned()))
+        .ok_or_else(|| AppError::InvalidInput("密钥认证需要保存私钥路径或明文私钥内容".to_owned()))
 }
 
-fn parse_native_private_key_secret(secret: &str) -> NativeSshPrivateKey {
-    serde_json::from_str::<StoredPrivateKey>(secret)
-        .map(|stored| NativeSshPrivateKey::Pem {
-            content: stored.private_key,
-            passphrase: stored.passphrase,
+fn required_credential_secret(host: &RemoteHost, message: &str) -> AppResult<String> {
+    normalized_credential_secret(host)
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| AppError::InvalidInput(message.to_owned()))
+}
+
+fn normalized_credential_secret(host: &RemoteHost) -> Option<&str> {
+    host.credential_secret
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+}
+
+fn required_jump_credential_ref<'a>(
+    jump: &'a SshJumpHostOptions,
+    label: &str,
+) -> AppResult<&'a str> {
+    jump.credential_ref
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            AppError::InvalidInput(format!("{label} 密钥认证需要保存私钥路径或明文私钥内容"))
         })
-        .unwrap_or_else(|_| NativeSshPrivateKey::Pem {
-            content: secret.to_owned(),
-            passphrase: None,
-        })
+}
+
+fn required_jump_credential_secret(jump: &SshJumpHostOptions, message: &str) -> AppResult<String> {
+    normalized_jump_credential_secret(jump)
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| AppError::InvalidInput(message.to_owned()))
+}
+
+fn normalized_jump_credential_secret(jump: &SshJumpHostOptions) -> Option<&str> {
+    jump.credential_secret
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+}
+
+fn required_native_text(value: &str, field: &str) -> AppResult<String> {
+    let normalized = value.trim();
+    if normalized.is_empty() {
+        Err(AppError::InvalidInput(format!("{field} 不能为空")))
+    } else {
+        Ok(normalized.to_owned())
+    }
+}
+
+fn required_native_port(port: u16, field: &str) -> AppResult<u16> {
+    if port == 0 {
+        Err(AppError::InvalidInput(format!("{field} 必须大于 0")))
+    } else {
+        Ok(port)
+    }
 }
 
 fn load_native_private_key(private_key: &NativeSshPrivateKey) -> AppResult<PrivateKey> {
@@ -680,6 +867,11 @@ fn identity_file_args(host: &RemoteHost) -> AppResult<Vec<String>> {
     if host.auth_type != RemoteHostAuthType::Key {
         return Ok(Vec::new());
     }
+    if normalized_credential_secret(host).is_some() {
+        return Err(AppError::InvalidInput(
+            "内联 SSH 私钥需要使用 native SSH 命令路径执行".to_owned(),
+        ));
+    }
     let Some(credential_ref) = host
         .credential_ref
         .as_deref()
@@ -689,7 +881,9 @@ fn identity_file_args(host: &RemoteHost) -> AppResult<Vec<String>> {
         return Ok(Vec::new());
     };
     if credential_ref.starts_with("credential:") {
-        return Ok(Vec::new());
+        return Err(AppError::InvalidInput(
+            "SSH 主机不再支持 credential: 私钥引用，请保存私钥路径或明文私钥内容".to_owned(),
+        ));
     }
     validate_identity_file_path(credential_ref)?;
     Ok(vec!["-i".to_owned(), credential_ref.to_owned()])

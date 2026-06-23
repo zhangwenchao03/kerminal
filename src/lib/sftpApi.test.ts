@@ -50,6 +50,32 @@ describe("sftpApi", () => {
     expect(varLog.entries.map((entry) => entry.name)).toContain("app.log");
   });
 
+  it("selects the SFTP transport at call time", async () => {
+    isTauriMock.mockReturnValue(false);
+    const { listSftpDirectory } = await import("./sftpApi");
+
+    const preview = await listSftpDirectory({ hostId: "host-lab", path: "/" });
+    expect(preview.entries.map((entry) => entry.name)).toContain("var");
+    expect(invokeMock).not.toHaveBeenCalled();
+
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue({
+      entries: [],
+      hostId: "host-lab",
+      path: "/srv",
+    });
+
+    const native = await listSftpDirectory({
+      hostId: "host-lab",
+      path: "/srv",
+    });
+
+    expect(native.path).toBe("/srv");
+    expect(invokeMock).toHaveBeenCalledWith("sftp_list_directory", {
+      request: { hostId: "host-lab", path: "/srv" },
+    });
+  });
+
   it("maps file operations to separate SFTP commands", async () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockResolvedValue(true);
@@ -155,6 +181,72 @@ describe("sftpApi", () => {
     });
   });
 
+  it("uses simple browser fallbacks for file operations outside Tauri", async () => {
+    isTauriMock.mockReturnValue(false);
+    const {
+      chmodSftpPath,
+      createSftpDirectory,
+      deleteSftpPath,
+      downloadSftpDirectory,
+      downloadSftpFile,
+      readSftpLocalFileClipboard,
+      renameSftpPath,
+      uploadSftpDirectory,
+      uploadSftpFile,
+    } = await import("./sftpApi");
+
+    await expect(
+      createSftpDirectory({ hostId: "host-lab", path: "/tmp/new" }),
+    ).resolves.toBe(true);
+    await expect(
+      deleteSftpPath({
+        directory: false,
+        hostId: "host-lab",
+        path: "/tmp/old.log",
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      renameSftpPath({
+        fromPath: "/tmp/a",
+        hostId: "host-lab",
+        toPath: "/tmp/b",
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      chmodSftpPath({ hostId: "host-lab", mode: "644", path: "/tmp/a" }),
+    ).resolves.toBe(true);
+    await expect(
+      uploadSftpFile({
+        hostId: "host-lab",
+        localPath: "C:\\tmp\\a.log",
+        remotePath: "/tmp/a.log",
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      uploadSftpDirectory({
+        hostId: "host-lab",
+        localPath: "C:\\tmp\\dist",
+        remotePath: "/tmp/dist",
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      downloadSftpFile({
+        hostId: "host-lab",
+        localPath: "C:\\tmp\\a.log",
+        remotePath: "/tmp/a.log",
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      downloadSftpDirectory({
+        hostId: "host-lab",
+        localPath: "C:\\tmp\\dist",
+        remotePath: "/tmp/dist",
+      }),
+    ).resolves.toBe(true);
+    await expect(readSftpLocalFileClipboard()).resolves.toEqual([]);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
   it("maps managed transfer operations to SFTP queue commands", async () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockResolvedValue({
@@ -186,6 +278,7 @@ describe("sftpApi", () => {
     } = await import("./sftpApi");
 
     await enqueueSftpTransfer({
+      conflictPolicy: "rename",
       direction: "upload",
       hostId: "host-lab",
       kind: "file",
@@ -217,14 +310,21 @@ describe("sftpApi", () => {
       sourceRemotePath: "/var/log/app.log",
     });
     await listSftpTransfers();
+    await listSftpTransfers({ viewScope: "sftp-workbench:tab-a" });
     await cancelSftpTransfer({ transferId: "transfer-1" });
+    await cancelSftpTransfer({
+      transferId: "transfer-1",
+      viewScope: "sftp-workbench:tab-a",
+    });
     await clearCompletedSftpTransfers();
+    await clearCompletedSftpTransfers({ viewScope: "sftp-workbench:tab-a" });
     await classifySftpLocalPaths({ paths: ["C:\\\\tmp\\\\a.log"] });
     await readSftpLocalFileClipboard();
     await trustSftpHostKey({ hostId: "host-lab" });
 
     expect(invokeMock).toHaveBeenCalledWith("sftp_enqueue_transfer", {
       request: {
+        conflictPolicy: "rename",
         direction: "upload",
         hostId: "host-lab",
         kind: "file",
@@ -265,10 +365,22 @@ describe("sftpApi", () => {
       },
     });
     expect(invokeMock).toHaveBeenCalledWith("sftp_list_transfers");
+    expect(invokeMock).toHaveBeenCalledWith("sftp_list_transfers", {
+      request: { viewScope: "sftp-workbench:tab-a" },
+    });
     expect(invokeMock).toHaveBeenCalledWith("sftp_cancel_transfer", {
       request: { transferId: "transfer-1" },
     });
+    expect(invokeMock).toHaveBeenCalledWith("sftp_cancel_transfer", {
+      request: {
+        transferId: "transfer-1",
+        viewScope: "sftp-workbench:tab-a",
+      },
+    });
     expect(invokeMock).toHaveBeenCalledWith("sftp_clear_completed_transfers");
+    expect(invokeMock).toHaveBeenCalledWith("sftp_clear_completed_transfers", {
+      request: { viewScope: "sftp-workbench:tab-a" },
+    });
     expect(invokeMock).toHaveBeenCalledWith("sftp_classify_local_paths", {
       request: { paths: ["C:\\\\tmp\\\\a.log"] },
     });
@@ -276,6 +388,19 @@ describe("sftpApi", () => {
     expect(invokeMock).toHaveBeenCalledWith("sftp_trust_host_key", {
       request: { hostId: "host-lab" },
     });
+    expect(
+      invokeMock.mock.calls.find(([command]) => command === "sftp_list_transfers"),
+    ).toEqual(["sftp_list_transfers"]);
+    expect(
+      invokeMock.mock.calls.find(
+        ([command]) => command === "sftp_clear_completed_transfers",
+      ),
+    ).toEqual(["sftp_clear_completed_transfers"]);
+    expect(
+      invokeMock.mock.calls.find(
+        ([command]) => command === "sftp_read_local_file_clipboard",
+      ),
+    ).toEqual(["sftp_read_local_file_clipboard"]);
   });
 
   it("simulates managed transfer progress outside Tauri", async () => {

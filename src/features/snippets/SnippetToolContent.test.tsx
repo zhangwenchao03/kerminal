@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TerminalPane, TerminalTab } from "../workspace/types";
@@ -176,7 +176,7 @@ describe("SnippetToolContent", () => {
     expect(await screen.findByText("empty snippets")).toBeInTheDocument();
     expect(screen.queryByText("Git 状态")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "预设命令 14" }));
+    await user.click(screen.getByRole("button", { name: "预设命令 38" }));
 
     expect(await screen.findByText("Git 状态")).toBeInTheDocument();
     expect(screen.getByText(/预设 \//)).toBeInTheDocument();
@@ -191,6 +191,37 @@ describe("SnippetToolContent", () => {
       paneId: "pane-1",
       tabId: "tab-1",
     });
+  });
+
+  it("keeps wheel scrolling inside the horizontal tag filters", async () => {
+    const parentWheel = vi.fn();
+
+    render(
+      <div onWheel={parentWheel}>
+        <SnippetToolContent />
+      </div>,
+    );
+
+    const tagFilter = await screen.findByLabelText("片段标签筛选");
+    Object.defineProperties(tagFilter, {
+      clientWidth: {
+        configurable: true,
+        value: 120,
+      },
+      scrollWidth: {
+        configurable: true,
+        value: 360,
+      },
+    });
+
+    const eventWasNotCanceled = fireEvent.wheel(tagFilter, {
+      cancelable: true,
+      deltaY: 72,
+    });
+
+    expect(eventWasNotCanceled).toBe(false);
+    expect(tagFilter.scrollLeft).toBe(72);
+    expect(parentWheel).not.toHaveBeenCalled();
   });
 
   it("creates a command snippet", async () => {

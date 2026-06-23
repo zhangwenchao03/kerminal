@@ -1,4 +1,3 @@
-import { KeyRound } from "lucide-react";
 import { Select } from "../../../components/ui/select";
 import type {
   RemoteHost,
@@ -97,7 +96,7 @@ export function SshPropertiesPanel({
             aria-label="用户名"
             className={inputClassName}
             onChange={(event) => setUsername(event.currentTarget.value)}
-            placeholder="ubuntu"
+            placeholder="root"
             value={username}
           />
         </FieldRow>
@@ -127,7 +126,7 @@ export function SshPropertiesPanel({
         </FieldRow>
       </div>
       {editingHost ? null : (
-        <div className="rounded-xl bg-black/[0.03] px-3 py-2 text-xs text-zinc-500 dark:bg-white/6 dark:text-zinc-400">
+        <div className="kerminal-muted-surface rounded-xl px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
           {selectedProtocolLabel} 保存后会出现在左侧对应区域里。
         </div>
       )}
@@ -150,14 +149,6 @@ export function SshAuthFields({
   setCredentialRef: (value: string) => void;
   setCredentialSecret: (value: string) => void;
 }) {
-  const selectedOption = authOptions.find((option) => option.value === authType);
-  const credentialRefLabel =
-    authType === "key" ? "私钥路径或引用" : "已有凭据引用";
-  const credentialRefPlaceholder =
-    authType === "key"
-      ? "~/.ssh/id_ed25519 或 credential:ssh/dev"
-      : "credential:ssh/dev/password";
-
   return (
     <div className="grid gap-3">
       <Select
@@ -181,54 +172,49 @@ export function SshAuthFields({
       />
       {authType === "agent" ? null : (
         <>
-          <input
-            aria-label={credentialRefLabel}
-            className={inputClassName}
-            onChange={(event) => setCredentialRef(event.currentTarget.value)}
-            placeholder={credentialRefPlaceholder}
-            value={credentialRef}
-          />
           {authType === "password" ? (
-            <input
-              aria-label="SSH 密码"
-              autoComplete="new-password"
-              className={inputClassName}
-              onChange={(event) => setCredentialSecret(event.currentTarget.value)}
-              placeholder={
-                credentialRef ? "留空则继续使用上面的凭据引用" : "保存到系统凭据仓库"
-              }
-              type="password"
-              value={credentialSecret}
-            />
+            <div className="grid gap-2">
+              <input
+                aria-label="SSH 密码"
+                autoComplete="off"
+                className={inputClassName}
+                onChange={(event) =>
+                  setCredentialSecret(event.currentTarget.value)
+                }
+                placeholder="输入 SSH 密码"
+                type="text"
+                value={credentialSecret}
+              />
+              <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+                密码会随远程主机记录明文保存，编辑主机时直接显示。
+              </p>
+            </div>
           ) : (
-            <textarea
-              aria-label="私钥内容"
-              className={`${inputClassName} min-h-[140px] resize-none py-2 font-mono text-xs`}
-              onChange={(event) => setCredentialSecret(event.currentTarget.value)}
-              placeholder={
-                credentialRef
-                  ? "可选；留空则使用上面的路径或凭据引用"
-                  : "可粘贴 OpenSSH 私钥内容，保存到系统凭据仓库"
-              }
-              spellCheck={false}
-              value={credentialSecret}
-            />
+            <div className="grid gap-2">
+              <input
+                aria-label="私钥路径"
+                className={inputClassName}
+                onChange={(event) => setCredentialRef(event.currentTarget.value)}
+                placeholder="~/.ssh/id_ed25519"
+                value={credentialRef}
+              />
+              <textarea
+                aria-label="私钥内容"
+                className={`${inputClassName} min-h-[140px] resize-none py-2 font-mono text-xs`}
+                onChange={(event) =>
+                  setCredentialSecret(event.currentTarget.value)
+                }
+                placeholder="也可以粘贴 OpenSSH 私钥内容，随主机记录明文保存"
+                spellCheck={false}
+                value={credentialSecret}
+              />
+              <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+                私钥路径和私钥内容二选一；粘贴私钥内容会随远程主机记录明文保存。
+              </p>
+            </div>
           )}
         </>
       )}
-      <div className="rounded-2xl border border-black/8 bg-white/72 p-4 dark:border-white/8 dark:bg-white/6">
-        <div className="flex items-start gap-3">
-          <KeyRound className="mt-0.5 h-4 w-4 text-sky-500 dark:text-sky-300" />
-          <div className="min-w-0 flex-1 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-            <span className="font-medium text-zinc-700 dark:text-zinc-200">
-              {selectedOption?.helper}
-            </span>
-            <span className="ml-1">
-              密码或私钥内容只保存到系统凭据仓库，主机配置仅保存引用。
-            </span>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

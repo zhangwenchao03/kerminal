@@ -94,6 +94,7 @@ export function buildMachineGroups(
             authType: host.authType,
             createdAt: host.createdAt,
             credentialRef: host.credentialRef,
+            credentialSecret: host.credentialSecret,
             description:
               kind === "rdp"
                 ? rdpMachineDescription(host)
@@ -230,7 +231,6 @@ export function syncLocalSidebarMachines(
         return {
           ...profileToLocalMachine(profile),
           remoteGroupId: machine.remoteGroupId,
-          status: machine.status,
         };
       }),
     }))
@@ -250,6 +250,7 @@ export function collectPersistentSidebarMachines(groups: MachineGroup[]) {
       .map((machine) => ({
         ...machine,
         remoteGroupId: machine.remoteGroupId ?? group.id,
+        status: machine.kind === "local" ? ("offline" as const) : machine.status,
       })),
   );
 }

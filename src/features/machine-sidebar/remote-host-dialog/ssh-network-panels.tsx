@@ -107,21 +107,9 @@ export function SshProxyPanel({
           value={proxy.username ?? ""}
         />
       </FieldRow>
-      <FieldRow label="凭据">
-        <input
-          aria-label="代理凭据引用"
-          className={inputClassName}
-          disabled={disabled}
-          onChange={(event) =>
-            updateProxy({ credentialRef: event.currentTarget.value })
-          }
-          placeholder="credential:ssh/proxy/password"
-          value={proxy.credentialRef ?? ""}
-        />
-      </FieldRow>
       <HelpCard
         icon={<Waypoints className="mt-0.5 h-4 w-4 text-sky-500 dark:text-sky-300" />}
-        text="代理密码只填写凭据引用；真实密码应进入系统凭据仓库，不写入连接配置。"
+        text="代理仅保存协议、主机、端口和可选用户名；需要认证的代理暂不在这里保存密码。"
       />
     </div>
   );

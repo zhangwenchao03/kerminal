@@ -2,15 +2,18 @@
 //!
 //! @author kongweiguang
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use russh_sftp::{
-    client::SftpSession,
+    client::{fs::File as SftpFile, SftpSession},
     protocol::{FileType, OpenFlags},
 };
 use tokio::{fs, io::AsyncWriteExt};
 
-use crate::error::AppResult;
+use crate::{
+    error::{AppError, AppResult},
+    models::sftp::SftpTransferConflictPolicy,
+};
 
 use super::{
     backend::{io_sftp_error, native_sftp_error, SftpRuntimeSettings},
@@ -19,16 +22,28 @@ use super::{
     ProgressReader, ProgressWriter, TransferProgress,
 };
 
+enum RemoteReadFallback {
+    File(String),
+    Directory(String),
+}
+
 pub(super) async fn upload_directory(
     sftp: &SftpSession,
     local_path: &Path,
     remote_path: &str,
     progress: &TransferProgress,
     settings: SftpRuntimeSettings,
+    conflict_policy: SftpTransferConflictPolicy,
 ) -> AppResult<()> {
     let total = calculate_local_directory_bytes(local_path).await?;
     progress.set_total_bytes(total);
-    let mut stack = vec![(local_path.to_path_buf(), remote_path.to_owned())];
+    let Some(remote_root) =
+        prepare_remote_directory_root(sftp, remote_path, conflict_policy).await?
+    else {
+        progress.add_bytes(total);
+        return Ok(());
+    };
+    let mut stack = vec![(local_path.to_path_buf(), remote_root)];
     while let Some((local_dir, remote_dir)) = stack.pop() {
         progress.ensure_not_cancelled()?;
         if let Err(error) = sftp.create_dir(remote_dir.clone()).await {
@@ -51,6 +66,7 @@ pub(super) async fn upload_directory(
                     &remote_child,
                     progress,
                     settings,
+                    conflict_policy,
                     false,
                 )
                 .await?;
@@ -66,6 +82,7 @@ pub(super) async fn upload_file(
     remote_path: &str,
     progress: &TransferProgress,
     settings: SftpRuntimeSettings,
+    conflict_policy: SftpTransferConflictPolicy,
     set_total: bool,
 ) -> AppResult<()> {
     progress.ensure_not_cancelled()?;
@@ -75,13 +92,12 @@ pub(super) async fn upload_file(
     }
     let mut local_file = fs::File::open(local_path).await?;
     let mut reader = ProgressReader::new(&mut local_file, progress.clone());
-    let mut remote_file = sftp
-        .open_with_flags(
-            remote_path,
-            OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE,
-        )
-        .await
-        .map_err(native_sftp_error)?;
+    let Some(mut remote_file) =
+        open_remote_write_target(sftp, remote_path, conflict_policy, metadata.len()).await?
+    else {
+        progress.add_bytes(metadata.len());
+        return Ok(());
+    };
     remote_file
         .write_all_pipelined(&mut reader, settings.pipeline_depth)
         .await
@@ -95,9 +111,12 @@ pub(super) async fn download_directory(
     local_path: &Path,
     progress: &TransferProgress,
     settings: SftpRuntimeSettings,
+    conflict_policy: SftpTransferConflictPolicy,
 ) -> AppResult<()> {
-    fs::create_dir_all(local_path).await?;
-    let mut stack = vec![(remote_path.to_owned(), local_path.to_path_buf())];
+    let Some(local_root) = prepare_local_directory_root(local_path, conflict_policy).await? else {
+        return Ok(());
+    };
+    let mut stack = vec![(remote_path.to_owned(), local_root)];
     while let Some((remote_dir, local_dir)) = stack.pop() {
         progress.ensure_not_cancelled()?;
         fs::create_dir_all(&local_dir).await?;
@@ -116,8 +135,16 @@ pub(super) async fn download_directory(
                     if let Some(size) = entry.metadata().size {
                         progress.add_total_bytes(size);
                     }
-                    download_file(sftp, &remote_child, &local_child, progress, settings, false)
-                        .await?;
+                    download_file(
+                        sftp,
+                        &remote_child,
+                        &local_child,
+                        progress,
+                        settings,
+                        conflict_policy,
+                        false,
+                    )
+                    .await?;
                 }
                 FileType::Other => {}
             }
@@ -132,19 +159,54 @@ pub(super) async fn download_file(
     local_path: &Path,
     progress: &TransferProgress,
     settings: SftpRuntimeSettings,
+    conflict_policy: SftpTransferConflictPolicy,
     set_total: bool,
 ) -> AppResult<()> {
     progress.ensure_not_cancelled()?;
     if let Some(parent) = local_path.parent() {
         fs::create_dir_all(parent).await?;
     }
-    let mut remote_file = sftp.open(remote_path).await.map_err(native_sftp_error)?;
+    let mut remote_file = match sftp.open(remote_path).await {
+        Ok(remote_file) => remote_file,
+        Err(open_error) => {
+            let Some(fallback) = resolve_remote_read_fallback(sftp, remote_path).await else {
+                return Err(native_sftp_error(open_error));
+            };
+            match fallback {
+                RemoteReadFallback::Directory(directory_path) => {
+                    return Box::pin(download_directory(
+                        sftp,
+                        &directory_path,
+                        local_path,
+                        progress,
+                        settings,
+                        conflict_policy,
+                    ))
+                    .await;
+                }
+                RemoteReadFallback::File(file_path) => {
+                    sftp.open(file_path).await.map_err(native_sftp_error)?
+                }
+            }
+        }
+    };
     if set_total {
         if let Ok(metadata) = remote_file.metadata().await {
             progress.set_total_bytes(metadata.size.unwrap_or(0));
         }
     }
-    let mut local_file = fs::File::create(local_path).await?;
+    let remote_size = remote_file
+        .metadata()
+        .await
+        .ok()
+        .and_then(|metadata| metadata.size)
+        .unwrap_or(0);
+    let Some(mut local_file) =
+        open_local_write_target(local_path, conflict_policy, remote_size).await?
+    else {
+        progress.add_bytes(remote_size);
+        return Ok(());
+    };
     let mut writer = ProgressWriter::new(&mut local_file, progress.clone());
     remote_file
         .read_to_writer_pipelined(&mut writer, settings.pipeline_depth)
@@ -154,6 +216,81 @@ pub(super) async fn download_file(
     remote_file.shutdown().await.map_err(io_sftp_error)
 }
 
+async fn resolve_remote_read_fallback(
+    sftp: &SftpSession,
+    remote_path: &str,
+) -> Option<RemoteReadFallback> {
+    if let Some(directory_path) = resolve_remote_directory_path(sftp, remote_path).await {
+        return Some(RemoteReadFallback::Directory(directory_path));
+    }
+
+    let target_path = resolve_remote_link_target_path(sftp, remote_path).await?;
+    if let Some(directory_path) = resolve_remote_directory_path(sftp, &target_path).await {
+        return Some(RemoteReadFallback::Directory(directory_path));
+    }
+    Some(RemoteReadFallback::File(target_path))
+}
+
+async fn resolve_remote_directory_path(sftp: &SftpSession, remote_path: &str) -> Option<String> {
+    if sftp.read_dir(remote_path.to_owned()).await.is_ok() {
+        return Some(remote_path.to_owned());
+    }
+
+    if let Some(target_path) = resolve_remote_link_target_path(sftp, remote_path).await {
+        if sftp.read_dir(target_path.clone()).await.is_ok() {
+            return Some(target_path);
+        }
+    }
+
+    let metadata = sftp.metadata(remote_path.to_owned()).await.ok()?;
+    if !metadata.is_dir() {
+        return None;
+    }
+
+    let canonical_path =
+        normalize_remote_fallback_path(&sftp.canonicalize(remote_path).await.ok()?);
+    if canonical_path != normalize_remote_fallback_path(remote_path)
+        && sftp.read_dir(canonical_path.clone()).await.is_ok()
+    {
+        return Some(canonical_path);
+    }
+
+    None
+}
+
+async fn resolve_remote_link_target_path(sftp: &SftpSession, remote_path: &str) -> Option<String> {
+    let target = sftp.read_link(remote_path.to_owned()).await.ok()?;
+    resolve_remote_link_target(remote_path, &target)
+}
+
+fn resolve_remote_link_target(link_path: &str, target: &str) -> Option<String> {
+    let target = normalize_remote_fallback_path(target);
+    if target.is_empty() {
+        return None;
+    }
+    if target.starts_with('/') {
+        return Some(target);
+    }
+    Some(join_remote_path(&remote_parent_path(link_path), &target))
+}
+
+fn remote_parent_path(path: &str) -> String {
+    let path = normalize_remote_fallback_path(path);
+    let path = path.trim_end_matches('/');
+    match path.rfind('/') {
+        Some(0) | None => "/".to_owned(),
+        Some(index) => path[..index].to_owned(),
+    }
+}
+
+fn normalize_remote_fallback_path(path: &str) -> String {
+    let mut normalized = path.trim().replace('\\', "/");
+    while normalized.len() > 1 && normalized.ends_with('/') {
+        normalized.pop();
+    }
+    normalized
+}
+
 pub(super) async fn copy_remote_directory_between_sessions(
     source_sftp: &SftpSession,
     source_remote_path: &str,
@@ -161,9 +298,14 @@ pub(super) async fn copy_remote_directory_between_sessions(
     target_remote_path: &str,
     progress: &TransferProgress,
     settings: SftpRuntimeSettings,
+    conflict_policy: SftpTransferConflictPolicy,
 ) -> AppResult<()> {
-    ensure_remote_directory(target_sftp, target_remote_path).await?;
-    let mut stack = vec![(source_remote_path.to_owned(), target_remote_path.to_owned())];
+    let Some(target_root) =
+        prepare_remote_directory_root(target_sftp, target_remote_path, conflict_policy).await?
+    else {
+        return Ok(());
+    };
+    let mut stack = vec![(source_remote_path.to_owned(), target_root)];
     while let Some((source_dir, target_dir)) = stack.pop() {
         progress.ensure_not_cancelled()?;
         ensure_remote_directory(target_sftp, &target_dir).await?;
@@ -189,6 +331,7 @@ pub(super) async fn copy_remote_directory_between_sessions(
                         &target_child,
                         progress,
                         settings,
+                        conflict_policy,
                         false,
                     )
                     .await?;
@@ -200,6 +343,7 @@ pub(super) async fn copy_remote_directory_between_sessions(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn copy_remote_file_between_sessions(
     source_sftp: &SftpSession,
     source_remote_path: &str,
@@ -207,25 +351,60 @@ pub(super) async fn copy_remote_file_between_sessions(
     target_remote_path: &str,
     progress: &TransferProgress,
     settings: SftpRuntimeSettings,
+    conflict_policy: SftpTransferConflictPolicy,
     set_total: bool,
 ) -> AppResult<()> {
     progress.ensure_not_cancelled()?;
-    let mut source_file = source_sftp
-        .open(source_remote_path)
-        .await
-        .map_err(native_sftp_error)?;
+    let mut source_file = match source_sftp.open(source_remote_path).await {
+        Ok(source_file) => source_file,
+        Err(open_error) => {
+            let Some(fallback) =
+                resolve_remote_read_fallback(source_sftp, source_remote_path).await
+            else {
+                return Err(native_sftp_error(open_error));
+            };
+            match fallback {
+                RemoteReadFallback::Directory(directory_path) => {
+                    return Box::pin(copy_remote_directory_between_sessions(
+                        source_sftp,
+                        &directory_path,
+                        target_sftp,
+                        target_remote_path,
+                        progress,
+                        settings,
+                        conflict_policy,
+                    ))
+                    .await;
+                }
+                RemoteReadFallback::File(file_path) => source_sftp
+                    .open(file_path)
+                    .await
+                    .map_err(native_sftp_error)?,
+            }
+        }
+    };
     if set_total {
         if let Ok(metadata) = source_file.metadata().await {
             progress.set_total_bytes(metadata.size.unwrap_or(0));
         }
     }
-    let mut target_file = target_sftp
-        .open_with_flags(
-            target_remote_path,
-            OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE,
-        )
+    let source_size = source_file
+        .metadata()
         .await
-        .map_err(native_sftp_error)?;
+        .ok()
+        .and_then(|metadata| metadata.size)
+        .unwrap_or(0);
+    let Some(mut target_file) = open_remote_write_target(
+        target_sftp,
+        target_remote_path,
+        conflict_policy,
+        source_size,
+    )
+    .await?
+    else {
+        progress.add_bytes(source_size);
+        return Ok(());
+    };
     {
         let mut writer = ProgressWriter::new(&mut target_file, progress.clone());
         source_file
@@ -247,6 +426,203 @@ async fn ensure_remote_directory(sftp: &SftpSession, remote_path: &str) -> AppRe
     Ok(())
 }
 
+async fn prepare_remote_directory_root(
+    sftp: &SftpSession,
+    remote_path: &str,
+    conflict_policy: SftpTransferConflictPolicy,
+) -> AppResult<Option<String>> {
+    match conflict_policy {
+        SftpTransferConflictPolicy::Overwrite => {
+            ensure_remote_directory(sftp, remote_path).await?;
+            Ok(Some(remote_path.to_owned()))
+        }
+        SftpTransferConflictPolicy::Skip => match sftp.create_dir(remote_path.to_owned()).await {
+            Ok(()) => Ok(Some(remote_path.to_owned())),
+            Err(error) if is_already_exists_error(&error) => Ok(None),
+            Err(error) => Err(native_sftp_error(error)),
+        },
+        SftpTransferConflictPolicy::Rename => {
+            for candidate in remote_conflict_candidates(remote_path).take(1000) {
+                match sftp.create_dir(candidate.clone()).await {
+                    Ok(()) => return Ok(Some(candidate)),
+                    Err(error) if is_already_exists_error(&error) => continue,
+                    Err(error) => return Err(native_sftp_error(error)),
+                }
+            }
+            Err(AppError::Sftp(format!(
+                "无法为远程目标生成不冲突的目录名: {remote_path}"
+            )))
+        }
+    }
+}
+
+async fn prepare_local_directory_root(
+    local_path: &Path,
+    conflict_policy: SftpTransferConflictPolicy,
+) -> AppResult<Option<PathBuf>> {
+    match conflict_policy {
+        SftpTransferConflictPolicy::Overwrite => {
+            fs::create_dir_all(local_path).await?;
+            Ok(Some(local_path.to_path_buf()))
+        }
+        SftpTransferConflictPolicy::Skip if fs::try_exists(local_path).await? => Ok(None),
+        SftpTransferConflictPolicy::Skip => {
+            fs::create_dir_all(local_path).await?;
+            Ok(Some(local_path.to_path_buf()))
+        }
+        SftpTransferConflictPolicy::Rename => {
+            for candidate in local_conflict_candidates(local_path).take(1000) {
+                match fs::create_dir(&candidate).await {
+                    Ok(()) => return Ok(Some(candidate)),
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                    Err(error) => return Err(error.into()),
+                }
+            }
+            Err(AppError::Sftp(format!(
+                "无法为本地目标生成不冲突的目录名: {}",
+                local_path.display()
+            )))
+        }
+    }
+}
+
+async fn open_remote_write_target(
+    sftp: &SftpSession,
+    remote_path: &str,
+    conflict_policy: SftpTransferConflictPolicy,
+    skipped_bytes: u64,
+) -> AppResult<Option<SftpFile>> {
+    match conflict_policy {
+        SftpTransferConflictPolicy::Overwrite => sftp
+            .open_with_flags(
+                remote_path,
+                OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE,
+            )
+            .await
+            .map(Some)
+            .map_err(native_sftp_error),
+        SftpTransferConflictPolicy::Skip => {
+            match sftp
+                .open_with_flags(
+                    remote_path,
+                    OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
+                )
+                .await
+            {
+                Ok(file) => Ok(Some(file)),
+                Err(error) if is_already_exists_error(&error) => {
+                    let _ = skipped_bytes;
+                    Ok(None)
+                }
+                Err(error) => Err(native_sftp_error(error)),
+            }
+        }
+        SftpTransferConflictPolicy::Rename => {
+            for candidate in remote_conflict_candidates(remote_path).take(1000) {
+                match sftp
+                    .open_with_flags(
+                        candidate,
+                        OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
+                    )
+                    .await
+                {
+                    Ok(file) => return Ok(Some(file)),
+                    Err(error) if is_already_exists_error(&error) => continue,
+                    Err(error) => return Err(native_sftp_error(error)),
+                }
+            }
+            Err(AppError::Sftp(format!(
+                "无法为远程目标生成不冲突的文件名: {remote_path}"
+            )))
+        }
+    }
+}
+
+async fn open_local_write_target(
+    local_path: &Path,
+    conflict_policy: SftpTransferConflictPolicy,
+    skipped_bytes: u64,
+) -> AppResult<Option<fs::File>> {
+    match conflict_policy {
+        SftpTransferConflictPolicy::Overwrite => fs::File::create(local_path)
+            .await
+            .map(Some)
+            .map_err(Into::into),
+        SftpTransferConflictPolicy::Skip => {
+            match fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(local_path)
+                .await
+            {
+                Ok(file) => Ok(Some(file)),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let _ = skipped_bytes;
+                    Ok(None)
+                }
+                Err(error) => Err(error.into()),
+            }
+        }
+        SftpTransferConflictPolicy::Rename => {
+            for candidate in local_conflict_candidates(local_path).take(1000) {
+                match fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(candidate)
+                    .await
+                {
+                    Ok(file) => return Ok(Some(file)),
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                    Err(error) => return Err(error.into()),
+                }
+            }
+            Err(AppError::Sftp(format!(
+                "无法为本地目标生成不冲突的文件名: {}",
+                local_path.display()
+            )))
+        }
+    }
+}
+
+fn remote_conflict_candidates(remote_path: &str) -> impl Iterator<Item = String> + '_ {
+    std::iter::once(remote_path.to_owned()).chain((1..).map(move |index| {
+        let parent = remote_parent_path(remote_path);
+        let name = remote_path
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or(remote_path);
+        join_remote_path(&parent, &numbered_candidate_name(name, index))
+    }))
+}
+
+fn local_conflict_candidates(local_path: &Path) -> impl Iterator<Item = PathBuf> + '_ {
+    std::iter::once(local_path.to_path_buf()).chain((1..).map(move |index| {
+        let name = local_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("file");
+        let candidate_name = numbered_candidate_name(name, index);
+        local_path
+            .parent()
+            .map(|parent| parent.join(&candidate_name))
+            .unwrap_or_else(|| PathBuf::from(candidate_name))
+    }))
+}
+
+fn numbered_candidate_name(name: &str, index: usize) -> String {
+    let trimmed = name.trim();
+    let name = if trimmed.is_empty() { "file" } else { trimmed };
+    let Some(dot_index) = name.rfind('.') else {
+        return format!("{name} ({index})");
+    };
+    if dot_index == 0 {
+        return format!("{name} ({index})");
+    }
+    let (stem, extension) = name.split_at(dot_index);
+    format!("{stem} ({index}){extension}")
+}
+
 async fn calculate_local_directory_bytes(path: &Path) -> AppResult<u64> {
     let mut total = 0_u64;
     let mut stack = vec![path.to_path_buf()];
@@ -262,4 +638,102 @@ async fn calculate_local_directory_bytes(path: &Path) -> AppResult<u64> {
         }
     }
     Ok(total)
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn numbered_candidate_name_preserves_file_extension() {
+        assert_eq!(numbered_candidate_name("report.txt", 1), "report (1).txt");
+        assert_eq!(numbered_candidate_name("archive", 2), "archive (2)");
+        assert_eq!(numbered_candidate_name(".env", 3), ".env (3)");
+    }
+
+    #[tokio::test]
+    async fn open_local_write_target_skip_keeps_existing_file() {
+        let root = tempdir().expect("tempdir");
+        let target = root.path().join("existing.txt");
+        fs::write(&target, b"original").await.expect("seed target");
+
+        let file = open_local_write_target(&target, SftpTransferConflictPolicy::Skip, 8)
+            .await
+            .expect("open target");
+
+        assert!(file.is_none());
+        assert_eq!(
+            fs::read_to_string(&target).await.expect("read target"),
+            "original"
+        );
+    }
+
+    #[tokio::test]
+    async fn open_local_write_target_rename_creates_numbered_candidate() {
+        let root = tempdir().expect("tempdir");
+        let target = root.path().join("report.txt");
+        let renamed = root.path().join("report (1).txt");
+        fs::write(&target, b"original").await.expect("seed target");
+
+        let mut file = open_local_write_target(&target, SftpTransferConflictPolicy::Rename, 8)
+            .await
+            .expect("open renamed target")
+            .expect("renamed file");
+        file.write_all(b"new").await.expect("write renamed target");
+        file.flush().await.expect("flush renamed target");
+
+        assert_eq!(
+            fs::read_to_string(&target).await.expect("read target"),
+            "original"
+        );
+        assert_eq!(
+            fs::read_to_string(&renamed).await.expect("read renamed"),
+            "new"
+        );
+    }
+
+    #[tokio::test]
+    async fn prepare_local_directory_root_skip_keeps_existing_tree() {
+        let root = tempdir().expect("tempdir");
+        let target = root.path().join("release");
+        fs::create_dir_all(target.join("nested"))
+            .await
+            .expect("seed target directory");
+        fs::write(target.join("nested/existing.txt"), b"original")
+            .await
+            .expect("seed existing child");
+
+        let prepared = prepare_local_directory_root(&target, SftpTransferConflictPolicy::Skip)
+            .await
+            .expect("prepare target");
+
+        assert!(prepared.is_none());
+        assert_eq!(
+            fs::read_to_string(target.join("nested/existing.txt"))
+                .await
+                .expect("read existing child"),
+            "original"
+        );
+    }
+
+    #[tokio::test]
+    async fn prepare_local_directory_root_rename_creates_numbered_directory() {
+        let root = tempdir().expect("tempdir");
+        let target = root.path().join("release");
+        let renamed = root.path().join("release (1)");
+        fs::create_dir_all(&target)
+            .await
+            .expect("seed target directory");
+
+        let prepared = prepare_local_directory_root(&target, SftpTransferConflictPolicy::Rename)
+            .await
+            .expect("prepare renamed target")
+            .expect("renamed target");
+
+        assert_eq!(prepared, renamed);
+        assert!(target.is_dir());
+        assert!(prepared.is_dir());
+    }
 }

@@ -7,6 +7,7 @@ pub(super) fn client_action_for_invocation(
     match tool.id.as_str() {
         "terminal.create" => Ok(Some(terminal_create_client_action(arguments)?)),
         "ssh.connect" => Ok(Some(ssh_connect_client_action(arguments)?)),
+        "ssh.ensure_connected" => ssh_ensure_connected_client_action(arguments),
         "workspace.split_pane" => {
             let direction = workspace_split_direction(arguments)?;
             Ok(Some(AiToolClientAction {
@@ -74,6 +75,7 @@ pub(super) fn execute_terminal_create(
         status: AiToolInvocationStatus::Succeeded,
         result_summary: Some(format!("本地终端已批准创建，客户端将打开新 tab{detail}。")),
         error: None,
+        ..ToolExecutionResult::default()
     }
 }
 
@@ -137,6 +139,42 @@ pub(super) fn ssh_connect_client_action(
     })
 }
 
+fn ssh_ensure_connected_client_action(
+    arguments: &serde_json::Map<String, Value>,
+) -> AppResult<Option<AiToolClientAction>> {
+    let Some(host_id) = optional_string_arg(arguments, "hostId")?
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+    let Some(cols) = number_to_u16(arguments.get("cols")) else {
+        return Err(AppError::InvalidInput(
+            "cols 必须是 1 到 65535 的数字。".to_owned(),
+        ));
+    };
+    let Some(rows) = number_to_u16(arguments.get("rows")) else {
+        return Err(AppError::InvalidInput(
+            "rows 必须是 1 到 65535 的数字。".to_owned(),
+        ));
+    };
+
+    Ok(Some(AiToolClientAction {
+        kind: AiToolClientActionKind::SshConnect,
+        direction: None,
+        title: None,
+        shell: None,
+        args: None,
+        cwd: None,
+        env: None,
+        host_id: Some(host_id),
+        tab_id: None,
+        tool_id: None,
+        cols: Some(cols),
+        rows: Some(rows),
+    }))
+}
+
 pub(super) fn execute_workspace_split_pane(
     arguments: &serde_json::Map<String, Value>,
 ) -> ToolExecutionResult {
@@ -154,6 +192,7 @@ pub(super) fn execute_workspace_split_pane(
         status: AiToolInvocationStatus::Succeeded,
         result_summary: Some(format!("工作区{label}已批准，客户端将立即执行。")),
         error: None,
+        ..ToolExecutionResult::default()
     }
 }
 
@@ -190,6 +229,7 @@ pub(super) fn execute_workspace_focus_tab(
             truncate_string(&tab_id)
         )),
         error: None,
+        ..ToolExecutionResult::default()
     }
 }
 
@@ -222,6 +262,7 @@ pub(super) fn execute_workspace_open_tool(
             workspace_tool_label(&tool_id).unwrap_or("指定工具面板")
         )),
         error: None,
+        ..ToolExecutionResult::default()
     }
 }
 

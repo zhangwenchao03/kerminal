@@ -189,6 +189,7 @@ export interface AppearanceSettings {
   backgroundImagePath: string;
   backgroundOpacity: number;
   interfaceLanguage: InterfaceLanguage;
+  windowOpacity: number;
 }
 
 export interface KeybindingSetting {
@@ -312,6 +313,12 @@ export function normalizeAppSettings(
       ),
       interfaceLanguage: normalizeInterfaceLanguage(
         appearance.interfaceLanguage,
+      ),
+      windowOpacity: clampNumber(
+        appearance.windowOpacity,
+        35,
+        100,
+        defaultAppearanceSettings.windowOpacity,
       ),
     },
     interfaceDensity: normalizeInterfaceDensity(settings?.interfaceDensity),

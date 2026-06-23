@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { Check, Clipboard, RefreshCw, Wrench, type LucideIcon } from "lucide-react";
+import {
+  Check,
+  Clipboard,
+  RefreshCw,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "../../../lib/cn";
 import type { McpHttpServerStatus } from "../../../lib/toolRegistryApi";
 import {
@@ -14,6 +20,9 @@ import type {
   McpHttpServerLoadState,
   McpTransportDefinition,
 } from "./types";
+
+const mcpInlineButtonClass =
+  "kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex items-center justify-center gap-1.5 rounded-lg border text-zinc-600 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-300";
 
 export function McpHttpTransportCard({
   error,
@@ -50,18 +59,18 @@ export function McpHttpTransportCard({
   };
 
   return (
-    <div className="rounded-xl border border-black/8 bg-white/70 p-3 dark:border-white/8 dark:bg-white/6">
+    <div className="kerminal-solid-surface rounded-xl border p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
             {transport.title}
           </div>
           <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-            通过本机 Streamable HTTP endpoint 提供给 Claude、Codex 或其它
-            MCP Client 连接。
+            通过本机 Streamable HTTP endpoint 提供给 Claude、Codex 或其它 MCP
+            Client 连接。
           </p>
         </div>
-        <span className="shrink-0 rounded-full bg-black/[0.04] px-2 py-1 text-[11px] text-zinc-500 dark:bg-white/8 dark:text-zinc-400">
+        <span className="shrink-0 rounded-full border border-[var(--border-subtle)] bg-[var(--surface-field)] px-2 py-1 text-[11px] text-zinc-500 dark:text-zinc-400">
           {statusLabel}
         </span>
       </div>
@@ -81,12 +90,15 @@ export function McpHttpTransportCard({
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             {endpoint ? (
               <>
-                <code className="min-w-0 flex-1 select-all break-all rounded-md bg-black/[0.04] px-2 py-1 font-mono text-[11px] text-zinc-700 dark:bg-white/8 dark:text-zinc-200">
+                <code className="kerminal-field-surface min-w-0 flex-1 select-all break-all rounded-lg border px-2 py-1 font-mono text-[11px] text-zinc-700 dark:text-zinc-200">
                   {endpoint}
                 </code>
                 <button
                   aria-label="复制 HTTP MCP endpoint"
-                  className="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border border-black/10 bg-white/80 px-2 text-[11px] text-zinc-600 transition hover:bg-black/[0.04] dark:border-white/10 dark:bg-white/8 dark:text-zinc-300 dark:hover:bg-white/12"
+                  className={cn(
+                    mcpInlineButtonClass,
+                    "h-7 shrink-0 px-2 text-[11px]",
+                  )}
                   onClick={() => void copyText("endpoint", endpoint)}
                   type="button"
                 >
@@ -99,7 +111,7 @@ export function McpHttpTransportCard({
                 </button>
               </>
             ) : (
-              <span className="rounded-md bg-black/[0.04] px-2 py-1 text-[11px] text-zinc-500 dark:bg-white/8 dark:text-zinc-400">
+              <span className="kerminal-muted-surface rounded-lg border px-2 py-1 text-[11px] text-zinc-500 dark:text-zinc-400">
                 {isLoading
                   ? "正在启动本地 HTTP MCP Server..."
                   : "启动后显示真实端口"}
@@ -111,13 +123,13 @@ export function McpHttpTransportCard({
         <div className="grid gap-1 sm:grid-cols-[88px_minmax(0,1fr)]">
           <span>config</span>
           <div className="min-w-0">
-            <pre className="max-h-36 overflow-auto rounded-lg border border-black/8 bg-black/[0.04] p-3 text-[11px] leading-5 text-zinc-700 dark:border-white/8 dark:bg-black/30 dark:text-zinc-200">
+            <pre className="kerminal-field-surface max-h-36 overflow-auto rounded-xl border p-3 text-[11px] leading-5 text-zinc-700 dark:text-zinc-200">
               {configJson ?? "启动后显示可复制 JSON 配置"}
             </pre>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <button
                 aria-label="复制 HTTP MCP JSON 配置"
-                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-black/10 bg-white/80 px-2 text-xs text-zinc-600 transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/8 dark:text-zinc-300 dark:hover:bg-white/12"
+                className={cn(mcpInlineButtonClass, "h-8 px-2 text-xs")}
                 disabled={!configJson}
                 onClick={() =>
                   configJson ? void copyText("config", configJson) : undefined
@@ -133,7 +145,7 @@ export function McpHttpTransportCard({
               </button>
               <button
                 aria-label="刷新 HTTP MCP endpoint"
-                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-black/10 bg-white/80 px-2 text-xs text-zinc-600 transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/8 dark:text-zinc-300 dark:hover:bg-white/12"
+                className={cn(mcpInlineButtonClass, "h-8 px-2 text-xs")}
                 disabled={isLoading}
                 onClick={onRefresh}
                 type="button"
@@ -172,7 +184,7 @@ function McpInlineCode({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid gap-1 sm:grid-cols-[88px_minmax(0,1fr)]">
       <span>{label}</span>
-      <code className="min-w-0 truncate rounded-md bg-black/[0.04] px-2 py-1 font-mono text-[11px] text-zinc-700 dark:bg-white/8 dark:text-zinc-200">
+      <code className="kerminal-field-surface min-w-0 truncate rounded-lg border px-2 py-1 font-mono text-[11px] text-zinc-700 dark:text-zinc-200">
         {value}
       </code>
     </div>
@@ -181,7 +193,7 @@ function McpInlineCode({ label, value }: { label: string; value: string }) {
 
 export function McpEmptyState({ text }: { text: string }) {
   return (
-    <div className="rounded-xl border border-dashed border-black/10 px-3 py-5 text-center text-sm text-zinc-500 dark:border-white/10 dark:text-zinc-400">
+    <div className="kerminal-muted-surface rounded-xl border border-dashed px-3 py-5 text-center text-sm text-zinc-500 dark:text-zinc-400">
       {text}
     </div>
   );
@@ -214,7 +226,7 @@ export function McpCapabilityMetric({
   value: number;
 }) {
   return (
-    <div className="rounded-xl border border-black/8 bg-black/[0.025] p-3 text-center dark:border-white/8 dark:bg-black/20">
+    <div className="kerminal-muted-surface rounded-xl border p-3 text-center">
       <div className="text-lg font-semibold text-zinc-950 dark:text-zinc-50">
         {value}
       </div>
@@ -231,13 +243,13 @@ export function McpToolCatalog({
   tools: McpGatewayManifest["tools"]["tools"];
 }) {
   return (
-    <section className="rounded-xl border border-black/8 bg-black/[0.025] p-4 dark:border-white/8 dark:bg-black/20">
+    <section className="kerminal-muted-surface rounded-xl border p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
           <Wrench className="h-4 w-4 text-zinc-400" />
           MCP 工具目录
         </h3>
-        <span className="rounded-full bg-black/[0.04] px-3 py-1 text-xs text-zinc-500 dark:bg-white/8 dark:text-zinc-400">
+        <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface-field)] px-3 py-1 text-xs text-zinc-500 dark:text-zinc-400">
           {tools.length} tools exposed
         </span>
       </div>
@@ -261,24 +273,24 @@ function McpToolGroup({
   tools: McpGatewayManifest["tools"]["tools"];
 }) {
   return (
-    <div className="rounded-xl border border-black/8 bg-white/70 p-3 dark:border-white/8 dark:bg-white/6">
+    <div className="kerminal-solid-surface rounded-xl border p-3">
       <div className="flex items-center justify-between gap-3">
         <h4 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">
           {title}
         </h4>
-        <span className="rounded-full bg-black/[0.04] px-2 py-1 text-[11px] text-zinc-500 dark:bg-white/8 dark:text-zinc-400">
+        <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface-field)] px-2 py-1 text-[11px] text-zinc-500 dark:text-zinc-400">
           {tools.length}
         </span>
       </div>
       <div className="mt-2 max-h-80 space-y-2 overflow-auto pr-1">
         {tools.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-black/10 px-3 py-4 text-sm text-zinc-500 dark:border-white/10 dark:text-zinc-400">
+          <p className="kerminal-muted-surface rounded-lg border border-dashed px-3 py-4 text-sm text-zinc-500 dark:text-zinc-400">
             {empty}
           </p>
         ) : (
           tools.map((tool) => (
             <div
-              className="rounded-lg border border-black/8 bg-black/[0.02] p-3 dark:border-white/8 dark:bg-black/20"
+              className="kerminal-muted-surface rounded-lg border p-3"
               key={tool.name}
             >
               <div className="flex items-start justify-between gap-3">
@@ -319,7 +331,7 @@ function McpToolGroup({
 
 function McpToolBadge({ children }: { children: string }) {
   return (
-    <span className="rounded-full bg-black/[0.04] px-2 py-1 text-[11px] text-zinc-500 dark:bg-white/8 dark:text-zinc-400">
+    <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface-field)] px-2 py-1 text-[11px] text-zinc-500 dark:text-zinc-400">
       {children}
     </span>
   );
@@ -343,20 +355,20 @@ export function McpDefinitionList({
   title: string;
 }) {
   return (
-    <section className="rounded-xl border border-black/8 bg-black/[0.025] p-4 dark:border-white/8 dark:bg-black/20">
+    <section className="kerminal-muted-surface rounded-xl border p-4">
       <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
         <Icon className="h-4 w-4 text-zinc-400" />
         {title}
       </h3>
       <div className="mt-3 space-y-2">
         {items.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-black/10 px-3 py-4 text-sm text-zinc-500 dark:border-white/10 dark:text-zinc-400">
+          <p className="kerminal-muted-surface rounded-xl border border-dashed px-3 py-4 text-sm text-zinc-500 dark:text-zinc-400">
             {empty}
           </p>
         ) : (
           items.map((item) => (
             <div
-              className="flex items-start justify-between gap-3 rounded-xl border border-black/8 bg-white/70 px-3 py-2 dark:border-white/8 dark:bg-white/6"
+              className="kerminal-solid-surface flex items-start justify-between gap-3 rounded-xl border px-3 py-2"
               key={item.detail}
             >
               <div className="min-w-0">
@@ -367,7 +379,7 @@ export function McpDefinitionList({
                   {item.detail}
                 </div>
               </div>
-              <span className="shrink-0 rounded-full bg-black/[0.04] px-2 py-1 text-[11px] text-zinc-500 dark:bg-white/8 dark:text-zinc-400">
+              <span className="shrink-0 rounded-full border border-[var(--border-subtle)] bg-[var(--surface-field)] px-2 py-1 text-[11px] text-zinc-500 dark:text-zinc-400">
                 {item.meta}
               </span>
             </div>

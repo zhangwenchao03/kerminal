@@ -37,7 +37,7 @@ fn snapshot_rejects_unknown_remote_host_before_spawning_ssh() {
 }
 
 #[test]
-fn build_plan_uses_parameterized_openssh_args_without_credentials() {
+fn build_plan_uses_parameterized_openssh_args_without_old_credential_refs() {
     let plan =
         build_server_info_plan_with_executable(&remote_host(RemoteHostAuthType::Key), "ssh".into())
             .expect("build plan");
@@ -84,7 +84,7 @@ fn build_plan_uses_parameterized_openssh_args_without_credentials() {
 }
 
 #[test]
-fn build_command_request_uses_credential_aware_execution_path() {
+fn build_command_request_uses_plaintext_password_execution_path() {
     let host = remote_host(RemoteHostAuthType::Password);
     let target = RemoteTargetRef::Ssh {
         host_id: host.id.clone(),
@@ -285,6 +285,12 @@ gpu_0_vendor=NVIDIA
 }
 
 fn remote_host(auth_type: RemoteHostAuthType) -> RemoteHost {
+    let (credential_ref, credential_secret) = match auth_type {
+        RemoteHostAuthType::Agent => (None, None),
+        RemoteHostAuthType::Password => (None, Some("correct horse battery staple".to_owned())),
+        RemoteHostAuthType::Key => (Some("C:/keys/dev.key".to_owned()), None),
+    };
+
     RemoteHost {
         id: "host-1".to_owned(),
         group_id: Some("group-1".to_owned()),
@@ -293,7 +299,8 @@ fn remote_host(auth_type: RemoteHostAuthType) -> RemoteHost {
         port: 2222,
         username: "deploy".to_owned(),
         auth_type,
-        credential_ref: Some("credential:ssh/dev".to_owned()),
+        credential_ref,
+        credential_secret,
         tags: vec!["dev".to_owned()],
         production: false,
         ssh_options: Default::default(),

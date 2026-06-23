@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppTitleBar } from "./AppTitleBar";
@@ -7,6 +7,7 @@ const tauriMocks = vi.hoisted(() => ({
   close: vi.fn(),
   isTauri: vi.fn(),
   minimize: vi.fn(),
+  shortcutPlatform: vi.fn(),
   startDragging: vi.fn(),
   toggleMaximize: vi.fn(),
 }));
@@ -24,11 +25,17 @@ vi.mock("@tauri-apps/api/window", () => ({
   }),
 }));
 
+vi.mock("../features/settings/keybindingUtils", () => ({
+  shortcutPlatform: () => tauriMocks.shortcutPlatform(),
+}));
+
 describe("AppTitleBar", () => {
   beforeEach(() => {
     tauriMocks.close.mockReset();
     tauriMocks.isTauri.mockReset();
     tauriMocks.minimize.mockReset();
+    tauriMocks.shortcutPlatform.mockReset();
+    tauriMocks.shortcutPlatform.mockReturnValue("windows");
     tauriMocks.startDragging.mockReset();
     tauriMocks.toggleMaximize.mockReset();
   });
@@ -49,6 +56,16 @@ describe("AppTitleBar", () => {
     );
   });
 
+  it("can render as a transparent overlay without covering the tab bar", () => {
+    render(<AppTitleBar resolvedTheme="dark" surface={false} />);
+
+    const titleBar = screen.getByRole("banner");
+
+    expect(titleBar).not.toHaveClass("kerminal-material-nav");
+    expect(titleBar).not.toHaveClass("border-b");
+    expect(titleBar).toHaveClass("text-zinc-100");
+  });
+
   it("renders without descriptive Chinese title bar copy", () => {
     render(<AppTitleBar resolvedTheme="light" />);
 
@@ -63,6 +80,51 @@ describe("AppTitleBar", () => {
       screen.queryByRole("img", { name: "Kerminal logo" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Kerminal")).not.toBeInTheDocument();
+  });
+
+  it("keeps Windows-style window controls on the right by default", () => {
+    render(<AppTitleBar resolvedTheme="light" />);
+
+    const titleBar = screen.getByRole("banner");
+    const controls = screen.getByLabelText("窗口控制");
+
+    expect(titleBar.lastElementChild).toBe(controls);
+    expect(screen.getByRole("button", { name: "最小化窗口" })).toHaveClass(
+      "h-8",
+    );
+    expect(screen.getByRole("button", { name: "关闭窗口" })).toHaveClass(
+      "rounded-xl",
+    );
+  });
+
+  it("moves macOS window controls to the left in traffic-light order", () => {
+    tauriMocks.shortcutPlatform.mockReturnValue("mac");
+
+    render(
+      <AppTitleBar
+        onLeftPanelCollapsedChange={vi.fn()}
+        resolvedTheme="light"
+      />,
+    );
+
+    const titleBar = screen.getByRole("banner");
+    const leftCluster = titleBar.firstElementChild;
+    const controls = screen.getByLabelText("窗口控制");
+    const buttons = within(controls).getAllByRole("button");
+
+    expect(leftCluster?.firstElementChild).toBe(controls);
+    expect(titleBar.lastElementChild).not.toBe(controls);
+    expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual([
+      "关闭窗口",
+      "最小化窗口",
+      "最大化或还原窗口",
+    ]);
+    expect(screen.getByRole("button", { name: "关闭窗口" })).toHaveClass(
+      "rounded-full",
+    );
+    expect(
+      screen.getByRole("button", { name: "折叠主机侧边栏" }),
+    ).toBeInTheDocument();
   });
 
   it("toggles the left machine sidebar from the top-left control", async () => {

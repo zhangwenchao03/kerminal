@@ -14,7 +14,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 function AppCrashFallback({ error }: { error: Error | null }) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-zinc-950 p-6 text-zinc-100">
-      <section className="w-full max-w-lg rounded-2xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-black/30">
+      <section className="w-full max-w-lg rounded-2xl border border-white/12 bg-zinc-900/80 p-6 shadow-2xl shadow-black/30 backdrop-blur-xl">
         <p className="text-xs font-medium uppercase tracking-normal text-rose-300">
           Kerminal
         </p>

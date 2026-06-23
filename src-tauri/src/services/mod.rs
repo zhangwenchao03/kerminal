@@ -2,14 +2,19 @@
 //!
 //! @author kongweiguang
 
+pub mod ai_agent_context;
+pub mod ai_agent_harness_rig_model;
+pub mod ai_agent_run_service;
 pub mod ai_agent_service;
 pub mod ai_context_service;
+pub mod ai_conversation_service;
 pub mod ai_tool_invocation_service;
 pub mod command_history_service;
 pub mod command_suggestion_service;
 pub mod credential_service;
 pub mod diagnostics_service;
 pub mod docker_host_service;
+pub mod local_network_proxy_service;
 pub mod mcp_discovery_service;
 pub mod mcp_streamable_http_server;
 pub mod mcp_tool_gateway;
@@ -24,9 +29,12 @@ pub mod settings_service;
 pub mod sftp_service;
 pub mod skills_repository;
 pub mod snippet_service;
+pub mod ssh_command_plan;
 pub mod ssh_command_service;
+pub mod ssh_route_plan;
 pub mod ssh_terminal_service;
 pub mod telnet_terminal_service;
 pub mod terminal_manager;
+pub mod terminal_session_binding_service;
 pub mod tool_registry_service;
 pub mod workflow_service;

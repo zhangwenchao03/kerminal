@@ -325,7 +325,7 @@ export function resolveTerminalPromptLine(
   return isLikelyShellPrompt(text) ? cursorLine : undefined;
 }
 
-function isLikelyShellPrompt(text: string) {
+export function isLikelyShellPrompt(text: string) {
   const trimmed = text.trim();
   if (!trimmed) {
     return false;

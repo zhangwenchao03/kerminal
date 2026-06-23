@@ -21,6 +21,7 @@ const sftpApiMocks = vi.hoisted(() => ({
   previewSftpFile: vi.fn(),
   readSftpLocalFileClipboard: vi.fn(),
   renameSftpPath: vi.fn(),
+  statSftpPath: vi.fn(),
   trustSftpHostKey: vi.fn(),
   uploadSftpDirectory: vi.fn(),
   uploadSftpFile: vi.fn(),
@@ -40,6 +41,10 @@ const fileDialogMocks = vi.hoisted(() => ({
   selectLocalDirectory: vi.fn(),
   selectLocalFile: vi.fn(),
   selectSaveFile: vi.fn(),
+}));
+
+const localFilesApiMocks = vi.hoisted(() => ({
+  statLocalPath: vi.fn(),
 }));
 
 const sshCommandApiMocks = vi.hoisted(() => ({
@@ -70,11 +75,13 @@ vi.mock("@tauri-apps/api/webview", () => ({
 
 vi.mock("./RemoteWorkspaceEditor", () => ({
   RemoteWorkspaceEditor: ({
+    onDirtyStateChange,
     openCommand,
     onStatus,
     rootPath,
     target,
   }: {
+    onDirtyStateChange?: (dirty: boolean) => void;
     onStatus?: (status: {
       kind: "info" | "success" | "error";
       message: string;
@@ -97,6 +104,12 @@ vi.mock("./RemoteWorkspaceEditor", () => ({
         type="button"
       >
         触发工作区错误
+      </button>
+      <button onClick={() => onDirtyStateChange?.(true)} type="button">
+        标记工作区未保存
+      </button>
+      <button onClick={() => onDirtyStateChange?.(false)} type="button">
+        清除工作区未保存
       </button>
     </div>
   ),
@@ -136,6 +149,7 @@ vi.mock("../../lib/sftpApi", () => ({
   readSftpLocalFileClipboard: (...args: unknown[]) =>
     sftpApiMocks.readSftpLocalFileClipboard(...args),
   renameSftpPath: (...args: unknown[]) => sftpApiMocks.renameSftpPath(...args),
+  statSftpPath: (...args: unknown[]) => sftpApiMocks.statSftpPath(...args),
   trustSftpHostKey: (...args: unknown[]) =>
     sftpApiMocks.trustSftpHostKey(...args),
   uploadSftpDirectory: (...args: unknown[]) =>
@@ -169,6 +183,11 @@ vi.mock("../../lib/fileDialogApi", () => ({
     fileDialogMocks.selectSaveFile(...args),
 }));
 
+vi.mock("../../lib/localFilesApi", () => ({
+  statLocalPath: (...args: unknown[]) =>
+    localFilesApiMocks.statLocalPath(...args),
+}));
+
 vi.mock("../../lib/sshCommandApi", () => ({
   executeSshCommand: (...args: unknown[]) =>
     sshCommandApiMocks.executeSshCommand(...args),
@@ -176,7 +195,7 @@ vi.mock("../../lib/sshCommandApi", () => ({
 
 export const sshMachine: Machine = {
   authType: "key",
-  credentialRef: "credential:ssh/prod",
+  credentialRef: "C:/keys/prod_ed25519",
   description: "deploy@prod.internal:22",
   host: "prod.internal",
   id: "prod-api",
@@ -277,6 +296,7 @@ beforeEach(() => {
   sftpApiMocks.previewSftpFile.mockReset();
   sftpApiMocks.readSftpLocalFileClipboard.mockReset();
   sftpApiMocks.renameSftpPath.mockReset();
+  sftpApiMocks.statSftpPath.mockReset();
   sftpApiMocks.trustSftpHostKey.mockReset();
   sftpApiMocks.uploadSftpDirectory.mockReset();
   sftpApiMocks.uploadSftpFile.mockReset();
@@ -290,6 +310,7 @@ beforeEach(() => {
   fileDialogMocks.selectLocalDirectory.mockReset();
   fileDialogMocks.selectLocalFile.mockReset();
   fileDialogMocks.selectSaveFile.mockReset();
+  localFilesApiMocks.statLocalPath.mockReset();
   sshCommandApiMocks.executeSshCommand.mockReset();
   eventMocks.listen.mockReset();
   eventMocks.transferHandler = undefined;
@@ -327,6 +348,12 @@ beforeEach(() => {
   sftpApiMocks.deleteSftpPath.mockResolvedValue(true);
   sftpApiMocks.downloadSftpDirectory.mockResolvedValue(true);
   sftpApiMocks.downloadSftpFile.mockResolvedValue(true);
+  sftpApiMocks.statSftpPath.mockRejectedValue(new Error("not found"));
+  localFilesApiMocks.statLocalPath.mockResolvedValue({
+    exists: false,
+    path: "/Users/me/Downloads/missing",
+    readonly: false,
+  });
   sftpApiMocks.enqueueSftpArchiveDownload.mockImplementation(
     async (request) => ({
       bytesTransferred: 0,

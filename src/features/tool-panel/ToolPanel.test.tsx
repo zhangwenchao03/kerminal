@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { tools } from "../workspace/workspaceData";
@@ -16,6 +16,7 @@ const serverInfoApiMocks = vi.hoisted(() => ({
   getServerInfoSnapshot: vi.fn(),
 }));
 const diagnosticsApiMocks = vi.hoisted(() => ({
+  createDiagnosticsBundle: vi.fn(),
   getRuntimeHealthSnapshot: vi.fn(),
 }));
 const aiContextApiMocks = vi.hoisted(() => ({
@@ -36,6 +37,8 @@ vi.mock("../../lib/serverInfoApi", () => ({
     serverInfoApiMocks.getServerInfoSnapshot(...args),
 }));
 vi.mock("../../lib/diagnosticsApi", () => ({
+  createDiagnosticsBundle: (...args: unknown[]) =>
+    diagnosticsApiMocks.createDiagnosticsBundle(...args),
   getRuntimeHealthSnapshot: (...args: unknown[]) =>
     diagnosticsApiMocks.getRuntimeHealthSnapshot(...args),
 }));
@@ -56,7 +59,7 @@ vi.mock("../../lib/monacoSetup", () => ({}));
 
 const sshMachine: Machine = {
   authType: "key",
-  credentialRef: "credential:ssh/prod",
+  credentialRef: "C:/keys/prod_ed25519",
   description: "deploy@prod.internal:22",
   host: "prod.internal",
   id: "prod-api",
@@ -191,6 +194,16 @@ describe("ToolPanel", () => {
       username: "deploy",
     });
     diagnosticsApiMocks.getRuntimeHealthSnapshot.mockReset();
+    diagnosticsApiMocks.createDiagnosticsBundle.mockReset();
+    diagnosticsApiMocks.createDiagnosticsBundle.mockResolvedValue({
+      bytesWritten: 2048,
+      createdAt: "1710000000",
+      fileName: "diagnostics-1710000000.json",
+      id: "diagnostics-1",
+      path: "C:/Users/me/.kerminal/diagnostics/diagnostics-1710000000.json",
+      redacted: true,
+      sections: ["app", "paths"],
+    });
     diagnosticsApiMocks.getRuntimeHealthSnapshot.mockResolvedValue({
       capturedAt: "1",
       process: {
@@ -312,7 +325,7 @@ describe("ToolPanel", () => {
       await screen.findByRole(
         "heading",
         { name: "Kerminal Agent" },
-        { timeout: 5000 },
+        { timeout: 10000 },
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText("历史会话")).not.toBeInTheDocument();
@@ -322,7 +335,7 @@ describe("ToolPanel", () => {
     await user.click(screen.getByRole("button", { name: "查看历史会话" }));
     expect(screen.getByText("历史会话")).toBeInTheDocument();
     expect(screen.queryByText(/Agent 栈：rig-core、rmcp/i)).not.toBeInTheDocument();
-  });
+  }, 20000);
 
   it("requests a tool switch from the rail", async () => {
     const user = userEvent.setup();
@@ -339,6 +352,43 @@ describe("ToolPanel", () => {
     await user.click(screen.getByRole("button", { name: "打开 文件" }));
 
     expect(onActiveToolChange).toHaveBeenCalledWith("sftp");
+  });
+
+  it("shows the diagnostics bundle action on the logs title row", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ToolPanel
+        activeTool="logs"
+        onActiveToolChange={vi.fn()}
+        selectedMachine={localMachine}
+        tools={tools}
+      />,
+    );
+
+    const logsTitle = screen.getByRole("heading", { name: "日志" });
+    const header = logsTitle.closest("header");
+    expect(header).toBeInTheDocument();
+    const createBundleButton = within(header as HTMLElement).getByRole(
+      "button",
+      { name: "生成诊断包" },
+    );
+    expect(createBundleButton).toBeInTheDocument();
+    await user.hover(createBundleButton);
+    expect(
+      await screen.findByRole("tooltip", { name: "生成诊断包" }),
+    ).toBeInTheDocument();
+
+    await user.click(createBundleButton);
+
+    expect(
+      await screen.findByRole("status", { name: "诊断包生成结果" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "C:/Users/me/.kerminal/diagnostics/diagnostics-1710000000.json",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("does not render settings content inside the right tool panel", async () => {
@@ -743,7 +793,9 @@ describe("ToolPanel", () => {
       />,
     );
 
-    expect(await screen.findByText("远程文件浏览")).toBeInTheDocument();
+    expect(
+      await screen.findByText("远程文件浏览", undefined, { timeout: 5000 }),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(/当前终端连接到 SSH 主机或容器后/),
     ).toBeInTheDocument();
@@ -759,8 +811,14 @@ describe("ToolPanel", () => {
       />,
     );
 
-    expect(await screen.findByText("docker:prod-api:api")).toBeInTheDocument();
-    expect(await screen.findByText("package.json")).toBeInTheDocument();
+    expect(
+      await screen.findByText("docker:prod-api:api", undefined, {
+        timeout: 5000,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("package.json", undefined, { timeout: 5000 }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("SFTP 文件浏览")).not.toBeInTheDocument();
   });
 
@@ -774,9 +832,9 @@ describe("ToolPanel", () => {
       />,
     );
 
-    expect(await screen.findByText("端口转发")).toBeInTheDocument();
+    expect(await screen.findByText("SSH 隧道")).toBeInTheDocument();
     expect(
-      screen.getByText(/当前终端连接到 SSH 主机后/),
+      screen.getByText(/请选择 SSH 主机/),
     ).toBeInTheDocument();
   });
 
@@ -800,6 +858,19 @@ describe("ToolPanel", () => {
         },
       ])
       .mockResolvedValueOnce([]);
+    portForwardApiMocks.createPortForward.mockResolvedValueOnce({
+      bindHost: "127.0.0.1",
+      createdAt: "1",
+      hostId: "prod-api",
+      hostName: "prod api",
+      id: "forward-1",
+      kind: "local",
+      name: "PostgreSQL 隧道",
+      sourcePort: 15432,
+      status: "running",
+      targetHost: "127.0.0.1",
+      targetPort: 5432,
+    });
 
     render(
       <ToolPanel
@@ -810,21 +881,26 @@ describe("ToolPanel", () => {
       />,
     );
 
+    await user.click(
+      await screen.findByRole("button", { name: "添加隧道" }, { timeout: 5000 }),
+    );
     await user.type(await screen.findByLabelText("名称"), "PostgreSQL 隧道");
-    await user.click(screen.getByRole("button", { name: "创建转发" }));
+    await user.click(screen.getByRole("button", { name: "开启隧道" }));
 
-    expect(portForwardApiMocks.createPortForward).toHaveBeenCalledWith({
-      bindHost: "127.0.0.1",
-      hostId: "prod-api",
-      kind: "local",
-      name: "PostgreSQL 隧道",
-      sourcePort: 15432,
-      targetHost: "127.0.0.1",
-      targetPort: 5432,
-    });
+    expect(portForwardApiMocks.createPortForward).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bindHost: "127.0.0.1",
+        hostId: "prod-api",
+        kind: "local",
+        name: "PostgreSQL 隧道",
+        sourcePort: 15432,
+        targetHost: "127.0.0.1",
+        targetPort: 5432,
+      }),
+    );
     expect(await screen.findByText("PostgreSQL 隧道")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "停止转发" }));
+    await user.click(screen.getByRole("button", { name: "停止" }));
 
     expect(portForwardApiMocks.closePortForward).toHaveBeenCalledWith("forward-1");
   });

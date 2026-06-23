@@ -266,6 +266,9 @@ pub struct SftpTransferRequest {
     pub remote_path: String,
     /// 本地路径。
     pub local_path: String,
+    /// 目标冲突处理策略；为空时保持旧行为：覆盖目标。
+    #[serde(default)]
+    pub conflict_policy: SftpTransferConflictPolicy,
 }
 
 /// SFTP 传输方向。
@@ -286,6 +289,19 @@ pub enum SftpTransferKind {
     File,
     /// 目录递归传输。
     Directory,
+}
+
+/// SFTP 传输目标冲突处理策略。
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum SftpTransferConflictPolicy {
+    /// 覆盖已存在目标，兼容旧传输行为。
+    #[default]
+    Overwrite,
+    /// 目标已存在时跳过该文件。
+    Skip,
+    /// 目标已存在时自动生成不冲突的新名称。
+    Rename,
 }
 
 /// 本地拖放路径类型。
@@ -346,6 +362,11 @@ pub struct SftpManagedTransferRequest {
     pub direction: SftpTransferDirection,
     /// 传输对象类型。
     pub kind: SftpTransferKind,
+    /// 目标冲突处理策略。
+    #[serde(default)]
+    pub conflict_policy: SftpTransferConflictPolicy,
+    /// 发起该传输的前端视图 scope；为空表示旧的全局队列任务。
+    pub view_scope: Option<String>,
 }
 
 /// 创建远程复制或跨主机传输任务请求。
@@ -362,6 +383,11 @@ pub struct SftpRemoteCopyRequest {
     pub target_remote_path: String,
     /// 传输对象类型。
     pub kind: SftpTransferKind,
+    /// 目标冲突处理策略；为空时保持旧行为：覆盖目标。
+    #[serde(default)]
+    pub conflict_policy: SftpTransferConflictPolicy,
+    /// 发起该传输的前端视图 scope。
+    pub view_scope: Option<String>,
 }
 
 /// 创建远程条目下载为本地 ZIP 的归档任务请求。
@@ -376,6 +402,11 @@ pub struct SftpArchiveDownloadRequest {
     pub target_local_path: String,
     /// 源传输对象类型。
     pub kind: SftpTransferKind,
+    /// 目标冲突处理策略；为空时保持旧行为：覆盖目标。
+    #[serde(default)]
+    pub conflict_policy: SftpTransferConflictPolicy,
+    /// 发起该传输的前端视图 scope。
+    pub view_scope: Option<String>,
 }
 
 /// 创建本地条目压缩为远程 ZIP 的归档上传任务请求。
@@ -390,6 +421,11 @@ pub struct SftpArchiveUploadRequest {
     pub target_remote_path: String,
     /// 源传输对象类型。
     pub kind: SftpTransferKind,
+    /// 目标冲突处理策略；为空时保持旧行为：覆盖目标。
+    #[serde(default)]
+    pub conflict_policy: SftpTransferConflictPolicy,
+    /// 发起该传输的前端视图 scope。
+    pub view_scope: Option<String>,
 }
 
 /// 创建远程条目下载到本地文件剪贴板的任务请求。
@@ -402,6 +438,16 @@ pub struct SftpClipboardDownloadRequest {
     pub source_remote_path: String,
     /// 源传输对象类型。
     pub kind: SftpTransferKind,
+    /// 发起该传输的前端视图 scope。
+    pub view_scope: Option<String>,
+}
+
+/// 按前端视图 scope 查询或清理传输队列；为空请求表示旧的全局语义。
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SftpTransferScopeRequest {
+    /// 前端视图 scope；`None` 表示不过滤，`Some("")` 不应由前端传入。
+    pub view_scope: Option<String>,
 }
 
 /// 取消 SFTP 传输任务请求。
@@ -410,6 +456,8 @@ pub struct SftpClipboardDownloadRequest {
 pub struct SftpTransferCancelRequest {
     /// 传输任务 id。
     pub transfer_id: String,
+    /// 可选视图 scope；存在时只允许取消当前视图拥有的任务。
+    pub view_scope: Option<String>,
 }
 
 /// SFTP 传输端点，用于在队列中明确展示来源和目标。
@@ -417,11 +465,13 @@ pub struct SftpTransferCancelRequest {
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum SftpTransferEndpoint {
     /// 本地文件系统路径。
+    #[serde(rename_all = "camelCase")]
     Local {
         /// 本地绝对路径。
         path: String,
     },
     /// 远程 SSH/SFTP 主机路径。
+    #[serde(rename_all = "camelCase")]
     Remote {
         /// 远程主机 id。
         host_id: String,
@@ -470,6 +520,8 @@ pub struct SftpTransferSummary {
     pub id: String,
     /// 远程主机 id。
     pub host_id: String,
+    /// 发起该传输的前端视图 scope；为空表示旧的全局队列任务。
+    pub view_scope: Option<String>,
     /// 远程路径。
     pub remote_path: String,
     /// 本地路径。

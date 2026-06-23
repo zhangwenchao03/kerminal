@@ -73,13 +73,13 @@ export function RemoteHostGroupCreateDialog({
   return (
     <ModalShell
       description="用于整理 SSH 主机列表，例如实验室、云服务器、客户环境。"
-      maxWidthClassName="max-w-lg"
       onClose={onClose}
       open={open}
+      size="small"
       title={group ? "重命名分组" : "新建分组"}
     >
       <form className="space-y-4" onSubmit={submit}>
-        <div className="rounded-2xl border border-black/8 bg-black/[0.03] p-4 dark:border-white/8 dark:bg-white/6">
+        <div className="kerminal-solid-surface rounded-2xl border p-4">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <FolderPlus className="h-4 w-4 text-sky-500 dark:text-sky-300" />
             分组信息
@@ -90,7 +90,7 @@ export function RemoteHostGroupCreateDialog({
             </span>
             <input
               autoFocus
-              className="mt-1 h-9 w-full rounded-xl border border-black/10 bg-white/86 px-3 text-sm outline-none transition focus:border-sky-500/50 focus:ring-4 focus:ring-sky-500/15 dark:border-white/10 dark:bg-black/20"
+              className="kerminal-field-surface mt-1 h-9 w-full rounded-xl border px-3 text-sm"
               onChange={(event) => setName(event.currentTarget.value)}
               placeholder="例如：开发环境"
               value={name}

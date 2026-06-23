@@ -4,8 +4,8 @@
 
 use crate::{
     models::terminal::{
-        TerminalCreateRequest, TerminalOutputEvent, TerminalResizeRequest, TerminalSessionLogState,
-        TerminalSessionSummary,
+        local_terminal_target_ref, TerminalCreateRequest, TerminalOutputEvent,
+        TerminalResizeRequest, TerminalSessionLogState, TerminalSessionSummary,
     },
     state::AppState,
 };
@@ -21,6 +21,11 @@ pub fn terminal_create_session(
     state
         .terminals()
         .create_session(request, move |event| output.send(event).is_ok())
+        .and_then(|summary| {
+            state
+                .terminals()
+                .set_target_ref(&summary.id, local_terminal_target_ref())
+        })
         .map_err(|error| error.to_string())
 }
 

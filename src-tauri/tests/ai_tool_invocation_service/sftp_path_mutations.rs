@@ -65,6 +65,7 @@ fn confirm_sftp_rename_unknown_host_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("unknown sftp host should become audit record");
@@ -103,6 +104,7 @@ fn confirm_sftp_rename_invalid_path_arg_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("invalid sftp rename should become audit record");
@@ -141,6 +143,7 @@ fn confirm_sftp_rename_root_path_records_failed_audit_before_spawn() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("root path rename should become audit record");
@@ -213,6 +216,7 @@ fn confirm_sftp_move_unknown_host_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("unknown sftp host should become audit record");
@@ -251,6 +255,7 @@ fn confirm_sftp_move_invalid_path_arg_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("invalid sftp move should become audit record");
@@ -289,6 +294,7 @@ fn confirm_sftp_move_root_path_records_failed_audit_before_spawn() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("root path move should become audit record");

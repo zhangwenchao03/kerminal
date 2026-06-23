@@ -1,5 +1,24 @@
 use super::*;
 
+#[test]
+fn transfer_endpoint_serializes_remote_fields_as_camel_case() {
+    let endpoint = SftpTransferEndpoint::Remote {
+        host_id: "source-host".to_owned(),
+        host_label: "dev".to_owned(),
+        path: "/bwy/app/abc/.codex/jdk-21.0.2".to_owned(),
+    };
+
+    assert_eq!(
+        serde_json::to_value(endpoint).expect("serialize transfer endpoint"),
+        serde_json::json!({
+            "kind": "remote",
+            "hostId": "source-host",
+            "hostLabel": "dev",
+            "path": "/bwy/app/abc/.codex/jdk-21.0.2"
+        })
+    );
+}
+
 #[tokio::test]
 async fn archive_download_task_writes_zip_from_remote_directory() {
     let backend = Arc::new(FakeSftpBackend {
@@ -19,6 +38,8 @@ async fn archive_download_task_writes_zip_from_remote_directory() {
                 source_remote_path: "/var".to_owned(),
                 target_local_path: target_zip.to_string_lossy().into_owned(),
                 kind: SftpTransferKind::Directory,
+                conflict_policy: SftpTransferConflictPolicy::Overwrite,
+                view_scope: None,
             },
             temp_root.path().to_path_buf(),
         )
@@ -40,6 +61,14 @@ async fn archive_download_task_writes_zip_from_remote_directory() {
             .any(|task| task.id == summary.id && task.status == SftpTransferStatus::Succeeded)
     })
     .await;
+    let completed = service
+        .list_transfers()
+        .expect("list completed archive transfer")
+        .into_iter()
+        .find(|task| task.id == summary.id)
+        .expect("completed archive transfer");
+    assert_eq!(completed.phase.as_deref(), Some("done"));
+    assert_eq!(completed.current_item, None);
 
     let file = StdFile::open(&target_zip).expect("open archive zip");
     let mut archive = zip::ZipArchive::new(file).expect("read archive zip");
@@ -57,6 +86,51 @@ async fn archive_download_task_writes_zip_from_remote_directory() {
             .join(&summary.id)
             .exists(),
         "archive task should remove its staging directory"
+    );
+}
+
+#[tokio::test]
+async fn archive_download_task_skip_keeps_existing_zip_target() {
+    let backend = Arc::new(FakeSftpBackend {
+        delay_ms: 1,
+        write_downloads: true,
+        ..FakeSftpBackend::default()
+    });
+    let service = SftpService::with_backend(backend);
+    let temp_root = tempdir().expect("archive temp root");
+    let target_root = tempdir().expect("archive target root");
+    let target_zip = target_root.path().join("var.zip");
+    std::fs::write(&target_zip, b"existing zip bytes").expect("seed existing archive target");
+
+    let summary = service
+        .enqueue_archive_download_resolved_for_test(
+            test_endpoint("source-host"),
+            SftpArchiveDownloadRequest {
+                host_id: "source-host".to_owned(),
+                source_remote_path: "/var".to_owned(),
+                target_local_path: target_zip.to_string_lossy().into_owned(),
+                kind: SftpTransferKind::Directory,
+                conflict_policy: SftpTransferConflictPolicy::Skip,
+                view_scope: None,
+            },
+            temp_root.path().to_path_buf(),
+        )
+        .expect("enqueue archive download");
+
+    eventually(|| {
+        service
+            .list_transfers()
+            .expect("list transfers")
+            .iter()
+            .any(|task| task.id == summary.id && task.status == SftpTransferStatus::Succeeded)
+    })
+    .await;
+
+    assert_eq!(
+        fs::read(&target_zip)
+            .await
+            .expect("read skipped archive target"),
+        b"existing zip bytes"
     );
 }
 
@@ -86,6 +160,8 @@ async fn archive_upload_task_zips_local_directory_before_uploading() {
                 source_local_path: source_dir.to_string_lossy().into_owned(),
                 target_remote_path: "/uploads/release.zip".to_owned(),
                 kind: SftpTransferKind::Directory,
+                conflict_policy: SftpTransferConflictPolicy::Overwrite,
+                view_scope: None,
             },
             temp_root.path().to_path_buf(),
         )
@@ -140,6 +216,7 @@ fn clipboard_download_target_uses_unique_download_name() {
             host_id: "source-host".to_owned(),
             source_remote_path: "/var/log/app.log".to_owned(),
             kind: SftpTransferKind::File,
+            view_scope: None,
         },
     );
 
@@ -153,6 +230,7 @@ fn clipboard_download_target_reservation_prevents_same_name_collision() {
         host_id: "source-host".to_owned(),
         source_remote_path: "/var/log/app.log".to_owned(),
         kind: SftpTransferKind::File,
+        view_scope: None,
     };
 
     let first_target = reserve_clipboard_download_target_path_in(target_root.path(), &request)
@@ -174,6 +252,7 @@ fn clipboard_download_target_sanitizes_remote_file_name() {
             host_id: "source-host".to_owned(),
             source_remote_path: "/tmp/..".to_owned(),
             kind: SftpTransferKind::Directory,
+            view_scope: None,
         },
     );
 
@@ -197,6 +276,7 @@ async fn clipboard_download_task_downloads_remote_item_to_local_target() {
                 host_id: "source-host".to_owned(),
                 source_remote_path: "/var/log/app.log".to_owned(),
                 kind: SftpTransferKind::File,
+                view_scope: None,
             },
             target_path.clone(),
             false,

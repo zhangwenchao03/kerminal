@@ -9,7 +9,6 @@ pub(super) struct ContainerTextMetadata {
 
 pub(super) async fn read_container_text_file(
     storage: &SqliteStore,
-    credentials: &CredentialService,
     paths: &KerminalPaths,
     ssh_commands: &SshCommandService,
     request: DockerContainerReadTextFileRequest,
@@ -19,7 +18,6 @@ pub(super) async fn read_container_text_file(
     let read_args = [request.path.clone(), read_limit.to_string()];
     let output = execute_container_script(
         storage,
-        credentials,
         paths,
         ssh_commands,
         ContainerScriptRequest {
@@ -83,14 +81,12 @@ dd if="$target" bs=1 count="$max_bytes" 2>/dev/null
 
 pub(super) async fn container_file_revision(
     storage: &SqliteStore,
-    credentials: &CredentialService,
     paths: &KerminalPaths,
     ssh_commands: &SshCommandService,
     request: &DockerContainerWriteTextFileRequest,
 ) -> AppResult<SftpFileRevision> {
     let response = read_container_text_file(
         storage,
-        credentials,
         paths,
         ssh_commands,
         DockerContainerReadTextFileRequest {

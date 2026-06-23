@@ -11,15 +11,47 @@
   --app-panel: 255 255 255;
   --app-text: 29 29 31;
   --app-text-muted: 60 60 67;
+  --app-text-subtle: 110 110 118;
   --app-border: 0 0 0;
+  --app-divider: 0 0 0;
   --app-accent: 10 132 255;
+  --app-success: 50 215 75;
+  --app-warning: 255 214 10;
+  --app-danger: 255 69 58;
+  --surface-page: #f5f5f7;
+  --surface-terminal: #f8f8fb;
+  --surface-solid: rgb(255 255 255 / 0.88);
+  --surface-overlay: rgb(255 255 255 / 0.96);
+  --surface-nav-rgb: 255 255 255;
+  --surface-floating-glass: rgb(255 255 255 / 0.82);
+  --surface-muted: rgb(0 0 0 / 0.035);
+  --surface-field: rgb(255 255 255 / 0.78);
+  --surface-field-hover: rgb(255 255 255 / 0.94);
+  --surface-hover: rgb(0 0 0 / 0.045);
+  --surface-selected: rgb(10 132 255 / 0.12);
+  --border-subtle: rgb(0 0 0 / 0.08);
+  --border-strong: rgb(0 0 0 / 0.12);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.04), 0 10px 30px rgb(0 0 0 / 0.06);
+  --shadow-floating:
+    0 1px 1px rgb(255 255 255 / 0.55) inset, 0 18px 60px rgb(0 0 0 / 0.14);
+  --shadow-dialog:
+    0 1px 1px rgb(255 255 255 / 0.55) inset, 0 28px 90px rgb(0 0 0 / 0.2);
   --app-scrollbar-thumb: 113 113 122;
   --app-scrollbar-thumb-hover: 82 82 91;
   --app-scrollbar-thumb-opacity: 0.32;
   --app-scrollbar-thumb-hover-opacity: 0.5;
+  --app-window-opacity: 1;
+  --app-nav-surface-opacity: 0.68;
+  --app-terminal-surface-opacity: 0.78;
   --radius-control: 0.75rem;
   --radius-card: 1rem;
   --radius-panel: 1.25rem;
+  --radius-dialog: 1.5rem;
+  --motion-fast: 120ms;
+  --motion-menu: 160ms;
+  --motion-panel: 220ms;
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring-soft: cubic-bezier(0.16, 1, 0.3, 1);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -36,7 +68,7 @@
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
     "Segoe UI", system-ui, sans-serif;
   color: rgb(var(--app-text));
-  background: rgb(var(--app-bg));
+  background: transparent;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -50,8 +82,32 @@
   --app-panel: 28 28 30;
   --app-text: 245 245 247;
   --app-text-muted: 235 235 245;
+  --app-text-subtle: 150 150 158;
   --app-border: 255 255 255;
+  --app-divider: 255 255 255;
   --app-accent: 10 132 255;
+  --app-success: 50 215 75;
+  --app-warning: 255 214 10;
+  --app-danger: 255 69 58;
+  --surface-page: #101012;
+  --surface-terminal: #18181a;
+  --surface-solid: rgb(28 28 30 / 0.88);
+  --surface-overlay: rgb(20 20 22 / 0.96);
+  --surface-nav-rgb: 17 17 19;
+  --surface-floating-glass: rgb(28 28 30 / 0.82);
+  --surface-muted: rgb(255 255 255 / 0.06);
+  --surface-field: rgb(0 0 0 / 0.22);
+  --surface-field-hover: rgb(255 255 255 / 0.09);
+  --surface-hover: rgb(255 255 255 / 0.08);
+  --surface-selected: rgb(100 210 255 / 0.14);
+  --border-subtle: rgb(255 255 255 / 0.1);
+  --border-strong: rgb(255 255 255 / 0.14);
+  --shadow-soft:
+    0 1px 1px rgb(255 255 255 / 0.03) inset, 0 12px 38px rgb(0 0 0 / 0.28);
+  --shadow-floating:
+    0 1px 1px rgb(255 255 255 / 0.04) inset, 0 26px 78px rgb(0 0 0 / 0.46);
+  --shadow-dialog:
+    0 1px 1px rgb(255 255 255 / 0.05) inset, 0 32px 110px rgb(0 0 0 / 0.58);
   --app-scrollbar-thumb: 212 212 216;
   --app-scrollbar-thumb-hover: 244 244 245;
   --app-scrollbar-thumb-opacity: 0.22;
@@ -72,7 +128,9 @@
 
 * {
   box-sizing: border-box;
-  scrollbar-color: rgb(var(--app-scrollbar-thumb) / var(--app-scrollbar-thumb-opacity))
+  scrollbar-color: rgb(
+      var(--app-scrollbar-thumb) / var(--app-scrollbar-thumb-opacity)
+    )
     transparent;
   scrollbar-width: thin;
 }
@@ -87,7 +145,7 @@ body,
 
 body {
   color: rgb(var(--app-text));
-  background: rgb(var(--app-bg));
+  background: transparent;
   overflow: hidden;
 }
 
@@ -116,8 +174,7 @@ body {
 
 *:not(.scrollbar-none):hover::-webkit-scrollbar-thumb {
   background-color: rgb(
-    var(--app-scrollbar-thumb-hover) /
-      var(--app-scrollbar-thumb-hover-opacity)
+    var(--app-scrollbar-thumb-hover) / var(--app-scrollbar-thumb-hover-opacity)
   );
 }
 
@@ -152,6 +209,110 @@ button {
   cursor: pointer;
 }
 
+.kerminal-material-nav {
+  background: rgb(var(--surface-nav-rgb) / var(--app-nav-surface-opacity));
+  border-color: var(--border-subtle);
+  box-shadow: 0 1px 1px rgb(255 255 255 / 0.05) inset;
+  backdrop-filter: blur(26px) saturate(170%);
+  -webkit-backdrop-filter: blur(26px) saturate(170%);
+}
+
+.kerminal-floating-surface {
+  background: var(--surface-floating-glass);
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+}
+
+.kerminal-solid-surface {
+  background: var(--surface-solid);
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-soft);
+}
+
+.kerminal-muted-surface {
+  background: var(--surface-muted);
+  border-color: var(--border-subtle);
+}
+
+.kerminal-field-surface {
+  background: var(--surface-field);
+  border-color: var(--border-strong);
+  box-shadow: 0 1px 1px rgb(255 255 255 / 0.28) inset;
+  outline: none;
+  transition-duration: var(--motion-fast);
+  transition-property:
+    background-color, border-color, box-shadow, color, opacity, transform;
+  transition-timing-function: var(--ease-out-quint);
+}
+
+.kerminal-field-surface:hover:not(:disabled) {
+  background: var(--surface-field-hover);
+}
+
+.kerminal-field-surface:focus,
+.kerminal-field-surface:focus-visible,
+.kerminal-field-surface:focus-within {
+  border-color: rgb(var(--app-accent) / 0.5);
+  box-shadow:
+    0 0 0 4px rgb(var(--app-accent) / 0.16),
+    0 1px 1px rgb(255 255 255 / 0.28) inset;
+}
+
+.kerminal-terminal-surface {
+  background: rgb(248 248 251 / var(--app-terminal-surface-opacity));
+}
+
+.dark .kerminal-terminal-surface {
+  background: rgb(24 24 26 / var(--app-terminal-surface-opacity));
+}
+
+.kerminal-pressable {
+  transition-duration: var(--motion-fast);
+  transition-property:
+    background-color, border-color, color, opacity, box-shadow, transform;
+  transition-timing-function: var(--ease-out-quint);
+}
+
+.kerminal-pressable:active {
+  transform: scale(0.98);
+}
+
+.kerminal-focus-ring {
+  outline: none;
+}
+
+.kerminal-focus-ring:focus-visible {
+  box-shadow: 0 0 0 4px rgb(var(--app-accent) / 0.18);
+}
+
+.diagnostics-bundle-tooltip {
+  opacity: 0;
+}
+
+.diagnostics-bundle-action:hover .diagnostics-bundle-tooltip,
+.diagnostics-bundle-action:focus-within .diagnostics-bundle-tooltip {
+  opacity: 1;
+}
+
+.kerminal-floating-enter {
+  animation: kerminal-floating-enter var(--motion-menu) var(--ease-spring-soft)
+    both;
+}
+
+@keyframes kerminal-floating-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .kerminal-ai-markdown {
   color: inherit;
   font-size: inherit;
@@ -162,11 +323,13 @@ button {
   margin-block: 0.45rem;
 }
 
-.kerminal-ai-markdown :where(p:first-child, ul:first-child, ol:first-child, pre:first-child) {
+.kerminal-ai-markdown
+  :where(p:first-child, ul:first-child, ol:first-child, pre:first-child) {
   margin-top: 0;
 }
 
-.kerminal-ai-markdown :where(p:last-child, ul:last-child, ol:last-child, pre:last-child) {
+.kerminal-ai-markdown
+  :where(p:last-child, ul:last-child, ol:last-child, pre:last-child) {
   margin-bottom: 0;
 }
 
@@ -185,5 +348,9 @@ button {
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.001ms !important;
+  }
+
+  .kerminal-pressable:active {
+    transform: none;
   }
 }

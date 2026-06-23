@@ -159,6 +159,9 @@ describe("XtermPane context menu search and logging", () => {
       await waitFor(() => {
         expect(screen.getByText("已连接")).toBeInTheDocument();
       });
+      mocks.api.markTerminalSessionBindingDisconnected.mockClear();
+      mocks.api.markTerminalSessionBindingReady.mockClear();
+      mocks.api.registerTerminalSessionBinding.mockClear();
 
       vi.useFakeTimers();
       act(() => {
@@ -170,6 +173,12 @@ describe("XtermPane context menu search and logging", () => {
       });
 
       expect(screen.getByText("已结束")).toBeInTheDocument();
+      expect(mocks.api.markTerminalSessionBindingDisconnected).toHaveBeenCalledWith(
+        expect.objectContaining({
+          paneId: "pane-local",
+          sessionId: "session-1",
+        }),
+      );
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(3000);
@@ -177,6 +186,18 @@ describe("XtermPane context menu search and logging", () => {
       });
 
       expect(mocks.api.createTerminalSession).toHaveBeenCalledTimes(2);
+      expect(mocks.api.registerTerminalSessionBinding).toHaveBeenCalledWith(
+        expect.objectContaining({
+          paneId: "pane-local",
+          sessionId: "session-2",
+        }),
+      );
+      expect(mocks.api.markTerminalSessionBindingReady).toHaveBeenCalledWith(
+        expect.objectContaining({
+          paneId: "pane-local",
+          sessionId: "session-2",
+        }),
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -220,15 +241,28 @@ describe("XtermPane context menu search and logging", () => {
 
     fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"));
     await user.click(screen.getByRole("menuitem", { name: "清屏" }));
-    expect(mocks.terminalInstances[0].clear).toHaveBeenCalled();
+    expect(mocks.terminalInstances[0].clear).not.toHaveBeenCalled();
+    expect(mocks.api.writeTerminal).toHaveBeenCalledWith("session-1", "\x0c");
+    expect(mocks.terminalInstances[0].write).not.toHaveBeenCalledWith(
+      "\x1b[H\x1b[2J\x1b[3J",
+      expect.any(Function),
+    );
 
     fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"));
     await user.click(screen.getByRole("menuitem", { name: /搜索/ }));
     expect(screen.getByRole("form", { name: "终端搜索" })).toBeInTheDocument();
 
     fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"));
-    await user.click(screen.getByRole("menuitem", { name: "打开日志" }));
-    expect(onOpenLogs).toHaveBeenCalled();
+    expect(
+      screen.queryByRole("menuitem", { name: "开始记录日志" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "停止记录日志" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "打开日志" }),
+    ).not.toBeInTheDocument();
+    expect(onOpenLogs).not.toHaveBeenCalled();
 
     fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"));
     expect(
@@ -315,9 +349,7 @@ describe("XtermPane context menu search and logging", () => {
     expect(mocks.terminalInstances[0].focus).toHaveBeenCalled();
   });
 
-  it("starts and stops terminal session logging from the context menu", async () => {
-    const user = userEvent.setup();
-
+  it("does not expose terminal session logging from the context menu", async () => {
     render(
       <XtermPane
         focused
@@ -333,28 +365,18 @@ describe("XtermPane context menu search and logging", () => {
     });
 
     fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"));
-    await user.click(screen.getByRole("menuitem", { name: "开始记录日志" }));
-
-    await waitFor(() => {
-      expect(mocks.api.startTerminalLog).toHaveBeenCalledWith("session-1");
-    });
-    expect(screen.getByLabelText("终端日志记录状态")).toHaveTextContent(
-      "记录中",
-    );
     expect(
-      screen.getByRole("status", { name: "终端日志提示" }),
-    ).toHaveTextContent("正在记录日志：session-1.log");
-
-    fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"));
-    await user.click(screen.getByRole("menuitem", { name: "停止记录日志" }));
-
-    await waitFor(() => {
-      expect(mocks.api.stopTerminalLog).toHaveBeenCalledWith("session-1");
-    });
+      screen.queryByRole("menuitem", { name: "开始记录日志" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "停止记录日志" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "打开日志" }),
+    ).not.toBeInTheDocument();
+    expect(mocks.api.startTerminalLog).not.toHaveBeenCalled();
+    expect(mocks.api.stopTerminalLog).not.toHaveBeenCalled();
     expect(screen.queryByLabelText("终端日志记录状态")).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("status", { name: "终端日志提示" }),
-    ).toHaveTextContent("日志已停止：session-1.log");
   });
 
   it("disconnects and reconnects a local terminal session from the context menu", async () => {
@@ -397,6 +419,9 @@ describe("XtermPane context menu search and logging", () => {
     await waitFor(() => {
       expect(screen.getByText("已连接")).toBeInTheDocument();
     });
+    mocks.api.markTerminalSessionBindingDisconnected.mockClear();
+    mocks.api.markTerminalSessionBindingReady.mockClear();
+    mocks.api.registerTerminalSessionBinding.mockClear();
 
     fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"));
     await user.click(screen.getByRole("menuitem", { name: "断开连接" }));
@@ -407,6 +432,12 @@ describe("XtermPane context menu search and logging", () => {
     expect(await screen.findByText("已断开")).toBeInTheDocument();
     expect(mocks.terminalInstances[0].write).toHaveBeenCalledWith(
       expect.stringContaining("连接已断开"),
+    );
+    expect(mocks.api.markTerminalSessionBindingDisconnected).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paneId: "pane-local",
+        sessionId: "session-1",
+      }),
     );
 
     fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"));
@@ -425,6 +456,18 @@ describe("XtermPane context menu search and logging", () => {
       expect.any(Function),
     );
     expect(await screen.findByText("已连接")).toBeInTheDocument();
+    expect(mocks.api.registerTerminalSessionBinding).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paneId: "pane-local",
+        sessionId: "session-2",
+      }),
+    );
+    expect(mocks.api.markTerminalSessionBindingReady).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paneId: "pane-local",
+        sessionId: "session-2",
+      }),
+    );
     expect(mocks.api.resizeTerminal).toHaveBeenLastCalledWith("session-2", {
       cols: 100,
       rows: 30,

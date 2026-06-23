@@ -127,7 +127,7 @@ export function RuntimeHealthCard() {
               </div>
             ) : null}
             {!snapshot && !error ? (
-              <div className="mt-3 rounded-xl bg-black/[0.03] px-3 py-2 text-sm text-zinc-500 dark:bg-black/20 dark:text-zinc-400">
+              <div className="kerminal-muted-surface mt-3 rounded-xl px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">
                 {loading ? "正在采集运行体验..." : "等待运行体验数据。"}
               </div>
             ) : null}
@@ -194,7 +194,7 @@ export function RuntimeHealthCard() {
                 </div>
               </div>
             </div>
-            <div className="mt-4 space-y-2 border-t border-black/8 pt-3 dark:border-white/8">
+            <div className="mt-4 space-y-2 border-t border-[var(--border-subtle)] pt-3">
               {coreUsages(snapshot).map((value, index) => (
                 <CoreUsageRow index={index + 1} key={index} value={value} />
               ))}
@@ -216,7 +216,7 @@ export function RuntimeHealthCard() {
                 ))}
               </div>
             ) : (
-              <p className="rounded-xl bg-black/[0.03] px-3 py-2 text-xs leading-5 text-zinc-500 dark:bg-black/20 dark:text-zinc-400">
+              <p className="kerminal-muted-surface rounded-xl px-3 py-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
                 当前系统未返回可展示的 GPU。Windows 会尝试读取显卡控制器和性能计数器；受限环境、驱动不支持或无独显时可能为空。
               </p>
             )}
@@ -344,7 +344,7 @@ function CircularMeter({ value }: { value: number }) {
         background: `conic-gradient(rgb(16 185 129) ${percent * 3.6}deg, rgba(113, 113, 122, 0.22) 0deg)`,
       }}
     >
-      <div className="absolute inset-1.5 rounded-full bg-white/95 dark:bg-zinc-950/95" />
+      <div className="absolute inset-1.5 rounded-full bg-[var(--surface-solid)]" />
       <div className="relative text-center">
         <div className="text-lg font-semibold text-emerald-600 dark:text-emerald-300">
           {Math.round(percent)}
@@ -359,7 +359,7 @@ function CoreUsageRow({ index, value }: { index: number; value: number }) {
   return (
     <div className="grid grid-cols-[1.5rem_minmax(0,1fr)_3.5rem] items-center gap-2 text-xs">
       <span className="text-right text-zinc-500 dark:text-zinc-400">{index}</span>
-      <div className="h-1.5 overflow-hidden rounded-full bg-black/[0.08] dark:bg-black/30">
+      <div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface-hover)]">
         <div
           className="h-full rounded-full bg-emerald-500 dark:bg-emerald-400"
           style={{ width: `${clampPercent(value)}%` }}
@@ -377,7 +377,7 @@ function GpuDetail({ gpu, index }: { gpu: RuntimeGpuHealth; index: number }) {
   const primaryPercent = gpu.utilizationPercent ?? memoryPercent;
 
   return (
-    <section className="rounded-xl bg-black/[0.03] p-3 dark:bg-black/20">
+    <section className="kerminal-muted-surface rounded-xl p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="break-words text-sm font-medium text-zinc-950 dark:text-zinc-50">
@@ -404,7 +404,7 @@ function GpuDetail({ gpu, index }: { gpu: RuntimeGpuHealth; index: number }) {
           />
         ) : null}
         {primaryPercent === undefined ? (
-          <div className="rounded-lg bg-black/[0.03] px-3 py-2 text-xs text-zinc-500 dark:bg-black/20 dark:text-zinc-400">
+          <div className="kerminal-muted-surface rounded-lg px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
             暂未采集到可绘制的 GPU 使用率或显存占用。
           </div>
         ) : null}

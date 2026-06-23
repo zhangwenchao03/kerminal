@@ -13,7 +13,6 @@ use crate::{
         RemoteHostGroupCreateRequest, RemoteHostGroupUpdateRequest, RemoteHostGroupWithHosts,
         RemoteHostUpdateRequest, SshOptions, SshProxyProtocol, SshTunnelKind,
     },
-    services::credential_service::CredentialService,
     storage::{
         remote_hosts::{RemoteHostGroupWrite, RemoteHostWrite},
         SqliteStore,
@@ -81,36 +80,15 @@ impl RemoteHostService {
         storage: &SqliteStore,
         request: RemoteHostCreateRequest,
     ) -> AppResult<RemoteHost> {
-        self.create_host_inner(storage, None, request)
-    }
-
-    /// 创建远程主机配置，并在提供凭据服务时保存新录入的 secret。
-    pub fn create_host_with_credentials(
-        &self,
-        storage: &SqliteStore,
-        credentials: &CredentialService,
-        request: RemoteHostCreateRequest,
-    ) -> AppResult<RemoteHost> {
-        self.create_host_inner(storage, Some(credentials), request)
-    }
-
-    fn create_host_inner(
-        &self,
-        storage: &SqliteStore,
-        credentials: Option<&CredentialService>,
-        request: RemoteHostCreateRequest,
-    ) -> AppResult<RemoteHost> {
         let group_id = normalize_optional_text(request.group_id);
         ensure_group_exists(storage, group_id.as_deref())?;
         let sort_order = storage.next_remote_host_sort_order(group_id.as_deref())?;
         let id = Uuid::new_v4().to_string();
         let tags = normalize_tags(request.tags);
-        let credential_ref = normalize_ssh_credential(
-            id.as_str(),
+        let credential = normalize_ssh_credential(
             request.auth_type,
             request.credential_ref,
             request.credential_secret,
-            credentials,
         )?;
         let host = RemoteHostWrite {
             id,
@@ -120,10 +98,11 @@ impl RemoteHostService {
             port: normalize_port(request.port)?,
             username: normalize_username(request.username, &tags)?,
             auth_type: request.auth_type,
-            credential_ref,
+            credential_ref: credential.credential_ref,
+            credential_secret: credential.credential_secret,
             tags,
             production: request.production,
-            ssh_options: normalize_ssh_options(request.ssh_options),
+            ssh_options: normalize_ssh_options(request.ssh_options)?,
             sort_order,
         };
 
@@ -136,35 +115,14 @@ impl RemoteHostService {
         storage: &SqliteStore,
         request: RemoteHostUpdateRequest,
     ) -> AppResult<RemoteHost> {
-        self.update_host_inner(storage, None, request)
-    }
-
-    /// 更新远程主机配置，并在提供凭据服务时保存新录入的 secret。
-    pub fn update_host_with_credentials(
-        &self,
-        storage: &SqliteStore,
-        credentials: &CredentialService,
-        request: RemoteHostUpdateRequest,
-    ) -> AppResult<RemoteHost> {
-        self.update_host_inner(storage, Some(credentials), request)
-    }
-
-    fn update_host_inner(
-        &self,
-        storage: &SqliteStore,
-        credentials: Option<&CredentialService>,
-        request: RemoteHostUpdateRequest,
-    ) -> AppResult<RemoteHost> {
         let group_id = normalize_optional_text(request.group_id);
         ensure_group_exists(storage, group_id.as_deref())?;
         let id = normalize_required_text("主机 ID", request.id)?;
         let tags = normalize_tags(request.tags);
-        let credential_ref = normalize_ssh_credential(
-            id.as_str(),
+        let credential = normalize_ssh_credential(
             request.auth_type,
             request.credential_ref,
             request.credential_secret,
-            credentials,
         )?;
         let host = RemoteHostWrite {
             id,
@@ -174,10 +132,11 @@ impl RemoteHostService {
             port: normalize_port(request.port)?,
             username: normalize_username(request.username, &tags)?,
             auth_type: request.auth_type,
-            credential_ref,
+            credential_ref: credential.credential_ref,
+            credential_secret: credential.credential_secret,
             tags,
             production: request.production,
-            ssh_options: normalize_ssh_options(request.ssh_options),
+            ssh_options: normalize_ssh_options(request.ssh_options)?,
             sort_order: request.sort_order,
         };
 
@@ -225,63 +184,77 @@ fn normalize_username(value: String, tags: &[String]) -> AppResult<String> {
     Ok(value)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NormalizedSshCredential {
+    credential_ref: Option<String>,
+    credential_secret: Option<String>,
+}
+
 fn normalize_ssh_credential(
-    host_id: &str,
     auth_type: RemoteHostAuthType,
     credential_ref: Option<String>,
     credential_secret: Option<String>,
-    credentials: Option<&CredentialService>,
-) -> AppResult<Option<String>> {
+) -> AppResult<NormalizedSshCredential> {
     let credential_ref = normalize_optional_text(credential_ref);
     let credential_secret = credential_secret.filter(|secret| !secret.trim().is_empty());
 
     match auth_type {
         RemoteHostAuthType::Agent => {
-            if credential_secret.is_some() {
+            if credential_ref.is_some() || credential_secret.is_some() {
                 return Err(AppError::InvalidInput(
-                    "SSH Agent 认证不需要保存密码或私钥内容".to_owned(),
+                    "SSH Agent 认证不需要密码、私钥路径或私钥内容".to_owned(),
                 ));
             }
-            Ok(None)
+            Ok(NormalizedSshCredential {
+                credential_ref: None,
+                credential_secret: None,
+            })
         }
         RemoteHostAuthType::Password => {
-            if let Some(secret) = credential_secret {
-                let credentials = credentials.ok_or_else(|| {
-                    AppError::Credential("当前上下文无法保存 SSH 密码凭据".to_owned())
-                })?;
-                let generated_ref = CredentialService::ssh_password_ref(host_id);
-                credentials.set_secret(&generated_ref, &secret)?;
-                return Ok(Some(generated_ref));
+            if credential_ref.is_some() {
+                return Err(AppError::InvalidInput(
+                    "密码认证不再使用凭据引用，请直接填写明文密码".to_owned(),
+                ));
             }
 
-            let Some(credential_ref) = credential_ref else {
+            let Some(secret) = credential_secret else {
                 return Err(AppError::InvalidInput(
-                    "密码认证需要录入密码或填写 credential: 凭据引用".to_owned(),
+                    "密码认证需要填写明文 SSH 密码".to_owned(),
                 ));
             };
-            if !credential_ref.starts_with("credential:") {
-                return Err(AppError::InvalidInput(
-                    "密码认证的凭据引用必须以 credential: 开头".to_owned(),
-                ));
-            }
-            Ok(Some(credential_ref))
+
+            Ok(NormalizedSshCredential {
+                credential_ref: None,
+                credential_secret: Some(secret),
+            })
         }
         RemoteHostAuthType::Key => {
-            if let Some(secret) = credential_secret {
-                let credentials = credentials.ok_or_else(|| {
-                    AppError::Credential("当前上下文无法保存 SSH 私钥凭据".to_owned())
-                })?;
-                let generated_ref = CredentialService::ssh_private_key_ref(host_id);
-                credentials.set_secret(&generated_ref, &secret)?;
-                return Ok(Some(generated_ref));
+            if credential_ref
+                .as_deref()
+                .is_some_and(|value| value.starts_with("credential:"))
+            {
+                return Err(AppError::InvalidInput(
+                    "密钥认证不再支持 credential: 凭据引用，请填写私钥路径或直接粘贴私钥内容"
+                        .to_owned(),
+                ));
             }
 
-            let Some(credential_ref) = credential_ref else {
-                return Err(AppError::InvalidInput(
-                    "密钥认证需要填写私钥路径、credential: 凭据引用，或录入私钥内容".to_owned(),
-                ));
-            };
-            Ok(Some(credential_ref))
+            match (credential_ref, credential_secret) {
+                (Some(_), Some(_)) => Err(AppError::InvalidInput(
+                    "密钥认证的私钥路径和私钥内容只能填写一项".to_owned(),
+                )),
+                (Some(path), None) => Ok(NormalizedSshCredential {
+                    credential_ref: Some(path),
+                    credential_secret: None,
+                }),
+                (None, Some(secret)) => Ok(NormalizedSshCredential {
+                    credential_ref: None,
+                    credential_secret: Some(secret),
+                }),
+                (None, None) => Err(AppError::InvalidInput(
+                    "密钥认证需要填写私钥路径或直接粘贴私钥内容".to_owned(),
+                )),
+            }
         }
     }
 }
@@ -327,7 +300,7 @@ fn has_tag(tags: &[String], expected: &str) -> bool {
         .any(|tag| tag.trim().eq_ignore_ascii_case(expected))
 }
 
-fn normalize_ssh_options(mut options: SshOptions) -> SshOptions {
+fn normalize_ssh_options(mut options: SshOptions) -> AppResult<SshOptions> {
     options.proxy.host = normalize_optional_text(options.proxy.host);
     options.proxy.username = normalize_optional_text(options.proxy.username);
     options.proxy.credential_ref = normalize_optional_text(options.proxy.credential_ref);
@@ -369,8 +342,39 @@ fn normalize_ssh_options(mut options: SshOptions) -> SshOptions {
             jump_host.host = jump_host.host.trim().to_owned();
             jump_host.username = jump_host.username.trim().to_owned();
             jump_host.credential_ref = normalize_optional_text(jump_host.credential_ref);
+            jump_host.credential_secret = jump_host
+                .credential_secret
+                .filter(|secret| !secret.trim().is_empty());
+            match jump_host.auth_type {
+                RemoteHostAuthType::Agent => {
+                    jump_host.credential_ref = None;
+                    jump_host.credential_secret = None;
+                }
+                RemoteHostAuthType::Password => {
+                    jump_host.credential_ref = None;
+                }
+                RemoteHostAuthType::Key => {
+                    if jump_host.credential_secret.is_some() {
+                        jump_host.credential_ref = None;
+                    }
+                }
+            }
             jump_host
         })
+        .map(|jump_host| {
+            if jump_host
+                .credential_ref
+                .as_deref()
+                .is_some_and(|value| value.starts_with("credential:"))
+            {
+                return Err(AppError::InvalidInput(
+                    "跳板机密钥认证不再支持 credential: 凭据引用".to_owned(),
+                ));
+            }
+            Ok(jump_host)
+        })
+        .collect::<AppResult<Vec<_>>>()?
+        .into_iter()
         .filter(|jump_host| !jump_host.host.is_empty())
         .collect();
 
@@ -391,7 +395,7 @@ fn normalize_ssh_options(mut options: SshOptions) -> SshOptions {
     options.transfer.max_concurrent_transfers =
         options.transfer.max_concurrent_transfers.clamp(1, 16);
 
-    options
+    Ok(options)
 }
 
 #[cfg(test)]

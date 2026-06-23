@@ -18,10 +18,10 @@ export function Switch({
     <button
       aria-checked={checked}
       className={cn(
-        "relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border border-black/10 bg-black/10 p-0.5 outline-none transition-[background-color,border-color,box-shadow,opacity] duration-150 focus-visible:ring-4 focus-visible:ring-[#0A84FF]/18 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/12",
+        "kerminal-focus-ring relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border border-[var(--border-subtle)] bg-[var(--surface-hover)] p-0.5 outline-none transition-[background-color,border-color,box-shadow,opacity] duration-150 disabled:cursor-not-allowed disabled:opacity-50",
         checked
           ? "border-[#0A84FF]/40 bg-[#0A84FF]"
-          : "hover:bg-black/15 dark:hover:bg-white/18",
+          : "hover:bg-[var(--surface-muted)]",
         className,
       )}
       data-state={checked ? "checked" : "unchecked"}

@@ -23,6 +23,7 @@ export interface Machine {
   username?: string;
   authType?: "password" | "key" | "agent";
   credentialRef?: string;
+  credentialSecret?: string;
   profileId?: string;
   shell?: string;
   args?: string[];

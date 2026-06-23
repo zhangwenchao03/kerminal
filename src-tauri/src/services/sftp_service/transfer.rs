@@ -14,6 +14,7 @@ use std::{
     time::Duration,
 };
 
+#[cfg(not(test))]
 use tauri::{Emitter, Window};
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
@@ -25,9 +26,13 @@ use crate::{
     models::sftp::{SftpTransferStatus, SftpTransferSummary},
 };
 
-use super::{unix_timestamp, unix_timestamp_millis, SftpRuntimeSettings};
+#[cfg(not(test))]
+use super::unix_timestamp_millis;
+use super::{unix_timestamp, SftpRuntimeSettings};
 
+#[cfg(not(test))]
 const SFTP_TRANSFER_UPDATED_EVENT: &str = "sftp-transfer-updated";
+#[cfg(not(test))]
 const SFTP_TRANSFER_PROGRESS_EMIT_INTERVAL_MS: u64 = 200;
 
 #[derive(Debug, Clone)]
@@ -36,12 +41,18 @@ pub(super) struct TransferTask {
     pub(super) cancel_requested: Arc<AtomicBool>,
 }
 
+#[cfg(not(test))]
 #[derive(Clone)]
 pub(super) struct TransferEventEmitter {
     state: Arc<Mutex<TransferEventEmitterState>>,
     window: Window,
 }
 
+#[cfg(test)]
+#[derive(Debug, Clone)]
+pub(super) struct TransferEventEmitter;
+
+#[cfg(not(test))]
 impl fmt::Debug for TransferEventEmitter {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -52,10 +63,12 @@ impl fmt::Debug for TransferEventEmitter {
 }
 
 #[derive(Debug, Default)]
+#[cfg(not(test))]
 struct TransferEventEmitterState {
     last_emit_ms: u64,
 }
 
+#[cfg(not(test))]
 impl TransferEventEmitter {
     pub(super) fn new(window: Window) -> Self {
         Self {
@@ -88,6 +101,11 @@ impl TransferEventEmitter {
                 .emit(SFTP_TRANSFER_UPDATED_EVENT, summary.clone());
         }
     }
+}
+
+#[cfg(test)]
+impl TransferEventEmitter {
+    pub(super) fn emit(&self, _summary: &SftpTransferSummary, _force: bool) {}
 }
 
 #[derive(Debug, Default)]
@@ -296,6 +314,15 @@ impl TransferProgress {
         });
     }
 
+    pub(super) fn mark_phase(&self, phase: impl Into<String>, current_item: Option<String>) {
+        self.update_summary(true, |summary| {
+            summary.status = SftpTransferStatus::Running;
+            summary.phase = Some(phase.into());
+            summary.current_item = current_item;
+            summary.updated_at = unix_timestamp();
+        });
+    }
+
     pub(super) fn set_total_bytes(&self, total_bytes: u64) {
         self.update_summary(true, |summary| {
             summary.total_bytes = Some(total_bytes);
@@ -322,6 +349,7 @@ impl TransferProgress {
             summary.status = SftpTransferStatus::Succeeded;
             summary.error = None;
             summary.phase = Some("done".to_owned());
+            summary.current_item = None;
             summary.updated_at = unix_timestamp();
         });
     }
@@ -331,6 +359,7 @@ impl TransferProgress {
             summary.status = SftpTransferStatus::Canceled;
             summary.cancel_requested = true;
             summary.phase = Some("canceled".to_owned());
+            summary.current_item = None;
             summary.updated_at = unix_timestamp();
         });
     }
@@ -341,6 +370,7 @@ impl TransferProgress {
             summary.cancel_requested = true;
             summary.error = Some(error.to_string());
             summary.phase = Some("canceled".to_owned());
+            summary.current_item = None;
             summary.updated_at = unix_timestamp();
         });
     }

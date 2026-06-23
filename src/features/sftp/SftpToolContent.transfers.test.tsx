@@ -17,9 +17,9 @@ import {  containerFilesApiMocks,
   containerMachine,
   webviewMocks,
 } from "./SftpToolContent.testSupport";
-import { SftpToolContent } from "./SftpToolContent";
-
-describe("SftpToolContent transfers and containers", () => {
+import { SftpToolContent } from "./SftpToolContent";
+
+describe("SftpToolContent transfers and containers", () => {
   it("downloads a selected file from the context menu", async () => {
     const user = userEvent.setup();
 
@@ -43,11 +43,11 @@ describe("SftpToolContent transfers and containers", () => {
     expect(sftpApiMocks.enqueueSftpTransfer).toHaveBeenCalledWith({
       direction: "download",
       hostId: "prod-api",
-      kind: "file",
-      localPath: "/Users/me/Downloads/app.log",
-      remotePath: "/var/log/app.log",
-    });
-    expect(await screen.findByText(/已加入下载队列/)).toBeInTheDocument();
+      kind: "file",
+      localPath: "/Users/me/Downloads/app.log",
+      remotePath: "/var/log/app.log",
+    });
+    expect(screen.queryByText(/已加入下载队列/)).not.toBeInTheDocument();
   });
 
   it("downloads a directory from the context menu", async () => {
@@ -71,11 +71,11 @@ describe("SftpToolContent transfers and containers", () => {
     expect(sftpApiMocks.enqueueSftpTransfer).toHaveBeenCalledWith({
       direction: "download",
       hostId: "prod-api",
-      kind: "directory",
-      localPath: "/Users/me/Downloads/var",
-      remotePath: "/var",
-    });
-    expect(await screen.findByText(/已加入文件夹下载队列/)).toBeInTheDocument();
+      kind: "directory",
+      localPath: "/Users/me/Downloads/var",
+      remotePath: "/var",
+    });
+    expect(screen.queryByText(/已加入文件夹下载队列/)).not.toBeInTheDocument();
   });
 
   it("downloads a selected remote file as a ZIP archive", async () => {
@@ -105,11 +105,11 @@ describe("SftpToolContent transfers and containers", () => {
     );
     expect(sftpApiMocks.enqueueSftpArchiveDownload).toHaveBeenCalledWith({
       hostId: "prod-api",
-      kind: "file",
-      sourceRemotePath: "/var/log/app.log",
-      targetLocalPath: "/Users/me/Downloads/app.log.zip",
-    });
-    expect(await screen.findByText(/已加入 ZIP 下载队列/)).toBeInTheDocument();
+      kind: "file",
+      sourceRemotePath: "/var/log/app.log",
+      targetLocalPath: "/Users/me/Downloads/app.log.zip",
+    });
+    expect(screen.queryByText(/已加入 ZIP 下载队列/)).not.toBeInTheDocument();
   });
 
   it("downloads a remote directory as a ZIP archive from the context menu", async () => {
@@ -135,10 +135,10 @@ describe("SftpToolContent transfers and containers", () => {
     );
     expect(sftpApiMocks.enqueueSftpArchiveDownload).toHaveBeenCalledWith({
       hostId: "prod-api",
-      kind: "directory",
-      sourceRemotePath: "/var",
-      targetLocalPath: "/Users/me/Downloads/var.zip",
-    });
+      kind: "directory",
+      sourceRemotePath: "/var",
+      targetLocalPath: "/Users/me/Downloads/var.zip",
+    });
   });
 
   it("downloads a selected remote file to the local file clipboard", async () => {
@@ -160,14 +160,14 @@ describe("SftpToolContent transfers and containers", () => {
 
     await waitFor(() =>
       expect(sftpApiMocks.enqueueSftpClipboardDownload).toHaveBeenCalledWith({
-        hostId: "prod-api",
-        kind: "file",
-        sourceRemotePath: "/var/log/app.log",
-      }),
+        hostId: "prod-api",
+        kind: "file",
+        sourceRemotePath: "/var/log/app.log",
+      }),
     );
-    expect(
-      await screen.findByText(/已加入本地剪贴板下载队列/),
-    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/已加入本地剪贴板下载队列/),
+    ).not.toBeInTheDocument();
   });
 
   it("downloads a remote directory to the local file clipboard from the context menu", async () => {
@@ -203,14 +203,14 @@ describe("SftpToolContent transfers and containers", () => {
 
     await waitFor(() =>
       expect(sftpApiMocks.enqueueSftpClipboardDownload).toHaveBeenCalledWith({
-        hostId: "prod-api",
-        kind: "directory",
-        sourceRemotePath: "/var",
-      }),
+        hostId: "prod-api",
+        kind: "directory",
+        sourceRemotePath: "/var",
+      }),
     );
   });
 
-  it("uploads a local file from the toolbar upload menu and refreshes the current directory", async () => {
+  it("uploads a local file from the toolbar upload menu and refreshes the current directory", async () => {
     const user = userEvent.setup();
 
     render(<SftpToolContent selectedMachine={sshMachine} />);
@@ -225,14 +225,45 @@ describe("SftpToolContent transfers and containers", () => {
     expect(sftpApiMocks.enqueueSftpTransfer).toHaveBeenCalledWith({
       direction: "upload",
       hostId: "prod-api",
-      kind: "file",
-      localPath: "/Users/me/release.tgz",
-      remotePath: "/release.tgz",
-    });
-    expect(await screen.findByText(/已加入上传队列/)).toBeInTheDocument();
-  });
-
-  it("uploads a local directory from the toolbar upload menu", async () => {
+      kind: "file",
+      localPath: "/Users/me/release.tgz",
+      remotePath: "/release.tgz",
+    });
+    expect(screen.queryByText(/已加入上传队列/)).not.toBeInTheDocument();
+  });
+
+  it("asks for a conflict policy before uploading over an existing remote file", async () => {
+    const user = userEvent.setup();
+    sftpApiMocks.statSftpPath.mockResolvedValue({
+      hostId: "prod-api",
+      kind: "file",
+      path: "/release.tgz",
+      readonly: false,
+    });
+
+    render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    await screen.findByText("var");
+    await user.click(screen.getByRole("button", { name: "上传" }));
+    await user.click(screen.getByRole("menuitem", { name: "上传文件" }));
+
+    expect(await screen.findByText("处理传输冲突")).toBeInTheDocument();
+    expect(sftpApiMocks.enqueueSftpTransfer).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /自动重命名/ }));
+
+    await waitFor(() =>
+      expect(sftpApiMocks.enqueueSftpTransfer).toHaveBeenCalledWith({
+        conflictPolicy: "rename",
+        direction: "upload",
+        hostId: "prod-api",
+        kind: "file",
+        localPath: "/Users/me/release.tgz",
+        remotePath: "/release.tgz",
+      }),
+    );
+  });
+
+  it("uploads a local directory from the toolbar upload menu", async () => {
     const user = userEvent.setup();
     fileDialogMocks.selectLocalDirectory.mockResolvedValue("/Users/me/dist");
 
@@ -248,11 +279,11 @@ describe("SftpToolContent transfers and containers", () => {
     expect(sftpApiMocks.enqueueSftpTransfer).toHaveBeenCalledWith({
       direction: "upload",
       hostId: "prod-api",
-      kind: "directory",
-      localPath: "/Users/me/dist",
-      remotePath: "/dist",
-    });
-    expect(await screen.findByText(/已加入文件夹上传队列/)).toBeInTheDocument();
+      kind: "directory",
+      localPath: "/Users/me/dist",
+      remotePath: "/dist",
+    });
+    expect(screen.queryByText(/已加入文件夹上传队列/)).not.toBeInTheDocument();
   });
 
   it("loads container files through the unified file panel", async () => {
@@ -287,17 +318,22 @@ describe("SftpToolContent transfers and containers", () => {
     await waitFor(() =>
       expect(fileDialogMocks.selectLocalFile).toHaveBeenCalled(),
     );
-    expect(containerFilesApiMocks.uploadDockerContainerPath).toHaveBeenCalledWith({
-      containerId: "container-api",
-      hostId: "prod-api",
-      kind: "file",
-      localPath: "/Users/me/release.tgz",
-      remotePath: "/app/release.tgz",
-      runtime: "docker",
-    });
-    expect(sftpApiMocks.enqueueSftpTransfer).not.toHaveBeenCalled();
-    expect(await screen.findByText(/已上传：release.tgz/)).toBeInTheDocument();
-  });
+    expect(containerFilesApiMocks.uploadDockerContainerPath).toHaveBeenCalledWith({
+      containerId: "container-api",
+      hostId: "prod-api",
+      kind: "file",
+      localPath: "/Users/me/release.tgz",
+      remotePath: "/app/release.tgz",
+      runtime: "docker",
+    });
+    await waitFor(() =>
+      expect(
+        containerFilesApiMocks.listDockerContainerDirectory,
+      ).toHaveBeenCalledTimes(2),
+    );
+    expect(sftpApiMocks.enqueueSftpTransfer).not.toHaveBeenCalled();
+    expect(await screen.findByText(/已上传：release.tgz/)).toBeInTheDocument();
+  });
 
   it("downloads a container file from the shared context menu", async () => {
     const user = userEvent.setup();
@@ -397,11 +433,11 @@ describe("SftpToolContent transfers and containers", () => {
     );
     expect(sftpApiMocks.enqueueSftpArchiveUpload).toHaveBeenCalledWith({
       hostId: "prod-api",
-      kind: "directory",
-      sourceLocalPath: "/Users/me/dist",
-      targetRemotePath: "/dist.zip",
-    });
-    expect(await screen.findByText(/已加入 ZIP 上传队列/)).toBeInTheDocument();
+      kind: "directory",
+      sourceLocalPath: "/Users/me/dist",
+      targetRemotePath: "/dist.zip",
+    });
+    expect(screen.queryByText(/已加入 ZIP 上传队列/)).not.toBeInTheDocument();
   });
 
   it("uploads dropped local paths into the current SFTP directory", async () => {
@@ -451,20 +487,20 @@ describe("SftpToolContent transfers and containers", () => {
     expect(sftpApiMocks.enqueueSftpTransfer).toHaveBeenCalledWith({
       direction: "upload",
       hostId: "prod-api",
-      kind: "file",
-      localPath: "/Users/me/release.tgz",
-      remotePath: "/release.tgz",
-    });
+      kind: "file",
+      localPath: "/Users/me/release.tgz",
+      remotePath: "/release.tgz",
+    });
     expect(sftpApiMocks.enqueueSftpTransfer).toHaveBeenCalledWith({
       direction: "upload",
       hostId: "prod-api",
-      kind: "directory",
-      localPath: "/Users/me/dist",
-      remotePath: "/dist",
-    });
-    expect(
-      await screen.findByText(/已加入拖拽上传队列：2 个本地项目/),
-    ).toBeInTheDocument();
+      kind: "directory",
+      localPath: "/Users/me/dist",
+      remotePath: "/dist",
+    });
+    expect(
+      screen.queryByText(/已加入拖拽上传队列：2 个本地项目/),
+    ).not.toBeInTheDocument();
   });
 
 });

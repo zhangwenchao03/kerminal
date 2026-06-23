@@ -4,6 +4,7 @@ const GOLDEN_ANGLE_DEGREES = 137.508;
 const MAX_IMAGE_TEXT_LINES = 160;
 const MAX_IMAGE_LINE_LENGTH = 120;
 export const COMMAND_BLOCK_OUTPUT_MAX_CHARS = 128_000;
+export const COMMAND_BLOCKS_MAX_COUNT = 240;
 
 export type TerminalBufferKind = "normal" | "alternate";
 
@@ -12,10 +13,17 @@ export interface TerminalCommandBlock {
   color: string;
   command: string;
   createdAt: number;
+  endMarker: TerminalCommandBlockMarker | null;
   id: string;
-  marker: Pick<IMarker, "dispose" | "line" | "onDispose">;
+  marker: TerminalCommandBlockMarker;
   output: string;
+  submitted: boolean;
 }
+
+export type TerminalCommandBlockMarker = Pick<
+  IMarker,
+  "dispose" | "isDisposed" | "line" | "onDispose"
+>;
 
 export interface TerminalCommandBlockLayoutInput {
   activeBufferType: TerminalBufferKind;
@@ -45,6 +53,7 @@ export interface TerminalCommandBlockView {
   viewportY: number;
   visibleEndLine: number;
   visibleStartLine: number;
+  current?: boolean;
   virtual?: boolean;
 }
 
@@ -59,16 +68,19 @@ export function createTerminalCommandBlock(params: {
   command: string;
   id: string;
   index: number;
-  marker: Pick<IMarker, "dispose" | "line" | "onDispose">;
+  marker: TerminalCommandBlockMarker;
+  submitted?: boolean;
 }): TerminalCommandBlock {
   return {
     collapsed: false,
     color: commandBlockColor(params.index),
     command: params.command,
     createdAt: Date.now(),
+    endMarker: null,
     id: params.id,
     marker: params.marker,
     output: "",
+    submitted: params.submitted ?? true,
   };
 }
 
@@ -83,52 +95,57 @@ export function buildTerminalCommandBlockViews(
   const visibleTop = layout.viewportY;
   const visibleBottom = layout.viewportY + layout.rows - 1;
   const sortedBlocks = [...blocks]
-    .filter((block) => block.marker.line >= 0)
+    .filter((block) => markerIsLive(block.marker))
     .sort(
       (left, right) =>
         left.marker.line - right.marker.line || left.createdAt - right.createdAt,
     );
+  const hasPromptBlock =
+    typeof layout.promptLine === "number" &&
+    sortedBlocks.some(
+      (block) =>
+        markerIsLive(block.marker) &&
+        !block.endMarker &&
+        block.marker.line === layout.promptLine,
+    );
+  const latestBlock = sortedBlocks[sortedBlocks.length - 1];
   const trailingPromptLine =
     typeof layout.promptLine === "number" &&
-    sortedBlocks.length > 0 &&
-    layout.promptLine > sortedBlocks[sortedBlocks.length - 1].marker.line
+    !hasPromptBlock
       ? layout.promptLine
       : undefined;
+  const blocksForLayout = sortedBlocks;
   const layoutBlocks: Array<{
     block?: TerminalCommandBlock;
     collapsed: boolean;
     color: string;
     command: string;
+    endLine?: number;
     id: string;
     startLine: number;
+    current?: boolean;
     virtual?: boolean;
-  }> = sortedBlocks.map((block, index) => {
+  }> = blocksForLayout.map((block) => {
     const markerLine = block.marker.line;
-    const isLastBlock = index === sortedBlocks.length - 1;
-    const startLine =
-      isLastBlock &&
-      block.command === "" &&
-      typeof trailingPromptLine !== "number" &&
-      typeof layout.contentBottomLine === "number" &&
-      layout.contentBottomLine >= markerLine
-        ? layout.contentBottomLine
-        : markerLine;
+    const endMarkerLine = markerEndLine(block);
     return {
       block,
       collapsed: block.collapsed,
       color: block.color,
       command: block.command,
+      current: !block.submitted && !block.endMarker,
+      endLine: endMarkerLine,
       id: block.id,
-      startLine,
+      startLine: markerLine,
     };
   });
   if (typeof trailingPromptLine === "number") {
-    const lastBlock = sortedBlocks[sortedBlocks.length - 1];
     layoutBlocks.push({
       collapsed: false,
-      color: commandBlockColor(sortedBlocks.length),
+      color: commandBlockColor(blocksForLayout.length),
       command: "",
-      id: `${lastBlock.id}-current-prompt`,
+      current: true,
+      id: latestBlock ? `${latestBlock.id}-current-prompt` : "current-prompt",
       startLine: trailingPromptLine,
       virtual: true,
     });
@@ -146,11 +163,14 @@ export function buildTerminalCommandBlockViews(
       (block ? estimateTerminalCommandBlockLineCount(block, layout.cols) : 1) -
       1;
     const contentEndLine =
-      isLastBlock &&
-      typeof layout.contentBottomLine === "number" &&
-      layout.contentBottomLine >= startLine
-        ? layout.contentBottomLine
-        : estimatedEndLine;
+      typeof layoutBlock.endLine === "number"
+        ? layoutBlock.endLine
+        : block &&
+            isLastBlock &&
+            typeof layout.contentBottomLine === "number" &&
+            layout.contentBottomLine >= startLine
+          ? layout.contentBottomLine
+          : estimatedEndLine;
     const endLine = Math.max(
       startLine,
       Math.min(
@@ -168,7 +188,10 @@ export function buildTerminalCommandBlockViews(
     const visibleLineCount = Math.max(1, visibleEndLine - visibleStartLine + 1);
     const originalTop = (visibleStartLine - visibleTop) * layout.rowHeight;
     const top = originalTop - foldedHiddenLinesBefore * layout.rowHeight;
-    const expandedHeight = Math.max(layout.rowHeight, visibleLineCount * layout.rowHeight);
+    const expandedHeight = Math.max(
+      layout.rowHeight,
+      visibleLineCount * layout.rowHeight,
+    );
     const collapsedHeight = layout.rowHeight;
     const hiddenLineCount =
       layoutBlock.collapsed && layout.activeBufferType !== "alternate"
@@ -192,6 +215,7 @@ export function buildTerminalCommandBlockViews(
       viewportY: layout.viewportY,
       visibleEndLine,
       visibleStartLine,
+      current: layoutBlock.current,
       virtual: layoutBlock.virtual,
     });
 
@@ -209,6 +233,15 @@ export function appendCommandBlockOutput(
     return;
   }
   const block = blocks[blocks.length - 1];
+  if (block.endMarker) {
+    return;
+  }
+  if (!block.submitted) {
+    return;
+  }
+  if (block.command === "") {
+    return;
+  }
   block.output = trimCommandBlockOutputTail(block.output + data);
 }
 
@@ -251,19 +284,34 @@ export function commandBlockViewsEqual(
       item.collapsed === other.collapsed &&
       item.command === other.command &&
       item.color === other.color &&
+      item.endLine === other.endLine &&
       item.height === other.height &&
       item.hiddenLineCount === other.hiddenLineCount &&
       item.lineCount === other.lineCount &&
       item.muted === other.muted &&
       item.originalTop === other.originalTop &&
       item.rowHeight === other.rowHeight &&
+      item.startLine === other.startLine &&
       item.top === other.top &&
       item.viewportY === other.viewportY &&
       item.visibleEndLine === other.visibleEndLine &&
       item.visibleStartLine === other.visibleStartLine &&
+      item.current === other.current &&
       item.virtual === other.virtual
     );
   });
+}
+
+function markerIsLive(marker: TerminalCommandBlockMarker) {
+  return !marker.isDisposed && marker.line >= 0;
+}
+
+function markerEndLine(block: TerminalCommandBlock) {
+  const endMarker = block.endMarker;
+  if (!endMarker || !markerIsLive(endMarker)) {
+    return undefined;
+  }
+  return Math.max(block.marker.line, endMarker.line);
 }
 
 function estimateTerminalCommandBlockLineCount(

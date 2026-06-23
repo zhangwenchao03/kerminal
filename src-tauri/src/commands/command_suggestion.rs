@@ -98,7 +98,6 @@ pub async fn command_suggestion_refresh_remote_commands(
         .command_suggestions()
         .refresh_remote_commands(
             state.storage(),
-            state.credentials(),
             state.paths(),
             state.ssh_commands(),
             request,
@@ -117,7 +116,6 @@ pub async fn command_suggestion_refresh_remote_history(
         .command_suggestions()
         .refresh_remote_history(
             state.storage(),
-            state.credentials(),
             state.paths(),
             state.ssh_commands(),
             request,
@@ -136,7 +134,6 @@ pub async fn command_suggestion_refresh_git_refs(
         .command_suggestions()
         .refresh_git_refs(
             state.storage(),
-            state.credentials(),
             state.paths(),
             state.ssh_commands(),
             request,
@@ -153,13 +150,7 @@ pub async fn command_suggestion_refresh_remote_paths(
 ) -> Result<CommandSuggestionRemotePathRefreshResult, String> {
     state
         .command_suggestions()
-        .refresh_remote_paths(
-            state.storage(),
-            state.credentials(),
-            state.paths(),
-            state.sftp(),
-            request,
-        )
+        .refresh_remote_paths(state.storage(), state.paths(), state.sftp(), request)
         .await
         .map_err(|error| error.to_string())
 }

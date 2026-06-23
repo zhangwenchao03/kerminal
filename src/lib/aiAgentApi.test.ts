@@ -58,6 +58,11 @@ describe("aiAgentApi", () => {
         },
       },
       conversationId: " chat-1 ",
+      conversationSlotJson: ' {"slotKey":"pane:pane-1"} ',
+      history: [
+        { content: " 已经解释过 npm install ", role: "user" },
+        { content: " 建议继续运行 npm run build ", role: "assistant" },
+      ],
       message: " 解释当前输出 ",
       providerId: " llm-1 ",
       terminalContext: {
@@ -68,6 +73,11 @@ describe("aiAgentApi", () => {
 
     expect(response.message).toBe("这是 AI 回复。");
     expect(response.pendingInvocations).toHaveLength(1);
+    expect(response.visionUsage).toEqual({
+      attachments: [],
+      providerSupportsVision: false,
+      visionAdapterEnabled: false,
+    });
     expect(response.pendingInvocations[0]).toMatchObject({
       id: "tool-call-1",
       toolId: "terminal.write",
@@ -84,6 +94,11 @@ describe("aiAgentApi", () => {
           },
         },
         conversationId: "chat-1",
+        conversationSlotJson: '{"slotKey":"pane:pane-1"}',
+        history: [
+          { content: "已经解释过 npm install", role: "user" },
+          { content: "建议继续运行 npm run build", role: "assistant" },
+        ],
         message: "解释当前输出",
         providerId: "llm-1",
         terminalContext: {
@@ -102,6 +117,61 @@ describe("aiAgentApi", () => {
       "请输入要发送给 AI 的内容",
     );
     expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("normalizes and forwards attachment context to Tauri", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue({
+      contextUsed: true,
+      conversationId: "chat-image",
+      generatedAt: "1",
+      message: "已读取图片附件摘要。",
+      model: "gpt-test",
+      providerId: "llm-1",
+      providerName: "OpenAI Chat",
+      responseRedacted: false,
+      toolCount: 20,
+      pendingInvocations: [],
+    });
+    const { sendAiChatMessage } = await import("./aiAgentApi");
+
+    await sendAiChatMessage({
+      attachments: [
+        {
+          height: 720.8,
+          id: " att-1 ",
+          kind: "image",
+          mimeType: " image/png ",
+          ocrText: " ssh deploy@10.0.0.12 -p 2222 ",
+          originalName: " ssh-login.png ",
+          sizeBytes: 4096.9,
+          status: "available",
+          visionUsage: "ocrOnly",
+          width: 1280.1,
+        },
+      ],
+      message: " 识别这张图 ",
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith("ai_chat", {
+      request: expect.objectContaining({
+        attachments: [
+          expect.objectContaining({
+            height: 720,
+            id: "att-1",
+            kind: "image",
+            mimeType: "image/png",
+            ocrText: "ssh deploy@10.0.0.12 -p 2222",
+            originalName: "ssh-login.png",
+            sizeBytes: 4096,
+            status: "available",
+            visionUsage: "ocrOnly",
+            width: 1280,
+          }),
+        ],
+        message: "识别这张图",
+      }),
+    });
   });
 
   it("streams process steps and response chunks while preserving the final response", async () => {
@@ -176,6 +246,43 @@ describe("aiAgentApi", () => {
     const { browserPreviewMcpToolCount } = await import("./toolRegistryApi");
     expect(response.toolCount).toBe(browserPreviewMcpToolCount);
     expect(response.toolCount).toBeGreaterThanOrEqual(60);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("downgrades browser preview image vision input to text context", async () => {
+    isTauriMock.mockReturnValue(false);
+    const { sendAiChatMessage } = await import("./aiAgentApi");
+
+    const response = await sendAiChatMessage({
+      attachments: [
+        {
+          id: "att-preview",
+          kind: "image",
+          mimeType: "image/png",
+          originalName: "screen.png",
+          sizeBytes: 1024,
+          status: "available",
+          visionUsage: "visionInput",
+        },
+      ],
+      message: "看图说一下错误",
+    });
+
+    expect(response.contextUsed).toBe(true);
+    expect(response.message).toContain("浏览器预览不会发送图片像素");
+    expect(response.visionUsage).toEqual({
+      attachments: [
+        {
+          effectiveUsage: "metadataOnly",
+          id: "att-preview",
+          modelInput: "textContext",
+          requestedUsage: "visionInput",
+          warning: "浏览器预览不会发送图片像素，已降级为文本附件上下文。",
+        },
+      ],
+      providerSupportsVision: false,
+      visionAdapterEnabled: false,
+    });
     expect(invokeMock).not.toHaveBeenCalled();
   });
 

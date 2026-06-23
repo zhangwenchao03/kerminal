@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { Select } from "./select";
+import { Select, SelectField } from "./select";
 
 const options = [
   { label: "全部", value: "" },
@@ -70,5 +70,25 @@ describe("Select", () => {
     await user.click(screen.getByRole("combobox", { name: "底部模型" }));
 
     expect(screen.getByRole("listbox")).toHaveAttribute("data-side", "top");
+  });
+
+  it("renders a labeled reusable select field", () => {
+    render(
+      <SelectField
+        description="选择监听地址范围"
+        id="bind-mode"
+        label="监听范围"
+        onValueChange={vi.fn()}
+        options={options}
+        value="local"
+      />,
+    );
+
+    expect(screen.getByText("监听范围")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "监听范围" })).toHaveAttribute(
+      "id",
+      "bind-mode",
+    );
+    expect(screen.getByText("选择监听地址范围")).toBeInTheDocument();
   });
 });

@@ -8,6 +8,7 @@ import type {
 import type { TerminalPane } from "../workspace/types";
 import type { TerminalSplitDirection } from "../workspace/types";
 import { XtermPane } from "./XtermPane";
+import { buildTerminalPaneCardModel } from "./terminalPaneCardModel";
 
 interface TerminalPaneCardProps {
   focused: boolean;
@@ -37,31 +38,32 @@ export function TerminalPaneCard({
   resolvedTheme,
   terminalAppearance,
 }: TerminalPaneCardProps) {
+  const model = buildTerminalPaneCardModel(pane);
+
   return (
     <section
-      aria-label={`${pane.title} 终端分屏`}
+      aria-label={model.ariaLabel}
       className={cn(
-	        "flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border bg-[#1f1f21]",
-	        "bg-white dark:bg-[#1f1f21]",
-	        focused ? "border-sky-400/70" : "border-black/8 dark:border-white/8",
+        "kerminal-terminal-surface flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border",
+        focused ? "border-sky-400/70" : "border-[var(--border-subtle)]",
       )}
       onClick={() => onFocusPane(pane.id)}
     >
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-black/8 px-3 dark:border-white/8">
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--border-subtle)] px-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
           <span className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">
-            {pane.title}
+            {model.title}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {pane.latencyMs ? (
+          {model.latencyLabel ? (
             <span className="rounded-lg bg-emerald-400/10 px-2 py-1 text-xs text-emerald-300">
-              {pane.latencyMs}ms
+              {model.latencyLabel}
             </span>
           ) : null}
           <Button
-            aria-label={`关闭 ${pane.title} 分屏`}
+            aria-label={model.closeAriaLabel}
             onClick={(event) => {
               event.stopPropagation();
               onClosePane(pane.id);
@@ -73,11 +75,7 @@ export function TerminalPaneCard({
           </Button>
         </div>
       </div>
-      {pane.mode === "local" ||
-      pane.mode === "ssh" ||
-      pane.mode === "telnet" ||
-      pane.mode === "serial" ||
-      pane.mode === "container" ? (
+      {model.renderKind === "runtime" ? (
         <XtermPane
           args={pane.args}
           currentCwd={pane.currentCwd}

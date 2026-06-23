@@ -13,7 +13,7 @@ export function DeferredSection({
 }) {
   const Icon = section?.Icon ?? Settings;
   return (
-    <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-dashed border-black/10 bg-black/[0.02] p-6 text-center dark:border-white/10 dark:bg-white/[0.03]">
+    <div className="kerminal-muted-surface flex min-h-[320px] items-center justify-center rounded-2xl border border-dashed p-6 text-center">
       <div className="max-w-sm">
         <Icon className="mx-auto h-8 w-8 text-zinc-400" />
         <h3 className="mt-3 text-sm font-semibold">
@@ -40,11 +40,11 @@ export function FieldRow({ children, label }: { children: ReactNode; label: stri
 }
 
 export const inputClassName =
-  "h-10 w-full rounded-xl border border-black/10 bg-white/86 px-3 text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-sky-500/50 focus:ring-4 focus:ring-sky-500/15 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-black/20 dark:text-zinc-100 dark:placeholder:text-zinc-600";
+  "kerminal-field-surface h-10 w-full rounded-xl border px-3 text-sm text-zinc-950 placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-100 dark:placeholder:text-zinc-600";
 
 export function HelpCard({ icon, text }: { icon: ReactNode; text: string }) {
   return (
-    <div className="rounded-2xl border border-black/8 bg-white/72 p-4 dark:border-white/8 dark:bg-white/6">
+    <div className="kerminal-solid-surface rounded-2xl border p-4">
       <div className="flex items-start gap-3 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
         {icon}
         <p className="min-w-0 flex-1">{text}</p>
@@ -65,7 +65,7 @@ export function ToggleRow({
   onCheckedChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="flex h-10 items-center justify-between gap-3 rounded-xl border border-black/10 bg-white/86 px-3 text-sm text-zinc-600 dark:border-white/10 dark:bg-black/20 dark:text-zinc-300">
+    <div className="kerminal-field-surface flex h-10 items-center justify-between gap-3 rounded-xl border px-3 text-sm text-zinc-600 dark:text-zinc-300">
       <span className="truncate">{label}</span>
       <Switch
         aria-label={label}
@@ -79,8 +79,8 @@ export function ToggleRow({
 
 export function EmptyConfigState({ icon, text }: { icon: ReactNode; text: string }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-dashed border-black/12 bg-black/[0.02] px-4 py-5 text-sm text-zinc-500 dark:border-white/12 dark:bg-white/[0.03] dark:text-zinc-400">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black/5 text-zinc-500 dark:bg-white/8 dark:text-zinc-300">
+    <div className="kerminal-muted-surface flex items-center gap-3 rounded-2xl border border-dashed px-4 py-5 text-sm text-zinc-500 dark:text-zinc-400">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-hover)] text-zinc-500 dark:text-zinc-300">
         {icon}
       </div>
       <p className="min-w-0 flex-1 leading-6">{text}</p>
@@ -102,7 +102,7 @@ export function ConfigListItem({
   title: string;
 }) {
   return (
-    <div className="grid gap-3 rounded-2xl border border-black/8 bg-white/72 p-3 dark:border-white/8 dark:bg-white/6 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <div className="kerminal-solid-surface grid gap-3 rounded-2xl border p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold text-zinc-800 dark:text-zinc-100">
           {title}
@@ -168,8 +168,8 @@ export function protocolButtonClassName(selected: boolean, disabled: boolean) {
   return [
     "flex h-16 min-w-[72px] flex-col items-center justify-center gap-1 rounded-xl px-3 text-sm font-medium transition",
     selected
-      ? "bg-sky-500/14 text-sky-700 shadow-sm dark:bg-sky-400/18 dark:text-sky-100"
-      : "text-zinc-600 hover:bg-black/5 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-white/8 dark:hover:text-zinc-50",
+      ? "bg-[var(--surface-selected)] text-sky-700 shadow-sm dark:text-sky-100"
+      : "text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50",
     disabled ? "cursor-not-allowed opacity-42 hover:bg-transparent" : "",
   ].join(" ");
 }
@@ -178,7 +178,7 @@ export function sectionButtonClassName(selected: boolean) {
   return [
     "flex h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-sm transition",
     selected
-      ? "bg-sky-500/12 text-sky-700 dark:bg-sky-400/15 dark:text-sky-100"
-      : "text-zinc-600 hover:bg-black/5 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-white/8 dark:hover:text-zinc-50",
+      ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
+      : "text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50",
   ].join(" ");
 }

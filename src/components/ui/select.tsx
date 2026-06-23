@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import { cn } from "../../lib/cn";
 
@@ -22,6 +23,7 @@ interface SelectProps {
   buttonClassName?: string;
   className?: string;
   disabled?: boolean;
+  id?: string;
   menuClassName?: string;
   onValueChange: (value: string) => void;
   options: SelectOption[];
@@ -33,13 +35,12 @@ interface SelectProps {
 }
 
 const baseButtonClassName =
-  "group inline-flex w-full items-center justify-between gap-2 rounded-xl border text-left font-medium outline-none transition-[background-color,border-color,box-shadow,transform,opacity] duration-150 focus-visible:border-[#0A84FF]/50 focus-visible:ring-4 focus-visible:ring-[#0A84FF]/15 disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.99]";
+  "kerminal-focus-ring group inline-flex w-full items-center justify-between gap-2 rounded-xl border text-left font-medium outline-none transition-[background-color,border-color,box-shadow,transform,opacity] duration-150 disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.99]";
 
 const variantClassNames = {
-  field:
-    "border-black/10 bg-white/80 text-zinc-950 shadow-sm shadow-black/[0.03] hover:bg-white/95 dark:border-white/10 dark:bg-white/8 dark:text-zinc-100 dark:shadow-black/20 dark:hover:bg-white/12",
+  field: "kerminal-field-surface text-zinc-950 dark:text-zinc-100",
   inline:
-    "border-transparent bg-transparent text-current shadow-none hover:bg-black/[0.04] dark:hover:bg-white/10",
+    "border-transparent bg-transparent text-current shadow-none hover:bg-[var(--surface-hover)]",
 };
 
 const sizeClassNames = {
@@ -53,6 +54,7 @@ export function Select({
   buttonClassName,
   className,
   disabled = false,
+  id,
   menuClassName,
   onValueChange,
   options,
@@ -72,7 +74,8 @@ export function Select({
   const [highlightedIndex, setHighlightedIndex] = useState(
     Math.max(selectedIndex, 0),
   );
-  const selectedOption = selectedIndex >= 0 ? options[selectedIndex] : undefined;
+  const selectedOption =
+    selectedIndex >= 0 ? options[selectedIndex] : undefined;
 
   useEffect(() => {
     if (!open) {
@@ -165,6 +168,7 @@ export function Select({
         )}
         data-value={value}
         disabled={disabled}
+        id={id}
         onClick={() => setOpen((current) => !current)}
         onKeyDown={handleKeyDown}
         role="combobox"
@@ -186,7 +190,7 @@ export function Select({
       {open ? (
         <div
           className={cn(
-            "absolute z-50 min-w-full overflow-hidden rounded-2xl border border-white/50 bg-white/90 p-1 text-sm text-zinc-950 shadow-[0_18px_50px_rgba(0,0,0,0.16)] backdrop-blur-2xl dark:border-white/10 dark:bg-zinc-950/92 dark:text-zinc-100 dark:shadow-black/50",
+            "kerminal-floating-surface kerminal-floating-enter absolute z-50 min-w-full overflow-hidden rounded-2xl border p-1 text-sm text-zinc-950 dark:text-zinc-100",
             side === "top"
               ? "bottom-[calc(100%+0.375rem)] top-auto"
               : "top-[calc(100%+0.375rem)]",
@@ -207,8 +211,8 @@ export function Select({
                   className={cn(
                     "flex w-full items-start justify-between gap-3 rounded-xl px-2.5 py-2 text-left transition-colors duration-150",
                     highlighted || selected
-                      ? "bg-[#0A84FF]/10 text-[#0A5FC8] dark:bg-[#0A84FF]/18 dark:text-sky-100"
-                      : "text-zinc-700 hover:bg-black/[0.045] dark:text-zinc-300 dark:hover:bg-white/8",
+                      ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
+                      : "text-zinc-700 hover:bg-[var(--surface-hover)] dark:text-zinc-300",
                     option.disabled
                       ? "cursor-not-allowed opacity-45 hover:bg-transparent"
                       : "",
@@ -231,13 +235,86 @@ export function Select({
                     ) : null}
                   </span>
                   {selected ? (
-                    <Check className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.8} />
+                    <Check
+                      className="mt-0.5 h-4 w-4 shrink-0"
+                      strokeWidth={1.8}
+                    />
                   ) : null}
                 </button>
               );
             })}
           </div>
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+interface SelectFieldProps {
+  align?: "left" | "right";
+  buttonClassName?: string;
+  className?: string;
+  description?: ReactNode;
+  disabled?: boolean;
+  id: string;
+  label: string;
+  menuClassName?: string;
+  onValueChange: (value: string) => void;
+  options: SelectOption[];
+  placeholder?: string;
+  selectClassName?: string;
+  side?: "bottom" | "top";
+  size?: "sm" | "md";
+  value: string;
+  variant?: "field" | "inline";
+}
+
+export function SelectField({
+  align,
+  buttonClassName,
+  className,
+  description,
+  disabled,
+  id,
+  label,
+  menuClassName,
+  onValueChange,
+  options,
+  placeholder,
+  selectClassName,
+  side,
+  size,
+  value,
+  variant,
+}: SelectFieldProps) {
+  return (
+    <div className={cn("block", className)}>
+      <label
+        className="text-xs font-medium text-zinc-500 dark:text-zinc-400"
+        htmlFor={id}
+      >
+        {label}
+      </label>
+      <Select
+        align={align}
+        aria-label={label}
+        buttonClassName={buttonClassName}
+        className={cn("mt-1", selectClassName)}
+        disabled={disabled}
+        id={id}
+        menuClassName={menuClassName}
+        onValueChange={onValueChange}
+        options={options}
+        placeholder={placeholder}
+        side={side}
+        size={size}
+        value={value}
+        variant={variant}
+      />
+      {description ? (
+        <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+          {description}
+        </p>
       ) : null}
     </div>
   );

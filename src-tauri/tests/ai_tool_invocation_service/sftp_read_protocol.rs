@@ -51,6 +51,7 @@ fn confirm_sftp_list_unknown_host_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("unknown sftp host should become audit record");
@@ -157,6 +158,7 @@ fn confirm_sftp_preview_unknown_host_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("unknown sftp preview host should become audit record");
@@ -194,6 +196,7 @@ fn confirm_sftp_preview_invalid_max_bytes_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("invalid maxBytes should become audit record");
@@ -231,6 +234,7 @@ fn confirm_sftp_preview_root_path_records_failed_audit_before_spawn() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("root path preview should become audit record");

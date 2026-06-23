@@ -25,7 +25,6 @@ async fn list_directory_rejects_unknown_remote_host_before_connecting_sftp() {
         .sftp()
         .list_directory(
             state.storage(),
-            state.credentials(),
             state.paths(),
             SftpListDirectoryRequest {
                 host_id: "missing-host".to_owned(),
@@ -46,7 +45,6 @@ async fn preview_file_rejects_unknown_remote_host_before_connecting_sftp() {
         .sftp()
         .preview_file(
             state.storage(),
-            state.credentials(),
             state.paths(),
             SftpPreviewRequest {
                 host_id: "missing-host".to_owned(),
@@ -70,7 +68,6 @@ async fn preview_file_rejects_root_path_before_connecting_sftp() {
         .sftp()
         .preview_file(
             state.storage(),
-            state.credentials(),
             state.paths(),
             SftpPreviewRequest {
                 host_id,

@@ -1,0 +1,40 @@
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { TerminalEmptyState } from "./TerminalEmptyState";
+
+describe("TerminalEmptyState", () => {
+  it("keeps the brand placeholder quiet when no actions are available", () => {
+    render(<TerminalEmptyState />);
+
+    expect(screen.getByRole("img", { name: "Kerminal" })).toBeInTheDocument();
+    expect(
+      screen.getByText("光标还没闪，AI 已经开始脑补命令了。"),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("空终端工作区操作")).not.toBeInTheDocument();
+  });
+
+  it("keeps workspace actions hidden even when handlers are available", () => {
+    const onCreateTerminal = vi.fn();
+    const onOpenConnection = vi.fn();
+    const onOpenAiTool = vi.fn();
+
+    render(
+      <TerminalEmptyState
+        onCreateTerminal={onCreateTerminal}
+        onOpenAiTool={onOpenAiTool}
+        onOpenConnection={onOpenConnection}
+      />,
+    );
+
+    expect(screen.queryByLabelText("空终端工作区操作")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "本地终端" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加连接" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "打开 AI 面板" }),
+    ).not.toBeInTheDocument();
+
+    expect(onCreateTerminal).not.toHaveBeenCalled();
+    expect(onOpenConnection).not.toHaveBeenCalled();
+    expect(onOpenAiTool).not.toHaveBeenCalled();
+  });
+});

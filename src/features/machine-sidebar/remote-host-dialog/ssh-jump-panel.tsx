@@ -39,6 +39,7 @@ export function SshJumpPanel({
   const [draft, setDraft] = useState<SshJumpHostOptions>({
     authType: "agent",
     credentialRef: undefined,
+    credentialSecret: undefined,
     host: "",
     name: "",
     port: 22,
@@ -82,6 +83,18 @@ export function SshJumpPanel({
       setDraftError("跳板机用户名不能为空。");
       return;
     }
+    if (draft.authType === "password" && !draft.credentialSecret?.trim()) {
+      setDraftError("跳板机密码认证需要输入 SSH 密码。");
+      return;
+    }
+    if (
+      draft.authType === "key" &&
+      !draft.credentialRef?.trim() &&
+      !draft.credentialSecret?.trim()
+    ) {
+      setDraftError("跳板机密钥认证需要填写私钥路径或私钥内容。");
+      return;
+    }
     setDraftError(null);
     setOptions((current) => ({
       ...current,
@@ -90,6 +103,7 @@ export function SshJumpPanel({
     setDraft({
       authType: "agent",
       credentialRef: undefined,
+      credentialSecret: undefined,
       host: "",
       name: "",
       port: 22,
@@ -171,26 +185,58 @@ export function SshJumpPanel({
             <Select
               aria-label="跳板机认证方式"
               buttonClassName="h-10"
-              onValueChange={(value) =>
-                updateDraft({ authType: value as RemoteHostAuthType })
-              }
+              onValueChange={(value) => {
+                const authType = value as RemoteHostAuthType;
+                updateDraft({
+                  authType,
+                  credentialRef: authType === "key" ? draft.credentialRef : undefined,
+                  credentialSecret: undefined,
+                });
+              }}
               options={authOptions.map((option) => ({
                 label: option.label,
                 value: option.value,
               }))}
               value={draft.authType}
             />
-            <input
-              aria-label="跳板机凭据引用"
-              className={inputClassName}
-              onChange={(event) => {
-                const value = event.currentTarget.value;
-                updateDraft({ credentialRef: value });
-              }}
-              placeholder="可选；credential:ssh/bastion/key 或私钥路径"
-              value={draft.credentialRef ?? ""}
-            />
+            {draft.authType === "agent" ? (
+              <div className="flex h-10 items-center rounded-xl border border-dashed border-[var(--border-subtle)] px-3 text-sm text-zinc-500 dark:text-zinc-400">
+                使用 ssh-agent，不需要额外配置
+              </div>
+            ) : draft.authType === "password" ? (
+              <input
+                aria-label="跳板机密码"
+                className={inputClassName}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  updateDraft({ credentialSecret: value });
+                }}
+                placeholder="SSH 密码"
+                type="password"
+                value={draft.credentialSecret ?? ""}
+              />
+            ) : (
+              <input
+                aria-label="跳板机私钥路径"
+                className={inputClassName}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  updateDraft({ credentialRef: value });
+                }}
+                placeholder={
+                  "~/.ssh/id_ed25519"
+                }
+                value={draft.credentialRef ?? ""}
+              />
+            )}
           </div>
+          {draft.authType !== "agent" ? (
+            <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+              {draft.authType === "password"
+                ? "跳板机密码会随 SSH 主机配置保存。"
+                : "跳板机密钥认证使用本机可访问的私钥路径。"}
+            </p>
+          ) : null}
         </FieldRow>
         <div className="flex justify-end">
           <Button onClick={addJumpHost} type="button" variant="secondary">
@@ -256,9 +302,12 @@ export function formatSshMachineDescription(machine: Machine) {
 }
 
 export function jumpHostDraftFromMachine(machine: Machine): SshJumpHostOptions {
+  const authType = machine.authType ?? "agent";
   return {
-    authType: machine.authType ?? "agent",
-    credentialRef: trimOptional(machine.credentialRef),
+    authType,
+    credentialRef: authType === "key" ? trimOptional(machine.credentialRef) : undefined,
+    credentialSecret:
+      authType === "agent" ? undefined : trimOptional(machine.credentialSecret),
     host: trimText(machine.host),
     name: machine.name,
     port: machine.port ?? 22,

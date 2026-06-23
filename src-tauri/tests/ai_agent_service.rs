@@ -14,7 +14,8 @@ use kerminal_lib::{
     models::{
         ai_agent::{
             AiApplicationContextRequest, AiApplicationMachineContext, AiApplicationPaneContext,
-            AiApplicationTabContext, AiChatRequest, AiCommandExecutionVisibility,
+            AiApplicationTabContext, AiChatAttachmentContext, AiChatRequest,
+            AiCommandExecutionVisibility,
         },
         ai_context::AiTerminalContextRequest,
         ai_tool_invocation::{AiToolInvocationStatus, AiToolPendingInvocation},
@@ -100,9 +101,12 @@ fn chat_context<'a>(
         ai_context: state.ai_context(),
         ai_tools: state.ai_tools(),
         terminals: state.terminals(),
+        terminal_session_bindings: state.terminal_session_bindings(),
+
         tools: state.tools(),
         mcp_tools: state.mcp_tools(),
         settings: state.settings(),
+        paths: state.paths(),
     }
 }
 
@@ -235,12 +239,8 @@ fn chat_rejects_blank_message_before_provider_lookup() {
     let error = tauri::async_runtime::block_on(service.chat(
         chat_context(&state, &credentials),
         AiChatRequest {
-            application_context: None,
             message: "  ".to_string(),
-            conversation_id: None,
-            provider_id: None,
-            terminal_context: None,
-            execution_visibility: None,
+            ..Default::default()
         },
     ))
     .expect_err("blank message should fail");
@@ -259,12 +259,8 @@ fn chat_rejects_missing_enabled_provider() {
     let error = tauri::async_runtime::block_on(service.chat(
         chat_context(&state, &credentials),
         AiChatRequest {
-            application_context: None,
             message: "解释当前输出".to_string(),
-            conversation_id: None,
-            provider_id: None,
-            terminal_context: None,
-            execution_visibility: None,
+            ..Default::default()
         },
     ))
     .expect_err("missing provider should fail");
@@ -292,12 +288,9 @@ fn chat_uses_default_provider_and_returns_metadata() {
     let response = tauri::async_runtime::block_on(service.chat(
         chat_context(&state, &credentials),
         AiChatRequest {
-            application_context: None,
             message: "帮我看下当前终端状态".to_string(),
             conversation_id: Some("conversation-1".to_string()),
-            provider_id: None,
-            terminal_context: None,
-            execution_visibility: None,
+            ..Default::default()
         },
     ))
     .expect("chat response");
@@ -317,6 +310,164 @@ fn chat_uses_default_provider_and_returns_metadata() {
     assert_eq!(requests[0].api_key, "sk-test-default");
     assert!(requests[0].preamble.contains("默认使用中文回复"));
     assert!(requests[0].context.contains("rmcp 工具目录"));
+}
+
+#[test]
+fn chat_includes_attachment_context_without_claiming_vision_pixels() {
+    let (_home, state) = setup_state();
+    let credentials = memory_credentials();
+    create_provider(
+        &state,
+        &credentials,
+        "附件 Provider",
+        true,
+        true,
+        Some("sk-attachment"),
+        LlmContextStrategy::Minimal,
+    );
+    let executor = Arc::new(RecordingExecutor::new("已读取附件上下文。"));
+    let service = AiAgentService::with_executor(executor.clone());
+
+    let response = tauri::async_runtime::block_on(service.chat(
+        chat_context(&state, &credentials),
+        AiChatRequest {
+            application_context: None,
+            message: "这张图里有 SSH 连接方式，帮我配置主机".to_string(),
+            conversation_id: Some("conversation-with-image".to_string()),
+            conversation_slot_json: None,
+            provider_id: None,
+            terminal_context: None,
+            execution_visibility: None,
+            attachments: vec![AiChatAttachmentContext {
+                height: Some(720),
+                id: "att-ssh-image".to_string(),
+                kind: "image".to_string(),
+                mime_type: "image/png".to_string(),
+                missing_reason: None,
+                ocr_text: Some("ssh deploy@10.0.0.12 -p 2222".to_string()),
+                original_name: "ssh-login.png".to_string(),
+                redaction_summary: None,
+                size_bytes: 42_000,
+                status: "available".to_string(),
+                vision_usage: Some("ocrOnly".to_string()),
+                width: Some(1280),
+            }],
+            history: Vec::new(),
+        },
+    ))
+    .expect("chat response");
+
+    assert!(response.context_used);
+    let requests = executor.requests();
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].context.contains("当前附件上下文"));
+    assert!(requests[0].context.contains("ssh-login.png"));
+    assert!(requests[0].context.contains("visionUsage ocrOnly"));
+    assert!(requests[0].context.contains("ssh deploy@10.0.0.12 -p 2222"));
+    assert!(requests[0].context.contains("只能通过受控工具建议创建主机"));
+    assert!(requests[0].context.contains("不要声称已经看见图片像素"));
+}
+
+#[test]
+fn chat_reports_vision_capability_and_effective_attachment_usage() {
+    for (model, expected_support, ocr_text, expected_effective, warning_fragment) in [
+        (
+            "gpt-test",
+            false,
+            None,
+            "metadataOnly",
+            "Provider 未标记为支持视觉",
+        ),
+        (
+            "gpt-4o-mini",
+            true,
+            Some("ssh deploy@10.0.0.12 -p 2222"),
+            "ocrOnly",
+            "没有找到已持久化附件记录",
+        ),
+    ] {
+        let (_home, state) = setup_state();
+        let credentials = memory_credentials();
+        let provider = RigProviderService::new()
+            .create_provider(
+                state.storage(),
+                &credentials,
+                LlmProviderCreateRequest {
+                    name: format!("Vision Provider {model}"),
+                    kind: LlmProviderKind::OpenAiChat,
+                    base_url: "https://api.example.com/v1".to_string(),
+                    model: model.to_string(),
+                    model_list: vec![model.to_string()],
+                    temperature: 0.2,
+                    context_strategy: LlmContextStrategy::Minimal,
+                    context_window_tokens: 128_000,
+                    reasoning_effort: LlmReasoningEffort::ModelDefault,
+                    max_retries: 3,
+                    user_agent: None,
+                    http_proxy: None,
+                    enabled: true,
+                    is_default: true,
+                    api_key: Some("sk-vision".to_owned()),
+                },
+            )
+            .expect("create vision provider");
+        let executor = Arc::new(RecordingExecutor::new("vision status ok"));
+        let service = AiAgentService::with_executor(executor.clone());
+
+        let response = tauri::async_runtime::block_on(service.chat(
+            chat_context(&state, &credentials),
+            AiChatRequest {
+                application_context: None,
+                message: "这张图能直接看吗？".to_string(),
+                conversation_id: None,
+                conversation_slot_json: None,
+                provider_id: Some(provider.id),
+                terminal_context: None,
+                execution_visibility: None,
+                attachments: vec![AiChatAttachmentContext {
+                    height: Some(720),
+                    id: format!("att-{model}"),
+                    kind: "image".to_string(),
+                    mime_type: "image/png".to_string(),
+                    missing_reason: None,
+                    ocr_text: ocr_text.map(str::to_owned),
+                    original_name: "screen.png".to_string(),
+                    redaction_summary: None,
+                    size_bytes: 42_000,
+                    status: "available".to_string(),
+                    vision_usage: Some("visionInput".to_string()),
+                    width: Some(1280),
+                }],
+                history: Vec::new(),
+            },
+        ))
+        .expect("chat response");
+
+        assert_eq!(
+            response.vision_usage.provider_supports_vision,
+            expected_support
+        );
+        assert_eq!(
+            response.vision_usage.vision_adapter_enabled,
+            expected_support
+        );
+        let status = &response.vision_usage.attachments[0];
+        assert_eq!(status.requested_usage, "visionInput");
+        assert_eq!(status.effective_usage, expected_effective);
+        assert_eq!(status.model_input, "textContext");
+        assert!(status
+            .warning
+            .as_deref()
+            .is_some_and(|warning| warning.contains(warning_fragment)));
+
+        let requests = executor.requests();
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].context.contains("本次图片像素进入模型：0 个"));
+        assert!(requests[0]
+            .context
+            .contains(&format!("effectiveVisionUsage {expected_effective}")));
+        assert!(requests[0].context.contains(warning_fragment));
+    }
 }
 
 #[test]
@@ -347,9 +498,12 @@ fn chat_preserves_supported_provider_kinds_for_execution() {
                 application_context: None,
                 message: "检查 provider kind".to_string(),
                 conversation_id: None,
+                conversation_slot_json: None,
                 provider_id: Some(provider.id.clone()),
                 terminal_context: None,
                 execution_visibility: None,
+                attachments: Vec::new(),
+                history: Vec::new(),
             },
         ))
         .unwrap_or_else(|error| panic!("chat should accept provider kind {kind:?}: {error}"));
@@ -403,9 +557,12 @@ fn chat_context_includes_custom_mcp_tools_and_skills_from_settings() {
             application_context: None,
             message: "使用自定义 MCP 查询一下".to_string(),
             conversation_id: None,
+            conversation_slot_json: None,
             provider_id: None,
             terminal_context: None,
             execution_visibility: None,
+            attachments: Vec::new(),
+            history: Vec::new(),
         },
     ))
     .expect("chat response");
@@ -455,9 +612,12 @@ fn chat_rejects_message_over_context_limit_before_executor_call() {
             application_context: None,
             message: "x".repeat(12 * 1024 + 1),
             conversation_id: None,
+            conversation_slot_json: None,
             provider_id: None,
             terminal_context: None,
             execution_visibility: None,
+            attachments: Vec::new(),
+            history: Vec::new(),
         },
     ))
     .expect_err("oversized message should fail");
@@ -488,9 +648,12 @@ fn chat_rejects_provider_without_api_key() {
             application_context: None,
             message: "解释当前输出".to_string(),
             conversation_id: None,
+            conversation_slot_json: None,
             provider_id: Some(provider.id),
             terminal_context: None,
             execution_visibility: None,
+            attachments: Vec::new(),
+            history: Vec::new(),
         },
     ))
     .expect_err("missing api key should fail");
@@ -521,9 +684,12 @@ fn chat_rejects_disabled_requested_provider() {
             application_context: None,
             message: "解释当前输出".to_string(),
             conversation_id: None,
+            conversation_slot_json: None,
             provider_id: Some(provider.id),
             terminal_context: None,
             execution_visibility: None,
+            attachments: Vec::new(),
+            history: Vec::new(),
         },
     ))
     .expect_err("disabled provider should fail");
@@ -562,6 +728,14 @@ fn chat_includes_redacted_terminal_context_and_mcp_tool_summary() {
         &receiver,
         "kerminal-agent-context",
     );
+    state
+        .terminal_session_bindings()
+        .register("pane-1", session.id.clone())
+        .expect("register pane session binding");
+    state
+        .terminal_session_bindings()
+        .ready("pane-1", &session.id)
+        .expect("mark pane session binding ready");
 
     let response = tauri::async_runtime::block_on(service.chat(
         chat_context(&state, &credentials),
@@ -569,6 +743,7 @@ fn chat_includes_redacted_terminal_context_and_mcp_tool_summary() {
             application_context: Some(app_context_request("ai", &session.id)),
             message: "解释最近输出".to_string(),
             conversation_id: None,
+            conversation_slot_json: None,
             provider_id: None,
             terminal_context: Some(AiTerminalContextRequest {
                 session_id: session.id.clone(),
@@ -582,6 +757,8 @@ fn chat_includes_redacted_terminal_context_and_mcp_tool_summary() {
                 max_output_bytes: Some(4096),
             }),
             execution_visibility: None,
+            attachments: Vec::new(),
+            history: Vec::new(),
         },
     ))
     .expect("chat with terminal context");
@@ -635,9 +812,12 @@ fn chat_context_includes_background_execution_visibility() {
             application_context: None,
             message: "后台检查一下状态".to_string(),
             conversation_id: None,
+            conversation_slot_json: None,
             provider_id: None,
             terminal_context: None,
             execution_visibility: Some(AiCommandExecutionVisibility::Background),
+            attachments: Vec::new(),
+            history: Vec::new(),
         },
     ))
     .expect("chat response");
@@ -668,9 +848,10 @@ fn minimal_context_strategy_ignores_terminal_snapshot_request() {
     let response = tauri::async_runtime::block_on(service.chat(
         chat_context(&state, &credentials),
         AiChatRequest {
-            application_context: Some(app_context_request("ai", "missing-session-is-ignored")),
+            application_context: None,
             message: "不要读取终端上下文".to_string(),
             conversation_id: None,
+            conversation_slot_json: None,
             provider_id: None,
             terminal_context: Some(AiTerminalContextRequest {
                 session_id: "missing-session-is-ignored".to_string(),
@@ -684,6 +865,8 @@ fn minimal_context_strategy_ignores_terminal_snapshot_request() {
                 max_output_bytes: Some(128),
             }),
             execution_visibility: None,
+            attachments: Vec::new(),
+            history: Vec::new(),
         },
     ))
     .expect("minimal context should not require terminal session");
@@ -691,10 +874,17 @@ fn minimal_context_strategy_ignores_terminal_snapshot_request() {
     assert!(!response.context_used);
     let requests = executor.requests();
     assert_eq!(requests.len(), 1);
+    assert_eq!(
+        requests[0].provider.context_strategy,
+        LlmContextStrategy::Minimal
+    );
     assert!(requests[0]
         .context
         .contains("本次没有提供 terminal session 快照"));
     assert!(!requests[0].context.contains("不应读取"));
+    assert!(!requests[0]
+        .context
+        .contains("session `missing-session-is-ignored`"));
 }
 
 #[test]
@@ -719,6 +909,10 @@ fn chat_returns_pending_invocations_from_standard_tool_call_executor() {
                 audit: ToolAuditPolicy::Summary,
                 client_action: None,
                 confirmation: ToolConfirmationPolicy::Contextual,
+                conversation_id: None,
+                conversation_slot_json: None,
+                run_id: None,
+                step_id: None,
                 created_at: "1".to_owned(),
                 id: "tool-call-1".to_owned(),
                 reason: Some("运行测试确认当前改动。".to_owned()),
@@ -740,9 +934,12 @@ fn chat_returns_pending_invocations_from_standard_tool_call_executor() {
             application_context: None,
             message: "帮我跑测试".to_string(),
             conversation_id: None,
+            conversation_slot_json: None,
             provider_id: None,
             terminal_context: None,
             execution_visibility: None,
+            attachments: Vec::new(),
+            history: Vec::new(),
         },
     ))
     .expect("chat with pending invocation");

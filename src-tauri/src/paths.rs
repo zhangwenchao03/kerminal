@@ -14,6 +14,9 @@ pub const KERMINAL_DIR_NAME: &str = ".kerminal";
 /// Kerminal 主 SQLite 数据库文件名。
 pub const DATABASE_FILE_NAME: &str = "kerminal.db";
 
+/// AI 会话受管附件目录名。
+pub const AI_ATTACHMENTS_DIR_NAME: &str = "ai-attachments";
+
 /// Kerminal 本地持久化目录集合。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,6 +41,8 @@ pub struct KerminalPaths {
     pub temp: PathBuf,
     /// 诊断包目录。
     pub diagnostics: PathBuf,
+    /// AI 会话受管附件目录。
+    pub ai_attachments: PathBuf,
 }
 
 impl KerminalPaths {
@@ -66,12 +71,13 @@ impl KerminalPaths {
             exports: root.join("exports"),
             temp: root.join("temp"),
             diagnostics: root.join("diagnostics"),
+            ai_attachments: root.join(AI_ATTACHMENTS_DIR_NAME),
             root,
         }
     }
 
     /// 返回所有需要启动时创建的目录。
-    pub fn managed_directories(&self) -> [&Path; 9] {
+    pub fn managed_directories(&self) -> [&Path; 10] {
         [
             self.root.as_path(),
             self.logs.as_path(),
@@ -82,6 +88,7 @@ impl KerminalPaths {
             self.exports.as_path(),
             self.temp.as_path(),
             self.diagnostics.as_path(),
+            self.ai_attachments.as_path(),
         ]
     }
 

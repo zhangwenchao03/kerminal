@@ -18,10 +18,12 @@ import {
   type AppearanceSettings,
   type AppSettings,
   type KeybindingPlatform,
+  type ResolvedTheme,
   type SftpPerformanceSettings,
   type TerminalAppearance,
   type TerminalInlineSuggestionProviderSettings,
   type TerminalInlineSuggestionSettings,
+  type ThemeMode,
 } from "./settingsModel";
 import { shortcutPlatform } from "./keybindingUtils";
 import { AboutSettingsSection } from "./settings-tool-content/about-section";
@@ -41,11 +43,15 @@ import {
   visibleSettingsSectionId,
 } from "./settings-tool-content/types";
 
-export type { SettingsSaveState, SettingsSectionId } from "./settings-tool-content/types";
+export type {
+  SettingsSaveState,
+  SettingsSectionId,
+} from "./settings-tool-content/types";
 
 export function SettingsToolContent({
   initialSectionId = "settings-appearance",
   onSettingsChange,
+  resolvedTheme,
   saveError,
   saveState = "idle",
   settings,
@@ -55,14 +61,20 @@ export function SettingsToolContent({
       visibleSettingsSectionId(initialSectionId),
     );
   const [mcpError, setMcpError] = useState<string | null>(null);
-  const [mcpManifest, setMcpManifest] = useState<McpGatewayManifest | null>(null);
+  const [mcpManifest, setMcpManifest] = useState<McpGatewayManifest | null>(
+    null,
+  );
   const [mcpState, setMcpState] = useState<McpManifestLoadState>("idle");
   const [suggestionTelemetry, setSuggestionTelemetry] =
     useState<CommandSuggestionTelemetrySummary | null>(null);
-  const [suggestionTelemetryError, setSuggestionTelemetryError] = useState<string | null>(null);
+  const [suggestionTelemetryError, setSuggestionTelemetryError] = useState<
+    string | null
+  >(null);
   const [suggestionTelemetryState, setSuggestionTelemetryState] =
     useState<SuggestionTelemetryLoadState>("idle");
-  const [suggestionCleanupError, setSuggestionCleanupError] = useState<string | null>(null);
+  const [suggestionCleanupError, setSuggestionCleanupError] = useState<
+    string | null
+  >(null);
   const [suggestionCleanupResult, setSuggestionCleanupResult] =
     useState<CommandSuggestionDiagnosticsCleanupResult | null>(null);
   const [suggestionCleanupState, setSuggestionCleanupState] =
@@ -72,6 +84,8 @@ export function SettingsToolContent({
   const normalizedSettings = normalizeAppSettings(settings);
   const selectedKeybindingPlatformLabel =
     selectedKeybindingPlatform === "mac" ? "macOS" : "Windows";
+  const previewResolvedTheme =
+    resolvedTheme ?? resolveSettingsPreviewTheme(normalizedSettings.themeMode);
 
   const loadMcpManifest = async () => {
     setMcpState("loading");
@@ -81,7 +95,9 @@ export function SettingsToolContent({
       setMcpState("idle");
     } catch (nextError) {
       setMcpManifest(null);
-      setMcpError(nextError instanceof Error ? nextError.message : String(nextError));
+      setMcpError(
+        nextError instanceof Error ? nextError.message : String(nextError),
+      );
       setMcpState("error");
     }
   };
@@ -101,7 +117,9 @@ export function SettingsToolContent({
     }
   };
 
-  const cleanupSuggestionDiagnostics = async (resetPersistedTelemetry: boolean) => {
+  const cleanupSuggestionDiagnostics = async (
+    resetPersistedTelemetry: boolean,
+  ) => {
     setSuggestionCleanupState("running");
     setSuggestionCleanupError(null);
     try {
@@ -249,7 +267,7 @@ export function SettingsToolContent({
   return (
     <section className="grid gap-5 lg:grid-cols-[196px_minmax(0,1fr)]">
       <nav aria-label="设置分类" className="lg:sticky lg:top-0 lg:self-start">
-        <div className="rounded-2xl border border-black/8 bg-white/70 p-2 shadow-sm shadow-black/5 dark:border-white/8 dark:bg-white/6 dark:shadow-black/20">
+        <div className="kerminal-solid-surface rounded-2xl border p-2">
           <div className="px-2 py-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
             功能分类
           </div>
@@ -263,10 +281,10 @@ export function SettingsToolContent({
                   aria-controls={`${section.id}-panel`}
                   aria-pressed={selected}
                   className={cn(
-                    "flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-sky-500/15",
+                    "kerminal-focus-ring kerminal-pressable flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm",
                     selected
-                      ? "bg-sky-500/12 text-sky-700 dark:bg-sky-400/15 dark:text-sky-100"
-                      : "text-zinc-600 hover:bg-black/5 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-white/8 dark:hover:text-zinc-50",
+                      ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
+                      : "text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50",
                   )}
                   key={section.id}
                   onClick={() => setActiveSectionId(section.id)}
@@ -276,8 +294,8 @@ export function SettingsToolContent({
                     className={cn(
                       "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
                       selected
-                        ? "bg-sky-500/15 text-sky-700 dark:bg-sky-300/15 dark:text-sky-100"
-                        : "bg-black/[0.04] text-sky-600 dark:bg-white/8 dark:text-sky-300",
+                        ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
+                        : "bg-[var(--surface-muted)] text-sky-600 dark:text-sky-300",
                     )}
                   >
                     <Icon className="h-4 w-4" />
@@ -304,6 +322,7 @@ export function SettingsToolContent({
             cleanupSuggestionDiagnostics={cleanupSuggestionDiagnostics}
             loadSuggestionTelemetry={loadSuggestionTelemetry}
             normalizedSettings={normalizedSettings}
+            resolvedTheme={previewResolvedTheme}
             suggestionCleanupError={suggestionCleanupError}
             suggestionCleanupResult={suggestionCleanupResult}
             suggestionCleanupState={suggestionCleanupState}
@@ -354,6 +373,7 @@ export function SettingsToolContent({
             selectedKeybindingPlatform={selectedKeybindingPlatform}
             selectedKeybindingPlatformLabel={selectedKeybindingPlatformLabel}
             setSelectedKeybindingPlatform={setSelectedKeybindingPlatform}
+            updateSettings={updateSettings}
           />
         ) : null}
 
@@ -363,4 +383,26 @@ export function SettingsToolContent({
       </div>
     </section>
   );
+}
+
+function resolveSettingsPreviewTheme(themeMode: ThemeMode): ResolvedTheme {
+  if (themeMode === "dark" || themeMode === "light") {
+    return themeMode;
+  }
+
+  if (typeof document !== "undefined") {
+    const documentTheme = document.documentElement.dataset.theme;
+    if (documentTheme === "dark" || documentTheme === "light") {
+      return documentTheme;
+    }
+  }
+
+  if (
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-color-scheme: dark)").matches
+  ) {
+    return "dark";
+  }
+
+  return "light";
 }

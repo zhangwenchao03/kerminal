@@ -33,6 +33,7 @@ export function createTerminalOutputWriter(
     options.maxCharsPerFlush ?? DEFAULT_MAX_CHARS_PER_FLUSH,
   );
   const chunks: string[] = [];
+  let chunkHead = 0;
   let disposed = false;
   let pendingChars = 0;
   let scheduledHandle: number | null = null;
@@ -56,24 +57,50 @@ export function createTerminalOutputWriter(
     let remaining = maxChars;
     let batch = "";
 
-    while (chunks.length > 0 && remaining > 0) {
-      const current = chunks[0];
+    while (chunkHead < chunks.length && remaining > 0) {
+      const current = chunks[chunkHead];
       if (current.length <= remaining) {
         batch += current;
-        chunks.shift();
+        chunkHead += 1;
         pendingChars -= current.length;
         remaining -= current.length;
         continue;
       }
 
-      const splitAt = safeSplitIndex(current, remaining);
+      const splitRemaining = remaining;
+      const splitAt = safeSplitIndex(current, splitRemaining);
       batch += current.slice(0, splitAt);
-      chunks[0] = current.slice(splitAt);
+      chunks[chunkHead] = current.slice(splitAt);
       pendingChars -= splitAt;
       remaining -= splitAt;
+      if (splitAt < splitRemaining) {
+        break;
+      }
     }
 
+    compactQueue();
     return batch;
+  };
+
+  const compactQueue = () => {
+    if (chunkHead === 0) {
+      return;
+    }
+    if (chunkHead >= chunks.length) {
+      chunks.length = 0;
+      chunkHead = 0;
+      return;
+    }
+    if (chunkHead >= 1024 && chunkHead * 2 >= chunks.length) {
+      chunks.splice(0, chunkHead);
+      chunkHead = 0;
+    }
+  };
+
+  const clearQueue = () => {
+    chunks.length = 0;
+    chunkHead = 0;
+    pendingChars = 0;
   };
 
   function flushFrame() {
@@ -96,9 +123,8 @@ export function createTerminalOutputWriter(
     }
 
     cancelScheduledFlush();
-    const batch = chunks.join("");
-    chunks.length = 0;
-    pendingChars = 0;
+    const batch = chunks.slice(chunkHead).join("");
+    clearQueue();
     terminal.write(batch);
   };
 
@@ -106,8 +132,7 @@ export function createTerminalOutputWriter(
     dispose() {
       disposed = true;
       cancelScheduledFlush();
-      chunks.length = 0;
-      pendingChars = 0;
+      clearQueue();
     },
     flush,
     pendingLength() {
@@ -140,9 +165,16 @@ function safeSplitIndex(text: string, maxChars: number) {
   }
 
   const previousCodeUnit = text.charCodeAt(capped - 1);
-  const isHighSurrogate =
+  const nextCodeUnit = text.charCodeAt(capped);
+  const splitAfterHighSurrogate =
     previousCodeUnit >= 0xd800 && previousCodeUnit <= 0xdbff;
-  if (isHighSurrogate && capped < text.length && capped > 1) {
+  const splitBeforeLowSurrogate =
+    nextCodeUnit >= 0xdc00 && nextCodeUnit <= 0xdfff;
+  if (
+    capped > 1 &&
+    capped < text.length &&
+    (splitAfterHighSurrogate || splitBeforeLowSurrogate)
+  ) {
     return capped - 1;
   }
   return capped;

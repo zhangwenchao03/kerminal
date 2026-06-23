@@ -1,4 +1,5 @@
 use super::*;
+use crate::models::sftp::SftpTransferConflictPolicy;
 
 impl SftpService {
     pub(super) fn enqueue_resolved_for_test(
@@ -26,6 +27,7 @@ impl SftpService {
         let summary = SftpTransferSummary {
             id: id.clone(),
             host_id: request.host_id.clone(),
+            view_scope: request.view_scope.clone(),
             remote_path: request.remote_path.clone(),
             local_path: request.local_path.clone(),
             direction: request.direction,
@@ -74,6 +76,7 @@ impl SftpService {
         let summary = SftpTransferSummary {
             id: id.clone(),
             host_id: request.target_host_id.clone(),
+            view_scope: request.view_scope.clone(),
             remote_path: request.target_remote_path.clone(),
             local_path: remote_copy_source_label(&request),
             direction: SftpTransferDirection::Upload,
@@ -131,6 +134,7 @@ impl SftpService {
         let summary = SftpTransferSummary {
             id: id.clone(),
             host_id: request.host_id.clone(),
+            view_scope: request.view_scope.clone(),
             remote_path: request.source_remote_path.clone(),
             local_path: request.target_local_path.clone(),
             direction: SftpTransferDirection::Download,
@@ -184,6 +188,7 @@ impl SftpService {
         let summary = SftpTransferSummary {
             id: id.clone(),
             host_id: request.host_id.clone(),
+            view_scope: request.view_scope.clone(),
             remote_path: request.target_remote_path.clone(),
             local_path: request.source_local_path.clone(),
             direction: SftpTransferDirection::Upload,
@@ -239,6 +244,7 @@ impl SftpService {
         let summary = SftpTransferSummary {
             id: id.clone(),
             host_id: request.host_id.clone(),
+            view_scope: request.view_scope.clone(),
             remote_path: request.source_remote_path.clone(),
             local_path: target_local_path_string.clone(),
             direction: SftpTransferDirection::Download,
@@ -292,6 +298,7 @@ pub(super) fn test_endpoint(host_id: &str) -> SftpEndpoint {
             username: "deploy".to_owned(),
             auth_type: RemoteHostAuthType::Agent,
             credential_ref: None,
+            credential_secret: None,
             tags: Vec::new(),
             production: false,
             ssh_options: Default::default(),
@@ -311,6 +318,8 @@ pub(super) fn test_transfer_request(host_id: &str) -> SftpManagedTransferRequest
         local_path: "C:/tmp/app.log".to_owned(),
         direction: SftpTransferDirection::Download,
         kind: SftpTransferKind::File,
+        conflict_policy: SftpTransferConflictPolicy::Overwrite,
+        view_scope: None,
     }
 }
 

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { analyzeBroadcastCommand, canBroadcastCommand } from "./broadcastCommandPolicy";
+import {
+  analyzeBroadcastCommand,
+  canBroadcastCommand,
+  isBroadcastCommandTargetMode,
+} from "./broadcastCommandPolicy";
 
 describe("broadcastCommandPolicy", () => {
   it("allows a safe command for one local target without confirmation", () => {
@@ -23,7 +27,20 @@ describe("broadcastCommandPolicy", () => {
     expect(analysis.requiresConfirmation).toBe(true);
     expect(analysis.risks).toEqual(["batch", "remote"]);
     expect(analysis.reasons).toContain("将发送到 2 个分屏");
-    expect(analysis.reasons).toContain("包含远程分屏");
+    expect(analysis.reasons).toContain("包含远程或设备分屏");
+  });
+
+  it("treats telnet, serial, and containers as non-local confirmation targets", () => {
+    const analysis = analyzeBroadcastCommand("show status", [
+      { mode: "telnet", paneId: "pane-telnet", title: "Telnet" },
+      { mode: "serial", paneId: "pane-serial", title: "COM1" },
+      { mode: "container", paneId: "pane-container", title: "容器" },
+    ]);
+
+    expect(analysis.requiresConfirmation).toBe(true);
+    expect(analysis.risks).toEqual(["batch", "remote"]);
+    expect(analysis.reasons).toContain("将发送到 3 个分屏");
+    expect(analysis.reasons).toContain("包含远程或设备分屏");
   });
 
   it("detects destructive commands", () => {
@@ -43,5 +60,14 @@ describe("broadcastCommandPolicy", () => {
       ])),
     ).toBe(false);
     expect(canBroadcastCommand(analyzeBroadcastCommand("uptime", []))).toBe(false);
+  });
+
+  it("only exposes real terminal modes as broadcast targets", () => {
+    expect(isBroadcastCommandTargetMode("local")).toBe(true);
+    expect(isBroadcastCommandTargetMode("ssh")).toBe(true);
+    expect(isBroadcastCommandTargetMode("telnet")).toBe(true);
+    expect(isBroadcastCommandTargetMode("serial")).toBe(true);
+    expect(isBroadcastCommandTargetMode("container")).toBe(true);
+    expect(isBroadcastCommandTargetMode("preview")).toBe(false);
   });
 });

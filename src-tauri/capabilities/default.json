@@ -6,6 +6,14 @@
   "permissions": [
     "core:default",
     "dialog:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://github.com/kongweiguang/kerminal"
+        }
+      ]
+    },
     "process:default",
     "updater:default",
     "core:window:allow-start-dragging",

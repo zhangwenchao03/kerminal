@@ -9,20 +9,9 @@ import {
   type TerminalProfile,
 } from "../../lib/profileApi";
 import type { DockerContainerSummary } from "../../lib/dockerApi";
-import {
-  localTarget,
-  serialTarget,
-  sshTarget,
-  telnetTarget,
-} from "../../lib/targetModel";
+import { localTarget } from "../../lib/targetModel";
 import type { RemoteHostGroupWithHosts } from "../../lib/remoteHostApi";
 import { machineGroups, terminalPanes, terminalTabs, tools } from "./workspaceData";
-import {
-  collectPaneIds,
-  findFirstPaneId,
-  removePaneFromLayout,
-  splitPaneInLayout,
-} from "./workspaceLayout";
 import {
   maxGeneratedTerminalCounters,
   normalizeWorkspaceSessionSnapshot,
@@ -37,7 +26,7 @@ import type {
   TerminalTab,
   ToolId,
 } from "./types";
-import { isTerminalSessionTab, isToolId } from "./types";
+import { isSftpTransferWorkspaceTab, isToolId } from "./types";
 import {
   addDockerContainerMachineToGroup,
   addMachineToGroup,
@@ -56,13 +45,31 @@ import {
   nextUnpinnedSortOrder,
   profileToLocalMachine,
   removeMachineFromGroups,
-  serialPortName,
   sortMachineGroups,
   syncLocalSidebarMachines,
   syncTerminalPaneProductionFlags,
   ungroupedGroupTitle,
   withUngroupedGroupTitle,
 } from "./workspaceMachineModel";
+import {
+  closeTerminalPaneState,
+  closeTerminalTabState,
+  focusTerminalPaneState,
+  resolveFocusedPaneSplitTarget,
+  selectTerminalTabState,
+  splitFocusedPaneState,
+  updatePaneCurrentCwdState,
+  updatePaneOutputHistoryState,
+} from "./workspaceTerminalState";
+import {
+  createContainerTerminalOpenState,
+  createLocalTerminalOpenState,
+  createSerialTerminalOpenState,
+  createSshTerminalOpenState,
+  createTelnetTerminalOpenState,
+  focusExistingMachineTabState,
+  syncContainerTerminalOpenState,
+} from "./workspaceTerminalOpenState";
 
 export interface AddTerminalTabOptions {
   title?: string;
@@ -96,6 +103,7 @@ export interface WorkspaceState {
   activeTabId: string;
   selectedMachineId: string;
   focusedPaneId: string;
+  removedSidebarMachineIds: string[];
   activeTool: ToolId | null;
   machineSearch: string;
   broadcastDraft: string;
@@ -154,6 +162,7 @@ const initialState = {
   activeTabId: "",
   selectedMachineId: "",
   focusedPaneId: "",
+  removedSidebarMachineIds: [],
   activeTool: null,
   machineSearch: "",
   broadcastDraft: "",
@@ -178,17 +187,18 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
         nextProfiles,
       );
       const machineGroups = syncedMachineGroups;
-      const selectedMachineExists = Boolean(
-        findMachine(machineGroups, state.selectedMachineId),
-      );
 
       return {
         activeProfileId: activeProfile.id,
         machineGroups,
         profiles: nextProfiles,
-        selectedMachineId: selectedMachineExists
-          ? state.selectedMachineId
-          : machineGroups[0]?.machines[0]?.id ?? "",
+        selectedMachineId: selectedMachineIdForUpdatedGroups({
+          activeTabId: state.activeTabId,
+          allowPendingActiveTabSelection: true,
+          fallbackSelectedMachineId: state.selectedMachineId,
+          machineGroups,
+          terminalTabs: state.terminalTabs,
+        }),
       };
     }),
   setSettings: (settings) => set({ settings: normalizeAppSettings(settings) }),
@@ -203,15 +213,16 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
         ),
         ungroupedGroupTitle(state.machineGroups),
       );
-      const selectedMachineExists = Boolean(
-        findMachine(machineGroups, state.selectedMachineId),
-      );
 
       return {
         machineGroups,
-        selectedMachineId: selectedMachineExists
-          ? state.selectedMachineId
-          : machineGroups[0]?.machines[0]?.id ?? "",
+        selectedMachineId: selectedMachineIdForUpdatedGroups({
+          activeTabId: state.activeTabId,
+          allowPendingActiveTabSelection: false,
+          fallbackSelectedMachineId: state.selectedMachineId,
+          machineGroups,
+          terminalTabs: state.terminalTabs,
+        }),
         terminalPanes: syncTerminalPaneProductionFlags(
           state.terminalPanes,
           machineGroups,
@@ -227,13 +238,21 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
 
       const machine = containerToMachine(container, hostMachine, options);
 
+      const openState = syncContainerTerminalOpenState(state, machine);
+
       return {
         machineGroups: addDockerContainerMachineToGroup(
           state.machineGroups,
           machine,
           options?.groupId ?? hostMachine.remoteGroupId,
         ),
+        removedSidebarMachineIds: removeRemovedSidebarMachineId(
+          state.removedSidebarMachineIds,
+          machine.id,
+        ),
         selectedMachineId: machine.id,
+        terminalPanes: openState.terminalPanes,
+        terminalTabs: openState.terminalTabs,
       };
     }),
   addLocalProfileMachine: (profile, groupId) =>
@@ -248,6 +267,10 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
           state.machineGroups,
           machine,
           groupId,
+        ),
+        removedSidebarMachineIds: removeRemovedSidebarMachineId(
+          state.removedSidebarMachineIds,
+          machine.id,
         ),
         selectedMachineId: machine.id,
       };
@@ -313,6 +336,10 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
       );
       return {
         machineGroups,
+        removedSidebarMachineIds: addRemovedSidebarMachineId(
+          state.removedSidebarMachineIds,
+          machineId,
+        ),
         selectedMachineId: selectedMachineExists
           ? state.selectedMachineId
           : machineGroups[0]?.machines[0]?.id ?? "",
@@ -386,14 +413,17 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
   selectMachine: (selectedMachineId) => set({ selectedMachineId }),
   selectTab: (activeTabId) =>
     set((state) => {
-      const activeTab = state.terminalTabs.find((tab) => tab.id === activeTabId);
-      if (!activeTab) {
-        return {};
+      const tabPatch = selectTerminalTabState(state, activeTabId);
+      if (!("activeTabId" in tabPatch)) {
+        return tabPatch;
       }
-      const focusedPaneId = isTerminalSessionTab(activeTab)
-        ? findFirstPaneId(activeTab.layout) ?? state.focusedPaneId
-        : "";
-      return { activeTabId, focusedPaneId };
+      return {
+        ...tabPatch,
+        selectedMachineId: selectedMachineIdFromWorkspaceTab(
+          state.terminalTabs.find((tab) => tab.id === activeTabId),
+          state.machineGroups,
+        ),
+      };
     }),
   addTerminalTab: (options) =>
     set((state) => {
@@ -416,54 +446,25 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
         persistedProfile
           ? localMachineIdForProfile(persistedProfile.id)
           : `machine-local-${generatedTabCount}`;
-      const pane: TerminalPane = {
+      const nextState = createLocalTerminalOpenState(state, {
         args: options?.args ?? profile?.args,
         cwd: options?.cwd ?? profile?.cwd,
         env: options?.env ?? profile?.env,
-        id: paneId,
-        profileId: profile?.id,
-        shell: options?.shell ?? profile?.shell,
-        title,
+        groupId: options?.groupId,
         machineId,
-        mode: "local",
-        prompt: "PS>",
-        status: "online",
-        target: localTarget(profile?.id),
-        lines: [],
-      };
-      const tab: TerminalTab = {
-        id: tabId,
+        machineProfileId: persistedProfile?.id,
+        paneId,
+        profile,
+        shell: options?.shell ?? profile?.shell,
+        tabId,
         title,
-        machineId: pane.machineId,
-        layout: { type: "pane", paneId },
-      };
-      const machine: Machine = {
-        args: pane.args,
-        cwd: pane.cwd,
-        description: pane.shell ?? profile?.shell ?? "本地会话",
-        env: pane.env,
-        id: machineId,
-        kind: "local",
-        name: title,
-        profileId: persistedProfile?.id,
-        remoteGroupId: options?.groupId,
-        shell: pane.shell,
-        status: "online",
-        target: localTarget(persistedProfile?.id),
-        tags: ["local"],
-      };
-
+      });
       return {
-        activeTabId: tabId,
-        focusedPaneId: paneId,
-        machineGroups: addMachineToGroup(
-          state.machineGroups,
-          machine,
-          options?.groupId,
+        ...nextState,
+        removedSidebarMachineIds: removeRemovedSidebarMachineId(
+          state.removedSidebarMachineIds,
+          machineId,
         ),
-        selectedMachineId: machine.id,
-        terminalPanes: [...state.terminalPanes, pane],
-        terminalTabs: [...state.terminalTabs, tab],
       };
     }),
   openSftpTransferTab: (options) =>
@@ -484,7 +485,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
       const rightHostId = rightHost?.kind === "ssh" ? rightHost.id : undefined;
       const tabId = `tab-sftp-transfer-${generatedTabCount}`;
       const primaryHostId = rightHostId ?? lockedLeftHostId ?? leftHostId;
-      const primaryHost = rightHost ?? lockedLeftHost ?? leftHost;
+      const primaryHost = primaryHostId
+        ? findMachine(state.machineGroups, primaryHostId)
+        : undefined;
       const title = primaryHost ? `${primaryHost.name} 传输` : "SFTP 传输";
       const tab: SftpTransferWorkspaceTab = {
         id: tabId,
@@ -511,28 +514,26 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
         return {};
       }
 
-      const existingTab = findTabForMachine(state, machine.id);
-      if (existingTab) {
-        return {
-          activeTabId: existingTab.id,
-          focusedPaneId: isTerminalSessionTab(existingTab)
-            ? findFirstPaneId(existingTab.layout) ?? state.focusedPaneId
-            : "",
-          selectedMachineId: machine.id,
-        };
+      const existingTabState = focusExistingMachineTabState(state, machine.id);
+      if (existingTabState) {
+        return existingTabState;
       }
 
       const profile = machine.profileId
         ? state.profiles.find((candidate) => candidate.id === machine.profileId)
         : undefined;
-      return createLocalTerminalTabState(state, {
+      generatedTabCount += 1;
+      generatedPaneCount += 1;
+      return createLocalTerminalOpenState(state, {
         args: machine.args,
         cwd: machine.cwd,
         env: machine.env,
         groupId: machine.remoteGroupId,
         machineId: machine.id,
+        paneId: `pane-local-${generatedPaneCount}`,
         profile,
         shell: machine.shell,
+        tabId: `tab-local-${generatedTabCount}`,
         title: machine.name,
       });
     }),
@@ -545,37 +546,10 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
 
       generatedTabCount += 1;
       generatedPaneCount += 1;
-      const tabId = `tab-ssh-${generatedTabCount}`;
-      const paneId = `pane-ssh-${generatedPaneCount}`;
-      const hostLabel = machine.host ?? machine.name;
-      const userLabel = machine.username ?? "ssh";
-      const pane: TerminalPane = {
-        id: paneId,
-        latencyMs: machine.latencyMs,
-        lines: [],
-        machineId: machine.id,
-        mode: "ssh",
-        prompt: `${userLabel}@${hostLabel}:~$`,
-        remoteHostId: machine.id,
-        remoteHostProduction: machine.production ?? false,
-        status: machine.status,
-        target: sshTarget(machine.id),
-        title: machine.name,
-      };
-      const tab: TerminalTab = {
-        id: tabId,
-        layout: { type: "pane", paneId },
-        machineId: machine.id,
-        title: machine.name,
-      };
-
-      return {
-        activeTabId: tabId,
-        focusedPaneId: paneId,
-        selectedMachineId: machine.id,
-        terminalPanes: [...state.terminalPanes, pane],
-        terminalTabs: [...state.terminalTabs, tab],
-      };
+      return createSshTerminalOpenState(state, machine, {
+        paneId: `pane-ssh-${generatedPaneCount}`,
+        tabId: `tab-ssh-${generatedTabCount}`,
+      });
     }),
   openTelnetTerminal: (hostId) =>
     set((state) => {
@@ -586,35 +560,10 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
 
       generatedTabCount += 1;
       generatedPaneCount += 1;
-      const tabId = `tab-telnet-${generatedTabCount}`;
-      const paneId = `pane-telnet-${generatedPaneCount}`;
-      const hostLabel = machine.host ?? machine.name;
-      const pane: TerminalPane = {
-        id: paneId,
-        latencyMs: machine.latencyMs,
-        lines: [],
-        machineId: machine.id,
-        mode: "telnet",
-        prompt: `${hostLabel}:${machine.port ?? 23}>`,
-        remoteHostProduction: machine.production ?? false,
-        status: machine.status,
-        target: telnetTarget(machine.id),
-        title: machine.name,
-      };
-      const tab: TerminalTab = {
-        id: tabId,
-        layout: { type: "pane", paneId },
-        machineId: machine.id,
-        title: machine.name,
-      };
-
-      return {
-        activeTabId: tabId,
-        focusedPaneId: paneId,
-        selectedMachineId: machine.id,
-        terminalPanes: [...state.terminalPanes, pane],
-        terminalTabs: [...state.terminalTabs, tab],
-      };
+      return createTelnetTerminalOpenState(state, machine, {
+        paneId: `pane-telnet-${generatedPaneCount}`,
+        tabId: `tab-telnet-${generatedTabCount}`,
+      });
     }),
   openSerialTerminal: (hostId) =>
     set((state) => {
@@ -625,35 +574,10 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
 
       generatedTabCount += 1;
       generatedPaneCount += 1;
-      const tabId = `tab-serial-${generatedTabCount}`;
-      const paneId = `pane-serial-${generatedPaneCount}`;
-      const serialPort = serialPortName(machine.tags) ?? machine.host ?? machine.name;
-      const pane: TerminalPane = {
-        id: paneId,
-        latencyMs: machine.latencyMs,
-        lines: [],
-        machineId: machine.id,
-        mode: "serial",
-        prompt: `${serialPort}>`,
-        remoteHostProduction: machine.production ?? false,
-        status: machine.status,
-        target: serialTarget(machine.id),
-        title: machine.name,
-      };
-      const tab: TerminalTab = {
-        id: tabId,
-        layout: { type: "pane", paneId },
-        machineId: machine.id,
-        title: machine.name,
-      };
-
-      return {
-        activeTabId: tabId,
-        focusedPaneId: paneId,
-        selectedMachineId: machine.id,
-        terminalPanes: [...state.terminalPanes, pane],
-        terminalTabs: [...state.terminalTabs, tab],
-      };
+      return createSerialTerminalOpenState(state, machine, {
+        paneId: `pane-serial-${generatedPaneCount}`,
+        tabId: `tab-serial-${generatedTabCount}`,
+      });
     }),
   openContainerTerminal: (machineId) =>
     set((state) => {
@@ -662,78 +586,20 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
         return {};
       }
 
-      const existingTab = findTabForMachine(state, machine.id);
-      if (existingTab) {
-        return {
-          activeTabId: existingTab.id,
-          focusedPaneId: isTerminalSessionTab(existingTab)
-            ? findFirstPaneId(existingTab.layout) ?? state.focusedPaneId
-            : "",
-          selectedMachineId: machine.id,
-        };
+      const existingTabState = focusExistingMachineTabState(state, machine.id);
+      if (existingTabState) {
+        return existingTabState;
       }
 
       generatedTabCount += 1;
       generatedPaneCount += 1;
-      const tabId = `tab-container-${generatedTabCount}`;
-      const paneId = `pane-container-${generatedPaneCount}`;
-      const pane: TerminalPane = {
-        containerId: machine.containerId,
-        id: paneId,
-        lines: [],
-        machineId: machine.id,
-        mode: "container",
-        prompt: `${machine.name}:/$`,
-        remoteHostId: machine.parentMachineId,
-        remoteHostProduction: machine.production ?? false,
-        shell: machine.shell,
-        status: machine.status,
-        target: machine.target,
-        title: machine.name,
-      };
-      const tab: TerminalTab = {
-        id: tabId,
-        layout: { type: "pane", paneId },
-        machineId: machine.id,
-        title: machine.name,
-      };
-
-      return {
-        activeTabId: tabId,
-        focusedPaneId: paneId,
-        selectedMachineId: machine.id,
-        terminalPanes: [...state.terminalPanes, pane],
-        terminalTabs: [...state.terminalTabs, tab],
-      };
+      return createContainerTerminalOpenState(state, machine, {
+        paneId: `pane-container-${generatedPaneCount}`,
+        tabId: `tab-container-${generatedTabCount}`,
+      });
     }),
   closeTerminalTab: (tabId) =>
-    set((state) => {
-      const tab = state.terminalTabs.find((item) => item.id === tabId);
-      if (!tab) {
-        return {};
-      }
-
-      const paneIds = isTerminalSessionTab(tab) ? collectPaneIds(tab.layout) : [];
-      const terminalTabs = state.terminalTabs.filter((item) => item.id !== tabId);
-      const terminalPanes = state.terminalPanes.filter(
-        (pane) => !paneIds.includes(pane.id),
-      );
-      const nextActiveTab =
-        state.activeTabId === tabId
-          ? terminalTabs[0]
-          : terminalTabs.find((item) => item.id === state.activeTabId);
-      const focusedPaneId =
-        nextActiveTab && isTerminalSessionTab(nextActiveTab)
-          ? findFirstPaneId(nextActiveTab.layout) ?? terminalPanes[0]?.id ?? ""
-          : "";
-
-      return {
-        activeTabId: nextActiveTab?.id ?? "",
-        focusedPaneId,
-        terminalPanes,
-        terminalTabs,
-      };
-    }),
+    set((state) => closeTerminalTabState(state, tabId)),
   renameTerminalTab: (tabId, title) =>
     set((state) => {
       const trimmedTitle = title.trim();
@@ -749,128 +615,64 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
     }),
   splitFocusedPane: (direction) =>
     set((state) => {
-      const activeTab = state.terminalTabs.find(
-        (tab) => tab.id === state.activeTabId,
-      );
-      const sourcePane = state.terminalPanes.find(
-        (pane) => pane.id === state.focusedPaneId,
-      );
-      if (!activeTab || !isTerminalSessionTab(activeTab) || !sourcePane) {
+      const splitTarget = resolveFocusedPaneSplitTarget(state);
+      if (!splitTarget) {
         return {};
       }
 
       generatedPaneCount += 1;
       generatedSplitCount += 1;
-      const panePrefix =
-        sourcePane.mode === "ssh"
-          ? "pane-ssh"
-          : sourcePane.mode === "telnet"
-            ? "pane-telnet"
-            : sourcePane.mode === "serial"
-              ? "pane-serial"
-          : sourcePane.mode === "preview"
-            ? "pane-preview"
-            : "pane-local";
-      const paneId = `${panePrefix}-${generatedPaneCount}`;
-      const newPane: TerminalPane = {
-        ...sourcePane,
-        id: paneId,
-        title: direction === "horizontal" ? "右侧分屏" : "下方分屏",
-        machineId: sourcePane.machineId,
-        mode: sourcePane.mode,
-        lines: [],
-      };
-      const terminalTabs = state.terminalTabs.map((tab) =>
-        tab.id === activeTab.id && isTerminalSessionTab(tab)
-          ? {
-              ...tab,
-              layout: splitPaneInLayout(
-                activeTab.layout,
-                state.focusedPaneId,
-                paneId,
-                direction,
-                `split-${generatedSplitCount}`,
-              ),
-            }
-          : tab,
-      );
-
-      return {
-        focusedPaneId: paneId,
-        terminalPanes: [...state.terminalPanes, newPane],
-        terminalTabs,
-      };
+      return splitFocusedPaneState(state, {
+        direction,
+        paneId: `${splitTarget.paneIdPrefix}-${generatedPaneCount}`,
+        splitId: `split-${generatedSplitCount}`,
+      });
     }),
   closePane: (paneId) =>
-    set((state) => {
-      const activeTab = state.terminalTabs.find(
-        (tab) => tab.id === state.activeTabId,
-      );
-      if (
-        !activeTab ||
-        !isTerminalSessionTab(activeTab) ||
-        collectPaneIds(activeTab.layout).length <= 1
-      ) {
-        return {};
-      }
-
-      const nextLayout = removePaneFromLayout(activeTab.layout, paneId);
-      if (!nextLayout) {
-        return {};
-      }
-
-      const terminalTabs = state.terminalTabs.map((tab) =>
-        tab.id === activeTab.id && isTerminalSessionTab(tab)
-          ? { ...tab, layout: nextLayout }
-          : tab,
-      );
-      const terminalPanes = state.terminalPanes.filter(
-        (pane) => pane.id !== paneId,
-      );
-      const focusedPaneId =
-        paneId === state.focusedPaneId
-          ? findFirstPaneId(nextLayout) ?? state.focusedPaneId
-          : state.focusedPaneId;
-
-      return { focusedPaneId, terminalPanes, terminalTabs };
-    }),
-  focusPane: (focusedPaneId) => set({ focusedPaneId }),
+    set((state) => closeTerminalPaneState(state, paneId)),
+  focusPane: (focusedPaneId) =>
+    set((state) => focusTerminalPaneState(state, focusedPaneId)),
   updatePaneCurrentCwd: (paneId, currentCwd) =>
-    set((state) => ({
-      terminalPanes: state.terminalPanes.map((pane) =>
-        pane.id === paneId ? { ...pane, currentCwd } : pane,
-      ),
-    })),
+    set((state) => updatePaneCurrentCwdState(state, paneId, currentCwd)),
   updatePaneOutputHistory: (paneId, outputHistory) =>
-    set((state) => ({
-      terminalPanes: state.terminalPanes.map((pane) =>
-        pane.id === paneId ? { ...pane, outputHistory } : pane,
-      ),
-    })),
+    set((state) => updatePaneOutputHistoryState(state, paneId, outputHistory)),
   restoreWorkspaceSession: (session) =>
     set((state) => {
       const normalized = normalizeWorkspaceSessionSnapshot(session);
       updateGeneratedCounters(normalized);
+      const removedSidebarMachineIds = normalized.removedSidebarMachineIds ?? [];
+      const removedMachineIds = new Set(removedSidebarMachineIds);
       const machineGroups = addPersistentSidebarMachines(
         state.machineGroups,
         mergeSidebarMachines(
           localMachinesFromSession(normalized),
           dockerContainerMachinesFromSession(normalized),
           normalized.sidebarMachines,
-        ),
+        ).filter((machine) => !removedMachineIds.has(machine.id)),
+      );
+
+      const terminalTabs = sanitizeRestoredSftpTransferTabs(
+        normalized.terminalTabs,
+        machineGroups,
       );
 
       return {
         activeTabId: normalized.activeTabId,
         focusedPaneId: normalized.focusedPaneId,
         machineGroups,
+        removedSidebarMachineIds,
         terminalPanes: syncTerminalPaneProductionFlags(
           normalized.terminalPanes,
           machineGroups,
         ),
-        terminalTabs: normalized.terminalTabs,
-        selectedMachineId:
-          normalized.selectedMachineId || state.selectedMachineId || "",
+        terminalTabs,
+        selectedMachineId: restoredSelectedMachineId({
+          activeTabId: normalized.activeTabId,
+          fallbackSelectedMachineId: state.selectedMachineId,
+          machineGroups,
+          selectedMachineId: normalized.selectedMachineId,
+          terminalTabs,
+        }),
       };
     }),
   setActiveTool: (activeTool) =>
@@ -901,91 +703,140 @@ function activeProfile(state: WorkspaceState) {
   );
 }
 
-function findTabForMachine(
-  state: WorkspaceState,
-  machineId: string,
-): TerminalTab | undefined {
-  const panesById = new Map(state.terminalPanes.map((pane) => [pane.id, pane]));
-  return state.terminalTabs.find((tab) => {
-    if (tab.machineId === machineId) {
-      return true;
+function addRemovedSidebarMachineId(machineIds: string[], machineId: string) {
+  return machineIds.includes(machineId) ? machineIds : [...machineIds, machineId];
+}
+
+function removeRemovedSidebarMachineId(machineIds: string[], machineId: string) {
+  return machineIds.includes(machineId)
+    ? machineIds.filter((candidate) => candidate !== machineId)
+    : machineIds;
+}
+
+function sanitizeRestoredSftpTransferTabs(
+  tabs: TerminalTab[],
+  machineGroups: MachineGroup[],
+) {
+  return tabs.map((tab) => {
+    if (!isSftpTransferWorkspaceTab(tab)) {
+      return tab;
     }
-    if (!isTerminalSessionTab(tab)) {
-      return false;
-    }
-    return collectPaneIds(tab.layout).some((paneId) => {
-      const pane = panesById.get(paneId);
-      return pane?.machineId === machineId || pane?.remoteHostId === machineId;
-    });
+
+    const lockedLeftHostId = validSshHostId(machineGroups, tab.lockedLeftHostId);
+    const leftHostId =
+      lockedLeftHostId ?? validSshHostId(machineGroups, tab.leftHostId);
+    const rightHostId = validSshHostId(machineGroups, tab.rightHostId);
+    const machineHostId = validSshHostId(machineGroups, tab.machineId);
+    const primaryHostId =
+      rightHostId ?? lockedLeftHostId ?? leftHostId ?? machineHostId;
+
+    return {
+      ...tab,
+      leftHostId: leftHostId ?? machineHostId,
+      lockedLeftHostId,
+      machineId: primaryHostId ?? "sftp-transfer",
+      rightHostId,
+    };
   });
 }
 
-function createLocalTerminalTabState(
-  state: WorkspaceState,
-  options: {
-    args?: string[];
-    cwd?: string;
-    env?: Record<string, string>;
-    groupId?: string;
-    machineId: string;
-    profile?: TerminalProfile;
-    shell?: string;
-    title: string;
-  },
-) {
-  generatedTabCount += 1;
-  generatedPaneCount += 1;
-  const tabId = `tab-local-${generatedTabCount}`;
-  const paneId = `pane-local-${generatedPaneCount}`;
-  const pane: TerminalPane = {
-    args: options.args ?? options.profile?.args,
-    cwd: options.cwd ?? options.profile?.cwd,
-    env: options.env ?? options.profile?.env,
-    id: paneId,
-    profileId: options.profile?.id,
-    shell: options.shell ?? options.profile?.shell,
-    title: options.title,
-    machineId: options.machineId,
-    mode: "local",
-    prompt: "PS>",
-    status: "online",
-    target: localTarget(options.profile?.id),
-    lines: [],
-  };
-  const tab: TerminalTab = {
-    id: tabId,
-    title: options.title,
-    machineId: options.machineId,
-    layout: { type: "pane", paneId },
-  };
-  const machine: Machine = {
-    args: pane.args,
-    cwd: pane.cwd,
-    description: pane.shell ?? options.profile?.shell ?? "本地会话",
-    env: pane.env,
-    id: options.machineId,
-    kind: "local",
-    name: options.title,
-    profileId: options.profile?.id,
-    remoteGroupId: options.groupId,
-    shell: pane.shell,
-    status: "online",
-    target: localTarget(options.profile?.id),
-    tags: ["local"],
-  };
+function restoredSelectedMachineId({
+  activeTabId,
+  fallbackSelectedMachineId,
+  machineGroups,
+  selectedMachineId,
+  terminalTabs,
+}: {
+  activeTabId: string;
+  fallbackSelectedMachineId: string;
+  machineGroups: MachineGroup[];
+  selectedMachineId: string;
+  terminalTabs: TerminalTab[];
+}) {
+  const activeTabCandidate = selectedMachineIdCandidateFromTab(
+    terminalTabs.find((tab) => tab.id === activeTabId) ?? terminalTabs[0],
+  );
 
-  return {
-    activeTabId: tabId,
-    focusedPaneId: paneId,
-    machineGroups: addMachineToGroup(
-      state.machineGroups,
-      machine,
-      options.groupId,
-    ),
-    selectedMachineId: machine.id,
-    terminalPanes: [...state.terminalPanes, pane],
-    terminalTabs: [...state.terminalTabs, tab],
-  };
+  return (
+    validMachineId(machineGroups, activeTabCandidate) ||
+    activeTabCandidate ||
+    validMachineId(machineGroups, selectedMachineId) ||
+    pendingRemoteSelectionId(selectedMachineId) ||
+    validMachineId(machineGroups, fallbackSelectedMachineId) ||
+    ""
+  );
+}
+
+function selectedMachineIdForUpdatedGroups({
+  activeTabId,
+  allowPendingActiveTabSelection,
+  fallbackSelectedMachineId,
+  machineGroups,
+  terminalTabs,
+}: {
+  activeTabId: string;
+  allowPendingActiveTabSelection: boolean;
+  fallbackSelectedMachineId: string;
+  machineGroups: MachineGroup[];
+  terminalTabs: TerminalTab[];
+}) {
+  const activeTabCandidate = selectedMachineIdCandidateFromTab(
+    terminalTabs.find((tab) => tab.id === activeTabId) ?? terminalTabs[0],
+  );
+
+  return (
+    validMachineId(machineGroups, fallbackSelectedMachineId) ||
+    validMachineId(machineGroups, activeTabCandidate) ||
+    (allowPendingActiveTabSelection
+      ? pendingRemoteSelectionId(fallbackSelectedMachineId) ||
+        activeTabCandidate
+      : "") ||
+    ""
+  );
+}
+
+function pendingRemoteSelectionId(machineId: string | undefined) {
+  return machineId && machineId !== "sftp-transfer" ? machineId : "";
+}
+
+function selectedMachineIdFromWorkspaceTab(
+  tab: TerminalTab | undefined,
+  machineGroups: MachineGroup[],
+) {
+  return validMachineId(machineGroups, selectedMachineIdCandidateFromTab(tab));
+}
+
+function selectedMachineIdCandidateFromTab(tab: TerminalTab | undefined) {
+  if (!tab) {
+    return "";
+  }
+  if (isSftpTransferWorkspaceTab(tab)) {
+    return (
+      tab.rightHostId ||
+      tab.lockedLeftHostId ||
+      tab.leftHostId ||
+      (tab.machineId === "sftp-transfer" ? "" : tab.machineId)
+    );
+  }
+  return tab.machineId;
+}
+
+function validSshHostId(
+  machineGroups: MachineGroup[],
+  machineId: string | undefined,
+) {
+  const machine = machineId ? findMachine(machineGroups, machineId) : undefined;
+  return machine?.kind === "ssh" ? machine.id : undefined;
+}
+
+function validMachineId(
+  machineGroups: MachineGroup[],
+  machineId: string | undefined,
+) {
+  if (!machineId || machineId === "sftp-transfer") {
+    return "";
+  }
+  return findMachine(machineGroups, machineId)?.id ?? "";
 }
 
 function updateGeneratedCounters(session: WorkspaceSessionSnapshot) {

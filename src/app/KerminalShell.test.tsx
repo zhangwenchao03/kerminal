@@ -1,9 +1,19 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TerminalOutputEvent } from "../lib/terminalApi";
 import { defaultAppSettings } from "../features/settings/settingsModel";
-import { resetWorkspaceStore } from "../features/workspace/workspaceStore";
+import {
+  resetWorkspaceStore,
+  useWorkspaceStore,
+} from "../features/workspace/workspaceStore";
 import { WORKSPACE_SESSION_STORAGE_KEY } from "../features/workspace/workspaceSessionStorage";
 import {
   getKerminalShellTestMocks,
@@ -28,7 +38,10 @@ describe("KerminalShell", () => {
     document.documentElement.removeAttribute("lang");
     window.localStorage.clear();
     resetWorkspaceStore();
-    mocks.nativeMenuApi.listenNativeMenuActions.mockResolvedValue(() => undefined);
+    mocks.appTitleBar.renderCount = 0;
+    mocks.nativeMenuApi.listenNativeMenuActions.mockResolvedValue(
+      () => undefined,
+    );
     mocks.profileApi.createProfile.mockResolvedValue({
       args: [],
       createdAt: "test",
@@ -71,22 +84,24 @@ describe("KerminalShell", () => {
       updatedAt: "test",
       username: "ubuntu",
     });
-    mocks.remoteHostApi.updateRemoteHost.mockImplementation(async (request) => ({
-      authType: request.authType,
-      createdAt: "test",
-      credentialRef: request.credentialRef,
-      groupId: request.groupId,
-      host: request.host,
-      id: request.id,
-      name: request.name,
-      port: request.port ?? 22,
-      production: request.production ?? false,
-      sshOptions: request.sshOptions,
-      sortOrder: request.sortOrder,
-      tags: request.tags ?? [],
-      updatedAt: "test",
-      username: request.username,
-    }));
+    mocks.remoteHostApi.updateRemoteHost.mockImplementation(
+      async (request) => ({
+        authType: request.authType,
+        createdAt: "test",
+        credentialRef: request.credentialRef,
+        groupId: request.groupId,
+        host: request.host,
+        id: request.id,
+        name: request.name,
+        port: request.port ?? 22,
+        production: request.production ?? false,
+        sshOptions: request.sshOptions,
+        sortOrder: request.sortOrder,
+        tags: request.tags ?? [],
+        updatedAt: "test",
+        username: request.username,
+      }),
+    );
     mocks.remoteHostApi.updateRemoteHostGroup.mockImplementation(
       async (request) => ({
         createdAt: "test",
@@ -97,7 +112,9 @@ describe("KerminalShell", () => {
       }),
     );
     mocks.settingsApi.getSettings.mockResolvedValue(defaultAppSettings);
-    mocks.settingsApi.updateSettings.mockImplementation(async (settings) => settings);
+    mocks.settingsApi.updateSettings.mockImplementation(
+      async (settings) => settings,
+    );
     mocks.terminalApi.createTerminalSession.mockImplementation(
       async (_request, onOutput: (event: TerminalOutputEvent) => void) => {
         onOutput({
@@ -168,7 +185,9 @@ describe("KerminalShell", () => {
   it("starts without creating a local terminal when no workspace session is saved", async () => {
     render(<KerminalShell />);
 
-    expect(await screen.findByText("暂无终端 tab")).toBeInTheDocument();
+    expect(
+      await screen.findByText("光标还没闪，AI 已经开始脑补命令了。"),
+    ).toBeInTheDocument();
     expect(
       await screen.findByRole("button", { name: /172\.16\.41\.60/ }),
     ).toBeInTheDocument();
@@ -189,9 +208,7 @@ describe("KerminalShell", () => {
     expect(await screen.findByLabelText("SFTP 工具内容")).toHaveTextContent(
       "SFTP:db980b17-2ed0-44e5-b72a-6ecadf788439",
     );
-    expect(
-      screen.queryByLabelText("SFTP 传输工作台"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("SFTP 传输工作台")).not.toBeInTheDocument();
 
     fireEvent.contextMenu(hostButton);
     await user.click(screen.getByRole("menuitem", { name: "新建传输 Tab" }));
@@ -199,16 +216,81 @@ describe("KerminalShell", () => {
     expect(await screen.findByLabelText("SFTP 传输工作台")).toHaveTextContent(
       "left:none right:db980b17-2ed0-44e5-b72a-6ecadf788439 locked:none",
     );
-    expect(screen.getByRole("complementary", { name: "工具面板" })).toHaveAttribute(
-      "aria-expanded",
-      "false",
+    expect(
+      screen.getByRole("complementary", { name: "工具面板" }),
+    ).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("creates a new SSH host from the SFTP transfer workbench and returns it to the requested side", async () => {
+    const user = userEvent.setup();
+    const createdHost = {
+      authType: "agent" as const,
+      createdAt: "test",
+      groupId: "30fbc381-2884-4b75-9f88-0e28f31ca8b0",
+      host: "10.0.0.9",
+      id: "host-created-from-transfer",
+      name: "transfer-dev",
+      port: 22,
+      production: false,
+      sshOptions: testSshOptions,
+      sortOrder: 30,
+      tags: [],
+      updatedAt: "test",
+      username: "deploy",
+    };
+    mocks.remoteHostApi.createRemoteHost.mockResolvedValue(createdHost);
+    mocks.remoteHostApi.listRemoteHostTree
+      .mockResolvedValueOnce(remoteHostTree)
+      .mockResolvedValueOnce([
+        {
+          ...remoteHostTree[0],
+          hosts: [...remoteHostTree[0].hosts, createdHost],
+        },
+      ]);
+
+    render(<KerminalShell />);
+
+    const hostButton = await screen.findByRole("button", {
+      name: /172\.16\.41\.60/,
+    });
+    fireEvent.contextMenu(hostButton);
+    await user.click(screen.getByRole("menuitem", { name: "新建传输 Tab" }));
+    expect(await screen.findByLabelText("SFTP 传输工作台")).toHaveTextContent(
+      "right:db980b17-2ed0-44e5-b72a-6ecadf788439",
     );
+
+    await user.click(
+      screen.getByRole("button", { name: "从右侧新建 SSH 主机" }),
+    );
+
+    expect(
+      await screen.findByRole("dialog", { name: "新建主机" }),
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText("名称"), "transfer-dev");
+    await user.type(screen.getByLabelText("主机"), "10.0.0.9");
+    await user.type(screen.getByLabelText("用户名"), "deploy");
+    await user.click(screen.getByRole("button", { name: "确认" }));
+
+    await waitFor(() => {
+      expect(mocks.remoteHostApi.createRemoteHost).toHaveBeenCalledWith(
+        expect.objectContaining({
+          host: "10.0.0.9",
+          name: "transfer-dev",
+          username: "deploy",
+        }),
+      );
+      expect(screen.getByLabelText("SFTP 传输工作台")).toHaveTextContent(
+        "created:tab-sftp-transfer-1:right:host-created-from-transfer",
+      );
+    });
   });
 
   it("flushes the workspace session before the page is hidden", async () => {
     render(<KerminalShell />);
 
-    expect(await screen.findByText("暂无终端 tab")).toBeInTheDocument();
+    expect(
+      await screen.findByText("光标还没闪，AI 已经开始脑补命令了。"),
+    ).toBeInTheDocument();
 
     fireEvent(window, new Event("pagehide"));
 
@@ -222,6 +304,65 @@ describe("KerminalShell", () => {
         }),
       );
     });
+  });
+
+  it("keeps shell chrome stable when terminal output history changes", async () => {
+    mocks.terminalApi.createTerminalSession.mockResolvedValue({
+      cols: 80,
+      id: "session-local-output-history",
+      rows: 24,
+      shell: "test-shell",
+      status: "running",
+    });
+
+    render(<KerminalShell />);
+
+    expect(
+      await screen.findByRole("button", { name: /172\.16\.41\.60/ }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(mocks.settingsApi.getSettings).toHaveBeenCalled();
+    });
+
+    act(() => {
+      useWorkspaceStore.getState().addTerminalTab();
+    });
+    await waitFor(() => {
+      expect(mocks.terminalApi.createTerminalSession).toHaveBeenCalled();
+    });
+
+    const paneId = useWorkspaceStore.getState().terminalPanes[0]?.id;
+    if (!paneId) {
+      throw new Error("Expected a local terminal pane to be created.");
+    }
+    expect(paneId).toBe("pane-local-1");
+    const chromeRenderCountAfterOpen = mocks.appTitleBar.renderCount;
+
+    act(() => {
+      useWorkspaceStore
+        .getState()
+        .updatePaneOutputHistory(paneId, "latest shell-isolated output");
+    });
+
+    expect(
+      useWorkspaceStore
+        .getState()
+        .terminalPanes.find((pane) => pane.id === paneId)?.outputHistory,
+    ).toBe("latest shell-isolated output");
+    expect(mocks.appTitleBar.renderCount).toBe(chromeRenderCountAfterOpen);
+
+    fireEvent(window, new Event("pagehide"));
+    const savedSession = JSON.parse(
+      window.localStorage.getItem(WORKSPACE_SESSION_STORAGE_KEY) ?? "{}",
+    );
+    expect(savedSession.terminalPanes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: paneId,
+          outputHistory: "latest shell-isolated output",
+        }),
+      ]),
+    );
   });
 
   it("does not list Docker containers when an SSH host is selected", async () => {
@@ -240,12 +381,18 @@ describe("KerminalShell", () => {
   it("runs IDEA-style settings and terminal shortcuts", async () => {
     render(<KerminalShell />);
 
+    await waitFor(() => {
+      expect(mocks.settingsApi.getSettings).toHaveBeenCalled();
+    });
+
     fireEvent.keyDown(window, {
       altKey: true,
       ctrlKey: true,
       key: "s",
     });
-    expect(await screen.findByRole("dialog", { name: "设置" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("dialog", { name: "设置" }),
+    ).toBeInTheDocument();
 
     fireEvent.keyDown(window, {
       ctrlKey: true,
@@ -256,6 +403,37 @@ describe("KerminalShell", () => {
     await waitFor(() => {
       expect(mocks.terminalApi.createTerminalSession).toHaveBeenCalled();
     });
+  });
+
+  it("uses saved custom keybindings at runtime", async () => {
+    mocks.settingsApi.getSettings.mockResolvedValue({
+      ...defaultAppSettings,
+      keybindings: defaultAppSettings.keybindings.map((keybinding) =>
+        keybinding.action === "settings.open"
+          ? {
+              ...keybinding,
+              binding: "Ctrl+Alt+,",
+              windowsBinding: "Ctrl+Alt+,",
+            }
+          : keybinding,
+      ),
+      themeMode: "light",
+    });
+
+    render(<KerminalShell />);
+
+    await waitFor(() => {
+      expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    });
+    fireEvent.keyDown(window, {
+      altKey: true,
+      ctrlKey: true,
+      key: ",",
+    });
+
+    expect(
+      await screen.findByRole("dialog", { name: "设置" }),
+    ).toBeInTheDocument();
   });
 
   it("applies the resolved theme to the document root for portal dialogs", async () => {
@@ -279,16 +457,20 @@ describe("KerminalShell", () => {
   it("opens keybinding settings from the Find Action style shortcut", async () => {
     render(<KerminalShell />);
 
+    await waitFor(() => {
+      expect(mocks.settingsApi.getSettings).toHaveBeenCalled();
+    });
+
     fireEvent.keyDown(window, {
       ctrlKey: true,
       key: "a",
       shiftKey: true,
     });
 
+    expect(await screen.findByText("查看快捷键与动作")).toBeInTheDocument();
     expect(
-      await screen.findByText("查看快捷键与动作"),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("Ctrl+Shift+A").length).toBeGreaterThan(0);
+      screen.getByLabelText("查看快捷键与动作 Windows 快捷键"),
+    ).toHaveValue("Ctrl+Shift+A");
   });
 
   it("keeps the expanded left title strip available for native window dragging", () => {
@@ -302,13 +484,29 @@ describe("KerminalShell", () => {
     });
 
     expect(leftTitleStrip).toBeInTheDocument();
+    expect(leftTitleStrip).not.toHaveClass("border-r");
+  });
+
+  it("keeps the overlaid title bar transparent so terminal tabs stay framed", () => {
+    render(<KerminalShell />);
+
+    const titleBar = screen.getByRole("banner");
+
+    expect(titleBar).toHaveClass("z-50");
+    expect(titleBar).not.toHaveClass("kerminal-material-nav");
+    expect(titleBar).not.toHaveClass("border-b");
+    expect(screen.getByLabelText("终端标签栏").parentElement).toHaveClass(
+      "kerminal-material-nav",
+    );
   });
 
   it("keeps the terminal navigation width independent from the right tool panel", async () => {
     const user = userEvent.setup();
     const { container } = render(<KerminalShell />);
 
-    expect(await screen.findByText("暂无终端 tab")).toBeInTheDocument();
+    expect(
+      await screen.findByText("光标还没闪，AI 已经开始脑补命令了。"),
+    ).toBeInTheDocument();
 
     const workspace = screen.getByRole("main", { name: "终端工作区" });
     expect(workspace.parentElement).toHaveClass("col-[3/6]");
@@ -329,6 +527,17 @@ describe("KerminalShell", () => {
     expect(content).toHaveStyle({ marginRight: "468px" });
   });
 
+  it("matches the expanded left sidebar resize column to the terminal surface", () => {
+    render(<KerminalShell />);
+
+    const leftSeparator = screen.getByRole("separator", {
+      name: "调整主机侧边栏宽度",
+    });
+
+    expect(leftSeparator).toHaveClass("kerminal-terminal-surface");
+    expect(leftSeparator).not.toHaveClass("kerminal-material-nav");
+  });
+
   it("applies appearance language and workspace background settings", async () => {
     mocks.settingsApi.getSettings.mockResolvedValue({
       ...defaultAppSettings,
@@ -339,6 +548,7 @@ describe("KerminalShell", () => {
         backgroundImagePath: "C:\\Users\\dev\\Pictures\\bg.png",
         backgroundOpacity: 64,
         interfaceLanguage: "enUS",
+        windowOpacity: 72,
       },
       themeMode: "light",
     });
@@ -354,6 +564,14 @@ describe("KerminalShell", () => {
     });
     expect(frame).toHaveAttribute("lang", "en-US");
     expect(frame.style.backgroundImage).toContain("linear-gradient");
+    expect(frame.style.backgroundColor).toBe("rgba(245, 245, 247, 0.72)");
+    expect(frame.style.getPropertyValue("--app-window-opacity")).toBe("0.72");
+    expect(frame.style.getPropertyValue("--app-nav-surface-opacity")).toBe(
+      "0.4896",
+    );
+    expect(frame.style.getPropertyValue("--app-terminal-surface-opacity")).toBe(
+      "0.5616",
+    );
     expect(frame.style.backgroundImage).toContain(
       "file:///C:/Users/dev/Pictures/bg.png",
     );
@@ -470,7 +688,8 @@ describe("KerminalShell", () => {
     await waitFor(() => {
       expect(mocks.terminalApi.createTerminalSession).toHaveBeenCalledTimes(2);
     });
-    const createCount = mocks.terminalApi.createTerminalSession.mock.calls.length;
+    const createCount =
+      mocks.terminalApi.createTerminalSession.mock.calls.length;
     const closeCount = mocks.terminalApi.closeTerminal.mock.calls.length;
 
     await user.click(screen.getByRole("button", { name: "第二恢复会话" }));
@@ -514,7 +733,9 @@ describe("KerminalShell", () => {
       },
     });
     expect(screen.queryByText("终端分屏渲染异常")).not.toBeInTheDocument();
-    expect(screen.queryByText("应用启动失败，请打开开发者工具查看错误。")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("应用启动失败，请打开开发者工具查看错误。"),
+    ).not.toBeInTheDocument();
   });
 
   it("opens a saved RDP host from the sidebar without creating an SSH terminal", async () => {
@@ -522,7 +743,9 @@ describe("KerminalShell", () => {
 
     render(<KerminalShell />);
 
-    const hostButton = await screen.findByRole("button", { name: /office-rdp/ });
+    const hostButton = await screen.findByRole("button", {
+      name: /office-rdp/,
+    });
     fireEvent.doubleClick(hostButton);
 
     await waitFor(() => {
@@ -603,7 +826,9 @@ describe("KerminalShell", () => {
     mocks.profileApi.listProfiles.mockResolvedValue([profile]);
 
     render(<KerminalShell />);
-    await waitFor(() => expect(mocks.profileApi.listProfiles).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(mocks.profileApi.listProfiles).toHaveBeenCalled(),
+    );
 
     fireEvent.keyDown(window, {
       ctrlKey: true,
@@ -640,7 +865,9 @@ describe("KerminalShell", () => {
       );
     });
     expect(
-      await within(sidebar).findByRole("button", { name: /Renamed PowerShell/ }),
+      await within(sidebar).findByRole("button", {
+        name: /Renamed PowerShell/,
+      }),
     ).toBeInTheDocument();
   });
 
@@ -732,7 +959,9 @@ describe("KerminalShell", () => {
 
     render(<KerminalShell />);
 
-    const targetGroupButton = await screen.findByRole("button", { name: /工具/ });
+    const targetGroupButton = await screen.findByRole("button", {
+      name: /工具/,
+    });
     fireEvent.contextMenu(targetGroupButton);
     await user.click(screen.getByRole("menuitem", { name: "置顶分组" }));
 
@@ -753,7 +982,9 @@ describe("KerminalShell", () => {
 
     render(<KerminalShell />);
 
-    const targetGroupButton = await screen.findByRole("button", { name: /工具/ });
+    const targetGroupButton = await screen.findByRole("button", {
+      name: /工具/,
+    });
     expect(screen.getByText("置顶")).toBeInTheDocument();
     fireEvent.contextMenu(targetGroupButton);
     await user.click(screen.getByRole("menuitem", { name: "取消置顶" }));
@@ -792,7 +1023,9 @@ describe("KerminalShell", () => {
     });
 
     render(<KerminalShell />);
-    await waitFor(() => expect(mocks.profileApi.listProfiles).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(mocks.profileApi.listProfiles).toHaveBeenCalled(),
+    );
 
     fireEvent.keyDown(window, {
       ctrlKey: true,

@@ -24,13 +24,73 @@ import type {
 import { createPortal } from "react-dom";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
-import type { Machine, MachineGroup } from "../workspace/types";
+import type { Machine, MachineGroup, MachineStatus } from "../workspace/types";
 import {
   CONTEXT_MENU_MARGIN,
   statusClasses,
   type ConnectionOpenOptions,
   type SidebarContextMenuPayload,
 } from "./MachineSidebar.shared";
+import {
+  MACHINE_ASSET_MENU_DOMAIN,
+  type MachineSidebarMenuAction,
+  type MachineSidebarMenuDomain,
+} from "./machineSidebarMenuModel";
+
+const collapsedPopoverSurfaceClassName =
+  "kerminal-floating-enter fixed bottom-[84px] left-[72px] top-[56px] z-[1000] flex w-80 max-w-[calc(100vw-88px)] flex-col overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] text-zinc-950 shadow-2xl shadow-black/20 backdrop-blur-xl dark:text-zinc-50 dark:shadow-black/50";
+const sidebarPopoverHeaderClassName =
+  "flex items-start justify-between gap-2 border-b border-[var(--border-subtle)] px-4 py-3";
+const sidebarSmallIconButtonClassName =
+  "kerminal-pressable h-8 w-8 rounded-lg text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50";
+const sidebarGroupButtonClassName =
+  "kerminal-focus-ring kerminal-pressable mb-1 flex h-8 w-full items-center justify-between rounded-lg px-2 text-left text-xs font-medium text-zinc-500 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-100";
+const sidebarCountBadgeClassName =
+  "rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[11px] text-zinc-500 dark:text-zinc-400";
+const sidebarMachineButtonBaseClassName =
+  "kerminal-focus-ring kerminal-pressable flex min-h-[48px] w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition";
+const sidebarMachineDraggingClassName =
+  "scale-[0.98] bg-sky-500/6 opacity-35 ring-2 ring-dashed ring-sky-400/70 dark:bg-sky-400/8";
+const sidebarMachineSelectedClassName =
+  "bg-[var(--surface-selected)] text-zinc-950 shadow-sm shadow-sky-950/5 ring-1 ring-sky-500/15 dark:text-zinc-50 dark:ring-sky-300/15";
+const sidebarMachineIdleClassName =
+  "text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50";
+const sidebarStatusDotClassName =
+  "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-[var(--surface-nav-glass)]";
+const sidebarEmptyStateClassName =
+  "kerminal-muted-surface rounded-2xl border border-dashed px-3 py-6 text-center text-sm text-zinc-500";
+const collapsedSidebarRootClassName =
+  "kerminal-material-nav relative flex h-full w-full min-w-0 flex-col border-r";
+const collapsedSidebarButtonBaseClassName =
+  "kerminal-focus-ring kerminal-pressable relative flex h-10 w-10 items-center justify-center rounded-xl transition";
+const collapsedSidebarButtonSelectedClassName =
+  "bg-[var(--surface-selected)] text-zinc-950 shadow-sm shadow-sky-950/5 ring-1 ring-sky-500/15 dark:text-zinc-50 dark:ring-sky-300/15";
+const collapsedSidebarButtonIdleClassName =
+  "text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50";
+const collapsedSidebarFooterClassName =
+  "flex flex-col items-center gap-2 border-t border-[var(--border-subtle)] py-3";
+const sidebarSettingsSelectedClassName =
+  "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100";
+const contextMenuItemBaseClassName =
+  "kerminal-focus-ring kerminal-pressable flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-45";
+const contextMenuItemIdleClassName =
+  "text-zinc-700 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-zinc-50";
+const contextMenuItemDangerClassName =
+  "text-red-600 hover:bg-red-500/10 hover:text-red-700 dark:text-red-300 dark:hover:text-red-200";
+const dragPreviewSurfaceClassName =
+  "pointer-events-none fixed z-[1000] w-64 select-none rounded-2xl border border-sky-300/60 bg-[var(--surface-overlay)] p-3 text-sm text-zinc-950 shadow-2xl shadow-sky-900/20 ring-4 ring-sky-400/18 backdrop-blur-xl dark:border-sky-300/35 dark:text-zinc-50 dark:shadow-black/50";
+const dragPreviewHintClassName =
+  "mt-2 rounded-xl bg-[var(--surface-selected)] px-3 py-1.5 text-xs font-medium text-sky-700 dark:text-sky-200";
+
+export function sidebarDisplayStatus(
+  machine: Machine,
+  hasOpenTerminalSession: boolean,
+): MachineStatus {
+  if (hasOpenTerminalSession) {
+    return "online";
+  }
+  return machine.kind === "local" ? "offline" : machine.status;
+}
 
 type CollapsedHostPopoverProps = {
   allGroupsCollapsed: boolean;
@@ -92,9 +152,7 @@ export function CollapsedHostPopover({
   return createPortal(
     <div
       aria-label="主机列表"
-      className={cn(
-        "fixed bottom-[84px] left-[72px] top-[56px] z-40 flex w-80 max-w-[calc(100vw-88px)] flex-col overflow-hidden rounded-2xl border border-black/10 bg-white text-zinc-950 shadow-2xl shadow-black/20 dark:border-white/10 dark:bg-zinc-950 dark:text-zinc-50",
-      )}
+      className={collapsedPopoverSurfaceClassName}
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => {
         event.preventDefault();
@@ -103,7 +161,7 @@ export function CollapsedHostPopover({
       ref={popoverRef}
       role="dialog"
     >
-      <div className="flex items-start justify-between gap-2 border-b border-black/8 px-4 py-3 dark:border-white/8">
+      <div className={sidebarPopoverHeaderClassName}>
         <div className="min-w-0">
           <h2 className="text-sm font-semibold">主机</h2>
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
@@ -113,7 +171,7 @@ export function CollapsedHostPopover({
         <Button
           aria-label={groupToggleLabel}
           aria-pressed={allGroupsCollapsed}
-          className="h-8 w-8 rounded-lg text-zinc-500 dark:text-zinc-400"
+          className={sidebarSmallIconButtonClassName}
           disabled={groupCount === 0}
           onClick={toggleAllGroups}
           size="icon"
@@ -144,7 +202,7 @@ export function CollapsedHostPopover({
             >
               <button
                 aria-expanded={!groupCollapsed}
-                className="mb-1 flex h-8 w-full items-center justify-between rounded-lg px-2 text-left text-xs font-medium text-zinc-500 transition hover:bg-black/5 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-white/7 dark:hover:text-zinc-100"
+                className={sidebarGroupButtonClassName}
                 onClick={() => toggleGroup(group.id)}
                 type="button"
               >
@@ -163,7 +221,7 @@ export function CollapsedHostPopover({
                       松开移入
                     </span>
                   ) : null}
-                  <span className="rounded-full bg-black/5 px-2 py-0.5 text-[11px] text-zinc-500 dark:bg-white/8 dark:text-zinc-400">
+                  <span className={sidebarCountBadgeClassName}>
                     {group.machines.length}
                   </span>
                 </span>
@@ -173,9 +231,10 @@ export function CollapsedHostPopover({
                   {group.machines.map((machine) => {
                     const selected = machine.id === selectedMachineId;
                     const Icon = machineIcon(machine, group);
-                    const displayStatus = openMachineIdSet.has(machine.id)
-                      ? "online"
-                      : machine.status;
+                    const displayStatus = sidebarDisplayStatus(
+                      machine,
+                      openMachineIdSet.has(machine.id),
+                    );
 
                     return (
                       <button
@@ -184,13 +243,13 @@ export function CollapsedHostPopover({
                         }
                         aria-pressed={selected}
                         className={cn(
-                          "flex min-h-[48px] w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition",
+                          sidebarMachineButtonBaseClassName,
                           onMoveMachine && "cursor-grab active:cursor-grabbing",
                           draggingMachineId === machine.id &&
-                            "scale-[0.98] bg-sky-500/6 opacity-35 ring-2 ring-dashed ring-sky-400/70 dark:bg-sky-400/8",
+                            sidebarMachineDraggingClassName,
                           selected
-                            ? "bg-black/7 text-zinc-950 shadow-sm dark:bg-white/12 dark:text-zinc-50"
-                            : "text-zinc-600 hover:bg-black/5 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-white/7 dark:hover:text-zinc-50",
+                            ? sidebarMachineSelectedClassName
+                            : sidebarMachineIdleClassName,
                         )}
                         key={machine.id}
                         onClick={() => handleMachineClick(machine)}
@@ -224,7 +283,7 @@ export function CollapsedHostPopover({
                           <Icon className="h-4 w-4" />
                           <span
                             className={cn(
-                              "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-zinc-950",
+                              sidebarStatusDotClassName,
                               statusClasses[displayStatus],
                             )}
                             title={statusTitle(displayStatus)}
@@ -247,7 +306,7 @@ export function CollapsedHostPopover({
           );
         })}
         {visibleGroups.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-black/10 px-3 py-6 text-center text-sm text-zinc-500 dark:border-white/10">
+          <div className={sidebarEmptyStateClassName}>
             没有匹配的主机。
           </div>
         ) : null}
@@ -292,7 +351,7 @@ export function CollapsedMachineSidebar({
   return (
     <aside
       aria-label="主机侧边栏"
-      className="relative flex h-full w-full min-w-0 flex-col border-r border-black/8 bg-white/78 backdrop-blur-xl dark:border-white/8 dark:bg-zinc-950/78"
+      className={collapsedSidebarRootClassName}
       onContextMenu={(event) => openContextMenu(event, { type: "root" })}
     >
       <div className="scrollbar-none flex min-h-0 flex-1 flex-col items-center gap-2 overflow-y-auto py-3">
@@ -301,10 +360,10 @@ export function CollapsedMachineSidebar({
           aria-haspopup="dialog"
           aria-label="打开主机列表"
           className={cn(
-            "relative flex h-10 w-10 items-center justify-center rounded-xl transition",
+            collapsedSidebarButtonBaseClassName,
             collapsedHostPopoverOpen
-              ? "bg-black/7 text-zinc-950 shadow-sm dark:bg-white/12 dark:text-zinc-50"
-              : "text-zinc-500 hover:bg-black/5 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-white/7 dark:hover:text-zinc-50",
+              ? collapsedSidebarButtonSelectedClassName
+              : collapsedSidebarButtonIdleClassName,
           )}
           onClick={toggleCollapsedHostPopover}
           ref={collapsedHostButtonRef}
@@ -314,13 +373,14 @@ export function CollapsedMachineSidebar({
           <Server className="h-4 w-4" />
           {openMachineIdSet.size > 0 ? (
             <span
-              className="absolute right-1 top-1 h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-white dark:ring-zinc-950"
+              className="absolute right-1 top-1 h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-[var(--surface-nav-glass)]"
               title="已有打开的会话"
             />
           ) : null}
         </button>
         <Button
           aria-label="打开 SFTP 传输工作台"
+          className="kerminal-pressable text-sky-600 hover:bg-[var(--surface-hover)] dark:text-sky-300"
           disabled={!onOpenTransferWorkbench}
           onClick={onOpenTransferWorkbench}
           size="icon"
@@ -331,13 +391,12 @@ export function CollapsedMachineSidebar({
           <ArrowLeftRight className="h-4 w-4" />
         </Button>
       </div>
-      <div className="flex flex-col items-center gap-2 border-t border-black/8 py-3 dark:border-white/8">
+      <div className={collapsedSidebarFooterClassName}>
         <Button
           aria-label="打开设置"
           aria-pressed={settingsSelected}
           className={cn(
-            settingsSelected &&
-              "bg-sky-500/12 text-sky-700 dark:bg-sky-400/15 dark:text-sky-100",
+            settingsSelected && sidebarSettingsSelectedClassName,
           )}
           onClick={onOpenSettings}
           size="icon"
@@ -348,6 +407,7 @@ export function CollapsedMachineSidebar({
         </Button>
         <Button
           aria-label="添加连接"
+          className="kerminal-pressable hover:bg-[var(--surface-hover)]"
           disabled={!onAddConnection}
           onClick={() => onAddConnection?.({ mode: "ssh" })}
           size="icon"
@@ -395,6 +455,8 @@ export function MachineContextMenuItems({
   onOpenSerialTerminal?: (machineId: string) => void;
   runMenuAction: (action?: () => void) => void;
 }) {
+  const machineMenuDomain = MACHINE_ASSET_MENU_DOMAIN;
+
   if (machine.kind === "local") {
     return (
       <>
@@ -402,6 +464,8 @@ export function MachineContextMenuItems({
           disabled={!onOpenLocalTerminal}
           icon={<Monitor className="h-4 w-4" />}
           label="打开本地会话"
+          menuAction="openLocalTerminal"
+          menuDomain={machineMenuDomain}
           onClick={() =>
             runMenuAction(() => onOpenLocalTerminal?.(machine.id))
           }
@@ -410,18 +474,24 @@ export function MachineContextMenuItems({
           disabled={!onEditMachine}
           icon={<Pencil className="h-4 w-4" />}
           label="编辑连接配置"
+          menuAction="editMachine"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onEditMachine?.(machine.id))}
         />
         <ContextMenuItem
           disabled={!onDuplicateMachine}
           icon={<Copy className="h-4 w-4" />}
           label="复制主机"
+          menuAction="duplicateMachine"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onDuplicateMachine?.(machine.id))}
         />
         <ContextMenuItem
           disabled={!onAddMachine}
           icon={<Plus className="h-4 w-4" />}
           label="添加同组连接"
+          menuAction="addMachineToGroup"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onAddMachine?.(machine.remoteGroupId))}
         />
         <ContextMenuItem
@@ -429,6 +499,8 @@ export function MachineContextMenuItems({
           disabled={!onDeleteMachine}
           icon={<Trash2 className="h-4 w-4" />}
           label="删除连接"
+          menuAction="deleteMachine"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onDeleteMachine?.(machine.id))}
         />
       </>
@@ -442,6 +514,8 @@ export function MachineContextMenuItems({
           disabled={!onOpenContainerTerminal}
           icon={<Terminal className="h-4 w-4" />}
           label="进入容器终端"
+          menuAction="openContainerTerminal"
+          menuDomain={machineMenuDomain}
           onClick={() =>
             runMenuAction(() => onOpenContainerTerminal?.(machine.id))
           }
@@ -450,6 +524,8 @@ export function MachineContextMenuItems({
           disabled={!onOpenSftp}
           icon={<FolderOpen className="h-4 w-4" />}
           label="打开 SFTP"
+          menuAction="openSftp"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onOpenSftp?.(machine.id))}
         />
         <ContextMenuItem
@@ -457,6 +533,8 @@ export function MachineContextMenuItems({
           disabled={!onDeleteMachine}
           icon={<Trash2 className="h-4 w-4" />}
           label="删除连接"
+          menuAction="deleteMachine"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onDeleteMachine?.(machine.id))}
         />
       </>
@@ -470,24 +548,32 @@ export function MachineContextMenuItems({
           disabled={!onOpenRdpConnection}
           icon={<Monitor className="h-4 w-4" />}
           label="打开 RDP 连接"
+          menuAction="openRdpConnection"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onOpenRdpConnection?.(machine.id))}
         />
         <ContextMenuItem
           disabled={!onEditMachine}
           icon={<Pencil className="h-4 w-4" />}
           label="编辑连接配置"
+          menuAction="editMachine"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onEditMachine?.(machine.id))}
         />
         <ContextMenuItem
           disabled={!onDuplicateMachine}
           icon={<Copy className="h-4 w-4" />}
           label="复制主机"
+          menuAction="duplicateMachine"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onDuplicateMachine?.(machine.id))}
         />
         <ContextMenuItem
           disabled={!onAddMachine}
           icon={<Plus className="h-4 w-4" />}
           label="添加同组连接"
+          menuAction="addMachineToGroup"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onAddMachine?.(machine.remoteGroupId))}
         />
         <ContextMenuItem
@@ -495,6 +581,8 @@ export function MachineContextMenuItems({
           disabled={!onDeleteMachine}
           icon={<Trash2 className="h-4 w-4" />}
           label="删除连接"
+          menuAction="deleteMachine"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onDeleteMachine?.(machine.id))}
         />
       </>
@@ -508,24 +596,32 @@ export function MachineContextMenuItems({
           disabled={!onOpenTelnetTerminal}
           icon={<Terminal className="h-4 w-4" />}
           label="打开 Telnet 终端"
+          menuAction="openTelnetTerminal"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onOpenTelnetTerminal?.(machine.id))}
         />
         <ContextMenuItem
           disabled={!onEditMachine}
           icon={<Pencil className="h-4 w-4" />}
           label="编辑连接配置"
+          menuAction="editMachine"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onEditMachine?.(machine.id))}
         />
         <ContextMenuItem
           disabled={!onDuplicateMachine}
           icon={<Copy className="h-4 w-4" />}
           label="复制主机"
+          menuAction="duplicateMachine"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onDuplicateMachine?.(machine.id))}
         />
         <ContextMenuItem
           disabled={!onAddMachine}
           icon={<Plus className="h-4 w-4" />}
           label="添加同组连接"
+          menuAction="addMachineToGroup"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onAddMachine?.(machine.remoteGroupId))}
         />
         <ContextMenuItem
@@ -533,6 +629,8 @@ export function MachineContextMenuItems({
           disabled={!onDeleteMachine}
           icon={<Trash2 className="h-4 w-4" />}
           label="删除连接"
+          menuAction="deleteMachine"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onDeleteMachine?.(machine.id))}
         />
       </>
@@ -546,24 +644,32 @@ export function MachineContextMenuItems({
           disabled={!onOpenSerialTerminal}
           icon={<Terminal className="h-4 w-4" />}
           label="打开 Serial 终端"
+          menuAction="openSerialTerminal"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onOpenSerialTerminal?.(machine.id))}
         />
         <ContextMenuItem
           disabled={!onEditMachine}
           icon={<Pencil className="h-4 w-4" />}
           label="编辑连接配置"
+          menuAction="editMachine"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onEditMachine?.(machine.id))}
         />
         <ContextMenuItem
           disabled={!onDuplicateMachine}
           icon={<Copy className="h-4 w-4" />}
           label="复制主机"
+          menuAction="duplicateMachine"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onDuplicateMachine?.(machine.id))}
         />
         <ContextMenuItem
           disabled={!onAddMachine}
           icon={<Plus className="h-4 w-4" />}
           label="添加同组连接"
+          menuAction="addMachineToGroup"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onAddMachine?.(machine.remoteGroupId))}
         />
         <ContextMenuItem
@@ -571,6 +677,8 @@ export function MachineContextMenuItems({
           disabled={!onDeleteMachine}
           icon={<Trash2 className="h-4 w-4" />}
           label="删除连接"
+          menuAction="deleteMachine"
+          menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onDeleteMachine?.(machine.id))}
         />
       </>
@@ -583,18 +691,24 @@ export function MachineContextMenuItems({
         disabled={!onOpenSshTerminal}
         icon={<Terminal className="h-4 w-4" />}
         label="打开 SSH 终端"
+        menuAction="openSshTerminal"
+        menuDomain={machineMenuDomain}
         onClick={() => runMenuAction(() => onOpenSshTerminal?.(machine.id))}
       />
       <ContextMenuItem
         disabled={!onOpenSftp}
         icon={<FolderOpen className="h-4 w-4" />}
         label="打开 SFTP"
+        menuAction="openSftp"
+        menuDomain={machineMenuDomain}
         onClick={() => runMenuAction(() => onOpenSftp?.(machine.id))}
       />
       <ContextMenuItem
         disabled={!onOpenSftpTransferWorkbench}
         icon={<ArrowLeftRight className="h-4 w-4" />}
         label="新建传输 Tab"
+        menuAction="openSftpTransferWorkbench"
+        menuDomain={machineMenuDomain}
         onClick={() =>
           runMenuAction(() => onOpenSftpTransferWorkbench?.(machine.id))
         }
@@ -603,18 +717,24 @@ export function MachineContextMenuItems({
         disabled={!onEditMachine}
         icon={<Pencil className="h-4 w-4" />}
         label="编辑连接配置"
+        menuAction="editMachine"
+        menuDomain={machineMenuDomain}
         onClick={() => runMenuAction(() => onEditMachine?.(machine.id))}
       />
       <ContextMenuItem
         disabled={!onDuplicateMachine}
         icon={<Copy className="h-4 w-4" />}
         label="复制主机"
+        menuAction="duplicateMachine"
+        menuDomain={machineMenuDomain}
         onClick={() => runMenuAction(() => onDuplicateMachine?.(machine.id))}
       />
       <ContextMenuItem
         disabled={!onAddMachine}
         icon={<Plus className="h-4 w-4" />}
         label="添加同组连接"
+        menuAction="addMachineToGroup"
+        menuDomain={machineMenuDomain}
         onClick={() => runMenuAction(() => onAddMachine?.(machine.remoteGroupId))}
       />
       <ContextMenuItem
@@ -622,6 +742,8 @@ export function MachineContextMenuItems({
         disabled={!onDeleteMachine}
         icon={<Trash2 className="h-4 w-4" />}
         label="删除连接"
+        menuAction="deleteMachine"
+        menuDomain={machineMenuDomain}
         onClick={() => runMenuAction(() => onDeleteMachine?.(machine.id))}
       />
     </>
@@ -633,25 +755,29 @@ export function ContextMenuItem({
   disabled,
   icon,
   label,
+  menuAction,
+  menuDomain,
   onClick,
 }: {
   danger?: boolean;
   disabled?: boolean;
   icon: ReactNode;
   label: string;
+  menuAction?: MachineSidebarMenuAction;
+  menuDomain?: MachineSidebarMenuDomain;
   onClick: () => void;
 }) {
   return (
     <button
       className={cn(
-        "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-45",
-        danger
-          ? "text-red-600 hover:bg-red-500/10 hover:text-red-700 dark:text-red-300 dark:hover:text-red-200"
-          : "text-zinc-700 hover:bg-black/5 hover:text-zinc-950 dark:text-zinc-200 dark:hover:bg-white/8 dark:hover:text-zinc-50",
+        contextMenuItemBaseClassName,
+        danger ? contextMenuItemDangerClassName : contextMenuItemIdleClassName,
       )}
       disabled={disabled}
       onClick={onClick}
       role="menuitem"
+      data-menu-action={menuAction}
+      data-menu-domain={menuDomain}
       type="button"
     >
       <span
@@ -678,14 +804,12 @@ export function MachineDragPreviewCard({
   y: number;
 }) {
   const Icon = previewMachineIcon(machine);
-  const displayStatus = machine.status;
+  const displayStatus = sidebarDisplayStatus(machine, false);
 
   return (
     <div
       aria-label="正在拖动主机"
-      className={cn(
-        "pointer-events-none fixed z-[70] w-64 select-none rounded-2xl border border-sky-300/70 bg-white/95 p-3 text-sm text-zinc-950 shadow-2xl shadow-sky-900/24 ring-4 ring-sky-400/18 backdrop-blur-xl dark:border-sky-300/35 dark:bg-zinc-950/95 dark:text-zinc-50 dark:shadow-black/45",
-      )}
+      className={dragPreviewSurfaceClassName}
       role="status"
       style={dragPreviewPosition(x, y)}
     >
@@ -701,7 +825,7 @@ export function MachineDragPreviewCard({
           <Icon className="h-4 w-4" />
           <span
             className={cn(
-              "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-zinc-950",
+              sidebarStatusDotClassName,
               statusClasses[displayStatus],
             )}
           />
@@ -713,7 +837,7 @@ export function MachineDragPreviewCard({
           </span>
         </span>
       </div>
-      <div className="mt-2 rounded-xl bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-700 dark:bg-sky-400/14 dark:text-sky-200">
+      <div className={dragPreviewHintClassName}>
         {targetGroupTitle
           ? `松开移动到 ${targetGroupTitle}`
           : "拖到分组后松开"}

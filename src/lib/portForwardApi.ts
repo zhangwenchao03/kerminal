@@ -4,6 +4,30 @@ export type PortForwardKind = "local" | "remote" | "dynamic";
 
 export type PortForwardStatus = "running" | "exited";
 
+export type PortForwardPurpose = "generic" | "hostNetworkAssist";
+
+export type PortForwardProxyProtocol = "http" | "socks5";
+
+export type PortForwardOrigin =
+  | "user"
+  | "aiTool"
+  | "networkAssist"
+  | "hostPreset";
+
+export type PortForwardAccessScope =
+  | "loopback"
+  | "privateNetwork"
+  | "allInterfaces"
+  | "custom";
+
+export interface PortForwardEndpoint {
+  host: string;
+  label?: string;
+  port?: number;
+  protocol?: "tcp" | "http" | "socks5";
+  side?: "host" | "local";
+}
+
 export interface PortForwardCreateRequest {
   hostId: string;
   name?: string;
@@ -12,6 +36,16 @@ export interface PortForwardCreateRequest {
   sourcePort: number;
   targetHost?: string;
   targetPort?: number;
+  commandPreview?: string;
+  localBindHost?: string;
+  localEndpoint?: PortForwardEndpoint;
+  origin?: PortForwardOrigin;
+  proxyProtocol?: PortForwardProxyProtocol;
+  proxyUrl?: string;
+  purpose?: PortForwardPurpose;
+  remoteAccessScope?: PortForwardAccessScope;
+  remoteBindHost?: string;
+  remoteEndpoint?: PortForwardEndpoint;
 }
 
 export interface PortForwardSummary {
@@ -27,6 +61,16 @@ export interface PortForwardSummary {
   pid?: number;
   status: PortForwardStatus;
   createdAt: string;
+  commandPreview?: string;
+  localBindHost?: string;
+  localEndpoint?: PortForwardEndpoint;
+  origin?: PortForwardOrigin;
+  proxyProtocol?: PortForwardProxyProtocol;
+  proxyUrl?: string;
+  purpose?: PortForwardPurpose;
+  remoteAccessScope?: PortForwardAccessScope;
+  remoteBindHost?: string;
+  remoteEndpoint?: PortForwardEndpoint;
 }
 
 const browserPreviewForwards = new Map<string, PortForwardSummary>();
@@ -40,12 +84,24 @@ export async function createPortForward(
     const summary: PortForwardSummary = {
       bindHost: normalized.bindHost ?? "127.0.0.1",
       createdAt: Math.floor(Date.now() / 1000).toString(),
+      commandPreview: normalized.commandPreview,
       hostId: normalized.hostId,
       hostName: "浏览器预览主机",
       id,
       kind: normalized.kind,
+      localBindHost: normalized.localBindHost,
+      localEndpoint: normalized.localEndpoint,
       name: normalized.name || defaultForwardName(normalized),
+      origin:
+        normalized.origin ??
+        (normalized.purpose === "hostNetworkAssist" ? "networkAssist" : "user"),
       pid: 0,
+      proxyProtocol: normalized.proxyProtocol,
+      proxyUrl: normalized.proxyUrl ?? defaultProxyUrl(normalized),
+      purpose: normalized.purpose ?? "generic",
+      remoteAccessScope: normalized.remoteAccessScope,
+      remoteBindHost: normalized.remoteBindHost,
+      remoteEndpoint: normalized.remoteEndpoint,
       sourcePort: normalized.sourcePort,
       status: "running",
       targetHost: normalized.targetHost,
@@ -69,31 +125,116 @@ export async function listPortForwards(): Promise<PortForwardSummary[]> {
 }
 
 export async function closePortForward(forwardId: string): Promise<boolean> {
+  return stopPortForward(forwardId);
+}
+
+export async function startPortForward(
+  forwardId: string,
+): Promise<PortForwardSummary> {
+  if (!isTauri()) {
+    const summary = browserPreviewForwards.get(forwardId);
+    if (!summary) {
+      throw new Error(`端口转发不存在: ${forwardId}`);
+    }
+    const next: PortForwardSummary = {
+      ...summary,
+      pid: 0,
+      status: "running",
+    };
+    browserPreviewForwards.set(forwardId, next);
+    return next;
+  }
+
+  return invoke<PortForwardSummary>("port_forward_start", { forwardId });
+}
+
+export async function stopPortForward(forwardId: string): Promise<boolean> {
+  if (!isTauri()) {
+    const summary = browserPreviewForwards.get(forwardId);
+    if (!summary) {
+      return false;
+    }
+    browserPreviewForwards.set(forwardId, {
+      ...summary,
+      pid: undefined,
+      status: "exited",
+    });
+    return true;
+  }
+
+  return invoke<boolean>("port_forward_stop", { forwardId });
+}
+
+export async function deletePortForward(forwardId: string): Promise<boolean> {
   if (!isTauri()) {
     return browserPreviewForwards.delete(forwardId);
   }
 
-  return invoke<boolean>("port_forward_close", { forwardId });
+  return invoke<boolean>("port_forward_delete", { forwardId });
 }
 
 function normalizeCreateRequest(
   request: PortForwardCreateRequest,
 ): PortForwardCreateRequest {
+  const dynamicWithoutTarget =
+    request.kind === "dynamic" ||
+    (request.purpose === "hostNetworkAssist" &&
+      request.proxyProtocol === "socks5" &&
+      !request.targetHost &&
+      !request.targetPort);
+  const bindHost =
+    request.bindHost?.trim() ||
+    request.remoteBindHost?.trim() ||
+    request.localBindHost?.trim() ||
+    "127.0.0.1";
   return {
     ...request,
-    bindHost: request.bindHost?.trim() || "127.0.0.1",
+    bindHost,
+    commandPreview: request.commandPreview?.trim() || undefined,
+    localBindHost: request.localBindHost?.trim() || undefined,
     name: request.name?.trim() || undefined,
-    targetHost:
-      request.kind === "dynamic"
-        ? undefined
-        : request.targetHost?.trim() || "127.0.0.1",
-    targetPort: request.kind === "dynamic" ? undefined : request.targetPort,
+    proxyUrl: request.proxyUrl?.trim() || undefined,
+    remoteBindHost: request.remoteBindHost?.trim() || undefined,
+    targetHost: dynamicWithoutTarget
+      ? undefined
+      : request.targetHost?.trim() || "127.0.0.1",
+    targetPort: dynamicWithoutTarget ? undefined : request.targetPort,
   };
 }
 
 function defaultForwardName(request: PortForwardCreateRequest) {
+  if (request.purpose === "hostNetworkAssist") {
+    return `主机网络助手 :${request.sourcePort}`;
+  }
   if (request.kind === "dynamic") {
     return `SOCKS :${request.sourcePort}`;
   }
   return `${request.sourcePort} -> ${request.targetHost}:${request.targetPort}`;
+}
+
+function defaultProxyUrl(
+  request: PortForwardCreateRequest,
+): string | undefined {
+  if (request.purpose !== "hostNetworkAssist") {
+    return undefined;
+  }
+  const protocol = request.proxyProtocol ?? "http";
+  const scheme = protocol === "socks5" ? "socks5h" : "http";
+  const host = proxyHostForRemoteUse(request.remoteBindHost ?? request.bindHost);
+  return `${scheme}://${formatProxyHost(host)}:${request.sourcePort}`;
+}
+
+function proxyHostForRemoteUse(host: string | undefined): string {
+  const normalized = host?.trim();
+  if (!normalized || normalized === "0.0.0.0") {
+    return "127.0.0.1";
+  }
+  if (normalized === "::") {
+    return "::1";
+  }
+  return normalized;
+}
+
+function formatProxyHost(host: string): string {
+  return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }

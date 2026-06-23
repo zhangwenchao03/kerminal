@@ -7,6 +7,14 @@
 import type { SftpTransferEndpoint, SftpTransferSummary } from "../../lib/sftpApi";
 import { fileNameFromPath, formatFileSize } from "./sftpFileUtils";
 
+type CompatibleRemoteTransferEndpoint = Extract<
+  SftpTransferEndpoint,
+  { kind: "remote" }
+> & {
+  host_id?: string;
+  host_label?: string;
+};
+
 /**
  * 按用户关注优先级排序后台传输任务。
  */
@@ -33,6 +41,23 @@ export function upsertTransfer(
   );
   nextTransfers.push(summary);
   return nextTransfers;
+}
+
+/**
+ * 合并后端或事件返回的单条任务快照，并保持队列统一排序。
+ */
+export function mergeTransferSnapshot(
+  transfers: SftpTransferSummary[],
+  summary: SftpTransferSummary,
+) {
+  return sortTransfers(upsertTransfer(transfers, summary));
+}
+
+/**
+ * 用后端返回的完整任务列表替换本地队列，并保持队列统一排序。
+ */
+export function replaceTransferQueue(transfers: SftpTransferSummary[]) {
+  return sortTransfers(transfers);
 }
 
 function transferStatusRank(status: SftpTransferSummary["status"]) {
@@ -72,11 +97,31 @@ export function activeTransferCount(transfers: SftpTransferSummary[]) {
 }
 
 /**
+ * 判断用户是否还能对传输任务发起取消请求。
+ */
+export function canCancelTransfer(transfer: SftpTransferSummary) {
+  return (
+    (transfer.status === "queued" || transfer.status === "running") &&
+    !transfer.cancelRequested
+  );
+}
+
+/**
+ * 判断当前队列是否包含后端 clearCompleted 可以移除的终态任务。
+ */
+export function canClearFinishedTransfers(transfers: SftpTransferSummary[]) {
+  return transfers.some(isFinishedTransfer);
+}
+
+/**
  * 计算传输进度百分比；未知总大小的运行任务保留可见进度。
  */
 export function transferProgressPercent(transfer: SftpTransferSummary) {
   if (transfer.status === "succeeded") {
     return 100;
+  }
+  if (isArchiveWritePhase(transfer)) {
+    return transfer.bytesTransferred > 0 || (transfer.totalBytes ?? 0) > 0 ? 96 : 12;
   }
   const totalBytes = transfer.totalBytes ?? 0;
   if (totalBytes <= 0) {
@@ -108,6 +153,9 @@ export function transferPercentLabel(transfer: SftpTransferSummary) {
   if (transfer.status === "succeeded") {
     return "100%";
   }
+  if (isArchiveWritePhase(transfer)) {
+    return "压缩中";
+  }
   const totalBytes = transfer.totalBytes ?? 0;
   if (totalBytes <= 0) {
     return transfer.status === "running" ? "..." : "0%";
@@ -128,13 +176,57 @@ export function transferPathSummary(transfer: SftpTransferSummary) {
 }
 
 /**
+ * 获取传输方式的用户可见标签。
+ */
+export function transferMethodLabel(transfer: SftpTransferSummary) {
+  if (transfer.operation === "remoteCopy") {
+    if (transfer.transportMode === "clientBridge") {
+      return "本机桥接";
+    }
+    if (transfer.transportMode === "localStage") {
+      return "本机中转";
+    }
+    if (transfer.transportMode === "singleHostSftp") {
+      return "远端复制";
+    }
+    return "远端复制";
+  }
+
+  if (transfer.operation === "archiveDownload") {
+    return "打包下载";
+  }
+  if (transfer.operation === "archiveUpload") {
+    return "打包上传";
+  }
+  if (transfer.operation === "clipboardDownload") {
+    return "剪贴板下载";
+  }
+  if (transfer.operation === "upload" || transfer.direction === "upload") {
+    return "上传";
+  }
+  return "下载";
+}
+
+/**
  * 获取传输状态中文标签。
  */
-export function transferStatusLabel(status: SftpTransferSummary["status"]) {
+export function transferStatusLabel(
+  status: SftpTransferSummary["status"],
+  phase?: SftpTransferSummary["phase"],
+) {
   if (status === "queued") {
     return "排队";
   }
   if (status === "running") {
+    if (phase === "archiving") {
+      return "压缩中";
+    }
+    if (phase === "downloading") {
+      return "下载中";
+    }
+    if (phase === "uploading") {
+      return "上传中";
+    }
     return "传输中";
   }
   if (status === "succeeded") {
@@ -183,7 +275,26 @@ function transferEndpointLabel(endpoint: SftpTransferEndpoint) {
   if (endpoint.kind === "local") {
     return endpoint.path;
   }
-  return `${endpoint.hostLabel || endpoint.hostId}:${endpoint.path}`;
+  const remoteEndpoint = endpoint as CompatibleRemoteTransferEndpoint;
+  const hostLabel =
+    readableEndpointPart(remoteEndpoint.hostLabel) ??
+    readableEndpointPart(remoteEndpoint.host_label) ??
+    readableEndpointPart(remoteEndpoint.hostId) ??
+    readableEndpointPart(remoteEndpoint.host_id) ??
+    "远端";
+  return `${hostLabel}:${remoteEndpoint.path}`;
+}
+
+function readableEndpointPart(value: string | undefined) {
+  const text = value?.trim();
+  if (!text || text === "undefined" || text === "null") {
+    return undefined;
+  }
+  return text;
+}
+
+function isArchiveWritePhase(transfer: SftpTransferSummary) {
+  return transfer.status === "running" && transfer.phase === "archiving";
 }
 
 /**

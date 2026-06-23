@@ -3,7 +3,6 @@ use super::*;
 pub(super) async fn execute_server_info_snapshot(
     server_info: &ServerInfoService,
     storage: &SqliteStore,
-    credentials: &CredentialService,
     paths: &KerminalPaths,
     ssh_commands: &SshCommandService,
     arguments: &serde_json::Map<String, Value>,
@@ -14,9 +13,8 @@ pub(super) async fn execute_server_info_snapshot(
     };
 
     match server_info
-        .snapshot_with_credentials(
+        .snapshot_native(
             storage,
-            credentials,
             paths,
             ssh_commands,
             ServerInfoRequest {
@@ -30,6 +28,7 @@ pub(super) async fn execute_server_info_snapshot(
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_server_info_snapshot_for_ai(&snapshot)),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -82,6 +81,7 @@ pub(super) fn execute_diagnostics_runtime_health(
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_runtime_health_for_ai(&snapshot)),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -98,6 +98,7 @@ pub(super) fn execute_diagnostics_create_bundle(
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_diagnostic_bundle_for_ai(&bundle)),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }

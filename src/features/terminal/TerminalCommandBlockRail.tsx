@@ -6,6 +6,18 @@ import {
 import { ChevronDown, ChevronRight, Copy, ImageDown } from "lucide-react";
 import { cn } from "../../lib/cn";
 import type { TerminalCommandBlockView } from "./terminalCommandBlocks";
+import {
+  clampCommandBlockMenuPosition,
+  resolveTerminalCommandBlockFoldSummaries,
+  resolveTerminalCommandBlockMarkerModel,
+} from "./terminalCommandBlockRailModel";
+
+const commandBlockFoldSummaryClassName =
+  "rounded-full border border-[var(--border-subtle)] bg-[var(--surface-overlay)] px-2 py-0.5 text-[11px] font-medium text-zinc-500 shadow-sm backdrop-blur-xl dark:text-zinc-300";
+const commandBlockMenuSurfaceClassName =
+  "kerminal-floating-enter fixed z-[1000] w-40 overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] p-1 text-zinc-900 shadow-2xl shadow-black/20 backdrop-blur-xl dark:text-zinc-100 dark:shadow-black/50";
+const commandBlockMenuItemClassName =
+  "kerminal-focus-ring kerminal-pressable flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-white";
 
 export type TerminalCommandBlockAction = "copyImage" | "copyText" | "toggle";
 
@@ -63,7 +75,10 @@ export function TerminalCommandBlockRail({
     event.stopPropagation();
     setMenu({
       block,
-      position: clampCommandBlockMenuPosition(event.clientX, event.clientY),
+      position: clampCommandBlockMenuPosition(event.clientX, event.clientY, {
+        viewportHeight: window.innerHeight,
+        viewportWidth: window.innerWidth,
+      }),
     });
   };
 
@@ -107,10 +122,8 @@ function TerminalCommandBlockFoldSummaries({
 }: {
   blocks: TerminalCommandBlockView[];
 }) {
-  const collapsedBlocks = blocks.filter(
-    (block) => block.collapsed && !block.muted,
-  );
-  if (collapsedBlocks.length === 0) {
+  const summaries = resolveTerminalCommandBlockFoldSummaries(blocks);
+  if (summaries.length === 0) {
     return null;
   }
 
@@ -119,18 +132,18 @@ function TerminalCommandBlockFoldSummaries({
       aria-label="命令块折叠摘要"
       className="pointer-events-none absolute inset-x-0 top-2 z-10"
     >
-      {collapsedBlocks.map((block) => (
+      {summaries.map((summary) => (
         <div
-          aria-label={`命令块 ${block.command || "空命令"} 折叠摘要 ${block.lineCount} 行`}
+          aria-label={summary.ariaLabel}
           className="absolute left-6 right-3 flex items-center justify-end"
-          key={block.id}
+          key={summary.id}
           style={{
-            height: block.height,
-            top: block.top,
+            height: summary.height,
+            top: summary.top,
           }}
         >
-          <div className="rounded-full border border-black/8 bg-white/88 px-2 py-0.5 text-[11px] font-medium text-zinc-500 shadow-sm dark:border-white/10 dark:bg-zinc-950/88 dark:text-zinc-300">
-            已折叠 {block.lineCount} 行
+          <div className={commandBlockFoldSummaryClassName}>
+            已折叠 {summary.lineCount} 行
           </div>
         </div>
       ))}
@@ -150,8 +163,8 @@ function TerminalCommandBlockMarker({
     event: ReactMouseEvent,
   ) => void;
 }) {
-  const ToggleIcon = block.collapsed ? ChevronRight : ChevronDown;
-  const commandLabel = block.virtual ? "当前命令行" : block.command || "空命令";
+  const marker = resolveTerminalCommandBlockMarkerModel(block);
+  const ToggleIcon = marker.icon === "collapsed" ? ChevronRight : ChevronDown;
 
   return (
     <div
@@ -162,18 +175,14 @@ function TerminalCommandBlockMarker({
       }}
     >
       <button
-        aria-label={
-          block.virtual
-            ? `当前命令行色条 ${commandLabel}`
-            : `${block.collapsed ? "展开" : "折叠"}命令块 ${commandLabel}`
-        }
+        aria-label={marker.ariaLabel}
         className={cn(
           "pointer-events-auto flex h-full w-2 items-start justify-center rounded-full border border-white/35 shadow-sm transition hover:w-3 focus-visible:w-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400",
           block.muted && "border-white/20 grayscale",
-          block.virtual && "cursor-default",
+          marker.isCurrent && "cursor-default",
         )}
         onClick={() => {
-          if (!block.virtual) {
+          if (marker.canToggle) {
             onAction(block.id, "toggle");
           }
         }}
@@ -182,23 +191,19 @@ function TerminalCommandBlockMarker({
           opacity: block.muted ? 0.45 : 0.92,
         }}
         onContextMenu={(event) => {
-          if (block.virtual) {
+          if (!marker.canOpenMenu) {
             event.preventDefault();
             event.stopPropagation();
             return;
           }
           onOpenMenu(block, event);
         }}
-        title={
-          block.virtual
-            ? "当前等待输入的命令行"
-            : `${block.collapsed ? "展开" : "折叠"}命令块：${commandLabel}；右键复制`
-        }
+        title={marker.title}
         type="button"
       >
-        {block.virtual ? null : (
+        {marker.icon ? (
           <ToggleIcon className="mt-0.5 h-2.5 w-2.5 text-white/90 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100" />
-        )}
+        ) : null}
       </button>
     </div>
   );
@@ -221,7 +226,7 @@ function TerminalCommandBlockContextMenu({
   return (
     <div
       aria-label={`命令块 ${commandLabel} 右键菜单`}
-      className="fixed z-50 w-40 overflow-hidden rounded-md border border-black/10 bg-white/95 p-1 text-zinc-900 shadow-xl shadow-black/20 backdrop-blur dark:border-white/10 dark:bg-zinc-950/95 dark:text-zinc-100"
+      className={commandBlockMenuSurfaceClassName}
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
       role="menu"
@@ -233,7 +238,7 @@ function TerminalCommandBlockContextMenu({
       <div className="space-y-0.5">
         <button
           aria-label={`复制文本块 ${commandLabel}`}
-          className="flex h-8 w-full items-center gap-2 rounded px-2 text-left text-sm text-zinc-700 transition hover:bg-black/6 hover:text-zinc-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400 dark:text-zinc-200 dark:hover:bg-white/10 dark:hover:text-white"
+          className={commandBlockMenuItemClassName}
           onClick={() => onAction("copyText")}
           role="menuitem"
           title="复制命令块文本"
@@ -244,7 +249,7 @@ function TerminalCommandBlockContextMenu({
         </button>
         <button
           aria-label={`复制图片 ${commandLabel}`}
-          className="flex h-8 w-full items-center gap-2 rounded px-2 text-left text-sm text-zinc-700 transition hover:bg-black/6 hover:text-zinc-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400 dark:text-zinc-200 dark:hover:bg-white/10 dark:hover:text-white"
+          className={commandBlockMenuItemClassName}
           onClick={() => onAction("copyImage")}
           role="menuitem"
           title="复制命令块图片"
@@ -256,17 +261,4 @@ function TerminalCommandBlockContextMenu({
       </div>
     </div>
   );
-}
-
-function clampCommandBlockMenuPosition(x: number, y: number) {
-  if (typeof window === "undefined") {
-    return { x, y };
-  }
-
-  const menuWidth = 160;
-  const menuHeight = 76;
-  return {
-    x: Math.max(8, Math.min(x, window.innerWidth - menuWidth - 8)),
-    y: Math.max(8, Math.min(y, window.innerHeight - menuHeight - 8)),
-  };
 }

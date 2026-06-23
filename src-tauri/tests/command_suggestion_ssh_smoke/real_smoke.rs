@@ -31,7 +31,6 @@ async fn real_ssh_sftp_provider_chain_produces_command_path_and_git_suggestions(
         .suggestions
         .refresh_remote_commands(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.ssh_commands,
             CommandSuggestionRemoteCommandRefreshRequest {
@@ -51,7 +50,6 @@ async fn real_ssh_sftp_provider_chain_produces_command_path_and_git_suggestions(
         .suggestions
         .refresh_remote_paths(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.sftp,
             CommandSuggestionRemotePathRefreshRequest {
@@ -72,7 +70,6 @@ async fn real_ssh_sftp_provider_chain_produces_command_path_and_git_suggestions(
         .suggestions
         .refresh_remote_history(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.ssh_commands,
             CommandSuggestionRemoteHistoryRefreshRequest {
@@ -88,7 +85,6 @@ async fn real_ssh_sftp_provider_chain_produces_command_path_and_git_suggestions(
         .suggestions
         .refresh_git_refs(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.ssh_commands,
             CommandSuggestionGitRefreshRequest {
@@ -253,7 +249,6 @@ async fn real_ssh_remote_command_posix_builtin_fallback_survives_minimal_path() 
         .suggestions
         .refresh_remote_commands(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.ssh_commands,
             CommandSuggestionRemoteCommandRefreshRequest {

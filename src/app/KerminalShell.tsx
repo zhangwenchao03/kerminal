@@ -8,50 +8,32 @@ import {
   type CSSProperties,
 } from "react";
 import { AppTitleBar } from "./AppTitleBar";
-import { MachineSidebar } from "../features/machine-sidebar/MachineSidebar";
 import type { SettingsSectionId } from "../features/settings/SettingsToolContent";
 import {
   keybindingMatchesEvent,
   shortcutPlatform,
 } from "../features/settings/keybindingUtils";
-import {
-  resolveThemeMode,
-  type AppSettings,
-} from "../features/settings/settingsModel";
-import { TerminalWorkspace } from "../features/terminal/TerminalWorkspace";
+import { resolveThemeMode } from "../features/settings/settingsModel";
 import { writeBroadcastCommand } from "../features/terminal/terminalSessionRegistry";
-import { ToolPanel } from "../features/tool-panel/ToolPanel";
-import { SftpTransferWorkbench } from "../features/sftp/SftpTransferWorkbench";
-import {
-  findMachine,
-  sidebarMachinesForWorkspaceSession,
-  tools,
-  useWorkspaceStore,
-} from "../features/workspace/workspaceStore";
-import {
-  loadWorkspaceSession,
-  saveWorkspaceSession,
-} from "../features/workspace/workspaceSessionStorage";
+import { useWorkspaceStore } from "../features/workspace/workspaceStore";
 import { cn } from "../lib/cn";
 import { listDockerContainers } from "../lib/dockerApi";
 import {
   listenNativeMenuActions,
   type NativeMenuAction,
 } from "../lib/nativeMenuApi";
-import {
-  listProfiles,
-} from "../lib/profileApi";
+import { listProfiles } from "../lib/profileApi";
 import {
   createRemoteHostGroup,
   updateRemoteHost,
+  type RemoteHost,
 } from "../lib/remoteHostApi";
-import { getSettings, updateSettings } from "../lib/settingsApi";
 import { useDocumentTheme } from "../lib/useDocumentTheme";
-import {
-  isToolId,
-  isSftpTransferWorkspaceTab,
-  type ToolId,
-} from "../features/workspace/types";
+import type {
+  SftpTransferCreatedHostTarget,
+  SftpTransferCreateHostRequest,
+} from "../features/sftp/SftpTransferWorkbench";
+import { isToolId, type ToolId } from "../features/workspace/types";
 import {
   DeleteConfirmationDialog,
   DialogLazyFallback,
@@ -60,27 +42,41 @@ import {
   htmlLanguage,
   initialPanelWidth,
   isRealRemoteGroup,
+  resolveShellLayout,
   useSystemThemePreference,
+  useViewportWidth,
   workspaceBackgroundImage,
+  workspaceBackgroundColor,
 } from "./KerminalShell.helpers";
 import { useKerminalShellRemoteActions } from "./useKerminalShellRemoteActions";
+import { useKerminalShellSettings } from "./useKerminalShellSettings";
 import {
   DEFAULT_REMOTE_GROUP_NAME,
   DEFAULT_SETTINGS_SECTION_ID,
-  LEFT_RAIL_WIDTH,
   LazyRemoteHostCreateDialog,
   LazyRemoteHostGroupCreateDialog,
   LazySettingsDialog,
-  TOOL_RAIL_WIDTH,
-  WORKSPACE_SESSION_SAVE_DELAY_MS,
 } from "./KerminalShell.static";
+import { useWorkspaceSessionPersistence } from "./useWorkspaceSessionPersistence";
+import {
+  MachineSidebarStoreBridge,
+  ToolPanelStoreBridge,
+  WorkspaceTerminalSurface,
+} from "./KerminalShell.workspaceBridge";
 
-type WorkspaceSessionSnapshot = Parameters<typeof saveWorkspaceSession>[0];
+function isSftpCapableRemoteHost(host: RemoteHost) {
+  return !host.tags.some((tag) =>
+    ["rdp", "telnet", "serial"].includes(tag.trim().toLowerCase()),
+  );
+}
+
+function formatCssAlpha(value: number) {
+  return String(Number(value.toFixed(4)));
+}
 
 export function KerminalShell() {
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const activeTool = useWorkspaceStore((state) => state.activeTool);
-  const broadcastDraft = useWorkspaceStore((state) => state.broadcastDraft);
   const focusedPaneId = useWorkspaceStore((state) => state.focusedPaneId);
   const machineGroups = useWorkspaceStore((state) => state.machineGroups);
   const machineSearch = useWorkspaceStore((state) => state.machineSearch);
@@ -115,61 +111,21 @@ export function KerminalShell() {
     (state) => state.removeSidebarMachine,
   );
   const renameMachineGroup = useWorkspaceStore((state) => state.renameMachineGroup);
-  const renameTerminalTab = useWorkspaceStore((state) => state.renameTerminalTab);
-  const restoreWorkspaceSession = useWorkspaceStore(
-    (state) => state.restoreWorkspaceSession,
-  );
   const selectMachine = useWorkspaceStore((state) => state.selectMachine);
   const selectTab = useWorkspaceStore((state) => state.selectTab);
   const setActiveTool = useWorkspaceStore((state) => state.setActiveTool);
-  const setBroadcastDraft = useWorkspaceStore(
-    (state) => state.setBroadcastDraft,
-  );
   const setMachineSearch = useWorkspaceStore((state) => state.setMachineSearch);
   const setProfiles = useWorkspaceStore((state) => state.setProfiles);
   const setRemoteHostTree = useWorkspaceStore(
     (state) => state.setRemoteHostTree,
   );
   const splitFocusedPane = useWorkspaceStore((state) => state.splitFocusedPane);
-  const updatePaneCurrentCwd = useWorkspaceStore(
-    (state) => state.updatePaneCurrentCwd,
-  );
-  const updatePaneOutputHistory = useWorkspaceStore(
-    (state) => state.updatePaneOutputHistory,
-  );
   const updateLocalMachine = useWorkspaceStore((state) => state.updateLocalMachine);
   const moveSidebarMachine = useWorkspaceStore((state) => state.moveSidebarMachine);
   const pinMachineGroup = useWorkspaceStore((state) => state.pinMachineGroup);
-  const terminalPanes = useWorkspaceStore((state) => state.terminalPanes);
   const terminalTabs = useWorkspaceStore((state) => state.terminalTabs);
   const profiles = useWorkspaceStore((state) => state.profiles);
   const activeProfileId = useWorkspaceStore((state) => state.activeProfileId);
-  const activeTab = terminalTabs.find((tab) => tab.id === activeTabId);
-  const focusedPane = terminalPanes.find((pane) => pane.id === focusedPaneId);
-  const activeTerminalMachineId =
-    focusedPane?.mode === "container"
-      ? focusedPane.machineId
-      : focusedPane?.remoteHostId ??
-    focusedPane?.machineId ??
-    activeTab?.machineId ??
-    selectedMachineId;
-  const activeTerminalMachine = findMachine(
-    machineGroups,
-    activeTerminalMachineId,
-  );
-  const openMachineIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const tab of terminalTabs) {
-      ids.add(tab.machineId);
-    }
-    for (const pane of terminalPanes) {
-      ids.add(pane.machineId);
-      if (pane.remoteHostId) {
-        ids.add(pane.remoteHostId);
-      }
-    }
-    return [...ids];
-  }, [terminalPanes, terminalTabs]);
   const settings = useWorkspaceStore((state) => state.settings);
   const setSettings = useWorkspaceStore((state) => state.setSettings);
   const [leftPanelWidth, setLeftPanelWidth] = useState(() =>
@@ -185,26 +141,26 @@ export function KerminalShell() {
     }),
   );
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
-  const [settingsLoadError, setSettingsLoadError] = useState<string | null>(
-    null,
-  );
-  const [settingsSaveError, setSettingsSaveError] = useState<string | null>(
-    null,
-  );
-  const [settingsSaveState, setSettingsSaveState] = useState<
-    "idle" | "saving" | "saved" | "error"
-  >("idle");
-  const [workspaceSessionRestored, setWorkspaceSessionRestored] =
-    useState(false);
+  const viewportWidth = useViewportWidth();
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [settingsInitialSectionId, setSettingsInitialSectionId] =
     useState<SettingsSectionId>(DEFAULT_SETTINGS_SECTION_ID);
+  const [pendingSftpHostTarget, setPendingSftpHostTarget] =
+    useState<SftpTransferCreateHostRequest | null>(null);
+  const [createdSftpHostTarget, setCreatedSftpHostTarget] =
+    useState<SftpTransferCreatedHostTarget>();
   const workspaceFrameRef = useRef<HTMLDivElement>(null);
-  const workspaceSessionSaveTimerRef = useRef<number | null>(null);
-  const latestWorkspaceSessionRef = useRef<WorkspaceSessionSnapshot | null>(null);
-  const settingsSaveRequestRef = useRef(0);
+  const createdSftpHostSequenceRef = useRef(0);
+  const {
+    handleSettingsChange,
+    settingsLoadError,
+    settingsSaveError,
+    settingsSaveState,
+  } = useKerminalShellSettings({ setSettings });
   const systemPrefersDark = useSystemThemePreference();
   const resolvedTheme = resolveThemeMode(settings.themeMode, systemPrefersDark);
+  const windowControlPlatform = shortcutPlatform();
+  const reserveRightTitleBarControls = windowControlPlatform !== "mac";
   useDocumentTheme({
     density: settings.interfaceDensity,
     language: settings.appearance.interfaceLanguage,
@@ -212,29 +168,43 @@ export function KerminalShell() {
     theme: resolvedTheme,
   });
   const workspaceBackgroundStyle = useMemo<CSSProperties>(
-    () => ({
-      backgroundImage: workspaceBackgroundImage(
-        settings.appearance.backgroundEnabled,
-        settings.appearance.backgroundImagePath,
-        settings.appearance.backgroundOpacity,
-        resolvedTheme,
-      ),
-      backgroundPosition: "center",
-      backgroundRepeat:
-        settings.appearance.backgroundFit === "tile" ? "repeat" : "no-repeat",
-      backgroundSize:
-        settings.appearance.backgroundFit === "tile"
-          ? "auto"
-          : settings.appearance.backgroundFit,
-    }),
+    () => {
+      const windowOpacity =
+        Math.min(Math.max(settings.appearance.windowOpacity, 35), 100) / 100;
+      return {
+        "--app-window-opacity": formatCssAlpha(windowOpacity),
+        "--app-nav-surface-opacity": formatCssAlpha(
+          windowOpacity * (resolvedTheme === "dark" ? 0.78 : 0.68),
+        ),
+        "--app-terminal-surface-opacity": formatCssAlpha(windowOpacity * 0.78),
+        backgroundColor: workspaceBackgroundColor(
+          settings.appearance.windowOpacity,
+          resolvedTheme,
+        ),
+        backgroundImage: workspaceBackgroundImage(
+          settings.appearance.backgroundEnabled,
+          settings.appearance.backgroundImagePath,
+          settings.appearance.backgroundOpacity,
+          resolvedTheme,
+        ),
+        backgroundPosition: "center",
+        backgroundRepeat:
+          settings.appearance.backgroundFit === "tile" ? "repeat" : "no-repeat",
+        backgroundSize:
+          settings.appearance.backgroundFit === "tile"
+            ? "auto"
+            : settings.appearance.backgroundFit,
+      };
+    },
     [
       resolvedTheme,
       settings.appearance.backgroundEnabled,
       settings.appearance.backgroundFit,
       settings.appearance.backgroundImagePath,
       settings.appearance.backgroundOpacity,
+      settings.appearance.windowOpacity,
     ],
-  );
+  ) as CSSProperties;
   const defaultRemoteGroupId =
     machineGroups.find(
       (group) =>
@@ -244,18 +214,21 @@ export function KerminalShell() {
   const defaultRemoteHostId = machineGroups
     .find((group) => group.id !== "local")
     ?.machines.find((machine) => machine.kind === "ssh")?.id;
-  const rightPanelOpen = activeTool !== null;
-  const leftPanelColumnWidth = leftPanelCollapsed
-    ? LEFT_RAIL_WIDTH
-    : leftPanelWidth;
-  const rightPanelColumnWidth = rightPanelOpen
-    ? toolPanelWidth
-    : TOOL_RAIL_WIDTH;
-  const gridTemplateColumns = `${leftPanelColumnWidth}px ${
-    leftPanelCollapsed ? 0 : 8
-  }px minmax(0, 1fr) ${rightPanelOpen ? 8 : 0}px ${rightPanelColumnWidth}px`;
-  const rightWorkspaceInset =
-    rightPanelColumnWidth + (rightPanelOpen ? 8 : 0);
+  const {
+    compactShell,
+    effectiveLeftPanelCollapsed,
+    effectiveRightPanelOpen,
+    gridTemplateColumns,
+    leftPanelColumnWidth,
+    rightPanelColumnWidth,
+    rightWorkspaceInset,
+  } = resolveShellLayout({
+    activeToolOpen: activeTool !== null,
+    leftPanelCollapsed,
+    leftPanelWidth,
+    toolPanelWidth,
+    viewportWidth,
+  });
   const handleBroadcastCommand = useCallback(writeBroadcastCommand, []);
   const openLogsTool = useCallback(
     () => setActiveTool("logs"),
@@ -490,76 +463,37 @@ export function KerminalShell() {
     setRemoteHostTree,
     updateLocalMachine,
   });
-  const flushWorkspaceSession = useCallback(() => {
-    const session = latestWorkspaceSessionRef.current;
-    if (!session) {
-      return;
-    }
-
-    if (workspaceSessionSaveTimerRef.current !== null) {
-      window.clearTimeout(workspaceSessionSaveTimerRef.current);
-      workspaceSessionSaveTimerRef.current = null;
-    }
-
-    saveWorkspaceSession(session);
-  }, []);
-
-  useEffect(() => {
-    const session = loadWorkspaceSession();
-    if (session) {
-      restoreWorkspaceSession(session);
-    }
-    setWorkspaceSessionRestored(true);
-  }, [restoreWorkspaceSession]);
-
-  useEffect(() => {
-    if (!workspaceSessionRestored) {
-      return;
-    }
-
-    latestWorkspaceSessionRef.current = {
-      activeTabId,
-      focusedPaneId,
-      selectedMachineId,
-      sidebarMachines: sidebarMachinesForWorkspaceSession(machineGroups),
-      terminalPanes,
-      terminalTabs,
-    };
-
-    if (workspaceSessionSaveTimerRef.current !== null) {
-      window.clearTimeout(workspaceSessionSaveTimerRef.current);
-    }
-    workspaceSessionSaveTimerRef.current = window.setTimeout(() => {
-      workspaceSessionSaveTimerRef.current = null;
-      const session = latestWorkspaceSessionRef.current;
-      if (session) {
-        saveWorkspaceSession(session);
+  const openSftpTransferHostCreateDialog = useCallback(
+    (request: SftpTransferCreateHostRequest) => {
+      if (!request.workspaceTabId) {
+        return;
       }
-    }, WORKSPACE_SESSION_SAVE_DELAY_MS);
-
-    return () => {
-      if (workspaceSessionSaveTimerRef.current !== null) {
-        window.clearTimeout(workspaceSessionSaveTimerRef.current);
-        workspaceSessionSaveTimerRef.current = null;
+      setPendingSftpHostTarget(request);
+      openConnectionDialog({ mode: "ssh" });
+    },
+    [openConnectionDialog],
+  );
+  const handleConnectionDialogClose = useCallback(() => {
+    setPendingSftpHostTarget(null);
+    closeConnectionDialog();
+  }, [closeConnectionDialog]);
+  const handleConnectionDialogCreated = useCallback(
+    async (host: RemoteHost) => {
+      await handleRemoteHostCreated(host);
+      if (pendingSftpHostTarget && isSftpCapableRemoteHost(host)) {
+        createdSftpHostSequenceRef.current += 1;
+        setCreatedSftpHostTarget({
+          hostId: host.id,
+          sequence: createdSftpHostSequenceRef.current,
+          side: pendingSftpHostTarget.side,
+          workspaceTabId: pendingSftpHostTarget.workspaceTabId,
+        });
       }
-    };
-  }, [
-    activeTabId,
-    focusedPaneId,
-    machineGroups,
-    selectedMachineId,
-    terminalPanes,
-    terminalTabs,
-    workspaceSessionRestored,
-  ]);
-
-  useEffect(() => {
-    window.addEventListener("pagehide", flushWorkspaceSession);
-    return () => {
-      window.removeEventListener("pagehide", flushWorkspaceSession);
-      flushWorkspaceSession();
-    };
-  }, [flushWorkspaceSession]);
+      setPendingSftpHostTarget(null);
+    },
+    [handleRemoteHostCreated, pendingSftpHostTarget],
+  );
+  useWorkspaceSessionPersistence();
 
   useEffect(() => {
     let disposed = false;
@@ -634,62 +568,11 @@ export function KerminalShell() {
     void refreshRemoteHostTree();
   }, [refreshRemoteHostTree]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    getSettings()
-      .then((storedSettings) => {
-        if (cancelled) {
-          return;
-        }
-        setSettings(storedSettings);
-        setSettingsLoadError(null);
-      })
-      .catch(() => {
-        if (cancelled) {
-          return;
-        }
-        setSettingsLoadError("设置加载失败，已使用默认本地设置。");
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [setSettings]);
-
-  const handleSettingsChange = useCallback(
-    (nextSettings: AppSettings) => {
-      settingsSaveRequestRef.current += 1;
-      const requestId = settingsSaveRequestRef.current;
-      setSettings(nextSettings);
-      setSettingsSaveState("saving");
-      setSettingsSaveError(null);
-
-      updateSettings(nextSettings)
-        .then((storedSettings) => {
-          if (requestId !== settingsSaveRequestRef.current) {
-            return;
-          }
-          setSettings(storedSettings);
-          setSettingsSaveState("saved");
-        })
-        .catch((error: unknown) => {
-          if (requestId !== settingsSaveRequestRef.current) {
-            return;
-          }
-          setSettingsSaveState("error");
-          setSettingsSaveError(
-            error instanceof Error ? error.message : String(error),
-          );
-        });
-    },
-    [setSettings],
-  );
   const beginPanelResize = useCallback(
     (panel: "left" | "tools", event: React.PointerEvent<HTMLDivElement>) => {
       if (
-        (panel === "left" && leftPanelCollapsed) ||
-        (panel === "tools" && !rightPanelOpen)
+        (panel === "left" && effectiveLeftPanelCollapsed) ||
+        (panel === "tools" && !effectiveRightPanelOpen)
       ) {
         return;
       }
@@ -732,11 +615,11 @@ export function KerminalShell() {
       window.addEventListener("pointerup", stopResize, { once: true });
     },
     [
-      leftPanelCollapsed,
+      effectiveLeftPanelCollapsed,
+      effectiveRightPanelOpen,
       leftPanelColumnWidth,
       leftPanelWidth,
       rightPanelColumnWidth,
-      rightPanelOpen,
       toolPanelWidth,
     ],
   );
@@ -747,8 +630,8 @@ export function KerminalShell() {
       }
 
       if (
-        (panel === "left" && leftPanelCollapsed) ||
-        (panel === "tools" && !rightPanelOpen)
+        (panel === "left" && effectiveLeftPanelCollapsed) ||
+        (panel === "tools" && !effectiveRightPanelOpen)
       ) {
         return;
       }
@@ -774,7 +657,7 @@ export function KerminalShell() {
         }),
       );
     },
-    [leftPanelCollapsed, rightPanelOpen],
+    [effectiveLeftPanelCollapsed, effectiveRightPanelOpen],
   );
 
   return (
@@ -783,8 +666,8 @@ export function KerminalShell() {
       className={cn(
         "relative grid h-screen overflow-hidden transition-[grid-template-columns] duration-200 ease-out",
         resolvedTheme === "dark"
-          ? "dark bg-[#101012] text-zinc-100"
-          : "bg-[#f5f5f7] text-zinc-950",
+          ? "dark text-zinc-100"
+          : "text-zinc-950",
       )}
       data-density={settings.interfaceDensity}
       data-language={settings.appearance.interfaceLanguage}
@@ -797,19 +680,21 @@ export function KerminalShell() {
       }}
     >
       <div
-        className="col-[1/2] row-[1/2] border-b border-r border-black/8 bg-white/78 backdrop-blur-xl dark:border-white/8 dark:bg-zinc-950/78"
+        className="kerminal-material-nav col-[1/2] row-[1/2] border-b"
         data-tauri-drag-region
       />
-      <div className="col-[2/6] row-[1/2] border-b border-black/8 bg-white/72 backdrop-blur-xl dark:border-white/8 dark:bg-[#111113]/92" />
+      <div className="kerminal-material-nav col-[2/6] row-[1/2] border-b" />
       <AppTitleBar
-        className="pointer-events-none col-[1/-1] row-[1/2] z-10 border-b-0 bg-transparent"
+        className="pointer-events-none col-[1/-1] row-[1/2] z-50 border-b-0 bg-transparent"
         leftPanelCollapsed={leftPanelCollapsed}
         onLeftPanelCollapsedChange={setLeftPanelCollapsed}
         resolvedTheme={resolvedTheme}
+        surface={false}
+        windowControlPlatform={windowControlPlatform}
       />
       <div className="col-[1/2] row-[2/3] h-full overflow-hidden">
-        <MachineSidebar
-          collapsed={leftPanelCollapsed}
+        <MachineSidebarStoreBridge
+          collapsed={effectiveLeftPanelCollapsed}
           groups={machineGroups}
           onAddConnection={openConnectionDialog}
           onAddGroup={() => openRemoteGroupDialog()}
@@ -837,7 +722,6 @@ export function KerminalShell() {
           onPinGroup={(groupId, pinned) =>
             void handlePinMachineGroup(groupId, pinned)
           }
-          openMachineIds={openMachineIds}
           onSearchChange={setMachineSearch}
           onSelectMachine={selectMachine}
           search={machineSearch}
@@ -846,61 +730,41 @@ export function KerminalShell() {
         />
       </div>
       <ShellResizeSeparator
-        className="col-[2/3] row-[2/3]"
-        hidden={leftPanelCollapsed}
+        className="kerminal-terminal-surface col-[2/3] row-[2/3]"
+        hidden={effectiveLeftPanelCollapsed}
         label="调整主机侧边栏宽度"
         onKeyDown={(event) => resizeWithKeyboard("left", event)}
         onPointerDown={(event) => beginPanelResize("left", event)}
       />
       <div className="col-[3/6] row-[1/3] h-full min-w-0 flex-1 overflow-hidden">
-        <TerminalWorkspace
-          activeTabId={activeTabId}
-          broadcastDraft={broadcastDraft}
+        <WorkspaceTerminalSurface
           contentRightInset={rightWorkspaceInset}
-          focusedPaneId={focusedPaneId}
+          createdSftpHostTarget={createdSftpHostTarget}
           interfaceDensity={settings.interfaceDensity}
+          machineGroups={machineGroups}
           onBroadcastCommand={handleBroadcastCommand}
-          onBroadcastDraftChange={setBroadcastDraft}
-          onClosePane={closePane}
-          onCloseTab={closeTerminalTab}
-          onFocusPane={focusPane}
-          onPaneCurrentCwdChange={updatePaneCurrentCwd}
-          onPaneOutputHistoryChange={updatePaneOutputHistory}
+          onCreateSftpHost={openSftpTransferHostCreateDialog}
+          onOpenAiTool={() => setActiveTool("ai")}
+          onOpenConnection={() => openConnectionDialog({ mode: "ssh" })}
           onOpenLogs={openLogsTool}
-          onRenameTab={renameTerminalTab}
-          renderCustomTab={(tab, active) =>
-            isSftpTransferWorkspaceTab(tab) ? (
-              <SftpTransferWorkbench
-                active={active}
-                groups={machineGroups}
-                initialLeftHostId={tab.leftHostId}
-                initialRightHostId={tab.rightHostId}
-                lockedLeftHostId={tab.lockedLeftHostId}
-              />
-            ) : null
-          }
-          onSelectTab={selectTab}
-          onSplitPane={splitFocusedPane}
-          panes={terminalPanes}
+          reserveRightTitleBarControls={reserveRightTitleBarControls}
           resolvedTheme={resolvedTheme}
-          tabs={terminalTabs}
           terminalAppearance={settings.terminal}
         />
       </div>
       <ShellResizeSeparator
         className="col-[4/5] row-[2/3]"
-        hidden={!rightPanelOpen}
+        hidden={!effectiveRightPanelOpen}
         label="调整工具面板宽度"
         onKeyDown={(event) => resizeWithKeyboard("tools", event)}
         onPointerDown={(event) => beginPanelResize("tools", event)}
       />
       <div className="col-[5/6] row-[2/3] h-full overflow-hidden">
-        <ToolPanel
-          activeTool={activeTool}
-          activeTab={activeTab}
+        <ToolPanelStoreBridge
+          activeTool={compactShell ? null : activeTool}
           defaultRemoteGroupId={defaultRemoteGroupId}
           defaultRemoteHostId={defaultRemoteHostId}
-          focusedPane={focusedPane}
+          machineGroups={machineGroups}
           onActiveToolChange={activateTool}
           onCreateTerminal={addTerminalTab}
           onFocusTab={selectTab}
@@ -909,10 +773,7 @@ export function KerminalShell() {
           onRemoteHostCreated={refreshRemoteHostTree}
           onSettingsChange={handleSettingsChange}
           onSplitPane={splitFocusedPane}
-          selectedMachine={activeTerminalMachine}
           settings={settings}
-          terminalTabs={terminalTabs}
-          tools={tools}
         />
       </div>
       {settingsDialogOpen ? (
@@ -945,13 +806,13 @@ export function KerminalShell() {
                 workdir: request.workdir,
               });
             }}
-            onClose={closeConnectionDialog}
+            onClose={handleConnectionDialogClose}
             onCreateLocal={handleCreateLocalProfile}
             onCreateHost={handleCreateRemoteHost}
             onListDockerContainers={listDockerContainers}
             onUpdateHost={updateRemoteHost}
             onUpdateLocal={handleUpdateLocalProfile}
-            onCreated={handleRemoteHostCreated}
+            onCreated={handleConnectionDialogCreated}
             open={remoteHostDialogOpen}
           />
         </Suspense>

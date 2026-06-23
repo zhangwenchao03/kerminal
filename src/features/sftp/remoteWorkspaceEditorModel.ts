@@ -1,4 +1,13 @@
-import type { SftpEntry, SftpFileRevision } from "../../lib/sftpApi";
+import type {
+  DockerContainerReadTextFileResponse,
+  DockerContainerWriteTextFileResponse,
+} from "../../lib/containerFilesApi";
+import type {
+  SftpEntry,
+  SftpFileRevision,
+  SftpReadTextFileResponse,
+  SftpWriteTextFileResponse,
+} from "../../lib/sftpApiTypes";
 import type { RemoteTargetRef } from "../../lib/targetModel";
 
 export type RemoteWorkspaceStatus = {
@@ -35,6 +44,14 @@ export type OpenFileTab = {
   saving: boolean;
   truncated: boolean;
 };
+
+export type RemoteWorkspaceReadResponse =
+  | DockerContainerReadTextFileResponse
+  | SftpReadTextFileResponse;
+
+export type RemoteWorkspaceWriteResponse =
+  | DockerContainerWriteTextFileResponse
+  | SftpWriteTextFileResponse;
 
 export function activeTabStatus(
   tab: OpenFileTab | null,
@@ -113,6 +130,141 @@ export function createLoadingTab(path: string): OpenFileTab {
   };
 }
 
+export function createLoadedTab(
+  path: string,
+  response: RemoteWorkspaceReadResponse,
+): OpenFileTab {
+  return {
+    content: response.content,
+    encoding: response.encoding,
+    error: null,
+    language: languageForPath(path),
+    lineEnding: response.lineEnding,
+    loading: false,
+    name: fileNameFromPath(path),
+    path,
+    readonly: response.readonly || response.truncated || response.binary,
+    revision: response.revision,
+    savedContent: response.content,
+    saving: false,
+    truncated: response.truncated,
+  };
+}
+
+export function applyOpenTabError(
+  tab: OpenFileTab,
+  message: string,
+): OpenFileTab {
+  return {
+    ...tab,
+    error: message,
+    loading: false,
+    readonly: true,
+  };
+}
+
+export function readonlySaveStatus(
+  tab: OpenFileTab,
+): RemoteWorkspaceStatus | null {
+  if (!tab.readonly && !tab.truncated) {
+    return null;
+  }
+  return {
+    kind: "error",
+    message: tab.truncated
+      ? "文件已截断，不能直接保存。"
+      : "当前文件为只读状态。",
+  };
+}
+
+export function cleanSaveStatus(
+  tab: OpenFileTab,
+  overwriteOnConflict: boolean,
+): RemoteWorkspaceStatus | null {
+  if (isDirtyTab(tab) || overwriteOnConflict) {
+    return null;
+  }
+  return { kind: "info", message: "当前文件没有未保存修改。" };
+}
+
+export function startSavingTab(tab: OpenFileTab): OpenFileTab {
+  return { ...tab, error: null, saving: true };
+}
+
+export function applySaveSuccess(
+  tab: OpenFileTab,
+  response: RemoteWorkspaceWriteResponse,
+): OpenFileTab {
+  return {
+    ...tab,
+    encoding: response.encoding,
+    error: null,
+    lineEnding: response.lineEnding,
+    revision: response.revision,
+    savedContent: tab.content,
+    saving: false,
+  };
+}
+
+export function applySaveError(
+  tab: OpenFileTab,
+  message: string,
+): OpenFileTab {
+  return {
+    ...tab,
+    error: message,
+    saving: false,
+  };
+}
+
+export function startReloadingTab(tab: OpenFileTab): OpenFileTab {
+  return { ...tab, error: null, loading: true };
+}
+
+export function applyReloadSuccess(
+  tab: OpenFileTab,
+  response: RemoteWorkspaceReadResponse,
+): OpenFileTab {
+  return {
+    ...tab,
+    content: response.content,
+    encoding: response.encoding,
+    error: null,
+    language: languageForPath(tab.path),
+    lineEnding: response.lineEnding,
+    loading: false,
+    readonly: response.readonly || response.truncated || response.binary,
+    revision: response.revision,
+    savedContent: response.content,
+    truncated: response.truncated,
+  };
+}
+
+export function applyReloadError(
+  tab: OpenFileTab,
+  message: string,
+): OpenFileTab {
+  return {
+    ...tab,
+    error: message,
+    loading: false,
+  };
+}
+
+export function closeFileTabState(
+  tabs: OpenFileTab[],
+  activePath: string | null,
+  path: string,
+): { activePath: string | null; tabs: OpenFileTab[] } {
+  const index = tabs.findIndex((tab) => tab.path === path);
+  const nextTabs = tabs.filter((tab) => tab.path !== path);
+  if (activePath !== path) {
+    return { activePath, tabs: nextTabs };
+  }
+  const nextActive = nextTabs[Math.max(0, index - 1)] ?? nextTabs[0] ?? null;
+  return { activePath: nextActive?.path ?? null, tabs: nextTabs };
+}
+
 export function isDirtyTab(tab: OpenFileTab) {
   return tab.content !== tab.savedContent;
 }
@@ -136,50 +288,123 @@ export function fileNameFromPath(path: string) {
   return normalized.slice(normalized.lastIndexOf("/") + 1) || normalized;
 }
 
+const languageByExtension: Record<string, string> = {
+  bash: "shell",
+  bat: "bat",
+  bicep: "bicep",
+  c: "cpp",
+  cc: "cpp",
+  cjs: "javascript",
+  clj: "clojure",
+  cmd: "bat",
+  coffee: "coffee",
+  cpp: "cpp",
+  cs: "csharp",
+  css: "css",
+  dart: "dart",
+  dockerfile: "dockerfile",
+  env: "ini",
+  fish: "shell",
+  fs: "fsharp",
+  go: "go",
+  gql: "graphql",
+  graphql: "graphql",
+  h: "cpp",
+  hcl: "hcl",
+  hpp: "cpp",
+  htm: "html",
+  html: "html",
+  ini: "ini",
+  java: "java",
+  js: "javascript",
+  json: "json",
+  jsonc: "json",
+  jsx: "javascript",
+  kt: "kotlin",
+  kts: "kotlin",
+  less: "less",
+  lua: "lua",
+  mjs: "javascript",
+  md: "markdown",
+  mdx: "mdx",
+  mysql: "mysql",
+  php: "php",
+  pl: "perl",
+  proto: "protobuf",
+  ps1: "powershell",
+  psql: "pgsql",
+  py: "python",
+  r: "r",
+  rb: "ruby",
+  redis: "redis",
+  rs: "rust",
+  sass: "scss",
+  scala: "scala",
+  scss: "scss",
+  sh: "shell",
+  sol: "solidity",
+  sql: "sql",
+  svg: "xml",
+  swift: "swift",
+  tcl: "tcl",
+  tf: "hcl",
+  toml: "ini",
+  ts: "typescript",
+  tsx: "typescript",
+  vue: "html",
+  xml: "xml",
+  yaml: "yaml",
+  yml: "yaml",
+  zsh: "shell",
+};
+
+const languageByFilename: Record<string, string> = {
+  ".bash_profile": "shell",
+  ".bashrc": "shell",
+  ".dockerignore": "plaintext",
+  ".editorconfig": "ini",
+  ".env": "ini",
+  ".eslintrc": "json",
+  ".gitconfig": "ini",
+  ".npmrc": "ini",
+  ".prettierrc": "json",
+  ".profile": "shell",
+  ".yarnrc": "ini",
+  ".zprofile": "shell",
+  ".zshrc": "shell",
+  "cargo.lock": "ini",
+  "dockerfile": "dockerfile",
+  "containerfile": "dockerfile",
+  "gemfile": "ruby",
+  "license": "plaintext",
+  "pipfile": "ini",
+  "procfile": "shell",
+  "readme": "markdown",
+};
+
 export function languageForPath(path: string) {
   const name = fileNameFromPath(path).toLowerCase();
-  const extension = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1) : "";
-  if (["ts", "tsx"].includes(extension)) {
-    return "typescript";
+  if (name === "dockerfile" || name.startsWith("dockerfile.")) {
+    return "dockerfile";
   }
-  if (["js", "jsx", "mjs", "cjs"].includes(extension)) {
-    return "javascript";
+  if (name === "containerfile" || name.startsWith("containerfile.")) {
+    return "dockerfile";
   }
-  if (["json", "jsonc"].includes(extension)) {
-    return "json";
-  }
-  if (["md", "mdx"].includes(extension)) {
-    return "markdown";
-  }
-  if (["yaml", "yml"].includes(extension)) {
-    return "yaml";
-  }
-  if (["html", "htm"].includes(extension)) {
-    return "html";
-  }
-  if (["css", "scss", "sass", "less"].includes(extension)) {
-    return "css";
-  }
-  if (["rs"].includes(extension)) {
-    return "rust";
-  }
-  if (["sh", "bash", "zsh", "fish"].includes(extension)) {
-    return "shell";
-  }
-  if (["toml"].includes(extension)) {
+  if (name === ".env" || name.startsWith(".env.")) {
     return "ini";
   }
-  if (["py"].includes(extension)) {
-    return "python";
+
+  const languageByExactName = languageByFilename[name];
+  if (languageByExactName) {
+    return languageByExactName;
   }
-  if (["go"].includes(extension)) {
-    return "go";
-  }
-  if (["java"].includes(extension)) {
-    return "java";
-  }
-  if (["c", "h", "cpp", "hpp", "cc"].includes(extension)) {
-    return "cpp";
+
+  const extension = name.includes(".")
+    ? name.slice(name.lastIndexOf(".") + 1)
+    : "";
+  const languageByFileExtension = languageByExtension[extension];
+  if (languageByFileExtension) {
+    return languageByFileExtension;
   }
   return "plaintext";
 }

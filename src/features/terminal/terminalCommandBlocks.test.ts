@@ -60,6 +60,34 @@ describe("terminalCommandBlocks", () => {
     expect(second.output).toBe("one\ntwo");
   });
 
+  it("does not append prompt output to an empty enter command block", () => {
+    const block = createTerminalCommandBlock({
+      command: "",
+      id: "block-1",
+      index: 0,
+      marker: mockMarker(0),
+    });
+
+    appendCommandBlockOutput([block], "\r\nPS C:\\Users\\24052>");
+
+    expect(block.output).toBe("");
+  });
+
+  it("does not append output after the latest command block is closed", () => {
+    const block = createTerminalCommandBlock({
+      command: "vim file.txt",
+      id: "block-1",
+      index: 0,
+      marker: mockMarker(1),
+    });
+    block.output = "opening vim\r\n";
+    block.endMarker = mockMarker(2);
+
+    appendCommandBlockOutput([block], "alternate screen noise");
+
+    expect(block.output).toBe("opening vim\r\n");
+  });
+
   it("keeps the tail of command block output when it exceeds the limit", () => {
     const block = createTerminalCommandBlock({
       command: "npm test",
@@ -215,6 +243,85 @@ describe("terminalCommandBlocks", () => {
     });
   });
 
+  it("uses a closed command block end marker before content-bottom heuristics", () => {
+    const block = createTerminalCommandBlock({
+      command: "clear",
+      id: "block-1",
+      index: 0,
+      marker: mockMarker(1),
+    });
+    block.endMarker = mockMarker(2);
+    block.output = "\r\n".repeat(40);
+
+    const [view] = buildTerminalCommandBlockViews([block], {
+      activeBufferType: "normal",
+      bufferLength: 80,
+      cols: 80,
+      contentBottomLine: 60,
+      rowHeight: 18,
+      rows: 24,
+      viewportY: 0,
+    });
+
+    expect(view).toMatchObject({
+      endLine: 2,
+      height: 36,
+      lineCount: 2,
+    });
+  });
+
+  it("renders the current prompt rail before any command block exists", () => {
+    const [view] = buildTerminalCommandBlockViews([], {
+      activeBufferType: "normal",
+      bufferLength: 24,
+      cols: 80,
+      promptLine: 4,
+      rowHeight: 18,
+      rows: 12,
+      viewportY: 0,
+    });
+
+    expect(view).toMatchObject({
+      command: "",
+      endLine: 4,
+      height: 18,
+      id: "current-prompt",
+      lineCount: 1,
+      startLine: 4,
+      virtual: true,
+    });
+  });
+
+  it("renders an empty enter submission as its own command block", () => {
+    const emptyEnterBlock = createTerminalCommandBlock({
+      command: "",
+      id: "block-1",
+      index: 0,
+      marker: mockMarker(4),
+    });
+
+    const [view] = buildTerminalCommandBlockViews([emptyEnterBlock], {
+      activeBufferType: "normal",
+      bufferLength: 24,
+      cols: 80,
+      contentBottomLine: 4,
+      promptLine: 4,
+      rowHeight: 18,
+      rows: 12,
+      viewportY: 0,
+    });
+
+    expect(view).toMatchObject({
+      command: "",
+      endLine: 4,
+      height: 18,
+      id: "block-1",
+      lineCount: 1,
+      startLine: 4,
+    });
+    expect(view?.virtual).toBeUndefined();
+  });
+
   it("ends a command block on the line before the next enter submission", () => {
     const lsBlock = createTerminalCommandBlock({
       command: "ls",
@@ -254,7 +361,34 @@ describe("terminalCommandBlocks", () => {
     ]);
   });
 
-  it("moves the trailing empty enter block to the content bottom when its marker overlaps the previous command", () => {
+  it("extends a trailing empty enter block to the latest visible content", () => {
+    const emptyEnterBlock = createTerminalCommandBlock({
+      command: "",
+      id: "block-1",
+      index: 0,
+      marker: mockMarker(1),
+    });
+
+    const [view] = buildTerminalCommandBlockViews([emptyEnterBlock], {
+      activeBufferType: "normal",
+      bufferLength: 12,
+      cols: 80,
+      contentBottomLine: 3,
+      rowHeight: 18,
+      rows: 8,
+      viewportY: 0,
+    });
+
+    expect(view).toMatchObject({
+      color: emptyEnterBlock.color,
+      command: "",
+      endLine: 3,
+      lineCount: 3,
+      startLine: 1,
+    });
+  });
+
+  it("keeps the latest empty enter block anchored while extending to the next prompt", () => {
     const lsBlock = createTerminalCommandBlock({
       command: "ls",
       id: "block-1",
@@ -265,7 +399,7 @@ describe("terminalCommandBlocks", () => {
       command: "",
       id: "block-2",
       index: 1,
-      marker: mockMarker(1),
+      marker: mockMarker(3),
     });
     lsBlock.output = "geo-guard kong plugin_config.json\r\n";
 
@@ -273,7 +407,7 @@ describe("terminalCommandBlocks", () => {
       activeBufferType: "normal",
       bufferLength: 12,
       cols: 80,
-      contentBottomLine: 3,
+      contentBottomLine: 4,
       rowHeight: 18,
       rows: 8,
       viewportY: 0,
@@ -289,14 +423,15 @@ describe("terminalCommandBlocks", () => {
       {
         color: emptyEnterBlock.color,
         command: "",
-        endLine: 3,
+        endLine: 4,
+        lineCount: 2,
         startLine: 3,
       },
     ]);
     expect(views[1]?.color).not.toBe(views[0]?.color);
   });
 
-  it("adds a distinct virtual prompt rail after the last completed command", () => {
+  it("renders the current prompt rail after an open command block", () => {
     const lsBlock = createTerminalCommandBlock({
       command: "ls",
       id: "block-1",
@@ -321,16 +456,20 @@ describe("terminalCommandBlocks", () => {
         color: lsBlock.color,
         command: "ls",
         endLine: 2,
+        lineCount: 2,
         startLine: 1,
       },
       {
         command: "",
+        current: true,
         endLine: 3,
+        lineCount: 1,
         startLine: 3,
         virtual: true,
       },
     ]);
-    expect(views[1]?.color).not.toBe(views[0]?.color);
+    expect(views).toHaveLength(2);
+    expect(views[0]?.virtual).toBeUndefined();
   });
 
   it("collapses a command block to one row and shifts following blocks upward", () => {
@@ -472,6 +611,7 @@ describe("terminalCommandBlocks", () => {
 function mockMarker(line: number) {
   return {
     dispose: vi.fn(),
+    isDisposed: false,
     line,
     onDispose: vi.fn(() => ({ dispose: vi.fn() })),
   };

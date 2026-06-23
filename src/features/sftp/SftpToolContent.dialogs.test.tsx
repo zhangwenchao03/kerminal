@@ -13,9 +13,11 @@ import {  eventMocks,
   sftpApiMocks,
   sshMachine,
 } from "./SftpToolContent.testSupport";
-import { SftpToolContent } from "./SftpToolContent";
-
-describe("SftpToolContent events and dialogs", () => {
+import { SftpToolContent } from "./SftpToolContent";
+
+const sidebarViewScope = "sftp-sidebar:prod-api";
+
+describe("SftpToolContent events and dialogs", () => {
   it("updates transfer progress from Tauri events without waiting for polling", async () => {
     (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ =
       {};
@@ -43,11 +45,12 @@ describe("SftpToolContent events and dialogs", () => {
           kind: "file",
           localPath: "/Users/me/Downloads/app.log",
           remotePath: "/var/log/app.log",
-          status: "running",
-          totalBytes: 1024,
-          updatedAt: 11,
-        },
-      });
+          status: "running",
+          totalBytes: 1024,
+          updatedAt: 11,
+          viewScope: sidebarViewScope,
+        },
+      });
     });
 
     expect(await screen.findByText("SFTP 传输队列")).toBeInTheDocument();
@@ -69,11 +72,12 @@ describe("SftpToolContent events and dialogs", () => {
           kind: "file",
           localPath: "/Users/me/Downloads/app.log",
           remotePath: "/var/log/app.log",
-          status: "failed",
-          totalBytes: 1024,
-          updatedAt: 12,
-        },
-      });
+          status: "failed",
+          totalBytes: 1024,
+          updatedAt: 12,
+          viewScope: sidebarViewScope,
+        },
+      });
     });
 
     expect(await screen.findByText("失败")).toBeInTheDocument();

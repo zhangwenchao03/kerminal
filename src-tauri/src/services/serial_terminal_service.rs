@@ -399,6 +399,7 @@ mod tests {
             username: String::new(),
             auth_type: RemoteHostAuthType::Agent,
             credential_ref: None,
+            credential_secret: None,
             tags,
             production: false,
             ssh_options: SshOptions::default(),

@@ -3,7 +3,6 @@ use super::*;
 pub(super) async fn execute_sftp_rename(
     sftp: &SftpService,
     storage: &SqliteStore,
-    credentials: &CredentialService,
     paths: &KerminalPaths,
     arguments: &serde_json::Map<String, Value>,
 ) -> ToolExecutionResult {
@@ -13,11 +12,12 @@ pub(super) async fn execute_sftp_rename(
     };
     let summary = summarize_sftp_rename_for_ai(&request);
 
-    match sftp.rename(storage, credentials, paths, request).await {
+    match sftp.rename(storage, paths, request).await {
         Ok(true) => ToolExecutionResult {
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summary),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Ok(false) => failure("SFTP 重命名未完成。"),
         Err(error) => failure(error.to_string()),
@@ -44,7 +44,6 @@ pub(super) fn summarize_sftp_rename_for_ai(request: &SftpRenameRequest) -> Strin
 pub(super) async fn execute_sftp_move(
     sftp: &SftpService,
     storage: &SqliteStore,
-    credentials: &CredentialService,
     paths: &KerminalPaths,
     arguments: &serde_json::Map<String, Value>,
 ) -> ToolExecutionResult {
@@ -54,11 +53,12 @@ pub(super) async fn execute_sftp_move(
     };
     let summary = summarize_sftp_move_for_ai(&request);
 
-    match sftp.rename(storage, credentials, paths, request).await {
+    match sftp.rename(storage, paths, request).await {
         Ok(true) => ToolExecutionResult {
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summary),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Ok(false) => failure("SFTP 移动未完成。"),
         Err(error) => failure(error.to_string()),
@@ -75,7 +75,6 @@ pub(super) fn summarize_sftp_move_for_ai(request: &SftpRenameRequest) -> String 
 pub(super) async fn execute_sftp_preview(
     sftp: &SftpService,
     storage: &SqliteStore,
-    credentials: &CredentialService,
     paths: &KerminalPaths,
     arguments: &serde_json::Map<String, Value>,
 ) -> ToolExecutionResult {
@@ -84,14 +83,12 @@ pub(super) async fn execute_sftp_preview(
         Err(error) => return failure(error.to_string()),
     };
 
-    match sftp
-        .preview_file(storage, credentials, paths, request)
-        .await
-    {
+    match sftp.preview_file(storage, paths, request).await {
         Ok(preview) => ToolExecutionResult {
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_sftp_preview_for_ai(&preview)),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -152,7 +149,6 @@ pub fn summarize_sftp_preview_for_ai(preview: &SftpFilePreview) -> String {
 pub(super) async fn execute_sftp_create_directory(
     sftp: &SftpService,
     storage: &SqliteStore,
-    credentials: &CredentialService,
     paths: &KerminalPaths,
     arguments: &serde_json::Map<String, Value>,
 ) -> ToolExecutionResult {
@@ -162,14 +158,12 @@ pub(super) async fn execute_sftp_create_directory(
     };
     let summary = format!("远程目录已创建：{}:{}。", request.host_id, request.path);
 
-    match sftp
-        .create_directory(storage, credentials, paths, request)
-        .await
-    {
+    match sftp.create_directory(storage, paths, request).await {
         Ok(true) => ToolExecutionResult {
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summary),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Ok(false) => failure("SFTP 创建目录未完成。"),
         Err(error) => failure(error.to_string()),
@@ -188,7 +182,6 @@ pub(super) fn sftp_path_request_from_arguments(
 pub(super) async fn execute_sftp_chmod(
     sftp: &SftpService,
     storage: &SqliteStore,
-    credentials: &CredentialService,
     paths: &KerminalPaths,
     arguments: &serde_json::Map<String, Value>,
 ) -> ToolExecutionResult {
@@ -201,11 +194,12 @@ pub(super) async fn execute_sftp_chmod(
         request.host_id, request.path, request.mode
     );
 
-    match sftp.chmod(storage, credentials, paths, request).await {
+    match sftp.chmod(storage, paths, request).await {
         Ok(true) => ToolExecutionResult {
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summary),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Ok(false) => failure("SFTP chmod 未完成。"),
         Err(error) => failure(error.to_string()),
@@ -225,7 +219,6 @@ pub(super) fn sftp_chmod_request_from_arguments(
 pub(super) async fn execute_sftp_upload(
     sftp: &SftpService,
     storage: &SqliteStore,
-    credentials: &CredentialService,
     paths: &KerminalPaths,
     arguments: &serde_json::Map<String, Value>,
 ) -> ToolExecutionResult {
@@ -235,11 +228,12 @@ pub(super) async fn execute_sftp_upload(
     };
     let summary = summarize_sftp_upload_for_ai(&request);
 
-    match sftp.upload(storage, credentials, paths, request).await {
+    match sftp.upload(storage, paths, request).await {
         Ok(true) => ToolExecutionResult {
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summary),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Ok(false) => failure("SFTP 上传未完成。"),
         Err(error) => failure(error.to_string()),
@@ -256,7 +250,6 @@ pub(super) fn summarize_sftp_upload_for_ai(request: &SftpTransferRequest) -> Str
 pub(super) async fn execute_sftp_upload_directory(
     sftp: &SftpService,
     storage: &SqliteStore,
-    credentials: &CredentialService,
     paths: &KerminalPaths,
     arguments: &serde_json::Map<String, Value>,
 ) -> ToolExecutionResult {
@@ -269,14 +262,12 @@ pub(super) async fn execute_sftp_upload_directory(
         request.local_path, request.host_id, request.remote_path
     );
 
-    match sftp
-        .upload_directory(storage, credentials, paths, request)
-        .await
-    {
+    match sftp.upload_directory(storage, paths, request).await {
         Ok(true) => ToolExecutionResult {
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summary),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Ok(false) => failure("SFTP 递归上传未完成。"),
         Err(error) => failure(error.to_string()),
@@ -286,7 +277,6 @@ pub(super) async fn execute_sftp_upload_directory(
 pub(super) async fn execute_sftp_download(
     sftp: &SftpService,
     storage: &SqliteStore,
-    credentials: &CredentialService,
     paths: &KerminalPaths,
     arguments: &serde_json::Map<String, Value>,
 ) -> ToolExecutionResult {
@@ -296,11 +286,12 @@ pub(super) async fn execute_sftp_download(
     };
     let summary = summarize_sftp_download_for_ai(&request);
 
-    match sftp.download(storage, credentials, paths, request).await {
+    match sftp.download(storage, paths, request).await {
         Ok(true) => ToolExecutionResult {
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summary),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Ok(false) => failure("SFTP 下载未完成。"),
         Err(error) => failure(error.to_string()),
@@ -310,7 +301,6 @@ pub(super) async fn execute_sftp_download(
 pub(super) async fn execute_sftp_download_directory(
     sftp: &SftpService,
     storage: &SqliteStore,
-    credentials: &CredentialService,
     paths: &KerminalPaths,
     arguments: &serde_json::Map<String, Value>,
 ) -> ToolExecutionResult {
@@ -323,14 +313,12 @@ pub(super) async fn execute_sftp_download_directory(
         request.host_id, request.remote_path, request.local_path
     );
 
-    match sftp
-        .download_directory(storage, credentials, paths, request)
-        .await
-    {
+    match sftp.download_directory(storage, paths, request).await {
         Ok(true) => ToolExecutionResult {
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summary),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Ok(false) => failure("SFTP 递归下载未完成。"),
         Err(error) => failure(error.to_string()),
@@ -344,6 +332,7 @@ pub(super) fn sftp_transfer_request_from_arguments(
         host_id: required_string_arg(arguments, "hostId")?,
         remote_path: required_string_arg(arguments, "remotePath")?,
         local_path: required_string_arg(arguments, "localPath")?,
+        conflict_policy: SftpTransferConflictPolicy::Overwrite,
     })
 }
 
@@ -357,7 +346,6 @@ pub(super) fn summarize_sftp_download_for_ai(request: &SftpTransferRequest) -> S
 pub(super) async fn execute_sftp_delete(
     sftp: &SftpService,
     storage: &SqliteStore,
-    credentials: &CredentialService,
     paths: &KerminalPaths,
     arguments: &serde_json::Map<String, Value>,
 ) -> ToolExecutionResult {
@@ -367,11 +355,12 @@ pub(super) async fn execute_sftp_delete(
     };
     let summary = summarize_sftp_delete_for_ai(&request);
 
-    match sftp.delete(storage, credentials, paths, request).await {
+    match sftp.delete(storage, paths, request).await {
         Ok(true) => ToolExecutionResult {
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summary),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Ok(false) => failure("SFTP 删除未完成。"),
         Err(error) => failure(error.to_string()),
@@ -400,7 +389,6 @@ pub(super) fn summarize_sftp_delete_for_ai(request: &SftpDeleteRequest) -> Strin
 pub(super) fn execute_sftp_transfer_enqueue(
     sftp: &SftpService,
     storage: &SqliteStore,
-    credentials: &CredentialService,
     paths: &KerminalPaths,
     arguments: &serde_json::Map<String, Value>,
 ) -> ToolExecutionResult {
@@ -412,7 +400,7 @@ pub(super) fn execute_sftp_transfer_enqueue(
         Err(error) => return failure(error.to_string()),
     };
 
-    match sftp.enqueue_transfer(storage, credentials, paths, request) {
+    match sftp.enqueue_transfer(storage, paths, request) {
         Ok(summary) => ToolExecutionResult {
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_sftp_transfer_for_ai(
@@ -420,6 +408,7 @@ pub(super) fn execute_sftp_transfer_enqueue(
                 &summary,
             )),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -431,6 +420,7 @@ pub(super) fn execute_sftp_transfer_list(sftp: &SftpService) -> ToolExecutionRes
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_sftp_transfers_for_ai(&transfers)),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -456,6 +446,7 @@ pub(super) fn execute_sftp_transfer_cancel(
                 &summary,
             )),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -470,6 +461,7 @@ pub(super) fn execute_sftp_transfer_clear_completed(sftp: &SftpService) -> ToolE
                 remaining.len()
             )),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -541,7 +533,6 @@ pub(super) fn sftp_transfer_status_label(status: SftpTransferStatus) -> &'static
 pub(super) async fn execute_sftp_list(
     sftp: &SftpService,
     storage: &SqliteStore,
-    credentials: &CredentialService,
     paths: &KerminalPaths,
     arguments: &serde_json::Map<String, Value>,
 ) -> ToolExecutionResult {
@@ -555,18 +546,35 @@ pub(super) async fn execute_sftp_list(
     };
 
     match sftp
-        .list_directory(
-            storage,
-            credentials,
-            paths,
-            SftpListDirectoryRequest { host_id, path },
-        )
+        .list_directory(storage, paths, SftpListDirectoryRequest { host_id, path })
         .await
     {
         Ok(listing) => ToolExecutionResult {
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_sftp_listing_for_ai(&listing)),
             error: None,
+            structured_result: Some(json!({
+                "hostId": listing.host_id,
+                "path": listing.path,
+                "entryCount": listing.entries.len(),
+                "entries": listing.entries,
+            })),
+            entities: listing
+                .entries
+                .iter()
+                .map(|entry| {
+                    json!({
+                        "type": "sftpEntry",
+                        "hostId": listing.host_id,
+                        "path": listing.path,
+                        "name": entry.name,
+                        "kind": entry.kind,
+                        "size": entry.size,
+                        "modified": entry.modified,
+                    })
+                })
+                .collect(),
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }

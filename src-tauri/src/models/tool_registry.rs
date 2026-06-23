@@ -38,6 +38,8 @@ pub enum ToolCategory {
     Ssh,
     /// SFTP 文件能力。
     Sftp,
+    /// Docker/Podman 容器能力。
+    Container,
     /// SSH 端口转发能力。
     PortForward,
     /// 服务器信息读取能力。
@@ -66,6 +68,7 @@ impl ToolCategory {
             Self::RemoteHost => "远程主机",
             Self::Ssh => "SSH",
             Self::Sftp => "SFTP",
+            Self::Container => "容器",
             Self::PortForward => "端口转发",
             Self::ServerInfo => "服务器信息",
             Self::Snippet => "片段",
@@ -484,7 +487,7 @@ pub struct McpTransportDefinition {
 pub struct McpHttpServerStartRequest {
     /// 监听地址。当前只允许 loopback，未传时使用 `127.0.0.1`。
     pub host: Option<String>,
-    /// 监听端口。未传或传 0 时由系统分配空闲端口。
+    /// 监听端口。未传或传 0 时从固定默认端口开始，冲突时向后递增探测。
     pub port: Option<u16>,
 }
 

@@ -9,14 +9,23 @@ use crate::models::{
 };
 
 /// AI 对话请求。
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AiChatRequest {
     /// 用户输入的中文或命令相关问题。
     pub message: String,
+    /// 本次消息附带的图片、文件或诊断片段摘要；真实文件仍留在受管附件目录。
+    #[serde(default)]
+    pub attachments: Vec<AiChatAttachmentContext>,
+    /// 当前会话前序消息摘要；后端在调用 Provider 前结构化组装到 prompt。
+    #[serde(default)]
+    pub history: Vec<AiChatHistoryMessage>,
     /// 可选会话 id，当前切片只回传该 id，不持久化长对话历史。
     #[serde(default)]
     pub conversation_id: Option<String>,
+    /// 当前 AI 面板路由 slot 描述 JSON，用于待确认工具调用归属恢复。
+    #[serde(default)]
+    pub conversation_slot_json: Option<String>,
     /// 可选 LLM Provider id；为空时选择启用的默认 Provider。
     #[serde(default)]
     pub provider_id: Option<String>,
@@ -29,6 +38,70 @@ pub struct AiChatRequest {
     /// AI 命令执行可见性偏好；为空时默认要求命令显示在当前终端。
     #[serde(default)]
     pub execution_visibility: Option<AiCommandExecutionVisibility>,
+}
+
+/// AI 对话前序消息摘要。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AiChatHistoryMessage {
+    /// user 或 assistant。
+    pub role: String,
+    /// 已经脱敏/裁剪后的历史消息内容。
+    pub content: String,
+}
+
+/// AI 对话可感知的消息附件上下文。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AiChatAttachmentContext {
+    pub id: String,
+    pub kind: String,
+    pub mime_type: String,
+    pub original_name: String,
+    pub size_bytes: u64,
+    pub status: String,
+    #[serde(default)]
+    pub width: Option<u32>,
+    #[serde(default)]
+    pub height: Option<u32>,
+    #[serde(default)]
+    pub missing_reason: Option<String>,
+    #[serde(default)]
+    pub ocr_text: Option<String>,
+    #[serde(default)]
+    pub redaction_summary: Option<String>,
+    #[serde(default)]
+    pub vision_usage: Option<String>,
+}
+
+/// 单个附件在本次 AI 请求中的视觉/文本输入状态。
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AiChatAttachmentVisionStatus {
+    /// 附件 id。
+    pub id: String,
+    /// 前端或持久化记录请求的视觉使用方式。
+    pub requested_usage: String,
+    /// 后端结合 Provider 能力和当前 adapter 后实际采用的方式。
+    pub effective_usage: String,
+    /// 附件实际进入模型的形态：visionInput、textContext 或 notSent。
+    pub model_input: String,
+    /// 安全降级或能力不匹配提示。
+    #[serde(default)]
+    pub warning: Option<String>,
+}
+
+/// 本次 AI 请求的视觉能力闭环报告。
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AiChatVisionUsageReport {
+    /// 当前 Provider/model 是否被 Kerminal 标记为支持视觉。
+    pub provider_supports_vision: bool,
+    /// 当前 Kerminal provider adapter 是否真的发送图片像素。
+    pub vision_adapter_enabled: bool,
+    /// 每个附件的请求状态、后端 effective 状态和实际模型输入形态。
+    #[serde(default)]
+    pub attachments: Vec<AiChatAttachmentVisionStatus>,
 }
 
 /// AI 命令执行可见性偏好。
@@ -121,4 +194,6 @@ pub struct AiChatResponse {
     pub tool_count: usize,
     /// 响应生成时间，Unix 秒字符串。
     pub generated_at: String,
+    /// 本次附件视觉使用和 provider capability 的后端决议。
+    pub vision_usage: AiChatVisionUsageReport,
 }

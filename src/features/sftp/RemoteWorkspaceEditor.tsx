@@ -25,35 +25,40 @@ import { Tree, type NodeApi } from "react-arborist";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
 import { cn } from "../../lib/cn";
-import {
-  listDockerContainerDirectory,
-  readDockerContainerTextFile,
-  writeDockerContainerTextFile,
-} from "../../lib/containerFilesApi";
+import { configureKerminalMonaco } from "../../lib/monacoTheme";
 import "../../lib/monacoSetup";
-import {
-  listSftpDirectory,
-  readSftpTextFile,
-  writeSftpTextFile,
-} from "../../lib/sftpApi";
 import { targetStableId, type RemoteTargetRef } from "../../lib/targetModel";
 import {
   activeTabStatus,
+  applyOpenTabError,
+  applyReloadError,
+  applyReloadSuccess,
+  applySaveError,
+  applySaveSuccess,
+  cleanSaveStatus,
+  closeFileTabState,
+  createLoadedTab,
   createLoadingTab,
   createRootNode,
   entryToTreeNode,
   errorMessage,
-  fileNameFromPath,
   isDirtyTab,
-  languageForPath,
   normalizeRemotePath,
+  readonlySaveStatus,
   resolveWorkspaceTarget,
+  startReloadingTab,
+  startSavingTab,
   treeFileCount,
   updateTreeNode,
   type OpenFileTab,
   type RemoteWorkspaceStatus,
   type WorkspaceTreeNode,
 } from "./remoteWorkspaceEditorModel";
+import {
+  listRemoteWorkspaceDirectory,
+  readRemoteWorkspaceTextFile,
+  writeRemoteWorkspaceTextFile,
+} from "./remoteWorkspaceEditorTransport";
 
 const MAX_EDITOR_BYTES = 10 * 1024 * 1024;
 
@@ -183,23 +188,10 @@ export function RemoteWorkspaceEditor({
       );
 
       try {
-        const listing =
-          workspaceTarget?.kind === "dockerContainer"
-            ? await listDockerContainerDirectory({
-                containerId: workspaceTarget.containerId,
-                hostId: workspaceTarget.hostId,
-                path: normalizedPath,
-                runtime: workspaceTarget.runtime,
-              })
-            : workspaceTarget?.kind === "ssh"
-              ? await listSftpDirectory({
-                  hostId: workspaceTarget.hostId,
-                  path: normalizedPath,
-                })
-              : null;
-        if (!listing) {
-          throw new Error("远程工作区缺少可用目标。");
-        }
+        const listing = await listRemoteWorkspaceDirectory(
+          workspaceTarget,
+          normalizedPath,
+        );
         const children = listing.entries.map(entryToTreeNode);
         setTreeNodes((current) =>
           replaceRoot
@@ -270,40 +262,12 @@ export function RemoteWorkspaceEditor({
       });
 
       try {
-        const response =
-          workspaceTarget?.kind === "dockerContainer"
-            ? await readDockerContainerTextFile({
-                containerId: workspaceTarget.containerId,
-                hostId: workspaceTarget.hostId,
-                maxBytes: MAX_EDITOR_BYTES,
-                path: normalizedPath,
-                runtime: workspaceTarget.runtime,
-              })
-            : workspaceTarget?.kind === "ssh"
-              ? await readSftpTextFile({
-                  hostId: workspaceTarget.hostId,
-                  maxBytes: MAX_EDITOR_BYTES,
-                  path: normalizedPath,
-                })
-              : null;
-        if (!response) {
-          throw new Error("远程工作区缺少可用目标。");
-        }
-        const nextTab: OpenFileTab = {
-          content: response.content,
-          encoding: response.encoding,
-          error: null,
-          language: languageForPath(normalizedPath),
-          lineEnding: response.lineEnding,
-          loading: false,
-          name: fileNameFromPath(normalizedPath),
+        const response = await readRemoteWorkspaceTextFile({
+          maxBytes: MAX_EDITOR_BYTES,
           path: normalizedPath,
-          readonly: response.readonly || response.truncated || response.binary,
-          revision: response.revision,
-          savedContent: response.content,
-          saving: false,
-          truncated: response.truncated,
-        };
+          target: workspaceTarget,
+        });
+        const nextTab = createLoadedTab(normalizedPath, response);
         setTabs((current) =>
           current.map((tab) =>
             tab.path === normalizedPath ? nextTab : tab,
@@ -318,12 +282,7 @@ export function RemoteWorkspaceEditor({
         setTabs((current) =>
           current.map((tab) =>
             tab.path === normalizedPath
-              ? {
-                  ...tab,
-                  error: message,
-                  loading: false,
-                  readonly: true,
-                }
+              ? applyOpenTabError(tab, message)
               : tab,
           ),
         );
@@ -346,66 +305,36 @@ export function RemoteWorkspaceEditor({
       if (!tab || tab.loading || tab.saving) {
         return false;
       }
-      if (tab.readonly || tab.truncated) {
-        const message = tab.truncated
-          ? "文件已截断，不能直接保存。"
-          : "当前文件为只读状态。";
-        setTab(path, (current) => ({ ...current, error: message }));
-        onStatus?.({ kind: "error", message });
+      const readonlyStatus = readonlySaveStatus(tab);
+      if (readonlyStatus) {
+        setTab(path, (current) => ({
+          ...current,
+          error: readonlyStatus.message,
+        }));
+        onStatus?.(readonlyStatus);
         return false;
       }
-      if (!isDirtyTab(tab) && !overwriteOnConflict) {
-        onStatus?.({ kind: "info", message: "当前文件没有未保存修改。" });
+      const cleanStatus = cleanSaveStatus(tab, overwriteOnConflict);
+      if (cleanStatus) {
+        onStatus?.(cleanStatus);
         return true;
       }
 
-      setTab(path, (current) => ({ ...current, error: null, saving: true }));
+      setTab(path, startSavingTab);
       try {
-        const response =
-          workspaceTarget?.kind === "dockerContainer"
-            ? await writeDockerContainerTextFile({
-                containerId: workspaceTarget.containerId,
-                content: tab.content,
-                create: false,
-                encoding: "utf-8",
-                expectedRevision: tab.revision,
-                hostId: workspaceTarget.hostId,
-                overwriteOnConflict,
-                path,
-                runtime: workspaceTarget.runtime,
-              })
-            : workspaceTarget?.kind === "ssh"
-              ? await writeSftpTextFile({
-                  content: tab.content,
-                  create: false,
-                  encoding: "utf-8",
-                  expectedRevision: tab.revision,
-                  hostId: workspaceTarget.hostId,
-                  overwriteOnConflict,
-                  path,
-                })
-              : null;
-        if (!response) {
-          throw new Error("远程工作区缺少可用目标。");
-        }
-        setTab(path, (current) => ({
-          ...current,
-          encoding: response.encoding,
-          error: null,
-          lineEnding: response.lineEnding,
-          revision: response.revision,
-          savedContent: current.content,
-          saving: false,
-        }));
+        const response = await writeRemoteWorkspaceTextFile({
+          content: tab.content,
+          expectedRevision: tab.revision,
+          overwriteOnConflict,
+          path,
+          target: workspaceTarget,
+        });
+        setTab(path, (current) => applySaveSuccess(current, response));
         onStatus?.({ kind: "success", message: `已保存：${path}` });
         return true;
       } catch (error) {
         const message = errorMessage(error);
-        setTab(path, (current) => ({
-          ...current,
-          error: message,
-          saving: false,
-        }));
+        setTab(path, (current) => applySaveError(current, message));
         onStatus?.({ kind: "error", message });
         return false;
       }
@@ -415,48 +344,18 @@ export function RemoteWorkspaceEditor({
 
   const reloadFile = useCallback(
     async (path: string) => {
-      setTab(path, (tab) => ({ ...tab, error: null, loading: true }));
+      setTab(path, startReloadingTab);
       try {
-        const response =
-          workspaceTarget?.kind === "dockerContainer"
-            ? await readDockerContainerTextFile({
-                containerId: workspaceTarget.containerId,
-                hostId: workspaceTarget.hostId,
-                maxBytes: MAX_EDITOR_BYTES,
-                path,
-                runtime: workspaceTarget.runtime,
-              })
-            : workspaceTarget?.kind === "ssh"
-              ? await readSftpTextFile({
-                  hostId: workspaceTarget.hostId,
-                  maxBytes: MAX_EDITOR_BYTES,
-                  path,
-                })
-              : null;
-        if (!response) {
-          throw new Error("远程工作区缺少可用目标。");
-        }
-        setTab(path, (tab) => ({
-          ...tab,
-          content: response.content,
-          encoding: response.encoding,
-          error: null,
-          language: languageForPath(path),
-          lineEnding: response.lineEnding,
-          loading: false,
-          readonly: response.readonly || response.truncated || response.binary,
-          revision: response.revision,
-          savedContent: response.content,
-          truncated: response.truncated,
-        }));
+        const response = await readRemoteWorkspaceTextFile({
+          maxBytes: MAX_EDITOR_BYTES,
+          path,
+          target: workspaceTarget,
+        });
+        setTab(path, (tab) => applyReloadSuccess(tab, response));
         onStatus?.({ kind: "info", message: `已重新加载：${path}` });
       } catch (error) {
         const message = errorMessage(error);
-        setTab(path, (tab) => ({
-          ...tab,
-          error: message,
-          loading: false,
-        }));
+        setTab(path, (tab) => applyReloadError(tab, message));
         onStatus?.({ kind: "error", message });
       }
     },
@@ -466,14 +365,9 @@ export function RemoteWorkspaceEditor({
   const closeTabNow = useCallback(
     (path: string) => {
       setTabs((current) => {
-        const index = current.findIndex((tab) => tab.path === path);
-        const nextTabs = current.filter((tab) => tab.path !== path);
-        if (activePath === path) {
-          const nextActive =
-            nextTabs[Math.max(0, index - 1)] ?? nextTabs[0] ?? null;
-          setActivePath(nextActive?.path ?? null);
-        }
-        return nextTabs;
+        const nextState = closeFileTabState(current, activePath, path);
+        setActivePath(nextState.activePath);
+        return nextState.tabs;
       });
     },
     [activePath],
@@ -525,11 +419,11 @@ export function RemoteWorkspaceEditor({
     <>
     <section
       className={cn(
-        "overflow-hidden rounded-2xl border border-black/8 bg-white/72 shadow-sm dark:border-white/8 dark:bg-white/[0.04]",
+        "kerminal-solid-surface overflow-hidden rounded-2xl border",
         expanded && "flex h-full min-h-0 flex-col rounded-xl",
       )}
     >
-      <div className="flex flex-wrap items-center gap-2 border-b border-black/8 px-3 py-2.5 dark:border-white/[0.06]">
+      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-2.5">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <FolderOpen className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-300" />
           <span className="shrink-0 text-xs font-medium text-zinc-500 dark:text-zinc-400">
@@ -537,7 +431,7 @@ export function RemoteWorkspaceEditor({
           </span>
           <input
             aria-label="远程工作区路径"
-            className="h-8 min-w-0 flex-1 rounded-lg border border-black/8 bg-white/75 px-2 font-mono text-xs text-zinc-900 outline-none transition focus:border-sky-400/50 focus:ring-4 focus:ring-sky-400/10 dark:border-white/8 dark:bg-zinc-950/50 dark:text-zinc-100"
+            className="kerminal-field-surface h-8 min-w-0 flex-1 rounded-lg border px-2 font-mono text-xs text-zinc-900 dark:text-zinc-100"
             onChange={(event) => setRootDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
@@ -582,11 +476,11 @@ export function RemoteWorkspaceEditor({
       >
         <aside
           className={cn(
-            "min-h-0 border-b border-black/8 bg-black/[0.015] dark:border-white/[0.06] dark:bg-zinc-950/25 lg:border-b-0 lg:border-r",
+            "kerminal-muted-surface min-h-0 border-b border-[var(--border-subtle)] lg:border-b-0 lg:border-r",
             expanded && "flex flex-col",
           )}
         >
-          <div className="flex h-9 items-center justify-between border-b border-black/8 px-3 text-xs text-zinc-500 dark:border-white/[0.06] dark:text-zinc-400">
+          <div className="flex h-9 items-center justify-between border-b border-[var(--border-subtle)] px-3 text-xs text-zinc-500 dark:text-zinc-400">
             <span className="truncate font-mono">{workspaceRoot}</span>
             <span>{treeFileCount(treeNodes)} 文件</span>
           </div>
@@ -621,7 +515,7 @@ export function RemoteWorkspaceEditor({
         </aside>
 
         <div className="flex min-h-0 flex-col">
-          <div className="flex min-h-10 items-center gap-1 overflow-x-auto border-b border-black/8 bg-white/45 px-2 dark:border-white/[0.06] dark:bg-zinc-950/20">
+          <div className="flex min-h-10 items-center gap-1 overflow-x-auto border-b border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2">
             {tabs.length === 0 ? (
               <div className="px-2 text-xs text-zinc-500 dark:text-zinc-400">
                 未打开文件
@@ -630,10 +524,10 @@ export function RemoteWorkspaceEditor({
               tabs.map((tab) => (
                 <button
                   className={cn(
-                    "flex h-8 max-w-56 shrink-0 items-center gap-1.5 rounded-lg border px-2 text-xs transition",
+                    "kerminal-focus-ring kerminal-pressable flex h-8 max-w-56 shrink-0 items-center gap-1.5 rounded-lg border px-2 text-xs transition",
                     activePath === tab.path
-                      ? "border-sky-400/35 bg-sky-500/10 text-sky-800 dark:text-sky-100"
-                      : "border-transparent text-zinc-600 hover:border-black/8 hover:bg-black/[0.03] dark:text-zinc-300 dark:hover:border-white/8 dark:hover:bg-white/[0.04]",
+                      ? "border-sky-400/35 bg-[var(--surface-selected)] text-sky-800 dark:text-sky-100"
+                      : "border-transparent text-zinc-600 hover:border-[var(--border-subtle)] hover:bg-[var(--surface-hover)] dark:text-zinc-300",
                   )}
                   key={tab.path}
                   onClick={() => setActivePath(tab.path)}
@@ -650,7 +544,7 @@ export function RemoteWorkspaceEditor({
                   ) : null}
                   <span
                     aria-label={`关闭 ${tab.name}`}
-                    className="rounded p-0.5 text-zinc-400 hover:bg-black/8 hover:text-zinc-900 dark:hover:bg-white/10 dark:hover:text-zinc-100"
+                    className="kerminal-focus-ring kerminal-pressable rounded p-0.5 text-zinc-400 hover:bg-[var(--surface-hover)] hover:text-zinc-900 dark:hover:text-zinc-100"
                     onClick={(event) => {
                       event.stopPropagation();
                       requestCloseTab(tab.path);
@@ -665,7 +559,7 @@ export function RemoteWorkspaceEditor({
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 border-b border-black/8 px-3 py-2 dark:border-white/[0.06]">
+          <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-2">
             <div className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-500 dark:text-zinc-400">
               {activeTab?.path ?? workspaceProtocol}
             </div>
@@ -733,7 +627,7 @@ export function RemoteWorkspaceEditor({
                 </div>
               ) : (
                 <Editor
-                  beforeMount={configureMonaco}
+                  beforeMount={configureKerminalMonaco}
                   height={expanded ? "100%" : "460px"}
                   language={activeTab.language}
                   onChange={(value) => {
@@ -779,7 +673,7 @@ export function RemoteWorkspaceEditor({
             )}
           </div>
 
-          <div className="flex min-h-9 flex-wrap items-center gap-2 border-t border-black/8 px-3 py-2 text-xs text-zinc-500 dark:border-white/[0.06] dark:text-zinc-400">
+          <div className="flex min-h-9 flex-wrap items-center gap-2 border-t border-[var(--border-subtle)] px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
             <span>{tabs.length} 标签</span>
             <span>{dirtyTabCount} 未保存</span>
             {activeTab ? (
@@ -845,9 +739,9 @@ export function RemoteWorkspaceEditor({
           </Button>
         </>
       }
-      maxWidthClassName="max-w-lg"
       onClose={() => setPendingClosePath(null)}
       open={Boolean(pendingCloseTab)}
+      size="small"
       title="关闭未保存文件"
     >
       <div className="rounded-xl border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-100">
@@ -879,10 +773,10 @@ function WorkspaceTreeRow({
   return (
     <button
       className={cn(
-        "flex w-full items-center gap-2 px-2 text-left text-xs transition",
+        "kerminal-focus-ring kerminal-pressable flex w-full items-center gap-2 px-2 text-left text-xs transition",
         selected
-          ? "bg-sky-500/12 text-sky-800 dark:text-sky-100"
-          : "text-zinc-700 hover:bg-black/[0.04] dark:text-zinc-300 dark:hover:bg-white/[0.05]",
+          ? "bg-[var(--surface-selected)] text-sky-800 dark:text-sky-100"
+          : "text-zinc-700 hover:bg-[var(--surface-hover)] dark:text-zinc-300",
       )}
       onClick={() => {
         if (isDirectory) {
@@ -969,24 +863,4 @@ function WorkspaceInlineStatus({
       <span className="truncate">{status.message}</span>
     </span>
   );
-}
-
-function configureMonaco(monaco: typeof import("monaco-editor")) {
-  monaco.editor.defineTheme("kerminal-dark", {
-    base: "vs-dark",
-    inherit: true,
-    rules: [
-      { foreground: "f8fafc", token: "" },
-      { foreground: "38bdf8", token: "keyword" },
-      { foreground: "f59e0b", token: "string" },
-      { foreground: "34d399", token: "number" },
-      { foreground: "94a3b8", token: "comment" },
-    ],
-    colors: {
-      "editor.background": "#09090b",
-      "editor.findMatchBackground": "#0ea5e966",
-      "editor.lineHighlightBackground": "#18181b",
-      "editor.selectionBackground": "#2563eb80",
-    },
-  });
 }

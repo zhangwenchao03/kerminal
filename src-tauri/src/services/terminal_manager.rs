@@ -6,11 +6,14 @@ use crate::{
     error::{AppError, AppResult},
     models::terminal::{
         TerminalCreateRequest, TerminalOutputEvent, TerminalOutputSnapshot, TerminalResizeRequest,
-        TerminalSecretInputResponse, TerminalSessionLogState, TerminalSessionStatus,
-        TerminalSessionSummary,
+        TerminalSecretInputEntry, TerminalSecretInputPlan, TerminalSessionLogState,
+        TerminalSessionStatus, TerminalSessionSummary,
     },
     security::redaction::redact_terminal_text,
 };
+#[path = "terminal_target_token.rs"]
+mod terminal_target_token;
+
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::{
     collections::HashMap,
@@ -21,11 +24,14 @@ use std::{
     thread,
     time::{SystemTime, UNIX_EPOCH},
 };
+pub use terminal_target_token::TerminalTargetTokenClaims;
+use terminal_target_token::{TerminalTargetCapability, TerminalTargetTokenSigner};
 use uuid::Uuid;
 
 const READ_BUFFER_SIZE: usize = 8192;
 const TERMINAL_CONTEXT_BUFFER_BYTES: usize = 64 * 1024;
 const LOG_REDACTION_PENDING_CHARS: usize = 4096;
+const TERMINAL_TARGET_TOKEN_TTL_MS: u64 = 5 * 60 * 1000;
 
 type ChildHandle = Box<dyn Child + Send + Sync>;
 type MasterHandle = Box<dyn MasterPty + Send>;
@@ -34,9 +40,9 @@ type SharedWriterHandle = Arc<Mutex<WriterHandle>>;
 type OutputEmitter = Box<dyn Fn(TerminalOutputEvent) -> bool + Send + 'static>;
 
 /// 管理进程内所有本地终端会话。
-#[derive(Default)]
 pub struct TerminalManager {
     sessions: Mutex<HashMap<String, TerminalSession>>,
+    target_token_signer: TerminalTargetTokenSigner,
 }
 
 impl std::fmt::Debug for TerminalManager {
@@ -44,6 +50,15 @@ impl std::fmt::Debug for TerminalManager {
         formatter
             .debug_struct("TerminalManager")
             .finish_non_exhaustive()
+    }
+}
+
+impl Default for TerminalManager {
+    fn default() -> Self {
+        Self {
+            sessions: Mutex::new(HashMap::new()),
+            target_token_signer: TerminalTargetTokenSigner::default(),
+        }
     }
 }
 
@@ -62,6 +77,19 @@ impl TerminalManager {
     where
         F: Fn(TerminalOutputEvent) -> bool + Send + 'static,
     {
+        self.create_session_with_secret_input_plan(request, None, output)
+    }
+
+    /// 创建本地 PTY 会话，并使用后端提供的多敏感输入计划自动响应 prompt。
+    pub fn create_session_with_secret_input_plan<F>(
+        &self,
+        request: TerminalCreateRequest,
+        secret_input_plan: Option<TerminalSecretInputPlan>,
+        output: F,
+    ) -> AppResult<TerminalSessionSummary>
+    where
+        F: Fn(TerminalOutputEvent) -> bool + Send + 'static,
+    {
         let TerminalCreateRequest {
             shell,
             args,
@@ -72,6 +100,8 @@ impl TerminalManager {
             cleanup_paths,
             secret_input_response,
         } = request;
+        let secret_input_plan =
+            secret_input_plan.or_else(|| secret_input_response.map(TerminalSecretInputPlan::from));
         let cleanup_guard = CleanupPathGuard::new(cleanup_paths.clone());
         let size = normalize_size(rows, cols)?;
         let shell = normalize_shell(shell)?;
@@ -116,7 +146,7 @@ impl TerminalManager {
             log_sink.clone(),
             cleanup_paths.clone(),
             writer.clone(),
-            secret_input_response,
+            secret_input_plan,
             Box::new(output),
         );
 
@@ -128,6 +158,8 @@ impl TerminalManager {
             rows: size.rows,
             pid,
             status: TerminalSessionStatus::Running,
+            target_ref: None,
+            target_token: None,
         };
 
         let session = TerminalSession {
@@ -139,6 +171,8 @@ impl TerminalManager {
             pid,
             rows: size.rows,
             shell: summary.shell.clone(),
+            target_ref: None,
+            target_token: None,
             output_buffer,
             log_sink,
             cleanup_paths,
@@ -215,6 +249,60 @@ impl TerminalManager {
             .collect::<AppResult<Vec<_>>>()
     }
 
+    pub fn session_summary(&self, session_id: &str) -> AppResult<TerminalSessionSummary> {
+        let sessions = self.lock_sessions()?;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| AppError::Terminal(format!("终端会话不存在: {session_id}")))?;
+        session.summary()
+    }
+
+    pub fn set_target_ref(
+        &self,
+        session_id: &str,
+        target_ref: impl Into<String>,
+    ) -> AppResult<TerminalSessionSummary> {
+        let mut sessions = self.lock_sessions()?;
+        let session = sessions
+            .get_mut(session_id)
+            .ok_or_else(|| AppError::Terminal(format!("终端会话不存在: {session_id}")))?;
+        let target_ref = normalize_target_ref(Some(target_ref.into()));
+        session.target_token = target_ref.as_deref().map(|target_ref| {
+            self.target_token_signer.sign_binding_register_now(
+                session_id,
+                target_ref,
+                TERMINAL_TARGET_TOKEN_TTL_MS,
+            )
+        });
+        session.target_ref = target_ref;
+        session.summary()
+    }
+
+    pub fn verify_target_token(
+        &self,
+        session_id: &str,
+        target_token: &str,
+    ) -> AppResult<Option<TerminalTargetTokenClaims>> {
+        let sessions = self.lock_sessions()?;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| AppError::Terminal(format!("终端会话不存在: {session_id}")))?;
+        let Some(target_ref) = session.target_ref.as_deref() else {
+            return Ok(None);
+        };
+        let Some(expected_token) = session.target_token.as_ref() else {
+            return Ok(None);
+        };
+        if !TerminalTargetTokenSigner::matches(&expected_token.token, target_token) {
+            return Ok(None);
+        }
+        Ok(self.target_token_signer.verify_binding_register_now(
+            session_id,
+            target_ref,
+            target_token,
+        ))
+    }
+
     /// 返回指定终端会话的摘要和最近输出快照。
     pub fn output_snapshot(
         &self,
@@ -279,6 +367,8 @@ struct TerminalSession {
     pid: Option<u32>,
     rows: u16,
     shell: String,
+    target_ref: Option<String>,
+    target_token: Option<TerminalTargetCapability>,
     output_buffer: Arc<Mutex<TerminalOutputBuffer>>,
     log_sink: Arc<Mutex<Option<ActiveTerminalLog>>>,
     cleanup_paths: Vec<PathBuf>,
@@ -308,6 +398,11 @@ impl TerminalSession {
             rows: self.rows,
             pid: self.pid,
             status,
+            target_ref: self.target_ref.clone(),
+            target_token: self
+                .target_token
+                .as_ref()
+                .map(TerminalTargetCapability::token),
         })
     }
 
@@ -466,12 +561,12 @@ fn spawn_reader_thread(
     log_sink: Arc<Mutex<Option<ActiveTerminalLog>>>,
     cleanup_paths: Vec<PathBuf>,
     writer: SharedWriterHandle,
-    secret_input_response: Option<TerminalSecretInputResponse>,
+    secret_input_plan: Option<TerminalSecretInputPlan>,
     output: OutputEmitter,
 ) {
     thread::spawn(move || {
         let mut buffer = vec![0_u8; READ_BUFFER_SIZE];
-        let mut secret_responder = secret_input_response.map(TerminalSecretInputResponder::new);
+        let mut secret_responder = secret_input_plan.map(TerminalSecretInputResponder::new);
 
         loop {
             match reader.read(&mut buffer) {
@@ -508,57 +603,72 @@ fn spawn_reader_thread(
 }
 
 struct TerminalSecretInputResponder {
+    entries: Vec<TerminalSecretInputResponderEntry>,
     marker_buffer: String,
-    max_responses: u8,
-    prompt_markers: Vec<String>,
     redact_values: Vec<String>,
+}
+
+struct TerminalSecretInputResponderEntry {
+    max_responses: usize,
+    prompt_markers: Vec<String>,
     response: String,
-    responses_sent: u8,
+    responses_sent: usize,
 }
 
 impl TerminalSecretInputResponder {
-    fn new(config: TerminalSecretInputResponse) -> Self {
+    fn new(config: impl Into<TerminalSecretInputPlan>) -> Self {
+        let config = config.into();
+        let redact_values = config.redact_values();
+        let entries = config
+            .entries
+            .into_iter()
+            .filter_map(TerminalSecretInputResponderEntry::from_entry)
+            .collect();
         Self {
+            entries,
             marker_buffer: String::new(),
-            max_responses: config.max_responses,
-            prompt_markers: config
-                .prompt_markers
-                .into_iter()
-                .map(|marker| marker.to_ascii_lowercase())
-                .filter(|marker| !marker.trim().is_empty())
-                .collect(),
-            redact_values: config
-                .redact_values
-                .into_iter()
-                .filter(|value| !value.is_empty())
-                .collect(),
-            response: config.response,
-            responses_sent: 0,
+            redact_values,
         }
     }
 
     fn observe_and_maybe_respond(&mut self, data: &str, writer: &SharedWriterHandle) {
-        if self.responses_sent >= self.max_responses
-            || self.response.is_empty()
-            || self.prompt_markers.is_empty()
-        {
+        if !self.entries.iter().any(|entry| entry.can_respond()) {
             return;
         }
 
         self.marker_buffer.push_str(&data.to_ascii_lowercase());
         trim_marker_buffer(&mut self.marker_buffer);
 
-        if !secret_prompt_matches(&self.marker_buffer, &self.prompt_markers) {
+        let Some(entry_index) = self.best_matching_entry_index() else {
             return;
-        }
+        };
+        let entry = &mut self.entries[entry_index];
 
         if let Ok(mut writer) = writer.lock() {
-            let _ = writer.write_all(self.response.as_bytes());
+            let _ = writer.write_all(entry.response.as_bytes());
             let _ = writer.write_all(b"\r");
             let _ = writer.flush();
         }
-        self.responses_sent = self.responses_sent.saturating_add(1);
+        entry.responses_sent = entry.responses_sent.saturating_add(1);
         self.marker_buffer.clear();
+    }
+
+    fn best_matching_entry_index(&self) -> Option<usize> {
+        let mut best: Option<(usize, PromptMatchStrength)> = None;
+        for (index, entry) in self.entries.iter().enumerate() {
+            if !entry.can_respond() {
+                continue;
+            }
+            let Some(strength) =
+                secret_prompt_match_strength(&self.marker_buffer, &entry.prompt_markers)
+            else {
+                continue;
+            };
+            if best.is_none_or(|(_, best_strength)| strength > best_strength) {
+                best = Some((index, strength));
+            }
+        }
+        best.map(|(index, _)| index)
     }
 
     fn redact_output(&self, data: &str) -> String {
@@ -574,7 +684,45 @@ impl TerminalSecretInputResponder {
     }
 }
 
+impl TerminalSecretInputResponderEntry {
+    fn from_entry(entry: TerminalSecretInputEntry) -> Option<Self> {
+        let prompt_markers = entry
+            .prompt_markers
+            .into_iter()
+            .map(|marker| marker.to_ascii_lowercase())
+            .filter(|marker| !marker.trim().is_empty())
+            .collect::<Vec<_>>();
+        if entry.response.is_empty() || entry.max_responses == 0 || prompt_markers.is_empty() {
+            return None;
+        }
+        Some(Self {
+            max_responses: entry.max_responses,
+            prompt_markers,
+            response: entry.response,
+            responses_sent: 0,
+        })
+    }
+
+    fn can_respond(&self) -> bool {
+        self.responses_sent < self.max_responses
+    }
+}
+
+#[cfg(test)]
 fn secret_prompt_matches(buffer: &str, prompt_markers: &[String]) -> bool {
+    secret_prompt_match_strength(buffer, prompt_markers).is_some()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum PromptMatchStrength {
+    GenericFallback,
+    Specific,
+}
+
+fn secret_prompt_match_strength(
+    buffer: &str,
+    prompt_markers: &[String],
+) -> Option<PromptMatchStrength> {
     let visible_buffer = strip_terminal_controls(buffer);
     let prompt_line = visible_buffer
         .rsplit(['\r', '\n'])
@@ -582,26 +730,28 @@ fn secret_prompt_matches(buffer: &str, prompt_markers: &[String]) -> bool {
         .unwrap_or(visible_buffer.as_str())
         .trim_end();
     if prompt_line.is_empty() {
-        return false;
+        return None;
     }
 
     prompt_markers
         .iter()
-        .any(|marker| prompt_line_matches_marker(prompt_line, marker))
+        .filter_map(|marker| prompt_line_match_strength(prompt_line, marker))
+        .max()
 }
 
-fn prompt_line_matches_marker(prompt_line: &str, marker: &str) -> bool {
+fn prompt_line_match_strength(prompt_line: &str, marker: &str) -> Option<PromptMatchStrength> {
     let marker = marker.trim();
     if marker.is_empty() {
-        return false;
+        return None;
     }
     if looks_like_password_history_line(prompt_line) {
-        return false;
+        return None;
     }
     if marker == "password:" {
-        return generic_password_prompt_line(prompt_line);
+        return generic_password_prompt_line(prompt_line)
+            .then_some(PromptMatchStrength::GenericFallback);
     }
-    prompt_line == marker
+    (prompt_line == marker).then_some(PromptMatchStrength::Specific)
 }
 
 fn looks_like_password_history_line(prompt_line: &str) -> bool {
@@ -811,6 +961,12 @@ fn normalize_shell(shell: Option<String>) -> AppResult<String> {
     Ok(shell)
 }
 
+fn normalize_target_ref(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+}
+
 fn normalize_cwd(cwd: Option<String>) -> AppResult<Option<PathBuf>> {
     cwd.map(|value| {
         let trimmed = value.trim();
@@ -857,66 +1013,4 @@ fn default_shell() -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn secret_prompt_match_accepts_prompt_like_password_suffixes() {
-        let markers = vec!["password:".to_owned()];
-
-        assert!(secret_prompt_matches("password: ", &markers));
-        assert!(secret_prompt_matches(
-            "deploy@dev.internal's password:",
-            &markers
-        ));
-        assert!(secret_prompt_matches("enter password:", &markers));
-        assert!(secret_prompt_matches("password for deploy:", &markers));
-    }
-
-    #[test]
-    fn secret_prompt_match_rejects_password_history_and_status_lines() {
-        let markers = vec!["password:".to_owned()];
-
-        assert!(!secret_prompt_matches("last failed password:", &markers));
-        assert!(!secret_prompt_matches("accepted password:", &markers));
-        assert!(!secret_prompt_matches("password changed:", &markers));
-        assert!(!secret_prompt_matches(
-            "password: changed yesterday",
-            &markers
-        ));
-    }
-
-    #[test]
-    fn secret_prompt_match_rejects_prefixed_specific_marker_lines() {
-        let markers = vec!["deploy@dev.internal's password:".to_owned()];
-
-        assert!(!secret_prompt_matches(
-            "notice: deploy@dev.internal's password:",
-            &markers,
-        ));
-    }
-
-    #[test]
-    fn secret_prompt_match_ignores_terminal_control_prefixes() {
-        let markers = vec!["deploy@dev.internal's password:".to_owned()];
-
-        assert!(secret_prompt_matches(
-            "\u{1b}[6n\u{1b}[?9001h\u{1b}]0;C:\\WINDOWS\\system32\\cmd.exe\u{7}\u{1b}[?25hdeploy@dev.internal's password: ",
-            &markers,
-        ));
-    }
-
-    #[test]
-    fn secret_prompt_match_uses_last_line_for_banners_and_split_prompts() {
-        let markers = vec!["deploy@dev.internal's password:".to_owned()];
-
-        assert!(!secret_prompt_matches(
-            "last failed password:\r\ndeploy@dev.internal's pass",
-            &markers,
-        ));
-        assert!(secret_prompt_matches(
-            "last failed password:\r\ndeploy@dev.internal's password: ",
-            &markers,
-        ));
-    }
-}
+mod tests;

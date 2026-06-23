@@ -56,7 +56,6 @@ async fn loopback_remote_probe_handles_slow_large_outputs_with_cache_limits() {
         .suggestions
         .refresh_remote_commands(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.ssh_commands,
             CommandSuggestionRemoteCommandRefreshRequest {
@@ -73,7 +72,6 @@ async fn loopback_remote_probe_handles_slow_large_outputs_with_cache_limits() {
         .suggestions
         .refresh_remote_paths(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.sftp,
             CommandSuggestionRemotePathRefreshRequest {
@@ -91,7 +89,6 @@ async fn loopback_remote_probe_handles_slow_large_outputs_with_cache_limits() {
         .suggestions
         .refresh_git_refs(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.ssh_commands,
             CommandSuggestionGitRefreshRequest {
@@ -196,7 +193,6 @@ async fn loopback_refresh_failure_keeps_existing_provider_cache_available() {
         .suggestions
         .refresh_remote_commands(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.ssh_commands,
             CommandSuggestionRemoteCommandRefreshRequest {
@@ -211,7 +207,6 @@ async fn loopback_refresh_failure_keeps_existing_provider_cache_available() {
         .suggestions
         .refresh_remote_paths(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.sftp,
             CommandSuggestionRemotePathRefreshRequest {
@@ -227,7 +222,6 @@ async fn loopback_refresh_failure_keeps_existing_provider_cache_available() {
         .suggestions
         .refresh_remote_history(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.ssh_commands,
             CommandSuggestionRemoteHistoryRefreshRequest {
@@ -242,7 +236,6 @@ async fn loopback_refresh_failure_keeps_existing_provider_cache_available() {
         .suggestions
         .refresh_git_refs(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.ssh_commands,
             CommandSuggestionGitRefreshRequest {
@@ -263,7 +256,6 @@ async fn loopback_refresh_failure_keeps_existing_provider_cache_available() {
             .suggestions
             .refresh_remote_commands(
                 &harness.storage,
-                &harness.credentials,
                 &harness.paths,
                 &harness.ssh_commands,
                 CommandSuggestionRemoteCommandRefreshRequest {
@@ -281,7 +273,6 @@ async fn loopback_refresh_failure_keeps_existing_provider_cache_available() {
             .suggestions
             .refresh_remote_paths(
                 &harness.storage,
-                &harness.credentials,
                 &harness.paths,
                 &harness.sftp,
                 CommandSuggestionRemotePathRefreshRequest {
@@ -300,7 +291,6 @@ async fn loopback_refresh_failure_keeps_existing_provider_cache_available() {
             .suggestions
             .refresh_remote_history(
                 &harness.storage,
-                &harness.credentials,
                 &harness.paths,
                 &harness.ssh_commands,
                 CommandSuggestionRemoteHistoryRefreshRequest {
@@ -318,7 +308,6 @@ async fn loopback_refresh_failure_keeps_existing_provider_cache_available() {
             .suggestions
             .refresh_git_refs(
                 &harness.storage,
-                &harness.credentials,
                 &harness.paths,
                 &harness.ssh_commands,
                 CommandSuggestionGitRefreshRequest {

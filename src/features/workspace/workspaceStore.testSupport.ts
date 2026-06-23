@@ -38,7 +38,8 @@ export const remoteHostTree: RemoteHostGroupWithHosts[] = [
       {
         authType: "key",
         createdAt: "2026-06-17 10:00:00",
-        credentialRef: "credential:ssh/lab",
+        credentialSecret:
+          "-----BEGIN OPENSSH PRIVATE KEY-----\nlab-test-key\n-----END OPENSSH PRIVATE KEY-----\n",
         groupId: "group-lab",
         host: "192.168.1.253",
         id: "host-lab",
@@ -128,7 +129,7 @@ export const remoteHostTreeWithRdp: RemoteHostGroupWithHosts[] = [
       {
         authType: "password",
         createdAt: "2026-06-19 10:00:00",
-        credentialRef: "credential:ssh/rdp-office/password",
+        credentialRef: "credential:rdp/rdp-office/password",
         groupId: "group-office",
         host: "rdp.internal",
         id: "rdp-office",

@@ -1,119 +1,42 @@
 import { useEffect } from "react";
 import { cn } from "../../lib/cn";
-import type { TerminalSplitDirection } from "../workspace/types";
+import {
+  terminalContextMenuGroups,
+  type TerminalContextMenuAction,
+  type TerminalContextMenuItemModel,
+  type TerminalContextMenuPosition,
+} from "./terminalContextMenuModel";
 
-export type TerminalContextMenuAction =
-  | "copy"
-  | "paste"
-  | "selectAll"
-  | "search"
-  | "clear"
-  | "startLog"
-  | "stopLog"
-  | "disconnect"
-  | "reconnect"
-  | "openLogs"
-  | "splitHorizontal"
-  | "splitVertical";
+export {
+  splitDirectionForMenuAction,
+  terminalContextMenuGroups,
+} from "./terminalContextMenuModel";
+export type {
+  TerminalContextMenuAction,
+  TerminalContextMenuItemModel,
+  TerminalContextMenuPosition,
+} from "./terminalContextMenuModel";
 
-export interface TerminalContextMenuPosition {
-  x: number;
-  y: number;
-}
+const terminalMenuSurfaceClassName =
+  "kerminal-floating-enter fixed z-[1000] w-56 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] p-1.5 text-sm shadow-2xl shadow-black/20 backdrop-blur-xl dark:shadow-black/50";
+const terminalMenuDividerClassName =
+  "mt-1 border-t border-[var(--border-subtle)] pt-1";
+const terminalMenuItemClassName =
+  "kerminal-focus-ring kerminal-pressable flex w-full items-center rounded-lg px-3 py-2 text-left text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-45 dark:text-zinc-200 dark:hover:text-zinc-50";
 
 interface TerminalContextMenuProps {
   canCopy: boolean;
   canDisconnect?: boolean;
   canReconnect?: boolean;
-  isLogging?: boolean;
   onAction: (action: TerminalContextMenuAction) => void;
   onClose: () => void;
   position: TerminalContextMenuPosition;
-}
-
-export interface TerminalContextMenuItemModel {
-  action: TerminalContextMenuAction;
-  disabled?: boolean;
-  label: string;
-  shortcut?: string;
-}
-
-export function terminalContextMenuGroups({
-  canCopy,
-  canDisconnect = true,
-  canReconnect = true,
-  isLogging = false,
-}: {
-  canCopy: boolean;
-  canDisconnect?: boolean;
-  canReconnect?: boolean;
-  isLogging?: boolean;
-}): TerminalContextMenuItemModel[][] {
-  return [
-    [
-      {
-        action: "copy",
-        disabled: !canCopy,
-        label: "复制",
-        shortcut: "Ctrl+C",
-      },
-      {
-        action: "paste",
-        label: "粘贴",
-        shortcut: "Ctrl+V",
-      },
-      {
-        action: "selectAll",
-        label: "全选",
-      },
-      {
-        action: "clear",
-        label: "清屏",
-      },
-      {
-        action: "search",
-        label: "搜索",
-        shortcut: "Ctrl+F",
-      },
-    ],
-    [
-      {
-        action: isLogging ? "stopLog" : "startLog",
-        label: isLogging ? "停止记录日志" : "开始记录日志",
-      },
-      {
-        action: "openLogs",
-        label: "打开日志",
-      },
-      {
-        action: "reconnect",
-        disabled: !canReconnect,
-        label: "重新连接",
-      },
-      {
-        action: "disconnect",
-        disabled: !canDisconnect,
-        label: "断开连接",
-      },
-    ],
-    [
-      {
-        action: "splitHorizontal",
-        label: "左右分屏",
-      },
-      {
-        action: "splitVertical",
-        label: "上下分屏",
-      },
-    ],
-  ];
 }
 
 export function TerminalContextMenu({
   canCopy,
   canDisconnect = true,
   canReconnect = true,
-  isLogging = false,
   onAction,
   onClose,
   position,
@@ -122,7 +45,6 @@ export function TerminalContextMenu({
     canCopy,
     canDisconnect,
     canReconnect,
-    isLogging,
   });
 
   useEffect(() => {
@@ -133,17 +55,17 @@ export function TerminalContextMenu({
       }
     };
     window.addEventListener("click", close);
-    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("keydown", closeOnEscape, true);
     return () => {
       window.removeEventListener("click", close);
-      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("keydown", closeOnEscape, true);
     };
   }, [onClose]);
 
   return (
     <div
       aria-label="终端右键菜单"
-      className="fixed z-50 w-56 rounded-xl border border-black/10 bg-white p-1.5 text-sm shadow-xl shadow-black/15 dark:border-white/10 dark:bg-zinc-950"
+      className={terminalMenuSurfaceClassName}
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
       role="menu"
@@ -154,7 +76,7 @@ export function TerminalContextMenu({
     >
       {groups.map((group, groupIndex) => (
         <div
-          className={cn(groupIndex > 0 && "mt-1 border-t border-black/8 pt-1 dark:border-white/8")}
+          className={cn(groupIndex > 0 && terminalMenuDividerClassName)}
           key={group.map((item) => item.action).join("-")}
         >
           {group.map((item) => (
@@ -179,7 +101,7 @@ function TerminalContextMenuItem({
 }) {
   return (
     <button
-      className="flex w-full items-center rounded-lg px-3 py-2 text-left text-zinc-700 transition hover:bg-black/5 hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-45 dark:text-zinc-200 dark:hover:bg-white/8 dark:hover:text-zinc-50"
+      className={terminalMenuItemClassName}
       disabled={item.disabled}
       onClick={(event) => {
         event.stopPropagation();
@@ -196,16 +118,4 @@ function TerminalContextMenuItem({
       ) : null}
     </button>
   );
-}
-
-export function splitDirectionForMenuAction(
-  action: TerminalContextMenuAction,
-): TerminalSplitDirection | null {
-  if (action === "splitHorizontal") {
-    return "horizontal";
-  }
-  if (action === "splitVertical") {
-    return "vertical";
-  }
-  return null;
 }

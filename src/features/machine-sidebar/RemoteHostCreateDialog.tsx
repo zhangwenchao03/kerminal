@@ -7,6 +7,7 @@ import { detectShells, type ShellCandidate } from "../../lib/profileApi";
 import { createDefaultSshOptions } from "../../lib/remoteHostApi";
 import type { RemoteHostAuthType, SshOptions } from "../../lib/remoteHostApi";
 import type { ContainerRuntime } from "../../lib/targetModel";
+import { evaluateConnectionCheck } from "./remote-host-dialog/connection-check";
 import { buildLocalShellPresets, buildLocalTerminalOptions, formatLocalArgs, formatLocalEnv } from "./remote-host-dialog/local-form";
 import {
   buildGroupOptions,
@@ -22,7 +23,6 @@ import {
 } from "./remote-host-dialog/model";
 import {
   buildRdpHostRequest,
-  buildRdpRequest,
   buildSerialHostRequest,
   buildSshRequest,
   buildTelnetHostRequest,
@@ -32,7 +32,6 @@ import {
   normalizeSshOptionsForForm,
   readSerialTagValue,
   validateRdpHostRequest,
-  validateRdpRequest,
   validateSerialHostRequest,
   validateSshRequest,
   validateTelnetHostRequest,
@@ -162,8 +161,12 @@ export function RemoteHostCreateDialog({
       editingHost?.authType ??
         (initialMode === "rdp" ? "password" : "agent"),
     );
-    setCredentialRef(editingHost?.credentialRef ?? "");
-    setCredentialSecret("");
+    setCredentialRef(editingHost?.authType === "key" ? editingHost.credentialRef ?? "" : "");
+    setCredentialSecret(
+      editingHost?.authType === "password" || editingHost?.authType === "key"
+        ? editingHost.credentialSecret ?? ""
+        : "",
+    );
     setDockerContainerId("");
     setDockerContainers([]);
     setDockerHostId(initialDockerHostId);
@@ -600,131 +603,47 @@ export function RemoteHostCreateDialog({
 
   const testConnection = async () => {
     setStatusMessage(null);
-    if (mode === "local") {
-      const localOptionsResult = buildLocalTerminalOptions({
-        args: localArgs,
-        cwd: localCwd,
-        env: localEnv,
-        groupId,
-        shell: localShell,
-        title: localTitle,
-      });
-      if (localOptionsResult.error) {
-        setError(localOptionsResult.error);
-        return;
-      }
-
-      setError(null);
-      setStatusMessage(
-        editingLocalMachine
-          ? "本地终端配置检查通过，确认后会保存到左侧卡片。"
-          : "本地终端无需连接测试，确认后会创建本地会话。",
-      );
-      return;
-    }
-    if (mode === "rdp") {
-      const request = buildRdpRequest({
-        fullscreen: rdpFullscreen,
-        height: rdpHeight,
-        host,
-        name,
-        note: rdpNote,
-        password: rdpPassword,
-        port,
-        username: rdpUsername,
-        width: rdpWidth,
-      });
-      const validationError = validateRdpRequest(request);
-      if (validationError) {
-        setError(validationError);
-        return;
-      }
-      setError(null);
-      setStatusMessage("RDP 字段检查通过，确认后会保存到左侧主机栏。");
-      return;
-    }
-
-    if (mode === "docker") {
-      if (!dockerHostId) {
-        setError("请选择一个已有 SSH 主机。");
-        return;
-      }
-      if (!dockerContainerId) {
-        setError("请选择一个容器。");
-        return;
-      }
-      setError(null);
-      setStatusMessage("容器选择已确认，确认后会添加到侧栏并可直接进入。");
-      return;
-    }
-
-    if (mode === "telnet") {
-      const request = buildTelnetHostRequest({
-        groupId,
-        host,
-        name,
-        port,
-        production,
-        tags,
-      });
-      const validationError = validateTelnetHostRequest(request);
-      if (validationError) {
-        setError(validationError);
-        return;
-      }
-      setError(null);
-      setStatusMessage("Telnet 字段检查通过，确认后会保存到左侧主机栏。");
-      return;
-    }
-
-    if (mode === "serial") {
-      const request = buildSerialHostRequest({
-        groupId,
-        name,
-        production,
-        serialBaud,
-        serialDataBits,
-        serialFlow,
-        serialParity,
-        serialPort,
-        serialStopBits,
-        tags,
-      });
-      const validationError = validateSerialHostRequest(request);
-      if (validationError) {
-        setError(validationError);
-        return;
-      }
-      setError(null);
-      setStatusMessage("Serial 字段检查通过，确认后会保存到左侧主机栏。");
-      return;
-    }
-
-    if (mode !== "ssh") {
-      setError(`${selectedProtocol.label} 暂未支持测试。`);
-      return;
-    }
-
-    const request = buildSshRequest({
+    const result = evaluateConnectionCheck({
       authType,
       credentialRef,
       credentialSecret,
+      dockerContainerId,
+      dockerHostId,
+      editingLocalMachine: Boolean(editingLocalMachine),
       groupId,
       host,
+      localArgs,
+      localCwd,
+      localEnv,
+      localShell,
+      localTitle,
+      mode,
       name,
       port,
       production,
+      rdpFullscreen,
+      rdpHeight,
+      rdpNote,
+      rdpPassword,
+      rdpUsername,
+      rdpWidth,
+      selectedProtocolLabel: selectedProtocol.label,
+      serialBaud,
+      serialDataBits,
+      serialFlow,
+      serialParity,
+      serialPort,
+      serialStopBits,
       sshOptions,
       tags,
       username,
     });
-    const validationError = validateSshRequest(request);
-    if (validationError) {
-      setError(validationError);
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
     setError(null);
-    setStatusMessage("SSH 配置检查通过，确认后会保存到左侧主机栏。");
+    setStatusMessage(result.statusMessage);
   };
 
   const selectedProtocol =
@@ -871,13 +790,13 @@ export function RemoteHostCreateDialog({
           ? "编辑已保存的连接配置。"
           : "从这里新增本地终端、保存 SSH/RDP 主机，或添加容器目标。"
       }
-      maxWidthClassName="max-w-5xl"
       onClose={onClose}
       open={open}
+      size="large"
       title={editingHost || editingLocalMachine ? "编辑连接配置" : "新建主机"}
     >
       <div className="space-y-4">
-        <div className="scrollbar-none flex gap-2 overflow-x-auto border-b border-black/8 pb-3 dark:border-white/8">
+        <div className="scrollbar-none flex gap-2 overflow-x-auto border-b border-[var(--border-subtle)] pb-3">
           {protocolTabs.map((protocol) => {
             const Icon = protocol.Icon;
             const selected = protocol.id === mode;
@@ -946,7 +865,7 @@ export function RemoteHostCreateDialog({
         <div className="grid min-h-[430px] gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
           <nav
             aria-label="连接配置分区"
-            className="rounded-2xl border border-black/8 bg-black/[0.03] p-2 dark:border-white/8 dark:bg-white/6"
+            className="kerminal-muted-surface rounded-2xl border p-2"
           >
             {activeSections.map((section) => {
               const Icon = section.Icon;
@@ -988,12 +907,4 @@ export function RemoteHostCreateDialog({
     </ModalShell>
   );
 }
-
-
-
-
-
-
-
-
 

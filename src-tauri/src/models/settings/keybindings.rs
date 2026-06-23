@@ -167,7 +167,7 @@ fn keybinding(
         action: action.to_string(),
         binding: binding.to_string(),
         description: description.to_string(),
-        editable: false,
+        editable: true,
         label: label.to_string(),
         mac_binding: mac_binding.to_string(),
         scope,

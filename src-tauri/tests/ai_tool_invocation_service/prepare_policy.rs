@@ -128,6 +128,7 @@ fn custom_mcp_stdio_tool_is_discovered_prepared_called_and_audited() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("confirm custom mcp tool");
@@ -473,6 +474,65 @@ fn prepare_dangerous_ssh_command_escalates_to_destructive_full_audit() {
         .expect("prepare dangerous ssh command");
 
     assert_eq!(pending.tool_id, "ssh.command");
+    assert_eq!(pending.risk, ToolRiskLevel::Destructive);
+    assert_eq!(pending.confirmation, ToolConfirmationPolicy::Always);
+    assert_eq!(pending.audit, ToolAuditPolicy::Full);
+    let risk_summary = pending.risk_summary.expect("risk summary");
+    assert!(risk_summary.contains("远程命令风险"));
+    assert!(risk_summary.contains("递归强制删除"));
+    assert!(risk_summary.contains("权限提升"));
+}
+
+#[test]
+fn prepare_resolved_host_ssh_command_requires_remote_confirmation() {
+    let (_home, state) = setup_state();
+
+    let pending = state
+        .ai_tools()
+        .prepare(
+            state.tools(),
+            prepare_request(
+                "ssh.command_on_resolved_host",
+                json!({
+                    "groupName": "bwy",
+                    "host": "172.16.40.104",
+                    "username": "root",
+                    "command": "uname -a && df -h /"
+                }),
+            ),
+        )
+        .expect("prepare resolved host ssh command");
+
+    assert_eq!(pending.tool_id, "ssh.command_on_resolved_host");
+    assert_eq!(pending.tool_title, "解析目标后执行远程命令");
+    assert_eq!(pending.risk, ToolRiskLevel::Remote);
+    assert_eq!(pending.confirmation, ToolConfirmationPolicy::Always);
+    assert_eq!(pending.audit, ToolAuditPolicy::Summary);
+    assert!(pending.requires_confirmation);
+    assert!(pending.arguments_summary.contains("groupName=bwy"));
+    assert!(pending.arguments_summary.contains("command=uname -a"));
+    assert!(pending.client_action.is_none());
+}
+
+#[test]
+fn prepare_dangerous_resolved_host_ssh_command_escalates_to_destructive_full_audit() {
+    let (_home, state) = setup_state();
+
+    let pending = state
+        .ai_tools()
+        .prepare(
+            state.tools(),
+            prepare_request(
+                "ssh.command_on_resolved_host",
+                json!({
+                    "host": "172.16.40.104",
+                    "command": "sudo rm -rf /tmp/kerminal-smoke"
+                }),
+            ),
+        )
+        .expect("prepare dangerous resolved host ssh command");
+
+    assert_eq!(pending.tool_id, "ssh.command_on_resolved_host");
     assert_eq!(pending.risk, ToolRiskLevel::Destructive);
     assert_eq!(pending.confirmation, ToolConfirmationPolicy::Always);
     assert_eq!(pending.audit, ToolAuditPolicy::Full);

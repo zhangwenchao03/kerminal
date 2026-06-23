@@ -6,7 +6,10 @@ use kerminal_lib::{
     error::AppError,
     paths::{KerminalPaths, DATABASE_FILE_NAME, KERMINAL_DIR_NAME},
     state::AppState,
-    storage::migrations::{migrate, CURRENT_SCHEMA_VERSION},
+    storage::{
+        local_file_operations::LocalFileOperationAuditWrite,
+        migrations::{migrate, CURRENT_SCHEMA_VERSION},
+    },
 };
 use rusqlite::Connection;
 use tempfile::tempdir;
@@ -26,6 +29,7 @@ fn resolves_kerminal_paths_under_home_directory() {
     assert_eq!(paths.exports, paths.root.join("exports"));
     assert_eq!(paths.temp, paths.root.join("temp"));
     assert_eq!(paths.diagnostics, paths.root.join("diagnostics"));
+    assert_eq!(paths.ai_attachments, paths.root.join("ai-attachments"));
 }
 
 #[test]
@@ -104,6 +108,35 @@ fn sqlite_migration_is_idempotent_and_preserves_metadata() {
 }
 
 #[test]
+fn migration_self_heals_missing_port_forward_sessions_at_current_version() {
+    let mut conn = Connection::open_in_memory().expect("open in-memory db");
+    conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION)
+        .expect("set current schema version");
+
+    migrate(&mut conn).expect("run current migration health checks");
+
+    let table_exists: bool = conn
+        .query_row(
+            "
+            SELECT EXISTS(
+                SELECT 1
+                FROM sqlite_schema
+                WHERE type = 'table' AND name = 'port_forward_sessions'
+            )
+            ",
+            [],
+            |row| row.get(0),
+        )
+        .expect("check port_forward_sessions table");
+    let version: u32 = conn
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .expect("read schema version");
+
+    assert!(table_exists);
+    assert_eq!(version, CURRENT_SCHEMA_VERSION);
+}
+
+#[test]
 fn migration_creates_foundation_tables() {
     let home = tempdir().expect("create temp home");
     let paths = KerminalPaths::from_home_dir(home.path());
@@ -131,7 +164,13 @@ fn migration_creates_foundation_tables() {
                 'command_suggestion_provider_cache',
                 'command_suggestion_feedback',
                 'command_suggestion_telemetry',
-                'command_suggestion_audit_events'
+                'command_suggestion_audit_events',
+                'ai_conversations',
+                'ai_messages',
+                'ai_attachments',
+                'ai_conversation_slots',
+                'local_file_operation_audits',
+                'port_forward_sessions'
               )
             ",
             [],
@@ -139,7 +178,7 @@ fn migration_creates_foundation_tables() {
         )
         .expect("count foundation tables");
 
-    assert_eq!(table_count, 12);
+    assert_eq!(table_count, 18);
 }
 
 #[test]
@@ -571,6 +610,40 @@ fn migration_v17_creates_command_suggestion_audit_events() {
 }
 
 #[test]
+fn local_file_operation_audit_records_delete_success() {
+    let home = tempdir().expect("create temp home");
+    let paths = KerminalPaths::from_home_dir(home.path());
+    let state = AppState::initialize_with_paths(paths).expect("initialize app state");
+
+    let audit = state
+        .storage()
+        .insert_local_file_operation_audit(&LocalFileOperationAuditWrite {
+            confirmation_matched: true,
+            error: None,
+            kind: "file".to_owned(),
+            operation: "delete".to_owned(),
+            parent_path: Some("C:\\Users\\24052".to_owned()),
+            path: "C:\\Users\\24052\\notes.md".to_owned(),
+            recursive: false,
+            root_path: Some("C:\\Users\\24052".to_owned()),
+            status: "succeeded".to_owned(),
+        })
+        .expect("insert local file audit");
+
+    let records = state
+        .storage()
+        .list_local_file_operation_audits(10)
+        .expect("list local file audits");
+
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0], audit);
+    assert_eq!(records[0].operation, "delete");
+    assert_eq!(records[0].status, "succeeded");
+    assert_eq!(records[0].path, "C:\\Users\\24052\\notes.md");
+    assert_eq!(records[0].root_path.as_deref(), Some("C:\\Users\\24052"));
+}
+
+#[test]
 fn migration_v18_allows_history_provider_cache() {
     let mut conn = Connection::open_in_memory().expect("open in-memory db");
     conn.execute_batch(
@@ -695,6 +768,83 @@ fn migration_v19_adds_remote_host_ssh_options_json() {
     assert_eq!(version, CURRENT_SCHEMA_VERSION);
     assert_eq!(ssh_options_not_null, 1);
     assert_eq!(ssh_options_json, "{}");
+}
+
+#[test]
+fn migration_v23_adds_ai_message_metadata_json() {
+    let mut conn = Connection::open_in_memory().expect("open in-memory db");
+    conn.execute_batch(
+        "
+        CREATE TABLE ai_conversations (
+            id TEXT PRIMARY KEY NOT NULL,
+            title TEXT NOT NULL,
+            scope_kind TEXT NOT NULL,
+            scope_ref_json TEXT NOT NULL DEFAULT '{}',
+            target_key TEXT,
+            host_id TEXT,
+            tab_id TEXT,
+            pane_id TEXT,
+            provider_id TEXT,
+            model TEXT,
+            status TEXT NOT NULL DEFAULT 'idle',
+            summary TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            last_message_at INTEGER,
+            archived_at INTEGER
+        );
+
+        CREATE TABLE ai_messages (
+            id TEXT PRIMARY KEY NOT NULL,
+            conversation_id TEXT NOT NULL REFERENCES ai_conversations(id) ON DELETE CASCADE,
+            role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'tool')),
+            content TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'complete' CHECK (status IN ('draft', 'streaming', 'complete', 'error')),
+            provider_id TEXT,
+            model TEXT,
+            token_estimate INTEGER CHECK (token_estimate IS NULL OR token_estimate >= 0),
+            context_snapshot_id TEXT,
+            created_at INTEGER NOT NULL
+        );
+
+        INSERT INTO ai_conversations (
+            id, title, scope_kind, scope_ref_json, created_at, updated_at
+        )
+        VALUES ('conv-v22', 'v22 conversation', 'noContext', '{}', 1, 1);
+
+        INSERT INTO ai_messages (
+            id, conversation_id, role, content, status, created_at
+        )
+        VALUES ('msg-v22', 'conv-v22', 'assistant', 'old response', 'complete', 2);
+        ",
+    )
+    .expect("seed v22 ai conversation schema");
+    conn.pragma_update(None, "user_version", 22)
+        .expect("set v22 schema");
+
+    migrate(&mut conn).expect("migrate to current schema");
+
+    let version: u32 = conn
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .expect("read user_version");
+    let metadata_not_null: i64 = conn
+        .query_row(
+            "SELECT \"notnull\" FROM pragma_table_info('ai_messages') WHERE name = 'metadata_json'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read metadata_json nullability");
+    let metadata_json: String = conn
+        .query_row(
+            "SELECT metadata_json FROM ai_messages WHERE id = 'msg-v22'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read migrated metadata");
+
+    assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    assert_eq!(metadata_not_null, 1);
+    assert_eq!(metadata_json, "{}");
 }
 
 #[test]

@@ -10,20 +10,76 @@ import type {
 
 export const terminalFontOptions = [
   {
-    label: "JetBrains Mono / SF Mono",
-    value: '"JetBrains Mono", "SF Mono", "Cascadia Code", Consolas, monospace',
+    label: "JetBrains Mono",
+    value:
+      '"JetBrains Mono", "JetBrains Mono NL", "Cascadia Mono", Consolas, monospace',
+  },
+  {
+    label: "JetBrainsMono Nerd Font",
+    value:
+      '"JetBrainsMono Nerd Font", "JetBrainsMonoNL Nerd Font", "JetBrains Mono", "Cascadia Mono", Consolas, monospace',
+  },
+  {
+    label: "Fira Code",
+    value:
+      '"Fira Code", "FiraCode Nerd Font", "Cascadia Code", Consolas, monospace',
+  },
+  {
+    label: "Cascadia Mono",
+    value:
+      '"Cascadia Mono", "Cascadia Code", "Cascadia Mono NF", Consolas, monospace',
   },
   {
     label: "Cascadia Code",
-    value: '"Cascadia Code", "SF Mono", Consolas, monospace',
+    value:
+      '"Cascadia Code", "Cascadia Code NF", "Cascadia Mono", Consolas, monospace',
   },
   {
-    label: "SF Mono / Menlo",
-    value: '"SF Mono", Menlo, Monaco, Consolas, monospace',
+    label: "MesloLGS NF",
+    value:
+      '"MesloLGS NF", "MesloLGS Nerd Font", "MesloLGM Nerd Font", "Cascadia Mono", Consolas, monospace',
+  },
+  {
+    label: "Hack",
+    value:
+      '"Hack", "Hack Nerd Font", "Cascadia Mono", Consolas, monospace',
+  },
+  {
+    label: "Source Code Pro",
+    value:
+      '"Source Code Pro", "SauceCodePro Nerd Font", "Cascadia Mono", Consolas, monospace',
+  },
+  {
+    label: "Iosevka Term",
+    value:
+      '"Iosevka Term", "IosevkaTerm Nerd Font", "Iosevka", "Cascadia Mono", Consolas, monospace',
+  },
+  {
+    label: "IBM Plex Mono",
+    value:
+      '"IBM Plex Mono", "BlexMono Nerd Font", "Cascadia Mono", Consolas, monospace',
+  },
+  {
+    label: "Inconsolata",
+    value:
+      '"Inconsolata", "Inconsolata Nerd Font", "Cascadia Mono", Consolas, monospace',
+  },
+  {
+    label: "Ubuntu Mono",
+    value:
+      '"Ubuntu Mono", "UbuntuMono Nerd Font", "Cascadia Mono", Consolas, monospace',
   },
   {
     label: "Consolas",
-    value: 'Consolas, "Cascadia Code", monospace',
+    value: 'Consolas, "Cascadia Mono", monospace',
+  },
+  {
+    label: "Lucida Console",
+    value: '"Lucida Console", Consolas, monospace',
+  },
+  {
+    label: "Courier New",
+    value: '"Courier New", Consolas, monospace',
   },
 ];
 

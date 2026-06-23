@@ -32,9 +32,7 @@ use kerminal_lib::{
     services::{
         command_history_service::CommandHistoryService,
         command_suggestion_service::CommandSuggestionService,
-        credential_service::{CredentialService, MemoryCredentialVault},
-        remote_host_service::RemoteHostService,
-        sftp_service::SftpService,
+        remote_host_service::RemoteHostService, sftp_service::SftpService,
         ssh_command_service::SshCommandService,
     },
     storage::SqliteStore,

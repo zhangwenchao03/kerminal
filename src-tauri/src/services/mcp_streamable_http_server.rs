@@ -4,6 +4,7 @@
 
 use std::{
     future::Future,
+    io::ErrorKind,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{Arc, Mutex},
 };
@@ -51,6 +52,8 @@ use crate::{
 };
 
 const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1";
+const DEFAULT_MCP_HTTP_PORT: u16 = 37657;
+const MCP_HTTP_PORT_SCAN_LIMIT: u16 = 64;
 const MCP_PATH: &str = "/mcp";
 const MCP_SERVER_INSTRUCTIONS: &str = "Kerminal exposes a local Streamable HTTP MCP server for terminal/workspace context, skills, prompts, and audited tools. Kerminal does not expose a custom confirmation round trip over MCP: configure your MCP host hooks/permission system to approve tool calls. Kerminal still validates its allowlist, applies local security settings, and audits every tool call.";
 
@@ -106,10 +109,8 @@ impl McpStreamableHttpServerService {
 
         let request = request.unwrap_or_default();
         let bind_address = normalize_bind_address(request.host.as_deref())?;
-        let port = request.port.unwrap_or(0);
-        let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port);
-        let listener = tokio::net::TcpListener::bind(socket_addr).await?;
-        let local_addr = listener.local_addr()?;
+        let port = requested_start_port(request.port);
+        let (listener, local_addr) = bind_loopback_port_from(port).await?;
         let endpoint = format!(
             "http://{}:{}{}",
             DEFAULT_BIND_ADDRESS,
@@ -396,6 +397,10 @@ impl KerminalMcpServer {
                     arguments: Value::Object(request.arguments.unwrap_or_default()),
                     requested_by: Some("kerminal-streamable-http-mcp".to_owned()),
                     reason: Some("external MCP tools/call".to_owned()),
+                    conversation_id: None,
+                    conversation_slot_json: None,
+                    run_id: None,
+                    step_id: None,
                 },
             )
             .map_err(app_error_to_mcp_error)?;
@@ -406,6 +411,7 @@ impl KerminalMcpServer {
                 AiToolConfirmRequest {
                     invocation_id: pending.id.clone(),
                     approved: true,
+                    audit_context: None,
                 },
             )
             .await
@@ -492,6 +498,7 @@ fn resource_runtime(state: &AppState, uri: &str) -> Result<McpResourceReadRuntim
 fn execution_context<'a>(state: &'a AppState) -> AiToolExecutionContext<'a> {
     AiToolExecutionContext {
         terminals: state.terminals(),
+        terminal_session_bindings: state.terminal_session_bindings(),
         command_history: state.command_history(),
         credentials: state.credentials(),
         settings: state.settings(),
@@ -501,7 +508,9 @@ fn execution_context<'a>(state: &'a AppState) -> AiToolExecutionContext<'a> {
         server_info: state.server_info(),
         diagnostics: state.diagnostics(),
         sftp: state.sftp(),
+        docker_hosts: state.docker_hosts(),
         port_forwards: state.port_forwards(),
+        local_network_proxy: state.local_network_proxy(),
         snippets: state.snippets(),
         workflows: state.workflows(),
         ssh_commands: state.ssh_commands(),
@@ -539,6 +548,43 @@ fn normalize_bind_address(host: Option<&str>) -> AppResult<String> {
             "Streamable HTTP MCP Server 只允许绑定本机 loopback 地址，当前请求: {value}"
         ))),
     }
+}
+
+fn requested_start_port(port: Option<u16>) -> u16 {
+    port.filter(|value| *value != 0)
+        .unwrap_or(DEFAULT_MCP_HTTP_PORT)
+}
+
+async fn bind_loopback_port_from(
+    start_port: u16,
+) -> AppResult<(tokio::net::TcpListener, SocketAddr)> {
+    let mut port = start_port;
+    for attempt in 0..MCP_HTTP_PORT_SCAN_LIMIT {
+        let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port);
+        match tokio::net::TcpListener::bind(socket_addr).await {
+            Ok(listener) => {
+                let local_addr = listener.local_addr()?;
+                return Ok((listener, local_addr));
+            }
+            Err(error) if error.kind() == ErrorKind::AddrInUse => {
+                if attempt + 1 >= MCP_HTTP_PORT_SCAN_LIMIT {
+                    return Err(AppError::InvalidInput(format!(
+                        "Streamable HTTP MCP Server 没有可用端口，从 {start_port} 开始向后试探 {MCP_HTTP_PORT_SCAN_LIMIT} 次仍失败"
+                    )));
+                }
+                port = port.checked_add(1).ok_or_else(|| {
+                    AppError::InvalidInput(format!(
+                        "Streamable HTTP MCP Server 没有可用端口，从 {start_port} 开始向后试探时已经到达端口上限"
+                    ))
+                })?;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+
+    Err(AppError::InvalidInput(format!(
+        "Streamable HTTP MCP Server 没有可用端口，从 {start_port} 开始向后试探时已经到达端口上限"
+    )))
 }
 
 fn audit_to_call_tool_result(audit: AiToolAuditRecord) -> CallToolResult {
@@ -592,8 +638,9 @@ mod tests {
     };
 
     use super::{
-        agent_skill_detail_resource_template, is_externally_callable_tool, normalize_bind_address,
-        DEFAULT_BIND_ADDRESS,
+        agent_skill_detail_resource_template, bind_loopback_port_from, is_externally_callable_tool,
+        normalize_bind_address, requested_start_port, DEFAULT_BIND_ADDRESS, DEFAULT_MCP_HTTP_PORT,
+        MCP_HTTP_PORT_SCAN_LIMIT,
     };
 
     fn tool(id: &str) -> ToolDefinition {
@@ -615,6 +662,8 @@ mod tests {
     fn filters_client_action_tools_from_external_mcp_surface() {
         assert!(!is_externally_callable_tool(&tool("terminal.create")));
         assert!(!is_externally_callable_tool(&tool("workspace.split_pane")));
+        assert!(!is_externally_callable_tool(&tool("workspace.focus_tab")));
+        assert!(!is_externally_callable_tool(&tool("workspace.open_tool")));
         assert!(!is_externally_callable_tool(&tool("ssh.connect")));
         assert!(is_externally_callable_tool(&tool("terminal.list")));
     }
@@ -630,6 +679,36 @@ mod tests {
             DEFAULT_BIND_ADDRESS.to_owned()
         );
         assert!(normalize_bind_address(Some("0.0.0.0")).is_err());
+    }
+
+    #[test]
+    fn uses_fixed_default_mcp_http_port() {
+        assert_eq!(requested_start_port(None), DEFAULT_MCP_HTTP_PORT);
+        assert_eq!(requested_start_port(Some(0)), DEFAULT_MCP_HTTP_PORT);
+        assert_eq!(requested_start_port(Some(48123)), 48123);
+    }
+
+    #[tokio::test]
+    async fn moves_to_next_loopback_port_when_start_port_is_occupied() {
+        let (occupied, occupied_port) = occupied_loopback_port_below_scan_ceiling().await;
+
+        let (_listener, local_addr) = bind_loopback_port_from(occupied_port).await.unwrap();
+
+        assert!(local_addr.port() > occupied_port);
+        assert!(local_addr.port() - occupied_port < MCP_HTTP_PORT_SCAN_LIMIT);
+        drop(occupied);
+    }
+
+    async fn occupied_loopback_port_below_scan_ceiling() -> (tokio::net::TcpListener, u16) {
+        for _ in 0..128 {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            if port <= u16::MAX - MCP_HTTP_PORT_SCAN_LIMIT {
+                return (listener, port);
+            }
+        }
+
+        panic!("could not reserve a loopback test port below the scan ceiling");
     }
 
     #[test]

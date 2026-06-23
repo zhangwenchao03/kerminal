@@ -18,6 +18,20 @@ export interface BroadcastCommandAnalysis {
   targets: BroadcastCommandTarget[];
 }
 
+const broadcastableModes = new Set<TerminalPane["mode"]>([
+  "local",
+  "ssh",
+  "telnet",
+  "serial",
+  "container",
+]);
+const nonLocalConfirmationModes = new Set<TerminalPane["mode"]>([
+  "ssh",
+  "telnet",
+  "serial",
+  "container",
+]);
+
 const destructivePatterns: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /\brm\s+(-[^\s]*r[^\s]*f|-rf|-fr)\b/i, reason: "包含 rm 递归删除" },
   { pattern: /\bremove-item\b[\s\S]*\b-recurse\b/i, reason: "包含 PowerShell 递归删除" },
@@ -33,6 +47,10 @@ const destructivePatterns: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /\bchmod\s+-R\s+777\b/i, reason: "包含递归放宽权限" },
 ];
 
+export function isBroadcastCommandTargetMode(mode: TerminalPane["mode"]) {
+  return broadcastableModes.has(mode);
+}
+
 export function analyzeBroadcastCommand(
   command: string,
   targets: BroadcastCommandTarget[],
@@ -46,9 +64,9 @@ export function analyzeBroadcastCommand(
     reasons.push(`将发送到 ${targets.length} 个分屏`);
   }
 
-  if (targets.some((target) => target.mode === "ssh" || target.mode === "container")) {
+  if (targets.some((target) => nonLocalConfirmationModes.has(target.mode))) {
     risks.add("remote");
-    reasons.push("包含远程分屏");
+    reasons.push("包含远程或设备分屏");
   }
 
   const destructiveReasons = destructivePatterns

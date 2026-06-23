@@ -34,11 +34,19 @@ import {
   type LlmReasoningEffort,
 } from "./llmProviderModel";
 
-type OperationState = "idle" | "loading" | "saving" | "testing" | "error" | "ok";
+type OperationState =
+  | "idle"
+  | "loading"
+  | "saving"
+  | "testing"
+  | "error"
+  | "ok";
 
 const CONTEXT_WINDOW_TOKENS_PER_K = 1000;
 const CONTEXT_WINDOW_MIN_K = 1;
 const CONTEXT_WINDOW_MAX_K = 2000;
+const llmSecondaryButtonClass =
+  "kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-200";
 
 const contextOptions: Array<{
   label: string;
@@ -91,10 +99,12 @@ export function LlmProviderSettingsSection() {
   const [providers, setProviders] = useState<LlmProvider[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [state, setState] = useState<OperationState>("loading");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let ignored = false;
     setState("loading");
+    setLoadError(null);
     listLlmProviders()
       .then((nextProviders) => {
         if (ignored) {
@@ -108,13 +118,15 @@ export function LlmProviderSettingsSection() {
           setSelectedId(selected.id);
           setDraft(draftFromProvider(selected));
         }
+        setLoadError(null);
         setState("idle");
       })
       .catch((error: unknown) => {
         if (ignored) {
           return;
         }
-        setMessage(errorMessage(error));
+        const message = errorMessage(error);
+        setLoadError(message);
         setState("error");
       });
 
@@ -141,6 +153,7 @@ export function LlmProviderSettingsSection() {
     setDraft(draftFromProvider(provider));
     setApiKey("");
     setMessage(null);
+    setLoadError(null);
     setState("idle");
   };
 
@@ -179,7 +192,9 @@ export function LlmProviderSettingsSection() {
           });
 
       setProviders((current) => {
-        const withoutSaved = current.filter((provider) => provider.id !== saved.id);
+        const withoutSaved = current.filter(
+          (provider) => provider.id !== saved.id,
+        );
         const nextProviders = saved.isDefault
           ? withoutSaved.map((provider) => ({ ...provider, isDefault: false }))
           : withoutSaved;
@@ -225,10 +240,13 @@ export function LlmProviderSettingsSection() {
     setMessage(null);
     try {
       await deleteLlmProvider(draft.id);
-      const nextProviders = providers.filter((provider) => provider.id !== draft.id);
+      const nextProviders = providers.filter(
+        (provider) => provider.id !== draft.id,
+      );
       setProviders(nextProviders);
       const selected =
-        nextProviders.find((provider) => provider.isDefault) ?? nextProviders[0];
+        nextProviders.find((provider) => provider.isDefault) ??
+        nextProviders[0];
       if (selected) {
         setSelectedId(selected.id);
         setDraft(draftFromProvider(selected));
@@ -244,7 +262,7 @@ export function LlmProviderSettingsSection() {
   };
 
   return (
-    <section className="rounded-2xl border border-black/8 bg-white/80 p-5 shadow-sm shadow-black/5 dark:border-white/8 dark:bg-white/6 dark:shadow-black/20">
+    <section className="kerminal-solid-surface rounded-2xl border p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
@@ -258,7 +276,7 @@ export function LlmProviderSettingsSection() {
         </div>
         <button
           aria-label="新增 API 环境"
-          className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-black/10 bg-black/[0.03] px-3 text-sm font-medium text-zinc-700 transition hover:bg-black/[0.06] dark:border-white/10 dark:bg-white/6 dark:text-zinc-200 dark:hover:bg-white/10"
+          className="kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-medium text-zinc-700 transition hover:bg-[var(--surface-hover)] dark:text-zinc-200"
           onClick={createNewDraft}
           title="新增 API 环境"
           type="button"
@@ -269,12 +287,12 @@ export function LlmProviderSettingsSection() {
       </div>
 
       <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(180px,0.28fr)_minmax(0,1fr)]">
-        <aside className="rounded-xl border border-black/8 bg-black/[0.025] p-3 dark:border-white/8 dark:bg-black/20">
+        <aside className="kerminal-muted-surface rounded-xl border p-3">
           <div className="flex items-center justify-between gap-3">
             <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
               API 环境
             </div>
-            <span className="rounded-full border border-black/8 bg-white/70 px-2 py-0.5 text-[11px] text-zinc-500 dark:border-white/8 dark:bg-white/8 dark:text-zinc-400">
+            <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface-field)] px-2 py-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
               {providers.length} 个
             </span>
           </div>
@@ -285,10 +303,10 @@ export function LlmProviderSettingsSection() {
                 <button
                   aria-pressed={provider.id === selectedId}
                   className={cn(
-                    "flex min-h-10 w-full items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-left transition active:scale-[0.99]",
+                    "kerminal-focus-ring kerminal-pressable flex min-h-10 w-full items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-left transition",
                     provider.id === selectedId
-                      ? "border-sky-500/45 bg-sky-500/10 text-zinc-950 shadow-sm shadow-sky-950/10 dark:border-sky-300/35 dark:bg-sky-400/12 dark:text-zinc-50"
-                      : "border-transparent bg-transparent text-zinc-700 hover:border-black/8 hover:bg-black/[0.04] dark:text-zinc-300 dark:hover:border-white/8 dark:hover:bg-white/10",
+                      ? "border-sky-500/45 bg-[var(--surface-selected)] text-zinc-950 shadow-sm shadow-sky-950/10 dark:border-sky-300/35 dark:text-zinc-50"
+                      : "border-transparent bg-transparent text-zinc-700 hover:border-[var(--border-subtle)] hover:bg-[var(--surface-hover)] dark:text-zinc-300",
                   )}
                   key={provider.id}
                   onClick={() => selectProvider(provider)}
@@ -304,15 +322,29 @@ export function LlmProviderSettingsSection() {
                 </button>
               ))}
             </div>
+          ) : state === "loading" ? (
+            <div
+              className="kerminal-muted-surface mt-3 rounded-xl border px-3 py-4 text-sm leading-6 text-zinc-500 dark:text-zinc-400"
+              role="status"
+            >
+              正在读取 API 环境...
+            </div>
+          ) : loadError ? (
+            <div
+              className="mt-3 rounded-xl border border-rose-300/25 bg-rose-500/10 px-3 py-4 text-sm leading-6 text-rose-700 dark:text-rose-100"
+              role="alert"
+            >
+              {loadError}
+            </div>
           ) : (
-            <div className="mt-3 rounded-xl border border-dashed border-black/10 bg-white/60 px-3 py-4 text-sm leading-6 text-zinc-500 dark:border-white/10 dark:bg-white/6 dark:text-zinc-400">
+            <div className="kerminal-muted-surface mt-3 rounded-xl border border-dashed px-3 py-4 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
               还没有 API 环境。填写右侧配置后保存。
             </div>
           )}
         </aside>
 
         <div className="min-w-0 space-y-4">
-          <section className="rounded-xl border border-black/8 bg-black/[0.025] p-4 dark:border-white/8 dark:bg-black/20">
+          <section className="kerminal-muted-surface rounded-xl border p-4">
             <SettingsGroupHeading
               description="决定请求发往哪里，以及凭据如何引用。"
               icon={Globe2}
@@ -350,7 +382,7 @@ export function LlmProviderSettingsSection() {
                 <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                   API Key
                 </span>
-                <div className="mt-1 flex h-9 items-center rounded-xl border border-black/10 bg-white/80 px-2 focus-within:border-sky-500/50 focus-within:ring-4 focus-within:ring-sky-500/15 dark:border-white/10 dark:bg-black/20">
+                <div className="kerminal-field-surface mt-1 flex h-9 items-center rounded-xl border px-2">
                   <KeyRound className="h-4 w-4 text-zinc-400" />
                   <input
                     aria-label="API Key"
@@ -377,7 +409,7 @@ export function LlmProviderSettingsSection() {
           </section>
 
           <div className="grid gap-4 xl:grid-cols-2">
-            <section className="rounded-xl border border-black/8 bg-black/[0.025] p-4 dark:border-white/8 dark:bg-black/20">
+            <section className="kerminal-muted-surface rounded-xl border p-4">
               <SettingsGroupHeading
                 description="控制上下文体量、推理强度和失败重试。"
                 icon={SlidersHorizontal}
@@ -432,7 +464,7 @@ export function LlmProviderSettingsSection() {
               </div>
             </section>
 
-            <section className="rounded-xl border border-black/8 bg-black/[0.025] p-4 dark:border-white/8 dark:bg-black/20">
+            <section className="kerminal-muted-surface rounded-xl border p-4">
               <SettingsGroupHeading
                 description="只在这个环境生效，适合代理和网关调试。"
                 icon={ShieldCheck}
@@ -467,29 +499,11 @@ export function LlmProviderSettingsSection() {
             </section>
           </div>
 
-          <div className="rounded-xl border border-black/8 bg-black/[0.025] p-3 dark:border-white/8 dark:bg-black/20">
-            <div className="flex flex-wrap gap-2">
-              <button
-                className="inline-flex h-9 items-center gap-2 rounded-xl bg-sky-500 px-3 text-sm font-medium text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={state === "saving" || state === "testing"}
-                onClick={saveProvider}
-                type="button"
-              >
-                <Save className="h-4 w-4" />
-                {state === "saving" ? "保存中" : "保存环境"}
-              </button>
-              <button
-                className="inline-flex h-9 items-center gap-2 rounded-xl border border-black/10 bg-white/70 px-3 text-sm text-zinc-700 transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/6 dark:text-zinc-200 dark:hover:bg-white/10"
-                disabled={state === "saving" || state === "testing"}
-                onClick={runDryTest}
-                type="button"
-              >
-                <FlaskConical className="h-4 w-4" />
-                {state === "testing" ? "测试中" : "测试配置"}
-              </button>
+          <div className="kerminal-muted-surface rounded-xl border p-3">
+            <div className="flex flex-wrap justify-end gap-2">
               {selectedProvider ? (
                 <button
-                  className="inline-flex h-9 items-center gap-2 rounded-xl border border-rose-300/30 bg-rose-500/10 px-3 text-sm text-rose-700 transition hover:bg-rose-500/15 dark:text-rose-100"
+                  className="kerminal-focus-ring kerminal-pressable inline-flex h-9 items-center gap-2 rounded-xl border border-rose-300/30 bg-rose-500/10 px-3 text-sm text-rose-700 transition hover:bg-rose-500/15 dark:text-rose-100"
                   onClick={removeProvider}
                   type="button"
                 >
@@ -497,6 +511,24 @@ export function LlmProviderSettingsSection() {
                   删除
                 </button>
               ) : null}
+              <button
+                className={llmSecondaryButtonClass}
+                disabled={state === "saving" || state === "testing"}
+                onClick={runDryTest}
+                type="button"
+              >
+                <FlaskConical className="h-4 w-4" />
+                {state === "testing" ? "测试中" : "测试配置"}
+              </button>
+              <button
+                className="kerminal-focus-ring kerminal-pressable inline-flex h-9 items-center gap-2 rounded-xl bg-sky-500 px-3 text-sm font-medium text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={state === "saving" || state === "testing"}
+                onClick={saveProvider}
+                type="button"
+              >
+                <Save className="h-4 w-4" />
+                {state === "saving" ? "保存中" : "保存环境"}
+              </button>
             </div>
 
             {message ? (
@@ -565,7 +597,7 @@ function TextField({
       </span>
       <input
         aria-label={label}
-        className="mt-1 h-9 w-full rounded-xl border border-black/10 bg-white/80 px-3 text-sm text-zinc-950 outline-none transition focus:border-sky-500/50 focus:ring-4 focus:ring-sky-500/15 dark:border-white/10 dark:bg-black/20 dark:text-zinc-100"
+        className="kerminal-field-surface mt-1 h-9 w-full rounded-xl border px-3 text-sm text-zinc-950 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500"
         onChange={(event) => onChange(event.currentTarget.value)}
         placeholder={placeholder}
         type="text"
@@ -608,7 +640,7 @@ function ContextWindowField({
       <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
         上下文窗口
       </span>
-      <div className="mt-1 flex h-9 items-center rounded-xl border border-black/10 bg-white/80 px-2 focus-within:border-sky-500/50 focus-within:ring-4 focus-within:ring-sky-500/15 dark:border-white/10 dark:bg-black/20">
+      <div className="kerminal-field-surface mt-1 flex h-9 items-center rounded-xl border px-2">
         <input
           aria-label="上下文窗口"
           className="min-w-0 flex-1 bg-transparent px-1 text-sm text-zinc-950 outline-none dark:text-zinc-100"
@@ -621,7 +653,9 @@ function ContextWindowField({
         />
         <span className="shrink-0 text-xs text-zinc-500">k</span>
       </div>
-      <FormHelp>所选模型的最大上下文长度，单位为 k；例如 128 表示 128k。</FormHelp>
+      <FormHelp>
+        所选模型的最大上下文长度，单位为 k；例如 128 表示 128k。
+      </FormHelp>
     </label>
   );
 }
@@ -650,7 +684,7 @@ function NumberField({
       <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
         {label}
       </span>
-      <div className="mt-1 flex h-9 items-center rounded-xl border border-black/10 bg-white/80 px-2 focus-within:border-sky-500/50 focus-within:ring-4 focus-within:ring-sky-500/15 dark:border-white/10 dark:bg-black/20">
+      <div className="kerminal-field-surface mt-1 flex h-9 items-center rounded-xl border px-2">
         <input
           aria-label={label}
           className="min-w-0 flex-1 bg-transparent px-1 text-sm text-zinc-950 outline-none dark:text-zinc-100"
@@ -710,13 +744,9 @@ function BooleanSetting({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-black/8 bg-black/[0.03] px-3 py-2 text-sm text-zinc-700 dark:border-white/8 dark:bg-black/20 dark:text-zinc-300">
+    <div className="kerminal-muted-surface flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300">
       <span>{label}</span>
-      <Switch
-        aria-label={label}
-        checked={checked}
-        onCheckedChange={onChange}
-      />
+      <Switch aria-label={label} checked={checked} onCheckedChange={onChange} />
     </div>
   );
 }
@@ -755,13 +785,19 @@ function errorMessage(error: unknown) {
 }
 
 function contextWindowTokensToK(tokens: number) {
-  return Math.max(CONTEXT_WINDOW_MIN_K, Math.round(tokens / CONTEXT_WINDOW_TOKENS_PER_K));
+  return Math.max(
+    CONTEXT_WINDOW_MIN_K,
+    Math.round(tokens / CONTEXT_WINDOW_TOKENS_PER_K),
+  );
 }
 
 function contextWindowKToTokens(value: number) {
   if (Number.isNaN(value)) {
     return CONTEXT_WINDOW_TOKENS_PER_K;
   }
-  const windowK = Math.min(CONTEXT_WINDOW_MAX_K, Math.max(CONTEXT_WINDOW_MIN_K, value));
+  const windowK = Math.min(
+    CONTEXT_WINDOW_MAX_K,
+    Math.max(CONTEXT_WINDOW_MIN_K, value),
+  );
   return Math.round(windowK * CONTEXT_WINDOW_TOKENS_PER_K);
 }

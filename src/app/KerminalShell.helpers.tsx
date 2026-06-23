@@ -8,6 +8,7 @@ import { convertFileSrc, isTauri } from "@tauri-apps/api/core";
 import { Button } from "../components/ui/button";
 import { ModalShell } from "../components/ui/modal-shell";
 import { cn } from "../lib/cn";
+import { LEFT_RAIL_WIDTH, TOOL_RAIL_WIDTH } from "./KerminalShell.static";
 import type { LocalTerminalCreateOptions } from "../features/machine-sidebar/RemoteHostCreateDialog";
 import type { AppSettings } from "../features/settings/settingsModel";
 import type { Machine, MachineGroup } from "../features/workspace/types";
@@ -61,7 +62,7 @@ export function ShellResizeSeparator({
       role={hidden ? undefined : "separator"}
       tabIndex={hidden ? -1 : 0}
     >
-      <span className="block h-12 w-px rounded-full bg-white/10 transition group-hover:bg-sky-400/70 group-focus-visible:bg-sky-400" />
+      <span className="block h-12 w-px rounded-full bg-transparent transition group-hover:bg-sky-400/70 group-focus-visible:bg-sky-400" />
     </div>
   );
 }
@@ -70,10 +71,10 @@ export function DialogLazyFallback() {
   return (
     <div
       aria-label="正在加载弹窗"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/32 p-4 text-zinc-950 backdrop-blur-md dark:bg-black/48 dark:text-zinc-50"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/30 p-4 text-zinc-950 backdrop-blur-md dark:bg-black/48 dark:text-zinc-50"
       role="status"
     >
-      <div className="rounded-[1.5rem] border border-white/40 bg-white/86 px-5 py-4 text-sm shadow-2xl shadow-black/20 dark:border-white/10 dark:bg-zinc-950/86 dark:shadow-black/50">
+      <div className="kerminal-floating-enter rounded-[1.5rem] border border-[var(--border-subtle)] bg-[var(--surface-overlay)] px-5 py-4 text-sm shadow-2xl shadow-black/20 backdrop-blur-xl dark:shadow-black/50">
         正在加载...
       </div>
     </div>
@@ -102,6 +103,60 @@ export function initialPanelWidth(
     return bounds.min;
   }
   return clampPanelWidth(Math.round(window.innerWidth * viewportRatio), bounds);
+}
+
+export function useViewportWidth() {
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === "undefined" ? 1440 : window.innerWidth,
+  );
+
+  useEffect(() => {
+    const updateViewportWidth = () => setViewportWidth(window.innerWidth);
+    updateViewportWidth();
+    window.addEventListener("resize", updateViewportWidth);
+    return () => window.removeEventListener("resize", updateViewportWidth);
+  }, []);
+
+  return viewportWidth;
+}
+
+export function resolveShellLayout({
+  activeToolOpen,
+  leftPanelCollapsed,
+  leftPanelWidth,
+  toolPanelWidth,
+  viewportWidth,
+}: {
+  activeToolOpen: boolean;
+  leftPanelCollapsed: boolean;
+  leftPanelWidth: number;
+  toolPanelWidth: number;
+  viewportWidth: number;
+}) {
+  const compactShell = viewportWidth < 900;
+  const effectiveLeftPanelCollapsed = leftPanelCollapsed || compactShell;
+  const effectiveRightPanelOpen = activeToolOpen && !compactShell;
+  const leftPanelColumnWidth = effectiveLeftPanelCollapsed
+    ? LEFT_RAIL_WIDTH
+    : leftPanelWidth;
+  const rightPanelColumnWidth = effectiveRightPanelOpen
+    ? toolPanelWidth
+    : TOOL_RAIL_WIDTH;
+
+  return {
+    compactShell,
+    effectiveLeftPanelCollapsed,
+    effectiveRightPanelOpen,
+    gridTemplateColumns: `${leftPanelColumnWidth}px ${
+      effectiveLeftPanelCollapsed ? 0 : 8
+    }px minmax(0, 1fr) ${
+      effectiveRightPanelOpen ? 8 : 0
+    }px ${rightPanelColumnWidth}px`,
+    leftPanelColumnWidth,
+    rightPanelColumnWidth,
+    rightWorkspaceInset:
+      rightPanelColumnWidth + (effectiveRightPanelOpen ? 8 : 0),
+  };
 }
 
 export function isRealRemoteGroup(group: MachineGroup) {
@@ -168,7 +223,8 @@ export function remoteHostCreateRequestFromMachine(
 
   return {
     authType: host.authType,
-    credentialRef: host.credentialRef,
+    credentialRef: host.authType === "key" ? host.credentialRef : undefined,
+    credentialSecret: host.authType === "password" ? host.credentialSecret : undefined,
     groupId: overrides.groupId ?? host.groupId,
     host: host.host,
     name: overrides.name ?? host.name,
@@ -210,7 +266,9 @@ export function remoteHostFromMachine(machine: Machine | undefined): RemoteHost 
   return {
     authType: machine.authType ?? "agent",
     createdAt: machine.createdAt ?? "",
-    credentialRef: machine.credentialRef,
+    credentialRef: machine.authType === "key" ? machine.credentialRef : undefined,
+    credentialSecret:
+      machine.authType === "password" ? machine.credentialSecret : undefined,
     groupId: machine.remoteGroupId,
     host: machine.host ?? machine.description,
     id: machine.id,
@@ -264,9 +322,9 @@ export function DeleteConfirmationDialog({
         </>
       }
       description={description}
-      maxWidthClassName="max-w-md"
       onClose={onClose}
       open={Boolean(pendingDelete)}
+      size="compact"
       title={title}
     >
       {pendingDelete ? (
@@ -367,4 +425,13 @@ function localPathToCssUrl(path: string) {
     return `file://${normalized}`.replace(/"/g, "%22");
   }
   return normalized.replace(/"/g, "%22");
+}
+
+export function workspaceBackgroundColor(
+  windowOpacity: number,
+  resolvedTheme: "dark" | "light",
+) {
+  const opacity = Math.min(Math.max(windowOpacity, 35), 100) / 100;
+  const rgb = resolvedTheme === "dark" ? "16 16 18" : "245 245 247";
+  return `rgb(${rgb} / ${opacity})`;
 }

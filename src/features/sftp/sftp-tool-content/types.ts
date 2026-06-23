@@ -46,6 +46,7 @@ export type SftpMenuAction =
   | "workspace"
   | "preview"
   | "download"
+  | "transferToTarget"
   | "downloadArchive"
   | "downloadClipboard"
   | "copyItem"
@@ -98,12 +99,23 @@ export type RemoteDirectoryListing = {
   path: string;
 };
 
-export type SftpTransferTarget = {
+export type SftpRemoteTransferTarget = {
+  kind: "remote";
   hostId: string;
   hostLabel: string;
   remotePath: string;
   side: "left" | "right";
 };
+
+export type SftpLocalTransferTarget = {
+  kind: "local";
+  localPath: string;
+  side: "left" | "right";
+};
+
+export type SftpTransferTarget =
+  | SftpRemoteTransferTarget
+  | SftpLocalTransferTarget;
 
 export type DockerContainerTargetRef = Extract<
   RemoteTargetRef,

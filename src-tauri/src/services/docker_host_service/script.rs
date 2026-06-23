@@ -31,7 +31,6 @@ pub(super) struct ContainerScriptRequest<'a> {
 
 pub(super) async fn execute_container_script(
     storage: &SqliteStore,
-    credentials: &CredentialService,
     paths: &KerminalPaths,
     ssh_commands: &SshCommandService,
     request: ContainerScriptRequest<'_>,
@@ -45,9 +44,8 @@ pub(super) async fn execute_container_script(
         request.args,
     );
     let output = ssh_commands
-        .execute_with_credentials(
+        .execute_native(
             storage,
-            credentials,
             paths,
             SshCommandRequest {
                 host_id,

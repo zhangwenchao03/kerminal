@@ -3,7 +3,10 @@
 //! @author kongweiguang
 
 use crate::{
-    models::terminal::{SerialTerminalCreateRequest, TerminalOutputEvent, TerminalSessionSummary},
+    models::terminal::{
+        host_terminal_target_ref, SerialTerminalCreateRequest, TerminalOutputEvent,
+        TerminalSessionSummary,
+    },
     state::AppState,
 };
 use tauri::{ipc::Channel, State};
@@ -15,10 +18,12 @@ pub fn serial_create_session(
     output: Channel<TerminalOutputEvent>,
     request: SerialTerminalCreateRequest,
 ) -> Result<TerminalSessionSummary, String> {
+    let target_ref = host_terminal_target_ref("serial", &request.host_id);
     state
         .serial_terminals()
         .create_session(state.storage(), state.terminals(), request, move |event| {
             output.send(event).is_ok()
         })
+        .and_then(|summary| state.terminals().set_target_ref(&summary.id, target_ref))
         .map_err(|error| error.to_string())
 }

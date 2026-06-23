@@ -90,7 +90,9 @@ fn remote_host(auth_type: RemoteHostAuthType) -> RemoteHost {
         port: 2222,
         username: "deploy".to_owned(),
         auth_type,
-        credential_ref: Some("credential:ssh/dev".to_owned()),
+        credential_ref: (auth_type == RemoteHostAuthType::Key)
+            .then(|| "/home/deploy/.ssh/id_ed25519".to_owned()),
+        credential_secret: None,
         tags: vec!["dev".to_owned()],
         production: false,
         ssh_options: Default::default(),

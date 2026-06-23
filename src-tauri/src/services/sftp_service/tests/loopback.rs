@@ -12,13 +12,90 @@ impl Drop for LoopbackSftpServer {
     }
 }
 
+#[derive(Debug)]
+pub(super) struct LoopbackSftpJumpServer {
+    pub(super) addr: SocketAddr,
+    pub(super) direct_tcpip_requests: Arc<AtomicUsize>,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for LoopbackSftpJumpServer {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+struct LoopbackSftpJumpServerState {
+    direct_tcpip_requests: Arc<AtomicUsize>,
+    target_addr: SocketAddr,
+}
+
+struct LoopbackSftpJumpSession {
+    direct_tcpip_requests: Arc<AtomicUsize>,
+    target_addr: SocketAddr,
+}
+
+impl russh::server::Server for LoopbackSftpJumpServerState {
+    type Handler = LoopbackSftpJumpSession;
+
+    fn new_client(&mut self, _peer_addr: Option<SocketAddr>) -> Self::Handler {
+        LoopbackSftpJumpSession {
+            direct_tcpip_requests: Arc::clone(&self.direct_tcpip_requests),
+            target_addr: self.target_addr,
+        }
+    }
+}
+
+impl russh::server::Handler for LoopbackSftpJumpSession {
+    type Error = russh::Error;
+
+    async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
+        if user == "jump" && password == "jump-secret" {
+            Ok(Auth::Accept)
+        } else {
+            Ok(Auth::reject())
+        }
+    }
+
+    async fn channel_open_direct_tcpip(
+        &mut self,
+        channel: Channel<Msg>,
+        host_to_connect: &str,
+        port_to_connect: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        _session: &mut Session,
+    ) -> Result<bool, Self::Error> {
+        if host_to_connect != self.target_addr.ip().to_string()
+            || port_to_connect != u32::from(self.target_addr.port())
+        {
+            return Ok(false);
+        }
+
+        self.direct_tcpip_requests
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let target_addr = self.target_addr;
+        tokio::spawn(async move {
+            if let Ok(mut target_stream) = tokio::net::TcpStream::connect(target_addr).await {
+                let mut channel_stream = channel.into_stream();
+                let _ =
+                    tokio::io::copy_bidirectional(&mut channel_stream, &mut target_stream).await;
+            }
+        });
+
+        Ok(true)
+    }
+}
+
 #[derive(Clone)]
 struct LoopbackSshServer {
     root: PathBuf,
+    symlinks: Arc<HashMap<String, String>>,
 }
 
 struct LoopbackSshSession {
     root: PathBuf,
+    symlinks: Arc<HashMap<String, String>>,
     channels: tokio::sync::Mutex<HashMap<ChannelId, Channel<Msg>>>,
     exec_scripts: HashMap<ChannelId, Vec<u8>>,
 }
@@ -29,6 +106,7 @@ impl russh::server::Server for LoopbackSshServer {
     fn new_client(&mut self, _peer_addr: Option<SocketAddr>) -> Self::Handler {
         LoopbackSshSession {
             root: self.root.clone(),
+            symlinks: self.symlinks.clone(),
             channels: tokio::sync::Mutex::new(HashMap::new()),
             exec_scripts: HashMap::new(),
         }
@@ -126,7 +204,7 @@ impl russh::server::Handler for LoopbackSshSession {
         session.channel_success(channel_id)?;
         russh_sftp::server::run(
             channel.into_stream(),
-            LoopbackSftpFs::new(self.root.clone()),
+            LoopbackSftpFs::with_symlinks(self.root.clone(), self.symlinks.clone()),
         )
         .await;
         Ok(())
@@ -184,6 +262,7 @@ fn parse_shell_single_quoted_string(value: &str) -> Option<String> {
 
 struct LoopbackSftpFs {
     root: PathBuf,
+    symlinks: Arc<HashMap<String, String>>,
     next_handle: u64,
     handles: HashMap<String, LoopbackSftpHandle>,
 }
@@ -200,8 +279,13 @@ enum LoopbackSftpHandle {
 
 impl LoopbackSftpFs {
     fn new(root: PathBuf) -> Self {
+        Self::with_symlinks(root, Arc::new(HashMap::new()))
+    }
+
+    fn with_symlinks(root: PathBuf, symlinks: Arc<HashMap<String, String>>) -> Self {
         Self {
             root,
+            symlinks,
             next_handle: 0,
             handles: HashMap::new(),
         }
@@ -213,6 +297,13 @@ impl LoopbackSftpFs {
     }
 
     fn resolve_path(&self, remote_path: &str) -> Result<PathBuf, StatusCode> {
+        let resolved = self
+            .virtual_symlink_target(remote_path)
+            .unwrap_or_else(|| remote_path.to_owned());
+        self.resolve_physical_path(&resolved)
+    }
+
+    fn resolve_physical_path(&self, remote_path: &str) -> Result<PathBuf, StatusCode> {
         let mut local_path = self.root.clone();
         let normalized = remote_path.replace('\\', "/");
         for segment in normalized.split('/') {
@@ -232,6 +323,21 @@ impl LoopbackSftpFs {
             id,
             attrs: FileAttributes::from(&metadata),
         })
+    }
+
+    async fn symlink_attrs_for_path(&self, id: u32, path: String) -> Result<Attrs, StatusCode> {
+        let Some(target) = self.virtual_symlink_target(&path) else {
+            return self.attrs_for_path(id, path).await;
+        };
+        let mut attrs = FileAttributes::empty();
+        attrs.size = Some(target.len() as u64);
+        attrs.permissions = Some(0o120777);
+        Ok(Attrs { id, attrs })
+    }
+
+    fn virtual_symlink_target(&self, remote_path: &str) -> Option<String> {
+        let normalized = normalize_loopback_remote_path(remote_path);
+        self.symlinks.get(&normalized).cloned()
     }
 
     fn ok(id: u32) -> Status {
@@ -331,7 +437,7 @@ impl russh_sftp::server::Handler for LoopbackSftpFs {
     }
 
     async fn lstat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
-        self.attrs_for_path(id, path).await
+        self.symlink_attrs_for_path(id, path).await
     }
 
     async fn fstat(&mut self, id: u32, handle: String) -> Result<Attrs, Self::Error> {
@@ -369,6 +475,9 @@ impl russh_sftp::server::Handler for LoopbackSftpFs {
     }
 
     async fn opendir(&mut self, id: u32, path: String) -> Result<Handle, Self::Error> {
+        if self.virtual_symlink_target(&path).is_some() {
+            return Err(StatusCode::Failure);
+        }
         let local_path = self.resolve_path(&path)?;
         let mut entries = fs::read_dir(local_path).await.map_err(Self::io_status)?;
         let mut files = Vec::new();
@@ -448,14 +557,37 @@ impl russh_sftp::server::Handler for LoopbackSftpFs {
     }
 
     async fn realpath(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
+        if let Some(target) = self.virtual_symlink_target(&path) {
+            return Ok(Name {
+                id,
+                files: vec![ProtocolFile::dummy(target)],
+            });
+        }
         Ok(Name {
             id,
             files: vec![ProtocolFile::dummy(path)],
         })
     }
+
+    async fn readlink(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
+        let Some(target) = self.virtual_symlink_target(&path) else {
+            return Err(StatusCode::NoSuchFile);
+        };
+        Ok(Name {
+            id,
+            files: vec![ProtocolFile::dummy(target)],
+        })
+    }
 }
 
 pub(super) async fn start_loopback_sftp_server(root: PathBuf) -> LoopbackSftpServer {
+    start_loopback_sftp_server_with_symlinks(root, Vec::new()).await
+}
+
+pub(super) async fn start_loopback_sftp_server_with_symlinks(
+    root: PathBuf,
+    symlinks: Vec<(String, String)>,
+) -> LoopbackSftpServer {
     let listener = TcpListener::bind(("127.0.0.1", 0))
         .await
         .expect("bind loopback SFTP server");
@@ -469,11 +601,70 @@ pub(super) async fn start_loopback_sftp_server(root: PathBuf) -> LoopbackSftpSer
         maximum_packet_size: 65_535,
         ..Default::default()
     };
+    let symlinks = Arc::new(
+        symlinks
+            .into_iter()
+            .map(|(link, target)| {
+                (
+                    normalize_loopback_remote_path(&link),
+                    normalize_loopback_remote_path(&target),
+                )
+            })
+            .collect(),
+    );
     let task = tokio::spawn(async move {
-        let mut server = LoopbackSshServer { root };
+        let mut server = LoopbackSshServer { root, symlinks };
         let running = server.run_on_socket(Arc::new(config), &listener);
         let _ = running.await;
     });
 
     LoopbackSftpServer { addr, task }
+}
+
+pub(super) async fn start_loopback_sftp_jump_server(
+    target_addr: SocketAddr,
+) -> LoopbackSftpJumpServer {
+    let listener = TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("bind loopback SFTP jump server");
+    let addr = listener.local_addr().expect("loopback SFTP jump address");
+    let private_key = PrivateKey::random(&mut rand::rng(), keys::Algorithm::Ed25519)
+        .expect("generate loopback SFTP jump host key");
+    let config = russh::server::Config {
+        auth_rejection_time: Duration::from_millis(0),
+        auth_rejection_time_initial: Some(Duration::from_millis(0)),
+        keys: vec![private_key],
+        maximum_packet_size: 65_535,
+        ..Default::default()
+    };
+    let direct_tcpip_requests = Arc::new(AtomicUsize::new(0));
+    let counters = Arc::clone(&direct_tcpip_requests);
+    let task = tokio::spawn(async move {
+        let mut server = LoopbackSftpJumpServerState {
+            direct_tcpip_requests: counters,
+            target_addr,
+        };
+        let running = server.run_on_socket(Arc::new(config), &listener);
+        let _ = running.await;
+    });
+
+    LoopbackSftpJumpServer {
+        addr,
+        direct_tcpip_requests,
+        task,
+    }
+}
+
+fn normalize_loopback_remote_path(path: &str) -> String {
+    let mut normalized = path.trim().replace('\\', "/");
+    if normalized.is_empty() {
+        return "/".to_owned();
+    }
+    if !normalized.starts_with('/') {
+        normalized = format!("/{normalized}");
+    }
+    while normalized.len() > 1 && normalized.ends_with('/') {
+        normalized.pop();
+    }
+    normalized
 }

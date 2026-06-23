@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { MessageSquare, Plus, Puzzle, RefreshCw, Route, Server } from "lucide-react";
+import {
+  MessageSquare,
+  Plus,
+  Puzzle,
+  RefreshCw,
+  Route,
+  Server,
+} from "lucide-react";
 import { cn } from "../../../lib/cn";
 import {
   getAppSkillsDirectory,
@@ -41,6 +48,9 @@ import type {
   McpTransportDefinition,
 } from "./types";
 
+const mcpSectionButtonClass =
+  "kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex h-9 items-center justify-center gap-2 rounded-xl border px-3 text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-200";
+
 export function McpSkillsSettingsSection({
   error,
   manifest,
@@ -65,8 +75,9 @@ export function McpSkillsSettingsSection({
   const [httpServerError, setHttpServerError] = useState<string | null>(null);
   const [httpServerState, setHttpServerState] =
     useState<McpHttpServerLoadState>("idle");
-  const [serverDraft, setServerDraft] =
-    useState<CustomMcpServerSetting | null>(null);
+  const [serverDraft, setServerDraft] = useState<CustomMcpServerSetting | null>(
+    null,
+  );
   const [skillDirectoryError, setSkillDirectoryError] = useState<string | null>(
     null,
   );
@@ -255,7 +266,7 @@ export function McpSkillsSettingsSection({
   }, [externalMcpTransports.length, httpServerState, httpServerStatus]);
 
   return (
-    <section className="rounded-2xl border border-black/8 bg-white/80 p-5 shadow-sm shadow-black/5 dark:border-white/8 dark:bg-white/6 dark:shadow-black/20">
+    <section className="kerminal-solid-surface rounded-2xl border p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
@@ -270,7 +281,7 @@ export function McpSkillsSettingsSection({
         </div>
         <button
           aria-label="刷新 MCP / Skills"
-          className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-black/10 bg-white/80 px-3 text-sm text-zinc-700 transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/8 dark:text-zinc-200 dark:hover:bg-white/12"
+          className={mcpSectionButtonClass}
           disabled={state === "loading"}
           onClick={onRefresh}
           type="button"
@@ -298,7 +309,7 @@ export function McpSkillsSettingsSection({
             <McpCapabilityMetric label="系统 Skills" value={systemSkillCount} />
           </div>
 
-          <section className="rounded-xl border border-black/8 bg-black/[0.025] p-4 dark:border-white/8 dark:bg-black/20">
+          <section className="kerminal-muted-surface rounded-xl border p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
@@ -308,7 +319,7 @@ export function McpSkillsSettingsSection({
                   {manifest.agent.role}
                 </p>
               </div>
-              <span className="shrink-0 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-200">
+              <span className="shrink-0 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-100">
                 {manifest.security.requiresKerminalConfirmation
                   ? "受控确认"
                   : "直接执行"}
@@ -317,7 +328,7 @@ export function McpSkillsSettingsSection({
             <div className="mt-3 flex flex-wrap gap-1.5">
               {manifest.agent.capabilities.map((capability) => (
                 <span
-                  className="rounded-full bg-white px-2 py-1 text-xs text-zinc-600 shadow-sm shadow-black/5 dark:bg-white/8 dark:text-zinc-300"
+                  className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface-field)] px-2 py-1 text-xs text-zinc-600 shadow-sm shadow-black/5 dark:text-zinc-300"
                   key={capability.id}
                 >
                   {capability.title}
@@ -326,13 +337,13 @@ export function McpSkillsSettingsSection({
             </div>
           </section>
 
-          <section className="rounded-xl border border-black/8 bg-black/[0.025] p-4 dark:border-white/8 dark:bg-black/20">
+          <section className="kerminal-muted-surface rounded-xl border p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
                 <Server className="h-4 w-4 text-zinc-400" />
                 系统 MCP 服务 / 外部集成
               </h3>
-              <span className="rounded-full bg-black/[0.04] px-3 py-1 text-xs text-zinc-500 dark:bg-white/8 dark:text-zinc-400">
+              <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface-field)] px-3 py-1 text-xs text-zinc-500 dark:text-zinc-400">
                 Claude / Codex / MCP Client
               </span>
             </div>
@@ -379,7 +390,7 @@ export function McpSkillsSettingsSection({
             />
           </div>
 
-          <section className="rounded-xl border border-black/8 bg-black/[0.025] p-4 dark:border-white/8 dark:bg-black/20">
+          <section className="kerminal-muted-surface rounded-xl border p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
                 <Route className="h-4 w-4 text-zinc-400" />
@@ -389,8 +400,8 @@ export function McpSkillsSettingsSection({
                 className={cn(
                   "rounded-full px-3 py-1 text-xs font-medium",
                   coverage.missingToolIds.length === 0
-                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
-                    : "bg-amber-500/10 text-amber-700 dark:text-amber-100",
+                    ? "border border-emerald-400/20 bg-emerald-400/10 text-emerald-700 dark:text-emerald-100"
+                    : "border border-amber-400/20 bg-amber-400/10 text-amber-700 dark:text-amber-100",
                 )}
               >
                 {coverage.missingToolIds.length === 0
@@ -404,7 +415,7 @@ export function McpSkillsSettingsSection({
               ) : (
                 systemSkills.map((skill) => (
                   <div
-                    className="rounded-xl border border-black/8 bg-white/70 p-3 dark:border-white/8 dark:bg-white/6"
+                    className="kerminal-solid-surface rounded-xl border p-3"
                     key={skill.id}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -416,7 +427,7 @@ export function McpSkillsSettingsSection({
                           {skill.whenToUse}
                         </p>
                       </div>
-                      <span className="shrink-0 rounded-full bg-black/[0.04] px-2 py-1 text-[11px] text-zinc-500 dark:bg-white/8 dark:text-zinc-400">
+                      <span className="shrink-0 rounded-full border border-[var(--border-subtle)] bg-[var(--surface-field)] px-2 py-1 text-[11px] text-zinc-500 dark:text-zinc-400">
                         {skill.toolIds.length} tools
                       </span>
                     </div>
@@ -431,7 +442,10 @@ export function McpSkillsSettingsSection({
           </section>
         </div>
       ) : (
-        <div className="mt-5 rounded-xl border border-black/8 bg-black/[0.025] px-4 py-6 text-center text-sm text-zinc-500 dark:border-white/8 dark:bg-black/20 dark:text-zinc-400">
+        <div
+          className="kerminal-muted-surface mt-5 rounded-xl border px-4 py-6 text-center text-sm text-zinc-500 dark:text-zinc-400"
+          role="status"
+        >
           {state === "loading"
             ? "正在读取 MCP manifest..."
             : "暂未读取 MCP manifest"}
@@ -444,20 +458,20 @@ export function McpSkillsSettingsSection({
             <Server className="h-4 w-4 text-zinc-400" />
             用户自定义 MCP / Skills
           </h3>
-          <span className="rounded-full bg-black/[0.04] px-3 py-1 text-xs text-zinc-500 dark:bg-white/8 dark:text-zinc-400">
+          <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface-field)] px-3 py-1 text-xs text-zinc-500 dark:text-zinc-400">
             仅影响本机扩展
           </span>
         </div>
 
         <div className="mt-3 grid gap-4">
-          <section className="rounded-xl border border-black/8 bg-black/[0.025] p-4 dark:border-white/8 dark:bg-black/20">
+          <section className="kerminal-muted-surface rounded-xl border p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
                 <Server className="h-4 w-4 text-zinc-400" />
                 用户自定义 MCP Servers
               </h3>
               <button
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-black/10 bg-white/80 px-3 text-sm text-zinc-700 transition hover:bg-black/[0.04] dark:border-white/10 dark:bg-white/8 dark:text-zinc-200 dark:hover:bg-white/12"
+                className={mcpSectionButtonClass}
                 onClick={() =>
                   setServerDraft(
                     createCustomMcpServer(normalizedMcp.servers.length),
@@ -499,13 +513,13 @@ export function McpSkillsSettingsSection({
             </div>
           </section>
 
-          <section className="rounded-xl border border-black/8 bg-black/[0.025] p-4 dark:border-white/8 dark:bg-black/20">
+          <section className="kerminal-muted-surface rounded-xl border p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
                 <Route className="h-4 w-4 text-zinc-400" />
                 用户自定义 Skills 文件夹
               </h3>
-              <span className="rounded-full bg-black/[0.04] px-3 py-1 text-xs text-zinc-500 dark:bg-white/8 dark:text-zinc-400">
+              <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface-field)] px-3 py-1 text-xs text-zinc-500 dark:text-zinc-400">
                 自动扫描
               </span>
             </div>

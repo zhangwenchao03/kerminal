@@ -7,7 +7,7 @@ use rusqlite::{params, Connection, Row};
 use crate::{
     error::AppResult,
     models::{
-        ai_tool_invocation::{AiToolAuditRecord, AiToolInvocationStatus},
+        ai_tool_invocation::{AiToolAuditContext, AiToolAuditRecord, AiToolInvocationStatus},
         tool_registry::{ToolConfirmationPolicy, ToolRiskLevel},
     },
     storage::SqliteStore,
@@ -22,9 +22,9 @@ impl SqliteStore {
                 INSERT INTO ai_tool_audits (
                     id, invocation_id, tool_id, tool_title, risk, confirmation,
                     arguments_summary, risk_summary, status, result_summary,
-                    error, created_at, completed_at
+                    error, created_at, completed_at, audit_context_json, observation_json
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
                 ",
                 params![
                     audit.id.as_str(),
@@ -40,6 +40,8 @@ impl SqliteStore {
                     audit.error.as_deref(),
                     audit.created_at.as_str(),
                     audit.completed_at.as_str(),
+                    audit_context_to_json(audit)?,
+                    observation_to_json(audit)?,
                 ],
             )?;
             Ok(())
@@ -70,7 +72,7 @@ fn list_audits(conn: &Connection, limit: i64) -> AppResult<Vec<AiToolAuditRecord
         "
         SELECT id, invocation_id, tool_id, tool_title, risk, confirmation,
                arguments_summary, risk_summary, status, result_summary,
-               error, created_at, completed_at
+               error, created_at, completed_at, audit_context_json, observation_json
         FROM ai_tool_audits
         ORDER BY CAST(completed_at AS INTEGER) DESC, rowid DESC
         LIMIT ?1
@@ -102,7 +104,43 @@ fn audit_from_row(row: &Row<'_>) -> rusqlite::Result<AiToolAuditRecord> {
         error: row.get(10)?,
         created_at: row.get(11)?,
         completed_at: row.get(12)?,
+        audit_context: audit_context_from_json(row.get::<_, Option<String>>(13)?.as_deref())?,
+        observation_json: observation_from_json(row.get::<_, Option<String>>(14)?.as_deref())?,
     })
+}
+
+fn audit_context_to_json(audit: &AiToolAuditRecord) -> rusqlite::Result<Option<String>> {
+    audit
+        .audit_context
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|error| text_to_sqlite_error(error.to_string()))
+}
+
+fn audit_context_from_json(value: Option<&str>) -> rusqlite::Result<Option<AiToolAuditContext>> {
+    value
+        .filter(|text| !text.trim().is_empty())
+        .map(serde_json::from_str)
+        .transpose()
+        .map_err(|error| text_to_sqlite_error(error.to_string()))
+}
+
+fn observation_to_json(audit: &AiToolAuditRecord) -> rusqlite::Result<Option<String>> {
+    audit
+        .observation_json
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|error| text_to_sqlite_error(error.to_string()))
+}
+
+fn observation_from_json(value: Option<&str>) -> rusqlite::Result<Option<serde_json::Value>> {
+    value
+        .filter(|text| !text.trim().is_empty())
+        .map(serde_json::from_str)
+        .transpose()
+        .map_err(|error| text_to_sqlite_error(error.to_string()))
 }
 
 fn risk_to_db(risk: ToolRiskLevel) -> &'static str {

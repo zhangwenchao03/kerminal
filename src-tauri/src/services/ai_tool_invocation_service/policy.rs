@@ -28,7 +28,7 @@ pub(super) fn invocation_policy_overlay(
                 risk_summary: Some(risk_summary),
             }
         }
-        "ssh.command" => {
+        "ssh.command" | "ssh.command_on_resolved_host" => {
             let Some(command) = arguments.get("command").and_then(Value::as_str) else {
                 return InvocationPolicyOverlay::default();
             };

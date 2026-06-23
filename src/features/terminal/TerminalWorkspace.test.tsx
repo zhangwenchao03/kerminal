@@ -1,44 +1,74 @@
-import { useState, type ComponentProps, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultAppSettings } from "../settings/settingsModel";
 import type { TerminalPane, TerminalTab } from "../workspace/types";
 import { TerminalWorkspace } from "./TerminalWorkspace";
+import {
+  alternateLocalTabs,
+  baseTerminalPane,
+  baseTerminalTab,
+  batchPanes,
+  batchTabs,
+  crashingPane,
+  crashingTabs,
+  groupedSshPanes,
+  groupedSshTabs,
+  manyTerminalTabs,
+  mixedSplitPanes,
+  mixedSplitTabs,
+  sftpTransferTab,
+  workspaceProps,
+} from "./TerminalWorkspace.testSupport";
 
 const xtermPaneMockState = vi.hoisted(() => ({
+  mountedPaneIds: [] as string[],
   renderCount: 0,
   shouldThrow: false,
+  unmountedPaneIds: [] as string[],
 }));
 
-vi.mock("./XtermPane", () => ({
-  XtermPane: ({
-    onOpenLogs,
-    onSplitPane,
-    title,
-  }: {
-    onOpenLogs?: () => void;
-    onSplitPane?: (direction: "horizontal" | "vertical") => void;
-    title: string;
-  }) => {
-    xtermPaneMockState.renderCount += 1;
-    if (xtermPaneMockState.shouldThrow) {
-      throw new Error("xterm render exploded");
-    }
+vi.mock("./XtermPane", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
 
-    return (
-      <div aria-label={`${title} xterm 终端`}>
-        本地终端测试替身
-        <button onClick={onOpenLogs} type="button">
-          测试打开日志
-        </button>
-        <button onClick={() => onSplitPane?.("horizontal")} type="button">
-          测试左右分屏
-        </button>
-      </div>
-    );
-  },
-}));
+  return {
+    XtermPane: ({
+      onOpenLogs,
+      onSplitPane,
+      paneId,
+      title,
+    }: {
+      onOpenLogs?: () => void;
+      onSplitPane?: (direction: "horizontal" | "vertical") => void;
+      paneId: string;
+      title: string;
+    }) => {
+      xtermPaneMockState.renderCount += 1;
+      React.useEffect(() => {
+        xtermPaneMockState.mountedPaneIds.push(paneId);
+        return () => {
+          xtermPaneMockState.unmountedPaneIds.push(paneId);
+        };
+      }, [paneId]);
+      if (xtermPaneMockState.shouldThrow) {
+        throw new Error("xterm render exploded");
+      }
+
+      return (
+        <div aria-label={`${title} xterm 终端`}>
+          本地终端测试替身
+          <button onClick={onOpenLogs} type="button">
+            测试打开日志
+          </button>
+          <button onClick={() => onSplitPane?.("horizontal")} type="button">
+            测试左右分屏
+          </button>
+        </div>
+      );
+    },
+  };
+});
 
 vi.mock("../../components/ui/resizable", () => ({
   ResizableHandle: ({ "aria-label": ariaLabel }: { "aria-label"?: string }) => (
@@ -52,272 +82,16 @@ vi.mock("../../components/ui/resizable", () => ({
   ),
 }));
 
-type TerminalWorkspaceProps = ComponentProps<typeof TerminalWorkspace>;
-
-const baseTerminalPane: TerminalPane = {
-  id: "pane-local",
-  lines: [],
-  machineId: "local-powershell",
-  mode: "local",
-  prompt: "PS>",
-  status: "online",
-  title: "本地 PowerShell",
-};
-
-const baseTerminalTab: TerminalTab = {
-  id: "tab-local",
-  layout: {
-    type: "pane",
-    paneId: "pane-local",
-  },
-  machineId: "local-powershell",
-  title: "本地 PowerShell",
-};
-
-const sftpTransferTab: TerminalTab = {
-  id: "tab-sftp-transfer-1",
-  kind: "sftpTransfer",
-  leftHostId: "host-left",
-  lockedLeftHostId: "host-left",
-  machineId: "host-left",
-  rightHostId: "host-right",
-  title: "host-left 传输",
-};
-
-function workspaceProps(
-  overrides: Partial<TerminalWorkspaceProps> = {},
-): TerminalWorkspaceProps {
-  return {
-    activeTabId: "tab-local",
-    broadcastDraft: "",
-    focusedPaneId: "pane-local",
-    onBroadcastCommand: vi.fn().mockResolvedValue({
-      missingPaneIds: [],
-      sentPaneIds: ["pane-local"],
-    }),
-    onBroadcastDraftChange: vi.fn(),
-    onClosePane: vi.fn(),
-    onCloseTab: vi.fn(),
-    onFocusPane: vi.fn(),
-    onRenameTab: vi.fn(),
-    onSelectTab: vi.fn(),
-    onSplitPane: vi.fn(),
-    panes: [baseTerminalPane],
-    resolvedTheme: "dark",
-    tabs: [baseTerminalTab],
-    terminalAppearance: defaultAppSettings.terminal,
-    ...overrides,
-  };
-}
-
-const batchPanes = [
-  {
-    ...baseTerminalPane,
-    id: "pane-batch-local",
-    mode: "local" as const,
-    title: "本地批量",
-  },
-  {
-    ...baseTerminalPane,
-    id: "pane-batch-ssh",
-    machineId: "host-batch",
-    mode: "ssh" as const,
-    remoteHostId: "host-batch",
-    title: "SSH 批量",
-  },
-];
-
-const batchTabs = [
-  {
-    id: "tab-batch",
-    layout: {
-      type: "split" as const,
-      id: "split-batch",
-      direction: "horizontal" as const,
-      children: [
-        { type: "pane" as const, paneId: "pane-batch-local" },
-        { type: "pane" as const, paneId: "pane-batch-ssh" },
-      ],
-    },
-    machineId: "host-batch",
-    title: "批量终端",
-  },
-];
-
-const mixedSplitPanes = [
-  {
-    ...baseTerminalPane,
-    id: "pane-split-local",
-    mode: "local" as const,
-    title: "分屏本地",
-  },
-  {
-    ...baseTerminalPane,
-    id: "pane-split-preview",
-    mode: "preview" as const,
-    title: "辅助分屏",
-  },
-];
-
-const mixedSplitTabs = [
-  {
-    id: "tab-mixed-split",
-    layout: {
-      type: "split" as const,
-      id: "split-mixed",
-      direction: "horizontal" as const,
-      children: [
-        { type: "pane" as const, paneId: "pane-split-local" },
-        { type: "pane" as const, paneId: "pane-split-preview" },
-      ],
-    },
-    machineId: "local-powershell",
-    title: "混合分屏",
-  },
-];
-
-const previewOnlyPanes = [
-  {
-    ...baseTerminalPane,
-    id: "pane-preview-a",
-    mode: "preview" as const,
-    title: "只读分屏 A",
-  },
-  {
-    ...baseTerminalPane,
-    id: "pane-preview-b",
-    mode: "preview" as const,
-    title: "只读分屏 B",
-  },
-];
-
-const previewOnlyTabs = [
-  {
-    id: "tab-preview-only",
-    layout: {
-      type: "split" as const,
-      id: "split-preview-only",
-      direction: "horizontal" as const,
-      children: [
-        { type: "pane" as const, paneId: "pane-preview-a" },
-        { type: "pane" as const, paneId: "pane-preview-b" },
-      ],
-    },
-    machineId: "local-powershell",
-    title: "只读分屏",
-  },
-];
-
-const alternateLocalTabs = [
-  baseTerminalTab,
-  {
-    id: "tab-alt-local",
-    layout: {
-      type: "pane" as const,
-      paneId: "pane-local",
-    },
-    machineId: "local-powershell",
-    title: "备用本地终端",
-  },
-];
-
-const manyTerminalTabs: TerminalTab[] = Array.from(
-  { length: 12 },
-  (_, index) => ({
-    id: `tab-many-${index + 1}`,
-    layout: {
-      type: "pane" as const,
-      paneId: "pane-local",
-    },
-    machineId: `host-many-${index + 1}`,
-    title: `远程会话 ${index + 1}`,
-  }),
-);
-
-const groupedSshPanes = [
-  {
-    ...baseTerminalPane,
-    id: "pane-dev-a",
-    machineId: "host-dev",
-    mode: "ssh" as const,
-    remoteHostId: "host-dev",
-    title: "dev session A",
-  },
-  {
-    ...baseTerminalPane,
-    id: "pane-dev-b",
-    machineId: "host-dev",
-    mode: "ssh" as const,
-    remoteHostId: "host-dev",
-    title: "dev session B",
-  },
-  {
-    ...baseTerminalPane,
-    id: "pane-lab",
-    machineId: "host-lab",
-    mode: "ssh" as const,
-    remoteHostId: "host-lab",
-    title: "lab session",
-  },
-];
-
-const groupedSshTabs = [
-  {
-    id: "tab-dev-a",
-    layout: {
-      type: "pane" as const,
-      paneId: "pane-dev-a",
-    },
-    machineId: "host-dev",
-    title: "dev.internal",
-  },
-  {
-    id: "tab-dev-b",
-    layout: {
-      type: "pane" as const,
-      paneId: "pane-dev-b",
-    },
-    machineId: "host-dev",
-    title: "dev.internal #2",
-  },
-  {
-    id: "tab-lab",
-    layout: {
-      type: "pane" as const,
-      paneId: "pane-lab",
-    },
-    machineId: "host-lab",
-    title: "lab.internal",
-  },
-];
-
-const crashingPane = {
-  ...baseTerminalPane,
-  id: "pane-crash",
-  mode: "local" as const,
-  title: "崩溃终端",
-};
-
-const crashingTabs = [
-  {
-    id: "tab-crash",
-    layout: {
-      type: "pane" as const,
-      paneId: "pane-crash",
-    },
-    machineId: "local-powershell",
-    title: "异常分屏",
-  },
-];
-
 describe("TerminalWorkspace", () => {
   afterEach(() => {
     document.documentElement.classList.remove("dark");
   });
 
   beforeEach(() => {
+    xtermPaneMockState.mountedPaneIds = [];
     xtermPaneMockState.renderCount = 0;
     xtermPaneMockState.shouldThrow = false;
+    xtermPaneMockState.unmountedPaneIds = [];
   });
 
   it("renders the active local tab and terminal pane", () => {
@@ -329,8 +103,9 @@ describe("TerminalWorkspace", () => {
     expect(
       screen.getByRole("button", { name: "本地 PowerShell" }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("本地 PowerShell xterm 终端"))
-      .toBeInTheDocument();
+    expect(
+      screen.getByLabelText("本地 PowerShell xterm 终端"),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "新建终端 tab" }),
     ).not.toBeInTheDocument();
@@ -339,6 +114,105 @@ describe("TerminalWorkspace", () => {
       screen.queryByRole("button", { name: "左右分屏" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByLabelText("批量命令")).not.toBeInTheDocument();
+  });
+
+  it("keeps the existing terminal pane mounted when a split is added", () => {
+    const nextPane: TerminalPane = {
+      ...baseTerminalPane,
+      id: "pane-local-2",
+      title: "右侧分屏",
+    };
+    const splitTab: TerminalTab = {
+      id: baseTerminalTab.id,
+      layout: {
+        children: [
+          { paneId: baseTerminalPane.id, type: "pane" },
+          { paneId: nextPane.id, type: "pane" },
+        ],
+        direction: "horizontal",
+        id: "split-local-1",
+        type: "split",
+      },
+      machineId: baseTerminalTab.machineId,
+      title: baseTerminalTab.title,
+    };
+    const { rerender } = render(<TerminalWorkspace {...workspaceProps()} />);
+
+    expect(xtermPaneMockState.mountedPaneIds).toEqual([baseTerminalPane.id]);
+
+    rerender(
+      <TerminalWorkspace
+        {...workspaceProps({
+          focusedPaneId: nextPane.id,
+          panes: [baseTerminalPane, nextPane],
+          tabs: [splitTab],
+        })}
+      />,
+    );
+
+    expect(xtermPaneMockState.unmountedPaneIds).not.toContain(
+      baseTerminalPane.id,
+    );
+    expect(xtermPaneMockState.mountedPaneIds).toEqual([
+      baseTerminalPane.id,
+      nextPane.id,
+    ]);
+  });
+
+  it("keeps the no-tab empty state as a quiet brand placeholder", () => {
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          activeTabId: "",
+          focusedPaneId: "",
+          panes: [],
+          tabs: [],
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "Kerminal" })).toBeInTheDocument();
+    expect(
+      screen.getByText("光标还没闪，AI 已经开始脑补命令了。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "添加连接" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "本地终端" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "打开 AI 面板" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("forwards no-tab empty state actions to workspace handlers", async () => {
+    const user = userEvent.setup();
+    const onCreateTerminal = vi.fn();
+    const onOpenConnection = vi.fn();
+    const onOpenAiTool = vi.fn();
+
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          activeTabId: "",
+          focusedPaneId: "",
+          onCreateTerminal,
+          onOpenAiTool,
+          onOpenConnection,
+          panes: [],
+          tabs: [],
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "本地终端" }));
+    await user.click(screen.getByRole("button", { name: "添加连接" }));
+    await user.click(screen.getByRole("button", { name: "打开 AI 面板" }));
+
+    expect(onCreateTerminal).toHaveBeenCalledTimes(1);
+    expect(onOpenConnection).toHaveBeenCalledTimes(1);
+    expect(onOpenAiTool).toHaveBeenCalledTimes(1);
   });
 
   it("renders custom SFTP transfer tab content without terminal split controls", () => {
@@ -371,16 +245,44 @@ describe("TerminalWorkspace", () => {
   });
 
   it("applies compact workspace density to terminal chrome", () => {
-    render(<TerminalWorkspace {...workspaceProps({ interfaceDensity: "compact" })} />);
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({ interfaceDensity: "compact" })}
+      />,
+    );
 
     const workspace = screen.getByRole("main", { name: "终端工作区" });
     expect(workspace).toHaveAttribute("data-density", "compact");
     expect(workspace.firstElementChild).toHaveClass("h-10");
   });
 
+  it("does not reserve right titlebar control space when controls are on macOS left", () => {
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          activeTabId: "tab-many-1",
+          reserveRightTitleBarControls: false,
+          tabs: manyTerminalTabs,
+        })}
+      />,
+    );
+
+    const tabBar = screen.getByLabelText("终端标签栏").parentElement;
+    const overviewButton = screen.getByRole("button", {
+      name: "查看所有标签",
+    });
+
+    expect(tabBar).toHaveClass("pr-2");
+    expect(tabBar).not.toHaveClass("pr-40");
+    expect(overviewButton).toHaveClass("right-3");
+    expect(overviewButton).not.toHaveClass("right-28");
+  });
+
   it("isolates terminal pane render errors and opens logs from the fallback", async () => {
     const user = userEvent.setup();
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
     const onOpenLogs = vi.fn();
     xtermPaneMockState.shouldThrow = true;
 
@@ -416,7 +318,9 @@ describe("TerminalWorkspace", () => {
 
   it("remounts a failed terminal pane after the render problem is cleared", async () => {
     const user = userEvent.setup();
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
     xtermPaneMockState.shouldThrow = true;
 
     try {
@@ -541,7 +445,9 @@ describe("TerminalWorkspace", () => {
   });
 
   it("keeps wheel movement still when the tab strip has no horizontal overflow", () => {
-    render(<TerminalWorkspace {...workspaceProps({ tabs: alternateLocalTabs })} />);
+    render(
+      <TerminalWorkspace {...workspaceProps({ tabs: alternateLocalTabs })} />,
+    );
 
     const tabList = screen.getByLabelText("终端标签栏");
     Object.defineProperty(tabList, "clientWidth", {
@@ -559,6 +465,16 @@ describe("TerminalWorkspace", () => {
 
     expect(tabList.scrollTop).toBe(0);
     expect(tabList.scrollLeft).toBe(0);
+  });
+
+  it("hides the all-tabs menu trigger when a short tab strip fits", () => {
+    render(
+      <TerminalWorkspace {...workspaceProps({ tabs: alternateLocalTabs })} />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "查看所有标签" }),
+    ).not.toBeInTheDocument();
   });
 
   it("opens an all-tabs menu from the right side of the tab bar", async () => {
@@ -579,7 +495,9 @@ describe("TerminalWorkspace", () => {
 
     const menu = screen.getByRole("menu", { name: "所有终端标签" });
     expect(within(menu).getByText("12 个")).toBeInTheDocument();
-    await user.click(within(menu).getByRole("menuitem", { name: /远程会话 7/ }));
+    await user.click(
+      within(menu).getByRole("menuitem", { name: /远程会话 7/ }),
+    );
 
     expect(onSelectTab).toHaveBeenCalledWith("tab-many-7");
     expect(
@@ -604,7 +522,9 @@ describe("TerminalWorkspace", () => {
     expect(
       screen.getByRole("button", { name: "折叠 dev.internal 标签组" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "dev.internal #2" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "dev.internal #2" }),
+    ).toBeInTheDocument();
 
     await user.click(
       screen.getByRole("button", { name: "折叠 dev.internal 标签组" }),
@@ -616,7 +536,9 @@ describe("TerminalWorkspace", () => {
     expect(
       screen.queryByRole("button", { name: "dev.internal #2" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "lab.internal" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "lab.internal" }),
+    ).toBeInTheDocument();
   });
 
   it("opens a right-click menu for terminal tabs", async () => {
@@ -666,7 +588,9 @@ describe("TerminalWorkspace", () => {
       />,
     );
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "dev.internal #2" }));
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: "dev.internal #2" }),
+    );
     await user.click(screen.getByRole("menuitem", { name: "关闭右侧标签" }));
 
     expect(
@@ -688,7 +612,9 @@ describe("TerminalWorkspace", () => {
       />,
     );
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "dev.internal #2" }));
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: "dev.internal #2" }),
+    );
 
     const menu = screen.getByRole("menu", { name: "终端标签操作菜单" });
     expect(document.documentElement).toHaveClass("dark");
@@ -712,7 +638,9 @@ describe("TerminalWorkspace", () => {
             onRenameTab: (tabId, title) => {
               onRenameTab(tabId, title);
               setTabs((current) =>
-                current.map((tab) => (tab.id === tabId ? { ...tab, title } : tab)),
+                current.map((tab) =>
+                  tab.id === tabId ? { ...tab, title } : tab,
+                ),
               );
             },
             panes: groupedSshPanes,
@@ -724,16 +652,22 @@ describe("TerminalWorkspace", () => {
 
     render(<ControlledWorkspace />);
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "dev.internal #2" }));
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: "dev.internal #2" }),
+    );
     await user.click(screen.getByRole("menuitem", { name: "重命名标签" }));
-    expect(screen.getByRole("dialog", { name: "重命名标签" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "重命名标签" }),
+    ).toBeInTheDocument();
 
     await user.clear(screen.getByLabelText("标签名称"));
     await user.type(screen.getByLabelText("标签名称"), "生产日志");
     await user.click(screen.getByRole("button", { name: "保存标签" }));
 
     expect(onRenameTab).toHaveBeenCalledWith("tab-dev-b", "生产日志");
-    expect(screen.getByRole("button", { name: "生产日志" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "生产日志" }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "dev.internal #2" }),
     ).not.toBeInTheDocument();
@@ -766,166 +700,6 @@ describe("TerminalWorkspace", () => {
     await user.click(screen.getByRole("button", { name: "关闭标签" }));
 
     expect(onCloseTab).toHaveBeenCalledWith("tab-lab");
-  });
-
-  it("updates the broadcast command draft", async () => {
-    const user = userEvent.setup();
-    const onBroadcastDraftChange = vi.fn();
-
-    function ControlledWorkspace() {
-      const [broadcastDraft, setBroadcastDraft] = useState("");
-
-      return (
-        <TerminalWorkspace
-          {...workspaceProps({
-            activeTabId: "tab-mixed-split",
-            broadcastDraft,
-            focusedPaneId: "pane-split-local",
-            onBroadcastDraftChange: (draft) => {
-              setBroadcastDraft(draft);
-              onBroadcastDraftChange(draft);
-            },
-            panes: mixedSplitPanes,
-            tabs: mixedSplitTabs,
-          })}
-        />
-      );
-    }
-
-    render(<ControlledWorkspace />);
-
-    await user.type(screen.getByLabelText("批量命令"), "uptime");
-
-    expect(onBroadcastDraftChange).toHaveBeenLastCalledWith("uptime");
-  });
-
-  it("sends a safe command to the active local pane without confirmation", async () => {
-    const user = userEvent.setup();
-    const onBroadcastCommand = vi.fn().mockResolvedValue({
-      missingPaneIds: [],
-      sentPaneIds: ["pane-split-local"],
-    });
-
-    function ControlledWorkspace() {
-      const [broadcastDraft, setBroadcastDraft] = useState("");
-
-      return (
-        <TerminalWorkspace
-          {...workspaceProps({
-            activeTabId: "tab-mixed-split",
-            broadcastDraft,
-            focusedPaneId: "pane-split-local",
-            onBroadcastCommand,
-            onBroadcastDraftChange: setBroadcastDraft,
-            panes: mixedSplitPanes,
-            tabs: mixedSplitTabs,
-          })}
-        />
-      );
-    }
-
-    render(<ControlledWorkspace />);
-
-    await user.type(screen.getByLabelText("批量命令"), "uptime");
-    await user.click(screen.getByRole("button", { name: "发送到全部" }));
-
-    expect(onBroadcastCommand).toHaveBeenCalledWith({
-      command: "uptime",
-      data: "uptime\r",
-      targetPaneIds: ["pane-split-local"],
-    });
-    expect(screen.getByRole("status")).toHaveTextContent("已发送到 1 个分屏");
-    expect(screen.getByLabelText("批量命令")).toHaveValue("");
-  });
-
-  it("asks for confirmation before sending to multiple or SSH panes", async () => {
-    const user = userEvent.setup();
-    const onBroadcastCommand = vi.fn().mockResolvedValue({
-      missingPaneIds: ["pane-batch-ssh"],
-      sentPaneIds: ["pane-batch-local"],
-    });
-    const onBroadcastDraftChange = vi.fn();
-
-    function ControlledWorkspace() {
-      const [broadcastDraft, setBroadcastDraft] = useState("");
-
-      return (
-        <TerminalWorkspace
-          {...workspaceProps({
-            activeTabId: "tab-batch",
-            broadcastDraft,
-            focusedPaneId: "pane-batch-local",
-            onBroadcastCommand,
-            onBroadcastDraftChange: (draft) => {
-              setBroadcastDraft(draft);
-              onBroadcastDraftChange(draft);
-            },
-            panes: batchPanes,
-            tabs: batchTabs,
-          })}
-        />
-      );
-    }
-
-    render(<ControlledWorkspace />);
-
-    await user.click(screen.getByLabelText("批量命令"));
-    expect(screen.getByLabelText("批量命令")).toHaveFocus();
-    await user.keyboard("systemctl status nginx");
-    expect(onBroadcastDraftChange).toHaveBeenCalled();
-    expect(screen.getByLabelText("批量命令")).toHaveValue(
-      "systemctl status nginx",
-    );
-    expect(screen.getByRole("button", { name: "发送到全部" })).toBeEnabled();
-    await user.click(screen.getByRole("button", { name: "发送到全部" }));
-
-    expect(
-      screen.getByRole("dialog", { name: "确认批量发送" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("将发送到 2 个分屏")).toBeInTheDocument();
-    expect(screen.getByText("包含远程分屏")).toBeInTheDocument();
-    expect(onBroadcastCommand).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole("button", { name: "确认发送" }));
-
-    expect(onBroadcastCommand).toHaveBeenCalledWith({
-      command: "systemctl status nginx",
-      data: "systemctl status nginx\r",
-      targetPaneIds: ["pane-batch-local", "pane-batch-ssh"],
-    });
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "1 个分屏尚未连接",
-    );
-  });
-
-  it("disables broadcast when the active tab has no real terminal panes", async () => {
-    const user = userEvent.setup();
-    const onBroadcastCommand = vi.fn();
-
-    function ControlledWorkspace() {
-      const [broadcastDraft, setBroadcastDraft] = useState("");
-
-      return (
-        <TerminalWorkspace
-          {...workspaceProps({
-            activeTabId: "tab-preview-only",
-            broadcastDraft,
-            focusedPaneId: "pane-preview-a",
-            onBroadcastCommand,
-            onBroadcastDraftChange: setBroadcastDraft,
-            panes: previewOnlyPanes,
-            tabs: previewOnlyTabs,
-          })}
-        />
-      );
-    }
-
-    render(<ControlledWorkspace />);
-
-    await user.type(screen.getByLabelText("批量命令"), "uptime");
-
-    expect(screen.getByRole("button", { name: "发送到全部" })).toBeDisabled();
-    expect(onBroadcastCommand).not.toHaveBeenCalled();
   });
 
   it("requests horizontal and vertical splits", async () => {

@@ -1,0 +1,158 @@
+import {
+  Columns2,
+  Copy,
+  PanelBottom,
+  Send,
+  SplitSquareHorizontal,
+} from "lucide-react";
+import type { CSSProperties, KeyboardEvent } from "react";
+import { Button } from "../../components/ui/button";
+import { cn } from "../../lib/cn";
+import {
+  canBroadcastCommand,
+  type BroadcastCommandAnalysis,
+} from "./broadcastCommandPolicy";
+import { BroadcastConfirmation } from "./TerminalBroadcastConfirmation";
+import type { TerminalSplitDirection } from "../workspace/types";
+
+interface TerminalBroadcastBarProps {
+  analysis: BroadcastCommandAnalysis;
+  draft: string;
+  error: string | null;
+  focusedPaneId: string;
+  onCancelPending: () => void;
+  onClosePane: (paneId: string) => void;
+  onConfirmPending: () => void;
+  onDraftChange: (draft: string) => void;
+  onRequestBroadcast: () => void;
+  onSplitPane: (direction: TerminalSplitDirection) => void;
+  pendingAnalysis: BroadcastCommandAnalysis | null;
+  sending: boolean;
+  status: string | null;
+  style?: CSSProperties;
+  targetCount: number;
+  toolbarPaddingClass: string;
+}
+
+export function TerminalBroadcastBar({
+  analysis,
+  draft,
+  error,
+  focusedPaneId,
+  onCancelPending,
+  onClosePane,
+  onConfirmPending,
+  onDraftChange,
+  onRequestBroadcast,
+  onSplitPane,
+  pendingAnalysis,
+  sending,
+  status,
+  style,
+  targetCount,
+  toolbarPaddingClass,
+}: TerminalBroadcastBarProps) {
+  const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Enter") {
+      return;
+    }
+    event.preventDefault();
+    onRequestBroadcast();
+  };
+
+  return (
+    <>
+      <div
+        className={cn(
+          "flex items-center gap-2 border-b border-[var(--border-subtle)] transition-[margin-right] duration-200 ease-out",
+          toolbarPaddingClass,
+        )}
+        style={style}
+      >
+        <Button
+          aria-label="左右分屏"
+          onClick={() => onSplitPane("horizontal")}
+          size="sm"
+          variant="secondary"
+        >
+          <Columns2 className="h-4 w-4" />
+          左右
+        </Button>
+        <Button
+          aria-label="上下分屏"
+          onClick={() => onSplitPane("vertical")}
+          size="sm"
+          variant="secondary"
+        >
+          <PanelBottom className="h-4 w-4" />
+          上下
+        </Button>
+        <Button
+          aria-label="关闭当前分屏"
+          onClick={() => onClosePane(focusedPaneId)}
+          size="sm"
+          variant="ghost"
+        >
+          <SplitSquareHorizontal className="h-4 w-4" />
+          关闭分屏
+        </Button>
+        <label className="sr-only" htmlFor="broadcast-command">
+          批量命令
+        </label>
+        <input
+          className="kerminal-field-surface h-9 min-w-0 flex-1 rounded-xl border px-3 font-mono text-sm text-zinc-950 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600"
+          id="broadcast-command"
+          onChange={(event) => onDraftChange(event.currentTarget.value)}
+          onKeyDown={handleInputKeyDown}
+          placeholder="向所有分屏发送命令..."
+          value={draft}
+        />
+        <span className="hidden shrink-0 rounded-lg bg-[var(--surface-hover)] px-2 py-1 text-xs text-zinc-500 dark:text-zinc-400 xl:inline">
+          {targetCount} 个目标
+        </span>
+        <Button size="sm" variant="secondary">
+          <Copy className="h-4 w-4" />
+          片段
+        </Button>
+        <Button
+          disabled={!canBroadcastCommand(analysis) || sending}
+          onClick={onRequestBroadcast}
+          size="sm"
+          variant="primary"
+        >
+          <Send className="h-4 w-4" />
+          {sending ? "发送中" : "发送到全部"}
+        </Button>
+      </div>
+
+      {pendingAnalysis ? (
+        <div
+          className="transition-[margin-right] duration-200 ease-out"
+          style={style}
+        >
+          <BroadcastConfirmation
+            analysis={pendingAnalysis}
+            disabled={sending}
+            onCancel={onCancelPending}
+            onConfirm={onConfirmPending}
+          />
+        </div>
+      ) : null}
+
+      {status || error ? (
+        <div
+          className={cn(
+            "border-b border-[var(--border-subtle)] px-3 py-2 text-sm transition-[margin-right] duration-200 ease-out",
+            error
+              ? "bg-rose-500/10 text-rose-700 dark:text-rose-100"
+              : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-100",
+          )}
+          role={error ? "alert" : "status"}
+          style={style}
+        >
+          {error ?? status}
+        </div>
+      ) : null}
+    </>
+  );
+}

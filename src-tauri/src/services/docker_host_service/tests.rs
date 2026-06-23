@@ -6,6 +6,12 @@ use super::{
 };
 
 fn remote_host(auth_type: RemoteHostAuthType) -> RemoteHost {
+    let (credential_ref, credential_secret) = match auth_type {
+        RemoteHostAuthType::Agent => (None, None),
+        RemoteHostAuthType::Password => (None, Some("correct horse battery staple".to_owned())),
+        RemoteHostAuthType::Key => (Some("C:/keys/dev.key".to_owned()), None),
+    };
+
     RemoteHost {
         id: "host-1".to_owned(),
         group_id: Some("group-1".to_owned()),
@@ -14,7 +20,8 @@ fn remote_host(auth_type: RemoteHostAuthType) -> RemoteHost {
         port: 2222,
         username: "deploy".to_owned(),
         auth_type,
-        credential_ref: Some("credential:ssh/dev".to_owned()),
+        credential_ref,
+        credential_secret,
         tags: vec!["dev".to_owned()],
         production: false,
         ssh_options: Default::default(),

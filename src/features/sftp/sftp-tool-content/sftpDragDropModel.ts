@@ -3,7 +3,6 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type {
   SftpDragDropPayload,
   SftpSelectionEvent,
-  SftpWorkspaceDialog,
 } from "./types";
 
 export function clampContextMenuPosition(x: number, y: number) {
@@ -26,39 +25,6 @@ export const isRunningInTauriWebview = () => {
         .__TAURI_INTERNALS__,
     )
   );
-};
-
-export const detachedWorkspaceUrl = (
-  hostId: string,
-  workspaceDialog: SftpWorkspaceDialog,
-) => {
-  const params = new URLSearchParams({
-    hostId,
-    rootPath: workspaceDialog.rootPath,
-    theme: currentWorkspaceTheme(),
-    view: "sftp-workspace",
-  });
-  if (workspaceDialog.openCommand?.path) {
-    params.set("filePath", workspaceDialog.openCommand.path);
-  }
-  return `${window.location.pathname || "/"}?${params.toString()}`;
-};
-
-export const detachedWorkspaceLabel = (hostId: string) => {
-  const safeHostId = hostId.replace(/[^a-zA-Z0-9_:/-]/g, "_");
-  return `sftp-workspace-${safeHostId}-${Date.now()}`;
-};
-
-export const currentWorkspaceTheme = () => {
-  if (document.querySelector("[data-theme='dark']")) {
-    return "dark";
-  }
-  if (document.querySelector("[data-theme='light']")) {
-    return "light";
-  }
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
 };
 
 export const unwrapDragDropPayload = (event: unknown): SftpDragDropPayload => {

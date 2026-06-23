@@ -62,6 +62,7 @@ fn confirm_profile_create_persists_profile_and_audit_after_approval() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("approve profile create");
@@ -112,6 +113,7 @@ fn confirm_profile_create_rejection_does_not_persist_profile() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: false,
+                audit_context: None,
             },
         )
         .expect("reject profile create");
@@ -150,6 +152,7 @@ fn confirm_profile_create_invalid_env_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("invalid profile create should become audit record");
@@ -188,6 +191,7 @@ fn confirm_snippet_create_persists_snippet_and_audit_after_approval() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("approve snippet create");
@@ -233,6 +237,7 @@ fn confirm_snippet_create_rejection_does_not_persist_snippet() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: false,
+                audit_context: None,
             },
         )
         .expect("reject snippet create");
@@ -270,6 +275,7 @@ fn confirm_snippet_create_invalid_scope_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("invalid snippet create should become audit record");
@@ -322,6 +328,7 @@ fn confirm_workflow_create_persists_workflow_and_audit_after_approval() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("approve workflow create");
@@ -387,6 +394,7 @@ fn confirm_workflow_create_rejection_does_not_persist_workflow() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: false,
+                audit_context: None,
             },
         )
         .expect("reject workflow create");
@@ -424,6 +432,7 @@ fn confirm_workflow_create_invalid_steps_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("invalid workflow create should become audit record");
@@ -442,7 +451,7 @@ fn confirm_workflow_create_invalid_steps_records_failed_audit() {
 }
 
 #[test]
-fn prepare_remote_host_create_redacts_credential_ref_summary() {
+fn prepare_remote_host_create_omits_credential_ref_summary() {
     let (_home, state) = setup_state();
     let group = create_test_remote_host_group(&state);
 
@@ -453,8 +462,7 @@ fn prepare_remote_host_create_redacts_credential_ref_summary() {
             prepare_request(
                 "remote_host.create",
                 json!({
-                    "authType": "key",
-                    "credentialRef": "credential:ssh/ai-dev",
+                    "authType": "agent",
                     "groupId": group.id,
                     "host": "ai-dev.internal",
                     "name": "AI Dev",
@@ -473,7 +481,7 @@ fn prepare_remote_host_create_redacts_credential_ref_summary() {
     assert_eq!(pending.confirmation, ToolConfirmationPolicy::Always);
     assert!(pending.requires_confirmation);
     assert!(pending.arguments_summary.contains("name=AI Dev"));
-    assert!(pending.arguments_summary.contains("credentialRef=[已脱敏]"));
+    assert!(!pending.arguments_summary.contains("credentialRef"));
 }
 
 #[test]
@@ -488,8 +496,7 @@ fn confirm_remote_host_create_persists_host_and_audit_after_approval() {
             prepare_request(
                 "remote_host.create",
                 json!({
-                    "authType": "key",
-                    "credentialRef": "credential:ssh/ai-dev",
+                    "authType": "agent",
                     "groupId": group.id,
                     "host": "ai-dev.internal",
                     "name": "AI Dev",
@@ -509,6 +516,7 @@ fn confirm_remote_host_create_persists_host_and_audit_after_approval() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("approve remote host create");
@@ -532,13 +540,153 @@ fn confirm_remote_host_create_persists_host_and_audit_after_approval() {
     assert_eq!(created.host, "ai-dev.internal");
     assert_eq!(created.port, 2222);
     assert_eq!(created.username, "deploy");
-    assert_eq!(created.auth_type, RemoteHostAuthType::Key);
-    assert_eq!(
-        created.credential_ref.as_deref(),
-        Some("credential:ssh/ai-dev")
-    );
+    assert_eq!(created.auth_type, RemoteHostAuthType::Agent);
+    assert_eq!(created.credential_ref.as_deref(), None);
     assert_eq!(created.tags, vec!["ai", "dev"]);
     assert!(created.production);
+}
+
+#[test]
+fn confirm_remote_host_create_resolves_group_name_without_group_id() {
+    let (_home, state) = setup_state();
+
+    let pending = state
+        .ai_tools()
+        .prepare(
+            state.tools(),
+            prepare_request(
+                "remote_host.create",
+                json!({
+                    "authType": "agent",
+                    "groupName": "bwy",
+                    "host": "172.16.40.104",
+                    "name": "172.16.40.104",
+                    "port": 22,
+                    "username": "root"
+                }),
+            ),
+        )
+        .expect("prepare remote host create with group name");
+
+    let audit = state
+        .ai_tools()
+        .confirm(
+            ai_tool_execution_context(&state),
+            AiToolConfirmRequest {
+                invocation_id: pending.id,
+                approved: true,
+                audit_context: None,
+            },
+        )
+        .expect("approve remote host create with group name");
+
+    assert_eq!(audit.status, AiToolInvocationStatus::Succeeded);
+    let tree = state
+        .remote_hosts()
+        .list_tree(state.storage())
+        .expect("list remote host tree");
+    let group = tree
+        .iter()
+        .find(|group| group.name == "bwy")
+        .expect("auto-created remote host group");
+    let created = group
+        .hosts
+        .iter()
+        .find(|host| host.name == "172.16.40.104")
+        .expect("created remote host in named group");
+    assert_eq!(created.host, "172.16.40.104");
+    assert_eq!(created.username, "root");
+    assert_eq!(created.auth_type, RemoteHostAuthType::Agent);
+}
+
+#[test]
+fn confirm_remote_host_create_from_ocr_attachment_context_persists_host_and_audit_linkage() {
+    let (_home, state) = setup_state();
+    let group = create_test_remote_host_group(&state);
+
+    let pending = state
+        .ai_tools()
+        .prepare(
+            state.tools(),
+            prepare_request(
+                "remote_host.create",
+                json!({
+                    "authType": "agent",
+                    "groupId": group.id,
+                    "host": "prod.example.com",
+                    "name": "OCR prod.example.com",
+                    "port": 2222,
+                    "production": true,
+                    "tags": ["ocr", "ai"],
+                    "username": "deploy"
+                }),
+            ),
+        )
+        .expect("prepare remote host create from OCR candidate");
+    assert_eq!(pending.tool_id, "remote_host.create");
+    assert_eq!(pending.confirmation, ToolConfirmationPolicy::Always);
+    assert!(pending.arguments_summary.contains("host=prod.example.com"));
+    assert!(pending.arguments_summary.contains("username=deploy"));
+
+    let audit_context = AiToolAuditContext {
+        conversation_id: Some("conversation-image-ssh".to_owned()),
+        user_message_id: Some("msg-user-image".to_owned()),
+        assistant_message_id: Some("msg-assistant-tool".to_owned()),
+        context_snapshot_id: Some("ctx-image-ssh".to_owned()),
+        scope_kind: Some("lockedPane".to_owned()),
+        scope_ref_json: Some("{\"paneId\":\"pane-prod\"}".to_owned()),
+        target_key: Some("pane:pane-prod".to_owned()),
+        host_id: None,
+        tab_id: Some("tab-prod".to_owned()),
+        pane_id: Some("pane-prod".to_owned()),
+        route_mode: Some("followWorkspaceTarget".to_owned()),
+        target_ref_json: Some("{\"kind\":\"pane\",\"id\":\"pane-prod\"}".to_owned()),
+        run_id: Some("run-image-ssh".to_owned()),
+        step_id: Some("step-remote-host-create".to_owned()),
+        attachment_ids: vec!["att-ssh-image".to_owned()],
+    };
+
+    let audit = state
+        .ai_tools()
+        .confirm(
+            ai_tool_execution_context(&state),
+            AiToolConfirmRequest {
+                invocation_id: pending.id,
+                approved: true,
+                audit_context: Some(audit_context.clone()),
+            },
+        )
+        .expect("approve OCR remote host create");
+
+    assert_eq!(audit.status, AiToolInvocationStatus::Succeeded);
+    assert_eq!(audit.tool_id, "remote_host.create");
+    assert_eq!(audit.audit_context.as_ref(), Some(&audit_context));
+
+    let tree = state
+        .remote_hosts()
+        .list_tree(state.storage())
+        .expect("list remote host tree");
+    let created = tree
+        .iter()
+        .flat_map(|group| group.hosts.iter())
+        .find(|host| host.name == "OCR prod.example.com")
+        .expect("created remote host from OCR candidate");
+    assert_eq!(created.host, "prod.example.com");
+    assert_eq!(created.port, 2222);
+    assert_eq!(created.username, "deploy");
+    assert_eq!(created.auth_type, RemoteHostAuthType::Agent);
+    assert_eq!(created.tags, vec!["ocr", "ai"]);
+    assert!(created.production);
+
+    let audits = state
+        .ai_tools()
+        .list_audits(state.storage())
+        .expect("list persisted audits");
+    let persisted = audits
+        .iter()
+        .find(|record| record.invocation_id == audit.invocation_id)
+        .expect("persisted OCR remote host audit");
+    assert_eq!(persisted.audit_context.as_ref(), Some(&audit_context));
 }
 
 #[test]
@@ -577,6 +725,7 @@ fn confirm_remote_host_create_rejection_does_not_persist_host() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: false,
+                audit_context: None,
             },
         )
         .expect("reject remote host create");
@@ -620,6 +769,7 @@ fn confirm_remote_host_create_invalid_args_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("invalid remote host create should become audit record");
@@ -658,6 +808,7 @@ fn confirm_remote_host_create_unknown_group_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("unknown group should become audit record");

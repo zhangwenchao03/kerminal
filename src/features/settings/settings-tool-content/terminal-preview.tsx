@@ -1,8 +1,10 @@
+import type { CSSProperties } from "react";
 import { Check } from "lucide-react";
 import { cn } from "../../../lib/cn";
 import {
   terminalColorSchemeForTheme,
   terminalColorSchemeOptions,
+  terminalFontOptions,
   terminalFontWeightValue,
   type ResolvedTheme,
   type TerminalAppearance,
@@ -10,6 +12,15 @@ import {
   type TerminalCursorStyle,
 } from "../settingsModel";
 import { xtermThemeFor } from "../terminalTheme";
+
+function terminalSchemeButtonClassName(selected: boolean) {
+  return cn(
+    "kerminal-focus-ring kerminal-pressable min-h-20 rounded-xl border px-3 py-2.5 text-left transition",
+    selected
+      ? "border-sky-500/45 bg-[var(--surface-selected)] text-sky-700 shadow-sm shadow-sky-950/5 ring-1 ring-sky-500/15 dark:border-sky-300/35 dark:text-sky-100 dark:ring-sky-300/15"
+      : "kerminal-muted-surface text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50",
+  );
+}
 
 export function TerminalSchemePicker({
   label,
@@ -31,12 +42,7 @@ export function TerminalSchemePicker({
           return (
             <button
               aria-pressed={selected}
-              className={cn(
-                "min-h-20 rounded-xl border px-3 py-2.5 text-left transition active:scale-[0.99]",
-                selected
-                  ? "border-sky-500/45 bg-sky-500/12 text-sky-700 shadow-sm shadow-sky-950/5 dark:border-sky-300/35 dark:bg-sky-400/12 dark:text-sky-100"
-                  : "border-black/8 bg-black/[0.03] text-zinc-600 hover:bg-black/[0.06] dark:border-white/8 dark:bg-black/20 dark:text-zinc-300 dark:hover:bg-white/10",
-              )}
+              className={terminalSchemeButtonClassName(selected)}
               key={option.value}
               onClick={() => onSelect(option.value)}
               type="button"
@@ -46,7 +52,7 @@ export function TerminalSchemePicker({
                 <span className="flex items-center gap-2">
                   <span
                     aria-hidden="true"
-                    className="flex overflow-hidden rounded-full border border-black/10 dark:border-white/10"
+                    className="flex overflow-hidden rounded-full border border-[var(--border-subtle)]"
                   >
                     {option.colors.map((color) => (
                       <span
@@ -88,15 +94,43 @@ export function TerminalAppearancePreview({
     resolvedTheme,
     terminalColorSchemeForTheme(terminal, resolvedTheme),
   );
+  const fontLabel = terminalFontLabelFor(terminal.fontFamily);
+  const previewCodeStyle = {
+    fontFamily: terminal.fontFamily,
+    fontSize: "inherit",
+    fontWeight: "inherit",
+    lineHeight: "inherit",
+  } satisfies CSSProperties;
 
   return (
     <div className="mt-3">
       <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
         字体预览
       </div>
+      <div className="mt-2 flex min-w-0 items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[rgb(255_255_255_/_0.04)] px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
+        <span
+          aria-hidden="true"
+          className="inline-flex h-7 w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--border-subtle)] text-sm text-zinc-800 dark:text-zinc-100"
+          style={{
+            fontFamily: terminal.fontFamily,
+            fontWeight: terminalFontWeightValue(terminal.fontWeight),
+          }}
+        >
+          Aa
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate">当前预览</span>
+          <span className="block truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">
+            {fontLabel}
+          </span>
+        </span>
+      </div>
       <pre
         aria-label="终端字体预览"
-        className="mt-2 overflow-hidden rounded-xl border border-black/10 p-3 text-left shadow-inner dark:border-white/10"
+        className="mt-2 overflow-hidden rounded-xl border border-[var(--border-subtle)] p-3 text-left shadow-inner"
+        data-font-family={terminal.fontFamily}
+        data-font-label={fontLabel}
+        key={terminal.fontFamily}
         style={{
           backgroundColor: theme.background,
           color: theme.foreground,
@@ -106,13 +140,28 @@ export function TerminalAppearancePreview({
           lineHeight: terminal.lineHeight,
         }}
       >
-        <code className="block">abcdefghijklmnopqrstuvwxyz</code>
-        <code className="block">0123456789 !@#$%^&*()[]{}&lt;&gt;</code>
-        <code className="block">中文路径 /var/log/应用 日志输出</code>
-        <code className="block" style={{ color: theme.green }}>
+        <code className="block" style={previewCodeStyle}>
+          font: {fontLabel}
+        </code>
+        <code className="block" style={previewCodeStyle}>
+          abcdefghijklmnopqrstuvwxyz
+        </code>
+        <code className="block" style={previewCodeStyle}>
+          0123456789 !@#$%^&*()[]{}&lt;&gt;
+        </code>
+        <code className="block" style={previewCodeStyle}>
+          中文路径 /var/log/应用 日志输出
+        </code>
+        <code
+          className="block"
+          style={{ ...previewCodeStyle, color: theme.green }}
+        >
           $ ssh root@server.example.com
         </code>
-        <code className="block" style={{ color: theme.cyan }}>
+        <code
+          className="block"
+          style={{ ...previewCodeStyle, color: theme.cyan }}
+        >
           $ npm run build &amp;&amp; npm run start
           <CursorMarker
             blink={terminal.cursorBlink}
@@ -125,6 +174,27 @@ export function TerminalAppearancePreview({
   );
 }
 
+function terminalFontLabelFor(fontFamily: string): string {
+  const selectedOption = terminalFontOptions.find(
+    (option) => option.value === fontFamily,
+  );
+  if (selectedOption) {
+    return selectedOption.label;
+  }
+
+  return primaryFontFamilyName(fontFamily) || "自定义字体";
+}
+
+function primaryFontFamilyName(fontFamily: string): string {
+  const trimmedFontFamily = fontFamily.trim();
+  if (!trimmedFontFamily) {
+    return "";
+  }
+
+  const match = trimmedFontFamily.match(/^"([^"]+)"|^'([^']+)'|^([^,]+)/);
+  return (match?.[1] ?? match?.[2] ?? match?.[3] ?? "").trim();
+}
+
 export function CursorStylePreview({
   blink,
   cursorStyle,
@@ -135,9 +205,9 @@ export function CursorStylePreview({
   return (
     <span
       aria-hidden="true"
-      className="mt-3 block overflow-hidden rounded-xl border border-black/10 bg-[#0b1220] shadow-inner dark:border-white/10"
+      className="mt-3 block overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[#0b1220] shadow-inner"
     >
-      <span className="flex h-7 items-center gap-1 border-b border-white/8 bg-white/[0.04] px-3">
+      <span className="flex h-7 items-center gap-1 border-b border-[rgb(255_255_255_/_0.08)] bg-[rgb(255_255_255_/_0.04)] px-3">
         <span className="h-1.5 w-1.5 rounded-full bg-rose-400/80" />
         <span className="h-1.5 w-1.5 rounded-full bg-amber-300/80" />
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-400/80" />

@@ -43,6 +43,42 @@ fn prepare_port_forward_create_requires_remote_confirmation_and_uses_current_sch
 }
 
 #[test]
+fn prepare_port_forward_create_accepts_host_network_assist_arguments() {
+    let (_home, state) = setup_state();
+
+    let pending = state
+        .ai_tools()
+        .prepare(
+            state.tools(),
+            prepare_request(
+                "port_forward.create",
+                json!({
+                    "hostId": "dev-server",
+                    "kind": "remote",
+                    "purpose": "hostNetworkAssist",
+                    "proxyProtocol": "http",
+                    "remoteBindHost": "127.0.0.1",
+                    "remoteAccessScope": "loopback",
+                    "proxyApplyScope": "toolOnly",
+                    "sourcePort": 18080
+                }),
+            ),
+        )
+        .expect("prepare host network assist port forward create");
+
+    assert_eq!(pending.tool_id, "port_forward.create");
+    assert_eq!(pending.risk, ToolRiskLevel::Remote);
+    assert!(pending.requires_confirmation);
+    assert!(pending
+        .arguments_summary
+        .contains("purpose=hostNetworkAssist"));
+    assert!(pending.arguments_summary.contains("proxyProtocol=http"));
+    assert!(pending
+        .arguments_summary
+        .contains("proxyApplyScope=toolOnly"));
+}
+
+#[test]
 fn confirm_port_forward_create_unknown_host_records_failed_audit() {
     let (_home, state) = setup_state();
     let pending = state
@@ -71,6 +107,7 @@ fn confirm_port_forward_create_unknown_host_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("unknown port forward host should become audit record");
@@ -90,7 +127,7 @@ fn confirm_port_forward_create_invalid_args_records_failed_audit_before_spawn() 
     let host_id = create_test_remote_host(&state);
     let before_count = state
         .port_forwards()
-        .list()
+        .list(state.storage())
         .expect("list port forwards before")
         .len();
     let pending = state
@@ -119,12 +156,13 @@ fn confirm_port_forward_create_invalid_args_records_failed_audit_before_spawn() 
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("invalid port forward should become audit record");
     let after_count = state
         .port_forwards()
-        .list()
+        .list(state.storage())
         .expect("list port forwards after")
         .len();
 
@@ -143,7 +181,7 @@ fn confirm_port_forward_create_rejection_does_not_create_session() {
     let host_id = create_test_remote_host(&state);
     let before_count = state
         .port_forwards()
-        .list()
+        .list(state.storage())
         .expect("list port forwards before rejection")
         .len();
     let pending = state
@@ -172,12 +210,13 @@ fn confirm_port_forward_create_rejection_does_not_create_session() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: false,
+                audit_context: None,
             },
         )
         .expect("reject port forward create");
     let after_count = state
         .port_forwards()
-        .list()
+        .list(state.storage())
         .expect("list port forwards after rejection")
         .len();
 
@@ -226,6 +265,7 @@ fn confirm_port_forward_list_returns_empty_state_summary() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("confirm port forward list");
@@ -251,7 +291,7 @@ fn prepare_port_forward_close_requires_remote_confirmation() {
         .expect("prepare port forward close");
 
     assert_eq!(pending.tool_id, "port_forward.close");
-    assert_eq!(pending.tool_title, "关闭端口转发");
+    assert_eq!(pending.tool_title, "停止端口转发");
     assert_eq!(pending.risk, ToolRiskLevel::Remote);
     assert_eq!(pending.confirmation, ToolConfirmationPolicy::Always);
     assert_eq!(pending.audit, ToolAuditPolicy::Summary);
@@ -281,6 +321,7 @@ fn confirm_port_forward_close_unknown_session_records_failed_audit() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: true,
+                audit_context: None,
             },
         )
         .expect("unknown port forward close should become audit record");
@@ -298,7 +339,7 @@ fn confirm_port_forward_close_rejection_does_not_change_sessions() {
     let (_home, state) = setup_state();
     let before_count = state
         .port_forwards()
-        .list()
+        .list(state.storage())
         .expect("list port forwards before rejection")
         .len();
     let pending = state
@@ -316,12 +357,13 @@ fn confirm_port_forward_close_rejection_does_not_change_sessions() {
             AiToolConfirmRequest {
                 invocation_id: pending.id,
                 approved: false,
+                audit_context: None,
             },
         )
         .expect("reject port forward close");
     let after_count = state
         .port_forwards()
-        .list()
+        .list(state.storage())
         .expect("list port forwards after rejection")
         .len();
 

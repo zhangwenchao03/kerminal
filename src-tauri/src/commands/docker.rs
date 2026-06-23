@@ -13,7 +13,9 @@ use crate::{
             DockerContainerTerminalCreateRequest, DockerContainerTransferRequest,
             DockerContainerWriteTextFileRequest, DockerContainerWriteTextFileResponse,
         },
-        terminal::{TerminalOutputEvent, TerminalSessionSummary},
+        terminal::{
+            docker_container_terminal_target_ref, TerminalOutputEvent, TerminalSessionSummary,
+        },
     },
     state::AppState,
 };
@@ -29,7 +31,6 @@ pub async fn docker_list_containers(
         .docker_hosts()
         .list_containers(
             state.storage(),
-            state.credentials(),
             state.paths(),
             state.ssh_commands(),
             request,
@@ -45,11 +46,13 @@ pub fn docker_create_container_session(
     output: Channel<TerminalOutputEvent>,
     request: DockerContainerTerminalCreateRequest,
 ) -> Result<TerminalSessionSummary, String> {
+    let target_ref = docker_container_terminal_target_ref(&request.host_id, &request.container_id);
     state
         .docker_hosts()
         .create_container_session(state.storage(), state.terminals(), request, move |event| {
             output.send(event).is_ok()
         })
+        .and_then(|summary| state.terminals().set_target_ref(&summary.id, target_ref))
         .map_err(|error| error.to_string())
 }
 
@@ -63,7 +66,6 @@ pub async fn docker_list_directory(
         .docker_hosts()
         .list_directory(
             state.storage(),
-            state.credentials(),
             state.paths(),
             state.ssh_commands(),
             request,
@@ -82,7 +84,6 @@ pub async fn docker_preview_file(
         .docker_hosts()
         .preview_file(
             state.storage(),
-            state.credentials(),
             state.paths(),
             state.ssh_commands(),
             request,
@@ -101,7 +102,6 @@ pub async fn docker_read_text_file(
         .docker_hosts()
         .read_text_file(
             state.storage(),
-            state.credentials(),
             state.paths(),
             state.ssh_commands(),
             request,
@@ -120,7 +120,6 @@ pub async fn docker_write_text_file(
         .docker_hosts()
         .write_text_file(
             state.storage(),
-            state.credentials(),
             state.paths(),
             state.ssh_commands(),
             request,
@@ -139,7 +138,6 @@ pub async fn docker_create_directory(
         .docker_hosts()
         .create_directory(
             state.storage(),
-            state.credentials(),
             state.paths(),
             state.ssh_commands(),
             request,
@@ -158,7 +156,6 @@ pub async fn docker_delete_path(
         .docker_hosts()
         .delete_path(
             state.storage(),
-            state.credentials(),
             state.paths(),
             state.ssh_commands(),
             request,
@@ -177,7 +174,6 @@ pub async fn docker_rename_path(
         .docker_hosts()
         .rename_path(
             state.storage(),
-            state.credentials(),
             state.paths(),
             state.ssh_commands(),
             request,
@@ -196,7 +192,6 @@ pub async fn docker_chmod_path(
         .docker_hosts()
         .chmod_path(
             state.storage(),
-            state.credentials(),
             state.paths(),
             state.ssh_commands(),
             request,

@@ -1,7 +1,0 @@
-{
-  "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "sftp-workspace-launcher",
-  "description": "Allows the main window to open detached SFTP workspace webview windows.",
-  "windows": ["main"],
-  "permissions": ["core:webview:allow-create-webview-window"]
-}

@@ -3,8 +3,10 @@
 //! @author kongweiguang
 
 use kerminal_lib::{
-    models::terminal::TerminalSecretInputResponse,
-    models::terminal::{TerminalCreateRequest, TerminalOutputKind, TerminalResizeRequest},
+    models::terminal::{
+        TerminalCreateRequest, TerminalOutputKind, TerminalResizeRequest, TerminalSecretInputEntry,
+        TerminalSecretInputPlan, TerminalSecretInputResponse,
+    },
     services::terminal_manager::TerminalManager,
 };
 use std::{
@@ -65,6 +67,60 @@ fn create_session_registers_and_close_removes_session() {
     manager.close(&summary.id).unwrap();
 
     assert!(manager.list_sessions().unwrap().is_empty());
+}
+
+#[test]
+fn target_ref_token_is_preserved_and_verifiable() {
+    let manager = TerminalManager::new();
+    let summary = manager
+        .create_session(short_lived_echo_request(), |_| true)
+        .unwrap();
+
+    let updated = manager.set_target_ref(&summary.id, "ssh:host-a").unwrap();
+    let target_token = updated.target_token.clone().expect("target token");
+    assert_eq!(target_token.split('.').count(), 5);
+    let sessions = manager.list_sessions().unwrap();
+    let (snapshot_summary, _snapshot) = manager.output_snapshot(&summary.id, 4096).unwrap();
+
+    manager.close(&summary.id).unwrap();
+
+    assert_eq!(updated.target_ref.as_deref(), Some("ssh:host-a"));
+    assert_eq!(sessions[0].target_ref.as_deref(), Some("ssh:host-a"));
+    assert_eq!(
+        sessions[0].target_token.as_deref(),
+        Some(target_token.as_str())
+    );
+    assert_eq!(
+        snapshot_summary.target_token.as_deref(),
+        Some(target_token.as_str())
+    );
+    assert!(manager
+        .verify_target_token(&summary.id, &target_token)
+        .expect_err("closed session cannot verify token")
+        .to_string()
+        .contains("终端会话不存在"));
+}
+
+#[test]
+fn target_token_rejects_forged_value() {
+    let manager = TerminalManager::new();
+    let summary = manager
+        .create_session(short_lived_echo_request(), |_| true)
+        .unwrap();
+
+    let updated = manager.set_target_ref(&summary.id, "ssh:host-a").unwrap();
+    let target_token = updated.target_token.expect("target token");
+
+    assert!(manager
+        .verify_target_token(&summary.id, &target_token)
+        .expect("verify valid token")
+        .is_some());
+    assert!(!manager
+        .verify_target_token(&summary.id, "v1.forged.token")
+        .expect("verify forged token")
+        .is_some());
+
+    manager.close(&summary.id).unwrap();
 }
 
 #[test]
@@ -310,6 +366,106 @@ fn secret_input_response_does_not_repeat_after_second_prompt() {
     );
 }
 
+#[test]
+fn secret_input_plan_answers_two_independent_password_prompts_and_redacts_values() {
+    let manager = TerminalManager::new();
+    let (sender, receiver) = mpsc::channel();
+    let jump_secret = "jumpSecret123";
+    let target_secret = "targetSecret456";
+    let request = two_password_prompts_request(jump_secret, target_secret);
+    let secret_input_plan = TerminalSecretInputPlan {
+        entries: vec![
+            secret_entry("jump", "bastion password:", jump_secret),
+            secret_entry("target", "target password:", target_secret),
+        ],
+    };
+
+    let summary = manager
+        .create_session_with_secret_input_plan(request, Some(secret_input_plan), move |event| {
+            sender.send(event).is_ok()
+        })
+        .unwrap();
+
+    let received = collect_until_output(&manager, &summary.id, &receiver, "target-ok");
+    manager.close(&summary.id).unwrap();
+
+    assert!(received.contains("jump-ok"));
+    assert!(received.contains("target-ok"));
+    assert!(received.matches("[已脱敏]").count() >= 2);
+    assert!(!received.contains(jump_secret));
+    assert!(!received.contains(target_secret));
+}
+
+#[test]
+fn secret_input_plan_answers_split_prompt_across_reads() {
+    let manager = TerminalManager::new();
+    let (sender, receiver) = mpsc::channel();
+    let secret = "planSplitSecret123";
+    let request = split_password_prompt_request(secret);
+    let secret_input_plan = TerminalSecretInputPlan {
+        entries: vec![secret_entry(
+            "split-target",
+            "deploy@dev.internal's password:",
+            secret,
+        )],
+    };
+
+    let summary = manager
+        .create_session_with_secret_input_plan(request, Some(secret_input_plan), move |event| {
+            sender.send(event).is_ok()
+        })
+        .unwrap();
+
+    let received = collect_until_output(&manager, &summary.id, &receiver, "auth-ok");
+    manager.close(&summary.id).unwrap();
+
+    assert!(received.contains("auth-ok"));
+    assert!(!received.contains(secret));
+}
+
+#[test]
+fn secret_input_plan_fallback_marker_advances_entries_without_overrepeating() {
+    let manager = TerminalManager::new();
+    let (sender, receiver) = mpsc::channel();
+    let first_secret = "fallbackFirst123";
+    let second_secret = "fallbackSecond456";
+    let request = fallback_password_prompts_request(first_secret, second_secret);
+    let secret_input_plan = TerminalSecretInputPlan {
+        entries: vec![
+            secret_entry("first", "password:", first_secret),
+            secret_entry("second", "password:", second_secret),
+        ],
+    };
+
+    let summary = manager
+        .create_session_with_secret_input_plan(request, Some(secret_input_plan), move |event| {
+            sender.send(event).is_ok()
+        })
+        .unwrap();
+
+    let mut received = collect_until_output(&manager, &summary.id, &receiver, "second-read");
+    received.push_str(&collect_additional_output_for(
+        &manager,
+        &summary.id,
+        &receiver,
+        Duration::from_millis(900),
+    ));
+    manager.close(&summary.id).unwrap();
+
+    assert!(received.contains("first-read"));
+    assert!(received.contains("second-read"));
+    assert!(
+        received.to_ascii_lowercase().matches("password:").count() >= 3,
+        "expected the third fallback prompt to stay visible, got: {received:?}",
+    );
+    assert!(
+        !received.contains("unexpected-third-read"),
+        "fallback marker must not over-answer exhausted entries: {received:?}",
+    );
+    assert!(!received.contains(first_secret));
+    assert!(!received.contains(second_secret));
+}
+
 fn wait_for_output(
     manager: &TerminalManager,
     session_id: &str,
@@ -396,6 +552,17 @@ fn collect_additional_output_for(
     received
 }
 
+fn secret_entry(id: &str, marker: &str, response: &str) -> TerminalSecretInputEntry {
+    TerminalSecretInputEntry {
+        id: id.to_owned(),
+        label: id.to_owned(),
+        prompt_markers: vec![marker.to_owned()],
+        response: response.to_owned(),
+        redact_values: vec![response.to_owned()],
+        max_responses: 1,
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn split_password_prompt_request(secret: &str) -> TerminalCreateRequest {
     TerminalCreateRequest {
@@ -405,6 +572,80 @@ fn split_password_prompt_request(secret: &str) -> TerminalCreateRequest {
             "-Command".to_owned(),
             format!(
                 "$secret = '{secret}'; [Console]::Out.Write(\"deploy@dev.internal's pass\"); Start-Sleep -Milliseconds 100; [Console]::Out.Write('word: '); $p = [Console]::In.ReadLine(); if ($p -eq $secret) {{ [Console]::Out.WriteLine('auth-ok') }}"
+            ),
+        ],
+        rows: 24,
+        cols: 80,
+        ..TerminalCreateRequest::default()
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn two_password_prompts_request(jump_secret: &str, target_secret: &str) -> TerminalCreateRequest {
+    TerminalCreateRequest {
+        shell: Some("cmd.exe".to_owned()),
+        args: vec![
+            "/V:ON".to_owned(),
+            "/Q".to_owned(),
+            "/C".to_owned(),
+            format!(
+                "set /p p=bastion password: & if \"!p!\"==\"{jump_secret}\" echo echoed !p! jump-ok & set /p q=target password: & if \"!q!\"==\"{target_secret}\" echo echoed !q! target-ok"
+            ),
+        ],
+        rows: 24,
+        cols: 80,
+        ..TerminalCreateRequest::default()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn two_password_prompts_request(jump_secret: &str, target_secret: &str) -> TerminalCreateRequest {
+    TerminalCreateRequest {
+        shell: Some("/bin/sh".to_owned()),
+        args: vec![
+            "-lc".to_owned(),
+            format!(
+                "printf 'bastion password: '; IFS= read -r p; if [ \"$p\" = \"{jump_secret}\" ]; then printf 'echoed %s jump-ok\\n' \"$p\"; fi; printf 'target password: '; IFS= read -r q; if [ \"$q\" = \"{target_secret}\" ]; then printf 'echoed %s target-ok\\n' \"$q\"; fi"
+            ),
+        ],
+        rows: 24,
+        cols: 80,
+        ..TerminalCreateRequest::default()
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn fallback_password_prompts_request(
+    first_secret: &str,
+    second_secret: &str,
+) -> TerminalCreateRequest {
+    TerminalCreateRequest {
+        shell: Some("cmd.exe".to_owned()),
+        args: vec![
+            "/V:ON".to_owned(),
+            "/Q".to_owned(),
+            "/C".to_owned(),
+            format!(
+                "set /p a=password: & if \"!a!\"==\"{first_secret}\" echo first-read & set /p b=password: & if \"!b!\"==\"{second_secret}\" echo second-read & set /p c=password: & echo unexpected-third-read !c!"
+            ),
+        ],
+        rows: 24,
+        cols: 80,
+        ..TerminalCreateRequest::default()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn fallback_password_prompts_request(
+    first_secret: &str,
+    second_secret: &str,
+) -> TerminalCreateRequest {
+    TerminalCreateRequest {
+        shell: Some("/bin/sh".to_owned()),
+        args: vec![
+            "-lc".to_owned(),
+            format!(
+                "printf 'password: '; IFS= read -r a; if [ \"$a\" = \"{first_secret}\" ]; then printf 'first-read\\n'; fi; printf 'password: '; IFS= read -r b; if [ \"$b\" = \"{second_secret}\" ]; then printf 'second-read\\n'; fi; printf 'password: '; IFS= read -r c; printf 'unexpected-third-read %s\\n' \"$c\""
             ),
         ],
         rows: 24,

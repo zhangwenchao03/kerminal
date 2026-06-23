@@ -65,7 +65,7 @@ const sampleSnippets: CommandSnippet[] = [
 
 describe("snippetCatalogModel", () => {
   it("defines stable preset snippets", () => {
-    expect(presetSnippets).toHaveLength(14);
+    expect(presetSnippets).toHaveLength(38);
     expect(presetSnippets.every((snippet) => isPresetSnippetId(snippet.id))).toBe(
       true,
     );
@@ -75,14 +75,36 @@ describe("snippetCatalogModel", () => {
       tags: [PRESET_TAG, "git", "daily"],
       title: "Git 状态",
     });
+    expect(
+      presetSnippets.find(
+        (snippet) =>
+          snippet.id === `${PRESET_SNIPPET_ID_PREFIX}ssh-listening-ports`,
+      ),
+    ).toMatchObject({
+      command: "ss -tulpen",
+      scope: "ssh",
+      tags: [PRESET_TAG, "ssh", "network", "port"],
+      title: "监听端口",
+    });
   });
 
   it("filters presets by scope, query and tag", () => {
-    expect(filterPresetSnippets({ query: "docker", scope: "" }).map((item) => item.title)).toEqual([
+    expect(
+      filterPresetSnippets({ query: "docker", scope: "" }).map(
+        (item) => item.title,
+      ),
+    ).toEqual([
       "Docker 容器",
       "Docker Compose 状态",
+      "Docker 资源占用",
+      "Docker 日志",
+      "Compose 服务日志",
     ]);
-    expect(filterPresetSnippets({ query: "磁盘", scope: "ssh" })).toHaveLength(1);
+    expect(
+      filterPresetSnippets({ query: "磁盘", scope: "ssh" }).map(
+        (item) => item.title,
+      ),
+    ).toEqual(["SSH 磁盘空间", "磁盘与 inode"]);
     expect(filterPresetSnippets({ query: "git", scope: "ssh" })).toEqual([]);
   });
 
@@ -121,10 +143,9 @@ describe("snippetCatalogModel", () => {
     ]);
     const presetTagGroups = collectTagGroups(presetSnippets, [PRESET_TAG]);
     expect(presetTagGroups.some((group) => group.tag === PRESET_TAG)).toBe(false);
-    expect(presetTagGroups.slice(0, 2).map((group) => group.tag)).toEqual([
-      "daily",
-      "git",
-    ]);
+    expect(presetTagGroups.map((group) => group.tag)).toEqual(
+      expect.arrayContaining(["ssh", "logs", "network", "docker"]),
+    );
     expect(groupSnippets(sampleSnippets, "").map((group) => group.label)).toEqual([
       "#git",
       "#ssh",

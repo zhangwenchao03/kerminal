@@ -92,7 +92,6 @@ async fn assert_all_remote_refreshes_skipped_without_connecting(
         .suggestions
         .refresh_remote_commands(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.ssh_commands,
             CommandSuggestionRemoteCommandRefreshRequest {
@@ -109,7 +108,6 @@ async fn assert_all_remote_refreshes_skipped_without_connecting(
         .suggestions
         .refresh_remote_history(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.ssh_commands,
             CommandSuggestionRemoteHistoryRefreshRequest {
@@ -126,7 +124,6 @@ async fn assert_all_remote_refreshes_skipped_without_connecting(
         .suggestions
         .refresh_remote_paths(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.sftp,
             CommandSuggestionRemotePathRefreshRequest {
@@ -145,7 +142,6 @@ async fn assert_all_remote_refreshes_skipped_without_connecting(
         .suggestions
         .refresh_git_refs(
             &harness.storage,
-            &harness.credentials,
             &harness.paths,
             &harness.ssh_commands,
             CommandSuggestionGitRefreshRequest {

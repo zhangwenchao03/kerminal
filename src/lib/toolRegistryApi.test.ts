@@ -412,6 +412,7 @@ describe("toolRegistryApi", () => {
 
     expect(registry.some((item) => item.id === "workflow.run")).toBe(true);
     expect(registry.some((item) => item.id === "ssh.command")).toBe(true);
+    expect(registry.some((item) => item.id === "ssh.command_on_resolved_host")).toBe(true);
     expect(registry.some((item) => item.id === "sftp.download")).toBe(true);
     expect(registry.some((item) => item.id === "sftp.move")).toBe(true);
     expect(registry.some((item) => item.id === "sftp.preview")).toBe(true);
@@ -422,6 +423,7 @@ describe("toolRegistryApi", () => {
     expect(registry.some((item) => item.id === "diagnostics.runtime_health")).toBe(true);
     expect(registry.some((item) => item.id === "diagnostics.create_bundle")).toBe(true);
     expect(mcp.tools.some((item) => item.name === "ssh.command")).toBe(true);
+    expect(mcp.tools.some((item) => item.name === "ssh.command_on_resolved_host")).toBe(true);
     expect(mcp.tools.some((item) => item.name === "sftp.download")).toBe(true);
     expect(mcp.tools.some((item) => item.name === "sftp.move")).toBe(true);
     expect(mcp.tools.some((item) => item.name === "sftp.preview")).toBe(true);
@@ -436,6 +438,14 @@ describe("toolRegistryApi", () => {
       confirmation: "always",
       risk: "remote",
       title: "执行远程命令",
+    });
+    expect(
+      registry.find((item) => item.id === "ssh.command_on_resolved_host"),
+    ).toMatchObject({
+      audit: "summary",
+      confirmation: "always",
+      risk: "remote",
+      title: "解析目标后执行远程命令",
     });
     expect(
       registry.find((item) => item.id === "sftp.preview"),
@@ -541,5 +551,61 @@ describe("toolRegistryApi", () => {
     expect(
       previewManifest.transports.some((transport) => transport.status === "planned"),
     ).toBe(true);
+  });
+
+  it("derives browser preview MCP tools and manifest from preview tool definitions", async () => {
+    isTauriMock.mockReturnValue(false);
+    const {
+      browserPreviewMcpToolCount,
+      buildPreviewMcpManifest,
+      buildPreviewMcpToolList,
+      previewTools,
+    } = await import("./toolRegistryPreview");
+    const { default: toolRegistryContractFixture } = await import(
+      "./toolRegistryContract.fixture.json"
+    );
+    const { getMcpGatewayManifest, listMcpTools } = await import("./toolRegistryApi");
+
+    const exposedTools = previewTools.filter(
+      (tool) => tool.enabled && tool.exposedToMcp,
+    );
+    const exposedToolIds = exposedTools.map((tool) => tool.id).sort();
+    const mcp = buildPreviewMcpToolList();
+    const manifest = buildPreviewMcpManifest();
+    const apiMcp = await listMcpTools();
+    const apiManifest = await getMcpGatewayManifest();
+
+    expect(previewTools).toEqual(toolRegistryContractFixture);
+    expect(browserPreviewMcpToolCount).toBe(exposedTools.length);
+    expect(new Set(exposedToolIds).size).toBe(exposedToolIds.length);
+    expect(mcp.tools.map((tool) => tool.name).sort()).toEqual(exposedToolIds);
+    expect(apiMcp).toEqual(mcp);
+    expect(manifest.tools).toEqual(mcp);
+    expect(apiManifest.tools).toEqual(mcp);
+
+    const previewToolsById = new Map(
+      previewTools.map((tool) => [tool.id, tool] as const),
+    );
+    for (const mcpTool of mcp.tools) {
+      const source = previewToolsById.get(mcpTool.sourceToolId);
+      expect(source, `missing preview source for ${mcpTool.name}`).toBeTruthy();
+      expect(mcpTool.name).toBe(source?.id);
+      expect(mcpTool.title).toBe(source?.title);
+      expect(mcpTool.description).toBe(source?.description);
+      expect(mcpTool.risk).toBe(source?.risk);
+      expect(mcpTool.confirmation).toBe(source?.confirmation);
+      expect(mcpTool.audit).toBe(source?.audit);
+      expect(mcpTool.inputSchema).toEqual(source?.inputSchema);
+    }
+
+    const exposedToolIdSet = new Set(exposedToolIds);
+    for (const skill of manifest.skills) {
+      for (const toolId of skill.toolIds) {
+        expect(
+          exposedToolIdSet.has(toolId),
+          `manifest skill ${skill.id} references unavailable tool ${toolId}`,
+        ).toBe(true);
+      }
+    }
   });
 });

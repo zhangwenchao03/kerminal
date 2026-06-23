@@ -37,8 +37,8 @@ use crate::{
     },
     paths::KerminalPaths,
     services::{
-        command_history_service::CommandHistoryService, credential_service::CredentialService,
-        sftp_service::SftpService, ssh_command_service::SshCommandService,
+        command_history_service::CommandHistoryService, sftp_service::SftpService,
+        ssh_command_service::SshCommandService,
     },
     storage::{
         command_suggestion_audit::CommandSuggestionAuditEventWrite,

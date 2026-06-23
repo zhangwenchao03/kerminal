@@ -34,6 +34,8 @@ describe("aiToolInvocationApi", () => {
 
     const pending = await prepareAiToolInvocation({
       arguments: { themeMode: "dark" },
+      conversationId: " conv-theme ",
+      conversationSlotJson: ' {"slotKey":"no-context"} ',
       reason: "切换深色主题",
       requestedBy: "test",
       toolId: " settings.update_theme ",
@@ -43,8 +45,12 @@ describe("aiToolInvocationApi", () => {
     expect(invokeMock).toHaveBeenCalledWith("ai_tool_prepare", {
       request: {
         arguments: { themeMode: "dark" },
+        conversationId: "conv-theme",
+        conversationSlotJson: '{"slotKey":"no-context"}',
         reason: "切换深色主题",
         requestedBy: "test",
+        runId: null,
+        stepId: null,
         toolId: "settings.update_theme",
       },
     });
@@ -53,6 +59,10 @@ describe("aiToolInvocationApi", () => {
   it("confirms tool invocations through Tauri", async () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockResolvedValue({
+      auditContext: {
+        conversationId: "conversation-prod",
+        contextSnapshotId: "ctx-prod",
+      },
       argumentsSummary: "themeMode=dark",
       completedAt: "2",
       confirmation: "contextual",
@@ -70,13 +80,25 @@ describe("aiToolInvocationApi", () => {
 
     const audit = await confirmAiToolInvocation({
       approved: true,
+      auditContext: {
+        conversationId: "conversation-prod",
+        contextSnapshotId: "ctx-prod",
+      },
       invocationId: "tool-call-1",
     });
 
     expect(audit.status).toBe("succeeded");
+    expect(audit.auditContext).toMatchObject({
+      conversationId: "conversation-prod",
+      contextSnapshotId: "ctx-prod",
+    });
     expect(invokeMock).toHaveBeenCalledWith("ai_tool_confirm", {
       request: {
         approved: true,
+        auditContext: {
+          conversationId: "conversation-prod",
+          contextSnapshotId: "ctx-prod",
+        },
         invocationId: "tool-call-1",
       },
     });
@@ -89,6 +111,15 @@ describe("aiToolInvocationApi", () => {
 
     await expect(listAiToolAudits()).resolves.toEqual([]);
     expect(invokeMock).toHaveBeenCalledWith("ai_tool_audit_list");
+  });
+
+  it("lists pending tool invocations through Tauri", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue([]);
+    const { listAiToolPendingInvocations } = await import("./aiToolInvocationApi");
+
+    await expect(listAiToolPendingInvocations()).resolves.toEqual([]);
+    expect(invokeMock).toHaveBeenCalledWith("ai_tool_pending_list");
   });
 
   it("lists audit records with a requested limit through Tauri", async () => {
@@ -131,6 +162,7 @@ describe("aiToolInvocationApi", () => {
     const {
       confirmAiToolInvocation,
       listAiToolAudits,
+      listAiToolPendingInvocations,
       prepareAiToolInvocation,
     } = await import("./aiToolInvocationApi");
 
@@ -140,21 +172,69 @@ describe("aiToolInvocationApi", () => {
         themeMode: "dark",
       },
       reason: "预览受控主题切换",
+      conversationId: "browser-conv",
+      conversationSlotJson: JSON.stringify({ slotKey: "no-context" }),
       toolId: "settings.update_theme",
     });
     const audit = await confirmAiToolInvocation({
       approved: false,
+      auditContext: {
+        attachmentIds: ["att-ssh"],
+        conversationId: "conversation-prod",
+        contextSnapshotId: "ctx-prod",
+      },
       invocationId: pending.id,
     });
+    const pendingBeforeAuditList = await listAiToolPendingInvocations();
     const audits = await listAiToolAudits();
 
     expect(pending.toolTitle).toBe("更新主题");
+    expect(pending.conversationId).toBe("browser-conv");
+    expect(pending.conversationSlotJson).toBe(JSON.stringify({ slotKey: "no-context" }));
     expect(pending.argumentsSummary).toContain("apiToken=[已脱敏]");
     expect(audit.status).toBe("rejected");
+    expect(pendingBeforeAuditList).toEqual([]);
     expect(audits[0]).toMatchObject({
+      auditContext: {
+        attachmentIds: ["att-ssh"],
+        conversationId: "conversation-prod",
+        contextSnapshotId: "ctx-prod",
+      },
       invocationId: pending.id,
       status: "rejected",
     });
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps browser preview tool metadata aligned with the registry preview contract", async () => {
+    isTauriMock.mockReturnValue(false);
+    const { prepareAiToolInvocation } = await import("./aiToolInvocationApi");
+    const { previewTools } = await import("./toolRegistryPreview");
+
+    const enabledMcpTools = previewTools.filter(
+      (tool) => tool.enabled && tool.exposedToMcp,
+    );
+    expect(enabledMcpTools.length).toBeGreaterThan(60);
+    expect(previewTools.find((tool) => tool.id === "workflow.run")).toMatchObject({
+      enabled: false,
+      exposedToMcp: false,
+    });
+
+    for (const tool of enabledMcpTools) {
+      const pending = await prepareAiToolInvocation({
+        arguments: {},
+        reason: "browser preview metadata contract",
+        toolId: tool.id,
+      });
+
+      expect(pending, `preview metadata drift for ${tool.id}`).toMatchObject({
+        audit: tool.audit,
+        confirmation: tool.confirmation,
+        risk: tool.risk,
+        toolId: tool.id,
+        toolTitle: tool.title,
+      });
+    }
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
@@ -460,8 +540,7 @@ describe("aiToolInvocationApi", () => {
 
     const pending = await prepareAiToolInvocation({
       arguments: {
-        authType: "key",
-        credentialRef: "credential:ssh/ai-dev",
+        authType: "agent",
         groupId: "group-virtual",
         host: "ai-dev.internal",
         name: "AI Dev",
@@ -480,7 +559,7 @@ describe("aiToolInvocationApi", () => {
     expect(pending.toolTitle).toBe("创建远程主机");
     expect(pending.risk).toBe("remote");
     expect(pending.confirmation).toBe("always");
-    expect(pending.argumentsSummary).toContain("credentialRef=[已脱敏]");
+    expect(pending.argumentsSummary).not.toContain("credentialRef");
     expect(audit).toMatchObject({
       resultSummary: "远程主机已创建，浏览器预览已模拟刷新主机树。",
       status: "succeeded",
@@ -598,6 +677,80 @@ describe("aiToolInvocationApi", () => {
       riskSummary: pending.riskSummary,
       status: "rejected",
       toolId: "ssh.command",
+    });
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("previews resolved-host SSH command as a remote confirmed tool", async () => {
+    isTauriMock.mockReturnValue(false);
+    const {
+      confirmAiToolInvocation,
+      prepareAiToolInvocation,
+    } = await import("./aiToolInvocationApi");
+
+    const pending = await prepareAiToolInvocation({
+      arguments: {
+        command: "uname -a && df -h /",
+        groupName: "bwy",
+        host: "172.16.40.104",
+        username: "root",
+      },
+      reason: "预览解析目标后执行远程命令",
+      toolId: "ssh.command_on_resolved_host",
+    });
+    const audit = await confirmAiToolInvocation({
+      approved: true,
+      invocationId: pending.id,
+    });
+
+    expect(pending.toolTitle).toBe("解析目标后执行远程命令");
+    expect(pending.risk).toBe("remote");
+    expect(pending.confirmation).toBe("always");
+    expect(pending.audit).toBe("summary");
+    expect(pending.clientAction).toBeNull();
+    expect(pending.argumentsSummary).toContain("groupName=bwy");
+    expect(pending.argumentsSummary).toContain("command=uname -a");
+    expect(audit).toMatchObject({
+      resultSummary:
+        "远程命令已执行，浏览器预览已模拟返回 stdout/stderr 摘要。",
+      risk: "remote",
+      status: "succeeded",
+      toolId: "ssh.command_on_resolved_host",
+    });
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("escalates dangerous resolved-host SSH command in browser preview", async () => {
+    isTauriMock.mockReturnValue(false);
+    const {
+      confirmAiToolInvocation,
+      prepareAiToolInvocation,
+    } = await import("./aiToolInvocationApi");
+
+    const pending = await prepareAiToolInvocation({
+      arguments: {
+        command: "sudo reboot",
+        host: "172.16.40.104",
+      },
+      reason: "预览危险解析目标远程命令",
+      toolId: "ssh.command_on_resolved_host",
+    });
+    const audit = await confirmAiToolInvocation({
+      approved: false,
+      invocationId: pending.id,
+    });
+
+    expect(pending.risk).toBe("destructive");
+    expect(pending.confirmation).toBe("always");
+    expect(pending.audit).toBe("full");
+    expect(pending.riskSummary).toContain("远程命令风险");
+    expect(pending.riskSummary).toContain("权限提升");
+    expect(pending.riskSummary).toContain("关机或重启");
+    expect(audit).toMatchObject({
+      risk: "destructive",
+      riskSummary: pending.riskSummary,
+      status: "rejected",
+      toolId: "ssh.command_on_resolved_host",
     });
     expect(invokeMock).not.toHaveBeenCalled();
   });

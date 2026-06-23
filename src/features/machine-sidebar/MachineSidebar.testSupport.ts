@@ -79,7 +79,6 @@ export const rdpSidebarGroups = [
     machines: [
       {
         authType: "password" as const,
-        credentialRef: "credential:ssh/rdp-office/password",
         description: "administrator@rdp.internal:3389",
         host: "rdp.internal",
         id: "rdp-office",

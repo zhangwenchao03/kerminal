@@ -8,6 +8,17 @@ import {
 import { useEffect, useRef } from "react";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
+import {
+  buildTerminalSearchPanelModel,
+  resolveTerminalSearchInputKeyAction,
+} from "./terminalSearchPanelModel";
+
+const terminalSearchPanelClassName =
+  "kerminal-floating-enter absolute right-3 top-10 z-30 flex max-w-[calc(100%-1.5rem)] items-center gap-1 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] p-1.5 shadow-2xl shadow-black/15 backdrop-blur-xl dark:shadow-black/35";
+const terminalSearchInputClassName =
+  "h-8 w-44 bg-transparent px-1 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-zinc-100";
+const terminalSearchActiveToggleClassName =
+  "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-200";
 
 interface TerminalSearchPanelProps {
   caseSensitive: boolean;
@@ -37,7 +48,7 @@ export function TerminalSearchPanel({
   onToggleCaseSensitive,
 }: TerminalSearchPanelProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const resultLabel = searchResultLabel({
+  const model = buildTerminalSearchPanelModel({
     hasSearched,
     query,
     resultCount,
@@ -52,7 +63,7 @@ export function TerminalSearchPanel({
   return (
     <form
       aria-label="终端搜索"
-      className="absolute right-3 top-10 z-30 flex max-w-[calc(100%-1.5rem)] items-center gap-1 rounded-2xl border border-black/10 bg-white/95 p-1.5 shadow-2xl shadow-black/15 backdrop-blur dark:border-white/10 dark:bg-zinc-950/95 dark:shadow-black/35"
+      className={terminalSearchPanelClassName}
       onSubmit={(event) => {
         event.preventDefault();
         onSearchNext();
@@ -63,15 +74,16 @@ export function TerminalSearchPanel({
         搜索终端缓冲区
       </label>
       <input
-        className="h-8 w-44 bg-transparent px-1 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-zinc-100"
+        className={terminalSearchInputClassName}
         id={inputId}
         onChange={(event) => onQueryChange(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Escape") {
+          const action = resolveTerminalSearchInputKeyAction(event);
+          if (action === "close") {
             event.preventDefault();
             onClose();
           }
-          if (event.key === "Enter" && event.shiftKey) {
+          if (action === "previous") {
             event.preventDefault();
             onSearchPrevious();
           }
@@ -83,16 +95,16 @@ export function TerminalSearchPanel({
       <span
         className={cn(
           "w-16 shrink-0 text-right text-[11px]",
-          resultCount === 0 && hasSearched && query.trim()
+          model.resultTone === "danger"
             ? "text-rose-500 dark:text-rose-300"
             : "text-zinc-400",
         )}
       >
-        {resultLabel}
+        {model.resultLabel}
       </span>
       <Button
         aria-label="上一个匹配"
-        disabled={!query.trim()}
+        disabled={model.navigationDisabled}
         onClick={onSearchPrevious}
         size="icon"
         type="button"
@@ -102,8 +114,7 @@ export function TerminalSearchPanel({
       </Button>
       <Button
         aria-label="下一个匹配"
-        disabled={!query.trim()}
-        onClick={onSearchNext}
+        disabled={model.navigationDisabled}
         size="icon"
         type="submit"
         variant="ghost"
@@ -114,8 +125,7 @@ export function TerminalSearchPanel({
         aria-label="区分大小写"
         aria-pressed={caseSensitive}
         className={cn(
-          caseSensitive &&
-            "bg-sky-500/10 text-sky-700 dark:bg-sky-400/15 dark:text-sky-200",
+          caseSensitive && terminalSearchActiveToggleClassName,
         )}
         onClick={onToggleCaseSensitive}
         size="icon"
@@ -135,30 +145,4 @@ export function TerminalSearchPanel({
       </Button>
     </form>
   );
-}
-
-function searchResultLabel({
-  hasSearched,
-  query,
-  resultCount,
-  resultIndex,
-}: {
-  hasSearched: boolean;
-  query: string;
-  resultCount: number;
-  resultIndex: number;
-}) {
-  if (!query.trim()) {
-    return "输入关键词";
-  }
-  if (!hasSearched) {
-    return "待搜索";
-  }
-  if (resultCount <= 0) {
-    return "无匹配";
-  }
-  if (resultIndex < 0) {
-    return `${resultCount} 项`;
-  }
-  return `${resultIndex + 1}/${resultCount}`;
 }

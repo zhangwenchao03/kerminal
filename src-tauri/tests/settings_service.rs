@@ -59,6 +59,7 @@ fn settings_service_persists_app_settings_in_sqlite() {
         settings.appearance.background_image_path =
             " C:\\Users\\dev\\Pictures\\bg.png ".to_string();
         settings.appearance.background_opacity = 72;
+        settings.appearance.window_opacity = 68;
         settings.terminal.auto_reconnect = false;
         settings.terminal.color_scheme = TerminalColorScheme::TokyoNight;
         settings.terminal.cursor_style = TerminalCursorStyle::Bar;
@@ -112,6 +113,7 @@ fn settings_service_persists_app_settings_in_sqlite() {
             "C:\\Users\\dev\\Pictures\\bg.png"
         );
         assert_eq!(stored.appearance.background_opacity, 72);
+        assert_eq!(stored.appearance.window_opacity, 68);
         assert_eq!(
             stored.terminal.color_scheme,
             TerminalColorScheme::TokyoNight
@@ -138,6 +140,7 @@ fn settings_service_persists_app_settings_in_sqlite() {
         "C:\\Users\\dev\\Pictures\\bg.png"
     );
     assert_eq!(settings.appearance.background_opacity, 72);
+    assert_eq!(settings.appearance.window_opacity, 68);
     assert!(!settings.terminal.auto_reconnect);
     assert_eq!(
         settings.terminal.color_scheme,

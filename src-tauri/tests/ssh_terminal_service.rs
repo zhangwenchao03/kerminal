@@ -5,14 +5,16 @@
 use kerminal_lib::{
     error::AppError,
     models::{
-        remote_host::{RemoteHostAuthType, RemoteHostCreateRequest, RemoteHostGroupCreateRequest},
+        remote_host::{
+            RemoteHostAuthType, RemoteHostCreateRequest, RemoteHostGroupCreateRequest,
+            SshJumpHostOptions, SshOptions,
+        },
         terminal::SshTerminalCreateRequest,
     },
     paths::KerminalPaths,
-    services::credential_service::{CredentialService, MemoryCredentialVault},
     state::AppState,
 };
-use std::{fs, path::PathBuf, sync::Arc};
+use std::{fs, path::PathBuf};
 use tempfile::{tempdir, TempDir};
 
 const TEST_PRIVATE_KEY: &str = "-----BEGIN OPENSSH PRIVATE KEY-----\nkerminal-test-private-key\n-----END OPENSSH PRIVATE KEY-----\n";
@@ -26,7 +28,6 @@ fn resolve_terminal_request_rejects_unknown_remote_host_before_spawning_ssh() {
         .ssh_terminals()
         .resolve_terminal_request(
             state.storage(),
-            state.credentials(),
             state.paths(),
             SshTerminalCreateRequest {
                 host_id: "missing-host".to_owned(),
@@ -48,7 +49,6 @@ fn resolve_terminal_request_uses_app_known_hosts_file() {
         .ssh_terminals()
         .resolve_terminal_request(
             state.storage(),
-            state.credentials(),
             state.paths(),
             SshTerminalCreateRequest {
                 host_id,
@@ -73,6 +73,51 @@ fn resolve_terminal_request_uses_app_known_hosts_file() {
 }
 
 #[test]
+fn resolve_terminal_request_sets_default_term_env() {
+    let (_home, state) = test_state();
+    let host_id = create_test_remote_host(&state, RemoteHostAuthType::Agent, None);
+
+    let request = state
+        .ssh_terminals()
+        .resolve_terminal_request(
+            state.storage(),
+            state.paths(),
+            SshTerminalCreateRequest {
+                host_id,
+                cols: 80,
+                rows: 24,
+            },
+        )
+        .expect("resolve ssh terminal request");
+
+    assert_eq!(request.env.get("TERM"), Some(&"xterm-256color".to_owned()));
+}
+
+#[test]
+fn resolve_terminal_request_uses_configured_terminal_type() {
+    let (_home, state) = test_state();
+    let mut ssh_options = SshOptions::default();
+    ssh_options.terminal.terminal_type = "xterm".to_owned();
+    let host_id =
+        create_test_remote_host_with_options(&state, RemoteHostAuthType::Agent, None, ssh_options);
+
+    let request = state
+        .ssh_terminals()
+        .resolve_terminal_request(
+            state.storage(),
+            state.paths(),
+            SshTerminalCreateRequest {
+                host_id,
+                cols: 80,
+                rows: 24,
+            },
+        )
+        .expect("resolve ssh terminal request");
+
+    assert_eq!(request.env.get("TERM"), Some(&"xterm".to_owned()));
+}
+
+#[test]
 fn resolve_terminal_request_uses_key_path_identity_file() {
     let (_home, state) = test_state();
     let key_path = state
@@ -88,7 +133,6 @@ fn resolve_terminal_request_uses_key_path_identity_file() {
         .ssh_terminals()
         .resolve_terminal_request(
             state.storage(),
-            state.credentials(),
             state.paths(),
             SshTerminalCreateRequest {
                 host_id,
@@ -110,29 +154,19 @@ fn resolve_terminal_request_uses_key_path_identity_file() {
 }
 
 #[test]
-fn resolve_terminal_request_materializes_credential_private_key_for_openssh() {
+fn resolve_terminal_request_materializes_inline_private_key_for_openssh() {
     let (_home, state) = test_state();
-    let credentials = CredentialService::with_vault(Arc::new(MemoryCredentialVault::new()));
-    let credential_ref = "credential:ssh/dev/private-key".to_owned();
-    let secret = serde_json::json!({
-        "privateKey": TEST_PRIVATE_KEY,
-        "passphrase": "interactive-passphrase"
-    })
-    .to_string();
-    credentials
-        .set_secret(&credential_ref, &secret)
-        .expect("store private key credential");
-    let host_id = create_test_remote_host(
+    let host_id = create_test_remote_host_with_secret(
         &state,
         RemoteHostAuthType::Key,
-        Some(credential_ref.clone()),
+        None,
+        Some(TEST_PRIVATE_KEY.to_owned()),
     );
 
     let request = state
         .ssh_terminals()
         .resolve_terminal_request(
             state.storage(),
-            &credentials,
             state.paths(),
             SshTerminalCreateRequest {
                 host_id,
@@ -165,24 +199,19 @@ fn resolve_terminal_request_materializes_credential_private_key_for_openssh() {
 }
 
 #[test]
-fn resolve_terminal_request_uses_password_credential_as_internal_prompt_response() {
+fn resolve_terminal_request_uses_plaintext_password_as_internal_prompt_response() {
     let (_home, state) = test_state();
-    let credentials = CredentialService::with_vault(Arc::new(MemoryCredentialVault::new()));
-    let credential_ref = "credential:ssh/dev/password".to_owned();
-    credentials
-        .set_secret(&credential_ref, TEST_PASSWORD)
-        .expect("store password credential");
-    let host_id = create_test_remote_host(
+    let host_id = create_test_remote_host_with_secret(
         &state,
         RemoteHostAuthType::Password,
-        Some(credential_ref.clone()),
+        None,
+        Some(TEST_PASSWORD.to_owned()),
     );
 
     let request = state
         .ssh_terminals()
         .resolve_terminal_request(
             state.storage(),
-            &credentials,
             state.paths(),
             SshTerminalCreateRequest {
                 host_id,
@@ -209,6 +238,71 @@ fn resolve_terminal_request_uses_password_credential_as_internal_prompt_response
 }
 
 #[test]
+fn resolve_terminal_request_uses_openssh_config_alias_for_jump_route() {
+    let (_home, state) = test_state();
+    let mut ssh_options = SshOptions::default();
+    ssh_options.jump_hosts = vec![SshJumpHostOptions {
+        name: "bastion".to_owned(),
+        host: "bastion.internal".to_owned(),
+        port: 2200,
+        username: "jump".to_owned(),
+        auth_type: RemoteHostAuthType::Agent,
+        credential_ref: None,
+        credential_secret: None,
+    }];
+    let host_id = create_test_remote_host_with_secret_and_options(
+        &state,
+        RemoteHostAuthType::Agent,
+        None,
+        None,
+        ssh_options,
+    );
+
+    let request = state
+        .ssh_terminals()
+        .resolve_terminal_request(
+            state.storage(),
+            state.paths(),
+            SshTerminalCreateRequest {
+                host_id,
+                cols: 80,
+                rows: 24,
+            },
+        )
+        .expect("resolve ssh terminal jump request");
+
+    let config_path = request
+        .args
+        .windows(2)
+        .find(|pair| pair[0] == "-F")
+        .map(|pair| PathBuf::from(&pair[1]))
+        .expect("temp config path");
+    assert_eq!(
+        request.args.last().map(String::as_str),
+        Some("kerminal-target")
+    );
+    assert!(!request
+        .args
+        .iter()
+        .any(|arg| arg == "-J" || arg.contains("ProxyJump")));
+    assert!(request.cleanup_paths.contains(&config_path));
+
+    let config = fs::read_to_string(&config_path).expect("read temp config");
+    assert!(config.contains("Host kerminal-hop-0"));
+    assert!(config.contains("HostName bastion.internal"));
+    assert!(config.contains("Port 2200"));
+    assert!(config.contains("User jump"));
+    assert!(config.contains("Host kerminal-target"));
+    assert!(config.contains("HostName dev.internal"));
+    assert!(config.contains("ProxyCommand ssh -F "));
+    assert!(config.contains(" kerminal-hop-0"));
+    assert!(config.contains("UserKnownHostsFile "));
+    assert!(config.contains("GlobalKnownHostsFile none"));
+
+    cleanup_paths(&request.cleanup_paths);
+}
+
+#[test]
 fn app_state_startup_cleans_stale_interactive_ssh_identity_files() {
     let home = tempdir().expect("create temp home");
     let paths = KerminalPaths::from_home_dir(home.path());
@@ -229,6 +323,15 @@ fn create_test_remote_host(
     state: &AppState,
     auth_type: RemoteHostAuthType,
     credential_ref: Option<String>,
+) -> String {
+    create_test_remote_host_with_options(state, auth_type, credential_ref, SshOptions::default())
+}
+
+fn create_test_remote_host_with_options(
+    state: &AppState,
+    auth_type: RemoteHostAuthType,
+    credential_ref: Option<String>,
+    ssh_options: SshOptions,
 ) -> String {
     let group = state
         .remote_hosts()
@@ -253,7 +356,61 @@ fn create_test_remote_host(
                 name: "dev ssh".to_owned(),
                 port: 22,
                 production: false,
-                ssh_options: Default::default(),
+                ssh_options,
+                tags: vec!["dev".to_owned()],
+                username: "deploy".to_owned(),
+            },
+        )
+        .expect("create test host")
+        .id
+}
+
+fn create_test_remote_host_with_secret(
+    state: &AppState,
+    auth_type: RemoteHostAuthType,
+    credential_ref: Option<String>,
+    credential_secret: Option<String>,
+) -> String {
+    create_test_remote_host_with_secret_and_options(
+        state,
+        auth_type,
+        credential_ref,
+        credential_secret,
+        SshOptions::default(),
+    )
+}
+
+fn create_test_remote_host_with_secret_and_options(
+    state: &AppState,
+    auth_type: RemoteHostAuthType,
+    credential_ref: Option<String>,
+    credential_secret: Option<String>,
+    ssh_options: SshOptions,
+) -> String {
+    let group = state
+        .remote_hosts()
+        .create_group(
+            state.storage(),
+            RemoteHostGroupCreateRequest {
+                name: "虚拟机".to_owned(),
+            },
+        )
+        .expect("create test group");
+
+    state
+        .remote_hosts()
+        .create_host(
+            state.storage(),
+            RemoteHostCreateRequest {
+                auth_type,
+                credential_ref,
+                credential_secret,
+                group_id: Some(group.id),
+                host: "dev.internal".to_owned(),
+                name: "dev ssh".to_owned(),
+                port: 22,
+                production: false,
+                ssh_options,
                 tags: vec!["dev".to_owned()],
                 username: "deploy".to_owned(),
             },
@@ -267,4 +424,10 @@ fn test_state() -> (TempDir, AppState) {
     let paths = KerminalPaths::from_home_dir(home.path());
     let state = AppState::initialize_with_paths(paths).expect("initialize app state");
     (home, state)
+}
+
+fn cleanup_paths(paths: &[PathBuf]) {
+    for path in paths {
+        let _ = fs::remove_file(path);
+    }
 }

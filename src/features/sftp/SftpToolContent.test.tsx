@@ -10,11 +10,13 @@ import { afterEach,
   it,
   vi } from "vitest";
 import {  localMachine,
+  containerFilesApiMocks,
+  containerMachine,
   sftpApiMocks,
   sshCommandApiMocks,
   sshMachine,
 } from "./SftpToolContent.testSupport";
-import { SftpToolContent } from "./SftpToolContent";
+import { SftpToolContent } from "./SftpToolContent";
 
 describe("SftpToolContent basic behavior", () => {
   afterEach(() => {
@@ -48,7 +50,7 @@ describe("SftpToolContent basic behavior", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("loads and navigates the selected SSH host directory", async () => {
+  it("loads and navigates the selected SSH host directory on directory double click", async () => {
     const user = userEvent.setup();
 
     render(<SftpToolContent selectedMachine={sshMachine} />);
@@ -68,16 +70,37 @@ describe("SftpToolContent basic behavior", () => {
       screen.queryByRole("status", { name: "SFTP 传输状态" }),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "打开目录 log" }));
+    await user.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
 
     expect(await screen.findByText("app.log")).toBeInTheDocument();
-    expect(sftpApiMocks.listSftpDirectory).toHaveBeenLastCalledWith({
-      hostId: "prod-api",
-      path: "/var/log",
-    });
-  });
-
-  it("lets users explicitly trust an unknown SFTP host key after a directory error", async () => {
+    expect(sftpApiMocks.listSftpDirectory).toHaveBeenLastCalledWith({
+      hostId: "prod-api",
+      path: "/var/log",
+    });
+  });
+
+  it("selects a directory without entering it on single click", async () => {
+    const user = userEvent.setup();
+
+    render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    expect(await screen.findByText("var")).toBeInTheDocument();
+    const initialLoadCount = sftpApiMocks.listSftpDirectory.mock.calls.length;
+    const logDirectory = screen.getByRole("button", { name: "打开目录 log" });
+
+    await user.click(logDirectory);
+    await new Promise((resolve) => window.setTimeout(resolve, 220));
+
+    expect(
+      logDirectory.closest("[aria-selected='true']"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("app.log")).not.toBeInTheDocument();
+    expect(sftpApiMocks.listSftpDirectory).toHaveBeenCalledTimes(
+      initialLoadCount,
+    );
+  });
+
+  it("lets users explicitly trust an unknown SFTP host key after a directory error", async () => {
     const user = userEvent.setup();
     sftpApiMocks.listSftpDirectory.mockRejectedValueOnce(
       new Error("SSH 主机密钥未信任"),
@@ -137,7 +160,7 @@ describe("SftpToolContent basic behavior", () => {
         .closest("[aria-selected='true']"),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "打开目录 log" }));
+    await user.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
     expect(await screen.findByText("app.log")).toBeInTheDocument();
     fireEvent.contextMenu(
       screen.getByRole("button", { name: "文件 app.log" }),
@@ -239,13 +262,13 @@ describe("SftpToolContent basic behavior", () => {
     });
   });
 
-  it("allows downloading symlink entries from the context menu", async () => {
-    const user = userEvent.setup();
+  it("allows downloading symlink entries from the context menu", async () => {
+    const user = userEvent.setup();
 
     render(<SftpToolContent selectedMachine={sshMachine} />);
 
     await screen.findByText("var");
-    await user.click(screen.getByRole("button", { name: "打开目录 log" }));
+    await user.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
     expect(await screen.findByText("current")).toBeInTheDocument();
     fireEvent.contextMenu(
       screen.getByRole("button", { name: "链接 current" }),
@@ -255,11 +278,46 @@ describe("SftpToolContent basic behavior", () => {
       },
     );
 
-    expect(screen.getByRole("menuitem", { name: "下载" })).not.toBeDisabled();
-    expect(screen.getByRole("menuitem", { name: "打开编辑器" })).toBeDisabled();
-  });
-
-  it("follows the focused terminal directory when the switch is enabled", async () => {
+    expect(screen.getByRole("menuitem", { name: "下载" })).not.toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "打开编辑器" })).toBeDisabled();
+  });
+
+  it("shows direct Docker container transfer status at the bottom of the browser", async () => {
+    const user = userEvent.setup();
+
+    render(<SftpToolContent selectedMachine={containerMachine} />);
+
+    expect(await screen.findByText("package.json")).toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "文件 package.json" }), {
+      clientX: 80,
+      clientY: 160,
+    });
+    await user.click(screen.getByRole("menuitem", { name: "下载" }));
+
+    expect(containerFilesApiMocks.downloadDockerContainerPath).toHaveBeenCalledWith({
+      containerId: "container-api",
+      hostId: "prod-api",
+      kind: "file",
+      localPath: "/Users/me/Downloads/app.log",
+      remotePath: "/app/package.json",
+      runtime: "docker",
+    });
+
+    const statusText = await screen.findByText("已下载：/app/package.json");
+    const statusBar = screen.getByTestId("sftp-operation-status");
+    const dropZone = screen.getByTestId("sftp-drop-zone");
+
+    expect(statusBar).toContainElement(statusText);
+    expect(
+      dropZone.compareDocumentPosition(statusBar) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("status", { name: "SFTP 传输状态" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("follows the focused terminal directory when the switch is enabled", async () => {
     const user = userEvent.setup();
 
     render(
@@ -317,7 +375,7 @@ describe("SftpToolContent basic behavior", () => {
     });
   });
 
-  it("sets up remote shell cwd tracking from the SFTP follow controls", async () => {
+  it("sets up remote shell cwd tracking from the SFTP follow controls", async () => {
     const user = userEvent.setup();
 
     render(<SftpToolContent selectedMachine={sshMachine} />);
@@ -384,7 +442,7 @@ describe("SftpToolContent basic behavior", () => {
     render(<SftpToolContent selectedMachine={sshMachine} />);
 
     await screen.findByText("var");
-    await user.click(screen.getByRole("button", { name: "打开目录 log" }));
+    await user.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
     expect(await screen.findByText("app.log")).toBeInTheDocument();
     await user.dblClick(screen.getByRole("button", { name: "文件 app.log" }));
 
@@ -397,34 +455,38 @@ describe("SftpToolContent basic behavior", () => {
     expect(sftpApiMocks.previewSftpFile).not.toHaveBeenCalled();
   });
 
-  it("opens a directory in the remote workspace dialog by double clicking a folder", async () => {
-    const user = userEvent.setup();
-
-    render(<SftpToolContent selectedMachine={sshMachine} />);
-
-    await screen.findByText("var");
-    await user.dblClick(screen.getByRole("button", { name: "打开目录 var" }));
-
-    const dialog = await screen.findByRole("dialog", { name: "远程工作区" });
-    expect(dialog).toBeInTheDocument();
-    expect(dialog).toHaveClass("max-w-none");
-    expect(dialog).not.toHaveClass("h-full");
-    expect(dialog.parentElement?.parentElement).toBe(document.body);
-    expect(screen.getByTestId("remote-workspace-editor")).toHaveTextContent(
-      "/var",
-    );
-  });
+  it("navigates into a directory without opening the workspace dialog on double click", async () => {
+    const user = userEvent.setup();
+
+    render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    await screen.findByText("var");
+    await user.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
+
+    expect(await screen.findByText("app.log")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: "远程工作区" }),
+    ).not.toBeInTheDocument();
+    expect(sftpApiMocks.listSftpDirectory).toHaveBeenLastCalledWith({
+      hostId: "prod-api",
+      path: "/var/log",
+    });
+  });
 
   it("closes the remote workspace dialog from the header close button", async () => {
     const user = userEvent.setup();
 
-    render(<SftpToolContent selectedMachine={sshMachine} />);
-
-    await screen.findByText("var");
-    await user.dblClick(screen.getByRole("button", { name: "打开目录 var" }));
-    expect(
-      await screen.findByRole("dialog", { name: "远程工作区" }),
-    ).toBeInTheDocument();
+    render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    await screen.findByText("var");
+    fireEvent.contextMenu(screen.getByRole("button", { name: "打开目录 var" }), {
+      clientX: 80,
+      clientY: 160,
+    });
+    await user.click(screen.getByRole("menuitem", { name: "工作区打开" }));
+    expect(
+      await screen.findByRole("dialog", { name: "远程工作区" }),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "关闭弹窗" }));
 
@@ -435,40 +497,36 @@ describe("SftpToolContent basic behavior", () => {
     });
   });
 
-  it("opens the remote workspace dialog in a detached window", async () => {
-    const user = userEvent.setup();
-    const openSpy = vi
-      .spyOn(window, "open")
-      .mockImplementation(() => ({ closed: false }) as Window);
+  it("expands and restores the remote workspace dialog in the current app", async () => {
+    const user = userEvent.setup();
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockImplementation(() => {
+        throw new Error("window.open should not be called");
+      });
 
-    render(<SftpToolContent selectedMachine={sshMachine} />);
+    render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    await screen.findByText("var");
+    fireEvent.contextMenu(screen.getByRole("button", { name: "打开目录 var" }), {
+      clientX: 80,
+      clientY: 160,
+    });
+    await user.click(screen.getByRole("menuitem", { name: "工作区打开" }));
+    expect(
+      await screen.findByRole("dialog", { name: "远程工作区" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "放大工作区" }));
+
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "还原工作区" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "远程工作区" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "还原工作区" }));
+    expect(screen.getByRole("button", { name: "放大工作区" })).toBeInTheDocument();
+
+    openSpy.mockRestore();
+  });
 
-    await screen.findByText("var");
-    await user.dblClick(screen.getByRole("button", { name: "打开目录 var" }));
-    expect(
-      await screen.findByRole("dialog", { name: "远程工作区" }),
-    ).toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole("button", { name: "弹出独立工作区窗口" }),
-    );
-
-    expect(openSpy).toHaveBeenCalledWith(
-      expect.stringContaining("view=sftp-workspace"),
-      "_blank",
-      "popup,width=1180,height=760",
-    );
-    const openedUrl = openSpy.mock.calls[0][0] as string;
-    expect(openedUrl).toContain("hostId=prod-api");
-    expect(openedUrl).toContain("rootPath=%2Fvar");
-    expect(openedUrl).toContain("theme=");
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "远程工作区" }),
-      ).not.toBeInTheDocument();
-    });
-
-    openSpy.mockRestore();
-  });
-
-});
+});

@@ -9,6 +9,7 @@ pub(super) fn execute_settings_get(
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_settings_for_ai(&settings)),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -64,6 +65,7 @@ pub(super) fn execute_update_ai_security(
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_ai_security_for_ai(&settings.ai)),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -188,6 +190,7 @@ pub(super) fn execute_update_theme(
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(format!("主题已更新为 {:?}。", settings.theme_mode)),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -216,6 +219,7 @@ pub(super) fn execute_update_terminal_appearance(
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_terminal_appearance_for_ai(&settings.terminal)),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }

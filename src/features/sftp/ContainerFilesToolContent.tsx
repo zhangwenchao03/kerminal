@@ -10,7 +10,14 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
 import {
@@ -35,6 +42,11 @@ import {
 import type { SftpEntry, SftpTransferKind } from "../../lib/sftpApi";
 import type { RemoteTargetRef } from "../../lib/targetModel";
 import type { Machine } from "../workspace/types";
+
+const LazyRemoteFilePreviewEditor = lazy(async () => {
+  const module = await import("./RemoteFilePreviewEditor");
+  return { default: module.RemoteFilePreviewEditor };
+});
 
 interface ContainerFilesToolContentProps {
   followedRemotePath?: string;
@@ -305,7 +317,7 @@ export function ContainerFilesToolContent({
         title="容器文件"
         subtitle={`${selectedMachine?.name ?? target.containerName ?? target.containerId} · ${target.runtime ?? "docker"}`}
       />
-      <div className="border-b border-black/8 px-3 py-2 dark:border-white/8">
+      <div className="border-b border-[var(--border-subtle)] px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <Button
             disabled={!parentPath || busy}
@@ -325,7 +337,7 @@ export function ContainerFilesToolContent({
           >
             <input
               aria-label="容器路径"
-              className="h-9 w-full min-w-0 rounded-md border border-black/10 bg-white/75 px-2 font-mono text-xs text-zinc-800 outline-none focus:border-sky-400 dark:border-white/10 dark:bg-zinc-900/80 dark:text-zinc-100"
+              className="kerminal-field-surface h-9 w-full min-w-0 rounded-md border px-2 font-mono text-xs text-zinc-800 dark:text-zinc-100"
               onChange={(event) => setPathInput(event.target.value)}
               value={pathInput}
             />
@@ -404,9 +416,9 @@ export function ContainerFilesToolContent({
           {entries.map((entry) => (
             <button
               className={cn(
-                "grid w-full grid-cols-[24px_minmax(0,1fr)_78px] items-center gap-2 border-b border-black/5 px-3 py-2 text-left text-sm transition hover:bg-black/5 dark:border-white/6 dark:hover:bg-white/7",
+                "kerminal-focus-ring kerminal-pressable grid w-full grid-cols-[24px_minmax(0,1fr)_78px] items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-2 text-left text-sm transition hover:bg-[var(--surface-hover)]",
                 selectedEntry?.path === entry.path &&
-                  "bg-sky-500/10 text-sky-800 dark:bg-sky-400/15 dark:text-sky-100",
+                  "bg-[var(--surface-selected)] text-sky-800 dark:text-sky-100",
               )}
               key={entry.path}
               onClick={() => setSelectedEntry(entry)}
@@ -425,10 +437,10 @@ export function ContainerFilesToolContent({
             </button>
           ))}
         </div>
-        <div className="min-h-0 border-t border-black/8 dark:border-white/8">
+        <div className="min-h-0 border-t border-[var(--border-subtle)]">
           {preview ? (
             <div className="flex h-full min-h-0 flex-col">
-              <div className="flex items-center justify-between border-b border-black/6 px-3 py-2 text-xs dark:border-white/7">
+              <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-3 py-2 text-xs">
                 <span className="min-w-0 truncate font-medium text-zinc-700 dark:text-zinc-200">
                   {preview.entry.path}
                 </span>
@@ -438,9 +450,14 @@ export function ContainerFilesToolContent({
                   </span>
                 ) : null}
               </div>
-              <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs leading-5 text-zinc-700 dark:text-zinc-200">
-                {preview.content}
-              </pre>
+              <div className="min-h-0 flex-1 bg-zinc-950">
+                <Suspense fallback={<PlainPreview content={preview.content} />}>
+                  <LazyRemoteFilePreviewEditor
+                    content={preview.content}
+                    path={preview.entry.path}
+                  />
+                </Suspense>
+              </div>
             </div>
           ) : (
             <div className="flex h-full items-center justify-center px-4 text-center text-xs text-zinc-500 dark:text-zinc-400">
@@ -457,7 +474,7 @@ export function ContainerFilesToolContent({
 
 function PanelHeader({ subtitle, title }: { subtitle: string; title: string }) {
   return (
-    <header className="border-b border-black/8 px-4 py-3 dark:border-white/8">
+    <header className="border-b border-[var(--border-subtle)] px-4 py-3">
       <div className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
         {title}
       </div>
@@ -524,6 +541,14 @@ function EntryActionBar({
         <Trash2 className="h-4 w-4" />
       </Button>
     </div>
+  );
+}
+
+function PlainPreview({ content }: { content: string }) {
+  return (
+    <pre className="h-full overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs leading-5 text-zinc-200">
+      {content}
+    </pre>
   );
 }
 

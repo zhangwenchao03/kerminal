@@ -6,6 +6,11 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version or tag, for example 0.1.5 or v0.1.5"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -16,6 +21,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
     env:
       NODE_OPTIONS: --max-old-space-size=4096
+      RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || (startsWith(inputs.version, 'v') && inputs.version || format('v{0}', inputs.version)) }}
     strategy:
       fail-fast: false
       matrix:
@@ -88,9 +94,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: ${{ matrix.args }}
-          releaseBody: "Kerminal desktop release with signed updater artifacts."
+          releaseBody: "修复了一些已知的内容"
           releaseDraft: false
-          releaseName: "Kerminal v__VERSION__"
-          tagName: "v__VERSION__"
+          releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
+          tagName: ${{ env.RELEASE_TAG }}
           includeUpdaterJson: true
           updaterJsonPreferNsis: true

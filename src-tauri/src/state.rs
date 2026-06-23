@@ -6,12 +6,14 @@ use crate::{
     error::AppResult,
     paths::KerminalPaths,
     services::{
-        ai_agent_service::AiAgentService, ai_context_service::AiContextService,
+        ai_agent_run_service::AiAgentRunService, ai_agent_service::AiAgentService,
+        ai_context_service::AiContextService, ai_conversation_service::AiConversationService,
         ai_tool_invocation_service::AiToolInvocationService,
         command_history_service::CommandHistoryService,
         command_suggestion_service::CommandSuggestionService,
         credential_service::CredentialService, diagnostics_service::DiagnosticsService,
         docker_host_service::DockerHostService,
+        local_network_proxy_service::LocalNetworkProxyService,
         mcp_streamable_http_server::McpStreamableHttpServerService,
         mcp_tool_gateway::McpToolGateway, port_forward_service::PortForwardService,
         profile_service::ProfileService, remote_host_service::RemoteHostService,
@@ -20,6 +22,7 @@ use crate::{
         sftp_service::SftpService, snippet_service::SnippetService,
         ssh_command_service::SshCommandService, ssh_terminal_service::SshTerminalService,
         telnet_terminal_service::TelnetTerminalService, terminal_manager::TerminalManager,
+        terminal_session_binding_service::TerminalSessionBindingService,
         tool_registry_service::ToolRegistryService, workflow_service::WorkflowService,
     },
     storage::{migrations::CURRENT_SCHEMA_VERSION, SqliteStore},
@@ -29,6 +32,8 @@ use crate::{
 #[derive(Debug)]
 pub struct AppState {
     ai_agent: AiAgentService,
+    ai_agent_runs: AiAgentRunService,
+    ai_conversations: AiConversationService,
     ai_context: AiContextService,
     ai_tools: AiToolInvocationService,
     command_history: CommandHistoryService,
@@ -36,6 +41,7 @@ pub struct AppState {
     credentials: CredentialService,
     diagnostics: DiagnosticsService,
     docker_hosts: DockerHostService,
+    local_network_proxy: LocalNetworkProxyService,
     mcp_http_server: McpStreamableHttpServerService,
     mcp_tools: McpToolGateway,
     paths: KerminalPaths,
@@ -52,6 +58,7 @@ pub struct AppState {
     ssh_terminals: SshTerminalService,
     telnet_terminals: TelnetTerminalService,
     storage: SqliteStore,
+    terminal_session_bindings: TerminalSessionBindingService,
     terminals: TerminalManager,
     tools: ToolRegistryService,
     workflows: WorkflowService,
@@ -69,6 +76,8 @@ impl AppState {
         storage.set_metadata("schema_version", &CURRENT_SCHEMA_VERSION.to_string())?;
         let credentials = CredentialService::new();
         let ai_agent = AiAgentService::new();
+        let ai_agent_runs = AiAgentRunService::new();
+        let ai_conversations = AiConversationService::new();
         let ai_context = AiContextService::new();
         let ai_tools = AiToolInvocationService::new();
         let command_history = CommandHistoryService::new();
@@ -77,6 +86,7 @@ impl AppState {
         let mcp_tools = McpToolGateway::new();
         let diagnostics = DiagnosticsService::new();
         let docker_hosts = DockerHostService::new();
+        let local_network_proxy = LocalNetworkProxyService::new();
         let port_forwards = PortForwardService::new();
         let profiles = ProfileService::new();
         profiles.ensure_seed_profiles(&storage)?;
@@ -96,6 +106,8 @@ impl AppState {
 
         Ok(Self {
             ai_agent,
+            ai_agent_runs,
+            ai_conversations,
             ai_context,
             ai_tools,
             command_history,
@@ -103,6 +115,7 @@ impl AppState {
             credentials,
             diagnostics,
             docker_hosts,
+            local_network_proxy,
             mcp_http_server,
             mcp_tools,
             paths,
@@ -119,6 +132,7 @@ impl AppState {
             ssh_terminals,
             telnet_terminals,
             storage,
+            terminal_session_bindings: TerminalSessionBindingService::default(),
             terminals: TerminalManager::new(),
             tools,
             workflows,
@@ -133,6 +147,16 @@ impl AppState {
     /// 返回 AI Agent 对话服务。
     pub fn ai_agent(&self) -> &AiAgentService {
         &self.ai_agent
+    }
+
+    /// 返回 AI Agent run 状态服务。
+    pub fn ai_agent_runs(&self) -> &AiAgentRunService {
+        &self.ai_agent_runs
+    }
+
+    /// 返回 AI 会话持久化服务。
+    pub fn ai_conversations(&self) -> &AiConversationService {
+        &self.ai_conversations
     }
 
     /// 返回 AI 上下文服务。
@@ -168,6 +192,11 @@ impl AppState {
     /// 返回 SSH 宿主上的容器服务。
     pub fn docker_hosts(&self) -> &DockerHostService {
         &self.docker_hosts
+    }
+
+    /// 返回本机共享网络代理服务。
+    pub fn local_network_proxy(&self) -> &LocalNetworkProxyService {
+        &self.local_network_proxy
     }
 
     /// 返回 rmcp 工具网关。
@@ -248,6 +277,11 @@ impl AppState {
     /// 返回终端会话管理服务。
     pub fn terminals(&self) -> &TerminalManager {
         &self.terminals
+    }
+
+    /// 返回终端 pane/session 绑定旁路服务。
+    pub fn terminal_session_bindings(&self) -> &TerminalSessionBindingService {
+        &self.terminal_session_bindings
     }
 
     /// 返回 Kerminal Tool Registry。

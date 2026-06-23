@@ -29,6 +29,7 @@ export interface WorkspaceSessionSnapshot {
   activeTabId: string;
   focusedPaneId: string;
   selectedMachineId: string;
+  removedSidebarMachineIds?: string[];
   sidebarMachines: Machine[];
   terminalPanes: TerminalPane[];
   terminalTabs: TerminalTab[];
@@ -55,6 +56,9 @@ export function normalizeWorkspaceSessionSnapshot(
   const sidebarMachines = rawSidebarMachines
     .map(normalizeSidebarMachine)
     .filter((machine): machine is Machine => Boolean(machine));
+  const removedSidebarMachineIds = uniqueStrings(
+    normalizeStringArray(source?.removedSidebarMachineIds) ?? [],
+  );
   const referencedPaneIds = new Set(
     terminalTabs.flatMap((tab) =>
       isTerminalSessionTab(tab) ? collectPaneIds(tab.layout) : [],
@@ -63,37 +67,21 @@ export function normalizeWorkspaceSessionSnapshot(
   const referencedPanes = terminalPanes.filter((pane) =>
     referencedPaneIds.has(pane.id),
   );
-  const activeTabId = readString(source?.activeTabId);
-  const activeTab = terminalTabs.find((tab) => tab.id === activeTabId)
-    ?? terminalTabs[0];
-  const activePaneIds =
-    activeTab && isTerminalSessionTab(activeTab)
-      ? collectPaneIds(activeTab.layout)
-      : [];
-  const focusedPaneId = readString(source?.focusedPaneId);
-  const focusedPane = referencedPanes.find(
-    (pane) => pane.id === focusedPaneId && activePaneIds.includes(pane.id),
-  );
-  const fallbackFocusedPaneId =
-    activeTab && isTerminalSessionTab(activeTab)
-      ? findFirstPaneId(activeTab.layout) ?? referencedPanes[0]?.id ?? ""
-      : "";
-  const selectedMachineId =
-    readString(source?.selectedMachineId) ||
-    focusedPane?.remoteHostId ||
-    focusedPane?.machineId ||
-    (activeTab && isSftpTransferWorkspaceTab(activeTab)
-      ? activeTab.rightHostId || activeTab.lockedLeftHostId || activeTab.leftHostId
-      : undefined) ||
-    activeTab?.machineId ||
-    "";
+  const selection = resolveWorkspaceSessionSelection({
+    activeTabId: readString(source?.activeTabId),
+    focusedPaneId: readString(source?.focusedPaneId),
+    referencedPanes,
+    selectedMachineId: readString(source?.selectedMachineId),
+    terminalTabs,
+  });
 
   return {
-    activeTabId: activeTab?.id ?? "",
-    focusedPaneId: focusedPane?.id ?? fallbackFocusedPaneId,
-    selectedMachineId,
+    activeTabId: selection.activeTabId,
+    focusedPaneId: selection.focusedPaneId,
+    selectedMachineId: selection.selectedMachineId,
+    removedSidebarMachineIds,
     sidebarMachines,
-    terminalPanes: activeTab ? referencedPanes : [],
+    terminalPanes: selection.activeTabId ? referencedPanes : [],
     terminalTabs,
   };
 }
@@ -366,6 +354,79 @@ function collectSplitSuffixes(layout: TerminalLayoutNode): number[] {
   ];
 }
 
+interface WorkspaceSessionSelectionInput {
+  activeTabId: string;
+  focusedPaneId: string;
+  referencedPanes: TerminalPane[];
+  selectedMachineId: string;
+  terminalTabs: TerminalTab[];
+}
+
+function resolveWorkspaceSessionSelection({
+  activeTabId,
+  focusedPaneId,
+  referencedPanes,
+  selectedMachineId,
+  terminalTabs,
+}: WorkspaceSessionSelectionInput) {
+  const activeTab =
+    terminalTabs.find((tab) => tab.id === activeTabId) ?? terminalTabs[0];
+  if (!activeTab) {
+    return {
+      activeTabId: "",
+      focusedPaneId: "",
+      selectedMachineId,
+    };
+  }
+
+  const activePaneIds = isTerminalSessionTab(activeTab)
+    ? collectPaneIds(activeTab.layout)
+    : [];
+  const focusedPane = referencedPanes.find(
+    (pane) => pane.id === focusedPaneId && activePaneIds.includes(pane.id),
+  );
+  const fallbackFocusedPane =
+    isTerminalSessionTab(activeTab)
+      ? paneById(
+          referencedPanes,
+          focusedPane?.id ?? findFirstPaneId(activeTab.layout),
+        )
+      : undefined;
+  const resolvedFocusedPane = focusedPane ?? fallbackFocusedPane;
+
+  return {
+    activeTabId: activeTab.id,
+    focusedPaneId: resolvedFocusedPane?.id ?? "",
+    selectedMachineId:
+      selectedMachineId ||
+      selectedMachineIdFromPane(resolvedFocusedPane) ||
+      selectedMachineIdFromTab(activeTab),
+  };
+}
+
+function paneById(panes: TerminalPane[], paneId: string | undefined) {
+  return panes.find((pane) => pane.id === paneId);
+}
+
+function selectedMachineIdFromPane(pane: TerminalPane | undefined) {
+  return pane?.remoteHostId || pane?.machineId || "";
+}
+
+function selectedMachineIdFromTab(tab: TerminalTab | undefined) {
+  if (!tab) {
+    return "";
+  }
+  if (isSftpTransferWorkspaceTab(tab)) {
+    return (
+      tab.rightHostId ||
+      tab.lockedLeftHostId ||
+      tab.leftHostId ||
+      (tab.machineId !== "sftp-transfer" ? tab.machineId : "")
+    );
+  }
+  return tab.machineId;
+}
+
 function numericSuffix(value: string) {
   const match = /-(\d+)$/.exec(value);
   return match ? Number.parseInt(match[1], 10) : 0;
@@ -435,6 +496,10 @@ function normalizeStringArray(value: unknown) {
   return Array.isArray(value) && value.every((item) => typeof item === "string")
     ? value
     : undefined;
+}
+
+function uniqueStrings(values: string[]) {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function normalizeStringRecord(value: unknown) {

@@ -28,6 +28,7 @@ export interface SshJumpHostOptions {
   username: string;
   authType: RemoteHostAuthType;
   credentialRef?: string;
+  credentialSecret?: string;
 }
 
 export interface SshTerminalOptions {
@@ -78,6 +79,7 @@ export interface RemoteHost {
   username: string;
   authType: RemoteHostAuthType;
   credentialRef?: string;
+  credentialSecret?: string;
   tags: string[];
   production: boolean;
   sshOptions: SshOptions;
@@ -291,10 +293,8 @@ export async function createRemoteHost(
     }
 
     browserPreviewSequence += 1;
-    const { credentialSecret: _credentialSecret, ...hostFields } = normalized;
-    void _credentialSecret;
     const host: RemoteHost = {
-      ...hostFields,
+      ...normalized,
       createdAt: "browser-preview",
       id: `host-preview-${browserPreviewSequence}`,
       sortOrder: Math.max(0, ...targetGroup.hosts.map((item) => item.sortOrder)) + 10,
@@ -333,11 +333,9 @@ export async function updateRemoteHost(
       throw new Error("远程主机不存在。");
     }
 
-    const { credentialSecret: _credentialSecret, ...hostFields } = normalized;
-    void _credentialSecret;
     const updatedHost: RemoteHost = {
       ...previousHost,
-      ...hostFields,
+      ...normalized,
       updatedAt: "browser-preview",
     };
 
@@ -395,7 +393,10 @@ function normalizeRemoteHostRequest(
   return {
     ...request,
     authType: request.authType ?? "agent",
-    credentialRef: request.credentialRef?.trim() || undefined,
+    credentialRef:
+      (request.authType ?? "agent") === "key"
+        ? normalizePrivateKeyPath(request.credentialRef)
+        : undefined,
     credentialSecret: request.credentialSecret?.trim()
       ? request.credentialSecret
       : undefined,
@@ -420,7 +421,7 @@ function normalizeSshOptions(options: SshOptions | undefined): SshOptions {
       : {
           ...defaults.proxy,
           ...options.proxy,
-          credentialRef: trimOptional(options.proxy?.credentialRef),
+          credentialRef: undefined,
           host: trimOptional(options.proxy?.host),
           protocol: proxyProtocol,
           username: trimOptional(options.proxy?.username),
@@ -431,7 +432,14 @@ function normalizeSshOptions(options: SshOptions | undefined): SshOptions {
       options.jumpHosts
         ?.map((host) => ({
           authType: host.authType ?? "agent",
-          credentialRef: trimOptional(host.credentialRef),
+          credentialRef:
+            (host.authType ?? "agent") === "key"
+              ? normalizePrivateKeyPath(host.credentialRef)
+              : undefined,
+          credentialSecret:
+            (host.authType ?? "agent") === "agent"
+              ? undefined
+              : trimOptional(host.credentialSecret),
           host: host.host.trim(),
           name: host.name.trim(),
           port: host.port,
@@ -490,6 +498,11 @@ function normalizeSshOptions(options: SshOptions | undefined): SshOptions {
 function trimOptional(value: string | undefined) {
   const trimmed = value?.trim();
   return trimmed || undefined;
+}
+
+function normalizePrivateKeyPath(value: string | undefined) {
+  const trimmed = trimOptional(value);
+  return trimmed?.startsWith("credential:") ? undefined : trimmed;
 }
 
 function findBrowserPreviewGroup(groupId: string | undefined) {

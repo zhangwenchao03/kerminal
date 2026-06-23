@@ -3,7 +3,6 @@
 //! @author kongweiguang
 
 use std::{
-    collections::BTreeSet,
     future::Future,
     pin::Pin,
     sync::{Arc, Mutex},
@@ -13,7 +12,7 @@ use std::{
 use rig_core::{
     agent::{Agent, PromptHook},
     client::CompletionClient,
-    completion::{CompletionModel, Prompt, ToolDefinition as RigToolDefinition},
+    completion::{message::Message, CompletionModel, Prompt, ToolDefinition as RigToolDefinition},
     tool::{ToolDyn, ToolError},
     wasm_compat::WasmBoxedFuture,
 };
@@ -23,38 +22,41 @@ use uuid::Uuid;
 use crate::{
     error::{AppError, AppResult},
     models::{
-        ai_agent::{AiApplicationContextRequest, AiChatRequest, AiChatResponse},
+        ai_agent::{AiChatRequest, AiChatResponse},
         ai_context::AiTerminalContextSnapshot,
         ai_tool_invocation::{AiToolPendingInvocation, AiToolPrepareRequest},
-        llm_provider::{LlmContextStrategy, LlmProvider, LlmProviderKind},
-        settings::{AiCommandApprovalPolicy, AiSecuritySettings, AppSettings},
-        tool_registry::{
-            McpAgentProfile, McpSkillDefinition, McpToolList, ToolConfirmationPolicy,
-            ToolDefinition as RegistryToolDefinition, ToolRiskLevel,
-        },
+        llm_provider::{LlmProvider, LlmProviderKind},
+        settings::AiSecuritySettings,
+        tool_registry::ToolDefinition as RegistryToolDefinition,
     },
+    paths::KerminalPaths,
     security::redaction::redact_terminal_text,
     services::{
+        ai_agent_context::{
+            build_agent_context, confirmation_label, provider_safe_tool_name, risk_label,
+        },
         ai_context_service::AiContextService,
         ai_tool_invocation_service::AiToolInvocationService,
         credential_service::CredentialService,
-        mcp_tool_gateway::{
-            agent_profile, agent_skills_with_custom, agent_system_prompt,
-            custom_mcp_tool_definitions, McpToolGateway,
-        },
+        mcp_tool_gateway::{agent_system_prompt, custom_mcp_tool_definitions, McpToolGateway},
         rig_provider_service::{
             build_anthropic_client, build_openai_chat_client, build_openai_responses_client,
         },
         settings_service::SettingsService,
         terminal_manager::TerminalManager,
+        terminal_session_binding_service::TerminalSessionBindingService,
         tool_registry_service::ToolRegistryService,
     },
     storage::SqliteStore,
 };
 
-const MAX_PROVIDER_TOOL_NAME_LEN: usize = 64;
+mod vision;
+
+pub use vision::AiChatVisionInput;
+use vision::{build_prompt_message, resolve_chat_vision_usage};
+
 const DEFAULT_AGENT_MAX_TOKENS: u64 = 2048;
-const MAX_LISTED_TOOLS: usize = 40;
+const DEFAULT_AGENT_MAX_TURNS: usize = 6;
 
 /// AI Agent 对话依赖集合。
 #[derive(Clone, Copy)]
@@ -69,12 +71,16 @@ pub struct AiAgentChatContext<'a> {
     pub ai_tools: &'a AiToolInvocationService,
     /// 终端会话管理器。
     pub terminals: &'a TerminalManager,
+    /// 终端 pane/session 可信绑定旁路注册表。
+    pub terminal_session_bindings: &'a TerminalSessionBindingService,
     /// Kerminal 工具目录服务。
     pub tools: &'a ToolRegistryService,
     /// rmcp 工具网关。
     pub mcp_tools: &'a McpToolGateway,
     /// 应用设置服务。
     pub settings: &'a SettingsService,
+    /// Kerminal 本地数据目录，用于解析已持久化的受管附件。
+    pub paths: &'a KerminalPaths,
 }
 
 /// 交给具体 LLM executor 的完整请求。
@@ -90,6 +96,12 @@ pub struct AiChatExecutionRequest {
     pub context: String,
     /// 用户输入 prompt。
     pub prompt: String,
+    /// 当前 AI 会话 id，用于标准工具调用 pending 归属。
+    pub conversation_id: String,
+    /// 当前 AI 面板路由 slot 描述 JSON，用于标准工具调用 pending 归属。
+    pub conversation_slot_json: Option<String>,
+    /// 本次真正发送给 Provider 的图片字节输入。
+    pub vision_inputs: Vec<AiChatVisionInput>,
     /// 本次暴露给 Rig 的 Kerminal 工具定义快照。
     pub tool_definitions: Vec<RegistryToolDefinition>,
     /// 本次对话使用的 AI 安全策略快照。
@@ -150,6 +162,11 @@ impl AiAgentService {
         Self { executor }
     }
 
+    /// 判断 Provider 当前 model 是否可以尝试图片输入。
+    pub fn provider_supports_vision(provider: &LlmProvider) -> bool {
+        vision::provider_supports_vision(provider)
+    }
+
     /// 执行一次 AI 对话。
     pub async fn chat(
         &self,
@@ -158,8 +175,17 @@ impl AiAgentService {
     ) -> AppResult<AiChatResponse> {
         let message = normalize_message(&request.message)?;
         let conversation_id = normalize_conversation_id(request.conversation_id.clone());
+        let conversation_slot_json =
+            normalize_optional_text(request.conversation_slot_json.clone());
         let provider = select_provider(context.storage, request.provider_id.as_deref())?;
         let api_key = load_provider_api_key(context.credentials, &provider)?;
+        let (resolved_attachments, vision_usage, vision_inputs) = resolve_chat_vision_usage(
+            context.storage,
+            context.paths,
+            &conversation_id,
+            &request.attachments,
+            &provider,
+        )?;
         let registry_tools = context.tools.list_tools();
         let app_settings = context.settings.load_settings(context.storage)?;
         let mcp_tools = context
@@ -171,6 +197,8 @@ impl AiAgentService {
         let agent_context = build_agent_context(
             terminal_snapshot.as_ref(),
             request.application_context.as_ref(),
+            &resolved_attachments,
+            &vision_usage,
             request.execution_visibility.unwrap_or_default(),
             &app_settings,
             &mcp_tools,
@@ -180,13 +208,31 @@ impl AiAgentService {
             api_key,
             preamble: agent_preamble(),
             context: agent_context,
-            prompt: message,
+            prompt: build_chat_prompt(&request.history, &message),
+            conversation_id: conversation_id.clone(),
+            conversation_slot_json,
+            vision_inputs,
             tool_definitions: execution_tools,
             ai_policy: app_settings.ai.clone(),
             ai_tools: context.ai_tools.clone(),
         };
         let execution = self.executor.execute(execution_request).await?;
-        let (message, response_redacted) = redact_terminal_text(&execution.message);
+        for pending in &execution.pending_invocations {
+            if let Err(error) = context
+                .ai_tools
+                .persist_pending_invocation(context.storage, &pending.id)
+            {
+                if !matches!(error, AppError::NotFound(_)) {
+                    return Err(error);
+                }
+            }
+        }
+        let guarded_message = guard_unverified_chat_success_claim(
+            &message,
+            &execution.message,
+            execution.pending_invocations.len(),
+        );
+        let (message, response_redacted) = redact_terminal_text(&guarded_message);
 
         Ok(AiChatResponse {
             conversation_id,
@@ -196,9 +242,10 @@ impl AiAgentService {
             message,
             pending_invocations: execution.pending_invocations,
             response_redacted,
-            context_used: terminal_snapshot.is_some(),
+            context_used: terminal_snapshot.is_some() || !resolved_attachments.is_empty(),
             tool_count: mcp_tools.tools.len(),
             generated_at: current_unix_timestamp(),
+            vision_usage,
         })
     }
 }
@@ -237,7 +284,7 @@ async fn execute_openai_responses_chat(
         .build();
     prompt_with_retries(
         agent,
-        request.prompt,
+        build_prompt_message(&request)?,
         request.provider.max_retries,
         pending_collector,
     )
@@ -260,7 +307,7 @@ async fn execute_openai_chat_completions(
         .build();
     prompt_with_retries(
         agent,
-        request.prompt,
+        build_prompt_message(&request)?,
         request.provider.max_retries,
         pending_collector,
     )
@@ -283,7 +330,7 @@ async fn execute_anthropic_chat(
         .build();
     prompt_with_retries(
         agent,
-        request.prompt,
+        build_prompt_message(&request)?,
         request.provider.max_retries,
         pending_collector,
     )
@@ -292,7 +339,7 @@ async fn execute_anthropic_chat(
 
 async fn prompt_with_retries<M, P>(
     agent: Agent<M, P>,
-    prompt: String,
+    prompt: Message,
     max_retries: u8,
     pending_collector: PendingToolInvocationCollector,
 ) -> AppResult<AiChatExecutionResponse>
@@ -303,7 +350,11 @@ where
     let max_attempts = usize::from(max_retries) + 1;
     let mut last_error = None;
     for _attempt in 0..max_attempts {
-        match agent.prompt(prompt.clone()).max_turns(2).await {
+        match agent
+            .prompt(prompt.clone())
+            .max_turns(DEFAULT_AGENT_MAX_TURNS)
+            .await
+        {
             Ok(message) => {
                 return Ok(AiChatExecutionResponse {
                     message,
@@ -348,6 +399,8 @@ impl PendingToolInvocationCollector {
 struct KerminalApprovalTool {
     definition: RegistryToolDefinition,
     model_tool_name: String,
+    conversation_id: String,
+    conversation_slot_json: Option<String>,
     ai_policy: AiSecuritySettings,
     ai_tools: AiToolInvocationService,
     pending_collector: PendingToolInvocationCollector,
@@ -384,19 +437,34 @@ impl ToolDyn for KerminalApprovalTool {
                             "Kerminal Agent 通过标准工具调用请求执行 {}。",
                             self.definition.title
                         )),
+                        conversation_id: Some(self.conversation_id.clone()),
+                        conversation_slot_json: self.conversation_slot_json.clone(),
+                        run_id: None,
+                        step_id: None,
                     },
                 )
                 .map_err(|error| ToolError::ToolCallError(Box::new(error)))?;
             self.pending_collector
                 .push(pending.clone())
                 .map_err(|error| ToolError::ToolCallError(Box::new(error)))?;
+            let (status, message) = if pending.requires_confirmation {
+                (
+                    "pending_approval",
+                    "Kerminal 已创建待审批工具调用。该工具尚未执行，必须等待用户在确认面板批准或拒绝。",
+                )
+            } else {
+                (
+                    "auto_approved",
+                    "Kerminal 已按当前权限策略创建可自动执行的工具调用，无需用户手动确认。",
+                )
+            };
             serde_json::to_string(&json!({
-                "status": "pending_approval",
+                "status": status,
                 "invocationId": pending.id,
                 "toolId": pending.tool_id,
                 "toolTitle": pending.tool_title,
                 "requiresConfirmation": pending.requires_confirmation,
-                "message": "Kerminal 已创建待审批工具调用。该工具尚未执行，必须等待用户在确认面板批准或拒绝。"
+                "message": message
             }))
             .map_err(ToolError::JsonError)
         })
@@ -417,48 +485,14 @@ fn approval_tools(
             Box::new(KerminalApprovalTool {
                 model_tool_name,
                 definition,
+                conversation_id: request.conversation_id.clone(),
+                conversation_slot_json: request.conversation_slot_json.clone(),
                 ai_policy: request.ai_policy.clone(),
                 ai_tools: request.ai_tools.clone(),
                 pending_collector: pending_collector.clone(),
             }) as Box<dyn ToolDyn>
         })
         .collect()
-}
-
-fn provider_safe_tool_name(tool_id: &str) -> String {
-    let mut safe = tool_id
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || character == '_' || character == '-' {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>();
-    if safe.is_empty() {
-        safe.push_str("tool");
-    }
-    if safe == tool_id && safe.len() <= MAX_PROVIDER_TOOL_NAME_LEN {
-        return safe;
-    }
-
-    let suffix = format!("_{:016x}", stable_tool_name_hash(tool_id));
-    let max_prefix_len = MAX_PROVIDER_TOOL_NAME_LEN.saturating_sub(suffix.len());
-    if safe.len() > max_prefix_len {
-        safe.truncate(max_prefix_len);
-    }
-    safe.push_str(&suffix);
-    safe
-}
-
-fn stable_tool_name_hash(tool_id: &str) -> u64 {
-    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
-    for byte in tool_id.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    hash
 }
 
 fn tool_description(tool: &RegistryToolDefinition) -> String {
@@ -496,7 +530,149 @@ fn normalize_message(message: &str) -> AppResult<String> {
     Ok(message.to_string())
 }
 
-fn select_provider(storage: &SqliteStore, provider_id: Option<&str>) -> AppResult<LlmProvider> {
+fn normalize_optional_text(value: Option<String>) -> Option<String> {
+    value
+        .map(|text| text.trim().to_owned())
+        .filter(|text| !text.is_empty())
+}
+
+fn guard_unverified_chat_success_claim(
+    goal: &str,
+    response: &str,
+    pending_invocation_count: usize,
+) -> String {
+    if !chat_goal_requires_action(goal)
+        || !chat_response_claims_action_completed(response)
+        || chat_response_acknowledges_not_executed(response)
+    {
+        return response.to_owned();
+    }
+
+    if pending_invocation_count > 0 {
+        return "我已创建待确认工具调用，但该操作尚未执行；请先在确认面板批准或拒绝，完成后我会基于工具结果继续。"
+            .to_owned();
+    }
+
+    "我不能在没有工具调用结果的情况下宣称已经完成这个操作；请先让我调用合适的 Kerminal 工具并等待执行结果。"
+        .to_owned()
+}
+
+fn chat_goal_requires_action(goal: &str) -> bool {
+    let goal = goal.trim().to_lowercase();
+    if goal.is_empty() || chat_goal_is_informational(&goal) {
+        return false;
+    }
+    [
+        "把",
+        "放到",
+        "加入",
+        "归入",
+        "移到",
+        "移入",
+        "添加",
+        "创建",
+        "新建",
+        "更新",
+        "修改",
+        "删除",
+        "连接",
+        "打开",
+        "执行",
+        "运行",
+        "写入",
+        "保存",
+        "上传",
+        "下载",
+        "重命名",
+        "add ",
+        "create ",
+        "move ",
+        "update ",
+        "modify ",
+        "delete ",
+        "connect ",
+        "open ",
+        "run ",
+        "execute ",
+        "write ",
+        "save ",
+        "upload ",
+        "download ",
+        "rename ",
+    ]
+    .iter()
+    .any(|keyword| goal.contains(keyword))
+}
+
+fn chat_goal_is_informational(goal: &str) -> bool {
+    [
+        "怎么",
+        "如何",
+        "怎样",
+        "为什么",
+        "说明",
+        "解释",
+        "教程",
+        "给我方案",
+        "帮我想",
+        "what ",
+        "why ",
+        "how ",
+        "explain",
+        "show me how",
+    ]
+    .iter()
+    .any(|keyword| goal.contains(keyword))
+}
+
+fn chat_response_claims_action_completed(response: &str) -> bool {
+    let response = response.trim().to_lowercase();
+    [
+        "已将",
+        "已经",
+        "已创建",
+        "已添加",
+        "已加入",
+        "已归入",
+        "已放到",
+        "已移动",
+        "已连接",
+        "已打开",
+        "已执行",
+        "已运行",
+        "已写入",
+        "已保存",
+        "已上传",
+        "已下载",
+        "已删除",
+        "完成",
+        "成功",
+        "done",
+        "completed",
+        "successfully",
+    ]
+    .iter()
+    .any(|keyword| response.contains(keyword))
+}
+
+fn chat_response_acknowledges_not_executed(response: &str) -> bool {
+    let response = response.trim().to_lowercase();
+    [
+        "尚未执行",
+        "未执行",
+        "待确认",
+        "待审批",
+        "等待批准",
+        "needs approval",
+    ]
+    .iter()
+    .any(|keyword| response.contains(keyword))
+}
+
+pub(crate) fn select_provider(
+    storage: &SqliteStore,
+    provider_id: Option<&str>,
+) -> AppResult<LlmProvider> {
     if let Some(provider_id) = provider_id.map(str::trim).filter(|value| !value.is_empty()) {
         let provider = storage
             .llm_provider_by_id(provider_id)?
@@ -519,7 +695,7 @@ fn select_provider(storage: &SqliteStore, provider_id: Option<&str>) -> AppResul
         .ok_or_else(|| AppError::InvalidInput("请先在设置里配置并启用 LLM Provider".to_string()))
 }
 
-fn load_provider_api_key(
+pub(crate) fn load_provider_api_key(
     credentials: &CredentialService,
     provider: &LlmProvider,
 ) -> AppResult<String> {
@@ -537,321 +713,53 @@ fn terminal_snapshot_for_request(
     provider: &LlmProvider,
     request: &AiChatRequest,
 ) -> AppResult<Option<AiTerminalContextSnapshot>> {
-    if provider.context_strategy == LlmContextStrategy::Minimal {
-        return Ok(None);
-    }
-    request
-        .terminal_context
-        .clone()
-        .map(|terminal_context| {
-            context
-                .ai_context
-                .terminal_context_snapshot(context.terminals, terminal_context)
-        })
-        .transpose()
-}
-
-fn build_agent_context(
-    terminal_snapshot: Option<&AiTerminalContextSnapshot>,
-    application_context: Option<&AiApplicationContextRequest>,
-    execution_visibility: crate::models::ai_agent::AiCommandExecutionVisibility,
-    app_settings: &AppSettings,
-    mcp_tools: &McpToolList,
-) -> String {
-    let mut sections = Vec::new();
-    let profile = agent_profile();
-    let skills = agent_skills_with_custom(&app_settings.ai.mcp);
-    sections.push(format_agent_profile_context(&profile));
-    sections.push(format_application_context(
-        application_context,
-        execution_visibility,
-        app_settings,
-        mcp_tools,
-    ));
-    sections.push(format_agent_skill_context(&skills, mcp_tools));
-    if let Some(snapshot) = terminal_snapshot {
-        sections.push(format_terminal_context(snapshot));
-    } else {
-        sections.push("当前终端上下文：本次没有提供 terminal session 快照。".to_string());
-    }
-    sections.push(format_mcp_tool_context(mcp_tools));
-    sections.join("\n\n")
-}
-
-fn format_application_context(
-    application_context: Option<&AiApplicationContextRequest>,
-    execution_visibility: crate::models::ai_agent::AiCommandExecutionVisibility,
-    app_settings: &AppSettings,
-    mcp_tools: &McpToolList,
-) -> String {
-    let mut lines = vec![
-        "当前应用上下文：Kerminal Agent 是当前 Kerminal 应用的操作层；应用上下文是感知，MCP 工具是可受控调用的手脚。".to_owned(),
-        format!(
-            "- 工具暴露：当前 MCP 工具 {} 个，所有可操作能力必须从该工具目录中选择。",
-            mcp_tools.tools.len()
-        ),
-        format!(
-            "- 用户自定义 MCP：{} 个 server、{} 个已发现 tool、{} 个 skills 文件夹已配置；外部 MCP 工具必须来自 server discovery，不能手工发明。",
-            app_settings.ai.mcp.servers.len(),
-            app_settings
-                .ai
-                .mcp
-                .servers
-                .iter()
-                .map(|server| server.tools.len())
-                .sum::<usize>(),
-            app_settings.ai.mcp.skill_directories.len(),
-        ),
-        format!(
-            "- AI 安全策略：执行模式 {}；远程确认 {}；破坏性工具 {}；上下文上限 {} bytes；命令超时 {} 秒。",
-            approval_policy_label(&app_settings.ai.command_approval_policy),
-            if app_settings.ai.require_remote_approval {
-                "开启"
-            } else {
-                "关闭"
-            },
-            if app_settings.ai.allow_destructive_tools {
-                "允许进入确认链"
-            } else {
-                "默认关闭"
-            },
-            app_settings.ai.context_max_output_bytes,
-            app_settings.ai.command_timeout_seconds,
-        ),
-        format_command_visibility_context(execution_visibility, application_context),
-        format!(
-            "- UI 设置：主题 {:?}；界面密度 {:?}；终端字体 {} {}px；SFTP 并发 {}/{}。",
-            app_settings.theme_mode,
-            app_settings.interface_density,
-            app_settings.terminal.font_family,
-            app_settings.terminal.font_size,
-            app_settings.sftp.host_transfers,
-            app_settings.sftp.global_transfers,
-        ),
-    ];
-
-    if let Some(custom_instructions) = (!app_settings.ai.custom_instructions.trim().is_empty())
-        .then(|| app_settings.ai.custom_instructions.trim())
-    {
-        lines.push(format!("- 用户自定义 AI 指令：{custom_instructions}"));
-    }
-
-    if let Some(context) = application_context {
-        lines.push(format!(
-            "- 当前右侧工具：{}",
-            context.active_tool_id.as_deref().unwrap_or("ai")
-        ));
-        if let Some(tab) = context.active_tab.as_ref() {
-            lines.push(format!(
-                "- 当前 tab：{} ({})，主机 {}",
-                tab.title,
-                tab.id,
-                tab.machine_id.as_deref().unwrap_or("-")
-            ));
-        }
-        if let Some(pane) = context.focused_pane.as_ref() {
-            lines.push(format!(
-                "- 当前 pane：{} ({})，mode {}，status {}，session {}，主机 {}",
-                pane.title,
-                pane.id,
-                pane.mode,
-                pane.status,
-                pane.session_id.as_deref().unwrap_or("-"),
-                pane.machine_id.as_deref().unwrap_or("-")
-            ));
-        }
-        if let Some(machine) = context.selected_machine.as_ref() {
-            lines.push(format!(
-                "- 当前主机：{} ({})，kind {}，status {}，production {}",
-                machine.name,
-                machine.id,
-                machine.kind,
-                machine.status,
-                match machine.production {
-                    Some(true) => "是",
-                    Some(false) => "否",
-                    None => "-",
-                }
-            ));
-        }
-    } else {
-        lines.push(
-            "- 前端工作台状态：本次没有提供 active tab、focused pane 和选中主机摘要。".to_owned(),
-        );
-    }
-
-    lines.join("\n")
-}
-
-fn format_command_visibility_context(
-    execution_visibility: crate::models::ai_agent::AiCommandExecutionVisibility,
-    application_context: Option<&AiApplicationContextRequest>,
-) -> String {
-    match execution_visibility {
-        crate::models::ai_agent::AiCommandExecutionVisibility::Terminal => {
-            let session_id = application_context
-                .and_then(|context| context.focused_pane.as_ref())
-                .and_then(|pane| pane.session_id.as_deref())
-                .unwrap_or("-");
-            format!(
-                "- AI 命令显示模式：显示在当前终端。需要执行本地或当前会话命令时，优先使用 `terminal.write` 把完整命令和回车写入当前 focused pane 的 session `{session_id}`，让用户在终端里看到命令和随后输出；不要用后台非交互工具替代可见终端执行，除非没有可用 session 或用户明确要求后台运行。"
-            )
-        }
-        crate::models::ai_agent::AiCommandExecutionVisibility::Background => {
-            "- AI 命令显示模式：后台运行。可以使用非交互后台工具执行，但必须在回复和待确认工具卡片中说明将执行的命令；不要声称命令会出现在终端，结果以 AI 工具审计和回复摘要为准。".to_owned()
-        }
-    }
-}
-
-fn format_agent_profile_context(profile: &McpAgentProfile) -> String {
-    let capabilities = profile
-        .capabilities
-        .iter()
-        .map(|capability| {
-            let tools = capability
-                .tool_examples
-                .iter()
-                .map(|tool| provider_safe_tool_reference(tool))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!(
-                "- {title}：{description}；代表工具 {tools}",
-                title = capability.title,
-                description = capability.description,
-                tools = tools,
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    let rules = profile
-        .operating_rules
-        .iter()
-        .map(|rule| format!("- {rule}"))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    format!(
-        "\
-Agent 身份：
-- id: {id}
-- name: {name}
-- role: {role}
-- description: {description}
-- tool call protocol: {tool_call_protocol}
-
-Agent 能力：
-{capabilities}
-
-Agent 行为规则：
-{rules}",
-        id = profile.id,
-        name = profile.name,
-        role = profile.role,
-        description = profile.description,
-        tool_call_protocol = profile.tool_call_protocol,
+    context.ai_context.terminal_context_snapshot_for_chat(
+        context.terminals,
+        Some(context.terminal_session_bindings),
+        provider,
+        request.terminal_context.clone(),
     )
 }
 
-fn format_agent_skill_context(skills: &[McpSkillDefinition], mcp_tools: &McpToolList) -> String {
-    let exposed_tool_ids = mcp_tools
-        .tools
+fn build_chat_prompt(
+    history: &[crate::models::ai_agent::AiChatHistoryMessage],
+    message: &str,
+) -> String {
+    let transcript = history
         .iter()
-        .map(|tool| tool.name.as_str())
-        .collect::<BTreeSet<_>>();
-    let lines = skills
-        .iter()
-        .map(|skill| {
-            let available_tools = skill
-                .tool_ids
-                .iter()
-                .filter(|tool_id| exposed_tool_ids.contains(tool_id.as_str()))
-                .map(|tool_id| provider_safe_tool_reference(tool_id))
-                .collect::<Vec<_>>();
-            format!(
-                "- {id} / {title} [{origin}]：{when}\n  guidance: {guidance}\n  tools: {tools}",
-                id = skill.id,
-                title = skill.title,
-                origin = skill_origin_label(skill.origin),
-                when = skill.when_to_use,
-                guidance = skill.prompt_guidance,
-                tools = if available_tools.is_empty() {
-                    "-".to_owned()
-                } else {
-                    available_tools.join(", ")
-                }
-            )
-        })
+        .filter_map(format_history_message)
         .collect::<Vec<_>>()
-        .join("\n");
+        .join("\n\n");
+    if transcript.is_empty() {
+        return message.to_owned();
+    }
 
-    format!(
-        "Agent Skills 路由：共 {} 个 skill。请先选择 skill，再选择 MCP 工具。\n{}",
-        skills.len(),
-        lines
-    )
+    [
+        "请基于以下会话历史继续回答。不要重复历史内容，优先处理最后一个用户问题。",
+        "",
+        "<history>",
+        transcript.as_str(),
+        "</history>",
+        "",
+        "用户最新问题:",
+        message,
+    ]
+    .join("\n")
 }
 
-fn format_terminal_context(snapshot: &AiTerminalContextSnapshot) -> String {
-    format!(
-        "\
-当前终端上下文：
-- session: {session_id}
-- shell: {shell}
-- cwd: {cwd}
-- pane: {pane}
-- tab: {tab}
-- host: {machine}
-- 最近输出是否脱敏: {redacted}
-- 最近输出：
-{output}",
-        session_id = snapshot.session.id,
-        shell = snapshot.session.shell,
-        cwd = snapshot.session.cwd.as_deref().unwrap_or("-"),
-        pane = snapshot.source.pane_title.as_deref().unwrap_or("-"),
-        tab = snapshot.source.tab_title.as_deref().unwrap_or("-"),
-        machine = snapshot.source.machine_name.as_deref().unwrap_or("-"),
-        redacted = if snapshot.redacted { "是" } else { "否" },
-        output = snapshot.output.data,
-    )
-}
-
-fn format_mcp_tool_context(mcp_tools: &McpToolList) -> String {
-    let mut lines = vec![format!(
-        "rmcp 工具目录：协议 {}，共 {} 个工具。需要操作时请使用标准 tool-call；Kerminal 会先创建待审批调用，确认前不得声称已经执行。",
-        mcp_tools.protocol,
-        mcp_tools.tools.len()
-    )];
-    let mut tools = mcp_tools.tools.iter().collect::<Vec<_>>();
-    tools.sort_by_key(|tool| match tool.origin {
-        crate::models::tool_registry::McpDefinitionOrigin::Custom => 0,
-        crate::models::tool_registry::McpDefinitionOrigin::System => 1,
-    });
-    for tool in tools.iter().take(MAX_LISTED_TOOLS) {
-        lines.push(format!(
-            "- {name}：{title}；Kerminal id {source_tool_id}；风险 {risk}；确认策略 {confirmation}",
-            name = provider_safe_tool_name(&tool.name),
-            title = tool.title.as_deref().unwrap_or("-"),
-            source_tool_id = tool.name.as_str(),
-            risk = risk_label(tool.risk),
-            confirmation = confirmation_label(tool.confirmation),
-        ));
+fn format_history_message(
+    message: &crate::models::ai_agent::AiChatHistoryMessage,
+) -> Option<String> {
+    let content = message.content.trim();
+    if content.is_empty() {
+        return None;
     }
-    if tools.len() > MAX_LISTED_TOOLS {
-        lines.push(format!(
-            "- 其余 {} 个工具已省略。",
-            tools.len() - MAX_LISTED_TOOLS
-        ));
-    }
-    lines.join("\n")
-}
-
-fn provider_safe_tool_reference(tool_id: &str) -> String {
-    let name = provider_safe_tool_name(tool_id);
-    if name == tool_id {
-        name
-    } else {
-        format!("{name} (Kerminal id {tool_id})")
-    }
+    let speaker = match message.role.as_str() {
+        "user" => "用户",
+        "assistant" => "AI",
+        _ => return None,
+    };
+    Some(format!("{speaker}: {content}"))
 }
 
 fn agent_preamble() -> String {
@@ -865,39 +773,6 @@ fn normalize_conversation_id(conversation_id: Option<String>) -> String {
         .unwrap_or_else(|| format!("chat-{}", Uuid::new_v4()))
 }
 
-fn risk_label(risk: ToolRiskLevel) -> &'static str {
-    match risk {
-        ToolRiskLevel::Read => "读取",
-        ToolRiskLevel::Write => "写入",
-        ToolRiskLevel::Remote => "远程",
-        ToolRiskLevel::Batch => "批量",
-        ToolRiskLevel::Destructive => "破坏性",
-    }
-}
-
-fn confirmation_label(confirmation: ToolConfirmationPolicy) -> &'static str {
-    match confirmation {
-        ToolConfirmationPolicy::Auto => "可自动执行",
-        ToolConfirmationPolicy::Contextual => "按上下文确认",
-        ToolConfirmationPolicy::Always => "每次确认",
-    }
-}
-
-fn skill_origin_label(origin: crate::models::tool_registry::McpDefinitionOrigin) -> &'static str {
-    match origin {
-        crate::models::tool_registry::McpDefinitionOrigin::System => "system",
-        crate::models::tool_registry::McpDefinitionOrigin::Custom => "custom",
-    }
-}
-
-fn approval_policy_label(policy: &AiCommandApprovalPolicy) -> &'static str {
-    match policy {
-        AiCommandApprovalPolicy::Always => "每次确认",
-        AiCommandApprovalPolicy::Risky => "高风险确认",
-        AiCommandApprovalPolicy::Relaxed => "放开模式",
-    }
-}
-
 fn current_unix_timestamp() -> String {
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -909,7 +784,11 @@ fn current_unix_timestamp() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::tool_registry::{ToolAuditPolicy, ToolCategory};
+    use crate::models::settings::AiCommandApprovalPolicy;
+    use crate::models::tool_registry::{
+        ToolAuditPolicy, ToolCategory, ToolConfirmationPolicy, ToolRiskLevel,
+    };
+    use crate::services::ai_agent_context::MAX_PROVIDER_TOOL_NAME_LEN;
 
     fn registry_tool(id: &str) -> RegistryToolDefinition {
         RegistryToolDefinition {
@@ -957,6 +836,8 @@ mod tests {
         let tool = KerminalApprovalTool {
             definition,
             model_tool_name: model_tool_name.clone(),
+            conversation_id: "conv-test".to_owned(),
+            conversation_slot_json: None,
             ai_policy: AiSecuritySettings::legacy_tool_policy(),
             ai_tools: AiToolInvocationService::new(),
             pending_collector: PendingToolInvocationCollector::default(),
@@ -977,6 +858,8 @@ mod tests {
         let tool = KerminalApprovalTool {
             model_tool_name: provider_safe_tool_name(&definition.id),
             definition,
+            conversation_id: "conv-test".to_owned(),
+            conversation_slot_json: None,
             ai_policy: AiSecuritySettings::legacy_tool_policy(),
             ai_tools: AiToolInvocationService::new(),
             pending_collector: PendingToolInvocationCollector::default(),
@@ -992,5 +875,55 @@ mod tests {
         let pending = tool.pending_collector.items().expect("pending invocations");
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].tool_id, "server_info.snapshot");
+    }
+
+    #[test]
+    fn approval_tool_call_reports_auto_approved_when_confirmation_not_required() {
+        let definition = registry_tool("server_info.snapshot");
+        let tool = KerminalApprovalTool {
+            model_tool_name: provider_safe_tool_name(&definition.id),
+            definition,
+            conversation_id: "conv-test".to_owned(),
+            conversation_slot_json: None,
+            ai_policy: AiSecuritySettings {
+                command_approval_policy: AiCommandApprovalPolicy::Relaxed,
+                require_remote_approval: false,
+                ..AiSecuritySettings::legacy_tool_policy()
+            },
+            ai_tools: AiToolInvocationService::new(),
+            pending_collector: PendingToolInvocationCollector::default(),
+        };
+
+        let payload = tauri::async_runtime::block_on(tool.call("{}".to_owned()))
+            .expect("tool call should prepare auto invocation");
+        let payload: Value = serde_json::from_str(&payload).expect("tool call payload json");
+
+        assert_eq!(payload["status"], "auto_approved");
+        assert_eq!(payload["requiresConfirmation"], false);
+        assert_eq!(payload["toolId"], "server_info.snapshot");
+    }
+
+    #[test]
+    fn chat_guard_replaces_unverified_success_claim() {
+        let guarded = guard_unverified_chat_success_claim(
+            "把 172.16.40.105 主机放到 bwy 分组",
+            "已将主机加入 bwy 分组。",
+            0,
+        );
+
+        assert!(guarded.contains("没有工具调用结果"));
+        assert!(!guarded.contains("已将主机加入"));
+    }
+
+    #[test]
+    fn chat_guard_reports_pending_invocation_instead_of_success() {
+        let guarded = guard_unverified_chat_success_claim(
+            "添加 172.16.40.105 到 bwy 分组",
+            "已经添加完成。",
+            1,
+        );
+
+        assert!(guarded.contains("待确认工具调用"));
+        assert!(guarded.contains("尚未执行"));
     }
 }

@@ -9,6 +9,7 @@ pub(super) fn execute_llm_provider_list(
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_llm_providers_for_ai(&providers)),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -42,6 +43,7 @@ pub(super) fn execute_llm_provider_create(
                 None,
             )),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -76,6 +78,7 @@ pub(super) fn execute_llm_provider_update(
                 Some(clear_api_key),
             )),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }
@@ -100,6 +103,7 @@ pub(super) fn execute_llm_provider_delete(
                 truncate_string(&provider_id)
             )),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Ok(false) => failure(format!("LLM Provider 不存在或未删除：{provider_id}。")),
         Err(error) => failure(error.to_string()),
@@ -122,6 +126,7 @@ pub(super) fn execute_llm_provider_test(
             status: AiToolInvocationStatus::Succeeded,
             result_summary: Some(summarize_llm_provider_test_for_ai(&result)),
             error: None,
+            ..ToolExecutionResult::default()
         },
         Err(error) => failure(error.to_string()),
     }

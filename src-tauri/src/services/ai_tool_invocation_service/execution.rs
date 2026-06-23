@@ -7,6 +7,11 @@ pub(super) async fn execute_tool(
 ) -> ToolExecutionResult {
     match tool_id {
         "terminal.create" => execute_terminal_create(arguments),
+        "terminal.resolve_current" => execute_terminal_resolve_current(
+            context.terminals,
+            context.terminal_session_bindings,
+            arguments,
+        ),
         "terminal.list" => execute_terminal_list(context.terminals),
         "terminal.close" => execute_terminal_close(context.terminals, arguments),
         "terminal.log.start" => {
@@ -72,6 +77,15 @@ pub(super) async fn execute_tool(
         "remote_host.create" => {
             execute_remote_host_create(context.remote_hosts, context.storage, arguments)
         }
+        "remote_host.ensure" => {
+            execute_remote_host_ensure(context.remote_hosts, context.storage, arguments)
+        }
+        "remote_host.last_used" => execute_remote_host_last_used(
+            context.command_history,
+            context.remote_hosts,
+            context.storage,
+            arguments,
+        ),
         "remote_host.update" => {
             execute_remote_host_update(context.remote_hosts, context.storage, arguments)
         }
@@ -79,12 +93,25 @@ pub(super) async fn execute_tool(
             execute_remote_host_delete(context.remote_hosts, context.storage, arguments)
         }
         "ssh.connect" => execute_ssh_connect(context.remote_hosts, context.storage, arguments),
+        "ssh.ensure_connected" => {
+            execute_ssh_ensure_connected(context.remote_hosts, context.storage, arguments)
+        }
         "ssh.command" => {
             execute_ssh_command(
                 context.ssh_commands,
                 context.command_history,
-                context.credentials,
                 context.paths,
+                context.storage,
+                arguments,
+            )
+            .await
+        }
+        "ssh.command_on_resolved_host" => {
+            execute_ssh_command_on_resolved_host(
+                context.ssh_commands,
+                context.command_history,
+                context.paths,
+                context.remote_hosts,
                 context.storage,
                 arguments,
             )
@@ -95,7 +122,6 @@ pub(super) async fn execute_tool(
             execute_server_info_snapshot(
                 context.server_info,
                 context.storage,
-                context.credentials,
                 context.paths,
                 context.ssh_commands,
                 arguments,
@@ -112,130 +138,91 @@ pub(super) async fn execute_tool(
             context.terminals,
         ),
         "sftp.list" => {
-            execute_sftp_list(
-                context.sftp,
-                context.storage,
-                context.credentials,
-                context.paths,
-                arguments,
-            )
-            .await
+            execute_sftp_list(context.sftp, context.storage, context.paths, arguments).await
         }
         "sftp.rename" => {
-            execute_sftp_rename(
-                context.sftp,
-                context.storage,
-                context.credentials,
-                context.paths,
-                arguments,
-            )
-            .await
+            execute_sftp_rename(context.sftp, context.storage, context.paths, arguments).await
         }
         "sftp.move" => {
-            execute_sftp_move(
-                context.sftp,
-                context.storage,
-                context.credentials,
-                context.paths,
-                arguments,
-            )
-            .await
+            execute_sftp_move(context.sftp, context.storage, context.paths, arguments).await
         }
         "sftp.preview" => {
-            execute_sftp_preview(
-                context.sftp,
-                context.storage,
-                context.credentials,
-                context.paths,
-                arguments,
-            )
-            .await
+            execute_sftp_preview(context.sftp, context.storage, context.paths, arguments).await
         }
         "sftp.create_directory" => {
-            execute_sftp_create_directory(
-                context.sftp,
-                context.storage,
-                context.credentials,
-                context.paths,
-                arguments,
-            )
-            .await
+            execute_sftp_create_directory(context.sftp, context.storage, context.paths, arguments)
+                .await
         }
         "sftp.chmod" => {
-            execute_sftp_chmod(
-                context.sftp,
-                context.storage,
-                context.credentials,
-                context.paths,
-                arguments,
-            )
-            .await
+            execute_sftp_chmod(context.sftp, context.storage, context.paths, arguments).await
         }
         "sftp.upload" => {
-            execute_sftp_upload(
-                context.sftp,
-                context.storage,
-                context.credentials,
-                context.paths,
-                arguments,
-            )
-            .await
+            execute_sftp_upload(context.sftp, context.storage, context.paths, arguments).await
         }
         "sftp.upload_directory" => {
-            execute_sftp_upload_directory(
-                context.sftp,
-                context.storage,
-                context.credentials,
-                context.paths,
-                arguments,
-            )
-            .await
+            execute_sftp_upload_directory(context.sftp, context.storage, context.paths, arguments)
+                .await
         }
         "sftp.download" => {
-            execute_sftp_download(
-                context.sftp,
-                context.storage,
-                context.credentials,
-                context.paths,
-                arguments,
-            )
-            .await
+            execute_sftp_download(context.sftp, context.storage, context.paths, arguments).await
         }
         "sftp.download_directory" => {
-            execute_sftp_download_directory(
-                context.sftp,
-                context.storage,
-                context.credentials,
-                context.paths,
-                arguments,
-            )
-            .await
+            execute_sftp_download_directory(context.sftp, context.storage, context.paths, arguments)
+                .await
         }
         "sftp.delete" => {
-            execute_sftp_delete(
-                context.sftp,
-                context.storage,
-                context.credentials,
-                context.paths,
-                arguments,
-            )
-            .await
+            execute_sftp_delete(context.sftp, context.storage, context.paths, arguments).await
         }
-        "sftp.transfer.enqueue" => execute_sftp_transfer_enqueue(
-            context.sftp,
-            context.storage,
-            context.credentials,
-            context.paths,
-            arguments,
-        ),
+        "sftp.transfer.enqueue" => {
+            execute_sftp_transfer_enqueue(context.sftp, context.storage, context.paths, arguments)
+        }
         "sftp.transfer.list" => execute_sftp_transfer_list(context.sftp),
         "sftp.transfer.cancel" => execute_sftp_transfer_cancel(context.sftp, arguments),
         "sftp.transfer.clear_completed" => execute_sftp_transfer_clear_completed(context.sftp),
-        "port_forward.create" => {
-            execute_port_forward_create(context.port_forwards, context.storage, arguments)
+        "container.list" => {
+            execute_container_list(
+                context.docker_hosts,
+                context.storage,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
         }
-        "port_forward.list" => execute_port_forward_list(context.port_forwards),
-        "port_forward.close" => execute_port_forward_close(context.port_forwards, arguments),
+        "container.files.list" => {
+            execute_container_files_list(
+                context.docker_hosts,
+                context.storage,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
+        }
+        "container.files.preview" => {
+            execute_container_files_preview(
+                context.docker_hosts,
+                context.storage,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
+        }
+        "port_forward.create" => execute_port_forward_create(
+            context.port_forwards,
+            context.local_network_proxy,
+            context.storage,
+            context.paths,
+            arguments,
+        ),
+        "port_forward.list" => execute_port_forward_list(context.port_forwards, context.storage),
+        "port_forward.close" => execute_port_forward_close(
+            context.port_forwards,
+            context.local_network_proxy,
+            context.storage,
+            arguments,
+        ),
         "snippet.list" => execute_snippet_list(context.snippets, context.storage, arguments),
         "snippet.create" => execute_snippet_create(context.snippets, context.storage, arguments),
         "snippet.update" => execute_snippet_update(context.snippets, context.storage, arguments),
@@ -294,6 +281,7 @@ pub(super) async fn execute_custom_mcp_tool(
             status: AiToolInvocationStatus::Failed,
             result_summary: None,
             error: Some("该工具尚未接入受控执行器。".to_owned()),
+            ..ToolExecutionResult::default()
         };
     };
 
@@ -308,6 +296,7 @@ pub(super) async fn execute_custom_mcp_tool(
                 },
                 result_summary: Some(summarize_mcp_call_result(&tool.name, &result)),
                 error: is_error.then(|| "MCP Server 返回 tool-level error。".to_owned()),
+                ..ToolExecutionResult::default()
             }
         }
         Err(error) => failure(error.to_string()),

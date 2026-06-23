@@ -25,6 +25,37 @@ async fn transfer_progress_tracks_running_and_successful_tasks() {
     .await;
 }
 
+#[test]
+fn enqueue_transfer_from_sync_context_does_not_require_tokio_reactor() {
+    let service = SftpService::with_backend(Arc::new(FakeSftpBackend {
+        delay_ms: 1,
+        ..FakeSftpBackend::default()
+    }));
+    let endpoint = test_endpoint("host-1");
+    let request = test_transfer_request("host-1");
+    let summary = service
+        .enqueue_resolved_for_test(endpoint, request)
+        .expect("enqueue transfer from sync context");
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        if service
+            .list_transfers()
+            .expect("list transfers")
+            .iter()
+            .any(|task| task.id == summary.id && task.status == SftpTransferStatus::Succeeded)
+        {
+            return;
+        }
+
+        assert!(
+            std::time::Instant::now() < deadline,
+            "sync enqueue should schedule its background transfer without a current Tokio reactor"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
 #[tokio::test]
 async fn transfer_cancel_marks_running_task_canceled() {
     let service = SftpService::with_backend(Arc::new(FakeSftpBackend {
@@ -49,6 +80,7 @@ async fn transfer_cancel_marks_running_task_canceled() {
     let canceled = service
         .cancel_transfer(SftpTransferCancelRequest {
             transfer_id: summary.id.clone(),
+            view_scope: None,
         })
         .expect("cancel transfer");
     assert!(canceled.cancel_requested);
@@ -61,6 +93,119 @@ async fn transfer_cancel_marks_running_task_canceled() {
             .any(|task| task.id == summary.id && task.status == SftpTransferStatus::Canceled)
     })
     .await;
+}
+
+#[test]
+fn clear_completed_transfers_keeps_active_tasks_in_created_order() {
+    let service = SftpService::with_backend(Arc::new(FakeSftpBackend::default()));
+
+    insert_transfer_with_status(&service, "succeeded", SftpTransferStatus::Succeeded, 1);
+    insert_transfer_with_status(&service, "running-newer", SftpTransferStatus::Running, 4);
+    insert_transfer_with_status(&service, "canceled", SftpTransferStatus::Canceled, 3);
+    insert_transfer_with_status(&service, "queued-older", SftpTransferStatus::Queued, 2);
+    insert_transfer_with_status(&service, "failed", SftpTransferStatus::Failed, 5);
+
+    let remaining = service
+        .clear_completed_transfers()
+        .expect("clear completed transfers");
+
+    assert_eq!(
+        remaining
+            .iter()
+            .map(|summary| summary.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["queued-older", "running-newer"]
+    );
+    assert!(remaining.iter().all(|summary| matches!(
+        summary.status,
+        SftpTransferStatus::Queued | SftpTransferStatus::Running
+    )));
+}
+
+#[test]
+fn scoped_transfer_registry_keeps_view_histories_isolated() {
+    let service = SftpService::with_backend(Arc::new(FakeSftpBackend::default()));
+
+    insert_transfer_with_status_and_scope(
+        &service,
+        "succeeded-a",
+        SftpTransferStatus::Succeeded,
+        1,
+        Some("scope-a"),
+    );
+    insert_transfer_with_status_and_scope(
+        &service,
+        "queued-a",
+        SftpTransferStatus::Queued,
+        2,
+        Some("scope-a"),
+    );
+    insert_transfer_with_status_and_scope(
+        &service,
+        "succeeded-b",
+        SftpTransferStatus::Succeeded,
+        3,
+        Some("scope-b"),
+    );
+    insert_transfer_with_status_and_scope(
+        &service,
+        "running-b",
+        SftpTransferStatus::Running,
+        4,
+        Some("scope-b"),
+    );
+
+    let scope_a = SftpTransferScopeRequest {
+        view_scope: Some("scope-a".to_owned()),
+    };
+    let scope_b = SftpTransferScopeRequest {
+        view_scope: Some("scope-b".to_owned()),
+    };
+
+    assert_eq!(
+        service
+            .list_transfers_for_scope(scope_a.clone())
+            .expect("list scope a")
+            .iter()
+            .map(|summary| summary.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["succeeded-a", "queued-a"]
+    );
+    assert!(
+        service
+            .cancel_transfer(SftpTransferCancelRequest {
+                transfer_id: "queued-a".to_owned(),
+                view_scope: scope_b.view_scope.clone(),
+            })
+            .is_err(),
+        "a transfer from another view scope must not be cancelable"
+    );
+
+    let canceled = service
+        .cancel_transfer(SftpTransferCancelRequest {
+            transfer_id: "queued-a".to_owned(),
+            view_scope: scope_a.view_scope.clone(),
+        })
+        .expect("cancel scope a transfer");
+    assert_eq!(canceled.id, "queued-a");
+    assert!(canceled.cancel_requested);
+
+    let remaining_scope_a = service
+        .clear_completed_transfers_for_scope(scope_a)
+        .expect("clear scope a");
+    assert!(
+        remaining_scope_a.is_empty(),
+        "scoped clear should return only the active view history"
+    );
+    assert_eq!(
+        service
+            .list_transfers_for_scope(scope_b)
+            .expect("list scope b")
+            .iter()
+            .map(|summary| summary.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["succeeded-b", "running-b"]
+    );
 }
 
 #[tokio::test]
@@ -121,6 +266,8 @@ async fn remote_copy_task_uses_source_and_target_hosts() {
                 target_host_id: "target-host".to_owned(),
                 target_remote_path: "/srv/app/app.log".to_owned(),
                 kind: SftpTransferKind::File,
+                conflict_policy: SftpTransferConflictPolicy::Overwrite,
+                view_scope: None,
             },
             temp_root.path().to_path_buf(),
         )
@@ -185,6 +332,8 @@ async fn remote_copy_cancel_marks_task_canceled_and_releases_permits() {
                 target_host_id: "target-host".to_owned(),
                 target_remote_path: "/srv/app/app.log".to_owned(),
                 kind: SftpTransferKind::File,
+                conflict_policy: SftpTransferConflictPolicy::Overwrite,
+                view_scope: None,
             },
             temp_root.path().to_path_buf(),
         )
@@ -202,6 +351,7 @@ async fn remote_copy_cancel_marks_task_canceled_and_releases_permits() {
     service
         .cancel_transfer(SftpTransferCancelRequest {
             transfer_id: summary.id.clone(),
+            view_scope: None,
         })
         .expect("cancel remote copy");
 
@@ -236,6 +386,8 @@ async fn staged_remote_copy_removes_temp_dir_on_success() {
                 target_host_id: "same-host".to_owned(),
                 target_remote_path: "/var/backup".to_owned(),
                 kind: SftpTransferKind::Directory,
+                conflict_policy: SftpTransferConflictPolicy::Overwrite,
+                view_scope: None,
             },
             temp_root.path().to_path_buf(),
         )
@@ -262,5 +414,61 @@ async fn staged_remote_copy_removes_temp_dir_on_success() {
             .join(&summary.id)
             .exists(),
         "staged remote copy should remove its temporary directory"
+    );
+}
+
+fn insert_transfer_with_status(
+    service: &SftpService,
+    id: &str,
+    status: SftpTransferStatus,
+    created_at: u64,
+) {
+    insert_transfer_with_status_and_scope(service, id, status, created_at, None);
+}
+
+fn insert_transfer_with_status_and_scope(
+    service: &SftpService,
+    id: &str,
+    status: SftpTransferStatus,
+    created_at: u64,
+    view_scope: Option<&str>,
+) {
+    let endpoint = test_endpoint("host-1");
+    let mut request = test_transfer_request("host-1");
+    request.view_scope = view_scope.map(str::to_owned);
+    let cancel_requested = Arc::new(AtomicBool::new(status == SftpTransferStatus::Canceled));
+    let summary = SftpTransferSummary {
+        id: id.to_owned(),
+        host_id: request.host_id.clone(),
+        view_scope: request.view_scope.clone(),
+        remote_path: request.remote_path.clone(),
+        local_path: request.local_path.clone(),
+        direction: request.direction,
+        kind: request.kind,
+        status,
+        bytes_transferred: 0,
+        total_bytes: None,
+        error: if status == SftpTransferStatus::Failed {
+            Some("failed for registry test".to_owned())
+        } else {
+            None
+        },
+        cancel_requested: status == SftpTransferStatus::Canceled,
+        created_at,
+        updated_at: created_at,
+        operation: Some(managed_transfer_operation(request.direction)),
+        source: Some(managed_transfer_source(&endpoint, &request)),
+        target: Some(managed_transfer_target(&endpoint, &request)),
+        transport_mode: Some(SftpTransferTransportMode::SingleHostSftp),
+        phase: Some("queued".to_owned()),
+        current_item: None,
+    };
+
+    service.transfers().expect("transfer registry").insert(
+        id.to_owned(),
+        TransferTask {
+            summary,
+            cancel_requested,
+        },
     );
 }

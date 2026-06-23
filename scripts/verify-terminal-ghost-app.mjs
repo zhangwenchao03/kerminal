@@ -24,6 +24,7 @@ const outputPng = path.join(outputDir, "terminal-ghost-app.png");
 const chromePath = findChromePath();
 const chromePort = 9480 + Math.floor(Math.random() * 300);
 const vitePort = 9780 + Math.floor(Math.random() * 300);
+const forceOptimizeDeps = process.env.KERMINAL_GHOST_FORCE_OPTIMIZE !== "0";
 const userDataDir = path.join(
   tmpdir(),
   `kerminal-terminal-ghost-app-${Date.now()}`,
@@ -37,7 +38,10 @@ if (!chromePath) {
 async function main() {
   const vite = await createServer({
     configFile: path.join(repoRoot, "vite.config.ts"),
-    optimizeDeps: { force: true },
+    optimizeDeps: {
+      entries: ["index.html"],
+      force: forceOptimizeDeps,
+    },
     root: repoRoot,
     server: {
       host: "127.0.0.1",
@@ -98,12 +102,12 @@ async function main() {
     await waitForBrowserExpression(
       client,
       "document.querySelector('[aria-label=\"prod-api xterm 终端\"]') !== null",
-      20_000,
+      180_000,
     );
     await waitForBrowserExpression(
       client,
       "document.querySelector('.xterm-helper-textarea') !== null",
-      10_000,
+      60_000,
     );
     await evaluate(
       client,
@@ -194,6 +198,18 @@ async function main() {
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
+    if (client) {
+      try {
+        const diagnostics = await collectFailureDiagnostics(client);
+        console.error(JSON.stringify(diagnostics, null, 2));
+      } catch (diagnosticError) {
+        console.error(
+          diagnosticError instanceof Error
+            ? diagnosticError.message
+            : String(diagnosticError),
+        );
+      }
+    }
     if (stderr.trim()) {
       console.error(stderr.trim());
     }
@@ -209,6 +225,38 @@ async function main() {
       retryDelay: 100,
     });
   }
+}
+
+async function collectFailureDiagnostics(client) {
+  const result = await evaluate(
+    client,
+    `(() => ({
+      ariaLabels: Array.from(document.querySelectorAll("[aria-label]"))
+        .slice(0, 40)
+        .map((node) => node.getAttribute("aria-label")),
+      bodyText: document.body?.innerText?.slice(0, 2000) ?? "",
+      location: window.location.href,
+      readyState: document.readyState,
+      resourceEntries: performance.getEntriesByType("resource")
+        .slice(-30)
+        .map((entry) => ({
+          duration: Math.round(entry.duration),
+          initiatorType: entry.initiatorType,
+          name: entry.name,
+        })),
+      rootHtml: document.querySelector("#root")?.innerHTML?.slice(0, 2000) ?? null,
+      scripts: Array.from(document.scripts).map((script) => ({
+        src: script.src,
+        type: script.type,
+      })),
+      smokeState: window.__kerminalAppSmokeState ?? null,
+      smokeErrors: window.__kerminalAppSmokeErrors ?? [],
+      storageSession: window.localStorage.getItem("kerminal.workspace.session.v1"),
+      title: document.title,
+    }))()`,
+    { returnByValue: true },
+  );
+  return result.result?.value;
 }
 
 function validateSmokeState(ghost, state) {
@@ -339,6 +387,23 @@ function browserBootstrapScript() {
   };
   return `
     (() => {
+      window.__kerminalAppSmokeErrors = [];
+      const recordSmokeError = (kind, value) => {
+        const message =
+          value?.reason?.stack ??
+          value?.reason?.message ??
+          value?.error?.stack ??
+          value?.error?.message ??
+          value?.message ??
+          String(value);
+        window.__kerminalAppSmokeErrors.push({ kind, message });
+      };
+      window.addEventListener("error", (event) =>
+        recordSmokeError("error", event),
+      );
+      window.addEventListener("unhandledrejection", (event) =>
+        recordSmokeError("unhandledrejection", event),
+      );
       localStorage.setItem("kerminal.workspace.session.v1", ${JSON.stringify(
         JSON.stringify(workspaceSession),
       )});

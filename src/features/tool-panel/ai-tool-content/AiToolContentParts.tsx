@@ -5,6 +5,7 @@ import {
   Clock3,
   EyeOff,
   History,
+  ImageIcon,
   MessageSquare,
   RefreshCw,
   Search,
@@ -14,35 +15,56 @@ import {
   User,
   X,
 } from "lucide-react";
-import {
-  MessagePartPrimitive,
-  MessagePrimitive,
-} from "@assistant-ui/react";
+import { MessagePartPrimitive, MessagePrimitive } from "@assistant-ui/react";
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
+import type { CSSProperties } from "react";
 import { Button } from "../../../components/ui/button";
 import { Select } from "../../../components/ui/select";
-import type { AiCommandExecutionVisibility, AiChatStreamStep } from "../../../lib/aiAgentApi";
+import type {
+  AiCommandExecutionVisibility,
+  AiChatStreamStep,
+} from "../../../lib/aiAgentApi";
 import type { AiTerminalContextSnapshot } from "../../../lib/aiContextApi";
 import type { AiToolPendingInvocation } from "../../../lib/aiToolInvocationApi";
 import { cn } from "../../../lib/cn";
-import type { AiCommandApprovalPolicy, AppSettings } from "../../settings/settingsModel";
+import type {
+  AiCommandApprovalPolicy,
+  AppSettings,
+} from "../../settings/settingsModel";
 import type { LlmProvider } from "../../settings/llmProviderModel";
 import { riskLabel } from "../toolRegistryModel";
 import {
-  compactId,
   conversationMatchesHistoryQuery,
-  formatBytes,
   formatHistoryTime,
   hasConversationHistoryContent,
   normalizeHistorySearchQuery,
   statusLabel,
   statusTone,
   type AiChatMessage,
+  type AiChatAttachment,
   type AiConversation,
   type LoadState,
 } from "./aiToolContentModel";
+import { MessageAttachments } from "./AiMessageAttachments";
 
-export function ContextStatus({
+const commandVisibilityButtonClassName =
+  "kerminal-focus-ring kerminal-pressable inline-flex h-7 min-w-7 items-center justify-center gap-1 rounded-md px-1.5 text-xs font-medium";
+const commandVisibilityIdleClassName =
+  "text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100";
+const aiAccentSurfaceClassName =
+  "bg-[rgb(var(--app-accent))] text-white shadow-sm shadow-sky-950/20 dark:text-zinc-950 dark:shadow-black/20";
+const aiHistoryEmptyClassName =
+  "kerminal-muted-surface rounded-lg border border-dashed px-3 py-6 text-center text-sm text-zinc-500 dark:text-zinc-400";
+const aiIconBubbleClassName =
+  "kerminal-muted-surface mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-sky-700 dark:text-sky-100";
+const aiUserIconBubbleClassName = cn(
+  "mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+  aiAccentSurfaceClassName,
+);
+const composerCompactMenuClassName =
+  "z-[1000] border-[var(--border-subtle)] bg-[var(--surface-overlay)] shadow-2xl shadow-black/25 dark:shadow-black/60 [&_button[role=option]]:items-center [&_button[role=option]]:gap-2 [&_button[role=option]]:text-center [&_button[role=option]>span:first-child]:flex-1 [&_button[role=option]>svg]:hidden";
+
+export function ContextUsageIndicator({
   error,
   snapshot,
   state,
@@ -51,92 +73,103 @@ export function ContextStatus({
   snapshot: AiTerminalContextSnapshot | null;
   state: LoadState;
 }) {
-  const progress =
-    snapshot && snapshot.output.maxBytes > 0
-      ? Math.min(
-          100,
-          Math.max(
-            2,
-            Math.round(
-              (snapshot.output.capturedBytes / snapshot.output.maxBytes) * 100,
-            ),
-          ),
-        )
-      : 0;
-
-  if (state === "loading") {
-    return (
-      <div className="mt-3 space-y-2 text-xs text-zinc-500 dark:text-zinc-400">
-        <div className="flex items-center justify-between gap-3">
-          <span className="flex items-center gap-2">
-            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-            正在读取当前终端上下文
-          </span>
-          <span>上下文</span>
-        </div>
-        <div className="h-1 overflow-hidden rounded-full bg-black/8 dark:bg-white/8">
-          <div className="h-full w-1/3 rounded-full bg-sky-500/70" />
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="mt-3 space-y-2 text-xs text-amber-700 dark:text-amber-100">
-        <div className="flex items-center justify-between gap-3">
-          <span className="flex min-w-0 items-center gap-2">
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{error}</span>
-          </span>
-          <span className="shrink-0 text-zinc-500 dark:text-zinc-400">
-            上下文不可用
-          </span>
-        </div>
-        <div className="h-1 overflow-hidden rounded-full bg-black/8 dark:bg-white/8">
-          <div className="h-full w-0 rounded-full bg-amber-500/70" />
-        </div>
-      </div>
-    );
-  }
-
-  if (!snapshot) {
-    return (
-      <div className="mt-3 space-y-2 text-xs text-zinc-500 dark:text-zinc-400">
-        <div className="flex items-center justify-between gap-3">
-          <span>暂未绑定真实终端上下文</span>
-          <span>0 / 0 B</span>
-        </div>
-        <div className="h-1 overflow-hidden rounded-full bg-black/8 dark:bg-white/8">
-          <div className="h-full w-0 rounded-full bg-zinc-400/70" />
-        </div>
-      </div>
-    );
-  }
+  const meta = contextUsageIndicatorMeta({ error, snapshot, state });
 
   return (
-    <div className="mt-3 space-y-2 text-xs text-zinc-600 dark:text-zinc-300">
-      <div className="flex items-center justify-between gap-3">
-        <span className="min-w-0 truncate font-medium text-zinc-800 dark:text-zinc-100">
-          当前上下文已连接 · {snapshot.source.paneTitle ?? snapshot.source.paneId}
-        </span>
-        <span className="shrink-0 text-zinc-500 dark:text-zinc-400">
-          {formatBytes(snapshot.output.capturedBytes)} /{" "}
-          {formatBytes(snapshot.output.maxBytes)}
-        </span>
-      </div>
-      <div className="h-1 overflow-hidden rounded-full bg-black/8 dark:bg-white/8">
-        <div
-          className="h-full rounded-full bg-sky-500/80"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
-      <div className="flex items-center justify-between gap-3 text-zinc-500 dark:text-zinc-400">
-        <span className="truncate">Session {compactId(snapshot.session.id)}</span>
-        {snapshot.redacted ? <span className="shrink-0">已脱敏</span> : null}
-      </div>
-    </div>
+    <span
+      aria-label={meta.ariaLabel}
+      className={cn(
+        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full",
+        meta.className,
+      )}
+      role="status"
+      style={
+        {
+          "--ai-context-ring": meta.ring,
+          "--ai-context-progress": `${meta.percent}%`,
+          "--ai-context-track": "var(--border-subtle)",
+        } as CSSProperties
+      }
+      title={meta.title}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "h-4 w-4 rounded-full bg-[var(--surface-solid)] shadow-[0_0_0_1px_var(--border-subtle)]",
+          state === "loading" && "animate-pulse",
+        )}
+      />
+    </span>
   );
+}
+
+function contextUsageIndicatorMeta({
+  error,
+  snapshot,
+  state,
+}: {
+  error: string | null;
+  snapshot: AiTerminalContextSnapshot | null;
+  state: LoadState;
+}) {
+  if (state === "loading") {
+    return {
+      ariaLabel: "上下文读取中",
+      className: "bg-[conic-gradient(var(--ai-context-ring)_var(--ai-context-progress),var(--ai-context-track)_0)]",
+      percent: 33,
+      ring: "rgb(113 113 122)",
+      title: "上下文读取中",
+    };
+  }
+  if (error) {
+    return {
+      ariaLabel: "上下文不可用",
+      className: "bg-[conic-gradient(var(--ai-context-ring)_var(--ai-context-progress),var(--ai-context-track)_0)]",
+      percent: 100,
+      ring: "rgb(113 113 122)",
+      title: "上下文不可用",
+    };
+  }
+  if (!snapshot || snapshot.output.maxBytes <= 0) {
+    return {
+      ariaLabel: "使用量 0%",
+      className: "bg-[conic-gradient(var(--ai-context-ring)_var(--ai-context-progress),var(--ai-context-track)_0)]",
+      percent: 0,
+      ring: "rgb(161 161 170)",
+      title: "0% · 0K/0K",
+    };
+  }
+
+  const percent = Math.min(
+    100,
+    Math.max(
+      snapshot.output.capturedBytes > 0 ? 1 : 0,
+      Math.round((snapshot.output.capturedBytes / snapshot.output.maxBytes) * 100),
+    ),
+  );
+  const used = formatContextUsageK(snapshot.output.capturedBytes);
+  const total = formatContextUsageK(snapshot.output.maxBytes);
+  const title = `${percent}% · ${used}/${total}`;
+
+  return {
+    ariaLabel: `使用量 ${percent}%`,
+    className: "bg-[conic-gradient(var(--ai-context-ring)_var(--ai-context-progress),var(--ai-context-track)_0)]",
+    percent,
+    ring: "rgb(113 113 122)",
+    title,
+  };
+}
+
+function formatContextUsageK(bytes: number) {
+  if (bytes <= 0) {
+    return "0K";
+  }
+  const kib = bytes / 1024;
+  if (kib < 0.1) {
+    return "<0.1K";
+  }
+  const value = kib < 10 ? kib.toFixed(1) : String(Math.round(kib));
+  return `${value.replace(/\.0$/, "")}K`;
 }
 
 export function CommandVisibilitySwitch({
@@ -151,7 +184,7 @@ export function CommandVisibilitySwitch({
   return (
     <div
       aria-label="AI 命令显示模式"
-      className="inline-flex h-8 shrink-0 items-center overflow-hidden rounded-lg border border-black/10 bg-black/[0.03] p-0.5 dark:border-white/10 dark:bg-white/6"
+      className="kerminal-muted-surface inline-flex h-8 shrink-0 items-center overflow-hidden rounded-lg border p-0.5"
       role="group"
       title={
         terminalSelected
@@ -163,10 +196,10 @@ export function CommandVisibilitySwitch({
         aria-label="命令显示在终端"
         aria-pressed={terminalSelected}
         className={cn(
-          "inline-flex h-7 min-w-7 items-center justify-center gap-1 rounded-md px-1.5 text-xs font-medium transition",
+          commandVisibilityButtonClassName,
           terminalSelected
-            ? "bg-sky-500 text-white shadow-sm shadow-sky-950/15 dark:bg-sky-400 dark:text-zinc-950"
-            : "text-zinc-500 hover:bg-black/[0.05] hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-100",
+            ? "bg-[rgb(var(--app-accent))] text-white shadow-sm shadow-sky-950/15 dark:text-zinc-950"
+            : commandVisibilityIdleClassName,
         )}
         onClick={() => onChange("terminal")}
         title="命令显示在终端"
@@ -179,10 +212,10 @@ export function CommandVisibilitySwitch({
         aria-label="命令后台运行"
         aria-pressed={!terminalSelected}
         className={cn(
-          "inline-flex h-7 min-w-7 items-center justify-center gap-1 rounded-md px-1.5 text-xs font-medium transition",
+          commandVisibilityButtonClassName,
           !terminalSelected
             ? "bg-zinc-900 text-white shadow-sm shadow-black/15 dark:bg-zinc-100 dark:text-zinc-950"
-            : "text-zinc-500 hover:bg-black/[0.05] hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-100",
+            : commandVisibilityIdleClassName,
         )}
         onClick={() => onChange("background")}
         title="命令后台运行"
@@ -217,10 +250,18 @@ export const approvalPolicyOptions: Array<{
   },
 ];
 
+const approvalPolicyCompactLabels: Record<AiCommandApprovalPolicy, string> = {
+  always: "确认",
+  relaxed: "自动",
+  risky: "安全",
+};
+
 export function ExecutionModeSelector({
+  compact = false,
   onChange,
   settings,
 }: {
+  compact?: boolean;
   onChange?: (policy: AiCommandApprovalPolicy) => void;
   settings: AppSettings;
 }) {
@@ -235,22 +276,33 @@ export function ExecutionModeSelector({
 
   return (
     <div
-      className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full border border-amber-400/25 bg-amber-500/10 px-2.5 text-xs font-medium text-amber-700 dark:text-amber-100"
+      className={cn(
+        compact
+          ? "kerminal-muted-surface inline-flex h-8 shrink-0 items-center rounded-full border text-xs font-medium text-zinc-600 dark:text-zinc-300"
+          : "inline-flex h-8 max-w-full items-center rounded-full border border-amber-400/25 bg-amber-500/10 text-xs font-medium text-amber-700 dark:text-amber-100",
+        compact ? "px-1" : "gap-1.5 px-2.5",
+      )}
       title={permissionTitle}
     >
-      <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+      {compact ? null : <ShieldCheck className="h-3.5 w-3.5 shrink-0" />}
       <Select
         aria-label="AI 执行模式"
-        buttonClassName="h-6 border-0 bg-transparent px-1 text-xs font-medium shadow-none hover:bg-amber-500/10 focus-visible:ring-2 focus-visible:ring-amber-400/20 dark:hover:bg-white/10"
-        className="min-w-0 max-w-[7.5rem]"
+        buttonClassName={cn(
+          "kerminal-focus-ring h-6 border-0 bg-transparent text-center text-xs font-medium shadow-none [&>span:first-child]:flex-1 [&>span:first-child]:text-center",
+          compact
+            ? "rounded-full px-2 hover:bg-[var(--surface-hover)]"
+            : "px-1 hover:bg-amber-500/10 dark:hover:bg-amber-300/10",
+        )}
+        className={cn("min-w-0", compact ? "w-[4.25rem]" : "max-w-[7.5rem]")}
         disabled={!onChange}
-        menuClassName="w-52"
-        onValueChange={(value) =>
-          onChange?.(value as AiCommandApprovalPolicy)
-        }
+        menuClassName={cn(
+          "max-w-[calc(100vw-2rem)]",
+          compact ? cn("w-[4.25rem]", composerCompactMenuClassName) : "w-52",
+        )}
+        onValueChange={(value) => onChange?.(value as AiCommandApprovalPolicy)}
         options={approvalPolicyOptions.map((option) => ({
-          description: option.description,
-          label: option.label,
+          description: compact ? undefined : option.description,
+          label: compact ? approvalPolicyCompactLabels[option.value] : option.label,
           value: option.value,
         }))}
         side="top"
@@ -263,6 +315,7 @@ export function ExecutionModeSelector({
 }
 
 export function ProviderSelector({
+  compact = false,
   error,
   onChange,
   onOpenSettings,
@@ -270,6 +323,7 @@ export function ProviderSelector({
   selectedProviderId,
   state,
 }: {
+  compact?: boolean;
   error: string | null;
   onChange: (providerId: string) => void;
   onOpenSettings?: () => void;
@@ -281,37 +335,50 @@ export function ProviderSelector({
     return (
       <button
         aria-label="配置 AI 模型"
-        className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full border border-black/10 bg-black/[0.03] px-2.5 text-xs font-medium text-zinc-600 transition hover:bg-black/[0.05] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/6 dark:text-zinc-300 dark:hover:bg-white/10"
+        className={cn(
+          "kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex h-8 max-w-full items-center rounded-full border text-xs font-medium text-zinc-600 hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-300",
+          compact ? "px-3" : "gap-1.5 px-2.5",
+        )}
         disabled={state === "loading" || !onOpenSettings}
         onClick={onOpenSettings}
         title={error ?? "在设置里配置 LLM Provider"}
         type="button"
       >
-        <Bot className="h-3.5 w-3.5 shrink-0" />
-        {state === "loading"
-          ? "加载模型"
-          : error
-            ? "模型加载失败"
-            : "配置模型"}
+        {compact ? null : <Bot className="h-3.5 w-3.5 shrink-0" />}
+        {state === "loading" ? "加载模型" : error ? "模型加载失败" : "配置模型"}
       </button>
     );
   }
 
   return (
     <div
-      className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full border border-black/10 bg-black/[0.03] px-2.5 text-xs font-medium text-zinc-600 dark:border-white/10 dark:bg-white/6 dark:text-zinc-300"
+      className={cn(
+        compact
+          ? "inline-flex h-8 shrink-0 items-center text-xs font-medium text-zinc-600 dark:text-zinc-300"
+          : "kerminal-muted-surface inline-flex h-8 max-w-full items-center rounded-full border text-xs font-medium text-zinc-600 dark:text-zinc-300",
+        compact ? "" : "gap-1.5 px-2.5",
+      )}
       title={error ?? "选择本次对话使用的模型"}
     >
-      <Bot className="h-3.5 w-3.5 shrink-0" />
+      {compact ? null : <Bot className="h-3.5 w-3.5 shrink-0" />}
       <Select
         aria-label="AI 模型"
         align="right"
-        buttonClassName="h-6 border-0 bg-transparent px-1 text-xs font-medium shadow-none hover:bg-black/[0.04] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/15 dark:hover:bg-white/10"
-        className="min-w-0 max-w-[12rem]"
-        menuClassName="w-72"
+        buttonClassName={cn(
+          "border-0 bg-transparent text-center text-xs font-medium shadow-none hover:bg-[var(--surface-hover)] focus-visible:ring-2 [&>span:first-child]:flex-1 [&>span:first-child]:text-center",
+          compact ? "h-7 rounded-full px-2" : "h-6 px-1",
+        )}
+        className={cn("min-w-0", compact ? "w-[5rem]" : "max-w-[12rem]")}
+        menuClassName={cn(
+          "max-w-[calc(100vw-2rem)]",
+          compact ? cn("w-[5rem]", composerCompactMenuClassName) : "w-72",
+        )}
         onValueChange={onChange}
         options={providers.map((provider) => ({
-          label: `${provider.name} · ${provider.model}`,
+          description: compact ? compactProviderDescription(provider) : undefined,
+          label: compact
+            ? compactProviderLabel(provider)
+            : `${provider.name} · ${provider.model}`,
           value: provider.id,
         }))}
         side="top"
@@ -321,6 +388,33 @@ export function ProviderSelector({
       />
     </div>
   );
+}
+
+function compactProviderLabel(provider: LlmProvider) {
+  return provider.model.trim() || provider.name;
+}
+
+function compactProviderDescription(provider: LlmProvider) {
+  const effort = compactReasoningEffortLabel(provider.reasoningEffort);
+  return [provider.name, effort].filter(Boolean).join(" · ") || undefined;
+}
+
+function compactReasoningEffortLabel(
+  effort: LlmProvider["reasoningEffort"],
+) {
+  if (effort === "minimal") {
+    return "简";
+  }
+  if (effort === "low") {
+    return "低";
+  }
+  if (effort === "medium") {
+    return "中";
+  }
+  if (effort === "high") {
+    return "高";
+  }
+  return "";
 }
 
 export function ConversationHistory({
@@ -338,7 +432,9 @@ export function ConversationHistory({
   onSelect: (conversationId: string) => void;
   query: string;
 }) {
-  const historyConversations = conversations.filter(hasConversationHistoryContent);
+  const historyConversations = conversations.filter(
+    hasConversationHistoryContent,
+  );
   const normalizedQuery = normalizeHistorySearchQuery(query);
   const filteredConversations = normalizedQuery
     ? historyConversations.filter((conversation) =>
@@ -362,7 +458,7 @@ export function ConversationHistory({
         <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400 dark:text-zinc-500" />
         <input
           aria-label="搜索历史会话"
-          className="h-9 w-full rounded-lg border border-black/8 bg-zinc-100/80 px-8 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-sky-400/50 focus:ring-4 focus:ring-sky-500/10 dark:border-white/10 dark:bg-white/6 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+          className="kerminal-field-surface h-9 w-full rounded-lg border px-8 text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500"
           onChange={(event) => onQueryChange(event.currentTarget.value)}
           placeholder="搜索历史、模型或内容"
           type="search"
@@ -371,7 +467,7 @@ export function ConversationHistory({
         {query ? (
           <button
             aria-label="清空历史搜索"
-            className="absolute right-2 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded-md text-zinc-400 transition hover:bg-black/6 hover:text-zinc-700 dark:hover:bg-white/10 dark:hover:text-zinc-200"
+            className="kerminal-focus-ring kerminal-pressable absolute right-2 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded-md text-zinc-400 hover:bg-[var(--surface-hover)] hover:text-zinc-700 dark:hover:text-zinc-200"
             onClick={() => onQueryChange("")}
             type="button"
           >
@@ -382,12 +478,13 @@ export function ConversationHistory({
 
       <div className="kerminal-scrollbar max-h-80 space-y-1 overflow-y-auto pr-1">
         {historyConversations.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-black/10 px-3 py-6 text-center text-sm text-zinc-500 dark:border-white/10 dark:text-zinc-400">
+          <div className={aiHistoryEmptyClassName}>
             暂无历史会话
           </div>
         ) : null}
-        {historyConversations.length > 0 && filteredConversations.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-black/10 px-3 py-6 text-center text-sm text-zinc-500 dark:border-white/10 dark:text-zinc-400">
+        {historyConversations.length > 0 &&
+        filteredConversations.length === 0 ? (
+          <div className={aiHistoryEmptyClassName}>
             没有匹配的历史会话
           </div>
         ) : null}
@@ -398,14 +495,14 @@ export function ConversationHistory({
               className={cn(
                 "group flex items-center gap-2 rounded-lg px-2 py-2 transition",
                 active
-                  ? "bg-sky-500/10 ring-1 ring-sky-400/20"
-                  : "hover:bg-black/[0.04] dark:hover:bg-white/8",
+                  ? "bg-[var(--surface-selected)] ring-1 ring-sky-400/20"
+                  : "hover:bg-[var(--surface-hover)]",
               )}
               key={conversation.id}
             >
               <button
-                className="min-w-0 flex-1 text-left"
                 aria-current={active ? "true" : undefined}
+                className="kerminal-focus-ring min-w-0 flex-1 rounded-md text-left"
                 onClick={() => onSelect(conversation.id)}
                 type="button"
               >
@@ -447,21 +544,28 @@ export function EmptyChatState() {
 }
 
 export function ChatMessageBubble({
+  highlighted,
   message,
+  onOpenAttachment,
 }: {
+  highlighted?: boolean;
   message: AiChatMessage;
+  onOpenAttachment?: (attachment: AiChatAttachment) => void;
 }) {
   const fromUser = message.role === "user";
   return (
     <MessagePrimitive.Root asChild>
       <article
         className={cn(
-          "flex gap-2",
+          "flex gap-2 scroll-mt-24 rounded-2xl transition",
           fromUser ? "justify-end" : "justify-start",
+          highlighted && "bg-sky-500/10 ring-2 ring-sky-400/60",
         )}
+        data-kerminal-ai-message-highlighted={highlighted ? "true" : undefined}
+        data-kerminal-ai-message-id={message.id}
       >
         {!fromUser ? (
-          <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-500/12 text-sky-700 dark:bg-sky-400/15 dark:text-sky-100">
+          <div className={aiIconBubbleClassName}>
             <Bot className="h-3.5 w-3.5" />
           </div>
         ) : null}
@@ -469,8 +573,8 @@ export function ChatMessageBubble({
           className={cn(
             "max-w-[88%] rounded-2xl px-3 py-2 text-sm leading-6 shadow-sm",
             fromUser
-              ? "bg-sky-500 text-white shadow-sky-950/20"
-              : "w-full border border-black/8 bg-black/[0.03] text-zinc-800 shadow-black/5 dark:border-white/8 dark:bg-black/20 dark:text-zinc-200",
+              ? aiAccentSurfaceClassName
+              : "kerminal-muted-surface w-full border text-zinc-800 shadow-black/5 dark:text-zinc-200",
           )}
         >
           {!fromUser ? <AssistantProcessSteps message={message} /> : null}
@@ -481,10 +585,15 @@ export function ChatMessageBubble({
           ) : (
             <AssistantMarkdownMessage message={message} />
           )}
+          <MessageAttachments
+            attachments={message.attachments}
+            fromUser={fromUser}
+            onOpenAttachment={onOpenAttachment}
+          />
           {!fromUser ? <AssistantMessageMeta message={message} /> : null}
         </div>
         {fromUser ? (
-          <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white dark:bg-white dark:text-zinc-900">
+          <div className={aiUserIconBubbleClassName}>
             <User className="h-3.5 w-3.5" />
           </div>
         ) : null}
@@ -511,7 +620,7 @@ function AssistantProcessSteps({ message }: { message: AiChatMessage }) {
   return (
     <div
       aria-label="AI 处理过程"
-      className="mb-3 space-y-1.5 rounded-xl border border-sky-400/15 bg-sky-500/8 p-2.5 dark:border-sky-300/15 dark:bg-sky-400/8"
+      className="kerminal-muted-surface mb-3 space-y-1.5 rounded-xl border border-sky-400/15 p-2.5 dark:border-sky-300/15"
     >
       {message.processSteps.map((step) => (
         <div
@@ -540,16 +649,20 @@ function ProcessStepIcon({ status }: { status: AiChatStreamStep["status"] }) {
     return <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />;
   }
   if (status === "error") {
-    return <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-500" />;
+    return (
+      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-500" />
+    );
   }
-  return <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-sky-500" />;
+  return (
+    <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-sky-500" />
+  );
 }
 
 function AssistantMarkdownMessage({ message }: { message: AiChatMessage }) {
   if (!message.content && message.status === "streaming") {
     return (
       <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
-        <Bot className="h-4 w-4 animate-pulse text-sky-500 dark:text-sky-300" />
+        <Bot className="h-4 w-4 text-sky-500 dark:text-sky-300" />
         正在等待回复...
       </div>
     );
@@ -584,18 +697,20 @@ function AssistantMessageMeta({ message }: { message: AiChatMessage }) {
     return null;
   }
 
+  const visionMeta = assistantVisionMeta(message.visionUsage);
+
   return (
     <div className="mt-3 flex flex-wrap gap-2 text-xs">
       {message.providerName && message.model ? (
-            <span className="rounded-full border border-zinc-400/20 bg-zinc-100/80 px-2 py-0.5 text-zinc-600 dark:bg-black/20 dark:text-zinc-300">
+        <span className="kerminal-muted-surface rounded-full border px-2 py-0.5 text-zinc-600 dark:text-zinc-300">
           {message.providerName} · {message.model}
         </span>
       ) : null}
-      <span className="rounded-full border border-sky-400/25 bg-sky-500/10 px-2 py-0.5 text-sky-700 dark:text-sky-100">
+      <span className="rounded-full border border-sky-400/25 bg-[var(--surface-selected)] px-2 py-0.5 text-sky-700 dark:text-sky-100">
         {message.contextUsed ? "已使用上下文" : "无终端上下文"}
       </span>
       {typeof message.toolCount === "number" ? (
-        <span className="rounded-full border border-zinc-400/20 bg-zinc-100/80 px-2 py-0.5 text-zinc-600 dark:bg-black/20 dark:text-zinc-300">
+        <span className="kerminal-muted-surface rounded-full border px-2 py-0.5 text-zinc-600 dark:text-zinc-300">
           工具 {message.toolCount}
         </span>
       ) : null}
@@ -604,8 +719,81 @@ function AssistantMessageMeta({ message }: { message: AiChatMessage }) {
           回复已脱敏
         </span>
       ) : null}
+      {visionMeta ? (
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5",
+            visionMeta.className,
+          )}
+          title={visionMeta.title}
+        >
+          {visionMeta.hasWarning ? (
+            <AlertTriangle className="h-3 w-3" />
+          ) : (
+            <ImageIcon className="h-3 w-3" />
+          )}
+          {visionMeta.label}
+        </span>
+      ) : null}
     </div>
   );
+}
+
+function assistantVisionMeta(report: AiChatMessage["visionUsage"]) {
+  if (!report?.attachments.length) {
+    return null;
+  }
+  const total = report.attachments.length;
+  const visionCount = report.attachments.filter(
+    (attachment) => attachment.modelInput === "visionInput",
+  ).length;
+  const textContextCount = report.attachments.filter(
+    (attachment) => attachment.modelInput === "textContext",
+  ).length;
+  const warnings = report.attachments
+    .map((attachment) => attachment.warning?.trim())
+    .filter((warning): warning is string => Boolean(warning));
+  const hasWarning = warnings.length > 0;
+  const suffix = hasWarning ? " · 有降级" : "";
+  const title = [
+    `Provider 视觉能力: ${report.providerSupportsVision ? "支持" : "不支持"}`,
+    `Vision adapter: ${report.visionAdapterEnabled ? "启用" : "未启用"}`,
+    ...report.attachments.map(
+      (attachment) =>
+        `${attachment.id}: requested=${attachment.requestedUsage}, effective=${attachment.effectiveUsage}, modelInput=${attachment.modelInput}${
+          attachment.warning ? `, warning=${attachment.warning}` : ""
+        }`,
+    ),
+  ].join("\n");
+
+  if (visionCount > 0) {
+    return {
+      className: hasWarning
+        ? "border-amber-400/25 bg-amber-500/10 text-amber-700 dark:text-amber-100"
+        : "border-sky-400/25 bg-sky-500/10 text-sky-700 dark:text-sky-100",
+      hasWarning,
+      label: `图片已进入模型 ${visionCount}/${total}${suffix}`,
+      title,
+    };
+  }
+  if (textContextCount > 0) {
+    return {
+      className: hasWarning
+        ? "border-amber-400/25 bg-amber-500/10 text-amber-700 dark:text-amber-100"
+        : "border-cyan-400/25 bg-cyan-500/10 text-cyan-700 dark:text-cyan-100",
+      hasWarning,
+      label: `图片文本上下文 ${textContextCount}/${total}${suffix}`,
+      title,
+    };
+  }
+  return {
+    className: hasWarning
+      ? "border-amber-400/25 bg-amber-500/10 text-amber-700 dark:text-amber-100"
+      : "border-zinc-400/25 bg-zinc-500/10 text-zinc-700 dark:text-zinc-200",
+    hasWarning,
+    label: `图片未发送${suffix}`,
+    title,
+  };
 }
 
 export function PendingInvocationPanel({
@@ -621,12 +809,13 @@ export function PendingInvocationPanel({
   onReject: () => void;
   state: "confirming" | "idle" | "preparing";
 }) {
-  if (!error && !invocation) {
+  const visibleInvocation = invocation?.requiresConfirmation ? invocation : null;
+  if (!error && !visibleInvocation) {
     return null;
   }
 
   return (
-    <div className="rounded-2xl border border-amber-400/25 bg-amber-500/10 p-3 dark:bg-amber-500/10">
+    <div className="kerminal-muted-surface rounded-2xl border border-amber-400/25 p-3 shadow-sm shadow-amber-950/5 dark:shadow-black/20">
       {error ? (
         <div
           className="mb-3 rounded-lg border border-rose-300/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100"
@@ -641,38 +830,38 @@ export function PendingInvocationPanel({
           正在准备工具调用...
         </div>
       ) : null}
-      {invocation ? (
+      {visibleInvocation ? (
         <div>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="truncate text-sm font-medium text-zinc-950 dark:text-zinc-50">
-                {invocation.toolTitle}
+                {visibleInvocation.toolTitle}
               </div>
               <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                {invocation.toolId} · {riskLabel(invocation.risk)}
+                {visibleInvocation.toolId} · {riskLabel(visibleInvocation.risk)}
               </div>
             </div>
             <span
               className={cn(
                 "shrink-0 rounded-full border px-2 py-0.5 text-xs",
-                statusTone(invocation.status),
+                statusTone(visibleInvocation.status),
               )}
             >
-              {statusLabel(invocation.status)}
+              {statusLabel(visibleInvocation.status)}
             </span>
           </div>
-          <div className="mt-2 break-words rounded-lg bg-zinc-50/65 px-3 py-2 font-mono text-xs text-zinc-700 dark:bg-black/20 dark:text-zinc-300">
-            {invocation.argumentsSummary}
+          <div className="kerminal-muted-surface mt-2 break-words rounded-lg border px-3 py-2 font-mono text-xs text-zinc-700 dark:text-zinc-300">
+            {visibleInvocation.argumentsSummary}
           </div>
-          {invocation.riskSummary ? (
+          {visibleInvocation.riskSummary ? (
             <div className="mt-2 flex gap-2 rounded-lg border border-rose-400/25 bg-rose-500/10 px-3 py-2 text-xs leading-5 text-rose-700 dark:text-rose-100">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>{invocation.riskSummary}</span>
+              <span>{visibleInvocation.riskSummary}</span>
             </div>
           ) : null}
-          {invocation.reason ? (
+          {visibleInvocation.reason ? (
             <div className="mt-2 text-xs text-zinc-600 dark:text-zinc-300">
-              {invocation.reason}
+              {visibleInvocation.reason}
             </div>
           ) : null}
           <div className="mt-3 flex gap-2">

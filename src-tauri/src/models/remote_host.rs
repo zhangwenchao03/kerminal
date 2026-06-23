@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum RemoteHostAuthType {
-    /// 用户密码认证，真实密码由后续 credential store 保存。
+    /// 用户密码认证，密码随主机记录明文保存。
     Password,
-    /// 私钥认证，SQLite 只保存 credential ref。
+    /// 私钥认证，私钥路径或内联私钥内容随主机记录保存。
     Key,
     /// 使用系统 SSH agent。
     #[default]
@@ -91,7 +91,7 @@ pub struct SshProxyOptions {
     /// 代理用户名。
     #[serde(default)]
     pub username: Option<String>,
-    /// 代理密码凭据引用；真实密码不写入 SQLite。
+    /// 代理密码引用；当前 SSH 主机连接不使用该字段。
     #[serde(default)]
     pub credential_ref: Option<String>,
 }
@@ -151,9 +151,12 @@ pub struct SshJumpHostOptions {
     /// 跳板认证方式。
     #[serde(default)]
     pub auth_type: RemoteHostAuthType,
-    /// 跳板凭据引用；真实密码或私钥内容不写入 SQLite。
+    /// 跳板私钥路径；密码和内联私钥走 `credential_secret`。
     #[serde(default)]
     pub credential_ref: Option<String>,
+    /// 跳板密码或内联私钥内容，随 SSH 配置明文保存。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_secret: Option<String>,
 }
 
 /// SSH 终端选项。
@@ -346,8 +349,11 @@ pub struct RemoteHost {
     pub username: String,
     /// 认证方式。
     pub auth_type: RemoteHostAuthType,
-    /// 凭据引用，不保存真实密码或私钥内容。
+    /// 私钥路径；密码和内联私钥内容走 `credential_secret`。
     pub credential_ref: Option<String>,
+    /// SSH 密码或内联私钥内容，随远程主机记录明文保存。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_secret: Option<String>,
     /// 用户标签。
     pub tags: Vec<String>,
     /// 是否生产主机；后续用于确认策略。
@@ -400,9 +406,9 @@ pub struct RemoteHostCreateRequest {
     pub username: String,
     /// 认证方式。
     pub auth_type: RemoteHostAuthType,
-    /// 凭据引用。
+    /// 私钥路径；密码和内联私钥内容走 `credential_secret`。
     pub credential_ref: Option<String>,
-    /// 新录入的凭据内容。只允许传输到 OS keychain，不写入 SQLite 或响应。
+    /// SSH 密码或内联私钥内容，随远程主机记录明文保存。
     #[serde(default)]
     pub credential_secret: Option<String>,
     /// 用户标签。
@@ -435,9 +441,9 @@ pub struct RemoteHostUpdateRequest {
     pub username: String,
     /// 认证方式。
     pub auth_type: RemoteHostAuthType,
-    /// 凭据引用。
+    /// 私钥路径；密码和内联私钥内容走 `credential_secret`。
     pub credential_ref: Option<String>,
-    /// 新录入的凭据内容。只允许传输到 OS keychain，不写入 SQLite 或响应。
+    /// SSH 密码或内联私钥内容，随远程主机记录明文保存。
     #[serde(default)]
     pub credential_secret: Option<String>,
     /// 用户标签。

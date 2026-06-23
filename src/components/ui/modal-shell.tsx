@@ -11,11 +11,42 @@ interface ModalShellProps {
   footer?: ReactNode;
   headerActions?: ReactNode;
   layout?: "default" | "fullscreen" | "workspace";
+  size?: "compact" | "small" | "medium" | "large" | "wide";
   maxWidthClassName?: string;
   open: boolean;
   panelClassName?: string;
   title: string;
   onClose: () => void;
+}
+
+const modalSizeClassNames = {
+  compact: {
+    height: "h-[min(18rem,calc(100vh-48px))]",
+    width: "max-w-md",
+  },
+  small: {
+    height: "h-[min(24rem,calc(100vh-48px))]",
+    width: "max-w-lg",
+  },
+  medium: {
+    height: "h-[min(34rem,calc(100vh-48px))]",
+    width: "max-w-2xl",
+  },
+  large: {
+    height: "h-[min(44rem,calc(100vh-48px))]",
+    width: "max-w-5xl",
+  },
+  wide: {
+    height: "h-[min(780px,calc(100vh-48px))]",
+    width: "max-w-6xl",
+  },
+} satisfies Record<
+  NonNullable<ModalShellProps["size"]>,
+  { height: string; width: string }
+>;
+
+function hasFixedHeightClassName(className?: string) {
+  return /(?:^|\s)h-/.test(className ?? "");
 }
 
 export function ModalShell({
@@ -29,15 +60,24 @@ export function ModalShell({
   onClose,
   open,
   panelClassName,
+  size = "medium",
   title,
 }: ModalShellProps) {
   const titleId = useId();
   const descriptionId = useId();
   const fullscreen = layout === "fullscreen";
   const workspace = layout === "workspace";
+  const sizeClassNames = modalSizeClassNames[size];
   const resolvedMaxWidthClassName =
     maxWidthClassName ??
-    (fullscreen || workspace ? "max-w-none" : "max-w-3xl");
+    (fullscreen || workspace ? "max-w-none" : sizeClassNames.width);
+  const fixedHeightClassName =
+    fullscreen || workspace
+      ? null
+      : hasFixedHeightClassName(maxWidthClassName) ||
+          hasFixedHeightClassName(panelClassName)
+        ? null
+        : sizeClassNames.height;
 
   useEffect(() => {
     if (!open) {
@@ -63,8 +103,8 @@ export function ModalShell({
       className={cn(
         "fixed inset-0 z-50 flex backdrop-blur-md",
         workspace
-          ? "items-center justify-center bg-zinc-950/24 p-3 dark:bg-black/52 sm:p-6"
-          : "bg-black/32 dark:bg-black/48",
+          ? "items-center justify-center bg-zinc-950/24 p-3 dark:bg-[rgb(9_9_11_/_0.52)] sm:p-6"
+          : "bg-zinc-950/30 dark:bg-black/48",
         fullscreen
           ? "items-stretch justify-center p-1 sm:p-2"
           : !workspace && "items-center justify-center p-4",
@@ -80,15 +120,15 @@ export function ModalShell({
         aria-labelledby={titleId}
         aria-modal="true"
         className={cn(
-          "flex w-full flex-col overflow-hidden text-zinc-950 shadow-2xl backdrop-blur-2xl dark:text-zinc-50",
+          "kerminal-floating-enter flex w-full flex-col overflow-hidden text-zinc-950 dark:text-zinc-50",
           workspace
-            ? "rounded-2xl border border-black/8 bg-[#f5f5f7]/95 shadow-black/20 dark:border-white/10 dark:bg-[#111113]/95 dark:shadow-black/50"
-            : "rounded-[1.5rem] border border-white/40 bg-white/86 shadow-black/20 dark:border-white/10 dark:bg-zinc-950/86 dark:shadow-black/50",
+            ? "kerminal-solid-surface rounded-[1.35rem] border bg-[var(--surface-overlay)]"
+            : "kerminal-floating-surface rounded-[1.5rem] border",
           fullscreen
             ? "h-full max-h-none"
             : workspace
               ? "h-[min(700px,calc(100vh-72px))] max-h-[calc(100vh-40px)] w-[min(1100px,calc(100vw-48px))]"
-            : "max-h-[min(780px,calc(100vh-48px))]",
+              : fixedHeightClassName,
           resolvedMaxWidthClassName,
           panelClassName,
         )}
@@ -97,17 +137,17 @@ export function ModalShell({
       >
         <header
           className={cn(
-            "flex shrink-0 items-start justify-between gap-4 border-b border-black/8 dark:border-white/8",
+            "flex shrink-0 items-start justify-between gap-4 border-b border-[var(--border-subtle)]",
             workspace ? "px-4 py-3" : "px-5 py-4",
           )}
         >
           <div className="min-w-0">
-            <h2 className="text-base font-semibold" id={titleId}>
+            <h2 className="text-[17px] font-semibold leading-6" id={titleId}>
               {title}
             </h2>
             {description ? (
               <p
-                className="mt-1 text-sm leading-5 text-zinc-500 dark:text-zinc-400"
+                className="mt-1 text-[13px] leading-5 text-zinc-500 dark:text-zinc-400"
                 id={descriptionId}
               >
                 {description}
@@ -138,7 +178,7 @@ export function ModalShell({
           {children}
         </div>
         {footer ? (
-          <footer className="flex shrink-0 justify-end gap-2 border-t border-black/8 px-5 py-4 dark:border-white/8">
+          <footer className="flex shrink-0 justify-end gap-2 border-t border-[var(--border-subtle)] px-5 py-4">
             {footer}
           </footer>
         ) : null}

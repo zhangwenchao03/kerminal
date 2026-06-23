@@ -12,6 +12,11 @@ import { RenderErrorBoundary } from "../../components/RenderErrorBoundary";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
 import {
+  DiagnosticsBundleButton,
+  DiagnosticsBundleNotice,
+  useDiagnosticsBundleController,
+} from "./DiagnosticsBundleCard";
+import {
   defaultAppSettings,
   type AppSettings,
 } from "../settings/settingsModel";
@@ -24,6 +29,7 @@ import type {
   ToolSummary,
 } from "../workspace/types";
 import type { AddTerminalTabOptions } from "../workspace/workspaceStore";
+import { sftpSidebarTransferViewScope } from "../sftp/sftp-tool-content/sftpTransferScopeModel";
 
 interface ToolPanelProps {
   activeTool: ToolId | null;
@@ -102,6 +108,7 @@ export function ToolPanel({
   terminalTabs,
   tools,
 }: ToolPanelProps) {
+  const diagnosticsBundle = useDiagnosticsBundleController();
   const railTools = tools.filter((tool) => tool.id !== "settings");
   const contentTool =
     activeTool === null
@@ -118,7 +125,7 @@ export function ToolPanel({
     <aside
       aria-label="工具面板"
       aria-expanded={drawerOpen}
-      className="flex h-full w-full min-w-0 border-l border-black/8 bg-white/72 backdrop-blur-xl dark:border-white/8 dark:bg-zinc-950/72"
+      className="kerminal-material-nav flex h-full w-full min-w-0 border-l"
     >
       {drawerOpen ? (
         <div
@@ -134,9 +141,14 @@ export function ToolPanel({
               <p className="text-xs font-medium uppercase tracking-normal text-zinc-500">
                 当前工具
               </p>
-              <h2 className="mt-1 text-lg font-semibold text-zinc-950 dark:text-zinc-50">
-                {active?.title}
-              </h2>
+              <div className="mt-1 flex items-center justify-between gap-3">
+                <h2 className="min-w-0 text-lg font-semibold text-zinc-950 dark:text-zinc-50">
+                  {active?.title}
+                </h2>
+                {contentTool === "logs" ? (
+                  <DiagnosticsBundleButton controller={diagnosticsBundle} />
+                ) : null}
+              </div>
               <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
                 {active?.description}
               </p>
@@ -187,10 +199,17 @@ export function ToolPanel({
                           : undefined
                     }
                     selectedMachine={selectedMachine}
+                    transferViewScope={sftpSidebarTransferViewScope({
+                      hostId: selectedMachine?.id,
+                      tabId: activeTab?.id,
+                    })}
                   />
                 ) : null}
                 {contentTool === "ports" ? (
-                  <PortForwardToolContent selectedMachine={selectedMachine} />
+                  <PortForwardToolContent
+                    focusedPane={focusedPane}
+                    selectedMachine={selectedMachine}
+                  />
                 ) : null}
                 {contentTool === "snippets" ? (
                   <SnippetToolContent
@@ -199,7 +218,12 @@ export function ToolPanel({
                   />
                 ) : null}
                 {contentTool === "logs" ? (
-                  <LogToolContent focusedPane={focusedPane} />
+                  <LogToolContent
+                    diagnosticsBundleNotice={
+                      <DiagnosticsBundleNotice controller={diagnosticsBundle} />
+                    }
+                    focusedPane={focusedPane}
+                  />
                 ) : null}
               </Suspense>
             )}
@@ -210,7 +234,7 @@ export function ToolPanel({
         aria-label="工具栏"
         className={cn(
           "flex w-16 shrink-0 flex-col items-center gap-2 py-4",
-          drawerOpen && "border-l border-black/8 dark:border-white/8",
+          drawerOpen && "border-l border-[var(--border-subtle)]",
         )}
       >
         {railTools.map((tool) => {
@@ -224,7 +248,7 @@ export function ToolPanel({
               className={cn(
                 "rounded-2xl",
                 selected &&
-                  "bg-sky-500/12 text-sky-700 dark:bg-sky-400/15 dark:text-sky-100",
+                  "bg-[var(--surface-selected)] text-sky-700 shadow-sm shadow-sky-500/10 dark:text-sky-100",
               )}
               key={tool.id}
               onClick={() => onActiveToolChange(tool.id)}
@@ -287,7 +311,7 @@ function ToolContentLoadingFallback({ title }: { title?: string }) {
   return (
     <div
       aria-live="polite"
-      className="rounded-2xl border border-black/8 bg-white/70 px-4 py-3 text-sm text-zinc-600 shadow-sm dark:border-white/10 dark:bg-zinc-900/70 dark:text-zinc-300"
+      className="kerminal-solid-surface rounded-2xl border px-4 py-3 text-sm text-zinc-600 dark:text-zinc-300"
     >
       <div className="font-medium text-zinc-800 dark:text-zinc-100">
         正在加载{title ?? "工具"}
@@ -311,7 +335,7 @@ function ToolContentCrashFallback({
       <div className="font-medium">{title ?? "工具"}加载失败</div>
       <div className="mt-1 text-xs opacity-80">切换工具或重新打开后可重试。</div>
       {error?.message ? (
-        <pre className="mt-3 max-h-32 overflow-auto rounded-xl bg-black/10 p-2 text-xs dark:bg-black/20">
+        <pre className="kerminal-muted-surface mt-3 max-h-32 overflow-auto rounded-xl p-2 text-xs">
           {error.message}
         </pre>
       ) : null}
