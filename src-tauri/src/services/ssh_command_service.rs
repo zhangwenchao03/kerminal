@@ -77,6 +77,28 @@ impl SshCommandService {
         let execution = build_native_command_execution(&host, paths, request)?;
         execute_native_ssh_command(&host, execution).await
     }
+
+    /// 测试未保存或已保存 SSH 主机配置能否完成 native 连接与认证。
+    pub async fn test_connection(&self, paths: &KerminalPaths, host: &RemoteHost) -> AppResult<()> {
+        let timeout_seconds = normalize_timeout_seconds(Some(u64::from(
+            host.ssh_options.terminal.connect_timeout_seconds,
+        )));
+        let execution = build_native_connection_execution(host, paths, timeout_seconds)?;
+        let timeout = Duration::from_secs(timeout_seconds);
+        match tokio::time::timeout(timeout, async {
+            let connection = connect_native_command_target(&execution).await?;
+            disconnect_native_connection(connection, "connection test completed").await;
+            Ok(())
+        })
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => Err(AppError::SshCommand(format!(
+                "SSH 连接测试超时（{} 秒）",
+                timeout.as_secs()
+            ))),
+        }
+    }
 }
 
 /// 受控 SSH 远程命令计划。
@@ -218,6 +240,28 @@ fn build_native_command_execution(
     })
 }
 
+fn build_native_connection_execution(
+    host: &RemoteHost,
+    paths: &KerminalPaths,
+    timeout_seconds: u64,
+) -> AppResult<NativeSshCommandExecution> {
+    let _route_plan = build_ssh_route_plan(host)?;
+    let known_hosts_path = paths.root.join("known_hosts");
+    Ok(NativeSshCommandExecution {
+        jumps: host
+            .ssh_options
+            .jump_hosts
+            .iter()
+            .enumerate()
+            .map(|(index, jump)| build_native_jump_execution(index, jump, known_hosts_path.clone()))
+            .collect::<AppResult<Vec<_>>>()?,
+        max_output_bytes: DEFAULT_OUTPUT_BYTES,
+        script: String::new(),
+        target: build_native_target_execution(host, known_hosts_path)?,
+        timeout_seconds,
+    })
+}
+
 async fn execute_native_ssh_command(
     host: &RemoteHost,
     execution: NativeSshCommandExecution,
@@ -291,15 +335,7 @@ async fn execute_native_ssh_command_inner(
     }
 
     let _ = channel.close().await;
-    let _ = connection
-        .target
-        .disconnect(russh::Disconnect::ByApplication, "command completed", "")
-        .await;
-    for jump in connection.jumps.into_iter().rev() {
-        let _ = jump
-            .disconnect(russh::Disconnect::ByApplication, "command completed", "")
-            .await;
-    }
+    disconnect_native_connection(connection, "command completed").await;
 
     if exec_request_failed {
         return Err(AppError::SshCommand(
@@ -392,6 +428,18 @@ async fn connect_native_command_target(
     jumps.push(upstream);
 
     Ok(NativeSshConnectionChain { jumps, target })
+}
+
+async fn disconnect_native_connection(connection: NativeSshConnectionChain, reason: &str) {
+    let _ = connection
+        .target
+        .disconnect(russh::Disconnect::ByApplication, reason, "")
+        .await;
+    for jump in connection.jumps.into_iter().rev() {
+        let _ = jump
+            .disconnect(russh::Disconnect::ByApplication, reason, "")
+            .await;
+    }
 }
 
 async fn connect_native_ssh(

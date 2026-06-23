@@ -265,6 +265,12 @@ fn confirm_terminal_appearance_update_persists_patch_and_keeps_other_settings() 
 #[test]
 fn confirm_terminal_appearance_update_invalid_value_records_failed_audit() {
     let (_home, state) = setup_state();
+    let original_font_size = state
+        .settings()
+        .load_settings(state.storage())
+        .expect("load original settings")
+        .terminal
+        .font_size;
     let pending = state
         .ai_tools()
         .prepare(
@@ -297,13 +303,19 @@ fn confirm_terminal_appearance_update_invalid_value_records_failed_audit() {
             .expect("load settings")
             .terminal
             .font_size,
-        13
+        original_font_size
     );
 }
 
 #[test]
 fn confirm_terminal_appearance_update_rejection_does_not_change_settings() {
     let (_home, state) = setup_state();
+    let original_font_size = state
+        .settings()
+        .load_settings(state.storage())
+        .expect("load original settings")
+        .terminal
+        .font_size;
     let pending = state
         .ai_tools()
         .prepare(
@@ -335,7 +347,7 @@ fn confirm_terminal_appearance_update_rejection_does_not_change_settings() {
             .expect("load settings")
             .terminal
             .font_size,
-        13
+        original_font_size
     );
 }
 

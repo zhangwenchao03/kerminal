@@ -240,16 +240,18 @@ fn resolve_terminal_request_uses_plaintext_password_as_internal_prompt_response(
 #[test]
 fn resolve_terminal_request_uses_openssh_config_alias_for_jump_route() {
     let (_home, state) = test_state();
-    let mut ssh_options = SshOptions::default();
-    ssh_options.jump_hosts = vec![SshJumpHostOptions {
-        name: "bastion".to_owned(),
-        host: "bastion.internal".to_owned(),
-        port: 2200,
-        username: "jump".to_owned(),
-        auth_type: RemoteHostAuthType::Agent,
-        credential_ref: None,
-        credential_secret: None,
-    }];
+    let ssh_options = SshOptions {
+        jump_hosts: vec![SshJumpHostOptions {
+            name: "bastion".to_owned(),
+            host: "bastion.internal".to_owned(),
+            port: 2200,
+            username: "jump".to_owned(),
+            auth_type: RemoteHostAuthType::Agent,
+            credential_ref: None,
+            credential_secret: None,
+        }],
+        ..Default::default()
+    };
     let host_id = create_test_remote_host_with_secret_and_options(
         &state,
         RemoteHostAuthType::Agent,

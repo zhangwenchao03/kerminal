@@ -45,10 +45,25 @@ function baseInput(
 }
 
 describe("evaluateConnectionCheck", () => {
-  it("returns the SSH success message for a valid SSH form", () => {
+  it("builds a backend SSH test request for a valid SSH form", () => {
     expect(evaluateConnectionCheck(baseInput())).toEqual({
       ok: true,
-      statusMessage: "SSH 配置检查通过，确认后会保存到左侧主机栏。",
+      testRequest: {
+        host: {
+          authType: "agent",
+          credentialRef: undefined,
+          credentialSecret: undefined,
+          groupId: undefined,
+          host: "127.0.0.1",
+          name: "Dev Host",
+          port: 22,
+          production: false,
+          sshOptions: createDefaultSshOptions(),
+          tags: [],
+          username: "root",
+        },
+        mode: "ssh",
+      },
     });
   });
 
@@ -92,9 +107,11 @@ describe("evaluateConnectionCheck", () => {
       },
     ];
 
-    expect(evaluateConnectionCheck(baseInput({ sshOptions }))).toEqual({
+    expect(evaluateConnectionCheck(baseInput({ sshOptions }))).toMatchObject({
       ok: true,
-      statusMessage: "SSH 配置检查通过，确认后会保存到左侧主机栏。",
+      testRequest: {
+        mode: "ssh",
+      },
     });
   });
 

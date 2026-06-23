@@ -4,6 +4,50 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::remote_host::RemoteHostCreateRequest;
+
+/// 连接测试协议类型。
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ConnectionTestMode {
+    /// SSH 连接测试。
+    Ssh,
+    /// RDP TCP 端口连通测试。
+    Rdp,
+    /// Telnet TCP 端口连通测试。
+    Telnet,
+    /// Serial 串口打开测试。
+    Serial,
+}
+
+/// 连接测试请求。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", tag = "mode")]
+pub enum ConnectionTestRequest {
+    /// 测试未保存的 SSH 主机表单。
+    Ssh { host: RemoteHostCreateRequest },
+    /// 测试 RDP 主机端口连通，不启动系统 RDP 客户端。
+    Rdp { request: RdpOpenRequest },
+    /// 测试 Telnet 主机端口连通。
+    Telnet { host: RemoteHostCreateRequest },
+    /// 测试 Serial 串口配置和端口可打开性。
+    Serial { host: RemoteHostCreateRequest },
+}
+
+/// 连接测试结果。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionTestResult {
+    /// 测试协议。
+    pub mode: ConnectionTestMode,
+    /// 是否完成实际连通探测。
+    pub connected: bool,
+    /// 耗时毫秒。
+    pub latency_ms: u128,
+    /// 用户可见测试结果。
+    pub message: String,
+}
+
 /// RDP 系统客户端启动请求。
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

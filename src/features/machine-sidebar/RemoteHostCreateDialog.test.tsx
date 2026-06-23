@@ -5,6 +5,7 @@ import {
   createDefaultSshOptions,
   type RemoteHost,
 } from "../../lib/remoteHostApi";
+import { testRemoteConnection } from "../../lib/connectionApi";
 import { RemoteHostCreateDialog } from "./RemoteHostCreateDialog";
 import {
   apiContainer,
@@ -14,9 +15,20 @@ import {
   groupsWithSsh,
 } from "./RemoteHostCreateDialog.testSupport";
 
+vi.mock("../../lib/connectionApi", () => ({
+  testRemoteConnection: vi.fn(),
+}));
+
 describe("RemoteHostCreateDialog", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    vi.mocked(testRemoteConnection).mockReset();
+    vi.mocked(testRemoteConnection).mockResolvedValue({
+      connected: true,
+      latencyMs: 12,
+      message: "SSH 连接测试通过：root@127.0.0.1:22（12 ms）",
+      mode: "ssh",
+    });
   });
 
   it("creates an SSH host from the form", async () => {
@@ -80,6 +92,49 @@ describe("RemoteHostCreateDialog", () => {
     await user.click(screen.getByRole("button", { name: "确认" }));
 
     expect(screen.getByText("请输入主机名称。")).toBeInTheDocument();
+    expect(onCreateHost).not.toHaveBeenCalled();
+  });
+
+  it("runs a backend connection test for the current SSH form", async () => {
+    const user = userEvent.setup();
+    const onCreateHost = vi.fn();
+
+    render(
+      <RemoteHostCreateDialog
+        defaultMode="ssh"
+        groups={groups}
+        onClose={vi.fn()}
+        onCreateHost={onCreateHost}
+        open
+      />,
+    );
+
+    await user.type(screen.getByLabelText("名称"), "test-dev");
+    await user.type(screen.getByLabelText("主机"), "127.0.0.1");
+    await user.type(screen.getByLabelText("用户名"), "root");
+    await user.click(screen.getByRole("button", { name: "测试连接" }));
+
+    await waitFor(() => {
+      expect(testRemoteConnection).toHaveBeenCalledWith({
+        host: {
+          authType: "agent",
+          credentialRef: undefined,
+          credentialSecret: undefined,
+          groupId: undefined,
+          host: "127.0.0.1",
+          name: "test-dev",
+          port: 22,
+          production: false,
+          sshOptions: createDefaultSshOptions(),
+          tags: [],
+          username: "root",
+        },
+        mode: "ssh",
+      });
+    });
+    expect(
+      await screen.findByText("SSH 连接测试通过：root@127.0.0.1:22（12 ms）"),
+    ).toBeInTheDocument();
     expect(onCreateHost).not.toHaveBeenCalled();
   });
 
@@ -351,6 +406,9 @@ describe("RemoteHostCreateDialog", () => {
     expect(screen.getByRole("button", { name: "属性" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "终端" })).toBeInTheDocument();
     expect(
+      screen.queryByRole("button", { name: "测试连接" }),
+    ).not.toBeInTheDocument();
+    expect(
       screen.queryByRole("button", { name: "WSL" }),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole("combobox", { name: "Shell" }));
@@ -372,7 +430,7 @@ describe("RemoteHostCreateDialog", () => {
     expect(screen.getByRole("button", { name: "属性" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "代理" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "终端" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "测试连接" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "测试连接" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Serial" }));
     expect(screen.getByRole("button", { name: "属性" })).toBeInTheDocument();
@@ -810,6 +868,7 @@ describe("RemoteHostCreateDialog", () => {
     await user.click(screen.getByRole("button", { name: "测试连接" }));
 
     expect(screen.getByText("RDP 窗口尺寸不能小于 640x480。")).toBeInTheDocument();
+    expect(testRemoteConnection).not.toHaveBeenCalled();
     expect(onCreateHost).not.toHaveBeenCalled();
   });
 

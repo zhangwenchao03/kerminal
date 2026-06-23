@@ -83,6 +83,7 @@ pub(super) fn execute_ssh_ensure_connected(
     ssh_connect_execution_result(&host, cols, rows, "SSH 终端已准备打开")
 }
 
+#[allow(clippy::result_large_err)]
 fn resolve_ssh_target_host(
     remote_hosts: &RemoteHostService,
     storage: &SqliteStore,
@@ -445,7 +446,6 @@ async fn execute_ssh_command_request(
                 error_kind: Some("remoteCommandFailed".to_owned()),
                 recoverable: true,
                 next_hints: vec!["检查远程命令、权限和工作目录后重试。".to_owned()],
-                ..ToolExecutionResult::default()
             }
         }
         Err(error) => ToolExecutionResult {

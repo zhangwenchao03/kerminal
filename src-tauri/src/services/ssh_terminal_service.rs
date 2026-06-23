@@ -277,10 +277,7 @@ fn resolve_secret_input_response(host: &RemoteHost) -> Option<TerminalSecretInpu
         return None;
     }
 
-    let Some(password) = normalized_credential_secret(host) else {
-        return None;
-    };
-    let password = password.to_owned();
+    let password = normalized_credential_secret(host)?.to_owned();
 
     Some(TerminalSecretInputResponse {
         prompt_markers: password_prompt_markers(host),

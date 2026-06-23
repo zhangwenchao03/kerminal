@@ -55,6 +55,7 @@ pub fn register_kerminal_commands(
         crate::commands::command_suggestion::command_suggestion_refresh_remote_paths,
         crate::commands::command_suggestion::command_suggestion_telemetry_export,
         crate::commands::command_suggestion::command_suggestion_telemetry_summary,
+        crate::commands::connection::connection_test,
         crate::commands::connection::connection_rdp_open,
         crate::commands::connection::connection_rdp_open_saved,
         crate::commands::diagnostics::diagnostics_create_bundle,

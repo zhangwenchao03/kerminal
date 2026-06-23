@@ -2,7 +2,10 @@
 //!
 //! @author kongweiguang
 
-use std::fs;
+use std::{
+    fs,
+    time::{Duration, Instant},
+};
 
 #[cfg(target_os = "windows")]
 use std::io::Write;
@@ -16,12 +19,16 @@ use uuid::Uuid;
 use crate::{
     error::{AppError, AppResult},
     models::{
-        connection::{RdpOpenRequest, RdpOpenResult},
-        remote_host::{RemoteHost, RemoteHostAuthType},
+        connection::{
+            ConnectionTestMode, ConnectionTestRequest, ConnectionTestResult, RdpOpenRequest,
+            RdpOpenResult,
+        },
+        remote_host::{RemoteHost, RemoteHostAuthType, RemoteHostCreateRequest},
     },
     state::AppState,
 };
 use tauri::State;
+use tokio::net::TcpStream;
 
 /// 使用系统 RDP 客户端打开连接。
 #[tauri::command]
@@ -36,6 +43,17 @@ pub fn connection_rdp_open_saved(
     host_id: String,
 ) -> Result<RdpOpenResult, String> {
     open_saved_rdp_connection(&state, &host_id).map_err(|error| error.to_string())
+}
+
+/// 测试连接配置，不启动终端或系统客户端。
+#[tauri::command]
+pub async fn connection_test(
+    state: State<'_, AppState>,
+    request: ConnectionTestRequest,
+) -> Result<ConnectionTestResult, String> {
+    test_connection(&state, request)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 pub(crate) fn open_rdp_connection(request: RdpOpenRequest) -> AppResult<RdpOpenResult> {
@@ -103,6 +121,212 @@ fn open_saved_rdp_connection(state: &AppState, host_id: &str) -> AppResult<RdpOp
         port: host.port,
         username: Some(host.username).filter(|value| !value.trim().is_empty()),
     })
+}
+
+async fn test_connection(
+    state: &AppState,
+    request: ConnectionTestRequest,
+) -> AppResult<ConnectionTestResult> {
+    let started = Instant::now();
+    match request {
+        ConnectionTestRequest::Ssh { host } => {
+            let host = remote_host_from_create_request("SSH", host)?;
+            state
+                .ssh_commands()
+                .test_connection(state.paths(), &host)
+                .await?;
+            Ok(connection_test_result(
+                ConnectionTestMode::Ssh,
+                started,
+                format!(
+                    "SSH 连接测试通过：{}@{}:{}",
+                    host.username, host.host, host.port
+                ),
+            ))
+        }
+        ConnectionTestRequest::Rdp { request } => {
+            validate_rdp_request(&request)?;
+            test_tcp_endpoint("RDP", &request.host, request.port, 10).await?;
+            Ok(connection_test_result(
+                ConnectionTestMode::Rdp,
+                started,
+                format!("RDP 端口可连接：{}:{}", request.host.trim(), request.port),
+            ))
+        }
+        ConnectionTestRequest::Telnet { host } => {
+            let host = remote_host_from_create_request("Telnet", host)?;
+            test_tcp_endpoint("Telnet", &host.host, host.port, 10).await?;
+            Ok(connection_test_result(
+                ConnectionTestMode::Telnet,
+                started,
+                format!("Telnet 端口可连接：{}:{}", host.host, host.port),
+            ))
+        }
+        ConnectionTestRequest::Serial { host } => {
+            let host = remote_host_from_create_request("Serial", host)?;
+            state.serial_terminals().test_connection(&host)?;
+            Ok(connection_test_result(
+                ConnectionTestMode::Serial,
+                started,
+                format!("Serial 串口可打开：{}", host.host),
+            ))
+        }
+    }
+}
+
+fn connection_test_result(
+    mode: ConnectionTestMode,
+    started: Instant,
+    message: String,
+) -> ConnectionTestResult {
+    let latency_ms = started.elapsed().as_millis();
+    ConnectionTestResult {
+        mode,
+        connected: true,
+        latency_ms,
+        message: format!("{message}（{latency_ms} ms）"),
+    }
+}
+
+async fn test_tcp_endpoint(
+    label: &str,
+    host: &str,
+    port: u16,
+    timeout_seconds: u64,
+) -> AppResult<()> {
+    let host = host.trim();
+    if host.is_empty() {
+        return Err(AppError::InvalidInput(format!("{label} 主机地址不能为空")));
+    }
+    if port == 0 {
+        return Err(AppError::InvalidInput(format!("{label} 端口必须大于 0")));
+    }
+
+    let timeout = Duration::from_secs(timeout_seconds);
+    match tokio::time::timeout(timeout, TcpStream::connect((host, port))).await {
+        Ok(Ok(stream)) => {
+            drop(stream);
+            Ok(())
+        }
+        Ok(Err(error)) => Err(AppError::InvalidInput(format!(
+            "{label} 连接失败：{host}:{port}（{error}）"
+        ))),
+        Err(_) => Err(AppError::InvalidInput(format!(
+            "{label} 连接超时（{} 秒）：{host}:{port}",
+            timeout.as_secs()
+        ))),
+    }
+}
+
+fn remote_host_from_create_request(
+    label: &str,
+    request: RemoteHostCreateRequest,
+) -> AppResult<RemoteHost> {
+    let tags = normalize_tags(request.tags);
+    let name = normalize_required_text(&format!("{label} 名称"), request.name)?;
+    let host = normalize_required_text(&format!("{label} 主机地址"), request.host)?;
+    if host.chars().any(char::is_whitespace) {
+        return Err(AppError::InvalidInput(format!(
+            "{label} 主机地址不能包含空白字符"
+        )));
+    }
+    if request.port == 0 {
+        return Err(AppError::InvalidInput(format!("{label} 端口必须大于 0")));
+    }
+    let username = request.username.trim().to_owned();
+    if label == "SSH" && username.is_empty() {
+        return Err(AppError::InvalidInput("SSH 用户名不能为空".to_owned()));
+    }
+    let (credential_ref, credential_secret) = normalize_test_credential(
+        request.auth_type,
+        request.credential_ref,
+        request.credential_secret,
+    )?;
+
+    Ok(RemoteHost {
+        id: "connection-test".to_owned(),
+        group_id: normalize_optional_text(request.group_id),
+        name,
+        host,
+        port: request.port,
+        username,
+        auth_type: request.auth_type,
+        credential_ref,
+        credential_secret,
+        tags,
+        production: request.production,
+        ssh_options: request.ssh_options,
+        sort_order: 0,
+        created_at: String::new(),
+        updated_at: String::new(),
+    })
+}
+
+fn normalize_test_credential(
+    auth_type: RemoteHostAuthType,
+    credential_ref: Option<String>,
+    credential_secret: Option<String>,
+) -> AppResult<(Option<String>, Option<String>)> {
+    let credential_ref = normalize_optional_text(credential_ref);
+    let credential_secret = credential_secret.filter(|secret| !secret.trim().is_empty());
+    match auth_type {
+        RemoteHostAuthType::Agent => Ok((None, None)),
+        RemoteHostAuthType::Password => {
+            if credential_ref.is_some() {
+                return Err(AppError::InvalidInput(
+                    "密码认证不再使用凭据引用，请直接填写明文密码".to_owned(),
+                ));
+            }
+            let Some(secret) = credential_secret else {
+                return Err(AppError::InvalidInput(
+                    "密码认证需要填写明文密码".to_owned(),
+                ));
+            };
+            Ok((None, Some(secret)))
+        }
+        RemoteHostAuthType::Key => {
+            if credential_ref
+                .as_deref()
+                .is_some_and(|value| value.starts_with("credential:"))
+            {
+                return Err(AppError::InvalidInput(
+                    "密钥认证不再支持 credential: 凭据引用，请填写私钥路径或直接粘贴私钥内容"
+                        .to_owned(),
+                ));
+            }
+            match (credential_ref, credential_secret) {
+                (Some(_), Some(_)) => Err(AppError::InvalidInput(
+                    "密钥认证的私钥路径和私钥内容只能填写一项".to_owned(),
+                )),
+                (Some(path), None) => Ok((Some(path), None)),
+                (None, Some(secret)) => Ok((None, Some(secret))),
+                (None, None) => Err(AppError::InvalidInput(
+                    "密钥认证需要填写私钥路径或直接粘贴私钥内容".to_owned(),
+                )),
+            }
+        }
+    }
+}
+
+fn normalize_required_text(field: &str, value: String) -> AppResult<String> {
+    let value = value.trim().to_owned();
+    if value.is_empty() {
+        return Err(AppError::InvalidInput(format!("{field}不能为空")));
+    }
+    Ok(value)
+}
+
+fn normalize_optional_text(value: Option<String>) -> Option<String> {
+    value
+        .map(|item| item.trim().to_owned())
+        .filter(|item| !item.is_empty())
+}
+
+fn normalize_tags(tags: Vec<String>) -> Vec<String> {
+    tags.into_iter()
+        .map(|tag| tag.trim().to_owned())
+        .filter(|tag| !tag.is_empty())
+        .collect()
 }
 
 fn validate_rdp_request(request: &RdpOpenRequest) -> AppResult<()> {
@@ -263,6 +487,24 @@ fn sanitize_file_token(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::remote_host::SshOptions;
+    use tokio::net::TcpListener;
+
+    fn remote_host_request(tags: Vec<String>) -> RemoteHostCreateRequest {
+        RemoteHostCreateRequest {
+            group_id: None,
+            name: "telnet-dev".to_owned(),
+            host: "127.0.0.1".to_owned(),
+            port: 23,
+            username: String::new(),
+            auth_type: RemoteHostAuthType::Agent,
+            credential_ref: None,
+            credential_secret: None,
+            tags,
+            production: false,
+            ssh_options: SshOptions::default(),
+        }
+    }
 
     #[test]
     fn formats_ipv6_full_address_for_rdp_file() {
@@ -294,5 +536,35 @@ mod tests {
         assert!(content.contains("desktopwidth:i:1440"));
         assert!(content.contains("password 51:b:encrypted"));
         assert!(content.contains("prompt for credentials:i:0"));
+    }
+
+    #[tokio::test]
+    async fn tcp_connection_test_reaches_local_listener() {
+        let listener = TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("bind local listener");
+        let port = listener.local_addr().expect("listener address").port();
+        let accepted = tokio::spawn(async move {
+            let _ = listener.accept().await;
+        });
+
+        test_tcp_endpoint("Telnet", "127.0.0.1", port, 1)
+            .await
+            .expect("connect to local listener");
+        accepted.await.expect("accept task finished");
+    }
+
+    #[test]
+    fn builds_telnet_test_host_without_username() {
+        let host = remote_host_from_create_request(
+            "Telnet",
+            remote_host_request(vec!["telnet".to_owned()]),
+        )
+        .expect("valid telnet host");
+
+        assert_eq!(host.host, "127.0.0.1");
+        assert_eq!(host.port, 23);
+        assert!(host.username.is_empty());
+        assert_eq!(host.tags, vec!["telnet"]);
     }
 }

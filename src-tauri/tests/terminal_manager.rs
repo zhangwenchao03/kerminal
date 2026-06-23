@@ -115,10 +115,10 @@ fn target_token_rejects_forged_value() {
         .verify_target_token(&summary.id, &target_token)
         .expect("verify valid token")
         .is_some());
-    assert!(!manager
+    assert!(manager
         .verify_target_token(&summary.id, "v1.forged.token")
         .expect("verify forged token")
-        .is_some());
+        .is_none());
 
     manager.close(&summary.id).unwrap();
 }

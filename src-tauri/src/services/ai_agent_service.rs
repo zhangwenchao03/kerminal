@@ -854,7 +854,8 @@ mod tests {
 
     #[test]
     fn approval_tool_call_creates_pending_invocation_for_original_tool_id() {
-        let definition = registry_tool("server_info.snapshot");
+        let mut definition = registry_tool("server_info.snapshot");
+        definition.confirmation = ToolConfirmationPolicy::Always;
         let tool = KerminalApprovalTool {
             model_tool_name: provider_safe_tool_name(&definition.id),
             definition,

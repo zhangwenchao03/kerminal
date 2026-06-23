@@ -1,6 +1,5 @@
 import {
   Columns2,
-  Copy,
   PanelBottom,
   Send,
   SplitSquareHorizontal,
@@ -110,10 +109,6 @@ export function TerminalBroadcastBar({
         <span className="hidden shrink-0 rounded-lg bg-[var(--surface-hover)] px-2 py-1 text-xs text-zinc-500 dark:text-zinc-400 xl:inline">
           {targetCount} 个目标
         </span>
-        <Button size="sm" variant="secondary">
-          <Copy className="h-4 w-4" />
-          片段
-        </Button>
         <Button
           disabled={!canBroadcastCommand(analysis) || sending}
           onClick={onRequestBroadcast}

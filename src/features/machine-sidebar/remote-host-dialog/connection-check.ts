@@ -1,4 +1,5 @@
 import type { RemoteHostAuthType, SshOptions } from "../../../lib/remoteHostApi";
+import type { ConnectionTestRequest } from "../../../lib/connectionApi";
 import { buildLocalTerminalOptions } from "./local-form";
 import type { ConnectionMode } from "./model";
 import {
@@ -50,7 +51,8 @@ export interface ConnectionCheckInput {
 
 export type ConnectionCheckResult =
   | { error: string; ok: false }
-  | { ok: true; statusMessage: string };
+  | { ok: true; statusMessage: string; testRequest?: never }
+  | { ok: true; statusMessage?: never; testRequest: ConnectionTestRequest };
 
 export function evaluateConnectionCheck({
   authType,
@@ -122,7 +124,7 @@ export function evaluateConnectionCheck({
     const validationError = validateRdpRequest(request);
     return validationError
       ? { error: validationError, ok: false }
-      : { ok: true, statusMessage: "RDP 字段检查通过，确认后会保存到左侧主机栏。" };
+      : { ok: true, testRequest: { mode: "rdp", request } };
   }
 
   if (mode === "docker") {
@@ -150,7 +152,7 @@ export function evaluateConnectionCheck({
     const validationError = validateTelnetHostRequest(request);
     return validationError
       ? { error: validationError, ok: false }
-      : { ok: true, statusMessage: "Telnet 字段检查通过，确认后会保存到左侧主机栏。" };
+      : { ok: true, testRequest: { host: request, mode: "telnet" } };
   }
 
   if (mode === "serial") {
@@ -169,7 +171,7 @@ export function evaluateConnectionCheck({
     const validationError = validateSerialHostRequest(request);
     return validationError
       ? { error: validationError, ok: false }
-      : { ok: true, statusMessage: "Serial 字段检查通过，确认后会保存到左侧主机栏。" };
+      : { ok: true, testRequest: { host: request, mode: "serial" } };
   }
 
   if (mode !== "ssh") {
@@ -192,5 +194,5 @@ export function evaluateConnectionCheck({
   const validationError = validateSshRequest(request);
   return validationError
     ? { error: validationError, ok: false }
-    : { ok: true, statusMessage: "SSH 配置检查通过，确认后会保存到左侧主机栏。" };
+    : { ok: true, testRequest: { host: request, mode: "ssh" } };
 }

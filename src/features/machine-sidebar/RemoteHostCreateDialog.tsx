@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { TestTube2 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
 import type { DockerContainerSummary } from "../../lib/dockerApi";
+import { testRemoteConnection } from "../../lib/connectionApi";
 import { detectShells, type ShellCandidate } from "../../lib/profileApi";
 import { createDefaultSshOptions } from "../../lib/remoteHostApi";
 import type { RemoteHostAuthType, SshOptions } from "../../lib/remoteHostApi";
@@ -642,8 +642,22 @@ export function RemoteHostCreateDialog({
       setError(result.error);
       return;
     }
+    if (!result.testRequest) {
+      setError(null);
+      setStatusMessage(result.statusMessage);
+      return;
+    }
+
+    setSavingAction("test");
     setError(null);
-    setStatusMessage(result.statusMessage);
+    try {
+      const testResult = await testRemoteConnection(result.testRequest);
+      setStatusMessage(testResult.message);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setSavingAction(null);
+    }
   };
 
   const selectedProtocol =
@@ -663,7 +677,9 @@ export function RemoteHostCreateDialog({
     () => buildLocalShellPresets(localShellCandidates),
     [localShellCandidates],
   );
-  const showTestButton = mode !== "telnet";
+  const showTestButton = (
+    ["ssh", "rdp", "telnet", "serial"] as ConnectionMode[]
+  ).includes(mode);
   const sectionContent = (
     <RemoteHostDialogSectionContent
       activeSection={activeSection}
@@ -767,12 +783,11 @@ export function RemoteHostCreateDialog({
           {showTestButton ? (
             <Button
               disabled={savingAction !== null}
-              onClick={testConnection}
+              onClick={() => void testConnection()}
               type="button"
               variant="secondary"
             >
-              <TestTube2 className="h-4 w-4" />
-              {mode === "ssh" ? "检查配置" : "测试连接"}
+              {savingAction === "test" ? "测试中..." : "测试连接"}
             </Button>
           ) : null}
           <Button
@@ -907,4 +922,3 @@ export function RemoteHostCreateDialog({
     </ModalShell>
   );
 }
-

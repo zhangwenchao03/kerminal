@@ -14,6 +14,7 @@ use crate::{
     services::terminal_manager::TerminalManager,
     storage::SqliteStore,
 };
+use std::time::Duration;
 
 const DEFAULT_BAUD: u32 = 9_600;
 const DEFAULT_DATA_BITS: u8 = 8;
@@ -59,6 +60,14 @@ impl SerialTerminalService {
         let client = resolve_serial_client()?;
 
         build_serial_terminal_request(&host, client, request.rows, request.cols)
+    }
+
+    /// 测试 Serial 主机配置能否打开串口，并确认实际终端客户端可用。
+    pub fn test_connection(&self, host: &RemoteHost) -> AppResult<()> {
+        let config = SerialConfig::from_host(host)?;
+        config.open_for_test(Duration::from_millis(1_500))?;
+        let _client = resolve_serial_client()?;
+        Ok(())
     }
 }
 
@@ -135,9 +144,53 @@ impl SerialConfig {
             self.flow.plink_value()
         )
     }
+
+    fn open_for_test(&self, timeout: Duration) -> AppResult<()> {
+        serialport::new(&self.port_name, self.baud)
+            .data_bits(self.serialport_data_bits()?)
+            .flow_control(self.flow.serialport_value())
+            .parity(self.parity.serialport_value())
+            .stop_bits(self.serialport_stop_bits()?)
+            .timeout(timeout)
+            .open()
+            .map(|_| ())
+            .map_err(|error| {
+                AppError::Terminal(format!("无法打开串口 {}: {error}", self.port_name))
+            })
+    }
+
+    fn serialport_data_bits(&self) -> AppResult<serialport::DataBits> {
+        match self.data_bits {
+            5 => Ok(serialport::DataBits::Five),
+            6 => Ok(serialport::DataBits::Six),
+            7 => Ok(serialport::DataBits::Seven),
+            8 => Ok(serialport::DataBits::Eight),
+            _ => Err(AppError::InvalidInput(
+                "serial-data-bits 只能是 5、6、7 或 8".to_owned(),
+            )),
+        }
+    }
+
+    fn serialport_stop_bits(&self) -> AppResult<serialport::StopBits> {
+        match self.stop_bits {
+            1 => Ok(serialport::StopBits::One),
+            2 => Ok(serialport::StopBits::Two),
+            _ => Err(AppError::InvalidInput(
+                "serial-stop-bits 只能是 1 或 2".to_owned(),
+            )),
+        }
+    }
 }
 
 impl SerialParity {
+    fn serialport_value(self) -> serialport::Parity {
+        match self {
+            Self::None => serialport::Parity::None,
+            Self::Odd => serialport::Parity::Odd,
+            Self::Even => serialport::Parity::Even,
+        }
+    }
+
     #[cfg(any(windows, test))]
     fn plink_value(self) -> &'static str {
         match self {
@@ -158,6 +211,14 @@ impl SerialParity {
 }
 
 impl SerialFlow {
+    fn serialport_value(self) -> serialport::FlowControl {
+        match self {
+            Self::None => serialport::FlowControl::None,
+            Self::XonXoff => serialport::FlowControl::Software,
+            Self::RtsCts => serialport::FlowControl::Hardware,
+        }
+    }
+
     #[cfg(any(windows, test))]
     fn plink_value(self) -> &'static str {
         match self {

@@ -62,6 +62,14 @@ fn default_capability_grants_window_access_and_updater_permissions_to_main_windo
         serde_json::json!([
             "core:default",
             "dialog:default",
+            {
+                "identifier": "opener:allow-open-url",
+                "allow": [
+                    {
+                        "url": "https://github.com/kongweiguang/kerminal"
+                    }
+                ]
+            },
             "process:default",
             "updater:default",
             "core:window:allow-start-dragging",
@@ -74,11 +82,16 @@ fn default_capability_grants_window_access_and_updater_permissions_to_main_windo
     let permissions = capability["permissions"]
         .as_array()
         .expect("permissions must be an array");
-    let forbidden_prefixes = ["opener:", "fs:", "shell:", "http:"];
-    for permission in permissions {
-        let permission = permission
-            .as_str()
-            .expect("default capability permissions must be string ids");
+    let forbidden_prefixes = ["fs:", "shell:", "http:"];
+    for permission_value in permissions {
+        let Some(permission) = permission_value.as_str() else {
+            assert_eq!(permission_value["identifier"], "opener:allow-open-url");
+            assert_eq!(
+                permission_value["allow"],
+                serde_json::json!([{ "url": "https://github.com/kongweiguang/kerminal" }])
+            );
+            continue;
+        };
         if permission.starts_with("dialog:") {
             assert_eq!(
                 permission, "dialog:default",
@@ -141,13 +154,13 @@ fn configured_bundle_icons_exist() {
 }
 
 #[test]
-fn unused_opener_plugin_is_not_registered_or_declared() {
+fn opener_plugin_is_registered_with_limited_github_scope() {
     let manifest = manifest_dir();
     let cargo_toml = read_text(manifest.join("Cargo.toml"));
     let lib_rs = read_text(manifest.join("src/lib.rs"));
     let package_json = read_text(manifest.join("../package.json"));
 
-    assert!(!cargo_toml.contains("tauri-plugin-opener"));
-    assert!(!lib_rs.contains("tauri_plugin_opener"));
-    assert!(!package_json.contains("@tauri-apps/plugin-opener"));
+    assert!(cargo_toml.contains("tauri-plugin-opener"));
+    assert!(lib_rs.contains("tauri_plugin_opener::init()"));
+    assert!(package_json.contains("@tauri-apps/plugin-opener"));
 }

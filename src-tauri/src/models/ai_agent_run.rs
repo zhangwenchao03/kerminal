@@ -44,20 +44,11 @@ pub struct AiAgentRun {
 }
 
 /// Run loop limits.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiAgentRunLimits {
     pub max_iterations: Option<u32>,
     pub max_tool_calls: Option<u32>,
-}
-
-impl Default for AiAgentRunLimits {
-    fn default() -> Self {
-        Self {
-            max_iterations: None,
-            max_tool_calls: None,
-        }
-    }
 }
 
 /// Agent run step kind.

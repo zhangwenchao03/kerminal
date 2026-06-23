@@ -294,7 +294,8 @@ fn openssh_temp_config_redacts_secrets_and_tracks_cleanup_paths() {
     assert!(open_ssh
         .args
         .windows(2)
-        .any(|pair| pair[0] == "-F" && PathBuf::from(&pair[1]) == open_ssh.config_path));
+        .any(|pair| pair[0] == "-F"
+            && std::path::Path::new(&pair[1]) == open_ssh.config_path.as_path()));
     assert_eq!(
         open_ssh.args.last().map(String::as_str),
         Some("kerminal-target")
