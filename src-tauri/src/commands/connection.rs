@@ -92,23 +92,7 @@ fn open_saved_rdp_connection(state: &AppState, host_id: &str) -> AppResult<RdpOp
         ));
     }
 
-    let password = match host.auth_type {
-        RemoteHostAuthType::Password => {
-            let credential_ref = host
-                .credential_ref
-                .as_deref()
-                .ok_or_else(|| AppError::Credential("RDP 密码认证缺少凭据引用".to_string()))?;
-            Some(
-                state
-                    .credentials()
-                    .get_secret(credential_ref)?
-                    .ok_or_else(|| {
-                        AppError::Credential(format!("未找到 RDP 密码凭据: {credential_ref}"))
-                    })?,
-            )
-        }
-        RemoteHostAuthType::Agent | RemoteHostAuthType::Key => None,
-    };
+    let password = saved_rdp_password(state, &host)?;
 
     open_rdp_connection(RdpOpenRequest {
         desktop_height: None,
@@ -121,6 +105,35 @@ fn open_saved_rdp_connection(state: &AppState, host_id: &str) -> AppResult<RdpOp
         port: host.port,
         username: Some(host.username).filter(|value| !value.trim().is_empty()),
     })
+}
+
+fn saved_rdp_password(state: &AppState, host: &RemoteHost) -> AppResult<Option<String>> {
+    match host.auth_type {
+        RemoteHostAuthType::Password => {
+            if let Some(secret) = host
+                .credential_secret
+                .as_deref()
+                .filter(|secret| !secret.trim().is_empty())
+            {
+                return Ok(Some(secret.to_string()));
+            }
+
+            let credential_ref = host
+                .credential_ref
+                .as_deref()
+                .filter(|credential_ref| !credential_ref.trim().is_empty())
+                .ok_or_else(|| AppError::Credential("RDP 密码认证缺少已保存密码".to_string()))?;
+            Ok(Some(
+                state
+                    .credentials()
+                    .get_secret(credential_ref)?
+                    .ok_or_else(|| {
+                        AppError::Credential(format!("未找到 RDP 密码凭据: {credential_ref}"))
+                    })?,
+            ))
+        }
+        RemoteHostAuthType::Agent | RemoteHostAuthType::Key => Ok(None),
+    }
 }
 
 async fn test_connection(
@@ -488,6 +501,8 @@ fn sanitize_file_token(value: &str) -> String {
 mod tests {
     use super::*;
     use crate::models::remote_host::SshOptions;
+    use crate::paths::KerminalPaths;
+    use tempfile::tempdir;
     use tokio::net::TcpListener;
 
     fn remote_host_request(tags: Vec<String>) -> RemoteHostCreateRequest {
@@ -503,6 +518,30 @@ mod tests {
             tags,
             production: false,
             ssh_options: SshOptions::default(),
+        }
+    }
+
+    fn rdp_host(
+        credential_secret: Option<&str>,
+        credential_ref: Option<&str>,
+        auth_type: RemoteHostAuthType,
+    ) -> RemoteHost {
+        RemoteHost {
+            id: "rdp-1".to_owned(),
+            group_id: None,
+            name: "office-rdp".to_owned(),
+            host: "rdp.internal".to_owned(),
+            port: 3389,
+            username: "administrator".to_owned(),
+            auth_type,
+            credential_ref: credential_ref.map(str::to_owned),
+            credential_secret: credential_secret.map(str::to_owned),
+            tags: vec!["rdp".to_owned()],
+            production: false,
+            ssh_options: SshOptions::default(),
+            sort_order: 10,
+            created_at: "now".to_owned(),
+            updated_at: "now".to_owned(),
         }
     }
 
@@ -536,6 +575,22 @@ mod tests {
         assert!(content.contains("desktopwidth:i:1440"));
         assert!(content.contains("password 51:b:encrypted"));
         assert!(content.contains("prompt for credentials:i:0"));
+    }
+
+    #[test]
+    fn saved_rdp_password_prefers_plaintext_secret() {
+        let home = tempdir().expect("create temp home");
+        let state = AppState::initialize_with_paths(KerminalPaths::from_home_dir(home.path()))
+            .expect("initialize app state");
+        let host = rdp_host(
+            Some("plain-rdp-secret"),
+            Some("credential:rdp/legacy/password"),
+            RemoteHostAuthType::Password,
+        );
+
+        let password = saved_rdp_password(&state, &host).expect("resolve saved password");
+
+        assert_eq!(password.as_deref(), Some("plain-rdp-secret"));
     }
 
     #[tokio::test]

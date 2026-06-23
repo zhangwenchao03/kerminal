@@ -13,6 +13,7 @@ import type {
   MachineGroup,
   TerminalPane,
   TerminalTab,
+  TerminalTabGroupPreferences,
 } from "../features/workspace/types";
 import { WORKSPACE_SESSION_SAVE_DELAY_MS } from "./KerminalShell.static";
 
@@ -23,6 +24,7 @@ interface WorkspaceSessionSnapshotInput {
   removedSidebarMachineIds: string[];
   selectedMachineId: string;
   terminalPanes: TerminalPane[];
+  terminalTabGroupPreferences: TerminalTabGroupPreferences;
   terminalTabs: TerminalTab[];
 }
 
@@ -33,6 +35,7 @@ export function buildWorkspaceSessionSnapshot({
   removedSidebarMachineIds,
   selectedMachineId,
   terminalPanes,
+  terminalTabGroupPreferences,
   terminalTabs,
 }: WorkspaceSessionSnapshotInput): WorkspaceSessionSnapshot {
   return {
@@ -41,6 +44,7 @@ export function buildWorkspaceSessionSnapshot({
     selectedMachineId,
     removedSidebarMachineIds,
     sidebarMachines: sidebarMachinesForWorkspaceSession(machineGroups),
+    terminalTabGroupPreferences,
     terminalPanes,
     terminalTabs,
   };
@@ -72,14 +76,15 @@ export function useWorkspaceSessionPersistence() {
       return;
     }
 
-      latestWorkspaceSessionRef.current = buildWorkspaceSessionSnapshot({
-        activeTabId: state.activeTabId,
-        focusedPaneId: state.focusedPaneId,
-        machineGroups: state.machineGroups,
-        removedSidebarMachineIds: state.removedSidebarMachineIds,
-        selectedMachineId: state.selectedMachineId,
-        terminalPanes: state.terminalPanes,
-        terminalTabs: state.terminalTabs,
+    latestWorkspaceSessionRef.current = buildWorkspaceSessionSnapshot({
+      activeTabId: state.activeTabId,
+      focusedPaneId: state.focusedPaneId,
+      machineGroups: state.machineGroups,
+      removedSidebarMachineIds: state.removedSidebarMachineIds,
+      selectedMachineId: state.selectedMachineId,
+      terminalPanes: state.terminalPanes,
+      terminalTabGroupPreferences: state.terminalTabGroupPreferences,
+      terminalTabs: state.terminalTabs,
     });
 
     if (workspaceSessionSaveTimerRef.current !== null) {

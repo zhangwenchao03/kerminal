@@ -8,20 +8,91 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version or tag, for example 0.1.5 or v0.1.5"
+        description: "Existing release tag only, for example 0.1.8 or v0.1.8"
         required: true
         type: string
+
+concurrency:
+  group: release-${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
+  preflight:
+    name: Release preflight
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.release.outputs.release_tag }}
+    steps:
+      - name: Checkout release refs
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify release tag and versions
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            version="${{ inputs.version }}"
+            if [[ "${version}" == v* ]]; then
+              tag="${version}"
+            else
+              tag="v${version}"
+            fi
+
+            if ! git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+              echo "::error title=Missing release tag::workflow_dispatch only rebuilds an existing tag. Create and push ${tag} first."
+              exit 1
+            fi
+          fi
+
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error title=Invalid release tag::Expected vX.Y.Z or vX.Y.Z-prerelease, got ${tag}."
+            exit 1
+          fi
+
+          git checkout --force "${tag}"
+          export RELEASE_TAG_VALUE="${tag}"
+
+          node <<'NODE'
+          const fs = require("fs");
+
+          const tag = process.env.RELEASE_TAG_VALUE;
+          const expected = tag.replace(/^v/, "");
+          const packageVersion = JSON.parse(fs.readFileSync("package.json", "utf8")).version;
+          const tauriVersion = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8")).version;
+          const cargoToml = fs.readFileSync("src-tauri/Cargo.toml", "utf8");
+          const cargoVersion = cargoToml.match(/^version\s*=\s*"([^"]+)"/m)?.[1];
+          const versions = {
+            "package.json": packageVersion,
+            "src-tauri/Cargo.toml": cargoVersion,
+            "src-tauri/tauri.conf.json": tauriVersion,
+          };
+          const mismatches = Object.entries(versions).filter(([, value]) => value !== expected);
+          if (mismatches.length > 0) {
+            for (const [file, value] of mismatches) {
+              console.error(`${file} has version ${value || "<missing>"}, expected ${expected}`);
+            }
+            process.exit(1);
+          }
+          NODE
+
+          echo "release_tag=${tag}" >> "${GITHUB_OUTPUT}"
+
   publish-tauri:
     name: Build ${{ matrix.name }}
+    needs: preflight
     runs-on: ${{ matrix.platform }}
     env:
       NODE_OPTIONS: --max-old-space-size=4096
-      RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || (startsWith(inputs.version, 'v') && inputs.version || format('v{0}', inputs.version)) }}
+      RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
     strategy:
       fail-fast: false
       matrix:
@@ -46,6 +117,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.release_tag }}
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -62,6 +136,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
 
       - name: Install Linux Tauri dependencies
         if: runner.os == 'Linux'
@@ -95,8 +174,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: ${{ matrix.args }}
-          releaseBody: "修复了一些已知的内容"
-          releaseDraft: false
+          releaseBody: "修复一些已知问题"
+          releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}
           includeUpdaterJson: true

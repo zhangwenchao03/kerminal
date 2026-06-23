@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { ArrowDown, ArrowUp, Settings, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, FolderPlus, Settings, Trash2 } from "lucide-react";
 import { Button } from "../../../components/ui/button";
+import { Select, type SelectOption } from "../../../components/ui/select";
 import { Switch } from "../../../components/ui/switch";
 import type { SectionTab } from "./model";
 
@@ -36,6 +37,45 @@ export function FieldRow({ children, label }: { children: ReactNode; label: stri
       </span>
       <div className="min-w-0">{children}</div>
     </div>
+  );
+}
+
+export function GroupSelectRow({
+  groupId,
+  groupOptions,
+  onCreateGroupClick,
+  setGroupId,
+}: {
+  groupId: string;
+  groupOptions: SelectOption[];
+  onCreateGroupClick?: () => void;
+  setGroupId: (value: string) => void;
+}) {
+  return (
+    <FieldRow label="分组">
+      <div className={onCreateGroupClick ? "grid grid-cols-[minmax(0,1fr)_40px] gap-2" : ""}>
+        <Select
+          aria-label="分组"
+          buttonClassName="h-10"
+          onValueChange={setGroupId}
+          options={groupOptions}
+          value={groupId}
+        />
+        {onCreateGroupClick ? (
+          <Button
+            aria-label="新建分组"
+            className="h-10 w-10"
+            onClick={onCreateGroupClick}
+            size="icon"
+            title="新建分组"
+            type="button"
+            variant="secondary"
+          >
+            <FolderPlus className="h-4 w-4" />
+          </Button>
+        ) : null}
+      </div>
+    </FieldRow>
   );
 }
 

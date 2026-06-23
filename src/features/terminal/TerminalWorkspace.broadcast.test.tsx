@@ -100,7 +100,7 @@ describe("TerminalWorkspace broadcast command", () => {
     expect(screen.getByLabelText("批量命令")).toHaveValue("");
   });
 
-  it("asks for confirmation before sending to multiple or SSH panes", async () => {
+  it("sends to multiple or SSH panes without confirmation", async () => {
     const user = userEvent.setup();
     const onBroadcastCommand = vi.fn().mockResolvedValue({
       missingPaneIds: ["pane-batch-ssh"],
@@ -139,13 +139,6 @@ describe("TerminalWorkspace broadcast command", () => {
     expect(screen.getByRole("button", { name: "发送到全部" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "发送到全部" }));
 
-    expect(screen.getByRole("dialog", { name: "确认批量发送" })).toBeInTheDocument();
-    expect(screen.getByText("将发送到 2 个分屏")).toBeInTheDocument();
-    expect(screen.getByText("包含远程或设备分屏")).toBeInTheDocument();
-    expect(onBroadcastCommand).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole("button", { name: "确认发送" }));
-
     expect(onBroadcastCommand).toHaveBeenCalledWith({
       command: "systemctl status nginx",
       data: "systemctl status nginx\r",
@@ -154,7 +147,7 @@ describe("TerminalWorkspace broadcast command", () => {
     expect(screen.getByRole("status")).toHaveTextContent("1 个分屏尚未连接");
   });
 
-  it("includes telnet and serial panes in broadcast targets behind confirmation", async () => {
+  it("includes telnet and serial panes in broadcast targets without confirmation", async () => {
     const user = userEvent.setup();
     const onBroadcastCommand = vi.fn().mockResolvedValue({
       missingPaneIds: [],
@@ -223,12 +216,6 @@ describe("TerminalWorkspace broadcast command", () => {
 
     await user.type(screen.getByLabelText("批量命令"), "show version");
     await user.click(screen.getByRole("button", { name: "发送到全部" }));
-
-    expect(screen.getByRole("dialog", { name: "确认批量发送" })).toBeInTheDocument();
-    expect(screen.getByText("将发送到 2 个分屏")).toBeInTheDocument();
-    expect(screen.getByText("包含远程或设备分屏")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "确认发送" }));
 
     expect(onBroadcastCommand).toHaveBeenCalledWith({
       command: "show version",

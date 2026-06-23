@@ -67,6 +67,7 @@ interface RemoteHostDialogSectionContentProps {
   localTitle: string;
   mode: ConnectionMode;
   name: string;
+  onCreateGroupClick?: () => void;
   onDockerRefresh: () => void;
   port: string;
   rdpFullscreen: boolean;
@@ -158,6 +159,7 @@ export function RemoteHostDialogSectionContent({
   localTitle,
   mode,
   name,
+  onCreateGroupClick,
   onDockerRefresh,
   port,
   rdpFullscreen,
@@ -230,6 +232,7 @@ export function RemoteHostDialogSectionContent({
           localShellPresetId={localShellPresetId}
           localShellPresets={localShellPresets}
           localTitle={localTitle}
+          onCreateGroupClick={onCreateGroupClick}
           setError={setError}
           setGroupId={setGroupId}
           setLocalArgs={setLocalArgs}
@@ -249,12 +252,16 @@ export function RemoteHostDialogSectionContent({
     ) : mode === "rdp" ? (
       activeSection === "properties" ? (
         <RdpPropertiesPanel
+          groupId={groupId}
+          groupOptions={groupOptions}
           host={host}
           name={name}
+          onCreateGroupClick={onCreateGroupClick}
           port={port}
           rdpNote={rdpNote}
           rdpPassword={rdpPassword}
           rdpUsername={rdpUsername}
+          setGroupId={setGroupId}
           setHost={setHost}
           setName={setName}
           setPort={setPort}
@@ -284,6 +291,7 @@ export function RemoteHostDialogSectionContent({
           groupOptions={groupOptions}
           host={host}
           name={name}
+          onCreateGroupClick={onCreateGroupClick}
           port={port}
           setGroupId={setGroupId}
           setHost={setHost}
@@ -304,6 +312,7 @@ export function RemoteHostDialogSectionContent({
           groupId={groupId}
           groupOptions={groupOptions}
           name={name}
+          onCreateGroupClick={onCreateGroupClick}
           serialNote={serialNote}
           setGroupId={setGroupId}
           setName={setName}
@@ -340,6 +349,7 @@ export function RemoteHostDialogSectionContent({
           includeStopped={dockerIncludeStopped}
           loadError={dockerLoadError}
           loading={dockerLoading}
+          onCreateGroupClick={onCreateGroupClick}
           onRefresh={onDockerRefresh}
           runtime={dockerRuntime}
           selectedContainerId={dockerContainerId}
@@ -377,6 +387,7 @@ export function RemoteHostDialogSectionContent({
         groupId={groupId}
         host={host}
         name={name}
+        onCreateGroupClick={onCreateGroupClick}
         port={port}
         groupOptions={groupOptions}
         selectedProtocolLabel={selectedProtocolLabel}

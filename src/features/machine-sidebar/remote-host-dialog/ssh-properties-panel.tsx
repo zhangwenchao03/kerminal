@@ -4,7 +4,7 @@ import type {
   RemoteHostAuthType,
 } from "../../../lib/remoteHostApi";
 import { authOptions } from "./model";
-import { FieldRow, inputClassName } from "./shared-ui";
+import { FieldRow, GroupSelectRow, inputClassName } from "./shared-ui";
 
 export function SshPropertiesPanel({
   authType,
@@ -15,6 +15,7 @@ export function SshPropertiesPanel({
   groupOptions,
   host,
   name,
+  onCreateGroupClick,
   port,
   selectedProtocolLabel,
   setAuthType,
@@ -37,6 +38,7 @@ export function SshPropertiesPanel({
   groupOptions: Array<{ label: string; value: string }>;
   host: string;
   name: string;
+  onCreateGroupClick?: () => void;
   port: string;
   selectedProtocolLabel: string;
   setAuthType: (value: RemoteHostAuthType) => void;
@@ -64,15 +66,12 @@ export function SshPropertiesPanel({
             value={name}
           />
         </FieldRow>
-        <FieldRow label="分组">
-          <Select
-            aria-label="分组"
-            buttonClassName="h-10"
-            onValueChange={setGroupId}
-            options={groupOptions}
-            value={groupId}
-          />
-        </FieldRow>
+        <GroupSelectRow
+          groupId={groupId}
+          groupOptions={groupOptions}
+          onCreateGroupClick={onCreateGroupClick}
+          setGroupId={setGroupId}
+        />
         <FieldRow label="主机">
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_136px]">
             <input

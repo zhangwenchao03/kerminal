@@ -93,6 +93,12 @@ describe("buildWorkspaceSessionSnapshot", () => {
       removedSidebarMachineIds: ["local-hidden"],
       selectedMachineId: "local-pwsh",
       terminalPanes,
+      terminalTabGroupPreferences: {
+        "local-pwsh": {
+          color: "blue",
+          title: "本地组",
+        },
+      },
       terminalTabs,
     });
 
@@ -101,6 +107,12 @@ describe("buildWorkspaceSessionSnapshot", () => {
       focusedPaneId: "pane-1",
       removedSidebarMachineIds: ["local-hidden"],
       selectedMachineId: "local-pwsh",
+      terminalTabGroupPreferences: {
+        "local-pwsh": {
+          color: "blue",
+          title: "本地组",
+        },
+      },
       terminalPanes,
       terminalTabs,
     });
@@ -125,6 +137,12 @@ describe("buildWorkspaceSessionSnapshot", () => {
     act(() => {
       useWorkspaceStore
         .getState()
+        .updateTerminalTabGroupPreference("machine-local-1", {
+          color: "pink",
+          title: "工作组",
+        });
+      useWorkspaceStore
+        .getState()
         .updatePaneOutputHistory(paneId, "latest terminal output");
     });
     fireEvent(window, new Event("pagehide"));
@@ -140,5 +158,11 @@ describe("buildWorkspaceSessionSnapshot", () => {
         }),
       ]),
     );
+    expect(savedSession.terminalTabGroupPreferences).toEqual({
+      "machine-local-1": {
+        color: "pink",
+        title: "工作组",
+      },
+    });
   });
 });

@@ -75,6 +75,32 @@ describe("RemoteHostCreateDialog", () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(createdHost));
   });
 
+  it("shows SSH authentication methods as password, key, then SSH agent", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <RemoteHostCreateDialog
+        defaultMode="ssh"
+        groups={groups}
+        onClose={vi.fn()}
+        onCreateHost={vi.fn()}
+        open
+      />,
+    );
+
+    const authSelect = screen.getByRole("combobox", { name: "认证方式" });
+    expect(authSelect).toHaveAttribute("data-value", "password");
+    expect(authSelect).toHaveTextContent("密码");
+
+    await user.click(authSelect);
+    const options = screen.getAllByRole("option");
+
+    expect(options).toHaveLength(3);
+    expect(options[0]).toHaveTextContent(/^密码/);
+    expect(options[1]).toHaveTextContent(/^密钥/);
+    expect(options[2]).toHaveTextContent(/^SSH Agent/);
+  });
+
   it("shows validation errors instead of saving incomplete hosts", async () => {
     const user = userEvent.setup();
     const onCreateHost = vi.fn();
@@ -112,6 +138,7 @@ describe("RemoteHostCreateDialog", () => {
     await user.type(screen.getByLabelText("名称"), "test-dev");
     await user.type(screen.getByLabelText("主机"), "127.0.0.1");
     await user.type(screen.getByLabelText("用户名"), "root");
+    await chooseSelectOption(user, "认证方式", "SSH Agent");
     await user.click(screen.getByRole("button", { name: "测试连接" }));
 
     await waitFor(() => {
@@ -206,6 +233,7 @@ describe("RemoteHostCreateDialog", () => {
     await user.type(screen.getByLabelText("名称"), "ungrouped-dev");
     await user.type(screen.getByLabelText("主机"), "10.0.0.8");
     await user.type(screen.getByLabelText("用户名"), "ubuntu");
+    await chooseSelectOption(user, "认证方式", "SSH Agent");
     await user.click(screen.getByRole("button", { name: "确认" }));
 
     expect(onCreateHost).toHaveBeenCalledWith({
@@ -242,6 +270,7 @@ describe("RemoteHostCreateDialog", () => {
     await user.type(screen.getByLabelText("名称"), "prod-edge");
     await user.type(screen.getByLabelText("主机"), "10.1.2.3");
     await user.type(screen.getByLabelText("用户名"), "deploy");
+    await chooseSelectOption(user, "认证方式", "SSH Agent");
 
     await user.click(screen.getByRole("button", { name: "代理" }));
     await chooseSelectOption(user, "代理协议", "SOCKS5");
@@ -314,6 +343,7 @@ describe("RemoteHostCreateDialog", () => {
     await user.type(screen.getByLabelText("名称"), "app-prod");
     await user.type(screen.getByLabelText("主机"), "10.2.3.4");
     await user.type(screen.getByLabelText("用户名"), "deploy");
+    await chooseSelectOption(user, "认证方式", "SSH Agent");
 
     await user.click(screen.getByRole("button", { name: "跳板机" }));
     await chooseSelectOption(user, "已有跳板机主机", "db-prod");
@@ -820,6 +850,10 @@ describe("RemoteHostCreateDialog", () => {
       />,
     );
 
+    expect(screen.getByRole("combobox", { name: "分组" })).toHaveAttribute(
+      "data-value",
+      "group-dev",
+    );
     await user.type(screen.getByLabelText("名称"), "office-rdp");
     await user.type(screen.getByLabelText("主机"), "rdp.internal");
     await user.type(screen.getByLabelText("用户名"), "administrator");
@@ -840,6 +874,161 @@ describe("RemoteHostCreateDialog", () => {
     });
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(savedRdpHost));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("prefills and updates plaintext RDP password when editing", async () => {
+    const user = userEvent.setup();
+    const editingHost: RemoteHost = {
+      authType: "password",
+      createdAt: "now",
+      credentialRef: undefined,
+      credentialSecret: "visible-rdp-secret",
+      groupId: "group-dev",
+      host: "rdp.internal",
+      id: "rdp-1",
+      name: "office-rdp",
+      port: 3389,
+      production: false,
+      sshOptions: createDefaultSshOptions(),
+      sortOrder: 10,
+      tags: ["rdp"],
+      updatedAt: "now",
+      username: "administrator",
+    };
+    const updatedHost: RemoteHost = {
+      ...editingHost,
+      credentialSecret: "next-rdp-secret",
+      updatedAt: "later",
+    };
+    const onUpdateHost = vi.fn().mockResolvedValue(updatedHost);
+    const onCreated = vi.fn();
+
+    render(
+      <RemoteHostCreateDialog
+        editingHost={editingHost}
+        groups={groups}
+        onClose={vi.fn()}
+        onCreateHost={vi.fn()}
+        onCreated={onCreated}
+        onUpdateHost={onUpdateHost}
+        open
+      />,
+    );
+
+    const passwordInput = screen.getByLabelText("密码");
+    expect(passwordInput).toHaveAttribute("type", "text");
+    expect(passwordInput).toHaveValue("visible-rdp-secret");
+
+    await user.clear(passwordInput);
+    await user.type(passwordInput, "next-rdp-secret");
+    await user.click(screen.getByRole("button", { name: "确认" }));
+
+    expect(onUpdateHost).toHaveBeenCalledWith({
+      authType: "password",
+      credentialRef: undefined,
+      credentialSecret: "next-rdp-secret",
+      groupId: "group-dev",
+      host: "rdp.internal",
+      id: "rdp-1",
+      name: "office-rdp",
+      port: 3389,
+      production: false,
+      sortOrder: 10,
+      tags: ["rdp"],
+      username: "administrator",
+    });
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(updatedHost));
+  });
+
+  it("creates a group from the RDP form and keeps the form values", async () => {
+    const user = userEvent.setup();
+    const createdGroup = {
+      createdAt: "now",
+      id: "group-rdp",
+      name: "远程桌面",
+      sortOrder: 20,
+      updatedAt: "now",
+    };
+    const onCreateGroup = vi.fn().mockResolvedValue(createdGroup);
+    let currentDefaultGroupId: string | undefined;
+    let currentGroups = groups;
+    let rerenderDialog = () => {};
+    const onGroupCreated = vi.fn(async () => {
+      currentDefaultGroupId = createdGroup.id;
+      currentGroups = [
+        ...groups,
+        {
+          id: createdGroup.id,
+          machines: [],
+          title: createdGroup.name,
+        },
+      ];
+      rerenderDialog();
+    });
+    const onCreateHost = vi.fn().mockResolvedValue({
+      authType: "password",
+      createdAt: "now",
+      groupId: "group-rdp",
+      host: "rdp.internal",
+      id: "rdp-1",
+      name: "office-rdp",
+      port: 3389,
+      production: false,
+      sshOptions: createDefaultSshOptions(),
+      sortOrder: 10,
+      tags: ["rdp"],
+      updatedAt: "now",
+      username: "administrator",
+    } satisfies RemoteHost);
+
+    const renderDialog = () => (
+      <RemoteHostCreateDialog
+        defaultGroupId={currentDefaultGroupId}
+        defaultMode="rdp"
+        groups={currentGroups}
+        onClose={vi.fn()}
+        onCreateGroup={onCreateGroup}
+        onCreateHost={onCreateHost}
+        onGroupCreated={onGroupCreated}
+        open
+      />
+    );
+    const { rerender } = render(renderDialog());
+    rerenderDialog = () => rerender(renderDialog());
+
+    await user.type(screen.getByLabelText("名称"), "office-rdp");
+    await user.click(screen.getByRole("button", { name: "新建分组" }));
+    expect(
+      screen.getByRole("dialog", { name: "新建分组" }),
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText("分组名称"), "远程桌面");
+    await user.click(screen.getByRole("button", { name: "创建分组" }));
+
+    await waitFor(() => {
+      expect(onCreateGroup).toHaveBeenCalledWith({ name: "远程桌面" });
+    });
+    await waitFor(() => {
+      expect(onGroupCreated).toHaveBeenCalledWith(createdGroup);
+    });
+    expect(screen.getByLabelText("名称")).toHaveValue("office-rdp");
+
+    await user.type(screen.getByLabelText("主机"), "rdp.internal");
+    await user.type(screen.getByLabelText("用户名"), "administrator");
+    await user.type(screen.getByLabelText("密码"), "rdp-secret");
+    await user.click(screen.getByRole("button", { name: "确认" }));
+
+    expect(onCreateHost).toHaveBeenCalledWith({
+      authType: "password",
+      credentialRef: undefined,
+      credentialSecret: "rdp-secret",
+      groupId: "group-rdp",
+      host: "rdp.internal",
+      name: "office-rdp",
+      port: 3389,
+      production: false,
+      tags: ["rdp"],
+      username: "administrator",
+    });
   });
 
   it("validates RDP display options without opening the system client", async () => {

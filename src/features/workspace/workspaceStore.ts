@@ -24,6 +24,8 @@ import type {
   TerminalPane,
   TerminalSplitDirection,
   TerminalTab,
+  TerminalTabGroupPreference,
+  TerminalTabGroupPreferences,
   ToolId,
 } from "./types";
 import { isSftpTransferWorkspaceTab, isToolId } from "./types";
@@ -99,6 +101,7 @@ export interface WorkspaceState {
   activeProfileId: string;
   machineGroups: MachineGroup[];
   terminalTabs: TerminalTab[];
+  terminalTabGroupPreferences: TerminalTabGroupPreferences;
   terminalPanes: TerminalPane[];
   activeTabId: string;
   selectedMachineId: string;
@@ -133,6 +136,10 @@ export interface WorkspaceState {
   openContainerTerminal: (machineId: string) => void;
   closeTerminalTab: (tabId: string) => void;
   renameTerminalTab: (tabId: string, title: string) => void;
+  updateTerminalTabGroupPreference: (
+    groupId: string,
+    preference: TerminalTabGroupPreference,
+  ) => void;
   splitFocusedPane: (direction: TerminalSplitDirection) => void;
   closePane: (paneId: string) => void;
   focusPane: (paneId: string) => void;
@@ -158,6 +165,7 @@ const initialState = {
   activeProfileId: browserPreviewProfiles[0].id,
   machineGroups,
   terminalTabs,
+  terminalTabGroupPreferences: {},
   terminalPanes,
   activeTabId: "",
   selectedMachineId: "",
@@ -613,6 +621,27 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
         ),
       };
     }),
+  updateTerminalTabGroupPreference: (groupId, preference) =>
+    set((state) => {
+      const trimmedGroupId = groupId.trim();
+      if (!trimmedGroupId) {
+        return {};
+      }
+
+      const trimmedTitle = preference.title?.trim();
+      const nextPreference: TerminalTabGroupPreference = {
+        ...(preference.color ? { color: preference.color } : {}),
+        ...(trimmedTitle ? { title: trimmedTitle } : {}),
+      };
+      const nextPreferences = { ...state.terminalTabGroupPreferences };
+      if (Object.keys(nextPreference).length === 0) {
+        delete nextPreferences[trimmedGroupId];
+      } else {
+        nextPreferences[trimmedGroupId] = nextPreference;
+      }
+
+      return { terminalTabGroupPreferences: nextPreferences };
+    }),
   splitFocusedPane: (direction) =>
     set((state) => {
       const splitTarget = resolveFocusedPaneSplitTarget(state);
@@ -665,6 +694,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
           normalized.terminalPanes,
           machineGroups,
         ),
+        terminalTabGroupPreferences:
+          normalized.terminalTabGroupPreferences ?? {},
         terminalTabs,
         selectedMachineId: restoredSelectedMachineId({
           activeTabId: normalized.activeTabId,

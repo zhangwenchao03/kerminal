@@ -19,6 +19,8 @@ import type {
   RemoteHost,
   RemoteHostAuthType,
   RemoteHostCreateRequest,
+  RemoteHostGroup,
+  RemoteHostGroupCreateRequest,
   RemoteHostUpdateRequest,
   SshProxyProtocol,
   SshTunnelKind,
@@ -38,6 +40,9 @@ export interface RemoteHostCreateDialogProps {
   onClose: () => void;
   onCreateLocal?: (options?: LocalTerminalCreateOptions) => void | Promise<void>;
   onCreateHost: (request: RemoteHostCreateRequest) => Promise<RemoteHost>;
+  onCreateGroup?: (
+    request: RemoteHostGroupCreateRequest,
+  ) => Promise<RemoteHostGroup>;
   onListDockerContainers?: (
     request: DockerContainerListRequest,
   ) => Promise<DockerContainerSummary[]>;
@@ -47,6 +52,7 @@ export interface RemoteHostCreateDialogProps {
     options: LocalTerminalCreateOptions,
   ) => void | Promise<void>;
   onCreated?: (host: RemoteHost) => void | Promise<void>;
+  onGroupCreated?: (group: RemoteHostGroup) => void | Promise<void>;
 }
 
 export type ConnectionMode =
@@ -194,9 +200,9 @@ export const authOptions: Array<{
   value: RemoteHostAuthType;
 }> = [
   {
-    helper: "优先复用系统 ssh-agent 和默认密钥。",
-    label: "SSH Agent",
-    value: "agent",
+    helper: "把 SSH 密码随主机记录明文保存，编辑时直接显示。",
+    label: "密码",
+    value: "password",
   },
   {
     helper: "使用私钥路径，或把私钥内容随主机记录明文保存。",
@@ -204,9 +210,9 @@ export const authOptions: Array<{
     value: "key",
   },
   {
-    helper: "把 SSH 密码随主机记录明文保存，编辑时直接显示。",
-    label: "密码",
-    value: "password",
+    helper: "优先复用系统 ssh-agent 和默认密钥。",
+    label: "SSH Agent",
+    value: "agent",
   },
 ];
 

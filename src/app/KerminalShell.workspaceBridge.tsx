@@ -111,8 +111,14 @@ export function WorkspaceTerminalSurface({
     (state) => state.setBroadcastDraft,
   );
   const splitFocusedPane = useWorkspaceStore((state) => state.splitFocusedPane);
+  const terminalTabGroupPreferences = useWorkspaceStore(
+    (state) => state.terminalTabGroupPreferences,
+  );
   const terminalPanes = useWorkspaceStore((state) => state.terminalPanes);
   const terminalTabs = useWorkspaceStore((state) => state.terminalTabs);
+  const updateTerminalTabGroupPreference = useWorkspaceStore(
+    (state) => state.updateTerminalTabGroupPreference,
+  );
   const updatePaneCurrentCwd = useWorkspaceStore(
     (state) => state.updatePaneCurrentCwd,
   );
@@ -139,6 +145,7 @@ export function WorkspaceTerminalSurface({
       onPaneOutputHistoryChange={updatePaneOutputHistory}
       onOpenLogs={onOpenLogs}
       onRenameTab={renameTerminalTab}
+      onUpdateTabGroupPreference={updateTerminalTabGroupPreference}
       reserveRightTitleBarControls={reserveRightTitleBarControls}
       renderCustomTab={(tab, active) =>
         isSftpTransferWorkspaceTab(tab) ? (
@@ -159,6 +166,7 @@ export function WorkspaceTerminalSurface({
       panes={terminalPanes}
       resolvedTheme={resolvedTheme}
       tabs={terminalTabs}
+      tabGroupPreferences={terminalTabGroupPreferences}
       terminalAppearance={terminalAppearance}
     />
   );

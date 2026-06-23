@@ -7,7 +7,7 @@ import type { DockerContainerSummary } from "../../../lib/dockerApi";
 import type { ContainerRuntime } from "../../../lib/targetModel";
 import type { Machine } from "../../workspace/types";
 import { dockerStatusClassName, dockerStatusLabel } from "./request-builders";
-import { FieldRow, inputClassName } from "./shared-ui";
+import { FieldRow, GroupSelectRow, inputClassName } from "./shared-ui";
 
 export function DockerPropertiesPanel({
   containers,
@@ -17,6 +17,7 @@ export function DockerPropertiesPanel({
   includeStopped,
   loadError,
   loading,
+  onCreateGroupClick,
   onRefresh,
   runtime,
   selectedContainerId,
@@ -34,6 +35,7 @@ export function DockerPropertiesPanel({
   includeStopped: boolean;
   loadError: string | null;
   loading: boolean;
+  onCreateGroupClick?: () => void;
   onRefresh: () => void;
   runtime: ContainerRuntime;
   selectedContainerId: string;
@@ -54,15 +56,12 @@ export function DockerPropertiesPanel({
             value={hostId}
           />
         </FieldRow>
-        <FieldRow label="分组">
-          <Select
-            aria-label="分组"
-            buttonClassName="h-10"
-            onValueChange={setGroupId}
-            options={groupOptions}
-            value={groupId}
-          />
-        </FieldRow>
+        <GroupSelectRow
+          groupId={groupId}
+          groupOptions={groupOptions}
+          onCreateGroupClick={onCreateGroupClick}
+          setGroupId={setGroupId}
+        />
         <FieldRow label="运行时">
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
             <Select

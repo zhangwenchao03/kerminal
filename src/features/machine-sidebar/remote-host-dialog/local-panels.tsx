@@ -8,7 +8,7 @@ import {
   DEFAULT_LOCAL_SHELL_PRESET_ID,
   type LocalShellPreset,
 } from "./model";
-import { FieldRow, inputClassName } from "./shared-ui";
+import { FieldRow, GroupSelectRow, inputClassName } from "./shared-ui";
 
 export function LocalPropertiesPanel({
   editing,
@@ -20,6 +20,7 @@ export function LocalPropertiesPanel({
   localShellPresetId,
   localShellPresets,
   localTitle,
+  onCreateGroupClick,
   setError,
   setGroupId,
   setLocalArgs,
@@ -37,6 +38,7 @@ export function LocalPropertiesPanel({
   localShellPresetId: string;
   localShellPresets: LocalShellPreset[];
   localTitle: string;
+  onCreateGroupClick?: () => void;
   setError: (value: string | null) => void;
   setGroupId: (value: string) => void;
   setLocalArgs: (value: string) => void;
@@ -105,15 +107,12 @@ export function LocalPropertiesPanel({
           value={localTitle}
         />
       </FieldRow>
-      <FieldRow label="分组">
-        <Select
-          aria-label="分组"
-          buttonClassName="h-10"
-          onValueChange={setGroupId}
-          options={groupOptions}
-          value={groupId}
-        />
-      </FieldRow>
+      <GroupSelectRow
+        groupId={groupId}
+        groupOptions={groupOptions}
+        onCreateGroupClick={onCreateGroupClick}
+        setGroupId={setGroupId}
+      />
       <FieldRow label="Shell">
         <div className="grid gap-2">
           <Select

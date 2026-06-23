@@ -86,7 +86,9 @@ impl SshCommandService {
         let execution = build_native_connection_execution(host, paths, timeout_seconds)?;
         let timeout = Duration::from_secs(timeout_seconds);
         match tokio::time::timeout(timeout, async {
-            let connection = connect_native_command_target(&execution).await?;
+            let connection =
+                connect_native_command_target(&execution, NativeHostKeyPolicy::TrustUnknown)
+                    .await?;
             disconnect_native_connection(connection, "connection test completed").await;
             Ok(())
         })
@@ -154,8 +156,15 @@ enum NativeSshPrivateKey {
 #[derive(Debug)]
 struct NativeCommandClientHandler {
     host: String,
+    host_key_policy: NativeHostKeyPolicy,
     port: u16,
     known_hosts_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum NativeHostKeyPolicy {
+    RequireKnown,
+    TrustUnknown,
 }
 
 impl client::Handler for NativeCommandClientHandler {
@@ -171,7 +180,17 @@ impl client::Handler for NativeCommandClientHandler {
             server_public_key,
             &self.known_hosts_path,
         ) {
-            Ok(trusted) => Ok(trusted),
+            Ok(true) => Ok(true),
+            Ok(false) => match self.host_key_policy {
+                NativeHostKeyPolicy::RequireKnown => Ok(false),
+                NativeHostKeyPolicy::TrustUnknown => Ok(keys::known_hosts::learn_known_hosts_path(
+                    &self.host,
+                    self.port,
+                    server_public_key,
+                    &self.known_hosts_path,
+                )
+                .is_ok()),
+            },
             Err(_) => Ok(false),
         }
     }
@@ -284,7 +303,8 @@ async fn execute_native_ssh_command_inner(
     host: &RemoteHost,
     execution: NativeSshCommandExecution,
 ) -> AppResult<SshCommandOutput> {
-    let connection = connect_native_command_target(&execution).await?;
+    let connection =
+        connect_native_command_target(&execution, NativeHostKeyPolicy::RequireKnown).await?;
 
     let mut channel = connection
         .target
@@ -395,9 +415,15 @@ fn build_native_jump_execution(
 
 async fn connect_native_command_target(
     execution: &NativeSshCommandExecution,
+    host_key_policy: NativeHostKeyPolicy,
 ) -> AppResult<NativeSshConnectionChain> {
     if execution.jumps.is_empty() {
-        let mut target = connect_native_ssh(&execution.target, execution.timeout_seconds).await?;
+        let mut target = connect_native_ssh(
+            &execution.target,
+            execution.timeout_seconds,
+            host_key_policy,
+        )
+        .await?;
         authenticate_native_ssh(&mut target, &execution.target).await?;
         return Ok(NativeSshConnectionChain {
             jumps: Vec::new(),
@@ -406,13 +432,22 @@ async fn connect_native_command_target(
     }
 
     let mut jumps = Vec::with_capacity(execution.jumps.len());
-    let mut upstream = connect_native_ssh(&execution.jumps[0], execution.timeout_seconds).await?;
+    let mut upstream = connect_native_ssh(
+        &execution.jumps[0],
+        execution.timeout_seconds,
+        host_key_policy,
+    )
+    .await?;
     authenticate_native_ssh(&mut upstream, &execution.jumps[0]).await?;
 
     for jump in execution.jumps.iter().skip(1) {
-        let mut next =
-            connect_native_ssh_through_direct_tcpip(&upstream, jump, execution.timeout_seconds)
-                .await?;
+        let mut next = connect_native_ssh_through_direct_tcpip(
+            &upstream,
+            jump,
+            execution.timeout_seconds,
+            host_key_policy,
+        )
+        .await?;
         authenticate_native_ssh(&mut next, jump).await?;
         jumps.push(upstream);
         upstream = next;
@@ -422,6 +457,7 @@ async fn connect_native_command_target(
         &upstream,
         &execution.target,
         execution.timeout_seconds,
+        host_key_policy,
     )
     .await?;
     authenticate_native_ssh(&mut target, &execution.target).await?;
@@ -445,6 +481,7 @@ async fn disconnect_native_connection(connection: NativeSshConnectionChain, reas
 async fn connect_native_ssh(
     hop: &NativeSshHopExecution,
     timeout_seconds: u64,
+    host_key_policy: NativeHostKeyPolicy,
 ) -> AppResult<client::Handle<NativeCommandClientHandler>> {
     let config = client::Config {
         inactivity_timeout: Some(Duration::from_secs(timeout_seconds)),
@@ -452,6 +489,7 @@ async fn connect_native_ssh(
     };
     let handler = NativeCommandClientHandler {
         host: hop.host.clone(),
+        host_key_policy,
         port: hop.port,
         known_hosts_path: hop.known_hosts_path.clone(),
     };
@@ -464,6 +502,7 @@ async fn connect_native_ssh_through_direct_tcpip(
     upstream: &client::Handle<NativeCommandClientHandler>,
     hop: &NativeSshHopExecution,
     timeout_seconds: u64,
+    host_key_policy: NativeHostKeyPolicy,
 ) -> AppResult<client::Handle<NativeCommandClientHandler>> {
     let channel = upstream
         .channel_open_direct_tcpip(hop.host.clone(), u32::from(hop.port), "127.0.0.1", 0)
@@ -480,6 +519,7 @@ async fn connect_native_ssh_through_direct_tcpip(
     };
     let handler = NativeCommandClientHandler {
         host: hop.host.clone(),
+        host_key_policy,
         port: hop.port,
         known_hosts_path: hop.known_hosts_path.clone(),
     };

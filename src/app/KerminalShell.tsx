@@ -7,6 +7,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import { X } from "lucide-react";
 import { AppTitleBar } from "./AppTitleBar";
 import type { SettingsSectionId } from "../features/settings/SettingsToolContent";
 import {
@@ -145,6 +146,7 @@ export function KerminalShell() {
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [settingsInitialSectionId, setSettingsInitialSectionId] =
     useState<SettingsSectionId>(DEFAULT_SETTINGS_SECTION_ID);
+  const [shellNoticeVisible, setShellNoticeVisible] = useState(false);
   const [pendingSftpHostTarget, setPendingSftpHostTarget] =
     useState<SftpTransferCreateHostRequest | null>(null);
   const [createdSftpHostTarget, setCreatedSftpHostTarget] =
@@ -463,6 +465,8 @@ export function KerminalShell() {
     setRemoteHostTree,
     updateLocalMachine,
   });
+  const shellNoticeMessage =
+    profileLoadError ?? remoteHostLoadError ?? settingsLoadError;
   const openSftpTransferHostCreateDialog = useCallback(
     (request: SftpTransferCreateHostRequest) => {
       if (!request.workspaceTabId) {
@@ -494,6 +498,19 @@ export function KerminalShell() {
     [handleRemoteHostCreated, pendingSftpHostTarget],
   );
   useWorkspaceSessionPersistence();
+
+  useEffect(() => {
+    if (!shellNoticeMessage) {
+      setShellNoticeVisible(false);
+      return undefined;
+    }
+
+    setShellNoticeVisible(true);
+    const timer = window.setTimeout(() => {
+      setShellNoticeVisible(false);
+    }, 4200);
+    return () => window.clearTimeout(timer);
+  }, [shellNoticeMessage]);
 
   useEffect(() => {
     let disposed = false;
@@ -807,12 +824,14 @@ export function KerminalShell() {
               });
             }}
             onClose={handleConnectionDialogClose}
+            onCreateGroup={createRemoteHostGroup}
             onCreateLocal={handleCreateLocalProfile}
             onCreateHost={handleCreateRemoteHost}
             onListDockerContainers={listDockerContainers}
             onUpdateHost={updateRemoteHost}
             onUpdateLocal={handleUpdateLocalProfile}
             onCreated={handleConnectionDialogCreated}
+            onGroupCreated={handleRemoteGroupSaved}
             open={remoteHostDialogOpen}
           />
         </Suspense>
@@ -841,12 +860,20 @@ export function KerminalShell() {
         onConfirm={() => void confirmDelete()}
         pendingDelete={pendingDelete}
       />
-      {profileLoadError || remoteHostLoadError || settingsLoadError ? (
+      {shellNoticeMessage && shellNoticeVisible ? (
         <div
-          className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-xl border border-amber-300/20 bg-amber-950/80 px-3 py-2 text-sm text-amber-100 shadow-lg shadow-black/30"
+          className="absolute bottom-3 left-1/2 z-20 flex max-w-[min(720px,calc(100%-32px))] -translate-x-1/2 items-start gap-2 rounded-xl border border-amber-300/30 bg-amber-50/95 px-3 py-2 text-sm text-amber-900 shadow-lg shadow-black/20 dark:border-amber-300/20 dark:bg-amber-950/85 dark:text-amber-100"
           role="alert"
         >
-          {profileLoadError ?? remoteHostLoadError ?? settingsLoadError}
+          <span className="min-w-0 flex-1">{shellNoticeMessage}</span>
+          <button
+            aria-label="关闭提示"
+            className="rounded-md p-1 text-amber-700 transition hover:bg-amber-500/10 hover:text-amber-950 dark:text-amber-200 dark:hover:bg-amber-300/10 dark:hover:text-white"
+            onClick={() => setShellNoticeVisible(false)}
+            type="button"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
       ) : null}
     </div>

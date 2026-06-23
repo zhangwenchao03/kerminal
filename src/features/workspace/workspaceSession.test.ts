@@ -161,6 +161,49 @@ describe("workspaceSession", () => {
     expect(session.terminalPanes[0]?.remoteHostProduction).toBeUndefined();
   });
 
+  it("normalizes terminal tab group preferences", () => {
+    const session = normalizeWorkspaceSessionSnapshot({
+      activeTabId: "tab-1",
+      focusedPaneId: "pane-1",
+      terminalPanes: [
+        {
+          id: "pane-1",
+          machineId: "host-prod",
+          mode: "ssh",
+          prompt: "root@prod:~$",
+          remoteHostId: "host-prod",
+          status: "online",
+          title: "prod",
+        },
+      ],
+      terminalTabGroupPreferences: {
+        "host-prod": {
+          color: "pink",
+          title: " 生产组 ",
+        },
+        "host-test": {
+          color: "unsupported",
+          title: "",
+        },
+      },
+      terminalTabs: [
+        {
+          id: "tab-1",
+          layout: { paneId: "pane-1", type: "pane" },
+          machineId: "host-prod",
+          title: "prod",
+        },
+      ],
+    });
+
+    expect(session.terminalTabGroupPreferences).toEqual({
+      "host-prod": {
+        color: "pink",
+        title: "生产组",
+      },
+    });
+  });
+
   it("preserves local sidebar machine group assignment", () => {
     const session = normalizeWorkspaceSessionSnapshot({
       activeTabId: "",

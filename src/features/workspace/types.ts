@@ -76,6 +76,38 @@ export interface SftpTransferWorkspaceTab {
 
 export type TerminalTab = TerminalSessionTab | SftpTransferWorkspaceTab;
 
+export const terminalTabGroupColorIds = [
+  "blue",
+  "pink",
+  "purple",
+  "mint",
+  "amber",
+  "teal",
+  "orange",
+  "gray",
+] as const;
+
+export type TerminalTabGroupColor = (typeof terminalTabGroupColorIds)[number];
+
+export interface TerminalTabGroupPreference {
+  color?: TerminalTabGroupColor;
+  title?: string;
+}
+
+export type TerminalTabGroupPreferences = Record<
+  string,
+  TerminalTabGroupPreference
+>;
+
+export function isTerminalTabGroupColor(
+  value: unknown,
+): value is TerminalTabGroupColor {
+  return (
+    typeof value === "string" &&
+    (terminalTabGroupColorIds as readonly string[]).includes(value)
+  );
+}
+
 export function isTerminalSessionTab(
   tab: TerminalTab | undefined | null,
 ): tab is TerminalSessionTab {

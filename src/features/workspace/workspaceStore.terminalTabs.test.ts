@@ -42,6 +42,26 @@ describe("workspaceStore terminal tabs", () => {
     );
   });
 
+  it("stores and clears terminal tab group display preferences", () => {
+    useWorkspaceStore.getState().updateTerminalTabGroupPreference("host-dev", {
+      color: "pink",
+      title: " 生产组 ",
+    });
+
+    expect(useWorkspaceStore.getState().terminalTabGroupPreferences).toEqual({
+      "host-dev": {
+        color: "pink",
+        title: "生产组",
+      },
+    });
+
+    useWorkspaceStore
+      .getState()
+      .updateTerminalTabGroupPreference("host-dev", {});
+
+    expect(useWorkspaceStore.getState().terminalTabGroupPreferences).toEqual({});
+  });
+
   it("ignores unknown tab selection requests", () => {
     const before = useWorkspaceStore.getState();
 

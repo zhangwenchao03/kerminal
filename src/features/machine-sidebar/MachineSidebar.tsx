@@ -119,8 +119,11 @@ export function MachineSidebar({
   selectedMachineId,
   settingsSelected = false,
 }: MachineSidebarProps) {
+  const knownGroupIdsRef = useRef<Set<string>>(
+    new Set(groups.map((group) => group.id)),
+  );
   const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(
-    () => new Set(),
+    () => new Set(knownGroupIdsRef.current),
   );
   const [contextMenu, setContextMenu] = useState<SidebarContextMenu | null>(
     null,
@@ -142,6 +145,7 @@ export function MachineSidebar({
     [openMachineIds],
   );
   const normalizedSearch = search.trim().toLowerCase();
+  const hasSearch = normalizedSearch.length > 0;
   const visibleGroups = groups
     .map((group) => {
       const groupMatches = group.title.toLowerCase().includes(normalizedSearch);
@@ -186,6 +190,34 @@ export function MachineSidebar({
   const dragTargetGroup = dragOverGroupId
     ? groups.find((group) => group.id === dragOverGroupId)
     : undefined;
+
+  useLayoutEffect(() => {
+    const previousKnownGroupIds = knownGroupIdsRef.current;
+    const nextKnownGroupIds = new Set(groups.map((group) => group.id));
+
+    setCollapsedGroupIds((current) => {
+      const next = new Set<string>();
+
+      for (const group of groups) {
+        if (current.has(group.id) || !previousKnownGroupIds.has(group.id)) {
+          next.add(group.id);
+        }
+      }
+
+      if (next.size !== current.size) {
+        return next;
+      }
+
+      for (const groupId of next) {
+        if (!current.has(groupId)) {
+          return next;
+        }
+      }
+
+      return current;
+    });
+    knownGroupIdsRef.current = nextKnownGroupIds;
+  }, [groups]);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -609,6 +641,7 @@ export function MachineSidebar({
       collapsedGroupIds={collapsedGroupIds}
       dragOverGroupId={dragOverGroupId}
       draggingMachineId={draggingMachineId}
+      forceGroupsExpanded={hasSearch}
       groupCount={groups.length}
       groupToggleIcon={<GroupToggleIcon className="h-4 w-4" />}
       groupToggleLabel={groupToggleLabel}
@@ -722,7 +755,7 @@ export function MachineSidebar({
 
       <div className="scrollbar-none flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 pb-3">
         {visibleGroups.map((group) => {
-          const collapsed = collapsedGroupIds.has(group.id);
+          const collapsed = !hasSearch && collapsedGroupIds.has(group.id);
 
           return (
             <section

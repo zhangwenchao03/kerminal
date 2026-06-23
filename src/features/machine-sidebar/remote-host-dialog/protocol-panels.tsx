@@ -6,13 +6,14 @@ import {
   serialParityOptions,
   serialStopBitOptions,
 } from "./model";
-import { FieldRow, inputClassName } from "./shared-ui";
+import { FieldRow, GroupSelectRow, inputClassName } from "./shared-ui";
 
 export function TelnetPropertiesPanel({
   groupId,
   groupOptions,
   host,
   name,
+  onCreateGroupClick,
   port,
   setGroupId,
   setHost,
@@ -25,6 +26,7 @@ export function TelnetPropertiesPanel({
   groupOptions: Array<{ label: string; value: string }>;
   host: string;
   name: string;
+  onCreateGroupClick?: () => void;
   port: string;
   setGroupId: (value: string) => void;
   setHost: (value: string) => void;
@@ -45,15 +47,12 @@ export function TelnetPropertiesPanel({
           value={name}
         />
       </FieldRow>
-      <FieldRow label="分组">
-        <Select
-          aria-label="分组"
-          buttonClassName="h-10"
-          onValueChange={setGroupId}
-          options={groupOptions}
-          value={groupId}
-        />
-      </FieldRow>
+      <GroupSelectRow
+        groupId={groupId}
+        groupOptions={groupOptions}
+        onCreateGroupClick={onCreateGroupClick}
+        setGroupId={setGroupId}
+      />
       <FieldRow label="主机">
         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_136px]">
           <input
@@ -89,6 +88,7 @@ export function SerialPropertiesPanel({
   groupId,
   groupOptions,
   name,
+  onCreateGroupClick,
   serialNote,
   setGroupId,
   setName,
@@ -97,6 +97,7 @@ export function SerialPropertiesPanel({
   groupId: string;
   groupOptions: Array<{ label: string; value: string }>;
   name: string;
+  onCreateGroupClick?: () => void;
   serialNote: string;
   setGroupId: (value: string) => void;
   setName: (value: string) => void;
@@ -114,15 +115,12 @@ export function SerialPropertiesPanel({
           value={name}
         />
       </FieldRow>
-      <FieldRow label="分组">
-        <Select
-          aria-label="分组"
-          buttonClassName="h-10"
-          onValueChange={setGroupId}
-          options={groupOptions}
-          value={groupId}
-        />
-      </FieldRow>
+      <GroupSelectRow
+        groupId={groupId}
+        groupOptions={groupOptions}
+        onCreateGroupClick={onCreateGroupClick}
+        setGroupId={setGroupId}
+      />
       <FieldRow label="备注">
         <textarea
           aria-label="备注"
@@ -225,12 +223,16 @@ export function SerialOptionsPanel({
 }
 
 export function RdpPropertiesPanel({
+  groupId,
+  groupOptions,
   host,
   name,
+  onCreateGroupClick,
   port,
   rdpNote,
   rdpPassword,
   rdpUsername,
+  setGroupId,
   setHost,
   setName,
   setPort,
@@ -238,12 +240,16 @@ export function RdpPropertiesPanel({
   setRdpPassword,
   setRdpUsername,
 }: {
+  groupId: string;
+  groupOptions: Array<{ label: string; value: string }>;
   host: string;
   name: string;
+  onCreateGroupClick?: () => void;
   port: string;
   rdpNote: string;
   rdpPassword: string;
   rdpUsername: string;
+  setGroupId: (value: string) => void;
   setHost: (value: string) => void;
   setName: (value: string) => void;
   setPort: (value: string) => void;
@@ -263,6 +269,12 @@ export function RdpPropertiesPanel({
           value={name}
         />
       </FieldRow>
+      <GroupSelectRow
+        groupId={groupId}
+        groupOptions={groupOptions}
+        onCreateGroupClick={onCreateGroupClick}
+        setGroupId={setGroupId}
+      />
       <FieldRow label="主机">
         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_136px]">
           <input
@@ -291,14 +303,20 @@ export function RdpPropertiesPanel({
         />
       </FieldRow>
       <FieldRow label="密码">
-        <input
-          aria-label="密码"
-          className={inputClassName}
-          onChange={(event) => setRdpPassword(event.currentTarget.value)}
-          placeholder="可选；确认后随主机配置保存"
-          type="password"
-          value={rdpPassword}
-        />
+        <div className="grid gap-2">
+          <input
+            aria-label="密码"
+            autoComplete="off"
+            className={inputClassName}
+            onChange={(event) => setRdpPassword(event.currentTarget.value)}
+            placeholder="可选；确认后随主机配置保存"
+            type="text"
+            value={rdpPassword}
+          />
+          <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+            密码会随远程主机记录明文保存，编辑主机时直接显示。
+          </p>
+        </div>
       </FieldRow>
       <FieldRow label="备注">
         <textarea

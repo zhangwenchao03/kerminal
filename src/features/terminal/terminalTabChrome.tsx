@@ -1,4 +1,11 @@
-import { ChevronDown, ChevronRight, Pencil, X } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Layers2,
+  Pencil,
+  X,
+} from "lucide-react";
 import {
   useEffect,
   useState,
@@ -8,12 +15,24 @@ import {
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
 import { cn } from "../../lib/cn";
-import type { TerminalTab } from "../workspace/types";
+import {
+  terminalTabGroupColorIds,
+  type TerminalTab,
+  type TerminalTabGroupColor,
+  type TerminalTabGroupPreference,
+  type TerminalTabGroupPreferences,
+} from "../workspace/types";
 
 export interface TerminalTabGroup {
+  activeContainerClassName: string;
+  accentClassName: string;
+  color: TerminalTabGroupColor;
   colorClassName: string;
+  colorLabel: string;
+  containerClassName: string;
   grouped: boolean;
   id: string;
+  swatchClassName: string;
   tabs: TerminalTab[];
   title: string;
 }
@@ -43,16 +62,125 @@ export type TerminalTabContextMenuPayload =
     };
 
 const CONTEXT_MENU_MARGIN = 8;
-const tabGroupColors = [
-  "bg-pink-500/12 text-pink-700 ring-pink-500/18 dark:bg-pink-400/12 dark:text-pink-100 dark:ring-pink-300/18",
-  "bg-violet-500/12 text-violet-700 ring-violet-500/18 dark:bg-violet-400/12 dark:text-violet-100 dark:ring-violet-300/18",
-  "bg-sky-500/12 text-sky-700 ring-sky-500/18 dark:bg-sky-400/12 dark:text-sky-100 dark:ring-sky-300/18",
-  "bg-emerald-500/12 text-emerald-700 ring-emerald-500/18 dark:bg-emerald-400/12 dark:text-emerald-100 dark:ring-emerald-300/18",
-  "bg-amber-500/12 text-amber-700 ring-amber-500/18 dark:bg-amber-400/12 dark:text-amber-100 dark:ring-amber-300/18",
+interface TerminalTabGroupColorTheme {
+  accentClassName: string;
+  activeContainerClassName: string;
+  colorClassName: string;
+  containerClassName: string;
+  id: TerminalTabGroupColor;
+  label: string;
+  swatchClassName: string;
+}
+
+const tabGroupColorThemes: TerminalTabGroupColorTheme[] = [
+  {
+    accentClassName: "bg-sky-500 dark:bg-sky-300",
+    activeContainerClassName:
+      "border-sky-500/45 bg-sky-500/12 shadow-md shadow-sky-500/14 ring-1 ring-sky-400/25 dark:border-sky-300/35 dark:bg-sky-400/14 dark:ring-sky-300/20",
+    colorClassName:
+      "bg-sky-500/16 text-sky-800 ring-sky-500/24 dark:bg-sky-400/16 dark:text-sky-50 dark:ring-sky-300/22",
+    containerClassName:
+      "border-sky-500/22 bg-sky-500/7 shadow-sm shadow-sky-500/8 hover:border-sky-500/36 hover:bg-sky-500/10 dark:border-sky-300/18 dark:bg-sky-400/8 dark:shadow-black/20 dark:hover:border-sky-300/30 dark:hover:bg-sky-400/12",
+    id: "blue",
+    label: "蓝色",
+    swatchClassName: "bg-sky-500 dark:bg-sky-300",
+  },
+  {
+    accentClassName: "bg-pink-500 dark:bg-pink-300",
+    activeContainerClassName:
+      "border-pink-500/42 bg-pink-500/12 shadow-md shadow-pink-500/14 ring-1 ring-pink-400/24 dark:border-pink-300/34 dark:bg-pink-400/14 dark:ring-pink-300/20",
+    colorClassName:
+      "bg-pink-500/16 text-pink-800 ring-pink-500/24 dark:bg-pink-400/16 dark:text-pink-50 dark:ring-pink-300/22",
+    containerClassName:
+      "border-pink-500/22 bg-pink-500/7 shadow-sm shadow-pink-500/8 hover:border-pink-500/36 hover:bg-pink-500/10 dark:border-pink-300/18 dark:bg-pink-400/8 dark:shadow-black/20 dark:hover:border-pink-300/30 dark:hover:bg-pink-400/12",
+    id: "pink",
+    label: "粉色",
+    swatchClassName: "bg-pink-500 dark:bg-pink-300",
+  },
+  {
+    accentClassName: "bg-violet-500 dark:bg-violet-300",
+    activeContainerClassName:
+      "border-violet-500/42 bg-violet-500/12 shadow-md shadow-violet-500/14 ring-1 ring-violet-400/24 dark:border-violet-300/34 dark:bg-violet-400/14 dark:ring-violet-300/20",
+    colorClassName:
+      "bg-violet-500/16 text-violet-800 ring-violet-500/24 dark:bg-violet-400/16 dark:text-violet-50 dark:ring-violet-300/22",
+    containerClassName:
+      "border-violet-500/22 bg-violet-500/7 shadow-sm shadow-violet-500/8 hover:border-violet-500/36 hover:bg-violet-500/10 dark:border-violet-300/18 dark:bg-violet-400/8 dark:shadow-black/20 dark:hover:border-violet-300/30 dark:hover:bg-violet-400/12",
+    id: "purple",
+    label: "紫色",
+    swatchClassName: "bg-violet-500 dark:bg-violet-300",
+  },
+  {
+    accentClassName: "bg-emerald-500 dark:bg-emerald-300",
+    activeContainerClassName:
+      "border-emerald-500/42 bg-emerald-500/12 shadow-md shadow-emerald-500/14 ring-1 ring-emerald-400/24 dark:border-emerald-300/34 dark:bg-emerald-400/14 dark:ring-emerald-300/20",
+    colorClassName:
+      "bg-emerald-500/16 text-emerald-800 ring-emerald-500/24 dark:bg-emerald-400/16 dark:text-emerald-50 dark:ring-emerald-300/22",
+    containerClassName:
+      "border-emerald-500/22 bg-emerald-500/7 shadow-sm shadow-emerald-500/8 hover:border-emerald-500/36 hover:bg-emerald-500/10 dark:border-emerald-300/18 dark:bg-emerald-400/8 dark:shadow-black/20 dark:hover:border-emerald-300/30 dark:hover:bg-emerald-400/12",
+    id: "mint",
+    label: "薄荷",
+    swatchClassName: "bg-emerald-500 dark:bg-emerald-300",
+  },
+  {
+    accentClassName: "bg-amber-500 dark:bg-amber-300",
+    activeContainerClassName:
+      "border-amber-500/42 bg-amber-500/12 shadow-md shadow-amber-500/14 ring-1 ring-amber-400/24 dark:border-amber-300/34 dark:bg-amber-400/14 dark:ring-amber-300/20",
+    colorClassName:
+      "bg-amber-500/16 text-amber-800 ring-amber-500/24 dark:bg-amber-400/16 dark:text-amber-50 dark:ring-amber-300/22",
+    containerClassName:
+      "border-amber-500/22 bg-amber-500/7 shadow-sm shadow-amber-500/8 hover:border-amber-500/36 hover:bg-amber-500/10 dark:border-amber-300/18 dark:bg-amber-400/8 dark:shadow-black/20 dark:hover:border-amber-300/30 dark:hover:bg-amber-400/12",
+    id: "amber",
+    label: "琥珀",
+    swatchClassName: "bg-amber-500 dark:bg-amber-300",
+  },
+  {
+    accentClassName: "bg-cyan-500 dark:bg-cyan-300",
+    activeContainerClassName:
+      "border-cyan-500/42 bg-cyan-500/12 shadow-md shadow-cyan-500/14 ring-1 ring-cyan-400/24 dark:border-cyan-300/34 dark:bg-cyan-400/14 dark:ring-cyan-300/20",
+    colorClassName:
+      "bg-cyan-500/16 text-cyan-800 ring-cyan-500/24 dark:bg-cyan-400/16 dark:text-cyan-50 dark:ring-cyan-300/22",
+    containerClassName:
+      "border-cyan-500/22 bg-cyan-500/7 shadow-sm shadow-cyan-500/8 hover:border-cyan-500/36 hover:bg-cyan-500/10 dark:border-cyan-300/18 dark:bg-cyan-400/8 dark:shadow-black/20 dark:hover:border-cyan-300/30 dark:hover:bg-cyan-400/12",
+    id: "teal",
+    label: "青色",
+    swatchClassName: "bg-cyan-500 dark:bg-cyan-300",
+  },
+  {
+    accentClassName: "bg-orange-500 dark:bg-orange-300",
+    activeContainerClassName:
+      "border-orange-500/42 bg-orange-500/12 shadow-md shadow-orange-500/14 ring-1 ring-orange-400/24 dark:border-orange-300/34 dark:bg-orange-400/14 dark:ring-orange-300/20",
+    colorClassName:
+      "bg-orange-500/16 text-orange-800 ring-orange-500/24 dark:bg-orange-400/16 dark:text-orange-50 dark:ring-orange-300/22",
+    containerClassName:
+      "border-orange-500/22 bg-orange-500/7 shadow-sm shadow-orange-500/8 hover:border-orange-500/36 hover:bg-orange-500/10 dark:border-orange-300/18 dark:bg-orange-400/8 dark:shadow-black/20 dark:hover:border-orange-300/30 dark:hover:bg-orange-400/12",
+    id: "orange",
+    label: "橙色",
+    swatchClassName: "bg-orange-500 dark:bg-orange-300",
+  },
+  {
+    accentClassName: "bg-zinc-500 dark:bg-zinc-300",
+    activeContainerClassName:
+      "border-zinc-500/38 bg-zinc-500/11 shadow-md shadow-black/10 ring-1 ring-zinc-400/22 dark:border-zinc-300/30 dark:bg-zinc-300/12 dark:ring-zinc-200/18",
+    colorClassName:
+      "bg-zinc-500/14 text-zinc-800 ring-zinc-500/22 dark:bg-zinc-300/14 dark:text-zinc-50 dark:ring-zinc-200/18",
+    containerClassName:
+      "border-zinc-500/20 bg-zinc-500/7 shadow-sm shadow-black/6 hover:border-zinc-500/34 hover:bg-zinc-500/10 dark:border-zinc-300/16 dark:bg-zinc-300/8 dark:shadow-black/20 dark:hover:border-zinc-300/26 dark:hover:bg-zinc-300/11",
+    id: "gray",
+    label: "灰色",
+    swatchClassName: "bg-zinc-500 dark:bg-zinc-300",
+  },
 ];
+
+const tabGroupThemeById = new Map(
+  tabGroupColorThemes.map((theme) => [theme.id, theme]),
+);
 
 const terminalTabIdleClassName =
   "border-[var(--border-subtle)] bg-[var(--surface-solid)] text-zinc-600 shadow-sm shadow-black/5 hover:border-sky-500/25 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:shadow-black/20 dark:hover:border-sky-300/25 dark:hover:text-zinc-100";
+const terminalTabCompactIdleClassName =
+  "border-transparent bg-transparent text-zinc-600 hover:bg-white/55 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-white/8 dark:hover:text-zinc-50";
+const terminalTabCompactActiveClassName =
+  "border-white/70 bg-white/72 text-zinc-950 shadow-sm shadow-black/8 ring-1 ring-white/70 dark:border-white/14 dark:bg-white/14 dark:text-zinc-50 dark:shadow-black/20 dark:ring-white/12";
 const terminalTabMenuItemClassName =
   "kerminal-focus-ring kerminal-pressable flex w-full items-center rounded-lg px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-45";
 const terminalTabMenuIdleClassName =
@@ -82,11 +210,16 @@ export function TerminalTabButton({
   return (
     <div
       className={cn(
-        "relative z-30 flex h-9 items-center gap-2 rounded-xl border px-2.5 text-sm transition-[background-color,border-color,box-shadow,color,transform] duration-150",
+        "relative z-30 flex items-center gap-2 border text-sm transition-[background-color,border-color,box-shadow,color,transform] duration-150",
+        compact ? "h-8 rounded-lg px-2" : "h-9 rounded-xl px-2.5",
         compact ? "max-w-[190px]" : "shrink-0",
         active
-          ? "border-sky-500/60 bg-sky-500/14 text-sky-800 shadow-md shadow-sky-500/15 ring-1 ring-sky-400/30 dark:border-sky-300/45 dark:bg-sky-400/16 dark:text-sky-50 dark:ring-sky-300/25"
-          : terminalTabIdleClassName,
+          ? compact
+            ? terminalTabCompactActiveClassName
+            : "border-sky-500/60 bg-sky-500/14 text-sky-800 shadow-md shadow-sky-500/15 ring-1 ring-sky-400/30 dark:border-sky-300/45 dark:bg-sky-400/16 dark:text-sky-50 dark:ring-sky-300/25"
+          : compact
+            ? terminalTabCompactIdleClassName
+            : terminalTabIdleClassName,
       )}
       onContextMenu={onContextMenu}
     >
@@ -140,7 +273,7 @@ export function TerminalTabGroupHeader({
       aria-expanded={!collapsed}
       aria-label={collapsed ? `展开 ${group.title} 标签组` : `折叠 ${group.title} 标签组`}
       className={cn(
-        "kerminal-focus-ring kerminal-pressable flex h-9 max-w-[190px] items-center gap-2 rounded-xl px-2.5 text-sm font-medium ring-1 hover:brightness-105",
+        "kerminal-focus-ring kerminal-pressable flex h-9 max-w-[220px] items-center gap-1.5 rounded-xl border border-white/35 px-2.5 text-sm font-semibold ring-1 shadow-sm shadow-black/5 hover:brightness-105 dark:border-white/10 dark:shadow-black/20",
         group.colorClassName,
       )}
       onClick={onToggle}
@@ -153,8 +286,11 @@ export function TerminalTabGroupHeader({
       ) : (
         <ChevronDown className="h-3.5 w-3.5 shrink-0" />
       )}
+      <Layers2 className="h-3.5 w-3.5 shrink-0 opacity-75" />
       <span className="truncate">{group.title}</span>
-      <span className="text-[10px] opacity-70">{group.tabs.length}</span>
+      <span className="rounded-full bg-white/40 px-1.5 text-[10px] leading-4 opacity-80 dark:bg-white/10">
+        {group.tabs.length}
+      </span>
     </button>
   );
 }
@@ -231,6 +367,7 @@ export function TerminalTabGroupContextMenuItems({
   collapsed,
   group,
   onCloseTabs,
+  onRequestEdit,
   runMenuAction,
   tabs,
   toggleTabGroup,
@@ -238,6 +375,7 @@ export function TerminalTabGroupContextMenuItems({
   collapsed: boolean;
   group: TerminalTabGroup;
   onCloseTabs: (tabIds: string[]) => void;
+  onRequestEdit?: (group: TerminalTabGroup) => void;
   runMenuAction: (action?: () => void) => void;
   tabs: TerminalTab[];
   toggleTabGroup: (groupId: string) => void;
@@ -252,6 +390,11 @@ export function TerminalTabGroupContextMenuItems({
       <TerminalTabMenuItem
         label={collapsed ? "展开分组" : "折叠分组"}
         onClick={() => runMenuAction(() => toggleTabGroup(group.id))}
+      />
+      <TerminalTabMenuItem
+        disabled={!onRequestEdit}
+        label="编辑分组"
+        onClick={() => runMenuAction(() => onRequestEdit?.(group))}
       />
       <TerminalTabMenuItem
         danger
@@ -392,6 +535,136 @@ export function TerminalTabRenameDialog({
   );
 }
 
+export function TerminalTabGroupEditDialog({
+  group,
+  onClose,
+  onSave,
+}: {
+  group: TerminalTabGroup | null;
+  onClose: () => void;
+  onSave: (groupId: string, preference: TerminalTabGroupPreference) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [color, setColor] = useState<TerminalTabGroupColor>("blue");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!group) {
+      return;
+    }
+
+    setTitle(group.title);
+    setColor(group.color);
+    setError(null);
+  }, [group]);
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!group) {
+      return;
+    }
+
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      setError("请输入分组名称。");
+      return;
+    }
+
+    onSave(group.id, {
+      color,
+      title: trimmedTitle,
+    });
+    onClose();
+  };
+
+  return (
+    <ModalShell
+      onClose={onClose}
+      open={Boolean(group)}
+      size="small"
+      title="编辑标签组"
+    >
+      <form className="space-y-4" onSubmit={submit}>
+        <div className="kerminal-muted-surface rounded-2xl border p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Layers2 className="h-4 w-4 text-sky-500 dark:text-sky-300" />
+            分组信息
+          </div>
+          <label className="mt-4 block">
+            <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              分组名称
+            </span>
+            <input
+              autoFocus
+              className="kerminal-field-surface mt-1 h-9 w-full rounded-xl border px-3 text-sm"
+              onChange={(event) => {
+                setTitle(event.currentTarget.value);
+                setError(null);
+              }}
+              placeholder="例如：生产环境"
+              value={title}
+            />
+          </label>
+          <div className="mt-4">
+            <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              背景颜色
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {tabGroupColorThemes.map((theme) => {
+                const selected = theme.id === color;
+                return (
+                  <button
+                    aria-label={`选择${theme.label}分组颜色`}
+                    aria-pressed={selected}
+                    className={cn(
+                      "kerminal-focus-ring kerminal-pressable flex h-8 w-8 items-center justify-center rounded-full border transition",
+                      selected
+                        ? "border-sky-500/50 bg-[var(--surface-selected)] shadow-sm shadow-sky-500/20"
+                        : "border-[var(--border-subtle)] bg-[var(--surface-solid)] hover:bg-[var(--surface-hover)]",
+                    )}
+                    key={theme.id}
+                    onClick={() => setColor(theme.id)}
+                    title={theme.label}
+                    type="button"
+                  >
+                    <span
+                      className={cn(
+                        "flex h-[18px] w-[18px] items-center justify-center rounded-full",
+                        theme.swatchClassName,
+                      )}
+                    >
+                      {selected ? (
+                        <Check className="h-3 w-3 text-white drop-shadow dark:text-zinc-950" />
+                      ) : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {error ? (
+            <p
+              className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300"
+              role="alert"
+            >
+              {error}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose} type="button" variant="ghost">
+            取消
+          </Button>
+          <Button disabled={!title.trim()} type="submit" variant="primary">
+            保存
+          </Button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
 function TerminalTabMenuItem({
   danger = false,
   disabled,
@@ -421,7 +694,10 @@ function TerminalTabMenuItem({
   );
 }
 
-export function buildTerminalTabGroups(tabs: TerminalTab[]): TerminalTabGroup[] {
+export function buildTerminalTabGroups(
+  tabs: TerminalTab[],
+  preferences: TerminalTabGroupPreferences = {},
+): TerminalTabGroup[] {
   const orderedMachineIds: string[] = [];
   const tabsByMachineId = new Map<string, TerminalTab[]>();
 
@@ -433,17 +709,40 @@ export function buildTerminalTabGroups(tabs: TerminalTab[]): TerminalTabGroup[] 
     tabsByMachineId.get(tab.machineId)?.push(tab);
   }
 
+  const usedColors = new Set<TerminalTabGroupColor>();
   return orderedMachineIds.map((machineId) => {
     const groupTabs = tabsByMachineId.get(machineId) ?? [];
-    const title = groupTabs[0]?.title ?? machineId;
+    const preference = preferences[machineId];
+    const title = preference?.title?.trim() || groupTabs[0]?.title || machineId;
+    const color =
+      preference?.color ?? nextDefaultTerminalTabGroupColor(usedColors);
+    usedColors.add(color);
+    const theme = tabGroupThemeById.get(color) ?? tabGroupColorThemes[0];
     return {
-      colorClassName: tabGroupColors[Math.abs(hashString(machineId)) % tabGroupColors.length],
+      activeContainerClassName: theme.activeContainerClassName,
+      accentClassName: theme.accentClassName,
+      color,
+      colorClassName: theme.colorClassName,
+      colorLabel: theme.label,
+      containerClassName: theme.containerClassName,
       grouped: groupTabs.length > 1,
       id: machineId,
+      swatchClassName: theme.swatchClassName,
       tabs: groupTabs,
       title,
     };
   });
+}
+
+function nextDefaultTerminalTabGroupColor(
+  usedColors: Set<TerminalTabGroupColor>,
+) {
+  const fallbackIndex = usedColors.size % terminalTabGroupColorIds.length;
+  return (
+    terminalTabGroupColorIds.find((color) => !usedColors.has(color)) ??
+    terminalTabGroupColorIds[fallbackIndex] ??
+    "blue"
+  );
 }
 
 export function clampContextMenuPosition(
@@ -465,12 +764,4 @@ export function clampContextMenuPosition(
     x: Math.round(Math.min(Math.max(x, CONTEXT_MENU_MARGIN), maxX)),
     y: Math.round(Math.min(Math.max(y, CONTEXT_MENU_MARGIN), maxY)),
   };
-}
-
-function hashString(value: string) {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) | 0;
-  }
-  return hash;
 }

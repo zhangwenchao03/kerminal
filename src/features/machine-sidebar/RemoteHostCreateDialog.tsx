@@ -5,7 +5,11 @@ import type { DockerContainerSummary } from "../../lib/dockerApi";
 import { testRemoteConnection } from "../../lib/connectionApi";
 import { detectShells, type ShellCandidate } from "../../lib/profileApi";
 import { createDefaultSshOptions } from "../../lib/remoteHostApi";
-import type { RemoteHostAuthType, SshOptions } from "../../lib/remoteHostApi";
+import type {
+  RemoteHostAuthType,
+  RemoteHostGroup,
+  SshOptions,
+} from "../../lib/remoteHostApi";
 import type { ContainerRuntime } from "../../lib/targetModel";
 import { evaluateConnectionCheck } from "./remote-host-dialog/connection-check";
 import { buildLocalShellPresets, buildLocalTerminalOptions, formatLocalArgs, formatLocalEnv } from "./remote-host-dialog/local-form";
@@ -38,6 +42,7 @@ import {
 } from "./remote-host-dialog/request-builders";
 import { RemoteHostDialogSectionContent } from "./remote-host-dialog/section-content";
 import { protocolButtonClassName, sectionButtonClassName } from "./remote-host-dialog/shared-ui";
+import { RemoteHostGroupCreateDialog } from "./RemoteHostGroupCreateDialog";
 
 export type { DockerContainerCreateRequest, LocalTerminalCreateOptions } from "./remote-host-dialog/model";
 
@@ -50,12 +55,14 @@ export function RemoteHostCreateDialog({
   groups,
   onAddDockerContainer,
   onClose,
+  onCreateGroup,
   onCreateLocal,
   onCreateHost,
   onListDockerContainers,
   onUpdateHost,
   onUpdateLocal,
   onCreated,
+  onGroupCreated,
   open,
 }: RemoteHostCreateDialogProps) {
   const targetGroups = useMemo(
@@ -75,7 +82,7 @@ export function RemoteHostCreateDialog({
   );
   const [activeSection, setActiveSection] =
     useState<DialogSection>("properties");
-  const [authType, setAuthType] = useState<RemoteHostAuthType>("agent");
+  const [authType, setAuthType] = useState<RemoteHostAuthType>("password");
   const [credentialRef, setCredentialRef] = useState("");
   const [credentialSecret, setCredentialSecret] = useState("");
   const [dockerContainerId, setDockerContainerId] = useState("");
@@ -95,6 +102,7 @@ export function RemoteHostCreateDialog({
   const [error, setError] = useState<string | null>(null);
   const [groupId, setGroupId] = useState("");
   const [host, setHost] = useState("");
+  const [inlineGroupDialogOpen, setInlineGroupDialogOpen] = useState(false);
   const [localArgs, setLocalArgs] = useState("");
   const [localCwd, setLocalCwd] = useState("");
   const [localEnv, setLocalEnv] = useState("");
@@ -159,7 +167,7 @@ export function RemoteHostCreateDialog({
     setActiveSection("properties");
     setAuthType(
       editingHost?.authType ??
-        (initialMode === "rdp" ? "password" : "agent"),
+        (initialMode === "ssh" || initialMode === "rdp" ? "password" : "agent"),
     );
     setCredentialRef(editingHost?.authType === "key" ? editingHost.credentialRef ?? "" : "");
     setCredentialSecret(
@@ -209,7 +217,11 @@ export function RemoteHostCreateDialog({
     setRdpFullscreen(true);
     setRdpHeight("900");
     setRdpNote("");
-    setRdpPassword("");
+    setRdpPassword(
+      initialMode === "rdp" && editingHost?.authType === "password"
+        ? editingHost.credentialSecret ?? ""
+        : "",
+    );
     setRdpUsername(initialMode === "rdp" ? editingHost?.username ?? "" : "");
     setRdpWidth("1440");
     setSerialBaud(readSerialTagValue(editingHost, "baud") ?? "9600");
@@ -240,13 +252,10 @@ export function RemoteHostCreateDialog({
     setTelnetNote("");
     setUsername(editingHost?.username ?? "");
   }, [
-    defaultGroupId,
     defaultMode,
     editingHost,
     editingLocalMachine,
     open,
-    targetGroups,
-    sshMachines,
   ]);
 
   useEffect(() => {
@@ -677,6 +686,10 @@ export function RemoteHostCreateDialog({
     () => buildLocalShellPresets(localShellCandidates),
     [localShellCandidates],
   );
+  const handleInlineGroupCreated = async (group: RemoteHostGroup) => {
+    setGroupId(group.id);
+    await onGroupCreated?.(group);
+  };
   const showTestButton = (
     ["ssh", "rdp", "telnet", "serial"] as ConnectionMode[]
   ).includes(mode);
@@ -711,6 +724,9 @@ export function RemoteHostCreateDialog({
       localTitle={localTitle}
       mode={mode}
       name={name}
+      onCreateGroupClick={
+        onCreateGroup ? () => setInlineGroupDialogOpen(true) : undefined
+      }
       onDockerRefresh={() => setDockerRefreshToken((current) => current + 1)}
       port={port}
       rdpFullscreen={rdpFullscreen}
@@ -774,151 +790,163 @@ export function RemoteHostCreateDialog({
   );
 
   return (
-    <ModalShell
-      footer={
-        <>
-          <Button onClick={onClose} type="button" variant="ghost">
-            取消
-          </Button>
-          {showTestButton ? (
+    <>
+      <ModalShell
+        footer={
+          <>
+            <Button onClick={onClose} type="button" variant="ghost">
+              取消
+            </Button>
+            {showTestButton ? (
+              <Button
+                disabled={savingAction !== null}
+                onClick={() => void testConnection()}
+                type="button"
+                variant="secondary"
+              >
+                {savingAction === "test" ? "测试中..." : "测试连接"}
+              </Button>
+            ) : null}
             <Button
               disabled={savingAction !== null}
-              onClick={() => void testConnection()}
+              onClick={() => void confirm()}
               type="button"
-              variant="secondary"
+              variant="primary"
             >
-              {savingAction === "test" ? "测试中..." : "测试连接"}
+              {savingAction === "confirm" ? "处理中..." : "确认"}
             </Button>
-          ) : null}
-          <Button
-            disabled={savingAction !== null}
-            onClick={() => void confirm()}
-            type="button"
-            variant="primary"
-          >
-            {savingAction === "confirm" ? "处理中..." : "确认"}
-          </Button>
-        </>
-      }
-      description={
-        editingHost || editingLocalMachine
-          ? "编辑已保存的连接配置。"
-          : "从这里新增本地终端、保存 SSH/RDP 主机，或添加容器目标。"
-      }
-      onClose={onClose}
-      open={open}
-      size="large"
-      title={editingHost || editingLocalMachine ? "编辑连接配置" : "新建主机"}
-    >
-      <div className="space-y-4">
-        <div className="scrollbar-none flex gap-2 overflow-x-auto border-b border-[var(--border-subtle)] pb-3">
-          {protocolTabs.map((protocol) => {
-            const Icon = protocol.Icon;
-            const selected = protocol.id === mode;
-            const disabled =
-              Boolean(editingHost || editingLocalMachine) && protocol.id !== mode;
-            return (
-              <button
-                aria-pressed={selected}
-                className={protocolButtonClassName(selected, disabled)}
-                disabled={disabled}
-                key={protocol.id}
-                onClick={() => {
-                  setMode(protocol.id);
-                  setActiveSection("properties");
-                  setError(null);
-                  setStatusMessage(null);
-                  if (protocol.id === "rdp") {
-                    setPort("3389");
-                    setTags("rdp");
-                  } else if (protocol.id === "telnet") {
-                    setAuthType("agent");
-                    setCredentialRef("");
-                    setCredentialSecret("");
-                    setPort("23");
-                    setRdpUsername("");
-                    setTags("telnet");
-                    setUsername("");
-                  } else if (protocol.id === "serial") {
-                    setAuthType("agent");
-                    setCredentialRef("");
-                    setCredentialSecret("");
-                    setHost("");
-                    setPort("1");
-                    setRdpUsername("");
-                    setSerialBaud("9600");
-                    setSerialDataBits("8");
-                    setSerialFlow("none");
-                    setSerialParity("none");
-                    setSerialPort("");
-                    setSerialStopBits("1");
-                    setTags("serial");
-                    setUsername("");
-                  } else if (protocol.id === "ssh") {
-                    setPort("22");
-                    setTags("");
-                  } else if (protocol.id === "docker") {
-                    setDockerHostId((current) =>
-                      current &&
-                      sshMachines.some((machine) => machine.id === current)
-                        ? current
-                        : readRememberedDockerHostId(sshMachines),
-                    );
-                    setTags("");
-                  }
-                }}
-                title={protocol.label}
-                type="button"
-              >
-                <Icon className="h-5 w-5" />
-                <span>{protocol.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="grid min-h-[430px] gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
-          <nav
-            aria-label="连接配置分区"
-            className="kerminal-muted-surface rounded-2xl border p-2"
-          >
-            {activeSections.map((section) => {
-              const Icon = section.Icon;
-              const selected = section.id === activeSection;
+          </>
+        }
+        description={
+          editingHost || editingLocalMachine
+            ? "编辑已保存的连接配置。"
+            : "从这里新增本地终端、保存 SSH/RDP 主机，或添加容器目标。"
+        }
+        onClose={onClose}
+        open={open}
+        size="large"
+        title={editingHost || editingLocalMachine ? "编辑连接配置" : "新建主机"}
+      >
+        <div className="space-y-4">
+          <div className="scrollbar-none flex gap-2 overflow-x-auto border-b border-[var(--border-subtle)] pb-3">
+            {protocolTabs.map((protocol) => {
+              const Icon = protocol.Icon;
+              const selected = protocol.id === mode;
+              const disabled =
+                Boolean(editingHost || editingLocalMachine) &&
+                protocol.id !== mode;
               return (
                 <button
                   aria-pressed={selected}
-                  className={sectionButtonClassName(selected)}
-                  key={section.id}
+                  className={protocolButtonClassName(selected, disabled)}
+                  disabled={disabled}
+                  key={protocol.id}
                   onClick={() => {
-                    setActiveSection(section.id);
+                    setMode(protocol.id);
+                    setActiveSection("properties");
+                    setError(null);
                     setStatusMessage(null);
+                    if (protocol.id === "rdp") {
+                      setPort("3389");
+                      setTags("rdp");
+                    } else if (protocol.id === "telnet") {
+                      setAuthType("agent");
+                      setCredentialRef("");
+                      setCredentialSecret("");
+                      setPort("23");
+                      setRdpUsername("");
+                      setTags("telnet");
+                      setUsername("");
+                    } else if (protocol.id === "serial") {
+                      setAuthType("agent");
+                      setCredentialRef("");
+                      setCredentialSecret("");
+                      setHost("");
+                      setPort("1");
+                      setRdpUsername("");
+                      setSerialBaud("9600");
+                      setSerialDataBits("8");
+                      setSerialFlow("none");
+                      setSerialParity("none");
+                      setSerialPort("");
+                      setSerialStopBits("1");
+                      setTags("serial");
+                      setUsername("");
+                    } else if (protocol.id === "ssh") {
+                      setAuthType("password");
+                      setPort("22");
+                      setTags("");
+                    } else if (protocol.id === "docker") {
+                      setDockerHostId((current) =>
+                        current &&
+                        sshMachines.some((machine) => machine.id === current)
+                          ? current
+                          : readRememberedDockerHostId(sshMachines),
+                      );
+                      setTags("");
+                    }
                   }}
+                  title={protocol.label}
                   type="button"
                 >
-                  <Icon className="h-4 w-4" />
-                  {section.label}
+                  <Icon className="h-5 w-5" />
+                  <span>{protocol.label}</span>
                 </button>
               );
             })}
-          </nav>
+          </div>
 
-          <div className="min-w-0">
-            {sectionContent}
+          <div className="grid min-h-[430px] gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+            <nav
+              aria-label="连接配置分区"
+              className="kerminal-muted-surface rounded-2xl border p-2"
+            >
+              {activeSections.map((section) => {
+                const Icon = section.Icon;
+                const selected = section.id === activeSection;
+                return (
+                  <button
+                    aria-pressed={selected}
+                    className={sectionButtonClassName(selected)}
+                    key={section.id}
+                    onClick={() => {
+                      setActiveSection(section.id);
+                      setStatusMessage(null);
+                    }}
+                    type="button"
+                  >
+                    <Icon className="h-4 w-4" />
+                    {section.label}
+                  </button>
+                );
+              })}
+            </nav>
 
-            {error ? (
-              <p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
-                {error}
-              </p>
-            ) : null}
-            {statusMessage ? (
-              <p className="mt-4 rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-sm text-sky-700 dark:text-sky-200">
-                {statusMessage}
-              </p>
-            ) : null}
+            <div className="min-w-0">
+              {sectionContent}
+
+              {error ? (
+                <p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
+                  {error}
+                </p>
+              ) : null}
+              {statusMessage ? (
+                <p className="mt-4 rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-sm text-sky-700 dark:text-sky-200">
+                  {statusMessage}
+                </p>
+              ) : null}
+            </div>
           </div>
         </div>
-      </div>
-    </ModalShell>
+      </ModalShell>
+      {inlineGroupDialogOpen && onCreateGroup ? (
+        <RemoteHostGroupCreateDialog
+          onClose={() => setInlineGroupDialogOpen(false)}
+          onCreateGroup={onCreateGroup}
+          onCreated={handleInlineGroupCreated}
+          open={inlineGroupDialogOpen}
+        />
+      ) : null}
+    </>
   );
 }

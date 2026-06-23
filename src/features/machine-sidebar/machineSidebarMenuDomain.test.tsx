@@ -39,6 +39,70 @@ function expectMenuDomain(domain: string) {
 }
 
 describe("machineSidebarMenuDomain", () => {
+  it("collapses host groups by default", () => {
+    render(
+      <MachineSidebar
+        groups={remoteSidebarGroups}
+        onSearchChange={vi.fn()}
+        onSelectMachine={vi.fn()}
+        search=""
+        selectedMachineId="ubuntu-dev"
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /开发主机/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.queryByRole("button", { name: /ubuntu-dev/i })).toBeNull();
+  });
+
+  it("collapses host groups that load after the first render", () => {
+    const { rerender } = render(
+      <MachineSidebar
+        groups={[]}
+        onSearchChange={vi.fn()}
+        onSelectMachine={vi.fn()}
+        search=""
+        selectedMachineId=""
+      />,
+    );
+
+    rerender(
+      <MachineSidebar
+        groups={remoteSidebarGroups}
+        onSearchChange={vi.fn()}
+        onSelectMachine={vi.fn()}
+        search=""
+        selectedMachineId="ubuntu-dev"
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /开发主机/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.queryByRole("button", { name: /ubuntu-dev/i })).toBeNull();
+  });
+
+  it("reveals matching hosts while search is active", () => {
+    render(
+      <MachineSidebar
+        groups={remoteSidebarGroups}
+        onSearchChange={vi.fn()}
+        onSelectMachine={vi.fn()}
+        search="ubuntu"
+        selectedMachineId="ubuntu-dev"
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /开发主机/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /ubuntu-dev/i })).toBeTruthy();
+  });
+
   it("renders root menu with the machine-sidebar-root domain", () => {
     render(
       <MachineSidebar
@@ -94,6 +158,7 @@ describe("machineSidebarMenuDomain", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: /开发主机/ }));
     fireEvent.contextMenu(screen.getByRole("button", { name: /ubuntu-dev/i }));
 
     expectMenuDomain(MACHINE_ASSET_MENU_DOMAIN);
@@ -115,6 +180,7 @@ describe("machineSidebarMenuDomain", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: /开发主机/ }));
     fireEvent.contextMenu(screen.getByRole("button", { name: /api/i }));
 
     expectMenuDomain(MACHINE_ASSET_MENU_DOMAIN);

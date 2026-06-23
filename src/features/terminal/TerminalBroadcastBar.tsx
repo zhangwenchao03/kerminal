@@ -11,7 +11,6 @@ import {
   canBroadcastCommand,
   type BroadcastCommandAnalysis,
 } from "./broadcastCommandPolicy";
-import { BroadcastConfirmation } from "./TerminalBroadcastConfirmation";
 import type { TerminalSplitDirection } from "../workspace/types";
 
 interface TerminalBroadcastBarProps {
@@ -19,13 +18,10 @@ interface TerminalBroadcastBarProps {
   draft: string;
   error: string | null;
   focusedPaneId: string;
-  onCancelPending: () => void;
   onClosePane: (paneId: string) => void;
-  onConfirmPending: () => void;
   onDraftChange: (draft: string) => void;
   onRequestBroadcast: () => void;
   onSplitPane: (direction: TerminalSplitDirection) => void;
-  pendingAnalysis: BroadcastCommandAnalysis | null;
   sending: boolean;
   status: string | null;
   style?: CSSProperties;
@@ -38,13 +34,10 @@ export function TerminalBroadcastBar({
   draft,
   error,
   focusedPaneId,
-  onCancelPending,
   onClosePane,
-  onConfirmPending,
   onDraftChange,
   onRequestBroadcast,
   onSplitPane,
-  pendingAnalysis,
   sending,
   status,
   style,
@@ -72,28 +65,28 @@ export function TerminalBroadcastBar({
           aria-label="左右分屏"
           onClick={() => onSplitPane("horizontal")}
           size="sm"
+          title="左右分屏"
           variant="secondary"
         >
           <Columns2 className="h-4 w-4" />
-          左右
         </Button>
         <Button
           aria-label="上下分屏"
           onClick={() => onSplitPane("vertical")}
           size="sm"
+          title="上下分屏"
           variant="secondary"
         >
           <PanelBottom className="h-4 w-4" />
-          上下
         </Button>
         <Button
           aria-label="关闭当前分屏"
           onClick={() => onClosePane(focusedPaneId)}
           size="sm"
+          title="关闭当前分屏"
           variant="ghost"
         >
           <SplitSquareHorizontal className="h-4 w-4" />
-          关闭分屏
         </Button>
         <label className="sr-only" htmlFor="broadcast-command">
           批量命令
@@ -110,29 +103,16 @@ export function TerminalBroadcastBar({
           {targetCount} 个目标
         </span>
         <Button
+          aria-label={sending ? "发送中" : "发送到全部"}
           disabled={!canBroadcastCommand(analysis) || sending}
           onClick={onRequestBroadcast}
           size="sm"
+          title={sending ? "发送中" : "发送到全部"}
           variant="primary"
         >
           <Send className="h-4 w-4" />
-          {sending ? "发送中" : "发送到全部"}
         </Button>
       </div>
-
-      {pendingAnalysis ? (
-        <div
-          className="transition-[margin-right] duration-200 ease-out"
-          style={style}
-        >
-          <BroadcastConfirmation
-            analysis={pendingAnalysis}
-            disabled={sending}
-            onCancel={onCancelPending}
-            onConfirm={onConfirmPending}
-          />
-        </div>
-      ) : null}
 
       {status || error ? (
         <div

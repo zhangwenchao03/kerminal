@@ -54,6 +54,7 @@ export function workspaceProps(
     onRenameTab: vi.fn(),
     onSelectTab: vi.fn(),
     onSplitPane: vi.fn(),
+    onUpdateTabGroupPreference: vi.fn(),
     panes: [baseTerminalPane],
     resolvedTheme: "dark",
     tabs: [baseTerminalTab],

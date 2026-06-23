@@ -8,8 +8,10 @@ import type {
   TerminalLayoutNode,
   TerminalPane,
   TerminalTab,
+  TerminalTabGroupPreferences,
 } from "./types";
 import {
+  isTerminalTabGroupColor,
   isSftpTransferWorkspaceTab,
   isTerminalSessionTab,
 } from "./types";
@@ -31,6 +33,7 @@ export interface WorkspaceSessionSnapshot {
   selectedMachineId: string;
   removedSidebarMachineIds?: string[];
   sidebarMachines: Machine[];
+  terminalTabGroupPreferences?: TerminalTabGroupPreferences;
   terminalPanes: TerminalPane[];
   terminalTabs: TerminalTab[];
 }
@@ -59,6 +62,9 @@ export function normalizeWorkspaceSessionSnapshot(
   const removedSidebarMachineIds = uniqueStrings(
     normalizeStringArray(source?.removedSidebarMachineIds) ?? [],
   );
+  const terminalTabGroupPreferences = normalizeTerminalTabGroupPreferences(
+    source?.terminalTabGroupPreferences,
+  );
   const referencedPaneIds = new Set(
     terminalTabs.flatMap((tab) =>
       isTerminalSessionTab(tab) ? collectPaneIds(tab.layout) : [],
@@ -81,6 +87,7 @@ export function normalizeWorkspaceSessionSnapshot(
     selectedMachineId: selection.selectedMachineId,
     removedSidebarMachineIds,
     sidebarMachines,
+    terminalTabGroupPreferences,
     terminalPanes: selection.activeTabId ? referencedPanes : [],
     terminalTabs,
   };
@@ -302,6 +309,36 @@ function normalizeTerminalTab(
   return value.kind === "terminal"
     ? { id, kind: "terminal", layout, machineId, title }
     : { id, layout, machineId, title };
+}
+
+function normalizeTerminalTabGroupPreferences(
+  value: unknown,
+): TerminalTabGroupPreferences | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const preferences: TerminalTabGroupPreferences = {};
+  for (const [groupId, rawPreference] of Object.entries(value)) {
+    if (!groupId || !isRecord(rawPreference)) {
+      continue;
+    }
+
+    const title = readOptionalString(rawPreference.title)?.trim();
+    const color = isTerminalTabGroupColor(rawPreference.color)
+      ? rawPreference.color
+      : undefined;
+    if (!title && !color) {
+      continue;
+    }
+
+    preferences[groupId] = {
+      ...(color ? { color } : {}),
+      ...(title ? { title } : {}),
+    };
+  }
+
+  return Object.keys(preferences).length > 0 ? preferences : undefined;
 }
 
 function normalizeLayoutNode(

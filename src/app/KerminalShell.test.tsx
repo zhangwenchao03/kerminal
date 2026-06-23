@@ -28,6 +28,34 @@ import { KerminalShell } from "./KerminalShell";
 
 const mocks = getKerminalShellTestMocks();
 
+async function findExpandedSidebarMachine(name: RegExp) {
+  const sidebar = screen.getByRole("complementary", { name: "主机侧边栏" });
+  await waitFor(() => {
+    if (within(sidebar).queryByRole("button", { name })) {
+      return;
+    }
+    const hasCollapsedGroup = within(sidebar)
+      .queryAllByRole("button")
+      .some((button) => button.getAttribute("aria-expanded") === "false");
+    if (!hasCollapsedGroup) {
+      throw new Error("Waiting for sidebar machine groups to load.");
+    }
+  });
+  const visibleMachine = within(sidebar).queryByRole("button", { name });
+  if (visibleMachine) {
+    return visibleMachine;
+  }
+  const collapsedGroupButtons = within(sidebar)
+    .queryAllByRole("button")
+    .filter((button) => button.getAttribute("aria-expanded") === "false");
+  await act(async () => {
+    for (const button of collapsedGroupButtons) {
+      fireEvent.click(button);
+    }
+  });
+  return within(sidebar).findByRole("button", { name });
+}
+
 describe("KerminalShell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -189,7 +217,7 @@ describe("KerminalShell", () => {
       await screen.findByText("光标还没闪，AI 已经开始脑补命令了。"),
     ).toBeInTheDocument();
     expect(
-      await screen.findByRole("button", { name: /172\.16\.41\.60/ }),
+      await findExpandedSidebarMachine(/172\.16\.41\.60/),
     ).toBeInTheDocument();
     expect(mocks.terminalApi.createTerminalSession).not.toHaveBeenCalled();
   });
@@ -198,9 +226,7 @@ describe("KerminalShell", () => {
     const user = userEvent.setup();
     render(<KerminalShell />);
 
-    const hostButton = await screen.findByRole("button", {
-      name: /172\.16\.41\.60/,
-    });
+    const hostButton = await findExpandedSidebarMachine(/172\.16\.41\.60/);
 
     fireEvent.contextMenu(hostButton);
     await user.click(screen.getByRole("menuitem", { name: "打开 SFTP" }));
@@ -250,9 +276,7 @@ describe("KerminalShell", () => {
 
     render(<KerminalShell />);
 
-    const hostButton = await screen.findByRole("button", {
-      name: /172\.16\.41\.60/,
-    });
+    const hostButton = await findExpandedSidebarMachine(/172\.16\.41\.60/);
     fireEvent.contextMenu(hostButton);
     await user.click(screen.getByRole("menuitem", { name: "新建传输 Tab" }));
     expect(await screen.findByLabelText("SFTP 传输工作台")).toHaveTextContent(
@@ -269,6 +293,8 @@ describe("KerminalShell", () => {
     await user.type(screen.getByLabelText("名称"), "transfer-dev");
     await user.type(screen.getByLabelText("主机"), "10.0.0.9");
     await user.type(screen.getByLabelText("用户名"), "deploy");
+    await user.click(screen.getByRole("combobox", { name: "认证方式" }));
+    await user.click(screen.getByRole("option", { name: /SSH Agent/ }));
     await user.click(screen.getByRole("button", { name: "确认" }));
 
     await waitFor(() => {
@@ -318,7 +344,7 @@ describe("KerminalShell", () => {
     render(<KerminalShell />);
 
     expect(
-      await screen.findByRole("button", { name: /172\.16\.41\.60/ }),
+      await findExpandedSidebarMachine(/172\.16\.41\.60/),
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(mocks.settingsApi.getSettings).toHaveBeenCalled();
@@ -370,9 +396,7 @@ describe("KerminalShell", () => {
 
     render(<KerminalShell />);
 
-    const hostButton = await screen.findByRole("button", {
-      name: /172\.16\.41\.60/,
-    });
+    const hostButton = await findExpandedSidebarMachine(/172\.16\.41\.60/);
     await user.click(hostButton);
 
     expect(mocks.dockerApi.listDockerContainers).not.toHaveBeenCalled();
@@ -706,9 +730,7 @@ describe("KerminalShell", () => {
 
     render(<KerminalShell />);
 
-    const hostButton = await screen.findByRole("button", {
-      name: /172\.16\.41\.60/,
-    });
+    const hostButton = await findExpandedSidebarMachine(/172\.16\.41\.60/);
     fireEvent.doubleClick(hostButton);
 
     await waitFor(() => {
@@ -743,9 +765,7 @@ describe("KerminalShell", () => {
 
     render(<KerminalShell />);
 
-    const hostButton = await screen.findByRole("button", {
-      name: /office-rdp/,
-    });
+    const hostButton = await findExpandedSidebarMachine(/office-rdp/);
     fireEvent.doubleClick(hostButton);
 
     await waitFor(() => {
@@ -792,6 +812,8 @@ describe("KerminalShell", () => {
     await user.type(screen.getByLabelText("名称"), "default-dev");
     await user.type(screen.getByLabelText("主机"), "10.0.0.8");
     await user.type(screen.getByLabelText("用户名"), "ubuntu");
+    await user.click(screen.getByRole("combobox", { name: "认证方式" }));
+    await user.click(screen.getByRole("option", { name: /SSH Agent/ }));
     await user.click(screen.getByRole("button", { name: "确认" }));
 
     await waitFor(() => {
@@ -836,10 +858,7 @@ describe("KerminalShell", () => {
       shiftKey: true,
     });
 
-    const sidebar = screen.getByRole("complementary", { name: "主机侧边栏" });
-    const localButton = await within(sidebar).findByRole("button", {
-      name: /PowerShell 7/,
-    });
+    const localButton = await findExpandedSidebarMachine(/PowerShell 7/);
     fireEvent.contextMenu(localButton);
     await user.click(screen.getByRole("menuitem", { name: "编辑连接配置" }));
 
@@ -865,9 +884,7 @@ describe("KerminalShell", () => {
       );
     });
     expect(
-      await within(sidebar).findByRole("button", {
-        name: /Renamed PowerShell/,
-      }),
+      await findExpandedSidebarMachine(/Renamed PowerShell/),
     ).toBeInTheDocument();
   });
 
@@ -876,9 +893,7 @@ describe("KerminalShell", () => {
 
     render(<KerminalShell />);
 
-    const hostButton = await screen.findByRole("button", {
-      name: /172\.16\.41\.60/,
-    });
+    const hostButton = await findExpandedSidebarMachine(/172\.16\.41\.60/);
     fireEvent.contextMenu(hostButton);
     await user.click(screen.getByRole("menuitem", { name: "复制主机" }));
 
@@ -905,9 +920,7 @@ describe("KerminalShell", () => {
 
     render(<KerminalShell />);
 
-    const hostButton = await screen.findByRole("button", {
-      name: /172\.16\.41\.60/,
-    });
+    const hostButton = await findExpandedSidebarMachine(/172\.16\.41\.60/);
     const targetSection = (await screen.findByText("工具")).closest("section");
     expect(targetSection).toBeInTheDocument();
     const restoreElementFromPoint = mockElementFromPoint(targetSection!);
@@ -1033,10 +1046,7 @@ describe("KerminalShell", () => {
       shiftKey: true,
     });
 
-    const sidebar = screen.getByRole("complementary", { name: "主机侧边栏" });
-    const localButton = await within(sidebar).findByRole("button", {
-      name: /PowerShell 7/,
-    });
+    const localButton = await findExpandedSidebarMachine(/PowerShell 7/);
     fireEvent.contextMenu(localButton);
     await user.click(screen.getByRole("menuitem", { name: "复制主机" }));
 
@@ -1051,7 +1061,7 @@ describe("KerminalShell", () => {
       });
     });
     expect(
-      await within(sidebar).findByRole("button", { name: /PowerShell 7 副本/ }),
+      await findExpandedSidebarMachine(/PowerShell 7 副本/),
     ).toBeInTheDocument();
   });
 });

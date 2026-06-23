@@ -29,6 +29,8 @@ import type {
   TerminalPane,
   TerminalSplitDirection,
   TerminalTab,
+  TerminalTabGroupPreference,
+  TerminalTabGroupPreferences,
 } from "../workspace/types";
 import { isTerminalSessionTab } from "../workspace/types";
 import { TerminalPaneLayout } from "./TerminalPaneLayout";
@@ -41,8 +43,10 @@ import {
   TerminalTabButton,
   TerminalTabContextMenuItems,
   TerminalTabGroupContextMenuItems,
+  TerminalTabGroupEditDialog,
   TerminalTabGroupHeader,
   TerminalTabRenameDialog,
+  type TerminalTabGroup,
   type TerminalTabContextMenu,
   type TerminalTabContextMenuPayload,
 } from "./terminalTabChrome";
@@ -76,6 +80,7 @@ interface TerminalWorkspaceProps {
   panes: TerminalPane[];
   resolvedTheme: ResolvedTheme;
   tabs: TerminalTab[];
+  tabGroupPreferences?: TerminalTabGroupPreferences;
   terminalAppearance: TerminalAppearance;
   onBroadcastCommand: (
     request: BroadcastCommandRequest,
@@ -94,6 +99,10 @@ interface TerminalWorkspaceProps {
   ) => void;
   onOpenLogs?: () => void;
   onRenameTab: (tabId: string, title: string) => void;
+  onUpdateTabGroupPreference?: (
+    groupId: string,
+    preference: TerminalTabGroupPreference,
+  ) => void;
   reserveRightTitleBarControls?: boolean;
   renderCustomTab?: (tab: TerminalTab, active: boolean) => ReactNode;
   onSelectTab: (tabId: string) => void;
@@ -118,6 +127,7 @@ export function TerminalWorkspace({
   onPaneOutputHistoryChange,
   onOpenLogs,
   onRenameTab,
+  onUpdateTabGroupPreference,
   reserveRightTitleBarControls = true,
   renderCustomTab,
   onSelectTab,
@@ -125,16 +135,22 @@ export function TerminalWorkspace({
   panes,
   resolvedTheme,
   tabs,
+  tabGroupPreferences = {},
   terminalAppearance,
 }: TerminalWorkspaceProps) {
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
-  const tabGroups = useMemo(() => buildTerminalTabGroups(tabs), [tabs]);
+  const tabGroups = useMemo(
+    () => buildTerminalTabGroups(tabs, tabGroupPreferences),
+    [tabGroupPreferences, tabs],
+  );
   const [collapsedTabGroupIds, setCollapsedTabGroupIds] = useState<Set<string>>(
     () => new Set(),
   );
   const [contextMenu, setContextMenu] = useState<TerminalTabContextMenu | null>(
     null,
   );
+  const [editingTabGroup, setEditingTabGroup] =
+    useState<TerminalTabGroup | null>(null);
   const [renamingTab, setRenamingTab] = useState<TerminalTab | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const tabListRef = useRef<HTMLDivElement>(null);
@@ -183,8 +199,6 @@ export function TerminalWorkspace({
   );
   const [broadcastStatus, setBroadcastStatus] = useState<string | null>(null);
   const [broadcastError, setBroadcastError] = useState<string | null>(null);
-  const [pendingBroadcast, setPendingBroadcast] =
-    useState<BroadcastCommandAnalysis | null>(null);
   const [pendingCloseTabIds, setPendingCloseTabIds] = useState<string[] | null>(
     null,
   );
@@ -295,7 +309,6 @@ export function TerminalWorkspace({
 
     setBroadcastStatus(null);
     setBroadcastError(null);
-    setPendingBroadcast(null);
   }, [hasActiveSplit]);
 
   useEffect(() => {
@@ -352,6 +365,22 @@ export function TerminalWorkspace({
       window.removeEventListener("resize", closeOnResize);
     };
   }, [tabOverviewOpen]);
+
+  useEffect(() => {
+    if (!editingTabGroup) {
+      return;
+    }
+
+    const nextGroup = tabGroups.find((group) => group.id === editingTabGroup.id);
+    if (!nextGroup) {
+      setEditingTabGroup(null);
+      return;
+    }
+
+    if (nextGroup !== editingTabGroup) {
+      setEditingTabGroup(nextGroup);
+    }
+  }, [editingTabGroup, tabGroups]);
 
   useEffect(() => {
     if (!renamingTab) {
@@ -440,7 +469,6 @@ export function TerminalWorkspace({
         setBroadcastStatus(
           `已发送到 ${result.sentPaneIds.length} 个分屏${skipped}。`,
         );
-        setPendingBroadcast(null);
         if (result.sentPaneIds.length > 0) {
           onBroadcastDraftChange("");
         }
@@ -462,23 +490,11 @@ export function TerminalWorkspace({
       void executeBroadcast(broadcastAnalysis);
       return;
     }
-    if (broadcastAnalysis.requiresConfirmation) {
-      setPendingBroadcast(broadcastAnalysis);
-      return;
-    }
     void executeBroadcast(broadcastAnalysis);
   }, [broadcastAnalysis, executeBroadcast]);
 
-  const confirmPendingBroadcast = useCallback(() => {
-    if (!pendingBroadcast) {
-      return;
-    }
-    void executeBroadcast(pendingBroadcast);
-  }, [executeBroadcast, pendingBroadcast]);
-
   const handleDraftChange = useCallback(
     (draft: string) => {
-      setPendingBroadcast(null);
       setBroadcastStatus(null);
       setBroadcastError(null);
       onBroadcastDraftChange(draft);
@@ -610,6 +626,9 @@ export function TerminalWorkspace({
                 collapsed={collapsedTabGroupIds.has(contextTabGroup.id)}
                 group={contextTabGroup}
                 onCloseTabs={requestCloseTabs}
+                onRequestEdit={
+                  onUpdateTabGroupPreference ? setEditingTabGroup : undefined
+                }
                 runMenuAction={runMenuAction}
                 tabs={tabs}
                 toggleTabGroup={toggleTabGroup}
@@ -728,13 +747,20 @@ export function TerminalWorkspace({
             return (
               <div
                 className={cn(
-                  "flex h-9 shrink-0 items-center gap-1 rounded-xl border px-1.5 transition-[background-color,border-color,box-shadow]",
+                  "relative flex h-10 shrink-0 items-center gap-1 rounded-2xl border px-1.5 pt-0.5 transition-[background-color,border-color,box-shadow]",
                   groupActive
-                    ? "border-sky-500/50 bg-sky-500/12 shadow-md shadow-sky-500/15 ring-1 ring-sky-400/25 dark:border-sky-300/40 dark:bg-sky-400/14 dark:ring-sky-300/20"
-                    : "border-[var(--border-subtle)] bg-[var(--surface-solid)] shadow-sm shadow-black/5 hover:border-sky-500/25 hover:bg-[var(--surface-hover)] dark:shadow-black/20 dark:hover:border-sky-300/25",
+                    ? group.activeContainerClassName
+                    : group.containerClassName,
                 )}
                 key={group.id}
               >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "pointer-events-none absolute left-3 right-3 top-0 h-0.5 rounded-full",
+                    group.accentClassName,
+                  )}
+                />
                 <TerminalTabGroupHeader
                   collapsed={collapsed}
                   group={group}
@@ -797,6 +823,13 @@ export function TerminalWorkspace({
         onRenameTab={onRenameTab}
         tab={renamingTab}
       />
+      <TerminalTabGroupEditDialog
+        group={editingTabGroup}
+        onClose={() => setEditingTabGroup(null)}
+        onSave={(groupId, preference) =>
+          onUpdateTabGroupPreference?.(groupId, preference)
+        }
+      />
       <CloseTabsConfirmationDialog
         onClose={() => setPendingCloseTabIds(null)}
         onConfirm={confirmCloseTabs}
@@ -809,13 +842,10 @@ export function TerminalWorkspace({
           draft={broadcastDraft}
           error={broadcastError}
           focusedPaneId={focusedPaneId}
-          onCancelPending={() => setPendingBroadcast(null)}
           onClosePane={onClosePane}
-          onConfirmPending={confirmPendingBroadcast}
           onDraftChange={handleDraftChange}
           onRequestBroadcast={requestBroadcast}
           onSplitPane={onSplitPane}
-          pendingAnalysis={pendingBroadcast}
           sending={sendingBroadcast}
           status={broadcastStatus}
           style={contentInsetStyle}

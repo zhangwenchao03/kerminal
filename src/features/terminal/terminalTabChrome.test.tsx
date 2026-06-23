@@ -1,7 +1,11 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { TerminalTab } from "../workspace/types";
-import { TerminalTabButton, TerminalTabGroupHeader } from "./terminalTabChrome";
+import {
+  buildTerminalTabGroups,
+  TerminalTabButton,
+  TerminalTabGroupHeader,
+} from "./terminalTabChrome";
 
 const localTab: TerminalTab = {
   id: "tab-local",
@@ -70,9 +74,15 @@ describe("TerminalTabGroupHeader", () => {
       <TerminalTabGroupHeader
         collapsed={false}
         group={{
+          accentClassName: "bg-sky-500",
+          activeContainerClassName: "border-sky-500/45",
+          color: "blue",
           colorClassName: "bg-sky-500/12 text-sky-700",
+          colorLabel: "蓝色",
+          containerClassName: "border-sky-500/22",
           grouped: true,
           id: "sftpTransfer",
+          swatchClassName: "bg-sky-500",
           tabs: [localTab, { ...localTab, id: "tab-sftp-2" }],
           title: "SFTP 传输",
         }}
@@ -86,8 +96,43 @@ describe("TerminalTabGroupHeader", () => {
     });
 
     expect(groupButton).toHaveClass("h-9");
-    expect(groupButton).toHaveClass("max-w-[190px]");
+    expect(groupButton).toHaveClass("max-w-[220px]");
     expect(groupButton).toHaveClass("rounded-xl");
     expect(groupButton).toHaveClass("text-sm");
+  });
+});
+
+describe("buildTerminalTabGroups", () => {
+  it("applies saved group names and colors while defaulting other groups", () => {
+    const groups = buildTerminalTabGroups(
+      [
+        localTab,
+        { ...localTab, id: "tab-local-2", title: "本地 PowerShell #2" },
+        { ...localTab, id: "tab-remote", machineId: "host-prod", title: "prod" },
+        { ...localTab, id: "tab-lab", machineId: "host-lab", title: "lab" },
+      ],
+      {
+        "local-powershell": {
+          color: "pink",
+          title: "本地运维",
+        },
+      },
+    );
+
+    expect(groups[0]).toMatchObject({
+      color: "pink",
+      grouped: true,
+      id: "local-powershell",
+      title: "本地运维",
+    });
+    expect(groups[0].colorClassName).toContain("pink");
+    expect(groups[1]).toMatchObject({
+      grouped: false,
+      id: "host-prod",
+      title: "prod",
+    });
+    expect(groups[1].color).toBeDefined();
+    expect(groups[1].color).not.toBe("pink");
+    expect(groups[1].color).not.toBe(groups[2].color);
   });
 });

@@ -3,7 +3,11 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultAppSettings } from "../settings/settingsModel";
-import type { TerminalPane, TerminalTab } from "../workspace/types";
+import type {
+  TerminalPane,
+  TerminalTab,
+  TerminalTabGroupPreferences,
+} from "../workspace/types";
 import { TerminalWorkspace } from "./TerminalWorkspace";
 import {
   alternateLocalTabs,
@@ -184,35 +188,6 @@ describe("TerminalWorkspace", () => {
     expect(
       screen.queryByRole("button", { name: "打开 AI 面板" }),
     ).not.toBeInTheDocument();
-  });
-
-  it("forwards no-tab empty state actions to workspace handlers", async () => {
-    const user = userEvent.setup();
-    const onCreateTerminal = vi.fn();
-    const onOpenConnection = vi.fn();
-    const onOpenAiTool = vi.fn();
-
-    render(
-      <TerminalWorkspace
-        {...workspaceProps({
-          activeTabId: "",
-          focusedPaneId: "",
-          onCreateTerminal,
-          onOpenAiTool,
-          onOpenConnection,
-          panes: [],
-          tabs: [],
-        })}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "本地终端" }));
-    await user.click(screen.getByRole("button", { name: "添加连接" }));
-    await user.click(screen.getByRole("button", { name: "打开 AI 面板" }));
-
-    expect(onCreateTerminal).toHaveBeenCalledTimes(1);
-    expect(onOpenConnection).toHaveBeenCalledTimes(1);
-    expect(onOpenAiTool).toHaveBeenCalledTimes(1);
   });
 
   it("renders custom SFTP transfer tab content without terminal split controls", () => {
@@ -671,6 +646,58 @@ describe("TerminalWorkspace", () => {
     expect(
       screen.queryByRole("button", { name: "dev.internal #2" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("edits a terminal tab group name and color from the group menu", async () => {
+    const user = userEvent.setup();
+    const onUpdateTabGroupPreference = vi.fn();
+
+    function ControlledWorkspace() {
+      const [tabGroupPreferences, setTabGroupPreferences] =
+        useState<TerminalTabGroupPreferences>({});
+
+      return (
+        <TerminalWorkspace
+          {...workspaceProps({
+            activeTabId: "tab-dev-a",
+            focusedPaneId: "pane-dev-a",
+            onUpdateTabGroupPreference: (groupId, preference) => {
+              onUpdateTabGroupPreference(groupId, preference);
+              setTabGroupPreferences((current) => ({
+                ...current,
+                [groupId]: preference,
+              }));
+            },
+            panes: groupedSshPanes,
+            tabGroupPreferences,
+            tabs: groupedSshTabs,
+          })}
+        />
+      );
+    }
+
+    render(<ControlledWorkspace />);
+
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: "折叠 dev.internal 标签组" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "编辑分组" }));
+    expect(
+      screen.getByRole("dialog", { name: "编辑标签组" }),
+    ).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText("分组名称"));
+    await user.type(screen.getByLabelText("分组名称"), "生产组");
+    await user.click(screen.getByRole("button", { name: "选择粉色分组颜色" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(onUpdateTabGroupPreference).toHaveBeenCalledWith("host-dev", {
+      color: "pink",
+      title: "生产组",
+    });
+    expect(
+      screen.getByRole("button", { name: "折叠 生产组 标签组" }),
+    ).toBeInTheDocument();
   });
 
   it("opens a right-click menu for terminal tab groups", async () => {

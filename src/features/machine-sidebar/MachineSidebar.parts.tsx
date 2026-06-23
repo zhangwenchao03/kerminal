@@ -97,6 +97,7 @@ type CollapsedHostPopoverProps = {
   collapsedGroupIds: ReadonlySet<string>;
   dragOverGroupId: string | null;
   draggingMachineId: string | null;
+  forceGroupsExpanded: boolean;
   groupCount: number;
   groupToggleIcon: ReactNode;
   groupToggleLabel: string;
@@ -127,6 +128,7 @@ export function CollapsedHostPopover({
   collapsedGroupIds,
   dragOverGroupId,
   draggingMachineId,
+  forceGroupsExpanded,
   groupCount,
   groupToggleIcon,
   groupToggleLabel,
@@ -184,7 +186,8 @@ export function CollapsedHostPopover({
       </div>
       <div className="scrollbar-none flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
         {visibleGroups.map((group) => {
-          const groupCollapsed = collapsedGroupIds.has(group.id);
+          const groupCollapsed =
+            !forceGroupsExpanded && collapsedGroupIds.has(group.id);
 
           return (
             <section
