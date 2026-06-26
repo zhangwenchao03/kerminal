@@ -19,6 +19,7 @@ import {
   useState,
 } from "react";
 import { Button } from "../../components/ui/button";
+import { PromptDialog } from "../../components/ui/prompt-dialog";
 import { cn } from "../../lib/cn";
 import {
   chmodDockerContainerPath,
@@ -58,6 +59,26 @@ type OperationState = {
   message?: string;
 };
 
+type ContainerFileDialog =
+  | {
+      kind: "mkdir";
+      value: string;
+    }
+  | {
+      entry: SftpEntry;
+      kind: "rename";
+      value: string;
+    }
+  | {
+      entry: SftpEntry;
+      kind: "chmod";
+      value: string;
+    }
+  | {
+      entry: SftpEntry;
+      kind: "delete";
+    };
+
 export function ContainerFilesToolContent({
   followedRemotePath,
   selectedMachine,
@@ -81,6 +102,8 @@ export function ContainerFilesToolContent({
   } | null>(null);
   const [operation, setOperation] = useState<OperationState>({ kind: "idle" });
   const [error, setError] = useState<string | null>(null);
+  const [containerDialog, setContainerDialog] =
+    useState<ContainerFileDialog | null>(null);
 
   useEffect(() => {
     if (target) {
@@ -170,19 +193,81 @@ export function ContainerFilesToolContent({
     });
   };
 
-  const createDirectory = async () => {
+  const createDirectory = () => {
     if (!target) {
       return;
     }
-    const name = window.prompt("目录名");
-    if (!name?.trim()) {
+    setContainerDialog({ kind: "mkdir", value: "" });
+  };
+
+  const confirmContainerDialog = async (value: string) => {
+    if (!target || !containerDialog) {
       return;
     }
-    await runOperation("正在创建目录", async () => {
-      await createDockerContainerDirectory({
+
+    if (containerDialog.kind === "mkdir") {
+      const name = value.trim();
+      if (!name) {
+        return;
+      }
+      setContainerDialog(null);
+      await runOperation("正在创建目录", async () => {
+        await createDockerContainerDirectory({
+          containerId: target.containerId,
+          hostId: target.hostId,
+          path: joinRemotePath(path, name),
+          runtime: target.runtime,
+        });
+        await loadDirectory(path);
+      });
+      return;
+    }
+
+    if (containerDialog.kind === "rename") {
+      const nextPath = value.trim();
+      if (!nextPath) {
+        return;
+      }
+      setContainerDialog(null);
+      await runOperation("正在重命名", async () => {
+        await renameDockerContainerPath({
+          containerId: target.containerId,
+          fromPath: containerDialog.entry.path,
+          hostId: target.hostId,
+          runtime: target.runtime,
+          toPath: nextPath,
+        });
+        await loadDirectory(path);
+      });
+      return;
+    }
+
+    if (containerDialog.kind === "chmod") {
+      const mode = value.trim();
+      if (!mode) {
+        return;
+      }
+      setContainerDialog(null);
+      await runOperation("正在修改权限", async () => {
+        await chmodDockerContainerPath({
+          containerId: target.containerId,
+          hostId: target.hostId,
+          mode,
+          path: containerDialog.entry.path,
+          runtime: target.runtime,
+        });
+        await loadDirectory(path);
+      });
+      return;
+    }
+
+    setContainerDialog(null);
+    await runOperation("正在删除", async () => {
+      await deleteDockerContainerPath({
         containerId: target.containerId,
+        directory: containerDialog.entry.kind === "directory",
         hostId: target.hostId,
-        path: joinRemotePath(path, name),
+        path: containerDialog.entry.path,
         runtime: target.runtime,
       });
       await loadDirectory(path);
@@ -238,63 +323,25 @@ export function ContainerFilesToolContent({
     });
   };
 
-  const renameEntry = async (entry: SftpEntry) => {
+  const renameEntry = (entry: SftpEntry) => {
     if (!target) {
       return;
     }
-    const nextPath = window.prompt("新路径", entry.path);
-    if (!nextPath?.trim()) {
-      return;
-    }
-    await runOperation("正在重命名", async () => {
-      await renameDockerContainerPath({
-        containerId: target.containerId,
-        fromPath: entry.path,
-        hostId: target.hostId,
-        runtime: target.runtime,
-        toPath: nextPath,
-      });
-      await loadDirectory(path);
-    });
+    setContainerDialog({ entry, kind: "rename", value: entry.path });
   };
 
-  const chmodEntry = async (entry: SftpEntry) => {
+  const chmodEntry = (entry: SftpEntry) => {
     if (!target) {
       return;
     }
-    const mode = window.prompt("权限模式", "0644");
-    if (!mode?.trim()) {
-      return;
-    }
-    await runOperation("正在修改权限", async () => {
-      await chmodDockerContainerPath({
-        containerId: target.containerId,
-        hostId: target.hostId,
-        mode,
-        path: entry.path,
-        runtime: target.runtime,
-      });
-      await loadDirectory(path);
-    });
+    setContainerDialog({ entry, kind: "chmod", value: "0644" });
   };
 
-  const deleteEntry = async (entry: SftpEntry) => {
+  const deleteEntry = (entry: SftpEntry) => {
     if (!target) {
       return;
     }
-    if (!window.confirm(`删除 ${entry.path}？`)) {
-      return;
-    }
-    await runOperation("正在删除", async () => {
-      await deleteDockerContainerPath({
-        containerId: target.containerId,
-        directory: entry.kind === "directory",
-        hostId: target.hostId,
-        path: entry.path,
-        runtime: target.runtime,
-      });
-      await loadDirectory(path);
-    });
+    setContainerDialog({ entry, kind: "delete" });
   };
 
   if (!target) {
@@ -468,8 +515,132 @@ export function ContainerFilesToolContent({
           )}
         </div>
       </div>
+
+      <PromptDialog
+        busy={busy}
+        confirmLabel={containerDialogConfirmLabel(containerDialog)}
+        confirmVariant={containerDialog?.kind === "delete" ? "danger" : "primary"}
+        description={containerDialogDescription(containerDialog, path)}
+        inputLabel={containerDialogInputLabel(containerDialog)}
+        onClose={() => setContainerDialog(null)}
+        onConfirm={(value) => {
+          void confirmContainerDialog(value);
+        }}
+        onValueChange={(value) =>
+          setContainerDialog((current) =>
+            current && current.kind !== "delete" ? { ...current, value } : current,
+          )
+        }
+        open={Boolean(containerDialog)}
+        placeholder={containerDialogPlaceholder(containerDialog)}
+        title={containerDialogTitle(containerDialog)}
+        validate={
+          containerDialog?.kind === "delete"
+            ? undefined
+            : (value) =>
+                value.trim()
+                  ? null
+                  : `${containerDialogInputLabel(containerDialog) ?? "内容"}不能为空。`
+        }
+        value={containerDialogValue(containerDialog)}
+      >
+        {containerDialog?.kind === "delete" ? (
+          <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-3 text-sm text-red-700 dark:text-red-100">
+            将删除容器{containerDialog.entry.kind === "directory" ? "目录" : "项目"}：
+            <span className="mt-1 block break-all font-mono text-xs">
+              {containerDialog.entry.path}
+            </span>
+            {containerDialog.entry.kind === "directory" ? (
+              <span className="mt-2 block text-xs text-red-600/80 dark:text-red-100/80">
+                目录会递归删除，包含其中所有文件和子目录。
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </PromptDialog>
     </div>
   );
+}
+
+function containerDialogTitle(dialog: ContainerFileDialog | null) {
+  if (!dialog) {
+    return "";
+  }
+  if (dialog.kind === "mkdir") {
+    return "新建目录";
+  }
+  if (dialog.kind === "rename") {
+    return "重命名";
+  }
+  if (dialog.kind === "chmod") {
+    return "修改权限";
+  }
+  return "删除";
+}
+
+function containerDialogDescription(
+  dialog: ContainerFileDialog | null,
+  currentPath: string,
+) {
+  if (!dialog) {
+    return undefined;
+  }
+  if (dialog.kind === "mkdir") {
+    return currentPath;
+  }
+  if (dialog.kind === "delete") {
+    return "此操作会直接修改容器文件系统。";
+  }
+  return dialog.entry.path;
+}
+
+function containerDialogInputLabel(dialog: ContainerFileDialog | null) {
+  if (!dialog || dialog.kind === "delete") {
+    return undefined;
+  }
+  if (dialog.kind === "mkdir") {
+    return "目录名";
+  }
+  if (dialog.kind === "rename") {
+    return "新路径";
+  }
+  return "权限模式";
+}
+
+function containerDialogPlaceholder(dialog: ContainerFileDialog | null) {
+  if (!dialog || dialog.kind === "delete") {
+    return undefined;
+  }
+  if (dialog.kind === "mkdir") {
+    return "new-folder";
+  }
+  if (dialog.kind === "rename") {
+    return dialog.entry.path;
+  }
+  return "0644";
+}
+
+function containerDialogConfirmLabel(dialog: ContainerFileDialog | null) {
+  if (!dialog) {
+    return "确认";
+  }
+  if (dialog.kind === "mkdir") {
+    return "创建";
+  }
+  if (dialog.kind === "rename") {
+    return "重命名";
+  }
+  if (dialog.kind === "chmod") {
+    return "保存权限";
+  }
+  return "确认删除";
+}
+
+function containerDialogValue(dialog: ContainerFileDialog | null) {
+  if (!dialog || dialog.kind === "delete") {
+    return "";
+  }
+  return dialog.value;
 }
 
 function PanelHeader({ subtitle, title }: { subtitle: string; title: string }) {

@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { collectPaneIds } from "./workspaceLayout";
 import { resetWorkspaceStore, useWorkspaceStore } from "./workspaceStore";
-import { remoteHostTree } from "./workspaceStore.testSupport";
+import {
+  apiContainer,
+  remoteHostTree,
+  remoteHostTreeWithTerminalTransports,
+} from "./__tests__/support/workspaceStore.testSupport";
 import {
   isSftpTransferWorkspaceTab,
   isTerminalSessionTab,
+  type TerminalPane,
   type TerminalSessionTab,
   type TerminalTab,
 } from "./types";
@@ -16,6 +21,26 @@ function requireTerminalSessionTab(
     throw new Error("Expected a terminal session tab.");
   }
   return tab;
+}
+
+function requireFocusedPane(): TerminalPane {
+  const state = useWorkspaceStore.getState();
+  const pane = state.terminalPanes.find((item) => item.id === state.focusedPaneId);
+  if (!pane) {
+    throw new Error("Expected a focused terminal pane.");
+  }
+  return pane;
+}
+
+function requireMachineId(kind: string): string {
+  const machine = useWorkspaceStore
+    .getState()
+    .machineGroups.flatMap((group) => group.machines)
+    .find((candidate) => candidate.kind === kind);
+  if (!machine) {
+    throw new Error(`Expected a ${kind} machine.`);
+  }
+  return machine.id;
 }
 
 describe("workspaceStore terminal tabs", () => {
@@ -132,6 +157,255 @@ describe("workspaceStore terminal tabs", () => {
       "pane-local-1",
       "pane-local-2",
     ]);
+  });
+
+  const focusedPaneSplitTargetCases: Array<{
+    name: string;
+    openFocusedPane: () => void;
+    expectedPaneIdPrefix: string;
+  }> = [
+    {
+      expectedPaneIdPrefix: "pane-ssh-",
+      name: "SSH",
+      openFocusedPane: () => {
+        useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
+        useWorkspaceStore.getState().openSshTerminal("host-lab");
+      },
+    },
+    {
+      expectedPaneIdPrefix: "pane-telnet-",
+      name: "Telnet",
+      openFocusedPane: () => {
+        useWorkspaceStore
+          .getState()
+          .setRemoteHostTree(remoteHostTreeWithTerminalTransports);
+        useWorkspaceStore.getState().openTelnetTerminal("telnet-legacy");
+      },
+    },
+    {
+      expectedPaneIdPrefix: "pane-serial-",
+      name: "Serial",
+      openFocusedPane: () => {
+        useWorkspaceStore
+          .getState()
+          .setRemoteHostTree(remoteHostTreeWithTerminalTransports);
+        useWorkspaceStore.getState().openSerialTerminal("serial-console");
+      },
+    },
+    {
+      expectedPaneIdPrefix: "pane-container-",
+      name: "Container",
+      openFocusedPane: () => {
+        useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
+        useWorkspaceStore.getState().addDockerContainer(apiContainer, {
+          user: "node",
+          workdir: "/srv/api",
+        });
+        useWorkspaceStore
+          .getState()
+          .openContainerTerminal(requireMachineId("dockerContainer"));
+      },
+    },
+  ];
+
+  for (const testCase of focusedPaneSplitTargetCases) {
+    it(`copies the focused ${testCase.name} pane target when splitting`, () => {
+      testCase.openFocusedPane();
+      const sourcePane = requireFocusedPane();
+
+      useWorkspaceStore.getState().splitFocusedPane("horizontal");
+
+      const splitPane = requireFocusedPane();
+      expect(splitPane.id.startsWith(testCase.expectedPaneIdPrefix)).toBe(true);
+      expect(splitPane.machineId).toBe(sourcePane.machineId);
+      expect(splitPane.mode).toBe(sourcePane.mode);
+      expect(splitPane.remoteHostId).toBe(sourcePane.remoteHostId);
+      expect(splitPane.remoteHostProduction).toBe(
+        sourcePane.remoteHostProduction,
+      );
+      expect(splitPane.containerId).toBe(sourcePane.containerId);
+      expect(splitPane.target).toEqual(sourcePane.target);
+    });
+  }
+
+  const explicitSplitTargetCases: Array<{
+    name: string;
+    prepareTargetMachine: () => string;
+    expectedMode: TerminalPane["mode"];
+    expectedPaneIdPrefix: string;
+    expectedTarget: unknown;
+    expectedRemoteHostId?: string;
+    expectedContainerId?: string;
+    expectedProduction?: boolean;
+  }> = [
+    {
+      expectedMode: "ssh",
+      expectedPaneIdPrefix: "pane-ssh-",
+      expectedProduction: true,
+      expectedRemoteHostId: "host-lab",
+      expectedTarget: { hostId: "host-lab", kind: "ssh" },
+      name: "SSH",
+      prepareTargetMachine: () => {
+        useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
+        return "host-lab";
+      },
+    },
+    {
+      expectedMode: "telnet",
+      expectedPaneIdPrefix: "pane-telnet-",
+      expectedProduction: false,
+      expectedTarget: { hostId: "telnet-legacy", kind: "telnet" },
+      name: "Telnet",
+      prepareTargetMachine: () => {
+        useWorkspaceStore
+          .getState()
+          .setRemoteHostTree(remoteHostTreeWithTerminalTransports);
+        return "telnet-legacy";
+      },
+    },
+    {
+      expectedMode: "serial",
+      expectedPaneIdPrefix: "pane-serial-",
+      expectedProduction: false,
+      expectedTarget: { hostId: "serial-console", kind: "serial" },
+      name: "Serial",
+      prepareTargetMachine: () => {
+        useWorkspaceStore
+          .getState()
+          .setRemoteHostTree(remoteHostTreeWithTerminalTransports);
+        return "serial-console";
+      },
+    },
+    {
+      expectedContainerId: "c0ffee1234567890",
+      expectedMode: "container",
+      expectedPaneIdPrefix: "pane-container-",
+      expectedProduction: true,
+      expectedRemoteHostId: "host-lab",
+      expectedTarget: {
+        containerId: "c0ffee1234567890",
+        containerName: "api",
+        hostId: "host-lab",
+        kind: "dockerContainer",
+        runtime: "docker",
+        user: "node",
+        workdir: "/srv/api",
+      },
+      name: "Container",
+      prepareTargetMachine: () => {
+        useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
+        useWorkspaceStore.getState().addDockerContainer(apiContainer, {
+          user: "node",
+          workdir: "/srv/api",
+        });
+        return requireMachineId("dockerContainer");
+      },
+    },
+  ];
+
+  for (const testCase of explicitSplitTargetCases) {
+    it(`splits the active tab to an existing ${testCase.name} machine target`, () => {
+      const targetMachineId = testCase.prepareTargetMachine();
+      useWorkspaceStore.getState().addTerminalTab({ title: "本地源终端" });
+      const sourcePaneId = useWorkspaceStore.getState().focusedPaneId;
+
+      useWorkspaceStore
+        .getState()
+        .splitFocusedPane("horizontal", { targetMachineId });
+
+      const state = useWorkspaceStore.getState();
+      const activeTab = requireTerminalSessionTab(
+        state.terminalTabs.find((tab) => tab.id === state.activeTabId),
+      );
+      const splitPane = requireFocusedPane();
+
+      expect(collectPaneIds(activeTab.layout)).toEqual([
+        sourcePaneId,
+        splitPane.id,
+      ]);
+      expect(state.selectedMachineId).toBe(targetMachineId);
+      expect(splitPane.id.startsWith(testCase.expectedPaneIdPrefix)).toBe(true);
+      expect(splitPane.machineId).toBe(targetMachineId);
+      expect(splitPane.mode).toBe(testCase.expectedMode);
+      expect(splitPane.remoteHostId).toBe(testCase.expectedRemoteHostId);
+      expect(splitPane.remoteHostProduction).toBe(testCase.expectedProduction);
+      expect(splitPane.containerId).toBe(testCase.expectedContainerId);
+      expect(splitPane.target).toEqual(testCase.expectedTarget);
+    });
+  }
+
+  it("splits from the requested source pane without refreshing that pane", () => {
+    useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
+    useWorkspaceStore.getState().addTerminalTab({
+      cwd: "C:\\dev",
+      title: "本地源终端",
+    });
+    useWorkspaceStore.getState().updatePaneCurrentCwd("pane-local-1", "C:\\repo");
+    useWorkspaceStore.getState().splitFocusedPane("horizontal");
+    useWorkspaceStore
+      .getState()
+      .updatePaneCurrentCwd("pane-local-2", "C:\\other");
+    useWorkspaceStore.getState().focusPane("pane-local-2");
+    const sourcePaneBefore = useWorkspaceStore
+      .getState()
+      .terminalPanes.find((pane) => pane.id === "pane-local-1");
+
+    useWorkspaceStore.getState().splitFocusedPane("vertical", {
+      sourcePaneId: "pane-local-1",
+      targetMachineId: "host-lab",
+    });
+
+    const state = useWorkspaceStore.getState();
+    const activeTab = requireTerminalSessionTab(
+      state.terminalTabs.find((tab) => tab.id === state.activeTabId),
+    );
+    const sourcePaneAfter = state.terminalPanes.find(
+      (pane) => pane.id === "pane-local-1",
+    );
+    const splitPane = requireFocusedPane();
+
+    expect(sourcePaneAfter).toBe(sourcePaneBefore);
+    expect(collectPaneIds(activeTab.layout)).toEqual([
+      "pane-local-1",
+      splitPane.id,
+      "pane-local-2",
+    ]);
+    expect(splitPane).toMatchObject({
+      currentCwd: "C:\\repo",
+      cwd: "C:\\repo",
+      machineId: "host-lab",
+      mode: "ssh",
+      remoteHostId: "host-lab",
+    });
+    expect(state.selectedMachineId).toBe("host-lab");
+  });
+
+  it("starts a split pane with the source cwd but without source history", () => {
+    useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
+    useWorkspaceStore.getState().openSshTerminal("host-lab");
+    useWorkspaceStore.getState().updatePaneCurrentCwd("pane-ssh-1", "/dev");
+    useWorkspaceStore
+      .getState()
+      .updatePaneOutputHistory("pane-ssh-1", "ls\r\nold output\r\n");
+
+    useWorkspaceStore.getState().splitFocusedPane("horizontal");
+
+    const state = useWorkspaceStore.getState();
+    const sourcePane = state.terminalPanes.find(
+      (pane) => pane.id === "pane-ssh-1",
+    );
+    const splitPane = requireFocusedPane();
+
+    expect(sourcePane?.outputHistory).toBe("ls\r\nold output\r\n");
+    expect(splitPane).toMatchObject({
+      currentCwd: "/dev",
+      cwd: "/dev",
+      id: "pane-ssh-2",
+      lines: [],
+      mode: "ssh",
+      remoteHostId: "host-lab",
+    });
+    expect(splitPane.outputHistory).toBeUndefined();
   });
 
   it("ignores focus requests outside the active tab layout", () => {

@@ -85,7 +85,7 @@ const browserPreviewEntriesByPath: Record<string, SftpEntry[]> = {
 
 const browserTextFileSeeds: Record<string, string> = {
   "/home/deploy/README.md":
-    "# Kerminal 预览\n\n这是浏览器预览模式下的远程 README.md。\n真实应用会通过原生异步 SFTP 后端读取远程文件。",
+    "# Kerminal 预览\n\n浏览器预览内容；桌面应用会读取真实远程文件。",
   "/srv/app/release.sh":
     "#!/usr/bin/env bash\nset -euo pipefail\nnpm run check\nsystemctl --user restart kerminal-preview",
   "/var/log/app.log": [
@@ -170,7 +170,7 @@ export function browserWriteTextFile(
     request.expectedRevision &&
     !sameBrowserRevision(currentRevision, request.expectedRevision)
   ) {
-    throw new Error("远端文件已变更，请重新加载或选择覆盖后再保存");
+    throw new Error("远端已变更，请重载或覆盖。");
   }
 
   browserTextFiles.set(path, request.content);

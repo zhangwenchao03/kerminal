@@ -7,11 +7,15 @@ use crate::{
         docker::{
             DockerContainerChmodRequest, DockerContainerDeleteRequest,
             DockerContainerDirectoryListing, DockerContainerFilePreview,
-            DockerContainerListRequest, DockerContainerPathRequest, DockerContainerPreviewRequest,
+            DockerContainerInfoRequest, DockerContainerInspectSummary,
+            DockerContainerLifecycleRequest, DockerContainerLifecycleResult,
+            DockerContainerListRequest, DockerContainerLogsRequest, DockerContainerLogsResult,
+            DockerContainerPathRequest, DockerContainerPreviewRequest,
             DockerContainerReadTextFileRequest, DockerContainerReadTextFileResponse,
-            DockerContainerRenameRequest, DockerContainerSummary,
-            DockerContainerTerminalCreateRequest, DockerContainerTransferRequest,
-            DockerContainerWriteTextFileRequest, DockerContainerWriteTextFileResponse,
+            DockerContainerRenameRequest, DockerContainerStatsRequest, DockerContainerStatsResult,
+            DockerContainerSummary, DockerContainerTerminalCreateRequest,
+            DockerContainerTransferRequest, DockerContainerWriteTextFileRequest,
+            DockerContainerWriteTextFileResponse,
         },
         terminal::{
             docker_container_terminal_target_ref, TerminalOutputEvent, TerminalSessionSummary,
@@ -29,12 +33,98 @@ pub async fn docker_list_containers(
 ) -> Result<Vec<DockerContainerSummary>, String> {
     state
         .docker_hosts()
-        .list_containers(
-            state.storage(),
-            state.paths(),
-            state.ssh_commands(),
-            request,
-        )
+        .list_containers(state.paths(), state.ssh_commands(), request)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// 启动指定容器。
+#[tauri::command]
+pub async fn docker_start_container(
+    state: State<'_, AppState>,
+    request: DockerContainerLifecycleRequest,
+) -> Result<DockerContainerLifecycleResult, String> {
+    state
+        .docker_hosts()
+        .start_container(state.paths(), state.ssh_commands(), request)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// 停止指定容器。
+#[tauri::command]
+pub async fn docker_stop_container(
+    state: State<'_, AppState>,
+    request: DockerContainerLifecycleRequest,
+) -> Result<DockerContainerLifecycleResult, String> {
+    state
+        .docker_hosts()
+        .stop_container(state.paths(), state.ssh_commands(), request)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// 重启指定容器。
+#[tauri::command]
+pub async fn docker_restart_container(
+    state: State<'_, AppState>,
+    request: DockerContainerLifecycleRequest,
+) -> Result<DockerContainerLifecycleResult, String> {
+    state
+        .docker_hosts()
+        .restart_container(state.paths(), state.ssh_commands(), request)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// 删除指定容器。
+#[tauri::command]
+pub async fn docker_remove_container(
+    state: State<'_, AppState>,
+    request: DockerContainerLifecycleRequest,
+) -> Result<DockerContainerLifecycleResult, String> {
+    state
+        .docker_hosts()
+        .remove_container(state.paths(), state.ssh_commands(), request)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// 读取容器 inspect 摘要。
+#[tauri::command]
+pub async fn docker_inspect_container(
+    state: State<'_, AppState>,
+    request: DockerContainerInfoRequest,
+) -> Result<DockerContainerInspectSummary, String> {
+    state
+        .docker_hosts()
+        .inspect_container(state.paths(), state.ssh_commands(), request)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// 读取容器最近日志。
+#[tauri::command]
+pub async fn docker_tail_container_logs(
+    state: State<'_, AppState>,
+    request: DockerContainerLogsRequest,
+) -> Result<DockerContainerLogsResult, String> {
+    state
+        .docker_hosts()
+        .tail_container_logs(state.paths(), state.ssh_commands(), request)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// 读取容器一次性 stats。
+#[tauri::command]
+pub async fn docker_container_stats(
+    state: State<'_, AppState>,
+    request: DockerContainerStatsRequest,
+) -> Result<DockerContainerStatsResult, String> {
+    state
+        .docker_hosts()
+        .container_stats(state.paths(), state.ssh_commands(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -49,9 +139,14 @@ pub fn docker_create_container_session(
     let target_ref = docker_container_terminal_target_ref(&request.host_id, &request.container_id);
     state
         .docker_hosts()
-        .create_container_session(state.storage(), state.terminals(), request, move |event| {
-            output.send(event).is_ok()
-        })
+        .create_container_session(
+            state.remote_hosts(),
+            state.paths(),
+            state.ssh_terminals(),
+            state.terminals(),
+            request,
+            move |event| output.send(event).is_ok(),
+        )
         .and_then(|summary| state.terminals().set_target_ref(&summary.id, target_ref))
         .map_err(|error| error.to_string())
 }
@@ -64,12 +159,7 @@ pub async fn docker_list_directory(
 ) -> Result<DockerContainerDirectoryListing, String> {
     state
         .docker_hosts()
-        .list_directory(
-            state.storage(),
-            state.paths(),
-            state.ssh_commands(),
-            request,
-        )
+        .list_directory(state.paths(), state.ssh_commands(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -82,12 +172,7 @@ pub async fn docker_preview_file(
 ) -> Result<DockerContainerFilePreview, String> {
     state
         .docker_hosts()
-        .preview_file(
-            state.storage(),
-            state.paths(),
-            state.ssh_commands(),
-            request,
-        )
+        .preview_file(state.paths(), state.ssh_commands(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -100,12 +185,7 @@ pub async fn docker_read_text_file(
 ) -> Result<DockerContainerReadTextFileResponse, String> {
     state
         .docker_hosts()
-        .read_text_file(
-            state.storage(),
-            state.paths(),
-            state.ssh_commands(),
-            request,
-        )
+        .read_text_file(state.paths(), state.ssh_commands(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -119,7 +199,7 @@ pub async fn docker_write_text_file(
     state
         .docker_hosts()
         .write_text_file(
-            state.storage(),
+            state.remote_hosts(),
             state.paths(),
             state.ssh_commands(),
             request,
@@ -136,12 +216,7 @@ pub async fn docker_create_directory(
 ) -> Result<bool, String> {
     state
         .docker_hosts()
-        .create_directory(
-            state.storage(),
-            state.paths(),
-            state.ssh_commands(),
-            request,
-        )
+        .create_directory(state.paths(), state.ssh_commands(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -154,12 +229,7 @@ pub async fn docker_delete_path(
 ) -> Result<bool, String> {
     state
         .docker_hosts()
-        .delete_path(
-            state.storage(),
-            state.paths(),
-            state.ssh_commands(),
-            request,
-        )
+        .delete_path(state.paths(), state.ssh_commands(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -172,12 +242,7 @@ pub async fn docker_rename_path(
 ) -> Result<bool, String> {
     state
         .docker_hosts()
-        .rename_path(
-            state.storage(),
-            state.paths(),
-            state.ssh_commands(),
-            request,
-        )
+        .rename_path(state.paths(), state.ssh_commands(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -190,12 +255,7 @@ pub async fn docker_chmod_path(
 ) -> Result<bool, String> {
     state
         .docker_hosts()
-        .chmod_path(
-            state.storage(),
-            state.paths(),
-            state.ssh_commands(),
-            request,
-        )
+        .chmod_path(state.paths(), state.ssh_commands(), request)
         .await
         .map_err(|error| error.to_string())
 }
@@ -208,7 +268,7 @@ pub fn docker_upload(
 ) -> Result<bool, String> {
     state
         .docker_hosts()
-        .upload(state.storage(), request)
+        .upload(state.remote_hosts(), request)
         .map_err(|error| error.to_string())
 }
 
@@ -220,6 +280,6 @@ pub fn docker_download(
 ) -> Result<bool, String> {
     state
         .docker_hosts()
-        .download(state.storage(), request)
+        .download(state.remote_hosts(), request)
         .map_err(|error| error.to_string())
 }

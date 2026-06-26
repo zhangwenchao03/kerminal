@@ -56,8 +56,6 @@ pub enum CommandHistorySource {
     /// 用户直接在终端里输入。
     #[default]
     User,
-    /// AI 工具调用写入或执行。
-    Ai,
     /// 脚本片段触发。
     Snippet,
     /// 多步命令工作流触发。
@@ -73,7 +71,6 @@ impl CommandHistorySource {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::User => "user",
-            Self::Ai => "ai",
             Self::Snippet => "snippet",
             Self::Workflow => "workflow",
             Self::Broadcast => "broadcast",
@@ -88,7 +85,6 @@ impl TryFrom<&str> for CommandHistorySource {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
             "user" => Ok(Self::User),
-            "ai" => Ok(Self::Ai),
             "snippet" => Ok(Self::Snippet),
             "workflow" => Ok(Self::Workflow),
             "broadcast" => Ok(Self::Broadcast),

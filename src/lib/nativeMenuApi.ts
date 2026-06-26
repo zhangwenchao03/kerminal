@@ -11,7 +11,7 @@ export const nativeMenuActions = [
   "splitHorizontal",
   "splitVertical",
   "openLogs",
-  "openAi",
+  "openAgentLauncher",
   "openSystem",
   "openSftp",
   "openPorts",

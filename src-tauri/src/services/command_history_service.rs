@@ -12,7 +12,7 @@ use crate::{
     },
     storage::{
         command_history::{CommandHistoryListFilter, CommandHistoryWrite},
-        SqliteStore,
+        CommandSqliteStore,
     },
 };
 
@@ -36,7 +36,7 @@ impl CommandHistoryService {
     /// 搜索和列出命令历史。
     pub fn list_history(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         request: CommandHistoryListRequest,
     ) -> AppResult<Vec<CommandHistoryEntry>> {
         let query = request
@@ -76,7 +76,7 @@ impl CommandHistoryService {
     /// 按命令前缀列出历史，仅用于 inline suggestion 的按键查询路径。
     pub fn list_history_by_command_prefix(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         target: CommandHistoryTarget,
         remote_host_id: Option<&str>,
         command_prefix: &str,
@@ -95,7 +95,7 @@ impl CommandHistoryService {
     /// 记录一条命令历史。
     pub fn record_command(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         request: CommandHistoryRecordRequest,
     ) -> AppResult<CommandHistoryRecordResult> {
         if request.record == Some(false) {
@@ -134,13 +134,13 @@ impl CommandHistoryService {
     }
 
     /// 删除一条命令历史。
-    pub fn delete_history(&self, storage: &SqliteStore, entry_id: &str) -> AppResult<bool> {
+    pub fn delete_history(&self, storage: &CommandSqliteStore, entry_id: &str) -> AppResult<bool> {
         let entry_id = normalize_required_text("命令历史 ID", entry_id.to_owned(), MAX_ID_CHARS)?;
         storage.delete_command_history(&entry_id)
     }
 
     /// 清空所有命令历史。
-    pub fn clear_history(&self, storage: &SqliteStore) -> AppResult<usize> {
+    pub fn clear_history(&self, storage: &CommandSqliteStore) -> AppResult<usize> {
         storage.clear_command_history()
     }
 }
@@ -227,24 +227,5 @@ fn skipped(reason: impl Into<String>) -> CommandHistoryRecordResult {
         recorded: false,
         entry: None,
         skip_reason: Some(reason.into()),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn normalize_command_trims_and_normalizes_line_endings() {
-        let command =
-            normalize_command("  echo one\r\necho two\r ".to_owned()).expect("normalize command");
-
-        assert_eq!(command, "echo one\necho two");
-    }
-
-    #[test]
-    fn sensitive_command_skip_reason_detects_tokens() {
-        assert!(sensitive_command_skip_reason("echo api_key=secret-value").is_some());
-        assert!(sensitive_command_skip_reason("npm run check").is_none());
     }
 }

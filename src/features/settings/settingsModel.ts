@@ -1,20 +1,12 @@
-import type {
-  ToolAuditPolicy,
-  ToolConfirmationPolicy,
-  ToolRiskLevel,
-} from "../tool-panel/toolRegistryModel";
 import {
-  DEFAULT_CUSTOM_SKILLS_DIRECTORY,
-  defaultAiSecuritySettings,
   defaultAppearanceSettings,
   defaultAppSettings,
+  defaultDesktopNotificationSettings,
   defaultKeybindings,
   defaultSftpPerformanceSettings,
   defaultTerminalAppearance,
 } from "./settingsDefaults";
 import {
-  AI_CONTEXT_OUTPUT_BYTES_MAX,
-  AI_CONTEXT_OUTPUT_BYTES_MIN,
   SFTP_GLOBAL_TRANSFERS_MAX,
   SFTP_GLOBAL_TRANSFERS_MIN,
   SFTP_HOST_TRANSFERS_MAX,
@@ -30,18 +22,14 @@ import {
 } from "./settingsLimits";
 
 export {
-  DEFAULT_CUSTOM_SKILLS_DIRECTORY,
-  defaultAiSecuritySettings,
   defaultAppearanceSettings,
   defaultAppSettings,
+  defaultDesktopNotificationSettings,
   defaultKeybindings,
   defaultSftpPerformanceSettings,
   defaultTerminalAppearance,
 } from "./settingsDefaults";
 export {
-  AI_CONTEXT_OUTPUT_BYTES_DEFAULT,
-  AI_CONTEXT_OUTPUT_BYTES_MAX,
-  AI_CONTEXT_OUTPUT_BYTES_MIN,
   SFTP_GLOBAL_TRANSFERS_DEFAULT,
   SFTP_GLOBAL_TRANSFERS_MAX,
   SFTP_GLOBAL_TRANSFERS_MIN,
@@ -63,7 +51,6 @@ export {
   TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS_MIN,
 } from "./settingsLimits";
 
-const ERRONEOUS_CODEX_SKILLS_DIRECTORY = "~/.codex/skills";
 export {
   backgroundImageFitOptions,
   interfaceDensityOptions,
@@ -96,53 +83,6 @@ export type TerminalInlineSuggestionProductionHostPolicy =
   | "restricted";
 export type KeybindingScope = "global" | "terminal" | "workspace";
 export type KeybindingPlatform = "windows" | "mac";
-export type AiCommandApprovalPolicy = "always" | "risky" | "relaxed";
-export type CustomMcpTransportKind = "stdio" | "http";
-
-export interface CustomMcpNameValue {
-  name: string;
-  value: string;
-}
-
-export interface CustomMcpServerToolSetting {
-  name: string;
-  title: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
-  risk: ToolRiskLevel;
-  confirmation: ToolConfirmationPolicy;
-  audit: ToolAuditPolicy;
-  enabled: boolean;
-  discoveredAt?: number | null;
-}
-
-export interface CustomMcpServerSetting {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-  transport: CustomMcpTransportKind;
-  command: string;
-  args: string[];
-  url: string;
-  bearerTokenEnvVar: string;
-  env: CustomMcpNameValue[];
-  headers: CustomMcpNameValue[];
-  tools: CustomMcpServerToolSetting[];
-  lastDiscoveredAt?: number | null;
-  lastDiscoveryError?: string | null;
-}
-
-export interface CustomMcpSkillDirectorySetting {
-  id: string;
-  path: string;
-  enabled: boolean;
-}
-
-export interface AiMcpSettings {
-  servers: CustomMcpServerSetting[];
-  skillDirectories: CustomMcpSkillDirectorySetting[];
-}
 
 export interface TerminalInlineSuggestionProviderSettings {
   history: boolean;
@@ -150,7 +90,6 @@ export interface TerminalInlineSuggestionProviderSettings {
   remoteCommand: boolean;
   git: boolean;
   spec: boolean;
-  ai: boolean;
 }
 
 export interface TerminalInlineSuggestionSettings {
@@ -192,6 +131,14 @@ export interface AppearanceSettings {
   windowOpacity: number;
 }
 
+export interface DesktopNotificationSettings {
+  backgroundOnly: boolean;
+  enabled: boolean;
+  importantOnly: boolean;
+  minDurationMs: number;
+  throttleMs: number;
+}
+
 export interface KeybindingSetting {
   action: string;
   label: string;
@@ -201,18 +148,6 @@ export interface KeybindingSetting {
   macBinding: string;
   scope: KeybindingScope;
   editable: boolean;
-}
-
-export interface AiSecuritySettings {
-  contextMaxOutputBytes: number;
-  includeCommandHistory: boolean;
-  requireRemoteApproval: boolean;
-  allowDestructiveTools: boolean;
-  commandApprovalPolicy: AiCommandApprovalPolicy;
-  commandTimeoutSeconds: number;
-  terminalTailLines: number;
-  customInstructions: string;
-  mcp: AiMcpSettings;
 }
 
 export interface SftpPerformanceSettings {
@@ -225,11 +160,11 @@ export interface SftpPerformanceSettings {
 
 export interface AppSettings {
   appearance: AppearanceSettings;
+  desktopNotifications: DesktopNotificationSettings;
   interfaceDensity: InterfaceDensity;
   themeMode: ThemeMode;
   terminal: TerminalAppearance;
   keybindings: KeybindingSetting[];
-  ai: AiSecuritySettings;
   sftp: SftpPerformanceSettings;
 }
 
@@ -237,9 +172,10 @@ export function normalizeAppSettings(
   settings?: Partial<AppSettings>,
 ): AppSettings {
   const appearance = settings?.appearance ?? defaultAppearanceSettings;
+  const desktopNotifications =
+    settings?.desktopNotifications ?? defaultDesktopNotificationSettings;
   const terminal = settings?.terminal ?? defaultTerminalAppearance;
   const keybindings = normalizeKeybindings(settings?.keybindings);
-  const ai = settings?.ai ?? defaultAiSecuritySettings;
   const sftp = settings?.sftp ?? defaultSftpPerformanceSettings;
   const sftpGlobalTransfers = clampNumber(
     sftp.globalTransfers,
@@ -258,44 +194,6 @@ export function normalizeAppSettings(
   );
 
   return {
-    ai: {
-      allowDestructiveTools:
-        ai.allowDestructiveTools ??
-        defaultAiSecuritySettings.allowDestructiveTools,
-      commandApprovalPolicy: normalizeCommandApprovalPolicy(
-        ai.commandApprovalPolicy,
-        ai.requireRemoteApproval,
-      ),
-      commandTimeoutSeconds: clampNumber(
-        ai.commandTimeoutSeconds,
-        5,
-        600,
-        defaultAiSecuritySettings.commandTimeoutSeconds,
-      ),
-      contextMaxOutputBytes: clampNumber(
-        ai.contextMaxOutputBytes,
-        AI_CONTEXT_OUTPUT_BYTES_MIN,
-        AI_CONTEXT_OUTPUT_BYTES_MAX,
-        defaultAiSecuritySettings.contextMaxOutputBytes,
-      ),
-      customInstructions:
-        typeof ai.customInstructions === "string"
-          ? ai.customInstructions.slice(0, 8000)
-          : defaultAiSecuritySettings.customInstructions,
-      includeCommandHistory:
-        ai.includeCommandHistory ??
-        defaultAiSecuritySettings.includeCommandHistory,
-      mcp: normalizeAiMcpSettings(ai.mcp),
-      requireRemoteApproval:
-        ai.requireRemoteApproval ??
-        defaultAiSecuritySettings.requireRemoteApproval,
-      terminalTailLines: clampNumber(
-        ai.terminalTailLines,
-        10,
-        500,
-        defaultAiSecuritySettings.terminalTailLines,
-      ),
-    },
     appearance: {
       backgroundEnabled:
         appearance.backgroundEnabled ??
@@ -319,6 +217,32 @@ export function normalizeAppSettings(
         35,
         100,
         defaultAppearanceSettings.windowOpacity,
+      ),
+    },
+    desktopNotifications: {
+      backgroundOnly: readBoolean(
+        desktopNotifications.backgroundOnly,
+        defaultDesktopNotificationSettings.backgroundOnly,
+      ),
+      enabled: readBoolean(
+        desktopNotifications.enabled,
+        defaultDesktopNotificationSettings.enabled,
+      ),
+      importantOnly: readBoolean(
+        desktopNotifications.importantOnly,
+        defaultDesktopNotificationSettings.importantOnly,
+      ),
+      minDurationMs: normalizeBoundedInteger(
+        desktopNotifications.minDurationMs,
+        defaultDesktopNotificationSettings.minDurationMs,
+        1_000,
+        120_000,
+      ),
+      throttleMs: normalizeBoundedInteger(
+        desktopNotifications.throttleMs,
+        defaultDesktopNotificationSettings.throttleMs,
+        0,
+        600_000,
       ),
     },
     interfaceDensity: normalizeInterfaceDensity(settings?.interfaceDensity),
@@ -397,95 +321,6 @@ export function normalizeAppSettings(
   };
 }
 
-export function normalizeAiMcpSettings(
-  settings?: Partial<AiMcpSettings>,
-): AiMcpSettings {
-  const skillDirectories = Array.isArray(settings?.skillDirectories)
-    ? settings.skillDirectories
-        .slice(0, 8)
-        .map((directory, index) =>
-          normalizeCustomMcpSkillDirectory(directory, index),
-        )
-    : defaultAiSecuritySettings.mcp.skillDirectories;
-  return {
-    servers: Array.isArray(settings?.servers)
-      ? settings.servers
-          .slice(0, 12)
-          .map((server, index) => normalizeCustomMcpServer(server, index))
-      : [],
-    skillDirectories:
-      skillDirectories.length > 0
-        ? skillDirectories
-        : defaultAiSecuritySettings.mcp.skillDirectories,
-  };
-}
-
-function normalizeCustomMcpServer(
-  server: Partial<CustomMcpServerSetting>,
-  index: number,
-): CustomMcpServerSetting {
-  return {
-    args: normalizeStringList(server.args, 120, 500),
-    bearerTokenEnvVar: normalizeIdentifier(server.bearerTokenEnvVar, ""),
-    command: readString(server.command).slice(0, 500),
-    description: readString(server.description).slice(0, 500),
-    enabled: server.enabled ?? true,
-    env: normalizeNameValues(server.env),
-    headers: normalizeNameValues(server.headers),
-    lastDiscoveredAt: normalizeOptionalNumber(server.lastDiscoveredAt),
-    lastDiscoveryError:
-      readString(server.lastDiscoveryError).slice(0, 500) || null,
-    id: normalizeIdentifier(server.id, `custom-server-${index + 1}`),
-    name: readString(server.name).slice(0, 120) || `Custom MCP ${index + 1}`,
-    transport: normalizeCustomMcpTransportKind(server.transport),
-    tools: Array.isArray(server.tools)
-      ? server.tools
-          .slice(0, 200)
-          .map((tool, toolIndex) =>
-            normalizeCustomMcpServerTool(tool, toolIndex),
-          )
-      : [],
-    url: readString(server.url).slice(0, 1000),
-  };
-}
-
-function normalizeCustomMcpServerTool(
-  tool: Partial<CustomMcpServerToolSetting>,
-  index: number,
-): CustomMcpServerToolSetting {
-  return {
-    audit: normalizeToolAuditPolicy(tool.audit),
-    confirmation: normalizeToolConfirmationPolicy(tool.confirmation),
-    description: readString(tool.description).slice(0, 1200),
-    discoveredAt: normalizeOptionalNumber(tool.discoveredAt),
-    enabled: tool.enabled ?? true,
-    inputSchema: normalizeMcpInputSchema(tool.inputSchema),
-    name: normalizeToolName(tool.name, `tool-${index + 1}`),
-    risk: normalizeToolRiskLevel(tool.risk),
-    title: readString(tool.title).slice(0, 120),
-  };
-}
-
-function normalizeCustomMcpSkillDirectory(
-  directory: Partial<CustomMcpSkillDirectorySetting>,
-  index: number,
-): CustomMcpSkillDirectorySetting {
-  const path = readString(directory.path).slice(0, 1000);
-  return {
-    enabled: directory.enabled ?? true,
-    id: normalizeIdentifier(directory.id, `skills-${index + 1}`),
-    path:
-      normalizeCustomMcpSkillDirectoryPath(path) ||
-      (index === 0 ? DEFAULT_CUSTOM_SKILLS_DIRECTORY : ""),
-  };
-}
-
-function normalizeCustomMcpSkillDirectoryPath(path: string) {
-  return path === ERRONEOUS_CODEX_SKILLS_DIRECTORY
-    ? DEFAULT_CUSTOM_SKILLS_DIRECTORY
-    : path;
-}
-
 function normalizeKeybindings(
   keybindings: Partial<KeybindingSetting>[] | undefined,
 ): KeybindingSetting[] {
@@ -555,22 +390,6 @@ function readBoolean(value: unknown, fallback: boolean) {
   return typeof value === "boolean" ? value : fallback;
 }
 
-function normalizeIdentifier(value: unknown, fallback: string) {
-  const text = readString(value)
-    .replace(/[^A-Za-z0-9._-]/g, "-")
-    .replace(/-+/g, "-")
-    .slice(0, 80);
-  return text || fallback;
-}
-
-function normalizeToolName(value: unknown, fallback: string) {
-  const text = readString(value)
-    .replace(/[^A-Za-z0-9._:/-]/g, "-")
-    .replace(/-+/g, "-")
-    .slice(0, 160);
-  return text || fallback;
-}
-
 function normalizeOptionalNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -588,95 +407,6 @@ function normalizeBoundedInteger(
   return Math.min(Math.max(Math.trunc(numberValue), min), max);
 }
 
-function normalizeStringList(
-  values: unknown,
-  maxItems: number,
-  maxLength: number,
-) {
-  if (!Array.isArray(values)) {
-    return [];
-  }
-  return values
-    .map((value) => readString(value).slice(0, maxLength))
-    .filter(Boolean)
-    .slice(0, maxItems);
-}
-
-function normalizeNameValues(values: unknown): CustomMcpNameValue[] {
-  if (!Array.isArray(values)) {
-    return [];
-  }
-  return values
-    .map((value) => {
-      if (!value || typeof value !== "object") {
-        return null;
-      }
-      const item = value as Partial<CustomMcpNameValue>;
-      const name = readString(item.name).slice(0, 120);
-      if (!name) {
-        return null;
-      }
-      return {
-        name,
-        value: readString(item.value).slice(0, 1000),
-      };
-    })
-    .filter((item): item is CustomMcpNameValue => item !== null)
-    .slice(0, 60);
-}
-
-function normalizeMcpInputSchema(schema: unknown): Record<string, unknown> {
-  if (schema && typeof schema === "object" && !Array.isArray(schema)) {
-    return schema as Record<string, unknown>;
-  }
-  return { properties: {}, required: [], type: "object" };
-}
-
-function normalizeCustomMcpTransportKind(
-  value: CustomMcpTransportKind | "sse" | "webSocket" | undefined,
-): CustomMcpTransportKind {
-  if (value === "stdio" || value === "http") {
-    return value;
-  }
-  if (value === "sse" || value === "webSocket") {
-    return "http";
-  }
-  return "stdio";
-}
-
-function normalizeToolRiskLevel(
-  value: ToolRiskLevel | undefined,
-): ToolRiskLevel {
-  if (
-    value === "read" ||
-    value === "write" ||
-    value === "remote" ||
-    value === "batch" ||
-    value === "destructive"
-  ) {
-    return value;
-  }
-  return "remote";
-}
-
-function normalizeToolConfirmationPolicy(
-  value: ToolConfirmationPolicy | undefined,
-): ToolConfirmationPolicy {
-  if (value === "auto" || value === "contextual" || value === "always") {
-    return value;
-  }
-  return "always";
-}
-
-function normalizeToolAuditPolicy(
-  value: ToolAuditPolicy | undefined,
-): ToolAuditPolicy {
-  if (value === "summary" || value === "full") {
-    return value;
-  }
-  return "summary";
-}
-
 function normalizeTerminalInlineSuggestion(
   settings: Partial<TerminalInlineSuggestionSettings> | undefined,
 ): TerminalInlineSuggestionSettings {
@@ -690,7 +420,6 @@ function normalizeTerminalInlineSuggestion(
       settings?.productionHostPolicy,
     ),
     providers: {
-      ai: readBoolean(providers.ai, defaults.providers.ai),
       git: readBoolean(providers.git, defaults.providers.git),
       history: readBoolean(providers.history, defaults.providers.history),
       remoteCommand: readBoolean(
@@ -841,16 +570,6 @@ function normalizeTerminalRightClickBehavior(
     return value;
   }
   return defaultTerminalAppearance.rightClickBehavior;
-}
-
-function normalizeCommandApprovalPolicy(
-  value: AiCommandApprovalPolicy | undefined,
-  requireRemoteApproval: boolean | undefined,
-): AiCommandApprovalPolicy {
-  if (value === "always" || value === "risky" || value === "relaxed") {
-    return value;
-  }
-  return requireRemoteApproval === false ? "relaxed" : "risky";
 }
 
 export function resolveThemeMode(

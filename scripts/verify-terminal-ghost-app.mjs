@@ -599,7 +599,6 @@ function browserBootstrapScript() {
               feedbackRetentionDays: 365,
               productionHostPolicy: "restricted",
               providers: {
-                ai: false,
                 git: true,
                 history: true,
                 remoteCommand: true,

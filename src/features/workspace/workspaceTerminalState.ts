@@ -1,13 +1,25 @@
 import {
   collectPaneIds,
   findFirstPaneId,
+  movePaneInLayout,
   removePaneFromLayout,
   splitPaneInLayout,
+  updateSplitLayoutSizes,
+  type MovePaneInLayoutCommand,
 } from "./workspaceLayout";
 import {
+  localTarget,
+  serialTarget,
+  sshTarget,
+  telnetTarget,
+} from "../../lib/targetModel";
+import {
   isTerminalSessionTab,
+  type Machine,
   type TerminalPane,
   type TerminalSplitDirection,
+  type TerminalSplitLayoutSizes,
+  type TerminalSplitPlacement,
   type TerminalTab,
 } from "./types";
 
@@ -28,8 +40,13 @@ export interface FocusedPaneSplitTarget {
 export interface SplitFocusedPaneCommand {
   direction: TerminalSplitDirection;
   paneId: string;
+  placement?: TerminalSplitPlacement;
+  sourcePaneId?: string;
   splitId: string;
+  targetPane?: TerminalPane;
 }
+
+export type MoveTerminalPaneCommand = MovePaneInLayoutCommand;
 
 export function selectTerminalTabState(
   state: TerminalWorkspaceStateSlice,
@@ -146,12 +163,13 @@ export function focusTerminalPaneState(
 
 export function resolveFocusedPaneSplitTarget(
   state: TerminalWorkspaceStateSlice,
+  sourcePaneId = state.focusedPaneId,
 ): FocusedPaneSplitTarget | undefined {
   const activeTab = state.terminalTabs.find(
     (tab) => tab.id === state.activeTabId,
   );
   const sourcePane = state.terminalPanes.find(
-    (pane) => pane.id === state.focusedPaneId,
+    (pane) => pane.id === sourcePaneId,
   );
   if (
     !activeTab ||
@@ -176,7 +194,7 @@ export function splitFocusedPaneState(
     (tab) => tab.id === state.activeTabId,
   );
   const sourcePane = state.terminalPanes.find(
-    (pane) => pane.id === state.focusedPaneId,
+    (pane) => pane.id === (command.sourcePaneId ?? state.focusedPaneId),
   );
   if (
     !activeTab ||
@@ -187,15 +205,22 @@ export function splitFocusedPaneState(
     return {};
   }
 
+  const paneTemplate = command.targetPane ?? sourcePane;
+  const sourceCwd = sourcePane.currentCwd ?? sourcePane.cwd;
+  const templateCwd = command.targetPane
+    ? (command.targetPane.currentCwd ?? command.targetPane.cwd)
+    : undefined;
+  const currentCwd = sourceCwd ?? templateCwd;
   const newPane: TerminalPane = {
-    ...sourcePane,
-    cwd: sourcePane.currentCwd ?? sourcePane.cwd,
-    currentCwd: sourcePane.currentCwd ?? sourcePane.cwd,
+    ...paneTemplate,
+    cwd: currentCwd,
+    currentCwd,
     id: command.paneId,
     lines: [],
-    machineId: sourcePane.machineId,
-    mode: sourcePane.mode,
-    title: command.direction === "horizontal" ? "右侧分屏" : "下方分屏",
+    outputHistory: undefined,
+    title:
+      command.targetPane?.title ??
+      (command.direction === "horizontal" ? "右侧分屏" : "下方分屏"),
   };
   const terminalTabs = state.terminalTabs.map((tab) =>
     tab.id === activeTab.id && isTerminalSessionTab(tab)
@@ -207,6 +232,7 @@ export function splitFocusedPaneState(
             command.paneId,
             command.direction,
             command.splitId,
+            command.placement,
           ),
         }
       : tab,
@@ -217,6 +243,178 @@ export function splitFocusedPaneState(
     terminalPanes: [...state.terminalPanes, newPane],
     terminalTabs,
   };
+}
+
+export function moveTerminalPaneState(
+  state: TerminalWorkspaceStateSlice,
+  command: MoveTerminalPaneCommand,
+): TerminalWorkspaceStatePatch {
+  const activeTab = state.terminalTabs.find(
+    (tab) => tab.id === state.activeTabId,
+  );
+  if (!activeTab || !isTerminalSessionTab(activeTab)) {
+    return {};
+  }
+
+  const livePaneIds = new Set(state.terminalPanes.map((pane) => pane.id));
+  const activePaneIds = collectPaneIds(activeTab.layout);
+  if (
+    activePaneIds.length <= 1 ||
+    command.sourcePaneId === command.targetPaneId ||
+    !activePaneIds.includes(command.sourcePaneId) ||
+    !activePaneIds.includes(command.targetPaneId) ||
+    !livePaneIds.has(command.sourcePaneId) ||
+    !livePaneIds.has(command.targetPaneId)
+  ) {
+    return {};
+  }
+
+  const nextLayout = movePaneInLayout(activeTab.layout, command);
+  if (nextLayout === activeTab.layout) {
+    return {};
+  }
+
+  return {
+    focusedPaneId: command.sourcePaneId,
+    terminalTabs: state.terminalTabs.map((tab) =>
+      tab.id === activeTab.id && isTerminalSessionTab(tab)
+        ? { ...tab, layout: nextLayout }
+        : tab,
+    ),
+  };
+}
+
+export function updateTerminalSplitLayoutSizesState(
+  state: TerminalWorkspaceStateSlice,
+  splitId: string,
+  sizes: TerminalSplitLayoutSizes,
+): TerminalWorkspaceStatePatch | TerminalWorkspaceStateSlice {
+  const activeTab = state.terminalTabs.find(
+    (tab) => tab.id === state.activeTabId,
+  );
+  if (!activeTab || !isTerminalSessionTab(activeTab)) {
+    return state;
+  }
+
+  const nextLayout = updateSplitLayoutSizes(activeTab.layout, splitId, sizes);
+  if (nextLayout === activeTab.layout) {
+    return state;
+  }
+
+  return {
+    terminalTabs: state.terminalTabs.map((tab) =>
+      tab.id === activeTab.id && isTerminalSessionTab(tab)
+        ? { ...tab, layout: nextLayout }
+        : tab,
+    ),
+  };
+}
+
+export function paneIdPrefixForSplitMachine(
+  machine: Machine,
+): string | undefined {
+  const mode = terminalPaneModeForMachine(machine);
+  return mode ? paneIdPrefixForSplitMode(mode) : undefined;
+}
+
+export function splitTargetPaneForMachine(
+  machine: Machine,
+  paneId: string,
+): TerminalPane | undefined {
+  if (machine.kind === "local") {
+    return {
+      args: machine.args,
+      cwd: machine.cwd,
+      env: machine.env,
+      id: paneId,
+      lines: [],
+      machineId: machine.id,
+      mode: "local",
+      profileId: machine.profileId,
+      prompt: "PS>",
+      shell: machine.shell,
+      status: "online",
+      target: localTarget(machine.profileId),
+      title: machine.name,
+    };
+  }
+
+  if (machine.kind === "ssh") {
+    const hostLabel = machine.host ?? machine.name;
+    const userLabel = machine.username ?? "ssh";
+    return {
+      id: paneId,
+      latencyMs: machine.latencyMs,
+      lines: [],
+      machineId: machine.id,
+      mode: "ssh",
+      prompt: `${userLabel}@${hostLabel}:~$`,
+      remoteHostId: machine.id,
+      remoteHostProduction: machine.production ?? false,
+      status: machine.status,
+      target:
+        machine.target?.kind === "ssh" ? machine.target : sshTarget(machine.id),
+      title: machine.name,
+    };
+  }
+
+  if (machine.kind === "telnet") {
+    const hostLabel = machine.host ?? machine.name;
+    return {
+      id: paneId,
+      latencyMs: machine.latencyMs,
+      lines: [],
+      machineId: machine.id,
+      mode: "telnet",
+      prompt: `${hostLabel}:${machine.port ?? 23}>`,
+      remoteHostProduction: machine.production ?? false,
+      status: machine.status,
+      target:
+        machine.target?.kind === "telnet"
+          ? machine.target
+          : telnetTarget(machine.id),
+      title: machine.name,
+    };
+  }
+
+  if (machine.kind === "serial") {
+    const serialPort =
+      serialPortName(machine.tags) ?? machine.host ?? machine.name;
+    return {
+      id: paneId,
+      latencyMs: machine.latencyMs,
+      lines: [],
+      machineId: machine.id,
+      mode: "serial",
+      prompt: `${serialPort}>`,
+      remoteHostProduction: machine.production ?? false,
+      status: machine.status,
+      target:
+        machine.target?.kind === "serial"
+          ? machine.target
+          : serialTarget(machine.id),
+      title: machine.name,
+    };
+  }
+
+  if (machine.kind === "dockerContainer" && machine.target) {
+    return {
+      containerId: machine.containerId,
+      id: paneId,
+      lines: [],
+      machineId: machine.id,
+      mode: "container",
+      prompt: `${machine.name}:/$`,
+      remoteHostId: machine.parentMachineId,
+      remoteHostProduction: machine.production ?? false,
+      shell: machine.shell,
+      status: machine.status,
+      target: machine.target,
+      title: machine.name,
+    };
+  }
+
+  return undefined;
 }
 
 export function updatePaneCurrentCwdState(
@@ -261,11 +459,37 @@ function paneIdPrefixForSplitMode(mode: TerminalPane["mode"]): string {
       return "pane-telnet";
     case "serial":
       return "pane-serial";
+    case "container":
+      return "pane-container";
     case "preview":
       return "pane-preview";
     default:
       return "pane-local";
   }
+}
+
+function terminalPaneModeForMachine(
+  machine: Machine,
+): TerminalPane["mode"] | undefined {
+  if (
+    machine.kind === "local" ||
+    machine.kind === "ssh" ||
+    machine.kind === "telnet" ||
+    machine.kind === "serial"
+  ) {
+    return machine.kind;
+  }
+  if (machine.kind === "dockerContainer") {
+    return "container";
+  }
+  return undefined;
+}
+
+function serialPortName(tags: string[]) {
+  const prefix = "serial-port:";
+  const tag = tags.find((candidate) => candidate.startsWith(prefix));
+  const port = tag?.slice(prefix.length).trim();
+  return port || undefined;
 }
 
 function resolveFocusForTerminalTab(

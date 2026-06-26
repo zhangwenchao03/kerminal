@@ -1,4 +1,5 @@
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
+import { readDesktopClipboardText } from "./desktopClipboardApi";
 import type { ContainerRuntime } from "./targetModel";
 
 export type TerminalOutputKind = "data" | "closed" | "error";
@@ -16,6 +17,8 @@ export interface TerminalCreateRequest {
 
 export interface SshTerminalCreateRequest {
   hostId: string;
+  cwd?: string;
+  remoteCommand?: string;
   cols: number;
   rows: number;
 }
@@ -101,11 +104,14 @@ export async function createSshTerminalSession(
     return createBrowserPreviewSession(
       {
         cols: request.cols,
+        cwd: request.cwd,
         rows: request.rows,
         shell: "ssh-preview",
       },
       onOutput,
-      "Kerminal 浏览器预览模式\r\n请在 Tauri 应用窗口中连接真实 SSH 主机。\r\n",
+      request.remoteCommand
+        ? `Kerminal 浏览器预览\r\nSSH 启动命令：${request.remoteCommand}\r\n`
+        : "Kerminal 浏览器预览\r\n请在桌面应用中连接真实 SSH 主机。\r\n",
     );
   }
 
@@ -128,7 +134,7 @@ export async function createTelnetTerminalSession(
         shell: "telnet-preview",
       },
       onOutput,
-      "Kerminal 浏览器预览模式\r\n请在 Tauri 应用窗口中连接真实 Telnet 主机。\r\n",
+      "Kerminal 浏览器预览\r\n请在桌面应用中连接真实 Telnet 主机。\r\n",
     );
   }
 
@@ -151,7 +157,7 @@ export async function createSerialTerminalSession(
         shell: "serial-preview",
       },
       onOutput,
-      "Kerminal 浏览器预览模式\r\n请在 Tauri 应用窗口中连接真实 Serial 设备。\r\n",
+      "Kerminal 浏览器预览\r\n请在桌面应用中连接真实 Serial 设备。\r\n",
     );
   }
 
@@ -174,7 +180,7 @@ export async function createDockerContainerTerminalSession(
         shell: "container-preview",
       },
       onOutput,
-      `Kerminal 浏览器预览模式\r\n请在 Tauri 应用窗口中进入容器：${request.containerId}\r\n`,
+      `Kerminal 浏览器预览\r\n请在桌面应用中进入容器：${request.containerId}\r\n`,
     );
   }
 
@@ -199,6 +205,10 @@ export async function writeTerminal(
   }
 
   await invoke("terminal_write", { data, sessionId });
+}
+
+export async function readTerminalClipboardText(): Promise<string> {
+  return readDesktopClipboardText();
 }
 
 export async function resizeTerminal(
@@ -298,7 +308,7 @@ function normalizeDockerContainerCreateRequest(
 function createBrowserPreviewSession(
   request: TerminalCreateRequest,
   onOutput: TerminalOutputHandler,
-  welcomeText = "Kerminal 浏览器预览模式\r\n请在 Tauri 应用窗口中使用真实本地 PTY。\r\n",
+  welcomeText = "Kerminal 浏览器预览\r\n请在桌面应用中使用真实 PTY。\r\n",
 ): TerminalSessionSummary {
   const id = `browser-preview-${Date.now().toString(36)}`;
   browserPreviewSessions.set(id, onOutput);

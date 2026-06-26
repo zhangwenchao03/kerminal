@@ -82,6 +82,10 @@ describe("sftpContextMenuActionModel", () => {
 
   it("only opens directories for navigation and workspace actions", () => {
     const directory = entry({ kind: "directory", path: "/srv/conf" });
+    expect(resolve("workspace")).toEqual({
+      kind: "workspaceDirectory",
+      path: "/srv",
+    });
     expect(resolve("open", directory)).toEqual({
       kind: "openDirectory",
       path: "/srv/conf",

@@ -12,7 +12,7 @@ import {  eventMocks,
   openCurrentDirectoryContextMenu,
   sftpApiMocks,
   sshMachine,
-} from "./SftpToolContent.testSupport";
+} from "./__tests__/support/SftpToolContent.testSupport";
 import { SftpToolContent } from "./SftpToolContent";
 
 const sidebarViewScope = "sftp-sidebar:prod-api";
@@ -124,7 +124,7 @@ describe("SftpToolContent events and dialogs", () => {
     render(<SftpToolContent selectedMachine={sshMachine} />);
 
     await screen.findByText("var");
-    await user.click(screen.getByRole("button", { name: "打开目录 log" }));
+    await user.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
     expect(await screen.findByText("app.log")).toBeInTheDocument();
     fireEvent.contextMenu(
       screen.getByRole("button", { name: "文件 app.log" }),
@@ -156,7 +156,7 @@ describe("SftpToolContent events and dialogs", () => {
     render(<SftpToolContent selectedMachine={sshMachine} />);
 
     await screen.findByText("var");
-    await user.click(screen.getByRole("button", { name: "打开目录 log" }));
+    await user.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
     expect(await screen.findByText("app.log")).toBeInTheDocument();
     fireEvent.contextMenu(
       screen.getByRole("button", { name: "文件 app.log" }),
@@ -186,7 +186,7 @@ describe("SftpToolContent events and dialogs", () => {
     render(<SftpToolContent selectedMachine={sshMachine} />);
 
     await screen.findByText("var");
-    await user.click(screen.getByRole("button", { name: "打开目录 log" }));
+    await user.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
     expect(await screen.findByText("app.log")).toBeInTheDocument();
     fireEvent.contextMenu(
       screen.getByRole("button", { name: "文件 app.log" }),

@@ -8,12 +8,11 @@ import {
 import { testRemoteConnection } from "../../lib/connectionApi";
 import { RemoteHostCreateDialog } from "./RemoteHostCreateDialog";
 import {
-  apiContainer,
   chooseSelectOption,
   createdHost,
   groups,
   groupsWithSsh,
-} from "./RemoteHostCreateDialog.testSupport";
+} from "./__tests__/support/RemoteHostCreateDialog.testSupport";
 
 vi.mock("../../lib/connectionApi", () => ({
   testRemoteConnection: vi.fn(),
@@ -159,9 +158,11 @@ describe("RemoteHostCreateDialog", () => {
         mode: "ssh",
       });
     });
-    expect(
-      await screen.findByText("SSH 连接测试通过：root@127.0.0.1:22（12 ms）"),
-    ).toBeInTheDocument();
+    const successMessage = await screen.findByText(
+      "SSH 连接测试通过：root@127.0.0.1:22（12 ms）",
+    );
+    expect(successMessage).toBeInTheDocument();
+    expect(successMessage.closest("footer")).not.toBeNull();
     expect(onCreateHost).not.toHaveBeenCalled();
   });
 
@@ -352,10 +353,9 @@ describe("RemoteHostCreateDialog", () => {
     expect(screen.getByLabelText("跳板机主机")).toHaveValue("10.0.0.8");
     expect(screen.getByLabelText("跳板机端口")).toHaveValue("22");
     expect(screen.getByLabelText("跳板机用户名")).toHaveValue("root");
-    expect(screen.getByRole("combobox", { name: "跳板机认证方式" })).toHaveAttribute(
-      "data-value",
-      "agent",
-    );
+    expect(
+      screen.getByRole("combobox", { name: "跳板机认证方式" }),
+    ).toHaveAttribute("data-value", "agent");
 
     await user.click(screen.getByRole("button", { name: "添加跳板机" }));
     await user.click(screen.getByRole("button", { name: "确认" }));
@@ -407,26 +407,37 @@ describe("RemoteHostCreateDialog", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "代理" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "跳板机" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "认证" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "隧道" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "终端" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "传输" })).not.toBeInTheDocument();
-    expect(screen.getByPlaceholderText("root")).toBe(screen.getByLabelText("用户名"));
+    expect(
+      screen.queryByRole("button", { name: "认证" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "隧道" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "终端" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "传输" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("root")).toBe(
+      screen.getByLabelText("用户名"),
+    );
     expect(
       screen.queryByText("SSH 密码和内联私钥会保存在主机记录里。"),
     ).not.toBeInTheDocument();
-    const protocolBar = screen.getByRole("button", { name: "SSH" }).parentElement;
+    const protocolBar = screen.getByRole("button", {
+      name: "SSH",
+    }).parentElement;
     expect(
       Array.from(protocolBar?.children ?? []).map((child) =>
         child.textContent?.trim(),
       ),
-    ).toEqual(["SSH", "Docker", "Local", "RDP", "Telnet", "Serial"]);
+    ).toEqual(["SSH", "Local", "RDP", "Telnet", "Serial"]);
     expect(screen.getByLabelText("标签")).toHaveValue("");
     expect(
-      screen.getByText(
-        "多个标签可用逗号、空格或中文逗号分隔，例如：dev ubuntu，staging。",
-      ),
+      screen.getByText("多个标签可用逗号或空格分隔。"),
     ).toBeInTheDocument();
+    expect(screen.queryByText("保存后显示在左侧。")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("生产保护")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Telnet" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Serial" })).toBeInTheDocument();
@@ -450,23 +461,37 @@ describe("RemoteHostCreateDialog", () => {
     await user.click(screen.getByRole("button", { name: "RDP" }));
 
     expect(screen.getByRole("button", { name: "显示" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "网关" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "网关" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "本地资源" }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "认证" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "认证" }),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Telnet" }));
     expect(screen.getByRole("button", { name: "属性" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "代理" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "终端" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "测试连接" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "代理" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "终端" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "测试连接" }),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Serial" }));
     expect(screen.getByRole("button", { name: "属性" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "串口" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "终端" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "测试连接" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "终端" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "测试连接" }),
+    ).toBeInTheDocument();
   });
 
   it("creates a local terminal from local mode", async () => {
@@ -595,14 +620,32 @@ describe("RemoteHostCreateDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps Docker host unselected until the user chooses a host", async () => {
-    const onListDockerContainers = vi.fn().mockResolvedValue([apiContainer]);
+  it("does not expose Docker as a primary add-connection protocol", () => {
+    render(
+      <RemoteHostCreateDialog
+        defaultMode="ssh"
+        groups={groupsWithSsh}
+        onClose={vi.fn()}
+        onCreateHost={vi.fn()}
+        open
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Docker" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("选择后加入侧栏。")).not.toBeInTheDocument();
+  });
+
+  it("shows host-context guidance for the legacy Docker default mode", () => {
+    const onAddDockerContainer = vi.fn();
+    const onListDockerContainers = vi.fn();
 
     render(
       <RemoteHostCreateDialog
         defaultMode="docker"
         groups={groupsWithSsh}
-        onAddDockerContainer={vi.fn()}
+        onAddDockerContainer={onAddDockerContainer}
         onClose={vi.fn()}
         onCreateHost={vi.fn()}
         onListDockerContainers={onListDockerContainers}
@@ -610,115 +653,41 @@ describe("RemoteHostCreateDialog", () => {
       />,
     );
 
+    expect(screen.getByText("容器入口已移到主机右键菜单")).toBeInTheDocument();
     expect(
-      await screen.findByText("请选择主机后读取远端容器。"),
+      screen.getByText(/在左侧列表右击 SSH 主机，选择「容器」/),
     ).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "主机" })).toHaveTextContent(
-      "请选择主机",
-    );
+    expect(
+      screen.queryByRole("combobox", { name: "主机" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "确认" }),
+    ).not.toBeInTheDocument();
     expect(onListDockerContainers).not.toHaveBeenCalled();
+    expect(onAddDockerContainer).not.toHaveBeenCalled();
   });
 
-  it("adds a Docker container target from an existing SSH host", async () => {
+  it("closes the legacy Docker guidance without adding a container", async () => {
     const user = userEvent.setup();
     const onAddDockerContainer = vi.fn();
     const onClose = vi.fn();
-    const onListDockerContainers = vi.fn().mockResolvedValue([apiContainer]);
 
     render(
       <RemoteHostCreateDialog
-        defaultGroupId="group-dev"
         defaultMode="docker"
         groups={groupsWithSsh}
         onAddDockerContainer={onAddDockerContainer}
         onClose={onClose}
         onCreateHost={vi.fn()}
-        onListDockerContainers={onListDockerContainers}
+        onListDockerContainers={vi.fn()}
         open
       />,
     );
 
-    await user.click(screen.getByRole("combobox", { name: "主机" }));
-    await user.type(screen.getByLabelText("搜索主机"), "ubuntu");
-    await user.click(screen.getByRole("option", { name: /ubuntu-dev/ }));
+    await user.click(screen.getByRole("button", { name: "取消" }));
 
-    expect(
-      await screen.findByRole("button", { name: /api/ }),
-    ).toBeInTheDocument();
-    expect(onListDockerContainers).toHaveBeenCalledWith({
-      hostId: "host-1",
-      includeStopped: true,
-      runtime: "docker",
-    });
-
-    await user.click(screen.getByRole("button", { name: "进入选项" }));
-    await user.type(screen.getByLabelText("容器 Shell"), "exec bash -l");
-    await user.type(screen.getByLabelText("容器用户"), "root");
-    await user.type(screen.getByLabelText("容器工作目录"), "/workspace");
-    await user.click(screen.getByRole("button", { name: "确认" }));
-
-    expect(onAddDockerContainer).toHaveBeenCalledWith({
-      container: apiContainer,
-      groupId: "group-dev",
-      shell: "exec bash -l",
-      user: "root",
-      workdir: "/workspace",
-    });
+    expect(onAddDockerContainer).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it("remembers the last selected Docker host for the next dialog opening", async () => {
-    const user = userEvent.setup();
-    const onListDockerContainers = vi.fn().mockResolvedValue([apiContainer]);
-
-    const { unmount } = render(
-      <RemoteHostCreateDialog
-        defaultMode="docker"
-        groups={groupsWithSsh}
-        onAddDockerContainer={vi.fn()}
-        onClose={vi.fn()}
-        onCreateHost={vi.fn()}
-        onListDockerContainers={onListDockerContainers}
-        open
-      />,
-    );
-
-    await user.click(screen.getByRole("combobox", { name: "主机" }));
-    await user.type(screen.getByLabelText("搜索主机"), "ubuntu");
-    await user.click(screen.getByRole("option", { name: /ubuntu-dev/ }));
-    await waitFor(() => {
-      expect(onListDockerContainers).toHaveBeenCalledWith({
-        hostId: "host-1",
-        includeStopped: true,
-        runtime: "docker",
-      });
-    });
-
-    unmount();
-    onListDockerContainers.mockClear();
-
-    render(
-      <RemoteHostCreateDialog
-        defaultMode="docker"
-        groups={groupsWithSsh}
-        onAddDockerContainer={vi.fn()}
-        onClose={vi.fn()}
-        onCreateHost={vi.fn()}
-        onListDockerContainers={onListDockerContainers}
-        open
-      />,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByRole("combobox", { name: "主机" })).toHaveTextContent(
-        "ubuntu-dev",
-      );
-    });
-    expect(onListDockerContainers).toHaveBeenCalledWith({
-      hostId: "host-1",
-      includeStopped: true,
-      runtime: "docker",
-    });
   });
 
   it("prefills plaintext SSH password and inline private key when editing", () => {
@@ -815,6 +784,56 @@ describe("RemoteHostCreateDialog", () => {
       username: "ubuntu",
     });
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(updatedHost));
+  });
+
+  it("keeps the edit draft and blocks saving after an external host change", async () => {
+    const user = userEvent.setup();
+    const editingHost: RemoteHost = {
+      ...createdHost,
+      updatedAt: "1",
+    };
+    const onUpdateHost = vi.fn();
+    const conflictMessage = "cfg: host changed externally; close + reopen";
+    const { rerender } = render(
+      <RemoteHostCreateDialog
+        editingHost={editingHost}
+        groups={groupsWithSsh}
+        onClose={vi.fn()}
+        onCreateHost={vi.fn()}
+        onUpdateHost={onUpdateHost}
+        open
+      />,
+    );
+
+    await user.clear(screen.getByLabelText("名称"));
+    await user.type(screen.getByLabelText("名称"), "draft-name");
+
+    rerender(
+      <RemoteHostCreateDialog
+        editingHost={editingHost}
+        externalConfigConflict={conflictMessage}
+        groups={[
+          groupsWithSsh[0],
+          {
+            ...groupsWithSsh[1],
+            machines: groupsWithSsh[1].machines.map((machine) =>
+              machine.id === editingHost.id
+                ? { ...machine, name: "external-name", updatedAt: "2" }
+                : machine,
+            ),
+          },
+        ]}
+        onClose={vi.fn()}
+        onCreateHost={vi.fn()}
+        onUpdateHost={onUpdateHost}
+        open
+      />,
+    );
+
+    expect(screen.getByLabelText("名称")).toHaveValue("draft-name");
+    expect(screen.getByRole("alert")).toHaveTextContent(conflictMessage);
+    expect(screen.getByRole("button", { name: "确认" })).toBeDisabled();
+    expect(onUpdateHost).not.toHaveBeenCalled();
   });
 
   it("saves an RDP connection to the host list with password metadata", async () => {
@@ -1056,9 +1075,12 @@ describe("RemoteHostCreateDialog", () => {
     await user.type(screen.getByLabelText("RDP 高度"), "720");
     await user.click(screen.getByRole("button", { name: "测试连接" }));
 
-    expect(screen.getByText("RDP 窗口尺寸不能小于 640x480。")).toBeInTheDocument();
+    const validationMessage = screen.getByText(
+      "RDP 窗口尺寸不能小于 640x480。",
+    );
+    expect(validationMessage).toBeInTheDocument();
+    expect(validationMessage.closest("footer")).not.toBeNull();
     expect(testRemoteConnection).not.toHaveBeenCalled();
     expect(onCreateHost).not.toHaveBeenCalled();
   });
-
 });

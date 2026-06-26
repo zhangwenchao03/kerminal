@@ -23,18 +23,34 @@ interface TerminalOutputHistoryBufferOptions {
 }
 
 const DEFAULT_OUTPUT_HISTORY_FLUSH_DELAY_MS = 100;
+const activeOutputHistoryBuffers = new Set<TerminalOutputHistoryBuffer>();
 
 const globalTimer: TerminalOutputHistoryTimer = {
   clearTimeout: (timerId) => globalThis.clearTimeout(timerId),
   setTimeout: (callback, delayMs) => globalThis.setTimeout(callback, delayMs),
 };
 
+interface TerminalOutputHistoryBuffer {
+  append(data: string): void;
+  dispose(): void;
+  flush(): void;
+  pendingFlush(): boolean;
+}
+
+export function flushPendingTerminalOutputHistoryBuffers() {
+  for (const buffer of Array.from(activeOutputHistoryBuffers)) {
+    if (buffer.pendingFlush()) {
+      buffer.flush();
+    }
+  }
+}
+
 export function createTerminalOutputHistoryBuffer({
   flushDelayMs = DEFAULT_OUTPUT_HISTORY_FLUSH_DELAY_MS,
   onOutputHistoryChangeRef,
   outputHistoryRef,
   timer = globalTimer,
-}: TerminalOutputHistoryBufferOptions) {
+}: TerminalOutputHistoryBufferOptions): TerminalOutputHistoryBuffer {
   let disposed = false;
   let flushTimer: TimerId | null = null;
 
@@ -63,7 +79,7 @@ export function createTerminalOutputHistoryBuffer({
     }, Math.max(0, flushDelayMs));
   };
 
-  return {
+  const buffer: TerminalOutputHistoryBuffer = {
     append(data: string) {
       if (disposed) {
         return;
@@ -84,10 +100,14 @@ export function createTerminalOutputHistoryBuffer({
       }
       flush();
       disposed = true;
+      activeOutputHistoryBuffers.delete(buffer);
     },
     flush,
     pendingFlush() {
       return flushTimer !== null;
     },
   };
+
+  activeOutputHistoryBuffers.add(buffer);
+  return buffer;
 }

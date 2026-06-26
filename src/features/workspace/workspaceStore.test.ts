@@ -16,7 +16,7 @@ import {
   remoteHostTreeWithTerminalTransports,
   remoteHostTreeWithTools,
   unorderedRemoteHostTree,
-} from "./workspaceStore.testSupport";
+} from "./__tests__/support/workspaceStore.testSupport";
 
 describe("workspaceStore", () => {
   beforeEach(() => {
@@ -60,6 +60,70 @@ describe("workspaceStore", () => {
       .terminalPanes.find((candidate) => candidate.id === pane?.id);
     expect(updatedPane?.currentCwd).toBe("/var/log");
     expect(updatedPane?.cwd).toBeUndefined();
+  });
+
+  it("moves terminal panes by updating layout without replacing pane runtime data", () => {
+    useWorkspaceStore.getState().restoreWorkspaceSession({
+      activeTabId: "tab-local-1",
+      focusedPaneId: "pane-local-1",
+      selectedMachineId: "local-powershell",
+      sidebarMachines: [],
+      terminalPanes: [
+        {
+          id: "pane-local-1",
+          lines: ["left"],
+          machineId: "local-powershell",
+          mode: "local",
+          prompt: "$",
+          status: "online",
+          title: "left",
+        },
+        {
+          id: "pane-local-2",
+          lines: ["right"],
+          machineId: "local-powershell",
+          mode: "local",
+          prompt: "$",
+          status: "online",
+          title: "right",
+        },
+      ],
+      terminalTabs: [
+        {
+          id: "tab-local-1",
+          layout: {
+            children: [
+              { paneId: "pane-local-1", type: "pane" },
+              { paneId: "pane-local-2", type: "pane" },
+            ],
+            direction: "horizontal",
+            id: "split-1",
+            type: "split",
+          },
+          machineId: "local-powershell",
+          title: "local",
+        },
+      ],
+    });
+    const panesBefore = useWorkspaceStore.getState().terminalPanes;
+
+    useWorkspaceStore
+      .getState()
+      .moveTerminalPane("pane-local-1", "pane-local-2", "right");
+
+    const state = useWorkspaceStore.getState();
+    expect(state.focusedPaneId).toBe("pane-local-1");
+    expect(state.terminalPanes).toBe(panesBefore);
+    expect(state.terminalTabs[0]).toMatchObject({
+      layout: {
+        children: [
+          { paneId: "pane-local-2", type: "pane" },
+          { paneId: "pane-local-1", type: "pane" },
+        ],
+        direction: "horizontal",
+        type: "split",
+      },
+    });
   });
 
   it("skips unchanged pane runtime updates to avoid redundant store notifications", () => {
@@ -517,6 +581,80 @@ describe("workspaceStore", () => {
     });
   });
 
+  it("restores profile-backed local machines from profile sidebar group metadata", () => {
+    useWorkspaceStore.getState().setRemoteHostTree(remoteHostTreeWithTools);
+    useWorkspaceStore.getState().restoreWorkspaceSession({
+      activeTabId: "",
+      focusedPaneId: "",
+      selectedMachineId: "",
+      sidebarMachines: [],
+      terminalPanes: [],
+      terminalTabs: [],
+    });
+
+    useWorkspaceStore.getState().setProfiles([
+      bashProfile,
+      {
+        ...pwshProfile,
+        sidebarGroupId: "group-tools",
+      },
+    ]);
+
+    const state = useWorkspaceStore.getState();
+    const toolsGroup = state.machineGroups.find(
+      (group) => group.id === "group-tools",
+    );
+    expect(toolsGroup?.machines[0]).toMatchObject({
+      id: localMachineIdForProfile("profile-pwsh"),
+      kind: "local",
+      name: "PowerShell 7",
+      remoteGroupId: "group-tools",
+      shell: "pwsh.exe",
+    });
+    expect(
+      state.machineGroups
+        .find((group) => group.id === "group-lab")
+        ?.machines.some(
+          (machine) => machine.id === localMachineIdForProfile("profile-pwsh"),
+      ),
+    ).toBe(false);
+  });
+
+  it("uses current profile sidebar metadata even when the session has a stale local tombstone", () => {
+    const machineId = localMachineIdForProfile("profile-pwsh");
+
+    useWorkspaceStore.getState().setRemoteHostTree(remoteHostTreeWithTools);
+    useWorkspaceStore.getState().restoreWorkspaceSession({
+      activeTabId: "",
+      focusedPaneId: "",
+      removedSidebarMachineIds: [machineId],
+      selectedMachineId: "",
+      sidebarMachines: [],
+      terminalPanes: [],
+      terminalTabs: [],
+    });
+
+    useWorkspaceStore.getState().setProfiles([
+      bashProfile,
+      {
+        ...pwshProfile,
+        sidebarGroupId: "group-tools",
+      },
+    ]);
+
+    const state = useWorkspaceStore.getState();
+    const toolsGroup = state.machineGroups.find(
+      (group) => group.id === "group-tools",
+    );
+    expect(toolsGroup?.machines[0]).toMatchObject({
+      id: machineId,
+      kind: "local",
+      name: "PowerShell 7",
+      remoteGroupId: "group-tools",
+    });
+    expect(state.removedSidebarMachineIds).not.toContain(machineId);
+  });
+
   it("moves persistent sidebar machines between groups", () => {
     useWorkspaceStore.getState().setRemoteHostTree(remoteHostTreeWithTools);
     useWorkspaceStore
@@ -625,6 +763,38 @@ describe("workspaceStore", () => {
       remoteGroupId: "group-tools",
       shell: "exec sh",
     });
+  });
+
+  it("updates an existing pinned Docker container instead of duplicating it", () => {
+    useWorkspaceStore.getState().setRemoteHostTree(remoteHostTreeWithTools);
+
+    useWorkspaceStore.getState().addDockerContainer(apiContainer, {
+      groupId: "group-lab",
+      shell: "exec sh",
+    });
+    useWorkspaceStore.getState().addDockerContainer(apiContainer, {
+      groupId: "group-tools",
+      shell: "exec bash -l",
+      user: "root",
+    });
+
+    const dockerMachines = useWorkspaceStore
+      .getState()
+      .machineGroups.flatMap((group) => group.machines)
+      .filter((machine) => machine.kind === "dockerContainer");
+    expect(dockerMachines).toHaveLength(1);
+    expect(dockerMachines[0]).toMatchObject({
+      id: "docker:host-lab:c0ffee1234567890",
+      remoteGroupId: "group-tools",
+      shell: "exec bash -l",
+      user: "root",
+    });
+    expect(
+      useWorkspaceStore
+        .getState()
+        .machineGroups.find((group) => group.id === "group-lab")
+        ?.machines.map((machine) => machine.id),
+    ).not.toContain("docker:host-lab:c0ffee1234567890");
   });
 
   it("restores a Docker sidebar machine from the saved workspace session", () => {

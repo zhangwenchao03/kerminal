@@ -31,7 +31,7 @@ fn history_suggestions_prefer_same_host_and_cwd() {
     let suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "git checkout ".to_owned(),
@@ -82,7 +82,7 @@ fn provider_filter_can_disable_history_suggestions() {
     let suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "kubectl".to_owned(),
@@ -126,7 +126,7 @@ fn dangerous_history_suggestions_are_marked_and_demoted() {
     let suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "rm -rf ".to_owned(),
@@ -177,7 +177,7 @@ fn dismissed_feedback_demotes_matching_suggestion() {
         state
             .command_suggestions()
             .record_feedback(
-                state.storage(),
+                state.command_store(),
                 CommandSuggestionFeedbackRecordRequest {
                     action: CommandSuggestionFeedbackAction::Dismissed,
                     cwd: Some("C:/dev/rust/kerminal".to_owned()),
@@ -199,7 +199,7 @@ fn dismissed_feedback_demotes_matching_suggestion() {
     let suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "git st".to_owned(),
@@ -237,7 +237,7 @@ fn sensitive_feedback_is_not_recorded() {
     let result = state
         .command_suggestions()
         .record_feedback(
-            state.storage(),
+            state.command_store(),
             CommandSuggestionFeedbackRecordRequest {
                 action: CommandSuggestionFeedbackAction::Accepted,
                 cwd: None,

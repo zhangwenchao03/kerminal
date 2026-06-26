@@ -1,4 +1,5 @@
 import type { IMarker } from "@xterm/xterm";
+import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 
 const GOLDEN_ANGLE_DEGREES = 137.508;
 const MAX_IMAGE_TEXT_LINES = 160;
@@ -242,7 +243,7 @@ export function appendCommandBlockOutput(
   if (block.command === "") {
     return;
   }
-  block.output = trimCommandBlockOutputTail(block.output + data);
+  block.output = appendCommandBlockOutputTail(block.output, data);
 }
 
 export function terminalCommandBlockPlainText(block: TerminalCommandBlock) {
@@ -260,7 +261,10 @@ export async function copyTerminalCommandBlockAsImage(
     typeof clipboard.write !== "function" ||
     typeof ClipboardItem === "undefined"
   ) {
-    await clipboard?.writeText(text);
+    const result = await writeDesktopClipboardText(text);
+    if (!result.ok) {
+      throw new Error("当前环境不支持复制到剪贴板。");
+    }
     return "text";
   }
 
@@ -342,6 +346,16 @@ function trimCommandBlockOutputTail(output: string) {
     startIndex += 1;
   }
   return output.slice(startIndex);
+}
+
+function appendCommandBlockOutputTail(output: string, data: string) {
+  const tailWindowLength = COMMAND_BLOCK_OUTPUT_MAX_CHARS + 1;
+  const currentTailBudget = Math.max(0, tailWindowLength - data.length);
+  const candidate =
+    currentTailBudget === 0
+      ? data.slice(-tailWindowLength)
+      : output.slice(-currentTailBudget) + data;
+  return trimCommandBlockOutputTail(candidate);
 }
 
 function estimateTerminalTextRows(text: string, cols: number) {

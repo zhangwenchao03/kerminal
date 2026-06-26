@@ -1,4 +1,9 @@
-pub(super) fn is_sensitive_command(command: &str) -> bool {
+//! 命令建议敏感与危险命令分类模型。
+//!
+//! @author kongweiguang
+
+/// 判断命令是否包含敏感凭据、密钥或认证片段。
+pub fn is_sensitive_command(command: &str) -> bool {
     let lower = command.to_ascii_lowercase();
     [
         "password",
@@ -20,7 +25,8 @@ pub(super) fn is_sensitive_command(command: &str) -> bool {
     .any(|marker| lower.contains(marker))
 }
 
-pub(super) fn is_dangerous_command(command: &str) -> bool {
+/// 判断命令是否包含高风险系统修改模式。
+pub fn is_dangerous_command(command: &str) -> bool {
     let lower = command.trim_start().to_ascii_lowercase();
     lower.starts_with("rm -rf /")
         || lower.starts_with("rm -fr /")

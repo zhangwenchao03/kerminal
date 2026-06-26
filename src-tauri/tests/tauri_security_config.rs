@@ -52,7 +52,7 @@ fn tauri_config_enables_strict_production_csp_and_dev_csp() {
 }
 
 #[test]
-fn default_capability_grants_window_access_and_updater_permissions_to_main_window() {
+fn default_capability_grants_window_access_native_plugin_and_updater_permissions_to_main_window() {
     let capability = read_json(manifest_dir().join("capabilities/default.json"));
 
     assert_eq!(capability["identifier"], "default");
@@ -70,6 +70,10 @@ fn default_capability_grants_window_access_and_updater_permissions_to_main_windo
                     }
                 ]
             },
+            "notification:default",
+            "log:default",
+            "clipboard-manager:allow-read-text",
+            "clipboard-manager:allow-write-text",
             "process:default",
             "updater:default",
             "core:window:allow-start-dragging",
@@ -158,9 +162,245 @@ fn opener_plugin_is_registered_with_limited_github_scope() {
     let manifest = manifest_dir();
     let cargo_toml = read_text(manifest.join("Cargo.toml"));
     let lib_rs = read_text(manifest.join("src/lib.rs"));
+    let desktop_plugins_rs = read_text(manifest.join("src/desktop_plugins.rs"));
     let package_json = read_text(manifest.join("../package.json"));
 
     assert!(cargo_toml.contains("tauri-plugin-opener"));
-    assert!(lib_rs.contains("tauri_plugin_opener::init()"));
+    assert!(lib_rs.contains("desktop_plugins::apply_desktop_plugins(builder, desktop_log_dir)"));
+    assert!(desktop_plugins_rs.contains("tauri_plugin_opener::init()"));
     assert!(package_json.contains("@tauri-apps/plugin-opener"));
+}
+
+#[test]
+fn desktop_plugins_are_registered_with_minimal_frontend_permissions() {
+    let manifest = manifest_dir();
+    let cargo_toml = read_text(manifest.join("Cargo.toml"));
+    let app_tray_rs = read_text(manifest.join("src/app_tray.rs"));
+    let lib_rs = read_text(manifest.join("src/lib.rs"));
+    let desktop_plugins_rs = read_text(manifest.join("src/desktop_plugins.rs"));
+    let package_json = read_text(manifest.join("../package.json"));
+    let capability = read_json(manifest.join("capabilities/default.json"));
+
+    for crate_name in [
+        "tauri-plugin-clipboard-manager",
+        "tauri-plugin-window-state",
+        "tauri-plugin-single-instance",
+        "tauri-plugin-notification",
+        "tauri-plugin-log",
+    ] {
+        assert!(
+            cargo_toml.contains(crate_name),
+            "Cargo.toml must include {crate_name}"
+        );
+    }
+
+    for package_name in [
+        "@tauri-apps/plugin-clipboard-manager",
+        "@tauri-apps/plugin-window-state",
+        "@tauri-apps/plugin-notification",
+        "@tauri-apps/plugin-log",
+    ] {
+        assert!(
+            package_json.contains(package_name),
+            "package.json must include {package_name}"
+        );
+    }
+    assert!(
+        !package_json.contains("@tauri-apps/plugin-single-instance"),
+        "single-instance is Rust-only and must not add a frontend package"
+    );
+
+    assert!(lib_rs.contains("mod desktop_plugins;"));
+    assert!(lib_rs.contains("desktop_plugins::apply_desktop_plugins(builder, desktop_log_dir)"));
+    assert!(lib_rs.contains("KerminalPaths::from_environment_or_current_home()"));
+    assert!(desktop_plugins_rs.contains("app_tray::show_main_window(app)"));
+    assert!(
+        lib_rs.contains("app.manage(app_state)"),
+        "AppState must be managed inside setup after single-instance has run"
+    );
+    assert!(
+        !lib_rs.contains(".manage(app_state)\n        .setup"),
+        "builder-level AppState management runs before single-instance can stop a second process"
+    );
+
+    let desktop_plugins_position = lib_rs
+        .find("desktop_plugins::apply_desktop_plugins(builder, desktop_log_dir)")
+        .expect("desktop plugins must be applied");
+    let app_state_initialize_position = lib_rs
+        .find("AppState::initialize()")
+        .expect("AppState must still be initialized");
+    assert!(
+        desktop_plugins_position < app_state_initialize_position,
+        "single-instance plugin registration must happen before AppState initialization"
+    );
+
+    let single_instance_position = desktop_plugins_rs
+        .find("tauri_plugin_single_instance::init")
+        .expect("single-instance plugin must be registered");
+    let log_position = desktop_plugins_rs
+        .find("build_log_plugin(log_dir)")
+        .expect("log plugin must be registered");
+    let window_state_position = desktop_plugins_rs
+        .find("build_window_state_plugin()")
+        .expect("window-state plugin must be registered");
+    let notification_position = desktop_plugins_rs
+        .find("tauri_plugin_notification::init()")
+        .expect("notification plugin must be registered");
+    let clipboard_position = desktop_plugins_rs
+        .find("tauri_plugin_clipboard_manager::init()")
+        .expect("clipboard-manager plugin must be registered");
+    let opener_position = desktop_plugins_rs
+        .find("tauri_plugin_opener::init()")
+        .expect("opener plugin must be registered");
+
+    assert!(
+        single_instance_position < log_position,
+        "single-instance must be registered before log"
+    );
+    assert!(
+        log_position < window_state_position,
+        "log must be registered before window-state"
+    );
+    assert!(
+        window_state_position < notification_position,
+        "window-state must be registered before notification"
+    );
+    assert!(
+        notification_position < clipboard_position,
+        "notification must be registered before clipboard-manager"
+    );
+    assert!(
+        clipboard_position < opener_position,
+        "clipboard-manager must be registered before opener"
+    );
+
+    let permissions = capability["permissions"]
+        .as_array()
+        .expect("permissions must be an array");
+    assert!(
+        permissions
+            .iter()
+            .any(|permission| permission == "notification:default"),
+        "notification frontend permission must be explicit"
+    );
+    assert!(
+        permissions
+            .iter()
+            .any(|permission| permission == "log:default"),
+        "WebView logs must use the explicit log frontend permission"
+    );
+    assert!(
+        permissions
+            .iter()
+            .any(|permission| permission == "clipboard-manager:allow-read-text"),
+        "clipboard-manager must only expose explicit text read permission"
+    );
+    assert!(
+        permissions
+            .iter()
+            .any(|permission| permission == "clipboard-manager:allow-write-text"),
+        "clipboard-manager must only expose explicit text write permission"
+    );
+    for forbidden_permission in [
+        "clipboard-manager:default",
+        "clipboard-manager:allow-read-image",
+        "clipboard-manager:allow-write-image",
+        "clipboard-manager:allow-write-html",
+        "clipboard-manager:allow-clear",
+    ] {
+        assert!(
+            !permissions
+                .iter()
+                .any(|permission| permission == forbidden_permission),
+            "clipboard-manager must not expose broad or non-text permission: {forbidden_permission}"
+        );
+    }
+    assert!(
+        !permissions.iter().any(|permission| {
+            permission
+                .as_str()
+                .is_some_and(|value| value.starts_with("window-state:"))
+        }),
+        "window-state is Rust-managed in this slice and must not expose frontend permission"
+    );
+    assert!(
+        !permissions.iter().any(|permission| {
+            permission
+                .as_str()
+                .is_some_and(|value| value.starts_with("single-instance:"))
+        }),
+        "single-instance is Rust-only and must not expose frontend permission"
+    );
+
+    assert!(
+        desktop_plugins_rs
+            .contains("RotationStrategy::KeepSome(\n            APP_LOG_ROTATION_KEEP_FILES")
+            || desktop_plugins_rs
+                .contains("RotationStrategy::KeepSome(APP_LOG_ROTATION_KEEP_FILES"),
+        "log plugin must keep a bounded number of rotated files"
+    );
+    assert!(
+        desktop_plugins_rs.contains(".max_file_size(APP_LOG_MAX_FILE_SIZE_BYTES.into())"),
+        "log plugin must cap each log file size"
+    );
+    assert!(
+        desktop_plugins_rs.contains("TargetKind::Folder"),
+        "log plugin must write to the Kerminal-managed log directory"
+    );
+    assert!(
+        desktop_plugins_rs.contains("path: log_dir"),
+        "log plugin must receive the resolved Kerminal log directory"
+    );
+    assert!(
+        desktop_plugins_rs.contains("file_name: Some(APP_LOG_FILE_STEM.into())"),
+        "log plugin must use a stable Kerminal log file prefix"
+    );
+    for source in [&desktop_plugins_rs, &app_tray_rs, &lib_rs] {
+        assert!(
+            source.contains("target: \"desktop.lifecycle\"")
+                || source.contains("target: \"desktop.window\""),
+            "desktop lifecycle/window changes must use structured log targets"
+        );
+    }
+    assert!(
+        desktop_plugins_rs.contains("single-instance activation requested; focusing main window"),
+        "single-instance callback must log a sanitized lifecycle event"
+    );
+    assert!(
+        !desktop_plugins_rs.contains("target: \"desktop.lifecycle\",\n                _args")
+            && !desktop_plugins_rs.contains("target: \"desktop.lifecycle\",\n                _cwd"),
+        "single-instance logging must not include raw args or cwd"
+    );
+    assert!(
+        !desktop_plugins_rs.contains("{_args") && !desktop_plugins_rs.contains("{_cwd"),
+        "single-instance logging must not interpolate raw args or cwd"
+    );
+    assert!(
+        lib_rs.contains("config watcher failed to start")
+            && !lib_rs.contains("target: \"desktop.lifecycle\",\n                \"config watcher failed to start: {error}\""),
+        "config watcher logs must avoid full path-bearing error details"
+    );
+    assert!(
+        desktop_plugins_rs
+            .contains("StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED"),
+        "window-state must only persist size, position and maximized state"
+    );
+    for forbidden_flag in [
+        "StateFlags::VISIBLE",
+        "StateFlags::FULLSCREEN",
+        "StateFlags::DECORATIONS",
+    ] {
+        assert!(
+            !desktop_plugins_rs.contains(forbidden_flag),
+            "window-state must not persist {forbidden_flag}"
+        );
+    }
+
+    let terminal_commands_rs = read_text(manifest.join("src/commands/terminal.rs"));
+    let command_registry_rs = read_text(manifest.join("src/commands/registry.rs"));
+    assert!(
+        !terminal_commands_rs.contains("terminal_read_clipboard_text")
+            && !command_registry_rs.contains("terminal_read_clipboard_text"),
+        "terminal text clipboard reads must use clipboard-manager instead of a Windows-only command"
+    );
 }

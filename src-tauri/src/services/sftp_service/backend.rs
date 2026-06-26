@@ -27,7 +27,8 @@ use crate::{
         },
     },
     paths::KerminalPaths,
-    storage::SqliteStore,
+    services::ssh_identity_file::resolve_identity_file_path,
+    storage::{config_file_store::ConfigFileStore, file_store::FileStoreError},
 };
 
 use super::native_ssh::{connect_native_ssh_chain, NativeSftpSshConnection};
@@ -640,12 +641,8 @@ fn push_limited_bytes(buffer: &mut Vec<u8>, bytes: &[u8], max_bytes: usize) {
     buffer.extend_from_slice(&bytes[..bytes.len().min(remaining)]);
 }
 
-pub(super) fn resolve_endpoint(
-    storage: &SqliteStore,
-    paths: &KerminalPaths,
-    host_id: &str,
-) -> AppResult<SftpEndpoint> {
-    let host = resolve_host(storage, host_id)?;
+pub(super) fn resolve_endpoint(paths: &KerminalPaths, host_id: &str) -> AppResult<SftpEndpoint> {
+    let host = resolve_host(paths, host_id)?;
     let auth = resolve_auth_material(&host)?;
     Ok(SftpEndpoint {
         host,
@@ -654,13 +651,24 @@ pub(super) fn resolve_endpoint(
     })
 }
 
-pub(super) fn load_sftp_runtime_settings(storage: &SqliteStore) -> AppResult<SftpRuntimeSettings> {
-    Ok(SftpRuntimeSettings::from(storage.load_app_settings()?.sftp))
+pub(super) fn load_sftp_runtime_settings(paths: &KerminalPaths) -> AppResult<SftpRuntimeSettings> {
+    let settings = ConfigFileStore::new(paths.root.clone())
+        .read_settings_or_default()
+        .map_err(config_file_error)?;
+    Ok(SftpRuntimeSettings::from(settings.sftp))
 }
 
-pub(super) fn resolve_host(storage: &SqliteStore, host_id: &str) -> AppResult<RemoteHost> {
-    storage
-        .remote_host_by_id(host_id)?
+fn config_file_error(error: FileStoreError) -> AppError {
+    match error {
+        FileStoreError::Io(error) => AppError::Io(error),
+        other => AppError::InvalidInput(other.to_string()),
+    }
+}
+
+pub(super) fn resolve_host(paths: &KerminalPaths, host_id: &str) -> AppResult<RemoteHost> {
+    ConfigFileStore::new(paths.root.clone())
+        .remote_host_by_id(host_id)
+        .map_err(config_file_error)?
         .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {host_id}")))
 }
 
@@ -686,7 +694,7 @@ fn resolve_auth_material(host: &RemoteHost) -> AppResult<SftpAuthMaterial> {
                 ));
             }
             Ok(SftpAuthMaterial::PrivateKey(SftpPrivateKey::Path(
-                PathBuf::from(credential_ref),
+                resolve_identity_file_path(credential_ref)?,
             )))
         }
     }

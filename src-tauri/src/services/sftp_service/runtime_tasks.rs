@@ -7,17 +7,17 @@ use tokio::fs;
 
 use crate::models::sftp::SftpTransferConflictPolicy;
 
+use super::backend::SftpEndpoint;
 use super::*;
 
 impl SftpService {
     pub(super) async fn run_transfer_now(
         &self,
-        storage: &SqliteStore,
         paths: &KerminalPaths,
         request: SftpManagedTransferRequest,
     ) -> AppResult<bool> {
-        let settings = load_sftp_runtime_settings(storage)?;
-        let endpoint = resolve_endpoint(storage, paths, &request.host_id)?;
+        let settings = load_sftp_runtime_settings(paths)?;
+        let endpoint = resolve_endpoint(paths, &request.host_id)?;
         let request = normalize_managed_transfer_request(request)?;
         let progress = TransferProgress::detached();
         let _transfer_permit = self

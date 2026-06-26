@@ -7,7 +7,7 @@ pub(super) struct SmokeHarness {
     pub(super) remote_hosts: RemoteHostService,
     pub(super) sftp: SftpService,
     pub(super) ssh_commands: SshCommandService,
-    pub(super) storage: SqliteStore,
+    pub(super) storage: CommandSqliteStore,
     pub(super) suggestions: CommandSuggestionService,
 }
 
@@ -15,12 +15,13 @@ impl SmokeHarness {
     pub(super) fn new() -> Self {
         let home = tempdir().expect("create temporary Kerminal home");
         let paths = KerminalPaths::from_home_dir(home.path());
-        let storage = SqliteStore::open(&paths).expect("open temporary SQLite store");
+        let storage = CommandSqliteStore::open(&paths).expect("open temporary SQLite store");
+        let config_files = ConfigFileStore::new(paths.root.clone());
         Self {
             _home: home,
             history: CommandHistoryService::new(),
             paths,
-            remote_hosts: RemoteHostService::new(),
+            remote_hosts: RemoteHostService::new(config_files),
             sftp: SftpService::new(),
             ssh_commands: SshCommandService::new(),
             storage,
@@ -41,22 +42,19 @@ impl SmokeHarness {
         production: bool,
     ) -> kerminal_lib::models::remote_host::RemoteHost {
         self.remote_hosts
-            .create_host(
-                &self.storage,
-                RemoteHostCreateRequest {
-                    auth_type: config.auth_type,
-                    credential_ref: config.credential_ref.clone(),
-                    credential_secret: config.credential_secret.clone(),
-                    group_id: None,
-                    host: config.host.clone(),
-                    name: "SSH suggestion smoke".to_owned(),
-                    port: config.port,
-                    production,
-                    ssh_options: Default::default(),
-                    tags: vec!["smoke".to_owned(), "command-suggestion".to_owned()],
-                    username: config.username.clone(),
-                },
-            )
+            .create_host(RemoteHostCreateRequest {
+                auth_type: config.auth_type,
+                credential_ref: config.credential_ref.clone(),
+                credential_secret: config.credential_secret.clone(),
+                group_id: None,
+                host: config.host.clone(),
+                name: "SSH suggestion smoke".to_owned(),
+                port: config.port,
+                production,
+                ssh_options: Default::default(),
+                tags: vec!["smoke".to_owned(), "command-suggestion".to_owned()],
+                username: config.username.clone(),
+            })
             .expect("create temporary remote host")
     }
 
@@ -97,6 +95,10 @@ impl SmokeHarness {
                 },
             )
             .expect("list cached command suggestions")
+    }
+
+    pub(super) fn inline_settings(&self) -> TerminalInlineSuggestionSettings {
+        TerminalInlineSuggestionSettings::default()
     }
 }
 

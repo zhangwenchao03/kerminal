@@ -1,0 +1,134 @@
+//! 连接命令运行时规则集成测试。
+//!
+//! @author kongweiguang
+
+use kerminal_lib::{
+    commands::connection::rules::{
+        build_rdp_file_content, format_rdp_full_address, remote_host_from_create_request,
+        saved_rdp_password, test_tcp_endpoint,
+    },
+    models::{
+        connection::RdpOpenRequest,
+        remote_host::{RemoteHost, RemoteHostAuthType, RemoteHostCreateRequest, SshOptions},
+    },
+    paths::KerminalPaths,
+    state::AppState,
+};
+use tempfile::tempdir;
+use tokio::net::TcpListener;
+
+fn remote_host_request(tags: Vec<String>) -> RemoteHostCreateRequest {
+    RemoteHostCreateRequest {
+        group_id: None,
+        name: "telnet-dev".to_owned(),
+        host: "127.0.0.1".to_owned(),
+        port: 23,
+        username: String::new(),
+        auth_type: RemoteHostAuthType::Agent,
+        credential_ref: None,
+        credential_secret: None,
+        tags,
+        production: false,
+        ssh_options: SshOptions::default(),
+    }
+}
+
+fn rdp_host(
+    credential_secret: Option<&str>,
+    credential_ref: Option<&str>,
+    auth_type: RemoteHostAuthType,
+) -> RemoteHost {
+    RemoteHost {
+        id: "rdp-1".to_owned(),
+        group_id: None,
+        name: "office-rdp".to_owned(),
+        host: "rdp.internal".to_owned(),
+        port: 3389,
+        username: "administrator".to_owned(),
+        auth_type,
+        credential_ref: credential_ref.map(str::to_owned),
+        credential_secret: credential_secret.map(str::to_owned),
+        tags: vec!["rdp".to_owned()],
+        production: false,
+        ssh_options: SshOptions::default(),
+        sort_order: 10,
+        created_at: "now".to_owned(),
+        updated_at: "now".to_owned(),
+    }
+}
+
+#[test]
+fn formats_ipv6_full_address_for_rdp_file() {
+    assert_eq!(
+        format_rdp_full_address("2001:db8::10", 3389),
+        "[2001:db8::10]:3389"
+    );
+}
+
+#[test]
+fn builds_rdp_content_with_core_fields() {
+    let content = build_rdp_file_content(
+        &RdpOpenRequest {
+            desktop_height: Some(900),
+            desktop_width: Some(1440),
+            fullscreen: false,
+            host: "rdp.internal".to_string(),
+            name: "prod".to_string(),
+            note: None,
+            password: None,
+            port: 3390,
+            username: Some("administrator".to_string()),
+        },
+        Some("encrypted"),
+    );
+
+    assert!(content.contains("full address:s:rdp.internal:3390"));
+    assert!(content.contains("username:s:administrator"));
+    assert!(content.contains("desktopwidth:i:1440"));
+    assert!(content.contains("password 51:b:encrypted"));
+    assert!(content.contains("prompt for credentials:i:0"));
+}
+
+#[test]
+fn saved_rdp_password_prefers_plaintext_secret() {
+    let home = tempdir().expect("create temp home");
+    let state = AppState::initialize_with_paths(KerminalPaths::from_home_dir(home.path()))
+        .expect("initialize app state");
+    let host = rdp_host(
+        Some("plain-rdp-secret"),
+        Some("credential:rdp/legacy/password"),
+        RemoteHostAuthType::Password,
+    );
+
+    let password = saved_rdp_password(&state, &host).expect("resolve saved password");
+
+    assert_eq!(password.as_deref(), Some("plain-rdp-secret"));
+}
+
+#[tokio::test]
+async fn tcp_connection_test_reaches_local_listener() {
+    let listener = TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("bind local listener");
+    let port = listener.local_addr().expect("listener address").port();
+    let accepted = tokio::spawn(async move {
+        let _ = listener.accept().await;
+    });
+
+    test_tcp_endpoint("Telnet", "127.0.0.1", port, 1)
+        .await
+        .expect("connect to local listener");
+    accepted.await.expect("accept task finished");
+}
+
+#[test]
+fn builds_telnet_test_host_without_username() {
+    let host =
+        remote_host_from_create_request("Telnet", remote_host_request(vec!["telnet".to_owned()]))
+            .expect("valid telnet host");
+
+    assert_eq!(host.host, "127.0.0.1");
+    assert_eq!(host.port, 23);
+    assert!(host.username.is_empty());
+    assert_eq!(host.tags, vec!["telnet"]);
+}

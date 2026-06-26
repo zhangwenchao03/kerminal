@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { defaultAppSettings } from "./settingsModel";
@@ -46,5 +46,106 @@ describe("SettingsDialog", () => {
     );
 
     expect(screen.queryByRole("dialog", { name: "设置" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the editor draft when external settings arrive while dirty", () => {
+    const onSettingsChange = vi.fn();
+    const externalSettings = {
+      ...defaultAppSettings,
+      appearance: {
+        ...defaultAppSettings.appearance,
+        windowOpacity: 45,
+      },
+    };
+    const { rerender } = render(
+      <SettingsDialog
+        onClose={vi.fn()}
+        onSettingsChange={onSettingsChange}
+        open
+        settings={defaultAppSettings}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("界面透明度"), {
+      target: { value: "80" },
+    });
+    rerender(
+      <SettingsDialog
+        onClose={vi.fn()}
+        onSettingsChange={onSettingsChange}
+        open
+        settings={externalSettings}
+      />,
+    );
+
+    expect(screen.getByLabelText("界面透明度")).toHaveValue("80");
+    expect(
+      screen.getByText("cfg: settings changed externally; editor draft kept"),
+    ).toBeInTheDocument();
+    expect(onSettingsChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appearance: expect.objectContaining({ windowOpacity: 80 }),
+      }),
+    );
+  });
+
+  it("accepts external settings after the current draft is saved", async () => {
+    const onSettingsChange = vi.fn();
+    const savedDraftSettings = {
+      ...defaultAppSettings,
+      appearance: {
+        ...defaultAppSettings.appearance,
+        windowOpacity: 80,
+      },
+    };
+    const externalSettings = {
+      ...defaultAppSettings,
+      appearance: {
+        ...defaultAppSettings.appearance,
+        windowOpacity: 45,
+      },
+    };
+    const { rerender } = render(
+      <SettingsDialog
+        onClose={vi.fn()}
+        onSettingsChange={onSettingsChange}
+        open
+        settings={defaultAppSettings}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("界面透明度"), {
+      target: { value: "80" },
+    });
+    rerender(
+      <SettingsDialog
+        onClose={vi.fn()}
+        onSettingsChange={onSettingsChange}
+        open
+        saveState="saved"
+        settings={savedDraftSettings}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("界面透明度")).toHaveValue("80");
+    });
+
+    rerender(
+      <SettingsDialog
+        onClose={vi.fn()}
+        onSettingsChange={onSettingsChange}
+        open
+        saveState="saved"
+        settings={externalSettings}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("界面透明度")).toHaveValue("45");
+    });
+    expect(
+      screen.queryByText("cfg: settings changed externally; editor draft kept"),
+    ).not.toBeInTheDocument();
   });
 });

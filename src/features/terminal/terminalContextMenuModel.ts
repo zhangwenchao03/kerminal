@@ -19,6 +19,22 @@ export interface TerminalContextMenuPosition {
   y: number;
 }
 
+export interface TerminalContextMenuSize {
+  height: number;
+  width: number;
+}
+
+export interface TerminalContextMenuViewport {
+  height: number;
+  width: number;
+}
+
+export interface TerminalContextMenuPositionOptions {
+  inset?: number;
+  menuSize?: TerminalContextMenuSize;
+  viewport?: TerminalContextMenuViewport;
+}
+
 export interface TerminalContextMenuItemModel {
   action: TerminalContextMenuAction;
   disabled?: boolean;
@@ -30,14 +46,18 @@ export interface TerminalContextMenuGroupOptions {
   canCopy: boolean;
   canDisconnect?: boolean;
   canReconnect?: boolean;
+  canSplit?: boolean;
 }
+
+const TERMINAL_CONTEXT_MENU_VIEWPORT_INSET = 8;
 
 export function terminalContextMenuGroups({
   canCopy,
   canDisconnect = true,
   canReconnect = true,
+  canSplit = true,
 }: TerminalContextMenuGroupOptions): TerminalContextMenuItemModel[][] {
-  return [
+  const groups: TerminalContextMenuItemModel[][] = [
     [
       {
         action: "copy",
@@ -76,7 +96,9 @@ export function terminalContextMenuGroups({
         label: "断开连接",
       },
     ],
-    [
+  ];
+  if (canSplit) {
+    groups.push([
       {
         action: "splitHorizontal",
         label: "左右分屏",
@@ -85,8 +107,37 @@ export function terminalContextMenuGroups({
         action: "splitVertical",
         label: "上下分屏",
       },
-    ],
-  ];
+    ]);
+  }
+  return groups;
+}
+
+export function resolveTerminalContextMenuPosition(
+  position: TerminalContextMenuPosition,
+  options: TerminalContextMenuPositionOptions = {},
+): TerminalContextMenuPosition {
+  const {
+    inset = TERMINAL_CONTEXT_MENU_VIEWPORT_INSET,
+    menuSize,
+    viewport,
+  } = options;
+  if (
+    !menuSize ||
+    !viewport ||
+    menuSize.width <= 0 ||
+    menuSize.height <= 0 ||
+    viewport.width <= 0 ||
+    viewport.height <= 0
+  ) {
+    return position;
+  }
+
+  const maxX = Math.max(inset, viewport.width - menuSize.width - inset);
+  const maxY = Math.max(inset, viewport.height - menuSize.height - inset);
+  return {
+    x: Math.max(inset, Math.min(position.x, maxX)),
+    y: Math.max(inset, Math.min(position.y, maxY)),
+  };
 }
 
 export function splitDirectionForMenuAction(

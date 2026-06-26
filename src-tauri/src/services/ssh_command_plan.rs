@@ -18,9 +18,10 @@ use crate::{
     error::{AppError, AppResult},
     models::{
         remote_host::{RemoteHost, RemoteHostAuthType},
-        terminal::TerminalSecretInputResponse,
+        terminal::{TerminalSecretInputEntry, TerminalSecretInputPlan},
     },
     paths::KerminalPaths,
+    services::ssh_identity_file::resolve_identity_file_path,
 };
 
 const SSH_COMMAND_KEY_DIR_NAME: &str = "ssh-command-keys";
@@ -36,7 +37,7 @@ pub struct SshAuthPlan {
     /// 认证完成或进程退出后需要清理的本地临时文件。
     pub cleanup_paths: Vec<PathBuf>,
     /// 密码认证的 PTY 安全响应计划；不参与日志和命令行。
-    pub secret_input_response: Option<TerminalSecretInputResponse>,
+    pub secret_input_plan: Option<TerminalSecretInputPlan>,
     /// 当前计划使用的认证方式。
     pub method: SshAuthMethod,
 }
@@ -54,8 +55,8 @@ pub enum SshAuthMethod {
 
 impl SshAuthPlan {
     /// 密码认证需要本地 PTY 读取 OpenSSH 提示并安全写回密码。
-    pub fn requires_secret_response_pty(&self) -> bool {
-        self.secret_input_response.is_some()
+    pub fn requires_secret_input_pty(&self) -> bool {
+        self.secret_input_plan.is_some()
     }
 }
 
@@ -108,7 +109,7 @@ pub fn resolve_ssh_auth_plan(
         RemoteHostAuthType::Agent => Ok(SshAuthPlan {
             args: Vec::new(),
             cleanup_paths: Vec::new(),
-            secret_input_response: None,
+            secret_input_plan: None,
             method: SshAuthMethod::Agent,
         }),
         RemoteHostAuthType::Password => Ok(resolve_password_auth_plan(host)),
@@ -139,7 +140,7 @@ fn resolve_key_auth_plan(
         return Ok(SshAuthPlan {
             args: Vec::new(),
             cleanup_paths: Vec::new(),
-            secret_input_response: None,
+            secret_input_plan: None,
             method: SshAuthMethod::Key,
         });
     };
@@ -151,26 +152,35 @@ fn resolve_key_auth_plan(
     }
 
     Ok(identity_file_auth_plan(
-        PathBuf::from(credential_ref),
+        resolve_identity_file_path(credential_ref)?,
         false,
     ))
 }
 
 fn resolve_password_auth_plan(host: &RemoteHost) -> SshAuthPlan {
-    let response = normalized_credential_secret(host).map(|password| {
+    let secret_input_plan = normalized_credential_secret(host).map(|password| {
         let password = password.to_owned();
-        TerminalSecretInputResponse {
-            prompt_markers: password_prompt_markers(host),
-            redact_values: vec![password.clone()],
-            response: password,
-            max_responses: 1,
+        let label = if host.name.trim().is_empty() {
+            format!("{}@{}", host.username, host.host)
+        } else {
+            host.name.clone()
+        };
+        TerminalSecretInputPlan {
+            entries: vec![TerminalSecretInputEntry {
+                id: "target:password".to_owned(),
+                label,
+                prompt_markers: password_prompt_markers(host),
+                response: password.clone(),
+                redact_values: vec![password],
+                max_responses: 1,
+            }],
         }
     });
 
     SshAuthPlan {
         args: Vec::new(),
         cleanup_paths: Vec::new(),
-        secret_input_response: response,
+        secret_input_plan,
         method: SshAuthMethod::Password,
     }
 }
@@ -202,7 +212,7 @@ fn identity_file_auth_plan(path: PathBuf, cleanup: bool) -> SshAuthPlan {
             "IdentitiesOnly=yes".to_owned(),
         ],
         cleanup_paths,
-        secret_input_response: None,
+        secret_input_plan: None,
         method: SshAuthMethod::Key,
     }
 }

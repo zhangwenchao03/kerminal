@@ -127,8 +127,8 @@ export function SshJumpPanel({
             />
             <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
               {sshMachines.length > 0
-                ? "选择已有 SSH 主机会自动回填下面的跳板机信息，回填后仍可修改。"
-                : "当前没有可选的已有 SSH 主机，可继续手动填写。"}
+                ? "选择已有 SSH 主机可回填信息。"
+                : "暂无可选 SSH 主机，可手填。"}
             </p>
           </div>
         </FieldRow>
@@ -233,7 +233,7 @@ export function SshJumpPanel({
           {draft.authType !== "agent" ? (
             <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
               {draft.authType === "password"
-                ? "跳板机密码会随 SSH 主机配置保存。"
+                ? "跳板机密码随主机保存。"
                 : "跳板机密钥认证使用本机可访问的私钥路径。"}
             </p>
           ) : null}
@@ -253,7 +253,7 @@ export function SshJumpPanel({
       {options.jumpHosts.length === 0 ? (
         <EmptyConfigState
           icon={<Network className="h-5 w-5" />}
-          text="还没有跳板机。多级 SSH 会按列表顺序依次跳转。"
+          text="暂无跳板机。按列表顺序跳转。"
         />
       ) : (
         <ConfigList>

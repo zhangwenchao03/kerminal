@@ -36,10 +36,6 @@ describe("settingsApi", () => {
 
     const settings = await updateSettings({
       ...defaultAppSettings,
-      ai: {
-        ...defaultAppSettings.ai,
-        contextMaxOutputBytes: 999999,
-      },
       terminal: {
         ...defaultAppSettings.terminal,
         fontSize: 999,
@@ -55,14 +51,9 @@ describe("settingsApi", () => {
     expect(settings.terminal.fontSize).toBe(24);
     expect(settings.terminal.inlineSuggestion.auditRetentionDays).toBe(1);
     expect(settings.terminal.inlineSuggestion.feedbackRetentionDays).toBe(3650);
-    expect(settings.ai.contextMaxOutputBytes).toBe(24576);
     expect(invokeMock).toHaveBeenCalledWith("settings_update", {
       request: {
         ...defaultAppSettings,
-        ai: {
-          ...defaultAppSettings.ai,
-          contextMaxOutputBytes: 24576,
-        },
         terminal: {
           ...defaultAppSettings.terminal,
           fontSize: 24,

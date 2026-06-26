@@ -6,49 +6,48 @@ use crate::{
     error::AppResult,
     paths::KerminalPaths,
     services::{
-        ai_agent_run_service::AiAgentRunService, ai_agent_service::AiAgentService,
-        ai_context_service::AiContextService, ai_conversation_service::AiConversationService,
-        ai_tool_invocation_service::AiToolInvocationService,
+        agent_context_service::AgentContextService, agent_session_service::AgentSessionService,
         command_history_service::CommandHistoryService,
         command_suggestion_service::CommandSuggestionService,
+        config_change_observer_service::ConfigChangeObserverService,
         credential_service::CredentialService, diagnostics_service::DiagnosticsService,
         docker_host_service::DockerHostService,
+        external_agent_workspace::ExternalAgentWorkspaceService,
         local_network_proxy_service::LocalNetworkProxyService,
         mcp_streamable_http_server::McpStreamableHttpServerService,
-        mcp_tool_gateway::McpToolGateway, port_forward_service::PortForwardService,
-        profile_service::ProfileService, remote_host_service::RemoteHostService,
-        rig_provider_service::RigProviderService, serial_terminal_service::SerialTerminalService,
+        mcp_tool_catalog_service::McpToolCatalogService,
+        mcp_tool_executor_service::McpToolExecutorService,
+        port_forward_service::PortForwardService, profile_service::ProfileService,
+        remote_host_service::RemoteHostService, serial_terminal_service::SerialTerminalService,
         server_info_service::ServerInfoService, settings_service::SettingsService,
         sftp_service::SftpService, snippet_service::SnippetService,
         ssh_command_service::SshCommandService, ssh_terminal_service::SshTerminalService,
         telnet_terminal_service::TelnetTerminalService, terminal_manager::TerminalManager,
-        terminal_session_binding_service::TerminalSessionBindingService,
-        tool_registry_service::ToolRegistryService, workflow_service::WorkflowService,
+        terminal_session_binding_service::TerminalSessionBindingService, tmux_service::TmuxService,
+        workflow_service::WorkflowService,
     },
-    storage::{migrations::CURRENT_SCHEMA_VERSION, SqliteStore},
+    storage::{config_file_store::ConfigFileStore, CommandSqliteStore, RuntimeFileStore},
 };
 
 /// Kerminal Rust 侧全局状态。
 #[derive(Debug)]
 pub struct AppState {
-    ai_agent: AiAgentService,
-    ai_agent_runs: AiAgentRunService,
-    ai_conversations: AiConversationService,
-    ai_context: AiContextService,
-    ai_tools: AiToolInvocationService,
+    agent_context: AgentContextService,
+    agent_sessions: AgentSessionService,
+    mcp_tool_executor: McpToolExecutorService,
     command_history: CommandHistoryService,
+    command_store: CommandSqliteStore,
     command_suggestions: CommandSuggestionService,
+    config_change_observer: ConfigChangeObserverService,
     credentials: CredentialService,
     diagnostics: DiagnosticsService,
     docker_hosts: DockerHostService,
     local_network_proxy: LocalNetworkProxyService,
     mcp_http_server: McpStreamableHttpServerService,
-    mcp_tools: McpToolGateway,
     paths: KerminalPaths,
     port_forwards: PortForwardService,
     profiles: ProfileService,
     remote_hosts: RemoteHostService,
-    rig_providers: RigProviderService,
     serial_terminals: SerialTerminalService,
     server_info: ServerInfoService,
     settings: SettingsService,
@@ -57,72 +56,73 @@ pub struct AppState {
     ssh_commands: SshCommandService,
     ssh_terminals: SshTerminalService,
     telnet_terminals: TelnetTerminalService,
-    storage: SqliteStore,
+    storage: RuntimeFileStore,
     terminal_session_bindings: TerminalSessionBindingService,
     terminals: TerminalManager,
-    tools: ToolRegistryService,
+    tmux: TmuxService,
+    mcp_tool_catalog: McpToolCatalogService,
     workflows: WorkflowService,
 }
 
 impl AppState {
     /// 使用当前系统 home 目录初始化应用状态。
     pub fn initialize() -> AppResult<Self> {
-        Self::initialize_with_paths(KerminalPaths::from_current_home()?)
+        Self::initialize_with_paths(KerminalPaths::from_environment_or_current_home()?)
     }
 
     /// 使用指定路径初始化应用状态，主要用于测试和未来 portable 模式。
     pub fn initialize_with_paths(paths: KerminalPaths) -> AppResult<Self> {
-        let storage = SqliteStore::open(&paths)?;
-        storage.set_metadata("schema_version", &CURRENT_SCHEMA_VERSION.to_string())?;
+        let storage = RuntimeFileStore::open(&paths)?;
+        let command_store = CommandSqliteStore::open(&paths)?;
+        ExternalAgentWorkspaceService::new(paths.root.clone(), None, false)
+            .ensure_default_agent_files()?;
         let credentials = CredentialService::new();
-        let ai_agent = AiAgentService::new();
-        let ai_agent_runs = AiAgentRunService::new();
-        let ai_conversations = AiConversationService::new();
-        let ai_context = AiContextService::new();
-        let ai_tools = AiToolInvocationService::new();
+        let agent_context = AgentContextService::new();
+        let agent_sessions = AgentSessionService::new(paths.root.clone());
+        let mcp_tool_executor = McpToolExecutorService::new();
         let command_history = CommandHistoryService::new();
         let command_suggestions = CommandSuggestionService::new();
         let mcp_http_server = McpStreamableHttpServerService::new();
-        let mcp_tools = McpToolGateway::new();
         let diagnostics = DiagnosticsService::new();
         let docker_hosts = DockerHostService::new();
         let local_network_proxy = LocalNetworkProxyService::new();
+        let config_files = ConfigFileStore::new(paths.root.clone());
+        let settings = SettingsService::new(config_files.clone());
+        settings.ensure_seed_settings()?;
         let port_forwards = PortForwardService::new();
-        let profiles = ProfileService::new();
-        profiles.ensure_seed_profiles(&storage)?;
-        let remote_hosts = RemoteHostService::new();
-        let rig_providers = RigProviderService::new();
+        let profiles = ProfileService::new(config_files.clone());
+        profiles.ensure_seed_profiles()?;
+        let remote_hosts = RemoteHostService::new(config_files.clone());
         let serial_terminals = SerialTerminalService::new();
         let server_info = ServerInfoService::new();
-        let settings = SettingsService::new();
         let sftp = SftpService::new();
-        let snippets = SnippetService::new();
+        let snippets = SnippetService::new(config_files.clone());
         let ssh_commands = SshCommandService::new();
         let ssh_terminals = SshTerminalService::new();
         ssh_terminals.cleanup_temporary_identity_files(&paths)?;
         let telnet_terminals = TelnetTerminalService::new();
-        let tools = ToolRegistryService::new();
-        let workflows = WorkflowService::new();
+        let mcp_tool_catalog = McpToolCatalogService::new();
+        let tmux = TmuxService::new();
+        let workflows = WorkflowService::new(config_files.clone());
+        let config_change_observer = ConfigChangeObserverService::new(config_files);
 
         Ok(Self {
-            ai_agent,
-            ai_agent_runs,
-            ai_conversations,
-            ai_context,
-            ai_tools,
+            agent_context,
+            agent_sessions,
+            mcp_tool_executor,
             command_history,
+            command_store,
             command_suggestions,
+            config_change_observer,
             credentials,
             diagnostics,
             docker_hosts,
             local_network_proxy,
             mcp_http_server,
-            mcp_tools,
             paths,
             port_forwards,
             profiles,
             remote_hosts,
-            rig_providers,
             serial_terminals,
             server_info,
             settings,
@@ -134,7 +134,8 @@ impl AppState {
             storage,
             terminal_session_bindings: TerminalSessionBindingService::default(),
             terminals: TerminalManager::new(),
-            tools,
+            tmux,
+            mcp_tool_catalog,
             workflows,
         })
     }
@@ -144,29 +145,19 @@ impl AppState {
         &self.paths
     }
 
-    /// 返回 AI Agent 对话服务。
-    pub fn ai_agent(&self) -> &AiAgentService {
-        &self.ai_agent
+    /// 返回外部 Agent / MCP 上下文服务。
+    pub fn agent_context(&self) -> &AgentContextService {
+        &self.agent_context
     }
 
-    /// 返回 AI Agent run 状态服务。
-    pub fn ai_agent_runs(&self) -> &AiAgentRunService {
-        &self.ai_agent_runs
+    /// 返回外部 Agent session 文件服务。
+    pub fn agent_sessions(&self) -> &AgentSessionService {
+        &self.agent_sessions
     }
 
-    /// 返回 AI 会话持久化服务。
-    pub fn ai_conversations(&self) -> &AiConversationService {
-        &self.ai_conversations
-    }
-
-    /// 返回 AI 上下文服务。
-    pub fn ai_context(&self) -> &AiContextService {
-        &self.ai_context
-    }
-
-    /// 返回 AI 工具调用服务。
-    pub fn ai_tools(&self) -> &AiToolInvocationService {
-        &self.ai_tools
+    /// 返回 MCP tool 直接执行器。
+    pub fn mcp_tool_executor(&self) -> &McpToolExecutorService {
+        &self.mcp_tool_executor
     }
 
     /// 返回命令历史服务。
@@ -174,9 +165,19 @@ impl AppState {
         &self.command_history
     }
 
+    /// 返回命令历史和命令建议专用 SQLite 存储。
+    pub fn command_store(&self) -> &CommandSqliteStore {
+        &self.command_store
+    }
+
     /// 返回命令建议服务。
     pub fn command_suggestions(&self) -> &CommandSuggestionService {
         &self.command_suggestions
+    }
+
+    /// 返回文件型配置变更观察服务。
+    pub fn config_change_observer(&self) -> &ConfigChangeObserverService {
+        &self.config_change_observer
     }
 
     /// 返回本地凭据服务。
@@ -199,11 +200,6 @@ impl AppState {
         &self.local_network_proxy
     }
 
-    /// 返回 rmcp 工具网关。
-    pub fn mcp_tools(&self) -> &McpToolGateway {
-        &self.mcp_tools
-    }
-
     /// 返回 Streamable HTTP MCP Server 生命周期服务。
     pub fn mcp_http_server(&self) -> &McpStreamableHttpServerService {
         &self.mcp_http_server
@@ -214,8 +210,8 @@ impl AppState {
         &self.port_forwards
     }
 
-    /// 返回 SQLite 存储入口。
-    pub fn storage(&self) -> &SqliteStore {
+    /// 返回运行态文件存储入口。
+    pub fn storage(&self) -> &RuntimeFileStore {
         &self.storage
     }
 
@@ -227,11 +223,6 @@ impl AppState {
     /// 返回远程主机服务。
     pub fn remote_hosts(&self) -> &RemoteHostService {
         &self.remote_hosts
-    }
-
-    /// 返回 Rig LLM Provider 服务。
-    pub fn rig_providers(&self) -> &RigProviderService {
-        &self.rig_providers
     }
 
     /// 返回 Serial 串口终端服务。
@@ -284,9 +275,14 @@ impl AppState {
         &self.terminal_session_bindings
     }
 
-    /// 返回 Kerminal Tool Registry。
-    pub fn tools(&self) -> &ToolRegistryService {
-        &self.tools
+    /// 返回 tmux 管理服务。
+    pub fn tmux(&self) -> &TmuxService {
+        &self.tmux
+    }
+
+    /// 返回 Kerminal MCP tool catalog。
+    pub fn mcp_tool_catalog(&self) -> &McpToolCatalogService {
+        &self.mcp_tool_catalog
     }
 
     /// 返回命令工作流服务。

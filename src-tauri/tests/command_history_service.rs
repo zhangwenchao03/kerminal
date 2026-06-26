@@ -20,7 +20,7 @@ fn record_history_persists_command_context() {
     let result = state
         .command_history()
         .record_command(
-            state.storage(),
+            state.command_store(),
             CommandHistoryRecordRequest {
                 command: " git status --short\r ".to_owned(),
                 source: CommandHistorySource::User,
@@ -47,6 +47,37 @@ fn record_history_persists_command_context() {
 }
 
 #[test]
+fn record_history_normalizes_multiline_command_text() {
+    let (_home, state) = test_state();
+
+    let result = state
+        .command_history()
+        .record_command(
+            state.command_store(),
+            CommandHistoryRecordRequest {
+                command: "  echo one\r\necho two\r ".to_owned(),
+                source: CommandHistorySource::User,
+                target: CommandHistoryTarget::Local,
+                record: None,
+                session_id: None,
+                pane_id: None,
+                tab_id: None,
+                profile_id: None,
+                remote_host_id: None,
+                cwd: None,
+                shell: None,
+            },
+        )
+        .expect("record normalized command");
+
+    assert!(result.recorded);
+    assert_eq!(
+        result.entry.expect("history entry").command,
+        "echo one\necho two"
+    );
+}
+
+#[test]
 fn list_history_filters_by_query_target_source_and_host() {
     let (_home, state) = test_state();
 
@@ -60,7 +91,7 @@ fn list_history_filters_by_query_target_source_and_host() {
     record(
         &state,
         "journalctl -u app.service -n 200 --no-pager",
-        CommandHistorySource::Ai,
+        CommandHistorySource::Tool,
         CommandHistoryTarget::Ssh,
         Some("host-prod"),
     );
@@ -68,7 +99,7 @@ fn list_history_filters_by_query_target_source_and_host() {
     let local = state
         .command_history()
         .list_history(
-            state.storage(),
+            state.command_store(),
             CommandHistoryListRequest {
                 query: Some("npm".to_owned()),
                 source: Some(CommandHistorySource::User),
@@ -86,10 +117,10 @@ fn list_history_filters_by_query_target_source_and_host() {
     let remote = state
         .command_history()
         .list_history(
-            state.storage(),
+            state.command_store(),
             CommandHistoryListRequest {
                 query: Some("journal".to_owned()),
-                source: Some(CommandHistorySource::Ai),
+                source: Some(CommandHistorySource::Tool),
                 target: Some(CommandHistoryTarget::Ssh),
                 pane_id: None,
                 remote_host_id: Some("host-prod".to_owned()),
@@ -126,7 +157,7 @@ fn list_history_filters_by_pane_id() {
     let entries = state
         .command_history()
         .list_history(
-            state.storage(),
+            state.command_store(),
             CommandHistoryListRequest {
                 query: None,
                 source: None,
@@ -151,7 +182,7 @@ fn record_history_skips_disabled_or_sensitive_commands() {
     let disabled = state
         .command_history()
         .record_command(
-            state.storage(),
+            state.command_store(),
             CommandHistoryRecordRequest {
                 command: "echo ignored".to_owned(),
                 source: CommandHistorySource::User,
@@ -177,7 +208,7 @@ fn record_history_skips_disabled_or_sensitive_commands() {
     let sensitive = state
         .command_history()
         .record_command(
-            state.storage(),
+            state.command_store(),
             CommandHistoryRecordRequest {
                 command: "curl -H 'Authorization: Bearer secret-token' https://api".to_owned(),
                 source: CommandHistorySource::User,
@@ -195,9 +226,30 @@ fn record_history_skips_disabled_or_sensitive_commands() {
         .expect("skip sensitive history");
     assert!(!sensitive.recorded);
 
+    let api_key = state
+        .command_history()
+        .record_command(
+            state.command_store(),
+            CommandHistoryRecordRequest {
+                command: "echo api_key=secret-value".to_owned(),
+                source: CommandHistorySource::User,
+                target: CommandHistoryTarget::Local,
+                record: None,
+                session_id: None,
+                pane_id: None,
+                tab_id: None,
+                profile_id: None,
+                remote_host_id: None,
+                cwd: None,
+                shell: None,
+            },
+        )
+        .expect("skip api key history");
+    assert!(!api_key.recorded);
+
     let entries = state
         .command_history()
-        .list_history(state.storage(), CommandHistoryListRequest::default())
+        .list_history(state.command_store(), CommandHistoryListRequest::default())
         .expect("list history");
     assert!(entries.is_empty());
 }
@@ -229,7 +281,7 @@ fn delete_and_clear_history_round_trip() {
 
     let entries = state
         .command_history()
-        .list_history(state.storage(), CommandHistoryListRequest::default())
+        .list_history(state.command_store(), CommandHistoryListRequest::default())
         .expect("list history");
     assert_eq!(entries.len(), 3);
     assert!(entries
@@ -238,19 +290,19 @@ fn delete_and_clear_history_round_trip() {
 
     assert!(state
         .command_history()
-        .delete_history(state.storage(), &entries[0].id)
+        .delete_history(state.command_store(), &entries[0].id)
         .expect("delete history"));
 
     assert_eq!(
         state
             .command_history()
-            .clear_history(state.storage())
+            .clear_history(state.command_store())
             .expect("clear history"),
         2
     );
     assert!(state
         .command_history()
-        .list_history(state.storage(), CommandHistoryListRequest::default())
+        .list_history(state.command_store(), CommandHistoryListRequest::default())
         .expect("list after clear")
         .is_empty());
 }
@@ -262,7 +314,7 @@ fn record_history_rejects_empty_or_too_long_commands() {
     let empty = state
         .command_history()
         .record_command(
-            state.storage(),
+            state.command_store(),
             CommandHistoryRecordRequest {
                 command: "   ".to_owned(),
                 source: CommandHistorySource::User,
@@ -283,7 +335,7 @@ fn record_history_rejects_empty_or_too_long_commands() {
     let long = state
         .command_history()
         .record_command(
-            state.storage(),
+            state.command_store(),
             CommandHistoryRecordRequest {
                 command: "x".repeat(4_001),
                 source: CommandHistorySource::User,
@@ -323,7 +375,7 @@ fn record_with_pane(
     state
         .command_history()
         .record_command(
-            state.storage(),
+            state.command_store(),
             CommandHistoryRecordRequest {
                 command: command.to_owned(),
                 source,

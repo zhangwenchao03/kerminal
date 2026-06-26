@@ -100,7 +100,7 @@ export function useKerminalShellRemoteActions({
       setRemoteHostTree(remoteGroups);
       setRemoteHostLoadError(null);
     } catch {
-      setRemoteHostLoadError("远程主机加载失败，已使用当前本地连接列表。");
+      setRemoteHostLoadError("远程主机加载失败，使用本地列表。");
     }
   }, [setRemoteHostTree]);
   const refreshProfiles = useCallback(async () => {
@@ -190,6 +190,7 @@ export function useKerminalShellRemoteActions({
         cwd: options.cwd ?? baseProfile?.cwd,
         env: options.env ?? baseProfile?.env ?? {},
         name: options.title?.trim() || baseProfile?.name || "本地会话",
+        sidebarGroupId: groupId,
         shell,
         setDefault: false,
       });
@@ -201,21 +202,24 @@ export function useKerminalShellRemoteActions({
           setProfiles(nextProfiles);
         }
       } catch {
-        setProfileLoadError("终端配置刷新失败，已显示刚创建的本地配置。");
+        setProfileLoadError("终端配置刷新失败，已显示新配置。");
         nextProfiles = mergeProfiles(profiles, createdProfile);
         setProfiles(nextProfiles);
       }
       const savedProfile =
         nextProfiles.find((profile) => profile.id === createdProfile.id) ??
         createdProfile;
-      addTerminalTab({ groupId, profileId: savedProfile.id });
+      addLocalProfileMachine(savedProfile, groupId);
+      selectMachine(localMachineIdForProfile(savedProfile.id));
     },
     [
       activeProfileId,
+      addLocalProfileMachine,
       addTerminalTab,
       profiles,
       refreshProfiles,
       resolveTargetGroupId,
+      selectMachine,
       setProfiles,
     ],
   );
@@ -258,6 +262,7 @@ export function useKerminalShellRemoteActions({
           id: machine.profileId,
           name: title,
           setDefault: profile?.isDefault ?? false,
+          sidebarGroupId: groupId,
           shell: profileShell,
           sortOrder: profile?.sortOrder ?? machine.sortOrder ?? 0,
         });
@@ -266,7 +271,7 @@ export function useKerminalShellRemoteActions({
           nextProfiles = mergeProfiles(await refreshProfiles(), updatedProfile);
           setProfiles(nextProfiles);
         } catch {
-          setProfileLoadError("终端配置刷新失败，已显示刚更新的本地配置。");
+          setProfileLoadError("终端配置刷新失败，已显示更新。");
           nextProfiles = mergeProfiles(profiles, updatedProfile);
           setProfiles(nextProfiles);
         }
@@ -307,7 +312,54 @@ export function useKerminalShellRemoteActions({
         return;
       }
 
-      if (machine.kind === "local" || machine.kind === "dockerContainer") {
+      if (machine.kind === "local") {
+        const groupId = await resolveTargetGroupId(targetGroupId);
+        if (machine.profileId) {
+          const profile = profiles.find(
+            (candidate) => candidate.id === machine.profileId,
+          );
+          const shell = machine.shell ?? profile?.shell;
+          if (!shell) {
+            setProfileLoadError("本地终端缺少 Shell，无法移动。");
+            return;
+          }
+
+          let updatedProfile: TerminalProfile;
+          try {
+            updatedProfile = await updateProfile({
+              args: machine.args ?? profile?.args ?? [],
+              cwd: machine.cwd ?? profile?.cwd,
+              env: machine.env ?? profile?.env ?? {},
+              id: machine.profileId,
+              name: machine.name,
+              setDefault: profile?.isDefault ?? false,
+              sidebarGroupId: groupId,
+              shell,
+              sortOrder: profile?.sortOrder ?? machine.sortOrder ?? 0,
+            });
+          } catch (caught) {
+            setProfileLoadError(
+              caught instanceof Error ? caught.message : "本地终端分组保存失败。",
+            );
+            return;
+          }
+          try {
+            const nextProfiles = mergeProfiles(
+              await refreshProfiles(),
+              updatedProfile,
+            );
+            setProfiles(nextProfiles);
+          } catch {
+            setProfileLoadError("终端配置刷新失败，已保存分组位置。");
+            setProfiles(mergeProfiles(profiles, updatedProfile));
+          }
+        }
+
+        moveSidebarMachine(machine.id, groupId);
+        selectMachine(machine.id);
+        return;
+      }
+      if (machine.kind === "dockerContainer") {
         moveSidebarMachine(machine.id, targetGroupId);
         selectMachine(machine.id);
         return;
@@ -332,9 +384,12 @@ export function useKerminalShellRemoteActions({
     [
       machineGroups,
       moveSidebarMachine,
+      profiles,
+      refreshProfiles,
       refreshRemoteHostTree,
       resolveTargetGroupId,
       selectMachine,
+      setProfiles,
     ],
   );
   const handleDuplicateMachine = useCallback(
@@ -362,6 +417,7 @@ export function useKerminalShellRemoteActions({
           cwd: machine.cwd ?? profile?.cwd,
           env: machine.env ?? profile?.env ?? {},
           name,
+          sidebarGroupId: groupId,
           setDefault: false,
           shell,
         });
@@ -370,7 +426,7 @@ export function useKerminalShellRemoteActions({
           nextProfiles = mergeProfiles(await refreshProfiles(), createdProfile);
           setProfiles(nextProfiles);
         } catch {
-          setProfileLoadError("终端配置刷新失败，已显示刚复制的本地配置。");
+          setProfileLoadError("终端配置刷新失败，已显示副本。");
           nextProfiles = mergeProfiles(profiles, createdProfile);
           setProfiles(nextProfiles);
         }
@@ -383,7 +439,7 @@ export function useKerminalShellRemoteActions({
       }
 
       if (machine.kind !== "ssh" && machine.kind !== "rdp") {
-        setRemoteHostLoadError("容器连接来自宿主机发现，暂不支持复制容器卡片。");
+        setRemoteHostLoadError("容器卡片暂不支持复制。");
         return;
       }
 
@@ -482,7 +538,7 @@ export function useKerminalShellRemoteActions({
             : "ssh";
 
       if (options?.hostId && !nextEditingHost && !nextEditingLocalMachine) {
-        setRemoteHostLoadError("只能编辑已同步的本地/SSH/RDP/Telnet/Serial 连接配置。");
+        setRemoteHostLoadError("只能编辑已同步的连接配置。");
         return;
       }
 
@@ -550,13 +606,56 @@ export function useKerminalShellRemoteActions({
     [machineGroups],
   );
   const requestDeleteMachine = useCallback(
-    (machineId: string) => {
+    async (machineId: string) => {
       const machine = findMachine(machineGroups, machineId);
       if (!machine) {
-        setRemoteHostLoadError("只能删除已保存的 SSH/RDP/Telnet/Serial 连接配置。");
+        setRemoteHostLoadError("只能删除已保存的连接配置。");
         return;
       }
-      if (machine.kind === "local" || machine.kind === "dockerContainer") {
+      if (machine.kind === "local") {
+        if (machine.profileId) {
+          const profile = profiles.find(
+            (candidate) => candidate.id === machine.profileId,
+          );
+          const shell = machine.shell ?? profile?.shell;
+          if (!shell) {
+            setProfileLoadError("本地终端缺少 Shell，无法移除。");
+            return;
+          }
+          let updatedProfile: TerminalProfile;
+          try {
+            updatedProfile = await updateProfile({
+              args: machine.args ?? profile?.args ?? [],
+              cwd: machine.cwd ?? profile?.cwd,
+              env: machine.env ?? profile?.env ?? {},
+              id: machine.profileId,
+              name: machine.name,
+              setDefault: profile?.isDefault ?? false,
+              sidebarGroupId: "",
+              shell,
+              sortOrder: profile?.sortOrder ?? machine.sortOrder ?? 0,
+            });
+          } catch (caught) {
+            setProfileLoadError(
+              caught instanceof Error ? caught.message : "本地终端移除失败。",
+            );
+            return;
+          }
+          try {
+            const nextProfiles = mergeProfiles(
+              await refreshProfiles(),
+              updatedProfile,
+            );
+            setProfiles(nextProfiles);
+          } catch {
+            setProfileLoadError("终端配置刷新失败，已移除侧栏位置。");
+            setProfiles(mergeProfiles(profiles, updatedProfile));
+          }
+        }
+        removeSidebarMachine(machine.id);
+        return;
+      }
+      if (machine.kind === "dockerContainer") {
         removeSidebarMachine(machine.id);
         return;
       }
@@ -566,7 +665,7 @@ export function useKerminalShellRemoteActions({
         machine.kind !== "telnet" &&
         machine.kind !== "serial"
       ) {
-        setRemoteHostLoadError("只能删除已保存的 SSH/RDP/Telnet/Serial 连接配置。");
+        setRemoteHostLoadError("只能删除已保存的连接配置。");
         return;
       }
       setDeleteError(null);
@@ -576,7 +675,7 @@ export function useKerminalShellRemoteActions({
         type: "machine",
       });
     },
-    [machineGroups, removeSidebarMachine],
+    [machineGroups, profiles, refreshProfiles, removeSidebarMachine, setProfiles],
   );
   const openSavedRdpMachine = useCallback(
     async (machineId: string) => {
@@ -663,6 +762,7 @@ export function useKerminalShellRemoteActions({
     openSavedRdpMachine,
     pendingDelete,
     profileLoadError,
+    refreshProfiles,
     refreshRemoteHostTree,
     remoteGroupDialogOpen,
     remoteHostDefaultGroupId,

@@ -4,6 +4,7 @@ import type { TerminalOutputEvent } from "./terminalApi";
 let channelMessageHandler: ((event: TerminalOutputEvent) => void) | undefined;
 const invokeMock = vi.fn();
 const isTauriMock = vi.fn();
+const readDesktopClipboardTextMock = vi.fn();
 
 class MockChannel {
   constructor(onmessage?: (event: TerminalOutputEvent) => void) {
@@ -17,11 +18,16 @@ vi.mock("@tauri-apps/api/core", () => ({
   isTauri: () => isTauriMock(),
 }));
 
+vi.mock("./desktopClipboardApi", () => ({
+  readDesktopClipboardText: () => readDesktopClipboardTextMock(),
+}));
+
 describe("terminalApi", () => {
   beforeEach(() => {
     channelMessageHandler = undefined;
     invokeMock.mockReset();
     isTauriMock.mockReset();
+    readDesktopClipboardTextMock.mockReset();
   });
 
   it("creates a Tauri terminal session through a Channel", async () => {
@@ -293,6 +299,28 @@ describe("terminalApi", () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
+  it("reads terminal paste text through the desktop clipboard facade", async () => {
+    isTauriMock.mockReturnValue(true);
+    readDesktopClipboardTextMock.mockResolvedValue("echo native\r");
+    const { readTerminalClipboardText } = await import("./terminalApi");
+
+    await expect(readTerminalClipboardText()).resolves.toBe("echo native\r");
+
+    expect(readDesktopClipboardTextMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).not.toHaveBeenCalledWith("terminal_read_clipboard_text");
+  });
+
+  it("returns an empty paste string when the desktop clipboard facade cannot read", async () => {
+    isTauriMock.mockReturnValue(false);
+    readDesktopClipboardTextMock.mockResolvedValue("");
+    const { readTerminalClipboardText } = await import("./terminalApi");
+
+    await expect(readTerminalClipboardText()).resolves.toBe("");
+
+    expect(readDesktopClipboardTextMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
   it("uses a Chinese SSH browser preview outside Tauri", async () => {
     isTauriMock.mockReturnValue(false);
     const { createSshTerminalSession } = await import("./terminalApi");
@@ -308,7 +336,7 @@ describe("terminalApi", () => {
     expect(invokeMock).not.toHaveBeenCalled();
     expect(onOutput).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.stringContaining("请在 Tauri 应用窗口中连接真实 SSH 主机"),
+        data: expect.stringContaining("请在桌面应用中连接真实 SSH 主机"),
         kind: "data",
       }),
     );
@@ -336,13 +364,13 @@ describe("terminalApi", () => {
     expect(invokeMock).not.toHaveBeenCalled();
     expect(onTelnetOutput).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.stringContaining("请在 Tauri 应用窗口中连接真实 Telnet 主机"),
+        data: expect.stringContaining("请在桌面应用中连接真实 Telnet 主机"),
         kind: "data",
       }),
     );
     expect(onSerialOutput).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.stringContaining("请在 Tauri 应用窗口中连接真实 Serial 设备"),
+        data: expect.stringContaining("请在桌面应用中连接真实 Serial 设备"),
         kind: "data",
       }),
     );

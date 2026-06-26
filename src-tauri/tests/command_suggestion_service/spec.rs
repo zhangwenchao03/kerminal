@@ -7,7 +7,7 @@ fn spec_suggestions_complete_git_subcommands() {
     let suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "git ch".to_owned(),
@@ -43,7 +43,7 @@ fn spec_suggestions_complete_kubectl_options() {
     let suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "kubectl get --".to_owned(),

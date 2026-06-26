@@ -29,7 +29,7 @@ export function LocalDeleteConfirmDialog({
 
   return (
     <ModalShell
-      description="此操作会直接修改本机文件系统。"
+      description="会修改本机文件。"
       footer={
         <>
           <Button disabled={busy} onClick={onClose} size="sm" variant="ghost">

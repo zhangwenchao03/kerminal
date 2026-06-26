@@ -182,9 +182,9 @@ const terminalTabCompactIdleClassName =
 const terminalTabCompactActiveClassName =
   "border-white/70 bg-white/72 text-zinc-950 shadow-sm shadow-black/8 ring-1 ring-white/70 dark:border-white/14 dark:bg-white/14 dark:text-zinc-50 dark:shadow-black/20 dark:ring-white/12";
 const terminalTabMenuItemClassName =
-  "kerminal-focus-ring kerminal-pressable flex w-full items-center rounded-lg px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-45";
+  "kerminal-context-menu-item";
 const terminalTabMenuIdleClassName =
-  "text-zinc-700 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-zinc-50";
+  "";
 
 export function TerminalTabButton({
   active,
@@ -432,14 +432,14 @@ export function CloseTabsConfirmationDialog({
           </Button>
         </>
       }
-      description={`将关闭 ${tabCount} 个终端标签，相关分屏会一并结束。`}
+      description={`将关闭 ${tabCount} 个终端标签。`}
       onClose={onClose}
       open={tabCount > 0}
       size="compact"
       title="确认关闭标签"
     >
       <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-100">
-        关闭后当前标签内的终端会话会被结束。
+        当前标签内的会话会结束。
       </div>
     </ModalShell>
   );
@@ -680,16 +680,14 @@ function TerminalTabMenuItem({
     <button
       className={cn(
         terminalTabMenuItemClassName,
-        danger
-          ? "text-red-600 hover:bg-red-500/10 hover:text-red-700 dark:text-red-300 dark:hover:text-red-200"
-          : terminalTabMenuIdleClassName,
+        danger ? "kerminal-context-menu-item--danger" : terminalTabMenuIdleClassName,
       )}
       disabled={disabled}
       onClick={onClick}
       role="menuitem"
       type="button"
     >
-      <span className="truncate">{label}</span>
+      <span className="kerminal-context-menu-label">{label}</span>
     </button>
   );
 }

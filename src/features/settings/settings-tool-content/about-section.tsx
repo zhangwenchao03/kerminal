@@ -1,6 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import {
   Download,
   ExternalLink,
@@ -16,6 +16,10 @@ import {
 import packageJson from "../../../../package.json";
 import { cn } from "../../../lib/cn";
 import {
+  currentDesktopNotificationVisibility,
+  sendDesktopNotification,
+} from "../../../lib/desktopNotificationApi";
+import {
   checkForAppUpdate,
   installPendingAppUpdate,
   relaunchApp,
@@ -23,6 +27,7 @@ import {
   type AppUpdateInstallResult,
   type AppUpdateProgress,
 } from "../../../lib/updaterApi";
+import type { DesktopNotificationSettings } from "../settingsModel";
 
 const githubRepositoryUrl = "https://github.com/kongweiguang/kerminal";
 const appVersion = `v${packageJson.version}`;
@@ -48,7 +53,13 @@ type UpdateCheckState =
   | "restarting"
   | "error";
 
-export function AboutSettingsSection() {
+interface AboutSettingsSectionProps {
+  desktopNotifications: DesktopNotificationSettings;
+}
+
+export function AboutSettingsSection({
+  desktopNotifications,
+}: AboutSettingsSectionProps) {
   const [checkState, setCheckState] = useState<UpdateCheckState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [installResult, setInstallResult] =
@@ -58,6 +69,9 @@ export function AboutSettingsSection() {
   const [updateResult, setUpdateResult] = useState<AppUpdateCheckResult | null>(
     null,
   );
+  const updateNotificationSentAtByKey = useRef<
+    Record<string, number | undefined>
+  >({});
   const checking = checkState === "checking";
   const installing = checkState === "installing";
   const restarting = checkState === "restarting";
@@ -75,6 +89,18 @@ export function AboutSettingsSection() {
       const result = await checkForAppUpdate();
       setUpdateResult(result);
       setCheckState(result.kind);
+      if (result.kind === "available") {
+        void sendDesktopNotification({
+          event: {
+            currentVersion: result.currentVersion,
+            kind: "updater.available",
+            version: result.version,
+          },
+          lastSentAtByKey: updateNotificationSentAtByKey.current,
+          settings: desktopNotifications,
+          visibility: currentDesktopNotificationVisibility(),
+        });
+      }
     } catch (nextError) {
       setError(errorMessage(nextError));
       setCheckState("error");

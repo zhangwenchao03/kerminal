@@ -7,8 +7,10 @@ import type {
 import type { WorkspaceState } from "../features/workspace/workspaceStore";
 import {
   buildOpenMachineIdsSnapshot,
+  buildTerminalWorkspaceSnapshot,
   buildToolPanelWorkspaceContext,
   buildToolPanelWorkspaceSnapshot,
+  parseTerminalWorkspaceSnapshot,
 } from "./KerminalShell.workspaceSelectors";
 
 const tab: TerminalTab = {
@@ -60,6 +62,42 @@ describe("KerminalShell workspace selector snapshots", () => {
     expect(buildToolPanelWorkspaceSnapshot(outputOnlyChange)).toBe(
       buildToolPanelWorkspaceSnapshot(base),
     );
+    expect(buildTerminalWorkspaceSnapshot(outputOnlyChange)).toBe(
+      buildTerminalWorkspaceSnapshot(base),
+    );
+  });
+
+  it("strips high-frequency pane output from terminal workspace snapshots", () => {
+    const snapshot = parseTerminalWorkspaceSnapshot(
+      buildTerminalWorkspaceSnapshot(workspaceState()),
+    );
+
+    expect(snapshot.terminalPanes[0]).toMatchObject({
+      currentCwd: "C:/dev/rust/kerminal",
+      id: pane.id,
+      lines: [],
+      machineId: pane.machineId,
+      mode: pane.mode,
+    });
+    expect(snapshot.terminalPanes[0]?.outputHistory).toBeUndefined();
+  });
+
+  it("reuses stable terminal panes when only focus changes", () => {
+    const first = parseTerminalWorkspaceSnapshot(
+      buildTerminalWorkspaceSnapshot(workspaceState()),
+    );
+    const second = parseTerminalWorkspaceSnapshot(
+      buildTerminalWorkspaceSnapshot(
+        workspaceState({
+          activeTabId: "tab-local-2",
+          focusedPaneId: "pane-local-2",
+        }),
+      ),
+    );
+
+    expect(second).not.toBe(first);
+    expect(second.terminalPanes).toBe(first.terminalPanes);
+    expect(second.terminalTabs).toBe(first.terminalTabs);
   });
 
   it("does not count SFTP transfer tabs as open terminal sessions", () => {

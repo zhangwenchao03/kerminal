@@ -1,7 +1,7 @@
 use super::*;
 
 pub(super) fn apply_feedback_scores(
-    storage: &SqliteStore,
+    storage: &CommandSqliteStore,
     request: &NormalizedSuggestionRequest,
     candidates: &mut [CommandSuggestionCandidate],
 ) -> AppResult<()> {

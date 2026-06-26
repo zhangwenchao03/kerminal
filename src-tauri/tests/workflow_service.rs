@@ -15,32 +15,29 @@ use tempfile::{tempdir, TempDir};
 
 #[test]
 fn create_workflow_persists_steps_scope_tags_and_confirmation() {
-    let (_home, state) = test_state();
+    let (home, state) = test_state();
 
     let workflow = state
         .workflows()
-        .create_workflow(
-            state.storage(),
-            WorkflowCreateRequest {
-                title: "本地质量检查".to_owned(),
-                description: Some("日常开发检查链路".to_owned()),
-                tags: vec![
-                    " daily ".to_owned(),
-                    "DAILY".to_owned(),
-                    "quality".to_owned(),
-                ],
-                scope: WorkflowScope::Local,
-                steps: vec![
-                    step("检查仓库状态", "git status --short", None, false),
-                    step(
-                        "运行质量门禁",
-                        "npm run check",
-                        Some(WorkflowScope::Local),
-                        true,
-                    ),
-                ],
-            },
-        )
+        .create_workflow(WorkflowCreateRequest {
+            title: "本地质量检查".to_owned(),
+            description: Some("日常开发检查链路".to_owned()),
+            tags: vec![
+                " daily ".to_owned(),
+                "DAILY".to_owned(),
+                "quality".to_owned(),
+            ],
+            scope: WorkflowScope::Local,
+            steps: vec![
+                step(" 检查仓库状态 ", " git status --short ", None, false),
+                step(
+                    "运行质量门禁",
+                    "npm run check",
+                    Some(WorkflowScope::Local),
+                    true,
+                ),
+            ],
+        })
         .expect("create workflow");
 
     assert_eq!(workflow.title, "本地质量检查");
@@ -49,9 +46,16 @@ fn create_workflow_persists_steps_scope_tags_and_confirmation() {
     assert_eq!(workflow.scope, WorkflowScope::Local);
     assert_eq!(workflow.steps.len(), 2);
     assert_eq!(workflow.steps[0].title, "检查仓库状态");
+    assert_eq!(workflow.steps[0].command, "git status --short");
     assert_eq!(workflow.steps[0].sort_order, 10);
+    assert!(!workflow.steps[0].id.is_empty());
     assert_eq!(workflow.steps[1].scope, Some(WorkflowScope::Local));
     assert!(workflow.steps[1].requires_confirmation);
+    assert!(home
+        .path()
+        .join(".kerminal/workflows")
+        .join(format!("{}.toml", workflow.id))
+        .is_file());
 }
 
 #[test]
@@ -60,55 +64,43 @@ fn list_workflows_filters_by_query_scope_and_tag() {
 
     state
         .workflows()
-        .create_workflow(
-            state.storage(),
-            WorkflowCreateRequest {
-                title: "本地质量检查".to_owned(),
-                description: None,
-                tags: vec!["quality".to_owned()],
-                scope: WorkflowScope::Local,
-                steps: vec![step("运行检查", "npm run check", None, false)],
-            },
-        )
+        .create_workflow(WorkflowCreateRequest {
+            title: "本地质量检查".to_owned(),
+            description: None,
+            tags: vec!["quality".to_owned()],
+            scope: WorkflowScope::Local,
+            steps: vec![step("运行检查", "npm run check", None, false)],
+        })
         .expect("create local workflow");
     state
         .workflows()
-        .create_workflow(
-            state.storage(),
-            WorkflowCreateRequest {
-                title: "服务器巡检".to_owned(),
-                description: Some("SSH 主机健康检查".to_owned()),
-                tags: vec!["ssh".to_owned(), "ops".to_owned()],
-                scope: WorkflowScope::Ssh,
-                steps: vec![step("查看负载", "uptime", None, false)],
-            },
-        )
+        .create_workflow(WorkflowCreateRequest {
+            title: "服务器巡检".to_owned(),
+            description: Some("SSH 主机健康检查".to_owned()),
+            tags: vec!["ssh".to_owned(), "ops".to_owned()],
+            scope: WorkflowScope::Ssh,
+            steps: vec![step("查看负载", "uptime", None, false)],
+        })
         .expect("create ssh workflow");
 
     let quality = state
         .workflows()
-        .list_workflows(
-            state.storage(),
-            WorkflowListRequest {
-                query: Some("npm".to_owned()),
-                scope: Some(WorkflowScope::Local),
-                tag: None,
-            },
-        )
+        .list_workflows(WorkflowListRequest {
+            query: Some("npm".to_owned()),
+            scope: Some(WorkflowScope::Local),
+            tag: None,
+        })
         .expect("filter by query and scope");
     assert_eq!(quality.len(), 1);
     assert_eq!(quality[0].title, "本地质量检查");
 
     let ops = state
         .workflows()
-        .list_workflows(
-            state.storage(),
-            WorkflowListRequest {
-                query: None,
-                scope: None,
-                tag: Some("OPS".to_owned()),
-            },
-        )
+        .list_workflows(WorkflowListRequest {
+            query: None,
+            scope: None,
+            tag: Some("OPS".to_owned()),
+        })
         .expect("filter by tag");
     assert_eq!(ops.len(), 1);
     assert_eq!(ops[0].scope, WorkflowScope::Ssh);
@@ -119,35 +111,29 @@ fn update_and_delete_workflow_round_trip() {
     let (_home, state) = test_state();
     let workflow = state
         .workflows()
-        .create_workflow(
-            state.storage(),
-            WorkflowCreateRequest {
-                title: "旧工作流".to_owned(),
-                description: None,
-                tags: Vec::new(),
-                scope: WorkflowScope::Any,
-                steps: vec![step("旧步骤", "echo old", None, false)],
-            },
-        )
+        .create_workflow(WorkflowCreateRequest {
+            title: "旧工作流".to_owned(),
+            description: None,
+            tags: Vec::new(),
+            scope: WorkflowScope::Any,
+            steps: vec![step("旧步骤", "echo old", None, false)],
+        })
         .expect("create workflow");
 
     let updated = state
         .workflows()
-        .update_workflow(
-            state.storage(),
-            WorkflowUpdateRequest {
-                id: workflow.id.clone(),
-                title: "新工作流".to_owned(),
-                description: Some("updated".to_owned()),
-                tags: vec!["shell".to_owned()],
-                scope: WorkflowScope::Ssh,
-                sort_order: workflow.sort_order,
-                steps: vec![
-                    step("新步骤 1", "echo one", None, false),
-                    step("新步骤 2", "echo two", Some(WorkflowScope::Ssh), true),
-                ],
-            },
-        )
+        .update_workflow(WorkflowUpdateRequest {
+            id: workflow.id.clone(),
+            title: "新工作流".to_owned(),
+            description: Some("updated".to_owned()),
+            tags: vec!["shell".to_owned()],
+            scope: WorkflowScope::Ssh,
+            sort_order: workflow.sort_order,
+            steps: vec![
+                step("新步骤 1", "echo one", None, false),
+                step("新步骤 2", "echo two", Some(WorkflowScope::Ssh), true),
+            ],
+        })
         .expect("update workflow");
 
     assert_eq!(updated.title, "新工作流");
@@ -157,11 +143,11 @@ fn update_and_delete_workflow_round_trip() {
 
     assert!(state
         .workflows()
-        .delete_workflow(state.storage(), &updated.id)
+        .delete_workflow(&updated.id)
         .expect("delete workflow"));
     assert!(state
         .workflows()
-        .list_workflows(state.storage(), WorkflowListRequest::default())
+        .list_workflows(WorkflowListRequest::default())
         .expect("list after delete")
         .is_empty());
 }
@@ -172,31 +158,25 @@ fn create_workflow_rejects_empty_steps_or_commands() {
 
     let empty_steps = state
         .workflows()
-        .create_workflow(
-            state.storage(),
-            WorkflowCreateRequest {
-                title: "空工作流".to_owned(),
-                description: None,
-                tags: Vec::new(),
-                scope: WorkflowScope::Any,
-                steps: Vec::new(),
-            },
-        )
+        .create_workflow(WorkflowCreateRequest {
+            title: "空工作流".to_owned(),
+            description: None,
+            tags: Vec::new(),
+            scope: WorkflowScope::Any,
+            steps: Vec::new(),
+        })
         .expect_err("reject empty workflow");
     assert!(matches!(empty_steps, AppError::InvalidInput(_)));
 
     let empty_command = state
         .workflows()
-        .create_workflow(
-            state.storage(),
-            WorkflowCreateRequest {
-                title: "空命令".to_owned(),
-                description: None,
-                tags: Vec::new(),
-                scope: WorkflowScope::Any,
-                steps: vec![step("空步骤", " ", None, false)],
-            },
-        )
+        .create_workflow(WorkflowCreateRequest {
+            title: "空命令".to_owned(),
+            description: None,
+            tags: Vec::new(),
+            scope: WorkflowScope::Any,
+            steps: vec![step("空步骤", " ", None, false)],
+        })
         .expect_err("reject empty command");
     assert!(matches!(empty_command, AppError::InvalidInput(_)));
 }

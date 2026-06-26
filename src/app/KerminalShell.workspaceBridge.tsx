@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { MachineSidebar } from "../features/machine-sidebar/MachineSidebar";
 import type { MachineSidebarProps } from "../features/machine-sidebar/MachineSidebar.shared";
 import type {
@@ -17,6 +17,7 @@ import {
   type BroadcastCommandResult,
   TerminalWorkspace,
 } from "../features/terminal/TerminalWorkspace";
+import type { TerminalSplitDropIndicator } from "../features/terminal/TerminalSplitDropOverlay";
 import { ToolPanel } from "../features/tool-panel/ToolPanel";
 import type {
   MachineGroup,
@@ -28,29 +29,35 @@ import {
   tools,
   useWorkspaceStore,
   type AddTerminalTabOptions,
+  type TmuxAttachPlacement,
 } from "../features/workspace/workspaceStore";
 import type { SettingsSectionId } from "../features/settings/SettingsToolContent";
+import type { TmuxAttachLaunch } from "../lib/tmuxApi";
 import {
   buildOpenMachineIdsSnapshot,
+  buildTerminalWorkspaceSnapshot,
   buildToolPanelWorkspaceContext,
   buildToolPanelWorkspaceSnapshot,
   parseOpenMachineIdsSnapshot,
+  parseTerminalWorkspaceSnapshot,
 } from "./KerminalShell.workspaceSelectors";
 
 type WorkspaceTerminalSurfaceProps = {
   contentRightInset: number;
   createdSftpHostTarget?: SftpTransferCreatedHostTarget;
+  desktopNotifications: AppSettings["desktopNotifications"];
   interfaceDensity: InterfaceDensity;
   machineGroups: MachineGroup[];
   onBroadcastCommand: (
     request: BroadcastCommandRequest,
   ) => Promise<BroadcastCommandResult>;
   onCreateSftpHost?: (request: SftpTransferCreateHostRequest) => void;
-  onOpenAiTool: () => void;
+  onOpenAgentTool: () => void;
   onOpenConnection: () => void;
   onOpenLogs: () => void;
   reserveRightTitleBarControls: boolean;
   resolvedTheme: ResolvedTheme;
+  splitDropIndicator?: TerminalSplitDropIndicator | null;
   terminalAppearance: TerminalAppearance;
 };
 
@@ -69,10 +76,18 @@ interface ToolPanelStoreBridgeProps {
   onFocusTab?: (tabId: string) => void;
   onOpenSettingsSection?: (sectionId: SettingsSectionId) => void;
   onOpenSshTerminal?: (hostId: string) => void;
+  onOpenTmuxTerminal?: (
+    launch: TmuxAttachLaunch,
+    placement?: TmuxAttachPlacement,
+  ) => void;
   onRemoteHostCreated?: () => void | Promise<void>;
   onSettingsChange?: (settings: AppSettings) => void;
   onSplitPane?: (direction: TerminalSplitDirection) => void;
+  resolvedTheme: ResolvedTheme;
   settings: AppSettings;
+  snippetConfigRevision?: number;
+  terminalAppearance: TerminalAppearance;
+  workflowConfigRevision?: number;
 }
 
 const subscribeToWorkspaceStore = (onStoreChange: () => void) =>
@@ -84,38 +99,47 @@ const getOpenMachineIdsSnapshot = () =>
 const getToolPanelWorkspaceSnapshot = () =>
   buildToolPanelWorkspaceSnapshot(useWorkspaceStore.getState());
 
+const getTerminalWorkspaceSnapshot = () =>
+  buildTerminalWorkspaceSnapshot(useWorkspaceStore.getState());
+
 export function WorkspaceTerminalSurface({
   contentRightInset,
   createdSftpHostTarget,
+  desktopNotifications,
   interfaceDensity,
   machineGroups,
   onBroadcastCommand,
   onCreateSftpHost,
-  onOpenAiTool,
+  onOpenAgentTool,
   onOpenConnection,
   onOpenLogs,
   reserveRightTitleBarControls,
   resolvedTheme,
+  splitDropIndicator,
   terminalAppearance,
 }: WorkspaceTerminalSurfaceProps) {
-  const activeTabId = useWorkspaceStore((state) => state.activeTabId);
-  const broadcastDraft = useWorkspaceStore((state) => state.broadcastDraft);
+  const terminalWorkspaceSnapshot = useSyncExternalStore(
+    subscribeToWorkspaceStore,
+    getTerminalWorkspaceSnapshot,
+    getTerminalWorkspaceSnapshot,
+  );
+  const terminalWorkspace = useMemo(
+    () => parseTerminalWorkspaceSnapshot(terminalWorkspaceSnapshot),
+    [terminalWorkspaceSnapshot],
+  );
   const closePane = useWorkspaceStore((state) => state.closePane);
   const closeTerminalTab = useWorkspaceStore((state) => state.closeTerminalTab);
   const addTerminalTab = useWorkspaceStore((state) => state.addTerminalTab);
   const focusPane = useWorkspaceStore((state) => state.focusPane);
-  const focusedPaneId = useWorkspaceStore((state) => state.focusedPaneId);
-  const renameTerminalTab = useWorkspaceStore((state) => state.renameTerminalTab);
+  const moveTerminalPane = useWorkspaceStore((state) => state.moveTerminalPane);
+  const renameTerminalTab = useWorkspaceStore(
+    (state) => state.renameTerminalTab,
+  );
   const selectTab = useWorkspaceStore((state) => state.selectTab);
   const setBroadcastDraft = useWorkspaceStore(
     (state) => state.setBroadcastDraft,
   );
   const splitFocusedPane = useWorkspaceStore((state) => state.splitFocusedPane);
-  const terminalTabGroupPreferences = useWorkspaceStore(
-    (state) => state.terminalTabGroupPreferences,
-  );
-  const terminalPanes = useWorkspaceStore((state) => state.terminalPanes);
-  const terminalTabs = useWorkspaceStore((state) => state.terminalTabs);
   const updateTerminalTabGroupPreference = useWorkspaceStore(
     (state) => state.updateTerminalTabGroupPreference,
   );
@@ -125,36 +149,58 @@ export function WorkspaceTerminalSurface({
   const updatePaneOutputHistory = useWorkspaceStore(
     (state) => state.updatePaneOutputHistory,
   );
+  const updateTerminalSplitLayoutSizes = useWorkspaceStore(
+    (state) => state.updateTerminalSplitLayoutSizes,
+  );
+  const resolvePaneLines = useCallback((paneId: string) => {
+    return (
+      useWorkspaceStore
+        .getState()
+        .terminalPanes.find((pane) => pane.id === paneId)?.lines ?? []
+    );
+  }, []);
+  const resolvePaneOutputHistory = useCallback((paneId: string) => {
+    return useWorkspaceStore
+      .getState()
+      .terminalPanes.find((pane) => pane.id === paneId)?.outputHistory;
+  }, []);
 
   return (
     <TerminalWorkspace
-      activeTabId={activeTabId}
-      broadcastDraft={broadcastDraft}
+      activeTabId={terminalWorkspace.activeTabId}
+      broadcastDraft={terminalWorkspace.broadcastDraft}
       contentRightInset={contentRightInset}
-      focusedPaneId={focusedPaneId}
+      focusedPaneId={terminalWorkspace.focusedPaneId}
       interfaceDensity={interfaceDensity}
+      machineGroups={machineGroups}
       onBroadcastCommand={onBroadcastCommand}
       onBroadcastDraftChange={setBroadcastDraft}
       onClosePane={closePane}
       onCloseTab={closeTerminalTab}
       onCreateTerminal={() => addTerminalTab()}
       onFocusPane={focusPane}
-      onOpenAiTool={onOpenAiTool}
+      onOpenAgentTool={onOpenAgentTool}
       onOpenConnection={onOpenConnection}
+      onMovePane={moveTerminalPane}
       onPaneCurrentCwdChange={updatePaneCurrentCwd}
       onPaneOutputHistoryChange={updatePaneOutputHistory}
+      onSplitLayoutSizesChange={updateTerminalSplitLayoutSizes}
       onOpenLogs={onOpenLogs}
       onRenameTab={renameTerminalTab}
       onUpdateTabGroupPreference={updateTerminalTabGroupPreference}
       reserveRightTitleBarControls={reserveRightTitleBarControls}
+      resolvePaneLines={resolvePaneLines}
+      resolvePaneOutputHistory={resolvePaneOutputHistory}
       renderCustomTab={(tab, active) =>
         isSftpTransferWorkspaceTab(tab) ? (
           <SftpTransferWorkbench
             active={active}
             createdHostTarget={createdSftpHostTarget}
+            desktopNotifications={desktopNotifications}
             groups={machineGroups}
             initialLeftHostId={tab.leftHostId}
             initialRightHostId={tab.rightHostId}
+            interfaceDensity={interfaceDensity}
             lockedLeftHostId={tab.lockedLeftHostId}
             onCreateSshHost={onCreateSftpHost}
             workspaceTabId={tab.id}
@@ -163,16 +209,19 @@ export function WorkspaceTerminalSurface({
       }
       onSelectTab={selectTab}
       onSplitPane={splitFocusedPane}
-      panes={terminalPanes}
+      panes={terminalWorkspace.terminalPanes}
       resolvedTheme={resolvedTheme}
-      tabs={terminalTabs}
-      tabGroupPreferences={terminalTabGroupPreferences}
+      splitDropIndicator={splitDropIndicator}
+      tabs={terminalWorkspace.terminalTabs}
+      tabGroupPreferences={terminalWorkspace.terminalTabGroupPreferences}
       terminalAppearance={terminalAppearance}
     />
   );
 }
 
-export function MachineSidebarStoreBridge(props: MachineSidebarStoreBridgeProps) {
+export function MachineSidebarStoreBridge(
+  props: MachineSidebarStoreBridgeProps,
+) {
   const openMachineIdsSnapshot = useSyncExternalStore(
     subscribeToWorkspaceStore,
     getOpenMachineIdsSnapshot,
@@ -197,16 +246,27 @@ export function ToolPanelStoreBridge({
   );
   const workspaceContext = useMemo(
     () =>
-      buildToolPanelWorkspaceContext(useWorkspaceStore.getState(), machineGroups),
+      buildToolPanelWorkspaceContext(
+        useWorkspaceStore.getState(),
+        machineGroups,
+      ),
     [machineGroups, toolPanelWorkspaceSnapshot],
+  );
+  const closePane = useWorkspaceStore((state) => state.closePane);
+  const openTmuxAttachTerminal = useWorkspaceStore(
+    (state) => state.openTmuxAttachTerminal,
   );
 
   return (
     <ToolPanel
       {...props}
+      activeMachine={workspaceContext.activeMachine}
       activeTab={workspaceContext.activeTab}
       focusedPane={workspaceContext.focusedPane}
+      onClosePane={closePane}
+      onOpenTmuxTerminal={openTmuxAttachTerminal}
       selectedMachine={workspaceContext.selectedMachine}
+      terminalPanes={workspaceContext.terminalPanes}
       terminalTabs={workspaceContext.terminalTabs}
       tools={tools}
     />

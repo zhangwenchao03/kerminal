@@ -33,6 +33,8 @@ mod diagnostics_cleanup;
 mod history_feedback;
 #[path = "command_suggestion_service/remote_cache.rs"]
 mod remote_cache;
+#[path = "command_suggestion_service/rules.rs"]
+mod rules;
 #[path = "command_suggestion_service/spec.rs"]
 mod spec;
 #[path = "command_suggestion_service/telemetry.rs"]
@@ -49,7 +51,7 @@ fn record(
     state
         .command_history()
         .record_command(
-            state.storage(),
+            state.command_store(),
             CommandHistoryRecordRequest {
                 command: command.to_owned(),
                 source: CommandHistorySource::User,
@@ -75,7 +77,7 @@ fn cache_commands_with_limit(state: &AppState, commands: Vec<String>, max_entrie
     state
         .command_suggestions()
         .cache_remote_commands(
-            Some(state.storage()),
+            Some(state.command_store()),
             "host-prod".to_owned(),
             commands,
             300,
@@ -88,7 +90,7 @@ fn cache_remote_history(state: &AppState, commands: Vec<String>) {
     state
         .command_suggestions()
         .cache_remote_history(
-            Some(state.storage()),
+            Some(state.command_store()),
             "host-prod".to_owned(),
             commands,
             300,
@@ -101,7 +103,7 @@ fn cache_git_refs(state: &AppState, entries: Vec<GitRefEntry>) {
     state
         .command_suggestions()
         .cache_git_refs(
-            Some(state.storage()),
+            Some(state.command_store()),
             "host-prod".to_owned(),
             "/srv/app".to_owned(),
             Some("/srv/app".to_owned()),
@@ -123,7 +125,7 @@ fn cache_listing(state: &AppState, path: &str, entries: Vec<SftpEntry>) {
     state
         .command_suggestions()
         .cache_remote_path_listing(
-            Some(state.storage()),
+            Some(state.command_store()),
             SftpDirectoryListing {
                 entries,
                 host_id: "host-prod".to_owned(),

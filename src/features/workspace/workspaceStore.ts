@@ -10,8 +10,10 @@ import {
 } from "../../lib/profileApi";
 import type { DockerContainerSummary } from "../../lib/dockerApi";
 import { localTarget } from "../../lib/targetModel";
+import type { TmuxAttachLaunch, TmuxPaneBinding } from "../../lib/tmuxApi";
 import type { RemoteHostGroupWithHosts } from "../../lib/remoteHostApi";
 import { machineGroups, terminalPanes, terminalTabs, tools } from "./workspaceData";
+import type { TerminalPaneMovePlacement } from "./workspaceLayout";
 import {
   maxGeneratedTerminalCounters,
   normalizeWorkspaceSessionSnapshot,
@@ -23,6 +25,8 @@ import type {
   SftpTransferWorkspaceTab,
   TerminalPane,
   TerminalSplitDirection,
+  TerminalSplitLayoutSizes,
+  TerminalSplitPlacement,
   TerminalTab,
   TerminalTabGroupPreference,
   TerminalTabGroupPreferences,
@@ -47,6 +51,7 @@ import {
   nextUnpinnedSortOrder,
   profileToLocalMachine,
   removeMachineFromGroups,
+  sidebarMachinesFromProfiles,
   sortMachineGroups,
   syncLocalSidebarMachines,
   syncTerminalPaneProductionFlags,
@@ -57,10 +62,14 @@ import {
   closeTerminalPaneState,
   closeTerminalTabState,
   focusTerminalPaneState,
+  moveTerminalPaneState,
+  paneIdPrefixForSplitMachine,
   resolveFocusedPaneSplitTarget,
   selectTerminalTabState,
   splitFocusedPaneState,
+  splitTargetPaneForMachine,
   updatePaneCurrentCwdState,
+  updateTerminalSplitLayoutSizesState,
   updatePaneOutputHistoryState,
 } from "./workspaceTerminalState";
 import {
@@ -72,6 +81,7 @@ import {
   focusExistingMachineTabState,
   syncContainerTerminalOpenState,
 } from "./workspaceTerminalOpenState";
+import { openTmuxAttachTerminalState } from "./workspaceTmuxState";
 
 export interface AddTerminalTabOptions {
   title?: string;
@@ -81,6 +91,7 @@ export interface AddTerminalTabOptions {
   args?: string[];
   cwd?: string;
   env?: Record<string, string>;
+  tmuxBinding?: TmuxPaneBinding;
 }
 
 export interface AddDockerContainerOptions {
@@ -95,6 +106,20 @@ export interface OpenSftpTransferTabOptions {
   lockedLeftHostId?: string;
   rightHostId?: string;
 }
+
+export interface SplitFocusedPaneOptions {
+  placement?: TerminalSplitPlacement;
+  sourcePaneId?: string;
+  targetMachineId?: string;
+}
+
+export interface OpenSshCommandTerminalOptions {
+  cwd?: string;
+  remoteCommand: string;
+  title: string;
+}
+
+export type TmuxAttachPlacement = "pane" | "tab";
 
 export interface WorkspaceState {
   profiles: TerminalProfile[];
@@ -119,6 +144,10 @@ export interface WorkspaceState {
     container: DockerContainerSummary,
     options?: AddDockerContainerOptions,
   ) => void;
+  openDockerContainerTerminal: (
+    container: DockerContainerSummary,
+    options?: AddDockerContainerOptions,
+  ) => void;
   addLocalProfileMachine: (profile: TerminalProfile, groupId?: string) => void;
   moveSidebarMachine: (machineId: string, groupId: string) => void;
   pinMachineGroup: (groupId: string, pinned?: boolean) => void;
@@ -131,6 +160,14 @@ export interface WorkspaceState {
   openSftpTransferTab: (options?: OpenSftpTransferTabOptions) => void;
   openLocalTerminal: (machineId: string) => void;
   openSshTerminal: (hostId: string) => void;
+  openSshCommandTerminal: (
+    hostId: string,
+    options: OpenSshCommandTerminalOptions,
+  ) => void;
+  openTmuxAttachTerminal: (
+    launch: TmuxAttachLaunch,
+    placement?: TmuxAttachPlacement,
+  ) => void;
   openTelnetTerminal: (hostId: string) => void;
   openSerialTerminal: (hostId: string) => void;
   openContainerTerminal: (machineId: string) => void;
@@ -140,10 +177,22 @@ export interface WorkspaceState {
     groupId: string,
     preference: TerminalTabGroupPreference,
   ) => void;
-  splitFocusedPane: (direction: TerminalSplitDirection) => void;
+  splitFocusedPane: (
+    direction: TerminalSplitDirection,
+    options?: SplitFocusedPaneOptions,
+  ) => void;
+  moveTerminalPane: (
+    sourcePaneId: string,
+    targetPaneId: string,
+    placement: TerminalPaneMovePlacement,
+  ) => void;
   closePane: (paneId: string) => void;
   focusPane: (paneId: string) => void;
   updatePaneCurrentCwd: (paneId: string, currentCwd: string) => void;
+  updateTerminalSplitLayoutSizes: (
+    splitId: string,
+    sizes: TerminalSplitLayoutSizes,
+  ) => void;
   updatePaneOutputHistory: (
     paneId: string,
     outputHistory: string | undefined,
@@ -194,12 +243,23 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
         state.machineGroups,
         nextProfiles,
       );
-      const machineGroups = syncedMachineGroups;
+      const profileSidebarMachines = sidebarMachinesFromProfiles(nextProfiles);
+      const profileSidebarMachineIds = new Set(
+        profileSidebarMachines.map((machine) => machine.id),
+      );
+      const removedSidebarMachineIds = state.removedSidebarMachineIds.filter(
+        (machineId) => !profileSidebarMachineIds.has(machineId),
+      );
+      const machineGroups = addPersistentSidebarMachines(
+        syncedMachineGroups,
+        profileSidebarMachines,
+      );
 
       return {
         activeProfileId: activeProfile.id,
         machineGroups,
         profiles: nextProfiles,
+        removedSidebarMachineIds,
         selectedMachineId: selectedMachineIdForUpdatedGroups({
           activeTabId: state.activeTabId,
           allowPendingActiveTabSelection: true,
@@ -262,6 +322,31 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
         terminalPanes: openState.terminalPanes,
         terminalTabs: openState.terminalTabs,
       };
+    }),
+  openDockerContainerTerminal: (container, options) =>
+    set((state) => {
+      if (container.status !== "running") {
+        return {};
+      }
+
+      const hostMachine = findMachine(state.machineGroups, container.hostId);
+      if (!hostMachine || hostMachine.kind !== "ssh") {
+        return {};
+      }
+
+      const machine = containerToMachine(container, hostMachine, options);
+      const focusState = focusExistingMachineTabState(state, machine.id);
+      if (focusState) {
+        return focusState;
+      }
+
+      generatedPaneCount += 1;
+      generatedTabCount += 1;
+
+      return createContainerTerminalOpenState(state, machine, {
+        paneId: `pane-container-${generatedPaneCount}`,
+        tabId: `tab-container-${generatedTabCount}`,
+      });
     }),
   addLocalProfileMachine: (profile, groupId) =>
     set((state) => {
@@ -465,6 +550,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
         profile,
         shell: options?.shell ?? profile?.shell,
         tabId,
+        tmuxBinding: options?.tmuxBinding,
         title,
       });
       return {
@@ -522,11 +608,6 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
         return {};
       }
 
-      const existingTabState = focusExistingMachineTabState(state, machine.id);
-      if (existingTabState) {
-        return existingTabState;
-      }
-
       const profile = machine.profileId
         ? state.profiles.find((candidate) => candidate.id === machine.profileId)
         : undefined;
@@ -558,6 +639,44 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
         paneId: `pane-ssh-${generatedPaneCount}`,
         tabId: `tab-ssh-${generatedTabCount}`,
       });
+    }),
+  openSshCommandTerminal: (hostId, options) =>
+    set((state) => {
+      const machine = findMachine(state.machineGroups, hostId);
+      if (!machine || machine.kind !== "ssh") {
+        return {};
+      }
+
+      generatedTabCount += 1;
+      generatedPaneCount += 1;
+      return createSshTerminalOpenState(state, machine, {
+        cwd: options.cwd,
+        paneId: `pane-ssh-${generatedPaneCount}`,
+        remoteCommand: options.remoteCommand,
+        tabId: `tab-ssh-${generatedTabCount}`,
+        title: options.title,
+      });
+    }),
+  openTmuxAttachTerminal: (launch, placement = "pane") =>
+    set((state) => {
+      const result = openTmuxAttachTerminalState(state, {
+        launch,
+        nextLocalMachineId: `machine-tmux-local-${generatedTabCount + 1}`,
+        nextPaneId: `pane-tmux-${generatedPaneCount + 1}`,
+        nextSplitId: `split-${generatedSplitCount + 1}`,
+        nextTabId: `tab-tmux-${generatedTabCount + 1}`,
+        placement,
+      });
+      if (result.consumedPane) {
+        generatedPaneCount += 1;
+      }
+      if (result.consumedSplit) {
+        generatedSplitCount += 1;
+      }
+      if (result.consumedTab) {
+        generatedTabCount += 1;
+      }
+      return result.patch;
     }),
   openTelnetTerminal: (hostId) =>
     set((state) => {
@@ -642,19 +761,64 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
 
       return { terminalTabGroupPreferences: nextPreferences };
     }),
-  splitFocusedPane: (direction) =>
+  splitFocusedPane: (direction, options) =>
     set((state) => {
-      const splitTarget = resolveFocusedPaneSplitTarget(state);
+      const splitTarget = resolveFocusedPaneSplitTarget(
+        state,
+        options?.sourcePaneId,
+      );
       if (!splitTarget) {
+        return {};
+      }
+      const targetMachine = options?.targetMachineId
+        ? findMachine(state.machineGroups, options.targetMachineId)
+        : undefined;
+      if (options?.targetMachineId && !targetMachine) {
+        return {};
+      }
+      const targetPaneIdPrefix = targetMachine
+        ? paneIdPrefixForSplitMachine(targetMachine)
+        : undefined;
+      if (targetMachine && !targetPaneIdPrefix) {
         return {};
       }
 
       generatedPaneCount += 1;
       generatedSplitCount += 1;
-      return splitFocusedPaneState(state, {
+      const paneId = `${
+        targetPaneIdPrefix ?? splitTarget.paneIdPrefix
+      }-${generatedPaneCount}`;
+      const targetPane = targetMachine
+        ? splitTargetPaneForMachine(targetMachine, paneId)
+        : undefined;
+      if (targetMachine && !targetPane) {
+        return {};
+      }
+      const splitPatch = splitFocusedPaneState(state, {
         direction,
-        paneId: `${splitTarget.paneIdPrefix}-${generatedPaneCount}`,
+        paneId,
+        placement: options?.placement,
+        sourcePaneId: splitTarget.sourcePaneId,
         splitId: `split-${generatedSplitCount}`,
+        ...(targetPane ? { targetPane } : {}),
+      });
+      if (targetPane && "focusedPaneId" in splitPatch) {
+        return { ...splitPatch, selectedMachineId: targetPane.machineId };
+      }
+      return splitPatch;
+    }),
+  moveTerminalPane: (sourcePaneId, targetPaneId, placement) =>
+    set((state) => {
+      if (sourcePaneId === targetPaneId) {
+        return {};
+      }
+
+      generatedSplitCount += 1;
+      return moveTerminalPaneState(state, {
+        placement,
+        sourcePaneId,
+        splitId: `split-${generatedSplitCount}`,
+        targetPaneId,
       });
     }),
   closePane: (paneId) =>
@@ -663,6 +827,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
     set((state) => focusTerminalPaneState(state, focusedPaneId)),
   updatePaneCurrentCwd: (paneId, currentCwd) =>
     set((state) => updatePaneCurrentCwdState(state, paneId, currentCwd)),
+  updateTerminalSplitLayoutSizes: (splitId, sizes) =>
+    set((state) => updateTerminalSplitLayoutSizesState(state, splitId, sizes)),
   updatePaneOutputHistory: (paneId, outputHistory) =>
     set((state) => updatePaneOutputHistoryState(state, paneId, outputHistory)),
   restoreWorkspaceSession: (session) =>

@@ -1,8 +1,5 @@
 import { Select } from "../../../components/ui/select";
-import type {
-  RemoteHost,
-  RemoteHostAuthType,
-} from "../../../lib/remoteHostApi";
+import type { RemoteHostAuthType } from "../../../lib/remoteHostApi";
 import { authOptions } from "./model";
 import { FieldRow, GroupSelectRow, inputClassName } from "./shared-ui";
 
@@ -10,14 +7,12 @@ export function SshPropertiesPanel({
   authType,
   credentialRef,
   credentialSecret,
-  editingHost,
   groupId,
   groupOptions,
   host,
   name,
   onCreateGroupClick,
   port,
-  selectedProtocolLabel,
   setAuthType,
   setCredentialRef,
   setCredentialSecret,
@@ -33,14 +28,12 @@ export function SshPropertiesPanel({
   authType: RemoteHostAuthType;
   credentialRef: string;
   credentialSecret: string;
-  editingHost?: RemoteHost;
   groupId: string;
   groupOptions: Array<{ label: string; value: string }>;
   host: string;
   name: string;
   onCreateGroupClick?: () => void;
   port: string;
-  selectedProtocolLabel: string;
   setAuthType: (value: RemoteHostAuthType) => void;
   setCredentialRef: (value: string) => void;
   setCredentialSecret: (value: string) => void;
@@ -119,16 +112,11 @@ export function SshPropertiesPanel({
               value={tags}
             />
             <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-              多个标签可用逗号、空格或中文逗号分隔，例如：dev ubuntu，staging。
+              多个标签可用逗号或空格分隔。
             </p>
           </div>
         </FieldRow>
       </div>
-      {editingHost ? null : (
-        <div className="kerminal-muted-surface rounded-xl px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
-          {selectedProtocolLabel} 保存后会出现在左侧对应区域里。
-        </div>
-      )}
     </div>
   );
 }
@@ -185,7 +173,7 @@ export function SshAuthFields({
                 value={credentialSecret}
               />
               <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-                密码会随远程主机记录明文保存，编辑主机时直接显示。
+                密码明文保存，编辑时显示。
               </p>
             </div>
           ) : (
@@ -203,12 +191,12 @@ export function SshAuthFields({
                 onChange={(event) =>
                   setCredentialSecret(event.currentTarget.value)
                 }
-                placeholder="也可以粘贴 OpenSSH 私钥内容，随主机记录明文保存"
+                placeholder="也可粘贴 OpenSSH 私钥内容"
                 spellCheck={false}
                 value={credentialSecret}
               />
               <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-                私钥路径和私钥内容二选一；粘贴私钥内容会随远程主机记录明文保存。
+                私钥路径和内容二选一；内容明文保存。
               </p>
             </div>
           )}

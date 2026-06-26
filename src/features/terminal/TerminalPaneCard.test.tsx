@@ -1,12 +1,16 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultAppSettings } from "../settings/settingsModel";
 import type { TerminalPane } from "../workspace/types";
-import { baseTerminalPane } from "./TerminalWorkspace.testSupport";
+import {
+  baseTerminalPane,
+  terminalMachineGroups,
+} from "./__tests__/support/TerminalWorkspace.testSupport";
 import { TerminalPaneCard } from "./TerminalPaneCard";
 
 const xtermPaneMock = vi.hoisted(() => ({
+  lastInitialOutputHistory: undefined as string | undefined,
   renderCount: 0,
 }));
 
@@ -15,14 +19,17 @@ vi.mock("./XtermPane", () => ({
     onCurrentCwdChange,
     onOutputHistoryChange,
     onSplitPane,
+    resolveInitialOutputHistory,
     title,
   }: {
     onCurrentCwdChange?: (cwd: string) => void;
     onOutputHistoryChange?: (outputHistory: string | undefined) => void;
     onSplitPane?: (direction: "horizontal" | "vertical") => void;
+    resolveInitialOutputHistory?: () => string | undefined;
     title: string;
   }) => {
     xtermPaneMock.renderCount += 1;
+    xtermPaneMock.lastInitialOutputHistory = resolveInitialOutputHistory?.();
 
     return (
       <div aria-label={`${title} xterm 终端`}>
@@ -62,6 +69,7 @@ function renderPaneCard(
 
 describe("TerminalPaneCard", () => {
   beforeEach(() => {
+    xtermPaneMock.lastInitialOutputHistory = undefined;
     xtermPaneMock.renderCount = 0;
   });
 
@@ -80,11 +88,16 @@ describe("TerminalPaneCard", () => {
     };
 
     renderPaneCard(sshPane, {
+      focused: true,
       onCurrentCwdChange,
       onOutputHistoryChange,
       onSplitPane,
     });
 
+    expect(screen.getByLabelText("prod-api 终端分屏")).toHaveAttribute(
+      "data-focused",
+      "true",
+    );
     expect(screen.getByLabelText("prod-api xterm 终端")).toBeInTheDocument();
     expect(screen.getByText("42ms")).toBeInTheDocument();
 
@@ -94,7 +107,54 @@ describe("TerminalPaneCard", () => {
 
     expect(onCurrentCwdChange).toHaveBeenCalledWith("pane-ssh", "C:\\repo");
     expect(onOutputHistoryChange).toHaveBeenCalledWith("pane-ssh", "history");
-    expect(onSplitPane).toHaveBeenCalledWith("vertical");
+    expect(onSplitPane).toHaveBeenCalledWith("vertical", {
+      sourcePaneId: "pane-ssh",
+    });
+  });
+
+  it("keeps split actions beside the pane close control", async () => {
+    const user = userEvent.setup();
+    const onFocusPane = vi.fn();
+    const onSplitPane = vi.fn();
+    const sshPane: TerminalPane = {
+      ...baseTerminalPane,
+      id: "pane-ssh",
+      machineId: "host-prod",
+      mode: "ssh",
+      remoteHostId: "host-prod",
+      title: "prod-api",
+    };
+
+    renderPaneCard(sshPane, {
+      machineGroups: terminalMachineGroups,
+      onFocusPane,
+      onSplitPane,
+    });
+
+    await user.click(screen.getByRole("button", { name: "prod-api 左右分屏" }));
+
+    expect(onFocusPane).toHaveBeenCalledWith("pane-ssh");
+    expect(onSplitPane).toHaveBeenCalledWith("horizontal", {
+      sourcePaneId: "pane-ssh",
+    });
+    expect(
+      screen.getByRole("button", { name: "关闭 prod-api 分屏" }),
+    ).toBeInTheDocument();
+  });
+
+  it("hydrates stripped runtime pane output from the resolver", () => {
+    renderPaneCard(
+      {
+        ...baseTerminalPane,
+        outputHistory: undefined,
+      },
+      {
+        resolvePaneOutputHistory: (paneId) =>
+          paneId === "pane-local" ? "restored history" : undefined,
+      },
+    );
+
+    expect(xtermPaneMock.lastInitialOutputHistory).toBe("restored history");
   });
 
   it("renders preview panes without mounting the xterm runtime", () => {
@@ -110,8 +170,34 @@ describe("TerminalPaneCard", () => {
     expect(screen.getByLabelText("诊断输出 终端分屏")).toBeInTheDocument();
     expect(screen.getByText("第一行")).toBeInTheDocument();
     expect(screen.getByText("第二行")).toBeInTheDocument();
+    expect(screen.getByText("第一行").closest("pre")).toHaveClass(
+      "kerminal-terminal-preview",
+    );
     expect(screen.getByText("ERR>")).toBeInTheDocument();
-    expect(screen.queryByLabelText("诊断输出 xterm 终端")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("诊断输出 xterm 终端"),
+    ).not.toBeInTheDocument();
+    expect(xtermPaneMock.renderCount).toBe(0);
+  });
+
+  it("hydrates stripped preview pane lines from the resolver", () => {
+    renderPaneCard(
+      {
+        ...baseTerminalPane,
+        id: "pane-preview",
+        lines: [],
+        mode: "preview",
+        prompt: "ERR>",
+        title: "诊断输出",
+      },
+      {
+        resolvePaneLines: (paneId) =>
+          paneId === "pane-preview" ? ["恢复第一行", "恢复第二行"] : [],
+      },
+    );
+
+    expect(screen.getByText("恢复第一行")).toBeInTheDocument();
+    expect(screen.getByText("恢复第二行")).toBeInTheDocument();
     expect(xtermPaneMock.renderCount).toBe(0);
   });
 
@@ -132,5 +218,23 @@ describe("TerminalPaneCard", () => {
 
     expect(onClosePane).toHaveBeenCalledWith("pane-local");
     expect(onFocusPane).not.toHaveBeenCalled();
+  });
+
+  it("starts pane move dragging only from the titlebar drag handle", () => {
+    const onBeginPaneDrag = vi.fn();
+
+    renderPaneCard(baseTerminalPane, { onBeginPaneDrag });
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", {
+        name: "拖动 本地 PowerShell 分屏调整位置",
+      }),
+      { clientX: 24, clientY: 18, pointerId: 1 },
+    );
+
+    expect(onBeginPaneDrag).toHaveBeenCalledWith(
+      "pane-local",
+      expect.any(Object),
+    );
   });
 });

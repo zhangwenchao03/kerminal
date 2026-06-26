@@ -142,7 +142,7 @@ pub(super) fn system_time_from_unix_millis(value: i64) -> SystemTime {
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn upsert_provider_cache(
-    storage: &SqliteStore,
+    storage: &CommandSqliteStore,
     provider: SuggestionProviderKind,
     host_id: &str,
     scope_key: &str,

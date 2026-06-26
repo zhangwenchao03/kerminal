@@ -1,22 +1,17 @@
 import { useEffect, useState } from "react";
 import { cn } from "../../lib/cn";
 import { selectLocalFile } from "../../lib/fileDialogApi";
-import { getMcpGatewayManifest } from "../../lib/toolRegistryApi";
 import {
   cleanupTerminalSuggestionDiagnostics,
   getTerminalSuggestionTelemetrySummary,
   type CommandSuggestionDiagnosticsCleanupResult,
   type CommandSuggestionTelemetrySummary,
 } from "../../lib/terminalSuggestionApi";
-import type { McpGatewayManifest } from "../tool-panel/toolRegistryModel";
 import {
-  normalizeAiMcpSettings,
   normalizeAppSettings,
-  type AiCommandApprovalPolicy,
-  type AiMcpSettings,
-  type AiSecuritySettings,
   type AppearanceSettings,
   type AppSettings,
+  type DesktopNotificationSettings,
   type KeybindingPlatform,
   type ResolvedTheme,
   type SftpPerformanceSettings,
@@ -27,15 +22,14 @@ import {
 } from "./settingsModel";
 import { shortcutPlatform } from "./keybindingUtils";
 import { AboutSettingsSection } from "./settings-tool-content/about-section";
-import { AiSettingsSection } from "./settings-tool-content/ai-section";
 import { AppearanceSettingsSection } from "./settings-tool-content/appearance-section";
+import { DesktopSettingsSection } from "./settings-tool-content/desktop-section";
 import { KeybindingsSettingsSection } from "./settings-tool-content/keybindings-section";
 import { McpSkillsSettingsSection } from "./settings-tool-content/mcp-section";
 import { settingsSections } from "./settings-tool-content/options";
 import { SettingsSaveNotice } from "./settings-tool-content/shared-controls";
 import { SftpSettingsSection } from "./settings-tool-content/sftp-section";
 import {
-  type McpManifestLoadState,
   type SettingsToolContentProps,
   type SuggestionCleanupState,
   type SuggestionTelemetryLoadState,
@@ -49,6 +43,7 @@ export type {
 } from "./settings-tool-content/types";
 
 export function SettingsToolContent({
+  externalChangeNotice,
   initialSectionId = "settings-appearance",
   onSettingsChange,
   resolvedTheme,
@@ -60,11 +55,6 @@ export function SettingsToolContent({
     useState<VisibleSettingsSectionId>(() =>
       visibleSettingsSectionId(initialSectionId),
     );
-  const [mcpError, setMcpError] = useState<string | null>(null);
-  const [mcpManifest, setMcpManifest] = useState<McpGatewayManifest | null>(
-    null,
-  );
-  const [mcpState, setMcpState] = useState<McpManifestLoadState>("idle");
   const [suggestionTelemetry, setSuggestionTelemetry] =
     useState<CommandSuggestionTelemetrySummary | null>(null);
   const [suggestionTelemetryError, setSuggestionTelemetryError] = useState<
@@ -86,21 +76,6 @@ export function SettingsToolContent({
     selectedKeybindingPlatform === "mac" ? "macOS" : "Windows";
   const previewResolvedTheme =
     resolvedTheme ?? resolveSettingsPreviewTheme(normalizedSettings.themeMode);
-
-  const loadMcpManifest = async () => {
-    setMcpState("loading");
-    setMcpError(null);
-    try {
-      setMcpManifest(await getMcpGatewayManifest());
-      setMcpState("idle");
-    } catch (nextError) {
-      setMcpManifest(null);
-      setMcpError(
-        nextError instanceof Error ? nextError.message : String(nextError),
-      );
-      setMcpState("error");
-    }
-  };
 
   const loadSuggestionTelemetry = async () => {
     setSuggestionTelemetryState("loading");
@@ -147,16 +122,6 @@ export function SettingsToolContent({
   useEffect(() => {
     setActiveSectionId(visibleSettingsSectionId(initialSectionId));
   }, [initialSectionId]);
-
-  useEffect(() => {
-    if (
-      activeSectionId === "settings-mcp" &&
-      !mcpManifest &&
-      mcpState === "idle"
-    ) {
-      void loadMcpManifest();
-    }
-  }, [activeSectionId, mcpManifest, mcpState]);
 
   useEffect(() => {
     if (
@@ -231,35 +196,24 @@ export function SettingsToolContent({
     });
   };
 
-  const updateAi = (ai: Partial<AiSecuritySettings>) => {
-    updateSettings({
-      ...normalizedSettings,
-      ai: {
-        ...normalizedSettings.ai,
-        ...ai,
-      },
-    });
-  };
-
-  const updateMcp = (mcp: AiMcpSettings) => {
-    updateAi({ mcp: normalizeAiMcpSettings(mcp) });
-  };
-
-  const updateAiCommandApprovalPolicy = (
-    commandApprovalPolicy: AiCommandApprovalPolicy,
-  ) => {
-    updateAi({
-      commandApprovalPolicy,
-      requireRemoteApproval: commandApprovalPolicy !== "relaxed",
-    });
-  };
-
   const updateSftp = (sftp: Partial<SftpPerformanceSettings>) => {
     updateSettings({
       ...normalizedSettings,
       sftp: {
         ...normalizedSettings.sftp,
         ...sftp,
+      },
+    });
+  };
+
+  const updateDesktopNotifications = (
+    desktopNotifications: Partial<DesktopNotificationSettings>,
+  ) => {
+    updateSettings({
+      ...normalizedSettings,
+      desktopNotifications: {
+        ...normalizedSettings.desktopNotifications,
+        ...desktopNotifications,
       },
     });
   };
@@ -316,6 +270,15 @@ export function SettingsToolContent({
       </nav>
 
       <div className="min-w-0 space-y-5">
+        {externalChangeNotice ? (
+          <div
+            className="rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 font-mono text-xs text-amber-800 dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100"
+            role="status"
+          >
+            {externalChangeNotice}
+          </div>
+        ) : null}
+
         {activeSectionId === "settings-appearance" ? (
           <AppearanceSettingsSection
             chooseBackgroundImage={chooseBackgroundImage}
@@ -339,25 +302,19 @@ export function SettingsToolContent({
           />
         ) : null}
 
-        {activeSectionId === "settings-ai" ? (
-          <AiSettingsSection
-            normalizedSettings={normalizedSettings}
-            updateAi={updateAi}
-            updateAiCommandApprovalPolicy={updateAiCommandApprovalPolicy}
-          />
-        ) : null}
-
         {activeSectionId === "settings-mcp" ? (
           <div className="space-y-4" id="settings-mcp-panel">
             <McpSkillsSettingsSection
-              error={mcpError}
-              manifest={mcpManifest}
-              mcp={normalizedSettings.ai.mcp}
-              onChange={updateMcp}
-              onRefresh={() => void loadMcpManifest()}
-              state={mcpState}
+              desktopNotifications={normalizedSettings.desktopNotifications}
             />
           </div>
+        ) : null}
+
+        {activeSectionId === "settings-desktop" ? (
+          <DesktopSettingsSection
+            normalizedSettings={normalizedSettings}
+            updateDesktopNotifications={updateDesktopNotifications}
+          />
         ) : null}
 
         {activeSectionId === "settings-sftp" ? (
@@ -377,7 +334,11 @@ export function SettingsToolContent({
           />
         ) : null}
 
-        {activeSectionId === "settings-about" ? <AboutSettingsSection /> : null}
+        {activeSectionId === "settings-about" ? (
+          <AboutSettingsSection
+            desktopNotifications={normalizedSettings.desktopNotifications}
+          />
+        ) : null}
 
         <SettingsSaveNotice saveError={saveError} saveState={saveState} />
       </div>

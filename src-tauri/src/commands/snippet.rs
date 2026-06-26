@@ -18,7 +18,7 @@ pub fn snippet_list(
 ) -> Result<Vec<CommandSnippet>, String> {
     state
         .snippets()
-        .list_snippets(state.storage(), request.unwrap_or_default())
+        .list_snippets(request.unwrap_or_default())
         .map_err(|error| error.to_string())
 }
 
@@ -30,7 +30,7 @@ pub fn snippet_create(
 ) -> Result<CommandSnippet, String> {
     state
         .snippets()
-        .create_snippet(state.storage(), request)
+        .create_snippet(request)
         .map_err(|error| error.to_string())
 }
 
@@ -42,7 +42,7 @@ pub fn snippet_update(
 ) -> Result<CommandSnippet, String> {
     state
         .snippets()
-        .update_snippet(state.storage(), request)
+        .update_snippet(request)
         .map_err(|error| error.to_string())
 }
 
@@ -51,6 +51,6 @@ pub fn snippet_update(
 pub fn snippet_delete(state: State<'_, AppState>, snippet_id: String) -> Result<bool, String> {
     state
         .snippets()
-        .delete_snippet(state.storage(), &snippet_id)
+        .delete_snippet(&snippet_id)
         .map_err(|error| error.to_string())
 }

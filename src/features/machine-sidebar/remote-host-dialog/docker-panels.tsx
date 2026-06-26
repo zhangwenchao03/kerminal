@@ -1,5 +1,14 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, RefreshCw, Search, Terminal } from "lucide-react";
+import {
+  Box,
+  Check,
+  ChevronDown,
+  MousePointer2,
+  Pin,
+  RefreshCw,
+  Search,
+  Terminal,
+} from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Select } from "../../../components/ui/select";
 import { Switch } from "../../../components/ui/switch";
@@ -8,6 +17,46 @@ import type { ContainerRuntime } from "../../../lib/targetModel";
 import type { Machine } from "../../workspace/types";
 import { dockerStatusClassName, dockerStatusLabel } from "./request-builders";
 import { FieldRow, GroupSelectRow, inputClassName } from "./shared-ui";
+
+export function DockerHostContextGuidancePanel() {
+  return (
+    <div className="grid gap-4">
+      <div className="kerminal-solid-surface rounded-2xl border p-5">
+        <div className="flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-hover)] text-sky-600 dark:text-sky-200">
+            <Box className="h-5 w-5" strokeWidth={1.8} />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+              容器入口已移到主机右键菜单
+            </h3>
+            <p className="mt-1 max-w-xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
+              在左侧列表右击 SSH 主机，选择「容器」打开主机限定的容器管理弹框。
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-2 text-sm text-zinc-600 dark:text-zinc-300">
+          <div className="flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-hover)] px-3 py-2">
+            <MousePointer2
+              className="h-4 w-4 text-zinc-400"
+              strokeWidth={1.8}
+            />
+            <span>主机右键进入，不再把容器当成新主机类型添加。</span>
+          </div>
+          <div className="flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-hover)] px-3 py-2">
+            <Terminal className="h-4 w-4 text-zinc-400" strokeWidth={1.8} />
+            <span>运行中容器可直接进入终端，临时进入不会固定到侧栏。</span>
+          </div>
+          <div className="flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-hover)] px-3 py-2">
+            <Pin className="h-4 w-4 text-zinc-400" strokeWidth={1.8} />
+            <span>常用容器再用「固定到侧栏」保存为长期工作对象。</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function DockerPropertiesPanel({
   containers,
@@ -70,12 +119,12 @@ export function DockerPropertiesPanel({
               onValueChange={(value) => setRuntime(value as ContainerRuntime)}
               options={[
                 {
-                  description: "通过远端 docker CLI 读取和进入容器。",
+                  description: "使用远端 docker CLI。",
                   label: "Docker",
                   value: "docker",
                 },
                 {
-                  description: "通过远端 podman CLI 读取和进入容器。",
+                  description: "使用远端 podman CLI。",
                   label: "Podman",
                   value: "podman",
                 },
@@ -101,7 +150,7 @@ export function DockerPropertiesPanel({
               容器列表
             </h3>
             <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-              选择一个容器后，确认会把它添加到侧栏。
+              选择后加入侧栏。
             </p>
           </div>
           <Button
@@ -110,18 +159,20 @@ export function DockerPropertiesPanel({
             type="button"
             variant="secondary"
           >
-            <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+            <RefreshCw
+              className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"}
+            />
             刷新
           </Button>
         </div>
 
         {sshMachines.length === 0 ? (
           <p className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-200">
-            先添加 SSH 主机后才能读取远端容器。
+            先添加 SSH 主机。
           </p>
         ) : !hostId ? (
           <p className="mt-4 text-sm text-zinc-500 dark:text-zinc-400">
-            请选择主机后读取远端容器。
+            请选择主机。
           </p>
         ) : loadError ? (
           <p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
@@ -256,7 +307,11 @@ export function DockerHostSearchSelect({
         disabled={machines.length === 0}
         onClick={() => setOpen((current) => !current)}
         onKeyDown={(event) => {
-          if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+          if (
+            event.key === "ArrowDown" ||
+            event.key === "Enter" ||
+            event.key === " "
+          ) {
             event.preventDefault();
             setOpen(true);
           }
@@ -343,7 +398,10 @@ export function DockerHostSearchSelect({
                       </span>
                     </span>
                     {selected ? (
-                      <Check className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.8} />
+                      <Check
+                        className="mt-0.5 h-4 w-4 shrink-0"
+                        strokeWidth={1.8}
+                      />
                     ) : null}
                   </button>
                 );
@@ -404,7 +462,7 @@ export function DockerTerminalOptionsPanel({
         <div className="flex items-start gap-3">
           <Terminal className="mt-0.5 h-4 w-4 text-sky-500 dark:text-sky-300" />
           <p className="min-w-0 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-            这些选项会在进入容器时传给 docker exec 或 podman exec。
+            传给 docker/podman exec。
           </p>
         </div>
       </div>

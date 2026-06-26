@@ -10,7 +10,7 @@ use tauri::State;
 pub fn settings_get(state: State<'_, AppState>) -> Result<AppSettings, String> {
     state
         .settings()
-        .load_settings(state.storage())
+        .load_settings()
         .map_err(|error| error.to_string())
 }
 
@@ -22,6 +22,6 @@ pub fn settings_update(
 ) -> Result<AppSettings, String> {
     state
         .settings()
-        .update_settings(state.storage(), request)
+        .update_settings(request)
         .map_err(|error| error.to_string())
 }

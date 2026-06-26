@@ -9,15 +9,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use axum::Router;
+use axum::{extract::OriginalUri, http::request::Parts, Router};
 use rmcp::{
     model::{
-        AnnotateAble, CallToolRequestParams, CallToolResult, GetPromptRequestParams,
-        GetPromptResult, Implementation, ListPromptsResult, ListResourceTemplatesResult,
-        ListResourcesResult, ListToolsResult, PaginatedRequestParams, Prompt, PromptArgument,
-        PromptMessage, PromptMessageRole, RawResource, RawResourceTemplate,
-        ReadResourceRequestParams, ReadResourceResult, ResourceContents, ResourceTemplate,
-        ServerCapabilities, ServerInfo as RmcpServerInfo, Tool,
+        object, CallToolRequestParams, CallToolResult, GetPromptRequestParams, GetPromptResult,
+        Implementation, ListPromptsResult, ListResourceTemplatesResult, ListResourcesResult,
+        ListToolsResult, PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResult,
+        ServerCapabilities, ServerInfo as RmcpServerInfo, Tool, ToolAnnotations,
     },
     service::{MaybeSendFuture, RequestContext, RoleServer},
     transport::streamable_http_server::{
@@ -32,21 +30,11 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     error::{AppError, AppResult},
     models::{
-        ai_tool_invocation::{
-            AiToolAuditRecord, AiToolConfirmRequest, AiToolInvocationStatus, AiToolPrepareRequest,
-        },
-        tool_registry::{
-            McpHttpServerStartRequest, McpHttpServerStatus, McpPromptMessage,
-            McpPromptRenderRequest, McpResourceReadRequest, ToolDefinition,
-        },
+        agent_session::AgentSessionId,
+        mcp_server::{McpHttpServerStartRequest, McpHttpServerStatus, ToolDefinition},
     },
-    services::{
-        ai_tool_invocation_service::AiToolExecutionContext,
-        mcp_tool_gateway::{
-            custom_mcp_tool_definitions, tool_definition_to_rmcp_tool, McpPromptRenderRuntime,
-            McpResourceReadRuntime, AGENT_SKILL_DETAIL_RESOURCE_URI_TEMPLATE,
-            AI_AUDIT_SUMMARY_RESOURCE_URI, AI_POLICY_RESOURCE_URI,
-        },
+    services::mcp_tool_executor_service::{
+        McpToolExecutionContext, McpToolExecutionOutput, McpToolExecutionStatus,
     },
     state::AppState,
 };
@@ -55,7 +43,46 @@ const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1";
 const DEFAULT_MCP_HTTP_PORT: u16 = 37657;
 const MCP_HTTP_PORT_SCAN_LIMIT: u16 = 64;
 const MCP_PATH: &str = "/mcp";
-const MCP_SERVER_INSTRUCTIONS: &str = "Kerminal exposes a local Streamable HTTP MCP server for terminal/workspace context, skills, prompts, and audited tools. Kerminal does not expose a custom confirmation round trip over MCP: configure your MCP host hooks/permission system to approve tool calls. Kerminal still validates its allowlist, applies local security settings, and audits every tool call.";
+const MCP_AGENT_PATH: &str = "/mcp/agents";
+const MCP_SERVER_INSTRUCTIONS: &str = "Kerminal exposes local runtime tools for existing terminal sessions, SSH/SFTP, containers, port forwarding, server info, diagnostics, and read-only file-backed config validation. Edit Kerminal configuration directly in the external agent workspace according to AGENTS.md and CLAUDE.md, then call kerminal.config.validate. MCP tool approval is owned by the MCP host; Kerminal validates its allowlist, arguments, local-only transport, and sensitive output boundaries.";
+
+/// Streamable HTTP MCP server runtime rules used by integration tests.
+#[doc(hidden)]
+pub mod rules {
+    use std::net::SocketAddr;
+
+    use tokio::net::TcpListener;
+
+    use crate::{error::AppResult, models::mcp_server::ToolDefinition};
+
+    pub fn default_bind_address() -> &'static str {
+        super::DEFAULT_BIND_ADDRESS
+    }
+
+    pub fn default_mcp_http_port() -> u16 {
+        super::DEFAULT_MCP_HTTP_PORT
+    }
+
+    pub fn mcp_http_port_scan_limit() -> u16 {
+        super::MCP_HTTP_PORT_SCAN_LIMIT
+    }
+
+    pub fn is_externally_callable_tool(tool: &ToolDefinition) -> bool {
+        super::is_externally_callable_tool(tool)
+    }
+
+    pub fn normalize_bind_address(host: Option<&str>) -> AppResult<String> {
+        super::normalize_bind_address(host)
+    }
+
+    pub fn requested_start_port(port: Option<u16>) -> u16 {
+        super::requested_start_port(port)
+    }
+
+    pub async fn bind_loopback_port_from(start_port: u16) -> AppResult<(TcpListener, SocketAddr)> {
+        super::bind_loopback_port_from(start_port).await
+    }
+}
 
 /// Streamable HTTP MCP Server 生命周期服务。
 #[derive(Debug, Clone, Default)]
@@ -72,8 +99,8 @@ struct McpStreamableHttpServerHandle {
 }
 
 #[derive(Clone)]
-struct KerminalMcpServer {
-    app: tauri::AppHandle,
+struct KerminalMcpServer<R: tauri::Runtime> {
+    app: tauri::AppHandle<R>,
 }
 
 impl McpStreamableHttpServerService {
@@ -92,9 +119,9 @@ impl McpStreamableHttpServerService {
     }
 
     /// 启动本地 Streamable HTTP MCP Server。
-    pub async fn start(
+    pub async fn start<R: tauri::Runtime>(
         &self,
-        app: tauri::AppHandle,
+        app: tauri::AppHandle<R>,
         request: Option<McpHttpServerStartRequest>,
     ) -> AppResult<McpHttpServerStatus> {
         {
@@ -124,7 +151,7 @@ impl McpStreamableHttpServerService {
             .with_allowed_hosts(["localhost", DEFAULT_BIND_ADDRESS, "::1"])
             .with_cancellation_token(cancellation.child_token());
         let session_manager = Arc::new(LocalSessionManager::default());
-        let service: StreamableHttpService<KerminalMcpServer, LocalSessionManager> =
+        let service: StreamableHttpService<KerminalMcpServer<R>, LocalSessionManager> =
             StreamableHttpService::new(
                 {
                     let app = app.clone();
@@ -133,7 +160,9 @@ impl McpStreamableHttpServerService {
                 session_manager,
                 config,
             );
-        let router = Router::new().nest_service(MCP_PATH, service);
+        let router = Router::new()
+            .nest_service(MCP_AGENT_PATH, service.clone())
+            .nest_service(MCP_PATH, service);
         let shutdown = cancellation.child_token();
 
         tauri::async_runtime::spawn(async move {
@@ -174,21 +203,15 @@ impl McpStreamableHttpServerService {
 }
 
 #[allow(clippy::manual_async_fn)]
-impl ServerHandler for KerminalMcpServer {
+impl<R: tauri::Runtime> ServerHandler for KerminalMcpServer<R> {
     fn get_info(&self) -> RmcpServerInfo {
-        RmcpServerInfo::new(
-            ServerCapabilities::builder()
-                .enable_tools()
-                .enable_resources()
-                .enable_prompts()
-                .build(),
-        )
-        .with_server_info(
-            Implementation::new("kerminal", env!("CARGO_PKG_VERSION"))
-                .with_title("Kerminal")
-                .with_description("Kerminal local terminal workspace MCP server"),
-        )
-        .with_instructions(MCP_SERVER_INSTRUCTIONS)
+        RmcpServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(
+                Implementation::new("kerminal", env!("CARGO_PKG_VERSION"))
+                    .with_title("Kerminal")
+                    .with_description("Kerminal local terminal workspace MCP server"),
+            )
+            .with_instructions(MCP_SERVER_INSTRUCTIONS)
     }
 
     fn list_tools(
@@ -220,9 +243,9 @@ impl ServerHandler for KerminalMcpServer {
     fn call_tool(
         &self,
         request: CallToolRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<CallToolResult, McpError>> + MaybeSendFuture + '_ {
-        async move { self.call_tool_inner(request).await }
+        async move { self.call_tool_inner(request, context).await }
     }
 
     fn list_resources(
@@ -230,22 +253,7 @@ impl ServerHandler for KerminalMcpServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ListResourcesResult, McpError>> + MaybeSendFuture + '_ {
-        async move {
-            let state = self.app.state::<AppState>();
-            let manifest = manifest_snapshot(&state)?;
-            let resources = manifest
-                .resources
-                .into_iter()
-                .map(|resource| {
-                    RawResource::new(resource.uri, resource.name)
-                        .with_title(resource.title)
-                        .with_description(resource.description)
-                        .with_mime_type(resource.mime_type)
-                        .no_annotation()
-                })
-                .collect::<Vec<_>>();
-            Ok(ListResourcesResult::with_all_items(resources))
-        }
+        async move { Ok(ListResourcesResult::with_all_items(Vec::new())) }
     }
 
     fn list_resource_templates(
@@ -254,42 +262,19 @@ impl ServerHandler for KerminalMcpServer {
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ListResourceTemplatesResult, McpError>> + MaybeSendFuture + '_
     {
-        async move {
-            Ok(ListResourceTemplatesResult::with_all_items(vec![
-                agent_skill_detail_resource_template(),
-            ]))
-        }
+        async move { Ok(ListResourceTemplatesResult::with_all_items(Vec::new())) }
     }
 
     fn read_resource(
         &self,
-        request: ReadResourceRequestParams,
+        _request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ReadResourceResult, McpError>> + MaybeSendFuture + '_ {
         async move {
-            let state = self.app.state::<AppState>();
-            let runtime = resource_runtime(&state, &request.uri)?;
-            let content = state
-                .mcp_tools()
-                .read_resource(
-                    &state.tools().list_tools(),
-                    McpResourceReadRequest {
-                        uri: request.uri.clone(),
-                        application_context: None,
-                        terminal_context: None,
-                        audit_limit: Some(20),
-                    },
-                    runtime,
-                )
-                .map_err(app_error_to_mcp_error)?;
-            let text = serde_json::to_string_pretty(&content.content)
-                .map_err(AppError::from)
-                .map_err(app_error_to_mcp_error)?;
-            Ok(ReadResourceResult::new(vec![ResourceContents::text(
-                text,
-                content.uri,
-            )
-            .with_mime_type(content.mime_type)]))
+            Err(McpError::invalid_params(
+                "Kerminal MCP Server does not expose resources; use tools/list or edit workspace files directly.",
+                None,
+            ))
         }
     }
 
@@ -298,84 +283,31 @@ impl ServerHandler for KerminalMcpServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ListPromptsResult, McpError>> + MaybeSendFuture + '_ {
-        async move {
-            let state = self.app.state::<AppState>();
-            let manifest = manifest_snapshot(&state)?;
-            let prompts = manifest
-                .prompts
-                .into_iter()
-                .map(|prompt| {
-                    Prompt::new(
-                        prompt.name,
-                        Some(prompt.description),
-                        Some(
-                            prompt
-                                .arguments
-                                .into_iter()
-                                .map(|argument| {
-                                    PromptArgument::new(argument.name)
-                                        .with_description(argument.description)
-                                        .with_required(argument.required)
-                                })
-                                .collect::<Vec<_>>(),
-                        ),
-                    )
-                    .with_title(prompt.title)
-                })
-                .collect::<Vec<_>>();
-            Ok(ListPromptsResult::with_all_items(prompts))
-        }
+        async move { Ok(ListPromptsResult::with_all_items(Vec::new())) }
     }
 
     fn get_prompt(
         &self,
-        request: GetPromptRequestParams,
+        _request: GetPromptRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<GetPromptResult, McpError>> + MaybeSendFuture + '_ {
         async move {
-            let state = self.app.state::<AppState>();
-            let settings = state
-                .settings()
-                .load_settings(state.storage())
-                .map_err(app_error_to_mcp_error)?;
-            let result = state
-                .mcp_tools()
-                .render_prompt(
-                    McpPromptRenderRequest {
-                        name: request.name,
-                        arguments: request.arguments.unwrap_or_default(),
-                        application_context: None,
-                        terminal_context: None,
-                    },
-                    McpPromptRenderRuntime {
-                        custom_mcp: settings.ai.mcp,
-                        ..Default::default()
-                    },
-                )
-                .map_err(app_error_to_mcp_error)?;
-            Ok(GetPromptResult::new(
-                result
-                    .messages
-                    .into_iter()
-                    .map(prompt_message_to_rmcp)
-                    .collect::<Vec<_>>(),
-            )
-            .with_description(result.description))
+            Err(McpError::invalid_params(
+                "Kerminal MCP Server does not expose prompts; use tools/list or workspace instructions.",
+                None,
+            ))
         }
     }
 }
 
-impl KerminalMcpServer {
+impl<R: tauri::Runtime> KerminalMcpServer<R> {
     async fn call_tool_inner(
         &self,
         request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let state = self.app.state::<AppState>();
         let definitions = externally_callable_tool_definitions(&state)?;
-        let settings = state
-            .settings()
-            .load_settings(state.storage())
-            .map_err(app_error_to_mcp_error)?;
         let tool_id = request.name.to_string();
         if !definitions
             .iter()
@@ -387,132 +319,150 @@ impl KerminalMcpServer {
             ));
         }
 
-        let pending = state
-            .ai_tools()
-            .prepare_with_ai_policy(
-                &definitions,
-                &settings.ai,
-                AiToolPrepareRequest {
-                    tool_id,
-                    arguments: Value::Object(request.arguments.unwrap_or_default()),
-                    requested_by: Some("kerminal-streamable-http-mcp".to_owned()),
-                    reason: Some("external MCP tools/call".to_owned()),
-                    conversation_id: None,
-                    conversation_slot_json: None,
-                    run_id: None,
-                    step_id: None,
-                },
-            )
-            .map_err(app_error_to_mcp_error)?;
-        let audit = state
-            .ai_tools()
-            .confirm_async(
+        let arguments = scoped_tool_arguments(
+            &tool_id,
+            request.arguments.unwrap_or_default(),
+            scoped_agent_session_id_from_request_context(&context).as_deref(),
+        )?;
+
+        let result = state
+            .mcp_tool_executor()
+            .execute(
                 execution_context(&state),
-                AiToolConfirmRequest {
-                    invocation_id: pending.id.clone(),
-                    approved: true,
-                    audit_context: None,
-                },
+                &definitions,
+                &tool_id,
+                Value::Object(arguments),
             )
             .await
             .map_err(app_error_to_mcp_error)?;
 
-        Ok(audit_to_call_tool_result(audit))
+        Ok(tool_execution_to_call_tool_result(result))
     }
 }
 
 /// 判断工具是否适合通过外部 MCP client 直接调用。
 pub fn is_externally_callable_tool(definition: &ToolDefinition) -> bool {
-    definition.enabled
-        && definition.exposed_to_mcp
-        && !matches!(
-            definition.id.as_str(),
-            "terminal.create"
-                | "workspace.split_pane"
-                | "workspace.focus_tab"
-                | "workspace.open_tool"
-                | "ssh.connect"
-        )
+    definition.enabled && definition.exposed_to_mcp
+}
+
+fn tool_definition_to_rmcp_tool(definition: &ToolDefinition) -> Tool {
+    Tool::new(
+        definition.id.clone(),
+        definition.description.clone(),
+        object(definition.input_schema.clone()),
+    )
+    .with_title(definition.title.clone())
+    .with_annotations(tool_annotations_for(definition))
+}
+
+fn tool_annotations_for(definition: &ToolDefinition) -> ToolAnnotations {
+    let annotations = definition.annotations;
+    ToolAnnotations::with_title(definition.title.clone())
+        .read_only(annotations.read_only_hint)
+        .destructive(annotations.destructive_hint)
+        .idempotent(annotations.idempotent_hint)
+        .open_world(annotations.open_world_hint)
 }
 
 fn externally_callable_tool_definitions(state: &AppState) -> Result<Vec<ToolDefinition>, McpError> {
-    let settings = state
-        .settings()
-        .load_settings(state.storage())
-        .map_err(app_error_to_mcp_error)?;
-    let mut definitions = state.tools().list_tools();
-    definitions.extend(custom_mcp_tool_definitions(&settings.ai.mcp));
-    Ok(definitions
+    Ok(state
+        .mcp_tool_catalog()
+        .list_tools()
         .into_iter()
         .filter(is_externally_callable_tool)
         .collect())
 }
 
-fn manifest_snapshot(
-    state: &AppState,
-) -> Result<crate::models::tool_registry::McpGatewayManifest, McpError> {
-    let settings = state
-        .settings()
-        .load_settings(state.storage())
-        .map_err(app_error_to_mcp_error)?;
-    Ok(state
-        .mcp_tools()
-        .manifest(&state.tools().list_tools(), &settings.ai.mcp))
-}
-
-fn agent_skill_detail_resource_template() -> ResourceTemplate {
-    RawResourceTemplate::new(
-        AGENT_SKILL_DETAIL_RESOURCE_URI_TEMPLATE,
-        "agent-skill-detail",
-    )
-    .with_title("Agent Skill 详情")
-    .with_description("按 skill id 读取用户自定义标准 SKILL.md 的完整说明正文和文件夹能力摘要。")
-    .with_mime_type("application/json")
-    .no_annotation()
-}
-
-fn resource_runtime(state: &AppState, uri: &str) -> Result<McpResourceReadRuntime, McpError> {
-    let settings = state
-        .settings()
-        .load_settings(state.storage())
-        .map_err(app_error_to_mcp_error)?;
-    let mut runtime = McpResourceReadRuntime {
-        custom_mcp: settings.ai.mcp.clone(),
-        ..Default::default()
+fn scoped_tool_arguments(
+    tool_id: &str,
+    mut arguments: serde_json::Map<String, Value>,
+    scoped_agent_session_id: Option<&str>,
+) -> Result<serde_json::Map<String, Value>, McpError> {
+    let Some(scoped_agent_session_id) = scoped_agent_session_id else {
+        return Ok(arguments);
     };
 
-    if uri == AI_AUDIT_SUMMARY_RESOURCE_URI {
-        runtime.audit_records = state
-            .ai_tools()
-            .list_audits_with_request(state.storage(), None)
-            .map_err(app_error_to_mcp_error)?;
+    if let Some(argument_agent_session_id) = arguments.get("agentSessionId").and_then(Value::as_str)
+    {
+        if argument_agent_session_id.trim() != scoped_agent_session_id {
+            return Err(McpError::invalid_params(
+                format!(
+                    "agentSessionId {argument_agent_session_id} does not match scoped MCP endpoint {scoped_agent_session_id}"
+                ),
+                None,
+            ));
+        }
+        return Ok(arguments);
     }
 
-    if uri == AI_POLICY_RESOURCE_URI {
-        runtime.ai_policy = Some(settings.ai);
+    if accepts_scoped_agent_session_id(tool_id) {
+        arguments.insert(
+            "agentSessionId".to_owned(),
+            Value::String(scoped_agent_session_id.to_owned()),
+        );
     }
-
-    Ok(runtime)
+    Ok(arguments)
 }
 
-fn execution_context<'a>(state: &'a AppState) -> AiToolExecutionContext<'a> {
-    AiToolExecutionContext {
+fn accepts_scoped_agent_session_id(tool_id: &str) -> bool {
+    matches!(
+        tool_id,
+        "kerminal.agent.current_session"
+            | "kerminal.agent.target_context"
+            | "terminal.resolve_agent_target"
+            | "terminal.snapshot"
+            | "terminal.write"
+    )
+}
+
+fn scoped_agent_session_id_from_request_context(
+    context: &RequestContext<RoleServer>,
+) -> Option<String> {
+    let parts = context.extensions.get::<Parts>()?;
+    scoped_agent_session_id_from_http_parts(parts)
+}
+
+fn scoped_agent_session_id_from_http_parts(parts: &Parts) -> Option<String> {
+    parts
+        .extensions
+        .get::<OriginalUri>()
+        .and_then(|uri| scoped_agent_session_id_from_path(uri.0.path()))
+        .or_else(|| scoped_agent_session_id_from_path(parts.uri.path()))
+}
+
+fn scoped_agent_session_id_from_path(path: &str) -> Option<String> {
+    [
+        path.strip_prefix("/mcp/agents/"),
+        path.strip_prefix("/agents/"),
+        path.strip_prefix('/'),
+    ]
+    .into_iter()
+    .flatten()
+    .find_map(|suffix| {
+        let segment = suffix.split('/').next()?.trim();
+        if AgentSessionId::new(segment.to_owned()).is_ok() {
+            Some(segment.to_owned())
+        } else {
+            None
+        }
+    })
+}
+
+fn execution_context<'a>(state: &'a AppState) -> McpToolExecutionContext<'a> {
+    McpToolExecutionContext {
         terminals: state.terminals(),
+        agent_sessions: state.agent_sessions(),
         terminal_session_bindings: state.terminal_session_bindings(),
         command_history: state.command_history(),
-        credentials: state.credentials(),
+        command_store: state.command_store(),
         settings: state.settings(),
-        profiles: state.profiles(),
         remote_hosts: state.remote_hosts(),
-        rig_providers: state.rig_providers(),
         server_info: state.server_info(),
         diagnostics: state.diagnostics(),
         sftp: state.sftp(),
         docker_hosts: state.docker_hosts(),
         port_forwards: state.port_forwards(),
         local_network_proxy: state.local_network_proxy(),
-        snippets: state.snippets(),
-        workflows: state.workflows(),
         ssh_commands: state.ssh_commands(),
         paths: state.paths(),
         storage: state.storage(),
@@ -587,38 +537,33 @@ async fn bind_loopback_port_from(
     )))
 }
 
-fn audit_to_call_tool_result(audit: AiToolAuditRecord) -> CallToolResult {
-    let value = json!({
-        "status": audit.status,
-        "approvedBy": "mcpHostHooks",
-        "auditId": audit.id,
-        "invocationId": audit.invocation_id,
-        "toolId": audit.tool_id,
-        "toolTitle": audit.tool_title,
-        "risk": audit.risk,
-        "confirmation": audit.confirmation,
-        "argumentsSummary": audit.arguments_summary,
-        "riskSummary": audit.risk_summary,
-        "resultSummary": audit.result_summary,
-        "error": audit.error,
-        "createdAt": audit.created_at,
-        "completedAt": audit.completed_at,
-    });
+fn tool_execution_to_call_tool_result(result: McpToolExecutionOutput) -> CallToolResult {
+    let summary = result
+        .summary
+        .clone()
+        .or_else(|| result.error.clone())
+        .unwrap_or_else(|| match result.status {
+            McpToolExecutionStatus::Succeeded => "Tool completed successfully.".to_owned(),
+            McpToolExecutionStatus::Failed => "Tool execution failed.".to_owned(),
+        });
 
-    match audit.status {
-        AiToolInvocationStatus::Succeeded => CallToolResult::structured(value),
-        AiToolInvocationStatus::Rejected => CallToolResult::structured_error(value),
-        AiToolInvocationStatus::Failed => CallToolResult::structured_error(value),
-        AiToolInvocationStatus::Pending => CallToolResult::structured_error(value),
+    if result.status == McpToolExecutionStatus::Succeeded {
+        return CallToolResult::structured(json!({
+            "summary": summary,
+            "data": result.data,
+            "entities": result.entities,
+        }));
     }
-}
 
-fn prompt_message_to_rmcp(message: McpPromptMessage) -> PromptMessage {
-    let role = match message.role.as_str() {
-        "assistant" => PromptMessageRole::Assistant,
-        _ => PromptMessageRole::User,
-    };
-    PromptMessage::new_text(role, message.text)
+    CallToolResult::structured_error(json!({
+        "summary": summary,
+        "error": result.error,
+        "data": result.data,
+        "entities": result.entities,
+        "errorKind": result.error_kind,
+        "recoverable": result.recoverable,
+        "nextHints": result.next_hints,
+    }))
 }
 
 fn app_error_to_mcp_error(error: AppError) -> McpError {
@@ -626,97 +571,5 @@ fn app_error_to_mcp_error(error: AppError) -> McpError {
         AppError::InvalidInput(message) => McpError::invalid_params(message, None),
         AppError::NotFound(message) => McpError::invalid_params(message, None),
         other => McpError::internal_error(other.to_string(), None),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    use crate::models::tool_registry::{
-        ToolAuditPolicy, ToolCategory, ToolConfirmationPolicy, ToolDefinition, ToolRiskLevel,
-    };
-
-    use super::{
-        agent_skill_detail_resource_template, bind_loopback_port_from, is_externally_callable_tool,
-        normalize_bind_address, requested_start_port, DEFAULT_BIND_ADDRESS, DEFAULT_MCP_HTTP_PORT,
-        MCP_HTTP_PORT_SCAN_LIMIT,
-    };
-
-    fn tool(id: &str) -> ToolDefinition {
-        ToolDefinition {
-            id: id.to_owned(),
-            title: id.to_owned(),
-            description: id.to_owned(),
-            category: ToolCategory::Terminal,
-            risk: ToolRiskLevel::Read,
-            confirmation: ToolConfirmationPolicy::Auto,
-            audit: ToolAuditPolicy::Summary,
-            enabled: true,
-            exposed_to_mcp: true,
-            input_schema: json!({"type": "object"}),
-        }
-    }
-
-    #[test]
-    fn filters_client_action_tools_from_external_mcp_surface() {
-        assert!(!is_externally_callable_tool(&tool("terminal.create")));
-        assert!(!is_externally_callable_tool(&tool("workspace.split_pane")));
-        assert!(!is_externally_callable_tool(&tool("workspace.focus_tab")));
-        assert!(!is_externally_callable_tool(&tool("workspace.open_tool")));
-        assert!(!is_externally_callable_tool(&tool("ssh.connect")));
-        assert!(is_externally_callable_tool(&tool("terminal.list")));
-    }
-
-    #[test]
-    fn only_accepts_loopback_bind_addresses() {
-        assert_eq!(
-            normalize_bind_address(None).unwrap(),
-            DEFAULT_BIND_ADDRESS.to_owned()
-        );
-        assert_eq!(
-            normalize_bind_address(Some("localhost")).unwrap(),
-            DEFAULT_BIND_ADDRESS.to_owned()
-        );
-        assert!(normalize_bind_address(Some("0.0.0.0")).is_err());
-    }
-
-    #[test]
-    fn uses_fixed_default_mcp_http_port() {
-        assert_eq!(requested_start_port(None), DEFAULT_MCP_HTTP_PORT);
-        assert_eq!(requested_start_port(Some(0)), DEFAULT_MCP_HTTP_PORT);
-        assert_eq!(requested_start_port(Some(48123)), 48123);
-    }
-
-    #[tokio::test]
-    async fn moves_to_next_loopback_port_when_start_port_is_occupied() {
-        let (occupied, occupied_port) = occupied_loopback_port_below_scan_ceiling().await;
-
-        let (_listener, local_addr) = bind_loopback_port_from(occupied_port).await.unwrap();
-
-        assert!(local_addr.port() > occupied_port);
-        assert!(local_addr.port() - occupied_port < MCP_HTTP_PORT_SCAN_LIMIT);
-        drop(occupied);
-    }
-
-    async fn occupied_loopback_port_below_scan_ceiling() -> (tokio::net::TcpListener, u16) {
-        for _ in 0..128 {
-            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-            let port = listener.local_addr().unwrap().port();
-            if port <= u16::MAX - MCP_HTTP_PORT_SCAN_LIMIT {
-                return (listener, port);
-            }
-        }
-
-        panic!("could not reserve a loopback test port below the scan ceiling");
-    }
-
-    #[test]
-    fn exposes_skill_detail_resource_template() {
-        let template = agent_skill_detail_resource_template();
-
-        assert_eq!(template.uri_template, "kerminal://agent/skills/{skillId}");
-        assert_eq!(template.name, "agent-skill-detail");
-        assert_eq!(template.mime_type.as_deref(), Some("application/json"));
     }
 }

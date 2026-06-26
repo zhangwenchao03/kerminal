@@ -25,7 +25,7 @@ fn snapshot_rejects_unknown_remote_host_before_spawning_ssh() {
     let error = state
         .server_info()
         .snapshot(
-            state.storage(),
+            state.remote_hosts(),
             ServerInfoRequest {
                 host_id: "missing-host".to_owned(),
                 target: None,
@@ -282,6 +282,24 @@ gpu_0_vendor=NVIDIA
     assert_eq!(snapshot.gpus[0].vendor.as_deref(), Some("NVIDIA"));
     assert_eq!(snapshot.gpus[0].utilization_percent, None);
     assert_eq!(snapshot.gpus[0].memory_used_bytes, None);
+}
+
+#[test]
+fn parser_ignores_nvidia_smi_failure_text_as_gpu_name() {
+    let snapshot = parse_server_info_output(
+        &remote_host(RemoteHostAuthType::Agent),
+        r#"
+hostname=dev-api
+gpu_probe_status=nvidia_smi
+gpu_count=1
+gpu_0_name=NVIDIA-SMI has failed because it couldn't communicate with the NVIDIA driver.
+gpu_0_vendor=NVIDIA
+"#,
+        "100".to_owned(),
+    );
+
+    assert_eq!(snapshot.gpu_probe_status.as_deref(), Some("nvidia_smi"));
+    assert!(snapshot.gpus.is_empty());
 }
 
 fn remote_host(auth_type: RemoteHostAuthType) -> RemoteHost {

@@ -16,7 +16,7 @@ use tauri::State;
 pub fn remote_host_group_list(state: State<'_, AppState>) -> Result<Vec<RemoteHostGroup>, String> {
     state
         .remote_hosts()
-        .list_groups(state.storage())
+        .list_groups()
         .map_err(|error| error.to_string())
 }
 
@@ -27,7 +27,7 @@ pub fn remote_host_tree(
 ) -> Result<Vec<RemoteHostGroupWithHosts>, String> {
     state
         .remote_hosts()
-        .list_tree(state.storage())
+        .list_tree()
         .map_err(|error| error.to_string())
 }
 
@@ -39,7 +39,7 @@ pub fn remote_host_group_create(
 ) -> Result<RemoteHostGroup, String> {
     state
         .remote_hosts()
-        .create_group(state.storage(), request)
+        .create_group(request)
         .map_err(|error| error.to_string())
 }
 
@@ -51,7 +51,7 @@ pub fn remote_host_group_update(
 ) -> Result<RemoteHostGroup, String> {
     state
         .remote_hosts()
-        .update_group(state.storage(), request)
+        .update_group(request)
         .map_err(|error| error.to_string())
 }
 
@@ -63,7 +63,7 @@ pub fn remote_host_group_delete(
 ) -> Result<bool, String> {
     state
         .remote_hosts()
-        .delete_group(state.storage(), &group_id)
+        .delete_group(&group_id)
         .map_err(|error| error.to_string())
 }
 
@@ -75,7 +75,7 @@ pub fn remote_host_create(
 ) -> Result<RemoteHost, String> {
     state
         .remote_hosts()
-        .create_host(state.storage(), request)
+        .create_host(request)
         .map_err(|error| error.to_string())
 }
 
@@ -87,7 +87,7 @@ pub fn remote_host_update(
 ) -> Result<RemoteHost, String> {
     state
         .remote_hosts()
-        .update_host(state.storage(), request)
+        .update_host(request)
         .map_err(|error| error.to_string())
 }
 
@@ -96,6 +96,6 @@ pub fn remote_host_update(
 pub fn remote_host_delete(state: State<'_, AppState>, host_id: String) -> Result<bool, String> {
     state
         .remote_hosts()
-        .delete_host(state.storage(), &host_id)
+        .delete_host(&host_id)
         .map_err(|error| error.to_string())
 }

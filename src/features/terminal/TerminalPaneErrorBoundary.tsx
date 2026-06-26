@@ -50,7 +50,7 @@ function TerminalPaneErrorFallback({
           终端分屏渲染异常
         </div>
         <p className="mt-2 text-sm leading-6 text-rose-800 dark:text-rose-100/85">
-          {pane.title} 的前端渲染已被隔离，其他终端和工具仍可继续使用。可以重新挂载该分屏，或打开日志查看最近诊断信息。
+          {pane.title} 渲染已隔离，其他终端不受影响。可重新挂载或打开日志。
         </p>
         <dl className="mt-4 space-y-2 rounded-xl border border-rose-300/20 bg-[rgb(255_255_255_/_0.55)] p-3 text-xs dark:bg-[rgb(0_0_0_/_0.2)]">
           <div className="grid grid-cols-[4rem_1fr] gap-2">

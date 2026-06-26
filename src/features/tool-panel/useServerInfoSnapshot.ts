@@ -13,6 +13,10 @@ import type { ServerInfoTargetContext } from "./serverInfoTargetModel";
 
 const serverInfoSnapshotCache = new Map<string, ServerInfoSnapshot>();
 const serverInfoInFlight = new Map<string, Promise<ServerInfoSnapshot>>();
+const DEFAULT_REFRESH_INTERVAL_MS = 3_000;
+const DEFAULT_HIDDEN_REFRESH_INTERVAL_MS = 30_000;
+
+export type VisibilityChangeSubscriber = (onChange: () => void) => () => void;
 
 export const serverInfoRefreshOptions = [
   { label: "手动", value: 0 },
@@ -31,13 +35,38 @@ export function clearServerInfoSnapshotCacheForTest() {
   clearServerInfoMetricsCacheForTest();
 }
 
+export interface UseServerInfoSnapshotOptions {
+  documentVisible?: () => boolean;
+  hiddenRefreshIntervalMs?: number;
+  subscribeToVisibilityChange?: VisibilityChangeSubscriber;
+}
+
+const defaultDocumentVisible = () =>
+  typeof document === "undefined" || document.visibilityState === "visible";
+const defaultSubscribeToVisibilityChange: VisibilityChangeSubscriber = (
+  onChange,
+) => {
+  if (typeof document === "undefined") {
+    return () => {};
+  }
+  document.addEventListener("visibilitychange", onChange);
+  return () => document.removeEventListener("visibilitychange", onChange);
+};
+
 export function useServerInfoSnapshot(
   targetContext: ServerInfoTargetContext | undefined,
+  {
+    documentVisible = defaultDocumentVisible,
+    hiddenRefreshIntervalMs = DEFAULT_HIDDEN_REFRESH_INTERVAL_MS,
+    subscribeToVisibilityChange = defaultSubscribeToVisibilityChange,
+  }: UseServerInfoSnapshotOptions = {},
 ) {
   const selectedTargetKey = targetContext?.cacheKey;
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [refreshIntervalMs, setRefreshIntervalMs] = useState(3_000);
+  const [refreshIntervalMs, setRefreshIntervalMs] = useState(
+    DEFAULT_REFRESH_INTERVAL_MS,
+  );
   const [snapshot, setSnapshot] = useState<ServerInfoSnapshot | null>(() =>
     selectedTargetKey
       ? (serverInfoSnapshotCache.get(selectedTargetKey) ?? null)
@@ -143,12 +172,72 @@ export function useServerInfoSnapshot(
       return undefined;
     }
 
-    const interval = window.setInterval(() => {
-      void refresh({ force: true });
-    }, refreshIntervalMs);
+    let disposed = false;
+    let refreshInFlight = false;
+    let timeoutId: number | undefined;
+    const clearNextRefresh = () => {
+      if (timeoutId === undefined) {
+        return;
+      }
+      window.clearTimeout(timeoutId);
+      timeoutId = undefined;
+    };
+    const scheduleNextRefresh = () => {
+      if (disposed) {
+        return;
+      }
+      clearNextRefresh();
+      const delay = resolveServerInfoRefreshDelay({
+        documentVisible: documentVisible(),
+        hiddenRefreshIntervalMs,
+        refreshIntervalMs,
+      });
+      if (delay === null) {
+        return;
+      }
+      timeoutId = window.setTimeout(() => {
+        timeoutId = undefined;
+        void runRefresh();
+      }, delay);
+    };
+    const runRefresh = async () => {
+      if (refreshInFlight) {
+        return;
+      }
+      refreshInFlight = true;
+      try {
+        await refresh({ force: true });
+      } finally {
+        refreshInFlight = false;
+        scheduleNextRefresh();
+      }
+    };
+    const handleVisibilityChange = () => {
+      clearNextRefresh();
+      if (documentVisible()) {
+        void runRefresh();
+      } else {
+        scheduleNextRefresh();
+      }
+    };
 
-    return () => window.clearInterval(interval);
-  }, [refresh, refreshIntervalMs, selectedTargetKey]);
+    scheduleNextRefresh();
+    const unsubscribeVisibility =
+      subscribeToVisibilityChange(handleVisibilityChange);
+
+    return () => {
+      disposed = true;
+      clearNextRefresh();
+      unsubscribeVisibility();
+    };
+  }, [
+    documentVisible,
+    hiddenRefreshIntervalMs,
+    refresh,
+    refreshIntervalMs,
+    selectedTargetKey,
+    subscribeToVisibilityChange,
+  ]);
 
   return {
     error,
@@ -163,4 +252,22 @@ export function useServerInfoSnapshot(
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+export function resolveServerInfoRefreshDelay({
+  documentVisible,
+  hiddenRefreshIntervalMs,
+  refreshIntervalMs,
+}: {
+  documentVisible: boolean;
+  hiddenRefreshIntervalMs: number;
+  refreshIntervalMs: number;
+}) {
+  if (refreshIntervalMs <= 0) {
+    return null;
+  }
+  const visibleDelay = Math.max(1, refreshIntervalMs);
+  return documentVisible
+    ? visibleDelay
+    : Math.max(visibleDelay, hiddenRefreshIntervalMs);
 }

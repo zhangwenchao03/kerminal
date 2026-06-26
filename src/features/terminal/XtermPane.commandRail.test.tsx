@@ -6,10 +6,72 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { defaultAppSettings } from "../settings/settingsModel";
-import { mocks, setTerminalBufferLines } from "./XtermPane.testSupport";
+import { mocks, setTerminalBufferLines } from "./__tests__/support/XtermPane.testSupport";
 import { XtermPane } from "./XtermPane";
 
 describe("XtermPane command rail boundaries", () => {
+  it("copies command block text through the desktop clipboard facade", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    const terminal = mocks.terminalInstances[0];
+    setTerminalBufferLines(
+      terminal,
+      {
+        0: "PS C:\\Users\\24052> pwd",
+      },
+      0,
+    );
+    act(() => {
+      terminal.onDataCallback?.("pwd\r");
+      mocks.getLatestOutputHandler()?.({
+        data: "C:\\Users\\24052\r\nPS C:\\Users\\24052>",
+        kind: "data",
+        sessionId: "session-1",
+      });
+    });
+    setTerminalBufferLines(
+      terminal,
+      {
+        0: "PS C:\\Users\\24052> pwd",
+        1: "C:\\Users\\24052",
+        2: "PS C:\\Users\\24052>",
+      },
+      2,
+    );
+    act(() => {
+      terminal.onWriteParsedCallback?.();
+    });
+
+    const commandRail = await screen.findByLabelText("折叠命令块 pwd");
+    fireEvent.contextMenu(commandRail, { clientX: 24, clientY: 48 });
+    await user.click(
+      screen.getByRole("menuitem", { name: "复制文本块 pwd" }),
+    );
+
+    await waitFor(() =>
+      expect(mocks.api.writeDesktopClipboardText).toHaveBeenCalledWith(
+        expect.stringContaining("$ pwd"),
+      ),
+    );
+    expect(mocks.api.writeDesktopClipboardText).toHaveBeenCalledWith(
+      expect.stringContaining("C:\\Users\\24052"),
+    );
+  });
+
   it("keeps the current prompt rail aligned after the context-menu clear action", async () => {
     const user = userEvent.setup();
 
@@ -58,8 +120,8 @@ describe("XtermPane command rail boundaries", () => {
     });
 
     expect(await screen.findByLabelText("折叠命令块 pwd")).toBeInTheDocument();
-    terminal.write.mockImplementation((data: string, callback?: () => void) => {
-      if (data === "\x1b[H\x1b[2J\x1b[3J") {
+    mocks.api.writeTerminal.mockImplementation(async (_sessionId, data) => {
+      if (data === "\x0c") {
         setTerminalBufferLines(
           terminal,
           {
@@ -68,7 +130,6 @@ describe("XtermPane command rail boundaries", () => {
           0,
         );
       }
-      callback?.();
     });
 
     fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"), {
@@ -78,10 +139,10 @@ describe("XtermPane command rail boundaries", () => {
     await user.click(screen.getByRole("menuitem", { name: "清屏" }));
 
     expect(terminal.clear).not.toHaveBeenCalled();
-    expect(terminal.write).toHaveBeenCalledWith(
-      "\x1b[H\x1b[2J\x1b[3J",
-      expect.any(Function),
-    );
+    expect(mocks.api.writeTerminal).toHaveBeenCalledWith("session-1", "\x0c");
+    act(() => {
+      terminal.onWriteParsedCallback?.();
+    });
     expect(screen.queryByLabelText("折叠命令块 pwd")).not.toBeInTheDocument();
     const clearedPromptRail = await screen.findByLabelText(
       "当前命令行色条 当前命令行",

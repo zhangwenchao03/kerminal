@@ -57,6 +57,7 @@ describe("SftpContextMenu", () => {
 
     expectFilePanelDomain("SFTP 目录右键菜单");
     expect(menuActions()).toEqual([
+      "workspace",
       "uploadFile",
       "uploadDirectory",
       "pasteClipboard",

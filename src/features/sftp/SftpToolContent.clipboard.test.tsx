@@ -13,7 +13,7 @@ import {  createDragDataTransfer,
   sftpApiMocks,
   sshMachine,
   stageSshMachine,
-} from "./SftpToolContent.testSupport";
+} from "./__tests__/support/SftpToolContent.testSupport";
 import { SftpToolContent } from "./SftpToolContent";
 
 describe("SftpToolContent clipboard and selection", () => {
@@ -23,7 +23,7 @@ describe("SftpToolContent clipboard and selection", () => {
     render(<SftpToolContent selectedMachine={sshMachine} />);
 
     await screen.findByText("var");
-    await user.click(screen.getByRole("button", { name: "打开目录 log" }));
+    await user.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
     const fileButton = await screen.findByRole("button", {
       name: "文件 app.log",
     });
@@ -51,7 +51,7 @@ describe("SftpToolContent clipboard and selection", () => {
     render(<SftpToolContent selectedMachine={sshMachine} />);
 
     await screen.findByText("var");
-    await user.click(screen.getByRole("button", { name: "打开目录 log" }));
+    await user.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
     const fileButton = await screen.findByRole("button", {
       name: "文件 app.log",
     });
@@ -117,7 +117,7 @@ describe("SftpToolContent clipboard and selection", () => {
     render(<SftpToolContent selectedMachine={sshMachine} />);
 
     await screen.findByText("var");
-    await user.click(screen.getByRole("button", { name: "打开目录 log" }));
+    await user.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
     const fileButton = await screen.findByRole("button", {
       name: "文件 app.log",
     });
@@ -154,7 +154,7 @@ describe("SftpToolContent clipboard and selection", () => {
     render(<SftpToolContent selectedMachine={sshMachine} />);
 
     await screen.findByText("var");
-    await user.click(screen.getByRole("button", { name: "打开目录 log" }));
+    await user.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
     const fileButton = await screen.findByRole("button", {
       name: "文件 app.log",
     });
@@ -251,7 +251,7 @@ describe("SftpToolContent clipboard and selection", () => {
     );
 
     await screen.findByText("var");
-    await user.click(screen.getByRole("button", { name: "打开目录 log" }));
+    await user.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
     const fileButton = await screen.findByRole("button", {
       name: "文件 app.log",
     });

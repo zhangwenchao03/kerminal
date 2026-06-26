@@ -1,4 +1,5 @@
 import type { TerminalProfile } from "../../lib/profileApi";
+import type { TmuxPaneBinding } from "../../lib/tmuxApi";
 import {
   localTarget,
   serialTarget,
@@ -40,7 +41,15 @@ export interface LocalTerminalOpenOptions extends TerminalOpenIds {
   machineProfileId?: string;
   profile?: TerminalProfile;
   shell?: string;
+  tmuxBinding?: TmuxPaneBinding;
   title: string;
+}
+
+export interface SshTerminalOpenOptions extends TerminalOpenIds {
+  cwd?: string;
+  remoteCommand?: string;
+  title?: string;
+  tmuxBinding?: TmuxPaneBinding;
 }
 
 export function focusExistingMachineTabState(
@@ -73,6 +82,7 @@ export function createLocalTerminalOpenState(
     env: options.env ?? options.profile?.env,
     id: options.paneId,
     profileId: options.profile?.id,
+    tmuxBinding: options.tmuxBinding,
     shell: options.shell ?? options.profile?.shell,
     title: options.title,
     machineId: options.machineId,
@@ -121,7 +131,7 @@ export function createLocalTerminalOpenState(
 export function createSshTerminalOpenState(
   state: TerminalOpenStateSlice,
   machine: Machine | undefined,
-  ids: TerminalOpenIds,
+  ids: SshTerminalOpenOptions,
 ): TerminalOpenStatePatch {
   if (!machine || machine.kind !== "ssh") {
     return {};
@@ -131,18 +141,26 @@ export function createSshTerminalOpenState(
   const userLabel = machine.username ?? "ssh";
   const pane: TerminalPane = {
     id: ids.paneId,
+    cwd: ids.cwd,
     latencyMs: machine.latencyMs,
     lines: [],
     machineId: machine.id,
     mode: "ssh",
     prompt: `${userLabel}@${hostLabel}:~$`,
+    remoteCommand: ids.remoteCommand,
     remoteHostId: machine.id,
     remoteHostProduction: machine.production ?? false,
     status: machine.status,
     target: sshTarget(machine.id),
-    title: machine.name,
+    title: ids.title ?? machine.name,
+    tmuxBinding: ids.tmuxBinding,
   };
-  const tab = createTerminalTab(ids.tabId, machine.id, ids.paneId, machine.name);
+  const tab = createTerminalTab(
+    ids.tabId,
+    machine.id,
+    ids.paneId,
+    ids.title ?? machine.name,
+  );
 
   return appendTerminalOpenState(state, machine.id, pane, tab, ids);
 }

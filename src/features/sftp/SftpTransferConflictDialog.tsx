@@ -9,17 +9,17 @@ const conflictOptions: Array<{
   policy: SftpTransferConflictPolicy;
 }> = [
   {
-    description: "直接替换已存在的目标文件，适合你确认目标可以被更新时使用。",
+    description: "替换目标文件。",
     label: "覆盖目标",
     policy: "overwrite",
   },
   {
-    description: "自动生成不冲突的新文件名，保留源文件和目标文件。",
+    description: "生成新文件名。",
     label: "自动重命名",
     policy: "rename",
   },
   {
-    description: "目标已存在时跳过该文件，继续处理其它项目。",
+    description: "跳过已存在项目。",
     label: "跳过冲突",
     policy: "skip",
   },
@@ -38,7 +38,7 @@ export function SftpTransferConflictDialog({
 }) {
   return (
     <ModalShell
-      description="目标位置已存在同名项目，请选择本次传输的处理方式。"
+      description="请选择冲突处理方式。"
       footer={
         <Button onClick={onClose} size="sm" type="button" variant="ghost">
           取消
@@ -57,7 +57,7 @@ export function SftpTransferConflictDialog({
             检测到 {conflictCount} 个目标冲突
           </div>
           <div className="mt-1 text-xs text-amber-700/80 dark:text-amber-100/75">
-            选择的策略会应用到本次传输队列中的所有冲突文件。
+            策略会应用到本次队列的所有冲突。
           </div>
         </div>
 

@@ -4,10 +4,13 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import packageJson from "../../../package.json";
 import {
+  defaultAppSettings,
+  desktopNotificationApiMock,
   openerApiMock,
   renderSettingsToolContent,
   updaterApiMock,
-} from "./SettingsToolContent.testHarness";
+} from "./__tests__/support/SettingsToolContent.testHarness";
+import { normalizeAppSettings } from "./settingsModel";
 
 describe("SettingsToolContent about section", () => {
   it("shows only essential about information and opens GitHub", async () => {
@@ -79,7 +82,15 @@ describe("SettingsToolContent about section", () => {
       },
     );
 
-    renderSettingsToolContent();
+    const settingsWithNotifications = normalizeAppSettings({
+      ...defaultAppSettings,
+      desktopNotifications: {
+        ...normalizeAppSettings(defaultAppSettings).desktopNotifications,
+        enabled: true,
+      },
+    });
+
+    renderSettingsToolContent({ settings: settingsWithNotifications });
 
     await user.click(screen.getByRole("button", { name: /关于/ }));
     await user.click(screen.getByRole("button", { name: "检查" }));
@@ -87,6 +98,19 @@ describe("SettingsToolContent about section", () => {
     expect(await screen.findByText("可更新")).toBeInTheDocument();
     expect(screen.getByText(/发现 v0\.2\.0/)).toBeInTheDocument();
     expect(screen.queryByText(/提升下载体验/)).not.toBeInTheDocument();
+    expect(
+      desktopNotificationApiMock.sendDesktopNotification,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: {
+          currentVersion: packageJson.version,
+          kind: "updater.available",
+          version: "0.2.0",
+        },
+        settings: expect.objectContaining({ enabled: true }),
+        visibility: "hidden",
+      }),
+    );
 
     await user.click(screen.getByRole("button", { name: "安装" }));
 

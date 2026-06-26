@@ -816,7 +816,6 @@ export function useSftpTransferActions({
       }
       return;
     }
-    if (!sftpClipboard) return;
     const pasteIntent = buildSftpClipboardPasteIntent({
       clipboard: sftpClipboard,
       destinationRemotePath,

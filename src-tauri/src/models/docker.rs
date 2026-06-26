@@ -3,6 +3,7 @@
 //! @author kongweiguang
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use crate::models::{
     sftp::{SftpEntry, SftpFileRevision, SftpTransferKind},
@@ -27,6 +28,38 @@ pub enum DockerContainerStatus {
     Dead,
     /// 无法识别的状态。
     Unknown,
+}
+
+/// Compose 运行时家族。
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum DockerComposeRuntimeFamily {
+    /// Docker Compose v2 label family.
+    DockerCompose,
+    /// Podman Compose compatible label family.
+    PodmanCompose,
+}
+
+/// Compose 管理容器的结构化元数据。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DockerComposeMetadata {
+    /// Compose project 名称。
+    pub project: String,
+    /// Compose service 名称。
+    pub service: Option<String>,
+    /// Compose project 工作目录。
+    pub working_dir: Option<String>,
+    /// labels 中的原始 config_files 顺序。
+    pub config_files: Vec<String>,
+    /// 基于 working_dir 解析后的配置文件路径。
+    pub config_paths: Vec<String>,
+    /// Compose 容器序号。
+    pub container_number: Option<String>,
+    /// 是否为 one-off 容器。
+    pub oneoff: bool,
+    /// Compose label 来源家族。
+    pub runtime_family: DockerComposeRuntimeFamily,
 }
 
 impl DockerContainerStatus {
@@ -127,6 +160,187 @@ pub struct DockerContainerSummary {
     pub target: RemoteTargetRef,
     /// 容器目标能力。
     pub capabilities: TargetCapabilities,
+    /// Compose/Podman Compose 元数据；独立容器为空。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compose: Option<DockerComposeMetadata>,
+    /// 列表阶段保留的 Compose 相关 labels，供前端兼容和排障使用。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub labels: BTreeMap<String, String>,
+}
+
+/// 容器生命周期动作。
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum DockerContainerLifecycleAction {
+    /// 启动容器。
+    Start,
+    /// 停止容器。
+    Stop,
+    /// 重启容器。
+    Restart,
+    /// 删除容器。
+    Remove,
+}
+
+/// 容器生命周期操作请求。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DockerContainerLifecycleRequest {
+    /// 已保存 SSH 宿主 id。
+    pub host_id: String,
+    /// 容器 id 或名称。
+    pub container_id: String,
+    /// 容器运行时；为空时使用 Docker。
+    #[serde(default)]
+    pub runtime: ContainerRuntime,
+    /// 删除容器时是否强制删除；其它动作忽略。
+    #[serde(default)]
+    pub force: bool,
+}
+
+/// 容器生命周期操作结果。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DockerContainerLifecycleResult {
+    /// 已保存 SSH 宿主 id。
+    pub host_id: String,
+    /// 容器 id 或名称。
+    pub container_id: String,
+    /// 容器运行时。
+    pub runtime: ContainerRuntime,
+    /// 已执行动作。
+    pub action: DockerContainerLifecycleAction,
+    /// 命令是否成功执行。
+    pub success: bool,
+    /// Docker/Podman 返回的简短输出。
+    pub output: String,
+}
+
+/// 容器详情、日志和监控请求。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DockerContainerInfoRequest {
+    /// 已保存 SSH 宿主 id。
+    pub host_id: String,
+    /// 容器 id 或名称。
+    pub container_id: String,
+    /// 容器运行时；为空时使用 Docker。
+    #[serde(default)]
+    pub runtime: ContainerRuntime,
+}
+
+/// 容器 inspect 摘要。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DockerContainerInspectSummary {
+    /// 已保存 SSH 宿主 id。
+    pub host_id: String,
+    /// 请求使用的容器 id 或名称。
+    pub container_id: String,
+    /// 容器运行时。
+    pub runtime: ContainerRuntime,
+    /// inspect 返回的容器完整 id。
+    pub id: String,
+    /// 容器名称。
+    pub name: String,
+    /// 镜像名称或镜像 id。
+    pub image: String,
+    /// 容器状态文本。
+    pub status: String,
+    /// 容器是否运行中。
+    pub running: bool,
+    /// 容器创建时间。
+    pub created: Option<String>,
+    /// 容器启动时间。
+    pub started_at: Option<String>,
+    /// 容器结束时间。
+    pub finished_at: Option<String>,
+    /// 容器入口命令。
+    pub entrypoint: Vec<String>,
+    /// 容器命令参数。
+    pub command: Vec<String>,
+    /// 容器工作目录。
+    pub working_dir: Option<String>,
+    /// 容器用户。
+    pub user: Option<String>,
+    /// 端口摘要。
+    pub ports: Vec<String>,
+    /// 网络名称。
+    pub networks: Vec<String>,
+    /// 标签摘要。
+    pub labels: BTreeMap<String, String>,
+    /// 精简后的 inspect JSON，供复制和排障。
+    pub raw_json: String,
+}
+
+/// 容器日志读取请求。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DockerContainerLogsRequest {
+    /// 已保存 SSH 宿主 id。
+    pub host_id: String,
+    /// 容器 id 或名称。
+    pub container_id: String,
+    /// 容器运行时；为空时使用 Docker。
+    #[serde(default)]
+    pub runtime: ContainerRuntime,
+    /// tail 最近多少行；为空时使用服务默认值。
+    pub tail: Option<u16>,
+}
+
+/// 容器日志读取结果。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DockerContainerLogsResult {
+    /// 已保存 SSH 宿主 id。
+    pub host_id: String,
+    /// 容器 id 或名称。
+    pub container_id: String,
+    /// 容器运行时。
+    pub runtime: ContainerRuntime,
+    /// 实际读取的 tail 行数。
+    pub tail: u16,
+    /// 合并后的 stdout/stderr 日志文本。
+    pub logs: String,
+}
+
+/// 容器 no-stream stats 请求。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DockerContainerStatsRequest {
+    /// 已保存 SSH 宿主 id。
+    pub host_id: String,
+    /// 容器 id 或名称。
+    pub container_id: String,
+    /// 容器运行时；为空时使用 Docker。
+    #[serde(default)]
+    pub runtime: ContainerRuntime,
+}
+
+/// 容器 no-stream stats 结果。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DockerContainerStatsResult {
+    /// 已保存 SSH 宿主 id。
+    pub host_id: String,
+    /// 容器 id 或名称。
+    pub container_id: String,
+    /// 容器运行时。
+    pub runtime: ContainerRuntime,
+    /// CPU 占用文本，例如 0.31%。
+    pub cpu_percent: Option<String>,
+    /// 内存使用文本，例如 42MiB / 1GiB。
+    pub memory_usage: Option<String>,
+    /// 内存百分比文本。
+    pub memory_percent: Option<String>,
+    /// 网络 IO 文本。
+    pub network_io: Option<String>,
+    /// 块设备 IO 文本。
+    pub block_io: Option<String>,
+    /// 进程数文本。
+    pub pids: Option<String>,
+    /// 原始 stats 输出。
+    pub raw: String,
 }
 
 /// 容器内路径请求。

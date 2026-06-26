@@ -10,23 +10,17 @@ async fn loopback_production_host_restricted_policy_skips_remote_probes_without_
     let harness = SmokeHarness::new();
     let config = loopback_policy_config(server.addr.port());
     let remote_host = harness.create_remote_host_with_production(&config, true);
-    let mut settings = harness
-        .storage
-        .load_app_settings()
-        .expect("load default command suggestion settings");
-    settings.terminal.inline_suggestion.remote_probe_enabled = true;
-    settings.terminal.inline_suggestion.production_host_policy =
-        TerminalInlineSuggestionProductionHostPolicy::Restricted;
-    harness
-        .storage
-        .save_app_settings(settings)
-        .expect("save restricted production host policy");
+    let mut settings = harness.inline_settings();
+    settings.remote_probe_enabled = true;
+    settings.production_host_policy = TerminalInlineSuggestionProductionHostPolicy::Restricted;
+    let inline_settings = settings;
 
     assert_all_remote_refreshes_skipped_without_connecting(
         &harness,
         &server,
         &remote_host,
         &config,
+        inline_settings,
         ExpectedRemoteProbeSkip {
             policy: "restricted",
             production_host: "true",
@@ -47,23 +41,17 @@ async fn loopback_remote_probe_disabled_policy_skips_remote_probes_without_conne
     let harness = SmokeHarness::new();
     let config = loopback_policy_config(server.addr.port());
     let remote_host = harness.create_remote_host_with_production(&config, false);
-    let mut settings = harness
-        .storage
-        .load_app_settings()
-        .expect("load default command suggestion settings");
-    settings.terminal.inline_suggestion.remote_probe_enabled = false;
-    settings.terminal.inline_suggestion.production_host_policy =
-        TerminalInlineSuggestionProductionHostPolicy::Normal;
-    harness
-        .storage
-        .save_app_settings(settings)
-        .expect("save disabled remote probe policy");
+    let mut settings = harness.inline_settings();
+    settings.remote_probe_enabled = false;
+    settings.production_host_policy = TerminalInlineSuggestionProductionHostPolicy::Normal;
+    let inline_settings = settings;
 
     assert_all_remote_refreshes_skipped_without_connecting(
         &harness,
         &server,
         &remote_host,
         &config,
+        inline_settings,
         ExpectedRemoteProbeSkip {
             policy: "normal",
             production_host: "false",
@@ -86,6 +74,7 @@ async fn assert_all_remote_refreshes_skipped_without_connecting(
     server: &LoopbackProviderServer,
     remote_host: &RemoteHost,
     config: &SmokeConfig,
+    inline_settings: TerminalInlineSuggestionSettings,
     expected: ExpectedRemoteProbeSkip,
 ) {
     let command_refresh = harness
@@ -94,6 +83,7 @@ async fn assert_all_remote_refreshes_skipped_without_connecting(
             &harness.storage,
             &harness.paths,
             &harness.ssh_commands,
+            inline_settings.clone(),
             CommandSuggestionRemoteCommandRefreshRequest {
                 host_id: remote_host.id.clone(),
                 max_entries: Some(64),
@@ -110,6 +100,7 @@ async fn assert_all_remote_refreshes_skipped_without_connecting(
             &harness.storage,
             &harness.paths,
             &harness.ssh_commands,
+            inline_settings.clone(),
             CommandSuggestionRemoteHistoryRefreshRequest {
                 host_id: remote_host.id.clone(),
                 max_entries: Some(64),
@@ -126,6 +117,7 @@ async fn assert_all_remote_refreshes_skipped_without_connecting(
             &harness.storage,
             &harness.paths,
             &harness.sftp,
+            inline_settings.clone(),
             CommandSuggestionRemotePathRefreshRequest {
                 host_id: remote_host.id.clone(),
                 max_entries: Some(64),
@@ -144,6 +136,7 @@ async fn assert_all_remote_refreshes_skipped_without_connecting(
             &harness.storage,
             &harness.paths,
             &harness.ssh_commands,
+            inline_settings,
             CommandSuggestionGitRefreshRequest {
                 cwd: config.cwd.clone(),
                 host_id: remote_host.id.clone(),

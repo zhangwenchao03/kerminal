@@ -7,13 +7,12 @@ import type {
 } from "../../../lib/remoteHostApi";
 import type { ContainerRuntime } from "../../../lib/targetModel";
 import type { Machine } from "../../workspace/types";
-import { DockerPropertiesPanel, DockerTerminalOptionsPanel } from "./docker-panels";
+import { DockerHostContextGuidancePanel } from "./docker-panels";
 import { LocalEnvironmentPanel, LocalPropertiesPanel } from "./local-panels";
 import {
   type ConnectionMode,
   type DialogSection,
   type LocalShellPreset,
-  rememberDockerHostId,
   type SectionTab,
 } from "./model";
 import {
@@ -31,7 +30,10 @@ import {
   type SshOptionsSetter,
 } from "./ssh-network-panels";
 import { SshPropertiesPanel } from "./ssh-properties-panel";
-import { SshTerminalPanel, SshTransferPanel } from "./ssh-terminal-transfer-panels";
+import {
+  SshTerminalPanel,
+  SshTransferPanel,
+} from "./ssh-terminal-transfer-panels";
 
 type StringSetter = Dispatch<SetStateAction<string>>;
 type NullableStringSetter = Dispatch<SetStateAction<string | null>>;
@@ -135,16 +137,6 @@ export function RemoteHostDialogSectionContent({
   authType,
   credentialRef,
   credentialSecret,
-  dockerContainerId,
-  dockerContainers,
-  dockerHostId,
-  dockerIncludeStopped,
-  dockerLoadError,
-  dockerLoading,
-  dockerRuntime,
-  dockerShell,
-  dockerUser,
-  dockerWorkdir,
   editingHost,
   editingLocalMachine,
   groupId,
@@ -160,7 +152,6 @@ export function RemoteHostDialogSectionContent({
   mode,
   name,
   onCreateGroupClick,
-  onDockerRefresh,
   port,
   rdpFullscreen,
   rdpHeight,
@@ -179,13 +170,6 @@ export function RemoteHostDialogSectionContent({
   setAuthType,
   setCredentialRef,
   setCredentialSecret,
-  setDockerContainerId,
-  setDockerHostId,
-  setDockerIncludeStopped,
-  setDockerRuntime,
-  setDockerShell,
-  setDockerUser,
-  setDockerWorkdir,
   setError,
   setGroupId,
   setHost,
@@ -220,209 +204,177 @@ export function RemoteHostDialogSectionContent({
   updateSshOptions,
   username,
 }: RemoteHostDialogSectionContentProps) {
-  return     mode === "local" ? (
-      activeSection === "properties" ? (
-        <LocalPropertiesPanel
-          editing={Boolean(editingLocalMachine)}
-          groupId={groupId}
-          groupOptions={groupOptions}
-          localArgs={localArgs}
-          localCwd={localCwd}
-          localShell={localShell}
-          localShellPresetId={localShellPresetId}
-          localShellPresets={localShellPresets}
-          localTitle={localTitle}
-          onCreateGroupClick={onCreateGroupClick}
-          setError={setError}
-          setGroupId={setGroupId}
-          setLocalArgs={setLocalArgs}
-          setLocalCwd={setLocalCwd}
-          setLocalShell={setLocalShell}
-          setLocalShellPresetId={setLocalShellPresetId}
-          setLocalTitle={setLocalTitle}
-        />
-      ) : activeSection === "environment" ? (
-        <LocalEnvironmentPanel localEnv={localEnv} setLocalEnv={setLocalEnv} />
-      ) : (
-        <DeferredSection
-          modeLabel={selectedProtocolLabel}
-          section={activeSectionDefinition}
-        />
-      )
-    ) : mode === "rdp" ? (
-      activeSection === "properties" ? (
-        <RdpPropertiesPanel
-          groupId={groupId}
-          groupOptions={groupOptions}
-          host={host}
-          name={name}
-          onCreateGroupClick={onCreateGroupClick}
-          port={port}
-          rdpNote={rdpNote}
-          rdpPassword={rdpPassword}
-          rdpUsername={rdpUsername}
-          setGroupId={setGroupId}
-          setHost={setHost}
-          setName={setName}
-          setPort={setPort}
-          setRdpNote={setRdpNote}
-          setRdpPassword={setRdpPassword}
-          setRdpUsername={setRdpUsername}
-        />
-      ) : activeSection === "display" ? (
-        <RdpDisplayPanel
-          rdpFullscreen={rdpFullscreen}
-          rdpHeight={rdpHeight}
-          rdpWidth={rdpWidth}
-          setRdpFullscreen={setRdpFullscreen}
-          setRdpHeight={setRdpHeight}
-          setRdpWidth={setRdpWidth}
-        />
-      ) : (
-        <DeferredSection
-          modeLabel={selectedProtocolLabel}
-          section={activeSectionDefinition}
-        />
-      )
-    ) : mode === "telnet" ? (
-      activeSection === "properties" ? (
-        <TelnetPropertiesPanel
-          groupId={groupId}
-          groupOptions={groupOptions}
-          host={host}
-          name={name}
-          onCreateGroupClick={onCreateGroupClick}
-          port={port}
-          setGroupId={setGroupId}
-          setHost={setHost}
-          setName={setName}
-          setPort={setPort}
-          setTelnetNote={setTelnetNote}
-          telnetNote={telnetNote}
-        />
-      ) : (
-        <DeferredSection
-          modeLabel={selectedProtocolLabel}
-          section={activeSectionDefinition}
-        />
-      )
-    ) : mode === "serial" ? (
-      activeSection === "properties" ? (
-        <SerialPropertiesPanel
-          groupId={groupId}
-          groupOptions={groupOptions}
-          name={name}
-          onCreateGroupClick={onCreateGroupClick}
-          serialNote={serialNote}
-          setGroupId={setGroupId}
-          setName={setName}
-          setSerialNote={setSerialNote}
-        />
-      ) : activeSection === "serial" ? (
-        <SerialOptionsPanel
-          serialBaud={serialBaud}
-          serialDataBits={serialDataBits}
-          serialFlow={serialFlow}
-          serialParity={serialParity}
-          serialPort={serialPort}
-          serialStopBits={serialStopBits}
-          setSerialBaud={setSerialBaud}
-          setSerialDataBits={setSerialDataBits}
-          setSerialFlow={setSerialFlow}
-          setSerialParity={setSerialParity}
-          setSerialPort={setSerialPort}
-          setSerialStopBits={setSerialStopBits}
-        />
-      ) : (
-        <DeferredSection
-          modeLabel={selectedProtocolLabel}
-          section={activeSectionDefinition}
-        />
-      )
-    ) : mode === "docker" ? (
-      activeSection === "properties" ? (
-        <DockerPropertiesPanel
-          containers={dockerContainers}
-          groupId={groupId}
-          groupOptions={groupOptions}
-          hostId={dockerHostId}
-          includeStopped={dockerIncludeStopped}
-          loadError={dockerLoadError}
-          loading={dockerLoading}
-          onCreateGroupClick={onCreateGroupClick}
-          onRefresh={onDockerRefresh}
-          runtime={dockerRuntime}
-          selectedContainerId={dockerContainerId}
-          setGroupId={setGroupId}
-          setHostId={(nextHostId) => {
-            setDockerHostId(nextHostId);
-            rememberDockerHostId(nextHostId);
-          }}
-          setIncludeStopped={setDockerIncludeStopped}
-          setRuntime={setDockerRuntime}
-          setSelectedContainerId={setDockerContainerId}
-          sshMachines={sshMachines}
-        />
-      ) : activeSection === "terminal" ? (
-        <DockerTerminalOptionsPanel
-          shell={dockerShell}
-          setShell={setDockerShell}
-          setUser={setDockerUser}
-          setWorkdir={setDockerWorkdir}
-          user={dockerUser}
-          workdir={dockerWorkdir}
-        />
-      ) : (
-        <DeferredSection
-          modeLabel={selectedProtocolLabel}
-          section={activeSectionDefinition}
-        />
-      )
-    ) : mode === "ssh" && activeSection === "properties" ? (
-      <SshPropertiesPanel
-        authType={authType}
-        credentialRef={credentialRef}
-        credentialSecret={credentialSecret}
-        editingHost={editingHost}
+  return mode === "local" ? (
+    activeSection === "properties" ? (
+      <LocalPropertiesPanel
+        editing={Boolean(editingLocalMachine)}
         groupId={groupId}
-        host={host}
-        name={name}
-        onCreateGroupClick={onCreateGroupClick}
-        port={port}
         groupOptions={groupOptions}
-        selectedProtocolLabel={selectedProtocolLabel}
-        setAuthType={setAuthType}
-        setCredentialRef={setCredentialRef}
-        setCredentialSecret={setCredentialSecret}
+        localArgs={localArgs}
+        localCwd={localCwd}
+        localShell={localShell}
+        localShellPresetId={localShellPresetId}
+        localShellPresets={localShellPresets}
+        localTitle={localTitle}
+        onCreateGroupClick={onCreateGroupClick}
+        setError={setError}
         setGroupId={setGroupId}
-        setHost={setHost}
-        setName={setName}
-        setPort={setPort}
-        setTags={setTags}
-        setUsername={setUsername}
-        tags={tags}
-        username={username}
+        setLocalArgs={setLocalArgs}
+        setLocalCwd={setLocalCwd}
+        setLocalShell={setLocalShell}
+        setLocalShellPresetId={setLocalShellPresetId}
+        setLocalTitle={setLocalTitle}
       />
-    ) : mode === "ssh" && activeSection === "proxy" ? (
-      <SshProxyPanel options={sshOptions} setOptions={updateSshOptions} />
-    ) : mode === "ssh" && activeSection === "tunnel" ? (
-      <SshTunnelPanel options={sshOptions} setOptions={updateSshOptions} />
-    ) : mode === "ssh" && activeSection === "jump" ? (
-      <SshJumpPanel
-        options={sshOptions}
-        setOptions={updateSshOptions}
-        sshMachines={sshMachines.filter(
-          (machine) => machine.id !== editingHost?.id,
-        )}
-      />
-    ) : mode === "ssh" && activeSection === "terminal" ? (
-      <SshTerminalPanel options={sshOptions} setOptions={updateSshOptions} />
-    ) : mode === "ssh" && activeSection === "transfer" ? (
-      <SshTransferPanel options={sshOptions} setOptions={updateSshOptions} />
+    ) : activeSection === "environment" ? (
+      <LocalEnvironmentPanel localEnv={localEnv} setLocalEnv={setLocalEnv} />
     ) : (
       <DeferredSection
         modeLabel={selectedProtocolLabel}
         section={activeSectionDefinition}
       />
-    );
+    )
+  ) : mode === "rdp" ? (
+    activeSection === "properties" ? (
+      <RdpPropertiesPanel
+        groupId={groupId}
+        groupOptions={groupOptions}
+        host={host}
+        name={name}
+        onCreateGroupClick={onCreateGroupClick}
+        port={port}
+        rdpNote={rdpNote}
+        rdpPassword={rdpPassword}
+        rdpUsername={rdpUsername}
+        setGroupId={setGroupId}
+        setHost={setHost}
+        setName={setName}
+        setPort={setPort}
+        setRdpNote={setRdpNote}
+        setRdpPassword={setRdpPassword}
+        setRdpUsername={setRdpUsername}
+      />
+    ) : activeSection === "display" ? (
+      <RdpDisplayPanel
+        rdpFullscreen={rdpFullscreen}
+        rdpHeight={rdpHeight}
+        rdpWidth={rdpWidth}
+        setRdpFullscreen={setRdpFullscreen}
+        setRdpHeight={setRdpHeight}
+        setRdpWidth={setRdpWidth}
+      />
+    ) : (
+      <DeferredSection
+        modeLabel={selectedProtocolLabel}
+        section={activeSectionDefinition}
+      />
+    )
+  ) : mode === "telnet" ? (
+    activeSection === "properties" ? (
+      <TelnetPropertiesPanel
+        groupId={groupId}
+        groupOptions={groupOptions}
+        host={host}
+        name={name}
+        onCreateGroupClick={onCreateGroupClick}
+        port={port}
+        setGroupId={setGroupId}
+        setHost={setHost}
+        setName={setName}
+        setPort={setPort}
+        setTelnetNote={setTelnetNote}
+        telnetNote={telnetNote}
+      />
+    ) : (
+      <DeferredSection
+        modeLabel={selectedProtocolLabel}
+        section={activeSectionDefinition}
+      />
+    )
+  ) : mode === "serial" ? (
+    activeSection === "properties" ? (
+      <SerialPropertiesPanel
+        groupId={groupId}
+        groupOptions={groupOptions}
+        name={name}
+        onCreateGroupClick={onCreateGroupClick}
+        serialNote={serialNote}
+        setGroupId={setGroupId}
+        setName={setName}
+        setSerialNote={setSerialNote}
+      />
+    ) : activeSection === "serial" ? (
+      <SerialOptionsPanel
+        serialBaud={serialBaud}
+        serialDataBits={serialDataBits}
+        serialFlow={serialFlow}
+        serialParity={serialParity}
+        serialPort={serialPort}
+        serialStopBits={serialStopBits}
+        setSerialBaud={setSerialBaud}
+        setSerialDataBits={setSerialDataBits}
+        setSerialFlow={setSerialFlow}
+        setSerialParity={setSerialParity}
+        setSerialPort={setSerialPort}
+        setSerialStopBits={setSerialStopBits}
+      />
+    ) : (
+      <DeferredSection
+        modeLabel={selectedProtocolLabel}
+        section={activeSectionDefinition}
+      />
+    )
+  ) : mode === "docker" ? (
+    activeSection === "properties" ? (
+      <DockerHostContextGuidancePanel />
+    ) : (
+      <DeferredSection
+        modeLabel={selectedProtocolLabel}
+        section={activeSectionDefinition}
+      />
+    )
+  ) : mode === "ssh" && activeSection === "properties" ? (
+    <SshPropertiesPanel
+      authType={authType}
+      credentialRef={credentialRef}
+      credentialSecret={credentialSecret}
+      groupId={groupId}
+      host={host}
+      name={name}
+      onCreateGroupClick={onCreateGroupClick}
+      port={port}
+      groupOptions={groupOptions}
+      setAuthType={setAuthType}
+      setCredentialRef={setCredentialRef}
+      setCredentialSecret={setCredentialSecret}
+      setGroupId={setGroupId}
+      setHost={setHost}
+      setName={setName}
+      setPort={setPort}
+      setTags={setTags}
+      setUsername={setUsername}
+      tags={tags}
+      username={username}
+    />
+  ) : mode === "ssh" && activeSection === "proxy" ? (
+    <SshProxyPanel options={sshOptions} setOptions={updateSshOptions} />
+  ) : mode === "ssh" && activeSection === "tunnel" ? (
+    <SshTunnelPanel options={sshOptions} setOptions={updateSshOptions} />
+  ) : mode === "ssh" && activeSection === "jump" ? (
+    <SshJumpPanel
+      options={sshOptions}
+      setOptions={updateSshOptions}
+      sshMachines={sshMachines.filter(
+        (machine) => machine.id !== editingHost?.id,
+      )}
+    />
+  ) : mode === "ssh" && activeSection === "terminal" ? (
+    <SshTerminalPanel options={sshOptions} setOptions={updateSshOptions} />
+  ) : mode === "ssh" && activeSection === "transfer" ? (
+    <SshTransferPanel options={sshOptions} setOptions={updateSshOptions} />
+  ) : (
+    <DeferredSection
+      modeLabel={selectedProtocolLabel}
+      section={activeSectionDefinition}
+    />
+  );
 }

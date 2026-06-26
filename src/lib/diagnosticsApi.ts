@@ -19,6 +19,30 @@ export interface RuntimeHealthSnapshot {
   redacted: boolean;
 }
 
+export type ConfigWatchBackend = "native" | "polling" | "unavailable";
+
+export type ConfigWatchDomain =
+  | "settings"
+  | "profiles"
+  | "hosts"
+  | "snippets"
+  | "workflows";
+
+export type ConfigWatchStatus = "ready" | "invalid" | "watcher-unavailable";
+
+export interface ConfigWatchStatusSnapshot {
+  enabled: boolean;
+  backend: ConfigWatchBackend;
+  watchedRoots: string[];
+  ignoredGlobs: string[];
+  lastSequence: number;
+  lastBatchAt?: string | null;
+  lastDomains: ConfigWatchDomain[];
+  lastStatus?: ConfigWatchStatus | null;
+  lastError?: string | null;
+  fallbackReason?: string | null;
+}
+
 export interface RuntimeProcessHealth {
   pid: number;
   name: string;
@@ -62,11 +86,15 @@ export interface RuntimeGpuHealth {
 
 export interface RuntimeStorageHealth {
   root: string;
-  databaseFile: string;
+  commandDatabaseFile: string;
+  appLogFile: string;
   logs: string;
   diagnostics: string;
   rootSizeBytes: number;
-  databaseFileSizeBytes: number;
+  commandDatabaseFileSizeBytes: number;
+  appLogFileSizeBytes: number;
+  appLogMaxFileSizeBytes: number;
+  appLogRotationKeepFiles: number;
 }
 
 export interface RuntimeSamplingInfo {
@@ -91,6 +119,14 @@ export async function getRuntimeHealthSnapshot(): Promise<RuntimeHealthSnapshot>
   return invoke<RuntimeHealthSnapshot>("diagnostics_runtime_health");
 }
 
+export async function getConfigWatchStatus(): Promise<ConfigWatchStatusSnapshot> {
+  if (!isTauri()) {
+    return createBrowserPreviewConfigWatchStatus();
+  }
+
+  return invoke<ConfigWatchStatusSnapshot>("config_watch_status");
+}
+
 function createBrowserPreviewBundle(): DiagnosticBundle {
   const createdAt = Math.floor(Date.now() / 1000).toString();
   const id = `browser-preview-${Date.now().toString(36)}`;
@@ -106,8 +142,10 @@ function createBrowserPreviewBundle(): DiagnosticBundle {
     sections: [
       "app",
       "environment",
+      "runtimeHealth",
       "paths",
-      "database",
+      "logs",
+      "commandDatabase",
       "settings",
       "terminalSessions",
     ],
@@ -137,8 +175,12 @@ function createBrowserPreviewRuntimeHealth(): RuntimeHealthSnapshot {
       source: "browser-preview",
     },
     storage: {
-      databaseFile: "browser-preview://.kerminal/kerminal.db",
-      databaseFileSizeBytes: 768 * 1024,
+      appLogFile: "browser-preview://.kerminal/logs/kerminal.log",
+      appLogFileSizeBytes: 64 * 1024,
+      appLogMaxFileSizeBytes: 1_000_000,
+      appLogRotationKeepFiles: 5,
+      commandDatabaseFile: "browser-preview://.kerminal/data/command.sqlite",
+      commandDatabaseFileSizeBytes: 768 * 1024,
       diagnostics: "browser-preview://.kerminal/diagnostics",
       logs: "browser-preview://.kerminal/logs",
       root: "browser-preview://.kerminal",
@@ -172,5 +214,33 @@ function createBrowserPreviewRuntimeHealth(): RuntimeHealthSnapshot {
       usedMemoryBytes: 7 * 1024 * 1024 * 1024,
       usedSwapBytes: 256 * 1024 * 1024,
     },
+  };
+}
+
+function createBrowserPreviewConfigWatchStatus(): ConfigWatchStatusSnapshot {
+  return {
+    backend: "unavailable",
+    enabled: false,
+    fallbackReason: "browser-preview",
+    ignoredGlobs: [
+      "agents/**",
+      "backups/**",
+      "data/**",
+      "workspace/**",
+      "secrets/hosts/*.toml",
+    ],
+    lastBatchAt: null,
+    lastDomains: [],
+    lastError: null,
+    lastSequence: 0,
+    lastStatus: null,
+    watchedRoots: [
+      ".",
+      "profiles",
+      "hosts",
+      "secrets/hosts",
+      "snippets",
+      "workflows",
+    ],
   };
 }

@@ -1,6 +1,7 @@
-import { useEffect } from "react";
-import { cn } from "../../lib/cn";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
+  resolveTerminalContextMenuPosition,
   terminalContextMenuGroups,
   type TerminalContextMenuAction,
   type TerminalContextMenuItemModel,
@@ -18,16 +19,17 @@ export type {
 } from "./terminalContextMenuModel";
 
 const terminalMenuSurfaceClassName =
-  "kerminal-floating-enter fixed z-[1000] w-56 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] p-1.5 text-sm shadow-2xl shadow-black/20 backdrop-blur-xl dark:shadow-black/50";
+  "kerminal-context-menu kerminal-floating-enter fixed z-[1000] w-56";
 const terminalMenuDividerClassName =
-  "mt-1 border-t border-[var(--border-subtle)] pt-1";
+  "kerminal-context-menu-group";
 const terminalMenuItemClassName =
-  "kerminal-focus-ring kerminal-pressable flex w-full items-center rounded-lg px-3 py-2 text-left text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-45 dark:text-zinc-200 dark:hover:text-zinc-50";
+  "kerminal-context-menu-item";
 
 interface TerminalContextMenuProps {
   canCopy: boolean;
   canDisconnect?: boolean;
   canReconnect?: boolean;
+  canSplit?: boolean;
   onAction: (action: TerminalContextMenuAction) => void;
   onClose: () => void;
   position: TerminalContextMenuPosition;
@@ -37,15 +39,44 @@ export function TerminalContextMenu({
   canCopy,
   canDisconnect = true,
   canReconnect = true,
+  canSplit = true,
   onAction,
   onClose,
   position,
 }: TerminalContextMenuProps) {
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [resolvedPosition, setResolvedPosition] = useState(position);
   const groups = terminalContextMenuGroups({
     canCopy,
     canDisconnect,
     canReconnect,
+    canSplit,
   });
+
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu || typeof window === "undefined") {
+      setResolvedPosition(position);
+      return;
+    }
+
+    const rect = menu.getBoundingClientRect();
+    const nextPosition = resolveTerminalContextMenuPosition(position, {
+      menuSize: {
+        height: menu.offsetHeight || rect.height,
+        width: menu.offsetWidth || rect.width,
+      },
+      viewport: {
+        height: window.innerHeight,
+        width: window.innerWidth,
+      },
+    });
+    setResolvedPosition((current) =>
+      current.x === nextPosition.x && current.y === nextPosition.y
+        ? current
+        : nextPosition,
+    );
+  }, [canCopy, canDisconnect, canReconnect, canSplit, position.x, position.y]);
 
   useEffect(() => {
     const close = () => onClose();
@@ -62,21 +93,22 @@ export function TerminalContextMenu({
     };
   }, [onClose]);
 
-  return (
+  const menu = (
     <div
       aria-label="终端右键菜单"
       className={terminalMenuSurfaceClassName}
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
+      ref={menuRef}
       role="menu"
       style={{
-        left: position.x,
-        top: position.y,
+        left: resolvedPosition.x,
+        top: resolvedPosition.y,
       }}
     >
-      {groups.map((group, groupIndex) => (
+      {groups.map((group) => (
         <div
-          className={cn(groupIndex > 0 && terminalMenuDividerClassName)}
+          className={terminalMenuDividerClassName}
           key={group.map((item) => item.action).join("-")}
         >
           {group.map((item) => (
@@ -90,6 +122,11 @@ export function TerminalContextMenu({
       ))}
     </div>
   );
+
+  if (typeof document === "undefined") {
+    return menu;
+  }
+  return createPortal(menu, document.body);
 }
 
 function TerminalContextMenuItem({
@@ -110,11 +147,9 @@ function TerminalContextMenuItem({
       role="menuitem"
       type="button"
     >
-      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      <span className="kerminal-context-menu-label">{item.label}</span>
       {item.shortcut ? (
-        <span className="ml-6 text-zinc-400 dark:text-zinc-500">
-          {item.shortcut}
-        </span>
+        <span className="kerminal-context-menu-shortcut">{item.shortcut}</span>
       ) : null}
     </button>
   );

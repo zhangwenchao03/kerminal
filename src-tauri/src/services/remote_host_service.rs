@@ -2,7 +2,10 @@
 //!
 //! @author kongweiguang
 
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use uuid::Uuid;
 
@@ -13,76 +16,131 @@ use crate::{
         RemoteHostGroupCreateRequest, RemoteHostGroupUpdateRequest, RemoteHostGroupWithHosts,
         RemoteHostUpdateRequest, SshOptions, SshProxyProtocol, SshTunnelKind,
     },
-    storage::{
-        remote_hosts::{RemoteHostGroupWrite, RemoteHostWrite},
-        SqliteStore,
-    },
+    storage::{config_file_store::ConfigFileStore, file_store::FileStoreError},
 };
 
 /// 远程主机业务入口。
-#[derive(Debug, Default)]
-pub struct RemoteHostService;
+#[derive(Debug, Clone)]
+pub struct RemoteHostService {
+    config: ConfigFileStore,
+}
 
 impl RemoteHostService {
     /// 创建远程主机服务。
-    pub fn new() -> Self {
-        Self
+    pub fn new(config: ConfigFileStore) -> Self {
+        Self { config }
     }
 
     /// 列出远程主机分组。
-    pub fn list_groups(&self, storage: &SqliteStore) -> AppResult<Vec<RemoteHostGroup>> {
-        storage.list_remote_host_groups()
+    pub fn list_groups(&self) -> AppResult<Vec<RemoteHostGroup>> {
+        self.config
+            .list_remote_host_groups()
+            .map_err(config_file_error)
     }
 
     /// 列出远程主机树。
-    pub fn list_tree(&self, storage: &SqliteStore) -> AppResult<Vec<RemoteHostGroupWithHosts>> {
-        storage.list_remote_host_tree()
+    pub fn list_tree(&self) -> AppResult<Vec<RemoteHostGroupWithHosts>> {
+        self.config
+            .list_remote_host_tree()
+            .map_err(config_file_error)
+    }
+
+    /// 根据 id 读取远程主机。返回的 runtime model 已合并 secrets。
+    pub fn host_by_id(&self, host_id: &str) -> AppResult<Option<RemoteHost>> {
+        self.config
+            .remote_host_by_id(host_id)
+            .map_err(config_file_error)
+    }
+
+    /// 根据 id 读取远程主机，缺失时报 NotFound。
+    pub fn require_host(&self, host_id: &str) -> AppResult<RemoteHost> {
+        self.host_by_id(host_id)?
+            .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {host_id}")))
     }
 
     /// 创建远程主机分组。
     pub fn create_group(
         &self,
-        storage: &SqliteStore,
         request: RemoteHostGroupCreateRequest,
     ) -> AppResult<RemoteHostGroup> {
-        let group = RemoteHostGroupWrite {
+        let timestamp = timestamp_now();
+        let group = RemoteHostGroup {
             id: Uuid::new_v4().to_string(),
             name: normalize_required_text("分组名称", request.name)?,
-            sort_order: storage.next_remote_host_group_sort_order()?,
+            sort_order: self
+                .config
+                .next_remote_host_group_sort_order()
+                .map_err(config_file_error)?,
+            created_at: timestamp.clone(),
+            updated_at: timestamp,
         };
 
-        storage.insert_remote_host_group(&group)
+        let mut groups = self.list_groups()?;
+        groups.push(group.clone());
+        self.config
+            .apply_remote_host_change_set(Some(&groups), &[], &[])
+            .map_err(config_file_error)?;
+        Ok(group)
     }
 
     /// 更新远程主机分组。
     pub fn update_group(
         &self,
-        storage: &SqliteStore,
         request: RemoteHostGroupUpdateRequest,
     ) -> AppResult<RemoteHostGroup> {
-        let group = RemoteHostGroupWrite {
-            id: normalize_required_text("分组 ID", request.id)?,
-            name: normalize_required_text("分组名称", request.name)?,
-            sort_order: request.sort_order,
+        let id = normalize_required_text("分组 ID", request.id)?;
+        let mut groups = self.list_groups()?;
+        let Some(group) = groups.iter_mut().find(|group| group.id == id) else {
+            return Err(AppError::NotFound(format!("远程主机分组不存在: {id}")));
         };
+        group.name = normalize_required_text("分组名称", request.name)?;
+        group.sort_order = request.sort_order;
+        group.updated_at = timestamp_now();
+        let updated = group.clone();
 
-        storage.update_remote_host_group(&group)
+        self.config
+            .apply_remote_host_change_set(Some(&groups), &[], &[])
+            .map_err(config_file_error)?;
+        Ok(updated)
     }
 
     /// 删除远程主机分组；分组内主机会移动到未分组。
-    pub fn delete_group(&self, storage: &SqliteStore, group_id: &str) -> AppResult<bool> {
-        storage.delete_remote_host_group(group_id)
+    pub fn delete_group(&self, group_id: &str) -> AppResult<bool> {
+        let group_id = normalize_required_text("分组 ID", group_id.to_owned())?;
+        let mut groups = self.list_groups()?;
+        let before_len = groups.len();
+        groups.retain(|group| group.id != group_id);
+        if groups.len() == before_len {
+            return Ok(false);
+        }
+
+        let timestamp = timestamp_now();
+        let mut hosts_to_write = self
+            .config
+            .list_remote_hosts()
+            .map_err(config_file_error)?
+            .into_iter()
+            .filter(|host| host.group_id.as_deref() == Some(group_id.as_str()))
+            .collect::<Vec<_>>();
+        for host in &mut hosts_to_write {
+            host.group_id = None;
+            host.updated_at = timestamp.clone();
+        }
+
+        self.config
+            .apply_remote_host_change_set(Some(&groups), &hosts_to_write, &[])
+            .map_err(config_file_error)?;
+        Ok(true)
     }
 
     /// 创建远程主机配置。
-    pub fn create_host(
-        &self,
-        storage: &SqliteStore,
-        request: RemoteHostCreateRequest,
-    ) -> AppResult<RemoteHost> {
+    pub fn create_host(&self, request: RemoteHostCreateRequest) -> AppResult<RemoteHost> {
         let group_id = normalize_optional_text(request.group_id);
-        ensure_group_exists(storage, group_id.as_deref())?;
-        let sort_order = storage.next_remote_host_sort_order(group_id.as_deref())?;
+        ensure_group_exists(self, group_id.as_deref())?;
+        let sort_order = self
+            .config
+            .next_remote_host_sort_order(group_id.as_deref())
+            .map_err(config_file_error)?;
         let id = Uuid::new_v4().to_string();
         let tags = normalize_tags(request.tags);
         let credential = normalize_ssh_credential(
@@ -90,7 +148,8 @@ impl RemoteHostService {
             request.credential_ref,
             request.credential_secret,
         )?;
-        let host = RemoteHostWrite {
+        let timestamp = timestamp_now();
+        let host = RemoteHost {
             id,
             group_id,
             name: normalize_required_text("主机名称", request.name)?,
@@ -104,27 +163,31 @@ impl RemoteHostService {
             production: request.production,
             ssh_options: normalize_ssh_options(request.ssh_options)?,
             sort_order,
+            created_at: timestamp.clone(),
+            updated_at: timestamp,
         };
 
-        storage.insert_remote_host(&host)
+        self.config
+            .apply_remote_host_change_set(None, std::slice::from_ref(&host), &[])
+            .map_err(config_file_error)?;
+        Ok(host)
     }
 
     /// 更新远程主机配置。
-    pub fn update_host(
-        &self,
-        storage: &SqliteStore,
-        request: RemoteHostUpdateRequest,
-    ) -> AppResult<RemoteHost> {
+    pub fn update_host(&self, request: RemoteHostUpdateRequest) -> AppResult<RemoteHost> {
         let group_id = normalize_optional_text(request.group_id);
-        ensure_group_exists(storage, group_id.as_deref())?;
+        ensure_group_exists(self, group_id.as_deref())?;
         let id = normalize_required_text("主机 ID", request.id)?;
+        let existing = self
+            .host_by_id(&id)?
+            .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {id}")))?;
         let tags = normalize_tags(request.tags);
         let credential = normalize_ssh_credential(
             request.auth_type,
             request.credential_ref,
             request.credential_secret,
         )?;
-        let host = RemoteHostWrite {
+        let host = RemoteHost {
             id,
             group_id,
             name: normalize_required_text("主机名称", request.name)?,
@@ -138,23 +201,39 @@ impl RemoteHostService {
             production: request.production,
             ssh_options: normalize_ssh_options(request.ssh_options)?,
             sort_order: request.sort_order,
+            created_at: existing.created_at,
+            updated_at: timestamp_now(),
         };
 
-        storage.update_remote_host(&host)
+        self.config
+            .apply_remote_host_change_set(None, std::slice::from_ref(&host), &[])
+            .map_err(config_file_error)?;
+        Ok(host)
     }
 
     /// 删除远程主机配置。
-    pub fn delete_host(&self, storage: &SqliteStore, host_id: &str) -> AppResult<bool> {
-        storage.delete_remote_host(host_id)
+    pub fn delete_host(&self, host_id: &str) -> AppResult<bool> {
+        if self.host_by_id(host_id)?.is_none() {
+            return Ok(false);
+        }
+        self.config
+            .apply_remote_host_change_set(None, &[], &[host_id.to_owned()])
+            .map_err(config_file_error)?;
+        Ok(true)
     }
 }
 
-fn ensure_group_exists(storage: &SqliteStore, group_id: Option<&str>) -> AppResult<()> {
+fn ensure_group_exists(service: &RemoteHostService, group_id: Option<&str>) -> AppResult<()> {
     let Some(group_id) = group_id else {
         return Ok(());
     };
 
-    if storage.remote_host_group_by_id(group_id)?.is_none() {
+    if service
+        .config
+        .remote_host_group_by_id(group_id)
+        .map_err(config_file_error)?
+        .is_none()
+    {
         return Err(AppError::NotFound(format!(
             "远程主机分组不存在: {group_id}"
         )));
@@ -300,6 +379,20 @@ fn has_tag(tags: &[String], expected: &str) -> bool {
         .any(|tag| tag.trim().eq_ignore_ascii_case(expected))
 }
 
+fn config_file_error(error: FileStoreError) -> AppError {
+    match error {
+        FileStoreError::Io(error) => AppError::Io(error),
+        other => AppError::InvalidInput(other.to_string()),
+    }
+}
+
+fn timestamp_now() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs().to_string())
+        .unwrap_or_else(|_| "0".to_owned())
+}
+
 fn normalize_ssh_options(mut options: SshOptions) -> AppResult<SshOptions> {
     options.proxy.host = normalize_optional_text(options.proxy.host);
     options.proxy.username = normalize_optional_text(options.proxy.username);
@@ -396,28 +489,4 @@ fn normalize_ssh_options(mut options: SshOptions) -> AppResult<SshOptions> {
         options.transfer.max_concurrent_transfers.clamp(1, 16);
 
     Ok(options)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn normalize_tags_trims_deduplicates_and_skips_empty_values() {
-        let tags = normalize_tags(vec![
-            " prod ".to_owned(),
-            "".to_owned(),
-            "PROD".to_owned(),
-            "ssh".to_owned(),
-        ]);
-
-        assert_eq!(tags, vec!["prod", "ssh"]);
-    }
-
-    #[test]
-    fn normalize_host_rejects_whitespace() {
-        let error = normalize_host("bad host".to_owned()).expect_err("reject invalid host");
-
-        assert!(matches!(error, AppError::InvalidInput(_)));
-    }
 }

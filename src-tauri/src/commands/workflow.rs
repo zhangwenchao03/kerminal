@@ -18,7 +18,7 @@ pub fn workflow_list(
 ) -> Result<Vec<CommandWorkflow>, String> {
     state
         .workflows()
-        .list_workflows(state.storage(), request.unwrap_or_default())
+        .list_workflows(request.unwrap_or_default())
         .map_err(|error| error.to_string())
 }
 
@@ -30,7 +30,7 @@ pub fn workflow_create(
 ) -> Result<CommandWorkflow, String> {
     state
         .workflows()
-        .create_workflow(state.storage(), request)
+        .create_workflow(request)
         .map_err(|error| error.to_string())
 }
 
@@ -42,7 +42,7 @@ pub fn workflow_update(
 ) -> Result<CommandWorkflow, String> {
     state
         .workflows()
-        .update_workflow(state.storage(), request)
+        .update_workflow(request)
         .map_err(|error| error.to_string())
 }
 
@@ -51,6 +51,6 @@ pub fn workflow_update(
 pub fn workflow_delete(state: State<'_, AppState>, workflow_id: String) -> Result<bool, String> {
     state
         .workflows()
-        .delete_workflow(state.storage(), &workflow_id)
+        .delete_workflow(&workflow_id)
         .map_err(|error| error.to_string())
 }

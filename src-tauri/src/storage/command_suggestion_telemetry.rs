@@ -5,7 +5,8 @@
 use rusqlite::{params, Row};
 
 use crate::{
-    error::AppResult, models::command_suggestion::SuggestionProviderKind, storage::SqliteStore,
+    error::AppResult, models::command_suggestion::SuggestionProviderKind,
+    storage::CommandSqliteStore,
 };
 
 /// 命令建议 telemetry 的增量写入。
@@ -96,7 +97,7 @@ pub(crate) struct CommandSuggestionTelemetryRow {
     pub last_error: Option<String>,
 }
 
-impl SqliteStore {
+impl CommandSqliteStore {
     /// 按 provider 聚合写入命令建议 telemetry 增量。
     pub(crate) fn add_command_suggestion_telemetry(
         &self,

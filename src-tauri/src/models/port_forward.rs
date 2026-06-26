@@ -35,8 +35,8 @@ pub enum PortForwardOrigin {
     /// 用户手动创建。
     #[default]
     User,
-    /// AI 工具创建。
-    AiTool,
+    /// MCP 工具创建。
+    McpTool,
     /// 网络助手创建。
     NetworkAssist,
     /// 主机预设创建。
@@ -80,7 +80,7 @@ pub enum PortForwardProxyApplyScope {
     FutureTerminals,
     /// 用户级远端配置助手。
     UserProfile,
-    /// AI/工具调用命令临时使用。
+    /// MCP 工具调用命令临时使用。
     ToolOnly,
 }
 

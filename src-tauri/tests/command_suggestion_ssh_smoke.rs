@@ -25,7 +25,9 @@ use kerminal_lib::{
             SuggestionProviderKind,
         },
         remote_host::{RemoteHost, RemoteHostAuthType, RemoteHostCreateRequest},
-        settings::TerminalInlineSuggestionProductionHostPolicy,
+        settings::{
+            TerminalInlineSuggestionProductionHostPolicy, TerminalInlineSuggestionSettings,
+        },
         sftp::SftpTrustHostKeyRequest,
     },
     paths::KerminalPaths,
@@ -35,7 +37,7 @@ use kerminal_lib::{
         remote_host_service::RemoteHostService, sftp_service::SftpService,
         ssh_command_service::SshCommandService,
     },
-    storage::SqliteStore,
+    storage::{config_file_store::ConfigFileStore, CommandSqliteStore},
 };
 use russh::{
     keys::{self, PrivateKey, PublicKey},

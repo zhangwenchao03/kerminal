@@ -6,16 +6,16 @@ import { SettingsToolContent } from "./SettingsToolContent";
 import { defaultAppSettings, type AppSettings } from "./settingsModel";
 
 const fileDialogMock = vi.hoisted(() => ({
-  getAppSkillsDirectory: vi.fn(),
-  openLocalDirectory: vi.fn(),
-  selectLocalDirectory: vi.fn(),
   selectLocalFile: vi.fn(),
 }));
-const toolRegistryApiMock = vi.hoisted(() => ({
-  discoverMcpServerTools: vi.fn(),
-  getMcpGatewayManifest: vi.fn(),
+const desktopNotificationApiMock = vi.hoisted(() => ({
+  currentDesktopNotificationVisibility: vi.fn(),
+  sendDesktopNotification: vi.fn(),
+}));
+const mcpServerApiMock = vi.hoisted(() => ({
   getMcpHttpServerStatus: vi.fn(),
   startMcpHttpServer: vi.fn(),
+  stopMcpHttpServer: vi.fn(),
 }));
 const terminalSuggestionApiMock = vi.hoisted(() => ({
   cleanupTerminalSuggestionDiagnostics: vi.fn(),
@@ -25,48 +25,54 @@ const terminalSuggestionApiMock = vi.hoisted(() => ({
 const updaterApiMock = vi.hoisted(() => ({
   checkForAppUpdate: vi.fn(),
   installPendingAppUpdate: vi.fn(),
+  relaunchApp: vi.fn(),
 }));
 
 vi.mock("../../lib/fileDialogApi", () => ({
-  getAppSkillsDirectory: fileDialogMock.getAppSkillsDirectory,
-  openLocalDirectory: fileDialogMock.openLocalDirectory,
-  selectLocalDirectory: fileDialogMock.selectLocalDirectory,
   selectLocalFile: fileDialogMock.selectLocalFile,
 }));
-vi.mock("../../lib/toolRegistryApi", () => toolRegistryApiMock);
+vi.mock("../../lib/desktopNotificationApi", () => desktopNotificationApiMock);
+vi.mock("../../lib/mcpServerApi", () => mcpServerApiMock);
 vi.mock("../../lib/terminalSuggestionApi", () => terminalSuggestionApiMock);
 vi.mock("../../lib/updaterApi", () => updaterApiMock);
 
-describe("SettingsToolContent MCP server discovery", () => {
+describe("SettingsToolContent Kerminal MCP Server page", () => {
   beforeEach(() => {
-    fileDialogMock.getAppSkillsDirectory.mockReset();
-    fileDialogMock.getAppSkillsDirectory.mockResolvedValue(
-      "C:\\Users\\dev\\.kerminal\\skills",
-    );
-    fileDialogMock.openLocalDirectory.mockReset();
-    fileDialogMock.openLocalDirectory.mockResolvedValue(undefined);
-    fileDialogMock.selectLocalDirectory.mockReset();
-    fileDialogMock.selectLocalDirectory.mockResolvedValue(null);
     fileDialogMock.selectLocalFile.mockReset();
     fileDialogMock.selectLocalFile.mockResolvedValue(null);
-    toolRegistryApiMock.discoverMcpServerTools.mockReset();
-    toolRegistryApiMock.getMcpGatewayManifest.mockReset();
-    toolRegistryApiMock.getMcpGatewayManifest.mockResolvedValue(null);
-    toolRegistryApiMock.getMcpHttpServerStatus.mockReset();
-    toolRegistryApiMock.getMcpHttpServerStatus.mockResolvedValue({
-      bindAddress: "127.0.0.1",
-      endpoint: null,
-      localOnly: true,
-      port: null,
-      running: false,
+    desktopNotificationApiMock.currentDesktopNotificationVisibility.mockReset();
+    desktopNotificationApiMock.currentDesktopNotificationVisibility.mockReturnValue(
+      "hidden",
+    );
+    desktopNotificationApiMock.sendDesktopNotification.mockReset();
+    desktopNotificationApiMock.sendDesktopNotification.mockResolvedValue({
+      reason: "will-send",
+      requestedPermission: false,
+      sent: true,
     });
-    toolRegistryApiMock.startMcpHttpServer.mockReset();
-    toolRegistryApiMock.startMcpHttpServer.mockResolvedValue({
+    mcpServerApiMock.getMcpHttpServerStatus.mockReset();
+    mcpServerApiMock.getMcpHttpServerStatus.mockResolvedValue({
       bindAddress: "127.0.0.1",
       endpoint: "http://127.0.0.1:30456/mcp",
       localOnly: true,
       port: 30456,
       running: true,
+    });
+    mcpServerApiMock.startMcpHttpServer.mockReset();
+    mcpServerApiMock.startMcpHttpServer.mockResolvedValue({
+      bindAddress: "127.0.0.1",
+      endpoint: "http://127.0.0.1:30456/mcp",
+      localOnly: true,
+      port: 30456,
+      running: true,
+    });
+    mcpServerApiMock.stopMcpHttpServer.mockReset();
+    mcpServerApiMock.stopMcpHttpServer.mockResolvedValue({
+      bindAddress: "127.0.0.1",
+      endpoint: null,
+      localOnly: true,
+      port: null,
+      running: false,
     });
     terminalSuggestionApiMock.cleanupTerminalSuggestionDiagnostics.mockReset();
     terminalSuggestionApiMock.cleanupTerminalSuggestionDiagnostics.mockResolvedValue({
@@ -107,25 +113,82 @@ describe("SettingsToolContent MCP server discovery", () => {
     updaterApiMock.checkForAppUpdate.mockResolvedValue({ kind: "up-to-date" });
     updaterApiMock.installPendingAppUpdate.mockReset();
     updaterApiMock.installPendingAppUpdate.mockResolvedValue(undefined);
+    updaterApiMock.relaunchApp.mockReset();
+    updaterApiMock.relaunchApp.mockResolvedValue(undefined);
   });
 
-  it("announces custom MCP server discovery failures", async () => {
+  it("renders only minimal MCP status, endpoint, and controls", async () => {
+    render(<ControlledMcpSettings />);
+
+    expect(await screen.findByRole("heading", { name: "MCP" })).toBeInTheDocument();
+    expect(screen.getByText("状态")).toBeInTheDocument();
+    expect(screen.getByText("endpoint")).toBeInTheDocument();
+    expect(screen.getByText("JSON")).toBeInTheDocument();
+    expect(await screen.findByText("运行中")).toBeInTheDocument();
+    expect(screen.getByText("http://127.0.0.1:30456/mcp")).toBeInTheDocument();
+    expect(screen.getByLabelText("MCP JSON 配置")).toHaveTextContent(
+      '"mcpServers"',
+    );
+    expect(screen.getByLabelText("MCP JSON 配置")).toHaveTextContent(
+      "http://127.0.0.1:30456/mcp",
+    );
+    expect(screen.getByRole("button", { name: "停止" })).toBeEnabled();
+    expect(
+      screen.queryByRole("button", { name: "启动" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "复制 JSON" })).toBeEnabled();
+    expect(screen.queryByText("外部 Agent 工作目录")).not.toBeInTheDocument();
+    expect(screen.queryByText("validator")).not.toBeInTheDocument();
+    expect(screen.queryByText("Codex 配置")).not.toBeInTheDocument();
+    expect(screen.queryByText("Claude 配置")).not.toBeInTheDocument();
+    expect(screen.queryByText("bind")).not.toBeInTheDocument();
+    expect(screen.queryByText("port")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "复制 HTTP MCP endpoint" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "刷新状态" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("MCP 工具目录")).not.toBeInTheDocument();
+    expect(screen.queryByText("MCP Resources")).not.toBeInTheDocument();
+    expect(screen.queryByText("MCP Prompts")).not.toBeInTheDocument();
+    expect(screen.queryByText("受控确认")).not.toBeInTheDocument();
+    expect(screen.queryByText("contextual")).not.toBeInTheDocument();
+    expect(screen.queryByText("remote")).not.toBeInTheDocument();
+    expect(mcpServerApiMock.getMcpHttpServerStatus).toHaveBeenCalled();
+  });
+
+  it("notifies when the user starts the MCP server and startup fails", async () => {
     const user = userEvent.setup();
-    toolRegistryApiMock.discoverMcpServerTools.mockRejectedValueOnce(
-      new Error("server refused tools/list"),
+    mcpServerApiMock.getMcpHttpServerStatus.mockResolvedValueOnce({
+      bindAddress: "127.0.0.1",
+      endpoint: null,
+      localOnly: true,
+      port: null,
+      running: false,
+    });
+    mcpServerApiMock.startMcpHttpServer.mockRejectedValueOnce(
+      new Error("address already in use: token=secret"),
     );
 
     render(<ControlledMcpSettings />);
 
-    expect(
-      await screen.findByRole("heading", { name: "MCP / Skills" }),
-    ).toBeInTheDocument();
-    await user.click(
-      screen.getByRole("button", { name: /刷新 MCP Server custom\.fail 工具/ }),
-    );
+    await user.click(await screen.findByRole("button", { name: "启动" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "server refused tools/list",
+      "address already in use",
+    );
+    expect(desktopNotificationApiMock.sendDesktopNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: {
+          kind: "mcp.server.failed",
+          notificationKey: "mcp.server.failed:start",
+          port: undefined,
+          reason: "address already in use: token=secret",
+        },
+        settings: expect.objectContaining({ enabled: true }),
+        visibility: "hidden",
+      }),
     );
   });
 });
@@ -145,29 +208,9 @@ function ControlledMcpSettings() {
 function settingsWithFailingServer(): AppSettings {
   return {
     ...defaultAppSettings,
-    ai: {
-      ...defaultAppSettings.ai,
-      mcp: {
-        ...defaultAppSettings.ai.mcp,
-        servers: [
-          {
-            args: [],
-            bearerTokenEnvVar: "",
-            command: "npx",
-            description: "",
-            enabled: true,
-            env: [],
-            headers: [],
-            id: "custom.fail",
-            lastDiscoveredAt: null,
-            lastDiscoveryError: null,
-            name: "Failing MCP",
-            tools: [],
-            transport: "stdio",
-            url: "",
-          },
-        ],
-      },
+    desktopNotifications: {
+      ...defaultAppSettings.desktopNotifications,
+      enabled: true,
     },
   };
 }

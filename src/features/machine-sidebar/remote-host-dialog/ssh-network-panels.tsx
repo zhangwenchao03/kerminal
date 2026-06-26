@@ -109,7 +109,7 @@ export function SshProxyPanel({
       </FieldRow>
       <HelpCard
         icon={<Waypoints className="mt-0.5 h-4 w-4 text-sky-500 dark:text-sky-300" />}
-        text="代理仅保存协议、主机、端口和可选用户名；需要认证的代理暂不在这里保存密码。"
+        text="仅保存协议、地址、端口和用户名。"
       />
     </div>
   );
@@ -266,7 +266,7 @@ export function SshTunnelList({
     return (
       <EmptyConfigState
         icon={<Cable className="h-5 w-5" />}
-        text="还没有隧道。需要访问内网数据库、Web UI 或 SOCKS 代理时在这里添加。"
+        text="暂无隧道。可添加内网、Web 或 SOCKS。"
       />
     );
   }

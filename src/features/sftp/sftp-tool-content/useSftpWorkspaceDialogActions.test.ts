@@ -58,7 +58,6 @@ describe("useSftpWorkspaceDialogActions", () => {
     });
     expect(result.current.workspaceDirty).toBe(true);
 
-    vi.spyOn(window, "confirm").mockReturnValue(false);
     act(() => {
       result.current.closeWorkspaceDialog();
     });
@@ -67,6 +66,7 @@ describe("useSftpWorkspaceDialogActions", () => {
       rootPath: "/srv/app",
     });
     expect(result.current.workspaceCloseBlocked).toBe(true);
+    expect(result.current.workspaceCloseConfirmationOpen).toBe(true);
 
     act(() => {
       result.current.openWorkspaceDirectory("//var//logs//");
@@ -78,6 +78,7 @@ describe("useSftpWorkspaceDialogActions", () => {
     });
     expect(result.current.workspaceDirty).toBe(false);
     expect(result.current.workspaceCloseBlocked).toBe(false);
+    expect(result.current.workspaceCloseConfirmationOpen).toBe(false);
     expect(setters.setOperationStatus).toHaveBeenLastCalledWith(null);
     expect(calls).toEqual([
       "setContextMenu:null",
@@ -130,7 +131,6 @@ describe("useSftpWorkspaceDialogActions", () => {
   });
 
   it("blocks dirty workspace close until confirmation succeeds", () => {
-    const confirm = vi.spyOn(window, "confirm");
     const { result } = renderWorkspaceHook();
 
     act(() => {
@@ -138,29 +138,42 @@ describe("useSftpWorkspaceDialogActions", () => {
       result.current.setWorkspaceDirty(true);
     });
 
-    confirm.mockReturnValueOnce(false);
     act(() => {
       result.current.closeWorkspaceDialog();
     });
 
-    expect(confirm).toHaveBeenCalledWith(
-      "工作区有未保存修改，关闭会丢失这些修改。仍然关闭？",
-    );
     expect(result.current.workspaceDialog).toEqual({
       openCommand: null,
       rootPath: "/srv/app",
     });
     expect(result.current.workspaceDirty).toBe(true);
     expect(result.current.workspaceCloseBlocked).toBe(true);
+    expect(result.current.workspaceCloseConfirmationOpen).toBe(true);
 
-    confirm.mockReturnValueOnce(true);
+    act(() => {
+      result.current.cancelWorkspaceCloseConfirmation();
+    });
+    expect(result.current.workspaceDialog).toEqual({
+      openCommand: null,
+      rootPath: "/srv/app",
+    });
+    expect(result.current.workspaceDirty).toBe(true);
+    expect(result.current.workspaceCloseBlocked).toBe(true);
+    expect(result.current.workspaceCloseConfirmationOpen).toBe(false);
+
     act(() => {
       result.current.closeWorkspaceDialog();
+    });
+    expect(result.current.workspaceCloseConfirmationOpen).toBe(true);
+
+    act(() => {
+      result.current.confirmWorkspaceDialogClose();
     });
 
     expect(result.current.workspaceDialog).toBeNull();
     expect(result.current.workspaceDirty).toBe(false);
     expect(result.current.workspaceCloseBlocked).toBe(false);
+    expect(result.current.workspaceCloseConfirmationOpen).toBe(false);
   });
 
   it("expands the workspace inside the current app without closing it", () => {

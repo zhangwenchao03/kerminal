@@ -19,7 +19,7 @@ pub fn command_history_list(
 ) -> Result<Vec<CommandHistoryEntry>, String> {
     state
         .command_history()
-        .list_history(state.storage(), request.unwrap_or_default())
+        .list_history(state.command_store(), request.unwrap_or_default())
         .map_err(|error| error.to_string())
 }
 
@@ -31,7 +31,7 @@ pub fn command_history_record(
 ) -> Result<CommandHistoryRecordResult, String> {
     state
         .command_history()
-        .record_command(state.storage(), request)
+        .record_command(state.command_store(), request)
         .map_err(|error| error.to_string())
 }
 
@@ -43,7 +43,7 @@ pub fn command_history_delete(
 ) -> Result<bool, String> {
     state
         .command_history()
-        .delete_history(state.storage(), &entry_id)
+        .delete_history(state.command_store(), &entry_id)
         .map_err(|error| error.to_string())
 }
 
@@ -52,6 +52,6 @@ pub fn command_history_delete(
 pub fn command_history_clear(state: State<'_, AppState>) -> Result<usize, String> {
     state
         .command_history()
-        .clear_history(state.storage())
+        .clear_history(state.command_store())
         .map_err(|error| error.to_string())
 }

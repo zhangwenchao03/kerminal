@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { FolderPlus } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
@@ -10,6 +10,7 @@ import type {
 import type { MachineGroup } from "../workspace/types";
 
 interface RemoteHostGroupCreateDialogProps {
+  externalConfigConflict?: string;
   group?: MachineGroup;
   open: boolean;
   onClose: () => void;
@@ -23,6 +24,7 @@ interface RemoteHostGroupCreateDialogProps {
 }
 
 export function RemoteHostGroupCreateDialog({
+  externalConfigConflict,
   group,
   onClose,
   onCreateGroup,
@@ -33,17 +35,29 @@ export function RemoteHostGroupCreateDialog({
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const initializedGroupTargetRef = useRef<string | null>(null);
+  const groupTargetKey = group?.id ?? "__create__";
 
   useEffect(() => {
-    if (open) {
-      setName(group?.title ?? "");
-      setError(null);
-      setSaving(false);
+    if (!open) {
+      initializedGroupTargetRef.current = null;
+      return;
     }
-  }, [group, open]);
+    if (initializedGroupTargetRef.current === groupTargetKey) {
+      return;
+    }
+    initializedGroupTargetRef.current = groupTargetKey;
+    setName(group?.title ?? "");
+    setError(null);
+    setSaving(false);
+  }, [group?.id, group?.title, groupTargetKey, open]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (group && externalConfigConflict) {
+      setError(externalConfigConflict);
+      return;
+    }
     const trimmedName = name.trim();
     if (!trimmedName) {
       setError("请输入分组名称。");
@@ -72,7 +86,7 @@ export function RemoteHostGroupCreateDialog({
 
   return (
     <ModalShell
-      description="用于整理 SSH 主机列表，例如实验室、云服务器、客户环境。"
+      description="整理主机分组。"
       onClose={onClose}
       open={open}
       size="small"
@@ -101,13 +115,25 @@ export function RemoteHostGroupCreateDialog({
               {error}
             </p>
           ) : null}
+          {externalConfigConflict ? (
+            <p
+              className="mt-3 rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 font-mono text-xs text-amber-800 dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100"
+              role="alert"
+            >
+              {externalConfigConflict}
+            </p>
+          ) : null}
         </div>
 
         <div className="flex justify-end gap-2">
           <Button onClick={onClose} type="button" variant="ghost">
             取消
           </Button>
-          <Button disabled={saving} type="submit" variant="primary">
+          <Button
+            disabled={saving || Boolean(externalConfigConflict)}
+            type="submit"
+            variant="primary"
+          >
             {saving ? "保存中..." : group ? "保存分组" : "创建分组"}
           </Button>
         </div>

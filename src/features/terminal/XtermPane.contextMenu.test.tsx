@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   installClipboardMock,
   mocks,
-} from "./XtermPane.testSupport";
+} from "./__tests__/support/XtermPane.testSupport";
 import { XtermPane } from "./XtermPane";
 
 describe("XtermPane context menu search and logging", () => {
@@ -34,8 +34,81 @@ describe("XtermPane context menu search and logging", () => {
     });
     await user.click(screen.getByRole("menuitem", { name: /复制/ }));
 
-    expect(clipboard.writeText).toHaveBeenCalledWith("selected output");
+    expect(mocks.api.writeDesktopClipboardText).toHaveBeenCalledWith(
+      "selected output",
+    );
+    expect(clipboard.writeText).not.toHaveBeenCalled();
     expect(mocks.terminalInstances[0].focus).toHaveBeenCalled();
+  });
+
+  it("keeps the context menu at the right-click point when the measured menu fits", async () => {
+    const restoreViewport = stubWindowViewport({ height: 640, width: 800 });
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.getAttribute("aria-label") === "终端右键菜单") {
+          return domRect({ height: 304, width: 224 });
+        }
+        return domRect();
+      });
+
+    try {
+      render(
+        <XtermPane
+          focused
+          paneId="pane-local"
+          resolvedTheme="dark"
+          terminalAppearance={defaultAppSettings.terminal}
+          title="本地 PowerShell"
+        />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("已连接")).toBeInTheDocument();
+      });
+
+      fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"), {
+        clientX: 420,
+        clientY: 320,
+      });
+
+      await waitFor(() => {
+        expect(screen.getByRole("menu", { name: "终端右键菜单" })).toHaveStyle({
+          left: "420px",
+          top: "320px",
+        });
+      });
+    } finally {
+      rectSpy.mockRestore();
+      restoreViewport();
+    }
+  });
+
+  it("portals the context menu outside clipped split pane containers", async () => {
+    render(
+      <div className="split-pane-host" style={{ overflow: "hidden" }}>
+        <XtermPane
+          focused
+          paneId="pane-local"
+          resolvedTheme="dark"
+          terminalAppearance={defaultAppSettings.terminal}
+          title="本地 PowerShell"
+        />
+      </div>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"), {
+      clientX: 420,
+      clientY: 320,
+    });
+
+    const menu = screen.getByRole("menu", { name: "终端右键菜单" });
+    expect(menu.parentElement).toBe(document.body);
+    expect(menu.closest(".split-pane-host")).toBeNull();
   });
 
   it("copies selected text when selection-copy is enabled", async () => {
@@ -60,7 +133,10 @@ describe("XtermPane context menu search and logging", () => {
 
     mocks.terminalInstances[0].emitSelectionChange();
 
-    expect(clipboard.writeText).toHaveBeenCalledWith("selected output");
+    expect(mocks.api.writeDesktopClipboardText).toHaveBeenCalledWith(
+      "selected output",
+    );
+    expect(clipboard.writeText).not.toHaveBeenCalled();
   });
 
   it("pastes directly on right-click when configured", async () => {
@@ -86,11 +162,12 @@ describe("XtermPane context menu search and logging", () => {
     fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"));
 
     await waitFor(() => {
-      expect(clipboard.readText).toHaveBeenCalled();
+      expect(mocks.api.readTerminalClipboardText).toHaveBeenCalled();
       expect(mocks.terminalInstances[0].paste).toHaveBeenCalledWith(
         "echo pasted\r",
       );
     });
+    expect(clipboard.readText).not.toHaveBeenCalled();
     expect(
       screen.queryByRole("menu", { name: "终端右键菜单" }),
     ).not.toBeInTheDocument();
@@ -230,10 +307,11 @@ describe("XtermPane context menu search and logging", () => {
       screen.queryByRole("menuitem", { name: "打开设置" }),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole("menuitem", { name: /粘贴/ }));
-    expect(clipboard.readText).toHaveBeenCalled();
+    expect(mocks.api.readTerminalClipboardText).toHaveBeenCalled();
     expect(mocks.terminalInstances[0].paste).toHaveBeenCalledWith(
       "echo pasted\r",
     );
+    expect(clipboard.readText).not.toHaveBeenCalled();
 
     fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"));
     await user.click(screen.getByRole("menuitem", { name: "全选" }));
@@ -556,3 +634,52 @@ describe("XtermPane context menu search and logging", () => {
     expect(screen.getByRole("menuitem", { name: /复制/ })).toBeDisabled();
   });
 });
+
+function stubWindowViewport({
+  height,
+  width,
+}: {
+  height: number;
+  width: number;
+}) {
+  const previousHeight = window.innerHeight;
+  const previousWidth = window.innerWidth;
+  Object.defineProperty(window, "innerHeight", {
+    configurable: true,
+    value: height,
+  });
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: width,
+  });
+  return () => {
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: previousHeight,
+    });
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: previousWidth,
+    });
+  };
+}
+
+function domRect({
+  height = 0,
+  width = 0,
+}: {
+  height?: number;
+  width?: number;
+} = {}): DOMRect {
+  return {
+    bottom: height,
+    height,
+    left: 0,
+    right: width,
+    top: 0,
+    width,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  } as DOMRect;
+}

@@ -16,6 +16,7 @@ use crate::{
         terminal::{TerminalSecretInputEntry, TerminalSecretInputPlan},
     },
     paths::KerminalPaths,
+    services::ssh_identity_file::resolve_identity_file_path,
 };
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
@@ -577,7 +578,7 @@ fn build_key_auth_plan(
     }
 
     Ok(SshRouteAuthPlan::Key {
-        material: SshRouteKeyMaterial::Path(PathBuf::from(path)),
+        material: SshRouteKeyMaterial::Path(resolve_identity_file_path(path)?),
     })
 }
 

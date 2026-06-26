@@ -76,7 +76,7 @@ export function TelnetPropertiesPanel({
           aria-label="备注"
           className={`${inputClassName} min-h-[128px] resize-none py-2`}
           onChange={(event) => setTelnetNote(event.currentTarget.value)}
-          placeholder="可选。备注字段会在后续配置扩展中接入。"
+          placeholder="可选备注"
           value={telnetNote}
         />
       </FieldRow>
@@ -314,7 +314,7 @@ export function RdpPropertiesPanel({
             value={rdpPassword}
           />
           <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-            密码会随远程主机记录明文保存，编辑主机时直接显示。
+            密码明文保存，编辑时显示。
           </p>
         </div>
       </FieldRow>
@@ -323,7 +323,7 @@ export function RdpPropertiesPanel({
           aria-label="备注"
           className={`${inputClassName} min-h-[128px] resize-none py-2`}
           onChange={(event) => setRdpNote(event.currentTarget.value)}
-          placeholder="可选。备注字段会在后续配置扩展中接入。"
+          placeholder="可选备注"
           value={rdpNote}
         />
       </FieldRow>

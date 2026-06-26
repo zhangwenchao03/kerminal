@@ -11,8 +11,7 @@ use crate::{
             TerminalSessionSummary,
         },
     },
-    services::terminal_manager::TerminalManager,
-    storage::SqliteStore,
+    services::{remote_host_service::RemoteHostService, terminal_manager::TerminalManager},
 };
 use std::time::Duration;
 
@@ -35,7 +34,7 @@ impl SerialTerminalService {
     /// 创建 Serial 串口终端会话。
     pub fn create_session<F>(
         &self,
-        storage: &SqliteStore,
+        remote_hosts: &RemoteHostService,
         terminals: &TerminalManager,
         request: SerialTerminalCreateRequest,
         output: F,
@@ -43,20 +42,18 @@ impl SerialTerminalService {
     where
         F: Fn(TerminalOutputEvent) -> bool + Send + 'static,
     {
-        let terminal_request = self.resolve_terminal_request(storage, request)?;
+        let terminal_request = self.resolve_terminal_request(remote_hosts, request)?;
         terminals.create_session(terminal_request, output)
     }
 
     /// 将 Serial 主机配置解析为本地串口客户端命令。
     pub fn resolve_terminal_request(
         &self,
-        storage: &SqliteStore,
+        remote_hosts: &RemoteHostService,
         request: SerialTerminalCreateRequest,
     ) -> AppResult<TerminalCreateRequest> {
         validate_terminal_size(request.rows, request.cols)?;
-        let host = storage
-            .remote_host_by_id(&request.host_id)?
-            .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {}", request.host_id)))?;
+        let host = remote_hosts.require_host(&request.host_id)?;
         let client = resolve_serial_client()?;
 
         build_serial_terminal_request(&host, client, request.rows, request.cols)
@@ -65,9 +62,23 @@ impl SerialTerminalService {
     /// 测试 Serial 主机配置能否打开串口，并确认实际终端客户端可用。
     pub fn test_connection(&self, host: &RemoteHost) -> AppResult<()> {
         let config = SerialConfig::from_host(host)?;
-        config.open_for_test(Duration::from_millis(1_500))?;
+        config.open_for_probe(Duration::from_millis(1_500))?;
         let _client = resolve_serial_client()?;
         Ok(())
+    }
+}
+
+#[doc(hidden)]
+pub mod rules {
+    use super::*;
+
+    pub fn build_plink_serial_terminal_request(
+        host: &RemoteHost,
+        plink_executable: String,
+        rows: u16,
+        cols: u16,
+    ) -> AppResult<TerminalCreateRequest> {
+        build_serial_terminal_request(host, SerialClient::Plink(plink_executable), rows, cols)
     }
 }
 
@@ -97,7 +108,6 @@ enum SerialFlow {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum SerialClient {
-    #[cfg(any(windows, test))]
     Plink(String),
     #[cfg(unix)]
     Picocom(String),
@@ -133,7 +143,6 @@ impl SerialConfig {
         })
     }
 
-    #[cfg(any(windows, test))]
     fn plink_sercfg(&self) -> String {
         format!(
             "{},{},{},{},{}",
@@ -145,7 +154,7 @@ impl SerialConfig {
         )
     }
 
-    fn open_for_test(&self, timeout: Duration) -> AppResult<()> {
+    fn open_for_probe(&self, timeout: Duration) -> AppResult<()> {
         serialport::new(&self.port_name, self.baud)
             .data_bits(self.serialport_data_bits()?)
             .flow_control(self.flow.serialport_value())
@@ -191,7 +200,6 @@ impl SerialParity {
         }
     }
 
-    #[cfg(any(windows, test))]
     fn plink_value(self) -> &'static str {
         match self {
             Self::None => "n",
@@ -219,7 +227,6 @@ impl SerialFlow {
         }
     }
 
-    #[cfg(any(windows, test))]
     fn plink_value(self) -> &'static str {
         match self {
             Self::None => "N",
@@ -241,7 +248,6 @@ impl SerialFlow {
 impl SerialClient {
     fn command(self, config: &SerialConfig) -> (String, Vec<String>) {
         match self {
-            #[cfg(any(windows, test))]
             Self::Plink(executable) => (
                 executable,
                 vec![
@@ -295,7 +301,6 @@ fn build_serial_terminal_request(
         rows,
         env: Default::default(),
         cleanup_paths: Vec::new(),
-        secret_input_response: None,
     })
 }
 
@@ -443,125 +448,4 @@ fn resolve_serial_client() -> AppResult<SerialClient> {
     Err(AppError::Terminal(
         "当前平台暂不支持自动选择 Serial 串口客户端".to_owned(),
     ))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::models::remote_host::{RemoteHostAuthType, SshOptions};
-
-    fn remote_host(host: &str, tags: Vec<String>) -> RemoteHost {
-        RemoteHost {
-            id: "host-1".to_owned(),
-            group_id: Some("group-1".to_owned()),
-            name: "serial console".to_owned(),
-            host: host.to_owned(),
-            port: 1,
-            username: String::new(),
-            auth_type: RemoteHostAuthType::Agent,
-            credential_ref: None,
-            credential_secret: None,
-            tags,
-            production: false,
-            ssh_options: SshOptions::default(),
-            sort_order: 10,
-            created_at: "now".to_owned(),
-            updated_at: "now".to_owned(),
-        }
-    }
-
-    #[test]
-    fn build_serial_terminal_request_uses_parameterized_plink_args_from_tags() {
-        let request = build_serial_terminal_request(
-            &remote_host(
-                "COM1",
-                vec![
-                    " serial ".to_owned(),
-                    "serial-port:COM9".to_owned(),
-                    "serial-baud:115200".to_owned(),
-                    "serial-data-bits:7".to_owned(),
-                    "serial-stop-bits:2".to_owned(),
-                    "serial-parity:even".to_owned(),
-                    "serial-flow:rtscts".to_owned(),
-                ],
-            ),
-            SerialClient::Plink("plink".to_owned()),
-            24,
-            80,
-        )
-        .expect("build request");
-
-        assert_eq!(request.shell.as_deref(), Some("plink"));
-        assert_eq!(
-            request.args,
-            vec!["-serial", "COM9", "-sercfg", "115200,7,e,2,R"]
-        );
-        assert_eq!(request.cwd, None);
-        assert_eq!(request.rows, 24);
-        assert_eq!(request.cols, 80);
-        assert!(request.env.is_empty());
-        assert!(request.cleanup_paths.is_empty());
-        assert!(request.secret_input_response.is_none());
-    }
-
-    #[test]
-    fn build_serial_terminal_request_uses_default_config() {
-        let request = build_serial_terminal_request(
-            &remote_host("COM3", vec!["serial".to_owned()]),
-            SerialClient::Plink("plink".to_owned()),
-            30,
-            100,
-        )
-        .expect("build request");
-
-        assert_eq!(request.shell.as_deref(), Some("plink"));
-        assert_eq!(
-            request.args,
-            vec!["-serial", "COM3", "-sercfg", "9600,8,n,1,N"]
-        );
-        assert_eq!(request.rows, 30);
-        assert_eq!(request.cols, 100);
-    }
-
-    #[test]
-    fn build_serial_terminal_request_rejects_invalid_baud() {
-        let error = build_serial_terminal_request(
-            &remote_host(
-                "COM3",
-                vec!["serial".to_owned(), "serial-baud:42".to_owned()],
-            ),
-            SerialClient::Plink("plink".to_owned()),
-            24,
-            80,
-        )
-        .expect_err("reject invalid baud");
-
-        assert!(matches!(error, AppError::InvalidInput(_)));
-    }
-
-    #[test]
-    fn build_serial_terminal_request_rejects_non_serial_tag() {
-        let error = build_serial_terminal_request(
-            &remote_host("COM3", vec!["ssh".to_owned()]),
-            SerialClient::Plink("plink".to_owned()),
-            24,
-            80,
-        )
-        .expect_err("reject non serial host");
-
-        assert!(matches!(error, AppError::InvalidInput(_)));
-    }
-
-    #[test]
-    fn build_serial_terminal_request_rejects_zero_size() {
-        let error = build_serial_terminal_request(
-            &remote_host("COM3", vec!["serial".to_owned()]),
-            SerialClient::Plink("plink".to_owned()),
-            0,
-            80,
-        )
-        .expect_err("reject zero rows");
-
-        assert!(matches!(error, AppError::InvalidInput(_)));
-    }
 }

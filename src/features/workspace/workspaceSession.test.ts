@@ -6,40 +6,38 @@ import {
 } from "./workspaceSession";
 
 describe("workspaceSession", () => {
-  it("normalizes a persisted wrapper object without trusting stale focus", () => {
+  it("normalizes a persisted session without trusting stale focus", () => {
     const session = normalizeWorkspaceSessionSnapshot({
-      session: {
-        activeTabId: "missing-tab",
-        focusedPaneId: "pane-stale",
-        selectedMachineId: "",
-        terminalPanes: [
-          {
-            id: "pane-container-12",
-            machineId: "docker:host-lab:c0ffee",
-            mode: "container",
-            prompt: "api:/workspace$",
-            remoteHostId: "host-lab",
-            status: "online",
-            title: "api",
-          },
-          {
-            id: "pane-orphan",
-            machineId: "machine-orphan",
-            mode: "local",
-            prompt: "PS>",
-            status: "online",
-            title: "orphan",
-          },
-        ],
-        terminalTabs: [
-          {
-            id: "tab-container-9",
-            layout: { paneId: "pane-container-12", type: "pane" },
-            machineId: "docker:host-lab:c0ffee",
-            title: "api",
-          },
-        ],
-      },
+      activeTabId: "missing-tab",
+      focusedPaneId: "pane-stale",
+      selectedMachineId: "",
+      terminalPanes: [
+        {
+          id: "pane-container-12",
+          machineId: "docker:host-lab:c0ffee",
+          mode: "container",
+          prompt: "api:/workspace$",
+          remoteHostId: "host-lab",
+          status: "online",
+          title: "api",
+        },
+        {
+          id: "pane-orphan",
+          machineId: "machine-orphan",
+          mode: "local",
+          prompt: "PS>",
+          status: "online",
+          title: "orphan",
+        },
+      ],
+      terminalTabs: [
+        {
+          id: "tab-container-9",
+          layout: { paneId: "pane-container-12", type: "pane" },
+          machineId: "docker:host-lab:c0ffee",
+          title: "api",
+        },
+      ],
     });
 
     expect(session.activeTabId).toBe("tab-container-9");
@@ -132,6 +130,52 @@ describe("workspaceSession", () => {
     expect(session.selectedMachineId).toBe("host-prod");
   });
 
+  it("preserves tmux attach metadata and SSH remote command for restored panes", () => {
+    const session = normalizeWorkspaceSessionSnapshot({
+      activeTabId: "tab-1",
+      focusedPaneId: "pane-1",
+      selectedMachineId: "",
+      terminalPanes: [
+        {
+          id: "pane-1",
+          machineId: "host-prod",
+          mode: "ssh",
+          prompt: "root@prod:~$",
+          remoteCommand: "tmux attach-session -t $0",
+          remoteHostId: "host-prod",
+          status: "online",
+          title: "tmux: api",
+          tmuxBinding: {
+            attachedAt: "1",
+            sessionId: "$0",
+            sessionName: "api",
+            socketName: "main",
+            targetRef: "ssh:host-prod",
+          },
+        },
+      ],
+      terminalTabs: [
+        {
+          id: "tab-1",
+          layout: { paneId: "pane-1", type: "pane" },
+          machineId: "host-prod",
+          title: "tmux: api",
+        },
+      ],
+    });
+
+    expect(session.terminalPanes[0]).toMatchObject({
+      remoteCommand: "tmux attach-session -t $0",
+      tmuxBinding: {
+        attachedAt: "1",
+        sessionId: "$0",
+        sessionName: "api",
+        socketName: "main",
+        targetRef: "ssh:host-prod",
+      },
+    });
+  });
+
   it("ignores non-boolean remote host production flags from older snapshots", () => {
     const session = normalizeWorkspaceSessionSnapshot({
       activeTabId: "tab-1",
@@ -200,6 +244,85 @@ describe("workspaceSession", () => {
       "host-prod": {
         color: "pink",
         title: "生产组",
+      },
+    });
+  });
+
+  it("normalizes persisted shell layout", () => {
+    const session = normalizeWorkspaceSessionSnapshot({
+      activeTabId: "",
+      focusedPaneId: "",
+      selectedMachineId: "",
+      shellLayout: {
+        collapsedMachineGroupIds: ["group-b", "", "group-a", "group-b"],
+        leftPanelCollapsed: true,
+        leftPanelWidth: 999,
+        toolPanelWidth: 120,
+      },
+      terminalPanes: [],
+      terminalTabs: [],
+    });
+
+    expect(session.shellLayout).toEqual({
+      collapsedMachineGroupIds: ["group-a", "group-b"],
+      leftPanelCollapsed: true,
+      leftPanelWidth: 520,
+      toolPanelWidth: 300,
+    });
+  });
+
+  it("normalizes persisted terminal split sizes", () => {
+    const session = normalizeWorkspaceSessionSnapshot({
+      activeTabId: "tab-1",
+      focusedPaneId: "pane-a",
+      selectedMachineId: "machine-local",
+      terminalPanes: [
+        {
+          id: "pane-a",
+          machineId: "machine-local",
+          mode: "local",
+          prompt: "PS>",
+          status: "online",
+          title: "A",
+        },
+        {
+          id: "pane-b",
+          machineId: "machine-local",
+          mode: "local",
+          prompt: "PS>",
+          status: "online",
+          title: "B",
+        },
+      ],
+      terminalTabs: [
+        {
+          id: "tab-1",
+          layout: {
+            children: [
+              { paneId: "pane-a", type: "pane" },
+              { paneId: "pane-b", type: "pane" },
+            ],
+            direction: "horizontal",
+            id: "split-1",
+            sizes: {
+              "pane-a": 33.3333,
+              "pane-b": 66.6666,
+              "pane-stale": 1,
+            },
+            type: "split",
+          },
+          machineId: "machine-local",
+          title: "Local",
+        },
+      ],
+    });
+
+    expect(session.terminalTabs[0]).toMatchObject({
+      layout: {
+        sizes: {
+          "pane-a": 33.333,
+          "pane-b": 66.667,
+        },
       },
     });
   });
@@ -316,6 +439,109 @@ describe("workspaceSession", () => {
     expect(session.terminalPanes[0]?.outputHistory).toBe(
       "b".repeat(TERMINAL_OUTPUT_HISTORY_MAX_CHARS - 1),
     );
+  });
+
+  it("preserves restorable pane runtime fields and drops transient lines", () => {
+    const session = normalizeWorkspaceSessionSnapshot({
+      activeTabId: "tab-1",
+      focusedPaneId: "pane-1",
+      terminalPanes: [
+        {
+          args: ["-NoLogo"],
+          currentCwd: "C:/repo/src",
+          cwd: "C:/repo",
+          env: { NODE_ENV: "test" },
+          id: "pane-1",
+          lines: ["transient render line"],
+          machineId: "machine-local",
+          mode: "local",
+          outputHistory: "restored terminal history",
+          profileId: "profile-pwsh",
+          prompt: "PS>",
+          shell: "pwsh",
+          status: "online",
+          target: { kind: "local", profileId: "profile-pwsh" },
+          title: "Local",
+        },
+      ],
+      terminalTabs: [
+        {
+          id: "tab-1",
+          layout: { paneId: "pane-1", type: "pane" },
+          machineId: "machine-local",
+          title: "Local",
+        },
+      ],
+    });
+
+    expect(session.terminalPanes[0]).toMatchObject({
+      args: ["-NoLogo"],
+      currentCwd: "C:/repo/src",
+      cwd: "C:/repo",
+      env: { NODE_ENV: "test" },
+      outputHistory: "restored terminal history",
+      profileId: "profile-pwsh",
+      shell: "pwsh",
+      target: { kind: "local", profileId: "profile-pwsh" },
+    });
+    expect(session.terminalPanes[0]?.lines).toEqual([]);
+  });
+
+  it("migrates missing pane targets only for legacy workspace session snapshots", () => {
+    const legacySession = normalizeWorkspaceSessionSnapshot({
+      version: 1,
+      activeTabId: "tab-1",
+      focusedPaneId: "pane-1",
+      terminalPanes: [
+        {
+          id: "pane-1",
+          machineId: "machine-local",
+          mode: "local",
+          profileId: "profile-pwsh",
+          prompt: "PS>",
+          status: "online",
+          title: "Local",
+        },
+      ],
+      terminalTabs: [
+        {
+          id: "tab-1",
+          layout: { paneId: "pane-1", type: "pane" },
+          machineId: "machine-local",
+          title: "Local",
+        },
+      ],
+    });
+    const currentSession = normalizeWorkspaceSessionSnapshot({
+      version: 2,
+      activeTabId: "tab-1",
+      focusedPaneId: "pane-1",
+      terminalPanes: [
+        {
+          id: "pane-1",
+          machineId: "machine-local",
+          mode: "local",
+          profileId: "profile-pwsh",
+          prompt: "PS>",
+          status: "online",
+          title: "Local",
+        },
+      ],
+      terminalTabs: [
+        {
+          id: "tab-1",
+          layout: { paneId: "pane-1", type: "pane" },
+          machineId: "machine-local",
+          title: "Local",
+        },
+      ],
+    });
+
+    expect(legacySession.terminalPanes[0]?.target).toEqual({
+      kind: "local",
+      profileId: "profile-pwsh",
+    });
+    expect(currentSession.terminalPanes[0]?.target).toBeUndefined();
   });
 
   it("keeps append output history bounded and stable for empty chunks", () => {

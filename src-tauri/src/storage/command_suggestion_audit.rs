@@ -15,7 +15,7 @@ use crate::{
             CommandSuggestionAuditEventKind, SuggestionProviderKind,
         },
     },
-    storage::SqliteStore,
+    storage::CommandSqliteStore,
 };
 
 /// 写入 command_suggestion_audit_events 表的结构化数据。
@@ -49,7 +49,7 @@ pub(crate) struct CommandSuggestionAuditEventWrite {
     pub created_at_unix_ms: i64,
 }
 
-impl SqliteStore {
+impl CommandSqliteStore {
     /// 写入一条命令建议审计事件。
     pub(crate) fn insert_command_suggestion_audit_event(
         &self,

@@ -15,9 +15,9 @@ import {
 const commandBlockFoldSummaryClassName =
   "rounded-full border border-[var(--border-subtle)] bg-[var(--surface-overlay)] px-2 py-0.5 text-[11px] font-medium text-zinc-500 shadow-sm backdrop-blur-xl dark:text-zinc-300";
 const commandBlockMenuSurfaceClassName =
-  "kerminal-floating-enter fixed z-[1000] w-40 overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] p-1 text-zinc-900 shadow-2xl shadow-black/20 backdrop-blur-xl dark:text-zinc-100 dark:shadow-black/50";
+  "kerminal-context-menu kerminal-floating-enter fixed z-[1000] w-44";
 const commandBlockMenuItemClassName =
-  "kerminal-focus-ring kerminal-pressable flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-white";
+  "kerminal-context-menu-item";
 
 export type TerminalCommandBlockAction = "copyImage" | "copyText" | "toggle";
 
@@ -235,7 +235,7 @@ function TerminalCommandBlockContextMenu({
         top: position.y,
       }}
     >
-      <div className="space-y-0.5">
+      <div className="kerminal-context-menu-group">
         <button
           aria-label={`复制文本块 ${commandLabel}`}
           className={commandBlockMenuItemClassName}
@@ -244,8 +244,10 @@ function TerminalCommandBlockContextMenu({
           title="复制命令块文本"
           type="button"
         >
-          <Copy className="h-4 w-4 shrink-0 text-zinc-500 dark:text-zinc-400" />
-          <span className="min-w-0 flex-1 truncate">复制文本块</span>
+          <span className="kerminal-context-menu-icon">
+            <Copy />
+          </span>
+          <span className="kerminal-context-menu-label">复制文本块</span>
         </button>
         <button
           aria-label={`复制图片 ${commandLabel}`}
@@ -255,8 +257,10 @@ function TerminalCommandBlockContextMenu({
           title="复制命令块图片"
           type="button"
         >
-          <ImageDown className="h-4 w-4 shrink-0 text-zinc-500 dark:text-zinc-400" />
-          <span className="min-w-0 flex-1 truncate">复制图片</span>
+          <span className="kerminal-context-menu-icon">
+            <ImageDown />
+          </span>
+          <span className="kerminal-context-menu-label">复制图片</span>
         </button>
       </div>
     </div>

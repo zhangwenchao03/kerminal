@@ -8,7 +8,7 @@ import {
   sftpApiMocks,
   sshMachine,
   webviewMocks,
-} from "./SftpToolContent.testSupport";
+} from "./__tests__/support/SftpToolContent.testSupport";
 import { SftpToolContent } from "./SftpToolContent";
 
 describe("SftpToolContent local upload drop observer", () => {

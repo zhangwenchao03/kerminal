@@ -14,7 +14,6 @@ import {
   resetWorkspaceStore,
   useWorkspaceStore,
 } from "../features/workspace/workspaceStore";
-import { WORKSPACE_SESSION_STORAGE_KEY } from "../features/workspace/workspaceSessionStorage";
 import {
   getKerminalShellTestMocks,
   mockElementFromPoint,
@@ -23,7 +22,7 @@ import {
   remoteHostTreeWithPinnedTargetGroup,
   remoteHostTreeWithTargetGroup,
   testSshOptions,
-} from "./KerminalShell.testSupport";
+} from "./__tests__/support/KerminalShell.testSupport";
 import { KerminalShell } from "./KerminalShell";
 
 const mocks = getKerminalShellTestMocks();
@@ -66,6 +65,12 @@ describe("KerminalShell", () => {
     document.documentElement.removeAttribute("lang");
     window.localStorage.clear();
     resetWorkspaceStore();
+    mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockReset();
+    mocks.workspaceSessionApi.saveWorkspaceSessionFile.mockReset();
+    mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockResolvedValue(null);
+    mocks.workspaceSessionApi.saveWorkspaceSessionFile.mockResolvedValue(
+      undefined,
+    );
     mocks.appTitleBar.renderCount = 0;
     mocks.nativeMenuApi.listenNativeMenuActions.mockResolvedValue(
       () => undefined,
@@ -214,10 +219,13 @@ describe("KerminalShell", () => {
     render(<KerminalShell />);
 
     expect(
-      await screen.findByText("光标还没闪，AI 已经开始脑补命令了。"),
+      await screen.findByText("打开终端，或从右侧启动外部 Agent。"),
     ).toBeInTheDocument();
     expect(
       await findExpandedSidebarMachine(/172\.16\.41\.60/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "打开 Agent Launcher" }),
     ).toBeInTheDocument();
     expect(mocks.terminalApi.createTerminalSession).not.toHaveBeenCalled();
   });
@@ -315,18 +323,16 @@ describe("KerminalShell", () => {
     render(<KerminalShell />);
 
     expect(
-      await screen.findByText("光标还没闪，AI 已经开始脑补命令了。"),
+      await screen.findByText("打开终端，或从右侧启动外部 Agent。"),
     ).toBeInTheDocument();
 
     fireEvent(window, new Event("pagehide"));
 
     await waitFor(() => {
-      const savedSession = JSON.parse(
-        window.localStorage.getItem(WORKSPACE_SESSION_STORAGE_KEY) ?? "{}",
-      );
-      expect(savedSession).toEqual(
+      expect(mocks.workspaceSessionApi.saveWorkspaceSessionFile).toHaveBeenCalledWith(
         expect.objectContaining({
-          version: 1,
+          terminalPanes: [],
+          terminalTabs: [],
         }),
       );
     });
@@ -378,17 +384,18 @@ describe("KerminalShell", () => {
     expect(mocks.appTitleBar.renderCount).toBe(chromeRenderCountAfterOpen);
 
     fireEvent(window, new Event("pagehide"));
-    const savedSession = JSON.parse(
-      window.localStorage.getItem(WORKSPACE_SESSION_STORAGE_KEY) ?? "{}",
-    );
-    expect(savedSession.terminalPanes).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: paneId,
-          outputHistory: "latest shell-isolated output",
-        }),
-      ]),
-    );
+    await waitFor(() => {
+      const calls = mocks.workspaceSessionApi.saveWorkspaceSessionFile.mock.calls;
+      const savedSession = calls[calls.length - 1]?.[0];
+      expect(savedSession.terminalPanes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: paneId,
+            outputHistory: "latest shell-isolated output",
+          }),
+        ]),
+      );
+    });
   });
 
   it("does not list Docker containers when an SSH host is selected", async () => {
@@ -500,15 +507,22 @@ describe("KerminalShell", () => {
   it("keeps the expanded left title strip available for native window dragging", () => {
     const { container } = render(<KerminalShell />);
 
-    const leftTitleStrip = [
+    const dragRegions = [
       ...container.querySelectorAll("[data-tauri-drag-region]"),
-    ].find((element) => {
+    ];
+    const leftTitleStrip = dragRegions.find((element) => {
       const className = element.getAttribute("class") ?? "";
       return className.includes("col-[1/2]") && className.includes("row-[1/2]");
+    });
+    const rightTitleStrip = dragRegions.find((element) => {
+      const className = element.getAttribute("class") ?? "";
+      return className.includes("col-[2/6]") && className.includes("row-[1/2]");
     });
 
     expect(leftTitleStrip).toBeInTheDocument();
     expect(leftTitleStrip).not.toHaveClass("border-r");
+    expect(rightTitleStrip).toBeInTheDocument();
+    expect(rightTitleStrip).not.toHaveClass("border-r");
   });
 
   it("keeps the overlaid title bar transparent so terminal tabs stay framed", () => {
@@ -528,38 +542,61 @@ describe("KerminalShell", () => {
     const user = userEvent.setup();
     const { container } = render(<KerminalShell />);
 
-    expect(
-      await screen.findByText("光标还没闪，AI 已经开始脑补命令了。"),
-    ).toBeInTheDocument();
-
-    const workspace = screen.getByRole("main", { name: "终端工作区" });
-    expect(workspace.parentElement).toHaveClass("col-[3/6]");
+    const workspace = await screen.findByRole("main", { name: "终端工作区" });
+    const shell = container.firstElementChild as HTMLElement;
+    expect(shell).toHaveStyle({
+      gridTemplateRows: "36px minmax(0, 1fr)",
+    });
+    expect(workspace.parentElement).toHaveStyle({ gridColumn: "3 / 6" });
 
     const content = container.querySelector(
       "[data-terminal-workspace-content]",
     ) as HTMLElement;
-    expect(content).toHaveStyle({ marginRight: "64px" });
+    expect(content).toHaveStyle({ marginRight: "44px" });
 
     await user.click(screen.getByRole("button", { name: "打开 日志" }));
 
     expect(
       screen.getByRole("complementary", { name: "工具面板" }),
     ).toHaveAttribute("aria-expanded", "true");
+    expect(workspace.parentElement).toHaveStyle({ gridColumn: "3 / 6" });
     expect(screen.getByLabelText("终端标签栏").parentElement).not.toHaveStyle({
-      marginRight: "468px",
+      marginRight: "308px",
     });
-    expect(content).toHaveStyle({ marginRight: "468px" });
+    expect(content).toHaveStyle({ marginRight: "308px" });
   });
 
-  it("matches the expanded left sidebar resize column to the terminal surface", () => {
+  it("allows the right tool panel to expand to the wider resize limit", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<KerminalShell />);
+
+    expect(
+      await screen.findByText("打开终端，或从右侧启动外部 Agent。"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "打开 日志" }));
+
+    const rightSeparator = screen.getByRole("separator", {
+      name: "调整工具面板宽度",
+    });
+    for (let index = 0; index < 12; index += 1) {
+      fireEvent.keyDown(rightSeparator, { key: "ArrowLeft", shiftKey: true });
+    }
+
+    const shell = container.firstElementChild as HTMLElement;
+    expect(shell.style.gridTemplateColumns).toContain("620px");
+  });
+
+  it("matches the expanded left sidebar resize column to the shell glass surface", () => {
     render(<KerminalShell />);
 
     const leftSeparator = screen.getByRole("separator", {
       name: "调整主机侧边栏宽度",
     });
 
-    expect(leftSeparator).toHaveClass("kerminal-terminal-surface");
+    expect(leftSeparator).toHaveClass("kerminal-shell-separator");
     expect(leftSeparator).not.toHaveClass("kerminal-material-nav");
+    expect(leftSeparator).not.toHaveClass("kerminal-terminal-surface");
   });
 
   it("applies appearance language and workspace background settings", async () => {
@@ -588,13 +625,26 @@ describe("KerminalShell", () => {
     });
     expect(frame).toHaveAttribute("lang", "en-US");
     expect(frame.style.backgroundImage).toContain("linear-gradient");
+    expect(frame.style.backgroundImage).toContain("radial-gradient");
     expect(frame.style.backgroundColor).toBe("rgba(245, 245, 247, 0.72)");
+    expect(frame.style.getPropertyValue("--app-background-veil-opacity")).toBe(
+      "0.532",
+    );
+    expect(frame.style.backgroundImage).toContain(
+      "var(--app-background-veil-opacity)",
+    );
     expect(frame.style.getPropertyValue("--app-window-opacity")).toBe("0.72");
     expect(frame.style.getPropertyValue("--app-nav-surface-opacity")).toBe(
-      "0.4896",
+      "0.7336",
+    );
+    expect(frame.style.getPropertyValue("--app-workspace-surface-opacity")).toBe(
+      "0.7336",
+    );
+    expect(frame.style.getPropertyValue("--app-terminal-header-opacity")).toBe(
+      "0.7452",
     );
     expect(frame.style.getPropertyValue("--app-terminal-surface-opacity")).toBe(
-      "0.5616",
+      "0.6952",
     );
     expect(frame.style.backgroundImage).toContain(
       "file:///C:/Users/dev/Pictures/bg.png",
@@ -604,38 +654,34 @@ describe("KerminalShell", () => {
   });
 
   it("restores saved terminal tabs from the previous workspace session", async () => {
-    window.localStorage.setItem(
-      WORKSPACE_SESSION_STORAGE_KEY,
-      JSON.stringify({
-        activeTabId: "tab-local-3",
-        focusedPaneId: "pane-local-3",
-        selectedMachineId: "machine-local-3",
-        terminalPanes: [
-          {
-            args: ["-NoLogo"],
-            cwd: "C:\\\\dev\\\\kerminal",
-            env: { TERM: "xterm-256color" },
-            id: "pane-local-3",
-            lines: ["old output"],
-            machineId: "machine-local-3",
-            mode: "local",
-            prompt: "PS>",
-            shell: "pwsh.exe",
-            status: "online",
-            title: "恢复会话",
-          },
-        ],
-        terminalTabs: [
-          {
-            id: "tab-local-3",
-            layout: { type: "pane", paneId: "pane-local-3" },
-            machineId: "machine-local-3",
-            title: "恢复会话",
-          },
-        ],
-        version: 1,
-      }),
-    );
+    mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockResolvedValue({
+      activeTabId: "tab-local-3",
+      focusedPaneId: "pane-local-3",
+      selectedMachineId: "machine-local-3",
+      terminalPanes: [
+        {
+          args: ["-NoLogo"],
+          cwd: "C:\\\\dev\\\\kerminal",
+          env: { TERM: "xterm-256color" },
+          id: "pane-local-3",
+          lines: ["old output"],
+          machineId: "machine-local-3",
+          mode: "local",
+          prompt: "PS>",
+          shell: "pwsh.exe",
+          status: "online",
+          title: "恢复会话",
+        },
+      ],
+      terminalTabs: [
+        {
+          id: "tab-local-3",
+          layout: { type: "pane", paneId: "pane-local-3" },
+          machineId: "machine-local-3",
+          title: "恢复会话",
+        },
+      ],
+    });
 
     render(<KerminalShell />);
 
@@ -657,55 +703,103 @@ describe("KerminalShell", () => {
     });
   });
 
+  it("restores saved left sidebar layout from the previous workspace session", async () => {
+    mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockResolvedValue({
+      activeTabId: "",
+      focusedPaneId: "",
+      removedSidebarMachineIds: [],
+      selectedMachineId: "",
+      shellLayout: {
+        collapsedMachineGroupIds: ["30fbc381-2884-4b75-9f88-0e28f31ca8b0"],
+        leftPanelCollapsed: false,
+        leftPanelWidth: 312,
+        toolPanelWidth: 444,
+      },
+      sidebarMachines: [],
+      terminalPanes: [],
+      terminalTabGroupPreferences: {},
+      terminalTabs: [],
+    });
+
+    const { container } = render(<KerminalShell />);
+    const shell = container.firstElementChild as HTMLElement;
+
+    await waitFor(() => {
+      expect(shell).toHaveStyle({
+        gridTemplateColumns: "312px 8px minmax(0, 1fr) 0px 44px",
+      });
+    });
+    const groupButton = await screen.findByRole("button", { name: /bwy/ });
+    expect(groupButton).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("button", { name: /172\.16\.41\.60/ }),
+    ).not.toBeInTheDocument();
+
+    fireEvent(window, new Event("pagehide"));
+
+    await waitFor(() => {
+      expect(
+        mocks.workspaceSessionApi.saveWorkspaceSessionFile,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          shellLayout: {
+            collapsedMachineGroupIds: [
+              "30fbc381-2884-4b75-9f88-0e28f31ca8b0",
+            ],
+            leftPanelCollapsed: false,
+            leftPanelWidth: 312,
+            toolPanelWidth: 444,
+          },
+        }),
+      );
+    });
+  });
+
   it("keeps restored terminal tabs mounted when switching tabs", async () => {
     const user = userEvent.setup();
-    window.localStorage.setItem(
-      WORKSPACE_SESSION_STORAGE_KEY,
-      JSON.stringify({
-        activeTabId: "tab-local-1",
-        focusedPaneId: "pane-local-1",
-        selectedMachineId: "machine-local-1",
-        terminalPanes: [
-          {
-            id: "pane-local-1",
-            lines: [],
-            machineId: "machine-local-1",
-            mode: "local",
-            outputHistory: "first history\r\n",
-            prompt: "PS>",
-            shell: "pwsh.exe",
-            status: "online",
-            title: "第一恢复会话",
-          },
-          {
-            id: "pane-local-2",
-            lines: [],
-            machineId: "machine-local-2",
-            mode: "local",
-            outputHistory: "second history\r\n",
-            prompt: "PS>",
-            shell: "pwsh.exe",
-            status: "online",
-            title: "第二恢复会话",
-          },
-        ],
-        terminalTabs: [
-          {
-            id: "tab-local-1",
-            layout: { type: "pane", paneId: "pane-local-1" },
-            machineId: "machine-local-1",
-            title: "第一恢复会话",
-          },
-          {
-            id: "tab-local-2",
-            layout: { type: "pane", paneId: "pane-local-2" },
-            machineId: "machine-local-2",
-            title: "第二恢复会话",
-          },
-        ],
-        version: 1,
-      }),
-    );
+    mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockResolvedValue({
+      activeTabId: "tab-local-1",
+      focusedPaneId: "pane-local-1",
+      selectedMachineId: "machine-local-1",
+      terminalPanes: [
+        {
+          id: "pane-local-1",
+          lines: [],
+          machineId: "machine-local-1",
+          mode: "local",
+          outputHistory: "first history\r\n",
+          prompt: "PS>",
+          shell: "pwsh.exe",
+          status: "online",
+          title: "第一恢复会话",
+        },
+        {
+          id: "pane-local-2",
+          lines: [],
+          machineId: "machine-local-2",
+          mode: "local",
+          outputHistory: "second history\r\n",
+          prompt: "PS>",
+          shell: "pwsh.exe",
+          status: "online",
+          title: "第二恢复会话",
+        },
+      ],
+      terminalTabs: [
+        {
+          id: "tab-local-1",
+          layout: { type: "pane", paneId: "pane-local-1" },
+          machineId: "machine-local-1",
+          title: "第一恢复会话",
+        },
+        {
+          id: "tab-local-2",
+          layout: { type: "pane", paneId: "pane-local-2" },
+          machineId: "machine-local-2",
+          title: "第二恢复会话",
+        },
+      ],
+    });
 
     render(<KerminalShell />);
 

@@ -1,19 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { CSSProperties, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RemoteWorkspaceEditor } from "./RemoteWorkspaceEditor";
-
-type MockTreeNode = {
-  children?: MockTreeNode[];
-  error: string | null;
-  id: string;
-  kind: string;
-  loaded: boolean;
-  loading: boolean;
-  name: string;
-  path: string;
-};
 
 const sftpApiMocks = vi.hoisted(() => ({
   listSftpDirectory: vi.fn(),
@@ -27,8 +15,8 @@ const containerFilesApiMocks = vi.hoisted(() => ({
   writeDockerContainerTextFile: vi.fn(),
 }));
 
-vi.mock("@monaco-editor/react", () => ({
-  default: ({
+vi.mock("./MonacoTextEditor", () => ({
+  MonacoTextEditor: ({
     beforeMount,
     onChange,
     onMount,
@@ -62,52 +50,6 @@ vi.mock("@monaco-editor/react", () => ({
     );
   },
 }));
-
-vi.mock("../../lib/monacoSetup", () => ({}));
-
-vi.mock("react-arborist", () => {
-  const renderNodes = (
-    nodes: MockTreeNode[],
-    children: (props: {
-      node: {
-        data: MockTreeNode;
-        isOpen: boolean;
-        toggle: () => void;
-      };
-      style: CSSProperties;
-    }) => ReactNode,
-  ): ReactNode =>
-    nodes.map((node) => (
-      <div key={node.id}>
-        {children({
-          node: {
-            data: node,
-            isOpen: true,
-            toggle: vi.fn(),
-          },
-          style: {},
-        })}
-        {node.children ? renderNodes(node.children, children) : null}
-      </div>
-    ));
-
-  return {
-    Tree: ({
-      children,
-      data,
-    }: {
-      children: (props: {
-        node: {
-          data: MockTreeNode;
-          isOpen: boolean;
-          toggle: () => void;
-        };
-        style: CSSProperties;
-      }) => ReactNode;
-      data: MockTreeNode[];
-    }) => <div role="tree">{renderNodes(data, children)}</div>,
-  };
-});
 
 vi.mock("../../lib/sftpApi", () => ({
   listSftpDirectory: (...args: unknown[]) =>
@@ -280,8 +222,10 @@ describe("RemoteWorkspaceEditor", () => {
       />,
     );
 
-    await user.click(await screen.findByRole("button", { name: "etc" }));
-    await user.click(await screen.findByRole("button", { name: "app.conf" }));
+    await user.click(await screen.findByRole("treeitem", { name: "etc" }));
+    await user.click(
+      await screen.findByRole("treeitem", { name: "app.conf" }),
+    );
     const editor = await screen.findByLabelText("Monaco 编辑器");
     await user.clear(editor);
     await user.type(editor, "port=9090\n");
@@ -326,7 +270,7 @@ describe("RemoteWorkspaceEditor", () => {
     );
 
     await user.click(
-      await screen.findByRole("button", { name: "package.json" }),
+      await screen.findByRole("treeitem", { name: "package.json" }),
     );
     const editor = await screen.findByLabelText("Monaco 编辑器");
     await user.clear(editor);
@@ -378,8 +322,10 @@ describe("RemoteWorkspaceEditor", () => {
 
     render(<RemoteWorkspaceEditor hostId="prod-api" rootPath="/" />);
 
-    await user.click(await screen.findByRole("button", { name: "etc" }));
-    await user.click(await screen.findByRole("button", { name: "app.conf" }));
+    await user.click(await screen.findByRole("treeitem", { name: "etc" }));
+    await user.click(
+      await screen.findByRole("treeitem", { name: "app.conf" }),
+    );
     const editor = await screen.findByLabelText("Monaco 编辑器");
     await user.clear(editor);
     await user.type(editor, "port=9090\n");
@@ -403,8 +349,10 @@ describe("RemoteWorkspaceEditor", () => {
 
     render(<RemoteWorkspaceEditor hostId="prod-api" rootPath="/" />);
 
-    await user.click(await screen.findByRole("button", { name: "etc" }));
-    await user.click(await screen.findByRole("button", { name: "app.conf" }));
+    await user.click(await screen.findByRole("treeitem", { name: "etc" }));
+    await user.click(
+      await screen.findByRole("treeitem", { name: "app.conf" }),
+    );
     const editor = await screen.findByLabelText("Monaco 编辑器");
     await user.clear(editor);
     await user.type(editor, "port=9090\n");

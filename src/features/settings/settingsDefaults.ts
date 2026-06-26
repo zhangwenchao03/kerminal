@@ -1,13 +1,12 @@
 import type {
-  AiSecuritySettings,
   AppearanceSettings,
   AppSettings,
+  DesktopNotificationSettings,
   KeybindingSetting,
   SftpPerformanceSettings,
   TerminalAppearance,
 } from "./settingsModel";
 import {
-  AI_CONTEXT_OUTPUT_BYTES_DEFAULT,
   SFTP_GLOBAL_TRANSFERS_DEFAULT,
   SFTP_HOST_TRANSFERS_DEFAULT,
   SFTP_PACKET_BYTES_DEFAULT,
@@ -16,8 +15,6 @@ import {
   TERMINAL_INLINE_SUGGESTION_AUDIT_RETENTION_DAYS_DEFAULT,
   TERMINAL_INLINE_SUGGESTION_FEEDBACK_RETENTION_DAYS_DEFAULT,
 } from "./settingsLimits";
-
-export const DEFAULT_CUSTOM_SKILLS_DIRECTORY = "~/.kerminal/skills";
 
 export const defaultTerminalAppearance: TerminalAppearance = {
   autoReconnect: true,
@@ -35,7 +32,6 @@ export const defaultTerminalAppearance: TerminalAppearance = {
     enabled: true,
     productionHostPolicy: "restricted",
     providers: {
-      ai: false,
       git: true,
       history: true,
       remoteCommand: true,
@@ -65,12 +61,19 @@ export const defaultAppearanceSettings: AppearanceSettings = {
   windowOpacity: 100,
 };
 
+export const defaultDesktopNotificationSettings: DesktopNotificationSettings = {
+  backgroundOnly: true,
+  enabled: false,
+  importantOnly: false,
+  minDurationMs: 10_000,
+  throttleMs: 30_000,
+};
+
 export const defaultKeybindings: KeybindingSetting[] = [
   {
     action: "settings.open",
     binding: "Ctrl+Shift+T",
-    description:
-      "参考 IntelliJ IDEA 的设置入口：Windows 使用 Ctrl+Alt+S，macOS 使用 Cmd+,。",
+    description: "打开设置。",
     editable: true,
     label: "打开设置",
     macBinding: "Cmd+,",
@@ -80,8 +83,7 @@ export const defaultKeybindings: KeybindingSetting[] = [
   {
     action: "settings.keybindings",
     binding: "Ctrl+Shift+A",
-    description:
-      "参考 IDEA 的 Find Action 习惯，当前直接打开快捷键与动作列表。",
+    description: "打开快捷键与动作列表。",
     editable: true,
     label: "查看快捷键与动作",
     macBinding: "Cmd+Shift+A",
@@ -91,8 +93,7 @@ export const defaultKeybindings: KeybindingSetting[] = [
   {
     action: "terminal.focus",
     binding: "Alt+F12",
-    description:
-      "参考 IDEA Terminal 工具窗口；显示终端工作区并收起右侧工具面板。",
+    description: "显示终端工作区并收起右栏。",
     editable: true,
     label: "回到终端",
     macBinding: "Option+F12",
@@ -102,7 +103,7 @@ export const defaultKeybindings: KeybindingSetting[] = [
   {
     action: "terminal.newTab",
     binding: "Ctrl+Shift+T",
-    description: "新建本地终端 tab，保留终端应用常见的新建标签习惯。",
+    description: "新建本地终端 tab。",
     editable: true,
     label: "新建本地终端",
     macBinding: "Cmd+Shift+T",
@@ -112,7 +113,7 @@ export const defaultKeybindings: KeybindingSetting[] = [
   {
     action: "terminal.closeTab",
     binding: "Ctrl+F4",
-    description: "关闭当前终端 tab，尽量贴近 IDEA 关闭编辑器 tab 的习惯。",
+    description: "关闭当前终端 tab。",
     editable: true,
     label: "关闭当前终端 tab",
     macBinding: "Cmd+W",
@@ -122,7 +123,7 @@ export const defaultKeybindings: KeybindingSetting[] = [
   {
     action: "terminal.closePane",
     binding: "Ctrl+Shift+W",
-    description: "关闭当前分屏；只有多分屏时生效，避免误关最后一个终端。",
+    description: "关闭当前分屏，多分屏时生效。",
     editable: true,
     label: "关闭当前分屏",
     macBinding: "Cmd+Shift+W",
@@ -132,8 +133,7 @@ export const defaultKeybindings: KeybindingSetting[] = [
   {
     action: "terminal.splitHorizontal",
     binding: "Ctrl+Alt+Right",
-    description:
-      "在当前终端右侧创建分屏，沿用 IDEA 风格的 Ctrl/Option 方向键组合。",
+    description: "在当前终端右侧创建分屏。",
     editable: true,
     label: "左右分屏",
     macBinding: "Ctrl+Option+Right",
@@ -143,7 +143,7 @@ export const defaultKeybindings: KeybindingSetting[] = [
   {
     action: "terminal.splitVertical",
     binding: "Ctrl+Alt+Down",
-    description: "在当前终端下方创建分屏，与左右分屏形成方向键配对。",
+    description: "在当前终端下方创建分屏。",
     editable: true,
     label: "上下分屏",
     macBinding: "Ctrl+Option+Down",
@@ -153,8 +153,7 @@ export const defaultKeybindings: KeybindingSetting[] = [
   {
     action: "terminal.previousTab",
     binding: "Alt+Left",
-    description:
-      "切到左侧终端 tab，参考 IDEA 在 tab/位置之间切换的方向键心智。",
+    description: "切到左侧终端 tab。",
     editable: true,
     label: "上一个终端 tab",
     macBinding: "Cmd+Shift+[",
@@ -164,7 +163,7 @@ export const defaultKeybindings: KeybindingSetting[] = [
   {
     action: "terminal.nextTab",
     binding: "Alt+Right",
-    description: "切到右侧终端 tab，和上一个 tab 保持成对操作。",
+    description: "切到右侧终端 tab。",
     editable: true,
     label: "下一个终端 tab",
     macBinding: "Cmd+Shift+]",
@@ -172,12 +171,11 @@ export const defaultKeybindings: KeybindingSetting[] = [
     windowsBinding: "Alt+Right",
   },
   {
-    action: "tool.ai",
+    action: "tool.agentLauncher",
     binding: "Alt+2",
-    description:
-      "打开 Kerminal Agent 工具窗口，参考 IDEA Alt/Cmd+数字切换工具窗口。",
+    description: "打开 Agent Launcher。",
     editable: true,
-    label: "打开 Kerminal Agent",
+    label: "打开 Agent Launcher",
     macBinding: "Cmd+2",
     scope: "global",
     windowsBinding: "Alt+2",
@@ -185,7 +183,7 @@ export const defaultKeybindings: KeybindingSetting[] = [
   {
     action: "tool.system",
     binding: "Alt+3",
-    description: "打开系统信息工具窗口，使用工具窗口编号快速切换。",
+    description: "打开系统信息。",
     editable: true,
     label: "打开系统信息",
     macBinding: "Cmd+3",
@@ -195,7 +193,7 @@ export const defaultKeybindings: KeybindingSetting[] = [
   {
     action: "tool.sftp",
     binding: "Alt+4",
-    description: "打开 SFTP 工具窗口，便于在终端和文件浏览之间切换。",
+    description: "打开 SFTP。",
     editable: true,
     label: "打开 SFTP",
     macBinding: "Cmd+4",
@@ -205,7 +203,7 @@ export const defaultKeybindings: KeybindingSetting[] = [
   {
     action: "tool.ports",
     binding: "Alt+5",
-    description: "打开端口转发工具窗口。",
+    description: "打开端口转发。",
     editable: true,
     label: "打开端口转发",
     macBinding: "Cmd+5",
@@ -215,7 +213,7 @@ export const defaultKeybindings: KeybindingSetting[] = [
   {
     action: "tool.snippets",
     binding: "Alt+6",
-    description: "打开脚本片段工具窗口。",
+    description: "打开脚本片段。",
     editable: true,
     label: "打开脚本片段",
     macBinding: "Cmd+6",
@@ -225,7 +223,7 @@ export const defaultKeybindings: KeybindingSetting[] = [
   {
     action: "tool.logs",
     binding: "Alt+7",
-    description: "打开日志工具窗口，快速查看会话和 AI 审计记录。",
+    description: "打开日志和审计记录。",
     editable: true,
     label: "打开日志",
     macBinding: "Cmd+7",
@@ -233,27 +231,6 @@ export const defaultKeybindings: KeybindingSetting[] = [
     windowsBinding: "Alt+7",
   },
 ];
-
-export const defaultAiSecuritySettings: AiSecuritySettings = {
-  allowDestructiveTools: false,
-  commandApprovalPolicy: "risky",
-  commandTimeoutSeconds: 30,
-  contextMaxOutputBytes: AI_CONTEXT_OUTPUT_BYTES_DEFAULT,
-  customInstructions: "",
-  includeCommandHistory: false,
-  mcp: {
-    servers: [],
-    skillDirectories: [
-      {
-        enabled: true,
-        id: "user-skills",
-        path: DEFAULT_CUSTOM_SKILLS_DIRECTORY,
-      },
-    ],
-  },
-  requireRemoteApproval: true,
-  terminalTailLines: 50,
-};
 
 export const defaultSftpPerformanceSettings: SftpPerformanceSettings = {
   globalTransfers: SFTP_GLOBAL_TRANSFERS_DEFAULT,
@@ -264,8 +241,8 @@ export const defaultSftpPerformanceSettings: SftpPerformanceSettings = {
 };
 
 export const defaultAppSettings: AppSettings = {
-  ai: defaultAiSecuritySettings,
   appearance: defaultAppearanceSettings,
+  desktopNotifications: defaultDesktopNotificationSettings,
   interfaceDensity: "comfortable",
   keybindings: defaultKeybindings,
   sftp: defaultSftpPerformanceSettings,

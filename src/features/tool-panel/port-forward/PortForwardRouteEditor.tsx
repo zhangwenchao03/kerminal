@@ -254,9 +254,9 @@ export function ExposureWarning({
       <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
       <div>
         {side === "remote"
-          ? `主机监听 ${bindHost} 会扩大暴露范围；远端 sshd 需要 GatewayPorts clientspecified/yes，生产主机还要确认防火墙和安全组。`
-          : `本机监听 ${bindHost} 会允许局域网或其他接口访问，请确认只暴露给可信网络。`}
-        {production ? " 当前是生产主机，建议保持 loopback。" : null}
+          ? `主机监听 ${bindHost} 会扩大暴露范围；需确认 GatewayPorts 和防火墙。`
+          : `本机监听 ${bindHost} 会对外暴露，请确认可信网络。`}
+        {production ? " 生产主机建议保持 loopback。" : null}
       </div>
     </div>
   );

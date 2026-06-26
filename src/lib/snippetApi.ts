@@ -58,7 +58,7 @@ const browserPreviewSnippets = new Map<string, CommandSnippet>(
     }),
     previewSnippet({
       command: "journalctl -u app.service -n 200 --no-pager",
-      description: "读取 systemd 服务最近日志。",
+      description: "读取服务最近日志。",
       id: "snippet-preview-service-log",
       scope: "ssh",
       tags: ["ssh", "logs"],

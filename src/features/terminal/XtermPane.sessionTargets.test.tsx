@@ -3,7 +3,7 @@ import { defaultAppSettings } from "../settings/settingsModel";
 import { describe, expect, it, vi } from "vitest";
 import {
   mocks,
-} from "./XtermPane.testSupport";
+} from "./__tests__/support/XtermPane.testSupport";
 import { XtermPane, collectCurrentDirOscSequences } from "./XtermPane";
 
 describe("XtermPane session targets and appearance", () => {
@@ -32,6 +32,11 @@ describe("XtermPane session targets and appearance", () => {
   });
 
   it("collects current directory OSC 1337 sequences from terminal output", () => {
+    expect(collectCurrentDirOscSequences("", "plain output")).toEqual({
+      buffer: "",
+      paths: [],
+    });
+
     let state = collectCurrentDirOscSequences(
       "",
       "prompt \u001b]1337;CurrentDir=/srv/app\u0007$ ",
@@ -57,9 +62,20 @@ describe("XtermPane session targets and appearance", () => {
       "\u001b]1337;CurrentDir=relative/path\u0007",
     );
     expect(state).toEqual({ buffer: "", paths: [] });
+
+    state = collectCurrentDirOscSequences("", "\r\nroot@pkuai01:/dev# ");
+    expect(state).toEqual({ buffer: "", paths: ["/dev"] });
+
+    state = collectCurrentDirOscSequences("", "\r\nroot@pkuai01:/de");
+    expect(state.paths).toEqual([]);
+    state = collectCurrentDirOscSequences(state.buffer, "v# ");
+    expect(state).toEqual({ buffer: "", paths: ["/dev"] });
+
+    state = collectCurrentDirOscSequences("", "\r\nroot@pkuai01:~# ");
+    expect(state).toEqual({ buffer: "", paths: [] });
   });
 
-  it("reports SSH cwd changes from OSC output sequences", async () => {
+  it("reports SSH cwd changes from OSC output sequences and shell prompts", async () => {
     const onCurrentCwdChange = vi.fn();
 
     render(
@@ -91,6 +107,13 @@ describe("XtermPane session targets and appearance", () => {
       sessionId: "ssh-session-1",
     });
     expect(onCurrentCwdChange).toHaveBeenLastCalledWith("/srv/app");
+
+    mocks.getLatestOutputHandler()?.({
+      data: "\r\nroot@pkuai01:/dev# ",
+      kind: "data",
+      sessionId: "ssh-session-1",
+    });
+    expect(onCurrentCwdChange).toHaveBeenLastCalledWith("/dev");
   });
 
   it("starts an SSH terminal session when a remote host id is provided", async () => {
@@ -119,6 +142,27 @@ describe("XtermPane session targets and appearance", () => {
     await waitFor(() => {
       expect(mocks.terminalInstances[0].write).toHaveBeenCalledWith(
         "hello from ssh",
+      );
+    });
+  });
+
+  it("passes the tracked cwd when starting an SSH split terminal", async () => {
+    render(
+      <XtermPane
+        currentCwd="/dev"
+        focused
+        paneId="pane-ssh"
+        remoteHostId="host-lab"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="lab server"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mocks.api.createSshTerminalSession).toHaveBeenCalledWith(
+        { cols: 80, cwd: "/dev", hostId: "host-lab", rows: 24 },
+        expect.any(Function),
       );
     });
   });

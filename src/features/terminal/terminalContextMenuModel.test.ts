@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  resolveTerminalContextMenuPosition,
   splitDirectionForMenuAction,
   terminalContextMenuGroups,
   type TerminalContextMenuAction,
@@ -87,6 +88,47 @@ describe("terminalContextMenuModel", () => {
         expect.objectContaining({ action: "reconnect", disabled: true }),
       ]),
     );
+  });
+
+  it("omits split actions when the host surface cannot split panes", () => {
+    expect(flattenActions()).toEqual(
+      expect.arrayContaining(["splitHorizontal", "splitVertical"]),
+    );
+
+    expect(
+      terminalContextMenuGroups({ canCopy: true, canSplit: false })
+        .flat()
+        .map((item) => item.action),
+    ).not.toEqual(expect.arrayContaining(["splitHorizontal", "splitVertical"]));
+  });
+
+  it("clamps menu position with the measured menu size", () => {
+    expect(
+      resolveTerminalContextMenuPosition(
+        { x: 420, y: 320 },
+        {
+          menuSize: { height: 304, width: 224 },
+          viewport: { height: 640, width: 800 },
+        },
+      ),
+    ).toEqual({ x: 420, y: 320 });
+
+    expect(
+      resolveTerminalContextMenuPosition(
+        { x: 780, y: 600 },
+        {
+          menuSize: { height: 304, width: 224 },
+          viewport: { height: 640, width: 800 },
+        },
+      ),
+    ).toEqual({ x: 568, y: 328 });
+  });
+
+  it("keeps raw coordinates until menu dimensions are available", () => {
+    expect(resolveTerminalContextMenuPosition({ x: 120, y: 80 })).toEqual({
+      x: 120,
+      y: 80,
+    });
   });
 
   it("maps only split actions to workspace split directions", () => {

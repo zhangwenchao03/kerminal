@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   mocks,
   terminalAppearanceWithInlineSuggestion,
-} from "./XtermPane.testSupport";
+} from "./__tests__/support/XtermPane.testSupport";
 import { XtermPane } from "./XtermPane";
 
 describe("XtermPane remote suggestions", () => {

@@ -4,8 +4,8 @@
 
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
-    tray::TrayIconBuilder,
-    App, AppHandle, Manager, Runtime,
+    tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
+    App, AppHandle, Manager, Runtime, WindowEvent,
 };
 
 use crate::app_menu::MAIN_WINDOW_LABEL;
@@ -62,11 +62,41 @@ pub const fn tray_menu_actions() -> &'static [TrayMenuAction] {
 /// 设置主窗口运行时图标，降低 dev 二进制或平台图标缓存带来的旧图标概率。
 pub fn apply_default_window_icon<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
     let Some(icon) = app.default_window_icon().cloned() else {
+        tauri_plugin_log::log::warn!(
+            target: "desktop.window",
+            "default window icon is unavailable"
+        );
         return Ok(());
     };
 
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         window.set_icon(icon)?;
+        tauri_plugin_log::log::info!(
+            target: "desktop.window",
+            "default window icon applied"
+        );
+    }
+    Ok(())
+}
+
+/// 将主窗口关闭请求改为隐藏到系统托盘。
+pub fn setup_close_to_tray<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        let window_to_hide = window.clone();
+        window.on_window_event(move |event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                tauri_plugin_log::log::info!(
+                    target: "desktop.window",
+                    "main window close intercepted; hiding to tray"
+                );
+                api.prevent_close();
+                let _ = window_to_hide.hide();
+            }
+        });
+        tauri_plugin_log::log::info!(
+            target: "desktop.window",
+            "close-to-tray handler installed"
+        );
     }
     Ok(())
 }
@@ -101,6 +131,11 @@ pub fn setup_app_tray<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
         .tooltip("Kerminal")
         .menu(&menu)
         .show_menu_on_left_click(false)
+        .on_tray_icon_event(|tray, event| {
+            if tray_icon_event_should_show_window(&event) {
+                show_main_window(tray.app_handle());
+            }
+        })
         .on_menu_event(|app, event| {
             if let Some(action) = TrayMenuAction::from_menu_id(event.id().as_ref()) {
                 handle_tray_menu_action(app, action);
@@ -112,23 +147,61 @@ pub fn setup_app_tray<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
     }
 
     builder.build(app)?;
+    tauri_plugin_log::log::info!(
+        target: "desktop.lifecycle",
+        "system tray installed"
+    );
     Ok(())
 }
 
 fn handle_tray_menu_action<R: Runtime>(app: &AppHandle<R>, action: TrayMenuAction) {
     match action {
-        TrayMenuAction::Show => {
-            if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-                let _ = window.show();
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-            }
-        }
+        TrayMenuAction::Show => show_main_window(app),
         TrayMenuAction::Hide => {
             if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+                tauri_plugin_log::log::info!(
+                    target: "desktop.window",
+                    "tray menu requested main window hide"
+                );
                 let _ = window.hide();
             }
         }
-        TrayMenuAction::Quit => app.exit(0),
+        TrayMenuAction::Quit => {
+            tauri_plugin_log::log::info!(
+                target: "desktop.lifecycle",
+                "tray menu requested app exit"
+            );
+            app.exit(0);
+        }
+    }
+}
+
+fn tray_icon_event_should_show_window(event: &TrayIconEvent) -> bool {
+    matches!(
+        event,
+        TrayIconEvent::Click {
+            button: MouseButton::Left,
+            ..
+        } | TrayIconEvent::DoubleClick {
+            button: MouseButton::Left,
+            ..
+        }
+    )
+}
+
+pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        tauri_plugin_log::log::info!(
+            target: "desktop.window",
+            "main window show and focus requested"
+        );
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    } else {
+        tauri_plugin_log::log::warn!(
+            target: "desktop.window",
+            "main window show requested but window was unavailable"
+        );
     }
 }

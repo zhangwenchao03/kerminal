@@ -58,6 +58,7 @@ async fn loopback_remote_probe_handles_slow_large_outputs_with_cache_limits() {
             &harness.storage,
             &harness.paths,
             &harness.ssh_commands,
+            harness.inline_settings(),
             CommandSuggestionRemoteCommandRefreshRequest {
                 host_id: remote_host.id.clone(),
                 max_entries: Some(64),
@@ -74,6 +75,7 @@ async fn loopback_remote_probe_handles_slow_large_outputs_with_cache_limits() {
             &harness.storage,
             &harness.paths,
             &harness.sftp,
+            harness.inline_settings(),
             CommandSuggestionRemotePathRefreshRequest {
                 host_id: remote_host.id.clone(),
                 max_entries: Some(32),
@@ -91,6 +93,7 @@ async fn loopback_remote_probe_handles_slow_large_outputs_with_cache_limits() {
             &harness.storage,
             &harness.paths,
             &harness.ssh_commands,
+            harness.inline_settings(),
             CommandSuggestionGitRefreshRequest {
                 cwd: config.cwd.clone(),
                 host_id: remote_host.id.clone(),
@@ -195,6 +198,7 @@ async fn loopback_refresh_failure_keeps_existing_provider_cache_available() {
             &harness.storage,
             &harness.paths,
             &harness.ssh_commands,
+            harness.inline_settings(),
             CommandSuggestionRemoteCommandRefreshRequest {
                 host_id: remote_host.id.clone(),
                 max_entries: Some(64),
@@ -209,6 +213,7 @@ async fn loopback_refresh_failure_keeps_existing_provider_cache_available() {
             &harness.storage,
             &harness.paths,
             &harness.sftp,
+            harness.inline_settings(),
             CommandSuggestionRemotePathRefreshRequest {
                 host_id: remote_host.id.clone(),
                 max_entries: Some(64),
@@ -224,6 +229,7 @@ async fn loopback_refresh_failure_keeps_existing_provider_cache_available() {
             &harness.storage,
             &harness.paths,
             &harness.ssh_commands,
+            harness.inline_settings(),
             CommandSuggestionRemoteHistoryRefreshRequest {
                 host_id: remote_host.id.clone(),
                 max_entries: Some(64),
@@ -238,6 +244,7 @@ async fn loopback_refresh_failure_keeps_existing_provider_cache_available() {
             &harness.storage,
             &harness.paths,
             &harness.ssh_commands,
+            harness.inline_settings(),
             CommandSuggestionGitRefreshRequest {
                 cwd: config.cwd.clone(),
                 host_id: remote_host.id.clone(),
@@ -258,6 +265,7 @@ async fn loopback_refresh_failure_keeps_existing_provider_cache_available() {
                 &harness.storage,
                 &harness.paths,
                 &harness.ssh_commands,
+                harness.inline_settings(),
                 CommandSuggestionRemoteCommandRefreshRequest {
                     host_id: remote_host.id.clone(),
                     max_entries: Some(64),
@@ -275,6 +283,7 @@ async fn loopback_refresh_failure_keeps_existing_provider_cache_available() {
                 &harness.storage,
                 &harness.paths,
                 &harness.sftp,
+                harness.inline_settings(),
                 CommandSuggestionRemotePathRefreshRequest {
                     host_id: remote_host.id.clone(),
                     max_entries: Some(64),
@@ -293,6 +302,7 @@ async fn loopback_refresh_failure_keeps_existing_provider_cache_available() {
                 &harness.storage,
                 &harness.paths,
                 &harness.ssh_commands,
+                harness.inline_settings(),
                 CommandSuggestionRemoteHistoryRefreshRequest {
                     host_id: remote_host.id.clone(),
                     max_entries: Some(64),
@@ -310,6 +320,7 @@ async fn loopback_refresh_failure_keeps_existing_provider_cache_available() {
                 &harness.storage,
                 &harness.paths,
                 &harness.ssh_commands,
+                harness.inline_settings(),
                 CommandSuggestionGitRefreshRequest {
                     cwd: config.cwd.clone(),
                     host_id: remote_host.id.clone(),

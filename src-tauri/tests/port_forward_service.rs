@@ -2,6 +2,8 @@
 //!
 //! @author kongweiguang
 
+use std::fs;
+
 use kerminal_lib::{
     error::AppError,
     models::{
@@ -25,6 +27,7 @@ fn create_forward_rejects_unknown_remote_host_before_spawning_ssh() {
         .port_forwards()
         .create(
             state.storage(),
+            state.remote_hosts(),
             PortForwardCreateRequest {
                 bind_host: Some("127.0.0.1".to_owned()),
                 host_id: "missing-host".to_owned(),
@@ -48,22 +51,19 @@ fn list_restores_persisted_forward_as_exited_after_restart() {
     let state = AppState::initialize_with_paths(paths.clone()).expect("initialize app state");
     let host = state
         .remote_hosts()
-        .create_host(
-            state.storage(),
-            RemoteHostCreateRequest {
-                group_id: None,
-                name: "dev".to_owned(),
-                host: "127.0.0.1".to_owned(),
-                port: 22,
-                username: "tester".to_owned(),
-                auth_type: RemoteHostAuthType::Agent,
-                credential_ref: None,
-                credential_secret: None,
-                tags: Vec::new(),
-                production: false,
-                ssh_options: Default::default(),
-            },
-        )
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "dev".to_owned(),
+            host: "127.0.0.1".to_owned(),
+            port: 22,
+            username: "tester".to_owned(),
+            auth_type: RemoteHostAuthType::Agent,
+            credential_ref: None,
+            credential_secret: None,
+            tags: Vec::new(),
+            production: false,
+            ssh_options: Default::default(),
+        })
         .expect("create remote host");
     state
         .storage()
@@ -100,6 +100,16 @@ fn list_restores_persisted_forward_as_exited_after_restart() {
             created_at: "1710000000".to_owned(),
         })
         .expect("persist port forward summary");
+    let state_file = paths
+        .root
+        .join("data")
+        .join("port-forwards")
+        .join("sessions.json");
+    let state_json = fs::read_to_string(&state_file).expect("read port forward state file");
+    assert!(
+        state_json.contains("forward-restart-1"),
+        "port forward state should be file-backed"
+    );
     drop(state);
 
     let state = AppState::initialize_with_paths(paths).expect("reinitialize app state");

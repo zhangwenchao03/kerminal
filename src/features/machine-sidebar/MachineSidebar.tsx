@@ -13,6 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -54,23 +55,24 @@ import {
   MACHINE_SIDEBAR_ROOT_MENU_DOMAIN,
   machineSidebarMenuDomainForContextMenu,
 } from "./machineSidebarMenuModel";
+import { buildVisibleMachineGroups } from "./machineSidebarVisibilityModel";
 
 export type { ConnectionOpenOptions } from "./MachineSidebar.shared";
 
 const sidebarContextMenuSurfaceClassName =
-  "kerminal-floating-enter fixed z-[1000] w-56 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] p-1.5 text-sm shadow-2xl shadow-black/20 backdrop-blur-xl dark:shadow-black/50";
+  "kerminal-context-menu kerminal-floating-enter fixed z-[1000] w-56";
 const sidebarAccentIconButtonClassName =
   "kerminal-pressable h-8 w-8 rounded-lg text-sky-600 hover:bg-[var(--surface-hover)] dark:text-sky-300";
 const sidebarIconButtonClassName =
   "kerminal-pressable h-8 w-8 rounded-lg text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50";
 const sidebarSearchInputClassName =
-  "kerminal-field-surface h-9 w-full rounded-xl border pl-9 pr-3 text-sm text-zinc-950 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600";
+  "kerminal-sidebar-search kerminal-field-surface w-full rounded-xl border pl-9 pr-3 text-sm text-zinc-950 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600";
 const sidebarGroupButtonClassName =
   "kerminal-focus-ring kerminal-pressable mb-1 flex h-8 w-full items-center justify-between rounded-lg px-2 text-left text-xs font-medium text-zinc-500 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-100";
 const sidebarCountBadgeClassName =
   "rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[11px] text-zinc-500 dark:text-zinc-400";
 const sidebarMachineButtonBaseClassName =
-  "kerminal-focus-ring kerminal-pressable flex min-h-[52px] w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition";
+  "kerminal-sidebar-machine-row kerminal-focus-ring kerminal-pressable flex w-full items-center rounded-xl text-left text-sm transition";
 const sidebarMachineDraggingClassName =
   "scale-[0.98] bg-sky-500/6 opacity-35 ring-2 ring-dashed ring-sky-400/70 dark:bg-sky-400/8";
 const sidebarMachineSelectedClassName =
@@ -84,25 +86,45 @@ const sidebarTagBadgeClassName =
 const sidebarEmptyStateClassName =
   "kerminal-muted-surface rounded-2xl border border-dashed px-3 py-6 text-center text-sm text-zinc-500";
 const sidebarFooterClassName =
-  "flex items-center justify-between border-t border-[var(--border-subtle)] px-4 py-3";
+  "kerminal-sidebar-footer flex items-center justify-between border-t border-[var(--border-subtle)]";
 const sidebarSettingsSelectedClassName =
   "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100";
 
+function stringSetsEqual(left: Set<string>, right: Set<string>) {
+  if (left.size !== right.size) {
+    return false;
+  }
+
+  for (const value of left) {
+    if (!right.has(value)) {
+      return false;
+    }
+  }
+
+  return true;
+}
 
 export function MachineSidebar({
   collapsed = false,
+  collapsedGroupIds: controlledCollapsedGroupIds,
   groups,
   openMachineIds = [],
   onAddConnection,
   onAddGroup,
   onAddMachine,
+  onCollapsedGroupIdsChange,
   onDeleteGroup,
   onDeleteMachine,
   onDuplicateMachine,
   onEditGroup,
   onEditMachine,
+  onExternalMachineDrag,
+  onExternalMachineDragEnd,
+  onExternalMachineDrop,
   onMoveMachine,
   onSearchChange,
+  onOpenContainerDetails,
+  onOpenHostContainers,
   onOpenLocalTerminal,
   onOpenContainerTerminal,
   onOpenRdpConnection,
@@ -119,12 +141,8 @@ export function MachineSidebar({
   selectedMachineId,
   settingsSelected = false,
 }: MachineSidebarProps) {
-  const knownGroupIdsRef = useRef<Set<string>>(
-    new Set(groups.map((group) => group.id)),
-  );
-  const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(
-    () => new Set(knownGroupIdsRef.current),
-  );
+  const [uncontrolledCollapsedGroupIds, setUncontrolledCollapsedGroupIds] =
+    useState<Set<string>>(() => new Set());
   const [contextMenu, setContextMenu] = useState<SidebarContextMenu | null>(
     null,
   );
@@ -140,38 +158,53 @@ export function MachineSidebar({
   const pointerDragRef = useRef<PointerMachineDrag | null>(null);
   const pointerDragCleanupRef = useRef<(() => void) | null>(null);
   const suppressNextClickRef = useRef(false);
+  const collapsedGroupIds = useMemo(
+    () =>
+      controlledCollapsedGroupIds
+        ? new Set(controlledCollapsedGroupIds)
+        : uncontrolledCollapsedGroupIds,
+    [controlledCollapsedGroupIds, uncontrolledCollapsedGroupIds],
+  );
+  const updateCollapsedGroupIds = useCallback(
+    (updater: (current: Set<string>) => Set<string>) => {
+      const current = new Set(
+        controlledCollapsedGroupIds ?? uncontrolledCollapsedGroupIds,
+      );
+      const next = updater(current);
+      if (stringSetsEqual(current, next)) {
+        return;
+      }
+
+      if (!controlledCollapsedGroupIds) {
+        setUncontrolledCollapsedGroupIds(next);
+      }
+      onCollapsedGroupIdsChange?.([...next].sort());
+    },
+    [
+      controlledCollapsedGroupIds,
+      onCollapsedGroupIdsChange,
+      uncontrolledCollapsedGroupIds,
+    ],
+  );
   const openMachineIdSet = useMemo(
     () => new Set(openMachineIds),
     [openMachineIds],
   );
   const normalizedSearch = search.trim().toLowerCase();
   const hasSearch = normalizedSearch.length > 0;
-  const visibleGroups = groups
-    .map((group) => {
-      const groupMatches = group.title.toLowerCase().includes(normalizedSearch);
-      return {
-        ...group,
-        machines:
-          normalizedSearch && !groupMatches
-            ? group.machines.filter((machine) => {
-                const haystack = `${machine.name} ${machine.description} ${machine.tags.join(" ")}`;
-                return haystack.toLowerCase().includes(normalizedSearch);
-              })
-            : group.machines,
-      };
-    })
-    .filter((group) =>
-      normalizedSearch
-        ? group.title.toLowerCase().includes(normalizedSearch) ||
-          group.machines.length > 0
-        : true,
-    );
-  const machineCount = groups.reduce(
-    (total, group) => total + group.machines.length,
-    0,
+  const visibleGroups = useMemo(
+    () => buildVisibleMachineGroups(groups, normalizedSearch),
+    [groups, normalizedSearch],
   );
-  const allGroupsCollapsed =
-    groups.length > 0 && groups.every((group) => collapsedGroupIds.has(group.id));
+  const machineCount = useMemo(
+    () => groups.reduce((total, group) => total + group.machines.length, 0),
+    [groups],
+  );
+  const allGroupsCollapsed = useMemo(
+    () =>
+      groups.length > 0 && groups.every((group) => collapsedGroupIds.has(group.id)),
+    [collapsedGroupIds, groups],
+  );
   const groupToggleLabel = allGroupsCollapsed
     ? "展开所有分组"
     : "折叠所有分组";
@@ -192,15 +225,18 @@ export function MachineSidebar({
     : undefined;
 
   useLayoutEffect(() => {
-    const previousKnownGroupIds = knownGroupIdsRef.current;
+    if (groups.length === 0) {
+      return;
+    }
+
     const nextKnownGroupIds = new Set(groups.map((group) => group.id));
 
-    setCollapsedGroupIds((current) => {
+    updateCollapsedGroupIds((current) => {
       const next = new Set<string>();
 
-      for (const group of groups) {
-        if (current.has(group.id) || !previousKnownGroupIds.has(group.id)) {
-          next.add(group.id);
+      for (const groupId of current) {
+        if (nextKnownGroupIds.has(groupId)) {
+          next.add(groupId);
         }
       }
 
@@ -216,8 +252,7 @@ export function MachineSidebar({
 
       return current;
     });
-    knownGroupIdsRef.current = nextKnownGroupIds;
-  }, [groups]);
+  }, [groups, updateCollapsedGroupIds]);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -328,7 +363,7 @@ export function MachineSidebar({
   };
 
   const toggleGroup = (groupId: string) => {
-    setCollapsedGroupIds((current) => {
+    updateCollapsedGroupIds((current) => {
       const next = new Set(current);
       if (next.has(groupId)) {
         next.delete(groupId);
@@ -340,7 +375,7 @@ export function MachineSidebar({
   };
 
   const toggleAllGroups = () => {
-    setCollapsedGroupIds((current) => {
+    updateCollapsedGroupIds((current) => {
       if (groups.length === 0) {
         return current;
       }
@@ -386,13 +421,17 @@ export function MachineSidebar({
     onSelectMachine(machine.id);
   };
 
-  const cleanupPointerDrag = () => {
+  const cleanupPointerDrag = (notifyExternal = false) => {
+    const shouldNotifyExternal = notifyExternal && pointerDragRef.current?.active;
     pointerDragCleanupRef.current?.();
     pointerDragCleanupRef.current = null;
     pointerDragRef.current = null;
     setDragPreview(null);
     setDraggingMachineId(null);
     setDragOverGroupId(null);
+    if (shouldNotifyExternal) {
+      onExternalMachineDragEnd?.();
+    }
   };
 
   const groupIdFromPoint = (clientX: number, clientY: number) => {
@@ -410,11 +449,14 @@ export function MachineSidebar({
     event: ReactPointerEvent<HTMLButtonElement>,
     machine: Machine,
   ) => {
-    if (!onMoveMachine || event.button !== 0) {
+    if (
+      (!onMoveMachine && !onExternalMachineDrag && !onExternalMachineDrop) ||
+      event.button !== 0
+    ) {
       return;
     }
 
-    cleanupPointerDrag();
+    cleanupPointerDrag(true);
     pointerDragRef.current = {
       active: false,
       machineId: machine.id,
@@ -446,8 +488,14 @@ export function MachineSidebar({
         moveEvent.clientX,
         moveEvent.clientY,
       );
+      const externalDragFeedback = onExternalMachineDrag?.({
+        clientX: moveEvent.clientX,
+        clientY: moveEvent.clientY,
+        machine,
+      });
       setDragOverGroupId(nextDragOverGroupId);
       setDragPreview({
+        externalTargetHint: externalDragFeedback?.hint,
         machine,
         x: moveEvent.clientX,
         y: moveEvent.clientY,
@@ -465,6 +513,15 @@ export function MachineSidebar({
         : null;
       const machineId = drag.machineId;
       const shouldMove = Boolean(drag.active && targetGroupId);
+      const externalDropConsumed =
+        drag.active &&
+        Boolean(
+          onExternalMachineDrop?.({
+            clientX: upEvent.clientX,
+            clientY: upEvent.clientY,
+            machine,
+          }),
+        );
       if (drag.active) {
         suppressNextClickRef.current = true;
         window.setTimeout(() => {
@@ -472,8 +529,12 @@ export function MachineSidebar({
         }, 0);
       }
 
-      cleanupPointerDrag();
-      if (shouldMove && targetGroupId) {
+      cleanupPointerDrag(true);
+      if (externalDropConsumed) {
+        upEvent.preventDefault();
+        return;
+      }
+      if (shouldMove && targetGroupId && onMoveMachine) {
         upEvent.preventDefault();
         onMoveMachine(machineId, targetGroupId);
       }
@@ -484,7 +545,7 @@ export function MachineSidebar({
       if (!drag || drag.pointerId !== cancelEvent.pointerId) {
         return;
       }
-      cleanupPointerDrag();
+      cleanupPointerDrag(true);
     };
 
     window.addEventListener("pointermove", movePointerMachineDrag);
@@ -619,6 +680,8 @@ export function MachineSidebar({
                 onDeleteMachine={onDeleteMachine}
                 onDuplicateMachine={onDuplicateMachine}
                 onEditMachine={onEditMachine}
+                onOpenContainerDetails={onOpenContainerDetails}
+                onOpenHostContainers={onOpenHostContainers}
                 onOpenLocalTerminal={onOpenLocalTerminal}
                 onOpenContainerTerminal={onOpenContainerTerminal}
                 onOpenRdpConnection={onOpenRdpConnection}
@@ -666,6 +729,7 @@ export function MachineSidebar({
     dragPreview && typeof document !== "undefined"
       ? createPortal(
           <MachineDragPreviewCard
+            externalTargetHint={dragPreview.externalTargetHint}
             machine={dragPreview.machine}
             targetGroupTitle={dragTargetGroup?.title}
             x={dragPreview.x}
@@ -700,7 +764,7 @@ export function MachineSidebar({
       className="kerminal-material-nav relative flex h-full w-full min-w-[220px] flex-col border-r"
       onContextMenu={(event) => openContextMenu(event, { type: "root" })}
     >
-      <div className="space-y-3 px-4 pb-3 pt-4">
+      <div className="kerminal-sidebar-header flex flex-col">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1" data-tauri-drag-region>
             <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
@@ -753,7 +817,7 @@ export function MachineSidebar({
         </label>
       </div>
 
-      <div className="scrollbar-none flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 pb-3">
+      <div className="kerminal-sidebar-list scrollbar-none flex min-h-0 flex-1 flex-col overflow-y-auto">
         {visibleGroups.map((group) => {
           const collapsed = !hasSearch && collapsedGroupIds.has(group.id);
 
@@ -845,7 +909,7 @@ export function MachineSidebar({
                       >
                         <span
                           className={cn(
-                            "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                            "kerminal-sidebar-machine-icon relative flex shrink-0 items-center justify-center rounded-lg",
                             machine.kind === "local"
                               ? "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-400/12 dark:text-emerald-300"
                               : "bg-sky-500/10 text-sky-600 dark:bg-sky-400/12 dark:text-sky-300",
@@ -906,17 +970,19 @@ export function MachineSidebar({
           aria-label="打开设置"
           aria-pressed={settingsSelected}
           className={cn(
+            "h-8 w-8 rounded-lg",
             settingsSelected && sidebarSettingsSelectedClassName,
           )}
           onClick={onOpenSettings}
-          size="sm"
+          size="icon"
+          title="设置"
           variant="ghost"
         >
           <Settings className="h-4 w-4" />
-          设置
         </Button>
         <Button
           aria-label="添加连接"
+          className="h-8 w-8 rounded-lg"
           disabled={!onAddConnection}
           onClick={() => onAddConnection?.({ mode: "ssh" })}
           size="icon"

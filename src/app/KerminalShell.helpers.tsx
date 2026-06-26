@@ -1,6 +1,7 @@
 import {
   useEffect,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
@@ -40,12 +41,14 @@ export function ShellResizeSeparator({
   label,
   onKeyDown,
   onPointerDown,
+  style,
 }: {
   className: string;
   hidden: boolean;
   label: string;
   onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
   onPointerDown: (event: PointerEvent<HTMLDivElement>) => void;
+  style?: CSSProperties;
 }) {
   return (
     <div
@@ -60,6 +63,7 @@ export function ShellResizeSeparator({
       onKeyDown={hidden ? undefined : onKeyDown}
       onPointerDown={hidden ? undefined : onPointerDown}
       role={hidden ? undefined : "separator"}
+      style={style}
       tabIndex={hidden ? -1 : 0}
     >
       <span className="block h-12 w-px rounded-full bg-transparent transition group-hover:bg-sky-400/70 group-focus-visible:bg-sky-400" />
@@ -301,8 +305,8 @@ export function DeleteConfirmationDialog({
   const isGroup = pendingDelete?.type === "group";
   const title = isGroup ? "删除分组" : "删除连接";
   const description = isGroup
-    ? "删除分组后，分组内主机会移动到默认分组，不会删除主机配置。"
-    : "删除后该 SSH/RDP/Telnet 连接配置会从本地列表移除。";
+    ? "删除分组后，主机会移到默认分组。"
+    : "删除本地保存的连接配置。";
 
   return (
     <ModalShell
@@ -336,7 +340,7 @@ export function DeleteConfirmationDialog({
             </span>
           </p>
           {isGroup && pendingDelete.machineCount > 0 ? (
-            <p>当前包含 {pendingDelete.machineCount} 台主机，删除后会移到默认分组。</p>
+            <p>包含 {pendingDelete.machineCount} 台主机，将移到默认分组。</p>
           ) : null}
           {deleteError ? (
             <p className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-red-600 dark:text-red-300">
@@ -398,9 +402,34 @@ export function workspaceBackgroundImage(
     return undefined;
   }
 
-  const overlayOpacity = 1 - Math.min(Math.max(opacity, 0), 100) / 100;
+  const imageVisibility = clampUnit(opacity / 100);
+  const hiddenImage = 1 - imageVisibility;
   const overlayRgb = resolvedTheme === "dark" ? "16, 16, 18" : "245, 245, 247";
-  return `linear-gradient(rgba(${overlayRgb}, ${overlayOpacity}), rgba(${overlayRgb}, ${overlayOpacity})), url("${localPathToCssUrl(trimmedPath)}")`;
+  const vignetteCenterOpacity =
+    resolvedTheme === "dark"
+      ? 0.02 + hiddenImage * 0.08
+      : 0.08 + hiddenImage * 0.1;
+  const vignetteEdgeOpacity =
+    resolvedTheme === "dark"
+      ? 0.34 + hiddenImage * 0.22
+      : 0.26 + hiddenImage * 0.2;
+  const sideOpacity =
+    resolvedTheme === "dark"
+      ? 0.2 + hiddenImage * 0.22
+      : 0.18 + hiddenImage * 0.22;
+  const horizonOpacity =
+    resolvedTheme === "dark"
+      ? 0.18 + hiddenImage * 0.14
+      : 0.22 + hiddenImage * 0.16;
+  const imageUrl = localPathToCssUrl(trimmedPath);
+
+  return [
+    `radial-gradient(ellipse at 50% 45%, rgba(${overlayRgb}, ${cssAlpha(vignetteCenterOpacity)}) 0%, rgba(${overlayRgb}, ${cssAlpha(vignetteCenterOpacity)}) 42%, rgba(${overlayRgb}, ${cssAlpha(vignetteEdgeOpacity)}) 100%)`,
+    `linear-gradient(90deg, rgba(${overlayRgb}, ${cssAlpha(sideOpacity)}) 0%, rgba(${overlayRgb}, 0) 24%, rgba(${overlayRgb}, 0) 76%, rgba(${overlayRgb}, ${cssAlpha(sideOpacity)}) 100%)`,
+    `linear-gradient(180deg, rgba(${overlayRgb}, ${cssAlpha(horizonOpacity)}) 0%, rgba(${overlayRgb}, 0) 30%, rgba(${overlayRgb}, ${cssAlpha(horizonOpacity * 0.72)}) 100%)`,
+    `linear-gradient(rgba(${overlayRgb}, var(--app-background-veil-opacity)), rgba(${overlayRgb}, var(--app-background-veil-opacity)))`,
+    `url("${imageUrl}")`,
+  ].join(", ");
 }
 
 function localPathToCssUrl(path: string) {
@@ -425,6 +454,14 @@ function localPathToCssUrl(path: string) {
     return `file://${normalized}`.replace(/"/g, "%22");
   }
   return normalized.replace(/"/g, "%22");
+}
+
+function clampUnit(value: number) {
+  return Math.min(Math.max(value, 0), 1);
+}
+
+function cssAlpha(value: number) {
+  return String(Number(clampUnit(value).toFixed(4)));
 }
 
 export function workspaceBackgroundColor(

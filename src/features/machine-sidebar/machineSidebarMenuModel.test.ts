@@ -12,7 +12,7 @@ import {
   rdpSidebarGroups,
   remoteSidebarGroups,
   terminalTransportSidebarGroups,
-} from "./MachineSidebar.testSupport";
+} from "./__tests__/support/MachineSidebar.testSupport";
 import {
   MACHINE_ASSET_MENU_DOMAIN,
   MACHINE_GROUP_MENU_DOMAIN,
@@ -81,6 +81,7 @@ describe("machineSidebarMenuModel", () => {
     ]);
     expect(actions(buildMachineSidebarMachineMenuItems(remoteSidebarGroups[1]!.machines[0]!))).toEqual([
       "openSshTerminal",
+      "openHostContainers",
       "openSftp",
       "openSftpTransferWorkbench",
       "editMachine",
@@ -90,7 +91,12 @@ describe("machineSidebarMenuModel", () => {
     ]);
     expect(
       actions(buildMachineSidebarMachineMenuItems(containerSidebarGroups[0]!.machines[1]!)),
-    ).toEqual(["openContainerTerminal", "openSftp", "deleteMachine"]);
+    ).toEqual([
+      "openContainerTerminal",
+      "openContainerDetails",
+      "openSftp",
+      "deleteMachine",
+    ]);
     expect(actions(buildMachineSidebarMachineMenuItems(rdpSidebarGroups[0]!.machines[0]!))).toEqual([
       "openRdpConnection",
       "editMachine",

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { TERMINAL_OUTPUT_HISTORY_MAX_CHARS } from "../workspace/workspaceSession";
 import {
   createTerminalOutputHistoryBuffer,
+  flushPendingTerminalOutputHistoryBuffers,
   type TerminalOutputHistoryTimer,
 } from "./terminalOutputHistoryBuffer";
 
@@ -129,5 +130,55 @@ describe("terminalOutputHistoryBuffer", () => {
     expect(onOutputHistoryChange).toHaveBeenCalledWith(
       outputHistoryRef.current,
     );
+  });
+
+  it("flushes every active pending buffer before workspace session save", () => {
+    const manual = createManualTimer();
+    const firstHistoryRef = { current: undefined as string | undefined };
+    const secondHistoryRef = { current: "stable" as string | undefined };
+    const firstOutputHistoryChange = vi.fn();
+    const secondOutputHistoryChange = vi.fn();
+    const firstBuffer = createTerminalOutputHistoryBuffer({
+      onOutputHistoryChangeRef: { current: firstOutputHistoryChange },
+      outputHistoryRef: firstHistoryRef,
+      timer: manual.timer,
+    });
+    const secondBuffer = createTerminalOutputHistoryBuffer({
+      onOutputHistoryChangeRef: { current: secondOutputHistoryChange },
+      outputHistoryRef: secondHistoryRef,
+      timer: manual.timer,
+    });
+
+    firstBuffer.append("pending output");
+
+    flushPendingTerminalOutputHistoryBuffers();
+
+    expect(firstOutputHistoryChange).toHaveBeenCalledTimes(1);
+    expect(firstOutputHistoryChange).toHaveBeenCalledWith("pending output");
+    expect(secondOutputHistoryChange).not.toHaveBeenCalled();
+    expect(firstBuffer.pendingFlush()).toBe(false);
+    expect(manual.pendingCount()).toBe(0);
+
+    firstBuffer.dispose();
+    secondBuffer.dispose();
+  });
+
+  it("unregisters disposed buffers from the global pending flush", () => {
+    const manual = createManualTimer();
+    const outputHistoryRef = { current: undefined as string | undefined };
+    const onOutputHistoryChange = vi.fn();
+    const buffer = createTerminalOutputHistoryBuffer({
+      onOutputHistoryChangeRef: { current: onOutputHistoryChange },
+      outputHistoryRef,
+      timer: manual.timer,
+    });
+
+    buffer.append("saved on dispose");
+    buffer.dispose();
+    onOutputHistoryChange.mockClear();
+
+    flushPendingTerminalOutputHistoryBuffers();
+
+    expect(onOutputHistoryChange).not.toHaveBeenCalled();
   });
 });

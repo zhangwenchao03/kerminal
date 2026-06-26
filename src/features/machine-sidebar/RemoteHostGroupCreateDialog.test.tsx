@@ -98,4 +98,49 @@ describe("RemoteHostGroupCreateDialog", () => {
       }),
     );
   });
+
+  it("keeps the rename draft and blocks saving after an external group change", async () => {
+    const user = userEvent.setup();
+    const onUpdateGroup = vi.fn();
+    const conflictMessage = "cfg: group changed externally; close + reopen";
+    const group = {
+      id: "group-1",
+      machines: [],
+      sortOrder: 10,
+      title: "实验室",
+      updatedAt: "1",
+    };
+    const { rerender } = render(
+      <RemoteHostGroupCreateDialog
+        group={group}
+        onClose={vi.fn()}
+        onCreateGroup={vi.fn()}
+        onUpdateGroup={onUpdateGroup}
+        open
+      />,
+    );
+
+    await user.clear(screen.getByLabelText("分组名称"));
+    await user.type(screen.getByLabelText("分组名称"), "草稿名称");
+
+    rerender(
+      <RemoteHostGroupCreateDialog
+        externalConfigConflict={conflictMessage}
+        group={{
+          ...group,
+          title: "外部名称",
+          updatedAt: "2",
+        }}
+        onClose={vi.fn()}
+        onCreateGroup={vi.fn()}
+        onUpdateGroup={onUpdateGroup}
+        open
+      />,
+    );
+
+    expect(screen.getByLabelText("分组名称")).toHaveValue("草稿名称");
+    expect(screen.getByRole("alert")).toHaveTextContent(conflictMessage);
+    expect(screen.getByRole("button", { name: "保存分组" })).toBeDisabled();
+    expect(onUpdateGroup).not.toHaveBeenCalled();
+  });
 });

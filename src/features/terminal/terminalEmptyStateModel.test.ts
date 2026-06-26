@@ -9,18 +9,18 @@ describe("buildTerminalEmptyStateActions", () => {
   it("returns no actions when workspace handlers are available", () => {
     const onCreateTerminal = vi.fn();
     const onOpenConnection = vi.fn();
-    const onOpenAiTool = vi.fn();
+    const onOpenAgentTool = vi.fn();
 
     expect(
       buildTerminalEmptyStateActions({
         onCreateTerminal,
-        onOpenAiTool,
+        onOpenAgentTool,
         onOpenConnection,
       }),
     ).toEqual([]);
 
     expect(onCreateTerminal).not.toHaveBeenCalled();
     expect(onOpenConnection).not.toHaveBeenCalled();
-    expect(onOpenAiTool).not.toHaveBeenCalled();
+    expect(onOpenAgentTool).not.toHaveBeenCalled();
   });
 });

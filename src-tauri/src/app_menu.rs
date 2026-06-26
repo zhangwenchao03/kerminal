@@ -26,7 +26,7 @@ pub enum NativeMenuAction {
     SplitHorizontal,
     SplitVertical,
     OpenLogs,
-    OpenAi,
+    OpenAgentLauncher,
     OpenSystem,
     OpenSftp,
     OpenPorts,
@@ -44,7 +44,7 @@ impl NativeMenuAction {
             Self::SplitHorizontal => "splitHorizontal",
             Self::SplitVertical => "splitVertical",
             Self::OpenLogs => "openLogs",
-            Self::OpenAi => "openAi",
+            Self::OpenAgentLauncher => "openAgentLauncher",
             Self::OpenSystem => "openSystem",
             Self::OpenSftp => "openSftp",
             Self::OpenPorts => "openPorts",
@@ -62,7 +62,7 @@ impl NativeMenuAction {
             Self::SplitHorizontal => "kerminal:splitHorizontal",
             Self::SplitVertical => "kerminal:splitVertical",
             Self::OpenLogs => "kerminal:openLogs",
-            Self::OpenAi => "kerminal:openAi",
+            Self::OpenAgentLauncher => "kerminal:openAgentLauncher",
             Self::OpenSystem => "kerminal:openSystem",
             Self::OpenSftp => "kerminal:openSftp",
             Self::OpenPorts => "kerminal:openPorts",
@@ -105,7 +105,7 @@ pub const fn native_menu_actions() -> &'static [NativeMenuAction] {
         NativeMenuAction::SplitHorizontal,
         NativeMenuAction::SplitVertical,
         NativeMenuAction::OpenLogs,
-        NativeMenuAction::OpenAi,
+        NativeMenuAction::OpenAgentLauncher,
         NativeMenuAction::OpenSystem,
         NativeMenuAction::OpenSftp,
         NativeMenuAction::OpenPorts,
@@ -172,10 +172,10 @@ fn build_app_menu<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<
         "打开日志",
         Some(platform_accelerator("Alt+7", "Cmd+7")),
     )?;
-    let open_ai = menu_item(
+    let open_agent_launcher = menu_item(
         manager,
-        NativeMenuAction::OpenAi,
-        "打开 Kerminal Agent",
+        NativeMenuAction::OpenAgentLauncher,
+        "打开 Agent Launcher",
         Some(platform_accelerator("Alt+2", "Cmd+2")),
     )?;
     let open_system = menu_item(
@@ -227,7 +227,7 @@ fn build_app_menu<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<
         .item(&split_vertical)
         .separator()
         .item(&open_logs)
-        .item(&open_ai)
+        .item(&open_agent_launcher)
         .build()?;
     let view_menu = SubmenuBuilder::new(manager, "视图")
         .item(&open_system)

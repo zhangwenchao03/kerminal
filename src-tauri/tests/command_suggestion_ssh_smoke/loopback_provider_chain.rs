@@ -42,6 +42,7 @@ async fn loopback_ssh_sftp_provider_chain_uses_plaintext_host_auth_and_cache_onl
             &harness.storage,
             &harness.paths,
             &harness.ssh_commands,
+            harness.inline_settings(),
             CommandSuggestionRemoteCommandRefreshRequest {
                 host_id: remote_host.id.clone(),
                 max_entries: Some(64),
@@ -58,6 +59,7 @@ async fn loopback_ssh_sftp_provider_chain_uses_plaintext_host_auth_and_cache_onl
             &harness.storage,
             &harness.paths,
             &harness.ssh_commands,
+            harness.inline_settings(),
             CommandSuggestionRemoteHistoryRefreshRequest {
                 host_id: remote_host.id.clone(),
                 max_entries: Some(64),
@@ -74,6 +76,7 @@ async fn loopback_ssh_sftp_provider_chain_uses_plaintext_host_auth_and_cache_onl
             &harness.storage,
             &harness.paths,
             &harness.sftp,
+            harness.inline_settings(),
             CommandSuggestionRemotePathRefreshRequest {
                 host_id: remote_host.id.clone(),
                 max_entries: Some(64),
@@ -92,6 +95,7 @@ async fn loopback_ssh_sftp_provider_chain_uses_plaintext_host_auth_and_cache_onl
             &harness.storage,
             &harness.paths,
             &harness.ssh_commands,
+            harness.inline_settings(),
             CommandSuggestionGitRefreshRequest {
                 cwd: config.cwd.clone(),
                 host_id: remote_host.id.clone(),

@@ -22,6 +22,15 @@ const terminalSessionRegistryMocks = vi.hoisted(() => ({
   writeWorkflowCommand: vi.fn(),
 }));
 
+const desktopClipboardApiMocks = vi.hoisted(() => ({
+  writeDesktopClipboardText: vi.fn(),
+}));
+
+vi.mock("../../lib/desktopClipboardApi", () => ({
+  writeDesktopClipboardText: (...args: unknown[]) =>
+    desktopClipboardApiMocks.writeDesktopClipboardText(...args),
+}));
+
 vi.mock("../../lib/snippetApi", () => ({
   createSnippet: (...args: unknown[]) => snippetApiMocks.createSnippet(...args),
   deleteSnippet: (...args: unknown[]) => snippetApiMocks.deleteSnippet(...args),
@@ -100,6 +109,10 @@ describe("SnippetToolContent", () => {
       sent: true,
       sessionId: "session-1",
       target: "local",
+    });
+    desktopClipboardApiMocks.writeDesktopClipboardText.mockReset();
+    desktopClipboardApiMocks.writeDesktopClipboardText.mockResolvedValue({
+      ok: true,
     });
     snippetApiMocks.listSnippets.mockResolvedValue([
       {
@@ -263,6 +276,38 @@ describe("SnippetToolContent", () => {
       title: "一键检查",
     });
     expect(await screen.findByText("一键检查")).toBeInTheDocument();
+  });
+
+  it("copies snippet commands through the desktop clipboard facade", async () => {
+    const user = userEvent.setup();
+    render(<SnippetToolContent />);
+
+    expect(await screen.findByText("检查 Git 状态")).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "复制片段 检查 Git 状态" }),
+    );
+
+    expect(desktopClipboardApiMocks.writeDesktopClipboardText).toHaveBeenCalledWith(
+      "git status --short",
+    );
+  });
+
+  it("keeps the create draft when snippets reload from external config", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<SnippetToolContent configRevision={1} />);
+
+    expect(await screen.findByText("检查 Git 状态")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "添加脚本片段" }));
+    await user.type(screen.getByLabelText("标题"), "外部刷新草稿");
+    await user.type(screen.getByLabelText("脚本内容"), "npm run test");
+
+    rerender(<SnippetToolContent configRevision={2} />);
+
+    expect(screen.getByLabelText("标题")).toHaveValue("外部刷新草稿");
+    expect(screen.getByLabelText("脚本内容")).toHaveValue("npm run test");
+    expect(
+      await screen.findByText("cfg: snippets reloaded; draft kept"),
+    ).toBeInTheDocument();
   });
 
   it("fills snippet variables and sends the rendered command to the focused pane", async () => {

@@ -25,7 +25,12 @@ pub fn port_forward_create(
     let local_proxy_entry_id = request.local_proxy_entry_id.clone();
     state
         .port_forwards()
-        .create_with_context(state.storage(), state.paths(), request)
+        .create_with_context(
+            state.storage(),
+            state.remote_hosts(),
+            state.paths(),
+            request,
+        )
         .inspect_err(|_| {
             if let Some(entry_id) = local_proxy_entry_id.as_deref() {
                 let _ = state.local_network_proxy().release_entry(entry_id);
@@ -69,7 +74,13 @@ pub fn port_forward_start(
     let local_proxy_entry_id = request.local_proxy_entry_id.clone();
     state
         .port_forwards()
-        .start_with_context(state.storage(), state.paths(), &forward_id, request)
+        .start_with_context(
+            state.storage(),
+            state.remote_hosts(),
+            state.paths(),
+            &forward_id,
+            request,
+        )
         .inspect_err(|_| {
             if let Some(entry_id) = local_proxy_entry_id.as_deref() {
                 let _ = state.local_network_proxy().release_entry(entry_id);

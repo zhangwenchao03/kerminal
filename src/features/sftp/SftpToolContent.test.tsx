@@ -15,7 +15,7 @@ import {  localMachine,
   sftpApiMocks,
   sshCommandApiMocks,
   sshMachine,
-} from "./SftpToolContent.testSupport";
+} from "./__tests__/support/SftpToolContent.testSupport";
 import { SftpToolContent } from "./SftpToolContent";
 
 describe("SftpToolContent basic behavior", () => {
@@ -27,7 +27,7 @@ describe("SftpToolContent basic behavior", () => {
     render(<SftpToolContent selectedMachine={localMachine} />);
 
     expect(screen.getByText("远程文件浏览")).toBeInTheDocument();
-    expect(screen.getByText(/当前终端连接到 SSH 主机或容器后/)).toBeInTheDocument();
+    expect(screen.getByText(/连接 SSH 主机或容器后显示文件/)).toBeInTheDocument();
     expect(sftpApiMocks.listSftpDirectory).not.toHaveBeenCalled();
   });
 

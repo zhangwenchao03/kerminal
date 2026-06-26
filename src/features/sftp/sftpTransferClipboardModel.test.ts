@@ -153,7 +153,7 @@ describe("sftpTransferClipboardModel", () => {
       status: {
         kind: "error",
         message:
-          "本机到本机复制暂未支持，请先使用系统文件管理器，或等待本机复制后端接入。",
+          "暂不支持本机到本机复制，请用系统文件管理器。",
       },
     });
   });

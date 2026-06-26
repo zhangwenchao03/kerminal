@@ -3,7 +3,7 @@ use super::*;
 impl CommandSuggestionService {
     pub(super) fn remote_history_candidates(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         request: &NormalizedSuggestionRequest,
     ) -> AppResult<Vec<CommandSuggestionCandidate>> {
         let Some(host_id) = request.remote_host_id.as_deref() else {
@@ -42,7 +42,7 @@ impl CommandSuggestionService {
 
     pub(super) fn remote_path_candidates(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         request: &NormalizedSuggestionRequest,
     ) -> AppResult<Vec<CommandSuggestionCandidate>> {
         let Some(host_id) = request.remote_host_id.as_deref() else {
@@ -84,7 +84,7 @@ impl CommandSuggestionService {
 
     pub(super) fn remote_command_candidates(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         request: &NormalizedSuggestionRequest,
     ) -> AppResult<Vec<CommandSuggestionCandidate>> {
         let Some(host_id) = request.remote_host_id.as_deref() else {
@@ -122,7 +122,7 @@ impl CommandSuggestionService {
 
     pub(super) fn git_candidates(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         request: &NormalizedSuggestionRequest,
     ) -> AppResult<Vec<CommandSuggestionCandidate>> {
         let Some(host_id) = request.remote_host_id.as_deref() else {
@@ -167,7 +167,7 @@ impl CommandSuggestionService {
 
     pub(super) fn remote_path_cache_entry(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         key: &RemotePathCacheKey,
         now: SystemTime,
     ) -> AppResult<Option<RemotePathCacheEntry>> {
@@ -211,7 +211,7 @@ impl CommandSuggestionService {
 
     pub(super) fn remote_command_cache_entry(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         host_id: &str,
         now: SystemTime,
     ) -> AppResult<Option<RemoteCommandCacheEntry>> {
@@ -259,7 +259,7 @@ impl CommandSuggestionService {
 
     pub(super) fn remote_history_cache_entry(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         host_id: &str,
         now: SystemTime,
     ) -> AppResult<Option<RemoteHistoryCacheEntry>> {
@@ -301,7 +301,7 @@ impl CommandSuggestionService {
 
     pub(super) fn git_cache_entry(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         key: &GitCacheKey,
         now: SystemTime,
     ) -> AppResult<Option<GitCacheEntry>> {
@@ -406,7 +406,7 @@ impl CommandSuggestionService {
             .or_insert(update);
     }
 
-    pub(super) fn flush_pending_telemetry(&self, storage: &SqliteStore) -> AppResult<()> {
+    pub(super) fn flush_pending_telemetry(&self, storage: &CommandSqliteStore) -> AppResult<()> {
         let updates = {
             let mut pending = self.pending_telemetry_updates()?;
             pending
@@ -422,7 +422,7 @@ impl CommandSuggestionService {
 
     pub(super) fn record_provider_query(
         &self,
-        storage: Option<&SqliteStore>,
+        storage: Option<&CommandSqliteStore>,
         provider: SuggestionProviderKind,
         elapsed: Duration,
         candidate_count: usize,
@@ -454,7 +454,7 @@ impl CommandSuggestionService {
 
     pub(super) fn record_cache_result(
         &self,
-        storage: Option<&SqliteStore>,
+        storage: Option<&CommandSqliteStore>,
         provider: SuggestionProviderKind,
         hit: bool,
     ) {
@@ -483,7 +483,7 @@ impl CommandSuggestionService {
 
     pub(super) fn record_refresh_success(
         &self,
-        storage: Option<&SqliteStore>,
+        storage: Option<&CommandSqliteStore>,
         provider: SuggestionProviderKind,
     ) {
         let event_time = SystemTime::now();
@@ -505,7 +505,7 @@ impl CommandSuggestionService {
 
     pub(super) fn record_refresh_failure(
         &self,
-        storage: Option<&SqliteStore>,
+        storage: Option<&CommandSqliteStore>,
         provider: SuggestionProviderKind,
         error: String,
     ) {
@@ -528,7 +528,7 @@ impl CommandSuggestionService {
 
     pub(super) fn record_feedback_event(
         &self,
-        storage: Option<&SqliteStore>,
+        storage: Option<&CommandSqliteStore>,
         provider: SuggestionProviderKind,
         action: CommandSuggestionFeedbackAction,
         recorded: bool,

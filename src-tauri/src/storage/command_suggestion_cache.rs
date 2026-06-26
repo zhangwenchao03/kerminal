@@ -5,7 +5,8 @@
 use rusqlite::{params, OptionalExtension, Row};
 
 use crate::{
-    error::AppResult, models::command_suggestion::SuggestionProviderKind, storage::SqliteStore,
+    error::AppResult, models::command_suggestion::SuggestionProviderKind,
+    storage::CommandSqliteStore,
 };
 
 /// 写入 command_suggestion_provider_cache 表的结构化数据。
@@ -50,7 +51,7 @@ pub(crate) struct CommandSuggestionProviderCacheRow {
     pub ttl_seconds: u64,
 }
 
-impl SqliteStore {
+impl CommandSqliteStore {
     /// 写入或覆盖一条命令建议 provider cache。
     pub(crate) fn upsert_command_suggestion_provider_cache(
         &self,

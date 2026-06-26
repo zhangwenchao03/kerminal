@@ -1,4 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const desktopClipboardApiMock = vi.hoisted(() => ({
+  writeDesktopClipboardText: vi.fn(),
+}));
+
+vi.mock("../../lib/desktopClipboardApi", () => ({
+  writeDesktopClipboardText: (...args: unknown[]) =>
+    desktopClipboardApiMock.writeDesktopClipboardText(...args),
+}));
+
 import {
   COMMAND_BLOCK_OUTPUT_MAX_CHARS,
   appendCommandBlockOutput,
@@ -14,6 +24,7 @@ const originalCreateElement = document.createElement.bind(document);
 describe("terminalCommandBlocks", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    desktopClipboardApiMock.writeDesktopClipboardText.mockReset();
     Object.defineProperty(globalThis, "ClipboardItem", {
       configurable: true,
       value: originalClipboardItem,
@@ -120,6 +131,46 @@ describe("terminalCommandBlocks", () => {
     expect(block.output).toBe(
       `${"b".repeat(COMMAND_BLOCK_OUTPUT_MAX_CHARS - 1)}c`,
     );
+    expect(block.output.charCodeAt(0)).not.toBeGreaterThanOrEqual(0xdc00);
+  });
+
+  it("keeps the same trimmed tail when the existing output is already very large", () => {
+    const block = createTerminalCommandBlock({
+      command: "cargo test",
+      id: "block-1",
+      index: 0,
+      marker: mockMarker(0),
+    });
+    block.output =
+      "prefix" +
+      "a".repeat(COMMAND_BLOCK_OUTPUT_MAX_CHARS * 3) +
+      "middle";
+
+    appendCommandBlockOutput([block], "tail");
+
+    expect(block.output).toBe(
+      ("prefix" +
+        "a".repeat(COMMAND_BLOCK_OUTPUT_MAX_CHARS * 3) +
+        "middletail").slice(-COMMAND_BLOCK_OUTPUT_MAX_CHARS),
+    );
+  });
+
+  it("does not split a surrogate pair across the existing output and new data", () => {
+    const block = createTerminalCommandBlock({
+      command: "node unicode.js",
+      id: "block-1",
+      index: 0,
+      marker: mockMarker(0),
+    });
+    const [highSurrogate, lowSurrogate] = Array.from("😀".split(""));
+    block.output = `prefix${highSurrogate}`;
+
+    appendCommandBlockOutput(
+      [block],
+      `${lowSurrogate}${"b".repeat(COMMAND_BLOCK_OUTPUT_MAX_CHARS - 1)}`,
+    );
+
+    expect(block.output).toBe("b".repeat(COMMAND_BLOCK_OUTPUT_MAX_CHARS - 1));
     expect(block.output.charCodeAt(0)).not.toBeGreaterThanOrEqual(0xdc00);
   });
 
@@ -605,6 +656,64 @@ describe("terminalCommandBlocks", () => {
     expect(clipboardWrite).toHaveBeenCalledWith([
       expect.any(MockClipboardItem),
     ]);
+    expect(
+      desktopClipboardApiMock.writeDesktopClipboardText,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("copies command block text through the desktop clipboard facade when image copy is unavailable", async () => {
+    desktopClipboardApiMock.writeDesktopClipboardText.mockResolvedValue({
+      ok: true,
+    });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: undefined,
+    });
+    Object.defineProperty(globalThis, "ClipboardItem", {
+      configurable: true,
+      value: undefined,
+    });
+
+    const block = createTerminalCommandBlock({
+      command: "pwd",
+      id: "block-1",
+      index: 0,
+      marker: mockMarker(0),
+    });
+    block.output = "C:/dev/rust/kerminal\r\n";
+
+    await expect(copyTerminalCommandBlockAsImage(block, "dark")).resolves.toBe(
+      "text",
+    );
+    expect(desktopClipboardApiMock.writeDesktopClipboardText).toHaveBeenCalledWith(
+      "$ pwd\nC:/dev/rust/kerminal",
+    );
+  });
+
+  it("reports clipboard unavailability when command block text fallback fails", async () => {
+    desktopClipboardApiMock.writeDesktopClipboardText.mockResolvedValue({
+      ok: false,
+      reason: "unavailable",
+    });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: undefined,
+    });
+    Object.defineProperty(globalThis, "ClipboardItem", {
+      configurable: true,
+      value: undefined,
+    });
+
+    const block = createTerminalCommandBlock({
+      command: "pwd",
+      id: "block-1",
+      index: 0,
+      marker: mockMarker(0),
+    });
+
+    await expect(copyTerminalCommandBlockAsImage(block, "dark")).rejects.toThrow(
+      "当前环境不支持复制到剪贴板。",
+    );
   });
 });
 

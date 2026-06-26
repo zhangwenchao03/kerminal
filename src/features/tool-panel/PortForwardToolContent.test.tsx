@@ -41,6 +41,15 @@ const proxyAutoInjectionMocks = vi.hoisted(() => {
   };
 });
 
+const desktopClipboardApiMocks = vi.hoisted(() => ({
+  writeDesktopClipboardText: vi.fn(),
+}));
+
+vi.mock("../../lib/desktopClipboardApi", () => ({
+  writeDesktopClipboardText: (...args: unknown[]) =>
+    desktopClipboardApiMocks.writeDesktopClipboardText(...args),
+}));
+
 vi.mock("../../lib/portForwardApi", () => ({
   createPortForward: (...args: unknown[]) =>
     portForwardApiMocks.createPortForward(...args),
@@ -156,6 +165,10 @@ describe("PortForwardToolContent", () => {
     proxyAutoInjectionMocks.getHostNetworkAssistAutoInjection.mockClear();
     proxyAutoInjectionMocks.isHostNetworkAssistAutoInjectionEnabled.mockClear();
     proxyAutoInjectionMocks.setHostNetworkAssistAutoInjection.mockClear();
+    desktopClipboardApiMocks.writeDesktopClipboardText.mockReset();
+    desktopClipboardApiMocks.writeDesktopClipboardText.mockResolvedValue({
+      ok: true,
+    });
   });
 
   it("switches scenarios and keeps fields owned by host or local endpoints", async () => {
@@ -244,7 +257,7 @@ describe("PortForwardToolContent", () => {
     render(<PortForwardToolContent selectedMachine={sshMachine} />);
 
     expect(await screen.findByText("Prod proxy")).toBeInTheDocument();
-    expect(screen.getByText(/用户级配置脚本只写当前远端用户 home/)).toBeInTheDocument();
+    expect(screen.getByText(/脚本只写当前用户 home/)).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "复制配置脚本" }),
     ).toBeInTheDocument();
@@ -252,6 +265,24 @@ describe("PortForwardToolContent", () => {
       screen.getByRole("button", { name: "复制撤销脚本" }),
     ).toBeInTheDocument();
     expect(screen.queryByText("Stage proxy")).not.toBeInTheDocument();
+  });
+
+  it("copies network assist scripts through the desktop clipboard facade", async () => {
+    const user = userEvent.setup();
+    portForwardApiMocks.listPortForwards.mockResolvedValue([
+      networkAssistSession(),
+    ]);
+
+    render(<PortForwardToolContent selectedMachine={sshMachine} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "复制配置脚本" }),
+    );
+
+    expect(
+      desktopClipboardApiMocks.writeDesktopClipboardText,
+    ).toHaveBeenCalledWith(expect.stringContaining("HTTP_PROXY"));
+    expect(screen.getByText("已复制地址。")).toBeInTheDocument();
   });
 
   it("injects HTTP proxy exports into the focused same-host SSH pane", async () => {

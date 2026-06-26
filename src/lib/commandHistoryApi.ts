@@ -8,7 +8,6 @@ export type CommandHistoryTarget =
   | "dockerContainer";
 export type CommandHistorySource =
   | "user"
-  | "ai"
   | "snippet"
   | "workflow"
   | "broadcast"
@@ -86,7 +85,7 @@ const browserPreviewHistory = new Map<string, CommandHistoryEntry>(
     previewHistory({
       command: "journalctl -u app.service -n 200 --no-pager",
       id: "history-preview-log",
-      source: "ai",
+      source: "tool",
       target: "ssh",
       remoteHostId: "prod-api",
       shell: "ssh",

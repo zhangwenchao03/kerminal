@@ -6,7 +6,7 @@ import {
   chooseSelectOption,
   fileDialogMock,
   renderControlledSettings,
-} from "./SettingsToolContent.testHarness";
+} from "./__tests__/support/SettingsToolContent.testHarness";
 
 describe("SettingsToolContent controls", () => {
   it("updates theme mode and terminal appearance from controls", async () => {
@@ -278,34 +278,6 @@ describe("SettingsToolContent controls", () => {
       }),
     );
 
-    await user.click(screen.getByRole("button", { name: /AI 与模型/ }));
-    expect(screen.getByLabelText("上下文输出上限")).toHaveValue(12);
-    fireEvent.change(screen.getByLabelText("上下文输出上限"), {
-      target: { value: "8" },
-    });
-    expect(onSettingsChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        ai: expect.objectContaining({ contextMaxOutputBytes: 8192 }),
-      }),
-    );
-
-    await user.click(screen.getByLabelText("纳入命令历史"));
-    expect(onSettingsChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        ai: expect.objectContaining({ includeCommandHistory: true }),
-      }),
-    );
-
-    await user.click(screen.getByRole("button", { name: /放开模式/ }));
-    expect(onSettingsChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        ai: expect.objectContaining({
-          commandApprovalPolicy: "relaxed",
-          requireRemoteApproval: false,
-        }),
-      }),
-    );
-
     await user.click(screen.getByRole("button", { name: /SFTP/ }));
     fireEvent.change(screen.getByLabelText("全局传输并发"), {
       target: { value: "8" },
@@ -346,6 +318,39 @@ describe("SettingsToolContent controls", () => {
     expect(onSettingsChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
         sftp: expect.objectContaining({ timeoutSeconds: 45 }),
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: /桌面/ }));
+    await user.click(screen.getByLabelText("启用桌面通知"));
+    expect(onSettingsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        desktopNotifications: expect.objectContaining({ enabled: true }),
+      }),
+    );
+
+    await user.click(screen.getByLabelText("只通知重要事件"));
+    expect(onSettingsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        desktopNotifications: expect.objectContaining({ importantOnly: true }),
+      }),
+    );
+
+    fireEvent.change(screen.getByLabelText("耗时阈值"), {
+      target: { value: "25" },
+    });
+    expect(onSettingsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        desktopNotifications: expect.objectContaining({ minDurationMs: 25_000 }),
+      }),
+    );
+
+    fireEvent.change(screen.getByLabelText("同类事件节流"), {
+      target: { value: "60" },
+    });
+    expect(onSettingsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        desktopNotifications: expect.objectContaining({ throttleMs: 60_000 }),
       }),
     );
   });

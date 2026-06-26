@@ -10,7 +10,7 @@ use crate::{
         command_history::CommandHistoryTarget,
         command_suggestion::{CommandSuggestionFeedbackAction, SuggestionProviderKind},
     },
-    storage::SqliteStore,
+    storage::CommandSqliteStore,
 };
 
 /// 写入 command_suggestion_feedback 表的结构化数据。
@@ -55,7 +55,7 @@ pub(crate) struct CommandSuggestionFeedbackScore {
     pub dismissed_count: u32,
 }
 
-impl SqliteStore {
+impl CommandSqliteStore {
     /// 写入一条命令建议反馈。
     pub(crate) fn insert_command_suggestion_feedback(
         &self,

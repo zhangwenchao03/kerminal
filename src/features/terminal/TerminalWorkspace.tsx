@@ -1,4 +1,4 @@
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Layers2 } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -21,21 +21,25 @@ import type {
 import {
   analyzeBroadcastCommand,
   canBroadcastCommand,
-  isBroadcastCommandTargetMode,
   type BroadcastCommandAnalysis,
 } from "./broadcastCommandPolicy";
 import { collectPaneIds } from "../workspace/workspaceLayout";
-import type {
-  TerminalPane,
-  TerminalSplitDirection,
-  TerminalTab,
-  TerminalTabGroupPreference,
-  TerminalTabGroupPreferences,
+import {
+  isTerminalSessionTab,
+  type MachineGroup,
+  type TerminalPane,
+  type TerminalSplitDirection,
+  type TerminalSplitLayoutSizes,
+  type TerminalTab,
+  type TerminalTabGroupPreference,
+  type TerminalTabGroupPreferences,
 } from "../workspace/types";
-import { isTerminalSessionTab } from "../workspace/types";
-import { TerminalPaneLayout } from "./TerminalPaneLayout";
-import { TerminalEmptyState } from "./TerminalEmptyState";
 import { TerminalBroadcastBar } from "./TerminalBroadcastBar";
+import { TerminalWorkspaceContent } from "./TerminalWorkspaceContent";
+import type { TerminalPaneMoveDropZone } from "./terminalPaneMoveDropZones";
+import type { TerminalSplitDropIndicator } from "./TerminalSplitDropOverlay";
+import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
+import { useTerminalBroadcastTargets } from "./useTerminalBroadcastTargets";
 import {
   buildTerminalTabGroups,
   clampContextMenuPosition,
@@ -53,11 +57,12 @@ import {
 
 const terminalFloatingPanelClassName =
   "kerminal-floating-enter fixed z-[1000] border border-[var(--border-subtle)] bg-[var(--surface-overlay)] text-sm shadow-2xl shadow-black/20 backdrop-blur-xl dark:shadow-black/50";
+const terminalContextMenuPanelClassName =
+  "kerminal-context-menu kerminal-floating-enter fixed z-[1000] w-56";
 const terminalOverviewItemClassName =
   "kerminal-focus-ring kerminal-pressable flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left";
 const terminalOverviewIdleClassName =
   "text-zinc-700 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-zinc-50";
-const TAB_OVERVIEW_ALWAYS_SHOW_COUNT = 9;
 const TAB_OVERVIEW_OVERFLOW_TOLERANCE = 1;
 
 export interface BroadcastCommandRequest {
@@ -77,6 +82,7 @@ interface TerminalWorkspaceProps {
   contentRightInset?: number;
   focusedPaneId: string;
   interfaceDensity?: InterfaceDensity;
+  machineGroups?: MachineGroup[];
   panes: TerminalPane[];
   resolvedTheme: ResolvedTheme;
   tabs: TerminalTab[];
@@ -90,12 +96,21 @@ interface TerminalWorkspaceProps {
   onCloseTab: (tabId: string) => void;
   onCreateTerminal?: () => void;
   onFocusPane: (paneId: string) => void;
-  onOpenAiTool?: () => void;
+  onOpenAgentTool?: () => void;
   onOpenConnection?: () => void;
+  onMovePane?: (
+    sourcePaneId: string,
+    targetPaneId: string,
+    placement: TerminalPaneMoveDropZone,
+  ) => void;
   onPaneCurrentCwdChange?: (paneId: string, cwd: string) => void;
   onPaneOutputHistoryChange?: (
     paneId: string,
     outputHistory: string | undefined,
+  ) => void;
+  onSplitLayoutSizesChange?: (
+    splitId: string,
+    sizes: TerminalSplitLayoutSizes,
   ) => void;
   onOpenLogs?: () => void;
   onRenameTab: (tabId: string, title: string) => void;
@@ -104,9 +119,15 @@ interface TerminalWorkspaceProps {
     preference: TerminalTabGroupPreference,
   ) => void;
   reserveRightTitleBarControls?: boolean;
+  resolvePaneLines?: (paneId: string) => string[];
+  resolvePaneOutputHistory?: (paneId: string) => string | undefined;
   renderCustomTab?: (tab: TerminalTab, active: boolean) => ReactNode;
   onSelectTab: (tabId: string) => void;
-  onSplitPane: (direction: TerminalSplitDirection) => void;
+  onSplitPane: (
+    direction: TerminalSplitDirection,
+    options?: TerminalSplitPaneOptions,
+  ) => void;
+  splitDropIndicator?: TerminalSplitDropIndicator | null;
 }
 
 export function TerminalWorkspace({
@@ -115,25 +136,31 @@ export function TerminalWorkspace({
   contentRightInset = 0,
   focusedPaneId,
   interfaceDensity = "comfortable",
+  machineGroups = [],
   onBroadcastCommand,
   onBroadcastDraftChange,
   onClosePane,
   onCloseTab,
   onCreateTerminal,
   onFocusPane,
-  onOpenAiTool,
+  onOpenAgentTool,
   onOpenConnection,
+  onMovePane,
   onPaneCurrentCwdChange,
   onPaneOutputHistoryChange,
+  onSplitLayoutSizesChange,
   onOpenLogs,
   onRenameTab,
   onUpdateTabGroupPreference,
   reserveRightTitleBarControls = true,
+  resolvePaneLines,
+  resolvePaneOutputHistory,
   renderCustomTab,
   onSelectTab,
   onSplitPane,
   panes,
   resolvedTheme,
+  splitDropIndicator,
   tabs,
   tabGroupPreferences = {},
   terminalAppearance,
@@ -157,9 +184,7 @@ export function TerminalWorkspace({
   const tabOverviewButtonRef = useRef<HTMLButtonElement>(null);
   const tabOverviewMenuRef = useRef<HTMLDivElement>(null);
   const [tabOverviewOpen, setTabOverviewOpen] = useState(false);
-  const [tabOverviewAvailable, setTabOverviewAvailable] = useState(
-    () => tabs.length >= TAB_OVERVIEW_ALWAYS_SHOW_COUNT,
-  );
+  const [tabOverviewAvailable, setTabOverviewAvailable] = useState(false);
   const [tabOverviewPosition, setTabOverviewPosition] = useState({
     x: 0,
     y: 0,
@@ -176,23 +201,19 @@ export function TerminalWorkspace({
     [activeTab],
   );
   const hasActiveSplit = activePaneIds.length > 1;
-  const broadcastTargets = useMemo(
-    () =>
-      activePaneIds.flatMap((paneId) => {
-        const pane = panesById.get(paneId);
-        if (!pane || !isBroadcastCommandTargetMode(pane.mode)) {
-          return [];
-        }
-        return [
-          {
-            mode: pane.mode,
-            paneId: pane.id,
-            title: pane.title,
-          },
-        ];
-      }),
-    [activePaneIds, panesById],
-  );
+  const {
+    broadcastTargets,
+    broadcastTargetMode,
+    broadcastTargetOptions,
+    handleBroadcastTargetModeChange,
+    handleToggleCustomTarget,
+    productionTargetCount,
+    selectedTargetPaneIds,
+  } = useTerminalBroadcastTargets({
+    activePaneIds,
+    focusedPaneId,
+    panesById,
+  });
   const broadcastAnalysis = useMemo(
     () => analyzeBroadcastCommand(broadcastDraft, broadcastTargets),
     [broadcastDraft, broadcastTargets],
@@ -218,10 +239,10 @@ export function TerminalWorkspace({
   const compactDensity = interfaceDensity === "compact";
   const spaciousDensity = interfaceDensity === "spacious";
   const tabBarHeightClass = compactDensity
-    ? "h-10"
+    ? "h-9"
     : spaciousDensity
-      ? "h-12"
-      : "h-11";
+      ? "h-10"
+      : "h-9";
   const toolbarPaddingClass = compactDensity
     ? "px-2 py-1.5"
     : spaciousDensity
@@ -237,18 +258,16 @@ export function TerminalWorkspace({
     contentRightInset > 0
       ? ({ marginRight: contentRightInset } satisfies CSSProperties)
       : undefined;
-  const shouldShowTabOverview =
-    tabs.length > 1 && tabOverviewAvailable;
+  const shouldShowTabOverview = tabs.length > 1 && tabOverviewAvailable;
 
   const updateTabOverviewAvailability = useCallback(() => {
     const tabList = tabListRef.current;
     const hasHorizontalOverflow = tabList
-      ? tabList.scrollWidth - tabList.clientWidth > TAB_OVERVIEW_OVERFLOW_TOLERANCE
+      ? tabList.scrollWidth - tabList.clientWidth >
+        TAB_OVERVIEW_OVERFLOW_TOLERANCE
       : false;
-    setTabOverviewAvailable(
-      tabs.length >= TAB_OVERVIEW_ALWAYS_SHOW_COUNT || hasHorizontalOverflow,
-    );
-  }, [tabs.length]);
+    setTabOverviewAvailable(hasHorizontalOverflow);
+  }, []);
 
   useEffect(() => {
     setCollapsedTabGroupIds((current) => {
@@ -371,7 +390,9 @@ export function TerminalWorkspace({
       return;
     }
 
-    const nextGroup = tabGroups.find((group) => group.id === editingTabGroup.id);
+    const nextGroup = tabGroups.find(
+      (group) => group.id === editingTabGroup.id,
+    );
     if (!nextGroup) {
       setEditingTabGroup(null);
       return;
@@ -414,7 +435,7 @@ export function TerminalWorkspace({
     }
     setContextMenu((current) =>
       current === contextMenu ? { ...current, ...nextPosition } : current,
-      );
+    );
   }, [contextMenu]);
 
   useLayoutEffect(() => {
@@ -441,7 +462,7 @@ export function TerminalWorkspace({
         ? current
         : nextPosition,
     );
-  }, [tabOverviewOpen, tabs.length]);
+  }, [tabGroups, tabOverviewOpen]);
 
   const executeBroadcast = useCallback(
     async (analysis: BroadcastCommandAnalysis) => {
@@ -516,7 +537,12 @@ export function TerminalWorkspace({
     (event: ReactMouseEvent, menu: TerminalTabContextMenuPayload) => {
       event.preventDefault();
       event.stopPropagation();
-      const position = clampContextMenuPosition(event.clientX, event.clientY, 0, 0);
+      const position = clampContextMenuPosition(
+        event.clientX,
+        event.clientY,
+        0,
+        0,
+      );
       setContextMenu({ ...menu, ...position });
     },
     [],
@@ -596,10 +622,7 @@ export function TerminalWorkspace({
       ? createPortal(
           <div
             aria-label="终端标签操作菜单"
-            className={cn(
-              terminalFloatingPanelClassName,
-              "w-56 rounded-xl p-1.5 shadow-xl",
-            )}
+            className={terminalContextMenuPanelClassName}
             onClick={(event) => event.stopPropagation()}
             onContextMenu={(event) => {
               event.preventDefault();
@@ -654,43 +677,74 @@ export function TerminalWorkspace({
           >
             <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-3 py-2.5">
               <div className="font-medium text-zinc-950 dark:text-zinc-50">
-                所有标签
+                标签分组
               </div>
               <div className="rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-                {tabs.length} 个
+                {tabGroups.length} 组 / {tabs.length} 个
               </div>
             </div>
             <div className="max-h-[min(70vh,420px)] overflow-y-auto p-1.5">
-              {tabs.map((tab, index) => {
-                const active = tab.id === activeTabId;
-                const title = terminalAppearance.showTabNumbers
-                  ? `${index + 1} · ${tab.title}`
-                  : tab.title;
+              {tabGroups.map((group) => {
                 return (
-                  <button
-                    aria-current={active ? "page" : undefined}
-                    className={cn(
-                      terminalOverviewItemClassName,
-                      active
-                        ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
-                        : terminalOverviewIdleClassName,
-                    )}
-                    key={tab.id}
-                    onClick={() => selectTabFromOverview(tab.id)}
-                    role="menuitem"
-                    type="button"
+                  <div
+                    aria-label={`${group.title} 标签组`}
+                    className="py-1"
+                    key={group.id}
+                    role="group"
                   >
-                    <span
-                      className={cn(
-                        "h-2 w-2 shrink-0 rounded-full",
-                        tab.kind === "sftpTransfer"
-                          ? "bg-sky-400"
-                          : "bg-emerald-400",
-                      )}
-                    />
-                    <span className="min-w-0 flex-1 truncate">{title}</span>
-                    {active ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
-                  </button>
+                    <div className="flex items-center gap-2 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500 dark:text-zinc-400">
+                      <Layers2 className="h-3.5 w-3.5 shrink-0 opacity-80" />
+                      <span className="min-w-0 flex-1 truncate normal-case tracking-normal">
+                        {group.title}
+                      </span>
+                      <span className="rounded-full bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium leading-none">
+                        {group.tabs.length} 个
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      {group.tabs.map((tab) => {
+                        const active = tab.id === activeTabId;
+                        const tabIndex = tabs.findIndex(
+                          (candidate) => candidate.id === tab.id,
+                        );
+                        const title =
+                          terminalAppearance.showTabNumbers && tabIndex >= 0
+                            ? `${tabIndex + 1} · ${tab.title}`
+                            : tab.title;
+                        return (
+                          <button
+                            aria-current={active ? "page" : undefined}
+                            className={cn(
+                              terminalOverviewItemClassName,
+                              "pl-5",
+                              active
+                                ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
+                                : terminalOverviewIdleClassName,
+                            )}
+                            key={tab.id}
+                            onClick={() => selectTabFromOverview(tab.id)}
+                            role="menuitem"
+                            type="button"
+                          >
+                            <span
+                              className={cn(
+                                "h-2 w-2 shrink-0 rounded-full",
+                                tab.kind === "sftpTransfer"
+                                  ? "bg-sky-400"
+                                  : "bg-emerald-400",
+                              )}
+                            />
+                            <span className="min-w-0 flex-1 truncate">
+                              {title}
+                            </span>
+                            {active ? (
+                              <Check className="h-3.5 w-3.5 shrink-0" />
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 );
               })}
             </div>
@@ -702,12 +756,12 @@ export function TerminalWorkspace({
   return (
     <main
       aria-label="终端工作区"
-      className="kerminal-terminal-surface flex h-full w-full min-w-0 flex-col overflow-hidden"
+      className="kerminal-workspace-surface flex h-full w-full min-w-0 flex-col overflow-hidden"
       data-density={interfaceDensity}
     >
       <div
         className={cn(
-          "kerminal-material-nav relative z-20 flex items-center border-b border-[var(--border-subtle)] pl-2 pt-1 shadow-[inset_0_-1px_0_var(--border-subtle)]",
+          "kerminal-material-nav relative z-20 flex items-center border-b border-[var(--border-subtle)] shadow-[inset_0_-1px_0_var(--border-subtle)]",
           reserveRightTitleBarControls ? "pr-40" : "pr-2",
           tabBarHeightClass,
         )}
@@ -722,7 +776,9 @@ export function TerminalWorkspace({
         >
           {tabGroups.map((group) => {
             const collapsed = collapsedTabGroupIds.has(group.id);
-            const groupActive = group.tabs.some((tab) => tab.id === activeTabId);
+            const groupActive = group.tabs.some(
+              (tab) => tab.id === activeTabId,
+            );
             if (!group.grouped) {
               return group.tabs.map((tab) => (
                 <TerminalTabButton
@@ -736,7 +792,8 @@ export function TerminalWorkspace({
                   showClose
                   tabNumber={
                     terminalAppearance.showTabNumbers
-                      ? tabs.findIndex((candidate) => candidate.id === tab.id) + 1
+                      ? tabs.findIndex((candidate) => candidate.id === tab.id) +
+                        1
                       : undefined
                   }
                   tab={tab}
@@ -747,7 +804,7 @@ export function TerminalWorkspace({
             return (
               <div
                 className={cn(
-                  "relative flex h-10 shrink-0 items-center gap-1 rounded-2xl border px-1.5 pt-0.5 transition-[background-color,border-color,box-shadow]",
+                  "relative flex h-9 shrink-0 items-center gap-1 rounded-xl border px-1.5 transition-[background-color,border-color,box-shadow]",
                   groupActive
                     ? group.activeContainerClassName
                     : group.containerClassName,
@@ -786,7 +843,9 @@ export function TerminalWorkspace({
                         showClose
                         tabNumber={
                           terminalAppearance.showTabNumbers
-                            ? tabs.findIndex((candidate) => candidate.id === tab.id) + 1
+                            ? tabs.findIndex(
+                                (candidate) => candidate.id === tab.id,
+                              ) + 1
                             : undefined
                         }
                         tab={tab}
@@ -802,7 +861,7 @@ export function TerminalWorkspace({
             aria-expanded={tabOverviewOpen}
             aria-label="查看所有标签"
             className={cn(
-              "kerminal-focus-ring kerminal-pressable kerminal-muted-surface absolute bottom-1 z-20 flex h-8 w-8 items-center justify-center rounded-xl border text-zinc-500 shadow-sm shadow-black/10 backdrop-blur hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:shadow-black/30 dark:hover:text-zinc-100",
+              "kerminal-focus-ring kerminal-pressable kerminal-muted-surface absolute bottom-0.5 z-20 flex h-8 w-8 items-center justify-center rounded-xl border text-zinc-500 shadow-sm shadow-black/10 backdrop-blur hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:shadow-black/30 dark:hover:text-zinc-100",
               reserveRightTitleBarControls ? "right-28" : "right-3",
               tabOverviewOpen &&
                 "border-sky-500/30 bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100",
@@ -842,73 +901,48 @@ export function TerminalWorkspace({
           draft={broadcastDraft}
           error={broadcastError}
           focusedPaneId={focusedPaneId}
-          onClosePane={onClosePane}
           onDraftChange={handleDraftChange}
           onRequestBroadcast={requestBroadcast}
-          onSplitPane={onSplitPane}
+          onTargetModeChange={handleBroadcastTargetModeChange}
+          onToggleCustomTarget={handleToggleCustomTarget}
+          productionTargetCount={productionTargetCount}
+          selectedTargetPaneIds={selectedTargetPaneIds}
           sending={sendingBroadcast}
           status={broadcastStatus}
           style={contentInsetStyle}
-          targetCount={broadcastTargets.length}
+          targetMode={broadcastTargetMode}
+          targetOptions={broadcastTargetOptions}
           toolbarPaddingClass={toolbarPaddingClass}
         />
       ) : null}
 
-      <div
-        className={cn(
-          "relative min-h-0 flex-1 transition-[margin-right] duration-200 ease-out",
-          workspacePaddingClass,
-        )}
-        data-terminal-workspace-content
-        style={contentInsetStyle}
-      >
-        {tabs.length > 0 ? (
-          tabs.map((tab) => {
-            const active = tab.id === activeTab?.id;
-            return (
-              <div
-                aria-hidden={!active || undefined}
-                className={cn(
-                  "absolute min-h-0",
-                  active
-                    ? "pointer-events-auto z-10"
-                    : "pointer-events-none invisible z-0",
-                )}
-                key={tab.id}
-                style={{ inset: terminalInset }}
-              >
-                {isTerminalSessionTab(tab) ? (
-                  <TerminalPaneLayout
-                    focusedPaneId={active ? focusedPaneId : ""}
-                    layout={tab.layout}
-                    onClosePane={onClosePane}
-                    onCurrentCwdChange={onPaneCurrentCwdChange}
-                    onFocusPane={onFocusPane}
-                    onOpenLogs={onOpenLogs}
-                    onOutputHistoryChange={onPaneOutputHistoryChange}
-                    onSplitPane={onSplitPane}
-                    panesById={panesById}
-                    resolvedTheme={resolvedTheme}
-                    terminalAppearance={terminalAppearance}
-                  />
-                ) : (
-                  renderCustomTab?.(tab, active) ?? (
-                    <div className="kerminal-solid-surface flex h-full items-center justify-center rounded-2xl border text-sm text-zinc-500 dark:text-zinc-400">
-                      此标签暂不可用。
-                    </div>
-                  )
-                )}
-              </div>
-            );
-          })
-        ) : (
-          <TerminalEmptyState
-            onCreateTerminal={onCreateTerminal}
-            onOpenAiTool={onOpenAiTool}
-            onOpenConnection={onOpenConnection}
-          />
-        )}
-      </div>
+      <TerminalWorkspaceContent
+        activeTab={activeTab}
+        contentInsetStyle={contentInsetStyle}
+        focusedPaneId={focusedPaneId}
+        machineGroups={machineGroups}
+        onClosePane={onClosePane}
+        onCreateTerminal={onCreateTerminal}
+        onFocusPane={onFocusPane}
+        onOpenAgentTool={onOpenAgentTool}
+        onOpenConnection={onOpenConnection}
+        onOpenLogs={onOpenLogs}
+        onMovePane={onMovePane}
+        onPaneCurrentCwdChange={onPaneCurrentCwdChange}
+        onPaneOutputHistoryChange={onPaneOutputHistoryChange}
+        onSplitLayoutSizesChange={onSplitLayoutSizesChange}
+        onSplitPane={onSplitPane}
+        panesById={panesById}
+        resolvePaneLines={resolvePaneLines}
+        resolvePaneOutputHistory={resolvePaneOutputHistory}
+        renderCustomTab={renderCustomTab}
+        resolvedTheme={resolvedTheme}
+        splitDropIndicator={splitDropIndicator}
+        tabs={tabs}
+        terminalAppearance={terminalAppearance}
+        terminalInset={terminalInset}
+        workspacePaddingClass={workspacePaddingClass}
+      />
     </main>
   );
 }

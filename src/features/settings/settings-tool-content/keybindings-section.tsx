@@ -101,8 +101,7 @@ export function KeybindingsSettingsSection({
             快捷键
           </div>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-            默认按键尽量贴近 IntelliJ IDEA
-            keymap，同时保留终端高频操作的通用习惯。使用上方切换查看不同平台。
+            按平台查看和编辑快捷键。
           </p>
         </div>
         <div
@@ -130,19 +129,19 @@ export function KeybindingsSettingsSection({
 
       <div className="mt-5 grid gap-3 md:grid-cols-3">
         <SettingsMetricItem
-          description="当前展示这一平台的组合键。"
+          description="当前平台组合键。"
           icon={MonitorCog}
           label="当前平台"
           value={selectedKeybindingPlatformLabel}
         />
         <SettingsMetricItem
-          description="默认习惯保持一致，降低迁移成本。"
+          description="默认沿用 IntelliJ IDEA。"
           icon={Keyboard}
           label="默认风格"
           value="IntelliJ IDEA"
         />
         <SettingsMetricItem
-          description="修改后立即保存并影响全局快捷键匹配。"
+          description="修改后立即保存。"
           icon={Info}
           label="编辑状态"
           value="可编辑"
@@ -257,7 +256,7 @@ export function KeybindingsSettingsSection({
         )}
       </div>
       <p className="kerminal-muted-surface mt-4 rounded-xl border px-3 py-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-        快捷键使用“Ctrl+Shift+T”这类文本格式保存；留空会禁用对应动作。
+        使用 Ctrl+Shift+T 格式；留空表示禁用。
       </p>
     </section>
   );

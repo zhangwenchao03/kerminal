@@ -7,6 +7,7 @@ export type ConnectionOpenOptions = {
 
 export interface MachineSidebarProps {
   collapsed?: boolean;
+  collapsedGroupIds?: readonly string[];
   groups: MachineGroup[];
   openMachineIds?: readonly string[];
   selectedMachineId: string;
@@ -16,12 +17,20 @@ export interface MachineSidebarProps {
   onAddConnection?: (options?: ConnectionOpenOptions) => void;
   onAddGroup?: () => void;
   onAddMachine?: (groupId?: string) => void;
+  onCollapsedGroupIdsChange?: (groupIds: string[]) => void;
   onDeleteGroup?: (groupId: string) => void;
   onDeleteMachine?: (machineId: string) => void;
   onDuplicateMachine?: (machineId: string) => void;
   onEditGroup?: (groupId: string) => void;
   onEditMachine?: (machineId: string) => void;
   onMoveMachine?: (machineId: string, groupId: string) => void;
+  onExternalMachineDrag?: (
+    event: MachineSidebarMachineDragEvent,
+  ) => MachineSidebarExternalDragFeedback | void;
+  onExternalMachineDragEnd?: () => void;
+  onExternalMachineDrop?: (event: MachineSidebarMachineDragEvent) => boolean;
+  onOpenHostContainers?: (machineId: string) => void;
+  onOpenContainerDetails?: (machineId: string) => void;
   onOpenLocalTerminal?: (machineId: string) => void;
   onOpenContainerTerminal?: (machineId: string) => void;
   onOpenRdpConnection?: (machineId: string) => void;
@@ -89,6 +98,17 @@ export type PointerMachineDrag = {
 
 export type MachineDragPreview = {
   machine: Machine;
+  externalTargetHint?: string;
   x: number;
   y: number;
+};
+
+export type MachineSidebarMachineDragEvent = {
+  clientX: number;
+  clientY: number;
+  machine: Machine;
+};
+
+export type MachineSidebarExternalDragFeedback = {
+  hint?: string;
 };

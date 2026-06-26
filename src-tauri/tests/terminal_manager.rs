@@ -5,9 +5,9 @@
 use kerminal_lib::{
     models::terminal::{
         TerminalCreateRequest, TerminalOutputKind, TerminalResizeRequest, TerminalSecretInputEntry,
-        TerminalSecretInputPlan, TerminalSecretInputResponse,
+        TerminalSecretInputPlan,
     },
-    services::terminal_manager::TerminalManager,
+    services::terminal_manager::{rules, TerminalManager},
 };
 use std::{
     fs,
@@ -271,20 +271,92 @@ fn session_log_redacts_common_secret_shapes() {
 }
 
 #[test]
-fn secret_input_response_answers_prompt_and_redacts_echoed_secret() {
+fn secret_prompt_match_accepts_prompt_like_password_suffixes() {
+    let markers = vec!["password:".to_owned()];
+
+    assert!(rules::secret_prompt_matches("password: ", &markers));
+    assert!(rules::secret_prompt_matches(
+        "deploy@dev.internal's password:",
+        &markers
+    ));
+    assert!(rules::secret_prompt_matches("enter password:", &markers));
+    assert!(rules::secret_prompt_matches(
+        "password for deploy:",
+        &markers
+    ));
+}
+
+#[test]
+fn secret_prompt_match_rejects_password_history_and_status_lines() {
+    let markers = vec!["password:".to_owned()];
+
+    assert!(!rules::secret_prompt_matches(
+        "last failed password:",
+        &markers
+    ));
+    assert!(!rules::secret_prompt_matches(
+        "accepted password:",
+        &markers
+    ));
+    assert!(!rules::secret_prompt_matches("password changed:", &markers));
+    assert!(!rules::secret_prompt_matches(
+        "password: changed yesterday",
+        &markers
+    ));
+}
+
+#[test]
+fn secret_prompt_match_rejects_prefixed_specific_marker_lines() {
+    let markers = vec!["deploy@dev.internal's password:".to_owned()];
+
+    assert!(!rules::secret_prompt_matches(
+        "notice: deploy@dev.internal's password:",
+        &markers,
+    ));
+}
+
+#[test]
+fn secret_prompt_match_ignores_terminal_control_prefixes() {
+    let markers = vec!["deploy@dev.internal's password:".to_owned()];
+
+    assert!(rules::secret_prompt_matches(
+        "\u{1b}[6n\u{1b}[?9001h\u{1b}]0;C:\\WINDOWS\\system32\\cmd.exe\u{7}\u{1b}[?25hdeploy@dev.internal's password: ",
+        &markers,
+    ));
+}
+
+#[test]
+fn secret_prompt_match_uses_last_line_for_banners_and_split_prompts() {
+    let markers = vec!["deploy@dev.internal's password:".to_owned()];
+
+    assert!(!rules::secret_prompt_matches(
+        "last failed password:\r\ndeploy@dev.internal's pass",
+        &markers,
+    ));
+    assert!(rules::secret_prompt_matches(
+        "last failed password:\r\ndeploy@dev.internal's password: ",
+        &markers,
+    ));
+}
+
+#[test]
+fn secret_input_plan_answers_prompt_and_redacts_echoed_secret() {
     let manager = TerminalManager::new();
     let (sender, receiver) = mpsc::channel();
     let secret = "s3cr3tPtyPassword123";
-    let mut request = password_prompt_request(secret);
-    request.secret_input_response = Some(TerminalSecretInputResponse {
-        prompt_markers: vec!["deploy@dev.internal's password:".to_owned()],
-        response: secret.to_owned(),
-        redact_values: vec![secret.to_owned()],
-        max_responses: 1,
-    });
+    let request = password_prompt_request(secret);
+    let secret_input_plan = TerminalSecretInputPlan {
+        entries: vec![secret_entry(
+            "target",
+            "deploy@dev.internal's password:",
+            secret,
+        )],
+    };
 
     let summary = manager
-        .create_session(request, move |event| sender.send(event).is_ok())
+        .create_session_with_secret_input_plan(request, Some(secret_input_plan), move |event| {
+            sender.send(event).is_ok()
+        })
         .unwrap();
 
     let received = collect_until_output(&manager, &summary.id, &receiver, "auth-ok");
@@ -299,47 +371,23 @@ fn secret_input_response_answers_prompt_and_redacts_echoed_secret() {
 }
 
 #[test]
-fn secret_input_response_answers_split_prompt_across_reads() {
-    let manager = TerminalManager::new();
-    let (sender, receiver) = mpsc::channel();
-    let secret = "s3cr3tSplitPrompt123";
-    let mut request = split_password_prompt_request(secret);
-    request.secret_input_response = Some(TerminalSecretInputResponse {
-        prompt_markers: vec!["deploy@dev.internal's password:".to_owned()],
-        response: secret.to_owned(),
-        redact_values: vec![secret.to_owned()],
-        max_responses: 1,
-    });
-
-    let summary = manager
-        .create_session(request, move |event| sender.send(event).is_ok())
-        .unwrap();
-
-    let received = collect_until_output(&manager, &summary.id, &receiver, "auth-ok");
-    manager.close(&summary.id).unwrap();
-
-    assert!(received.contains("auth-ok"));
-    assert!(
-        !received.contains(secret),
-        "split prompt response must not be echoed to frontend output: {received:?}",
-    );
-}
-
-#[test]
-fn secret_input_response_does_not_repeat_after_second_prompt() {
+fn secret_input_plan_does_not_repeat_after_second_prompt() {
     let manager = TerminalManager::new();
     let (sender, receiver) = mpsc::channel();
     let secret = "s3cr3tSingleUsePrompt123";
-    let mut request = repeated_password_prompt_request();
-    request.secret_input_response = Some(TerminalSecretInputResponse {
-        prompt_markers: vec!["deploy@dev.internal's password:".to_owned()],
-        response: secret.to_owned(),
-        redact_values: vec![secret.to_owned()],
-        max_responses: 1,
-    });
+    let request = repeated_password_prompt_request();
+    let secret_input_plan = TerminalSecretInputPlan {
+        entries: vec![secret_entry(
+            "target",
+            "deploy@dev.internal's password:",
+            secret,
+        )],
+    };
 
     let summary = manager
-        .create_session(request, move |event| sender.send(event).is_ok())
+        .create_session_with_secret_input_plan(request, Some(secret_input_plan), move |event| {
+            sender.send(event).is_ok()
+        })
         .unwrap();
 
     let mut received = collect_until_output(&manager, &summary.id, &receiver, "first-read");
@@ -358,11 +406,11 @@ fn secret_input_response_does_not_repeat_after_second_prompt() {
     );
     assert!(
         !received.contains("unexpected-second-read"),
-        "secret input response must not answer the second prompt: {received:?}",
+        "secret input plan must not answer the second prompt: {received:?}",
     );
     assert!(
         !received.contains(secret),
-        "single-use secret response must not be echoed to frontend output: {received:?}",
+        "single-use secret plan must not be echoed to frontend output: {received:?}",
     );
 }
 

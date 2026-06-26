@@ -85,6 +85,14 @@ export function resolveSftpContextMenuAction({
   if (action === "newDirectory") {
     return { kind: "newDirectory" };
   }
+  if (action === "workspace") {
+    if (!entry) {
+      return { kind: "workspaceDirectory", path: currentPath };
+    }
+    return entry.kind === "directory"
+      ? { kind: "workspaceDirectory", path: entry.path }
+      : { kind: "noop" };
+  }
 
   if (!entry) {
     return { kind: "noop" };
@@ -93,11 +101,6 @@ export function resolveSftpContextMenuAction({
   if (action === "open") {
     return entry.kind === "directory"
       ? { kind: "openDirectory", path: entry.path }
-      : { kind: "noop" };
-  }
-  if (action === "workspace") {
-    return entry.kind === "directory"
-      ? { kind: "workspaceDirectory", path: entry.path }
       : { kind: "noop" };
   }
   if (action === "transferToTarget") {

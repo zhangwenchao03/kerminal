@@ -1,6 +1,5 @@
-import Editor from "@monaco-editor/react";
-import "../../lib/monacoSetup";
 import { configureKerminalMonaco } from "../../lib/monacoTheme";
+import { MonacoTextEditor } from "./MonacoTextEditor";
 import { languageForPath } from "./remoteWorkspaceEditorModel";
 
 export function RemoteFilePreviewEditor({
@@ -11,7 +10,7 @@ export function RemoteFilePreviewEditor({
   path: string;
 }) {
   return (
-    <Editor
+    <MonacoTextEditor
       beforeMount={configureKerminalMonaco}
       height="100%"
       language={languageForPath(path)}

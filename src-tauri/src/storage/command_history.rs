@@ -7,7 +7,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use crate::{
     error::{AppError, AppResult},
     models::command_history::{CommandHistoryEntry, CommandHistorySource, CommandHistoryTarget},
-    storage::SqliteStore,
+    storage::CommandSqliteStore,
 };
 
 /// 写入 command_history 表的结构化数据。
@@ -56,7 +56,7 @@ pub(crate) struct CommandHistoryListFilter<'a> {
     pub limit: usize,
 }
 
-impl SqliteStore {
+impl CommandSqliteStore {
     /// 返回全部命令历史，按最新优先排序。
     pub fn list_command_history(&self) -> AppResult<Vec<CommandHistoryEntry>> {
         self.with_connection(list_history)

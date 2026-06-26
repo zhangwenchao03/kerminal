@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { TerminalPane, TerminalTab } from "../workspace/types";
@@ -13,7 +13,7 @@ import {
   previewOnlyPanes,
   previewOnlyTabs,
   workspaceProps,
-} from "./TerminalWorkspace.testSupport";
+} from "./__tests__/support/TerminalWorkspace.testSupport";
 
 vi.mock("./XtermPane", () => ({
   XtermPane: ({ title }: { title: string }) => (
@@ -89,7 +89,7 @@ describe("TerminalWorkspace broadcast command", () => {
     render(<ControlledWorkspace />);
 
     await user.type(screen.getByLabelText("批量命令"), "uptime");
-    await user.click(screen.getByRole("button", { name: "发送到全部" }));
+    await user.click(screen.getByRole("button", { name: "发送到 1 个目标" }));
 
     expect(onBroadcastCommand).toHaveBeenCalledWith({
       command: "uptime",
@@ -136,8 +136,8 @@ describe("TerminalWorkspace broadcast command", () => {
     await user.keyboard("systemctl status nginx");
     expect(onBroadcastDraftChange).toHaveBeenCalled();
     expect(screen.getByLabelText("批量命令")).toHaveValue("systemctl status nginx");
-    expect(screen.getByRole("button", { name: "发送到全部" })).toBeEnabled();
-    await user.click(screen.getByRole("button", { name: "发送到全部" }));
+    expect(screen.getByRole("button", { name: "发送到 2 个目标" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "发送到 2 个目标" }));
 
     expect(onBroadcastCommand).toHaveBeenCalledWith({
       command: "systemctl status nginx",
@@ -145,6 +145,208 @@ describe("TerminalWorkspace broadcast command", () => {
       targetPaneIds: ["pane-batch-local", "pane-batch-ssh"],
     });
     expect(screen.getByRole("status")).toHaveTextContent("1 个分屏尚未连接");
+  });
+
+  it("can send only to the focused pane from a split tab", async () => {
+    const user = userEvent.setup();
+    const onBroadcastCommand = vi.fn().mockResolvedValue({
+      missingPaneIds: [],
+      sentPaneIds: ["pane-batch-ssh"],
+    });
+
+    function ControlledWorkspace() {
+      const [broadcastDraft, setBroadcastDraft] = useState("");
+
+      return (
+        <TerminalWorkspace
+          {...workspaceProps({
+            activeTabId: "tab-batch",
+            broadcastDraft,
+            focusedPaneId: "pane-batch-ssh",
+            onBroadcastCommand,
+            onBroadcastDraftChange: setBroadcastDraft,
+            panes: batchPanes,
+            tabs: batchTabs,
+          })}
+        />
+      );
+    }
+
+    render(<ControlledWorkspace />);
+
+    await user.type(screen.getByLabelText("批量命令"), "hostname");
+    await user.click(
+      screen.getByRole("button", { name: "发送目标：全部分屏 · 2" }),
+    );
+    await user.click(
+      within(screen.getByRole("menu", { name: "发送目标选择" })).getByRole(
+        "button",
+        { name: /当前分屏/ },
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "发送到 1 个目标" }));
+
+    expect(onBroadcastCommand).toHaveBeenCalledWith({
+      command: "hostname",
+      data: "hostname\r",
+      targetPaneIds: ["pane-batch-ssh"],
+    });
+  });
+
+  it("can send to a custom subset of split panes", async () => {
+    const user = userEvent.setup();
+    const onBroadcastCommand = vi.fn().mockResolvedValue({
+      missingPaneIds: [],
+      sentPaneIds: ["pane-batch-local"],
+    });
+
+    function ControlledWorkspace() {
+      const [broadcastDraft, setBroadcastDraft] = useState("");
+
+      return (
+        <TerminalWorkspace
+          {...workspaceProps({
+            activeTabId: "tab-batch",
+            broadcastDraft,
+            focusedPaneId: "pane-batch-local",
+            onBroadcastCommand,
+            onBroadcastDraftChange: setBroadcastDraft,
+            panes: batchPanes,
+            tabs: batchTabs,
+          })}
+        />
+      );
+    }
+
+    render(<ControlledWorkspace />);
+
+    await user.type(screen.getByLabelText("批量命令"), "date");
+    await user.click(
+      screen.getByRole("button", { name: "发送目标：全部分屏 · 2" }),
+    );
+    const targetMenu = screen.getByRole("menu", { name: "发送目标选择" });
+    await user.click(within(targetMenu).getByRole("button", { name: /自定义/ }));
+    await user.click(
+      within(targetMenu).getByRole("checkbox", { name: /SSH 批量/ }),
+    );
+    await user.click(screen.getByRole("button", { name: "发送到 1 个目标" }));
+
+    expect(onBroadcastCommand).toHaveBeenCalledWith({
+      command: "date",
+      data: "date\r",
+      targetPaneIds: ["pane-batch-local"],
+    });
+  });
+
+  it("hides broadcast controls after switching from a split tab to a single pane tab", async () => {
+    const user = userEvent.setup();
+    const onBroadcastCommand = vi.fn().mockResolvedValue({
+      missingPaneIds: [],
+      sentPaneIds: ["pane-local"],
+    });
+
+    function ControlledWorkspace() {
+      const [activeTabId, setActiveTabId] = useState("tab-batch");
+      const [broadcastDraft, setBroadcastDraft] = useState("");
+      const focusedPaneId =
+        activeTabId === "tab-batch" ? "pane-batch-local" : "pane-local";
+
+      return (
+        <>
+          <button onClick={() => setActiveTabId("tab-local")} type="button">
+            切换到本地
+          </button>
+          <TerminalWorkspace
+            {...workspaceProps({
+              activeTabId,
+              broadcastDraft,
+              focusedPaneId,
+              onBroadcastCommand,
+              onBroadcastDraftChange: setBroadcastDraft,
+              panes: [...batchPanes, baseTerminalPane],
+              tabs: [...batchTabs, {
+                ...baseTerminalPane,
+                id: "tab-local",
+                layout: { paneId: "pane-local", type: "pane" as const },
+                machineId: "local-powershell",
+                title: "本地 PowerShell",
+              } as TerminalTab],
+            })}
+          />
+        </>
+      );
+    }
+
+    render(<ControlledWorkspace />);
+
+    await user.click(
+      screen.getByRole("button", { name: "发送目标：全部分屏 · 2" }),
+    );
+    await user.click(
+      within(screen.getByRole("menu", { name: "发送目标选择" })).getByRole(
+        "button",
+        { name: /自定义/ },
+      ),
+    );
+    expect(
+      screen.getByRole("button", { name: "发送目标：自定义 · 2" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "切换到本地" }));
+
+    expect(screen.queryByLabelText("批量命令")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /发送目标/ }),
+    ).not.toBeInTheDocument();
+    expect(onBroadcastCommand).not.toHaveBeenCalled();
+  });
+
+  it("surfaces production targets inline without blocking send", async () => {
+    const user = userEvent.setup();
+    const onBroadcastCommand = vi.fn().mockResolvedValue({
+      missingPaneIds: [],
+      sentPaneIds: ["pane-batch-local", "pane-batch-ssh"],
+    });
+    const panes: TerminalPane[] = batchPanes.map((pane) =>
+      pane.id === "pane-batch-ssh"
+        ? { ...pane, remoteHostProduction: true }
+        : pane,
+    );
+
+    function ControlledWorkspace() {
+      const [broadcastDraft, setBroadcastDraft] = useState("");
+
+      return (
+        <TerminalWorkspace
+          {...workspaceProps({
+            activeTabId: "tab-batch",
+            broadcastDraft,
+            focusedPaneId: "pane-batch-local",
+            onBroadcastCommand,
+            onBroadcastDraftChange: setBroadcastDraft,
+            panes,
+            tabs: batchTabs,
+          })}
+        />
+      );
+    }
+
+    render(<ControlledWorkspace />);
+
+    expect(
+      screen.getByRole("button", {
+        name: "发送目标：全部分屏 · 2 · 生产 1",
+      }),
+    ).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("批量命令"), "uptime");
+    await user.click(screen.getByRole("button", { name: "发送到 2 个目标" }));
+
+    expect(onBroadcastCommand).toHaveBeenCalledWith({
+      command: "uptime",
+      data: "uptime\r",
+      targetPaneIds: ["pane-batch-local", "pane-batch-ssh"],
+    });
   });
 
   it("includes telnet and serial panes in broadcast targets without confirmation", async () => {
@@ -215,7 +417,7 @@ describe("TerminalWorkspace broadcast command", () => {
     render(<ControlledWorkspace />);
 
     await user.type(screen.getByLabelText("批量命令"), "show version");
-    await user.click(screen.getByRole("button", { name: "发送到全部" }));
+    await user.click(screen.getByRole("button", { name: "发送到 2 个目标" }));
 
     expect(onBroadcastCommand).toHaveBeenCalledWith({
       command: "show version",
@@ -250,7 +452,7 @@ describe("TerminalWorkspace broadcast command", () => {
 
     await user.type(screen.getByLabelText("批量命令"), "uptime");
 
-    expect(screen.getByRole("button", { name: "发送到全部" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "没有可发送目标" })).toBeDisabled();
     expect(onBroadcastCommand).not.toHaveBeenCalled();
   });
 });

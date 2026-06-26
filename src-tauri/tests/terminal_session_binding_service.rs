@@ -1,7 +1,7 @@
 use kerminal_lib::services::terminal_session_binding_service::{
-    TerminalSessionBindingCapabilityUse, TerminalSessionBindingEventKind,
-    TerminalSessionBindingMetadata, TerminalSessionBindingService, TerminalSessionBindingStatus,
-    TerminalSessionSnapshotStatus,
+    AgentTargetBindingRequest, AgentTargetBindingStatus, TerminalSessionBindingCapabilityUse,
+    TerminalSessionBindingEventKind, TerminalSessionBindingMetadata, TerminalSessionBindingService,
+    TerminalSessionBindingStatus, TerminalSessionSnapshotStatus,
 };
 use std::time::Duration;
 
@@ -391,4 +391,181 @@ fn snapshot_events_update_binding_and_event_log_is_bounded() {
             TerminalSessionBindingEventKind::Mismatch,
         ]
     );
+}
+
+#[test]
+fn agent_target_resolver_returns_live_target_from_explicit_binding() {
+    let service = TerminalSessionBindingService::new(16, Duration::from_secs(60));
+    let terminal_binding = service
+        .register_at_with_metadata(
+            "pane-a",
+            "target-session-a",
+            Some(TerminalSessionBindingMetadata {
+                tab_id: Some("tab-a".to_owned()),
+                target_ref: Some("ssh:prod-a".to_owned()),
+                target_kind: Some("ssh".to_owned()),
+                remote_host_id: Some("host-a".to_owned()),
+                profile_id: None,
+                cwd: Some("/srv/app".to_owned()),
+                shell: Some("bash".to_owned()),
+            }),
+            10,
+        )
+        .expect("register target terminal binding");
+    let terminal_binding = service
+        .ready_at(&terminal_binding.pane_id, &terminal_binding.session_id, 20)
+        .expect("ready target terminal binding")
+        .expect("registered binding");
+
+    let saved = service
+        .bind_agent_target_to_terminal_binding_at("agent-session-a", &terminal_binding, 30)
+        .expect("bind agent target");
+    let resolved = service
+        .resolve_agent_target("agent-session-a", ["target-session-a"])
+        .expect("resolve live target");
+    let write_target = service
+        .resolve_agent_target_for_write("agent-session-a", saved.generation, ["target-session-a"])
+        .expect("live binding is writable by explicit generation");
+
+    assert_eq!(resolved.status, AgentTargetBindingStatus::Live);
+    assert!(resolved.live);
+    assert!(!resolved.stale);
+    assert_eq!(resolved.target_terminal_session_id, "target-session-a");
+    assert_eq!(resolved.pane_id, "pane-a");
+    assert_eq!(resolved.tab_id.as_deref(), Some("tab-a"));
+    assert_eq!(resolved.target_ref.as_deref(), Some("ssh:prod-a"));
+    assert_eq!(resolved.cwd.as_deref(), Some("/srv/app"));
+    assert_eq!(resolved.shell.as_deref(), Some("bash"));
+    assert_eq!(write_target.binding_id, saved.binding_id);
+}
+
+#[test]
+fn agent_target_resolver_marks_missing_live_session_stale_and_rejects_write() {
+    let service = TerminalSessionBindingService::new(16, Duration::from_secs(60));
+    let saved = service
+        .save_agent_target_binding_at(
+            AgentTargetBindingRequest {
+                agent_session_id: "agent-session-a".to_owned(),
+                target_terminal_session_id: "target-session-a".to_owned(),
+                pane_id: "pane-a".to_owned(),
+                tab_id: Some("tab-a".to_owned()),
+                target_ref: Some("local:default".to_owned()),
+                cwd: Some("C:/work".to_owned()),
+                shell: Some("powershell".to_owned()),
+            },
+            10,
+        )
+        .expect("save agent target binding");
+
+    let resolved = service
+        .resolve_agent_target("agent-session-a", ["other-live-session"])
+        .expect("resolve stale target");
+    let error = service
+        .resolve_agent_target_for_write("agent-session-a", saved.generation, ["other-live-session"])
+        .expect_err("stale default target cannot be used for writes");
+
+    assert_eq!(resolved.status, AgentTargetBindingStatus::Stale);
+    assert!(!resolved.live);
+    assert!(resolved.stale);
+    assert!(error.to_string().contains("stale"));
+}
+
+#[test]
+fn agent_target_write_guard_rejects_generation_mismatch() {
+    let service = TerminalSessionBindingService::new(16, Duration::from_secs(60));
+    let saved = service
+        .save_agent_target_binding_at(
+            AgentTargetBindingRequest {
+                agent_session_id: "agent-session-a".to_owned(),
+                target_terminal_session_id: "target-session-a".to_owned(),
+                pane_id: "pane-a".to_owned(),
+                tab_id: None,
+                target_ref: None,
+                cwd: None,
+                shell: None,
+            },
+            10,
+        )
+        .expect("save agent target binding");
+
+    let error = service
+        .resolve_agent_target_for_write(
+            "agent-session-a",
+            saved.generation + 1,
+            ["target-session-a"],
+        )
+        .expect_err("old or future generation is rejected");
+
+    assert!(error.to_string().contains("generation mismatch"));
+}
+
+#[test]
+fn agent_target_rebind_replaces_mapping_and_advances_generation() {
+    let service = TerminalSessionBindingService::new(16, Duration::from_secs(60));
+    let first = service
+        .save_agent_target_binding_at(
+            AgentTargetBindingRequest {
+                agent_session_id: "agent-session-a".to_owned(),
+                target_terminal_session_id: "target-session-a".to_owned(),
+                pane_id: "pane-a".to_owned(),
+                tab_id: Some("tab-a".to_owned()),
+                target_ref: Some("ssh:first".to_owned()),
+                cwd: Some("/srv/first".to_owned()),
+                shell: Some("bash".to_owned()),
+            },
+            10,
+        )
+        .expect("save first target");
+    let second = service
+        .save_agent_target_binding_at(
+            AgentTargetBindingRequest {
+                agent_session_id: "agent-session-a".to_owned(),
+                target_terminal_session_id: "target-session-b".to_owned(),
+                pane_id: "pane-b".to_owned(),
+                tab_id: Some("tab-b".to_owned()),
+                target_ref: Some("ssh:second".to_owned()),
+                cwd: Some("/srv/second".to_owned()),
+                shell: Some("zsh".to_owned()),
+            },
+            20,
+        )
+        .expect("rebind target");
+
+    let resolved = service
+        .resolve_agent_target("agent-session-a", ["target-session-b"])
+        .expect("resolve rebound target");
+
+    assert!(second.generation > first.generation);
+    assert_ne!(second.binding_id, first.binding_id);
+    assert_eq!(resolved.generation, second.generation);
+    assert_eq!(resolved.target_terminal_session_id, "target-session-b");
+    assert_eq!(resolved.pane_id, "pane-b");
+    assert_eq!(resolved.target_ref.as_deref(), Some("ssh:second"));
+}
+
+#[test]
+fn agent_target_closed_terminal_has_explicit_write_error() {
+    let service = TerminalSessionBindingService::new(16, Duration::from_secs(60));
+    let terminal_binding = service
+        .register_at("pane-a", "target-session-a", 10)
+        .expect("register target terminal binding");
+    let saved = service
+        .bind_agent_target_to_terminal_binding_at("agent-session-a", &terminal_binding, 20)
+        .expect("bind agent target");
+
+    assert!(service
+        .closed_at("pane-a", "target-session-a", 30)
+        .expect("close terminal binding"));
+    let closed = service
+        .resolve_agent_target("agent-session-a", ["target-session-a"])
+        .expect("resolve closed target");
+    let error = service
+        .resolve_agent_target_for_write("agent-session-a", closed.generation, ["target-session-a"])
+        .expect_err("closed target cannot be used for writes");
+
+    assert!(closed.generation > saved.generation);
+    assert_eq!(closed.status, AgentTargetBindingStatus::Closed);
+    assert!(!closed.live);
+    assert!(!closed.stale);
+    assert!(error.to_string().contains("closed"));
 }

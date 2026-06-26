@@ -24,6 +24,10 @@ const localFilesApiMock = vi.hoisted(() => ({
   renameLocalPath: vi.fn(),
 }));
 
+const desktopClipboardApiMock = vi.hoisted(() => ({
+  writeDesktopClipboardText: vi.fn(),
+}));
+
 vi.mock("../../lib/fileDialogApi", () => ({
   listLocalDirectory: fileDialogApiMock.listLocalDirectory,
   openLocalDirectory: fileDialogApiMock.openLocalDirectory,
@@ -39,6 +43,11 @@ vi.mock("../../lib/localFilesApi", () => ({
   copyLocalPath: localFilesApiMock.copyLocalPath,
   deleteLocalPath: localFilesApiMock.deleteLocalPath,
   renameLocalPath: localFilesApiMock.renameLocalPath,
+}));
+
+vi.mock("../../lib/desktopClipboardApi", () => ({
+  writeDesktopClipboardText: (...args: unknown[]) =>
+    desktopClipboardApiMock.writeDesktopClipboardText(...args),
 }));
 
 const targetMachine: Machine = {
@@ -179,9 +188,7 @@ describe("LocalTransferPane", () => {
     localFilesApiMock.copyLocalPath.mockReset();
     localFilesApiMock.deleteLocalPath.mockReset();
     localFilesApiMock.renameLocalPath.mockReset();
-    if (vi.isMockFunction(window.prompt)) {
-      vi.mocked(window.prompt).mockRestore();
-    }
+    desktopClipboardApiMock.writeDesktopClipboardText.mockReset();
     fileDialogApiMock.listLocalDirectory.mockResolvedValue(initialListing);
     fileDialogApiMock.selectLocalDirectory.mockResolvedValue(null);
     localFilesApiMock.createLocalDirectory.mockResolvedValue(
@@ -202,6 +209,9 @@ describe("LocalTransferPane", () => {
       remotePath: "/srv/app/notes.md",
       status: "queued",
       updatedAt: 1,
+    });
+    desktopClipboardApiMock.writeDesktopClipboardText.mockResolvedValue({
+      ok: true,
     });
   });
 
@@ -250,12 +260,13 @@ describe("LocalTransferPane", () => {
 
   it("creates a local directory from the toolbar", async () => {
     const user = userEvent.setup();
-    vi.spyOn(window, "prompt").mockReturnValue("  new-dir  ");
 
     render(<LocalTransferPane active targetMachine={targetMachine} targetPath="/srv/app" />);
 
     await screen.findByText("notes.md");
     await user.click(screen.getByRole("button", { name: "新建" }));
+    await user.type(screen.getByLabelText("文件夹名称"), "  new-dir  ");
+    await user.click(screen.getByRole("button", { name: "创建" }));
 
     await waitFor(() =>
       expect(localFilesApiMock.createLocalDirectory).toHaveBeenCalledWith({
@@ -265,13 +276,15 @@ describe("LocalTransferPane", () => {
       }),
     );
     expect(await screen.findByText("new-dir")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: "新建文件夹" }),
+    ).not.toBeInTheDocument();
     expect(fileDialogApiMock.listLocalDirectory).toHaveBeenCalledTimes(1);
     expect(sftpApiMock.enqueueSftpTransfer).not.toHaveBeenCalled();
   });
 
   it("creates a local directory from the blank context menu", async () => {
     const user = userEvent.setup();
-    vi.spyOn(window, "prompt").mockReturnValue("menu-dir");
     localFilesApiMock.createLocalDirectory.mockResolvedValue({
       ...createdDirectoryListing,
       entries: [
@@ -291,6 +304,8 @@ describe("LocalTransferPane", () => {
     const pane = screen.getByLabelText("本地目录面板");
     await openLocalContextMenu(pane);
     await user.click(await screen.findByRole("menuitem", { name: "新建文件夹" }));
+    await user.type(screen.getByLabelText("文件夹名称"), "menu-dir");
+    await user.click(screen.getByRole("button", { name: "创建" }));
 
     await waitFor(() =>
       expect(localFilesApiMock.createLocalDirectory).toHaveBeenCalledWith({
@@ -315,7 +330,6 @@ describe("LocalTransferPane", () => {
 
   it("shows an error when creating a local directory fails", async () => {
     const user = userEvent.setup();
-    vi.spyOn(window, "prompt").mockReturnValue("exists");
     localFilesApiMock.createLocalDirectory.mockRejectedValue(
       new Error("目标目录已存在"),
     );
@@ -324,6 +338,8 @@ describe("LocalTransferPane", () => {
 
     await screen.findByText("notes.md");
     await user.click(screen.getByRole("button", { name: "新建" }));
+    await user.type(screen.getByLabelText("文件夹名称"), "exists");
+    await user.click(screen.getByRole("button", { name: "创建" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "目标目录已存在",
@@ -331,10 +347,8 @@ describe("LocalTransferPane", () => {
     expect(sftpApiMock.enqueueSftpTransfer).not.toHaveBeenCalled();
   });
 
-  it("does not create a local directory when the prompt is cancelled or blank", async () => {
+  it("does not create a local directory when the dialog is cancelled or blank", async () => {
     const user = userEvent.setup();
-    const promptSpy = vi.spyOn(window, "prompt");
-    promptSpy.mockReturnValueOnce(null).mockReturnValueOnce("   ");
 
     render(
       <LocalTransferPane
@@ -347,8 +361,11 @@ describe("LocalTransferPane", () => {
     await screen.findByText("notes.md");
     const createButton = screen.getByRole("button", { name: "新建" });
     await user.click(createButton);
+    await user.click(screen.getByRole("button", { name: "取消" }));
     await user.click(createButton);
+    await user.type(screen.getByLabelText("文件夹名称"), "   ");
 
+    expect(screen.getByRole("button", { name: "创建" })).toBeDisabled();
     expect(localFilesApiMock.createLocalDirectory).not.toHaveBeenCalled();
   });
 
@@ -661,6 +678,28 @@ describe("LocalTransferPane", () => {
       viewScope: "sftp-workbench:tab-a",
     });
     expect(onTransferQueued).toHaveBeenCalled();
+  });
+
+  it("copies a local entry path through the desktop clipboard facade", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <LocalTransferPane
+        active
+        targetMachine={targetMachine}
+        targetPath="/srv/app"
+      />,
+    );
+
+    const fileRow = await screen.findByRole("button", { name: /notes.md/ });
+    await openLocalContextMenu(fileRow);
+    await user.click(await screen.findByRole("menuitem", { name: "复制路径" }));
+
+    await waitFor(() =>
+      expect(
+        desktopClipboardApiMock.writeDesktopClipboardText,
+      ).toHaveBeenCalledWith("C:\\Users\\24052\\notes.md"),
+    );
   });
 
   it("writes a local drag payload for transferable entries", async () => {

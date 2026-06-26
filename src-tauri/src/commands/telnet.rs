@@ -21,9 +21,12 @@ pub fn telnet_create_session(
     let target_ref = host_terminal_target_ref("telnet", &request.host_id);
     state
         .telnet_terminals()
-        .create_session(state.storage(), state.terminals(), request, move |event| {
-            output.send(event).is_ok()
-        })
+        .create_session(
+            state.remote_hosts(),
+            state.terminals(),
+            request,
+            move |event| output.send(event).is_ok(),
+        )
         .and_then(|summary| state.terminals().set_target_ref(&summary.id, target_ref))
         .map_err(|error| error.to_string())
 }

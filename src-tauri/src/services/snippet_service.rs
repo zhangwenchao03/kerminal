@@ -2,7 +2,10 @@
 //!
 //! @author kongweiguang
 
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use uuid::Uuid;
 
@@ -11,7 +14,7 @@ use crate::{
     models::snippet::{
         CommandSnippet, SnippetCreateRequest, SnippetListRequest, SnippetUpdateRequest,
     },
-    storage::{snippets::CommandSnippetWrite, SqliteStore},
+    storage::{config_file_store::ConfigFileStore, file_store::FileStoreError},
 };
 
 const MAX_TITLE_CHARS: usize = 80;
@@ -21,21 +24,19 @@ const MAX_TAG_CHARS: usize = 32;
 const MAX_TAGS: usize = 12;
 
 /// 脚本片段业务入口。
-#[derive(Debug, Default)]
-pub struct SnippetService;
+#[derive(Debug, Clone)]
+pub struct SnippetService {
+    config: ConfigFileStore,
+}
 
 impl SnippetService {
     /// 创建脚本片段服务。
-    pub fn new() -> Self {
-        Self
+    pub fn new(config: ConfigFileStore) -> Self {
+        Self { config }
     }
 
     /// 搜索和列出脚本片段。
-    pub fn list_snippets(
-        &self,
-        storage: &SqliteStore,
-        request: SnippetListRequest,
-    ) -> AppResult<Vec<CommandSnippet>> {
+    pub fn list_snippets(&self, request: SnippetListRequest) -> AppResult<Vec<CommandSnippet>> {
         let query = request
             .query
             .as_deref()
@@ -49,7 +50,7 @@ impl SnippetService {
             .filter(|value| !value.is_empty())
             .map(|value| value.to_lowercase());
 
-        let snippets = storage.list_command_snippets()?;
+        let snippets = self.config.list_snippets().map_err(config_file_error)?;
         Ok(snippets
             .into_iter()
             .filter(|snippet| request.scope.is_none_or(|scope| snippet.scope == scope))
@@ -70,12 +71,9 @@ impl SnippetService {
     }
 
     /// 创建脚本片段。
-    pub fn create_snippet(
-        &self,
-        storage: &SqliteStore,
-        request: SnippetCreateRequest,
-    ) -> AppResult<CommandSnippet> {
-        let snippet = CommandSnippetWrite {
+    pub fn create_snippet(&self, request: SnippetCreateRequest) -> AppResult<CommandSnippet> {
+        let timestamp = timestamp_now();
+        let snippet = CommandSnippet {
             id: Uuid::new_v4().to_string(),
             title: normalize_required_text("片段标题", request.title, MAX_TITLE_CHARS)?,
             description: normalize_optional_text(
@@ -86,20 +84,30 @@ impl SnippetService {
             command: normalize_required_text("片段命令", request.command, MAX_COMMAND_CHARS)?,
             tags: normalize_tags(request.tags)?,
             scope: request.scope,
-            sort_order: storage.next_snippet_sort_order()?,
+            sort_order: self
+                .config
+                .next_snippet_sort_order()
+                .map_err(config_file_error)?,
+            created_at: timestamp.clone(),
+            updated_at: timestamp,
         };
 
-        storage.insert_command_snippet(&snippet)
+        self.config
+            .apply_snippet_change_set(std::slice::from_ref(&snippet), &[])
+            .map_err(config_file_error)?;
+        Ok(snippet)
     }
 
     /// 更新脚本片段。
-    pub fn update_snippet(
-        &self,
-        storage: &SqliteStore,
-        request: SnippetUpdateRequest,
-    ) -> AppResult<CommandSnippet> {
-        let snippet = CommandSnippetWrite {
-            id: normalize_required_text("片段 ID", request.id, 120)?,
+    pub fn update_snippet(&self, request: SnippetUpdateRequest) -> AppResult<CommandSnippet> {
+        let id = normalize_required_text("片段 ID", request.id, 120)?;
+        let existing = self
+            .config
+            .snippet_by_id(&id)
+            .map_err(config_file_error)?
+            .ok_or_else(|| AppError::NotFound(format!("脚本片段不存在: {id}")))?;
+        let snippet = CommandSnippet {
+            id,
             title: normalize_required_text("片段标题", request.title, MAX_TITLE_CHARS)?,
             description: normalize_optional_text(
                 "片段说明",
@@ -110,15 +118,31 @@ impl SnippetService {
             tags: normalize_tags(request.tags)?,
             scope: request.scope,
             sort_order: request.sort_order,
+            created_at: existing.created_at,
+            updated_at: timestamp_now(),
         };
 
-        storage.update_command_snippet(&snippet)
+        self.config
+            .apply_snippet_change_set(std::slice::from_ref(&snippet), &[])
+            .map_err(config_file_error)?;
+        Ok(snippet)
     }
 
     /// 删除脚本片段。
-    pub fn delete_snippet(&self, storage: &SqliteStore, snippet_id: &str) -> AppResult<bool> {
+    pub fn delete_snippet(&self, snippet_id: &str) -> AppResult<bool> {
         let snippet_id = normalize_required_text("片段 ID", snippet_id.to_owned(), 120)?;
-        storage.delete_command_snippet(&snippet_id)
+        if self
+            .config
+            .snippet_by_id(&snippet_id)
+            .map_err(config_file_error)?
+            .is_none()
+        {
+            return Ok(false);
+        }
+        self.config
+            .apply_snippet_change_set(&[], &[snippet_id])
+            .map_err(config_file_error)?;
+        Ok(true)
     }
 }
 
@@ -194,28 +218,16 @@ fn ensure_max_chars(field: &str, value: &str, max_chars: usize) -> AppResult<()>
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+fn timestamp_now() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs().to_string())
+        .unwrap_or_else(|_| "0".to_owned())
+}
 
-    #[test]
-    fn normalize_tags_trims_and_deduplicates_case_insensitively() {
-        let tags = normalize_tags(vec![
-            " git ".to_owned(),
-            "GIT".to_owned(),
-            "".to_owned(),
-            "deploy".to_owned(),
-        ])
-        .expect("normalize tags");
-
-        assert_eq!(tags, vec!["git", "deploy"]);
-    }
-
-    #[test]
-    fn normalize_required_text_rejects_empty_command() {
-        let error =
-            normalize_required_text("片段命令", "  ".to_owned(), 10).expect_err("reject empty");
-
-        assert!(matches!(error, AppError::InvalidInput(_)));
+fn config_file_error(error: FileStoreError) -> AppError {
+    match error {
+        FileStoreError::Io(error) => AppError::Io(error),
+        other => AppError::InvalidInput(other.to_string()),
     }
 }

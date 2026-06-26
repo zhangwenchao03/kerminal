@@ -33,6 +33,8 @@ import { ModalShell } from "../../../components/ui/modal-shell";
 import { cn } from "../../../lib/cn";
 import type { SftpEntry, SftpTransferSummary } from "../../../lib/sftpApi";
 import type { RemoteTargetRef } from "../../../lib/targetModel";
+import type { InterfaceDensity } from "../../settings/settingsModel";
+import { FixedRowVirtualList } from "../FixedRowVirtualList";
 import { SftpActionDialog, StatusMessage } from "./SftpActionDialog";
 import { SftpContextMenu } from "./SftpContextMenu";
 import { RemoteWorkspaceEditorFallback } from "./RemoteWorkspaceEditorFallback";
@@ -82,6 +84,7 @@ type SftpBrowserViewProps = {
   error: string | null;
   executeContextMenuAction: (action: SftpMenuAction) => void;
   fileCount: number;
+  fileRowHeight: number;
   fileTarget: SftpFileTarget | null;
   finishRemoteEntryDrag: () => void;
   followTerminalDirectory: boolean;
@@ -92,6 +95,7 @@ type SftpBrowserViewProps = {
   handleSftpKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void;
   hiddenEntryCount: number;
   hostKeyTrustBusy: boolean;
+  interfaceDensity: InterfaceDensity;
   listing: RemoteDirectoryListing | null;
   loadDirectory: (path: string) => Promise<void>;
   loading: boolean;
@@ -169,6 +173,7 @@ export function SftpBrowserView({
   error,
   executeContextMenuAction,
   fileCount,
+  fileRowHeight,
   fileTarget,
   finishRemoteEntryDrag,
   followTerminalDirectory,
@@ -179,6 +184,7 @@ export function SftpBrowserView({
   handleSftpKeyDown,
   hiddenEntryCount,
   hostKeyTrustBusy,
+  interfaceDensity,
   listing,
   loadDirectory,
   loading,
@@ -231,11 +237,49 @@ export function SftpBrowserView({
   workspaceTarget,
 }: SftpBrowserViewProps) {
   const pathInputId = useId();
+  const compactDensity = interfaceDensity === "compact";
+  const spaciousDensity = interfaceDensity === "spacious";
+  const compactChrome = compactHeader || compactDensity;
+  const headerPaddingClass = compactChrome
+    ? "p-2"
+    : spaciousDensity
+      ? "p-4"
+      : "p-3";
+  const pathSurfaceClass = compactChrome
+    ? "rounded-xl px-2.5 py-2"
+    : spaciousDensity
+      ? "rounded-2xl p-4"
+      : "rounded-2xl p-3";
+  const bodyPaddingClass = compactChrome
+    ? "p-2"
+    : spaciousDensity
+      ? "p-4"
+      : "p-3";
+  const listHeaderPaddingClass = compactChrome
+    ? "px-2.5 py-1.5"
+    : spaciousDensity
+      ? "px-4 py-2.5"
+      : "px-3 py-2";
+  const paneHeaderPaddingClass = compactChrome
+    ? "px-2.5 py-2"
+    : spaciousDensity
+      ? "px-4 py-3"
+      : "px-3 py-2.5";
 
   if (!fileTarget) {
     return (
-      <section className="flex h-full min-h-0 flex-col p-3 text-sm text-zinc-600 dark:text-zinc-400">
-        <div className="kerminal-solid-surface rounded-2xl border p-4">
+      <section
+        className={cn(
+          "flex h-full min-h-0 flex-col text-sm text-zinc-600 dark:text-zinc-400",
+          bodyPaddingClass,
+        )}
+      >
+        <div
+          className={cn(
+            "kerminal-solid-surface border",
+            compactChrome ? "rounded-xl p-3" : "rounded-2xl p-4",
+          )}
+        >
           <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
             SFTP
           </div>
@@ -243,7 +287,7 @@ export function SftpBrowserView({
             远程文件浏览
           </h3>
           <p className="mt-2 leading-6">
-            当前终端连接到 SSH 主机或容器后，这里会加载目标文件系统。
+            连接 SSH 主机或容器后显示文件。
           </p>
         </div>
       </section>
@@ -258,13 +302,13 @@ export function SftpBrowserView({
       <header
         className={cn(
           "kerminal-material-nav shrink-0 border-b",
-          compactHeader ? "p-2" : "p-3",
+          headerPaddingClass,
         )}
       >
         <div
           className={cn(
             "kerminal-solid-surface border",
-            compactHeader ? "rounded-xl px-2.5 py-2" : "rounded-2xl p-3",
+            pathSurfaceClass,
           )}
         >
           <form
@@ -283,7 +327,7 @@ export function SftpBrowserView({
             <input
               className={cn(
                 "kerminal-field-surface min-w-0 flex-1 rounded-lg border font-mono text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-50 dark:placeholder:text-zinc-600",
-                compactHeader ? "px-1.5 py-1 text-[13px]" : "px-2 py-1 text-sm",
+                compactChrome ? "px-1.5 py-1 text-[13px]" : "px-2 py-1 text-sm",
               )}
               id={pathInputId}
               onChange={(event) => setPathDraft(event.target.value)}
@@ -308,12 +352,12 @@ export function SftpBrowserView({
               <CornerDownRight className="h-3.5 w-3.5" />
             </Button>
           </form>
-          {!compactHeader ? (
+          {!compactChrome ? (
             <div className="mt-2 truncate font-mono text-xs text-zinc-500 dark:text-zinc-400">
               {fileTarget.summary}
             </div>
           ) : null}
-          {!compactHeader ? (
+          {!compactChrome ? (
             <div className="kerminal-muted-surface mt-3 flex items-center gap-2 rounded-xl border px-2 py-1.5">
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-300">
                 <Terminal className="h-3.5 w-3.5" />
@@ -386,7 +430,7 @@ export function SftpBrowserView({
         <div
           className={cn(
             "flex flex-wrap items-center justify-between gap-2",
-            compactHeader ? "mt-2" : "mt-3",
+            compactChrome ? "mt-2" : "mt-3",
           )}
         >
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -528,10 +572,11 @@ export function SftpBrowserView({
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 p-3">
+      <div className={cn("min-h-0 flex-1", bodyPaddingClass)}>
         <div
           className={cn(
             "relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border transition",
+            compactChrome && "rounded-xl",
             !dragDropActive && !remoteDownloadDropActive && "kerminal-solid-surface",
             dragDropActive &&
               "border-sky-400/55 bg-sky-500/10 ring-4 ring-sky-400/15 dark:border-sky-300/45 dark:bg-sky-300/10",
@@ -544,6 +589,7 @@ export function SftpBrowserView({
           onDragEnter={handleRemoteDownloadDragEnter}
           onDragLeave={handleRemoteDownloadDragLeave}
           onDragOver={handleRemoteDownloadDragOver}
+          onDragEnd={finishRemoteEntryDrag}
           onDrop={handleRemoteDownloadDrop}
           onMouseDown={(event) => openContextMenuFromPress(event, null)}
           onPointerDown={(event) => openContextMenuFromPress(event, null)}
@@ -564,7 +610,12 @@ export function SftpBrowserView({
               </div>
             </div>
           ) : null}
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-3 py-2.5">
+          <div
+            className={cn(
+              "flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)]",
+              paneHeaderPaddingClass,
+            )}
+          >
             <div>
               <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
                 远程目录
@@ -583,7 +634,7 @@ export function SftpBrowserView({
             )}
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-hidden">
             {loading ? (
               <div
                 className="kerminal-muted-surface m-3 rounded-xl border px-3 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400"
@@ -628,8 +679,13 @@ export function SftpBrowserView({
               </div>
             ) : null}
             {!loading && !error && visibleEntries.length > 0 ? (
-              <div>
-                <div className="kerminal-muted-surface grid grid-cols-[minmax(0,1fr)_5.75rem] gap-2 border-b px-3 py-2 text-xs font-medium text-zinc-500 dark:text-zinc-400 min-[560px]:grid-cols-[minmax(0,1fr)_4.25rem_5.75rem] min-[720px]:grid-cols-[minmax(0,1fr)_4.75rem_4.25rem_5.75rem]">
+              <div className="flex h-full min-h-0 flex-col">
+                <div
+                  className={cn(
+                    "kerminal-muted-surface grid grid-cols-[minmax(0,1fr)_5.75rem] gap-2 border-b text-xs font-medium text-zinc-500 dark:text-zinc-400 min-[560px]:grid-cols-[minmax(0,1fr)_4.25rem_5.75rem] min-[720px]:grid-cols-[minmax(0,1fr)_4.75rem_4.25rem_5.75rem]",
+                    listHeaderPaddingClass,
+                  )}
+                >
                   <span className="pl-6">名称</span>
                   <span className="hidden text-right min-[720px]:block">
                     权限
@@ -639,12 +695,15 @@ export function SftpBrowserView({
                     时间
                   </span>
                 </div>
-                <div className="divide-y divide-[var(--border-subtle)]">
-                  {visibleEntries.map((entry) => (
+                <FixedRowVirtualList
+                  ariaLabel="远程目录项目"
+                  entries={visibleEntries}
+                  getKey={(entry) => entry.path}
+                  itemContainerClassName="divide-y divide-[var(--border-subtle)]"
+                  renderItem={(entry) => (
                     <SftpEntryRow
                       contextMenuOpen={contextMenu?.entry?.path === entry.path}
                       entry={entry}
-                      key={entry.path}
                       onContextMenu={(event) => openContextMenu(event, entry)}
                       onContextMenuMouseDown={(event) =>
                         openContextMenuFromPress(event, entry)
@@ -660,8 +719,13 @@ export function SftpBrowserView({
                       previewing={false}
                       selected={selectedEntryPaths.has(entry.path)}
                     />
-                  ))}
-                </div>
+                  )}
+                  resetKey={`${fileTarget.kind}:${fileTarget.summary}:${currentPath}:${
+                    showHiddenFiles ? "shown" : "hidden"
+                  }`}
+                  rowHeight={fileRowHeight}
+                  testId="sftp-remote-entry-list"
+                />
               </div>
             ) : null}
           </div>

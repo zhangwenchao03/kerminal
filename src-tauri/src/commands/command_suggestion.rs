@@ -26,7 +26,7 @@ pub fn command_suggestion_list(
 ) -> Result<Vec<CommandSuggestionCandidate>, String> {
     state
         .command_suggestions()
-        .list_suggestions(state.storage(), state.command_history(), request)
+        .list_suggestions(state.command_store(), state.command_history(), request)
         .map_err(|error| error.to_string())
 }
 
@@ -38,7 +38,7 @@ pub fn command_suggestion_record_feedback(
 ) -> Result<CommandSuggestionFeedbackRecordResult, String> {
     state
         .command_suggestions()
-        .record_feedback(state.storage(), request)
+        .record_feedback(state.command_store(), request)
         .map_err(|error| error.to_string())
 }
 
@@ -50,7 +50,7 @@ pub fn command_suggestion_record_audit_event(
 ) -> Result<CommandSuggestionAuditRecordResult, String> {
     state
         .command_suggestions()
-        .record_audit_event(state.storage(), request)
+        .record_audit_event(state.command_store(), request)
         .map_err(|error| error.to_string())
 }
 
@@ -72,7 +72,7 @@ pub fn command_suggestion_telemetry_export(
 ) -> Result<CommandSuggestionTelemetryExport, String> {
     state
         .command_suggestions()
-        .telemetry_export(state.storage())
+        .telemetry_export(state.command_store())
         .map_err(|error| error.to_string())
 }
 
@@ -84,7 +84,7 @@ pub fn command_suggestion_cleanup_diagnostics(
 ) -> Result<CommandSuggestionDiagnosticsCleanupResult, String> {
     state
         .command_suggestions()
-        .cleanup_diagnostics(state.storage(), request)
+        .cleanup_diagnostics(state.command_store(), request)
         .map_err(|error| error.to_string())
 }
 
@@ -94,12 +94,19 @@ pub async fn command_suggestion_refresh_remote_commands(
     state: State<'_, AppState>,
     request: CommandSuggestionRemoteCommandRefreshRequest,
 ) -> Result<CommandSuggestionRemoteCommandRefreshResult, String> {
+    let inline_settings = state
+        .settings()
+        .load_settings()
+        .map_err(|error| error.to_string())?
+        .terminal
+        .inline_suggestion;
     state
         .command_suggestions()
         .refresh_remote_commands(
-            state.storage(),
+            state.command_store(),
             state.paths(),
             state.ssh_commands(),
+            inline_settings,
             request,
         )
         .await
@@ -112,12 +119,19 @@ pub async fn command_suggestion_refresh_remote_history(
     state: State<'_, AppState>,
     request: CommandSuggestionRemoteHistoryRefreshRequest,
 ) -> Result<CommandSuggestionRemoteHistoryRefreshResult, String> {
+    let inline_settings = state
+        .settings()
+        .load_settings()
+        .map_err(|error| error.to_string())?
+        .terminal
+        .inline_suggestion;
     state
         .command_suggestions()
         .refresh_remote_history(
-            state.storage(),
+            state.command_store(),
             state.paths(),
             state.ssh_commands(),
+            inline_settings,
             request,
         )
         .await
@@ -130,12 +144,19 @@ pub async fn command_suggestion_refresh_git_refs(
     state: State<'_, AppState>,
     request: CommandSuggestionGitRefreshRequest,
 ) -> Result<CommandSuggestionGitRefreshResult, String> {
+    let inline_settings = state
+        .settings()
+        .load_settings()
+        .map_err(|error| error.to_string())?
+        .terminal
+        .inline_suggestion;
     state
         .command_suggestions()
         .refresh_git_refs(
-            state.storage(),
+            state.command_store(),
             state.paths(),
             state.ssh_commands(),
+            inline_settings,
             request,
         )
         .await
@@ -148,9 +169,21 @@ pub async fn command_suggestion_refresh_remote_paths(
     state: State<'_, AppState>,
     request: CommandSuggestionRemotePathRefreshRequest,
 ) -> Result<CommandSuggestionRemotePathRefreshResult, String> {
+    let inline_settings = state
+        .settings()
+        .load_settings()
+        .map_err(|error| error.to_string())?
+        .terminal
+        .inline_suggestion;
     state
         .command_suggestions()
-        .refresh_remote_paths(state.storage(), state.paths(), state.sftp(), request)
+        .refresh_remote_paths(
+            state.command_store(),
+            state.paths(),
+            state.sftp(),
+            inline_settings,
+            request,
+        )
         .await
         .map_err(|error| error.to_string())
 }

@@ -11,7 +11,7 @@ export type SftpCannotDropReason =
   | "localFileToLocalPaneUnsupported";
 
 export const SFTP_LOCAL_TO_LOCAL_DROP_UNSUPPORTED_MESSAGE =
-  "本机到本机复制暂未支持，请先使用系统文件管理器，或等待本机复制后端接入。";
+  "暂不支持本机到本机复制，请用系统文件管理器。";
 
 export const SFTP_LOCAL_TO_NON_SSH_DROP_UNSUPPORTED_MESSAGE =
   "本机文件只能拖放到 SSH/SFTP 远端目录。";

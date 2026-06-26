@@ -11,6 +11,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::storage::command_suggestion_audit as command_suggestion_event_store;
 use crate::{
     error::{AppError, AppResult},
     models::{
@@ -31,7 +32,9 @@ use crate::{
             CommandSuggestionTelemetryExport, CommandSuggestionTelemetrySummary,
             SuggestionProviderKind,
         },
-        settings::TerminalInlineSuggestionProductionHostPolicy,
+        settings::{
+            TerminalInlineSuggestionProductionHostPolicy, TerminalInlineSuggestionSettings,
+        },
         sftp::{SftpDirectoryListing, SftpEntry, SftpEntryKind, SftpListDirectoryRequest},
         ssh_command::SshCommandRequest,
     },
@@ -41,20 +44,21 @@ use crate::{
         ssh_command_service::SshCommandService,
     },
     storage::{
-        command_suggestion_audit::CommandSuggestionAuditEventWrite,
         command_suggestion_cache::CommandSuggestionProviderCacheWrite,
         command_suggestion_feedback::CommandSuggestionFeedbackWrite,
         command_suggestion_telemetry::{
             CommandSuggestionTelemetryRow, CommandSuggestionTelemetryUpdate,
         },
-        SqliteStore,
+        config_file_store::ConfigFileStore,
+        file_store::FileStoreError,
+        CommandSqliteStore,
     },
 };
 
 mod api;
 mod cache_utils;
-mod classification;
-mod discovery;
+pub mod classification;
+pub mod discovery;
 mod feedback;
 mod git_candidates;
 mod history_candidates;
@@ -99,18 +103,6 @@ const DEFAULT_REMOTE_COMMAND_MAX_ENTRIES: usize = 1_500;
 const MAX_REMOTE_COMMAND_MAX_ENTRIES: usize = 5_000;
 const REMOTE_COMMAND_DISCOVERY_TIMEOUT_SECS: u64 = 2;
 const REMOTE_COMMAND_DISCOVERY_OUTPUT_BYTES: usize = 64 * 1024;
-const REMOTE_COMMAND_DISCOVERY_SCRIPT: &str = r#"
-PATH_VALUE=${PATH:-}
-OLD_IFS=$IFS
-IFS=:
-for dir in $PATH_VALUE; do
-  [ -d "$dir" ] || continue
-  for item in "$dir"/*; do
-    [ -f "$item" ] && [ -x "$item" ] && printf '%s\n' "${item##*/}"
-  done
-done
-IFS=$OLD_IFS
-"#;
 const REMOTE_HISTORY_CACHE_SCOPE_KEY: &str = "remoteHistory";
 const DEFAULT_REMOTE_HISTORY_TTL_SECS: u64 = 900;
 const MAX_REMOTE_HISTORY_TTL_SECS: u64 = 86_400;
@@ -160,7 +152,6 @@ const TELEMETRY_PROVIDER_ORDER: &[SuggestionProviderKind] = &[
     SuggestionProviderKind::RemoteCommand,
     SuggestionProviderKind::Git,
     SuggestionProviderKind::Spec,
-    SuggestionProviderKind::Ai,
 ];
 const SPEC_GIT_SUBCOMMANDS: &[&str] = &[
     "add",
@@ -320,78 +311,4 @@ struct RemoteProbePolicySkip {
     production_host_policy: TerminalInlineSuggestionProductionHostPolicy,
     remote_probe_enabled: bool,
     reason: &'static str,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sensitive_and_dangerous_patterns_are_classified() {
-        assert!(is_sensitive_command(
-            "curl -H 'Authorization: Bearer token'"
-        ));
-        assert!(!is_sensitive_command("git status --short"));
-        assert!(is_dangerous_command("rm -rf /tmp/build"));
-        assert!(!is_dangerous_command("rm -rf target"));
-    }
-
-    #[test]
-    fn remote_history_parser_keeps_recent_unique_safe_commands() {
-        let commands = parse_remote_history_commands(
-            "\
-git status --short
-: 1760000000:0;deploy --dry-run --target staging
-export API_TOKEN=secret-value
-deploy --force
-deploy --dry-run --target staging
-",
-            10,
-        );
-
-        assert_eq!(
-            commands,
-            vec![
-                "deploy --dry-run --target staging",
-                "deploy --force",
-                "git status --short"
-            ]
-        );
-    }
-
-    #[test]
-    fn remote_command_discovery_script_stays_posix_sh_compatible() {
-        for forbidden in [
-            "bash",
-            "zsh",
-            "fish",
-            "compgen",
-            "declare",
-            "typeset",
-            "function ",
-            "[[",
-            "]]",
-            "mapfile",
-            "readarray",
-        ] {
-            assert!(
-                !REMOTE_COMMAND_DISCOVERY_SCRIPT.contains(forbidden),
-                "remote command discovery script should not require {forbidden}"
-            );
-        }
-        assert!(REMOTE_COMMAND_DISCOVERY_SCRIPT.contains("PATH_VALUE=${PATH:-}"));
-        assert!(REMOTE_COMMAND_DISCOVERY_SCRIPT.contains("printf '%s\\n'"));
-    }
-
-    #[test]
-    fn git_discovery_script_uses_shell_printf_tabs_for_real_git() {
-        let script = git_discovery_script("/tmp/repo").expect("build git discovery script");
-
-        assert!(script.contains("printf 'branch\\t%s\\n'"));
-        assert!(script.contains("printf 'remoteBranch\\t%s\\n'"));
-        assert!(script.contains("printf 'tag\\t%s\\n'"));
-        assert!(!script.contains("--format='branch\\t"));
-        assert!(!script.contains("--format='remoteBranch\\t"));
-        assert!(!script.contains("--format='tag\\t"));
-    }
 }

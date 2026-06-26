@@ -1,4 +1,3 @@
-import Editor, { type OnMount } from "@monaco-editor/react";
 import {
   AlertTriangle,
   Check,
@@ -18,16 +17,17 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
 } from "react";
-import { Tree, type NodeApi } from "react-arborist";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
 import { cn } from "../../lib/cn";
 import { configureKerminalMonaco } from "../../lib/monacoTheme";
-import "../../lib/monacoSetup";
 import { targetStableId, type RemoteTargetRef } from "../../lib/targetModel";
+import {
+  MonacoTextEditor,
+  type MonacoTextEditorMountHandler,
+} from "./MonacoTextEditor";
 import {
   activeTabStatus,
   applyOpenTabError,
@@ -89,9 +89,46 @@ export function RemoteWorkspaceEditor({
   variant?: "embedded" | "fullscreen" | "workspace";
 }) {
   const expanded = variant !== "embedded";
+  const targetKind = target?.kind;
+  const targetHostId = target && target.kind !== "local" ? target.hostId : "";
+  const targetContainerId =
+    target?.kind === "dockerContainer" ? target.containerId : "";
+  const targetContainerName =
+    target?.kind === "dockerContainer" ? target.containerName : undefined;
+  const targetContainerRuntime =
+    target?.kind === "dockerContainer" ? target.runtime : undefined;
+  const targetContainerUser =
+    target?.kind === "dockerContainer" ? target.user : undefined;
+  const targetContainerWorkdir =
+    target?.kind === "dockerContainer" ? target.workdir : undefined;
   const workspaceTarget = useMemo(
-    () => resolveWorkspaceTarget(target, hostId),
-    [hostId, target],
+    () =>
+      resolveWorkspaceTarget(
+        targetKind === "dockerContainer" && targetHostId && targetContainerId
+          ? {
+              containerId: targetContainerId,
+              ...(targetContainerName ? { containerName: targetContainerName } : {}),
+              hostId: targetHostId,
+              kind: "dockerContainer",
+              runtime: targetContainerRuntime,
+              ...(targetContainerUser ? { user: targetContainerUser } : {}),
+              ...(targetContainerWorkdir ? { workdir: targetContainerWorkdir } : {}),
+            }
+          : targetKind === "ssh" && targetHostId
+            ? { hostId: targetHostId, kind: "ssh" }
+            : undefined,
+        hostId,
+      ),
+    [
+      hostId,
+      targetContainerId,
+      targetContainerName,
+      targetContainerRuntime,
+      targetContainerUser,
+      targetContainerWorkdir,
+      targetHostId,
+      targetKind,
+    ],
   );
   const workspaceTargetKey = workspaceTarget
     ? targetStableId(workspaceTarget)
@@ -110,10 +147,11 @@ export function RemoteWorkspaceEditor({
   const [tabs, setTabs] = useState<OpenFileTab[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [pendingClosePath, setPendingClosePath] = useState<string | null>(null);
-  const [treeHeight, setTreeHeight] = useState(expanded ? 640 : 456);
+  const [openTreePaths, setOpenTreePaths] = useState<Set<string>>(
+    () => new Set([normalizedRootPath]),
+  );
   const editorRef =
     useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
-  const treeViewportRef = useRef<HTMLDivElement | null>(null);
   const saveActiveRef = useRef<() => void>(() => undefined);
   const tabsRef = useRef<OpenFileTab[]>([]);
 
@@ -147,35 +185,17 @@ export function RemoteWorkspaceEditor({
     onDirtyStateChange?.(dirtyTabCount > 0);
   }, [dirtyTabCount, onDirtyStateChange]);
 
-  useEffect(() => {
-    if (!expanded) {
-      setTreeHeight(456);
-      return undefined;
-    }
-
-    const element = treeViewportRef.current;
-    if (!element || typeof ResizeObserver === "undefined") {
-      return undefined;
-    }
-
-    const updateTreeHeight = () => {
-      const height = Math.floor(
-        element.getBoundingClientRect().height || element.clientHeight,
-      );
-      if (height > 0) {
-        setTreeHeight(Math.max(360, height));
-      }
-    };
-
-    updateTreeHeight();
-    const observer = new ResizeObserver(updateTreeHeight);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [expanded]);
-
   const loadChildren = useCallback(
     async (path: string, replaceRoot = false) => {
       const normalizedPath = normalizeRemotePath(path);
+      setOpenTreePaths((current) => {
+        if (current.has(normalizedPath)) {
+          return current;
+        }
+        const next = new Set(current);
+        next.add(normalizedPath);
+        return next;
+      });
       setTreeStatus(null);
       setTreeNodes((current) =>
         replaceRoot
@@ -238,6 +258,7 @@ export function RemoteWorkspaceEditor({
   useEffect(() => {
     setWorkspaceRoot(normalizedRootPath);
     setRootDraft(normalizedRootPath);
+    setOpenTreePaths(new Set([normalizedRootPath]));
     setTreeNodes([{ ...createRootNode(normalizedRootPath), loading: true }]);
     void loadChildren(normalizedRootPath, true);
   }, [loadChildren, normalizedRootPath, workspaceTargetKey]);
@@ -389,9 +410,34 @@ export function RemoteWorkspaceEditor({
     const nextRoot = normalizeRemotePath(rootDraft);
     setWorkspaceRoot(nextRoot);
     setRootDraft(nextRoot);
+    setOpenTreePaths(new Set([nextRoot]));
     await onOpenDirectory?.(nextRoot);
     await loadChildren(nextRoot, true);
   }, [loadChildren, onOpenDirectory, rootDraft]);
+
+  const visibleTreeRows = useMemo(
+    () => flattenWorkspaceTreeRows(treeNodes, openTreePaths),
+    [openTreePaths, treeNodes],
+  );
+
+  const toggleTreeDirectory = useCallback(
+    (item: WorkspaceTreeNode) => {
+      const opening = !openTreePaths.has(item.path);
+      setOpenTreePaths((current) => {
+        const next = new Set(current);
+        if (next.has(item.path)) {
+          next.delete(item.path);
+        } else {
+          next.add(item.path);
+        }
+        return next;
+      });
+      if (opening && !item.loaded && !item.loading) {
+        void loadChildren(item.path);
+      }
+    },
+    [loadChildren, openTreePaths],
+  );
 
   const runEditorAction = useCallback((actionId: string) => {
     const action = editorRef.current?.getAction(actionId);
@@ -407,13 +453,16 @@ export function RemoteWorkspaceEditor({
     };
   }, [activePath, saveFile]);
 
-  const handleEditorMount = useCallback<OnMount>((editor, monaco) => {
-    editorRef.current = editor;
-    editor.addCommand(
-      monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
-      () => saveActiveRef.current(),
-    );
-  }, []);
+  const handleEditorMount = useCallback<MonacoTextEditorMountHandler>(
+    (editor, monaco) => {
+      editorRef.current = editor;
+      editor.addCommand(
+        monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
+        () => saveActiveRef.current(),
+      );
+    },
+    [],
+  );
 
   return (
     <>
@@ -486,30 +535,23 @@ export function RemoteWorkspaceEditor({
           </div>
           <div
             className={cn(
-              "overflow-hidden py-1",
+              "overflow-y-auto py-1",
               expanded ? "min-h-0 flex-1" : "h-[460px]",
             )}
-            ref={treeViewportRef}
+            role="tree"
+            aria-label="远程工作区树"
           >
-            <Tree<WorkspaceTreeNode>
-              data={treeNodes}
-              height={treeHeight}
-              indent={18}
-              openByDefault
-              overscanCount={8}
-              rowHeight={32}
-              width="100%"
-            >
-              {({ node, style }) => (
-                <WorkspaceTreeRow
-                  activePath={activePath}
-                  node={node}
-                  onLoadChildren={(path) => void loadChildren(path)}
-                  onOpenFile={(path) => void openFile(path)}
-                  style={style}
-                />
-              )}
-            </Tree>
+            {visibleTreeRows.map(({ depth, node }) => (
+              <WorkspaceTreeRow
+                activePath={activePath}
+                depth={depth}
+                isOpen={depth === 0 || openTreePaths.has(node.path)}
+                key={node.path}
+                node={node}
+                onOpenFile={(path) => void openFile(path)}
+                onToggleDirectory={toggleTreeDirectory}
+              />
+            ))}
           </div>
           <WorkspaceInlineStatus status={treeStatus} />
         </aside>
@@ -626,7 +668,7 @@ export function RemoteWorkspaceEditor({
                   正在打开 {activeTab.name}...
                 </div>
               ) : (
-                <Editor
+                <MonacoTextEditor
                   beforeMount={configureKerminalMonaco}
                   height={expanded ? "100%" : "460px"}
                   language={activeTab.language}
@@ -752,44 +794,71 @@ export function RemoteWorkspaceEditor({
   );
 }
 
+type WorkspaceTreeRenderRow = {
+  depth: number;
+  node: WorkspaceTreeNode;
+};
+
+function flattenWorkspaceTreeRows(
+  nodes: WorkspaceTreeNode[],
+  openPaths: Set<string>,
+  depth = 0,
+): WorkspaceTreeRenderRow[] {
+  return nodes.flatMap((node) => {
+    const row = { depth, node };
+    const isRootRow = depth === 0;
+    if (
+      node.kind !== "directory" ||
+      (!isRootRow && !openPaths.has(node.path)) ||
+      !node.children?.length
+    ) {
+      return [row];
+    }
+    return [
+      row,
+      ...flattenWorkspaceTreeRows(node.children, openPaths, depth + 1),
+    ];
+  });
+}
+
 function WorkspaceTreeRow({
   activePath,
+  depth,
+  isOpen,
   node,
-  onLoadChildren,
   onOpenFile,
-  style,
+  onToggleDirectory,
 }: {
   activePath: string | null;
-  node: NodeApi<WorkspaceTreeNode>;
-  onLoadChildren: (path: string) => void;
+  depth: number;
+  isOpen: boolean;
+  node: WorkspaceTreeNode;
   onOpenFile: (path: string) => void;
-  style: CSSProperties;
+  onToggleDirectory: (item: WorkspaceTreeNode) => void;
 }) {
-  const item = node.data;
-  const isDirectory = item.kind === "directory";
-  const selected = activePath === item.path;
-  const Icon = isDirectory ? (node.isOpen ? FolderOpen : Folder) : FileText;
+  const isDirectory = node.kind === "directory";
+  const selected = activePath === node.path;
+  const Icon = isDirectory ? (isOpen ? FolderOpen : Folder) : FileText;
 
   return (
     <button
+      aria-expanded={isDirectory ? isOpen : undefined}
       className={cn(
-        "kerminal-focus-ring kerminal-pressable flex w-full items-center gap-2 px-2 text-left text-xs transition",
+        "kerminal-focus-ring kerminal-pressable flex h-8 w-full items-center gap-2 px-2 text-left text-xs transition",
         selected
           ? "bg-[var(--surface-selected)] text-sky-800 dark:text-sky-100"
           : "text-zinc-700 hover:bg-[var(--surface-hover)] dark:text-zinc-300",
       )}
       onClick={() => {
         if (isDirectory) {
-          node.toggle();
-          if (!item.loaded && !item.loading) {
-            onLoadChildren(item.path);
-          }
+          onToggleDirectory(node);
           return;
         }
-        onOpenFile(item.path);
+        onOpenFile(node.path);
       }}
-      style={style}
-      title={item.path}
+      role="treeitem"
+      style={{ paddingLeft: 8 + depth * 18 }}
+      title={node.path}
       type="button"
     >
       <Icon
@@ -798,11 +867,11 @@ function WorkspaceTreeRow({
           isDirectory
             ? "text-sky-600 dark:text-sky-300"
             : "text-zinc-400 dark:text-zinc-500",
-          item.loading && "animate-pulse",
+          node.loading && "animate-pulse",
         )}
       />
-      <span className="min-w-0 flex-1 truncate">{item.name}</span>
-      {item.error ? (
+      <span className="min-w-0 flex-1 truncate">{node.name}</span>
+      {node.error ? (
         <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-rose-500" />
       ) : null}
     </button>

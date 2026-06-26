@@ -13,9 +13,9 @@ export const terminalPanes: TerminalPane[] = [];
 
 export const tools: ToolSummary[] = [
   {
-    id: "ai",
-    title: "Kerminal Agent",
-    description: "应用上下文、计划和工具调用",
+    id: "agentLauncher",
+    title: "Agent Launcher",
+    description: "Codex、Claude、自定义 Agent",
   },
   {
     id: "system",
@@ -33,6 +33,11 @@ export const tools: ToolSummary[] = [
     description: "SSH 端口转发",
   },
   {
+    id: "tmux",
+    title: "tmux",
+    description: "session、window 和 pane 管理",
+  },
+  {
     id: "snippets",
     title: "片段",
     description: "可复用脚本索引",
@@ -40,11 +45,11 @@ export const tools: ToolSummary[] = [
   {
     id: "logs",
     title: "日志",
-    description: "会话和 AI 审计记录",
+    description: "会话和操作审计记录",
   },
   {
     id: "settings",
     title: "设置",
-    description: "主题、LLM 和安全策略",
+    description: "主题、MCP、快捷键",
   },
 ];

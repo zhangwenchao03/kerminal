@@ -4,9 +4,9 @@
 
 use rusqlite::params;
 
-use crate::{error::AppResult, storage::SqliteStore};
+use crate::{error::AppResult, storage::CommandSqliteStore};
 
-impl SqliteStore {
+impl CommandSqliteStore {
     /// 删除指定时间之前的命令建议审计事件。
     pub(crate) fn delete_command_suggestion_audit_events_before(
         &self,

@@ -15,7 +15,7 @@ use tauri::State;
 pub fn profile_list(state: State<'_, AppState>) -> Result<Vec<TerminalProfile>, String> {
     state
         .profiles()
-        .list_profiles(state.storage())
+        .list_profiles()
         .map_err(|error| error.to_string())
 }
 
@@ -33,7 +33,7 @@ pub fn profile_create(
 ) -> Result<TerminalProfile, String> {
     state
         .profiles()
-        .create_profile(state.storage(), request)
+        .create_profile(request)
         .map_err(|error| error.to_string())
 }
 
@@ -45,7 +45,7 @@ pub fn profile_update(
 ) -> Result<TerminalProfile, String> {
     state
         .profiles()
-        .update_profile(state.storage(), request)
+        .update_profile(request)
         .map_err(|error| error.to_string())
 }
 
@@ -54,6 +54,6 @@ pub fn profile_update(
 pub fn profile_delete(state: State<'_, AppState>, profile_id: String) -> Result<bool, String> {
     state
         .profiles()
-        .delete_profile(state.storage(), &profile_id)
+        .delete_profile(&profile_id)
         .map_err(|error| error.to_string())
 }

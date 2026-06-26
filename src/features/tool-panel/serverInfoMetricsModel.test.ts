@@ -139,8 +139,9 @@ describe("serverInfoMetricsModel", () => {
         },
       ]),
     ).toBe("25.0%");
+    expect(serverGpuSummaryValue([])).toBe("0 张");
     expect(gpuCardHelper(snapshot({ gpuProbeStatus: "no_probe_command" }), [])).toBe(
-      "远端没有 nvidia-smi 或 lspci，无法识别 GPU。",
+      "0 张显卡",
     );
   });
 });

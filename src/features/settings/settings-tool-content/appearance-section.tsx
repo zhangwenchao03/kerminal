@@ -143,8 +143,7 @@ export function AppearanceSettingsSection({
                 外观
               </div>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-                界面语言、应用主题、工作台背景和终端视觉会立即应用，并持久化到本机
-                SQLite。
+                语言、主题、背景和终端视觉会立即保存。
               </p>
             </div>
             <div className={appearanceBadgeClassName}>
@@ -285,7 +284,7 @@ export function AppearanceSettingsSection({
                   主页面背景
                 </div>
                 <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-                  启用后在工作台底层显示本地图片，内容面板保持可读。
+                  在工作台底层显示本地图片。
                 </p>
               </div>
               <Switch
@@ -395,7 +394,7 @@ export function AppearanceSettingsSection({
               终端外观
             </div>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-              终端主题、字体、光标和交互行为统一放在这里，新建与现有分屏都会读取这里的设置。
+              统一设置终端主题、字体、光标和交互。
             </p>
           </div>
           <span className={appearanceBadgeClassName}>
@@ -411,7 +410,7 @@ export function AppearanceSettingsSection({
                 终端主题
               </div>
               <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-                浅色和暗色主题分开保存，跟随系统时会自动切换。
+                浅色、暗色分别保存。
               </p>
               <div className="mt-4 space-y-4">
                 <TerminalSchemePicker
@@ -507,7 +506,7 @@ export function AppearanceSettingsSection({
                   终端交互
                 </div>
                 <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-                  输入、鼠标、光标和会话恢复按使用场景分组，减少查找成本。
+                  输入、鼠标和会话设置。
                 </p>
               </div>
               <span className={appearanceSmallBadgeClassName}>
@@ -643,8 +642,7 @@ export function AppearanceSettingsSection({
                       命令灰色提示
                     </div>
                     <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-                      本机历史、离线 CLI
-                      spec、远端只读预热和反馈调权在这里集中控制。
+                      控制历史、CLI spec、远端预热和反馈。
                     </p>
                   </div>
                   <div
@@ -667,7 +665,7 @@ export function AppearanceSettingsSection({
                         </span>
                       </div>
                       <div className="mt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
-                        生成、接受与反馈记录统一受控
+                        生成、接受和反馈受控
                       </div>
                     </div>
                     <Switch

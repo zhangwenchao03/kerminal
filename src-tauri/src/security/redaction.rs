@@ -1,4 +1,4 @@
-//! 终端、AI 上下文和审计摘要共用的敏感信息脱敏工具。
+//! 终端、外部 Agent 上下文和审计摘要共用的敏感信息脱敏工具。
 //!
 //! @author kongweiguang
 
@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 
 use regex::Regex;
 
-/// 对终端文本做基础密钥脱敏，避免日志、AI 上下文和审计摘要暴露常见 token。
+/// 对终端文本做基础密钥脱敏，避免日志、外部 Agent 上下文和审计摘要暴露常见 token。
 pub fn redact_terminal_text(input: &str) -> (String, bool) {
     let secret_assignment = secret_assignment_regex()
         .replace_all(input, |captures: &regex::Captures<'_>| {
@@ -47,27 +47,4 @@ fn api_key_regex() -> &'static Regex {
         Regex::new(r"(?i)(^|\\[rnt]|[^A-Za-z0-9_-])(sk-[A-Za-z0-9_-]{10,})([^A-Za-z0-9_-]|$)")
             .expect("api key regex must be valid")
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::redact_terminal_text;
-
-    #[test]
-    fn redacts_hyphenated_sk_tokens() {
-        let (redacted, changed) = redact_terminal_text("prefix sk-terminal-secret-12345 suffix");
-
-        assert!(changed);
-        assert!(!redacted.contains("sk-terminal-secret-12345"));
-        assert!(redacted.contains("prefix [已脱敏:api-key] suffix"));
-    }
-
-    #[test]
-    fn redacts_sk_tokens_after_escaped_newline() {
-        let (redacted, changed) = redact_terminal_text(r"prefix\nsk-terminal-secret-12345\nsuffix");
-
-        assert!(changed);
-        assert!(!redacted.contains("sk-terminal-secret-12345"));
-        assert!(redacted.contains(r"\n[已脱敏:api-key]\n"));
-    }
 }

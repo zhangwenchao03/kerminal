@@ -8,7 +8,7 @@ impl CommandSuggestionService {
     /// 列出当前输入上下文下的命令建议。
     pub fn list_suggestions(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         command_history: &CommandHistoryService,
         request: CommandSuggestionRequest,
     ) -> AppResult<Vec<CommandSuggestionCandidate>> {
@@ -156,7 +156,7 @@ impl CommandSuggestionService {
     /// 记录用户对命令建议的反馈，用于后续排序调权。
     pub fn record_feedback(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         request: CommandSuggestionFeedbackRecordRequest,
     ) -> AppResult<CommandSuggestionFeedbackRecordResult> {
         let action = request.action;
@@ -288,7 +288,7 @@ impl CommandSuggestionService {
     /// 导出当前进程和持久化命令建议观测数据，便于长期排障。
     pub fn telemetry_export(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
     ) -> AppResult<CommandSuggestionTelemetryExport> {
         self.flush_pending_telemetry(storage)?;
         let generated_at = SystemTime::now();
@@ -303,7 +303,7 @@ impl CommandSuggestionService {
     /// 清理命令建议诊断数据，避免长期使用时本地库无限增长。
     pub fn cleanup_diagnostics(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         request: CommandSuggestionDiagnosticsCleanupRequest,
     ) -> AppResult<CommandSuggestionDiagnosticsCleanupResult> {
         self.flush_pending_telemetry(storage)?;
@@ -355,34 +355,36 @@ impl CommandSuggestionService {
     /// 记录一条命令建议审计事件。
     pub fn record_audit_event(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         request: CommandSuggestionAuditRecordRequest,
     ) -> AppResult<CommandSuggestionAuditRecordResult> {
         let event_id = Uuid::new_v4().to_string();
         let created_at = SystemTime::now();
-        storage.insert_command_suggestion_audit_event(&CommandSuggestionAuditEventWrite {
-            created_at_unix_ms: unix_time_millis_i64(created_at),
-            cwd: normalize_optional_text("当前工作目录", request.cwd, MAX_CONTEXT_CHARS)?,
-            decision: request.decision,
-            event_kind: request.event_kind,
-            id: event_id.clone(),
-            metadata_json: serde_json::to_string(&normalize_audit_metadata(request.metadata)?)?,
-            pane_id: normalize_optional_text("Pane ID", request.pane_id, MAX_CONTEXT_CHARS)?,
-            path: normalize_optional_text("远端目录", request.path, MAX_CONTEXT_CHARS)?,
-            provider: request.provider,
-            reason: normalize_optional_text("审计原因", request.reason, MAX_CONTEXT_CHARS)?,
-            remote_host_id: normalize_optional_text(
-                "SSH 主机 ID",
-                request.remote_host_id,
-                MAX_CONTEXT_CHARS,
-            )?,
-            session_id: normalize_optional_text(
-                "Session ID",
-                request.session_id,
-                MAX_CONTEXT_CHARS,
-            )?,
-            target: request.target,
-        })?;
+        storage.insert_command_suggestion_audit_event(
+            &command_suggestion_event_store::CommandSuggestionAuditEventWrite {
+                created_at_unix_ms: unix_time_millis_i64(created_at),
+                cwd: normalize_optional_text("当前工作目录", request.cwd, MAX_CONTEXT_CHARS)?,
+                decision: request.decision,
+                event_kind: request.event_kind,
+                id: event_id.clone(),
+                metadata_json: serde_json::to_string(&normalize_audit_metadata(request.metadata)?)?,
+                pane_id: normalize_optional_text("Pane ID", request.pane_id, MAX_CONTEXT_CHARS)?,
+                path: normalize_optional_text("远端目录", request.path, MAX_CONTEXT_CHARS)?,
+                provider: request.provider,
+                reason: normalize_optional_text("审计原因", request.reason, MAX_CONTEXT_CHARS)?,
+                remote_host_id: normalize_optional_text(
+                    "SSH 主机 ID",
+                    request.remote_host_id,
+                    MAX_CONTEXT_CHARS,
+                )?,
+                session_id: normalize_optional_text(
+                    "Session ID",
+                    request.session_id,
+                    MAX_CONTEXT_CHARS,
+                )?,
+                target: request.target,
+            },
+        )?;
 
         Ok(CommandSuggestionAuditRecordResult {
             event_id,
@@ -392,7 +394,7 @@ impl CommandSuggestionService {
 
     pub(super) fn record_audit_event_best_effort(
         &self,
-        storage: Option<&SqliteStore>,
+        storage: Option<&CommandSqliteStore>,
         request: CommandSuggestionAuditRecordRequest,
     ) {
         let Some(storage) = storage else {
@@ -404,7 +406,7 @@ impl CommandSuggestionService {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn record_remote_probe_refresh_audit(
         &self,
-        storage: Option<&SqliteStore>,
+        storage: Option<&CommandSqliteStore>,
         provider: SuggestionProviderKind,
         remote_host_id: String,
         cwd: Option<String>,
@@ -445,7 +447,7 @@ impl CommandSuggestionService {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn record_remote_probe_schedule_skip_audit(
         &self,
-        storage: Option<&SqliteStore>,
+        storage: Option<&CommandSqliteStore>,
         provider: SuggestionProviderKind,
         remote_host_id: String,
         cwd: Option<String>,
@@ -489,13 +491,18 @@ impl CommandSuggestionService {
 
     pub(super) fn remote_probe_policy_skip(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
+        paths: &KerminalPaths,
         host_id: &str,
+        inline_settings: &TerminalInlineSuggestionSettings,
     ) -> AppResult<Option<RemoteProbePolicySkip>> {
-        let Some(host) = storage.remote_host_by_id(host_id)? else {
+        let _ = storage;
+        let Some(host) = ConfigFileStore::new(paths.root.clone())
+            .remote_host_by_id(host_id)
+            .map_err(config_file_error)?
+        else {
             return Ok(None);
         };
-        let inline_settings = storage.load_app_settings()?.terminal.inline_suggestion;
         let production_host_policy = inline_settings.production_host_policy.clone();
         if !inline_settings.remote_probe_enabled {
             return Ok(Some(RemoteProbePolicySkip {
@@ -571,7 +578,7 @@ impl CommandSuggestionService {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn record_feedback_audit(
         &self,
-        storage: Option<&SqliteStore>,
+        storage: Option<&CommandSqliteStore>,
         provider: SuggestionProviderKind,
         action: CommandSuggestionFeedbackAction,
         target: CommandHistoryTarget,
@@ -604,5 +611,12 @@ impl CommandSuggestionService {
                 target,
             },
         );
+    }
+}
+
+fn config_file_error(error: FileStoreError) -> AppError {
+    match error {
+        FileStoreError::Io(error) => AppError::Io(error),
+        other => AppError::InvalidInput(other.to_string()),
     }
 }

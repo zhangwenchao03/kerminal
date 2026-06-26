@@ -98,17 +98,17 @@ export const backgroundImageFitOptions: Array<{
   value: BackgroundImageFit;
 }> = [
   {
-    description: "铺满工作台，适合大图和壁纸。",
+    description: "铺满工作台。",
     label: "填充画布",
     value: "cover",
   },
   {
-    description: "完整显示图片，避免裁切边缘。",
+    description: "完整显示，避免裁切。",
     label: "完整显示",
     value: "contain",
   },
   {
-    description: "重复平铺小纹理或像素图。",
+    description: "重复平铺。",
     label: "平铺纹理",
     value: "tile",
   },
@@ -120,17 +120,17 @@ export const interfaceDensityOptions: Array<{
   value: InterfaceDensity;
 }> = [
   {
-    description: "标签栏和内容区域更紧，适合小屏或多分屏。",
+    description: "更紧凑，适合小屏。",
     label: "紧凑",
     value: "compact",
   },
   {
-    description: "保留默认留白，适合日常开发。",
+    description: "默认留白。",
     label: "舒适",
     value: "comfortable",
   },
   {
-    description: "增加操作区呼吸感，适合长时间阅读。",
+    description: "留白更多。",
     label: "宽松",
     value: "spacious",
   },
@@ -144,25 +144,25 @@ export const terminalColorSchemeOptions: Array<{
 }> = [
   {
     colors: ["#1f1f21", "#60a5fa", "#4ade80", "#facc15"],
-    description: "Kerminal 默认深浅色终端主题。",
+    description: "默认终端主题。",
     label: "Kerminal",
     value: "kerminal",
   },
   {
     colors: ["#1a1b26", "#7aa2f7", "#9ece6a", "#bb9af7"],
-    description: "低亮度蓝紫背景，适合夜间长会话。",
+    description: "低亮度夜间主题。",
     label: "Tokyo Night",
     value: "tokyoNight",
   },
   {
     colors: ["#002b36", "#268bd2", "#859900", "#b58900"],
-    description: "经典低对比阅读色盘。",
+    description: "经典低对比。",
     label: "Solarized",
     value: "solarized",
   },
   {
     colors: ["#ffffff", "#0969da", "#1a7f37", "#9a6700"],
-    description: "接近 GitHub 代码区的清晰对比。",
+    description: "高对比代码色盘。",
     label: "GitHub",
     value: "github",
   },
@@ -174,17 +174,17 @@ export const terminalCursorStyleOptions: Array<{
   value: TerminalCursorStyle;
 }> = [
   {
-    description: "最醒目，适合频繁在输出里定位输入点。",
+    description: "醒目，易定位。",
     label: "块状",
     value: "block",
   },
   {
-    description: "接近现代编辑器插入点，输入感更轻。",
+    description: "轻量插入点。",
     label: "竖线",
     value: "bar",
   },
   {
-    description: "占用最少，适合密集日志和长命令输出。",
+    description: "占用最少。",
     label: "下划线",
     value: "underline",
   },
@@ -205,17 +205,17 @@ export const terminalRightClickBehaviorOptions: Array<{
   value: TerminalRightClickBehavior;
 }> = [
   {
-    description: "保留系统右键，不触发终端动作。",
+    description: "保留系统右键。",
     label: "不执行",
     value: "none",
   },
   {
-    description: "右键直接粘贴剪贴板内容。",
+    description: "直接粘贴剪贴板。",
     label: "粘贴",
     value: "paste",
   },
   {
-    description: "打开复制、粘贴、搜索、分屏等菜单。",
+    description: "打开终端菜单。",
     label: "显示菜单",
     value: "menu",
   },

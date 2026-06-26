@@ -10,6 +10,7 @@ const portForwardApiMocks = vi.hoisted(() => ({
   closePortForward: vi.fn(),
   createPortForward: vi.fn(),
   listPortForwards: vi.fn(),
+  stopPortForward: vi.fn(),
 }));
 
 const serverInfoApiMocks = vi.hoisted(() => ({
@@ -19,8 +20,17 @@ const diagnosticsApiMocks = vi.hoisted(() => ({
   createDiagnosticsBundle: vi.fn(),
   getRuntimeHealthSnapshot: vi.fn(),
 }));
-const aiContextApiMocks = vi.hoisted(() => ({
-  getAiTerminalContextSnapshot: vi.fn(),
+const tmuxApiMocks = vi.hoisted(() => ({
+  tmuxAttachSession: vi.fn(),
+  tmuxCapturePane: vi.fn(),
+  tmuxCreateSession: vi.fn(),
+  tmuxDetachCurrent: vi.fn(),
+  tmuxKillSession: vi.fn(),
+  tmuxListPanes: vi.fn(),
+  tmuxListSessions: vi.fn(),
+  tmuxListWindows: vi.fn(),
+  tmuxProbe: vi.fn(),
+  tmuxRenameSession: vi.fn(),
 }));
 
 vi.mock("../../lib/portForwardApi", () => ({
@@ -30,6 +40,8 @@ vi.mock("../../lib/portForwardApi", () => ({
     portForwardApiMocks.createPortForward(...args),
   listPortForwards: (...args: unknown[]) =>
     portForwardApiMocks.listPortForwards(...args),
+  stopPortForward: (...args: unknown[]) =>
+    portForwardApiMocks.stopPortForward(...args),
 }));
 
 vi.mock("../../lib/serverInfoApi", () => ({
@@ -42,20 +54,29 @@ vi.mock("../../lib/diagnosticsApi", () => ({
   getRuntimeHealthSnapshot: (...args: unknown[]) =>
     diagnosticsApiMocks.getRuntimeHealthSnapshot(...args),
 }));
-vi.mock("../../lib/aiContextApi", async () => {
-  const actual = await vi.importActual<typeof import("../../lib/aiContextApi")>(
-    "../../lib/aiContextApi",
-  );
-  return {
-    ...actual,
-    getAiTerminalContextSnapshot:
-      aiContextApiMocks.getAiTerminalContextSnapshot,
-  };
-});
-vi.mock("@monaco-editor/react", () => ({
-  default: () => <div data-testid="monaco-editor" />,
+vi.mock("../../lib/tmuxApi", () => ({
+  tmuxAttachSession: (...args: unknown[]) =>
+    tmuxApiMocks.tmuxAttachSession(...args),
+  tmuxCapturePane: (...args: unknown[]) =>
+    tmuxApiMocks.tmuxCapturePane(...args),
+  tmuxCreateSession: (...args: unknown[]) =>
+    tmuxApiMocks.tmuxCreateSession(...args),
+  tmuxDetachCurrent: (...args: unknown[]) =>
+    tmuxApiMocks.tmuxDetachCurrent(...args),
+  tmuxKillSession: (...args: unknown[]) =>
+    tmuxApiMocks.tmuxKillSession(...args),
+  tmuxListPanes: (...args: unknown[]) => tmuxApiMocks.tmuxListPanes(...args),
+  tmuxListSessions: (...args: unknown[]) =>
+    tmuxApiMocks.tmuxListSessions(...args),
+  tmuxListWindows: (...args: unknown[]) =>
+    tmuxApiMocks.tmuxListWindows(...args),
+  tmuxProbe: (...args: unknown[]) => tmuxApiMocks.tmuxProbe(...args),
+  tmuxRenameSession: (...args: unknown[]) =>
+    tmuxApiMocks.tmuxRenameSession(...args),
 }));
-vi.mock("../../lib/monacoSetup", () => ({}));
+vi.mock("../sftp/MonacoTextEditor", () => ({
+  MonacoTextEditor: () => <div data-testid="monaco-editor" />,
+}));
 
 const sshMachine: Machine = {
   authType: "key",
@@ -109,6 +130,7 @@ describe("ToolPanel", () => {
     portForwardApiMocks.closePortForward.mockReset();
     portForwardApiMocks.createPortForward.mockReset();
     portForwardApiMocks.listPortForwards.mockReset();
+    portForwardApiMocks.stopPortForward.mockReset();
     portForwardApiMocks.listPortForwards.mockResolvedValue([]);
     portForwardApiMocks.createPortForward.mockResolvedValue({
       bindHost: "127.0.0.1",
@@ -124,6 +146,7 @@ describe("ToolPanel", () => {
       targetPort: 5432,
     });
     portForwardApiMocks.closePortForward.mockResolvedValue(true);
+    portForwardApiMocks.stopPortForward.mockResolvedValue(true);
     serverInfoApiMocks.getServerInfoSnapshot.mockReset();
     serverInfoApiMocks.getServerInfoSnapshot.mockResolvedValue({
       architecture: "x86_64",
@@ -224,8 +247,12 @@ describe("ToolPanel", () => {
         source: "sysinfo",
       },
       storage: {
-        databaseFile: "C:/Users/me/.kerminal/kerminal.db",
-        databaseFileSizeBytes: 768 * 1024,
+        appLogFile: "C:/Users/me/.kerminal/logs/kerminal.log",
+        appLogFileSizeBytes: 64 * 1024,
+        appLogMaxFileSizeBytes: 1_000_000,
+        appLogRotationKeepFiles: 5,
+        commandDatabaseFile: "C:/Users/me/.kerminal/data/command.sqlite",
+        commandDatabaseFileSizeBytes: 768 * 1024,
         diagnostics: "C:/Users/me/.kerminal/diagnostics",
         logs: "C:/Users/me/.kerminal/logs",
         root: "C:/Users/me/.kerminal",
@@ -260,35 +287,31 @@ describe("ToolPanel", () => {
         usedSwapBytes: 256 * 1024 * 1024,
       },
     });
-    aiContextApiMocks.getAiTerminalContextSnapshot.mockReset();
-    aiContextApiMocks.getAiTerminalContextSnapshot.mockResolvedValue({
-      generatedAt: "1",
-      output: {
-        capturedBytes: 16,
-        data: "浏览器预览模式",
-        maxBytes: 12288,
-        truncated: false,
-      },
-      policy: {
-        includesFullHistory: false,
-        includesRecentOutput: true,
-        maxOutputBytes: 12288,
-        mode: "currentTerminal",
-        secretRedaction: true,
-      },
-      redacted: false,
-      session: {
-        cols: 80,
-        id: "session-1",
-        rows: 24,
-        shell: "browser-preview",
-        status: "running",
-      },
-      source: {
-        paneId: "pane-1",
-        paneTitle: "本地 PowerShell",
-      },
+    tmuxApiMocks.tmuxProbe.mockReset();
+    tmuxApiMocks.tmuxProbe.mockResolvedValue({
+      available: true,
+      target: { kind: "ssh", hostId: "prod-api" },
+      targetRef: "ssh:prod-api",
+      version: "tmux 3.4",
     });
+    tmuxApiMocks.tmuxListSessions.mockReset();
+    tmuxApiMocks.tmuxListSessions.mockResolvedValue([]);
+    tmuxApiMocks.tmuxListWindows.mockReset();
+    tmuxApiMocks.tmuxListWindows.mockResolvedValue([]);
+    tmuxApiMocks.tmuxListPanes.mockReset();
+    tmuxApiMocks.tmuxListPanes.mockResolvedValue([]);
+    tmuxApiMocks.tmuxCapturePane.mockReset();
+    tmuxApiMocks.tmuxCapturePane.mockResolvedValue({
+      lines: 0,
+      paneId: "%0",
+      text: "",
+      truncated: false,
+    });
+    tmuxApiMocks.tmuxAttachSession.mockReset();
+    tmuxApiMocks.tmuxCreateSession.mockReset();
+    tmuxApiMocks.tmuxDetachCurrent.mockReset();
+    tmuxApiMocks.tmuxKillSession.mockReset();
+    tmuxApiMocks.tmuxRenameSession.mockReset();
   });
 
   it("renders only the rail when no tool drawer is active", () => {
@@ -303,16 +326,18 @@ describe("ToolPanel", () => {
     expect(
       screen.getByRole("complementary", { name: "工具面板" }),
     ).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByRole("button", { name: "打开 Kerminal Agent" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Kerminal Agent" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "打开 Agent Launcher" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Agent Launcher" }),
+    ).not.toBeInTheDocument();
   });
 
-  it("renders the active AI tool as a chat assistant", async () => {
-    const user = userEvent.setup();
-
+  it("renders the active Agent Launcher tool", async () => {
     render(
       <ToolPanel
-        activeTool="ai"
+        activeTool="agentLauncher"
         onActiveToolChange={vi.fn()}
         tools={tools}
       />,
@@ -322,19 +347,19 @@ describe("ToolPanel", () => {
       screen.getByRole("complementary", { name: "工具面板" }),
     ).toBeInTheDocument();
     expect(
-      await screen.findByRole(
-        "heading",
-        { name: "Kerminal Agent" },
-        { timeout: 10000 },
-      ),
+      await screen.findByRole("button", { name: "Open Codex" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Open Claude" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Open Custom Agent" }),
     ).toBeInTheDocument();
     expect(screen.queryByText("历史会话")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expect(
-      screen.getByText("描述你想做什么，Kerminal Agent 会结合当前应用上下文和终端状态协助你。"),
-    ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "查看历史会话" }));
-    expect(screen.getByText("历史会话")).toBeInTheDocument();
-    expect(screen.queryByText(/Agent 栈：rig-core、rmcp/i)).not.toBeInTheDocument();
+      screen.queryByText(/Agent 栈：rig-core、rmcp/i),
+    ).not.toBeInTheDocument();
   }, 20000);
 
   it("requests a tool switch from the rail", async () => {
@@ -343,7 +368,7 @@ describe("ToolPanel", () => {
 
     render(
       <ToolPanel
-        activeTool="ai"
+        activeTool="agentLauncher"
         onActiveToolChange={onActiveToolChange}
         tools={tools}
       />,
@@ -352,6 +377,35 @@ describe("ToolPanel", () => {
     await user.click(screen.getByRole("button", { name: "打开 文件" }));
 
     expect(onActiveToolChange).toHaveBeenCalledWith("sftp");
+  });
+
+  it("opens the tmux tool from the rail", async () => {
+    const user = userEvent.setup();
+    const onActiveToolChange = vi.fn();
+
+    const { rerender } = render(
+      <ToolPanel
+        activeTool={null}
+        onActiveToolChange={onActiveToolChange}
+        selectedMachine={sshMachine}
+        tools={tools}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "打开 tmux" }));
+    expect(onActiveToolChange).toHaveBeenCalledWith("tmux");
+
+    rerender(
+      <ToolPanel
+        activeTool="tmux"
+        onActiveToolChange={onActiveToolChange}
+        selectedMachine={sshMachine}
+        tools={tools}
+      />,
+    );
+
+    expect(await screen.findByText("tmux 3.4")).toBeInTheDocument();
+    expect(screen.getByText("暂无 session")).toBeInTheDocument();
   });
 
   it("shows the diagnostics bundle action on the logs title row", async () => {
@@ -402,8 +456,8 @@ describe("ToolPanel", () => {
 
     expect(
       await screen.findByRole(
-        "heading",
-        { name: "Kerminal Agent" },
+        "button",
+        { name: "Open Codex" },
         { timeout: 5000 },
       ),
     ).toBeInTheDocument();
@@ -445,7 +499,9 @@ describe("ToolPanel", () => {
 
     expect(await screen.findByText("prod-api-01")).toBeInTheDocument();
     expect(screen.queryByText("本机运行体验")).not.toBeInTheDocument();
-    expect(screen.queryByText("NVIDIA GeForce RTX 4060")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("NVIDIA GeForce RTX 4060"),
+    ).not.toBeInTheDocument();
     expect(screen.getAllByText("CPU").length).toBeGreaterThan(0);
     expect(screen.getAllByText("GPU").length).toBeGreaterThan(0);
     expect(screen.getAllByText("内存").length).toBeGreaterThan(0);
@@ -459,8 +515,12 @@ describe("ToolPanel", () => {
     expect(screen.getByRole("option", { name: "手动" })).toBeInTheDocument();
     await user.click(screen.getByRole("option", { name: "手动" }));
     expect(intervalSelect).toHaveAttribute("aria-valuetext", "手动");
-    expect(screen.getByRole("button", { name: "展开CPU详情" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "展开网络详情" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "展开CPU详情" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "展开网络详情" }),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("等待采样").length).toBeGreaterThan(0);
     expect(serverInfoApiMocks.getServerInfoSnapshot).toHaveBeenCalledWith({
       hostId: "prod-api",
@@ -471,7 +531,9 @@ describe("ToolPanel", () => {
     });
 
     await user.click(screen.getByRole("button", { name: "展开CPU详情" }));
-    expect(screen.getByRole("button", { name: "收起CPU详情" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "收起CPU详情" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("核心数")).toBeInTheDocument();
     expect(screen.getAllByText("4").length).toBeGreaterThan(0);
     expect(screen.getByText("17.3%")).toBeInTheDocument();
@@ -682,6 +744,39 @@ describe("ToolPanel", () => {
     });
   });
 
+  it("shows zero GPUs while keeping the empty GPU details aligned", async () => {
+    serverInfoApiMocks.getServerInfoSnapshot.mockResolvedValueOnce({
+      capturedAt: "1",
+      gpus: [],
+      gpuProbeStatus: "nvidia_smi_no_devices",
+      host: "prod.internal",
+      hostId: "prod-api",
+      hostName: "prod api",
+      hostname: "prod-api-01",
+      port: 22,
+      username: "deploy",
+    });
+
+    render(
+      <ToolPanel
+        activeTool="system"
+        onActiveToolChange={vi.fn()}
+        selectedMachine={sshMachine}
+        tools={tools}
+      />,
+    );
+
+    expect(await screen.findByText("0 张")).toBeInTheDocument();
+    expect(screen.getByText("0 张显卡")).toBeInTheDocument();
+    const gpuToggle = screen.getByRole("button", { name: "展开GPU详情" });
+    await userEvent.click(gpuToggle);
+    expect(
+      screen.getByRole("button", { name: "收起GPU详情" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/NVIDIA-SMI has failed/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/未返回可用 NVIDIA GPU/)).not.toBeInTheDocument();
+  });
+
   it("renders lspci GPU fallback devices without utilization", async () => {
     serverInfoApiMocks.getServerInfoSnapshot.mockResolvedValueOnce({
       architecture: "x86_64",
@@ -728,8 +823,10 @@ describe("ToolPanel", () => {
 
     expect(await screen.findByText("1 张设备，仅静态识别")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "展开GPU详情" }));
-    expect(screen.getByText("Intel Corporation UHD Graphics")).toBeInTheDocument();
-    expect(screen.getByText("暂未采集到可绘制的 GPU 使用率或显存占用。")).toBeInTheDocument();
+    expect(
+      screen.getByText("Intel Corporation UHD Graphics"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("暂无 GPU 使用率或显存。")).toBeInTheDocument();
   });
 
   it("renders nvidia-smi list fallback devices without treating them as missing", async () => {
@@ -779,7 +876,9 @@ describe("ToolPanel", () => {
 
     expect(await screen.findByText("1 张设备，仅静态识别")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "展开GPU详情" }));
-    expect(screen.getByText("NVIDIA RTX 4500 Ada Generation")).toBeInTheDocument();
+    expect(
+      screen.getByText("NVIDIA RTX 4500 Ada Generation"),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/未返回可用 NVIDIA GPU/)).not.toBeInTheDocument();
   });
 
@@ -797,7 +896,7 @@ describe("ToolPanel", () => {
       await screen.findByText("远程文件浏览", undefined, { timeout: 5000 }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/当前终端连接到 SSH 主机或容器后/),
+      screen.getByText(/连接 SSH 主机或容器后显示文件/),
     ).toBeInTheDocument();
   });
 
@@ -833,9 +932,7 @@ describe("ToolPanel", () => {
     );
 
     expect(await screen.findByText("SSH 隧道")).toBeInTheDocument();
-    expect(
-      screen.getByText(/请选择 SSH 主机/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/请选择 SSH 主机/)).toBeInTheDocument();
   });
 
   it("creates and stops a local port forward for the selected SSH host", async () => {
@@ -882,7 +979,11 @@ describe("ToolPanel", () => {
     );
 
     await user.click(
-      await screen.findByRole("button", { name: "添加隧道" }, { timeout: 5000 }),
+      await screen.findByRole(
+        "button",
+        { name: "添加隧道" },
+        { timeout: 5000 },
+      ),
     );
     await user.type(await screen.findByLabelText("名称"), "PostgreSQL 隧道");
     await user.click(screen.getByRole("button", { name: "开启隧道" }));
@@ -902,7 +1003,8 @@ describe("ToolPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "停止" }));
 
-    expect(portForwardApiMocks.closePortForward).toHaveBeenCalledWith("forward-1");
+    expect(portForwardApiMocks.stopPortForward).toHaveBeenCalledWith(
+      "forward-1",
+    );
   });
-
 });

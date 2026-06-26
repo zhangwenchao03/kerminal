@@ -2,6 +2,8 @@
 //!
 //! @author kongweiguang
 
+use std::fs;
+
 use kerminal_lib::{
     error::AppError,
     models::remote_host::{
@@ -18,10 +20,7 @@ use tempfile::{tempdir, TempDir};
 fn initialization_starts_without_remote_host_groups() {
     let (_home, state) = test_state();
 
-    let tree = state
-        .remote_hosts()
-        .list_tree(state.storage())
-        .expect("list host tree");
+    let tree = state.remote_hosts().list_tree().expect("list host tree");
 
     assert!(tree.is_empty());
 }
@@ -31,32 +30,26 @@ fn create_host_persists_tags_private_key_path_and_production_flag() {
     let (_home, state) = test_state();
     let group = state
         .remote_hosts()
-        .create_group(
-            state.storage(),
-            RemoteHostGroupCreateRequest {
-                name: "实验室".to_owned(),
-            },
-        )
+        .create_group(RemoteHostGroupCreateRequest {
+            name: "实验室".to_owned(),
+        })
         .expect("create group");
 
     let host = state
         .remote_hosts()
-        .create_host(
-            state.storage(),
-            RemoteHostCreateRequest {
-                group_id: Some(group.id.clone()),
-                name: "armbian x2".to_owned(),
-                host: "192.168.1.253".to_owned(),
-                port: 22,
-                username: "root".to_owned(),
-                auth_type: RemoteHostAuthType::Key,
-                credential_ref: Some("/home/root/.ssh/armbian".to_owned()),
-                credential_secret: None,
-                tags: vec![" lab ".to_owned(), "LAB".to_owned(), "arm".to_owned()],
-                production: false,
-                ssh_options: Default::default(),
-            },
-        )
+        .create_host(RemoteHostCreateRequest {
+            group_id: Some(group.id.clone()),
+            name: "armbian x2".to_owned(),
+            host: "192.168.1.253".to_owned(),
+            port: 22,
+            username: "root".to_owned(),
+            auth_type: RemoteHostAuthType::Key,
+            credential_ref: Some("/home/root/.ssh/armbian".to_owned()),
+            credential_secret: None,
+            tags: vec![" lab ".to_owned(), "LAB".to_owned(), "arm".to_owned()],
+            production: false,
+            ssh_options: Default::default(),
+        })
         .expect("create host");
 
     assert_eq!(host.group_id.as_deref(), Some(group.id.as_str()));
@@ -70,10 +63,7 @@ fn create_host_persists_tags_private_key_path_and_production_flag() {
     assert_eq!(host.tags, vec!["lab", "arm"]);
     assert!(!host.production);
 
-    let tree = state
-        .remote_hosts()
-        .list_tree(state.storage())
-        .expect("list host tree");
+    let tree = state.remote_hosts().list_tree().expect("list host tree");
     let lab = tree
         .iter()
         .find(|candidate| candidate.id == group.id)
@@ -82,38 +72,52 @@ fn create_host_persists_tags_private_key_path_and_production_flag() {
 }
 
 #[test]
-fn create_password_host_saves_plaintext_secret_on_host() {
-    let (_home, state) = test_state();
+fn create_password_host_splits_plaintext_secret_into_secret_file() {
+    let (home, state) = test_state();
 
     let host = state
         .remote_hosts()
-        .create_host(
-            state.storage(),
-            RemoteHostCreateRequest {
-                group_id: None,
-                name: "password host".to_owned(),
-                host: "password.internal".to_owned(),
-                port: 22,
-                username: "deploy".to_owned(),
-                auth_type: RemoteHostAuthType::Password,
-                credential_ref: None,
-                credential_secret: Some("s3cr3t".to_owned()),
-                tags: Vec::new(),
-                production: false,
-                ssh_options: Default::default(),
-            },
-        )
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "password host".to_owned(),
+            host: "password.internal".to_owned(),
+            port: 22,
+            username: "deploy".to_owned(),
+            auth_type: RemoteHostAuthType::Password,
+            credential_ref: None,
+            credential_secret: Some("s3cr3t".to_owned()),
+            tags: Vec::new(),
+            production: false,
+            ssh_options: Default::default(),
+        })
         .expect("create password host");
 
     assert_eq!(host.credential_ref, None);
     assert_eq!(host.credential_secret.as_deref(), Some("s3cr3t"));
 
     let reloaded = state
-        .storage()
-        .remote_host_by_id(&host.id)
+        .remote_hosts()
+        .host_by_id(&host.id)
         .expect("load host")
         .expect("host exists");
     assert_eq!(reloaded.credential_secret.as_deref(), Some("s3cr3t"));
+
+    let config_root = KerminalPaths::from_home_dir(home.path()).root;
+    let host_toml = fs::read_to_string(config_root.join("hosts").join(format!("{}.toml", host.id)))
+        .expect("read public host toml");
+    assert!(!host_toml.contains("credential_secret"));
+    assert!(!host_toml.contains("credentialSecret"));
+    assert!(!host_toml.contains("s3cr3t"));
+
+    let secret_toml = fs::read_to_string(
+        config_root
+            .join("secrets")
+            .join("hosts")
+            .join(format!("{}.toml", host.id)),
+    )
+    .expect("read host secret toml");
+    assert!(secret_toml.contains("credential_secret"));
+    assert!(secret_toml.contains("s3cr3t"));
 }
 
 #[test]
@@ -148,22 +152,19 @@ fn create_host_persists_ssh_options() {
 
     let host = state
         .remote_hosts()
-        .create_host(
-            state.storage(),
-            RemoteHostCreateRequest {
-                group_id: None,
-                name: "prod-like ssh".to_owned(),
-                host: "app.internal".to_owned(),
-                port: 2222,
-                username: "deploy".to_owned(),
-                auth_type: RemoteHostAuthType::Key,
-                credential_ref: Some("/home/deploy/.ssh/id_ed25519".to_owned()),
-                credential_secret: None,
-                tags: vec!["app".to_owned()],
-                production: false,
-                ssh_options: ssh_options.clone(),
-            },
-        )
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "prod-like ssh".to_owned(),
+            host: "app.internal".to_owned(),
+            port: 2222,
+            username: "deploy".to_owned(),
+            auth_type: RemoteHostAuthType::Key,
+            credential_ref: Some("/home/deploy/.ssh/id_ed25519".to_owned()),
+            credential_secret: None,
+            tags: vec!["app".to_owned()],
+            production: false,
+            ssh_options: ssh_options.clone(),
+        })
         .expect("create host with ssh options");
 
     let mut expected_options = ssh_options.clone();
@@ -171,8 +172,8 @@ fn create_host_persists_ssh_options() {
     assert_eq!(host.ssh_options, expected_options);
 
     let reloaded = state
-        .storage()
-        .remote_host_by_id(&host.id)
+        .remote_hosts()
+        .host_by_id(&host.id)
         .expect("load host")
         .expect("host exists");
     assert_eq!(reloaded.ssh_options, expected_options);
@@ -183,44 +184,38 @@ fn update_key_host_saves_private_key_content_as_plaintext_secret() {
     let (_home, state) = test_state();
     let host = state
         .remote_hosts()
-        .create_host(
-            state.storage(),
-            RemoteHostCreateRequest {
-                group_id: None,
-                name: "key host".to_owned(),
-                host: "key.internal".to_owned(),
-                port: 22,
-                username: "deploy".to_owned(),
-                auth_type: RemoteHostAuthType::Key,
-                credential_ref: Some("/home/deploy/.ssh/id_ed25519".to_owned()),
-                credential_secret: None,
-                tags: Vec::new(),
-                production: false,
-                ssh_options: Default::default(),
-            },
-        )
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "key host".to_owned(),
+            host: "key.internal".to_owned(),
+            port: 22,
+            username: "deploy".to_owned(),
+            auth_type: RemoteHostAuthType::Key,
+            credential_ref: Some("/home/deploy/.ssh/id_ed25519".to_owned()),
+            credential_secret: None,
+            tags: Vec::new(),
+            production: false,
+            ssh_options: Default::default(),
+        })
         .expect("create key host");
 
     let updated = state
         .remote_hosts()
-        .update_host(
-            state.storage(),
-            RemoteHostUpdateRequest {
-                id: host.id,
-                group_id: None,
-                name: "key host".to_owned(),
-                host: "key.internal".to_owned(),
-                port: 22,
-                username: "deploy".to_owned(),
-                auth_type: RemoteHostAuthType::Key,
-                credential_ref: None,
-                credential_secret: Some("-----BEGIN OPENSSH PRIVATE KEY-----\n...\n".to_owned()),
-                tags: Vec::new(),
-                production: false,
-                ssh_options: Default::default(),
-                sort_order: host.sort_order,
-            },
-        )
+        .update_host(RemoteHostUpdateRequest {
+            id: host.id,
+            group_id: None,
+            name: "key host".to_owned(),
+            host: "key.internal".to_owned(),
+            port: 22,
+            username: "deploy".to_owned(),
+            auth_type: RemoteHostAuthType::Key,
+            credential_ref: None,
+            credential_secret: Some("-----BEGIN OPENSSH PRIVATE KEY-----\n...\n".to_owned()),
+            tags: Vec::new(),
+            production: false,
+            ssh_options: Default::default(),
+            sort_order: host.sort_order,
+        })
         .expect("update key host");
 
     assert_eq!(updated.credential_ref, None);
@@ -235,64 +230,52 @@ fn update_group_and_host_persist_changes() {
     let (_home, state) = test_state();
     let group = state
         .remote_hosts()
-        .create_group(
-            state.storage(),
-            RemoteHostGroupCreateRequest {
-                name: "旧分组".to_owned(),
-            },
-        )
+        .create_group(RemoteHostGroupCreateRequest {
+            name: "旧分组".to_owned(),
+        })
         .expect("create group");
     let updated_group = state
         .remote_hosts()
-        .update_group(
-            state.storage(),
-            RemoteHostGroupUpdateRequest {
-                id: group.id.clone(),
-                name: "开发服务器".to_owned(),
-                sort_order: group.sort_order,
-            },
-        )
+        .update_group(RemoteHostGroupUpdateRequest {
+            id: group.id.clone(),
+            name: "开发服务器".to_owned(),
+            sort_order: group.sort_order,
+        })
         .expect("update group");
     let host = state
         .remote_hosts()
-        .create_host(
-            state.storage(),
-            RemoteHostCreateRequest {
-                group_id: Some(updated_group.id.clone()),
-                name: "dev".to_owned(),
-                host: "dev.internal".to_owned(),
-                port: 22,
-                username: "ubuntu".to_owned(),
-                auth_type: RemoteHostAuthType::Agent,
-                credential_ref: None,
-                credential_secret: None,
-                tags: vec!["dev".to_owned()],
-                production: false,
-                ssh_options: Default::default(),
-            },
-        )
+        .create_host(RemoteHostCreateRequest {
+            group_id: Some(updated_group.id.clone()),
+            name: "dev".to_owned(),
+            host: "dev.internal".to_owned(),
+            port: 22,
+            username: "ubuntu".to_owned(),
+            auth_type: RemoteHostAuthType::Agent,
+            credential_ref: None,
+            credential_secret: None,
+            tags: vec!["dev".to_owned()],
+            production: false,
+            ssh_options: Default::default(),
+        })
         .expect("create host");
 
     let updated_host = state
         .remote_hosts()
-        .update_host(
-            state.storage(),
-            RemoteHostUpdateRequest {
-                id: host.id,
-                group_id: Some(updated_group.id),
-                name: "dev api".to_owned(),
-                host: "api.dev.internal".to_owned(),
-                port: 2222,
-                username: "deploy".to_owned(),
-                auth_type: RemoteHostAuthType::Password,
-                credential_ref: None,
-                credential_secret: Some("updated-password".to_owned()),
-                tags: vec!["dev".to_owned(), "api".to_owned()],
-                production: true,
-                ssh_options: Default::default(),
-                sort_order: host.sort_order,
-            },
-        )
+        .update_host(RemoteHostUpdateRequest {
+            id: host.id,
+            group_id: Some(updated_group.id),
+            name: "dev api".to_owned(),
+            host: "api.dev.internal".to_owned(),
+            port: 2222,
+            username: "deploy".to_owned(),
+            auth_type: RemoteHostAuthType::Password,
+            credential_ref: None,
+            credential_secret: Some("updated-password".to_owned()),
+            tags: vec!["dev".to_owned(), "api".to_owned()],
+            production: true,
+            ssh_options: Default::default(),
+            sort_order: host.sort_order,
+        })
         .expect("update host");
 
     assert_eq!(updated_group.name, "开发服务器");
@@ -312,41 +295,32 @@ fn delete_group_moves_hosts_to_ungrouped() {
     let (_home, state) = test_state();
     let group = state
         .remote_hosts()
-        .create_group(
-            state.storage(),
-            RemoteHostGroupCreateRequest {
-                name: "临时分组".to_owned(),
-            },
-        )
+        .create_group(RemoteHostGroupCreateRequest {
+            name: "临时分组".to_owned(),
+        })
         .expect("create group");
     let host = state
         .remote_hosts()
-        .create_host(
-            state.storage(),
-            RemoteHostCreateRequest {
-                group_id: Some(group.id.clone()),
-                name: "临时主机".to_owned(),
-                host: "temp.internal".to_owned(),
-                port: 22,
-                username: "root".to_owned(),
-                auth_type: RemoteHostAuthType::Agent,
-                credential_ref: None,
-                credential_secret: None,
-                tags: Vec::new(),
-                production: false,
-                ssh_options: Default::default(),
-            },
-        )
+        .create_host(RemoteHostCreateRequest {
+            group_id: Some(group.id.clone()),
+            name: "临时主机".to_owned(),
+            host: "temp.internal".to_owned(),
+            port: 22,
+            username: "root".to_owned(),
+            auth_type: RemoteHostAuthType::Agent,
+            credential_ref: None,
+            credential_secret: None,
+            tags: Vec::new(),
+            production: false,
+            ssh_options: Default::default(),
+        })
         .expect("create host");
 
     assert!(state
         .remote_hosts()
-        .delete_group(state.storage(), &group.id)
+        .delete_group(&group.id)
         .expect("delete group"));
-    let tree = state
-        .remote_hosts()
-        .list_tree(state.storage())
-        .expect("list host tree");
+    let tree = state.remote_hosts().list_tree().expect("list host tree");
     assert_eq!(tree.len(), 1);
     assert_eq!(tree[0].name, "默认分组");
     assert_eq!(tree[0].hosts[0].id, host.id);
@@ -359,25 +333,46 @@ fn create_host_rejects_unknown_group() {
 
     let error = state
         .remote_hosts()
-        .create_host(
-            state.storage(),
-            RemoteHostCreateRequest {
-                group_id: Some("missing".to_owned()),
-                name: "bad".to_owned(),
-                host: "example.com".to_owned(),
-                port: 22,
-                username: "root".to_owned(),
-                auth_type: RemoteHostAuthType::Agent,
-                credential_ref: None,
-                credential_secret: None,
-                tags: Vec::new(),
-                production: false,
-                ssh_options: Default::default(),
-            },
-        )
+        .create_host(RemoteHostCreateRequest {
+            group_id: Some("missing".to_owned()),
+            name: "bad".to_owned(),
+            host: "example.com".to_owned(),
+            port: 22,
+            username: "root".to_owned(),
+            auth_type: RemoteHostAuthType::Agent,
+            credential_ref: None,
+            credential_secret: None,
+            tags: Vec::new(),
+            production: false,
+            ssh_options: Default::default(),
+        })
         .expect_err("reject unknown group");
 
     assert!(matches!(error, AppError::NotFound(_)));
+}
+
+#[test]
+fn create_host_rejects_whitespace_in_host_address() {
+    let (_home, state) = test_state();
+
+    let error = state
+        .remote_hosts()
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "bad host".to_owned(),
+            host: "bad host".to_owned(),
+            port: 22,
+            username: "root".to_owned(),
+            auth_type: RemoteHostAuthType::Agent,
+            credential_ref: None,
+            credential_secret: None,
+            tags: Vec::new(),
+            production: false,
+            ssh_options: Default::default(),
+        })
+        .expect_err("reject host address whitespace");
+
+    assert!(matches!(error, AppError::InvalidInput(_)));
 }
 
 #[test]
@@ -386,30 +381,24 @@ fn create_host_allows_no_group_and_lists_it_as_ungrouped() {
 
     let host = state
         .remote_hosts()
-        .create_host(
-            state.storage(),
-            RemoteHostCreateRequest {
-                group_id: None,
-                name: "standalone".to_owned(),
-                host: "standalone.internal".to_owned(),
-                port: 22,
-                username: "root".to_owned(),
-                auth_type: RemoteHostAuthType::Agent,
-                credential_ref: None,
-                credential_secret: None,
-                tags: vec!["adhoc".to_owned()],
-                production: false,
-                ssh_options: Default::default(),
-            },
-        )
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "standalone".to_owned(),
+            host: "standalone.internal".to_owned(),
+            port: 22,
+            username: "root".to_owned(),
+            auth_type: RemoteHostAuthType::Agent,
+            credential_ref: None,
+            credential_secret: None,
+            tags: vec!["adhoc".to_owned()],
+            production: false,
+            ssh_options: Default::default(),
+        })
         .expect("create ungrouped host");
 
     assert_eq!(host.group_id, None);
 
-    let tree = state
-        .remote_hosts()
-        .list_tree(state.storage())
-        .expect("list host tree");
+    let tree = state.remote_hosts().list_tree().expect("list host tree");
 
     assert_eq!(tree.len(), 1);
     assert_eq!(tree[0].id, "__ungrouped__");
@@ -422,26 +411,23 @@ fn create_telnet_host_allows_empty_username_and_normalizes_tags() {
 
     let host = state
         .remote_hosts()
-        .create_host(
-            state.storage(),
-            RemoteHostCreateRequest {
-                group_id: None,
-                name: "legacy telnet".to_owned(),
-                host: "legacy.internal".to_owned(),
-                port: 23,
-                username: "   ".to_owned(),
-                auth_type: RemoteHostAuthType::Agent,
-                credential_ref: None,
-                credential_secret: None,
-                tags: vec![
-                    " TelNet ".to_owned(),
-                    "telnet".to_owned(),
-                    " console ".to_owned(),
-                ],
-                production: false,
-                ssh_options: Default::default(),
-            },
-        )
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "legacy telnet".to_owned(),
+            host: "legacy.internal".to_owned(),
+            port: 23,
+            username: "   ".to_owned(),
+            auth_type: RemoteHostAuthType::Agent,
+            credential_ref: None,
+            credential_secret: None,
+            tags: vec![
+                " TelNet ".to_owned(),
+                "telnet".to_owned(),
+                " console ".to_owned(),
+            ],
+            production: false,
+            ssh_options: Default::default(),
+        })
         .expect("create telnet host");
 
     assert_eq!(host.username, "");
@@ -454,26 +440,23 @@ fn create_serial_host_allows_empty_username_and_normalizes_tags() {
 
     let host = state
         .remote_hosts()
-        .create_host(
-            state.storage(),
-            RemoteHostCreateRequest {
-                group_id: None,
-                name: "serial console".to_owned(),
-                host: "COM7".to_owned(),
-                port: 1,
-                username: "   ".to_owned(),
-                auth_type: RemoteHostAuthType::Agent,
-                credential_ref: None,
-                credential_secret: None,
-                tags: vec![
-                    " Serial ".to_owned(),
-                    "serial".to_owned(),
-                    " serial-baud:115200 ".to_owned(),
-                ],
-                production: false,
-                ssh_options: Default::default(),
-            },
-        )
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "serial console".to_owned(),
+            host: "COM7".to_owned(),
+            port: 1,
+            username: "   ".to_owned(),
+            auth_type: RemoteHostAuthType::Agent,
+            credential_ref: None,
+            credential_secret: None,
+            tags: vec![
+                " Serial ".to_owned(),
+                "serial".to_owned(),
+                " serial-baud:115200 ".to_owned(),
+            ],
+            production: false,
+            ssh_options: Default::default(),
+        })
         .expect("create serial host");
 
     assert_eq!(host.username, "");
@@ -486,22 +469,19 @@ fn create_non_telnet_host_rejects_empty_username() {
 
     let error = state
         .remote_hosts()
-        .create_host(
-            state.storage(),
-            RemoteHostCreateRequest {
-                group_id: None,
-                name: "rdp host".to_owned(),
-                host: "rdp.internal".to_owned(),
-                port: 3389,
-                username: " ".to_owned(),
-                auth_type: RemoteHostAuthType::Agent,
-                credential_ref: None,
-                credential_secret: None,
-                tags: vec!["rdp".to_owned()],
-                production: false,
-                ssh_options: Default::default(),
-            },
-        )
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "rdp host".to_owned(),
+            host: "rdp.internal".to_owned(),
+            port: 3389,
+            username: " ".to_owned(),
+            auth_type: RemoteHostAuthType::Agent,
+            credential_ref: None,
+            credential_secret: None,
+            tags: vec!["rdp".to_owned()],
+            production: false,
+            ssh_options: Default::default(),
+        })
         .expect_err("reject empty username without telnet tag");
 
     assert!(matches!(error, AppError::InvalidInput(_)));

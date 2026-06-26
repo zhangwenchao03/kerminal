@@ -26,6 +26,8 @@ export type MachineSidebarMenuAction =
   | "duplicateMachine"
   | "editGroup"
   | "editMachine"
+  | "openHostContainers"
+  | "openContainerDetails"
   | "openContainerTerminal"
   | "openLocalTerminal"
   | "openRdpConnection"
@@ -45,6 +47,8 @@ export const MACHINE_SIDEBAR_MENU_ACTIONS = [
   "duplicateMachine",
   "editGroup",
   "editMachine",
+  "openHostContainers",
+  "openContainerDetails",
   "openContainerTerminal",
   "openLocalTerminal",
   "openRdpConnection",
@@ -141,6 +145,7 @@ export function buildMachineSidebarMachineMenuItems(
   if (machine.kind === "dockerContainer") {
     return withMachineAssetDomain([
       { action: "openContainerTerminal", label: "进入容器终端" },
+      { action: "openContainerDetails", label: "详情" },
       { action: "openSftp", label: "打开 SFTP" },
       { action: "deleteMachine", danger: true, label: "删除连接" },
     ]);
@@ -178,6 +183,7 @@ export function buildMachineSidebarMachineMenuItems(
 
   return withMachineAssetDomain([
     { action: "openSshTerminal", label: "打开 SSH 终端" },
+    { action: "openHostContainers", label: "容器" },
     { action: "openSftp", label: "打开 SFTP" },
     { action: "openSftpTransferWorkbench", label: "新建传输 Tab" },
     { action: "editMachine", label: "编辑连接配置" },

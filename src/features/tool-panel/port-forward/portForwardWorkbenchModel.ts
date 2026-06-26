@@ -28,28 +28,28 @@ export const ALL_INTERFACES_BIND_HOST = "0.0.0.0";
 
 export const portForwardScenarioOptions: PortForwardScenarioOption[] = [
   {
-    description: "本机开端口访问主机上的数据库、Web 或调试服务。",
+    description: "本机访问主机服务。",
     flow: "把主机服务映射到本机端口",
     id: "hostService",
     label: "访问主机服务",
     openssh: "-L",
   },
   {
-    description: "主机开端口访问本机正在运行的开发服务。",
+    description: "主机访问本机服务。",
     flow: "把主机端口映射到本机服务",
     id: "localService",
     label: "暴露本机服务",
     openssh: "-R",
   },
   {
-    description: "给主机当前命令注入 HTTP/SOCKS 代理，走本机网络出口。",
+    description: "主机命令使用本机网络。",
     flow: "让主机命令通过本机网络访问外部",
     id: "hostNetwork",
     label: "主机使用本机网络",
     openssh: "-R + proxy",
   },
   {
-    description: "本机 SOCKS 出口主机网络，或准备远端 SOCKS 高级模式。",
+    description: "创建 SOCKS 代理。",
     flow: "创建 SOCKS 代理入口",
     id: "socksAdvanced",
     label: "SOCKS / 高级",

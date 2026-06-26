@@ -9,6 +9,11 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { Button } from "../../components/ui/button";
 import { Select, type SelectOption } from "../../components/ui/select";
 import { cn } from "../../lib/cn";
+import { defaultDesktopNotificationSettings } from "../settings/settingsDefaults";
+import type {
+  DesktopNotificationSettings,
+  InterfaceDensity,
+} from "../settings/settingsModel";
 import type { Machine, MachineGroup } from "../workspace/types";
 import { LocalTransferPane } from "./LocalTransferPane";
 import { SftpToolContent, type SftpClipboard } from "./SftpToolContent";
@@ -40,6 +45,7 @@ import {
   type SftpTransferHostTab,
 } from "./sftpTransferWorkbenchModel";
 import { useSftpManagedTransferQueue } from "./useSftpManagedTransferQueue";
+import { useSftpTransferNotifications } from "./useSftpTransferNotifications";
 import { useSftpTransferQueueSync } from "./useSftpTransferQueueSync";
 
 const CREATE_SSH_HOST_OPTION_VALUE = "__create_ssh_host__";
@@ -47,9 +53,11 @@ const CREATE_SSH_HOST_OPTION_VALUE = "__create_ssh_host__";
 export interface SftpTransferWorkbenchProps {
   active?: boolean;
   createdHostTarget?: SftpTransferCreatedHostTarget;
+  desktopNotifications?: DesktopNotificationSettings;
   groups: MachineGroup[];
   initialLeftHostId?: string;
   initialRightHostId?: string;
+  interfaceDensity?: InterfaceDensity;
   lockedLeftHostId?: string;
   onCreateSshHost?: (request: SftpTransferCreateHostRequest) => void;
   workspaceTabId?: string;
@@ -70,9 +78,11 @@ export interface SftpTransferCreatedHostTarget {
 export function SftpTransferWorkbench({
   active = true,
   createdHostTarget,
+  desktopNotifications = defaultDesktopNotificationSettings,
   groups,
   initialLeftHostId,
   initialRightHostId,
+  interfaceDensity = "comfortable",
   lockedLeftHostId,
   onCreateSshHost,
   workspaceTabId,
@@ -84,6 +94,10 @@ export function SftpTransferWorkbench({
   );
   const machinesById = useMemo(
     () => new Map(sshMachines.map((machine) => [machine.id, machine])),
+    [sshMachines],
+  );
+  const hostLabelById = useMemo(
+    () => new Map(sshMachines.map((machine) => [machine.id, machine.name])),
     [sshMachines],
   );
   const defaultRightHostId = firstValidHostId(
@@ -124,6 +138,14 @@ export function SftpTransferWorkbench({
     setTransfers,
     transfers,
   } = useSftpTransferQueueSync({ active, viewScope: transferViewScope });
+
+  useSftpTransferNotifications({
+    active,
+    desktopNotifications,
+    hostLabelById,
+    notificationKeyPrefix: transferViewScope,
+    transfers,
+  });
 
   useEffect(() => {
     setLeftTabs((current) =>
@@ -312,15 +334,43 @@ export function SftpTransferWorkbench({
   const activeCount = activeTransferCount(transfers);
   const finishedCount = transfers.filter(isFinishedTransfer).length;
   const canClearTransfers = canClearFinishedTransfers(transfers);
+  const compactDensity = interfaceDensity === "compact";
+  const spaciousDensity = interfaceDensity === "spacious";
+  const headerPaddingClass = compactDensity
+    ? "px-3 py-2"
+    : spaciousDensity
+      ? "px-5 py-4"
+      : "px-4 py-3";
+  const bodyGridClass = compactDensity
+    ? "grid min-h-0 flex-1 grid-cols-1 gap-2 p-2 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]"
+    : spaciousDensity
+      ? "grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]"
+      : "grid min-h-0 flex-1 grid-cols-1 gap-3 p-3 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]";
+  const headerIconClass = compactDensity
+    ? "h-8 w-8 rounded-lg"
+    : spaciousDensity
+      ? "h-10 w-10 rounded-2xl"
+      : "h-9 w-9 rounded-xl";
+  const headerButtonClass = compactDensity ? "h-8 rounded-lg px-2 text-xs" : "";
 
   return (
     <section
       aria-label="SFTP 传输工作台"
       className="kerminal-solid-surface flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border"
     >
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-3">
+      <header
+        className={cn(
+          "flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)]",
+          headerPaddingClass,
+        )}
+      >
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 dark:bg-sky-400/14 dark:text-sky-200">
+          <span
+            className={cn(
+              "flex shrink-0 items-center justify-center bg-sky-500/10 text-sky-600 dark:bg-sky-400/14 dark:text-sky-200",
+              headerIconClass,
+            )}
+          >
             <ArrowLeftRight className="h-4 w-4" />
           </span>
           <div className="min-w-0">
@@ -333,11 +383,18 @@ export function SftpTransferWorkbench({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Button onClick={refreshTransfers} size="sm" type="button" variant="ghost">
+          <Button
+            className={headerButtonClass}
+            onClick={refreshTransfers}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
             <RefreshCw className="h-4 w-4" />
             刷新
           </Button>
           <Button
+            className={headerButtonClass}
             disabled={!canClearTransfers}
             onClick={() => void clearFinishedTransfers()}
             size="sm"
@@ -350,13 +407,14 @@ export function SftpTransferWorkbench({
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 p-3 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+      <div className={bodyGridClass}>
         <LeftPane
           active={active}
           activeTab={leftActiveTab}
           activeTabId={activeLeftTabId}
           clipboard={clipboard}
           hostTabs={leftTabs}
+          interfaceDensity={interfaceDensity}
           localActive={isLeftLocalActive}
           machines={sshMachines}
           machinesById={machinesById}
@@ -381,6 +439,7 @@ export function SftpTransferWorkbench({
           activeTabId={activeRightTabId}
           clipboard={clipboard}
           hostTabs={rightTabs}
+          interfaceDensity={interfaceDensity}
           machines={sshMachines}
           machinesById={machinesById}
           onActiveTabChange={setActiveRightTabId}
@@ -411,6 +470,7 @@ function LeftPane({
   activeTabId,
   clipboard,
   hostTabs,
+  interfaceDensity,
   localActive,
   machines,
   machinesById,
@@ -434,6 +494,7 @@ function LeftPane({
   activeTabId: string;
   clipboard: SftpWorkbenchClipboard | null;
   hostTabs: SftpTransferHostTab[];
+  interfaceDensity: InterfaceDensity;
   localActive: boolean;
   machines: Machine[];
   machinesById: Map<string, Machine>;
@@ -471,10 +532,47 @@ function LeftPane({
     ],
     [machines, onCreateSshHost],
   );
+  const compactDensity = interfaceDensity === "compact";
+  const spaciousDensity = interfaceDensity === "spacious";
+  const paneGapClass = compactDensity
+    ? "gap-1.5"
+    : spaciousDensity
+      ? "gap-3"
+      : "gap-2";
+  const paneHeaderPaddingClass = compactDensity
+    ? "px-2.5 py-1.5"
+    : spaciousDensity
+      ? "px-4 py-3"
+      : "px-3 py-2";
+  const tabStripPaddingClass = compactDensity
+    ? "px-1.5 py-1"
+    : spaciousDensity
+      ? "px-3 py-2"
+      : "px-2 py-1.5";
+  const selectButtonClass = compactDensity
+    ? "kerminal-field-surface h-7 rounded-lg pl-7 text-xs text-zinc-700 dark:text-zinc-200"
+    : spaciousDensity
+      ? "kerminal-field-surface h-9 rounded-xl pl-8 text-xs text-zinc-700 dark:text-zinc-200"
+      : "kerminal-field-surface h-8 rounded-lg pl-7 text-xs text-zinc-700 dark:text-zinc-200";
+  const localTabButtonClass = compactDensity
+    ? "h-7 rounded-lg px-2"
+    : spaciousDensity
+      ? "h-9 rounded-xl px-2.5"
+      : "h-8 rounded-lg px-2";
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
-      <div className="kerminal-muted-surface flex shrink-0 items-center justify-between gap-2 rounded-xl border px-3 py-2">
+    <div
+      className={cn(
+        "flex h-full min-h-0 flex-col overflow-hidden",
+        paneGapClass,
+      )}
+    >
+      <div
+        className={cn(
+          "kerminal-muted-surface flex shrink-0 items-center justify-between gap-2 rounded-xl border",
+          paneHeaderPaddingClass,
+        )}
+      >
         <div className="min-w-0">
           <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">
             左侧目标
@@ -489,7 +587,7 @@ function LeftPane({
           <Select
             aria-label="添加左侧服务器"
             align="right"
-            buttonClassName="kerminal-field-surface h-8 rounded-lg pl-7 text-xs text-zinc-700 dark:text-zinc-200"
+            buttonClassName={selectButtonClass}
             className="w-[168px] max-w-[42vw]"
             disabled={!onCreateSshHost && machines.length === 0}
             menuClassName="w-56"
@@ -509,11 +607,17 @@ function LeftPane({
         </div>
       </div>
 
-      <div className="kerminal-muted-surface scrollbar-none flex shrink-0 gap-1 overflow-x-auto rounded-xl border px-2 py-1.5">
+      <div
+        className={cn(
+          "kerminal-muted-surface scrollbar-none flex shrink-0 gap-1 overflow-x-auto rounded-xl border",
+          tabStripPaddingClass,
+        )}
+      >
         <button
           aria-pressed={localActive}
           className={cn(
-            "kerminal-focus-ring kerminal-pressable flex h-8 max-w-[180px] items-center gap-1.5 rounded-lg px-2 text-xs transition",
+            "kerminal-focus-ring kerminal-pressable flex max-w-[180px] items-center gap-1.5 text-xs transition",
+            localTabButtonClass,
             localActive
               ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
               : "text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-100",
@@ -528,6 +632,7 @@ function LeftPane({
         {hostTabs.map((tab) => (
           <HostTabButton
             active={tab.id === activeTabId}
+            interfaceDensity={interfaceDensity}
             key={tab.id}
             machine={machinesById.get(tab.hostId)}
             onActivate={() => onActiveTabChange(tab.id)}
@@ -541,6 +646,7 @@ function LeftPane({
         {localActive ? (
           <LocalTransferPane
             active={active}
+            interfaceDensity={interfaceDensity}
             onCurrentPathChange={onCurrentPathChange}
             onLocalClipboardChange={onLocalClipboardChange}
             onTransferQueued={onTransferQueued}
@@ -556,6 +662,7 @@ function LeftPane({
               availableMachineCount={machines.length}
               clipboard={clipboard}
               emptyLabel="选择左侧服务器。"
+              interfaceDensity={interfaceDensity}
               machinesById={machinesById}
               onClipboardChange={onClipboardChange}
               onPathChange={onPathChange}
@@ -575,6 +682,7 @@ function HostPane({
   activeTabId,
   clipboard,
   hostTabs,
+  interfaceDensity,
   machines,
   machinesById,
   onActiveTabChange,
@@ -593,6 +701,7 @@ function HostPane({
   activeTabId: string;
   clipboard: SftpWorkbenchClipboard | null;
   hostTabs: SftpTransferHostTab[];
+  interfaceDensity: InterfaceDensity;
   machines: Machine[];
   machinesById: Map<string, Machine>;
   onActiveTabChange: (tabId: string) => void;
@@ -627,10 +736,32 @@ function HostPane({
     ],
     [availableMachines, onCreateSshHost],
   );
+  const compactDensity = interfaceDensity === "compact";
+  const spaciousDensity = interfaceDensity === "spacious";
+  const paneHeaderPaddingClass = compactDensity
+    ? "px-2.5 py-1.5"
+    : spaciousDensity
+      ? "px-4 py-3"
+      : "px-3 py-2";
+  const tabStripPaddingClass = compactDensity
+    ? "px-1.5 py-1"
+    : spaciousDensity
+      ? "px-3 py-2"
+      : "px-2 py-1.5";
+  const selectButtonClass = compactDensity
+    ? "kerminal-field-surface h-7 rounded-lg pl-7 text-xs text-zinc-700 dark:text-zinc-200"
+    : spaciousDensity
+      ? "kerminal-field-surface h-9 rounded-xl pl-8 text-xs text-zinc-700 dark:text-zinc-200"
+      : "kerminal-field-surface h-8 rounded-lg pl-7 text-xs text-zinc-700 dark:text-zinc-200";
 
   return (
     <div className="kerminal-muted-surface flex min-h-0 flex-col overflow-hidden rounded-xl border">
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border-subtle)] px-3 py-2">
+      <div
+        className={cn(
+          "flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border-subtle)]",
+          paneHeaderPaddingClass,
+        )}
+      >
         <div className="min-w-0">
           <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">
             {title}
@@ -645,7 +776,7 @@ function HostPane({
           <Select
             aria-label={`添加${title}`}
             align="right"
-            buttonClassName="kerminal-field-surface h-8 rounded-lg pl-7 text-xs text-zinc-700 dark:text-zinc-200"
+            buttonClassName={selectButtonClass}
             className="w-[168px] max-w-[42vw]"
             disabled={!onCreateSshHost && availableMachines.length === 0}
             menuClassName="w-56"
@@ -665,10 +796,16 @@ function HostPane({
         </div>
       </div>
 
-      <div className="scrollbar-none flex shrink-0 gap-1 overflow-x-auto border-b border-[var(--border-subtle)] px-2 py-1.5">
+      <div
+        className={cn(
+          "scrollbar-none flex shrink-0 gap-1 overflow-x-auto border-b border-[var(--border-subtle)]",
+          tabStripPaddingClass,
+        )}
+      >
         {hostTabs.map((tab) => (
           <HostTabButton
             active={tab.id === activeTabId}
+            interfaceDensity={interfaceDensity}
             key={tab.id}
             machine={machinesById.get(tab.hostId)}
             onActivate={() => onActiveTabChange(tab.id)}
@@ -685,6 +822,7 @@ function HostPane({
           availableMachineCount={availableMachines.length}
           clipboard={clipboard}
           emptyLabel={side === "right" ? "选择右侧服务器。" : "未选择主机。"}
+          interfaceDensity={interfaceDensity}
           machinesById={machinesById}
           onClipboardChange={onClipboardChange}
           onPathChange={onPathChange}
@@ -702,6 +840,7 @@ function RemoteHostPaneBody({
   availableMachineCount,
   clipboard,
   emptyLabel,
+  interfaceDensity,
   machinesById,
   onClipboardChange,
   onPathChange,
@@ -713,6 +852,7 @@ function RemoteHostPaneBody({
   availableMachineCount: number;
   clipboard: SftpWorkbenchClipboard | null;
   emptyLabel: string;
+  interfaceDensity: InterfaceDensity;
   machinesById: Map<string, Machine>;
   onClipboardChange: (clipboard: SftpClipboard | null) => void;
   onPathChange: (tabId: string, path: string) => void;
@@ -743,6 +883,7 @@ function RemoteHostPaneBody({
     <SftpToolContent
       active={active}
       compactHeader
+      interfaceDensity={interfaceDensity}
       onCurrentPathChange={reportCurrentPath}
       onSftpClipboardChange={onClipboardChange}
       selectedMachine={selectedMachine}

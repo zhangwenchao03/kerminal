@@ -19,6 +19,7 @@ import {
   writeTerminal,
   type TerminalSessionLogState,
 } from "../../lib/terminalApi";
+import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 import type { RemoteTargetRef } from "../../lib/targetModel";
 import type {
   ResolvedTheme,
@@ -59,7 +60,6 @@ import { TerminalSearchPanel } from "./TerminalSearchPanel";
 import type { TerminalSplitDirection } from "../workspace/types";
 import {
   applyTerminalCommandBlockFolding,
-  clampMenuPosition,
   errorMessage,
   formatLogPath,
   pasteIntoTerminal,
@@ -89,18 +89,30 @@ interface XtermPaneProps {
   focused: boolean;
   paneId: string;
   profileId?: string;
+  remoteCommand?: string;
   remoteHostId?: string;
   remoteHostProduction?: boolean;
   resolvedTheme: ResolvedTheme;
   shell?: string;
+  shellAssistEnabled?: boolean;
+  startupMessage?: string;
   terminalAppearance: TerminalAppearance;
   target?: RemoteTargetRef;
   title: string;
+  transientStartupMessage?: boolean;
   onCurrentCwdChange?: (cwd: string) => void;
   onOpenLogs?: () => void;
   onOutputHistoryChange?: (outputHistory: string | undefined) => void;
+  onSessionFinished?: (event: XtermPaneSessionFinishedEvent) => void;
   onSplitPane?: (direction: TerminalSplitDirection) => void;
   outputHistory?: string;
+  resolveInitialOutputHistory?: () => string | undefined;
+}
+
+export interface XtermPaneSessionFinishedEvent {
+  durationMs: number;
+  reason: "closed";
+  sessionId: string;
 }
 
 export function XtermPane({
@@ -111,18 +123,24 @@ export function XtermPane({
   focused,
   paneId,
   profileId,
+  remoteCommand,
   remoteHostId,
   remoteHostProduction = false,
   resolvedTheme,
   shell,
+  shellAssistEnabled = true,
+  startupMessage,
   terminalAppearance,
   target,
   title,
+  transientStartupMessage = false,
   onCurrentCwdChange,
   onOpenLogs,
   onOutputHistoryChange,
+  onSessionFinished,
   onSplitPane,
   outputHistory,
+  resolveInitialOutputHistory,
 }: XtermPaneProps) {
   const commandBlockCounterRef = useRef(0);
   const commandBlocksRef = useRef<TerminalCommandBlock[]>([]);
@@ -139,7 +157,10 @@ export function XtermPane({
   const ghostSuggestionRef = useRef<TerminalGhostSuggestion | null>(null);
   const onCurrentCwdChangeRef = useRef(onCurrentCwdChange);
   const onOutputHistoryChangeRef = useRef(onOutputHistoryChange);
-  const outputHistoryRef = useRef(outputHistory);
+  const onSessionFinishedRef = useRef(onSessionFinished);
+  const outputHistoryRef = useRef(
+    outputHistory ?? resolveInitialOutputHistory?.(),
+  );
   const promptLineRef = useRef<number | undefined>(undefined);
   const manualClearSyncFrameRef = useRef<number | null>(null);
   const suppressCommandBlockSyncRef = useRef(false);
@@ -192,8 +213,18 @@ export function XtermPane({
     () => terminalFontWeightValue(terminalAppearance.fontWeight),
     [terminalAppearance.fontWeight],
   );
+  const argsDependencyKey = useMemo(() => stableJsonDependencyKey(args), [args]);
+  const envDependencyKey = useMemo(() => stableJsonDependencyKey(env), [env]);
+  const targetDependencyKey = useMemo(
+    () => stableJsonDependencyKey(target),
+    [target],
+  );
 
   const syncCommandBlockViews = useCallback(() => {
+    if (!shellAssistEnabled) {
+      setCommandBlockViews((current) => (current.length === 0 ? current : []));
+      return;
+    }
     if (suppressCommandBlockSyncRef.current) {
       return;
     }
@@ -241,7 +272,7 @@ export function XtermPane({
     setCommandBlockViews((current) =>
       commandBlockViewsEqual(current, nextViews) ? current : nextViews,
     );
-  }, []);
+  }, [shellAssistEnabled]);
 
   const scheduleCommandBlockViewsSync = useCallback(() => {
     if (manualClearSyncFrameRef.current !== null) {
@@ -299,8 +330,15 @@ export function XtermPane({
   }, [onOutputHistoryChange]);
 
   useEffect(() => {
+    onSessionFinishedRef.current = onSessionFinished;
+  }, [onSessionFinished]);
+
+  useEffect(() => {
+    if (resolveInitialOutputHistory) {
+      return;
+    }
     outputHistoryRef.current = outputHistory;
-  }, [outputHistory]);
+  }, [outputHistory, resolveInitialOutputHistory]);
 
   useEffect(() => {
     terminalAppearanceRef.current = terminalAppearance;
@@ -328,11 +366,13 @@ export function XtermPane({
       inputModelRef,
       onCurrentCwdChangeRef,
       onOutputHistoryChangeRef,
+      onSessionFinishedRef,
       outputHistoryRef,
       paneId,
       profileId,
       promptLineRef,
       reconnectSessionRef,
+      remoteCommand,
       remoteHostId,
       remoteHostProduction,
       searchAddonRef,
@@ -341,10 +381,12 @@ export function XtermPane({
       setCommandBlockViews,
       setConnectionState,
       setGhostSuggestion,
+      shellAssistEnabled,
       setLogNotice,
       setLogState,
       setSearchResults,
       shell,
+      startupMessage,
       syncCommandBlockViews,
       target,
       terminalAppearance,
@@ -352,18 +394,23 @@ export function XtermPane({
       terminalFontWeight,
       terminalRef,
       terminalTheme,
+      transientStartupMessage,
     }),
   [
-    args,
+    argsDependencyKey,
     cwd,
-    env,
+    envDependencyKey,
     paneId,
     profileId,
+    remoteCommand,
     remoteHostId,
     remoteHostProduction,
     shell,
+    shellAssistEnabled,
+    startupMessage,
     syncCommandBlockViews,
-    target,
+    targetDependencyKey,
+    transientStartupMessage,
   ]);
 
   useEffect(() => {
@@ -430,9 +477,9 @@ export function XtermPane({
   useLayoutEffect(() => {
     return applyTerminalCommandBlockFolding(
       containerRef.current,
-      commandBlockViews,
+      shellAssistEnabled ? commandBlockViews : [],
     );
-  }, [commandBlockViews]);
+  }, [commandBlockViews, shellAssistEnabled]);
 
   const startLogging = useCallback(async () => {
     const sessionId = sessionIdRef.current;
@@ -491,7 +538,7 @@ export function XtermPane({
       if (action === "copy") {
         const selection = terminal?.getSelection?.() ?? "";
         if (selection) {
-          void navigator.clipboard?.writeText(selection);
+          void writeDesktopClipboardText(selection);
         }
       } else if (action === "paste") {
         void pasteIntoTerminal(terminal, sessionId);
@@ -563,7 +610,10 @@ export function XtermPane({
       const selection = terminal?.getSelection?.() ?? "";
       const menuState = {
         canCopy: selection.length > 0,
-        position: clampMenuPosition(event.clientX, event.clientY),
+        position: {
+          x: event.clientX,
+          y: event.clientY,
+        },
       };
       setContextMenu(menuState);
       terminal?.focus();
@@ -591,9 +641,12 @@ export function XtermPane({
       }
 
       if (action === "copyText") {
-        void navigator.clipboard
-          ?.writeText(terminalCommandBlockPlainText(block))
-          .then(() => setCommandBlockNotice("命令块文本已复制"))
+        void writeDesktopClipboardText(terminalCommandBlockPlainText(block))
+          .then((result) =>
+            setCommandBlockNotice(
+              result.ok ? "命令块文本已复制" : "复制命令块文本失败",
+            ),
+          )
           .catch(() => setCommandBlockNotice("复制命令块文本失败"));
         terminalRef.current?.focus();
         return;
@@ -608,9 +661,12 @@ export function XtermPane({
           );
         })
         .catch(() => {
-          void navigator.clipboard
-            ?.writeText(terminalCommandBlockPlainText(block))
-            .then(() => setCommandBlockNotice("复制图片失败，已复制文本"))
+          void writeDesktopClipboardText(terminalCommandBlockPlainText(block))
+            .then((result) =>
+              setCommandBlockNotice(
+                result.ok ? "复制图片失败，已复制文本" : "复制命令块失败",
+              ),
+            )
             .catch(() => setCommandBlockNotice("复制命令块失败"));
         });
       terminalRef.current?.focus();
@@ -678,18 +734,24 @@ export function XtermPane({
       className="relative min-h-0 flex-1 bg-[#f7f7fa] dark:bg-[#1f1f21]"
       onContextMenu={openContextMenu}
     >
-      <TerminalCommandBlockRail
-        blocks={commandBlockViews}
-        onAction={executeCommandBlockAction}
-      />
-      <div className="h-full min-h-0 w-full overflow-hidden py-2 pl-6 pr-3">
+      {shellAssistEnabled ? (
+        <TerminalCommandBlockRail
+          blocks={commandBlockViews}
+          onAction={executeCommandBlockAction}
+        />
+      ) : null}
+      <div
+        className={`h-full min-h-0 w-full overflow-hidden py-2 pr-3 ${
+          shellAssistEnabled ? "pl-6" : "pl-3"
+        }`}
+      >
         <div
           aria-label={`${title} xterm 终端`}
           className="h-full min-h-0 w-full overflow-hidden"
           ref={containerRef}
         />
       </div>
-      {ghostSuggestion ? (
+      {shellAssistEnabled && ghostSuggestion ? (
         <div
           aria-label="终端命令灰色提示"
           className="pointer-events-none absolute z-10 select-none overflow-hidden whitespace-pre font-mono text-zinc-400/75 dark:text-zinc-500/85"
@@ -729,7 +791,7 @@ export function XtermPane({
           {logNotice}
         </div>
       ) : null}
-      {commandBlockNotice ? (
+      {shellAssistEnabled && commandBlockNotice ? (
         <div
           aria-label="命令块操作提示"
           className="kerminal-muted-surface pointer-events-none absolute left-3 max-w-[min(560px,calc(100%-1.5rem))] truncate rounded-md border px-2 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-xl dark:text-zinc-300"
@@ -760,11 +822,30 @@ export function XtermPane({
           canDisconnect={connectionState === "connected"}
           canCopy={contextMenu.canCopy}
           canReconnect={connectionState !== "connecting"}
+          canSplit={Boolean(onSplitPane)}
           onAction={executeContextMenuAction}
           onClose={() => setContextMenu(null)}
           position={contextMenu.position}
         />
       ) : null}
     </div>
+  );
+}
+
+function stableJsonDependencyKey(value: unknown): string {
+  return JSON.stringify(sortJsonValue(value));
+}
+
+function sortJsonValue(value: unknown): unknown {
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(sortJsonValue);
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entryValue]) => [key, sortJsonValue(entryValue)]),
   );
 }

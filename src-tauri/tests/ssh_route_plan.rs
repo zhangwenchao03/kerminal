@@ -132,6 +132,27 @@ fn builds_target_auth_variants() {
 }
 
 #[test]
+fn expands_home_relative_key_paths_in_route_plan() {
+    let plan = build_ssh_route_plan(&remote_host(
+        RemoteHostAuthType::Key,
+        Some("~/.ssh/id_ed25519"),
+        None,
+    ))
+    .expect("build key path target plan");
+    let expected_identity = dirs::home_dir()
+        .expect("current user home")
+        .join(".ssh")
+        .join("id_ed25519");
+
+    match &plan.target.auth {
+        SshRouteAuthPlan::Key {
+            material: SshRouteKeyMaterial::Path(path),
+        } => assert_eq!(path, &expected_identity),
+        other => panic!("expected key path auth, got {other:?}"),
+    }
+}
+
+#[test]
 fn preserves_two_jump_mixed_auth_order() {
     let mut host = remote_host(RemoteHostAuthType::Password, None, Some(TARGET_PASSWORD));
     host.ssh_options.jump_hosts = vec![

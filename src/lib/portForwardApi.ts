@@ -10,7 +10,7 @@ export type PortForwardProxyProtocol = "http" | "socks5";
 
 export type PortForwardOrigin =
   | "user"
-  | "aiTool"
+  | "mcpTool"
   | "networkAssist"
   | "hostPreset";
 

@@ -4,7 +4,9 @@ import { prepareXtermWebviewCompatibility } from "./lib/xtermWebviewCompatibilit
 prepareXtermWebviewCompatibility();
 disableNativeContextMenu();
 
-const startupRetryKey = "kerminal:startup-import-retried";
+const startupRetryKey = "kerminal:startup-import-retries";
+const startupRetryLimit = 4;
+const startupRetryDelayMs = 750;
 
 void import("./bootstrap")
   .then(() => {
@@ -14,8 +16,7 @@ void import("./bootstrap")
     console.error("Kerminal 启动失败", error);
 
     if (shouldRetryStartupImport(error)) {
-      markStartupRetry();
-      window.location.reload();
+      scheduleStartupRetry();
       return;
     }
 
@@ -23,28 +24,40 @@ void import("./bootstrap")
   });
 
 function shouldRetryStartupImport(error: unknown) {
-  if (!import.meta.env.DEV || hasStartupRetried()) {
+  if (!import.meta.env.DEV || getStartupRetryCount() >= startupRetryLimit) {
     return false;
   }
 
   const message = error instanceof Error ? error.message : String(error);
-  return message.includes("Failed to fetch dynamically imported module");
+  return (
+    message.includes("Failed to fetch dynamically imported module") ||
+    message.includes("Outdated Optimize Dep")
+  );
 }
 
-function hasStartupRetried() {
+function getStartupRetryCount() {
   try {
-    return window.sessionStorage.getItem(startupRetryKey) === "true";
+    const value = window.sessionStorage.getItem(startupRetryKey);
+    const count = value ? Number.parseInt(value, 10) : 0;
+    return Number.isFinite(count) ? count : 0;
   } catch {
-    return true;
+    return startupRetryLimit;
   }
 }
 
-function markStartupRetry() {
+function scheduleStartupRetry() {
+  const retryCount = getStartupRetryCount() + 1;
+
   try {
-    window.sessionStorage.setItem(startupRetryKey, "true");
+    window.sessionStorage.setItem(startupRetryKey, String(retryCount));
   } catch {
     // Ignore storage failures; the visible fallback will handle the failure.
+    return;
   }
+
+  window.setTimeout(() => {
+    window.location.reload();
+  }, startupRetryDelayMs * retryCount);
 }
 
 function clearStartupRetry() {

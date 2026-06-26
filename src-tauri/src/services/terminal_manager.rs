@@ -98,10 +98,7 @@ impl TerminalManager {
             rows,
             env,
             cleanup_paths,
-            secret_input_response,
         } = request;
-        let secret_input_plan =
-            secret_input_plan.or_else(|| secret_input_response.map(TerminalSecretInputPlan::from));
         let cleanup_guard = CleanupPathGuard::new(cleanup_paths.clone());
         let size = normalize_size(rows, cols)?;
         let shell = normalize_shell(shell)?;
@@ -708,9 +705,12 @@ impl TerminalSecretInputResponderEntry {
     }
 }
 
-#[cfg(test)]
-fn secret_prompt_matches(buffer: &str, prompt_markers: &[String]) -> bool {
-    secret_prompt_match_strength(buffer, prompt_markers).is_some()
+#[doc(hidden)]
+pub mod rules {
+    /// 判断终端输出缓冲区当前行是否匹配敏感输入提示。
+    pub fn secret_prompt_matches(buffer: &str, prompt_markers: &[String]) -> bool {
+        super::secret_prompt_match_strength(buffer, prompt_markers).is_some()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -1011,6 +1011,3 @@ fn default_shell() -> String {
         std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned())
     }
 }
-
-#[cfg(test)]
-mod tests;

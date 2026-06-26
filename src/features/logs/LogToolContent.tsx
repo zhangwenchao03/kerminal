@@ -1,6 +1,7 @@
 import {
   ChevronLeft,
   ChevronRight,
+  FileText,
   History,
   ListFilter,
   RefreshCw,
@@ -27,6 +28,10 @@ import {
   type CommandHistoryTarget,
 } from "../../lib/commandHistoryApi";
 import { cn } from "../../lib/cn";
+import {
+  getRuntimeHealthSnapshot,
+  type RuntimeStorageHealth,
+} from "../../lib/diagnosticsApi";
 import type { TerminalPane } from "../workspace/types";
 
 const COMMAND_HISTORY_LIMIT = 100;
@@ -34,7 +39,6 @@ const COMMAND_HISTORY_PAGE_SIZE = 8;
 const SOURCE_FILTER_OPTIONS: SelectOption[] = [
   { label: "全部来源", value: "" },
   { label: "用户输入", value: "user" },
-  { label: "AI", value: "ai" },
   { label: "批量发送", value: "broadcast" },
   { label: "片段", value: "snippet" },
   { label: "工作流", value: "workflow" },
@@ -56,10 +60,34 @@ export function LogToolContent({
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [source, setSource] = useState<CommandHistorySource | "">("");
+  const [logStorage, setLogStorage] = useState<RuntimeStorageHealth | null>(
+    null,
+  );
+  const [logStorageError, setLogStorageError] = useState<string | null>(null);
+  const [logStorageLoading, setLogStorageLoading] = useState(false);
   const historyScope = useMemo(
     () => buildHistoryScope(focusedPane),
     [focusedPane],
   );
+
+  const loadLogStorage = useCallback(async () => {
+    setLogStorageLoading(true);
+    setLogStorageError(null);
+    try {
+      const snapshot = await getRuntimeHealthSnapshot();
+      setLogStorage(snapshot.storage);
+    } catch (nextError) {
+      setLogStorageError(
+        nextError instanceof Error ? nextError.message : String(nextError),
+      );
+    } finally {
+      setLogStorageLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadLogStorage();
+  }, [loadLogStorage]);
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
@@ -155,12 +183,80 @@ export function LogToolContent({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+              <FileText className="h-4 w-4 text-emerald-500 dark:text-emerald-300" />
+              应用日志
+            </div>
+            <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+              Tauri 插件日志写入 Kerminal
+              日志目录；诊断包只记录路径、大小和轮转策略。
+            </p>
+          </div>
+          <Button
+            aria-label="刷新应用日志状态"
+            disabled={logStorageLoading}
+            onClick={() => void loadLogStorage()}
+            size="icon"
+            title="刷新应用日志状态"
+            variant="ghost"
+          >
+            <RefreshCw
+              className={cn("h-4 w-4", logStorageLoading && "animate-spin")}
+            />
+          </Button>
+        </div>
+
+        {logStorageError ? (
+          <div
+            className="mt-3 rounded-lg border border-rose-300/25 bg-rose-500/10 p-3 text-sm text-rose-700 dark:text-rose-100"
+            role="alert"
+          >
+            {logStorageError}
+          </div>
+        ) : null}
+
+        {!logStorage && logStorageLoading ? (
+          <div className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+            正在读取日志状态...
+          </div>
+        ) : null}
+
+        {logStorage ? (
+          <div className="mt-3 grid gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+            <div className="grid gap-1 min-[720px]:grid-cols-[5rem_minmax(0,1fr)]">
+              <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                活跃文件
+              </span>
+              <code
+                className="kerminal-muted-surface min-w-0 truncate rounded-md px-2 py-1 font-mono text-zinc-800 dark:text-zinc-200"
+                title={logStorage.appLogFile}
+              >
+                {logStorage.appLogFile}
+              </code>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <span className="kerminal-muted-surface rounded-md border px-2 py-1">
+                当前 {formatBytes(logStorage.appLogFileSizeBytes)}
+              </span>
+              <span className="kerminal-muted-surface rounded-md border px-2 py-1">
+                单文件上限 {formatBytes(logStorage.appLogMaxFileSizeBytes)}
+              </span>
+              <span className="kerminal-muted-surface rounded-md border px-2 py-1">
+                保留 {logStorage.appLogRotationKeepFiles} 个文件
+              </span>
+            </div>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="kerminal-solid-surface rounded-lg border p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
               <History className="h-4 w-4 text-sky-500 dark:text-sky-300" />
               命令历史
             </div>
             <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-              只显示当前终端提交的命令；疑似包含密钥、密码或 token
-              的命令会被跳过。
+              仅显示当前终端命令；密钥、密码或 token 会跳过。
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -452,7 +548,6 @@ function historyTargetLabel(target: CommandHistoryTarget) {
 
 function historySourceLabel(source: CommandHistorySource) {
   const labels: Record<CommandHistorySource, string> = {
-    ai: "AI",
     broadcast: "批量发送",
     snippet: "片段",
     workflow: "工作流",
@@ -460,6 +555,19 @@ function historySourceLabel(source: CommandHistorySource) {
     user: "用户输入",
   };
   return labels[source];
+}
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0 B";
+  }
+  if (value < 1024) {
+    return `${value} B`;
+  }
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function formatTimestamp(value: string) {

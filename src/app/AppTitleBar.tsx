@@ -96,7 +96,7 @@ export function AppTitleBar({
   return (
     <header
       className={cn(
-        "flex h-11 shrink-0 select-none items-center justify-between px-3",
+        "flex h-9 shrink-0 select-none items-center justify-between px-2.5",
         surface && "kerminal-material-nav border-b",
         resolvedTheme === "dark"
           ? "text-zinc-100"
@@ -117,7 +117,7 @@ export function AppTitleBar({
           <button
             aria-label={leftPanelCollapsed ? "展开主机侧边栏" : "折叠主机侧边栏"}
             aria-pressed={leftPanelCollapsed}
-            className="kerminal-pressable kerminal-focus-ring grid h-8 w-8 place-items-center rounded-xl text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
+            className="kerminal-pressable kerminal-focus-ring grid h-7 w-7 place-items-center rounded-lg text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
             onClick={toggleLeftPanelCollapsed}
             onPointerCancel={endCollapseButtonPointer}
             onPointerDown={beginCollapseButtonPointer}
@@ -206,7 +206,7 @@ function WindowControlButton({
     <button
       aria-label={ariaLabel}
       className={cn(
-        "kerminal-pressable kerminal-focus-ring pointer-events-auto grid h-8 w-8 place-items-center rounded-xl text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50",
+        "kerminal-pressable kerminal-focus-ring pointer-events-auto grid h-7 w-7 place-items-center rounded-lg text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50",
         danger &&
           "hover:bg-red-500/12 hover:text-red-600 dark:hover:text-red-300",
       )}

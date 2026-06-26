@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
 import { cn } from "../../lib/cn";
+import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 import {
   createPortForward,
   deletePortForward,
@@ -202,8 +203,8 @@ export function PortForwardToolContent({
     (focusedPane.remoteHostId === selectedMachine.id ||
       focusedPane.machineId === selectedMachine.id);
   const injectDisabledReason = !focusedPane
-    ? "当前工具面板还未接入 focusedPane；请复制命令手动粘贴，或由主线把 focusedPane 传入端口转发面板。"
-    : "当前聚焦终端不是该主机的 SSH pane，无法安全注入。";
+    ? "无法注入当前终端，请手动粘贴。"
+    : "聚焦终端不是当前 SSH 主机。";
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -230,7 +231,7 @@ export function PortForwardToolContent({
           SSH 隧道
         </h3>
         <p className="mt-2 leading-6">
-          请选择 SSH 主机后再创建访问主机服务、暴露本机服务或主机网络助手。
+          请选择 SSH 主机。
         </p>
       </section>
     );
@@ -273,7 +274,7 @@ export function PortForwardToolContent({
       );
       setNotice(
         scenario === "hostNetwork"
-          ? "网络助手会话已创建，可复制代理地址或注入当前终端。"
+          ? "网络助手已创建，可复制或注入。"
           : "隧道会话已创建。",
       );
       setCreateDialogOpen(false);
@@ -360,11 +361,11 @@ export function PortForwardToolContent({
   }
 
   async function handleCopy(value: string) {
-    if (!navigator.clipboard?.writeText) {
+    const result = await writeDesktopClipboardText(value);
+    if (!result.ok) {
       setError("当前环境不支持复制到剪贴板。");
       return;
     }
-    await navigator.clipboard.writeText(value);
     setNotice("已复制地址。");
   }
 
@@ -837,7 +838,7 @@ export function PortForwardToolContent({
     if (scenario === "localService") {
       return (
         <>
-          <EndpointHeader detail="远端打开入口" title="主机监听" />
+          <EndpointHeader detail="远端入口" title="主机监听" />
           <BindAddressControl
             customHost={remoteCustomBindHost}
             idPrefix="forward-remote-service-bind"
@@ -859,7 +860,7 @@ export function PortForwardToolContent({
     if (scenario === "hostNetwork") {
       return (
         <>
-          <EndpointHeader detail="远端命令使用这里" title="主机代理" />
+          <EndpointHeader detail="远端代理" title="主机代理" />
           <ProtocolToggle
             onChange={setProxyProtocol}
             value={proxyProtocol}
@@ -907,7 +908,7 @@ export function PortForwardToolContent({
 
     return (
       <>
-        <EndpointHeader detail="SOCKS 请求经由 SSH 主机" title="主机网络出口" />
+        <EndpointHeader detail="经由 SSH 主机" title="主机网络出口" />
         <PreviewValue label="出口" value="主机网络" />
       </>
     );
@@ -917,7 +918,7 @@ export function PortForwardToolContent({
     if (scenario === "hostService") {
       return (
         <>
-          <EndpointHeader detail="本机应用连接这里" title="本机监听" />
+          <EndpointHeader detail="本机入口" title="本机监听" />
           <BindAddressControl
             customHost={localCustomBindHost}
             idPrefix="forward-local-bind"
@@ -959,7 +960,7 @@ export function PortForwardToolContent({
     if (scenario === "hostNetwork") {
       return (
         <>
-          <EndpointHeader detail="不写远端 profile" title="本机网络出口" />
+          <EndpointHeader detail="不写 profile" title="本机网络出口" />
           {proxyProtocol === "http" ? (
             <>
               <FieldInput
@@ -978,7 +979,7 @@ export function PortForwardToolContent({
           ) : (
             <PreviewValue
               label="本机侧"
-              value="OpenSSH remote dynamic SOCKS，无本机目标服务"
+              value="OpenSSH remote dynamic SOCKS"
             />
           )}
           {networkCommandPreview ? (

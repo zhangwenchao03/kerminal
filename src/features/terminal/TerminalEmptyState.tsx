@@ -2,7 +2,7 @@ import kerminalLogoUrl from "../../assets/kerminal-logo.svg";
 
 export interface TerminalEmptyStateProps {
   onCreateTerminal?: () => void;
-  onOpenAiTool?: () => void;
+  onOpenAgentTool?: () => void;
   onOpenConnection?: () => void;
 }
 

@@ -456,7 +456,7 @@ async fn prepare_remote_directory_root(
     }
 }
 
-async fn prepare_local_directory_root(
+pub(super) async fn prepare_local_directory_root(
     local_path: &Path,
     conflict_policy: SftpTransferConflictPolicy,
 ) -> AppResult<Option<PathBuf>> {
@@ -538,7 +538,7 @@ async fn open_remote_write_target(
     }
 }
 
-async fn open_local_write_target(
+pub(super) async fn open_local_write_target(
     local_path: &Path,
     conflict_policy: SftpTransferConflictPolicy,
     skipped_bytes: u64,
@@ -610,7 +610,7 @@ fn local_conflict_candidates(local_path: &Path) -> impl Iterator<Item = PathBuf>
     }))
 }
 
-fn numbered_candidate_name(name: &str, index: usize) -> String {
+pub(super) fn numbered_candidate_name(name: &str, index: usize) -> String {
     let trimmed = name.trim();
     let name = if trimmed.is_empty() { "file" } else { trimmed };
     let Some(dot_index) = name.rfind('.') else {
@@ -638,102 +638,4 @@ async fn calculate_local_directory_bytes(path: &Path) -> AppResult<u64> {
         }
     }
     Ok(total)
-}
-
-#[cfg(test)]
-mod tests {
-    use tempfile::tempdir;
-
-    use super::*;
-
-    #[test]
-    fn numbered_candidate_name_preserves_file_extension() {
-        assert_eq!(numbered_candidate_name("report.txt", 1), "report (1).txt");
-        assert_eq!(numbered_candidate_name("archive", 2), "archive (2)");
-        assert_eq!(numbered_candidate_name(".env", 3), ".env (3)");
-    }
-
-    #[tokio::test]
-    async fn open_local_write_target_skip_keeps_existing_file() {
-        let root = tempdir().expect("tempdir");
-        let target = root.path().join("existing.txt");
-        fs::write(&target, b"original").await.expect("seed target");
-
-        let file = open_local_write_target(&target, SftpTransferConflictPolicy::Skip, 8)
-            .await
-            .expect("open target");
-
-        assert!(file.is_none());
-        assert_eq!(
-            fs::read_to_string(&target).await.expect("read target"),
-            "original"
-        );
-    }
-
-    #[tokio::test]
-    async fn open_local_write_target_rename_creates_numbered_candidate() {
-        let root = tempdir().expect("tempdir");
-        let target = root.path().join("report.txt");
-        let renamed = root.path().join("report (1).txt");
-        fs::write(&target, b"original").await.expect("seed target");
-
-        let mut file = open_local_write_target(&target, SftpTransferConflictPolicy::Rename, 8)
-            .await
-            .expect("open renamed target")
-            .expect("renamed file");
-        file.write_all(b"new").await.expect("write renamed target");
-        file.flush().await.expect("flush renamed target");
-
-        assert_eq!(
-            fs::read_to_string(&target).await.expect("read target"),
-            "original"
-        );
-        assert_eq!(
-            fs::read_to_string(&renamed).await.expect("read renamed"),
-            "new"
-        );
-    }
-
-    #[tokio::test]
-    async fn prepare_local_directory_root_skip_keeps_existing_tree() {
-        let root = tempdir().expect("tempdir");
-        let target = root.path().join("release");
-        fs::create_dir_all(target.join("nested"))
-            .await
-            .expect("seed target directory");
-        fs::write(target.join("nested/existing.txt"), b"original")
-            .await
-            .expect("seed existing child");
-
-        let prepared = prepare_local_directory_root(&target, SftpTransferConflictPolicy::Skip)
-            .await
-            .expect("prepare target");
-
-        assert!(prepared.is_none());
-        assert_eq!(
-            fs::read_to_string(target.join("nested/existing.txt"))
-                .await
-                .expect("read existing child"),
-            "original"
-        );
-    }
-
-    #[tokio::test]
-    async fn prepare_local_directory_root_rename_creates_numbered_directory() {
-        let root = tempdir().expect("tempdir");
-        let target = root.path().join("release");
-        let renamed = root.path().join("release (1)");
-        fs::create_dir_all(&target)
-            .await
-            .expect("seed target directory");
-
-        let prepared = prepare_local_directory_root(&target, SftpTransferConflictPolicy::Rename)
-            .await
-            .expect("prepare renamed target")
-            .expect("renamed target");
-
-        assert_eq!(prepared, renamed);
-        assert!(target.is_dir());
-        assert!(prepared.is_dir());
-    }
 }

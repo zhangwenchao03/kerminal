@@ -28,6 +28,18 @@ use super::{
     MAX_TEXT_FILE_BYTES, MIN_PREVIEW_BYTES, MIN_TEXT_FILE_BYTES,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SystemFileClipboardSupport {
+    NativeFileList,
+    KerminalInternalOnly,
+}
+
+impl SystemFileClipboardSupport {
+    pub(super) fn supports_native_file_list(self) -> bool {
+        matches!(self, Self::NativeFileList)
+    }
+}
+
 pub(super) fn normalize_managed_transfer_request(
     request: SftpManagedTransferRequest,
 ) -> AppResult<SftpManagedTransferRequest> {
@@ -211,19 +223,15 @@ pub(super) fn read_local_file_clipboard() -> AppResult<Vec<SftpLocalPathInfo>> {
 
 #[cfg(not(windows))]
 pub(super) fn read_local_file_clipboard() -> AppResult<Vec<SftpLocalPathInfo>> {
-    Ok(Vec::new())
+    Err(system_file_clipboard_unsupported_error("读取"))
 }
 
-#[cfg(windows)]
 pub(super) fn ensure_local_file_clipboard_supported() -> AppResult<()> {
-    Ok(())
-}
-
-#[cfg(not(windows))]
-pub(super) fn ensure_local_file_clipboard_supported() -> AppResult<()> {
-    Err(AppError::Sftp(
-        "当前平台暂不支持写入系统文件剪贴板".to_owned(),
-    ))
+    if system_file_clipboard_support().supports_native_file_list() {
+        Ok(())
+    } else {
+        Err(system_file_clipboard_unsupported_error("写入"))
+    }
 }
 
 #[cfg(windows)]
@@ -241,9 +249,7 @@ pub(super) fn write_local_file_clipboard(paths: &[PathBuf]) -> AppResult<()> {
 
 #[cfg(not(windows))]
 pub(super) fn write_local_file_clipboard(_paths: &[PathBuf]) -> AppResult<()> {
-    Err(AppError::Sftp(
-        "当前平台暂不支持写入系统文件剪贴板".to_owned(),
-    ))
+    Err(system_file_clipboard_unsupported_error("写入"))
 }
 
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -259,6 +265,20 @@ pub(super) fn classify_clipboard_local_paths(
             .map(|path| path.to_string_lossy().into_owned())
             .collect(),
     })
+}
+
+pub(super) fn system_file_clipboard_support() -> SystemFileClipboardSupport {
+    if cfg!(windows) {
+        SystemFileClipboardSupport::NativeFileList
+    } else {
+        SystemFileClipboardSupport::KerminalInternalOnly
+    }
+}
+
+fn system_file_clipboard_unsupported_error(action: &str) -> AppError {
+    AppError::Sftp(format!(
+        "当前平台暂不支持{action}系统文件剪贴板；请使用 Kerminal SFTP 内部复制/粘贴，或拖放本机文件。"
+    ))
 }
 
 pub(super) fn validate_chmod_mode(mode: &str) -> AppResult<u32> {
@@ -409,20 +429,6 @@ pub(super) fn reserve_clipboard_download_target_path(
     reserve_clipboard_download_target_path_in(&downloads_dir, request)
 }
 
-#[cfg(test)]
-pub(super) fn clipboard_download_target_path_in(
-    downloads_dir: &Path,
-    request: &SftpClipboardDownloadRequest,
-) -> PathBuf {
-    let fallback = match request.kind {
-        SftpTransferKind::File => "remote-file",
-        SftpTransferKind::Directory => "remote-directory",
-    };
-    let raw_name = remote_path_file_name(&request.source_remote_path, request.kind);
-    let file_name = safe_local_entry_name(&raw_name, fallback);
-    unique_local_path(downloads_dir, &file_name)
-}
-
 pub(super) fn reserve_clipboard_download_target_path_in(
     downloads_dir: &Path,
     request: &SftpClipboardDownloadRequest,
@@ -462,23 +468,6 @@ fn safe_local_entry_name(name: &str, fallback: &str) -> String {
     } else {
         candidate
     }
-}
-
-#[cfg(test)]
-fn unique_local_path(directory: &Path, file_name: &str) -> PathBuf {
-    let initial = directory.join(file_name);
-    if !initial.exists() {
-        return initial;
-    }
-
-    let (stem, extension) = split_local_file_name(file_name);
-    for index in 2..1000 {
-        let candidate = directory.join(format!("{stem} ({index}){extension}"));
-        if !candidate.exists() {
-            return candidate;
-        }
-    }
-    directory.join(format!("{stem}-{}{extension}", Uuid::new_v4()))
 }
 
 fn reserve_unique_local_path(

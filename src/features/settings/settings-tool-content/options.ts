@@ -1,5 +1,5 @@
 import {
-  Bot,
+  Bell,
   Clipboard,
   GitBranch,
   Info,
@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import type { CommandSuggestionProvider } from "../../../lib/terminalSuggestionApi";
 import type {
-  AiCommandApprovalPolicy,
   KeybindingPlatform,
   TerminalInlineSuggestionAcceptKey,
   TerminalInlineSuggestionProductionHostPolicy,
@@ -33,28 +32,6 @@ export const themeOptions: Array<{
   { icon: Moon, label: "深色", value: "dark" },
   { icon: Sun, label: "浅色", value: "light" },
   { icon: MonitorCog, label: "跟随系统", value: "system" },
-];
-
-export const commandApprovalOptions: Array<{
-  description: string;
-  label: string;
-  value: AiCommandApprovalPolicy;
-}> = [
-  {
-    description: "所有 AI 工具调用都会先进入确认面板。",
-    label: "每次确认",
-    value: "always",
-  },
-  {
-    description: "读取类可自动执行，写入、远程、批量和高风险动作需要确认。",
-    label: "高风险确认",
-    value: "risky",
-  },
-  {
-    description: "非禁用工具可自动执行；破坏性工具仍受总开关保护。",
-    label: "放开模式",
-    value: "relaxed",
-  },
 ];
 
 export const inlineSuggestionAcceptKeyOptions: Array<{
@@ -86,7 +63,6 @@ export const inlineSuggestionProviderOptions: Array<{
 ];
 
 export const commandSuggestionProviderLabels: Record<CommandSuggestionProvider, string> = {
-  ai: "AI",
   git: "Git",
   history: "历史",
   remoteCommand: "远端命令",
@@ -107,16 +83,16 @@ export const settingsSections: Array<{
     label: "主题外观",
   },
   {
-    description: "模型连接与工具边界",
-    icon: Bot,
-    id: "settings-ai",
-    label: "AI 与模型",
-  },
-  {
-    description: "resources、prompts、skills",
+    description: "状态和 endpoint",
     icon: Puzzle,
     id: "settings-mcp",
-    label: "MCP / Skills",
+    label: "MCP",
+  },
+  {
+    description: "通知和后台事件",
+    icon: Bell,
+    id: "settings-desktop",
+    label: "桌面",
   },
   {
     description: "并发、流水线与超时",

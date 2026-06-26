@@ -11,7 +11,7 @@ import {
   containerSidebarGroups,
   localSidebarGroups,
   remoteSidebarGroups,
-} from "./MachineSidebar.testSupport";
+} from "./__tests__/support/MachineSidebar.testSupport";
 import {
   MACHINE_ASSET_MENU_DOMAIN,
   MACHINE_GROUP_MENU_DOMAIN,
@@ -39,7 +39,7 @@ function expectMenuDomain(domain: string) {
 }
 
 describe("machineSidebarMenuDomain", () => {
-  it("collapses host groups by default", () => {
+  it("expands host groups by default", () => {
     render(
       <MachineSidebar
         groups={remoteSidebarGroups}
@@ -52,12 +52,12 @@ describe("machineSidebarMenuDomain", () => {
 
     expect(screen.getByRole("button", { name: /开发主机/ })).toHaveAttribute(
       "aria-expanded",
-      "false",
+      "true",
     );
-    expect(screen.queryByRole("button", { name: /ubuntu-dev/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /ubuntu-dev/i })).toBeTruthy();
   });
 
-  it("collapses host groups that load after the first render", () => {
+  it("expands host groups that load after the first render", () => {
     const { rerender } = render(
       <MachineSidebar
         groups={[]}
@@ -80,9 +80,9 @@ describe("machineSidebarMenuDomain", () => {
 
     expect(screen.getByRole("button", { name: /开发主机/ })).toHaveAttribute(
       "aria-expanded",
-      "false",
+      "true",
     );
-    expect(screen.queryByRole("button", { name: /ubuntu-dev/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /ubuntu-dev/i })).toBeTruthy();
   });
 
   it("reveals matching hosts while search is active", () => {
@@ -158,7 +158,6 @@ describe("machineSidebarMenuDomain", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /开发主机/ }));
     fireEvent.contextMenu(screen.getByRole("button", { name: /ubuntu-dev/i }));
 
     expectMenuDomain(MACHINE_ASSET_MENU_DOMAIN);
@@ -180,7 +179,6 @@ describe("machineSidebarMenuDomain", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /开发主机/ }));
     fireEvent.contextMenu(screen.getByRole("button", { name: /api/i }));
 
     expectMenuDomain(MACHINE_ASSET_MENU_DOMAIN);

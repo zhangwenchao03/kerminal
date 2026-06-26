@@ -16,7 +16,7 @@ import {
   resetHostNetworkAssistAutoInjectionForTests,
 } from "./terminalProxyAutoInjection";
 
-interface PaneSessionRecord {
+export interface PaneSessionRecord {
   sessionId: string;
   containerId?: string;
   containerRuntime?: string;
@@ -28,6 +28,10 @@ interface PaneSessionRecord {
   profileId?: string;
   remoteHostId?: string;
   shell?: string;
+}
+
+export interface PaneSessionListRecord extends PaneSessionRecord {
+  paneId: string;
 }
 
 const paneSessions = new Map<string, PaneSessionRecord>();
@@ -108,6 +112,20 @@ export function unregisterTerminalPaneSession(
 
 export function getTerminalPaneSession(paneId: string) {
   return paneSessions.get(paneId)?.sessionId;
+}
+
+export function getTerminalPaneSessionRecord(
+  paneId: string,
+): PaneSessionRecord | undefined {
+  const record = paneSessions.get(paneId);
+  return record ? { ...record } : undefined;
+}
+
+export function listTerminalPaneSessionRecords(): PaneSessionListRecord[] {
+  return Array.from(paneSessions.entries()).map(([paneId, record]) => ({
+    ...record,
+    paneId,
+  }));
 }
 
 export function updateTerminalPaneSessionCwd(paneId: string, cwd: string) {

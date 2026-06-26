@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   sshMachine,
   stageSshMachine,
-} from "./SftpToolContent.testSupport";
+} from "./__tests__/support/SftpToolContent.testSupport";
 import { SftpToolContent } from "./SftpToolContent";
 
 describe("SftpToolContent workspace dialog boundaries", () => {
@@ -23,25 +23,36 @@ describe("SftpToolContent workspace dialog boundaries", () => {
       await user.click(screen.getByRole("button", { name: "标记工作区未保存" }));
       expect(screen.getByText("有未保存修改。")).toBeInTheDocument();
 
-      confirmSpy.mockReturnValueOnce(false);
       await user.click(screen.getByRole("button", { name: "关闭弹窗" }));
-      expect(confirmSpy).toHaveBeenCalledWith(
-        "工作区有未保存修改，关闭会丢失这些修改。仍然关闭？",
-      );
+      expect(confirmSpy).not.toHaveBeenCalled();
       expect(
         screen.getByRole("dialog", { name: "远程工作区" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("dialog", { name: "关闭远程工作区" }),
       ).toBeInTheDocument();
       expect(
         screen.getByText("工作区有未保存修改，确认后可以关闭。"),
       ).toBeInTheDocument();
 
-      confirmSpy.mockReturnValueOnce(true);
+      await user.click(screen.getByRole("button", { name: "取消" }));
+      expect(
+        screen.queryByRole("dialog", { name: "关闭远程工作区" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("dialog", { name: "远程工作区" }),
+      ).toBeInTheDocument();
+
       await user.click(screen.getByRole("button", { name: "关闭弹窗" }));
+      await user.click(screen.getByRole("button", { name: "关闭工作区" }));
       await waitFor(() => {
         expect(
           screen.queryByRole("dialog", { name: "远程工作区" }),
         ).not.toBeInTheDocument();
       });
+      expect(
+        screen.queryByRole("dialog", { name: "关闭远程工作区" }),
+      ).not.toBeInTheDocument();
     } finally {
       confirmSpy.mockRestore();
     }

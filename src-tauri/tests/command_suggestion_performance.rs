@@ -37,7 +37,7 @@ fn command_suggestion_mixed_provider_benchmark() {
         state
             .command_history()
             .record_command(
-                state.storage(),
+                state.command_store(),
                 CommandHistoryRecordRequest {
                     command: format!("kubectl get pods -n ns-{index}"),
                     cwd: Some("/srv/app".to_owned()),
@@ -58,7 +58,7 @@ fn command_suggestion_mixed_provider_benchmark() {
     state
         .command_suggestions()
         .cache_remote_commands(
-            Some(state.storage()),
+            Some(state.command_store()),
             "host-prod".to_owned(),
             (0..5_000).map(|index| format!("tool-{index}")).collect(),
             300,
@@ -69,7 +69,7 @@ fn command_suggestion_mixed_provider_benchmark() {
     state
         .command_suggestions()
         .cache_remote_path_listing(
-            Some(state.storage()),
+            Some(state.command_store()),
             SftpDirectoryListing {
                 entries: (0..1_000)
                     .map(|index| SftpEntry {
@@ -94,7 +94,7 @@ fn command_suggestion_mixed_provider_benchmark() {
     state
         .command_suggestions()
         .cache_git_refs(
-            Some(state.storage()),
+            Some(state.command_store()),
             "host-prod".to_owned(),
             "/srv/app".to_owned(),
             Some("/srv/app".to_owned()),
@@ -165,7 +165,7 @@ fn command_suggestion_mixed_provider_latency_gate() {
     let state = AppState::initialize_with_paths(KerminalPaths::from_home_dir(home.path()))
         .expect("initialize app state");
 
-    seed_history_rows(state.storage().database_file(), 10_000).expect("seed command history");
+    seed_history_rows(state.command_store().database_file(), 10_000).expect("seed command history");
     seed_remote_provider_caches(&state);
 
     let scenarios: [(&str, &str, &[SuggestionProviderKind]); 4] = [
@@ -235,7 +235,8 @@ fn command_suggestion_100k_history_query_benchmark() {
         .expect("initialize app state");
 
     let seed_started = Instant::now();
-    seed_history_rows(state.storage().database_file(), 100_000).expect("seed command history");
+    seed_history_rows(state.command_store().database_file(), 100_000)
+        .expect("seed command history");
     let seed_elapsed = seed_started.elapsed();
 
     let recent = measure_suggestions(&state, "kubectl get pods -n ns-09999");
@@ -268,7 +269,7 @@ fn list_suggestions(
     state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 cursor: input.chars().count(),
@@ -305,7 +306,7 @@ fn seed_remote_provider_caches(state: &AppState) {
     state
         .command_suggestions()
         .cache_remote_commands(
-            Some(state.storage()),
+            Some(state.command_store()),
             "host-prod".to_owned(),
             (0..5_000).map(|index| format!("tool-{index}")).collect(),
             300,
@@ -316,7 +317,7 @@ fn seed_remote_provider_caches(state: &AppState) {
     state
         .command_suggestions()
         .cache_remote_path_listing(
-            Some(state.storage()),
+            Some(state.command_store()),
             SftpDirectoryListing {
                 entries: (0..1_000)
                     .map(|index| SftpEntry {
@@ -341,7 +342,7 @@ fn seed_remote_provider_caches(state: &AppState) {
     state
         .command_suggestions()
         .cache_git_refs(
-            Some(state.storage()),
+            Some(state.command_store()),
             "host-prod".to_owned(),
             "/srv/app".to_owned(),
             Some("/srv/app".to_owned()),

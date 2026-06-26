@@ -394,6 +394,9 @@ export function gpuCardHelper(
   snapshot: ServerInfoSnapshot,
   gpus: ServerGpuInfo[],
 ) {
+  if (gpus.length === 0) {
+    return "0 张显卡";
+  }
   if (
     gpus.length > 0 &&
     (snapshot.gpuProbeStatus === "lspci" ||
@@ -401,26 +404,23 @@ export function gpuCardHelper(
   ) {
     return `${gpus.length} 张设备，仅静态识别`;
   }
-  if (gpus.length > 0) {
-    return `${gpus.length} 张显卡`;
-  }
-  return gpuMissingMessage(snapshot.gpuProbeStatus);
+  return `${gpus.length} 张显卡`;
 }
 
 export function gpuMissingMessage(status?: string | null) {
   switch (status) {
     case "nvidia_smi_no_devices":
-      return "nvidia-smi 可执行，但查询和列表模式都未返回可用 NVIDIA GPU。";
+      return "nvidia-smi 未返回可用 NVIDIA GPU。";
     case "nvidia_smi_list":
-      return "nvidia-smi 仅返回设备列表，无法采集 GPU 使用率、显存和温度。";
+      return "nvidia-smi 仅返回设备列表。";
     case "lspci_no_devices":
-      return "远端可执行 lspci，但未发现 VGA / 3D / Display 控制器。";
+      return "lspci 未发现 GPU 控制器。";
     case "no_probe_command":
-      return "远端没有 nvidia-smi 或 lspci，无法识别 GPU。";
+      return "缺少 nvidia-smi 或 lspci。";
     case "lspci":
-      return "远端仅返回 lspci 静态设备信息，无法采集 GPU 使用率、显存和温度。";
+      return "仅有 lspci 静态信息。";
     default:
-      return "远端未返回 GPU 数据。NVIDIA 主机需要可执行 nvidia-smi；非 NVIDIA 主机需要 lspci 才能静态识别设备。";
+      return "未返回 GPU 数据。";
   }
 }
 

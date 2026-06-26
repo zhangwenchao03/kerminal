@@ -1,5 +1,5 @@
 import { Copy, Plus, Send, Trash2 } from "lucide-react";
-import type { FormEvent } from "react";
+import { useId, type FormEvent } from "react";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
 import { Select } from "../../components/ui/select";
@@ -282,15 +282,38 @@ export function SnippetCreateDialog({
   tags,
   title,
 }: SnippetCreateDialogProps) {
+  const formId = useId();
+
   return (
     <ModalShell
-      description="选择类型后保存脚本内容。"
+      description="保存脚本或 workflow。"
+      footer={
+        <>
+          <Button onClick={onClose} type="button" variant="ghost">
+            取消
+          </Button>
+          <Button
+            disabled={saving || !title.trim() || !command.trim()}
+            form={formId}
+            type="submit"
+            variant="primary"
+          >
+            <Plus className="h-4 w-4" />
+            {saving
+              ? "保存中..."
+              : itemType === "workflow"
+                ? "保存工作流"
+                : "保存片段"}
+          </Button>
+        </>
+      }
       onClose={onClose}
       open={open}
+      panelClassName="h-[min(38rem,calc(100vh-48px))]"
       size="medium"
       title="添加"
     >
-      <form className="space-y-4" onSubmit={onSubmit}>
+      <form className="space-y-4" id={formId} onSubmit={onSubmit}>
         <div className="kerminal-muted-surface grid grid-cols-2 rounded-xl border p-1">
           {(["snippet", "workflow"] as AddItemType[]).map((type) => (
             <button
@@ -375,24 +398,6 @@ export function SnippetCreateDialog({
             {error}
           </div>
         ) : null}
-
-        <div className="flex justify-end gap-2">
-          <Button onClick={onClose} type="button" variant="ghost">
-            取消
-          </Button>
-          <Button
-            disabled={saving || !title.trim() || !command.trim()}
-            type="submit"
-            variant="primary"
-          >
-            <Plus className="h-4 w-4" />
-            {saving
-              ? "保存中..."
-              : itemType === "workflow"
-                ? "保存工作流"
-                : "保存片段"}
-          </Button>
-        </div>
       </form>
     </ModalShell>
   );

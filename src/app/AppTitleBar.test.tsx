@@ -90,10 +90,10 @@ describe("AppTitleBar", () => {
 
     expect(titleBar.lastElementChild).toBe(controls);
     expect(screen.getByRole("button", { name: "最小化窗口" })).toHaveClass(
-      "h-8",
+      "h-7",
     );
     expect(screen.getByRole("button", { name: "关闭窗口" })).toHaveClass(
-      "rounded-xl",
+      "rounded-lg",
     );
   });
 

@@ -21,7 +21,7 @@ import {
   pwshProfile,
   remoteHostTree,
   remoteHostTreeWithTerminalTransports,
-} from "./workspaceStore.testSupport";
+} from "./__tests__/support/workspaceStore.testSupport";
 
 function openState(
   overrides: Partial<TerminalOpenStateSlice> = {},

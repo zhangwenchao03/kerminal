@@ -3,9 +3,11 @@ import {
   closeTerminalPaneState,
   closeTerminalTabState,
   focusTerminalPaneState,
+  moveTerminalPaneState,
   resolveFocusedPaneSplitTarget,
   selectTerminalTabState,
   splitFocusedPaneState,
+  updateTerminalSplitLayoutSizesState,
   type TerminalWorkspaceStateSlice,
 } from "./workspaceTerminalState";
 import type { TerminalPane, TerminalTab } from "./types";
@@ -158,7 +160,7 @@ describe("workspaceTerminalState split pane", () => {
           ],
         }),
       )?.paneIdPrefix,
-    ).toBe("pane-local");
+    ).toBe("pane-container");
 
     const patch = splitFocusedPaneState(previewState, {
       direction: "vertical",
@@ -212,6 +214,199 @@ describe("workspaceTerminalState split pane", () => {
         paneId: "pane-ssh-3",
         splitId: "split-2",
       }),
+    ).toEqual({});
+  });
+
+  it("updates split layout sizes only on the active terminal tab", () => {
+    const state = terminalState({
+      terminalPanes: [
+        terminalPane({ id: "pane-ssh-1" }),
+        terminalPane({ id: "pane-ssh-2" }),
+      ],
+      terminalTabs: [
+        {
+          id: "tab-ssh-1",
+          layout: {
+            children: [
+              { paneId: "pane-ssh-1", type: "pane" },
+              { paneId: "pane-ssh-2", type: "pane" },
+            ],
+            direction: "horizontal",
+            id: "split-1",
+            type: "split",
+          },
+          machineId: "host-lab",
+          title: "lab server",
+        },
+      ],
+    });
+
+    const patch = updateTerminalSplitLayoutSizesState(state, "split-1", {
+      "pane-ssh-1": 28.4444,
+      "pane-ssh-2": 71.5555,
+    });
+
+    expect(patch).toEqual({
+      terminalTabs: [
+        {
+          ...state.terminalTabs[0],
+          layout: {
+            children: [
+              { paneId: "pane-ssh-1", type: "pane" },
+              { paneId: "pane-ssh-2", type: "pane" },
+            ],
+            direction: "horizontal",
+            id: "split-1",
+            sizes: {
+              "pane-ssh-1": 28.444,
+              "pane-ssh-2": 71.556,
+            },
+            type: "split",
+          },
+        },
+      ],
+    });
+  });
+});
+
+describe("workspaceTerminalState move pane", () => {
+  it("moves a pane in the active terminal tab without changing pane runtime data", () => {
+    const paneA = terminalPane({ id: "pane-ssh-1", title: "A" });
+    const paneB = terminalPane({ id: "pane-ssh-2", title: "B" });
+    const paneC = terminalPane({ id: "pane-ssh-3", title: "C" });
+    const inactiveTab: TerminalTab = {
+      id: "tab-ssh-2",
+      layout: { paneId: "pane-ssh-3", type: "pane" },
+      machineId: "host-lab",
+      title: "inactive",
+    };
+    const state = terminalState({
+      focusedPaneId: paneB.id,
+      terminalPanes: [paneA, paneB, paneC],
+      terminalTabs: [
+        {
+          id: "tab-ssh-1",
+          layout: {
+            children: [
+              { paneId: paneA.id, type: "pane" },
+              {
+                type: "split",
+                id: "split-nested",
+                direction: "vertical",
+                children: [
+                  { paneId: paneB.id, type: "pane" },
+                  { paneId: paneC.id, type: "pane" },
+                ],
+              },
+            ],
+            direction: "horizontal",
+            id: "split-root",
+            type: "split",
+          },
+          machineId: "host-lab",
+          title: "active",
+        },
+        inactiveTab,
+      ],
+    });
+
+    const patch = moveTerminalPaneState(state, {
+      placement: "right",
+      sourcePaneId: paneA.id,
+      splitId: "split-move-1",
+      targetPaneId: paneB.id,
+    });
+
+    expect(patch.focusedPaneId).toBe(paneA.id);
+    expect(patch.terminalPanes).toBeUndefined();
+    expect(patch.terminalTabs).toEqual([
+      {
+        ...state.terminalTabs[0],
+        layout: {
+          type: "split",
+          id: "split-nested",
+          direction: "vertical",
+          children: [
+            {
+              type: "split",
+              id: "split-move-1",
+              direction: "horizontal",
+              children: [
+                { type: "pane", paneId: paneB.id },
+                { type: "pane", paneId: paneA.id },
+              ],
+            },
+            { type: "pane", paneId: paneC.id },
+          ],
+        },
+      },
+      inactiveTab,
+    ]);
+  });
+
+  it("returns no patch for invalid pane moves", () => {
+    const state = terminalState({
+      terminalPanes: [
+        terminalPane({ id: "pane-ssh-1" }),
+        terminalPane({ id: "pane-ssh-2" }),
+      ],
+      terminalTabs: [
+        {
+          id: "tab-ssh-1",
+          layout: {
+            children: [
+              { paneId: "pane-ssh-1", type: "pane" },
+              { paneId: "pane-ssh-2", type: "pane" },
+            ],
+            direction: "horizontal",
+            id: "split-1",
+            type: "split",
+          },
+          machineId: "host-lab",
+          title: "active",
+        },
+      ],
+    });
+
+    expect(
+      moveTerminalPaneState(state, {
+        placement: "left",
+        sourcePaneId: "pane-ssh-1",
+        splitId: "split-move-1",
+        targetPaneId: "pane-ssh-1",
+      }),
+    ).toEqual({});
+    expect(
+      moveTerminalPaneState(state, {
+        placement: "bottom",
+        sourcePaneId: "pane-missing",
+        splitId: "split-move-1",
+        targetPaneId: "pane-ssh-2",
+      }),
+    ).toEqual({});
+    expect(
+      moveTerminalPaneState(
+        terminalState({
+          activeTabId: "tab-transfer-1",
+          focusedPaneId: "",
+          terminalPanes: [],
+          terminalTabs: [
+            {
+              id: "tab-transfer-1",
+              kind: "sftpTransfer",
+              machineId: "host-lab",
+              rightHostId: "host-lab",
+              title: "transfer",
+            },
+          ],
+        }),
+        {
+          placement: "center",
+          sourcePaneId: "pane-ssh-1",
+          splitId: "split-move-1",
+          targetPaneId: "pane-ssh-2",
+        },
+      ),
     ).toEqual({});
   });
 });

@@ -23,9 +23,8 @@ use crate::{
     paths::KerminalPaths,
     services::{
         docker_host_service::build_container_exec_script, process_command::silent_command,
-        ssh_command_service::SshCommandService,
+        remote_host_service::RemoteHostService, ssh_command_service::SshCommandService,
     },
-    storage::SqliteStore,
 };
 
 const SERVER_INFO_TIMEOUT: Duration = Duration::from_secs(15);
@@ -44,16 +43,14 @@ impl ServerInfoService {
     /// 采集当前 SSH 主机的系统信息快照。
     pub fn snapshot(
         &self,
-        storage: &SqliteStore,
+        remote_hosts: &RemoteHostService,
         request: ServerInfoRequest,
     ) -> AppResult<ServerInfoSnapshot> {
         let target = Self::target_from_request(request)?;
         let host_id = target.host_id().ok_or_else(|| {
             AppError::InvalidInput("服务器信息目标必须是 SSH 主机或容器".to_owned())
         })?;
-        let host = storage
-            .remote_host_by_id(host_id)?
-            .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {host_id}")))?;
+        let host = remote_hosts.require_host(host_id)?;
         self.snapshot_target(host, target)
     }
 
@@ -68,7 +65,7 @@ impl ServerInfoService {
     /// 使用远程主机记录里的 SSH 认证信息采集 SSH 主机或容器目标的系统信息快照。
     pub async fn snapshot_native(
         &self,
-        storage: &SqliteStore,
+        remote_hosts: &RemoteHostService,
         paths: &KerminalPaths,
         ssh_commands: &SshCommandService,
         request: ServerInfoRequest,
@@ -77,12 +74,10 @@ impl ServerInfoService {
         let host_id = target.host_id().ok_or_else(|| {
             AppError::InvalidInput("服务器信息目标必须是 SSH 主机或容器".to_owned())
         })?;
-        let host = storage
-            .remote_host_by_id(host_id)?
-            .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {host_id}")))?;
+        let host = remote_hosts.require_host(host_id)?;
         let command_request = build_server_info_command_request(&host, &target)?;
         let output = ssh_commands
-            .execute_native(storage, paths, command_request)
+            .execute_native(paths, command_request)
             .await
             .map_err(server_info_transport_error)?;
 
@@ -604,6 +599,9 @@ fn parse_server_gpus(values: &HashMap<String, String>) -> Vec<ServerGpuInfo> {
         .filter_map(|index| {
             let prefix = format!("gpu_{index}_");
             let name = optional_text(values, &format!("{prefix}name"))?;
+            if is_gpu_probe_error_name(&name) {
+                return None;
+            }
             Some(ServerGpuInfo {
                 driver_version: optional_text(values, &format!("{prefix}driver_version")),
                 memory_total_bytes: parse_u64(values, &format!("{prefix}memory_total_bytes")),
@@ -615,6 +613,13 @@ fn parse_server_gpus(values: &HashMap<String, String>) -> Vec<ServerGpuInfo> {
             })
         })
         .collect()
+}
+
+fn is_gpu_probe_error_name(name: &str) -> bool {
+    let normalized = name.trim().to_ascii_lowercase();
+    normalized.starts_with("nvidia-smi has failed")
+        || normalized.starts_with("failed to initialize nvml")
+        || normalized == "no devices were found"
 }
 
 fn unix_timestamp() -> String {
@@ -805,6 +810,7 @@ run_with_timeout() {
 
 if command -v nvidia-smi >/dev/null 2>&1; then
   gpu_lines="$(run_with_timeout 4 nvidia-smi --query-gpu=name,driver_version,memory.total,memory.used,utilization.gpu,temperature.gpu --format=csv,noheader,nounits 2>/dev/null || true)"
+  gpu_lines="$(printf '%s\n' "$gpu_lines" | awk -F, 'NF >= 6 { print }')"
   gpu_count="$(printf '%s\n' "$gpu_lines" | awk 'NF { count++ } END { print count+0 }')"
   if [ "$gpu_count" -gt 0 ] 2>/dev/null; then
     printf 'gpu_probe_status=nvidia_smi\n'

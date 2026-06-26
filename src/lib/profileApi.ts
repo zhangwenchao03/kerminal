@@ -8,6 +8,7 @@ export interface TerminalProfile {
   cwd?: string;
   env: Record<string, string>;
   isDefault: boolean;
+  sidebarGroupId?: string;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
@@ -20,6 +21,7 @@ export interface ProfileCreateRequest {
   cwd?: string;
   env?: Record<string, string>;
   setDefault?: boolean;
+  sidebarGroupId?: string;
 }
 
 export interface ProfileUpdateRequest extends ProfileCreateRequest {
@@ -34,6 +36,7 @@ interface NormalizedProfileRequest {
   cwd?: string;
   env: Record<string, string>;
   setDefault: boolean;
+  sidebarGroupId?: string;
 }
 
 interface NormalizedProfileUpdateRequest extends NormalizedProfileRequest {
@@ -113,6 +116,9 @@ export async function createProfile(
       id: `profile-browser-preview-${browserPreviewProfileCount}`,
       isDefault: normalized.setDefault,
       name: normalized.name,
+      ...(normalized.sidebarGroupId
+        ? { sidebarGroupId: normalized.sidebarGroupId }
+        : {}),
       shell: normalized.shell,
       sortOrder: browserPreviewProfileCount * 10,
       updatedAt: "browser-preview",
@@ -137,6 +143,9 @@ export async function updateProfile(
       id: normalized.id,
       isDefault: normalized.setDefault,
       name: normalized.name,
+      ...(normalized.sidebarGroupId
+        ? { sidebarGroupId: normalized.sidebarGroupId }
+        : {}),
       shell: normalized.shell,
       sortOrder: normalized.sortOrder,
       updatedAt: "browser-preview",

@@ -34,7 +34,6 @@ import {
   formatUptime,
   gpuCardHelper,
   gpuMemoryLabel,
-  gpuMissingMessage,
   joinDefined,
   loadAverageValues,
   networkCardHelper,
@@ -188,7 +187,7 @@ export function ServerInfoToolContent({
 
       {!loading && !error && !snapshot ? (
         <div className="kerminal-solid-surface rounded-2xl border px-4 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-          暂无服务器信息，点击刷新重新采集。
+          暂无服务器信息。
         </div>
       ) : null}
 
@@ -293,7 +292,7 @@ function ServerMetrics({
         icon={Gpu}
         onToggle={() => onToggleMetric("gpu")}
         title="GPU"
-        value={gpus.length > 0 ? serverGpuSummaryValue(gpus) : "未识别"}
+        value={serverGpuSummaryValue(gpus)}
       >
         {gpus.length > 0 ? (
           <div className="space-y-3">
@@ -305,11 +304,7 @@ function ServerMetrics({
               />
             ))}
           </div>
-        ) : (
-          <p className="kerminal-muted-surface rounded-xl border px-3 py-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-            {gpuMissingMessage(snapshot.gpuProbeStatus)}
-          </p>
-        )}
+        ) : null}
       </SystemMetricCard>
       <SystemMetricCard
         expanded={expandedCards.has("memory")}
@@ -499,7 +494,7 @@ function ServerMetrics({
           </div>
         ) : (
           <p className="kerminal-muted-surface mt-3 rounded-xl border px-3 py-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-            远端未返回进程列表。受限账号或精简系统可能只返回进程数量。
+            未返回进程列表，可能仅有数量。
           </p>
         )}
       </SystemMetricCard>
@@ -544,7 +539,7 @@ function ServerGpuRow({ gpu, index }: { gpu: ServerGpuInfo; index: number }) {
         ) : null}
         {primaryPercent === undefined ? (
           <div className="kerminal-muted-surface rounded-lg border px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
-            暂未采集到可绘制的 GPU 使用率或显存占用。
+            暂无 GPU 使用率或显存。
           </div>
         ) : null}
       </div>

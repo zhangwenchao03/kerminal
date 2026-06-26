@@ -9,15 +9,14 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-#[cfg(not(test))]
 use std::{
     any::Any,
     panic::{self, AssertUnwindSafe},
 };
 
-use tauri::State;
+pub mod path_model;
 
-use crate::state::AppState;
+use self::path_model::{default_save_path_parts, path_to_string};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,7 +39,6 @@ pub struct LocalDirectoryEntry {
 }
 
 /// 选择一个本地文件。
-#[cfg(not(test))]
 #[tauri::command]
 pub async fn file_dialog_select_local_file() -> Result<Option<String>, String> {
     run_path_dialog("本地文件选择器", || {
@@ -50,7 +48,6 @@ pub async fn file_dialog_select_local_file() -> Result<Option<String>, String> {
 }
 
 /// 选择一个本地图片文件。
-#[cfg(not(test))]
 #[tauri::command]
 pub async fn file_dialog_select_local_image() -> Result<Option<String>, String> {
     run_path_dialog("本地图片选择器", || {
@@ -63,7 +60,6 @@ pub async fn file_dialog_select_local_image() -> Result<Option<String>, String> 
 }
 
 /// 选择一个本地目录。
-#[cfg(not(test))]
 #[tauri::command]
 pub async fn file_dialog_select_local_directory() -> Result<Option<String>, String> {
     run_path_dialog("本地目录选择器", || {
@@ -75,7 +71,6 @@ pub async fn file_dialog_select_local_directory() -> Result<Option<String>, Stri
 }
 
 /// 列出本地目录，未指定路径时使用当前用户 home 目录。
-#[cfg(not(test))]
 #[tauri::command]
 pub async fn file_dialog_list_local_directory(
     path: Option<String>,
@@ -83,21 +78,6 @@ pub async fn file_dialog_list_local_directory(
     tokio::task::spawn_blocking(move || read_local_directory(path.as_deref()))
         .await
         .map_err(|error| format!("读取本地目录线程失败: {error}"))?
-}
-
-/// 返回 Kerminal 管理的默认 Skills 根目录，不存在时先创建。
-#[tauri::command]
-pub async fn file_dialog_get_app_skills_directory(
-    state: State<'_, AppState>,
-) -> Result<String, String> {
-    let directory = state.paths().skills.clone();
-    tokio::task::spawn_blocking(move || {
-        fs::create_dir_all(&directory)
-            .map_err(|error| format!("创建 Skills 目录失败 {}: {error}", directory.display()))?;
-        Ok(path_to_string(directory))
-    })
-    .await
-    .map_err(|error| format!("读取 Skills 目录线程失败: {error}"))?
 }
 
 /// 打开一个本地目录，不存在时先创建目录。
@@ -122,7 +102,6 @@ pub async fn file_dialog_open_local_directory(path: String) -> Result<(), String
 }
 
 /// 选择保存文件路径。
-#[cfg(not(test))]
 #[tauri::command]
 pub async fn file_dialog_select_save_file(
     default_path: Option<String>,
@@ -137,7 +116,6 @@ pub async fn file_dialog_select_save_file(
     .await
 }
 
-#[cfg(not(test))]
 async fn run_path_dialog<F>(label: &'static str, operation: F) -> Result<Option<String>, String>
 where
     F: FnOnce() -> Option<PathBuf> + Send + 'static,
@@ -156,7 +134,6 @@ where
     }
 }
 
-#[cfg(not(test))]
 fn apply_default_save_path(
     mut dialog: rfd::FileDialog,
     default_path: Option<&str>,
@@ -169,45 +146,6 @@ fn apply_default_save_path(
         dialog = dialog.set_file_name(file_name);
     }
     dialog
-}
-
-fn default_save_path_parts(default_path: Option<&str>) -> (Option<PathBuf>, Option<String>) {
-    let Some(default_path) = default_path.map(str::trim).filter(|path| !path.is_empty()) else {
-        return (None, None);
-    };
-
-    let path = Path::new(default_path);
-    let directory = path
-        .parent()
-        .filter(|parent| parent.components().count() > 0)
-        .map(Path::to_path_buf);
-    let file_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .map(str::to_owned);
-    (directory, file_name)
-}
-
-fn path_to_string(path: PathBuf) -> String {
-    normalize_local_path_string(&path.to_string_lossy())
-}
-
-fn normalize_local_path_string(path: &str) -> String {
-    strip_windows_verbatim_prefix(path).unwrap_or_else(|| path.to_owned())
-}
-
-fn strip_windows_verbatim_prefix(path: &str) -> Option<String> {
-    let path = path
-        .strip_prefix("\\\\?\\")
-        .or_else(|| path.strip_prefix("\\?\\"))
-        .or_else(|| path.strip_prefix("\\\\.\\"))
-        .or_else(|| path.strip_prefix("\\.\\"))?;
-
-    Some(
-        path.strip_prefix("UNC\\")
-            .map(|rest| format!("\\\\{rest}"))
-            .unwrap_or_else(|| path.to_owned()),
-    )
 }
 
 pub(crate) fn read_local_directory(path: Option<&str>) -> Result<LocalDirectoryListing, String> {
@@ -394,7 +332,6 @@ fn platform_open_directory_command(path: &Path) -> Command {
     command
 }
 
-#[cfg(not(test))]
 fn panic_payload_message(payload: &(dyn Any + Send)) -> String {
     if let Some(message) = payload.downcast_ref::<&'static str>() {
         return (*message).to_owned();
@@ -403,107 +340,4 @@ fn panic_payload_message(payload: &(dyn Any + Send)) -> String {
         return message.clone();
     }
     "未知 panic payload".to_owned()
-}
-
-#[cfg(test)]
-mod tests {
-    use std::{fs, path::PathBuf};
-
-    use super::{default_save_path_parts, normalize_local_path_string, read_local_directory};
-
-    #[test]
-    fn default_save_path_parts_ignores_empty_default() {
-        assert_eq!(default_save_path_parts(Some("   ")), (None, None));
-    }
-
-    #[test]
-    fn default_save_path_parts_accepts_filename_only() {
-        assert_eq!(
-            default_save_path_parts(Some("archive.zip")),
-            (None, Some("archive.zip".to_owned()))
-        );
-    }
-
-    #[test]
-    fn default_save_path_parts_splits_directory_and_file_name() {
-        assert_eq!(
-            default_save_path_parts(Some("exports/archive.zip")),
-            (
-                Some(PathBuf::from("exports")),
-                Some("archive.zip".to_owned())
-            )
-        );
-    }
-
-    #[test]
-    fn normalize_local_path_string_strips_windows_verbatim_prefixes() {
-        assert_eq!(
-            normalize_local_path_string(r"\\?\C:\dev\rust\kerminal\node_modules"),
-            r"C:\dev\rust\kerminal\node_modules"
-        );
-        assert_eq!(
-            normalize_local_path_string(r"\?\C:\dev\rust\kerminal\node_modules"),
-            r"C:\dev\rust\kerminal\node_modules"
-        );
-        assert_eq!(
-            normalize_local_path_string(r"\\?\UNC\nas\share\dist"),
-            r"\\nas\share\dist"
-        );
-    }
-
-    #[test]
-    fn read_local_directory_sorts_directories_before_files() {
-        let root =
-            std::env::temp_dir().join(format!("kerminal-file-dialog-test-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(root.join("z-dir")).unwrap();
-        fs::create_dir_all(root.join("a-dir")).unwrap();
-        fs::write(root.join(".hidden-file"), "hidden").unwrap();
-        fs::write(root.join("b-file.txt"), "file").unwrap();
-
-        let listing = read_local_directory(root.to_str()).unwrap();
-        let names: Vec<_> = listing
-            .entries
-            .iter()
-            .map(|entry| entry.name.as_str())
-            .collect();
-
-        assert_eq!(
-            listing.path,
-            normalize_local_path_string(&root.canonicalize().unwrap().to_string_lossy())
-        );
-        assert_eq!(names, vec!["a-dir", "z-dir", ".hidden-file", "b-file.txt"]);
-        assert!(listing
-            .entries
-            .iter()
-            .any(|entry| entry.name == ".hidden-file" && entry.hidden));
-
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn read_local_directory_includes_symlink_entries() {
-        use std::os::unix::fs::symlink;
-
-        let root = std::env::temp_dir().join(format!(
-            "kerminal-file-dialog-symlink-test-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
-        fs::write(root.join("target.txt"), "file").unwrap();
-        symlink(root.join("target.txt"), root.join("target-link")).unwrap();
-
-        let listing = read_local_directory(root.to_str()).unwrap();
-        let link = listing
-            .entries
-            .iter()
-            .find(|entry| entry.name == "target-link")
-            .expect("symlink entry should be listed");
-
-        assert_eq!(link.kind, "symlink");
-
-        fs::remove_dir_all(root).unwrap();
-    }
 }

@@ -1,5 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import { writeDesktopClipboardText } from "../../../lib/desktopClipboardApi";
 import type {
   SftpDragDropPayload,
   SftpSelectionEvent,
@@ -89,8 +90,8 @@ export const isEditableKeyboardTarget = (target: EventTarget | null) => {
 };
 
 export const writeClipboardText = async (value: string) => {
-  if (!navigator.clipboard?.writeText) {
+  const result = await writeDesktopClipboardText(value);
+  if (!result.ok) {
     throw new Error("当前环境不支持复制到剪贴板。");
   }
-  await navigator.clipboard.writeText(value);
 };

@@ -69,8 +69,12 @@ describe("diagnosticsApi", () => {
         source: "sysinfo",
       },
       storage: {
-        databaseFile: "C:/Users/me/.kerminal/kerminal.db",
-        databaseFileSizeBytes: 1024,
+        appLogFile: "C:/Users/me/.kerminal/logs/kerminal.log",
+        appLogFileSizeBytes: 256,
+        appLogMaxFileSizeBytes: 1_000_000,
+        appLogRotationKeepFiles: 5,
+        commandDatabaseFile: "C:/Users/me/.kerminal/data/command.sqlite",
+        commandDatabaseFileSizeBytes: 1024,
         diagnostics: "C:/Users/me/.kerminal/diagnostics",
         logs: "C:/Users/me/.kerminal/logs",
         root: "C:/Users/me/.kerminal",
@@ -111,6 +115,8 @@ describe("diagnosticsApi", () => {
 
     expect(snapshot.process.pid).toBe(1425);
     expect(snapshot.sampling.source).toBe("sysinfo");
+    expect(snapshot.storage.appLogFile).toMatch(/kerminal\.log$/);
+    expect(snapshot.storage.appLogRotationKeepFiles).toBe(5);
     expect(snapshot.system.cpuCoreUsagePercents).toHaveLength(8);
     expect(snapshot.system.gpus[0]?.name).toBe("NVIDIA GeForce RTX 4060");
     expect(invokeMock).toHaveBeenCalledWith("diagnostics_runtime_health");
@@ -123,10 +129,55 @@ describe("diagnosticsApi", () => {
     const snapshot = await getRuntimeHealthSnapshot();
 
     expect(snapshot.process.pid).toBe(1425);
-    expect(snapshot.system.cpuCoreUsagePercents).toHaveLength(snapshot.system.cpuCount);
+    expect(snapshot.system.cpuCoreUsagePercents).toHaveLength(
+      snapshot.system.cpuCount,
+    );
     expect(snapshot.system.gpus.length).toBeGreaterThan(0);
+    expect(snapshot.storage.appLogFile).toMatch(/kerminal\.log$/);
+    expect(snapshot.storage.appLogMaxFileSizeBytes).toBe(1_000_000);
     expect(snapshot.storage.root).toMatch(/^browser-preview:\/\/\.kerminal/);
     expect(snapshot.redacted).toBe(true);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("loads config watcher status through Tauri", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue({
+      backend: "native",
+      enabled: true,
+      fallbackReason: null,
+      ignoredGlobs: ["agents/**", "data/**", "secrets/hosts/*.toml"],
+      lastBatchAt: "2026-06-26T00:00:00+08:00",
+      lastDomains: ["hosts"],
+      lastError: null,
+      lastSequence: 7,
+      lastStatus: "ready",
+      watchedRoots: [".", "hosts", "secrets/hosts"],
+    });
+    const { getConfigWatchStatus } = await import("./diagnosticsApi");
+
+    const status = await getConfigWatchStatus();
+
+    expect(status.backend).toBe("native");
+    expect(status.lastDomains).toEqual(["hosts"]);
+    expect(status.watchedRoots).toContain("secrets/hosts");
+    expect(JSON.stringify(status)).not.toContain("password");
+    expect(JSON.stringify(status)).not.toContain("secret-host.toml");
+    expect(invokeMock).toHaveBeenCalledWith("config_watch_status");
+  });
+
+  it("returns redacted config watcher browser preview outside Tauri", async () => {
+    isTauriMock.mockReturnValue(false);
+    const { getConfigWatchStatus } = await import("./diagnosticsApi");
+
+    const status = await getConfigWatchStatus();
+
+    expect(status.enabled).toBe(false);
+    expect(status.backend).toBe("unavailable");
+    expect(status.fallbackReason).toBe("browser-preview");
+    expect(status.watchedRoots).toContain("secrets/hosts");
+    expect(JSON.stringify(status)).not.toContain("password");
+    expect(JSON.stringify(status)).not.toContain("credential");
     expect(invokeMock).not.toHaveBeenCalled();
   });
 });

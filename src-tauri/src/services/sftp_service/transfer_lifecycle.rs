@@ -8,39 +8,30 @@ impl SftpService {
     /// 创建可管理传输任务。
     pub fn enqueue_transfer(
         &self,
-        storage: &SqliteStore,
         paths: &KerminalPaths,
         request: SftpManagedTransferRequest,
     ) -> AppResult<SftpTransferSummary> {
-        self.enqueue_transfer_with_events(storage, paths, request, None)
+        self.enqueue_transfer_with_events(paths, request, None)
     }
 
     /// 创建可管理传输任务，并向当前窗口推送状态更新。
-    #[cfg(not(test))]
     pub fn enqueue_transfer_for_window(
         &self,
-        storage: &SqliteStore,
         paths: &KerminalPaths,
         request: SftpManagedTransferRequest,
         window: Window,
     ) -> AppResult<SftpTransferSummary> {
-        self.enqueue_transfer_with_events(
-            storage,
-            paths,
-            request,
-            Some(TransferEventEmitter::new(window)),
-        )
+        self.enqueue_transfer_with_events(paths, request, Some(TransferEventEmitter::new(window)))
     }
 
     fn enqueue_transfer_with_events(
         &self,
-        storage: &SqliteStore,
         paths: &KerminalPaths,
         request: SftpManagedTransferRequest,
         event_emitter: Option<TransferEventEmitter>,
     ) -> AppResult<SftpTransferSummary> {
-        let settings = load_sftp_runtime_settings(storage)?;
-        let endpoint = resolve_endpoint(storage, paths, &request.host_id)?;
+        let settings = load_sftp_runtime_settings(paths)?;
+        let endpoint = resolve_endpoint(paths, &request.host_id)?;
         let request = normalize_managed_transfer_request(request)?;
         let id = Uuid::new_v4().to_string();
         let now = unix_timestamp();
@@ -92,24 +83,20 @@ impl SftpService {
     /// 创建远程复制或跨主机传输任务。
     pub fn enqueue_remote_copy(
         &self,
-        storage: &SqliteStore,
         paths: &KerminalPaths,
         request: SftpRemoteCopyRequest,
     ) -> AppResult<SftpTransferSummary> {
-        self.enqueue_remote_copy_with_events(storage, paths, request, None)
+        self.enqueue_remote_copy_with_events(paths, request, None)
     }
 
     /// 创建远程复制或跨主机传输任务，并向当前窗口推送状态更新。
-    #[cfg(not(test))]
     pub fn enqueue_remote_copy_for_window(
         &self,
-        storage: &SqliteStore,
         paths: &KerminalPaths,
         request: SftpRemoteCopyRequest,
         window: Window,
     ) -> AppResult<SftpTransferSummary> {
         self.enqueue_remote_copy_with_events(
-            storage,
             paths,
             request,
             Some(TransferEventEmitter::new(window)),
@@ -118,14 +105,13 @@ impl SftpService {
 
     fn enqueue_remote_copy_with_events(
         &self,
-        storage: &SqliteStore,
         paths: &KerminalPaths,
         request: SftpRemoteCopyRequest,
         event_emitter: Option<TransferEventEmitter>,
     ) -> AppResult<SftpTransferSummary> {
-        let settings = load_sftp_runtime_settings(storage)?;
-        let source_endpoint = resolve_endpoint(storage, paths, &request.source_host_id)?;
-        let target_endpoint = resolve_endpoint(storage, paths, &request.target_host_id)?;
+        let settings = load_sftp_runtime_settings(paths)?;
+        let source_endpoint = resolve_endpoint(paths, &request.source_host_id)?;
+        let target_endpoint = resolve_endpoint(paths, &request.target_host_id)?;
         let request = normalize_remote_copy_request(request)?;
         let id = Uuid::new_v4().to_string();
         let now = unix_timestamp();
@@ -190,24 +176,20 @@ impl SftpService {
     /// 创建远程条目下载为本地 ZIP 的归档任务。
     pub fn enqueue_archive_download(
         &self,
-        storage: &SqliteStore,
         paths: &KerminalPaths,
         request: SftpArchiveDownloadRequest,
     ) -> AppResult<SftpTransferSummary> {
-        self.enqueue_archive_download_with_events(storage, paths, request, None)
+        self.enqueue_archive_download_with_events(paths, request, None)
     }
 
     /// 创建远程条目下载为本地 ZIP 的归档任务，并向当前窗口推送状态更新。
-    #[cfg(not(test))]
     pub fn enqueue_archive_download_for_window(
         &self,
-        storage: &SqliteStore,
         paths: &KerminalPaths,
         request: SftpArchiveDownloadRequest,
         window: Window,
     ) -> AppResult<SftpTransferSummary> {
         self.enqueue_archive_download_with_events(
-            storage,
             paths,
             request,
             Some(TransferEventEmitter::new(window)),
@@ -216,13 +198,12 @@ impl SftpService {
 
     fn enqueue_archive_download_with_events(
         &self,
-        storage: &SqliteStore,
         paths: &KerminalPaths,
         request: SftpArchiveDownloadRequest,
         event_emitter: Option<TransferEventEmitter>,
     ) -> AppResult<SftpTransferSummary> {
-        let settings = load_sftp_runtime_settings(storage)?;
-        let endpoint = resolve_endpoint(storage, paths, &request.host_id)?;
+        let settings = load_sftp_runtime_settings(paths)?;
+        let endpoint = resolve_endpoint(paths, &request.host_id)?;
         let request = normalize_archive_download_request(request)?;
         let id = Uuid::new_v4().to_string();
         let now = unix_timestamp();
@@ -278,24 +259,20 @@ impl SftpService {
     /// 创建本地条目压缩为远程 ZIP 的归档上传任务。
     pub fn enqueue_archive_upload(
         &self,
-        storage: &SqliteStore,
         paths: &KerminalPaths,
         request: SftpArchiveUploadRequest,
     ) -> AppResult<SftpTransferSummary> {
-        self.enqueue_archive_upload_with_events(storage, paths, request, None)
+        self.enqueue_archive_upload_with_events(paths, request, None)
     }
 
     /// 创建本地条目压缩为远程 ZIP 的归档上传任务，并向当前窗口推送状态更新。
-    #[cfg(not(test))]
     pub fn enqueue_archive_upload_for_window(
         &self,
-        storage: &SqliteStore,
         paths: &KerminalPaths,
         request: SftpArchiveUploadRequest,
         window: Window,
     ) -> AppResult<SftpTransferSummary> {
         self.enqueue_archive_upload_with_events(
-            storage,
             paths,
             request,
             Some(TransferEventEmitter::new(window)),
@@ -304,13 +281,12 @@ impl SftpService {
 
     fn enqueue_archive_upload_with_events(
         &self,
-        storage: &SqliteStore,
         paths: &KerminalPaths,
         request: SftpArchiveUploadRequest,
         event_emitter: Option<TransferEventEmitter>,
     ) -> AppResult<SftpTransferSummary> {
-        let settings = load_sftp_runtime_settings(storage)?;
-        let endpoint = resolve_endpoint(storage, paths, &request.host_id)?;
+        let settings = load_sftp_runtime_settings(paths)?;
+        let endpoint = resolve_endpoint(paths, &request.host_id)?;
         let request = normalize_archive_upload_request(request)?;
         let id = Uuid::new_v4().to_string();
         let now = unix_timestamp();
@@ -366,24 +342,20 @@ impl SftpService {
     /// 创建远程条目下载到本地文件剪贴板的任务。
     pub fn enqueue_clipboard_download(
         &self,
-        storage: &SqliteStore,
         paths: &KerminalPaths,
         request: SftpClipboardDownloadRequest,
     ) -> AppResult<SftpTransferSummary> {
-        self.enqueue_clipboard_download_with_events(storage, paths, request, None)
+        self.enqueue_clipboard_download_with_events(paths, request, None)
     }
 
     /// 创建远程条目下载到本地文件剪贴板的任务，并向当前窗口推送状态更新。
-    #[cfg(not(test))]
     pub fn enqueue_clipboard_download_for_window(
         &self,
-        storage: &SqliteStore,
         paths: &KerminalPaths,
         request: SftpClipboardDownloadRequest,
         window: Window,
     ) -> AppResult<SftpTransferSummary> {
         self.enqueue_clipboard_download_with_events(
-            storage,
             paths,
             request,
             Some(TransferEventEmitter::new(window)),
@@ -392,14 +364,13 @@ impl SftpService {
 
     fn enqueue_clipboard_download_with_events(
         &self,
-        storage: &SqliteStore,
         paths: &KerminalPaths,
         request: SftpClipboardDownloadRequest,
         event_emitter: Option<TransferEventEmitter>,
     ) -> AppResult<SftpTransferSummary> {
         ensure_local_file_clipboard_supported()?;
-        let settings = load_sftp_runtime_settings(storage)?;
-        let endpoint = resolve_endpoint(storage, paths, &request.host_id)?;
+        let settings = load_sftp_runtime_settings(paths)?;
+        let endpoint = resolve_endpoint(paths, &request.host_id)?;
         let request = normalize_clipboard_download_request(request)?;
         let target_local_path = reserve_clipboard_download_target_path(&request)?;
         let target_local_path_string = target_local_path.to_string_lossy().into_owned();

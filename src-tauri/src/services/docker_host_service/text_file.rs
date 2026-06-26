@@ -1,14 +1,13 @@
 use super::*;
 
-pub(super) struct ContainerTextMetadata {
-    pub(super) modified: Option<String>,
-    pub(super) permissions: Option<String>,
-    pub(super) permissions_mode: Option<u32>,
-    pub(super) size: u64,
+pub struct ContainerTextMetadata {
+    pub modified: Option<String>,
+    pub permissions: Option<String>,
+    pub permissions_mode: Option<u32>,
+    pub size: u64,
 }
 
 pub(super) async fn read_container_text_file(
-    storage: &SqliteStore,
     paths: &KerminalPaths,
     ssh_commands: &SshCommandService,
     request: DockerContainerReadTextFileRequest,
@@ -17,7 +16,6 @@ pub(super) async fn read_container_text_file(
     let read_limit = max_bytes.saturating_add(1);
     let read_args = [request.path.clone(), read_limit.to_string()];
     let output = execute_container_script(
-        storage,
         paths,
         ssh_commands,
         ContainerScriptRequest {
@@ -80,13 +78,11 @@ dd if="$target" bs=1 count="$max_bytes" 2>/dev/null
 }
 
 pub(super) async fn container_file_revision(
-    storage: &SqliteStore,
     paths: &KerminalPaths,
     ssh_commands: &SshCommandService,
     request: &DockerContainerWriteTextFileRequest,
 ) -> AppResult<SftpFileRevision> {
     let response = read_container_text_file(
-        storage,
         paths,
         ssh_commands,
         DockerContainerReadTextFileRequest {
@@ -101,7 +97,7 @@ pub(super) async fn container_file_revision(
     Ok(response.revision)
 }
 
-pub(super) fn split_text_output(output: &str) -> AppResult<(ContainerTextMetadata, String)> {
+pub fn split_text_output(output: &str) -> AppResult<(ContainerTextMetadata, String)> {
     let marker_prefix = "__KERMINAL_TEXT:";
     let Some((marker, content)) = output.split_once('\n') else {
         return Err(AppError::Docker(
@@ -168,7 +164,7 @@ pub(super) fn validate_text_encoding(encoding: &str) -> AppResult<()> {
     }
 }
 
-pub(super) fn same_revision(expected: &SftpFileRevision, current: &SftpFileRevision) -> bool {
+pub fn same_revision(expected: &SftpFileRevision, current: &SftpFileRevision) -> bool {
     match (&expected.content_sha256, &current.content_sha256) {
         (Some(expected_hash), Some(current_hash)) => expected_hash == current_hash,
         _ => expected.size == current.size && expected.modified == current.modified,
@@ -183,7 +179,7 @@ pub(super) fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
-pub(super) fn detect_line_ending(content: &str) -> String {
+pub fn detect_line_ending(content: &str) -> String {
     let crlf = content.matches("\r\n").count();
     let lf = content.matches('\n').count().saturating_sub(crlf);
     match (crlf > 0, lf > 0) {

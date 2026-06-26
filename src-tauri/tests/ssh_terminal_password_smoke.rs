@@ -70,11 +70,13 @@ fn local_russh_loopback_password_terminal_auto_login_smoke() {
     let summary = state
         .ssh_terminals()
         .create_session(
-            state.storage(),
+            state.remote_hosts(),
             state.paths(),
             state.terminals(),
             SshTerminalCreateRequest {
                 host_id,
+                cwd: None,
+                remote_command: None,
                 cols: 96,
                 rows: 28,
             },
@@ -122,11 +124,13 @@ fn local_russh_loopback_password_jump_terminal_auto_login_smoke() {
     let summary = state
         .ssh_terminals()
         .create_session(
-            state.storage(),
+            state.remote_hosts(),
             state.paths(),
             state.terminals(),
             SshTerminalCreateRequest {
                 host_id,
+                cwd: None,
+                remote_command: None,
                 cols: 96,
                 rows: 28,
             },
@@ -177,11 +181,13 @@ fn local_russh_loopback_wrong_password_stays_unauthenticated() {
     let summary = state
         .ssh_terminals()
         .create_session(
-            state.storage(),
+            state.remote_hosts(),
             state.paths(),
             state.terminals(),
             SshTerminalCreateRequest {
                 host_id,
+                cwd: None,
+                remote_command: None,
                 cols: 96,
                 rows: 28,
             },
@@ -230,11 +236,13 @@ fn real_openssh_password_terminal_auto_login_smoke() {
     let summary = state
         .ssh_terminals()
         .create_session(
-            state.storage(),
+            state.remote_hosts(),
             state.paths(),
             state.terminals(),
             SshTerminalCreateRequest {
                 host_id,
+                cwd: None,
+                remote_command: None,
                 cols: 96,
                 rows: 28,
             },
@@ -728,22 +736,19 @@ fn scan_host_key(config: &PasswordSmokeConfig) -> Result<String, String> {
 fn create_remote_host(state: &AppState, config: &PasswordSmokeConfig) -> String {
     state
         .remote_hosts()
-        .create_host(
-            state.storage(),
-            RemoteHostCreateRequest {
-                auth_type: RemoteHostAuthType::Password,
-                credential_ref: None,
-                credential_secret: Some(config.password.clone()),
-                group_id: None,
-                host: config.host.clone(),
-                name: "OpenSSH password smoke".to_owned(),
-                port: config.port,
-                production: false,
-                ssh_options: Default::default(),
-                tags: vec!["smoke".to_owned()],
-                username: config.username.clone(),
-            },
-        )
+        .create_host(RemoteHostCreateRequest {
+            auth_type: RemoteHostAuthType::Password,
+            credential_ref: None,
+            credential_secret: Some(config.password.clone()),
+            group_id: None,
+            host: config.host.clone(),
+            name: "OpenSSH password smoke".to_owned(),
+            port: config.port,
+            production: false,
+            ssh_options: Default::default(),
+            tags: vec!["smoke".to_owned()],
+            username: config.username.clone(),
+        })
         .expect("create password smoke remote host")
         .id
 }
@@ -778,7 +783,7 @@ fn create_remote_host_with_password_jump(
 
     state
         .remote_hosts()
-        .create_host(state.storage(), request)
+        .create_host(request)
         .expect("create password jump smoke remote host")
         .id
 }

@@ -5,16 +5,13 @@ import { defaultAppSettings, type AppSettings } from "./settingsModel";
 import { xtermThemeFor } from "./terminalTheme";
 
 const fileDialogMock = vi.hoisted(() => ({
-  getAppSkillsDirectory: vi.fn(),
   openLocalDirectory: vi.fn(),
-  selectLocalDirectory: vi.fn(),
   selectLocalFile: vi.fn(),
 }));
-const toolRegistryApiMock = vi.hoisted(() => ({
-  discoverMcpServerTools: vi.fn(),
-  getMcpGatewayManifest: vi.fn(),
+const mcpServerApiMock = vi.hoisted(() => ({
   getMcpHttpServerStatus: vi.fn(),
   startMcpHttpServer: vi.fn(),
+  stopMcpHttpServer: vi.fn(),
 }));
 const terminalSuggestionApiMock = vi.hoisted(() => ({
   cleanupTerminalSuggestionDiagnostics: vi.fn(),
@@ -27,46 +24,42 @@ const updaterApiMock = vi.hoisted(() => ({
 }));
 
 vi.mock("../../lib/fileDialogApi", () => ({
-  getAppSkillsDirectory: fileDialogMock.getAppSkillsDirectory,
   openLocalDirectory: fileDialogMock.openLocalDirectory,
-  selectLocalDirectory: fileDialogMock.selectLocalDirectory,
   selectLocalFile: fileDialogMock.selectLocalFile,
 }));
-vi.mock("../../lib/toolRegistryApi", () => toolRegistryApiMock);
+vi.mock("../../lib/mcpServerApi", () => mcpServerApiMock);
 vi.mock("../../lib/terminalSuggestionApi", () => terminalSuggestionApiMock);
 vi.mock("../../lib/updaterApi", () => updaterApiMock);
 
 describe("SettingsToolContent appearance preview theme resolution", () => {
   beforeEach(() => {
-    fileDialogMock.getAppSkillsDirectory.mockReset();
-    fileDialogMock.getAppSkillsDirectory.mockResolvedValue(
-      "C:\\Users\\dev\\.kerminal\\skills",
-    );
     fileDialogMock.openLocalDirectory.mockReset();
     fileDialogMock.openLocalDirectory.mockResolvedValue(undefined);
-    fileDialogMock.selectLocalDirectory.mockReset();
-    fileDialogMock.selectLocalDirectory.mockResolvedValue(null);
     fileDialogMock.selectLocalFile.mockReset();
     fileDialogMock.selectLocalFile.mockResolvedValue(null);
-    toolRegistryApiMock.discoverMcpServerTools.mockReset();
-    toolRegistryApiMock.discoverMcpServerTools.mockResolvedValue([]);
-    toolRegistryApiMock.getMcpGatewayManifest.mockReset();
-    toolRegistryApiMock.getMcpGatewayManifest.mockResolvedValue(null);
-    toolRegistryApiMock.getMcpHttpServerStatus.mockReset();
-    toolRegistryApiMock.getMcpHttpServerStatus.mockResolvedValue({
+    mcpServerApiMock.getMcpHttpServerStatus.mockReset();
+    mcpServerApiMock.getMcpHttpServerStatus.mockResolvedValue({
       bindAddress: "127.0.0.1",
       endpoint: null,
       localOnly: true,
       port: null,
       running: false,
     });
-    toolRegistryApiMock.startMcpHttpServer.mockReset();
-    toolRegistryApiMock.startMcpHttpServer.mockResolvedValue({
+    mcpServerApiMock.startMcpHttpServer.mockReset();
+    mcpServerApiMock.startMcpHttpServer.mockResolvedValue({
       bindAddress: "127.0.0.1",
       endpoint: "http://127.0.0.1:30456/mcp",
       localOnly: true,
       port: 30456,
       running: true,
+    });
+    mcpServerApiMock.stopMcpHttpServer.mockReset();
+    mcpServerApiMock.stopMcpHttpServer.mockResolvedValue({
+      bindAddress: "127.0.0.1",
+      endpoint: null,
+      localOnly: true,
+      port: null,
+      running: false,
     });
     terminalSuggestionApiMock.cleanupTerminalSuggestionDiagnostics.mockReset();
     terminalSuggestionApiMock.cleanupTerminalSuggestionDiagnostics.mockResolvedValue(

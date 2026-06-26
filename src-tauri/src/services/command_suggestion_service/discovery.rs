@@ -1,4 +1,22 @@
+//! 命令建议远端发现与历史解析模型。
+//!
+//! @author kongweiguang
+
 use super::*;
+
+/// POSIX sh 兼容的远端命令发现脚本。
+pub const REMOTE_COMMAND_DISCOVERY_SCRIPT: &str = r#"
+PATH_VALUE=${PATH:-}
+OLD_IFS=$IFS
+IFS=:
+for dir in $PATH_VALUE; do
+  [ -d "$dir" ] || continue
+  for item in "$dir"/*; do
+    [ -f "$item" ] && [ -x "$item" ] && printf '%s\n' "${item##*/}"
+  done
+done
+IFS=$OLD_IFS
+"#;
 
 pub(super) fn parse_remote_command_names(output: &str) -> Vec<String> {
     output
@@ -9,7 +27,8 @@ pub(super) fn parse_remote_command_names(output: &str) -> Vec<String> {
         .collect()
 }
 
-pub(super) fn parse_remote_history_commands(output: &str, max_entries: usize) -> Vec<String> {
+/// 解析远端 shell history 输出，保留最近的安全去重命令。
+pub fn parse_remote_history_commands(output: &str, max_entries: usize) -> Vec<String> {
     let commands = output
         .lines()
         .rev()
@@ -64,7 +83,8 @@ pub(super) fn parse_zsh_extended_history_line(line: &str) -> Option<&str> {
     Some(command)
 }
 
-pub(super) fn git_discovery_script(cwd: &str) -> AppResult<String> {
+/// 构造 POSIX sh 兼容的 Git 引用发现脚本。
+pub fn git_discovery_script(cwd: &str) -> AppResult<String> {
     let cwd = shell_single_quote(cwd)?;
     Ok(format!(
         r#"cd {cwd} 2>/dev/null || exit 0

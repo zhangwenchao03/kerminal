@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   mockElementBox,
   mocks,
-} from "./XtermPane.testSupport";
+} from "./__tests__/support/XtermPane.testSupport";
 import { XtermPane } from "./XtermPane";
 
 describe("XtermPane inline suggestions", () => {

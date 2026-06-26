@@ -4,9 +4,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    fmt,
     io::{Read, Write},
-    net::IpAddr,
     path::PathBuf,
     process::{Child, Stdio},
     sync::Mutex,
@@ -20,25 +18,21 @@ use uuid::Uuid;
 use crate::{
     error::{AppError, AppResult},
     models::{
-        port_forward::{
-            PortForwardCreateRequest, PortForwardEndpoint, PortForwardKind,
-            PortForwardProxyProtocol, PortForwardPurpose, PortForwardRemoteAccessScope,
-            PortForwardStatus, PortForwardSummary,
-        },
-        remote_host::RemoteHost,
+        port_forward::{PortForwardCreateRequest, PortForwardStatus, PortForwardSummary},
         terminal::{TerminalSecretInputEntry, TerminalSecretInputPlan},
     },
     paths::KerminalPaths,
     services::{
         process_command::silent_command,
-        ssh_command_plan::{
-            cleanup_paths, known_hosts_args, preferred_authentication_args,
-            resolve_openssh_executable, resolve_ssh_auth_plan, SshAuthMethod,
-        },
-        ssh_route_plan::{build_ssh_route_plan, materialize_openssh_route_plan},
+        remote_host_service::RemoteHostService,
+        ssh_command_plan::{cleanup_paths, resolve_openssh_executable},
     },
-    storage::SqliteStore,
+    storage::RuntimeFileStore,
 };
+
+use self::plan::{build_forward_plan, ForwardCommandPlan};
+
+pub mod plan;
 
 type PtyChildHandle = Box<dyn PtyChild + Send + Sync>;
 type PtyMasterHandle = Box<dyn MasterPty + Send>;
@@ -144,26 +138,29 @@ impl PortForwardService {
     /// 该入口保留给不需要内联私钥临时文件的调用方。
     pub fn create(
         &self,
-        storage: &SqliteStore,
+        storage: &RuntimeFileStore,
+        remote_hosts: &RemoteHostService,
         request: PortForwardCreateRequest,
     ) -> AppResult<PortForwardSummary> {
-        self.create_inner(storage, None, request, None, None)
+        self.create_inner(storage, remote_hosts, None, request, None, None)
     }
 
     /// 创建可使用 SSH 主机明文密码和内联私钥临时文件的端口转发。
     pub fn create_with_context(
         &self,
-        storage: &SqliteStore,
+        storage: &RuntimeFileStore,
+        remote_hosts: &RemoteHostService,
         paths: &KerminalPaths,
         request: PortForwardCreateRequest,
     ) -> AppResult<PortForwardSummary> {
-        self.create_inner(storage, Some(paths), request, None, None)
+        self.create_inner(storage, remote_hosts, Some(paths), request, None, None)
     }
 
     /// 从已保存配置重新启动端口转发，保留原会话 id 与创建时间。
     pub fn start_with_context(
         &self,
-        storage: &SqliteStore,
+        storage: &RuntimeFileStore,
+        remote_hosts: &RemoteHostService,
         paths: &KerminalPaths,
         forward_id: &str,
         request: PortForwardCreateRequest,
@@ -173,6 +170,7 @@ impl PortForwardService {
             .ok_or_else(|| AppError::NotFound(format!("端口转发不存在: {forward_id}")))?;
         self.create_inner(
             storage,
+            remote_hosts,
             Some(paths),
             request,
             Some(forward_id.to_owned()),
@@ -181,7 +179,7 @@ impl PortForwardService {
     }
 
     /// 列出当前端口转发。
-    pub fn list(&self, storage: &SqliteStore) -> AppResult<Vec<PortForwardSummary>> {
+    pub fn list(&self, storage: &RuntimeFileStore) -> AppResult<Vec<PortForwardSummary>> {
         let (runtime_summaries, exited_updates) = {
             let mut sessions = self.sessions()?;
             let mut exited_updates = Vec::new();
@@ -244,7 +242,7 @@ impl PortForwardService {
     /// 获取指定端口转发摘要。
     pub fn get(
         &self,
-        storage: &SqliteStore,
+        storage: &RuntimeFileStore,
         forward_id: &str,
     ) -> AppResult<Option<PortForwardSummary>> {
         if let Some(summary) = self
@@ -260,7 +258,7 @@ impl PortForwardService {
     }
 
     /// 停止端口转发，但保留已保存配置。
-    pub fn stop(&self, storage: &SqliteStore, forward_id: &str) -> AppResult<bool> {
+    pub fn stop(&self, storage: &RuntimeFileStore, forward_id: &str) -> AppResult<bool> {
         let removed = {
             let mut sessions = self.sessions()?;
             sessions.remove(forward_id)
@@ -286,12 +284,12 @@ impl PortForwardService {
     }
 
     /// 兼容旧调用方：close 等价于 stop，保留已保存配置。
-    pub fn close(&self, storage: &SqliteStore, forward_id: &str) -> AppResult<bool> {
+    pub fn close(&self, storage: &RuntimeFileStore, forward_id: &str) -> AppResult<bool> {
         self.stop(storage, forward_id)
     }
 
     /// 删除端口转发配置；如果正在运行会先停止子进程。
-    pub fn delete(&self, storage: &SqliteStore, forward_id: &str) -> AppResult<bool> {
+    pub fn delete(&self, storage: &RuntimeFileStore, forward_id: &str) -> AppResult<bool> {
         let removed = {
             let mut sessions = self.sessions()?;
             sessions.remove(forward_id)
@@ -311,7 +309,8 @@ impl PortForwardService {
 
     fn create_inner(
         &self,
-        storage: &SqliteStore,
+        storage: &RuntimeFileStore,
+        remote_hosts: &RemoteHostService,
         paths: Option<&KerminalPaths>,
         request: PortForwardCreateRequest,
         summary_id: Option<String>,
@@ -320,9 +319,7 @@ impl PortForwardService {
         if let Some(forward_id) = summary_id.as_deref() {
             self.remove_stopped_session_or_reject_running(forward_id)?;
         }
-        let host = storage
-            .remote_host_by_id(&request.host_id)?
-            .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {}", request.host_id)))?;
+        let host = remote_hosts.require_host(&request.host_id)?;
         let executable = resolve_openssh_executable()?;
         let plan = build_forward_plan(&host, executable, paths, &request)?;
         let mut process = match spawn_forward_process(&plan) {
@@ -417,393 +414,6 @@ fn stopped_summary(
     summary
 }
 
-#[derive(Clone, PartialEq, Eq)]
-struct ForwardCommandPlan {
-    executable: String,
-    args: Vec<String>,
-    cleanup_paths: Vec<PathBuf>,
-    secret_input_plan: Option<TerminalSecretInputPlan>,
-    bind_host: String,
-    target_host: Option<String>,
-    target_port: Option<u16>,
-    local_bind_host: Option<String>,
-    remote_bind_host: Option<String>,
-    local_endpoint: Option<PortForwardEndpoint>,
-    remote_endpoint: Option<PortForwardEndpoint>,
-    proxy_protocol: Option<PortForwardProxyProtocol>,
-    remote_access_scope: Option<PortForwardRemoteAccessScope>,
-    proxy_url: Option<String>,
-    command_preview: String,
-}
-
-impl fmt::Debug for ForwardCommandPlan {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("ForwardCommandPlan")
-            .field("executable", &self.executable)
-            .field("args", &self.args)
-            .field("cleanup_paths", &self.cleanup_paths)
-            .field(
-                "secret_entry_count",
-                &self
-                    .secret_input_plan
-                    .as_ref()
-                    .map(|plan| plan.entries.len())
-                    .unwrap_or_default(),
-            )
-            .field("bind_host", &self.bind_host)
-            .field("target_host", &self.target_host)
-            .field("target_port", &self.target_port)
-            .field("local_bind_host", &self.local_bind_host)
-            .field("remote_bind_host", &self.remote_bind_host)
-            .field("local_endpoint", &self.local_endpoint)
-            .field("remote_endpoint", &self.remote_endpoint)
-            .field("proxy_protocol", &self.proxy_protocol)
-            .field("remote_access_scope", &self.remote_access_scope)
-            .field("proxy_url", &self.proxy_url)
-            .field("command_preview", &self.command_preview)
-            .finish()
-    }
-}
-
-impl ForwardCommandPlan {
-    fn to_summary(
-        &self,
-        host: &RemoteHost,
-        request: &PortForwardCreateRequest,
-        pid: Option<u32>,
-        id: String,
-        created_at: String,
-    ) -> PortForwardSummary {
-        PortForwardSummary {
-            id,
-            host_id: host.id.clone(),
-            host_name: host.name.clone(),
-            name: normalized_name(request, host),
-            kind: request.kind,
-            purpose: request.purpose,
-            origin: request.origin,
-            bind_host: self.bind_host.clone(),
-            local_bind_host: self.local_bind_host.clone(),
-            remote_bind_host: self.remote_bind_host.clone(),
-            source_port: request.source_port,
-            target_host: self.target_host.clone(),
-            target_port: self.target_port,
-            local_endpoint: self.local_endpoint.clone(),
-            remote_endpoint: self.remote_endpoint.clone(),
-            proxy_protocol: self.proxy_protocol,
-            remote_access_scope: self.remote_access_scope,
-            proxy_url: self.proxy_url.clone(),
-            proxy_apply_scope: request.proxy_apply_scope,
-            shared_proxy_service_id: request.shared_proxy_service_id.clone(),
-            local_proxy_entry_id: request.local_proxy_entry_id.clone(),
-            command_preview: self.command_preview.clone(),
-            last_error: None,
-            pid,
-            status: PortForwardStatus::Running,
-            created_at,
-        }
-    }
-}
-
-fn build_forward_plan(
-    host: &RemoteHost,
-    executable: String,
-    paths: Option<&KerminalPaths>,
-    request: &PortForwardCreateRequest,
-) -> AppResult<ForwardCommandPlan> {
-    if request.source_port == 0 {
-        return Err(AppError::InvalidInput("监听端口必须大于 0".to_owned()));
-    }
-
-    let route = resolve_forward_route(request)?;
-    let mut args = vec!["-N".to_owned(), "-T".to_owned(), "-a".to_owned()];
-    let cleanup_paths;
-    let secret_input_plan;
-
-    if host.ssh_options.jump_hosts.is_empty() {
-        let auth = resolve_ssh_auth_plan(host, paths)?;
-        let batch_mode = auth.method != SshAuthMethod::Password;
-
-        args.extend(["-p".to_owned(), host.port.to_string()]);
-        if let Some(paths) = paths {
-            args.extend(known_hosts_args(paths.root.join("known_hosts")));
-        }
-        if batch_mode {
-            args.extend(["-o".to_owned(), "BatchMode=yes".to_owned()]);
-        }
-        args.extend(preferred_authentication_args(host.auth_type));
-        args.extend(auth.args);
-        args.extend(forward_common_args());
-        args.push(forward_flag(route.kind).to_owned());
-        args.push(route.forward_arg);
-        args.push(format!("{}@{}", host.username, host.host));
-
-        cleanup_paths = auth.cleanup_paths;
-        secret_input_plan = auth
-            .secret_input_response
-            .map(TerminalSecretInputPlan::from);
-    } else {
-        let paths = paths.ok_or_else(|| {
-            AppError::InvalidInput(
-                "SSH 跳板端口转发需要应用路径上下文以创建临时 ssh config".to_owned(),
-            )
-        })?;
-        let ssh_route = build_ssh_route_plan(host)?;
-        let open_ssh =
-            materialize_openssh_route_plan(&ssh_route, paths, paths.root.join("known_hosts"))?;
-
-        if open_ssh.secret_input_plan.entries.is_empty() {
-            args.extend(["-o".to_owned(), "BatchMode=yes".to_owned()]);
-        }
-        args.extend(forward_common_args());
-        args.push(forward_flag(route.kind).to_owned());
-        args.push(route.forward_arg);
-        args.extend(open_ssh.args);
-
-        cleanup_paths = open_ssh.cleanup_paths;
-        secret_input_plan =
-            (!open_ssh.secret_input_plan.entries.is_empty()).then_some(open_ssh.secret_input_plan);
-    }
-
-    let command_preview = command_preview(&executable, &args);
-
-    Ok(ForwardCommandPlan {
-        executable,
-        args,
-        cleanup_paths,
-        secret_input_plan,
-        bind_host: route.bind_host,
-        target_host: route.target_host,
-        target_port: route.target_port,
-        local_bind_host: route.local_bind_host,
-        remote_bind_host: route.remote_bind_host,
-        local_endpoint: route.local_endpoint,
-        remote_endpoint: route.remote_endpoint,
-        proxy_protocol: route.proxy_protocol,
-        remote_access_scope: route.remote_access_scope,
-        proxy_url: route.proxy_url,
-        command_preview,
-    })
-}
-
-fn forward_common_args() -> Vec<String> {
-    vec![
-        "-o".to_owned(),
-        "ExitOnForwardFailure=yes".to_owned(),
-        "-o".to_owned(),
-        "ServerAliveInterval=30".to_owned(),
-        "-o".to_owned(),
-        "ServerAliveCountMax=3".to_owned(),
-    ]
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ForwardRoutePlan {
-    kind: PortForwardKind,
-    forward_arg: String,
-    bind_host: String,
-    target_host: Option<String>,
-    target_port: Option<u16>,
-    local_bind_host: Option<String>,
-    remote_bind_host: Option<String>,
-    local_endpoint: Option<PortForwardEndpoint>,
-    remote_endpoint: Option<PortForwardEndpoint>,
-    proxy_protocol: Option<PortForwardProxyProtocol>,
-    remote_access_scope: Option<PortForwardRemoteAccessScope>,
-    proxy_url: Option<String>,
-}
-
-fn resolve_forward_route(request: &PortForwardCreateRequest) -> AppResult<ForwardRoutePlan> {
-    if request.purpose == PortForwardPurpose::HostNetworkAssist {
-        return resolve_host_network_assist_route(request);
-    }
-
-    match request.kind {
-        PortForwardKind::Local => resolve_local_route(request),
-        PortForwardKind::Remote => resolve_remote_route(request),
-        PortForwardKind::Dynamic => resolve_dynamic_route(request),
-    }
-}
-
-fn resolve_local_route(request: &PortForwardCreateRequest) -> AppResult<ForwardRoutePlan> {
-    let bind_host = listener_bind_host(request.local_bind_host.as_deref(), request)?;
-    let target_host = required_target_host(request)?;
-    let target_port = required_target_port(request)?;
-    let local_endpoint = endpoint(
-        Some(bind_host.clone()),
-        Some(request.source_port),
-        "本机监听",
-    )?;
-    let remote_endpoint = endpoint(Some(target_host.clone()), Some(target_port), "主机目标服务")?;
-
-    Ok(ForwardRoutePlan {
-        kind: PortForwardKind::Local,
-        forward_arg: format!(
-            "{}:{}:{}:{}",
-            bind_host, request.source_port, target_host, target_port
-        ),
-        bind_host,
-        target_host: Some(target_host),
-        target_port: Some(target_port),
-        local_bind_host: local_endpoint
-            .as_ref()
-            .map(|endpoint| endpoint.host.clone()),
-        remote_bind_host: None,
-        local_endpoint,
-        remote_endpoint,
-        proxy_protocol: None,
-        remote_access_scope: None,
-        proxy_url: None,
-    })
-}
-
-fn resolve_remote_route(request: &PortForwardCreateRequest) -> AppResult<ForwardRoutePlan> {
-    let bind_host = listener_bind_host(request.remote_bind_host.as_deref(), request)?;
-    let target_host = required_target_host(request)?;
-    let target_port = required_target_port(request)?;
-    let remote_endpoint = endpoint(
-        Some(bind_host.clone()),
-        Some(request.source_port),
-        "主机监听",
-    )?;
-    let local_endpoint = endpoint(Some(target_host.clone()), Some(target_port), "本机目标服务")?;
-    let remote_access_scope = Some(
-        request
-            .remote_access_scope
-            .unwrap_or_else(|| infer_remote_access_scope(&bind_host)),
-    );
-
-    Ok(ForwardRoutePlan {
-        kind: PortForwardKind::Remote,
-        forward_arg: format!(
-            "{}:{}:{}:{}",
-            bind_host, request.source_port, target_host, target_port
-        ),
-        bind_host,
-        target_host: Some(target_host),
-        target_port: Some(target_port),
-        local_bind_host: None,
-        remote_bind_host: remote_endpoint
-            .as_ref()
-            .map(|endpoint| endpoint.host.clone()),
-        local_endpoint,
-        remote_endpoint,
-        proxy_protocol: None,
-        remote_access_scope,
-        proxy_url: None,
-    })
-}
-
-fn resolve_dynamic_route(request: &PortForwardCreateRequest) -> AppResult<ForwardRoutePlan> {
-    let bind_host = listener_bind_host(request.local_bind_host.as_deref(), request)?;
-    let local_endpoint = endpoint(
-        Some(bind_host.clone()),
-        Some(request.source_port),
-        "本机 SOCKS",
-    )?;
-
-    Ok(ForwardRoutePlan {
-        kind: PortForwardKind::Dynamic,
-        forward_arg: format!("{}:{}", bind_host, request.source_port),
-        bind_host,
-        target_host: None,
-        target_port: None,
-        local_bind_host: local_endpoint
-            .as_ref()
-            .map(|endpoint| endpoint.host.clone()),
-        remote_bind_host: None,
-        local_endpoint,
-        remote_endpoint: None,
-        proxy_protocol: Some(PortForwardProxyProtocol::Socks5),
-        remote_access_scope: None,
-        proxy_url: Some(format!(
-            "socks5h://{}:{}",
-            format_proxy_host(&proxy_client_host(&request_bind_host(request))),
-            request.source_port
-        )),
-    })
-}
-
-fn resolve_host_network_assist_route(
-    request: &PortForwardCreateRequest,
-) -> AppResult<ForwardRoutePlan> {
-    let proxy_protocol = request
-        .proxy_protocol
-        .unwrap_or(PortForwardProxyProtocol::Http);
-    let bind_host = listener_bind_host(request.remote_bind_host.as_deref(), request)?;
-    let remote_endpoint = endpoint(
-        Some(bind_host.clone()),
-        Some(request.source_port),
-        "主机代理监听",
-    )?;
-    let remote_access_scope = Some(
-        request
-            .remote_access_scope
-            .unwrap_or_else(|| infer_remote_access_scope(&bind_host)),
-    );
-
-    match proxy_protocol {
-        PortForwardProxyProtocol::Http => {
-            let local_proxy = request.local_endpoint.as_ref().ok_or_else(|| {
-                AppError::InvalidInput("HTTP 网络助手需要本机代理端点".to_owned())
-            })?;
-            let local_host = validate_host_like(&local_proxy.host, "本机代理地址")?;
-            let local_port = required_endpoint_port(local_proxy, "本机代理端口")?;
-            let local_endpoint = endpoint(
-                Some(local_host.clone()),
-                Some(local_port),
-                "本机 HTTP CONNECT 代理",
-            )?;
-            Ok(ForwardRoutePlan {
-                kind: PortForwardKind::Remote,
-                forward_arg: format!(
-                    "{}:{}:{}:{}",
-                    bind_host, request.source_port, local_host, local_port
-                ),
-                bind_host: bind_host.clone(),
-                target_host: Some(local_host),
-                target_port: Some(local_port),
-                local_bind_host: local_endpoint
-                    .as_ref()
-                    .map(|endpoint| endpoint.host.clone()),
-                remote_bind_host: remote_endpoint
-                    .as_ref()
-                    .map(|endpoint| endpoint.host.clone()),
-                local_endpoint,
-                remote_endpoint,
-                proxy_protocol: Some(proxy_protocol),
-                remote_access_scope,
-                proxy_url: Some(format!(
-                    "http://{}:{}",
-                    format_proxy_host(&proxy_client_host(&bind_host)),
-                    request.source_port
-                )),
-            })
-        }
-        PortForwardProxyProtocol::Socks5 => Ok(ForwardRoutePlan {
-            kind: PortForwardKind::Remote,
-            forward_arg: format!("{}:{}", bind_host, request.source_port),
-            bind_host: bind_host.clone(),
-            target_host: None,
-            target_port: None,
-            local_bind_host: None,
-            remote_bind_host: remote_endpoint
-                .as_ref()
-                .map(|endpoint| endpoint.host.clone()),
-            local_endpoint: None,
-            remote_endpoint,
-            proxy_protocol: Some(proxy_protocol),
-            remote_access_scope,
-            proxy_url: Some(format!(
-                "socks5h://{}:{}",
-                format_proxy_host(&proxy_client_host(&bind_host)),
-                request.source_port
-            )),
-        }),
-    }
-}
-
 fn spawn_forward_process(plan: &ForwardCommandPlan) -> AppResult<ManagedForwardProcess> {
     if let Some(secret_input_plan) = plan.secret_input_plan.clone() {
         return spawn_forward_pty(&plan.executable, &plan.args, secret_input_plan);
@@ -848,7 +458,7 @@ fn spawn_forward_pty(
         .master
         .take_writer()
         .map_err(|error| AppError::PortForward(error.to_string()))?;
-    spawn_secret_response_thread(reader, writer, secret_input_plan);
+    spawn_secret_input_thread(reader, writer, secret_input_plan);
 
     Ok(ManagedForwardProcess::Pty(PtyForwardProcess {
         child,
@@ -857,7 +467,7 @@ fn spawn_forward_pty(
     }))
 }
 
-fn spawn_secret_response_thread(
+fn spawn_secret_input_thread(
     mut reader: Box<dyn Read + Send>,
     mut writer: Box<dyn Write + Send>,
     secret_input_plan: TerminalSecretInputPlan,
@@ -956,158 +566,9 @@ impl ForwardSecretInputResponderEntry {
     }
 }
 
-fn listener_bind_host(
-    preferred: Option<&str>,
-    request: &PortForwardCreateRequest,
-) -> AppResult<String> {
-    validate_host_like(
-        preferred
-            .or(request.bind_host.as_deref())
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or("127.0.0.1"),
-        "监听地址",
-    )
-}
-
-fn request_bind_host(request: &PortForwardCreateRequest) -> String {
-    request
-        .local_bind_host
-        .as_deref()
-        .or(request.bind_host.as_deref())
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or("127.0.0.1")
-        .trim()
-        .to_owned()
-}
-
-fn proxy_client_host(bind_host: &str) -> String {
-    match bind_host.trim() {
-        "" | "0.0.0.0" => "127.0.0.1".to_owned(),
-        "::" => "::1".to_owned(),
-        host => host.to_owned(),
-    }
-}
-
-fn format_proxy_host(host: &str) -> String {
-    if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]")
-    } else {
-        host.to_owned()
-    }
-}
-
-fn endpoint(
-    host: Option<String>,
-    port: Option<u16>,
-    label: &str,
-) -> AppResult<Option<PortForwardEndpoint>> {
-    let Some(host) = host else {
-        return Ok(None);
-    };
-    Ok(Some(PortForwardEndpoint {
-        host: validate_host_like(&host, label)?,
-        port,
-        label: Some(label.to_owned()),
-    }))
-}
-
-fn required_endpoint_port(endpoint: &PortForwardEndpoint, label: &str) -> AppResult<u16> {
-    match endpoint.port {
-        Some(port) if port > 0 => Ok(port),
-        _ => Err(AppError::InvalidInput(format!("{label}必须大于 0"))),
-    }
-}
-
-fn required_target_host(request: &PortForwardCreateRequest) -> AppResult<String> {
-    let target_host = request
-        .target_host
-        .as_deref()
-        .ok_or_else(|| AppError::InvalidInput("目标主机不能为空".to_owned()))?;
-    validate_host_like(target_host, "目标主机")
-}
-
-fn required_target_port(request: &PortForwardCreateRequest) -> AppResult<u16> {
-    match request.target_port {
-        Some(port) if port > 0 => Ok(port),
-        _ => Err(AppError::InvalidInput("目标端口必须大于 0".to_owned())),
-    }
-}
-
-fn validate_host_like(value: &str, label: &str) -> AppResult<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty()
-        || trimmed.contains('\0')
-        || trimmed.contains('\r')
-        || trimmed.contains('\n')
-        || trimmed.split_whitespace().count() > 1
-    {
-        return Err(AppError::InvalidInput(format!("{label}不合法")));
-    }
-    Ok(trimmed.to_owned())
-}
-
-fn infer_remote_access_scope(bind_host: &str) -> PortForwardRemoteAccessScope {
-    let trimmed = bind_host.trim();
-    if matches!(trimmed, "127.0.0.1" | "localhost" | "::1") {
-        return PortForwardRemoteAccessScope::Loopback;
-    }
-    if matches!(trimmed, "0.0.0.0" | "::") {
-        return PortForwardRemoteAccessScope::AllInterfaces;
-    }
-    if trimmed
-        .parse::<IpAddr>()
-        .ok()
-        .is_some_and(|ip| matches!(ip, IpAddr::V4(ip) if ip.is_private()))
-    {
-        return PortForwardRemoteAccessScope::PrivateNetwork;
-    }
-    PortForwardRemoteAccessScope::Custom
-}
-
-fn forward_flag(kind: PortForwardKind) -> &'static str {
-    match kind {
-        PortForwardKind::Local => "-L",
-        PortForwardKind::Remote => "-R",
-        PortForwardKind::Dynamic => "-D",
-    }
-}
-
-fn normalized_name(request: &PortForwardCreateRequest, host: &RemoteHost) -> String {
-    request
-        .name
-        .as_deref()
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| format!("{} {}", host.name, forward_flag(request.kind)))
-}
-
-fn command_preview(executable: &str, args: &[String]) -> String {
-    std::iter::once(executable)
-        .chain(args.iter().map(String::as_str))
-        .map(shell_quote)
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn shell_quote(value: &str) -> String {
-    if !value.is_empty()
-        && value
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || "-_./:=@".contains(ch))
-    {
-        return value.to_owned();
-    }
-    format!("'{}'", value.replace('\'', "'\\''"))
-}
-
 fn unix_timestamp() -> String {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs().to_string())
         .unwrap_or_else(|_| "0".to_owned())
 }
-
-#[cfg(test)]
-#[path = "port_forward_service_tests.rs"]
-mod port_forward_service_tests;

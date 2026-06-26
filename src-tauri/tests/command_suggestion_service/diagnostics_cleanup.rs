@@ -11,7 +11,7 @@ fn cleanup_diagnostics_prunes_retained_data_and_resets_persisted_telemetry() {
     let expired_cache_expires_at = now - 1_000;
 
     {
-        let conn = Connection::open(state.storage().database_file()).expect("open test db");
+        let conn = Connection::open(state.command_store().database_file()).expect("open test db");
         conn.execute(
             "
             INSERT INTO command_suggestion_audit_events (
@@ -81,7 +81,7 @@ fn cleanup_diagnostics_prunes_retained_data_and_resets_persisted_telemetry() {
     let result = state
         .command_suggestions()
         .cleanup_diagnostics(
-            state.storage(),
+            state.command_store(),
             CommandSuggestionDiagnosticsCleanupRequest {
                 audit_retention_days: Some(30),
                 feedback_retention_days: Some(365),
@@ -98,7 +98,7 @@ fn cleanup_diagnostics_prunes_retained_data_and_resets_persisted_telemetry() {
     assert_eq!(result.provider_cache_deleted, 1);
     assert_eq!(result.telemetry_rows_deleted, 1);
 
-    let conn = Connection::open(state.storage().database_file()).expect("open test db");
+    let conn = Connection::open(state.command_store().database_file()).expect("open test db");
     let audit_count: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM command_suggestion_audit_events",

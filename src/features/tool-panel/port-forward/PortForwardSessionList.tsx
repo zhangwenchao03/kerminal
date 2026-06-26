@@ -161,8 +161,7 @@ function PortForwardSessionRow({
           ) : null}
           {isNetworkAssist && userSetupScript && userUndoScript ? (
             <div className="mt-2 rounded-lg border border-sky-300/15 bg-sky-400/10 px-2 py-2 text-[11px] leading-4 text-sky-800 dark:text-sky-100">
-              用户级配置脚本只写当前远端用户 home，不需要 root，不会自动执行；它使用
-              Kerminal 标记块和备份文件避免破坏 profile，并提供撤销脚本。
+              脚本只写当前用户 home，不需要 root；提供备份和撤销脚本。
             </div>
           ) : null}
         </div>
@@ -201,7 +200,7 @@ function PortForwardSessionRow({
             size="sm"
             title={
               activeProxyUrl
-                ? "控制同主机后续新 SSH 终端是否自动执行代理 export"
+                ? "控制新 SSH 终端自动使用代理"
                 : inactiveNetworkAssistReason ?? "该会话没有可用于新终端的代理地址"
             }
             variant={autoUseEnabled ? "primary" : "secondary"}
@@ -296,8 +295,8 @@ function originLabel(origin: ReturnType<typeof sessionOrigin>) {
   if (origin === "networkAssist") {
     return "网络助手";
   }
-  if (origin === "aiTool") {
-    return "AI 工具";
+  if (origin === "mcpTool") {
+    return "MCP 工具";
   }
   if (origin === "hostPreset") {
     return "主机预设";

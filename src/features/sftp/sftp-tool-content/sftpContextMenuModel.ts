@@ -84,6 +84,11 @@ export function buildSftpContextMenuGroups({
     return withSftpFilePanelDomain([
       [
         {
+          action: "workspace",
+          icon: "fileSearch",
+          label: "工作区打开当前目录",
+        },
+        {
           action: "uploadFile",
           icon: "upload",
           label: "上传文件",

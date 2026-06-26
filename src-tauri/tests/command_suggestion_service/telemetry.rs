@@ -8,7 +8,7 @@ fn telemetry_tracks_provider_queries_cache_and_feedback() {
     let suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "gi".to_owned(),
@@ -30,7 +30,7 @@ fn telemetry_tracks_provider_queries_cache_and_feedback() {
     state
         .command_suggestions()
         .record_feedback(
-            state.storage(),
+            state.command_store(),
             CommandSuggestionFeedbackRecordRequest {
                 action: CommandSuggestionFeedbackAction::Accepted,
                 cwd: Some("/srv/app".to_owned()),
@@ -77,7 +77,7 @@ fn telemetry_tracks_remote_cache_misses() {
     let suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "git checkout fe".to_owned(),
@@ -120,7 +120,7 @@ fn telemetry_export_persists_across_app_state_reopen() {
     let suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "gi".to_owned(),
@@ -142,7 +142,7 @@ fn telemetry_export_persists_across_app_state_reopen() {
     state
         .command_suggestions()
         .record_feedback(
-            state.storage(),
+            state.command_store(),
             CommandSuggestionFeedbackRecordRequest {
                 action: CommandSuggestionFeedbackAction::Accepted,
                 cwd: Some("/srv/app".to_owned()),
@@ -162,7 +162,7 @@ fn telemetry_export_persists_across_app_state_reopen() {
 
     let export = state
         .command_suggestions()
-        .telemetry_export(state.storage())
+        .telemetry_export(state.command_store())
         .expect("telemetry export");
     let runtime_remote_command =
         telemetry_provider(&export.runtime, SuggestionProviderKind::RemoteCommand);
@@ -179,7 +179,7 @@ fn telemetry_export_persists_across_app_state_reopen() {
     let reopened = AppState::initialize_with_paths(paths).expect("reopen app state");
     let reopened_export = reopened
         .command_suggestions()
-        .telemetry_export(reopened.storage())
+        .telemetry_export(reopened.command_store())
         .expect("telemetry export after reopen");
     let reopened_runtime = telemetry_provider(
         &reopened_export.runtime,
@@ -205,7 +205,7 @@ fn telemetry_export_includes_recent_audit_events() {
     state
         .command_suggestions()
         .record_audit_event(
-            state.storage(),
+            state.command_store(),
             CommandSuggestionAuditRecordRequest {
                 cwd: Some("/srv/app".to_owned()),
                 decision: CommandSuggestionAuditDecision::Skipped,
@@ -224,7 +224,7 @@ fn telemetry_export_includes_recent_audit_events() {
 
     let export = state
         .command_suggestions()
-        .telemetry_export(state.storage())
+        .telemetry_export(state.command_store())
         .expect("export telemetry");
 
     assert_eq!(export.audit_events.len(), 1);

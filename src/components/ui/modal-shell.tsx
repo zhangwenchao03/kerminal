@@ -21,32 +21,32 @@ interface ModalShellProps {
 
 const modalSizeClassNames = {
   compact: {
-    height: "h-[min(18rem,calc(100vh-48px))]",
+    maxHeight: "max-h-[min(18rem,calc(100vh-48px))]",
     width: "max-w-md",
   },
   small: {
-    height: "h-[min(24rem,calc(100vh-48px))]",
+    maxHeight: "max-h-[min(24rem,calc(100vh-48px))]",
     width: "max-w-lg",
   },
   medium: {
-    height: "h-[min(34rem,calc(100vh-48px))]",
+    maxHeight: "max-h-[min(34rem,calc(100vh-48px))]",
     width: "max-w-2xl",
   },
   large: {
-    height: "h-[min(44rem,calc(100vh-48px))]",
+    maxHeight: "max-h-[min(44rem,calc(100vh-48px))]",
     width: "max-w-5xl",
   },
   wide: {
-    height: "h-[min(780px,calc(100vh-48px))]",
+    maxHeight: "max-h-[min(780px,calc(100vh-48px))]",
     width: "max-w-6xl",
   },
 } satisfies Record<
   NonNullable<ModalShellProps["size"]>,
-  { height: string; width: string }
+  { maxHeight: string; width: string }
 >;
 
-function hasFixedHeightClassName(className?: string) {
-  return /(?:^|\s)h-/.test(className ?? "");
+function hasHeightConstraintClassName(className?: string) {
+  return /(?:^|\s)(?:h-|max-h-)/.test(className ?? "");
 }
 
 export function ModalShell({
@@ -71,13 +71,13 @@ export function ModalShell({
   const resolvedMaxWidthClassName =
     maxWidthClassName ??
     (fullscreen || workspace ? "max-w-none" : sizeClassNames.width);
-  const fixedHeightClassName =
+  const presetMaxHeightClassName =
     fullscreen || workspace
       ? null
-      : hasFixedHeightClassName(maxWidthClassName) ||
-          hasFixedHeightClassName(panelClassName)
+      : hasHeightConstraintClassName(maxWidthClassName) ||
+          hasHeightConstraintClassName(panelClassName)
         ? null
-        : sizeClassNames.height;
+        : sizeClassNames.maxHeight;
 
   useEffect(() => {
     if (!open) {
@@ -128,7 +128,7 @@ export function ModalShell({
             ? "h-full max-h-none"
             : workspace
               ? "h-[min(700px,calc(100vh-72px))] max-h-[calc(100vh-40px)] w-[min(1100px,calc(100vw-48px))]"
-              : fixedHeightClassName,
+              : presetMaxHeightClassName,
           resolvedMaxWidthClassName,
           panelClassName,
         )}
@@ -171,7 +171,7 @@ export function ModalShell({
           className={cn(
             fullscreen || workspace
               ? "min-h-0 flex-1 overflow-hidden p-3"
-              : "scrollbar-none min-h-0 flex-1 overflow-y-auto px-5 py-4",
+              : "scrollbar-none min-h-0 flex-auto overflow-y-auto px-5 py-4",
             bodyClassName,
           )}
         >

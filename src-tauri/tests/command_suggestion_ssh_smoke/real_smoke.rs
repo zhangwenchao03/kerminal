@@ -18,7 +18,6 @@ async fn real_ssh_sftp_provider_chain_produces_command_path_and_git_suggestions(
     harness
         .sftp
         .trust_host_key(
-            &harness.storage,
             &harness.paths,
             SftpTrustHostKeyRequest {
                 host_id: remote_host.id.clone(),
@@ -33,6 +32,7 @@ async fn real_ssh_sftp_provider_chain_produces_command_path_and_git_suggestions(
             &harness.storage,
             &harness.paths,
             &harness.ssh_commands,
+            harness.inline_settings(),
             CommandSuggestionRemoteCommandRefreshRequest {
                 host_id: remote_host.id.clone(),
                 max_entries: Some(1024),
@@ -52,6 +52,7 @@ async fn real_ssh_sftp_provider_chain_produces_command_path_and_git_suggestions(
             &harness.storage,
             &harness.paths,
             &harness.sftp,
+            harness.inline_settings(),
             CommandSuggestionRemotePathRefreshRequest {
                 host_id: remote_host.id.clone(),
                 max_entries: Some(256),
@@ -72,6 +73,7 @@ async fn real_ssh_sftp_provider_chain_produces_command_path_and_git_suggestions(
             &harness.storage,
             &harness.paths,
             &harness.ssh_commands,
+            harness.inline_settings(),
             CommandSuggestionRemoteHistoryRefreshRequest {
                 host_id: remote_host.id.clone(),
                 max_entries: Some(256),
@@ -87,6 +89,7 @@ async fn real_ssh_sftp_provider_chain_produces_command_path_and_git_suggestions(
             &harness.storage,
             &harness.paths,
             &harness.ssh_commands,
+            harness.inline_settings(),
             CommandSuggestionGitRefreshRequest {
                 cwd: cwd.clone(),
                 host_id: remote_host.id.clone(),
@@ -236,7 +239,6 @@ async fn real_ssh_remote_command_posix_builtin_fallback_survives_minimal_path() 
     harness
         .sftp
         .trust_host_key(
-            &harness.storage,
             &harness.paths,
             SftpTrustHostKeyRequest {
                 host_id: remote_host.id.clone(),
@@ -251,6 +253,7 @@ async fn real_ssh_remote_command_posix_builtin_fallback_survives_minimal_path() 
             &harness.storage,
             &harness.paths,
             &harness.ssh_commands,
+            harness.inline_settings(),
             CommandSuggestionRemoteCommandRefreshRequest {
                 host_id: remote_host.id.clone(),
                 max_entries: Some(64),

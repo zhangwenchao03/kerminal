@@ -9,6 +9,7 @@ import {
   type RefCallback,
 } from "react";
 import { Button } from "../../components/ui/button";
+import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 import {
   createSnippet,
   deleteSnippet,
@@ -49,6 +50,7 @@ import {
 
 interface SnippetToolContentProps {
   activeTabId?: string;
+  configRevision?: number;
   focusedPane?: TerminalPane;
 }
 
@@ -100,12 +102,16 @@ function useHorizontalFilterWheel(): RefCallback<HTMLDivElement> {
 
 export function SnippetToolContent({
   activeTabId,
+  configRevision,
   focusedPane,
 }: SnippetToolContentProps) {
   const [activeTag, setActiveTag] = useState("");
   const [catalogMode, setCatalogMode] = useState<SnippetCatalogMode>("mine");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [command, setCommand] = useState("");
+  const [configDraftNotice, setConfigDraftNotice] = useState<string | null>(
+    null,
+  );
   const [createOpen, setCreateOpen] = useState(false);
   const [createType, setCreateType] = useState<AddItemType>("snippet");
   const [description, setDescription] = useState("");
@@ -122,6 +128,7 @@ export function SnippetToolContent({
   const [title, setTitle] = useState("");
   const scopeFilterRef = useHorizontalFilterWheel();
   const tagFilterRef = useHorizontalFilterWheel();
+  const lastConfigRevisionRef = useRef<number | undefined>(configRevision);
 
   const presetSnippetsView = useMemo(
     () => filterPresetSnippets({ query, scope }),
@@ -171,7 +178,34 @@ export function SnippetToolContent({
 
   useEffect(() => {
     void loadSnippets();
-  }, [loadSnippets]);
+  }, [configRevision, loadSnippets]);
+
+  useEffect(() => {
+    if (configRevision === undefined) {
+      return;
+    }
+    if (lastConfigRevisionRef.current === undefined) {
+      lastConfigRevisionRef.current = configRevision;
+      return;
+    }
+    if (lastConfigRevisionRef.current === configRevision) {
+      return;
+    }
+    lastConfigRevisionRef.current = configRevision;
+    if (createOpen || runState) {
+      setConfigDraftNotice("cfg: snippets reloaded; draft kept");
+    }
+  }, [configRevision, createOpen, runState]);
+
+  useEffect(() => {
+    if (!configDraftNotice) {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => {
+      setConfigDraftNotice(null);
+    }, 3500);
+    return () => window.clearTimeout(timer);
+  }, [configDraftNotice]);
 
   useEffect(() => {
     if (!activeTag) {
@@ -274,7 +308,10 @@ export function SnippetToolContent({
 
   const copySnippetCommand = async (snippet: CommandSnippet) => {
     try {
-      await navigator.clipboard?.writeText(snippet.command);
+      const result = await writeDesktopClipboardText(snippet.command);
+      if (!result.ok) {
+        throw new Error(result.reason);
+      }
       setCopiedId(snippet.id);
       window.setTimeout(() => setCopiedId(null), 1200);
     } catch {
@@ -509,6 +546,14 @@ export function SnippetToolContent({
           role="alert"
         >
           {error}
+        </div>
+      ) : null}
+      {configDraftNotice ? (
+        <div
+          className="rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 font-mono text-xs text-amber-800 dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100"
+          role="status"
+        >
+          {configDraftNotice}
         </div>
       ) : null}
 

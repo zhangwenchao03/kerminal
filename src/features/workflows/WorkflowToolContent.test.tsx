@@ -83,4 +83,21 @@ describe("WorkflowToolContent", () => {
       await screen.findByText("当前筛选下没有命令工作流。"),
     ).toBeInTheDocument();
   });
+
+  it("keeps the workflow draft when workflows reload from external config", async () => {
+    const user = userEvent.setup();
+    workflowApiMocks.listWorkflows.mockResolvedValue([]);
+    const { rerender } = render(<WorkflowToolContent configRevision={1} />);
+
+    expect(await screen.findByText("暂无命令工作流。")).toBeInTheDocument();
+    await user.clear(screen.getByLabelText("工作流标题"));
+    await user.type(screen.getByLabelText("工作流标题"), "外部刷新草稿");
+
+    rerender(<WorkflowToolContent configRevision={2} />);
+
+    expect(screen.getByLabelText("工作流标题")).toHaveValue("外部刷新草稿");
+    expect(
+      await screen.findByText("cfg: workflows reloaded; draft kept"),
+    ).toBeInTheDocument();
+  });
 });

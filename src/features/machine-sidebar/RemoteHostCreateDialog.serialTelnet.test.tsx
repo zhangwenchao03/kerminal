@@ -7,7 +7,7 @@ import {
   chooseSelectOption,
   createdHost,
   groups,
-} from "./RemoteHostCreateDialog.testSupport";
+} from "./__tests__/support/RemoteHostCreateDialog.testSupport";
 
 describe("RemoteHostCreateDialog Telnet and Serial modes", () => {
   beforeEach(() => {
@@ -158,9 +158,11 @@ describe("RemoteHostCreateDialog Telnet and Serial modes", () => {
     await user.type(screen.getByLabelText("波特率"), "42");
     await user.click(screen.getByRole("button", { name: "测试连接" }));
 
-    expect(
-      screen.getByText("波特率必须是 300 到 4000000 之间的整数。"),
-    ).toBeInTheDocument();
+    const validationMessage = screen.getByText(
+      "波特率必须是 300 到 4000000 之间的整数。",
+    );
+    expect(validationMessage).toBeInTheDocument();
+    expect(validationMessage.closest("footer")).not.toBeNull();
     expect(onCreateHost).not.toHaveBeenCalled();
   });
 });

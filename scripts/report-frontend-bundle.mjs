@@ -11,7 +11,7 @@ const distRoot = path.join(repoRoot, "dist");
 const defaultOutputPath = path.join(
   repoRoot,
   ".updeng",
-  "data",
+  "docs",
   "verification",
   "frontend-bundle-baseline.json",
 );

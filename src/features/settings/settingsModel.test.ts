@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_CUSTOM_SKILLS_DIRECTORY,
   defaultAppSettings,
   normalizeAppSettings,
   resolveThemeMode,
@@ -49,11 +48,14 @@ describe("settingsModel", () => {
     expect(settings.terminal.inlineSuggestion).toEqual(
       defaultAppSettings.terminal.inlineSuggestion,
     );
+    expect(settings.desktopNotifications).toEqual(
+      defaultAppSettings.desktopNotifications,
+    );
     expect(settings.keybindings).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           action: "settings.open",
-          description: expect.stringContaining("IntelliJ IDEA"),
+          description: "打开设置。",
           macBinding: "Cmd+,",
           windowsBinding: "Ctrl+Alt+S",
         }),
@@ -78,6 +80,13 @@ describe("settingsModel", () => {
         interfaceLanguage: "fr",
         windowOpacity: 12,
       },
+      desktopNotifications: {
+        backgroundOnly: "yes",
+        enabled: "yes",
+        importantOnly: true,
+        minDurationMs: -1,
+        throttleMs: 999_999,
+      },
       interfaceDensity: "tiny",
       terminal: {
         autoReconnect: false,
@@ -94,7 +103,6 @@ describe("settingsModel", () => {
           enabled: "yes",
           productionHostPolicy: "open",
           providers: {
-            ai: "true",
             git: false,
             history: 1,
             remoteCommand: false,
@@ -133,6 +141,13 @@ describe("settingsModel", () => {
     });
     expect(settings.interfaceDensity).toBe(defaultAppSettings.interfaceDensity);
     expect(settings.themeMode).toBe(defaultAppSettings.themeMode);
+    expect(settings.desktopNotifications).toMatchObject({
+      backgroundOnly: defaultAppSettings.desktopNotifications.backgroundOnly,
+      enabled: defaultAppSettings.desktopNotifications.enabled,
+      importantOnly: true,
+      minDurationMs: 1_000,
+      throttleMs: 600_000,
+    });
     expect(settings.terminal).toMatchObject({
       autoReconnect: false,
       colorScheme: defaultAppSettings.terminal.colorScheme,
@@ -148,7 +163,6 @@ describe("settingsModel", () => {
         productionHostPolicy:
           defaultAppSettings.terminal.inlineSuggestion.productionHostPolicy,
         providers: {
-          ai: defaultAppSettings.terminal.inlineSuggestion.providers.ai,
           git: false,
           history:
             defaultAppSettings.terminal.inlineSuggestion.providers.history,
@@ -189,32 +203,6 @@ describe("settingsModel", () => {
 
     expect(settings.sftp.globalTransfers).toBe(2);
     expect(settings.sftp.hostTransfers).toBe(2);
-  });
-
-  it("uses the Codex skills directory as the default custom skills root", () => {
-    expect(defaultAppSettings.ai.mcp.skillDirectories[0]?.path).toBe(
-      DEFAULT_CUSTOM_SKILLS_DIRECTORY,
-    );
-
-    const settings = normalizeAppSettings({
-      ai: {
-        ...defaultAppSettings.ai,
-        mcp: {
-          servers: [],
-          skillDirectories: [
-            {
-              enabled: true,
-              id: "user-skills",
-              path: " ~/.codex/skills ",
-            },
-          ],
-        },
-      },
-    });
-
-    expect(settings.ai.mcp.skillDirectories[0]?.path).toBe(
-      DEFAULT_CUSTOM_SKILLS_DIRECTORY,
-    );
   });
 
   it("maps terminal font weight choices to xterm values", () => {

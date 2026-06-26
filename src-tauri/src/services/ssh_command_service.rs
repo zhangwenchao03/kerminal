@@ -26,8 +26,11 @@ use crate::{
         ssh_command::{SshCommandOutput, SshCommandRequest},
     },
     paths::KerminalPaths,
-    services::{process_command::silent_command, ssh_route_plan::build_ssh_route_plan},
-    storage::SqliteStore,
+    services::{
+        process_command::silent_command, remote_host_service::RemoteHostService,
+        ssh_identity_file::resolve_identity_file_path, ssh_route_plan::build_ssh_route_plan,
+    },
+    storage::{config_file_store::ConfigFileStore, file_store::FileStoreError},
 };
 
 const DEFAULT_TIMEOUT_SECONDS: u64 = 30;
@@ -51,12 +54,10 @@ impl SshCommandService {
     /// 在已保存 SSH 主机上执行非交互命令。
     pub fn execute(
         &self,
-        storage: &SqliteStore,
+        remote_hosts: &RemoteHostService,
         request: SshCommandRequest,
     ) -> AppResult<SshCommandOutput> {
-        let host = storage
-            .remote_host_by_id(&request.host_id)?
-            .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {}", request.host_id)))?;
+        let host = remote_hosts.require_host(&request.host_id)?;
         let plan = build_ssh_command_plan(&host, request)?;
         execute_ssh_command_plan(&host, &plan)
     }
@@ -67,13 +68,10 @@ impl SshCommandService {
     /// 不把 secret 暴露到本地进程参数。
     pub async fn execute_native(
         &self,
-        storage: &SqliteStore,
         paths: &KerminalPaths,
         request: SshCommandRequest,
     ) -> AppResult<SshCommandOutput> {
-        let host = storage
-            .remote_host_by_id(&request.host_id)?
-            .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {}", request.host_id)))?;
+        let host = resolve_remote_host_from_files(paths, &request.host_id)?;
         let execution = build_native_command_execution(&host, paths, request)?;
         execute_native_ssh_command(&host, execution).await
     }
@@ -100,6 +98,98 @@ impl SshCommandService {
                 timeout.as_secs()
             ))),
         }
+    }
+}
+
+#[doc(hidden)]
+pub mod rules {
+    use std::{io::Read, path::PathBuf};
+
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum NativeAuthMaterialSummary {
+        Agent,
+        Password(String),
+        PrivateKeyPath(PathBuf),
+        PrivateKeyPem {
+            content: String,
+            passphrase: Option<String>,
+        },
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct LimitedOutputSummary {
+        pub text: String,
+        pub captured_bytes: usize,
+        pub truncated: bool,
+    }
+
+    impl From<LimitedOutput> for LimitedOutputSummary {
+        fn from(output: LimitedOutput) -> Self {
+            Self {
+                text: output.text,
+                captured_bytes: output.captured_bytes,
+                truncated: output.truncated,
+            }
+        }
+    }
+
+    pub fn resolve_native_auth_material_summary(
+        host: &RemoteHost,
+    ) -> AppResult<NativeAuthMaterialSummary> {
+        match resolve_native_auth_material(host)? {
+            NativeSshAuthMaterial::Agent => Ok(NativeAuthMaterialSummary::Agent),
+            NativeSshAuthMaterial::Password(password) => {
+                Ok(NativeAuthMaterialSummary::Password(password))
+            }
+            NativeSshAuthMaterial::PrivateKey(NativeSshPrivateKey::Path(path)) => {
+                Ok(NativeAuthMaterialSummary::PrivateKeyPath(path))
+            }
+            NativeSshAuthMaterial::PrivateKey(NativeSshPrivateKey::Pem {
+                content,
+                passphrase,
+            }) => Ok(NativeAuthMaterialSummary::PrivateKeyPem {
+                content,
+                passphrase,
+            }),
+        }
+    }
+
+    pub fn normalize_command_script(command: &str) -> AppResult<String> {
+        super::normalize_command_script(command)
+    }
+
+    pub fn read_limited_output_summary<R: Read>(
+        reader: R,
+        max_bytes: usize,
+    ) -> std::io::Result<LimitedOutputSummary> {
+        super::read_limited_output(reader, max_bytes).map(Into::into)
+    }
+
+    pub fn limited_output_summary_from_chunks(
+        max_bytes: usize,
+        chunks: &[&[u8]],
+    ) -> LimitedOutputSummary {
+        let mut buffer = LimitedOutputBuffer::new(max_bytes);
+        for chunk in chunks {
+            buffer.push(chunk);
+        }
+        buffer.finish().into()
+    }
+}
+
+fn resolve_remote_host_from_files(paths: &KerminalPaths, host_id: &str) -> AppResult<RemoteHost> {
+    ConfigFileStore::new(paths.root.clone())
+        .remote_host_by_id(host_id)
+        .map_err(config_file_error)?
+        .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {host_id}")))
+}
+
+fn config_file_error(error: FileStoreError) -> AppError {
+    match error {
+        FileStoreError::Io(error) => AppError::Io(error),
+        other => AppError::InvalidInput(other.to_string()),
     }
 }
 
@@ -652,9 +742,8 @@ fn resolve_native_auth_material(host: &RemoteHost) -> AppResult<NativeSshAuthMat
                         .to_owned(),
                 ));
             }
-            validate_identity_file_path(credential_ref)?;
             Ok(NativeSshAuthMaterial::PrivateKey(
-                NativeSshPrivateKey::Path(PathBuf::from(credential_ref)),
+                NativeSshPrivateKey::Path(resolve_identity_file_path(credential_ref)?),
             ))
         }
     }
@@ -688,9 +777,8 @@ fn resolve_native_jump_auth_material(
                     "{label} 不再支持 credential: 私钥引用，请保存私钥路径或明文私钥内容"
                 )));
             }
-            validate_identity_file_path(credential_ref)?;
             Ok(NativeSshAuthMaterial::PrivateKey(
-                NativeSshPrivateKey::Path(PathBuf::from(credential_ref)),
+                NativeSshPrivateKey::Path(resolve_identity_file_path(credential_ref)?),
             ))
         }
     }
@@ -973,17 +1061,11 @@ fn identity_file_args(host: &RemoteHost) -> AppResult<Vec<String>> {
             "SSH 主机不再支持 credential: 私钥引用，请保存私钥路径或明文私钥内容".to_owned(),
         ));
     }
-    validate_identity_file_path(credential_ref)?;
-    Ok(vec!["-i".to_owned(), credential_ref.to_owned()])
-}
-
-fn validate_identity_file_path(path: &str) -> AppResult<()> {
-    if path.contains('\n') || path.contains('\r') || path.contains('\0') {
-        return Err(AppError::InvalidInput(
-            "SSH 私钥路径不能包含控制字符".to_owned(),
-        ));
-    }
-    Ok(())
+    let identity_path = resolve_identity_file_path(credential_ref)?;
+    Ok(vec![
+        "-i".to_owned(),
+        identity_path.to_string_lossy().into_owned(),
+    ])
 }
 
 fn resolve_ssh_executable() -> AppResult<String> {
@@ -1045,6 +1127,3 @@ fn key_error(error: keys::Error) -> AppError {
 fn agent_error(error: keys::Error) -> AppError {
     AppError::SshCommand(format!("SSH agent 连接失败: {error}"))
 }
-
-#[cfg(test)]
-mod tests;

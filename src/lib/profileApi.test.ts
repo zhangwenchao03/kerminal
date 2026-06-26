@@ -66,6 +66,61 @@ describe("profileApi", () => {
     });
   });
 
+  it("passes optional sidebar group metadata through profile requests", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue({
+      args: [],
+      createdAt: "now",
+      env: {},
+      id: "profile-1",
+      isDefault: false,
+      name: "abc",
+      shell: "pwsh.exe",
+      sidebarGroupId: "group-local",
+      sortOrder: 10,
+      updatedAt: "now",
+    });
+    const { createProfile, updateProfile } = await import("./profileApi");
+
+    await createProfile({
+      name: "abc",
+      shell: "pwsh.exe",
+      sidebarGroupId: "group-local",
+    });
+    await updateProfile({
+      id: "profile-1",
+      name: "abc",
+      shell: "pwsh.exe",
+      sidebarGroupId: "",
+      sortOrder: 10,
+    });
+
+    expect(invokeMock).toHaveBeenNthCalledWith(1, "profile_create", {
+      request: {
+        args: [],
+        cwd: undefined,
+        env: {},
+        name: "abc",
+        setDefault: false,
+        shell: "pwsh.exe",
+        sidebarGroupId: "group-local",
+      },
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(2, "profile_update", {
+      request: {
+        args: [],
+        cwd: undefined,
+        env: {},
+        id: "profile-1",
+        name: "abc",
+        setDefault: false,
+        shell: "pwsh.exe",
+        sidebarGroupId: "",
+        sortOrder: 10,
+      },
+    });
+  });
+
   it("normalizes update profile requests", async () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockResolvedValue({

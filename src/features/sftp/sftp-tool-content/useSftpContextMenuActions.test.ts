@@ -109,6 +109,19 @@ describe("useSftpContextMenuActions", () => {
     const mkdir = renderContextMenuHook();
     act(() => mkdir.result.current.executeContextMenuAction("newDirectory"));
     expect(mkdir.actions.openNewDirectoryDialog).toHaveBeenCalledTimes(1);
+
+    const workspaceCurrentDirectory = renderContextMenuHook({
+      contextMenu: { entry: null, x: 24, y: 48 },
+      currentPath: "/srv/uploads",
+    });
+    act(() =>
+      workspaceCurrentDirectory.result.current.executeContextMenuAction(
+        "workspace",
+      ),
+    );
+    expect(
+      workspaceCurrentDirectory.actions.openWorkspaceDirectory,
+    ).toHaveBeenCalledWith("/srv/uploads");
   });
 
   it("dispatches entry-scoped actions to downloads, dialogs, and workspace callbacks", () => {

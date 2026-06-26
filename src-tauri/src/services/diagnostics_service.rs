@@ -25,10 +25,10 @@ use crate::{
         settings::AppSettings,
         terminal::{TerminalSessionStatus, TerminalSessionSummary},
     },
-    paths::KerminalPaths,
+    paths::{KerminalPaths, APP_LOG_MAX_FILE_SIZE_BYTES, APP_LOG_ROTATION_KEEP_FILES},
     security::redaction::redact_terminal_text,
     services::{process_command::silent_command, terminal_manager::TerminalManager},
-    storage::SqliteStore,
+    storage::CommandSqliteStore,
 };
 
 const DIAGNOSTIC_SCHEMA: &str = "kerminal.diagnostics.v1";
@@ -40,10 +40,10 @@ pub struct DiagnosticsService;
 /// 诊断包生成所需的轻量状态快照。
 #[derive(Debug, Clone)]
 pub struct DiagnosticBundleSnapshot {
-    /// SQLite 数据库文件路径。
-    pub database_file: PathBuf,
-    /// 当前 SQLite schema 版本。
-    pub schema_version: u32,
+    /// 命令历史和命令建议 SQLite 数据库文件路径。
+    pub command_database_file: PathBuf,
+    /// 当前命令数据库 schema 版本。
+    pub command_schema_version: u32,
     /// 当前终端会话摘要。
     pub sessions: Vec<TerminalSessionSummary>,
     /// 当前应用设置。
@@ -60,14 +60,15 @@ impl DiagnosticsService {
     pub fn create_bundle(
         &self,
         paths: &KerminalPaths,
-        storage: &SqliteStore,
+        command_store: &CommandSqliteStore,
         terminals: &TerminalManager,
+        settings: AppSettings,
     ) -> AppResult<DiagnosticBundle> {
         let snapshot = DiagnosticBundleSnapshot {
-            database_file: storage.database_file().to_path_buf(),
-            schema_version: storage.schema_version()?,
+            command_database_file: command_store.database_file().to_path_buf(),
+            command_schema_version: command_store.schema_version()?,
             sessions: terminals.list_sessions()?,
-            settings: storage.load_app_settings()?,
+            settings,
         };
 
         self.create_bundle_from_snapshot(paths, snapshot)
@@ -83,8 +84,8 @@ impl DiagnosticsService {
         fs::create_dir_all(&paths.diagnostics)?;
 
         let DiagnosticBundleSnapshot {
-            database_file,
-            schema_version,
+            command_database_file,
+            command_schema_version,
             sessions,
             settings,
         } = snapshot;
@@ -92,21 +93,25 @@ impl DiagnosticsService {
         let created_at = unix_timestamp_string();
         let file_name = format!("diagnostics-{}-{}.json", created_at, safe_id_suffix(&id));
         let path = paths.diagnostics.join(&file_name);
+        let app_log_file = paths.app_log_file();
+        let app_log_file_size = file_size(&app_log_file);
         let sections = vec![
             "app".to_owned(),
             "environment".to_owned(),
             "runtimeHealth".to_owned(),
             "paths".to_owned(),
-            "database".to_owned(),
+            "logs".to_owned(),
+            "commandDatabase".to_owned(),
             "settings".to_owned(),
             "terminalSessions".to_owned(),
         ];
-        let runtime_health = self.runtime_health_for_database_file(paths, &database_file)?;
+        let runtime_health =
+            self.runtime_health_for_command_database_file(paths, &command_database_file)?;
         let running_sessions = sessions
             .iter()
             .filter(|session| matches!(session.status, TerminalSessionStatus::Running))
             .count();
-        let database_file_size = file_size(&database_file);
+        let command_database_file_size = file_size(&command_database_file);
 
         let payload = json!({
             "schema": DIAGNOSTIC_SCHEMA,
@@ -124,14 +129,23 @@ impl DiagnosticsService {
             "runtimeHealth": runtime_health,
             "paths": {
                 "root": path_string(&paths.root),
-                "databaseFile": path_string(&database_file),
+                "commandDatabaseFile": path_string(&command_database_file),
+                "appLogFile": path_string(&app_log_file),
                 "logs": path_string(&paths.logs),
                 "cache": path_string(&paths.cache),
                 "diagnostics": path_string(&paths.diagnostics),
             },
-            "database": {
-                "schemaVersion": schema_version,
-                "fileSizeBytes": database_file_size,
+            "logs": {
+                "directory": path_string(&paths.logs),
+                "activeFile": path_string(&app_log_file),
+                "activeFileSizeBytes": app_log_file_size,
+                "maxFileSizeBytes": APP_LOG_MAX_FILE_SIZE_BYTES,
+                "rotationKeepFiles": APP_LOG_ROTATION_KEEP_FILES,
+                "contentIncluded": false,
+            },
+            "commandDatabase": {
+                "schemaVersion": command_schema_version,
+                "fileSizeBytes": command_database_file_size,
             },
             "settings": {
                 "themeMode": settings.theme_mode,
@@ -143,12 +157,6 @@ impl DiagnosticsService {
                     "scrollback": settings.terminal.scrollback,
                 },
                 "keybindingCount": settings.keybindings.len(),
-                "ai": {
-                    "contextMaxOutputBytes": settings.ai.context_max_output_bytes,
-                    "includeCommandHistory": settings.ai.include_command_history,
-                    "requireRemoteApproval": settings.ai.require_remote_approval,
-                    "allowDestructiveTools": settings.ai.allow_destructive_tools,
-                },
             },
             "terminalSessions": {
                 "total": sessions.len(),
@@ -162,6 +170,7 @@ impl DiagnosticsService {
                 "rawTerminalOutputIncluded": false,
                 "commandHistoryIncluded": false,
                 "credentialValuesIncluded": false,
+                "logContentIncluded": false,
             },
             "sections": sections.clone(),
         });
@@ -185,16 +194,16 @@ impl DiagnosticsService {
     pub fn runtime_health(
         &self,
         paths: &KerminalPaths,
-        storage: &SqliteStore,
+        command_store: &CommandSqliteStore,
     ) -> AppResult<RuntimeHealthSnapshot> {
-        self.runtime_health_for_database_file(paths, storage.database_file())
+        self.runtime_health_for_command_database_file(paths, command_store.database_file())
     }
 
-    /// 采集当前 Kerminal 进程和本机资源，并使用指定数据库路径生成存储摘要。
-    pub fn runtime_health_for_database_file(
+    /// 采集当前 Kerminal 进程和本机资源，并使用指定命令数据库路径生成存储摘要。
+    pub fn runtime_health_for_command_database_file(
         &self,
         paths: &KerminalPaths,
-        database_file: &Path,
+        command_database_file: &Path,
     ) -> AppResult<RuntimeHealthSnapshot> {
         paths.ensure_directories()?;
 
@@ -221,6 +230,8 @@ impl DiagnosticsService {
         })?;
         let disk_usage = process.disk_usage();
 
+        let app_log_file = paths.app_log_file();
+
         Ok(RuntimeHealthSnapshot {
             captured_at: unix_timestamp_string(),
             process: RuntimeProcessHealth {
@@ -241,8 +252,12 @@ impl DiagnosticsService {
                 source: "sysinfo".to_owned(),
             },
             storage: RuntimeStorageHealth {
-                database_file: path_string(database_file),
-                database_file_size_bytes: file_size(database_file),
+                app_log_file: path_string(&app_log_file),
+                app_log_file_size_bytes: file_size(&app_log_file),
+                app_log_max_file_size_bytes: APP_LOG_MAX_FILE_SIZE_BYTES,
+                app_log_rotation_keep_files: APP_LOG_ROTATION_KEEP_FILES,
+                command_database_file: path_string(command_database_file),
+                command_database_file_size_bytes: file_size(command_database_file),
                 diagnostics: path_string(&paths.diagnostics),
                 logs: path_string(&paths.logs),
                 root: path_string(&paths.root),
@@ -273,6 +288,16 @@ impl DiagnosticsService {
                 used_swap_bytes: system.used_swap(),
             },
         })
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[doc(hidden)]
+pub mod rules {
+    use crate::models::diagnostics::RuntimeGpuHealth;
+
+    pub fn parse_windows_gpu_json(stdout: &str) -> Vec<RuntimeGpuHealth> {
+        super::parse_windows_gpu_json(stdout)
     }
 }
 
@@ -588,23 +613,4 @@ fn parse_optional_f32(value: &str) -> Option<f32> {
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 fn runtime_gpus() -> Vec<RuntimeGpuHealth> {
     Vec::new()
-}
-
-#[cfg(all(test, target_os = "windows"))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_windows_gpu_json_keeps_usage_and_dedicated_memory() {
-        let gpus = parse_windows_gpu_json(
-            r#"[{"Name":"NVIDIA GeForce RTX 4060","AdapterCompatibility":"NVIDIA","DriverVersion":"31.0.15","AdapterRAM":8589934592,"UtilizationPercent":42.25,"DedicatedUsageBytes":2147483648}]"#,
-        );
-
-        assert_eq!(gpus.len(), 1);
-        assert_eq!(gpus[0].name, "NVIDIA GeForce RTX 4060");
-        assert_eq!(gpus[0].vendor.as_deref(), Some("NVIDIA"));
-        assert_eq!(gpus[0].memory_total_bytes, Some(8_589_934_592));
-        assert_eq!(gpus[0].memory_used_bytes, Some(2_147_483_648));
-        assert_eq!(gpus[0].utilization_percent, Some(42.3));
-    }
 }

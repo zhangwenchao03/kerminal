@@ -22,7 +22,7 @@ pub fn ssh_create_session(
     state
         .ssh_terminals()
         .create_session(
-            state.storage(),
+            state.remote_hosts(),
             state.paths(),
             state.terminals(),
             request,

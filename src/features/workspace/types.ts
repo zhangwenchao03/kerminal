@@ -1,5 +1,6 @@
 import type { RemoteTargetRef } from "../../lib/targetModel";
 import type { SshOptions } from "../../lib/remoteHostApi";
+import type { TmuxPaneBinding } from "../../lib/tmuxApi";
 
 export type MachineStatus = "online" | "offline" | "warning";
 
@@ -121,6 +122,8 @@ export function isSftpTransferWorkspaceTab(
 }
 
 export type TerminalSplitDirection = "horizontal" | "vertical";
+export type TerminalSplitPlacement = "after" | "before";
+export type TerminalSplitLayoutSizes = Record<string, number>;
 
 export type TerminalLayoutNode =
   | {
@@ -132,6 +135,7 @@ export type TerminalLayoutNode =
       id: string;
       direction: TerminalSplitDirection;
       children: TerminalLayoutNode[];
+      sizes?: TerminalSplitLayoutSizes;
     };
 
 export interface TerminalPane {
@@ -149,6 +153,8 @@ export interface TerminalPane {
   cwd?: string;
   currentCwd?: string;
   env?: Record<string, string>;
+  remoteCommand?: string;
+  tmuxBinding?: TmuxPaneBinding;
   prompt: string;
   status: MachineStatus;
   latencyMs?: number;
@@ -157,10 +163,11 @@ export interface TerminalPane {
 }
 
 export const toolIds = [
-  "ai",
+  "agentLauncher",
   "system",
   "sftp",
   "ports",
+  "tmux",
   "snippets",
   "logs",
   "settings",

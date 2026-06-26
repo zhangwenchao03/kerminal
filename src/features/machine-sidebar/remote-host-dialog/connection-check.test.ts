@@ -144,26 +144,20 @@ describe("evaluateConnectionCheck", () => {
     });
   });
 
-  it("checks Docker host and container selection", () => {
+  it("routes the legacy Docker check to host-context guidance", () => {
     expect(
       evaluateConnectionCheck(
         baseInput({
+          dockerContainerId: "",
           dockerHostId: "",
           mode: "docker",
           selectedProtocolLabel: "Docker",
         }),
       ),
-    ).toEqual({ error: "请选择一个已有 SSH 主机。", ok: false });
-
-    expect(
-      evaluateConnectionCheck(
-        baseInput({
-          dockerContainerId: "",
-          mode: "docker",
-          selectedProtocolLabel: "Docker",
-        }),
-      ),
-    ).toEqual({ error: "请选择一个容器。", ok: false });
+    ).toEqual({
+      ok: true,
+      statusMessage: "容器现在从左侧 SSH 主机右键菜单进入。",
+    });
   });
 
   it("uses protocol-specific validators for RDP and Serial", () => {

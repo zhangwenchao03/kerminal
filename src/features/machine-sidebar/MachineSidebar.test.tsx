@@ -10,7 +10,7 @@ import {
   rdpSidebarGroups,
   remoteSidebarGroups,
   terminalTransportSidebarGroups,
-} from "./MachineSidebar.testSupport";
+} from "./__tests__/support/MachineSidebar.testSupport";
 
 describe("MachineSidebar", () => {
   afterEach(() => {
@@ -160,6 +160,32 @@ describe("MachineSidebar", () => {
     await user.click(screen.getByRole("button", { name: /PowerShell/i }));
 
     expect(onSelectMachine).toHaveBeenCalledWith("local-powershell");
+  });
+
+  it("dispatches every local machine double click to open a terminal", async () => {
+    const user = userEvent.setup();
+    const onOpenLocalTerminal = vi.fn();
+    const onSelectMachine = vi.fn();
+
+    render(
+      <MachineSidebar
+        groups={localSidebarGroups}
+        onOpenLocalTerminal={onOpenLocalTerminal}
+        onSearchChange={vi.fn()}
+        onSelectMachine={onSelectMachine}
+        search=""
+        selectedMachineId=""
+      />,
+    );
+
+    const localMachine = screen.getByRole("button", { name: /PowerShell/i });
+    await user.dblClick(localMachine);
+    await user.dblClick(localMachine);
+
+    expect(onSelectMachine).toHaveBeenCalledWith("local-powershell");
+    expect(onOpenLocalTerminal).toHaveBeenCalledTimes(2);
+    expect(onOpenLocalTerminal).toHaveBeenNthCalledWith(1, "local-powershell");
+    expect(onOpenLocalTerminal).toHaveBeenNthCalledWith(2, "local-powershell");
   });
 
   it("opens settings from the lower-left control", async () => {
@@ -508,6 +534,7 @@ describe("MachineSidebar", () => {
     const onDeleteMachine = vi.fn();
     const onDuplicateMachine = vi.fn();
     const onEditMachine = vi.fn();
+    const onOpenHostContainers = vi.fn();
     const onOpenSftp = vi.fn();
     const onOpenSshTerminal = vi.fn();
     const onOpenSftpTransferWorkbench = vi.fn();
@@ -519,6 +546,7 @@ describe("MachineSidebar", () => {
         onDeleteMachine={onDeleteMachine}
         onDuplicateMachine={onDuplicateMachine}
         onEditMachine={onEditMachine}
+        onOpenHostContainers={onOpenHostContainers}
         onOpenSftp={onOpenSftp}
         onOpenSshTerminal={onOpenSshTerminal}
         onOpenSftpTransferWorkbench={onOpenSftpTransferWorkbench}
@@ -544,6 +572,11 @@ describe("MachineSidebar", () => {
     await user.click(screen.getByRole("menuitem", { name: "打开 SSH 终端" }));
 
     expect(onOpenSshTerminal).toHaveBeenCalledWith("ubuntu-dev");
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /ubuntu-dev/i }));
+    await user.click(screen.getByRole("menuitem", { name: "容器" }));
+
+    expect(onOpenHostContainers).toHaveBeenCalledWith("ubuntu-dev");
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /ubuntu-dev/i }));
     await user.click(screen.getByRole("menuitem", { name: "打开 SFTP" }));
@@ -817,6 +850,7 @@ describe("MachineSidebar", () => {
     render(
       <MachineSidebar
         groups={containerSidebarGroups}
+        onOpenContainerDetails={vi.fn()}
         onOpenSftp={vi.fn()}
         onOpenSftpTransferWorkbench={vi.fn()}
         onSearchChange={vi.fn()}
@@ -828,10 +862,35 @@ describe("MachineSidebar", () => {
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /api/i }));
 
+    expect(screen.getByRole("menuitem", { name: "详情" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "打开 SFTP" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "容器" })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("menuitem", { name: "新建传输 Tab" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("opens Docker container details from the right-click menu", async () => {
+    const user = userEvent.setup();
+    const onOpenContainerDetails = vi.fn();
+
+    render(
+      <MachineSidebar
+        groups={containerSidebarGroups}
+        onOpenContainerDetails={onOpenContainerDetails}
+        onSearchChange={vi.fn()}
+        onSelectMachine={vi.fn()}
+        search=""
+        selectedMachineId="docker:ubuntu-dev:c0ffee1234567890"
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /api/i }));
+    await user.click(screen.getByRole("menuitem", { name: "详情" }));
+
+    expect(onOpenContainerDetails).toHaveBeenCalledWith(
+      "docker:ubuntu-dev:c0ffee1234567890",
+    );
   });
 
   it("opens local machine actions without creating a duplicate local session", async () => {

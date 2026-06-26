@@ -15,7 +15,7 @@ fn remote_path_suggestions_use_cached_sftp_listing() {
     let suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "cd co".to_owned(),
@@ -65,7 +65,7 @@ fn remote_path_suggestions_escape_unquoted_names_with_spaces() {
     let suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "cd My".to_owned(),
@@ -104,7 +104,7 @@ fn remote_command_suggestions_use_cached_path_commands() {
     let suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "gi".to_owned(),
@@ -139,7 +139,7 @@ fn remote_command_suggestions_include_posix_builtins_without_path_commands() {
     let suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "c".to_owned(),
@@ -188,7 +188,7 @@ fn remote_command_builtins_survive_noisy_capped_path_cache() {
     let cd_suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "c".to_owned(),
@@ -220,7 +220,7 @@ fn remote_command_builtins_survive_noisy_capped_path_cache() {
     let umask_suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "umas".to_owned(),
@@ -265,7 +265,7 @@ fn remote_history_suggestions_restore_from_persistent_cache() {
     let cache_only_suggestions = CommandSuggestionService::new();
     let suggestions = cache_only_suggestions
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "kubectl ".to_owned(),
@@ -308,7 +308,7 @@ fn remote_command_suggestions_do_not_apply_to_argument_position() {
     let suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "git ch".to_owned(),
@@ -346,7 +346,7 @@ fn git_suggestions_use_cached_refs_for_checkout() {
     let suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "git checkout fe".to_owned(),
@@ -397,7 +397,7 @@ fn git_suggestions_use_remote_position_for_pull() {
     let suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "git pull or".to_owned(),
@@ -450,7 +450,7 @@ fn provider_cache_survives_app_state_reopen() {
     let remote_command_suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "gi".to_owned(),
@@ -472,7 +472,7 @@ fn provider_cache_survives_app_state_reopen() {
     let remote_path_suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "cd co".to_owned(),
@@ -494,7 +494,7 @@ fn provider_cache_survives_app_state_reopen() {
     let git_suggestions = state
         .command_suggestions()
         .list_suggestions(
-            state.storage(),
+            state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
                 input: "git checkout fe".to_owned(),

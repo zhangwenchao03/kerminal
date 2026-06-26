@@ -15,6 +15,7 @@ pub struct TerminalCreateRequest {
     #[serde(default)]
     pub args: Vec<String>,
     /// 进程工作目录；为空时继承应用进程工作目录。
+    #[serde(default)]
     pub cwd: Option<String>,
     /// 初始列数。
     pub cols: u16,
@@ -26,22 +27,6 @@ pub struct TerminalCreateRequest {
     /// 后端为会话创建的临时文件，关闭或读线程退出时清理；不参与 IPC。
     #[serde(skip)]
     pub cleanup_paths: Vec<PathBuf>,
-    /// 后端内部的一次性敏感输入自动响应；不参与 IPC，避免前端注入 secret。
-    #[serde(skip)]
-    pub secret_input_response: Option<TerminalSecretInputResponse>,
-}
-
-/// 后端内部的敏感输入自动响应配置。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TerminalSecretInputResponse {
-    /// 输出中触发自动响应的提示文本片段，大小写不敏感。
-    pub prompt_markers: Vec<String>,
-    /// 要写入 PTY 的敏感内容，不包含回车。
-    pub response: String,
-    /// 如果远端异常回显敏感内容，输出事件、快照和日志中要精确替换的值。
-    pub redact_values: Vec<String>,
-    /// 最多自动响应次数，SSH 密码默认 1 次。
-    pub max_responses: u8,
 }
 
 /// 后端内部的多敏感输入自动响应计划。
@@ -65,14 +50,6 @@ impl TerminalSecretInputPlan {
     }
 }
 
-impl From<TerminalSecretInputResponse> for TerminalSecretInputPlan {
-    fn from(response: TerminalSecretInputResponse) -> Self {
-        Self {
-            entries: vec![TerminalSecretInputEntry::from(response)],
-        }
-    }
-}
-
 /// 后端内部的单个敏感输入自动响应条目。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalSecretInputEntry {
@@ -90,19 +67,6 @@ pub struct TerminalSecretInputEntry {
     pub max_responses: usize,
 }
 
-impl From<TerminalSecretInputResponse> for TerminalSecretInputEntry {
-    fn from(response: TerminalSecretInputResponse) -> Self {
-        Self {
-            id: "legacy-secret".to_owned(),
-            label: "secret".to_owned(),
-            prompt_markers: response.prompt_markers,
-            response: response.response,
-            redact_values: response.redact_values,
-            max_responses: usize::from(response.max_responses),
-        }
-    }
-}
-
 fn push_unique_redact_value(values: &mut Vec<String>, value: &str) {
     if value.is_empty() || values.iter().any(|existing| existing == value) {
         return;
@@ -116,6 +80,12 @@ fn push_unique_redact_value(values: &mut Vec<String>, value: &str) {
 pub struct SshTerminalCreateRequest {
     /// 远程主机配置 id。
     pub host_id: String,
+    /// 可选远程初始工作目录；为空时使用远程登录 shell 默认目录。
+    #[serde(default)]
+    pub cwd: Option<String>,
+    /// 可选远端启动命令；为空时进入远端登录 shell。
+    #[serde(default)]
+    pub remote_command: Option<String>,
     /// 初始列数。
     pub cols: u16,
     /// 初始行数。
@@ -156,7 +126,6 @@ impl Default for TerminalCreateRequest {
             rows: 24,
             env: HashMap::new(),
             cleanup_paths: Vec::new(),
-            secret_input_response: None,
         }
     }
 }
@@ -299,7 +268,7 @@ pub fn docker_container_terminal_target_ref(host_id: &str, container_id: &str) -
     format!("dockerContainer:{}:{}", host_id.trim(), container_id.trim())
 }
 
-/// 终端最近输出快照，用于 AI 上下文预览和 Kerminal Agent 输入。
+/// 终端最近输出快照，用于外部 Agent / MCP 上下文预览。
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalOutputSnapshot {

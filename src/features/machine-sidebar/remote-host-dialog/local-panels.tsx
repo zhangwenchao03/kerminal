@@ -179,8 +179,8 @@ export function LocalPropertiesPanel({
           <Monitor className="mt-0.5 h-4 w-4 text-sky-500 dark:text-sky-300" />
           <p className="min-w-0 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
             {editing
-              ? "确认后会保存到左侧本地终端卡片；已打开的会话不会被强制重启。"
-              : "不填写启动覆盖项时，确认后会使用当前默认终端 profile 创建本地会话。"}
+              ? "保存到左侧本地终端；已打开会话不重启。"
+              : "留空则使用默认终端 profile。"}
           </p>
         </div>
       </div>

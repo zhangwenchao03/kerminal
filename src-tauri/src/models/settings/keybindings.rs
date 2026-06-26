@@ -98,9 +98,9 @@ pub fn default_keybindings() -> Vec<KeybindingSetting> {
             KeybindingScope::Workspace,
         ),
         keybinding(
-            "tool.ai",
-            "打开 Kerminal Agent",
-            "打开 Kerminal Agent 工具窗口，参考 IDEA Alt/Cmd+数字切换工具窗口。",
+            "tool.agentLauncher",
+            "打开 Agent Launcher",
+            "打开 Agent Launcher 工具窗口，参考 IDEA Alt/Cmd+数字切换工具窗口。",
             "Alt+2",
             "Alt+2",
             "Cmd+2",
@@ -145,7 +145,7 @@ pub fn default_keybindings() -> Vec<KeybindingSetting> {
         keybinding(
             "tool.logs",
             "打开日志",
-            "打开日志工具窗口，快速查看会话和 AI 审计记录。",
+            "打开日志工具窗口，快速查看会话和操作审计记录。",
             "Alt+7",
             "Alt+7",
             "Cmd+7",

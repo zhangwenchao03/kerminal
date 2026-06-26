@@ -16,12 +16,12 @@ describe("TerminalEmptyState", () => {
   it("keeps workspace actions hidden even when handlers are available", () => {
     const onCreateTerminal = vi.fn();
     const onOpenConnection = vi.fn();
-    const onOpenAiTool = vi.fn();
+    const onOpenAgentTool = vi.fn();
 
     render(
       <TerminalEmptyState
         onCreateTerminal={onCreateTerminal}
-        onOpenAiTool={onOpenAiTool}
+        onOpenAgentTool={onOpenAgentTool}
         onOpenConnection={onOpenConnection}
       />,
     );
@@ -30,11 +30,11 @@ describe("TerminalEmptyState", () => {
     expect(screen.queryByRole("button", { name: "本地终端" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加连接" })).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "打开 AI 面板" }),
+      screen.queryByRole("button", { name: "打开 Agent 面板" }),
     ).not.toBeInTheDocument();
 
     expect(onCreateTerminal).not.toHaveBeenCalled();
     expect(onOpenConnection).not.toHaveBeenCalled();
-    expect(onOpenAiTool).not.toHaveBeenCalled();
+    expect(onOpenAgentTool).not.toHaveBeenCalled();
   });
 });

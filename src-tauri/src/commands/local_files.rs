@@ -472,9 +472,3 @@ fn reject_directory_tree_symlinks(directory: &Path) -> Result<(), String> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod local_files_audit_tests;
-
-#[cfg(test)]
-mod local_files_write_tests;

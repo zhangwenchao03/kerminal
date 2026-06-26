@@ -9,6 +9,7 @@ lerna-debug.log*
 
 # Build and smoke artifacts
 /target/
+/src-tauri/target*/
 /src-tauri/target-port-forward-worker/
 
 node_modules

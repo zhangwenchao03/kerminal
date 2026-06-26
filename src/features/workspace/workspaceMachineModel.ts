@@ -186,6 +186,7 @@ export function profileToLocalMachine(profile: TerminalProfile): Machine {
     kind: "local",
     name: profile.name,
     profileId: profile.id,
+    remoteGroupId: profile.sidebarGroupId,
     shell: profile.shell,
     sortOrder: profile.sortOrder,
     status: "offline",
@@ -230,7 +231,7 @@ export function syncLocalSidebarMachines(
         }
         return {
           ...profileToLocalMachine(profile),
-          remoteGroupId: machine.remoteGroupId,
+          remoteGroupId: profile.sidebarGroupId ?? machine.remoteGroupId,
         };
       }),
     }))
@@ -238,6 +239,14 @@ export function syncLocalSidebarMachines(
       (group) =>
         group.id !== UNGROUPED_REMOTE_HOST_GROUP_ID || group.machines.length > 0,
     );
+}
+
+export function sidebarMachinesFromProfiles(profiles: TerminalProfile[]) {
+  return profiles
+    .filter(
+      (profile) => profile.sidebarGroupId && isPersistedLocalProfile(profile),
+    )
+    .map(profileToLocalMachine);
 }
 
 export function collectPersistentSidebarMachines(groups: MachineGroup[]) {

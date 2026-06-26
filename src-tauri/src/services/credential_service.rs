@@ -58,11 +58,6 @@ impl CredentialService {
         Self { vault }
     }
 
-    /// 生成 LLM API key 的稳定凭据引用。
-    pub fn llm_api_key_ref(provider_id: &str) -> String {
-        format!("credential:llm/{provider_id}/api-key")
-    }
-
     /// 保存 secret。
     pub fn set_secret(&self, credential_ref: &str, secret: &str) -> AppResult<()> {
         validate_credential_ref(credential_ref)?;

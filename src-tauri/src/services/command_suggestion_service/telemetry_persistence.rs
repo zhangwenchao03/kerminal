@@ -1,7 +1,7 @@
 use super::*;
 
 pub(super) fn persisted_telemetry_summary(
-    storage: &SqliteStore,
+    storage: &CommandSqliteStore,
     generated_at: SystemTime,
 ) -> AppResult<CommandSuggestionTelemetrySummary> {
     let rows = storage.command_suggestion_telemetry_rows()?;
@@ -81,7 +81,7 @@ pub(super) fn telemetry_from_persisted_row(
 }
 
 pub(super) fn persist_telemetry_update(
-    storage: Option<&SqliteStore>,
+    storage: Option<&CommandSqliteStore>,
     update: CommandSuggestionTelemetryUpdate,
 ) {
     let Some(storage) = storage else {

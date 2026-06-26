@@ -1,15 +1,12 @@
 import type { AppSettings, ResolvedTheme } from "../settingsModel";
-import type { McpGatewayManifest } from "../../tool-panel/toolRegistryModel";
 
 export type SettingsSaveState = "idle" | "saving" | "saved" | "error";
-export type McpManifestLoadState = "idle" | "loading" | "error";
 export type McpHttpServerLoadState = "idle" | "loading" | "error";
 export type SuggestionTelemetryLoadState = "idle" | "loading" | "error";
 export type SuggestionCleanupState = "idle" | "running" | "done" | "error";
-export type McpCopyTarget = "endpoint" | "config";
-export type McpTransportDefinition = McpGatewayManifest["transports"][number];
 
 export interface SettingsToolContentProps {
+  externalChangeNotice?: string | null;
   initialSectionId?: SettingsSectionId;
   resolvedTheme?: ResolvedTheme;
   settings: AppSettings;
@@ -20,7 +17,7 @@ export interface SettingsToolContentProps {
 
 export type SettingsSectionId =
   | "settings-appearance"
-  | "settings-ai"
+  | "settings-desktop"
   | "settings-mcp"
   | "settings-sftp"
   | "settings-terminal"
@@ -35,5 +32,9 @@ export type VisibleSettingsSectionId = Exclude<
 export function visibleSettingsSectionId(
   sectionId: SettingsSectionId,
 ): VisibleSettingsSectionId {
-  return sectionId === "settings-terminal" ? "settings-appearance" : sectionId;
+  if (sectionId === "settings-terminal") {
+    return "settings-appearance";
+  }
+
+  return sectionId;
 }

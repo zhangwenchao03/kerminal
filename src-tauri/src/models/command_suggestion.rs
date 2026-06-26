@@ -22,8 +22,6 @@ pub enum SuggestionProviderKind {
     Git,
     /// 离线 CLI specs provider。
     Spec,
-    /// 可选 AI provider。
-    Ai,
 }
 
 impl SuggestionProviderKind {
@@ -35,7 +33,6 @@ impl SuggestionProviderKind {
             Self::RemoteCommand => "remoteCommand",
             Self::Git => "git",
             Self::Spec => "spec",
-            Self::Ai => "ai",
         }
     }
 }
@@ -50,7 +47,6 @@ impl TryFrom<&str> for SuggestionProviderKind {
             "remoteCommand" => Ok(Self::RemoteCommand),
             "git" => Ok(Self::Git),
             "spec" => Ok(Self::Spec),
-            "ai" => Ok(Self::Ai),
             _ => Err(format!("未知命令建议 provider: {value}")),
         }
     }

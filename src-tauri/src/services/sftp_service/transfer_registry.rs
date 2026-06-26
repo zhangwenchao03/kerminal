@@ -34,7 +34,6 @@ impl SftpService {
     }
 
     /// 取消传输任务，并向当前窗口推送状态更新。
-    #[cfg(not(test))]
     pub fn cancel_transfer_for_window(
         &self,
         request: SftpTransferCancelRequest,
@@ -106,7 +105,10 @@ impl SftpService {
     }
 }
 
-fn transfer_matches_scope(summary: &SftpTransferSummary, view_scope: Option<&str>) -> bool {
+pub(super) fn transfer_matches_scope(
+    summary: &SftpTransferSummary,
+    view_scope: Option<&str>,
+) -> bool {
     view_scope
         .map(|scope| summary.view_scope.as_deref() == Some(scope))
         .unwrap_or(true)

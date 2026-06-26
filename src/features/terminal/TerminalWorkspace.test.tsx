@@ -23,8 +23,9 @@ import {
   mixedSplitPanes,
   mixedSplitTabs,
   sftpTransferTab,
+  terminalMachineGroups,
   workspaceProps,
-} from "./TerminalWorkspace.testSupport";
+} from "./__tests__/support/TerminalWorkspace.testSupport";
 
 const xtermPaneMockState = vi.hoisted(() => ({
   mountedPaneIds: [] as string[],
@@ -32,6 +33,42 @@ const xtermPaneMockState = vi.hoisted(() => ({
   shouldThrow: false,
   unmountedPaneIds: [] as string[],
 }));
+
+const resizableMockState = vi.hoisted(() => ({
+  groups: [] as Array<{
+    defaultLayout?: Record<string, number>;
+    id?: string;
+    onLayoutChanged?: (layout: Record<string, number>) => void;
+  }>,
+}));
+
+function mockTabListMetrics({
+  clientWidth,
+  scrollWidth,
+}: {
+  clientWidth: number;
+  scrollWidth: number;
+}) {
+  const clientWidthSpy = vi
+    .spyOn(HTMLElement.prototype, "clientWidth", "get")
+    .mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute("aria-label") === "终端标签栏"
+        ? clientWidth
+        : 0;
+    });
+  const scrollWidthSpy = vi
+    .spyOn(HTMLElement.prototype, "scrollWidth", "get")
+    .mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute("aria-label") === "终端标签栏"
+        ? scrollWidth
+        : 0;
+    });
+
+  return () => {
+    clientWidthSpy.mockRestore();
+    scrollWidthSpy.mockRestore();
+  };
+}
 
 vi.mock("./XtermPane", async () => {
   const React = await vi.importActual<typeof import("react")>("react");
@@ -81,8 +118,23 @@ vi.mock("../../components/ui/resizable", () => ({
   ResizablePanel: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
-  ResizablePanelGroup: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
+  ResizablePanelGroup: ({
+    children,
+    defaultLayout,
+    id,
+    onLayoutChanged,
+  }: {
+    children: ReactNode;
+    defaultLayout?: Record<string, number>;
+    id?: string;
+    onLayoutChanged?: (layout: Record<string, number>) => void;
+  }) => (
+    resizableMockState.groups.push({ defaultLayout, id, onLayoutChanged }),
+    (
+      <div data-default-layout={JSON.stringify(defaultLayout ?? null)} data-panel-group-id={id}>
+        {children}
+      </div>
+    )
   ),
 }));
 
@@ -96,6 +148,7 @@ describe("TerminalWorkspace", () => {
     xtermPaneMockState.renderCount = 0;
     xtermPaneMockState.shouldThrow = false;
     xtermPaneMockState.unmountedPaneIds = [];
+    resizableMockState.groups = [];
   });
 
   it("renders the active local tab and terminal pane", () => {
@@ -115,7 +168,13 @@ describe("TerminalWorkspace", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByLabelText("终端配置")).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "左右分屏" }),
+      screen.getByRole("button", { name: "本地 PowerShell 左右分屏" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "本地 PowerShell 上下分屏" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "关闭当前分屏" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByLabelText("批量命令")).not.toBeInTheDocument();
   });
@@ -140,9 +199,14 @@ describe("TerminalWorkspace", () => {
       machineId: baseTerminalTab.machineId,
       title: baseTerminalTab.title,
     };
-    const { rerender } = render(<TerminalWorkspace {...workspaceProps()} />);
+    const { container, rerender } = render(
+      <TerminalWorkspace {...workspaceProps()} />,
+    );
 
     expect(xtermPaneMockState.mountedPaneIds).toEqual([baseTerminalPane.id]);
+    expect(
+      container.querySelector('[data-panel-group-id="tab-local"]'),
+    ).toBeInTheDocument();
 
     rerender(
       <TerminalWorkspace
@@ -157,9 +221,149 @@ describe("TerminalWorkspace", () => {
     expect(xtermPaneMockState.unmountedPaneIds).not.toContain(
       baseTerminalPane.id,
     );
+    expect(
+      container.querySelector('[data-panel-group-id="tab-local"]'),
+    ).toBeInTheDocument();
+    expect(
+      container.querySelector('[data-panel-group-id="split-local-1"]'),
+    ).not.toBeInTheDocument();
     expect(xtermPaneMockState.mountedPaneIds).toEqual([
       baseTerminalPane.id,
       nextPane.id,
+    ]);
+  });
+
+  it("restores persisted split sizes and reports resize changes", () => {
+    const onSplitLayoutSizesChange = vi.fn();
+    const rightPane: TerminalPane = {
+      ...baseTerminalPane,
+      id: "pane-local-2",
+      title: "右侧分屏",
+    };
+    const splitTab: TerminalTab = {
+      id: baseTerminalTab.id,
+      layout: {
+        children: [
+          { paneId: baseTerminalPane.id, type: "pane" },
+          { paneId: rightPane.id, type: "pane" },
+        ],
+        direction: "horizontal",
+        id: "split-local-1",
+        sizes: {
+          [baseTerminalPane.id]: 31.25,
+          [rightPane.id]: 68.75,
+        },
+        type: "split",
+      },
+      machineId: baseTerminalTab.machineId,
+      title: baseTerminalTab.title,
+    };
+
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          focusedPaneId: rightPane.id,
+          onSplitLayoutSizesChange,
+          panes: [baseTerminalPane, rightPane],
+          tabs: [splitTab],
+        })}
+      />,
+    );
+
+    const rootGroup = resizableMockState.groups.find(
+      (group) => group.id === "tab-local",
+    );
+    expect(rootGroup?.defaultLayout).toEqual({
+      [baseTerminalPane.id]: 31.25,
+      [rightPane.id]: 68.75,
+    });
+
+    rootGroup?.onLayoutChanged?.({
+      [baseTerminalPane.id]: 42,
+      [rightPane.id]: 58,
+    });
+
+    expect(onSplitLayoutSizesChange).toHaveBeenCalledWith("split-local-1", {
+      [baseTerminalPane.id]: 42,
+      [rightPane.id]: 58,
+    });
+  });
+
+  it("keeps an existing terminal pane mounted when a nested split is added", () => {
+    const rightPane: TerminalPane = {
+      ...baseTerminalPane,
+      id: "pane-local-2",
+      title: "右侧分屏",
+    };
+    const bottomPane: TerminalPane = {
+      ...baseTerminalPane,
+      id: "pane-local-3",
+      title: "下方分屏",
+    };
+    const splitTab: TerminalTab = {
+      id: baseTerminalTab.id,
+      layout: {
+        children: [
+          { paneId: baseTerminalPane.id, type: "pane" },
+          { paneId: rightPane.id, type: "pane" },
+        ],
+        direction: "horizontal",
+        id: "split-local-1",
+        type: "split",
+      },
+      machineId: baseTerminalTab.machineId,
+      title: baseTerminalTab.title,
+    };
+    const nestedSplitTab: TerminalTab = {
+      ...splitTab,
+      layout: {
+        children: [
+          { paneId: baseTerminalPane.id, type: "pane" },
+          {
+            children: [
+              { paneId: rightPane.id, type: "pane" },
+              { paneId: bottomPane.id, type: "pane" },
+            ],
+            direction: "vertical",
+            id: "split-local-2",
+            type: "split",
+          },
+        ],
+        direction: "horizontal",
+        id: "split-local-1",
+        type: "split",
+      },
+    };
+    const { rerender } = render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          focusedPaneId: rightPane.id,
+          panes: [baseTerminalPane, rightPane],
+          tabs: [splitTab],
+        })}
+      />,
+    );
+
+    expect(xtermPaneMockState.mountedPaneIds).toEqual([
+      baseTerminalPane.id,
+      rightPane.id,
+    ]);
+
+    rerender(
+      <TerminalWorkspace
+        {...workspaceProps({
+          focusedPaneId: bottomPane.id,
+          panes: [baseTerminalPane, rightPane, bottomPane],
+          tabs: [nestedSplitTab],
+        })}
+      />,
+    );
+
+    expect(xtermPaneMockState.unmountedPaneIds).not.toContain(rightPane.id);
+    expect(xtermPaneMockState.mountedPaneIds).toEqual([
+      baseTerminalPane.id,
+      rightPane.id,
+      bottomPane.id,
     ]);
   });
 
@@ -186,7 +390,7 @@ describe("TerminalWorkspace", () => {
       screen.queryByRole("button", { name: "本地终端" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "打开 AI 面板" }),
+      screen.queryByRole("button", { name: "打开 Agent 面板" }),
     ).not.toBeInTheDocument();
   });
 
@@ -228,29 +432,38 @@ describe("TerminalWorkspace", () => {
 
     const workspace = screen.getByRole("main", { name: "终端工作区" });
     expect(workspace).toHaveAttribute("data-density", "compact");
-    expect(workspace.firstElementChild).toHaveClass("h-10");
+    expect(workspace.firstElementChild).toHaveClass("h-9");
   });
 
   it("does not reserve right titlebar control space when controls are on macOS left", () => {
-    render(
-      <TerminalWorkspace
-        {...workspaceProps({
-          activeTabId: "tab-many-1",
-          reserveRightTitleBarControls: false,
-          tabs: manyTerminalTabs,
-        })}
-      />,
-    );
-
-    const tabBar = screen.getByLabelText("终端标签栏").parentElement;
-    const overviewButton = screen.getByRole("button", {
-      name: "查看所有标签",
+    const restoreTabListMetrics = mockTabListMetrics({
+      clientWidth: 320,
+      scrollWidth: 960,
     });
 
-    expect(tabBar).toHaveClass("pr-2");
-    expect(tabBar).not.toHaveClass("pr-40");
-    expect(overviewButton).toHaveClass("right-3");
-    expect(overviewButton).not.toHaveClass("right-28");
+    try {
+      render(
+        <TerminalWorkspace
+          {...workspaceProps({
+            activeTabId: "tab-many-1",
+            reserveRightTitleBarControls: false,
+            tabs: manyTerminalTabs,
+          })}
+        />,
+      );
+
+      const tabBar = screen.getByLabelText("终端标签栏").parentElement;
+      const overviewButton = screen.getByRole("button", {
+        name: "查看所有标签",
+      });
+
+      expect(tabBar).toHaveClass("pr-2");
+      expect(tabBar).not.toHaveClass("pr-40");
+      expect(overviewButton).toHaveClass("right-3");
+      expect(overviewButton).not.toHaveClass("right-28");
+    } finally {
+      restoreTabListMetrics();
+    }
   });
 
   it("isolates terminal pane render errors and opens logs from the fallback", async () => {
@@ -452,32 +665,106 @@ describe("TerminalWorkspace", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("hides the all-tabs menu trigger when many tabs still fit", () => {
+    const restoreTabListMetrics = mockTabListMetrics({
+      clientWidth: 1280,
+      scrollWidth: 960,
+    });
+
+    try {
+      render(
+        <TerminalWorkspace
+          {...workspaceProps({
+            activeTabId: "tab-many-1",
+            tabs: manyTerminalTabs,
+          })}
+        />,
+      );
+
+      expect(
+        screen.queryByRole("button", { name: "查看所有标签" }),
+      ).not.toBeInTheDocument();
+    } finally {
+      restoreTabListMetrics();
+    }
+  });
+
   it("opens an all-tabs menu from the right side of the tab bar", async () => {
     const user = userEvent.setup();
     const onSelectTab = vi.fn();
+    const restoreTabListMetrics = mockTabListMetrics({
+      clientWidth: 260,
+      scrollWidth: 620,
+    });
 
-    render(
-      <TerminalWorkspace
-        {...workspaceProps({
-          activeTabId: "tab-many-1",
-          onSelectTab,
-          tabs: manyTerminalTabs,
-        })}
-      />,
-    );
+    try {
+      render(
+        <TerminalWorkspace
+          {...workspaceProps({
+            activeTabId: "tab-dev-a",
+            focusedPaneId: "pane-dev-a",
+            onSelectTab,
+            panes: groupedSshPanes,
+            tabs: groupedSshTabs,
+          })}
+        />,
+      );
 
-    await user.click(screen.getByRole("button", { name: "查看所有标签" }));
+      await user.click(screen.getByRole("button", { name: "查看所有标签" }));
 
-    const menu = screen.getByRole("menu", { name: "所有终端标签" });
-    expect(within(menu).getByText("12 个")).toBeInTheDocument();
-    await user.click(
-      within(menu).getByRole("menuitem", { name: /远程会话 7/ }),
-    );
+      const menu = screen.getByRole("menu", { name: "所有终端标签" });
+      expect(within(menu).getByText("2 组 / 3 个")).toBeInTheDocument();
+      const devGroup = within(menu).getByRole("group", {
+        name: "dev.internal 标签组",
+      });
+      expect(within(devGroup).getByText("2 个")).toBeInTheDocument();
+      expect(
+        within(menu).getByRole("group", { name: "lab.internal 标签组" }),
+      ).toBeInTheDocument();
 
-    expect(onSelectTab).toHaveBeenCalledWith("tab-many-7");
-    expect(
-      screen.queryByRole("menu", { name: "所有终端标签" }),
-    ).not.toBeInTheDocument();
+      await user.click(
+        within(devGroup).getByRole("menuitem", { name: /dev.internal #2/ }),
+      );
+
+      expect(onSelectTab).toHaveBeenCalledWith("tab-dev-b");
+      expect(
+        screen.queryByRole("menu", { name: "所有终端标签" }),
+      ).not.toBeInTheDocument();
+    } finally {
+      restoreTabListMetrics();
+    }
+  });
+
+  it("lets the all-tabs menu follow the document theme", async () => {
+    const user = userEvent.setup();
+    const restoreTabListMetrics = mockTabListMetrics({
+      clientWidth: 260,
+      scrollWidth: 620,
+    });
+    document.documentElement.classList.add("dark");
+
+    try {
+      render(
+        <TerminalWorkspace
+          {...workspaceProps({
+            activeTabId: "tab-dev-a",
+            focusedPaneId: "pane-dev-a",
+            panes: groupedSshPanes,
+            tabs: groupedSshTabs,
+          })}
+        />,
+      );
+
+      await user.click(screen.getByRole("button", { name: "查看所有标签" }));
+
+      const menu = screen.getByRole("menu", { name: "所有终端标签" });
+      expect(document.documentElement).toHaveClass("dark");
+      expect(menu).not.toHaveClass("dark");
+      document.documentElement.classList.remove("dark");
+      expect(menu).not.toHaveClass("dark");
+    } finally {
+      restoreTabListMetrics();
+    }
   });
 
   it("groups repeated host tabs and lets the group collapse", async () => {
@@ -745,11 +1032,103 @@ describe("TerminalWorkspace", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "左右分屏" }));
-    await user.click(screen.getByRole("button", { name: "上下分屏" }));
+    const focusedPane = within(screen.getByLabelText("本地批量 终端分屏"));
 
-    expect(onSplitPane).toHaveBeenNthCalledWith(1, "horizontal");
-    expect(onSplitPane).toHaveBeenNthCalledWith(2, "vertical");
+    await user.click(
+      focusedPane.getByRole("button", { name: "本地批量 左右分屏" }),
+    );
+    await user.click(
+      focusedPane.getByRole("button", { name: "本地批量 上下分屏" }),
+    );
+
+    expect(onSplitPane).toHaveBeenNthCalledWith(1, "horizontal", {
+      sourcePaneId: "pane-batch-local",
+    });
+    expect(onSplitPane).toHaveBeenNthCalledWith(2, "vertical", {
+      sourcePaneId: "pane-batch-local",
+    });
+  });
+
+  it("can split the active tab to a selected host from the split button menu", async () => {
+    const user = userEvent.setup();
+    const onSplitPane = vi.fn();
+
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          activeTabId: "tab-batch",
+          focusedPaneId: "pane-batch-local",
+          machineGroups: terminalMachineGroups,
+          onSplitPane,
+          panes: batchPanes,
+          tabs: batchTabs,
+        })}
+      />,
+    );
+
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: "本地批量 左右分屏" }),
+    );
+    const splitTargetMenu = screen.getByRole("menu", {
+      name: "左右分屏目标选择",
+    });
+
+    expect(
+      within(splitTargetMenu).getByRole("menuitem", { name: /生产 SSH/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(splitTargetMenu).queryByRole("menuitem", { name: /办公桌面/ }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      within(splitTargetMenu).getByRole("menuitem", { name: /生产 SSH/ }),
+    );
+
+    expect(onSplitPane).toHaveBeenCalledWith("horizontal", {
+      sourcePaneId: "pane-batch-local",
+      targetMachineId: "host-prod",
+    });
+    expect(
+      screen.queryByRole("menu", { name: "左右分屏目标选择" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("filters split host choices from the split target menu", async () => {
+    const user = userEvent.setup();
+    const onSplitPane = vi.fn();
+
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          activeTabId: "tab-batch",
+          focusedPaneId: "pane-batch-local",
+          machineGroups: terminalMachineGroups,
+          onSplitPane,
+          panes: batchPanes,
+          tabs: batchTabs,
+        })}
+      />,
+    );
+
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: "本地批量 上下分屏" }),
+    );
+    const splitTargetMenu = screen.getByRole("menu", {
+      name: "上下分屏目标选择",
+    });
+    await user.type(
+      within(splitTargetMenu).getByLabelText("搜索分屏主机"),
+      "serial",
+    );
+
+    await user.click(
+      within(splitTargetMenu).getByRole("menuitem", { name: /串口控制台/ }),
+    );
+
+    expect(onSplitPane).toHaveBeenCalledWith("vertical", {
+      sourcePaneId: "pane-batch-local",
+      targetMachineId: "serial-console",
+    });
   });
 
   it("passes context menu workspace actions to terminal panes", async () => {
@@ -770,7 +1149,9 @@ describe("TerminalWorkspace", () => {
     await user.click(screen.getByRole("button", { name: "测试左右分屏" }));
 
     expect(onOpenLogs).toHaveBeenCalled();
-    expect(onSplitPane).toHaveBeenCalledWith("horizontal");
+    expect(onSplitPane).toHaveBeenCalledWith("horizontal", {
+      sourcePaneId: "pane-local",
+    });
   });
 
   it("requests closing the focused pane", async () => {
@@ -789,7 +1170,7 @@ describe("TerminalWorkspace", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "关闭当前分屏" }));
+    await user.click(screen.getByRole("button", { name: "关闭 本地批量 分屏" }));
 
     expect(onClosePane).toHaveBeenCalledWith("pane-batch-local");
   });

@@ -8,6 +8,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type Dispatch,
   type SetStateAction,
@@ -21,6 +22,11 @@ import { mergeTransferSnapshot, replaceTransferQueue } from "./sftpTransferModel
 
 const SFTP_TRANSFER_UPDATED_EVENT = "sftp-transfer-updated";
 const DEFAULT_POLL_INTERVAL_MS = 900;
+const DEFAULT_EVENT_HEALTHY_POLL_INTERVAL_MS = 10_000;
+const DEFAULT_EVENT_HEALTH_WINDOW_MS = 30_000;
+const DEFAULT_HIDDEN_POLL_INTERVAL_MS = 10_000;
+
+export type VisibilityChangeSubscriber = (onChange: () => void) => () => void;
 
 export type SftpTransferUpdateListener = (
   onUpdate: (transfer: SftpTransferSummary) => void,
@@ -29,8 +35,13 @@ export type SftpTransferUpdateListener = (
 export interface UseSftpTransferQueueSyncOptions {
   active: boolean;
   eventChannelAvailable?: () => boolean;
+  documentVisible?: () => boolean;
+  eventHealthyPollIntervalMs?: number;
+  eventHealthWindowMs?: number;
+  hiddenPollIntervalMs?: number;
   listenToUpdates?: SftpTransferUpdateListener;
   pollIntervalMs?: number;
+  subscribeToVisibilityChange?: VisibilityChangeSubscriber;
   viewScope?: string | null;
 }
 
@@ -44,6 +55,17 @@ export interface SftpTransferQueueSyncState {
 }
 
 const defaultEventChannelAvailable = () => isTauri();
+const defaultDocumentVisible = () =>
+  typeof document === "undefined" || document.visibilityState === "visible";
+const defaultSubscribeToVisibilityChange: VisibilityChangeSubscriber = (
+  onChange,
+) => {
+  if (typeof document === "undefined") {
+    return () => {};
+  }
+  document.addEventListener("visibilitychange", onChange);
+  return () => document.removeEventListener("visibilitychange", onChange);
+};
 
 const defaultListenToUpdates: SftpTransferUpdateListener = async (onUpdate) => {
   const { listen } = await import("@tauri-apps/api/event");
@@ -54,13 +76,20 @@ const defaultListenToUpdates: SftpTransferUpdateListener = async (onUpdate) => {
 
 export function useSftpTransferQueueSync({
   active,
+  documentVisible = defaultDocumentVisible,
+  eventHealthyPollIntervalMs = DEFAULT_EVENT_HEALTHY_POLL_INTERVAL_MS,
+  eventHealthWindowMs = DEFAULT_EVENT_HEALTH_WINDOW_MS,
   eventChannelAvailable = defaultEventChannelAvailable,
+  hiddenPollIntervalMs = DEFAULT_HIDDEN_POLL_INTERVAL_MS,
   listenToUpdates = defaultListenToUpdates,
   pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
+  subscribeToVisibilityChange = defaultSubscribeToVisibilityChange,
   viewScope,
 }: UseSftpTransferQueueSyncOptions): SftpTransferQueueSyncState {
   const [transfers, setTransfers] = useState<SftpTransferSummary[]>([]);
   const [queueError, setQueueError] = useState<string | null>(null);
+  const lastEventAtRef = useRef<number | null>(null);
+  const reschedulePollRef = useRef<(() => void) | null>(null);
 
   const clearQueueError = useCallback(() => {
     setQueueError(null);
@@ -87,6 +116,9 @@ export function useSftpTransferQueueSync({
     }
 
     let disposed = false;
+    let pollInFlight = false;
+    let timeoutId: number | undefined;
+    lastEventAtRef.current = null;
     const loadTransfers = async () => {
       try {
         const nextTransfers = await listSftpTransfers(
@@ -103,13 +135,81 @@ export function useSftpTransferQueueSync({
       }
     };
 
-    void loadTransfers();
-    const intervalId = window.setInterval(loadTransfers, pollIntervalMs);
+    const clearNextPoll = () => {
+      if (timeoutId === undefined) {
+        return;
+      }
+      window.clearTimeout(timeoutId);
+      timeoutId = undefined;
+    };
+    const nextPollDelay = () =>
+      sftpTransferQueuePollDelay({
+        documentVisible: documentVisible(),
+        eventChannelHealthy:
+          eventChannelAvailable() &&
+          sftpTransferEventChannelHealthy({
+            eventHealthWindowMs,
+            lastEventAt: lastEventAtRef.current,
+            now: Date.now(),
+          }),
+        eventHealthyPollIntervalMs,
+        hiddenPollIntervalMs,
+        pollIntervalMs,
+      });
+    const scheduleNextPoll = () => {
+      if (disposed) {
+        return;
+      }
+      clearNextPoll();
+      timeoutId = window.setTimeout(() => {
+        timeoutId = undefined;
+        void runPoll();
+      }, nextPollDelay());
+    };
+    const runPoll = async () => {
+      if (pollInFlight) {
+        return;
+      }
+      pollInFlight = true;
+      try {
+        await loadTransfers();
+      } finally {
+        pollInFlight = false;
+        scheduleNextPoll();
+      }
+    };
+    const handleVisibilityChange = () => {
+      clearNextPoll();
+      if (documentVisible()) {
+        void runPoll();
+      } else {
+        scheduleNextPoll();
+      }
+    };
+
+    reschedulePollRef.current = scheduleNextPoll;
+    void runPoll();
+    const unsubscribeVisibility =
+      subscribeToVisibilityChange(handleVisibilityChange);
     return () => {
       disposed = true;
-      window.clearInterval(intervalId);
+      clearNextPoll();
+      unsubscribeVisibility();
+      if (reschedulePollRef.current === scheduleNextPoll) {
+        reschedulePollRef.current = null;
+      }
     };
-  }, [active, pollIntervalMs, viewScope]);
+  }, [
+    active,
+    documentVisible,
+    eventChannelAvailable,
+    eventHealthyPollIntervalMs,
+    eventHealthWindowMs,
+    hiddenPollIntervalMs,
+    pollIntervalMs,
+    subscribeToVisibilityChange,
+    viewScope,
+  ]);
 
   useEffect(() => {
     if (!active || !eventChannelAvailable()) {
@@ -125,7 +225,9 @@ export function useSftpTransferQueueSync({
       if (!sftpTransferMatchesViewScope(transfer, viewScope)) {
         return;
       }
+      lastEventAtRef.current = Date.now();
       setTransfers((current) => mergeTransferSnapshot(current, transfer));
+      reschedulePollRef.current?.();
     })
       .then((nextUnlisten) => {
         if (disposed) {
@@ -156,4 +258,43 @@ export function useSftpTransferQueueSync({
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+export function sftpTransferEventChannelHealthy({
+  eventHealthWindowMs,
+  lastEventAt,
+  now,
+}: {
+  eventHealthWindowMs: number;
+  lastEventAt: number | null;
+  now: number;
+}) {
+  return (
+    lastEventAt !== null &&
+    eventHealthWindowMs > 0 &&
+    now - lastEventAt <= eventHealthWindowMs
+  );
+}
+
+export function sftpTransferQueuePollDelay({
+  documentVisible,
+  eventChannelHealthy,
+  eventHealthyPollIntervalMs,
+  hiddenPollIntervalMs,
+  pollIntervalMs,
+}: {
+  documentVisible: boolean;
+  eventChannelHealthy: boolean;
+  eventHealthyPollIntervalMs: number;
+  hiddenPollIntervalMs: number;
+  pollIntervalMs: number;
+}) {
+  const fallbackDelay = Math.max(1, pollIntervalMs);
+  const visibleDelay = eventChannelHealthy
+    ? Math.max(fallbackDelay, eventHealthyPollIntervalMs)
+    : fallbackDelay;
+
+  return documentVisible
+    ? visibleDelay
+    : Math.max(visibleDelay, hiddenPollIntervalMs);
 }

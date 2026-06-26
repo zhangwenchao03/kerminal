@@ -6,6 +6,7 @@ use std::{
     collections::{HashMap, HashSet},
     env,
     path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use uuid::Uuid;
@@ -16,27 +17,33 @@ use crate::{
         ProfileCreateRequest, ProfileUpdateRequest, ShellCandidate, ShellCandidateSource,
         TerminalProfile,
     },
-    storage::{profiles::TerminalProfileWrite, SqliteStore},
+    storage::{config_file_store::ConfigFileStore, file_store::FileStoreError},
 };
 
 /// 终端 Profile 业务入口。
-#[derive(Debug, Default)]
-pub struct ProfileService;
+#[derive(Debug, Clone)]
+pub struct ProfileService {
+    config: ConfigFileStore,
+}
 
 impl ProfileService {
     /// 创建 Profile 服务。
-    pub fn new() -> Self {
-        Self
+    pub fn new(config: ConfigFileStore) -> Self {
+        Self { config }
     }
 
     /// 初始化默认终端 Profile。
-    pub fn ensure_seed_profiles(&self, storage: &SqliteStore) -> AppResult<()> {
-        if storage.terminal_profile_count()? > 0 {
+    pub fn ensure_seed_profiles(&self) -> AppResult<()> {
+        if !self.list_profiles()?.is_empty() {
             return Ok(());
         }
 
-        for (index, candidate) in self.detect_shells().into_iter().enumerate() {
-            let profile = TerminalProfileWrite {
+        let timestamp = timestamp_now();
+        let profiles = self
+            .detect_shells()
+            .into_iter()
+            .enumerate()
+            .map(|(index, candidate)| TerminalProfile {
                 id: format!("profile-{}", candidate.id),
                 name: candidate.name,
                 shell: candidate.shell,
@@ -44,17 +51,21 @@ impl ProfileService {
                 cwd: None,
                 env: HashMap::new(),
                 is_default: index == 0,
+                sidebar_group_id: None,
                 sort_order: ((index + 1) * 10) as i64,
-            };
-            storage.insert_terminal_profile(&profile)?;
-        }
+                created_at: timestamp.clone(),
+                updated_at: timestamp.clone(),
+            })
+            .collect::<Vec<_>>();
 
-        Ok(())
+        self.config
+            .apply_profile_change_set(&profiles, &[])
+            .map_err(config_file_error)
     }
 
     /// 列出终端 Profile。
-    pub fn list_profiles(&self, storage: &SqliteStore) -> AppResult<Vec<TerminalProfile>> {
-        storage.list_terminal_profiles()
+    pub fn list_profiles(&self) -> AppResult<Vec<TerminalProfile>> {
+        self.config.list_profiles().map_err(config_file_error)
     }
 
     /// 探测当前主机可用 shell。
@@ -63,58 +74,135 @@ impl ProfileService {
     }
 
     /// 创建终端 Profile。
-    pub fn create_profile(
-        &self,
-        storage: &SqliteStore,
-        request: ProfileCreateRequest,
-    ) -> AppResult<TerminalProfile> {
-        let count = storage.terminal_profile_count()?;
-        let profile = TerminalProfileWrite {
+    pub fn create_profile(&self, request: ProfileCreateRequest) -> AppResult<TerminalProfile> {
+        let mut profiles = self.list_profiles()?;
+        let timestamp = timestamp_now();
+        let profile = TerminalProfile {
             id: Uuid::new_v4().to_string(),
             name: normalize_required_text("Profile 名称", request.name)?,
             shell: normalize_required_text("shell", request.shell)?,
             args: request.args,
             cwd: normalize_cwd(request.cwd)?,
             env: normalize_env(request.env)?,
-            is_default: request.set_default || count == 0,
-            sort_order: storage.next_profile_sort_order()?,
+            is_default: request.set_default || profiles.is_empty(),
+            sidebar_group_id: normalize_sidebar_group_id(request.sidebar_group_id, None),
+            sort_order: next_profile_sort_order(&profiles),
+            created_at: timestamp.clone(),
+            updated_at: timestamp.clone(),
         };
 
-        storage.insert_terminal_profile(&profile)
+        let mut writes = Vec::new();
+        if profile.is_default {
+            clear_default_profiles(&mut profiles, &timestamp, &mut writes);
+        }
+        writes.push(profile.clone());
+        self.config
+            .apply_profile_change_set(&writes, &[])
+            .map_err(config_file_error)?;
+        Ok(profile)
     }
 
     /// 更新终端 Profile。
-    pub fn update_profile(
-        &self,
-        storage: &SqliteStore,
-        request: ProfileUpdateRequest,
-    ) -> AppResult<TerminalProfile> {
-        let existing = storage
-            .terminal_profile_by_id(&request.id)?
+    pub fn update_profile(&self, request: ProfileUpdateRequest) -> AppResult<TerminalProfile> {
+        let mut profiles = self.list_profiles()?;
+        let index = profiles
+            .iter()
+            .position(|profile| profile.id == request.id)
             .ok_or_else(|| AppError::NotFound(format!("终端 Profile 不存在: {}", request.id)))?;
-        let profile = TerminalProfileWrite {
-            id: request.id,
+        let existing = profiles[index].clone();
+        let timestamp = timestamp_now();
+        let profile = TerminalProfile {
+            id: request.id.clone(),
             name: normalize_required_text("Profile 名称", request.name)?,
             shell: normalize_required_text("shell", request.shell)?,
             args: request.args,
             cwd: normalize_cwd(request.cwd)?,
             env: normalize_env(request.env)?,
             is_default: request.set_default || existing.is_default,
+            sidebar_group_id: normalize_sidebar_group_id(
+                request.sidebar_group_id,
+                existing.sidebar_group_id,
+            ),
             sort_order: request.sort_order,
+            created_at: existing.created_at,
+            updated_at: timestamp.clone(),
         };
 
-        storage.update_terminal_profile(&profile)
+        let mut writes = Vec::new();
+        if profile.is_default {
+            clear_default_profiles(&mut profiles, &timestamp, &mut writes);
+        }
+        writes.push(profile.clone());
+        self.config
+            .apply_profile_change_set(&writes, &[])
+            .map_err(config_file_error)?;
+        Ok(profile)
     }
 
     /// 删除终端 Profile；至少保留一个本地 profile。
-    pub fn delete_profile(&self, storage: &SqliteStore, profile_id: &str) -> AppResult<bool> {
-        if storage.terminal_profile_count()? <= 1 {
+    pub fn delete_profile(&self, profile_id: &str) -> AppResult<bool> {
+        let mut profiles = self.list_profiles()?;
+        if profiles.len() <= 1 {
             return Err(AppError::InvalidInput(
                 "至少需要保留一个本地终端 Profile".to_owned(),
             ));
         }
 
-        storage.delete_terminal_profile(profile_id)
+        let Some(index) = profiles.iter().position(|profile| profile.id == profile_id) else {
+            return Ok(false);
+        };
+        let removed = profiles.remove(index);
+        let timestamp = timestamp_now();
+        let mut writes = Vec::new();
+        if removed.is_default && !profiles.iter().any(|profile| profile.is_default) {
+            if let Some(next_default) = profiles.first_mut() {
+                next_default.is_default = true;
+                next_default.updated_at = timestamp;
+                writes.push(next_default.clone());
+            }
+        }
+
+        self.config
+            .apply_profile_change_set(&writes, &[removed.id])
+            .map_err(config_file_error)?;
+        Ok(true)
+    }
+}
+
+fn clear_default_profiles(
+    profiles: &mut [TerminalProfile],
+    timestamp: &str,
+    writes: &mut Vec<TerminalProfile>,
+) {
+    for profile in profiles {
+        if profile.is_default {
+            profile.is_default = false;
+            profile.updated_at = timestamp.to_owned();
+            writes.push(profile.clone());
+        }
+    }
+}
+
+fn next_profile_sort_order(profiles: &[TerminalProfile]) -> i64 {
+    profiles
+        .iter()
+        .map(|profile| profile.sort_order)
+        .max()
+        .unwrap_or(0)
+        + 10
+}
+
+fn timestamp_now() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs().to_string())
+        .unwrap_or_else(|_| "0".to_owned())
+}
+
+fn config_file_error(error: FileStoreError) -> AppError {
+    match error {
+        FileStoreError::Io(error) => AppError::Io(error),
+        other => AppError::InvalidInput(other.to_string()),
     }
 }
 
@@ -277,6 +365,23 @@ fn normalize_env(env: HashMap<String, String>) -> AppResult<HashMap<String, Stri
         normalized.insert(key, value);
     }
     Ok(normalized)
+}
+
+fn normalize_sidebar_group_id(
+    sidebar_group_id: Option<String>,
+    existing: Option<String>,
+) -> Option<String> {
+    match sidebar_group_id {
+        Some(value) => {
+            let value = value.trim();
+            if value.is_empty() {
+                None
+            } else {
+                Some(value.to_owned())
+            }
+        }
+        None => existing,
+    }
 }
 
 fn path_to_string(path: PathBuf) -> String {
@@ -459,32 +564,5 @@ fn platform_fallback_shell() -> ShellDefinition {
         args: &[],
         common_paths: &[],
         probe_paths: &[],
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn detect_shells_returns_at_least_one_candidate() {
-        let candidates = detect_shell_candidates();
-
-        assert!(!candidates.is_empty());
-        assert_eq!(
-            candidates
-                .iter()
-                .filter(|candidate| candidate.is_default)
-                .count(),
-            1
-        );
-    }
-
-    #[test]
-    fn normalize_env_rejects_invalid_keys() {
-        let error = normalize_env(HashMap::from([("BAD=KEY".to_owned(), "1".to_owned())]))
-            .expect_err("reject invalid key");
-
-        assert!(matches!(error, AppError::InvalidInput(_)));
     }
 }

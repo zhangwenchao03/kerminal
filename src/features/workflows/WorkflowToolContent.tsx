@@ -7,7 +7,7 @@ import {
   Tag,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Select } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
@@ -35,6 +35,7 @@ import {
 
 interface WorkflowToolContentProps {
   activeTabId?: string;
+  configRevision?: number;
   focusedPane?: TerminalPane;
 }
 
@@ -96,9 +97,14 @@ function workflowNoticeClassName(
 
 export function WorkflowToolContent({
   activeTabId,
+  configRevision,
   focusedPane,
 }: WorkflowToolContentProps) {
   const [description, setDescription] = useState("本地项目常用检查链路");
+  const [configDraftNotice, setConfigDraftNotice] = useState<string | null>(
+    null,
+  );
+  const [draftTouched, setDraftTouched] = useState(false);
   const [draftSteps, setDraftSteps] = useState<DraftWorkflowStep[]>(
     initialDraftSteps,
   );
@@ -111,6 +117,7 @@ export function WorkflowToolContent({
   const [title, setTitle] = useState("本地质量检查");
   const [workflowScope, setWorkflowScope] = useState<WorkflowScope>("local");
   const [workflows, setWorkflows] = useState<CommandWorkflow[]>([]);
+  const lastConfigRevisionRef = useRef<number | undefined>(configRevision);
   const hasActiveWorkflowFilters = Boolean(query.trim() || filterScope);
   const workflowEmptyMessage = hasActiveWorkflowFilters
     ? "当前筛选下没有命令工作流。"
@@ -134,7 +141,34 @@ export function WorkflowToolContent({
 
   useEffect(() => {
     void loadWorkflows();
-  }, [loadWorkflows]);
+  }, [configRevision, loadWorkflows]);
+
+  useEffect(() => {
+    if (configRevision === undefined) {
+      return;
+    }
+    if (lastConfigRevisionRef.current === undefined) {
+      lastConfigRevisionRef.current = configRevision;
+      return;
+    }
+    if (lastConfigRevisionRef.current === configRevision) {
+      return;
+    }
+    lastConfigRevisionRef.current = configRevision;
+    if (draftTouched || runState) {
+      setConfigDraftNotice("cfg: workflows reloaded; draft kept");
+    }
+  }, [configRevision, draftTouched, runState]);
+
+  useEffect(() => {
+    if (!configDraftNotice) {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => {
+      setConfigDraftNotice(null);
+    }, 3500);
+    return () => window.clearTimeout(timer);
+  }, [configDraftNotice]);
 
   const createCurrentWorkflow = async () => {
     const steps = draftSteps
@@ -166,6 +200,7 @@ export function WorkflowToolContent({
         title,
       });
       await loadWorkflows();
+      setDraftTouched(false);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError));
     } finally {
@@ -193,12 +228,14 @@ export function WorkflowToolContent({
     stepId: string,
     patch: Partial<Omit<DraftWorkflowStep, "id">>,
   ) => {
+    setDraftTouched(true);
     setDraftSteps((current) =>
       current.map((step) => (step.id === stepId ? { ...step, ...patch } : step)),
     );
   };
 
   const addDraftStep = () => {
+    setDraftTouched(true);
     setDraftSteps((current) => [
       ...current,
       {
@@ -213,6 +250,7 @@ export function WorkflowToolContent({
   };
 
   const removeDraftStep = (stepId: string) => {
+    setDraftTouched(true);
     setDraftSteps((current) =>
       current.length <= 1 ? current : current.filter((step) => step.id !== stepId),
     );
@@ -295,7 +333,7 @@ export function WorkflowToolContent({
           工作流
         </div>
         <p className="mt-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-          保存多步命令模板，按确认点逐步发送到当前终端分屏。适合拉代码、构建、测试和远程巡检。
+          保存多步命令，按确认点发送到当前分屏。
         </p>
 
         <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
@@ -329,14 +367,20 @@ export function WorkflowToolContent({
           <input
             aria-label="工作流标题"
             className={workflowInputClassName}
-            onChange={(event) => setTitle(event.target.value)}
+            onChange={(event) => {
+              setDraftTouched(true);
+              setTitle(event.target.value);
+            }}
             placeholder="工作流标题"
             value={title}
           />
           <input
             aria-label="工作流说明"
             className={workflowInputClassName}
-            onChange={(event) => setDescription(event.target.value)}
+            onChange={(event) => {
+              setDraftTouched(true);
+              setDescription(event.target.value);
+            }}
             placeholder="说明，可选"
             value={description}
           />
@@ -344,15 +388,19 @@ export function WorkflowToolContent({
             <input
               aria-label="工作流标签"
               className={workflowInputClassName}
-              onChange={(event) => setTags(event.target.value)}
+              onChange={(event) => {
+                setDraftTouched(true);
+                setTags(event.target.value);
+              }}
               placeholder="标签，用英文逗号分隔"
               value={tags}
             />
             <Select
               aria-label="工作流默认作用域"
-              onValueChange={(value) =>
-                setWorkflowScope(value as WorkflowScope)
-              }
+              onValueChange={(value) => {
+                setDraftTouched(true);
+                setWorkflowScope(value as WorkflowScope);
+              }}
               options={workflowScopeOptions}
               value={workflowScope}
             />
@@ -394,6 +442,14 @@ export function WorkflowToolContent({
           role="alert"
         >
           {error}
+        </div>
+      ) : null}
+      {configDraftNotice ? (
+        <div
+          className={workflowNoticeClassName("warning", "rounded-2xl p-3 font-mono text-xs")}
+          role="status"
+        >
+          {configDraftNotice}
         </div>
       ) : null}
 

@@ -1,13 +1,15 @@
 import type { ISearchOptions } from "@xterm/addon-search";
 import type { Terminal as XtermTerminal } from "@xterm/xterm";
 import type { TerminalCreateRequest } from "../../lib/terminalApi";
-import { writeTerminal } from "../../lib/terminalApi";
+import {
+  readTerminalClipboardText,
+  writeTerminal,
+} from "../../lib/terminalApi";
 import type {
   CommandSuggestionCandidate,
   CommandSuggestionProvider,
 } from "../../lib/terminalSuggestionApi";
 import type { TerminalAppearance } from "../settings/settingsModel";
-import type { TerminalContextMenuPosition } from "./TerminalContextMenu";
 import type { TerminalCommandBlockView } from "./terminalCommandBlocks";
 import {
   applyTerminalInputData,
@@ -35,6 +37,9 @@ const CURRENT_DIR_OSC_PREFIX = "\u001b]1337;CurrentDir=";
 const OSC_BEL_TERMINATOR = "\u0007";
 const OSC_ST_TERMINATOR = "\u001b\\";
 const MAX_CWD_TRACKING_BUFFER_LENGTH = 4096;
+const MAX_PROMPT_CWD_LINE_LENGTH = 512;
+const MIN_TERMINAL_SESSION_COLS = 20;
+const MIN_TERMINAL_SESSION_ROWS = 8;
 
 export function terminalSuggestionProviders({
   hasSshRemote,
@@ -443,15 +448,17 @@ export function collectCurrentDirOscSequences(
   currentBuffer: string,
   data: string,
 ): { buffer: string; paths: string[] } {
-  let buffer = limitCwdTrackingBuffer(currentBuffer + data);
+  const combinedBuffer = limitCwdTrackingBuffer(currentBuffer + data);
+  const promptState = collectCurrentDirPromptPaths(combinedBuffer);
   const paths: string[] = [];
+  let buffer = combinedBuffer;
 
   while (buffer) {
     const startIndex = buffer.indexOf(CURRENT_DIR_OSC_PREFIX);
     if (startIndex === -1) {
       return {
-        buffer: trailingPotentialCurrentDirOscPrefix(buffer),
-        paths,
+        buffer: nextCwdTrackingBuffer(combinedBuffer, promptState.buffer),
+        paths: [...paths, ...promptState.paths],
       };
     }
 
@@ -477,7 +484,7 @@ export function collectCurrentDirOscSequences(
     buffer = buffer.slice(terminator.index + terminator.length);
   }
 
-  return { buffer: "", paths };
+  return { buffer: promptState.buffer, paths: [...paths, ...promptState.paths] };
 }
 
 function findCurrentDirOscTerminator(
@@ -503,6 +510,64 @@ function sanitizeCurrentDirOscPath(path: string): string | undefined {
   return trimmed.length > MAX_CWD_TRACKING_BUFFER_LENGTH ? undefined : trimmed;
 }
 
+function collectCurrentDirPromptPaths(buffer: string): {
+  buffer: string;
+  paths: string[];
+} {
+  const paths: string[] = [];
+  const lines = stripTerminalControlsForPrompt(buffer)
+    .split(/[\r\n]+/)
+    .slice(-8);
+  for (const line of lines) {
+    const path = extractRemotePromptCwd(line);
+    if (path) {
+      paths.push(path);
+    }
+  }
+  return {
+    buffer: trailingPromptCwdBuffer(buffer),
+    paths,
+  };
+}
+
+function extractRemotePromptCwd(line: string): string | undefined {
+  const trimmed = line.trimEnd();
+  const userHostPrompt = trimmed.match(
+    /^[^\s@]+@[^:\s]+:(\/.*?)(?:\s+(?:\([^)]*\)|\[[^\]]*\]))?\s*[#$]\s*$/,
+  );
+  const bracketPrompt = trimmed.match(
+    /^\[[^\]\s@]+@[^\]\s]+\s+(\/[^\]]+?)\]\s*[#$]\s*$/,
+  );
+  return sanitizeCurrentDirOscPath(userHostPrompt?.[1] ?? bracketPrompt?.[1] ?? "");
+}
+
+function trailingPromptCwdBuffer(buffer: string): string {
+  const lineStart = Math.max(buffer.lastIndexOf("\n"), buffer.lastIndexOf("\r")) + 1;
+  const tail = buffer.slice(lineStart);
+  if (tail.length === 0 || tail.length > MAX_PROMPT_CWD_LINE_LENGTH) {
+    return "";
+  }
+  const normalizedTail = stripTerminalControlsForPrompt(tail);
+  if (extractRemotePromptCwd(normalizedTail)) {
+    return "";
+  }
+  if (
+    /^[^\s@]+@[^:\s]+:\/[^\r\n]*$/.test(normalizedTail.trimStart()) ||
+    /^\[[^\]]*@?[^\]]+\s+\/[^\]\r\n]*$/.test(normalizedTail.trimStart())
+  ) {
+    return tail;
+  }
+  return "";
+}
+
+function stripTerminalControlsForPrompt(value: string): string {
+  return value
+    .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, "")
+    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
+    .replace(/\u001b[ -/]*[@-~]/g, "")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
+}
+
 function trailingPotentialCurrentDirOscPrefix(buffer: string): string {
   const maxLength = Math.min(buffer.length, CURRENT_DIR_OSC_PREFIX.length - 1);
   for (let length = maxLength; length > 0; length -= 1) {
@@ -512,6 +577,11 @@ function trailingPotentialCurrentDirOscPrefix(buffer: string): string {
     }
   }
   return "";
+}
+
+function nextCwdTrackingBuffer(buffer: string, promptBuffer: string): string {
+  const oscBuffer = trailingPotentialCurrentDirOscPrefix(buffer);
+  return promptBuffer.length >= oscBuffer.length ? promptBuffer : oscBuffer;
 }
 
 function limitCwdTrackingBuffer(buffer: string): string {
@@ -540,9 +610,10 @@ export function stateLabel(state: ConnectionState) {
 export function buildTerminalCreateRequest(
   request: TerminalCreateRequest,
 ): TerminalCreateRequest {
+  const size = normalizeTerminalSessionSize(request);
   return {
-    cols: request.cols,
-    rows: request.rows,
+    cols: size.cols,
+    rows: size.rows,
     ...(request.shell ? { shell: request.shell } : {}),
     ...(request.args && request.args.length > 0 ? { args: request.args } : {}),
     ...(request.cwd ? { cwd: request.cwd } : {}),
@@ -550,6 +621,26 @@ export function buildTerminalCreateRequest(
       ? { env: request.env }
       : {}),
   };
+}
+
+export function normalizeTerminalSessionSize({
+  cols,
+  rows,
+}: {
+  cols: number;
+  rows: number;
+}) {
+  return {
+    cols: normalizeTerminalSessionDimension(cols, MIN_TERMINAL_SESSION_COLS),
+    rows: normalizeTerminalSessionDimension(rows, MIN_TERMINAL_SESSION_ROWS),
+  };
+}
+
+function normalizeTerminalSessionDimension(value: number, minimum: number) {
+  if (!Number.isFinite(value)) {
+    return minimum;
+  }
+  return Math.max(minimum, Math.floor(value));
 }
 
 export function formatLogPath(path: string): string {
@@ -565,7 +656,7 @@ export async function pasteIntoTerminal(
   terminal: XtermTerminal | null,
   sessionId: string | null,
 ) {
-  const text = await navigator.clipboard?.readText?.();
+  const text = await readTerminalClipboardText();
   if (!text) {
     return;
   }
@@ -578,17 +669,4 @@ export async function pasteIntoTerminal(
   if (sessionId) {
     await writeTerminal(sessionId, text);
   }
-}
-
-export function clampMenuPosition(x: number, y: number): TerminalContextMenuPosition {
-  if (typeof window === "undefined") {
-    return { x, y };
-  }
-
-  const menuWidth = 208;
-  const menuHeight = 386;
-  return {
-    x: Math.max(8, Math.min(x, window.innerWidth - menuWidth - 8)),
-    y: Math.max(8, Math.min(y, window.innerHeight - menuHeight - 8)),
-  };
 }

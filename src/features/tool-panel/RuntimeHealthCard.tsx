@@ -137,7 +137,7 @@ export function RuntimeHealthCard() {
         onRefresh={() => void loadSnapshot()}
         refreshAriaLabel="刷新运行体验"
         refreshing={loading}
-        subtitle="当前应用进程、本机资源和 Kerminal 数据目录会按选定间隔自动刷新。"
+        subtitle="自动刷新本机进程、资源和数据目录。"
         title="本机运行体验"
       >
         <SystemOverviewTile
@@ -217,7 +217,7 @@ export function RuntimeHealthCard() {
               </div>
             ) : (
               <p className="kerminal-muted-surface rounded-xl px-3 py-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-                当前系统未返回可展示的 GPU。Windows 会尝试读取显卡控制器和性能计数器；受限环境、驱动不支持或无独显时可能为空。
+                未返回 GPU；受限环境、驱动不支持或无独显时可能为空。
               </p>
             )}
           </SystemMetricCard>
@@ -285,7 +285,7 @@ export function RuntimeHealthCard() {
 
           <SystemMetricCard
             expanded={expandedCards.has("storage")}
-            helper={`数据库 ${formatBytes(snapshot.storage.databaseFileSizeBytes)}`}
+            helper={`命令库 ${formatBytes(snapshot.storage.commandDatabaseFileSizeBytes)}`}
             icon={HardDrive}
             onToggle={() => toggleCard("storage")}
             title="数据目录"
@@ -293,7 +293,11 @@ export function RuntimeHealthCard() {
           >
             <SystemInfoRows>
               <SystemInfoRow label="根目录" value={snapshot.storage.root} wide />
-              <SystemInfoRow label="数据库" value={snapshot.storage.databaseFile} wide />
+              <SystemInfoRow
+                label="命令库"
+                value={snapshot.storage.commandDatabaseFile}
+                wide
+              />
               <SystemInfoRow label="日志" value={snapshot.storage.logs} wide />
               <SystemInfoRow label="诊断包" value={snapshot.storage.diagnostics} wide />
               <SystemInfoRow label="脱敏" value={snapshot.redacted ? "已启用" : "未启用"} />
@@ -405,7 +409,7 @@ function GpuDetail({ gpu, index }: { gpu: RuntimeGpuHealth; index: number }) {
         ) : null}
         {primaryPercent === undefined ? (
           <div className="kerminal-muted-surface rounded-lg px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
-            暂未采集到可绘制的 GPU 使用率或显存占用。
+            暂无 GPU 使用率或显存。
           </div>
         ) : null}
       </div>

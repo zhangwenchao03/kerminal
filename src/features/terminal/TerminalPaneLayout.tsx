@@ -4,22 +4,32 @@ import {
   ResizablePanelGroup,
 } from "../../components/ui/resizable";
 import { Fragment } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import type {
   ResolvedTheme,
   TerminalAppearance,
 } from "../settings/settingsModel";
 import type {
+  MachineGroup,
   TerminalLayoutNode,
   TerminalPane,
   TerminalSplitDirection,
 } from "../workspace/types";
 import { TerminalPaneErrorBoundary } from "./TerminalPaneErrorBoundary";
 import { TerminalPaneCard } from "./TerminalPaneCard";
+import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
 
 interface TerminalPaneLayoutProps {
+  draggingPaneId?: string;
   focusedPaneId: string;
   layout: TerminalLayoutNode;
+  machineGroups?: MachineGroup[];
+  panelGroupId?: string;
   onClosePane: (paneId: string) => void;
+  onBeginPaneDrag?: (
+    paneId: string,
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => void;
   onCurrentCwdChange?: (paneId: string, cwd: string) => void;
   onFocusPane: (paneId: string) => void;
   onOpenLogs?: () => void;
@@ -27,9 +37,19 @@ interface TerminalPaneLayoutProps {
     paneId: string,
     outputHistory: string | undefined,
   ) => void;
-  onSplitPane?: (direction: TerminalSplitDirection) => void;
+  onSplitLayoutSizesChange?: (
+    splitId: string,
+    sizes: Record<string, number>,
+  ) => void;
+  onSplitPane?: (
+    direction: TerminalSplitDirection,
+    options?: TerminalSplitPaneOptions,
+  ) => void;
   panesById: Map<string, TerminalPane>;
+  resolvePaneLines?: (paneId: string) => string[];
+  resolvePaneOutputHistory?: (paneId: string) => string | undefined;
   resolvedTheme: ResolvedTheme;
+  runtimeMount?: "inline" | "slot";
   terminalAppearance: TerminalAppearance;
 }
 
@@ -54,31 +74,47 @@ function normalizeRootLayout(
 }
 
 function TerminalPaneLayoutNode({
+  draggingPaneId,
   focusedPaneId,
   layout,
+  machineGroups,
+  panelGroupId,
+  onBeginPaneDrag,
   onClosePane,
   onCurrentCwdChange,
   onFocusPane,
   onOpenLogs,
   onOutputHistoryChange,
+  onSplitLayoutSizesChange,
   onSplitPane,
   panesById,
+  resolvePaneLines,
+  resolvePaneOutputHistory,
   resolvedTheme,
+  runtimeMount,
   terminalAppearance,
 }: TerminalPaneLayoutProps) {
   if (layout.type !== "pane") {
     return (
       <TerminalPaneLayout
         focusedPaneId={focusedPaneId}
+        draggingPaneId={draggingPaneId}
         layout={layout}
+        machineGroups={machineGroups}
+        panelGroupId={panelGroupId ?? layout.id}
+        onBeginPaneDrag={onBeginPaneDrag}
         onClosePane={onClosePane}
         onCurrentCwdChange={onCurrentCwdChange}
         onFocusPane={onFocusPane}
         onOpenLogs={onOpenLogs}
         onOutputHistoryChange={onOutputHistoryChange}
+        onSplitLayoutSizesChange={onSplitLayoutSizesChange}
         onSplitPane={onSplitPane}
         panesById={panesById}
+        resolvePaneLines={resolvePaneLines}
+        resolvePaneOutputHistory={resolvePaneOutputHistory}
         resolvedTheme={resolvedTheme}
+        runtimeMount={runtimeMount}
         terminalAppearance={terminalAppearance}
       />
     );
@@ -92,7 +128,10 @@ function TerminalPaneLayoutNode({
   return (
     <TerminalPaneErrorBoundary onOpenLogs={onOpenLogs} pane={pane}>
       <TerminalPaneCard
+        dragging={pane.id === draggingPaneId}
         focused={pane.id === focusedPaneId}
+        machineGroups={machineGroups}
+        onBeginPaneDrag={onBeginPaneDrag}
         onClosePane={onClosePane}
         onCurrentCwdChange={onCurrentCwdChange}
         onFocusPane={onFocusPane}
@@ -100,7 +139,10 @@ function TerminalPaneLayoutNode({
         onOutputHistoryChange={onOutputHistoryChange}
         onSplitPane={onSplitPane}
         pane={pane}
+        resolvePaneLines={resolvePaneLines}
+        resolvePaneOutputHistory={resolvePaneOutputHistory}
         resolvedTheme={resolvedTheme}
+        runtimeMount={runtimeMount}
         terminalAppearance={terminalAppearance}
       />
     </TerminalPaneErrorBoundary>
@@ -108,24 +150,45 @@ function TerminalPaneLayoutNode({
 }
 
 export function TerminalPaneLayout({
+  draggingPaneId,
   focusedPaneId,
   layout,
+  machineGroups,
+  panelGroupId,
+  onBeginPaneDrag,
   onClosePane,
   onCurrentCwdChange,
   onFocusPane,
   onOpenLogs,
   onOutputHistoryChange,
+  onSplitLayoutSizesChange,
   onSplitPane,
   panesById,
+  resolvePaneLines,
+  resolvePaneOutputHistory,
   resolvedTheme,
+  runtimeMount,
   terminalAppearance,
 }: TerminalPaneLayoutProps) {
   const normalizedLayout = normalizeRootLayout(layout);
+  const resolvedPanelGroupId = panelGroupId ?? normalizedLayout.id;
+  const childKeys = normalizedLayout.children.map((child) =>
+    child.type === "pane" ? child.paneId : child.id,
+  );
+  const defaultLayout = normalizedLayout.sizes
+    ? childKeys.every((key) => typeof normalizedLayout.sizes?.[key] === "number")
+      ? normalizedLayout.sizes
+      : undefined
+    : undefined;
 
   return (
     <ResizablePanelGroup
+      defaultLayout={defaultLayout}
       direction={normalizedLayout.direction}
-      id={normalizedLayout.id}
+      id={resolvedPanelGroupId}
+      onLayoutChanged={(sizes) =>
+        onSplitLayoutSizesChange?.(normalizedLayout.id, sizes)
+      }
     >
       {normalizedLayout.children.map((child, index) => {
         const childKey = child.type === "pane" ? child.paneId : child.id;
@@ -140,20 +203,29 @@ export function TerminalPaneLayout({
             ) : null}
             <ResizablePanel
               defaultSize={`${100 / normalizedLayout.children.length}%`}
+              id={childKey}
               key={childKey}
               minSize="20%"
             >
               <TerminalPaneLayoutNode
                 focusedPaneId={focusedPaneId}
+                draggingPaneId={draggingPaneId}
                 layout={child}
+                machineGroups={machineGroups}
+                panelGroupId={child.type === "split" ? child.id : undefined}
+                onBeginPaneDrag={onBeginPaneDrag}
                 onClosePane={onClosePane}
                 onCurrentCwdChange={onCurrentCwdChange}
                 onFocusPane={onFocusPane}
                 onOpenLogs={onOpenLogs}
                 onOutputHistoryChange={onOutputHistoryChange}
+                onSplitLayoutSizesChange={onSplitLayoutSizesChange}
                 onSplitPane={onSplitPane}
                 panesById={panesById}
+                resolvePaneLines={resolvePaneLines}
+                resolvePaneOutputHistory={resolvePaneOutputHistory}
                 resolvedTheme={resolvedTheme}
+                runtimeMount={runtimeMount}
                 terminalAppearance={terminalAppearance}
               />
             </ResizablePanel>

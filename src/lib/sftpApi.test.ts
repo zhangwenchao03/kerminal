@@ -689,7 +689,7 @@ describe("sftpApi", () => {
     });
 
     expect(invokeMock).not.toHaveBeenCalled();
-    expect(readme.content).toContain("这是浏览器预览模式下的远程 README.md");
+    expect(readme.content).toContain("浏览器预览内容；桌面应用会读取真实远程文件。");
     expect(log.maxBytes).toBe(256);
     expect(log.truncated).toBe(true);
     expect(log.content.length).toBe(256);
@@ -737,6 +737,6 @@ describe("sftpApi", () => {
         overwriteOnConflict: false,
         path: "/tmp/browser-editor.txt",
       }),
-    ).rejects.toThrow("远端文件已变更");
+    ).rejects.toThrow("远端已变更，请重载或覆盖。");
   });
 });

@@ -23,6 +23,8 @@ const captures = [
   { name: "kerminal-connect.png", setup: captureConnectDialog },
   { name: "kerminal-docker.png", setup: captureDockerDialog },
   { name: "kerminal-gpu.png", setup: captureServerInfo },
+  { name: "kerminal-agent.png", setup: captureAgentLauncher },
+  { name: "kerminal-tmux.png", setup: captureTmux },
   { name: "kerminal-sftp.png", setup: captureSftp },
   { name: "kerminal-settings.png", setup: captureSettings },
 ];
@@ -136,10 +138,25 @@ async function captureConnectDialog(client) {
 }
 
 async function captureDockerDialog(client) {
-  await clickTextButtonContaining(client, "Docker");
+  await pressKey(client, "Escape");
   await waitForBrowserExpression(
     client,
-    `document.body.innerText.includes("kerminal/api") && document.body.innerText.includes("postgres:16")`,
+    `!document.body.innerText.includes("新建主机")`,
+    10_000,
+  );
+  await contextClickExpression(
+    client,
+    `Array.from(document.querySelectorAll('[aria-label="主机侧边栏"] button')).find((button) => button.textContent?.includes("prod-api"))`,
+  );
+  await waitForBrowserExpression(
+    client,
+    `document.querySelector('[aria-label="主机操作菜单"]') !== null && document.body.innerText.includes("容器")`,
+    10_000,
+  );
+  await clickTextButtonContaining(client, "容器");
+  await waitForBrowserExpression(
+    client,
+    `document.body.innerText.includes("kerminal-stack") && document.body.innerText.includes("Compose YAML")`,
     20_000,
   );
 }
@@ -162,6 +179,24 @@ async function captureServerInfo(client) {
     client,
     `document.body.innerText.includes("NVIDIA RTX 4090")`,
     10_000,
+  );
+}
+
+async function captureAgentLauncher(client) {
+  await clickSelector(client, `[aria-label="打开 Agent Launcher"]`);
+  await waitForBrowserExpression(
+    client,
+    `document.querySelector('[aria-label="Open Codex"]') !== null && document.querySelector('[aria-label="Open Claude"]') !== null`,
+    30_000,
+  );
+}
+
+async function captureTmux(client) {
+  await clickSelector(client, `[aria-label="打开 tmux"]`);
+  await waitForBrowserExpression(
+    client,
+    `document.body.innerText.includes("release-watch") && document.body.innerText.includes("tmux 3.5a")`,
+    30_000,
   );
 }
 
@@ -303,7 +338,7 @@ function browserBootstrapScript() {
         machineId: "prod-api",
         mode: "ssh",
         outputHistory:
-          "deploy@prod-api:/srv/kerminal$ git status --short\r\n M src/features/tool-panel/AiToolContent.tsx\r\n M src/features/machine-sidebar/RemoteHostCreateDialog.tsx\r\ndeploy@prod-api:/srv/kerminal$ docker ps --format 'table {{.Names}}\\t{{.Status}}'\r\nNAMES        STATUS\r\napi          Up 12 minutes\r\nworker       Up 8 minutes\r\n",
+          "deploy@prod-api:/srv/kerminal$ git status --short\r\n M src/features/tool-panel/AgentLauncherToolContent.tsx\r\n M src/features/machine-sidebar/RemoteHostCreateDialog.tsx\r\ndeploy@prod-api:/srv/kerminal$ docker ps --format 'table {{.Names}}\\t{{.Status}}'\r\nNAMES        STATUS\r\napi          Up 12 minutes\r\nworker       Up 8 minutes\r\n",
         prompt: "deploy@prod-api:/srv/kerminal$",
         remoteHostId: "prod-api",
         remoteHostProduction: false,
@@ -406,6 +441,18 @@ function browserBootstrapScript() {
             case "plugin:event|listen":
               return "readme-capture-listener";
             case "plugin:event|unlisten":
+              return null;
+            case "plugin:window|is_fullscreen":
+            case "plugin:window|is_maximized":
+              return false;
+            case "plugin:window|start_dragging":
+            case "plugin:window|minimize":
+            case "plugin:window|toggle_maximize":
+            case "plugin:window|close":
+              return null;
+            case "workspace_session_load":
+              return readWorkspaceSession();
+            case "workspace_session_save":
               return null;
             case "settings_get":
               return readmeSettings();
@@ -515,7 +562,7 @@ function browserBootstrapScript() {
               queueMicrotask(() => {
                 emitTerminal(channelId, {
                   data:
-                    "deploy@prod-api:/srv/kerminal$ git status --short\\r\\n M src/features/tool-panel/AiToolContent.tsx\\r\\n M src/features/machine-sidebar/RemoteHostCreateDialog.tsx\\r\\ndeploy@prod-api:/srv/kerminal$ ",
+                    "deploy@prod-api:/srv/kerminal$ git status --short\\r\\n M src/features/tool-panel/AgentLauncherToolContent.tsx\\r\\n M src/features/machine-sidebar/RemoteHostCreateDialog.tsx\\r\\ndeploy@prod-api:/srv/kerminal$ ",
                   kind: "data",
                   sessionId: id,
                 });
@@ -607,23 +654,56 @@ function browserBootstrapScript() {
               return workflows();
             case "port_forward_list":
               return portForwards();
-            case "tool_registry_list":
-            case "tool_registry_mcp_list":
-              return [];
-            case "tool_registry_mcp_manifest":
-              return { capabilities: [], name: "Kerminal", tools: [] };
-            case "tool_registry_mcp_http_status":
-            case "tool_registry_mcp_http_start":
-            case "tool_registry_mcp_http_stop":
-              return { enabled: false, port: null, running: false };
-            case "llm_provider_list":
-              return llmProviders();
-            case "ai_conversation_list":
-            case "ai_tool_pending_list":
-            case "ai_tool_audit_list":
-              return [];
-            case "ai_conversation_slot_get":
-              return null;
+            case "get_external_agent_workspace_status":
+              return externalAgentWorkspaceStatus();
+            case "agent_session_list":
+              return agentSessions();
+            case "agent_session_create":
+              return createAgentSessionRecord(args.request);
+            case "agent_session_rebind_target":
+              return createAgentSessionRecord({
+                agentId: "codex",
+                target: args.target,
+                title: "Codex",
+              });
+            case "prepare_external_agent_workspace":
+              return prepareExternalAgentWorkspace(args.request);
+            case "tmux_probe":
+              return tmuxCapability(args.request);
+            case "tmux_list_sessions":
+              return tmuxSessions(args.request);
+            case "tmux_create_session":
+              return {
+                activityAt: Math.floor(Date.now() / 1000),
+                attached: false,
+                clients: 0,
+                createdAt: Math.floor(Date.now() / 1000),
+                currentPath: args.request?.cwd ?? "/srv/kerminal",
+                id: "$4",
+                name: args.request?.name ?? "kerminal",
+                status: "running",
+                targetRef: "ssh:prod-api",
+                windows: 1,
+              };
+            case "tmux_rename_session":
+              return {
+                ...tmuxSessions()[0],
+                id: args.request?.sessionId ?? "$0",
+                name: args.request?.name ?? "renamed",
+              };
+            case "tmux_kill_session":
+            case "tmux_detach_current":
+              return true;
+            case "mcp_http_server_status":
+            case "mcp_http_server_start":
+            case "mcp_http_server_stop":
+              return {
+                bindAddress: "127.0.0.1",
+                endpoint: null,
+                localOnly: true,
+                port: null,
+                running: false,
+              };
             case "diagnostics_runtime_health":
               return { checks: [], status: "healthy" };
             case "diagnostics_create_bundle":
@@ -633,8 +713,6 @@ function browserBootstrapScript() {
             case "file_dialog_select_local_directory":
             case "file_dialog_select_save_file":
               return null;
-            case "file_dialog_get_app_skills_directory":
-              return "C:/Users/kong/.codex/skills";
             case "file_dialog_open_local_directory":
               return null;
             default:
@@ -702,6 +780,15 @@ function browserBootstrapScript() {
             source: "commonPath",
           },
         ];
+      }
+
+      function readWorkspaceSession() {
+        const workspaceSessionOverride = localStorage.getItem(
+          "kerminal.readme.capture.session.override",
+        );
+        return JSON.parse(
+          workspaceSessionOverride ?? ${JSON.stringify(JSON.stringify(workspaceSession))},
+        );
       }
 
       function remoteHostTree() {
@@ -798,31 +885,43 @@ function browserBootstrapScript() {
       function dockerContainers(request = {}) {
         return [
           dockerContainer(request.hostId ?? "prod-api", {
+            compose: composeMetadata("kerminal-stack", "api", "1"),
             id: "c0ffee1234567890",
             image: "kerminal/api:latest",
-            name: "api",
+            name: "kerminal-stack-api-1",
             ports: ["0.0.0.0:8080->80/tcp"],
             state: "running",
             status: "running",
             statusText: "Up 12 minutes",
           }),
           dockerContainer(request.hostId ?? "prod-api", {
+            compose: composeMetadata("kerminal-stack", "worker", "1"),
             id: "badc0de22222222",
             image: "kerminal/worker:latest",
-            name: "worker",
+            name: "kerminal-stack-worker-1",
             ports: [],
             state: "running",
             status: "running",
             statusText: "Up 8 minutes",
           }),
           dockerContainer(request.hostId ?? "prod-api", {
+            compose: composeMetadata("kerminal-stack", "postgres", "1"),
             id: "deadbeef98765432",
             image: "postgres:16",
-            name: "postgres",
+            name: "kerminal-stack-postgres-1",
             ports: ["5432/tcp"],
             state: "exited",
             status: "exited",
             statusText: "Exited (0) 2 hours ago",
+          }),
+          dockerContainer(request.hostId ?? "prod-api", {
+            id: "feedface55555555",
+            image: "redis:7",
+            name: "cache-dev",
+            ports: ["6379/tcp"],
+            state: "running",
+            status: "running",
+            statusText: "Up 3 hours",
           }),
         ];
       }
@@ -837,9 +936,11 @@ function browserBootstrapScript() {
         };
         return {
           capabilities: { files: true, serverInfo: true, terminal: true },
+          compose: input.compose ?? null,
           hostId,
           id: input.id,
           image: input.image,
+          labels: input.compose?.labels ?? {},
           name: input.name,
           ports: input.ports,
           runtime: "docker",
@@ -848,6 +949,28 @@ function browserBootstrapScript() {
           status: input.status,
           statusText: input.statusText,
           target,
+        };
+      }
+
+      function composeMetadata(project, service, containerNumber) {
+        const workingDir = "/srv/kerminal";
+        const configFile = "compose.yaml";
+        return {
+          configFiles: [configFile],
+          configPaths: [workingDir + "/" + configFile],
+          containerNumber,
+          labels: {
+            "com.docker.compose.container-number": containerNumber,
+            "com.docker.compose.project": project,
+            "com.docker.compose.project.config_files": configFile,
+            "com.docker.compose.project.working_dir": workingDir,
+            "com.docker.compose.service": service,
+          },
+          oneoff: false,
+          project,
+          runtimeFamily: "dockerCompose",
+          service,
+          workingDir,
         };
       }
 
@@ -972,25 +1095,179 @@ function browserBootstrapScript() {
         ];
       }
 
-      function llmProviders() {
+      function externalAgentWorkspaceStatus() {
+        const workspaceDir = "C:/Users/kong/.kerminal";
+        const mcpEndpoint = "http://127.0.0.1:37657/mcp";
+        return {
+          agents: {
+            claude: {
+              cliCommand: "claude",
+              configPath: workspaceDir + "/.mcp.json",
+              configReady: true,
+              id: "claude",
+              installed: true,
+              statusDetail: "Claude CLI ready. Session config is generated per launch.",
+              title: "Claude",
+            },
+            codex: {
+              cliCommand: "codex",
+              configPath: workspaceDir + "/.codex/config.toml",
+              configReady: true,
+              id: "codex",
+              installed: true,
+              statusDetail: "Codex CLI ready. Kerminal MCP is session-scoped.",
+              title: "Codex",
+            },
+            custom: {
+              cliCommand: "custom",
+              configPath: "",
+              configReady: true,
+              id: "custom",
+              installed: true,
+              statusDetail: "Run a custom CLI command in a Kerminal agent session.",
+              title: "Custom",
+            },
+          },
+          mcpEndpoint,
+          mcpServerRunning: true,
+          validator: {
+            available: true,
+            command: "kerminal.config.validate",
+            detail: "Configuration validator is available through Kerminal MCP.",
+            status: "ready",
+          },
+          workspaceDir,
+        };
+      }
+
+      function agentSessions() {
+        return {
+          diagnostics: [],
+          sessions: [
+            createAgentSessionRecord({
+              agentId: "codex",
+              agentSessionId: "agent-codex-prod-api",
+              target: agentSessionTarget(),
+              title: "Codex",
+            }),
+          ],
+        };
+      }
+
+      function createAgentSessionRecord(request = {}) {
+        const agentId = request.agentId ?? "codex";
+        const sessionId =
+          request.agentSessionId ?? "agent-" + agentId + "-readme";
+        const workspaceRoot = "C:/Users/kong/.kerminal";
+        const sessionRoot = workspaceRoot + "/agents/sessions/" + sessionId;
+        const title =
+          request.title ?? (agentId === "claude" ? "Claude" : agentId === "custom" ? "Custom" : "Codex");
+        return {
+          session: {
+            agentId,
+            agentSessionId: sessionId,
+            launch: {
+              args: ["-NoExit", "-Command", agentId === "custom" ? "qwen --model code" : agentId],
+              commandLabel: agentId,
+              cwd: sessionRoot,
+              shell: "pwsh.exe",
+            },
+            sessionRoot,
+            target: request.target ?? agentSessionTarget(),
+            title,
+            workspaceRoot,
+          },
+        };
+      }
+
+      function agentSessionTarget() {
+        return {
+          bindingGeneration: 1,
+          bindingId: "binding-prod-api",
+          cwd: "/srv/kerminal",
+          lastSeenAt: "1782197600",
+          liveStatus: "ready",
+          paneId: "pane-prod-api",
+          shell: "ssh",
+          tabId: "tab-prod-api",
+          targetKind: "ssh",
+          targetRef: "ssh:prod-api",
+          targetTerminalSessionId: "readme-session-prod-api",
+        };
+      }
+
+      function prepareExternalAgentWorkspace(request = {}) {
+        const status = externalAgentWorkspaceStatus();
+        const agentId = request.agentId ?? "codex";
+        const sessionId = request.agentSessionId ?? "agent-" + agentId + "-readme";
+        const sessionRoot = status.workspaceDir + "/agents/sessions/" + sessionId;
+        const command = agentId === "custom" ? (request.customCommand ?? "qwen") : agentId;
+        return {
+          agentId,
+          agentSessionId: sessionId,
+          args: ["-NoExit", "-Command", command],
+          cwd: sessionRoot,
+          env: {
+            KERMINAL_AGENT_SESSION_ID: sessionId,
+            KERMINAL_AGENT_SESSION_ROOT: sessionRoot,
+            KERMINAL_MCP_ENDPOINT: status.mcpEndpoint + "/agents/" + sessionId,
+            KERMINAL_WORKSPACE_ROOT: status.workspaceDir,
+          },
+          message: "Agent workspace prepared.",
+          operations: [],
+          shell: "pwsh.exe",
+          status: "running",
+          title: agentId === "claude" ? "Claude" : agentId === "custom" ? "Custom" : "Codex",
+          validator: status.validator,
+        };
+      }
+
+      function tmuxCapability(request = {}) {
+        return {
+          available: true,
+          target: request.target?.target ?? { hostId: "prod-api", kind: "ssh" },
+          targetRef: "ssh:prod-api",
+          version: "tmux 3.5a",
+        };
+      }
+
+      function tmuxSessions() {
         return [
           {
-            apiKeyConfigured: true,
-            apiKeyCredentialRef: "credential://readme-capture",
-            baseUrl: "https://api.openai.com/v1",
-            contextStrategy: "currentTerminal",
-            contextWindowTokens: 128000,
-            createdAt: "readme-capture",
-            enabled: true,
-            httpProxy: null,
-            id: "provider-openai",
-            isDefault: true,
-            kind: "openAiResponses",
-            maxRetries: 2,
-            model: "gpt-5",
-            timeoutSeconds: 120,
-            title: "OpenAI",
-            updatedAt: "readme-capture",
+            activityAt: 1782197600,
+            attached: true,
+            clients: 1,
+            createdAt: 1782191200,
+            currentPath: "/srv/kerminal",
+            id: "$0",
+            name: "release-watch",
+            status: "running",
+            targetRef: "ssh:prod-api",
+            windows: 3,
+          },
+          {
+            activityAt: 1782197000,
+            attached: false,
+            clients: 0,
+            createdAt: 1782188800,
+            currentPath: "/srv/kerminal/services",
+            id: "$1",
+            name: "worker-debug",
+            status: "running",
+            targetRef: "ssh:prod-api",
+            windows: 2,
+          },
+          {
+            activityAt: 1782194800,
+            attached: false,
+            clients: 0,
+            createdAt: 1782181200,
+            currentPath: "/data/experiments",
+            id: "$2",
+            name: "gpu-train",
+            status: "running",
+            targetRef: "ssh:prod-api",
+            windows: 4,
           },
         ];
       }
@@ -1029,7 +1306,7 @@ function browserBootstrapScript() {
               enabled: true,
               feedbackRetentionDays: 365,
               productionHostPolicy: "restricted",
-              providers: { ai: false, git: true, history: true, remoteCommand: true, remotePath: true, spec: true },
+              providers: { git: true, history: true, remoteCommand: true, remotePath: true, spec: true },
               remoteProbeEnabled: true,
             },
             lightColorScheme: "kerminal",
@@ -1067,6 +1344,39 @@ async function clickTextButtonContaining(client, text) {
     client,
     `Array.from(document.querySelectorAll("button")).find((button) => button.textContent?.includes(${JSON.stringify(text)}))`,
   );
+}
+
+async function contextClickExpression(client, expression) {
+  const rectResult = await evaluate(
+    client,
+    `(() => {
+      const element = ${expression};
+      if (!element) throw new Error("Missing context clickable element");
+      const rect = element.getBoundingClientRect();
+      return {
+        x: Math.round(rect.left + rect.width / 2),
+        y: Math.round(rect.top + rect.height / 2),
+      };
+    })()`,
+    { returnByValue: true },
+  );
+  const { x, y } = rectResult.result.value;
+  await client.send("Input.dispatchMouseEvent", {
+    button: "right",
+    buttons: 2,
+    clickCount: 1,
+    type: "mousePressed",
+    x,
+    y,
+  });
+  await client.send("Input.dispatchMouseEvent", {
+    button: "right",
+    buttons: 0,
+    clickCount: 1,
+    type: "mouseReleased",
+    x,
+    y,
+  });
 }
 
 async function clickExpression(client, expression) {

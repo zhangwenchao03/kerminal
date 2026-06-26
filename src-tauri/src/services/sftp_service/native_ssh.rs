@@ -18,6 +18,7 @@ use russh::{
 use crate::{
     error::{AppError, AppResult},
     models::remote_host::{RemoteHost, RemoteHostAuthType, SshJumpHostOptions},
+    services::ssh_identity_file::resolve_identity_file_path,
 };
 
 use super::backend::{SftpAuthMaterial, SftpEndpoint, SftpPrivateKey, SftpRuntimeSettings};
@@ -291,7 +292,7 @@ fn resolve_native_jump_auth_material(
                 )));
             }
             Ok(SftpAuthMaterial::PrivateKey(SftpPrivateKey::Path(
-                PathBuf::from(credential_ref),
+                resolve_identity_file_path(credential_ref)?,
             )))
         }
     }

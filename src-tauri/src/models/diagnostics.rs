@@ -130,16 +130,24 @@ pub struct RuntimeGpuHealth {
 pub struct RuntimeStorageHealth {
     /// `~/.kerminal` 根目录。
     pub root: String,
-    /// SQLite 数据库文件路径。
-    pub database_file: String,
+    /// 命令历史和命令建议 SQLite 数据库文件路径。
+    pub command_database_file: String,
+    /// Tauri 日志插件活跃日志文件路径。
+    pub app_log_file: String,
     /// 日志目录路径。
     pub logs: String,
     /// 诊断目录路径。
     pub diagnostics: String,
     /// 数据目录总字节数。
     pub root_size_bytes: u64,
-    /// SQLite 数据库文件字节数。
-    pub database_file_size_bytes: u64,
+    /// 命令历史和命令建议 SQLite 数据库文件字节数。
+    pub command_database_file_size_bytes: u64,
+    /// Tauri 日志插件活跃日志文件字节数。
+    pub app_log_file_size_bytes: u64,
+    /// Tauri 日志插件单文件大小上限。
+    pub app_log_max_file_size_bytes: u64,
+    /// Tauri 日志插件保留文件数量。
+    pub app_log_rotation_keep_files: usize,
 }
 
 /// 运行体检采样说明。

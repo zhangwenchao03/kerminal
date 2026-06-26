@@ -264,7 +264,7 @@ export function SshTransferPanel({
       </FieldRow>
       <HelpCard
         icon={<Folder className="mt-0.5 h-4 w-4 text-sky-500 dark:text-sky-300" />}
-        text="这些选项会随主机保存，SFTP 面板打开该主机时可直接复用默认目录和传输策略。"
+        text="随主机保存，SFTP 面板可复用。"
       />
     </div>
   );

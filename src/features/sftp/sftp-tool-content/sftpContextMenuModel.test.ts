@@ -46,6 +46,7 @@ describe("sftpContextMenuModel", () => {
 
     expect(actions(groups)).toEqual([
       [
+        "workspace",
         "uploadFile",
         "uploadDirectory",
         "pasteClipboard",
@@ -59,6 +60,10 @@ describe("sftpContextMenuModel", () => {
       domain: SFTP_FILE_PANEL_MENU_DOMAIN,
       icon: "eyeOff",
       label: "隐藏隐藏文件",
+    });
+    expect(itemByAction(groups, "workspace")).toMatchObject({
+      icon: "fileSearch",
+      label: "工作区打开当前目录",
     });
   });
 
@@ -90,7 +95,7 @@ describe("sftpContextMenuModel", () => {
     });
 
     expect(actions(groups)).toEqual([
-      ["uploadFile", "uploadDirectory", "newDirectory"],
+      ["workspace", "uploadFile", "uploadDirectory", "newDirectory"],
       ["refresh", "toggleHidden", "copyPath"],
     ]);
     expect(itemByAction(groups, "toggleHidden")).toMatchObject({

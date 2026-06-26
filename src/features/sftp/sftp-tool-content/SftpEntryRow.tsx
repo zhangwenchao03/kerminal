@@ -50,7 +50,7 @@ export function SftpEntryRow({
   return (
     <div
       className={cn(
-        "grid min-h-11 w-full grid-cols-[minmax(0,1fr)_5.75rem] items-center gap-2 px-3 py-2 text-left text-sm transition-colors min-[560px]:grid-cols-[minmax(0,1fr)_4.25rem_5.75rem] min-[720px]:grid-cols-[minmax(0,1fr)_4.75rem_4.25rem_5.75rem]",
+        "grid h-full min-h-0 w-full grid-cols-[minmax(0,1fr)_5.75rem] items-center gap-2 px-2.5 py-1.5 text-left text-sm transition-colors min-[560px]:grid-cols-[minmax(0,1fr)_4.25rem_5.75rem] min-[720px]:grid-cols-[minmax(0,1fr)_4.75rem_4.25rem_5.75rem]",
         (contextMenuOpen || selected) &&
           "bg-[var(--surface-selected)] ring-1 ring-inset ring-sky-400/25 dark:ring-sky-300/20",
         isDirectory

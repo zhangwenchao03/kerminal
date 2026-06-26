@@ -77,14 +77,6 @@ pub enum AppError {
     /// 本地凭据存储操作失败。
     #[error("凭据存储操作失败: {0}")]
     Credential(String),
-
-    /// LLM Provider 配置或验证失败。
-    #[error("LLM Provider 操作失败: {0}")]
-    LlmProvider(String),
-
-    /// AI Agent 对话或调度失败。
-    #[error("AI Agent 操作失败: {0}")]
-    AiAgent(String),
 }
 
 /// Kerminal 后端通用 Result。

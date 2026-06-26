@@ -7,9 +7,11 @@ import type {
   MachineStatus,
   TerminalLayoutNode,
   TerminalPane,
+  TerminalSplitLayoutSizes,
   TerminalTab,
   TerminalTabGroupPreferences,
 } from "./types";
+import type { TmuxPaneBinding } from "../../lib/tmuxApi";
 import {
   isTerminalTabGroupColor,
   isSftpTransferWorkspaceTab,
@@ -24,7 +26,7 @@ import {
   telnetTarget,
 } from "../../lib/targetModel";
 
-export const WORKSPACE_SESSION_VERSION = 1;
+export const WORKSPACE_SESSION_VERSION = 2;
 export const TERMINAL_OUTPUT_HISTORY_MAX_CHARS = 128 * 1024;
 
 export interface WorkspaceSessionSnapshot {
@@ -32,21 +34,34 @@ export interface WorkspaceSessionSnapshot {
   focusedPaneId: string;
   selectedMachineId: string;
   removedSidebarMachineIds?: string[];
+  shellLayout?: WorkspaceShellLayout;
   sidebarMachines: Machine[];
   terminalTabGroupPreferences?: TerminalTabGroupPreferences;
   terminalPanes: TerminalPane[];
   terminalTabs: TerminalTab[];
 }
 
+export interface WorkspaceShellLayout {
+  collapsedMachineGroupIds?: string[];
+  leftPanelCollapsed?: boolean;
+  leftPanelWidth?: number;
+  toolPanelWidth?: number;
+}
+
 export function normalizeWorkspaceSessionSnapshot(
   value: unknown,
 ): WorkspaceSessionSnapshot {
-  const source = sessionSource(value);
+  const source = isRecord(value)
+    ? (value as Partial<WorkspaceSessionSnapshot>)
+    : null;
+  const sessionVersion = normalizeWorkspaceSessionVersion(
+    isRecord(value) ? value.version : undefined,
+  );
   const rawPanes = Array.isArray(source?.terminalPanes)
     ? source.terminalPanes
     : [];
   const terminalPanes = rawPanes
-    .map(normalizeTerminalPane)
+    .map((pane) => normalizeTerminalPane(pane, sessionVersion))
     .filter((pane): pane is TerminalPane => Boolean(pane));
   const paneIds = new Set(terminalPanes.map((pane) => pane.id));
   const rawTabs = Array.isArray(source?.terminalTabs) ? source.terminalTabs : [];
@@ -65,6 +80,7 @@ export function normalizeWorkspaceSessionSnapshot(
   const terminalTabGroupPreferences = normalizeTerminalTabGroupPreferences(
     source?.terminalTabGroupPreferences,
   );
+  const shellLayout = normalizeWorkspaceShellLayout(source?.shellLayout);
   const referencedPaneIds = new Set(
     terminalTabs.flatMap((tab) =>
       isTerminalSessionTab(tab) ? collectPaneIds(tab.layout) : [],
@@ -86,11 +102,57 @@ export function normalizeWorkspaceSessionSnapshot(
     focusedPaneId: selection.focusedPaneId,
     selectedMachineId: selection.selectedMachineId,
     removedSidebarMachineIds,
+    shellLayout,
     sidebarMachines,
     terminalTabGroupPreferences,
     terminalPanes: selection.activeTabId ? referencedPanes : [],
     terminalTabs,
   };
+}
+
+function normalizeWorkspaceShellLayout(
+  value: unknown,
+): WorkspaceShellLayout | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const collapsedMachineGroupIds = uniqueStrings(
+    normalizeStringArray(value.collapsedMachineGroupIds) ?? [],
+  ).sort();
+  const shellLayout: WorkspaceShellLayout = {
+    ...(collapsedMachineGroupIds.length > 0
+      ? { collapsedMachineGroupIds }
+      : {}),
+    ...(typeof value.leftPanelCollapsed === "boolean"
+      ? { leftPanelCollapsed: value.leftPanelCollapsed }
+      : {}),
+    ...normalizePanelWidthProperty(value.leftPanelWidth, "leftPanelWidth", {
+      max: 520,
+      min: 220,
+    }),
+    ...normalizePanelWidthProperty(value.toolPanelWidth, "toolPanelWidth", {
+      max: 620,
+      min: 300,
+    }),
+  };
+
+  return Object.keys(shellLayout).length > 0 ? shellLayout : undefined;
+}
+
+function normalizePanelWidthProperty<
+  Key extends "leftPanelWidth" | "toolPanelWidth",
+>(
+  value: unknown,
+  key: Key,
+  bounds: { max: number; min: number },
+): Pick<WorkspaceShellLayout, Key> | {} {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return {};
+  }
+
+  const width = Math.min(Math.max(Math.round(value), bounds.min), bounds.max);
+  return { [key]: width } as Pick<WorkspaceShellLayout, Key>;
 }
 
 export function maxGeneratedTerminalCounters(session: WorkspaceSessionSnapshot) {
@@ -122,17 +184,10 @@ export function appendTerminalOutputHistory(
   return trimTerminalOutputHistory(`${currentHistory ?? ""}${data}`);
 }
 
-function sessionSource(value: unknown): Partial<WorkspaceSessionSnapshot> | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-  if (isRecord(value.session)) {
-    return value.session as Partial<WorkspaceSessionSnapshot>;
-  }
-  return value as Partial<WorkspaceSessionSnapshot>;
-}
-
-function normalizeTerminalPane(value: unknown): TerminalPane | undefined {
+function normalizeTerminalPane(
+  value: unknown,
+  sessionVersion: number,
+): TerminalPane | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
@@ -164,20 +219,46 @@ function normalizeTerminalPane(value: unknown): TerminalPane | undefined {
     outputHistory: normalizeTerminalOutputHistory(value.outputHistory),
     profileId,
     prompt,
+    remoteCommand: readOptionalString(value.remoteCommand),
     remoteHostId,
     remoteHostProduction: readOptionalBoolean(value.remoteHostProduction),
     shell: readOptionalString(value.shell),
     status,
     target:
       normalizeRemoteTargetRef(value.target) ??
-      legacyTargetFromPane(
+      migrateLegacyPaneTarget(
+        sessionVersion,
         mode,
         machineId,
         remoteHostId,
         profileId,
         readOptionalString(value.containerId),
       ),
+    tmuxBinding: normalizeTmuxPaneBinding(value.tmuxBinding),
     title,
+  };
+}
+
+function normalizeTmuxPaneBinding(value: unknown): TmuxPaneBinding | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const targetRef = readString(value.targetRef);
+  const sessionId = readString(value.sessionId);
+  const sessionName = readString(value.sessionName);
+  const attachedAt = readString(value.attachedAt);
+  if (!targetRef || !sessionId || !sessionName || !attachedAt) {
+    return undefined;
+  }
+
+  return {
+    attachedAt,
+    sessionId,
+    sessionName,
+    socketName: readOptionalString(value.socketName),
+    socketPath: readOptionalString(value.socketPath),
+    targetRef,
   };
 }
 
@@ -377,7 +458,29 @@ function normalizeLayoutNode(
     return children[0];
   }
 
-  return { children, direction, id, type: "split" };
+  const sizes = normalizeSplitLayoutSizes(value.sizes, children);
+  return { children, direction, id, ...(sizes ? { sizes } : {}), type: "split" };
+}
+
+function normalizeSplitLayoutSizes(
+  value: unknown,
+  children: TerminalLayoutNode[],
+): TerminalSplitLayoutSizes | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const sizes: TerminalSplitLayoutSizes = {};
+  for (const child of children) {
+    const key = child.type === "pane" ? child.paneId : child.id;
+    const size = value[key];
+    if (typeof size !== "number" || !Number.isFinite(size) || size <= 0) {
+      return undefined;
+    }
+    sizes[key] = Math.round(size * 1000) / 1000;
+  }
+
+  return Object.keys(sizes).length === children.length ? sizes : undefined;
 }
 
 function collectSplitSuffixes(layout: TerminalLayoutNode): number[] {
@@ -480,13 +583,24 @@ function normalizePaneMode(value: unknown): TerminalPane["mode"] | undefined {
     : undefined;
 }
 
-function legacyTargetFromPane(
+function normalizeWorkspaceSessionVersion(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : 1;
+}
+
+function migrateLegacyPaneTarget(
+  sessionVersion: number,
   mode: TerminalPane["mode"],
   machineId: string,
   remoteHostId: string | undefined,
   profileId: string | undefined,
   containerId: string | undefined,
 ) {
+  if (sessionVersion >= 2) {
+    return undefined;
+  }
+
   if (mode === "local") {
     return localTarget(profileId);
   }

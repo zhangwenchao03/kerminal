@@ -6,7 +6,7 @@
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::Mutex,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -112,6 +112,44 @@ impl TerminalSessionBindingMetadata {
             Some(metadata)
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AgentTargetBindingStatus {
+    Live,
+    Stale,
+    Closed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentTargetBindingRequest {
+    pub agent_session_id: String,
+    pub target_terminal_session_id: String,
+    pub pane_id: String,
+    pub tab_id: Option<String>,
+    pub target_ref: Option<String>,
+    pub cwd: Option<String>,
+    pub shell: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentTargetBindingSnapshot {
+    pub agent_session_id: String,
+    pub target_terminal_session_id: String,
+    pub pane_id: String,
+    pub tab_id: Option<String>,
+    pub target_ref: Option<String>,
+    pub cwd: Option<String>,
+    pub shell: Option<String>,
+    pub binding_id: String,
+    pub generation: u64,
+    pub status: AgentTargetBindingStatus,
+    pub live: bool,
+    pub stale: bool,
+    pub updated_at_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -407,6 +445,26 @@ impl TerminalSessionBindingService {
         if removed {
             state.by_pane.remove(pane_id);
             state.by_session.remove(session_id);
+            let closing_agent_session_ids = state
+                .agent_targets
+                .iter()
+                .filter(|(_, binding)| {
+                    binding.pane_id == pane_id
+                        && binding.target_terminal_session_id == session_id
+                        && binding.status != AgentTargetBindingStatus::Closed
+                })
+                .map(|(agent_session_id, _)| agent_session_id.clone())
+                .collect::<Vec<_>>();
+            for agent_session_id in closing_agent_session_ids {
+                let generation = state.next_generation();
+                if let Some(binding) = state.agent_targets.get_mut(&agent_session_id) {
+                    binding.generation = generation;
+                    binding.status = AgentTargetBindingStatus::Closed;
+                    binding.live = false;
+                    binding.stale = false;
+                    binding.updated_at_ms = occurred_at_ms;
+                }
+            }
         }
         state.push_event(
             self.event_limit,
@@ -592,6 +650,148 @@ impl TerminalSessionBindingService {
         self.stale_sessions_at(now_ms())
     }
 
+    pub fn save_agent_target_binding(
+        &self,
+        request: AgentTargetBindingRequest,
+    ) -> AppResult<AgentTargetBindingSnapshot> {
+        self.save_agent_target_binding_at(request, now_ms())
+    }
+
+    pub fn save_agent_target_binding_at(
+        &self,
+        request: AgentTargetBindingRequest,
+        occurred_at_ms: u64,
+    ) -> AppResult<AgentTargetBindingSnapshot> {
+        let request = request.normalized()?;
+        let mut state = self.lock_state()?;
+        let generation = state.next_generation();
+        let binding = AgentTargetBindingSnapshot {
+            binding_id: format!("atb_{generation}"),
+            generation,
+            status: AgentTargetBindingStatus::Live,
+            live: true,
+            stale: false,
+            updated_at_ms: occurred_at_ms,
+            agent_session_id: request.agent_session_id.clone(),
+            target_terminal_session_id: request.target_terminal_session_id,
+            pane_id: request.pane_id,
+            tab_id: request.tab_id,
+            target_ref: request.target_ref,
+            cwd: request.cwd,
+            shell: request.shell,
+        };
+        state
+            .agent_targets
+            .insert(request.agent_session_id, binding.clone());
+        Ok(binding)
+    }
+
+    pub fn bind_agent_target_to_terminal_binding(
+        &self,
+        agent_session_id: impl Into<String>,
+        binding: &TerminalSessionBindingSnapshot,
+    ) -> AppResult<AgentTargetBindingSnapshot> {
+        self.bind_agent_target_to_terminal_binding_at(agent_session_id, binding, now_ms())
+    }
+
+    pub fn bind_agent_target_to_terminal_binding_at(
+        &self,
+        agent_session_id: impl Into<String>,
+        binding: &TerminalSessionBindingSnapshot,
+        occurred_at_ms: u64,
+    ) -> AppResult<AgentTargetBindingSnapshot> {
+        if !is_active(&binding.status) {
+            return Err(AppError::InvalidInput(format!(
+                "agent target binding cannot use inactive terminal binding {}:{} status {:?}",
+                binding.pane_id, binding.session_id, binding.status
+            )));
+        }
+        let metadata = binding.metadata.clone();
+        self.save_agent_target_binding_at(
+            AgentTargetBindingRequest {
+                agent_session_id: agent_session_id.into(),
+                target_terminal_session_id: binding.session_id.clone(),
+                pane_id: binding.pane_id.clone(),
+                tab_id: metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.tab_id.clone()),
+                target_ref: metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.target_ref.clone()),
+                cwd: metadata.as_ref().and_then(|metadata| metadata.cwd.clone()),
+                shell: metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.shell.clone()),
+            },
+            occurred_at_ms,
+        )
+    }
+
+    pub fn agent_target_binding(
+        &self,
+        agent_session_id: &str,
+    ) -> AppResult<Option<AgentTargetBindingSnapshot>> {
+        Ok(self
+            .lock_state()?
+            .agent_targets
+            .get(agent_session_id)
+            .cloned())
+    }
+
+    pub fn resolve_agent_target<I, S>(
+        &self,
+        agent_session_id: &str,
+        live_terminal_session_ids: I,
+    ) -> AppResult<AgentTargetBindingSnapshot>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let binding = self
+            .agent_target_binding(agent_session_id)?
+            .ok_or_else(|| agent_target_not_found(agent_session_id))?;
+        Ok(resolve_agent_target_snapshot(
+            binding,
+            live_terminal_session_ids,
+        ))
+    }
+
+    pub fn resolve_agent_target_for_write<I, S>(
+        &self,
+        agent_session_id: &str,
+        expected_generation: u64,
+        live_terminal_session_ids: I,
+    ) -> AppResult<AgentTargetBindingSnapshot>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let binding = self
+            .agent_target_binding(agent_session_id)?
+            .ok_or_else(|| agent_target_not_found(agent_session_id))?;
+        if binding.generation != expected_generation {
+            return Err(AppError::InvalidInput(format!(
+                "agent target binding generation mismatch for {agent_session_id}: expected {expected_generation}, current {}",
+                binding.generation
+            )));
+        }
+
+        let resolved = resolve_agent_target_snapshot(binding, live_terminal_session_ids);
+        match resolved.status {
+            AgentTargetBindingStatus::Live if resolved.live => Ok(resolved),
+            AgentTargetBindingStatus::Closed => Err(AppError::InvalidInput(format!(
+                "agent target binding closed for {agent_session_id}: binding {} target terminal {}",
+                resolved.binding_id, resolved.target_terminal_session_id
+            ))),
+            AgentTargetBindingStatus::Stale | AgentTargetBindingStatus::Live => {
+                Err(AppError::InvalidInput(format!(
+                    "agent target binding stale for {agent_session_id}: target terminal {} is not live",
+                    resolved.target_terminal_session_id
+                )))
+            }
+        }
+    }
+
     pub fn events(&self) -> AppResult<Vec<TerminalSessionBindingEvent>> {
         Ok(self.lock_state()?.events.iter().cloned().collect())
     }
@@ -714,11 +914,29 @@ impl TerminalSessionBindingCapabilityUse {
     }
 }
 
+impl AgentTargetBindingRequest {
+    fn normalized(self) -> AppResult<Self> {
+        Ok(Self {
+            agent_session_id: normalize_required_string(self.agent_session_id, "agentSessionId")?,
+            target_terminal_session_id: normalize_required_string(
+                self.target_terminal_session_id,
+                "targetTerminalSessionId",
+            )?,
+            pane_id: normalize_required_string(self.pane_id, "paneId")?,
+            tab_id: normalize_optional_string(self.tab_id),
+            target_ref: normalize_optional_string(self.target_ref),
+            cwd: normalize_optional_string(self.cwd),
+            shell: normalize_optional_string(self.shell),
+        })
+    }
+}
+
 #[derive(Debug, Default)]
 struct TerminalSessionBindingState {
     by_pane: HashMap<String, String>,
     by_session: HashMap<String, String>,
     bindings: HashMap<String, TerminalSessionBindingSnapshot>,
+    agent_targets: HashMap<String, AgentTargetBindingSnapshot>,
     target_capability_claims: HashMap<String, TerminalTargetCapabilityClaim>,
     events: VecDeque<TerminalSessionBindingEvent>,
     next_sequence: u64,
@@ -832,6 +1050,46 @@ fn is_active(status: &TerminalSessionBindingStatus) -> bool {
         status,
         TerminalSessionBindingStatus::Registered | TerminalSessionBindingStatus::Ready
     )
+}
+
+fn resolve_agent_target_snapshot<I, S>(
+    mut binding: AgentTargetBindingSnapshot,
+    live_terminal_session_ids: I,
+) -> AgentTargetBindingSnapshot
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    if binding.status == AgentTargetBindingStatus::Closed {
+        binding.live = false;
+        binding.stale = false;
+        return binding;
+    }
+
+    let live_terminal_session_ids: HashSet<String> = live_terminal_session_ids
+        .into_iter()
+        .filter_map(|session_id| normalize_optional_string(Some(session_id.as_ref().to_owned())))
+        .collect();
+    let live = live_terminal_session_ids.contains(&binding.target_terminal_session_id);
+    binding.live = live;
+    binding.stale = !live;
+    binding.status = if live {
+        AgentTargetBindingStatus::Live
+    } else {
+        AgentTargetBindingStatus::Stale
+    };
+    binding
+}
+
+fn agent_target_not_found(agent_session_id: &str) -> AppError {
+    AppError::NotFound(format!(
+        "agent target binding not found for agent session {agent_session_id}"
+    ))
+}
+
+fn normalize_required_string(value: String, field_name: &str) -> AppResult<String> {
+    normalize_optional_string(Some(value))
+        .ok_or_else(|| AppError::InvalidInput(format!("{field_name} 不能为空")))
 }
 
 fn normalize_optional_string(value: Option<String>) -> Option<String> {

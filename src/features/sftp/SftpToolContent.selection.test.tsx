@@ -4,7 +4,7 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { sshMachine } from "./SftpToolContent.testSupport";
+import { sftpApiMocks, sshMachine } from "./__tests__/support/SftpToolContent.testSupport";
 import { SftpToolContent } from "./SftpToolContent";
 
 describe("SftpToolContent selection behavior", () => {
@@ -76,4 +76,58 @@ describe("SftpToolContent selection behavior", () => {
     expect(varButton.closest("[aria-selected='true']")).toBeInTheDocument();
     expect(logButton.closest("[aria-selected='true']")).toBeInTheDocument();
   });
+
+  it("virtualizes large remote directories while keeping range selection on all entries", async () => {
+    sftpApiMocks.listSftpDirectory.mockResolvedValueOnce({
+      entries: buildRemoteEntries(500),
+      hostId: "prod-api",
+      path: "/",
+    });
+    const { container } = render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    const firstFile = await screen.findByRole("button", { name: "文件 file-0000" });
+    const remoteList = screen.getByTestId("sftp-remote-entry-list");
+
+    expect(remoteList).toHaveAttribute("data-virtualized", "true");
+    expect(remoteList).toHaveAttribute("data-row-height", "44");
+    expect(container.querySelectorAll("[data-sftp-entry-row]").length).toBeLessThan(80);
+
+    fireEvent.click(firstFile);
+    remoteList.scrollTop = 44 * 250;
+    fireEvent.scroll(remoteList);
+
+    const middleFile = await screen.findByRole("button", { name: "文件 file-0250" });
+    fireEvent.click(middleFile, { shiftKey: true });
+
+    expect(screen.getByText("500 / 500 项 / 已选 251")).toBeInTheDocument();
+    expect(container.querySelectorAll("[data-sftp-entry-row]").length).toBeLessThan(80);
+  });
+
+  it("uses tighter row rhythm in compact density", async () => {
+    sftpApiMocks.listSftpDirectory.mockResolvedValueOnce({
+      entries: buildRemoteEntries(120),
+      hostId: "prod-api",
+      path: "/",
+    });
+    render(<SftpToolContent interfaceDensity="compact" selectedMachine={sshMachine} />);
+
+    await screen.findByRole("button", { name: "文件 file-0000" });
+
+    expect(screen.getByTestId("sftp-remote-entry-list")).toHaveAttribute(
+      "data-row-height",
+      "36",
+    );
+  });
 });
+
+function buildRemoteEntries(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    kind: "file",
+    modified: "Jun 23 12:00",
+    name: `file-${index.toString().padStart(4, "0")}`,
+    path: `/srv/data/file-${index.toString().padStart(4, "0")}`,
+    permissions: "-rw-r--r--",
+    raw: `-rw-r--r-- file-${index.toString().padStart(4, "0")}`,
+    size: 1024 + index,
+  }));
+}

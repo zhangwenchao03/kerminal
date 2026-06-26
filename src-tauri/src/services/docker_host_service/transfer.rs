@@ -133,7 +133,7 @@ pub(super) fn spawn_docker_cp_process(
         .map_err(|error| AppError::Docker(format!("无法启动 docker cp SSH 进程: {error}")))
 }
 
-pub(super) fn write_tar_stream<W: Write>(
+pub fn write_tar_stream<W: Write>(
     writer: W,
     local_path: &Path,
     remote_name: &str,
@@ -171,7 +171,7 @@ pub(super) fn extract_tar_stream<R: Read>(
     }
 }
 
-pub(super) fn extract_first_file<R: Read>(reader: R, local_path: &Path) -> AppResult<()> {
+pub fn extract_first_file<R: Read>(reader: R, local_path: &Path) -> AppResult<()> {
     if let Some(parent) = local_path.parent() {
         fs::create_dir_all(parent)?;
     }

@@ -53,14 +53,6 @@ export async function listLocalDirectory(
   });
 }
 
-export async function getAppSkillsDirectory(): Promise<string | null> {
-  if (!isTauri()) {
-    return null;
-  }
-
-  return invoke<string>("file_dialog_get_app_skills_directory");
-}
-
 export async function openLocalDirectory(path: string): Promise<void> {
   if (!isTauri()) {
     return;

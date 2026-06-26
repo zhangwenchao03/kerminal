@@ -22,7 +22,7 @@ export function DeferredSection({
         </h3>
         <p className="mt-2 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
           {section?.description ??
-            `${modeLabel} 的这一组高级配置会在后续迭代接入。`}
+            `${modeLabel} 高级配置后续接入。`}
         </p>
       </div>
     </div>

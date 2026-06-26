@@ -32,12 +32,15 @@ export function useSftpWorkspaceDialogActions({
     useState<SftpWorkspaceDialog | null>(null);
   const [workspaceDirty, setWorkspaceDirty] = useState(false);
   const [workspaceCloseBlocked, setWorkspaceCloseBlocked] = useState(false);
+  const [workspaceCloseConfirmationOpen, setWorkspaceCloseConfirmationOpen] =
+    useState(false);
   const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
 
   const resetWorkspaceState = useCallback(() => {
     setWorkspaceDialog(null);
     setWorkspaceDirty(false);
     setWorkspaceCloseBlocked(false);
+    setWorkspaceCloseConfirmationOpen(false);
     setWorkspaceExpanded(false);
   }, []);
 
@@ -48,6 +51,7 @@ export function useSftpWorkspaceDialogActions({
     setOperationStatus(null);
     setWorkspaceDirty(false);
     setWorkspaceCloseBlocked(false);
+    setWorkspaceCloseConfirmationOpen(false);
     setWorkspaceExpanded(false);
   }, [setContextMenu, setDialogAction, setDialogStatus, setOperationStatus]);
 
@@ -86,26 +90,37 @@ export function useSftpWorkspaceDialogActions({
 
   const closeWorkspaceDialog = useCallback(() => {
     const decision = resolveWorkspaceDialogCloseDecision({
-      confirmed:
-        !workspaceDirty ||
-        window.confirm("工作区有未保存修改，关闭会丢失这些修改。仍然关闭？"),
+      confirmed: !workspaceDirty,
       dirty: workspaceDirty,
     });
     if (decision.kind === "blocked") {
       setWorkspaceCloseBlocked(true);
+      setWorkspaceCloseConfirmationOpen(true);
       return;
     }
     resetWorkspaceState();
   }, [resetWorkspaceState, workspaceDirty]);
 
+  const cancelWorkspaceCloseConfirmation = useCallback(() => {
+    setWorkspaceCloseConfirmationOpen(false);
+    setWorkspaceCloseBlocked(true);
+  }, []);
+
+  const confirmWorkspaceDialogClose = useCallback(() => {
+    resetWorkspaceState();
+  }, [resetWorkspaceState]);
+
   return {
+    cancelWorkspaceCloseConfirmation,
     closeWorkspaceDialog,
+    confirmWorkspaceDialogClose,
     openEditorEntry,
     openWorkspaceDirectory,
     resetWorkspaceDialog: resetWorkspaceState,
     setWorkspaceCloseBlocked,
     setWorkspaceDirty,
     setWorkspaceExpanded,
+    workspaceCloseConfirmationOpen,
     workspaceCloseBlocked,
     workspaceDialog,
     workspaceDirty,

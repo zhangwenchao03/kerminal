@@ -3,9 +3,10 @@ use super::*;
 impl CommandSuggestionService {
     pub async fn refresh_remote_paths(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         paths: &KerminalPaths,
         sftp: &SftpService,
+        inline_settings: TerminalInlineSuggestionSettings,
         request: CommandSuggestionRemotePathRefreshRequest,
     ) -> AppResult<CommandSuggestionRemotePathRefreshResult> {
         let request = NormalizedRemotePathRefreshRequest::try_from(request)?;
@@ -13,7 +14,9 @@ impl CommandSuggestionService {
         let audit_path = request.path.clone();
         let audit_max_entries = request.max_entries;
         let audit_ttl_seconds = request.ttl_seconds;
-        if let Some(skip) = self.remote_probe_policy_skip(storage, &request.host_id)? {
+        if let Some(skip) =
+            self.remote_probe_policy_skip(storage, paths, &request.host_id, &inline_settings)?
+        {
             self.record_remote_probe_schedule_skip_audit(
                 Some(storage),
                 SuggestionProviderKind::RemotePath,
@@ -28,7 +31,6 @@ impl CommandSuggestionService {
         }
         let result = match sftp
             .list_directory(
-                storage,
                 paths,
                 SftpListDirectoryRequest {
                     host_id: request.host_id.clone(),
@@ -68,16 +70,19 @@ impl CommandSuggestionService {
     /// 通过受控 SSH 命令刷新远端命令建议缓存。
     pub async fn refresh_remote_commands(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         paths: &KerminalPaths,
         ssh_commands: &SshCommandService,
+        inline_settings: TerminalInlineSuggestionSettings,
         request: CommandSuggestionRemoteCommandRefreshRequest,
     ) -> AppResult<CommandSuggestionRemoteCommandRefreshResult> {
         let request = NormalizedRemoteCommandRefreshRequest::try_from(request)?;
         let audit_host_id = request.host_id.clone();
         let audit_max_entries = request.max_entries;
         let audit_ttl_seconds = request.ttl_seconds;
-        if let Some(skip) = self.remote_probe_policy_skip(storage, &request.host_id)? {
+        if let Some(skip) =
+            self.remote_probe_policy_skip(storage, paths, &request.host_id, &inline_settings)?
+        {
             self.record_remote_probe_schedule_skip_audit(
                 Some(storage),
                 SuggestionProviderKind::RemoteCommand,
@@ -93,7 +98,6 @@ impl CommandSuggestionService {
         let result = async {
             let output = ssh_commands
                 .execute_native(
-                    storage,
                     paths,
                     SshCommandRequest {
                         command: REMOTE_COMMAND_DISCOVERY_SCRIPT.to_owned(),
@@ -142,16 +146,19 @@ impl CommandSuggestionService {
     /// 通过受控 SSH 命令刷新远端 shell history 建议缓存。
     pub async fn refresh_remote_history(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         paths: &KerminalPaths,
         ssh_commands: &SshCommandService,
+        inline_settings: TerminalInlineSuggestionSettings,
         request: CommandSuggestionRemoteHistoryRefreshRequest,
     ) -> AppResult<CommandSuggestionRemoteHistoryRefreshResult> {
         let request = NormalizedRemoteHistoryRefreshRequest::try_from(request)?;
         let audit_host_id = request.host_id.clone();
         let audit_max_entries = request.max_entries;
         let audit_ttl_seconds = request.ttl_seconds;
-        if let Some(skip) = self.remote_probe_policy_skip(storage, &request.host_id)? {
+        if let Some(skip) =
+            self.remote_probe_policy_skip(storage, paths, &request.host_id, &inline_settings)?
+        {
             self.record_remote_probe_schedule_skip_audit(
                 Some(storage),
                 SuggestionProviderKind::History,
@@ -167,7 +174,6 @@ impl CommandSuggestionService {
         let result = async {
             let output = ssh_commands
                 .execute_native(
-                    storage,
                     paths,
                     SshCommandRequest {
                         command: REMOTE_HISTORY_DISCOVERY_SCRIPT.to_owned(),
@@ -216,9 +222,10 @@ impl CommandSuggestionService {
     /// 通过受控 SSH 命令刷新 Git refs 建议缓存。
     pub async fn refresh_git_refs(
         &self,
-        storage: &SqliteStore,
+        storage: &CommandSqliteStore,
         paths: &KerminalPaths,
         ssh_commands: &SshCommandService,
+        inline_settings: TerminalInlineSuggestionSettings,
         request: CommandSuggestionGitRefreshRequest,
     ) -> AppResult<CommandSuggestionGitRefreshResult> {
         let request = NormalizedGitRefreshRequest::try_from(request)?;
@@ -226,7 +233,9 @@ impl CommandSuggestionService {
         let audit_cwd = request.cwd.clone();
         let audit_max_entries = request.max_entries;
         let audit_ttl_seconds = request.ttl_seconds;
-        if let Some(skip) = self.remote_probe_policy_skip(storage, &request.host_id)? {
+        if let Some(skip) =
+            self.remote_probe_policy_skip(storage, paths, &request.host_id, &inline_settings)?
+        {
             self.record_remote_probe_schedule_skip_audit(
                 Some(storage),
                 SuggestionProviderKind::Git,
@@ -242,7 +251,6 @@ impl CommandSuggestionService {
         let result = async {
             let output = ssh_commands
                 .execute_native(
-                    storage,
                     paths,
                     SshCommandRequest {
                         command: git_discovery_script(&request.cwd)?,
@@ -293,7 +301,7 @@ impl CommandSuggestionService {
     /// 将已采集的远端命令列表写入建议缓存。
     pub fn cache_remote_commands(
         &self,
-        storage: Option<&SqliteStore>,
+        storage: Option<&CommandSqliteStore>,
         host_id: String,
         commands: Vec<String>,
         ttl_seconds: u64,
@@ -371,7 +379,7 @@ impl CommandSuggestionService {
     /// 将已采集的远端 shell history 列表写入建议缓存。
     pub fn cache_remote_history(
         &self,
-        storage: Option<&SqliteStore>,
+        storage: Option<&CommandSqliteStore>,
         host_id: String,
         commands: Vec<String>,
         ttl_seconds: u64,
@@ -425,7 +433,7 @@ impl CommandSuggestionService {
     #[allow(clippy::too_many_arguments)]
     pub fn cache_git_refs(
         &self,
-        storage: Option<&SqliteStore>,
+        storage: Option<&CommandSqliteStore>,
         host_id: String,
         cwd: String,
         repo_root: Option<String>,
@@ -505,7 +513,7 @@ impl CommandSuggestionService {
     /// 将已获得的 SFTP 目录列表写入建议缓存。
     pub fn cache_remote_path_listing(
         &self,
-        storage: Option<&SqliteStore>,
+        storage: Option<&CommandSqliteStore>,
         listing: SftpDirectoryListing,
         ttl_seconds: u64,
         max_entries: usize,

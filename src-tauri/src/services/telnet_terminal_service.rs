@@ -11,8 +11,7 @@ use crate::{
             TerminalSessionSummary,
         },
     },
-    services::terminal_manager::TerminalManager,
-    storage::SqliteStore,
+    services::{remote_host_service::RemoteHostService, terminal_manager::TerminalManager},
 };
 
 /// Telnet 远程终端业务入口。
@@ -28,7 +27,7 @@ impl TelnetTerminalService {
     /// 创建 Telnet 远程终端会话。
     pub fn create_session<F>(
         &self,
-        storage: &SqliteStore,
+        remote_hosts: &RemoteHostService,
         terminals: &TerminalManager,
         request: TelnetTerminalCreateRequest,
         output: F,
@@ -36,20 +35,18 @@ impl TelnetTerminalService {
     where
         F: Fn(TerminalOutputEvent) -> bool + Send + 'static,
     {
-        let terminal_request = self.resolve_terminal_request(storage, request)?;
+        let terminal_request = self.resolve_terminal_request(remote_hosts, request)?;
         terminals.create_session(terminal_request, output)
     }
 
     /// 将 Telnet 主机配置解析为本地 telnet 客户端命令。
     pub fn resolve_terminal_request(
         &self,
-        storage: &SqliteStore,
+        remote_hosts: &RemoteHostService,
         request: TelnetTerminalCreateRequest,
     ) -> AppResult<TerminalCreateRequest> {
         validate_terminal_size(request.rows, request.cols)?;
-        let host = storage
-            .remote_host_by_id(&request.host_id)?
-            .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {}", request.host_id)))?;
+        let host = remote_hosts.require_host(&request.host_id)?;
         ensure_telnet_host(&host)?;
         let telnet = resolve_telnet_executable()?;
 
@@ -57,7 +54,12 @@ impl TelnetTerminalService {
     }
 }
 
-fn build_telnet_terminal_request(
+#[doc(hidden)]
+pub mod rules {
+    pub use super::build_telnet_terminal_request;
+}
+
+pub fn build_telnet_terminal_request(
     host: &RemoteHost,
     telnet_executable: String,
     rows: u16,
@@ -74,7 +76,6 @@ fn build_telnet_terminal_request(
         rows,
         env: Default::default(),
         cleanup_paths: Vec::new(),
-        secret_input_response: None,
     })
 }
 
@@ -110,76 +111,4 @@ fn resolve_telnet_executable() -> AppResult<String> {
                 "未找到 Telnet 客户端，请安装 telnet 或确认 telnet 已加入 PATH".to_owned(),
             )
         })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::models::remote_host::{RemoteHostAuthType, SshOptions};
-
-    fn remote_host(tags: Vec<String>) -> RemoteHost {
-        RemoteHost {
-            id: "host-1".to_owned(),
-            group_id: Some("group-1".to_owned()),
-            name: "legacy".to_owned(),
-            host: "legacy.internal".to_owned(),
-            port: 2323,
-            username: String::new(),
-            auth_type: RemoteHostAuthType::Agent,
-            credential_ref: None,
-            credential_secret: None,
-            tags,
-            production: false,
-            ssh_options: SshOptions::default(),
-            sort_order: 10,
-            created_at: "now".to_owned(),
-            updated_at: "now".to_owned(),
-        }
-    }
-
-    #[test]
-    fn build_telnet_terminal_request_uses_parameterized_args() {
-        let request = build_telnet_terminal_request(
-            &remote_host(vec![" TELNET ".to_owned()]),
-            "telnet".to_owned(),
-            24,
-            80,
-        )
-        .expect("build request");
-
-        assert_eq!(request.shell.as_deref(), Some("telnet"));
-        assert_eq!(request.args, vec!["legacy.internal", "2323"]);
-        assert_eq!(request.cwd, None);
-        assert_eq!(request.rows, 24);
-        assert_eq!(request.cols, 80);
-        assert!(request.env.is_empty());
-        assert!(request.cleanup_paths.is_empty());
-        assert!(request.secret_input_response.is_none());
-    }
-
-    #[test]
-    fn build_telnet_terminal_request_rejects_non_telnet_tag() {
-        let error = build_telnet_terminal_request(
-            &remote_host(vec!["ssh".to_owned()]),
-            "telnet".to_owned(),
-            24,
-            80,
-        )
-        .expect_err("reject non telnet host");
-
-        assert!(matches!(error, AppError::InvalidInput(_)));
-    }
-
-    #[test]
-    fn build_telnet_terminal_request_rejects_zero_size() {
-        let error = build_telnet_terminal_request(
-            &remote_host(vec!["telnet".to_owned()]),
-            "telnet".to_owned(),
-            0,
-            80,
-        )
-        .expect_err("reject zero rows");
-
-        assert!(matches!(error, AppError::InvalidInput(_)));
-    }
 }

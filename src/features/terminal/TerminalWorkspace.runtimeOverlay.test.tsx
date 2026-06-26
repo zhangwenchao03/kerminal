@@ -1,0 +1,443 @@
+import { useState, type ReactNode } from "react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { movePaneInLayout } from "../workspace/workspaceLayout";
+import type { TerminalPane, TerminalTab } from "../workspace/types";
+import { mocks } from "./__tests__/support/XtermPane.testSupport";
+import { TerminalWorkspace } from "./TerminalWorkspace";
+import {
+  baseTerminalPane,
+  workspaceProps,
+} from "./__tests__/support/TerminalWorkspace.testSupport";
+
+const resizableMockState = vi.hoisted(() => ({
+  groups: [] as Array<{
+    defaultLayout?: Record<string, number>;
+    id?: string;
+    onLayoutChanged?: (layout: Record<string, number>) => void;
+  }>,
+}));
+
+vi.mock("../../components/ui/resizable", () => ({
+  ResizableHandle: ({ "aria-label": ariaLabel }: { "aria-label"?: string }) => (
+    <div aria-label={ariaLabel} role="separator" />
+  ),
+  ResizablePanel: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  ResizablePanelGroup: ({
+    children,
+    defaultLayout,
+    id,
+    onLayoutChanged,
+  }: {
+    children: ReactNode;
+    defaultLayout?: Record<string, number>;
+    id?: string;
+    onLayoutChanged?: (layout: Record<string, number>) => void;
+  }) => (
+    resizableMockState.groups.push({ defaultLayout, id, onLayoutChanged }),
+    <div>{children}</div>
+  ),
+}));
+
+const runtimePanes: TerminalPane[] = [
+  {
+    ...baseTerminalPane,
+    id: "pane-runtime-left",
+    title: "左侧 runtime",
+  },
+  {
+    ...baseTerminalPane,
+    id: "pane-runtime-right",
+    title: "右侧 runtime",
+  },
+];
+
+const runtimeTab: TerminalTab = {
+  id: "tab-runtime",
+  layout: {
+    children: [
+      { paneId: "pane-runtime-left", type: "pane" },
+      { paneId: "pane-runtime-right", type: "pane" },
+    ],
+    direction: "horizontal",
+    id: "split-runtime",
+    type: "split",
+  },
+  machineId: "local-powershell",
+  title: "runtime 分屏",
+};
+
+const hiddenRuntimePane: TerminalPane = {
+  ...baseTerminalPane,
+  id: "pane-hidden-remote",
+  title: "隐藏 172.16.41.60",
+};
+
+const hiddenRuntimeTab: TerminalTab = {
+  id: "tab-hidden-runtime",
+  layout: {
+    paneId: "pane-hidden-remote",
+    type: "pane",
+  },
+  machineId: "hidden-remote",
+  title: "隐藏远程",
+};
+
+describe("TerminalWorkspace runtime overlay", () => {
+  it("keeps real XtermPane sessions alive when pane move only changes layout", async () => {
+    await expectRuntimeSessionsSurvivePaneMove({
+      expectedIndicatorText: "交换位置 · 右侧 runtime",
+      pointerUp: { clientX: 620, clientY: 150 },
+    });
+  });
+
+  it("keeps real XtermPane sessions alive when pane move changes split structure", async () => {
+    await expectRuntimeSessionsSurvivePaneMove({
+      expectedIndicatorText: "移动到右侧 · 右侧 runtime",
+      pointerUp: { clientX: 790, clientY: 150 },
+    });
+  });
+
+  it("ignores hidden tab pane cards when resolving pane move targets", async () => {
+    let sessionIndex = 0;
+    resizableMockState.groups = [];
+    mocks.api.createTerminalSession.mockImplementation(async (request, onOutput) => {
+      sessionIndex += 1;
+      const sessionId = `session-runtime-hidden-${sessionIndex}`;
+      onOutput({
+        data: `hello from ${sessionId}`,
+        kind: "data",
+        sessionId,
+      });
+      return {
+        cols: request.cols,
+        id: sessionId,
+        rows: request.rows,
+        shell: request.shell ?? "powershell.exe",
+        status: "running",
+      };
+    });
+
+    const movePane = vi.fn();
+
+    function ControlledWorkspace() {
+      const [focusedPaneId, setFocusedPaneId] = useState("pane-runtime-left");
+      const [tabs, setTabs] = useState<TerminalTab[]>([
+        hiddenRuntimeTab,
+        runtimeTab,
+      ]);
+
+      return (
+        <TerminalWorkspace
+          {...workspaceProps({
+            activeTabId: "tab-runtime",
+            focusedPaneId,
+            onFocusPane: setFocusedPaneId,
+            onMovePane: (sourcePaneId, targetPaneId, placement) => {
+              movePane(sourcePaneId, targetPaneId, placement);
+              setTabs((currentTabs) =>
+                currentTabs.map((tab) =>
+                  tab.id === runtimeTab.id && "layout" in tab
+                    ? {
+                        ...tab,
+                        layout: movePaneInLayout(tab.layout, {
+                          placement,
+                          sourcePaneId,
+                          splitId: "split-runtime-moved",
+                          targetPaneId,
+                        }),
+                      }
+                    : tab,
+                ),
+              );
+              setFocusedPaneId(sourcePaneId);
+            },
+            panes: [...runtimePanes, hiddenRuntimePane],
+            tabs,
+          })}
+        />
+      );
+    }
+
+    render(<ControlledWorkspace />);
+
+    await waitFor(() => {
+      expect(mocks.api.createTerminalSession).toHaveBeenCalledTimes(3);
+    });
+    mocks.api.createTerminalSession.mockClear();
+    mocks.api.closeTerminal.mockClear();
+
+    const cards = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-terminal-pane-card]"),
+    );
+    const hiddenCard = cards.find(
+      (card) => card.dataset.terminalPaneCard === "pane-hidden-remote",
+    );
+    const leftCard = cards.find(
+      (card) => card.dataset.terminalPaneCard === "pane-runtime-left",
+    );
+    const rightCard = cards.find(
+      (card) => card.dataset.terminalPaneCard === "pane-runtime-right",
+    );
+
+    expect(hiddenCard).toBeTruthy();
+    expect(leftCard).toBeTruthy();
+    expect(rightCard).toBeTruthy();
+
+    vi.spyOn(hiddenCard!, "getBoundingClientRect").mockReturnValue({
+      bottom: 300,
+      height: 300,
+      left: 400,
+      right: 800,
+      top: 0,
+      width: 400,
+      x: 400,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(leftCard!, "getBoundingClientRect").mockReturnValue({
+      bottom: 300,
+      height: 300,
+      left: 0,
+      right: 400,
+      top: 0,
+      width: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(rightCard!, "getBoundingClientRect").mockReturnValue({
+      bottom: 300,
+      height: 300,
+      left: 400,
+      right: 800,
+      top: 0,
+      width: 400,
+      x: 400,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", {
+        name: "拖动 左侧 runtime 分屏调整位置",
+      }),
+      { clientX: 20, clientY: 20, pointerId: 23 },
+    );
+    fireEvent.pointerMove(window, { clientX: 620, clientY: 150, pointerId: 23 });
+
+    expect(await screen.findByText("交换位置 · 右侧 runtime")).toBeInTheDocument();
+    expect(screen.getByLabelText("正在拖动终端分屏")).toBeInTheDocument();
+    expect(screen.queryByText("交换位置 · 隐藏 172.16.41.60")).toBeNull();
+
+    fireEvent.pointerUp(window, { clientX: 620, clientY: 150, pointerId: 23 });
+
+    expect(movePane).toHaveBeenCalledWith(
+      "pane-runtime-left",
+      "pane-runtime-right",
+      "center",
+    );
+    expect(mocks.api.closeTerminal).not.toHaveBeenCalled();
+    expect(mocks.api.createTerminalSession).not.toHaveBeenCalled();
+  });
+
+  it("keeps real XtermPane sessions alive when split resize only changes sizes", async () => {
+    let sessionIndex = 0;
+    resizableMockState.groups = [];
+    mocks.api.createTerminalSession.mockImplementation(async (request, onOutput) => {
+      sessionIndex += 1;
+      const sessionId = `session-runtime-resize-${sessionIndex}`;
+      onOutput({
+        data: `hello from ${sessionId}`,
+        kind: "data",
+        sessionId,
+      });
+      return {
+        cols: request.cols,
+        id: sessionId,
+        rows: request.rows,
+        shell: request.shell ?? "powershell.exe",
+        status: "running",
+      };
+    });
+
+    function ControlledWorkspace() {
+      const [tabs, setTabs] = useState<TerminalTab[]>([runtimeTab]);
+
+      return (
+        <TerminalWorkspace
+          {...workspaceProps({
+            activeTabId: "tab-runtime",
+            focusedPaneId: "pane-runtime-left",
+            onSplitLayoutSizesChange: (splitId, sizes) => {
+              setTabs((currentTabs) =>
+                currentTabs.map((tab) =>
+                  tab.id === runtimeTab.id && "layout" in tab
+                    ? {
+                        ...tab,
+                        layout:
+                          tab.layout.type === "split" && tab.layout.id === splitId
+                            ? { ...tab.layout, sizes }
+                            : tab.layout,
+                      }
+                    : tab,
+                ),
+              );
+            },
+            panes: runtimePanes,
+            tabs,
+          })}
+        />
+      );
+    }
+
+    render(<ControlledWorkspace />);
+
+    await waitFor(() => {
+      expect(mocks.api.createTerminalSession).toHaveBeenCalledTimes(2);
+    });
+    mocks.api.createTerminalSession.mockClear();
+    mocks.api.closeTerminal.mockClear();
+
+    const rootGroup = resizableMockState.groups.find(
+      (group) => group.id === "tab-runtime",
+    );
+    rootGroup?.onLayoutChanged?.({
+      "pane-runtime-left": 35,
+      "pane-runtime-right": 65,
+    });
+
+    await waitFor(() => {
+      const latestGroup =
+        resizableMockState.groups[resizableMockState.groups.length - 1];
+      expect(
+        latestGroup?.defaultLayout,
+      ).toMatchObject({
+        "pane-runtime-left": 35,
+        "pane-runtime-right": 65,
+      });
+    });
+    expect(mocks.api.closeTerminal).not.toHaveBeenCalled();
+    expect(mocks.api.createTerminalSession).not.toHaveBeenCalled();
+  });
+});
+
+async function expectRuntimeSessionsSurvivePaneMove({
+  expectedIndicatorText,
+  pointerUp,
+}: {
+  expectedIndicatorText: string;
+  pointerUp: { clientX: number; clientY: number };
+}) {
+  resizableMockState.groups = [];
+  let sessionIndex = 0;
+  mocks.api.createTerminalSession.mockImplementation(async (request, onOutput) => {
+    sessionIndex += 1;
+    const sessionId = `session-runtime-${sessionIndex}`;
+    onOutput({
+      data: `hello from ${sessionId}`,
+      kind: "data",
+      sessionId,
+    });
+    return {
+      cols: request.cols,
+      id: sessionId,
+      rows: request.rows,
+      shell: request.shell ?? "powershell.exe",
+      status: "running",
+    };
+  });
+
+  function ControlledWorkspace() {
+    const [focusedPaneId, setFocusedPaneId] = useState("pane-runtime-left");
+    const [tabs, setTabs] = useState<TerminalTab[]>([runtimeTab]);
+
+    return (
+      <TerminalWorkspace
+        {...workspaceProps({
+          activeTabId: "tab-runtime",
+          focusedPaneId,
+          onFocusPane: setFocusedPaneId,
+          onMovePane: (sourcePaneId, targetPaneId, placement) => {
+            setTabs((currentTabs) =>
+              currentTabs.map((tab) =>
+                tab.id === runtimeTab.id && "layout" in tab
+                  ? {
+                      ...tab,
+                      layout: movePaneInLayout(tab.layout, {
+                        placement,
+                        sourcePaneId,
+                        splitId: "split-runtime-moved",
+                        targetPaneId,
+                      }),
+                    }
+                  : tab,
+              ),
+            );
+            setFocusedPaneId(sourcePaneId);
+          },
+          panes: runtimePanes,
+          tabs,
+        })}
+      />
+    );
+  }
+
+  render(<ControlledWorkspace />);
+
+  await waitFor(() => {
+    expect(mocks.api.createTerminalSession).toHaveBeenCalledTimes(2);
+  });
+  mocks.api.createTerminalSession.mockClear();
+  mocks.api.closeTerminal.mockClear();
+
+  const cards = Array.from(
+    document.querySelectorAll<HTMLElement>("[data-terminal-pane-card]"),
+  );
+  vi.spyOn(cards[0], "getBoundingClientRect").mockReturnValue({
+    bottom: 300,
+    height: 300,
+    left: 0,
+    right: 400,
+    top: 0,
+    width: 400,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  });
+  vi.spyOn(cards[1], "getBoundingClientRect").mockReturnValue({
+    bottom: 300,
+    height: 300,
+    left: 400,
+    right: 800,
+    top: 0,
+    width: 400,
+    x: 400,
+    y: 0,
+    toJSON: () => ({}),
+  });
+
+  fireEvent.pointerDown(
+    screen.getByRole("button", {
+      name: "拖动 左侧 runtime 分屏调整位置",
+    }),
+    { clientX: 20, clientY: 20, pointerId: 17 },
+  );
+  fireEvent.pointerMove(window, { ...pointerUp, pointerId: 17 });
+
+  expect(await screen.findByText(expectedIndicatorText)).toBeInTheDocument();
+
+  fireEvent.pointerUp(window, { ...pointerUp, pointerId: 17 });
+
+  await waitFor(() => {
+    expect(
+      Array.from(
+        document.querySelectorAll<HTMLElement>("[data-terminal-pane-card]"),
+      ).map((card) => card.dataset.terminalPaneCard),
+    ).toEqual(["pane-runtime-right", "pane-runtime-left"]);
+  });
+  expect(mocks.api.closeTerminal).not.toHaveBeenCalled();
+  expect(mocks.api.createTerminalSession).not.toHaveBeenCalled();
+}

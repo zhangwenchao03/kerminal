@@ -1,9 +1,4 @@
-import {
-  Columns2,
-  PanelBottom,
-  Send,
-  SplitSquareHorizontal,
-} from "lucide-react";
+import { Send } from "lucide-react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
@@ -11,21 +6,28 @@ import {
   canBroadcastCommand,
   type BroadcastCommandAnalysis,
 } from "./broadcastCommandPolicy";
-import type { TerminalSplitDirection } from "../workspace/types";
+import { TerminalBroadcastTargetSelector } from "./TerminalBroadcastTargetSelector";
+import type {
+  BroadcastTargetMode,
+  BroadcastTargetOption,
+} from "./terminalBroadcastTargets";
 
 interface TerminalBroadcastBarProps {
   analysis: BroadcastCommandAnalysis;
   draft: string;
   error: string | null;
   focusedPaneId: string;
-  onClosePane: (paneId: string) => void;
   onDraftChange: (draft: string) => void;
   onRequestBroadcast: () => void;
-  onSplitPane: (direction: TerminalSplitDirection) => void;
+  onTargetModeChange: (mode: BroadcastTargetMode) => void;
+  onToggleCustomTarget: (paneId: string, selected: boolean) => void;
+  productionTargetCount: number;
+  selectedTargetPaneIds: string[];
   sending: boolean;
   status: string | null;
   style?: CSSProperties;
-  targetCount: number;
+  targetMode: BroadcastTargetMode;
+  targetOptions: BroadcastTargetOption[];
   toolbarPaddingClass: string;
 }
 
@@ -34,16 +36,24 @@ export function TerminalBroadcastBar({
   draft,
   error,
   focusedPaneId,
-  onClosePane,
   onDraftChange,
   onRequestBroadcast,
-  onSplitPane,
+  onTargetModeChange,
+  onToggleCustomTarget,
+  productionTargetCount,
+  selectedTargetPaneIds,
   sending,
   status,
   style,
-  targetCount,
+  targetMode,
+  targetOptions,
   toolbarPaddingClass,
 }: TerminalBroadcastBarProps) {
+  const sendLabel =
+    analysis.targetCount > 0
+      ? `发送到 ${analysis.targetCount} 个目标`
+      : "没有可发送目标";
+
   const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== "Enter") {
       return;
@@ -61,33 +71,16 @@ export function TerminalBroadcastBar({
         )}
         style={style}
       >
-        <Button
-          aria-label="左右分屏"
-          onClick={() => onSplitPane("horizontal")}
-          size="sm"
-          title="左右分屏"
-          variant="secondary"
-        >
-          <Columns2 className="h-4 w-4" />
-        </Button>
-        <Button
-          aria-label="上下分屏"
-          onClick={() => onSplitPane("vertical")}
-          size="sm"
-          title="上下分屏"
-          variant="secondary"
-        >
-          <PanelBottom className="h-4 w-4" />
-        </Button>
-        <Button
-          aria-label="关闭当前分屏"
-          onClick={() => onClosePane(focusedPaneId)}
-          size="sm"
-          title="关闭当前分屏"
-          variant="ghost"
-        >
-          <SplitSquareHorizontal className="h-4 w-4" />
-        </Button>
+        <TerminalBroadcastTargetSelector
+          focusedPaneId={focusedPaneId}
+          onTargetModeChange={onTargetModeChange}
+          onToggleCustomTarget={onToggleCustomTarget}
+          productionTargetCount={productionTargetCount}
+          selectedTargetPaneIds={selectedTargetPaneIds}
+          targetCount={analysis.targetCount}
+          targetMode={targetMode}
+          targetOptions={targetOptions}
+        />
         <label className="sr-only" htmlFor="broadcast-command">
           批量命令
         </label>
@@ -96,18 +89,18 @@ export function TerminalBroadcastBar({
           id="broadcast-command"
           onChange={(event) => onDraftChange(event.currentTarget.value)}
           onKeyDown={handleInputKeyDown}
-          placeholder="向所有分屏发送命令..."
+          placeholder="向所选目标发送命令..."
           value={draft}
         />
         <span className="hidden shrink-0 rounded-lg bg-[var(--surface-hover)] px-2 py-1 text-xs text-zinc-500 dark:text-zinc-400 xl:inline">
-          {targetCount} 个目标
+          {analysis.targetCount} 个目标
         </span>
         <Button
-          aria-label={sending ? "发送中" : "发送到全部"}
+          aria-label={sending ? "发送中" : sendLabel}
           disabled={!canBroadcastCommand(analysis) || sending}
           onClick={onRequestBroadcast}
-          size="sm"
-          title={sending ? "发送中" : "发送到全部"}
+          size="icon"
+          title={sending ? "发送中" : sendLabel}
           variant="primary"
         >
           <Send className="h-4 w-4" />

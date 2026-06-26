@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Cloud,
   Copy,
+  Info,
   FolderOpen,
   Monitor,
   Pencil,
@@ -40,7 +41,7 @@ import {
 const collapsedPopoverSurfaceClassName =
   "kerminal-floating-enter fixed bottom-[84px] left-[72px] top-[56px] z-[1000] flex w-80 max-w-[calc(100vw-88px)] flex-col overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] text-zinc-950 shadow-2xl shadow-black/20 backdrop-blur-xl dark:text-zinc-50 dark:shadow-black/50";
 const sidebarPopoverHeaderClassName =
-  "flex items-start justify-between gap-2 border-b border-[var(--border-subtle)] px-4 py-3";
+  "kerminal-sidebar-header flex items-start justify-between gap-2 border-b border-[var(--border-subtle)]";
 const sidebarSmallIconButtonClassName =
   "kerminal-pressable h-8 w-8 rounded-lg text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50";
 const sidebarGroupButtonClassName =
@@ -48,7 +49,7 @@ const sidebarGroupButtonClassName =
 const sidebarCountBadgeClassName =
   "rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[11px] text-zinc-500 dark:text-zinc-400";
 const sidebarMachineButtonBaseClassName =
-  "kerminal-focus-ring kerminal-pressable flex min-h-[48px] w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition";
+  "kerminal-sidebar-machine-row kerminal-focus-ring kerminal-pressable flex w-full items-center rounded-xl text-left text-sm transition";
 const sidebarMachineDraggingClassName =
   "scale-[0.98] bg-sky-500/6 opacity-35 ring-2 ring-dashed ring-sky-400/70 dark:bg-sky-400/8";
 const sidebarMachineSelectedClassName =
@@ -62,21 +63,21 @@ const sidebarEmptyStateClassName =
 const collapsedSidebarRootClassName =
   "kerminal-material-nav relative flex h-full w-full min-w-0 flex-col border-r";
 const collapsedSidebarButtonBaseClassName =
-  "kerminal-focus-ring kerminal-pressable relative flex h-10 w-10 items-center justify-center rounded-xl transition";
+  "kerminal-sidebar-collapsed-button kerminal-focus-ring kerminal-pressable relative flex items-center justify-center rounded-xl transition";
 const collapsedSidebarButtonSelectedClassName =
   "bg-[var(--surface-selected)] text-zinc-950 shadow-sm shadow-sky-950/5 ring-1 ring-sky-500/15 dark:text-zinc-50 dark:ring-sky-300/15";
 const collapsedSidebarButtonIdleClassName =
   "text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50";
 const collapsedSidebarFooterClassName =
-  "flex flex-col items-center gap-2 border-t border-[var(--border-subtle)] py-3";
+  "kerminal-sidebar-collapsed-stack flex flex-col items-center border-t border-[var(--border-subtle)]";
 const sidebarSettingsSelectedClassName =
   "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100";
 const contextMenuItemBaseClassName =
-  "kerminal-focus-ring kerminal-pressable flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-45";
+  "kerminal-context-menu-item";
 const contextMenuItemIdleClassName =
-  "text-zinc-700 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-zinc-50";
+  "";
 const contextMenuItemDangerClassName =
-  "text-red-600 hover:bg-red-500/10 hover:text-red-700 dark:text-red-300 dark:hover:text-red-200";
+  "kerminal-context-menu-item--danger";
 const dragPreviewSurfaceClassName =
   "pointer-events-none fixed z-[1000] w-64 select-none rounded-2xl border border-sky-300/60 bg-[var(--surface-overlay)] p-3 text-sm text-zinc-950 shadow-2xl shadow-sky-900/20 ring-4 ring-sky-400/18 backdrop-blur-xl dark:border-sky-300/35 dark:text-zinc-50 dark:shadow-black/50";
 const dragPreviewHintClassName =
@@ -184,7 +185,7 @@ export function CollapsedHostPopover({
           {groupToggleIcon}
         </Button>
       </div>
-      <div className="scrollbar-none flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
+      <div className="kerminal-sidebar-popover-list scrollbar-none flex min-h-0 flex-1 flex-col overflow-y-auto">
         {visibleGroups.map((group) => {
           const groupCollapsed =
             !forceGroupsExpanded && collapsedGroupIds.has(group.id);
@@ -277,7 +278,7 @@ export function CollapsedHostPopover({
                       >
                         <span
                           className={cn(
-                            "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                            "kerminal-sidebar-machine-icon relative flex shrink-0 items-center justify-center rounded-lg",
                             machine.kind === "local"
                               ? "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-400/12 dark:text-emerald-300"
                               : "bg-sky-500/10 text-sky-600 dark:bg-sky-400/12 dark:text-sky-300",
@@ -357,7 +358,7 @@ export function CollapsedMachineSidebar({
       className={collapsedSidebarRootClassName}
       onContextMenu={(event) => openContextMenu(event, { type: "root" })}
     >
-      <div className="scrollbar-none flex min-h-0 flex-1 flex-col items-center gap-2 overflow-y-auto py-3">
+      <div className="kerminal-sidebar-collapsed-stack scrollbar-none flex min-h-0 flex-1 flex-col items-center overflow-y-auto">
         <button
           aria-expanded={collapsedHostPopoverOpen}
           aria-haspopup="dialog"
@@ -435,6 +436,8 @@ export function MachineContextMenuItems({
   onEditMachine,
   onOpenLocalTerminal,
   onOpenContainerTerminal,
+  onOpenContainerDetails,
+  onOpenHostContainers,
   onOpenRdpConnection,
   onOpenSftp,
   onOpenSshTerminal,
@@ -450,6 +453,8 @@ export function MachineContextMenuItems({
   onEditMachine?: (machineId: string) => void;
   onOpenLocalTerminal?: (machineId: string) => void;
   onOpenContainerTerminal?: (machineId: string) => void;
+  onOpenContainerDetails?: (machineId: string) => void;
+  onOpenHostContainers?: (machineId: string) => void;
   onOpenRdpConnection?: (machineId: string) => void;
   onOpenSftp?: (machineId: string) => void;
   onOpenSshTerminal?: (machineId: string) => void;
@@ -522,6 +527,14 @@ export function MachineContextMenuItems({
           onClick={() =>
             runMenuAction(() => onOpenContainerTerminal?.(machine.id))
           }
+        />
+        <ContextMenuItem
+          disabled={!onOpenContainerDetails}
+          icon={<Info className="h-4 w-4" />}
+          label="详情"
+          menuAction="openContainerDetails"
+          menuDomain={machineMenuDomain}
+          onClick={() => runMenuAction(() => onOpenContainerDetails?.(machine.id))}
         />
         <ContextMenuItem
           disabled={!onOpenSftp}
@@ -699,6 +712,14 @@ export function MachineContextMenuItems({
         onClick={() => runMenuAction(() => onOpenSshTerminal?.(machine.id))}
       />
       <ContextMenuItem
+        disabled={!onOpenHostContainers}
+        icon={<Box className="h-4 w-4" />}
+        label="容器"
+        menuAction="openHostContainers"
+        menuDomain={machineMenuDomain}
+        onClick={() => runMenuAction(() => onOpenHostContainers?.(machine.id))}
+      />
+      <ContextMenuItem
         disabled={!onOpenSftp}
         icon={<FolderOpen className="h-4 w-4" />}
         label="打开 SFTP"
@@ -783,24 +804,22 @@ export function ContextMenuItem({
       data-menu-domain={menuDomain}
       type="button"
     >
-      <span
-        className={cn(
-          danger ? "text-red-500 dark:text-red-300" : "text-sky-500 dark:text-sky-300",
-        )}
-      >
+      <span className="kerminal-context-menu-icon">
         {icon}
       </span>
-      <span className="truncate">{label}</span>
+      <span className="kerminal-context-menu-label">{label}</span>
     </button>
   );
 }
 
 export function MachineDragPreviewCard({
+  externalTargetHint,
   machine,
   targetGroupTitle,
   x,
   y,
 }: {
+  externalTargetHint?: string;
   machine: Machine;
   targetGroupTitle: string | undefined;
   x: number;
@@ -843,6 +862,8 @@ export function MachineDragPreviewCard({
       <div className={dragPreviewHintClassName}>
         {targetGroupTitle
           ? `松开移动到 ${targetGroupTitle}`
+          : externalTargetHint
+            ? externalTargetHint
           : "拖到分组后松开"}
       </div>
     </div>

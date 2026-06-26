@@ -23,6 +23,9 @@ pub struct TerminalProfile {
     pub env: HashMap<String, String>,
     /// 是否为默认本地终端 profile。
     pub is_default: bool,
+    /// 如果该 profile 被固定到左侧主机树，记录所属分组。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidebar_group_id: Option<String>,
     /// 列表排序字段。
     pub sort_order: i64,
     /// 创建时间，SQLite `datetime('now')` 文本。
@@ -50,6 +53,9 @@ pub struct ProfileCreateRequest {
     /// 创建后是否设为默认 profile。
     #[serde(default)]
     pub set_default: bool,
+    /// 创建后固定到左侧主机树时使用的分组 id。
+    #[serde(default)]
+    pub sidebar_group_id: Option<String>,
 }
 
 /// 更新终端 Profile 的请求。
@@ -73,6 +79,9 @@ pub struct ProfileUpdateRequest {
     /// 是否设为默认 profile。
     #[serde(default)]
     pub set_default: bool,
+    /// 固定到左侧主机树时使用的分组 id；传空字符串表示取消固定。
+    #[serde(default)]
+    pub sidebar_group_id: Option<String>,
     /// 列表排序字段。
     pub sort_order: i64,
 }

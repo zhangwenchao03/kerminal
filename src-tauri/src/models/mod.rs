@@ -2,17 +2,15 @@
 //!
 //! @author kongweiguang
 
-pub mod ai_agent;
-pub mod ai_agent_run;
-pub mod ai_context;
-pub mod ai_conversation;
-pub mod ai_tool_invocation;
+pub mod agent_context;
+pub mod agent_session;
 pub mod command_history;
 pub mod command_suggestion;
+pub mod config_change;
 pub mod connection;
 pub mod diagnostics;
 pub mod docker;
-pub mod llm_provider;
+pub mod mcp_server;
 pub mod port_forward;
 pub mod profile;
 pub mod remote_host;
@@ -23,5 +21,5 @@ pub mod snippet;
 pub mod ssh_command;
 pub mod target;
 pub mod terminal;
-pub mod tool_registry;
+pub mod tmux;
 pub mod workflow;

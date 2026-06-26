@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { sftpApiMocks, sshMachine } from "./SftpToolContent.testSupport";
+import { sftpApiMocks, sshMachine } from "./__tests__/support/SftpToolContent.testSupport";
 import { SftpToolContent } from "./SftpToolContent";
 
 function deferred<T>() {

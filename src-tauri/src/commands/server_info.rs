@@ -17,7 +17,7 @@ pub async fn server_info_snapshot(
     state
         .server_info()
         .snapshot_native(
-            state.storage(),
+            state.remote_hosts(),
             state.paths(),
             state.ssh_commands(),
             request,

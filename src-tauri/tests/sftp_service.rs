@@ -2,20 +2,36 @@
 //!
 //! @author kongweiguang
 
+#[path = "sftp_service/archive_clipboard.rs"]
+mod archive_clipboard;
+#[path = "sftp_service/native_backend.rs"]
+mod native_backend;
+#[path = "sftp_service/native_jump_backend.rs"]
+mod native_jump_backend;
+#[path = "sftp_service/support/mod.rs"]
+mod support;
+#[path = "sftp_service/transfer_queue.rs"]
+mod transfer_queue;
+#[path = "sftp_service/validation.rs"]
+mod validation;
+
 use kerminal_lib::{
     error::AppError,
     models::{
         remote_host::{RemoteHostAuthType, RemoteHostCreateRequest, RemoteHostGroupCreateRequest},
         sftp::{
-            SftpClassifyLocalPathsRequest, SftpListDirectoryRequest, SftpLocalPathKind,
-            SftpPreviewRequest,
+            SftpClassifyLocalPathsRequest, SftpClipboardDownloadRequest, SftpListDirectoryRequest,
+            SftpLocalPathKind, SftpPreviewRequest, SftpTransferConflictPolicy,
+            SftpTransferEndpoint, SftpTransferKind,
         },
     },
     paths::KerminalPaths,
+    services::sftp_service::rules,
     state::AppState,
 };
 use std::fs;
 use tempfile::{tempdir, TempDir};
+use tokio::{fs as async_fs, io::AsyncWriteExt};
 
 #[tokio::test]
 async fn list_directory_rejects_unknown_remote_host_before_connecting_sftp() {
@@ -24,7 +40,6 @@ async fn list_directory_rejects_unknown_remote_host_before_connecting_sftp() {
     let error = state
         .sftp()
         .list_directory(
-            state.storage(),
             state.paths(),
             SftpListDirectoryRequest {
                 host_id: "missing-host".to_owned(),
@@ -44,7 +59,6 @@ async fn preview_file_rejects_unknown_remote_host_before_connecting_sftp() {
     let error = state
         .sftp()
         .preview_file(
-            state.storage(),
             state.paths(),
             SftpPreviewRequest {
                 host_id: "missing-host".to_owned(),
@@ -67,7 +81,6 @@ async fn preview_file_rejects_root_path_before_connecting_sftp() {
     let error = state
         .sftp()
         .preview_file(
-            state.storage(),
             state.paths(),
             SftpPreviewRequest {
                 host_id,
@@ -136,35 +149,243 @@ fn classify_local_paths_rejects_missing_paths() {
     );
 }
 
+#[test]
+#[cfg(windows)]
+fn system_file_clipboard_supports_native_file_list_on_windows() {
+    assert!(rules::system_file_clipboard_supports_native_file_list());
+    rules::ensure_local_file_clipboard_supported().expect("windows supports file list clipboard");
+}
+
+#[test]
+#[cfg(not(windows))]
+fn system_file_clipboard_degrades_to_internal_clipboard_off_windows() {
+    assert!(!rules::system_file_clipboard_supports_native_file_list());
+
+    let error = rules::ensure_local_file_clipboard_supported()
+        .expect_err("non-windows file list clipboard is not implemented yet");
+    assert!(
+        matches!(error, AppError::Sftp(message) if message.contains("Kerminal SFTP 内部复制/粘贴"))
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn reading_system_file_clipboard_reports_explicit_degradation_off_windows() {
+    let error = rules::read_local_file_clipboard()
+        .expect_err("non-windows read should not masquerade as an empty clipboard");
+
+    assert!(
+        matches!(error, AppError::Sftp(message) if message.contains("当前平台暂不支持读取系统文件剪贴板"))
+    );
+}
+
+#[test]
+fn transfer_endpoint_serializes_remote_fields_as_camel_case() {
+    let endpoint = SftpTransferEndpoint::Remote {
+        host_id: "source-host".to_owned(),
+        host_label: "dev".to_owned(),
+        path: "/bwy/app/abc/.codex/jdk-21.0.2".to_owned(),
+    };
+
+    assert_eq!(
+        serde_json::to_value(endpoint).expect("serialize transfer endpoint"),
+        serde_json::json!({
+            "kind": "remote",
+            "hostId": "source-host",
+            "hostLabel": "dev",
+            "path": "/bwy/app/abc/.codex/jdk-21.0.2"
+        })
+    );
+}
+
+#[test]
+fn clipboard_download_target_uses_unique_download_name() {
+    let target_root = tempdir().expect("clipboard download target root");
+    fs::write(target_root.path().join("app.log"), b"existing").expect("write first collision");
+    fs::write(target_root.path().join("app (2).log"), b"existing").expect("write second collision");
+
+    let target_path = rules::reserve_clipboard_download_target_path_in(
+        target_root.path(),
+        &SftpClipboardDownloadRequest {
+            host_id: "source-host".to_owned(),
+            source_remote_path: "/var/log/app.log".to_owned(),
+            kind: SftpTransferKind::File,
+            view_scope: None,
+        },
+    )
+    .expect("reserve clipboard target");
+
+    assert_eq!(target_path, target_root.path().join("app (3).log"));
+    assert!(target_path.exists());
+}
+
+#[test]
+fn clipboard_download_target_reservation_prevents_same_name_collision() {
+    let target_root = tempdir().expect("clipboard download target root");
+    let request = SftpClipboardDownloadRequest {
+        host_id: "source-host".to_owned(),
+        source_remote_path: "/var/log/app.log".to_owned(),
+        kind: SftpTransferKind::File,
+        view_scope: None,
+    };
+
+    let first_target =
+        rules::reserve_clipboard_download_target_path_in(target_root.path(), &request)
+            .expect("reserve first target");
+    let second_target =
+        rules::reserve_clipboard_download_target_path_in(target_root.path(), &request)
+            .expect("reserve second target");
+
+    assert_eq!(first_target, target_root.path().join("app.log"));
+    assert_eq!(second_target, target_root.path().join("app (2).log"));
+}
+
+#[test]
+fn clipboard_download_target_sanitizes_remote_file_name() {
+    let target_root = tempdir().expect("clipboard download target root");
+
+    let target_path = rules::reserve_clipboard_download_target_path_in(
+        target_root.path(),
+        &SftpClipboardDownloadRequest {
+            host_id: "source-host".to_owned(),
+            source_remote_path: "/tmp/..".to_owned(),
+            kind: SftpTransferKind::Directory,
+            view_scope: None,
+        },
+    )
+    .expect("reserve sanitized clipboard target");
+
+    assert_eq!(target_path, target_root.path().join("remote-directory"));
+    assert!(target_path.is_dir());
+}
+
+#[test]
+fn numbered_candidate_name_preserves_file_extension() {
+    assert_eq!(
+        rules::numbered_candidate_name("report.txt", 1),
+        "report (1).txt"
+    );
+    assert_eq!(rules::numbered_candidate_name("archive", 2), "archive (2)");
+    assert_eq!(rules::numbered_candidate_name(".env", 3), ".env (3)");
+}
+
+#[tokio::test]
+async fn open_local_write_target_skip_keeps_existing_file() {
+    let root = tempdir().expect("tempdir");
+    let target = root.path().join("existing.txt");
+    async_fs::write(&target, b"original")
+        .await
+        .expect("seed target");
+
+    let file = rules::open_local_write_target(&target, SftpTransferConflictPolicy::Skip, 8)
+        .await
+        .expect("open target");
+
+    assert!(file.is_none());
+    assert_eq!(
+        async_fs::read_to_string(&target)
+            .await
+            .expect("read target"),
+        "original"
+    );
+}
+
+#[tokio::test]
+async fn open_local_write_target_rename_creates_numbered_candidate() {
+    let root = tempdir().expect("tempdir");
+    let target = root.path().join("report.txt");
+    let renamed = root.path().join("report (1).txt");
+    async_fs::write(&target, b"original")
+        .await
+        .expect("seed target");
+
+    let mut file = rules::open_local_write_target(&target, SftpTransferConflictPolicy::Rename, 8)
+        .await
+        .expect("open renamed target")
+        .expect("renamed file");
+    file.write_all(b"new").await.expect("write renamed target");
+    file.flush().await.expect("flush renamed target");
+
+    assert_eq!(
+        async_fs::read_to_string(&target)
+            .await
+            .expect("read target"),
+        "original"
+    );
+    assert_eq!(
+        async_fs::read_to_string(&renamed)
+            .await
+            .expect("read renamed"),
+        "new"
+    );
+}
+
+#[tokio::test]
+async fn prepare_local_directory_root_skip_keeps_existing_tree() {
+    let root = tempdir().expect("tempdir");
+    let target = root.path().join("release");
+    async_fs::create_dir_all(target.join("nested"))
+        .await
+        .expect("seed target directory");
+    async_fs::write(target.join("nested/existing.txt"), b"original")
+        .await
+        .expect("seed existing child");
+
+    let prepared = rules::prepare_local_directory_root(&target, SftpTransferConflictPolicy::Skip)
+        .await
+        .expect("prepare target");
+
+    assert!(prepared.is_none());
+    assert_eq!(
+        async_fs::read_to_string(target.join("nested/existing.txt"))
+            .await
+            .expect("read existing child"),
+        "original"
+    );
+}
+
+#[tokio::test]
+async fn prepare_local_directory_root_rename_creates_numbered_directory() {
+    let root = tempdir().expect("tempdir");
+    let target = root.path().join("release");
+    let renamed = root.path().join("release (1)");
+    async_fs::create_dir_all(&target)
+        .await
+        .expect("seed target directory");
+
+    let prepared = rules::prepare_local_directory_root(&target, SftpTransferConflictPolicy::Rename)
+        .await
+        .expect("prepare renamed target")
+        .expect("renamed target");
+
+    assert_eq!(prepared, renamed);
+    assert!(target.is_dir());
+    assert!(prepared.is_dir());
+}
+
 fn create_test_remote_host(state: &AppState) -> String {
     let group = state
         .remote_hosts()
-        .create_group(
-            state.storage(),
-            RemoteHostGroupCreateRequest {
-                name: "虚拟机".to_owned(),
-            },
-        )
+        .create_group(RemoteHostGroupCreateRequest {
+            name: "虚拟机".to_owned(),
+        })
         .expect("create test group");
 
     state
         .remote_hosts()
-        .create_host(
-            state.storage(),
-            RemoteHostCreateRequest {
-                auth_type: RemoteHostAuthType::Agent,
-                credential_ref: None,
-                credential_secret: None,
-                group_id: Some(group.id),
-                host: "dev.internal".to_owned(),
-                name: "dev ssh".to_owned(),
-                port: 22,
-                production: false,
-                ssh_options: Default::default(),
-                tags: vec!["dev".to_owned()],
-                username: "deploy".to_owned(),
-            },
-        )
+        .create_host(RemoteHostCreateRequest {
+            auth_type: RemoteHostAuthType::Agent,
+            credential_ref: None,
+            credential_secret: None,
+            group_id: Some(group.id),
+            host: "dev.internal".to_owned(),
+            name: "dev ssh".to_owned(),
+            port: 22,
+            production: false,
+            ssh_options: Default::default(),
+            tags: vec!["dev".to_owned()],
+            username: "deploy".to_owned(),
+        })
         .expect("create test host")
         .id
 }

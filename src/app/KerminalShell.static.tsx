@@ -5,7 +5,7 @@ export const DEFAULT_SETTINGS_SECTION_ID: SettingsSectionId =
   "settings-appearance";
 export const DEFAULT_REMOTE_GROUP_NAME = "默认分组";
 export const LEFT_RAIL_WIDTH = 64;
-export const TOOL_RAIL_WIDTH = 64;
+export const TOOL_RAIL_WIDTH = 44;
 export const WORKSPACE_SESSION_SAVE_DELAY_MS = 1_000;
 
 export const LazySettingsDialog = lazy(() =>
@@ -17,6 +17,12 @@ export const LazySettingsDialog = lazy(() =>
 export const LazyRemoteHostCreateDialog = lazy(() =>
   import("../features/machine-sidebar/RemoteHostCreateDialog").then((module) => ({
     default: module.RemoteHostCreateDialog,
+  })),
+);
+
+export const LazyHostContainersDialog = lazy(() =>
+  import("../features/machine-sidebar/HostContainersDialog").then((module) => ({
+    default: module.HostContainersDialog,
   })),
 );
 

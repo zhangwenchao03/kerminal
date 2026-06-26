@@ -15,7 +15,9 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { Button } from "../../components/ui/button";
+import { PromptDialog } from "../../components/ui/prompt-dialog";
 import { cn } from "../../lib/cn";
+import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 import {
   listLocalDirectory,
   openLocalDirectory,
@@ -33,6 +35,7 @@ import {
   type SftpManagedTransferRequest,
   type SftpTransferConflictPolicy,
 } from "../../lib/sftpApi";
+import type { InterfaceDensity } from "../settings/settingsModel";
 import type { Machine } from "../workspace/types";
 import {
   filterLocalDirectoryEntries,
@@ -84,13 +87,16 @@ import {
 } from "./sftp-tool-content/sftpLocalUploadDropModel";
 import { buildBatchDownloadTransferPlan } from "./sftp-tool-content/sftpTransferActionPlan";
 import { withSftpTransferViewScope } from "./sftp-tool-content/sftpTransferScopeModel";
+import { FixedRowVirtualList } from "./FixedRowVirtualList";
 import {
   resolveTransferIntent,
   type ResolvedTransferPlan,
 } from "./sftpTransferResolver";
+import { resolveSftpFileRowHeight } from "./sftpDensityModel";
 
 export function LocalTransferPane({
   active,
+  interfaceDensity = "comfortable",
   onCurrentPathChange,
   onLocalClipboardChange,
   onTransferQueued,
@@ -99,6 +105,7 @@ export function LocalTransferPane({
   transferViewScope,
 }: {
   active: boolean;
+  interfaceDensity?: InterfaceDensity;
   onCurrentPathChange?: (path: string | undefined) => void;
   onLocalClipboardChange?: (clipboard: SftpWorkbenchLocalClipboard) => void;
   onTransferQueued?: () => void;
@@ -122,6 +129,9 @@ export function LocalTransferPane({
   const [renameEntry, setRenameEntry] = useState<LocalDirectoryEntry | null>(
     null,
   );
+  const [createDirectoryDialogOpen, setCreateDirectoryDialogOpen] =
+    useState(false);
+  const [createDirectoryNameDraft, setCreateDirectoryNameDraft] = useState("");
   const [remoteDropActive, setRemoteDropActive] = useState(false);
   const [dropRejectedActive, setDropRejectedActive] = useState(false);
   const [selectedEntryPaths, setSelectedEntryPaths] = useState<Set<string>>(
@@ -143,6 +153,34 @@ export function LocalTransferPane({
   const selectedEntries =
     visibleListing?.entries.filter((entry) => selectedEntryPaths.has(entry.path)) ??
     [];
+  const compactDensity = interfaceDensity === "compact";
+  const spaciousDensity = interfaceDensity === "spacious";
+  const fileRowHeight = resolveSftpFileRowHeight(interfaceDensity);
+  const chromePaddingClass = compactDensity
+    ? "px-2.5 py-1.5"
+    : spaciousDensity
+      ? "px-4 py-3"
+      : "px-3 py-2";
+  const pathToolbarPaddingClass = compactDensity
+    ? "p-1.5"
+    : spaciousDensity
+      ? "p-3"
+      : "p-2";
+  const bodyPaddingClass = compactDensity
+    ? "p-2"
+    : spaciousDensity
+      ? "p-4"
+      : "p-3";
+  const listHeaderPaddingClass = compactDensity
+    ? "px-2.5 py-1.5"
+    : spaciousDensity
+      ? "px-4 py-2.5"
+      : "px-3 py-2";
+  const paneHeaderPaddingClass = compactDensity
+    ? "px-2.5 py-2"
+    : spaciousDensity
+      ? "px-4 py-3"
+      : "px-3 py-2.5";
 
   const loadDirectory = useCallback(
     async (path?: string | null) => {
@@ -241,15 +279,23 @@ export function LocalTransferPane({
     }
   };
 
-  const createDirectoryInCurrentDirectory = async () => {
+  const openCreateDirectoryDialog = () => {
+    if (!listing || loading) {
+      return;
+    }
+    setCreateDirectoryNameDraft("");
+    setCreateDirectoryDialogOpen(true);
+  };
+
+  const createDirectoryInCurrentDirectory = async (name: string) => {
     if (!listing) {
       return;
     }
-    const name = window.prompt("新建文件夹名称");
-    const trimmedName = name?.trim();
+    const trimmedName = name.trim();
     if (!trimmedName) {
       return;
     }
+    setCreateDirectoryDialogOpen(false);
 
     const requestId = nextLocalDirectoryRequestId(requestIdRef.current);
     requestIdRef.current = requestId;
@@ -626,7 +672,10 @@ export function LocalTransferPane({
 
   const copyEntryPath = async (entry: LocalDirectoryEntry) => {
     try {
-      await navigator.clipboard?.writeText(entry.path);
+      const result = await writeDesktopClipboardText(entry.path);
+      if (!result.ok) {
+        throw new Error("当前环境不支持复制到剪贴板。");
+      }
     } catch (nextError) {
       dispatchLocalState({
         error: normalizeLocalTransferError(nextError),
@@ -760,7 +809,12 @@ export function LocalTransferPane({
       onDrop={handleRemoteDrop}
       onKeyDown={handleLocalKeyDown}
     >
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border-subtle)] px-3 py-2">
+      <div
+        className={cn(
+          "flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border-subtle)]",
+          chromePaddingClass,
+        )}
+      >
         <div className="min-w-0">
           <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">
             左侧本地目录
@@ -782,7 +836,12 @@ export function LocalTransferPane({
         </Button>
       </div>
 
-      <div className="shrink-0 border-b border-[var(--border-subtle)] p-2">
+      <div
+        className={cn(
+          "shrink-0 border-b border-[var(--border-subtle)]",
+          pathToolbarPaddingClass,
+        )}
+      >
         <form
           className="flex min-w-0 items-center gap-2"
           onSubmit={(event) => {
@@ -830,7 +889,7 @@ export function LocalTransferPane({
           entryFilter={entryFilter}
           listing={listing}
           loading={loading}
-          onCreateDirectory={() => void createDirectoryInCurrentDirectory()}
+          onCreateDirectory={openCreateDirectoryDialog}
           onEntryFilterChange={setEntryFilter}
           onLoadDirectory={loadDirectory}
           onOpenCurrentDirectory={() => void openCurrentDirectory()}
@@ -839,9 +898,19 @@ export function LocalTransferPane({
         />
       </div>
 
-      <div className="min-h-0 flex-1 p-3">
-        <div className="kerminal-solid-surface relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border transition">
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-3 py-2.5">
+      <div className={cn("min-h-0 flex-1", bodyPaddingClass)}>
+        <div
+          className={cn(
+            "kerminal-solid-surface relative flex h-full min-h-0 flex-col overflow-hidden border transition",
+            compactDensity ? "rounded-xl" : "rounded-2xl",
+          )}
+        >
+          <div
+            className={cn(
+              "flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)]",
+              paneHeaderPaddingClass,
+            )}
+          >
             <div>
               <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
                 本地目录
@@ -859,7 +928,7 @@ export function LocalTransferPane({
               </span>
             )}
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-hidden">
             {loading ? (
               <div
                 className="kerminal-muted-surface m-3 rounded-xl border px-3 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400"
@@ -882,16 +951,25 @@ export function LocalTransferPane({
               </div>
             ) : null}
             {!loading && !error && visibleEntries.length > 0 ? (
-              <div>
-                <div className="kerminal-muted-surface grid grid-cols-[minmax(0,1fr)_5.75rem] gap-2 border-b px-3 py-2 text-xs font-medium text-zinc-500 dark:text-zinc-400 min-[560px]:grid-cols-[minmax(0,1fr)_4.25rem_5.75rem]">
+              <div className="flex h-full min-h-0 flex-col">
+                <div
+                  className={cn(
+                    "kerminal-muted-surface grid grid-cols-[minmax(0,1fr)_5.75rem] gap-2 border-b text-xs font-medium text-zinc-500 dark:text-zinc-400 min-[560px]:grid-cols-[minmax(0,1fr)_4.25rem_5.75rem]",
+                    listHeaderPaddingClass,
+                  )}
+                >
                   <span className="pl-6">名称</span>
                   <span className="hidden text-right min-[560px]:block">大小</span>
                   <span className="text-right" title="修改时间">
                     时间
                   </span>
                 </div>
-                <div className="divide-y divide-[var(--border-subtle)]">
-                  {visibleEntries.map((entry) => (
+                <FixedRowVirtualList
+                  ariaLabel="本地目录项目"
+                  entries={visibleEntries}
+                  getKey={(entry) => entry.path}
+                  itemContainerClassName="divide-y divide-[var(--border-subtle)]"
+                  renderItem={(entry) => (
                     <LocalDirectoryEntryRow
                       dragEntries={
                         selectedEntryPaths.has(entry.path) && selectedEntries.length > 0
@@ -900,20 +978,29 @@ export function LocalTransferPane({
                       }
                       entry={entry}
                       selected={selectedEntryPaths.has(entry.path)}
-                      key={entry.path}
                       onOpenDirectory={loadDirectory}
                       onOpenContextMenu={openContextMenu}
                       onSelect={selectEntry}
                     />
-                  ))}
-                </div>
+                  )}
+                  resetKey={`${listing?.path ?? ""}:${
+                    showHiddenEntries ? "shown" : "hidden"
+                  }:${entryFilter}`}
+                  rowHeight={fileRowHeight}
+                  testId="sftp-local-entry-list"
+                />
               </div>
             ) : null}
           </div>
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-[var(--border-subtle)] px-3 py-2">
+      <div
+        className={cn(
+          "shrink-0 border-t border-[var(--border-subtle)]",
+          chromePaddingClass,
+        )}
+      >
         <div className="truncate font-mono text-xs text-zinc-500 dark:text-zinc-400">
           {targetMachine
             ? `目标：${targetMachine.name}:${targetPath ?? "/"}`
@@ -931,7 +1018,7 @@ export function LocalTransferPane({
         }}
         onCreateDirectory={() => {
           setContextMenu(null);
-          void createDirectoryInCurrentDirectory();
+          openCreateDirectoryDialog();
         }}
         onDeleteEntry={(entry) => {
           setContextMenu(null);
@@ -964,6 +1051,22 @@ export function LocalTransferPane({
             void deleteLocalEntry(deleteEntry, confirmName);
           }
         }}
+      />
+      <PromptDialog
+        busy={loading}
+        confirmLabel="创建"
+        description={listing?.path}
+        inputLabel="文件夹名称"
+        onClose={() => setCreateDirectoryDialogOpen(false)}
+        onConfirm={(name) => {
+          void createDirectoryInCurrentDirectory(name);
+        }}
+        onValueChange={setCreateDirectoryNameDraft}
+        open={createDirectoryDialogOpen && Boolean(listing)}
+        placeholder="new-folder"
+        title="新建文件夹"
+        validate={(value) => (value.trim() ? null : "请填写文件夹名称。")}
+        value={createDirectoryNameDraft}
       />
       <LocalRenameDialog
         busy={loading}

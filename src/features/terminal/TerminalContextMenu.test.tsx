@@ -120,11 +120,28 @@ describe("TerminalContextMenu", () => {
     );
 
     const menu = screen.getByRole("menu", { name: "终端右键菜单" });
-    expect(menu).toHaveClass("rounded-xl");
-    expect(menu).toHaveClass("shadow-2xl");
+    expect(menu).toHaveClass("kerminal-context-menu");
+    expect(menu).toHaveClass("kerminal-floating-enter");
     expect(
       screen.queryByRole("button", { name: "关闭菜单" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("portals to the document body so fixed coordinates stay viewport-based", () => {
+    render(
+      <div className="kerminal-terminal-surface">
+        <TerminalContextMenu
+          canCopy
+          onAction={vi.fn()}
+          onClose={vi.fn()}
+          position={{ x: 120, y: 80 }}
+        />
+      </div>,
+    );
+
+    const menu = screen.getByRole("menu", { name: "终端右键菜单" });
+    expect(menu.parentElement).toBe(document.body);
+    expect(menu.closest(".kerminal-terminal-surface")).toBeNull();
   });
 
   it("closes from Escape even when a terminal layer stops bubbling", () => {

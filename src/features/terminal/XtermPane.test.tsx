@@ -6,10 +6,27 @@ import {
   installClipboardMock,
   mocks,
   setTerminalBufferLines,
-} from "./XtermPane.testSupport";
+} from "./__tests__/support/XtermPane.testSupport";
 import { XtermPane, collectSubmittedCommands } from "./XtermPane";
+import {
+  buildTerminalCreateRequest,
+  normalizeTerminalSessionSize,
+} from "./XtermPane.helpers";
+import { TerminalPaneLayout } from "./TerminalPaneLayout";
+import type { TerminalLayoutNode, TerminalPane } from "../workspace/types";
 
 describe("XtermPane sessions and command blocks", () => {
+  it("normalizes transient one-row startup dimensions before creating a session", () => {
+    expect(normalizeTerminalSessionSize({ cols: 132, rows: 1 })).toEqual({
+      cols: 132,
+      rows: 8,
+    });
+    expect(buildTerminalCreateRequest({ cols: 10, rows: 1 })).toMatchObject({
+      cols: 20,
+      rows: 8,
+    });
+  });
+
   it("starts a terminal session and writes channel output to xterm", async () => {
     render(
       <XtermPane
@@ -57,6 +74,70 @@ describe("XtermPane sessions and command blocks", () => {
     );
   });
 
+  it("notifies when the active terminal session closes naturally", async () => {
+    const onSessionFinished = vi.fn();
+
+    render(
+      <XtermPane
+        focused
+        onSessionFinished={onSessionFinished}
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    act(() => {
+      mocks.getLatestOutputHandler()?.({
+        data: "",
+        kind: "closed",
+        sessionId: "session-1",
+      });
+    });
+
+    expect(onSessionFinished).toHaveBeenCalledWith({
+      durationMs: expect.any(Number),
+      reason: "closed",
+      sessionId: "session-1",
+    });
+    expect(screen.getByText("已结束")).toBeInTheDocument();
+  });
+
+  it("clears a transient agent startup message when real output arrives", async () => {
+    render(
+      <XtermPane
+        focused
+        paneId="pane-agent-claude"
+        resolvedTheme="dark"
+        startupMessage={"正在加载 Claude...\r\n"}
+        terminalAppearance={defaultAppSettings.terminal}
+        title="Claude"
+        transientStartupMessage
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mocks.api.createTerminalSession).toHaveBeenCalled();
+    });
+
+    expect(mocks.terminalInstances[0].write).toHaveBeenCalledWith(
+      "正在加载 Claude...\r\n",
+    );
+    expect(mocks.terminalInstances[0].write).toHaveBeenCalledWith(
+      "\x1b[1A\x1b[2K\r",
+    );
+    await waitFor(() => {
+      expect(mocks.terminalInstances[0].write).toHaveBeenCalledWith(
+        "hello from pty",
+      );
+    });
+  });
+
   it("replays saved terminal output and persists new output chunks", async () => {
     const onOutputHistoryChange = vi.fn();
 
@@ -86,6 +167,146 @@ describe("XtermPane sessions and command blocks", () => {
     });
   });
 
+  it("replays saved terminal output from a stable snapshot resolver", async () => {
+    const onOutputHistoryChange = vi.fn();
+
+    render(
+      <XtermPane
+        focused
+        onOutputHistoryChange={onOutputHistoryChange}
+        paneId="pane-local"
+        resolveInitialOutputHistory={() => "resolver output\r\n"}
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mocks.api.createTerminalSession).toHaveBeenCalled();
+    });
+
+    expect(mocks.terminalInstances[0].write).toHaveBeenCalledWith(
+      "resolver output\r\n",
+    );
+    await waitFor(() => {
+      expect(onOutputHistoryChange).toHaveBeenCalledWith(
+        "resolver output\r\nhello from pty",
+      );
+    });
+  });
+
+  it("does not reconnect when equivalent launch options are recreated", async () => {
+    const { rerender } = render(
+      <XtermPane
+        args={["-NoLogo"]}
+        env={{ KERMINAL_TEST: "1" }}
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        shell="powershell.exe"
+        target={{ kind: "local", profileId: "default" }}
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mocks.api.createTerminalSession).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(
+      <XtermPane
+        args={["-NoLogo"]}
+        env={{ KERMINAL_TEST: "1" }}
+        focused={false}
+        paneId="pane-local"
+        resolvedTheme="dark"
+        shell="powershell.exe"
+        target={{ kind: "local", profileId: "default" }}
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+
+    expect(mocks.api.closeTerminal).not.toHaveBeenCalledWith("session-1");
+    expect(mocks.api.createTerminalSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an existing pane session mounted when the layout becomes split", async () => {
+    const sourcePane: TerminalPane = {
+      currentCwd: "/dev",
+      id: "pane-ssh-1",
+      lines: [],
+      machineId: "host-lab",
+      mode: "ssh",
+      prompt: "root@host:~#",
+      remoteHostId: "host-lab",
+      status: "online",
+      title: "host-lab",
+    };
+    const splitPane: TerminalPane = {
+      ...sourcePane,
+      id: "pane-ssh-2",
+      title: "右侧分屏",
+    };
+    const singleLayout: TerminalLayoutNode = {
+      paneId: sourcePane.id,
+      type: "pane",
+    };
+    const splitLayout: TerminalLayoutNode = {
+      children: [
+        { paneId: sourcePane.id, type: "pane" },
+        { paneId: splitPane.id, type: "pane" },
+      ],
+      direction: "horizontal",
+      id: "split-1",
+      type: "split",
+    };
+    const props = {
+      focusedPaneId: sourcePane.id,
+      onClosePane: vi.fn(),
+      onFocusPane: vi.fn(),
+      onSplitPane: vi.fn(),
+      panelGroupId: "tab-ssh-1",
+      panesById: new Map([[sourcePane.id, sourcePane]]),
+      resolvedTheme: "dark" as const,
+      terminalAppearance: defaultAppSettings.terminal,
+    };
+    const { rerender } = render(
+      <TerminalPaneLayout {...props} layout={singleLayout} />,
+    );
+
+    await waitFor(() => {
+      expect(mocks.api.createSshTerminalSession).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(
+      <TerminalPaneLayout
+        {...props}
+        focusedPaneId={splitPane.id}
+        layout={splitLayout}
+        panesById={
+          new Map([
+            [sourcePane.id, sourcePane],
+            [splitPane.id, splitPane],
+          ])
+        }
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mocks.api.createSshTerminalSession).toHaveBeenCalledTimes(2);
+    });
+    expect(mocks.api.closeTerminal).not.toHaveBeenCalledWith("ssh-session-1");
+    expect(mocks.terminalInstances[0].dispose).not.toHaveBeenCalled();
+    expect(mocks.api.createSshTerminalSession).toHaveBeenNthCalledWith(
+      2,
+      { cols: 80, cwd: "/dev", hostId: "host-lab", rows: 24 },
+      expect.any(Function),
+    );
+  });
+
   it("sends user input to the active terminal session", async () => {
     render(
       <XtermPane
@@ -112,6 +333,39 @@ describe("XtermPane sessions and command blocks", () => {
         source: "user",
         target: "local",
       }),
+    );
+  });
+
+  it("can run agent terminals without shell command assist chrome", async () => {
+    render(
+      <XtermPane
+        focused
+        paneId="pane-agent-codex"
+        resolvedTheme="dark"
+        shellAssistEnabled={false}
+        terminalAppearance={defaultAppSettings.terminal}
+        title="Codex"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    mocks.terminalInstances[0].onDataCallback?.("服务器的服务\r");
+
+    expect(mocks.api.writeTerminal).toHaveBeenCalledWith(
+      "session-1",
+      "服务器的服务\r",
+    );
+    expect(mocks.api.recordCommandHistory).not.toHaveBeenCalled();
+    expect(mocks.api.listTerminalSuggestions).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("命令块色条")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Codex xterm 终端").parentElement).toHaveClass(
+      "pl-3",
+    );
+    expect(screen.getByLabelText("Codex xterm 终端").parentElement).not.toHaveClass(
+      "pl-6",
     );
   });
 
@@ -157,15 +411,15 @@ describe("XtermPane sessions and command blocks", () => {
 
     await user.click(screen.getByLabelText("复制文本块 pwd"));
     await waitFor(() => {
-      expect(clipboard.writeText).toHaveBeenCalledWith(
+      expect(mocks.api.writeDesktopClipboardText).toHaveBeenCalledWith(
         expect.stringContaining("$ pwd"),
       );
     });
-    expect(
-      clipboard.writeText.mock.calls[
-        clipboard.writeText.mock.calls.length - 1
-      ]?.[0],
-    ).toContain("C:/dev/rust/kerminal");
+    expect(mocks.api.writeDesktopClipboardText).toHaveBeenCalledWith(
+      expect.stringContaining("C:/dev/rust/kerminal"),
+    );
+    expect(clipboard.writeText).not.toHaveBeenCalled();
+    mocks.api.writeDesktopClipboardText.mockClear();
 
     await user.click(screen.getByLabelText("折叠命令块 pwd"));
     expect(screen.getByLabelText("展开命令块 pwd")).toBeInTheDocument();
@@ -190,10 +444,11 @@ describe("XtermPane sessions and command blocks", () => {
     });
     await user.click(screen.getByLabelText("复制图片 pwd"));
     await waitFor(() => {
-      expect(clipboard.writeText).toHaveBeenCalledWith(
+      expect(mocks.api.writeDesktopClipboardText).toHaveBeenCalledWith(
         expect.stringContaining("$ pwd"),
       );
     });
+    expect(clipboard.writeText).not.toHaveBeenCalled();
     expect(
       screen.getByRole("status", { name: "命令块操作提示" }),
     ).toHaveTextContent("已复制文本");
@@ -730,7 +985,6 @@ describe("XtermPane sessions and command blocks", () => {
     state = collectSubmittedCommands("", "\u001b[A\r");
     expect(state).toEqual({ buffer: "", commands: [] });
   });
-
 });
 
 function commandRailTop(rail: HTMLElement) {

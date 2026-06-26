@@ -1,4 +1,7 @@
-import type { RemoteHostAuthType, SshOptions } from "../../../lib/remoteHostApi";
+import type {
+  RemoteHostAuthType,
+  SshOptions,
+} from "../../../lib/remoteHostApi";
 import type { ConnectionTestRequest } from "../../../lib/connectionApi";
 import { buildLocalTerminalOptions } from "./local-form";
 import type { ConnectionMode } from "./model";
@@ -58,8 +61,6 @@ export function evaluateConnectionCheck({
   authType,
   credentialRef,
   credentialSecret,
-  dockerContainerId,
-  dockerHostId,
   editingLocalMachine,
   groupId,
   host,
@@ -128,15 +129,9 @@ export function evaluateConnectionCheck({
   }
 
   if (mode === "docker") {
-    if (!dockerHostId) {
-      return { error: "请选择一个已有 SSH 主机。", ok: false };
-    }
-    if (!dockerContainerId) {
-      return { error: "请选择一个容器。", ok: false };
-    }
     return {
       ok: true,
-      statusMessage: "容器选择已确认，确认后会添加到侧栏并可直接进入。",
+      statusMessage: "容器现在从左侧 SSH 主机右键菜单进入。",
     };
   }
 

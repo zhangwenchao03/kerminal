@@ -6,7 +6,6 @@ import {
 } from "./commandHistoryApi";
 
 export type CommandSuggestionProvider =
-  | "ai"
   | "git"
   | "history"
   | "remoteCommand"

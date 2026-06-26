@@ -8,12 +8,15 @@ import {
   useState,
 } from "react";
 import { listDockerContainerDirectory } from "../../lib/containerFilesApi";
+import { PromptDialog } from "../../components/ui/prompt-dialog";
 import {
   listSftpDirectory,
   type SftpEntry,
 } from "../../lib/sftpApi";
 import type { Machine } from "../workspace/types";
 import { SftpTransferConflictDialog } from "./SftpTransferConflictDialog";
+import type { InterfaceDensity } from "../settings/settingsModel";
+import { resolveSftpFileRowHeight } from "./sftpDensityModel";
 import { SftpBrowserView } from "./sftp-tool-content/SftpBrowserView";
 import { useSftpTransferActions } from "./sftp-tool-content/useSftpTransferActions";
 import { useSftpContextMenuActions } from "./sftp-tool-content/useSftpContextMenuActions";
@@ -68,6 +71,7 @@ export function SftpToolContent({
   active = true,
   compactHeader = false,
   followedRemotePath,
+  interfaceDensity = "comfortable",
   onCurrentPathChange,
   onSftpClipboardChange,
   selectedMachine,
@@ -81,6 +85,7 @@ export function SftpToolContent({
   active?: boolean;
   compactHeader?: boolean;
   followedRemotePath?: string;
+  interfaceDensity?: InterfaceDensity;
   onCurrentPathChange?: (path: string) => void;
   onSftpClipboardChange?: (clipboard: SftpClipboard | null) => void;
   selectedMachine?: Machine;
@@ -128,6 +133,7 @@ export function SftpToolContent({
     () => fileTargetToRemoteTarget(fileTarget),
     [fileTarget],
   );
+  const fileRowHeight = resolveSftpFileRowHeight(interfaceDensity);
   const supportsSftpAdvancedActions = fileTarget?.kind === "ssh";
   const sftpClipboard =
     controlledSftpClipboard !== undefined
@@ -144,13 +150,16 @@ export function SftpToolContent({
     [onSftpClipboardChange],
   );
   const {
+    cancelWorkspaceCloseConfirmation,
     closeWorkspaceDialog,
+    confirmWorkspaceDialogClose,
     openEditorEntry,
     openWorkspaceDirectory,
     resetWorkspaceDialog,
     setWorkspaceCloseBlocked,
     setWorkspaceDirty,
     setWorkspaceExpanded,
+    workspaceCloseConfirmationOpen,
     workspaceCloseBlocked,
     workspaceDialog,
     workspaceDirty,
@@ -648,83 +657,85 @@ export function SftpToolContent({
   return (
     <>
       <SftpBrowserView
-      cancelTransfer={cancelTransfer}
-      clearFinishedTransfers={clearFinishedTransfers}
-      closeWorkspaceDialog={closeWorkspaceDialog}
-      compactHeader={compactHeader}
-      contextMenu={contextMenu}
-      currentPath={currentPath}
-      cwdTrackingSetupBusy={cwdTrackingSetupBusy}
-      dialogAction={dialogAction}
-      dialogBusy={dialogBusy}
-      dialogStatus={dialogStatus}
-      directoryCount={directoryCount}
-      downloadSelectedEntries={downloadSelectedEntries}
-      dragDropActive={dragDropActive}
-      dropZoneRef={dropZoneRef}
-      entries={entries}
-      error={error}
-      executeContextMenuAction={executeContextMenuAction}
-      fileCount={fileCount}
-      fileTarget={fileTarget}
-      finishRemoteEntryDrag={finishRemoteEntryDrag}
-      followTerminalDirectory={followTerminalDirectory}
-      handleRemoteDownloadDragEnter={handleRemoteDownloadDragEnter}
-      handleRemoteDownloadDragLeave={handleRemoteDownloadDragLeave}
-      handleRemoteDownloadDragOver={handleRemoteDownloadDragOver}
-      handleRemoteDownloadDrop={handleRemoteDownloadDrop}
-      handleSftpKeyDown={handleSftpKeyDown}
-      hiddenEntryCount={hiddenEntryCount}
-      hostKeyTrustBusy={hostKeyTrustBusy}
-      listing={listing}
-      loadDirectory={loadDirectory}
-      loading={loading}
-      normalizedFollowedPath={normalizedFollowedPath}
-      openContextMenu={openContextMenu}
-      openContextMenuFromPress={openContextMenuFromPress}
-      openEditorEntry={openEditorEntry}
-      openNewDirectoryDialog={openNewDirectoryDialog}
-      operationStatus={operationStatus}
-      pathDraft={pathDraft}
-      remoteDownloadDragActive={remoteDownloadDragActive}
-      remoteDownloadDropActive={remoteDownloadDropActive}
-      remoteDragEntriesRef={remoteDragEntriesRef}
-      selectEntry={selectEntry}
-      selectedEntries={selectedEntries}
-      selectedEntryPaths={selectedEntryPaths}
-      setContextMenu={setContextMenu}
-      setDialogAction={setDialogAction}
-      setDialogStatus={setDialogStatus}
-      setFollowTerminalDirectory={setFollowTerminalDirectoryFromView}
-      setOperationStatus={setOperationStatus}
-      setPathDraft={setPathDraft}
-      setShowHiddenFiles={setShowHiddenFiles}
-      setUploadMenuOpen={setUploadMenuOpen}
-      setWorkspaceCloseBlocked={setWorkspaceCloseBlocked}
-      setWorkspaceDirty={setWorkspaceDirty}
-      setWorkspaceExpanded={setWorkspaceExpanded}
-      setupRemoteCwdTracking={setupRemoteCwdTracking}
-      showHiddenFiles={showHiddenFiles}
-      showLocalTransferActions={showLocalTransferActions}
-      showTransferStatusBar={showTransferStatusBar}
-      startRemoteEntryDrag={startRemoteEntryDrag}
-      submitDialogAction={submitDialogAction}
-      submitPathDraft={submitPathDraft}
-      supportsSftpAdvancedActions={supportsSftpAdvancedActions}
-      transferableSelectedEntries={transferableSelectedEntries}
-      transferSelectedEntriesToTarget={transferSelectedEntriesToTarget}
-      transferTarget={transferTarget}
-      trustHostKey={trustHostKey}
-      uploadLocalDirectory={uploadLocalDirectory}
-      uploadLocalFile={uploadLocalFile}
-      uploadMenuOpen={uploadMenuOpen}
-      uploadMenuRef={uploadMenuRef}
-      visibleEntries={visibleEntries}
-      visibleTransfers={visibleTransfers}
-      workspaceCloseBlocked={workspaceCloseBlocked}
-      workspaceDialog={workspaceDialog}
-      workspaceDirty={workspaceDirty}
-      workspaceExpanded={workspaceExpanded}
+        cancelTransfer={cancelTransfer}
+        clearFinishedTransfers={clearFinishedTransfers}
+        closeWorkspaceDialog={closeWorkspaceDialog}
+        compactHeader={compactHeader}
+        contextMenu={contextMenu}
+        currentPath={currentPath}
+        cwdTrackingSetupBusy={cwdTrackingSetupBusy}
+        dialogAction={dialogAction}
+        dialogBusy={dialogBusy}
+        dialogStatus={dialogStatus}
+        directoryCount={directoryCount}
+        downloadSelectedEntries={downloadSelectedEntries}
+        dragDropActive={dragDropActive}
+        dropZoneRef={dropZoneRef}
+        entries={entries}
+        error={error}
+        executeContextMenuAction={executeContextMenuAction}
+        fileCount={fileCount}
+        fileRowHeight={fileRowHeight}
+        fileTarget={fileTarget}
+        finishRemoteEntryDrag={finishRemoteEntryDrag}
+        followTerminalDirectory={followTerminalDirectory}
+        handleRemoteDownloadDragEnter={handleRemoteDownloadDragEnter}
+        handleRemoteDownloadDragLeave={handleRemoteDownloadDragLeave}
+        handleRemoteDownloadDragOver={handleRemoteDownloadDragOver}
+        handleRemoteDownloadDrop={handleRemoteDownloadDrop}
+        handleSftpKeyDown={handleSftpKeyDown}
+        hiddenEntryCount={hiddenEntryCount}
+        hostKeyTrustBusy={hostKeyTrustBusy}
+        interfaceDensity={interfaceDensity}
+        listing={listing}
+        loadDirectory={loadDirectory}
+        loading={loading}
+        normalizedFollowedPath={normalizedFollowedPath}
+        openContextMenu={openContextMenu}
+        openContextMenuFromPress={openContextMenuFromPress}
+        openEditorEntry={openEditorEntry}
+        openNewDirectoryDialog={openNewDirectoryDialog}
+        operationStatus={operationStatus}
+        pathDraft={pathDraft}
+        remoteDownloadDragActive={remoteDownloadDragActive}
+        remoteDownloadDropActive={remoteDownloadDropActive}
+        remoteDragEntriesRef={remoteDragEntriesRef}
+        selectEntry={selectEntry}
+        selectedEntries={selectedEntries}
+        selectedEntryPaths={selectedEntryPaths}
+        setContextMenu={setContextMenu}
+        setDialogAction={setDialogAction}
+        setDialogStatus={setDialogStatus}
+        setFollowTerminalDirectory={setFollowTerminalDirectoryFromView}
+        setOperationStatus={setOperationStatus}
+        setPathDraft={setPathDraft}
+        setShowHiddenFiles={setShowHiddenFiles}
+        setUploadMenuOpen={setUploadMenuOpen}
+        setWorkspaceCloseBlocked={setWorkspaceCloseBlocked}
+        setWorkspaceDirty={setWorkspaceDirty}
+        setWorkspaceExpanded={setWorkspaceExpanded}
+        setupRemoteCwdTracking={setupRemoteCwdTracking}
+        showHiddenFiles={showHiddenFiles}
+        showLocalTransferActions={showLocalTransferActions}
+        showTransferStatusBar={showTransferStatusBar}
+        startRemoteEntryDrag={startRemoteEntryDrag}
+        submitDialogAction={submitDialogAction}
+        submitPathDraft={submitPathDraft}
+        supportsSftpAdvancedActions={supportsSftpAdvancedActions}
+        transferableSelectedEntries={transferableSelectedEntries}
+        transferSelectedEntriesToTarget={transferSelectedEntriesToTarget}
+        transferTarget={transferTarget}
+        trustHostKey={trustHostKey}
+        uploadLocalDirectory={uploadLocalDirectory}
+        uploadLocalFile={uploadLocalFile}
+        uploadMenuOpen={uploadMenuOpen}
+        uploadMenuRef={uploadMenuRef}
+        visibleEntries={visibleEntries}
+        visibleTransfers={visibleTransfers}
+        workspaceCloseBlocked={workspaceCloseBlocked}
+        workspaceDialog={workspaceDialog}
+        workspaceDirty={workspaceDirty}
+        workspaceExpanded={workspaceExpanded}
         workspaceTarget={workspaceTarget}
       />
       <SftpTransferConflictDialog
@@ -735,6 +746,19 @@ export function SftpToolContent({
         }}
         open={Boolean(pendingTransferConflict)}
       />
+      <PromptDialog
+        confirmLabel="关闭工作区"
+        confirmVariant="danger"
+        description={workspaceDialog?.rootPath}
+        onClose={cancelWorkspaceCloseConfirmation}
+        onConfirm={() => confirmWorkspaceDialogClose()}
+        open={workspaceCloseConfirmationOpen}
+        title="关闭远程工作区"
+      >
+        <div className="rounded-2xl border border-amber-400/25 bg-amber-500/10 px-3 py-3 text-sm text-amber-800 dark:text-amber-100">
+          工作区有未保存修改，关闭会丢失这些修改。
+        </div>
+      </PromptDialog>
     </>
   );
 }

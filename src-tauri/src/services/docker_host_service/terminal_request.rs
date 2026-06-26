@@ -1,10 +1,9 @@
 use super::*;
+use crate::models::remote_host::RemoteHostAuthType;
 
-pub(super) fn build_container_terminal_request(
-    host: &RemoteHost,
-    ssh_executable: String,
+pub fn build_container_terminal_remote_command(
     request: DockerContainerTerminalCreateRequest,
-) -> AppResult<TerminalCreateRequest> {
+) -> AppResult<String> {
     if request.rows == 0 || request.cols == 0 {
         return Err(AppError::InvalidInput(
             "终端行数和列数必须大于 0".to_owned(),
@@ -30,6 +29,17 @@ pub(super) fn build_container_terminal_request(
     remote_command.push("-lc".to_owned());
     remote_command.push(shell_quote(&shell_script));
 
+    Ok(remote_command.join(" "))
+}
+
+pub fn build_container_terminal_request(
+    host: &RemoteHost,
+    ssh_executable: String,
+    request: DockerContainerTerminalCreateRequest,
+) -> AppResult<TerminalCreateRequest> {
+    let rows = request.rows;
+    let cols = request.cols;
+    let remote_command = build_container_terminal_remote_command(request)?;
     let mut args = vec![
         "-tt".to_owned(),
         "-p".to_owned(),
@@ -41,17 +51,16 @@ pub(super) fn build_container_terminal_request(
     ];
     args.extend(auth_args(host.auth_type));
     args.push(format!("{}@{}", host.username, host.host));
-    args.push(remote_command.join(" "));
+    args.push(remote_command);
 
     Ok(TerminalCreateRequest {
         shell: Some(ssh_executable),
         args,
         cwd: None,
-        cols: request.cols,
-        rows: request.rows,
+        cols,
+        rows,
         env: Default::default(),
         cleanup_paths: Vec::new(),
-        secret_input_response: None,
     })
 }
 
@@ -80,10 +89,11 @@ pub(super) fn auth_args(auth_type: RemoteHostAuthType) -> Vec<String> {
     ]
 }
 
-pub(super) fn resolve_host(storage: &SqliteStore, host_id: &str) -> AppResult<RemoteHost> {
-    storage
-        .remote_host_by_id(host_id)?
-        .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {host_id}")))
+pub(super) fn resolve_host(
+    remote_hosts: &RemoteHostService,
+    host_id: &str,
+) -> AppResult<RemoteHost> {
+    remote_hosts.require_host(host_id)
 }
 
 pub(super) fn resolve_ssh_executable() -> AppResult<String> {

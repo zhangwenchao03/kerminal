@@ -16,7 +16,7 @@ pub async fn ssh_command_execute(
 ) -> Result<SshCommandOutput, String> {
     state
         .ssh_commands()
-        .execute_native(state.storage(), state.paths(), request)
+        .execute_native(state.paths(), request)
         .await
         .map_err(|error| error.to_string())
 }

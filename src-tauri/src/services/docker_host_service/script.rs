@@ -19,6 +19,118 @@ fi
     )
 }
 
+pub fn build_container_label_inspect_script(
+    runtime: ContainerRuntime,
+    container_ids: &[String],
+) -> String {
+    let containers = container_ids
+        .iter()
+        .map(|container_id| shell_quote(container_id))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(
+        r#"set -eu
+runtime={runtime}
+if ! command -v "$runtime" >/dev/null 2>&1; then
+  echo "container runtime not found: $runtime" >&2
+  exit 127
+fi
+"$runtime" inspect --format '{{{{json .}}}}' {containers}
+"#,
+        runtime = shell_quote(runtime.as_str()),
+        containers = containers,
+    )
+}
+
+pub fn build_container_lifecycle_script(
+    runtime: ContainerRuntime,
+    action: DockerContainerLifecycleAction,
+    container_id: &str,
+    force: bool,
+) -> String {
+    let (command, force_flag) = match action {
+        DockerContainerLifecycleAction::Start => ("start", ""),
+        DockerContainerLifecycleAction::Stop => ("stop", ""),
+        DockerContainerLifecycleAction::Restart => ("restart", ""),
+        DockerContainerLifecycleAction::Remove => {
+            if force {
+                ("rm", " -f")
+            } else {
+                ("rm", "")
+            }
+        }
+    };
+    format!(
+        r#"set -eu
+runtime={runtime}
+container={container}
+if ! command -v "$runtime" >/dev/null 2>&1; then
+  echo "container runtime not found: $runtime" >&2
+  exit 127
+fi
+"$runtime" {command}{force_flag} "$container"
+"#,
+        runtime = shell_quote(runtime.as_str()),
+        container = shell_quote(container_id),
+        command = command,
+        force_flag = force_flag,
+    )
+}
+
+pub fn build_container_inspect_script(runtime: ContainerRuntime, container_id: &str) -> String {
+    format!(
+        r#"set -eu
+runtime={runtime}
+container={container}
+if ! command -v "$runtime" >/dev/null 2>&1; then
+  echo "container runtime not found: $runtime" >&2
+  exit 127
+fi
+"$runtime" inspect "$container"
+"#,
+        runtime = shell_quote(runtime.as_str()),
+        container = shell_quote(container_id),
+    )
+}
+
+pub fn build_container_logs_script(
+    runtime: ContainerRuntime,
+    container_id: &str,
+    tail: u16,
+) -> String {
+    format!(
+        r#"set -eu
+runtime={runtime}
+container={container}
+tail={tail}
+if ! command -v "$runtime" >/dev/null 2>&1; then
+  echo "container runtime not found: $runtime" >&2
+  exit 127
+fi
+"$runtime" logs --tail "$tail" "$container" 2>&1
+"#,
+        runtime = shell_quote(runtime.as_str()),
+        container = shell_quote(container_id),
+        tail = tail,
+    )
+}
+
+pub fn build_container_stats_script(runtime: ContainerRuntime, container_id: &str) -> String {
+    format!(
+        r#"set -eu
+runtime={runtime}
+container={container}
+if ! command -v "$runtime" >/dev/null 2>&1; then
+  echo "container runtime not found: $runtime" >&2
+  exit 127
+fi
+"$runtime" stats --no-stream --format '{{{{json .}}}}' "$container"
+"#,
+        runtime = shell_quote(runtime.as_str()),
+        container = shell_quote(container_id),
+    )
+}
+
 pub(super) struct ContainerScriptRequest<'a> {
     pub(super) host_id: &'a str,
     pub(super) runtime: ContainerRuntime,
@@ -30,7 +142,6 @@ pub(super) struct ContainerScriptRequest<'a> {
 }
 
 pub(super) async fn execute_container_script(
-    storage: &SqliteStore,
     paths: &KerminalPaths,
     ssh_commands: &SshCommandService,
     request: ContainerScriptRequest<'_>,
@@ -45,7 +156,6 @@ pub(super) async fn execute_container_script(
     );
     let output = ssh_commands
         .execute_native(
-            storage,
             paths,
             SshCommandRequest {
                 host_id,
@@ -64,7 +174,7 @@ pub(super) async fn execute_container_script(
     Ok(output)
 }
 
-pub(crate) fn build_container_exec_script(
+pub fn build_container_exec_script(
     runtime: ContainerRuntime,
     container_id: &str,
     inner_script: &str,
