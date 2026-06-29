@@ -29,6 +29,7 @@ const remoteCopyPlan: SftpRemoteCopyPlan = {
   destinationRemotePath: "/backup",
   requests: [
     {
+      conflictPolicy: "overwrite",
       kind: "file",
       sourceHostId: "host-left",
       sourceRemotePath: "/srv/app.log",
@@ -36,6 +37,7 @@ const remoteCopyPlan: SftpRemoteCopyPlan = {
       targetRemotePath: "/backup/app.log",
     },
     {
+      conflictPolicy: "overwrite",
       kind: "directory",
       sourceHostId: "host-left",
       sourceRemotePath: "/srv/conf",
@@ -222,8 +224,22 @@ function transferSummary(
     id: "transfer-1",
     kind: "file",
     localPath: "",
+    operation: "remoteCopy",
     remotePath: "/backup/app.log",
+    source: {
+      hostId: "host-left",
+      hostLabel: "host-left",
+      kind: "remote",
+      path: "/srv/app.log",
+    },
     status: "queued",
+    target: {
+      hostId: "host-right",
+      hostLabel: "host-right",
+      kind: "remote",
+      path: "/backup/app.log",
+    },
+    transportMode: "clientBridge",
     updatedAt: 1,
     ...overrides,
   };

@@ -10,7 +10,6 @@ import {
 import {
   AlertTriangle,
   ChevronLeft,
-  Link2,
   Loader2,
   ShieldOff,
   Sparkles,
@@ -28,11 +27,11 @@ import {
   agentSessionRecordId,
   agentSessionRecordAgentId,
   agentSessionRecordTarget,
+  archiveAgentSession,
   createAgentSession,
   getExternalAgentWorkspaceStatus,
   listAgentSessions,
   prepareExternalAgentWorkspace,
-  rebindAgentSessionTarget,
   type AgentSessionRecord,
   type AgentSessionTargetRequest,
   type ExternalAgentId,
@@ -48,12 +47,14 @@ import {
 } from "../settings/settingsModel";
 import {
   getTerminalPaneSessionRecord,
-  listTerminalPaneSessionRecords,
-  type PaneSessionListRecord,
   type PaneSessionRecord,
 } from "../terminal/terminalSessionRegistry";
 import { XtermPane } from "../terminal/XtermPane";
-import type { TerminalPane, TerminalTab } from "../workspace/types";
+import {
+  isTerminalSessionTab,
+  type TerminalPane,
+  type TerminalTab,
+} from "../workspace/types";
 import {
   agentLauncherErrorMessage,
   agentLaunchDisplayCommand,
@@ -64,6 +65,13 @@ import {
   type AgentLaunchPermissionMode,
   type AgentActionViewModel,
 } from "./agent-launcher/agentLauncherModel";
+import {
+  findRunningSessionForTabAgent,
+  restorableSessionsForTab,
+  tabRemovedCleanupPlan,
+  visibleAgentSessionForTab,
+  type AgentSidebarSessionState,
+} from "./agent-launcher/agentTabSessionModel";
 
 interface AgentLauncherToolContentProps {
   activeTab?: TerminalTab;
@@ -71,6 +79,7 @@ interface AgentLauncherToolContentProps {
   focusedPane?: TerminalPane;
   resolvedTheme?: ResolvedTheme;
   terminalAppearance?: TerminalAppearance;
+  terminalTabs?: TerminalTab[];
 }
 
 type LoadState = "idle" | "loading" | "refreshing" | "error";
@@ -97,11 +106,13 @@ interface AgentTerminalSession {
   status: ExternalAgentSessionStatus;
   customCommand?: string;
   permissionMode: AgentLaunchPermissionMode;
+  tabId: string;
   target?: AgentSessionTargetRequest;
 }
 
 interface AgentSessionSelection {
   agentSessionId: string;
+  tabId: string;
   target?: AgentSessionTargetRequest;
 }
 
@@ -167,6 +178,7 @@ export function AgentLauncherToolContent({
   focusedPane,
   resolvedTheme = "dark",
   terminalAppearance = defaultTerminalAppearance,
+  terminalTabs,
 }: AgentLauncherToolContentProps) {
   const [status, setStatus] = useState<ExternalAgentWorkspaceStatus | null>(
     null,
@@ -189,10 +201,19 @@ export function AgentLauncherToolContent({
   const [agentContextMenu, setAgentContextMenu] =
     useState<AgentLauncherContextMenuState | null>(null);
   const launcherMenuRootRef = useRef<HTMLDivElement | null>(null);
-  const [activeAgentSessionId, setActiveAgentSessionId] = useState<
-    string | null
-  >(null);
-  const [view, setView] = useState<AgentLauncherView>("launcher");
+  const [activeSessionIdByTabId, setActiveSessionIdByTabId] = useState<
+    Record<string, string | undefined>
+  >({});
+  const [viewByTabId, setViewByTabId] = useState<
+    Record<string, AgentLauncherView | undefined>
+  >({});
+  const previousTerminalTabIdsRef = useRef<string[] | null>(null);
+  const activeAgentTabId = isTerminalSessionTab(activeTab)
+    ? activeTab.id
+    : undefined;
+  const view = activeAgentTabId
+    ? (viewByTabId[activeAgentTabId] ?? "launcher")
+    : "launcher";
   const loadStatus = useCallback(async (state: LoadState = "loading") => {
     setLoadState(state);
     setLoadError(null);
@@ -267,26 +288,125 @@ export function AgentLauncherToolContent({
     [agentSessions],
   );
 
+  const agentSidebarState: AgentSidebarSessionState = useMemo(
+    () => ({
+      activeSessionIdByTabId,
+      sessionsById: agentSessions,
+      viewByTabId: viewByTabId as Record<string, AgentLauncherView>,
+    }),
+    [activeSessionIdByTabId, agentSessions, viewByTabId],
+  );
+
+  const activeAgentSession = useMemo(
+    () => visibleAgentSessionForTab(agentSidebarState, activeAgentTabId),
+    [activeAgentTabId, agentSidebarState],
+  );
+  const terminalTabIds = useMemo(
+    () =>
+      terminalTabs
+        ?.filter((tab) => isTerminalSessionTab(tab))
+        .map((tab) => tab.id) ?? [],
+    [terminalTabs],
+  );
+  const terminalTabIdsKey = terminalTabIds.join("\u0000");
+
+  useEffect(() => {
+    if (!terminalTabs) {
+      return;
+    }
+    const previousTabIds = previousTerminalTabIdsRef.current;
+    previousTerminalTabIdsRef.current = terminalTabIds;
+    if (!previousTabIds) {
+      return;
+    }
+    const cleanupPlan = tabRemovedCleanupPlan(
+      previousTabIds,
+      terminalTabIds,
+      agentSidebarState,
+    );
+    if (cleanupPlan.agentSessionIds.length === 0) {
+      return;
+    }
+    const removedSessionIds = new Set(cleanupPlan.agentSessionIds);
+    const removedTabIds = new Set(cleanupPlan.removedTabIds);
+    setAgentSessions((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(
+          ([agentSessionId]) => !removedSessionIds.has(agentSessionId),
+        ),
+      ),
+    );
+    setActiveSessionIdByTabId((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([tabId]) => !removedTabIds.has(tabId)),
+      ),
+    );
+    setViewByTabId((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([tabId]) => !removedTabIds.has(tabId)),
+      ),
+    );
+    void Promise.all(
+      cleanupPlan.agentSessionIds.map(async (agentSessionId) => {
+        try {
+          await archiveAgentSession(agentSessionId);
+        } catch (error) {
+          setActionError(agentLauncherErrorMessage(error));
+        }
+      }),
+    );
+  }, [agentSidebarState, terminalTabIds, terminalTabIdsKey, terminalTabs]);
+
   const findAgentSessionId = (
+    tabId: string | undefined,
     agentId: ExternalAgentId,
     permissionMode: AgentLaunchPermissionMode,
   ) =>
-    agentSessionList.find(
-      (session) =>
-        session.agentId === agentId && session.permissionMode === permissionMode,
+    findRunningSessionForTabAgent(
+      agentSidebarState,
+      tabId,
+      agentId,
+      permissionMode,
     )?.agentSessionId ?? null;
 
+  const setTabView = (tabId: string, nextView: AgentLauncherView) => {
+    setViewByTabId((current) => ({
+      ...current,
+      [tabId]: nextView,
+    }));
+  };
+
+  const activateAgentSessionForTab = (
+    tabId: string,
+    agentSessionId: string,
+  ) => {
+    setActiveSessionIdByTabId((current) => ({
+      ...current,
+      [tabId]: agentSessionId,
+    }));
+    setTabView(tabId, "terminal");
+  };
+
+  const requireActiveAgentTabId = () => {
+    if (!activeAgentTabId) {
+      throw new Error("Open a terminal tab before launching an agent.");
+    }
+    return activeAgentTabId;
+  };
+
   const findPersistedAgentSession = (
+    tabId: string,
     agentId: ExternalAgentId,
     records: AgentSessionRecord[],
   ) => {
-    for (const record of records) {
+    for (const record of restorableSessionsForTab(records, tabId)) {
       if (agentSessionRecordAgentId(record) !== agentId) {
         continue;
       }
       try {
         return {
           agentSessionId: agentSessionRecordId(record),
+          tabId,
           target: agentSessionRecordTarget(record),
         } satisfies AgentSessionSelection;
       } catch {
@@ -296,15 +416,22 @@ export function AgentLauncherToolContent({
     return null;
   };
 
-  const resolvePersistedAgentSession = async (agentId: ExternalAgentId) => {
-    const current = findPersistedAgentSession(agentId, persistedAgentSessions);
+  const resolvePersistedAgentSession = async (
+    tabId: string,
+    agentId: ExternalAgentId,
+  ) => {
+    const current = findPersistedAgentSession(
+      tabId,
+      agentId,
+      persistedAgentSessions,
+    );
     if (current) {
       return current;
     }
     try {
       const list = await listAgentSessions();
       setPersistedAgentSessions(list.sessions ?? []);
-      return findPersistedAgentSession(agentId, list.sessions ?? []);
+      return findPersistedAgentSession(tabId, agentId, list.sessions ?? []);
     } catch {
       return null;
     }
@@ -315,8 +442,9 @@ export function AgentLauncherToolContent({
     options: {
       customCommand?: string;
       permissionMode?: AgentLaunchPermissionMode;
+      tabId: string;
       target?: AgentSessionTargetRequest;
-    } = {},
+    },
   ) => {
     const permissionMode = options.permissionMode ?? "default";
     const launchSpec = applyAgentLaunchPermissionMode(spec, permissionMode);
@@ -336,6 +464,7 @@ export function AgentLauncherToolContent({
       status: launchSpec.status ?? "running",
       title: launchSpec.agentId === "custom" ? "Custom" : launchSpec.title,
       customCommand: options.customCommand,
+      tabId: options.tabId,
       target: options.target,
     };
     setAgentSessions((current) => ({
@@ -343,8 +472,7 @@ export function AgentLauncherToolContent({
       [nextSession.agentSessionId]: nextSession,
     }));
     setRestoreChoice(null);
-    setActiveAgentSessionId(nextSession.agentSessionId);
-    setView("terminal");
+    activateAgentSessionForTab(options.tabId, nextSession.agentSessionId);
   };
 
   const prepareAndLaunchAgent = async (
@@ -369,6 +497,7 @@ export function AgentLauncherToolContent({
     launchPreparedSpec(launchSpec, {
       customCommand: options.customCommand,
       permissionMode: options.permissionMode,
+      tabId: agentSession.tabId,
       target: agentSession.target,
     });
     await loadPersistedAgentSessions();
@@ -379,9 +508,11 @@ export function AgentLauncherToolContent({
     agentId: ExternalAgentId,
     permissionMode: AgentLaunchPermissionMode = "default",
   ) => {
+    const tabId = requireActiveAgentTabId();
     const agentSession = await createSessionForLaunch(agentId, {
       activeTab,
       focusedPane,
+      tabId,
     });
     await prepareAndLaunchAgent(agentId, agentSession, {
       permissionMode,
@@ -393,6 +524,10 @@ export function AgentLauncherToolContent({
     agentId: ExternalAgentId,
     permissionMode: AgentLaunchPermissionMode = "default",
   ) => {
+    if (!activeAgentTabId) {
+      setActionError("Open a terminal tab before launching an agent.");
+      return;
+    }
     if (agentId === "custom") {
       setRestoreChoice(null);
       setCustomCommandOpen(true);
@@ -400,16 +535,22 @@ export function AgentLauncherToolContent({
       return;
     }
 
-    const existingSessionId = findAgentSessionId(agentId, permissionMode);
+    const existingSessionId = findAgentSessionId(
+      activeAgentTabId,
+      agentId,
+      permissionMode,
+    );
     if (existingSessionId) {
       setRestoreChoice(null);
-      setActiveAgentSessionId(existingSessionId);
-      setView("terminal");
+      activateAgentSessionForTab(activeAgentTabId, existingSessionId);
       return;
     }
 
     void runAction(agentId, async () => {
-      const persistedSession = await resolvePersistedAgentSession(agentId);
+      const persistedSession = await resolvePersistedAgentSession(
+        activeAgentTabId,
+        agentId,
+      );
       if (persistedSession) {
         setRestoreChoice({ agentId, permissionMode, session: persistedSession });
         return;
@@ -423,15 +564,16 @@ export function AgentLauncherToolContent({
     if (!trimmedCommand) {
       return;
     }
+    const tabId = requireActiveAgentTabId();
 
     const existingSession = agentSessionList.find(
       (session) =>
+        session.tabId === tabId &&
         session.agentId === "custom" &&
         session.customCommand === trimmedCommand,
     );
     if (existingSession) {
-      setActiveAgentSessionId(existingSession.agentSessionId);
-      setView("terminal");
+      activateAgentSessionForTab(tabId, existingSession.agentSessionId);
       return;
     }
 
@@ -440,6 +582,7 @@ export function AgentLauncherToolContent({
       const agentSession = await createSessionForLaunch("custom", {
         activeTab,
         focusedPane,
+        tabId,
       });
       const launchSpec = await prepareExternalAgentWorkspace({
         agentId: "custom",
@@ -449,6 +592,7 @@ export function AgentLauncherToolContent({
       launchPreparedSpec(launchSpec, {
         customCommand: trimmedCommand,
         permissionMode: "default",
+        tabId: agentSession.tabId,
         target: agentSession.target,
       });
       await loadPersistedAgentSessions();
@@ -489,35 +633,6 @@ export function AgentLauncherToolContent({
         bounds,
       ),
     });
-  };
-
-  const rebindAgentTarget = async (
-    session: AgentTerminalSession,
-    target: AgentSessionTargetRequest,
-  ) => {
-    setActionState(session.agentId);
-    setActionError(null);
-    try {
-      const record = await rebindAgentSessionTarget(session.agentSessionId, target);
-      const nextTarget = agentSessionRecordTarget(record) ?? target;
-      setAgentSessions((current) => {
-        const existing = current[session.agentSessionId] ?? session;
-        return {
-          ...current,
-          [session.agentSessionId]: {
-            ...existing,
-            target: nextTarget,
-          },
-        };
-      });
-      await loadPersistedAgentSessions();
-      return true;
-    } catch (error) {
-      setActionError(agentLauncherErrorMessage(error));
-      return false;
-    } finally {
-      setActionState(null);
-    }
   };
 
   return (
@@ -613,7 +728,7 @@ export function AgentLauncherToolContent({
         {actionError ? <InlineError message={actionError} /> : null}
       </div>
       {agentSessionList.map((session) => {
-        const active = session.agentSessionId === activeAgentSessionId;
+        const active = session.agentSessionId === activeAgentSession?.agentSessionId;
         return (
         <div
           aria-hidden={view !== "terminal" || !active}
@@ -629,8 +744,11 @@ export function AgentLauncherToolContent({
             focused={view === "terminal" && active}
             session={session}
             desktopNotifications={desktopNotifications}
-            onBack={() => setView("launcher")}
-            onRebindTarget={rebindAgentTarget}
+            onBack={() => {
+              if (activeAgentTabId) {
+                setTabView(activeAgentTabId, "launcher");
+              }
+            }}
             resolvedTheme={resolvedTheme}
             terminalAppearance={terminalAppearance}
           />
@@ -646,9 +764,11 @@ async function createSessionForLaunch(
   {
     activeTab,
     focusedPane,
+    tabId,
   }: {
     activeTab?: TerminalTab;
     focusedPane?: TerminalPane;
+    tabId: string;
   },
 ): Promise<AgentSessionSelection> {
   const record = await createAgentSession({
@@ -658,6 +778,7 @@ async function createSessionForLaunch(
   });
   return {
     agentSessionId: agentSessionRecordId(record),
+    tabId,
     target: agentSessionRecordTarget(record),
   };
 }
@@ -750,21 +871,6 @@ function buildAgentSessionTarget(
   };
 }
 
-function buildAgentSessionTargetFromPaneRecord(
-  record: PaneSessionListRecord,
-): AgentSessionTargetRequest {
-  return {
-    cwd: record.cwd,
-    liveStatus: "ready",
-    paneId: record.paneId,
-    shell: record.shell,
-    tabId: record.tabId,
-    targetKind: record.target,
-    targetRef: buildPaneRecordTargetRef(record),
-    targetTerminalSessionId: record.sessionId,
-  };
-}
-
 function buildAgentTargetRef(
   focusedPane: TerminalPane,
   activeTab: TerminalTab | undefined,
@@ -806,38 +912,6 @@ function buildAgentTargetRef(
   ]);
 }
 
-function buildPaneRecordTargetRef(record: PaneSessionListRecord): string {
-  if (record.targetRef?.trim()) {
-    return record.targetRef.trim();
-  }
-  const tabPart = record.tabId ? `tab:${record.tabId}` : undefined;
-  const panePart = `pane:${record.paneId}`;
-  if (record.target === "dockerContainer") {
-    return joinTargetRefParts([
-      "dockerContainer",
-      record.remoteHostId ? `host:${record.remoteHostId}` : undefined,
-      record.containerRuntime ? `runtime:${record.containerRuntime}` : undefined,
-      record.containerId ? `container:${record.containerId}` : undefined,
-      tabPart,
-      panePart,
-    ]);
-  }
-  if (record.target === "local") {
-    return joinTargetRefParts([
-      "local",
-      record.profileId ? `profile:${record.profileId}` : "profile:default",
-      tabPart,
-      panePart,
-    ]);
-  }
-  return joinTargetRefParts([
-    record.target,
-    record.remoteHostId ? `host:${record.remoteHostId}` : undefined,
-    tabPart,
-    panePart,
-  ]);
-}
-
 function joinTargetRefParts(parts: Array<string | undefined>): string {
   return parts.filter((part): part is string => Boolean(part?.trim())).join(":");
 }
@@ -855,10 +929,6 @@ function formatTargetChipLabel(target?: AgentSessionTargetRequest): string {
   const name = compactTargetName(target.targetRef ?? target.paneId);
   const path = compactTargetPath(target.cwd);
   return path ? `${name} · ${path}` : name;
-}
-
-function formatPaneRecordTitle(record: PaneSessionListRecord): string {
-  return compactTargetName(buildPaneRecordTargetRef(record));
 }
 
 function compactTargetName(value?: string): string {
@@ -998,7 +1068,6 @@ function AgentTerminalView({
   desktopNotifications,
   focused,
   onBack,
-  onRebindTarget,
   resolvedTheme,
   session,
   terminalAppearance,
@@ -1006,24 +1075,14 @@ function AgentTerminalView({
   desktopNotifications?: DesktopNotificationSettings;
   focused: boolean;
   onBack: () => void;
-  onRebindTarget: (
-    session: AgentTerminalSession,
-    target: AgentSessionTargetRequest,
-  ) => Promise<boolean>;
   resolvedTheme: ResolvedTheme;
   session: AgentTerminalSession;
   terminalAppearance: TerminalAppearance;
 }) {
-  const [rebindOpen, setRebindOpen] = useState(false);
-  const [availableTargets, setAvailableTargets] = useState<
-    PaneSessionListRecord[]
-  >([]);
-  const [rebindBusyTarget, setRebindBusyTarget] = useState<string | null>(null);
   const paneId = `agent-terminal-${session.agentSessionId}`;
   const Icon = agentIcons[session.agentId];
   const workspacePath = compactWorkspacePath(session.cwd);
   const title = session.title === "Custom" ? "自定义" : session.title;
-  const targetLabel = formatTargetChipLabel(session.target);
   const notificationLastSentAtRef = useRef<Record<string, number | undefined>>(
     {},
   );
@@ -1053,14 +1112,6 @@ function AgentTerminalView({
     },
     [desktopNotifications, session.agentSessionId, title],
   );
-  const openRebindTargets = () => {
-    setAvailableTargets(
-      listTerminalPaneSessionRecords().filter(
-        (record) => !record.paneId.startsWith("agent-terminal-"),
-      ),
-    );
-    setRebindOpen((open) => !open);
-  };
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--surface-terminal)]">
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface-solid)] px-2.5">
@@ -1087,72 +1138,6 @@ function AgentTerminalView({
           >
             {session.commandLabel} · {workspacePath}
           </div>
-        </div>
-        <div className="relative shrink-0">
-          <button
-            aria-label="Rebind agent target"
-            className={cn(
-              "kerminal-pressable kerminal-focus-ring flex h-7 max-w-[132px] items-center gap-1.5 rounded-full border px-2 text-[11px] font-medium transition",
-              session.target?.liveStatus === "stale" ||
-                session.target?.liveStatus === "closed"
-                ? "border-amber-400/40 bg-amber-500/10 text-amber-700 dark:text-amber-200"
-                : "border-[var(--border-subtle)] bg-[var(--surface-hover)] text-zinc-600 dark:text-zinc-300",
-            )}
-            onClick={openRebindTargets}
-            title={targetLabel}
-            type="button"
-          >
-            <Link2 className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate" data-testid="agent-target-chip">
-              {targetLabel}
-            </span>
-          </button>
-          {rebindOpen ? (
-            <div className="absolute right-0 top-8 z-20 w-64 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-solid)] p-1.5 shadow-xl shadow-black/15 dark:shadow-black/40">
-              {availableTargets.length > 0 ? (
-                <div className="max-h-64 overflow-y-auto">
-                  {availableTargets.map((record) => {
-                    const target = buildAgentSessionTargetFromPaneRecord(record);
-                    const targetKey = `${record.paneId}:${record.sessionId}`;
-                    return (
-                      <button
-                        aria-label={`Bind agent target to ${formatPaneRecordTitle(record)}`}
-                        className="kerminal-pressable kerminal-focus-ring flex w-full min-w-0 items-start gap-2 rounded-xl px-2 py-2 text-left transition hover:bg-[var(--surface-hover)]"
-                        disabled={rebindBusyTarget !== null}
-                        key={targetKey}
-                        onClick={async () => {
-                          setRebindBusyTarget(targetKey);
-                          const ok = await onRebindTarget(session, target);
-                          setRebindBusyTarget(null);
-                          if (ok) {
-                            setRebindOpen(false);
-                          }
-                        }}
-                        type="button"
-                      >
-                        <Terminal className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-xs font-medium text-zinc-800 dark:text-zinc-100">
-                            {formatPaneRecordTitle(record)}
-                          </span>
-                          <span className="block truncate font-mono text-[10px] text-zinc-500 dark:text-zinc-400">
-                            {compactTargetPath(record.cwd)}
-                          </span>
-                        </span>
-                        {rebindBusyTarget === targetKey ? (
-                          <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin" />
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="px-2 py-2 text-xs text-zinc-500 dark:text-zinc-400">
-                  没有可绑定的终端
-                </div>
-              )}
-            </div>
-          ) : null}
         </div>
       </header>
       <div className="min-h-0 flex-1 p-2">

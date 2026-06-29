@@ -12,13 +12,16 @@ fn remote_host(tags: Vec<String>) -> RemoteHost {
     RemoteHost {
         id: "host-1".to_owned(),
         group_id: Some("group-1".to_owned()),
-        name: "legacy".to_owned(),
-        host: "legacy.internal".to_owned(),
+        name: "lab".to_owned(),
+        host: "lab.internal".to_owned(),
         port: 2323,
         username: String::new(),
         auth_type: RemoteHostAuthType::Agent,
         credential_ref: None,
+        secret_ref: None,
+        key_passphrase_ref: None,
         credential_secret: None,
+        credential_status: Default::default(),
         tags,
         production: false,
         ssh_options: SshOptions::default(),
@@ -39,7 +42,7 @@ fn build_telnet_terminal_request_uses_parameterized_args() {
     .expect("build request");
 
     assert_eq!(request.shell.as_deref(), Some("telnet"));
-    assert_eq!(request.args, vec!["legacy.internal", "2323"]);
+    assert_eq!(request.args, vec!["lab.internal", "2323"]);
     assert_eq!(request.cwd, None);
     assert_eq!(request.rows, 24);
     assert_eq!(request.cols, 80);

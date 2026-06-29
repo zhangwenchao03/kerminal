@@ -12,7 +12,6 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 import type { SftpEntry } from "../../../lib/sftpApi";
 import {
-  SFTP_REMOTE_DOWNLOAD_DRAG_MIME,
   SFTP_REMOTE_DRAG_PAYLOAD_MIME,
   parseSftpRemoteDragPayload,
 } from "./sftpRemoteTransferModel";
@@ -57,11 +56,6 @@ describe("useSftpRemoteDownloadDragActions", () => {
     expect(event.dataTransfer.effectAllowed).toBe("copy");
     expect(event.dataTransfer.setData).toHaveBeenNthCalledWith(
       1,
-      SFTP_REMOTE_DOWNLOAD_DRAG_MIME,
-      JSON.stringify([fileEntry.path, directoryEntry.path]),
-    );
-    expect(event.dataTransfer.setData).toHaveBeenNthCalledWith(
-      2,
       "text/plain",
       `${fileEntry.path}\n${directoryEntry.path}`,
     );
@@ -71,7 +65,7 @@ describe("useSftpRemoteDownloadDragActions", () => {
     expect(setters.setRemoteDownloadDropActive).toHaveBeenCalledWith(false);
   });
 
-  it("writes both legacy path MIME and cross-pane remote payload MIME", () => {
+  it("writes text and cross-pane remote payload MIME", () => {
     const fileEntry = remoteEntry({
       name: "app.log",
       path: "/srv/app.log",
@@ -94,10 +88,6 @@ describe("useSftpRemoteDownloadDragActions", () => {
     });
 
     expect(event.dataTransfer.setData).toHaveBeenCalledWith(
-      SFTP_REMOTE_DOWNLOAD_DRAG_MIME,
-      JSON.stringify([fileEntry.path, directoryEntry.path]),
-    );
-    expect(event.dataTransfer.setData).toHaveBeenCalledWith(
       "text/plain",
       `${fileEntry.path}\n${directoryEntry.path}`,
     );
@@ -114,7 +104,7 @@ describe("useSftpRemoteDownloadDragActions", () => {
     });
   });
 
-  it("keeps the legacy drag payload when source host metadata is unavailable", () => {
+  it("omits the cross-pane remote payload when source host metadata is unavailable", () => {
     const entry = remoteEntry({ name: "app.log", path: "/srv/app.log" });
     const { result } = renderDragHook({
       selectedEntryPaths: new Set([entry.path]),
@@ -157,8 +147,8 @@ describe("useSftpRemoteDownloadDragActions", () => {
       entry.path,
     ]);
     expect(event.dataTransfer.setData).toHaveBeenCalledWith(
-      SFTP_REMOTE_DOWNLOAD_DRAG_MIME,
-      JSON.stringify([entry.path]),
+      "text/plain",
+      entry.path,
     );
   });
 
@@ -181,8 +171,8 @@ describe("useSftpRemoteDownloadDragActions", () => {
     expect(setters.setSelectedEntryPath).not.toHaveBeenCalled();
     expect(setters.setSelectedEntryPaths).not.toHaveBeenCalled();
     expect(event.dataTransfer.setData).toHaveBeenCalledWith(
-      SFTP_REMOTE_DOWNLOAD_DRAG_MIME,
-      JSON.stringify([entry.path]),
+      "text/plain",
+      entry.path,
     );
   });
 

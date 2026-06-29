@@ -28,7 +28,9 @@ fn snapshot_rejects_unknown_remote_host_before_spawning_ssh() {
             state.remote_hosts(),
             ServerInfoRequest {
                 host_id: "missing-host".to_owned(),
-                target: None,
+                target: RemoteTargetRef::Ssh {
+                    host_id: "missing-host".to_owned(),
+                },
             },
         )
         .expect_err("reject unknown host");
@@ -318,7 +320,10 @@ fn remote_host(auth_type: RemoteHostAuthType) -> RemoteHost {
         username: "deploy".to_owned(),
         auth_type,
         credential_ref,
+        secret_ref: None,
+        key_passphrase_ref: None,
         credential_secret,
+        credential_status: Default::default(),
         tags: vec!["dev".to_owned()],
         production: false,
         ssh_options: Default::default(),

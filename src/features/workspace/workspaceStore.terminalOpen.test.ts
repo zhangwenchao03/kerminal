@@ -73,6 +73,24 @@ describe("workspaceStore terminal open actions", () => {
     expect(state.focusedPaneId).toBe("pane-ssh-9");
   });
 
+  it("opens a new SSH host tab on repeated open requests", () => {
+    useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
+    useWorkspaceStore.getState().openSshTerminal("host-lab");
+    useWorkspaceStore.getState().openSshTerminal("host-lab");
+
+    const state = useWorkspaceStore.getState();
+    expect(state.terminalTabs.map((tab) => tab.id)).toEqual([
+      "tab-ssh-1",
+      "tab-ssh-2",
+    ]);
+    expect(state.terminalPanes.map((pane) => pane.id)).toEqual([
+      "pane-ssh-1",
+      "pane-ssh-2",
+    ]);
+    expect(state.activeTabId).toBe("tab-ssh-2");
+    expect(state.focusedPaneId).toBe("pane-ssh-2");
+  });
+
   it("opens a new SSH command terminal with a remote command", () => {
     useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
     useWorkspaceStore.getState().openSshCommandTerminal("host-lab", {

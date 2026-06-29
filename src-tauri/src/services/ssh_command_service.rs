@@ -27,7 +27,8 @@ use crate::{
     },
     paths::KerminalPaths,
     services::{
-        process_command::silent_command, remote_host_service::RemoteHostService,
+        encrypted_vault_service::EncryptedVaultService, process_command::silent_command,
+        remote_host_service::RemoteHostService, ssh_credential_resolver::SshCredentialResolver,
         ssh_identity_file::resolve_identity_file_path, ssh_route_plan::build_ssh_route_plan,
     },
     storage::{config_file_store::ConfigFileStore, file_store::FileStoreError},
@@ -64,7 +65,7 @@ impl SshCommandService {
 
     /// 在已保存 SSH 主机上通过 native russh 执行非交互命令。
     ///
-    /// 该路径使用远程主机记录里的明文密码、内联私钥或私钥路径执行命令，
+    /// 该路径先从 encrypted vault 物化运行态密码、内联私钥或私钥路径，
     /// 不把 secret 暴露到本地进程参数。
     pub async fn execute_native(
         &self,
@@ -72,6 +73,9 @@ impl SshCommandService {
         request: SshCommandRequest,
     ) -> AppResult<SshCommandOutput> {
         let host = resolve_remote_host_from_files(paths, &request.host_id)?;
+        let host = SshCredentialResolver::new(EncryptedVaultService::new(paths.clone()))
+            .resolve_runtime_host(&host)?
+            .host;
         let execution = build_native_command_execution(&host, paths, request)?;
         execute_native_ssh_command(&host, execution).await
     }
@@ -723,7 +727,7 @@ fn resolve_native_auth_material(host: &RemoteHost) -> AppResult<NativeSshAuthMat
     match host.auth_type {
         RemoteHostAuthType::Agent => Ok(NativeSshAuthMaterial::Agent),
         RemoteHostAuthType::Password => {
-            let password = required_credential_secret(host, "密码认证需要保存明文 SSH 密码")?;
+            let password = required_credential_secret(host, "密码认证需要已保存 SSH 密码")?;
             Ok(NativeSshAuthMaterial::Password(password))
         }
         RemoteHostAuthType::Key => {
@@ -758,7 +762,7 @@ fn resolve_native_jump_auth_material(
         RemoteHostAuthType::Password => {
             let password = required_jump_credential_secret(
                 jump,
-                &format!("{label} 密码认证需要保存明文 SSH 密码"),
+                &format!("{label} 密码认证需要已保存 SSH 密码"),
             )?;
             Ok(NativeSshAuthMaterial::Password(password))
         }

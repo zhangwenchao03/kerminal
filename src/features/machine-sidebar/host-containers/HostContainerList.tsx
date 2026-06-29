@@ -131,7 +131,7 @@ export function HostContainerList({
 
   if (groupMode !== "compose") {
     return (
-      <LegacyGroupList
+      <ContainerGroupList
         groups={groups}
         onEnterContainer={onEnterContainer}
         onInspectAction={onInspectAction}
@@ -241,7 +241,7 @@ export function HostContainerList({
   );
 }
 
-function LegacyGroupList({
+function ContainerGroupList({
   groups,
   onEnterContainer,
   onInspectAction,

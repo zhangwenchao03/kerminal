@@ -1,7 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { Terminal as XtermTerminal } from "@xterm/xterm";
-import { closeTerminal, createDockerContainerTerminalSession, createSerialTerminalSession, createSshTerminalSession, createTelnetTerminalSession, createTerminalSession, getTerminalLogState, resizeTerminal, writeTerminal } from "../../lib/terminalApi";
+import { closeTerminal, createDockerContainerTerminalSession, createSerialTerminalSession, createSshTerminalSession, createTelnetTerminalSession, createTerminalSession, getTerminalLogState, listTerminalSessions, resizeTerminal, writeTerminal } from "../../lib/terminalApi";
 import type { TerminalOutputEvent } from "../../lib/terminalApi";
 import { recordCommandHistory } from "../../lib/commandHistoryApi";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
@@ -27,6 +27,8 @@ import { registerCommandBlockClearHandlers, terminalSessionFailureLabel, termina
 import { KITTY_KEYBOARD_PROTOCOL_ENABLE, resolveTerminalInputCompatibilityOverride, resolveTerminalRuntimeKeydownOverride, shouldEnableKittyKeyboardProtocol } from "./terminalKeyboardPolicy";
 
 const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000;
+const INITIAL_REMOTE_OUTPUT_IMMEDIATE_WRITE_MS = 8_000;
+const TERMINAL_SESSION_STATUS_POLL_MS = 2_000;
 
 export function installXtermPaneRuntime(params: any) {
   const { args, commandBlockCounterRef, commandBlocksRef, containerRef, cwd, cwdTrackingBufferRef, currentCwdRef, disconnectSessionRef, env, fitAddonRef, focusedRef, ghostSuggestionRef, inputBufferRef, inputModelRef, onCurrentCwdChangeRef, onOutputHistoryChangeRef, onSessionFinishedRef, onTerminalDimensionsChangeRef, outputHistoryRef, paneId, profileId, promptLineRef, reconnectSessionRef, remoteCommand, remoteHostId, remoteHostProduction, searchAddonRef, sessionIdRef, setCommandBlockNotice, setCommandBlockViews, setConnectionState, setGhostSuggestion, setLogNotice, setLogState, setSearchResults, shell, shellAssistEnabled = true, startupMessage, syncCommandBlockViews, target, terminalAppearance, terminalAppearanceRef, terminalFontWeight, terminalRef, terminalTheme, transientStartupMessage } = params;
@@ -37,6 +39,7 @@ export function installXtermPaneRuntime(params: any) {
 
     let disposed = false;
     let reconnectTimer: number | null = null;
+    let sessionStatusPollTimer: number | null = null;
     let resizeObserver: ResizeObserver | undefined;
     let sessionRun = 0;
     let suggestionRequestRun = 0;
@@ -645,6 +648,13 @@ export function installXtermPaneRuntime(params: any) {
       }
     };
 
+    const clearSessionStatusPollTimer = () => {
+      if (sessionStatusPollTimer !== null) {
+        window.clearTimeout(sessionStatusPollTimer);
+        sessionStatusPollTimer = null;
+      }
+    };
+
     const scheduleReconnect = () => {
       if (
         !terminalAppearanceRef.current.autoReconnect ||
@@ -659,6 +669,13 @@ export function installXtermPaneRuntime(params: any) {
       }, 3000);
     };
 
+    const hasRemoteTerminalTarget = () =>
+      Boolean(
+        remoteHostId ||
+          target?.kind === "dockerContainer" ||
+          target?.kind === "telnet" ||
+          target?.kind === "serial",
+      );
     let transientStartupNoticeVisible = false;
     const startupNoticeFor = (reason: "initial" | "reconnect") => {
       if (reason === "reconnect") {
@@ -684,6 +701,7 @@ export function installXtermPaneRuntime(params: any) {
         return true;
       }
 
+      clearSessionStatusPollTimer();
       clearSessionState(sessionId);
       try {
         await closeTerminal(sessionId);
@@ -697,6 +715,87 @@ export function installXtermPaneRuntime(params: any) {
         }
         return false;
       }
+    };
+
+    const finishSessionClosed = (
+      sessionId: string,
+      sessionStartedAtMs: number,
+      currentRun: number,
+      message = "\r\n会话已结束。\r\n",
+    ) => {
+      if (
+        disposed ||
+        sessionRun !== currentRun ||
+        sessionIdRef.current !== sessionId
+      ) {
+        return;
+      }
+      clearSessionStatusPollTimer();
+      clearGhostSuggestion();
+      markTerminalPaneSessionDisconnected(paneId, sessionId);
+      clearSessionState(sessionId);
+      onSessionFinishedRef?.current?.({
+        durationMs: Math.max(0, Date.now() - sessionStartedAtMs),
+        reason: "closed",
+        sessionId,
+      });
+      outputWriter.writeNow(message);
+      setConnectionState("closed");
+      scheduleReconnect();
+    };
+
+    const scheduleSessionStatusPoll = (
+      sessionId: string,
+      sessionStartedAtMs: number,
+      currentRun: number,
+    ) => {
+      clearSessionStatusPollTimer();
+      sessionStatusPollTimer = window.setTimeout(() => {
+        sessionStatusPollTimer = null;
+        if (
+          disposed ||
+          sessionRun !== currentRun ||
+          sessionIdRef.current !== sessionId
+        ) {
+          return;
+        }
+        void listTerminalSessions()
+          .then((sessions) => {
+            if (
+              disposed ||
+              sessionRun !== currentRun ||
+              sessionIdRef.current !== sessionId
+            ) {
+              return;
+            }
+            const session = sessions.find(
+              (candidate) => candidate.id === sessionId,
+            );
+            if (!session || session.status === "exited") {
+              finishSessionClosed(
+                sessionId,
+                sessionStartedAtMs,
+                currentRun,
+                "\r\n会话已退出，可通过右键菜单重新连接。\r\n",
+              );
+              return;
+            }
+            scheduleSessionStatusPoll(sessionId, sessionStartedAtMs, currentRun);
+          })
+          .catch(() => {
+            if (
+              !disposed &&
+              sessionRun === currentRun &&
+              sessionIdRef.current === sessionId
+            ) {
+              scheduleSessionStatusPoll(
+                sessionId,
+                sessionStartedAtMs,
+                currentRun,
+              );
+            }
+          });
+      }, TERMINAL_SESSION_STATUS_POLL_MS);
     };
 
     const startSession = async (reason: "initial" | "reconnect") => {
@@ -714,11 +813,10 @@ export function installXtermPaneRuntime(params: any) {
       cwdTrackingBufferRef.current = "";
       clearGhostSuggestion();
       const startupNotice = startupNoticeFor(reason);
-      transientStartupNoticeVisible = Boolean(
-        transientStartupMessage &&
-          reason === "initial" &&
-          startupNotice.trim().length > 0,
-      );
+      transientStartupNoticeVisible =
+        reason === "initial" &&
+        startupNotice.trim().length > 0 &&
+        (transientStartupMessage || hasRemoteTerminalTarget());
       outputWriter.writeNow(startupNotice);
       const sessionStartedAtMs = Date.now();
 
@@ -778,7 +876,17 @@ export function installXtermPaneRuntime(params: any) {
             terminalOutputInstrumentation,
             "writer",
             event.data.length,
-            () => outputWriter.write(event.data),
+            () => {
+              const initialRemoteOutput =
+                hasRemoteTerminalTarget() &&
+                Date.now() - sessionStartedAtMs <=
+                  INITIAL_REMOTE_OUTPUT_IMMEDIATE_WRITE_MS;
+              if (initialRemoteOutput) {
+                outputWriter.writeNow(event.data);
+                return;
+              }
+              outputWriter.write(event.data);
+            },
           );
           runTerminalOutputInstrumentationStep(
             terminalOutputInstrumentation,
@@ -789,20 +897,11 @@ export function installXtermPaneRuntime(params: any) {
           return;
         }
         if (event.kind === "closed") {
-          clearGhostSuggestion();
-          markTerminalPaneSessionDisconnected(paneId, event.sessionId);
-          clearSessionState(event.sessionId);
-          onSessionFinishedRef?.current?.({
-            durationMs: Math.max(0, Date.now() - sessionStartedAtMs),
-            reason: "closed",
-            sessionId: event.sessionId,
-          });
-          outputWriter.writeNow("\r\n会话已结束。\r\n");
-          setConnectionState("closed");
-          scheduleReconnect();
+          finishSessionClosed(event.sessionId, sessionStartedAtMs, currentRun);
           return;
         }
         clearGhostSuggestion();
+        clearSessionStatusPollTimer();
         markTerminalPaneSessionDisconnected(paneId, event.sessionId);
         outputWriter.writeNow(`\r\n终端输出读取失败：${event.data}\r\n`);
         setConnectionState("error");
@@ -901,6 +1000,7 @@ export function installXtermPaneRuntime(params: any) {
           markTerminalPaneSessionReconnected(paneId, session.id);
         }
         setConnectionState("connected");
+        scheduleSessionStatusPoll(session.id, sessionStartedAtMs, currentRun);
         if (assistEnabled) {
           remoteSuggestionPrewarm.scheduleGit(currentCwdRef.current ?? cwd);
           remoteSuggestionPrewarm.scheduleRemoteCommand();
@@ -944,6 +1044,7 @@ export function installXtermPaneRuntime(params: any) {
     const disconnectSession = async () => {
       const currentRun = ++sessionRun;
       clearReconnectTimer();
+      clearSessionStatusPollTimer();
       terminalSuggestionProbeScheduler.cancelOwner(paneId);
       const sessionId = sessionIdRef.current;
       if (!sessionId) {
@@ -991,6 +1092,7 @@ export function installXtermPaneRuntime(params: any) {
       sessionRun += 1;
       resizeObserver?.disconnect();
       clearReconnectTimer();
+      clearSessionStatusPollTimer();
       terminalSuggestionProbeScheduler.cancelOwner(paneId);
       clearSuggestionTimer();
       clearCommandBlockViewSyncFrame();

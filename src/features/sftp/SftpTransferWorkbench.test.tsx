@@ -580,19 +580,6 @@ describe("SftpTransferWorkbench", () => {
     expect(screen.getByDisplayValue("D:\\deploy")).toBeInTheDocument();
   });
 
-  it("treats legacy left host options as the initial right server", () => {
-    render(
-      <SftpTransferWorkbench
-        groups={groups}
-        initialLeftHostId="host-left"
-        lockedLeftHostId="host-left"
-      />,
-    );
-
-    expect(screen.getByLabelText("SFTP 面板 left")).toBeInTheDocument();
-    expect(screen.getByText("目标：left:/")).toBeInTheDocument();
-  });
-
   it("keeps a locked source host tab while activating the initial right host", () => {
     render(
       <SftpTransferWorkbench

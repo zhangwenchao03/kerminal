@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
     createTelnetTerminalSession: vi.fn(),
     createTerminalSession: vi.fn(),
     getTerminalLogState: vi.fn(),
+    listTerminalSessions: vi.fn(),
     listTerminalSuggestions: vi.fn(),
     recordCommandHistory: vi.fn(),
     recordTerminalSuggestionAuditEvent: vi.fn(),
@@ -368,6 +369,8 @@ vi.mock("../../../../lib/terminalApi", () => ({
     mocks.api.createTerminalSession(...args),
   getTerminalLogState: (...args: unknown[]) =>
     mocks.api.getTerminalLogState(...args),
+  listTerminalSessions: (...args: unknown[]) =>
+    mocks.api.listTerminalSessions(...args),
   readTerminalClipboardText: (...args: unknown[]) =>
     mocks.api.readTerminalClipboardText(...args),
   resizeTerminal: (...args: unknown[]) => mocks.api.resizeTerminal(...args),
@@ -537,6 +540,7 @@ beforeEach(() => {
   mocks.api.createTelnetTerminalSession.mockReset();
   mocks.api.createTerminalSession.mockReset();
   mocks.api.getTerminalLogState.mockReset();
+  mocks.api.listTerminalSessions.mockReset();
   mocks.api.listTerminalSuggestions.mockReset();
   mocks.api.recordCommandHistory.mockReset();
   mocks.api.recordTerminalSuggestionAuditEvent.mockReset();
@@ -669,6 +673,36 @@ beforeEach(() => {
     active: false,
     bytesWritten: 0,
   });
+  mocks.api.listTerminalSessions.mockResolvedValue([
+    {
+      cols: 80,
+      id: "session-1",
+      rows: 24,
+      shell: "powershell.exe",
+      status: "running",
+    },
+    {
+      cols: 80,
+      id: "ssh-session-1",
+      rows: 24,
+      shell: "ssh",
+      status: "running",
+    },
+    {
+      cols: 80,
+      id: "telnet-session-1",
+      rows: 24,
+      shell: "telnet",
+      status: "running",
+    },
+    {
+      cols: 80,
+      id: "serial-session-1",
+      rows: 24,
+      shell: "plink",
+      status: "running",
+    },
+  ]);
   mocks.api.startTerminalLog.mockResolvedValue({
     active: true,
     bytesWritten: 128,

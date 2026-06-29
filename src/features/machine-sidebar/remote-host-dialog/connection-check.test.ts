@@ -10,8 +10,6 @@ function baseInput(
     authType: "agent",
     credentialRef: "",
     credentialSecret: "",
-    dockerContainerId: "container-1",
-    dockerHostId: "host-1",
     editingLocalMachine: false,
     groupId: "",
     host: "127.0.0.1",
@@ -141,22 +139,6 @@ describe("evaluateConnectionCheck", () => {
     ).toEqual({
       ok: true,
       statusMessage: "本地终端配置检查通过，确认后会保存到左侧卡片。",
-    });
-  });
-
-  it("routes the legacy Docker check to host-context guidance", () => {
-    expect(
-      evaluateConnectionCheck(
-        baseInput({
-          dockerContainerId: "",
-          dockerHostId: "",
-          mode: "docker",
-          selectedProtocolLabel: "Docker",
-        }),
-      ),
-    ).toEqual({
-      ok: true,
-      statusMessage: "容器现在从左侧 SSH 主机右键菜单进入。",
     });
   });
 

@@ -274,7 +274,7 @@ fn resolve_native_jump_auth_material(
         RemoteHostAuthType::Password => {
             let password = required_jump_credential_secret(
                 jump,
-                &format!("{label} 密码认证需要保存明文 SSH 密码"),
+                &format!("{label} 密码认证需要已保存 SSH 密码"),
             )?;
             Ok(SftpAuthMaterial::Password(password))
         }

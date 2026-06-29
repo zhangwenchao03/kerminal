@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveTerminalPaneMoveDropTarget,
   resolveTerminalPaneMoveDropZone,
+  resolveTerminalPaneMoveWorkspaceDropTarget,
 } from "./terminalPaneMoveDropZones";
 
 describe("terminalPaneMoveDropZones", () => {
@@ -67,6 +68,29 @@ describe("terminalPaneMoveDropZones", () => {
         "pane-a",
         { clientX: 720, clientY: 200 },
       ),
-    ).toEqual({ paneId: "pane-b", zone: "center" });
+    ).toEqual({ paneId: "pane-b", scope: "pane", zone: "center" });
+  });
+
+  it("resolves workspace edge docking before pane-local swap zones", () => {
+    expect(
+      resolveTerminalPaneMoveWorkspaceDropTarget(
+        ["pane-a", "pane-b", "pane-c"],
+        "pane-a",
+        {
+          bottom: 300,
+          height: 200,
+          left: 0,
+          right: 900,
+          top: 100,
+          width: 900,
+        },
+        { clientX: 860, clientY: 200 },
+        { inset: 120 },
+      ),
+    ).toEqual({
+      paneId: "pane-b",
+      scope: "workspace",
+      zone: "right",
+    });
   });
 });

@@ -56,6 +56,8 @@ export type ExternalAgentSessionStatus =
   | "closed"
   | "error";
 
+export type AgentSessionRecordStatus = "active" | "archived" | "stale";
+
 export interface ExternalAgentValidatorStatus {
   available: boolean;
   command: string;
@@ -119,6 +121,7 @@ export interface AgentSessionRecord {
     session_root?: string;
     workspaceRoot?: string;
     workspace_root?: string;
+    status?: AgentSessionRecordStatus;
     launch: {
       commandLabel?: string;
       command_label?: string;
@@ -165,6 +168,18 @@ export function listAgentSessions(): Promise<AgentSessionList> {
   }
 
   return invoke<AgentSessionList>("agent_session_list");
+}
+
+export function archiveAgentSession(
+  agentSessionId: string,
+): Promise<AgentSessionRecord> {
+  if (!isTauri()) {
+    return Promise.resolve(previewArchivedAgentSessionRecord(agentSessionId));
+  }
+
+  return invoke<AgentSessionRecord>("agent_session_archive", {
+    agentSessionId,
+  });
 }
 
 export function rebindAgentSessionTarget(
@@ -220,6 +235,12 @@ export function agentSessionRecordTarget(
     targetTerminalSessionId:
       target.targetTerminalSessionId ?? target.target_terminal_session_id,
   };
+}
+
+export function agentSessionRecordStatus(
+  record: AgentSessionRecord,
+): AgentSessionRecordStatus {
+  return record.session.status ?? "active";
 }
 
 export function prepareExternalAgentWorkspace(
@@ -337,8 +358,31 @@ function previewAgentSessionRecord(
         shell: request.agentId === "custom" ? "" : request.agentId,
       },
       sessionRoot,
+      status: "active",
       target: request.target,
       title,
+      workspaceRoot,
+    },
+  };
+}
+
+function previewArchivedAgentSessionRecord(
+  agentSessionId: string,
+): AgentSessionRecord {
+  const workspaceRoot = "~/.kerminal";
+  const sessionRoot = `${workspaceRoot}/agents/sessions/${agentSessionId}`;
+  return {
+    session: {
+      agentSessionId,
+      launch: {
+        args: [],
+        commandLabel: "archived",
+        cwd: sessionRoot,
+        shell: "",
+      },
+      sessionRoot,
+      status: "archived",
+      title: "Archived Agent Session",
       workspaceRoot,
     },
   };

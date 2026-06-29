@@ -94,6 +94,8 @@ import {
 } from "./sftpTransferResolver";
 import { resolveSftpFileRowHeight } from "./sftpDensityModel";
 
+const DEFAULT_TRANSFER_CONFLICT_POLICY: SftpTransferConflictPolicy = "overwrite";
+
 export function LocalTransferPane({
   active,
   interfaceDensity = "comfortable",
@@ -416,12 +418,12 @@ export function LocalTransferPane({
             return Promise.resolve();
           }
           const request: SftpManagedTransferRequest = {
+            conflictPolicy: conflictPolicy ?? DEFAULT_TRANSFER_CONFLICT_POLICY,
             direction: "upload",
             hostId: targetMachine.id,
             kind,
             localPath: task.sourceEntryPath,
             remotePath: task.targetEntryPath,
-            ...(conflictPolicy ? { conflictPolicy } : {}),
           };
           return enqueueSftpTransfer(
             withSftpTransferViewScope(request, transferViewScope),

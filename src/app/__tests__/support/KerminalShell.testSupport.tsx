@@ -380,7 +380,6 @@ vi.mock("../../../features/sftp/SftpToolContent", () => ({
 vi.mock("../../../features/sftp/LazySftpTransferWorkbench", () => ({
   LazySftpTransferWorkbench: ({
     createdHostTarget,
-    initialLeftHostId,
     initialRightHostId,
     lockedLeftHostId,
     onCreateSshHost,
@@ -392,7 +391,6 @@ vi.mock("../../../features/sftp/LazySftpTransferWorkbench", () => ({
       side: "left" | "right";
       workspaceTabId?: string;
     };
-    initialLeftHostId?: string;
     initialRightHostId?: string;
     lockedLeftHostId?: string;
     onCreateSshHost?: (request: {
@@ -402,7 +400,7 @@ vi.mock("../../../features/sftp/LazySftpTransferWorkbench", () => ({
     workspaceTabId?: string;
   }) => (
     <div aria-label="SFTP 传输工作台">
-      left:{initialLeftHostId ?? "none"} right:{initialRightHostId ?? "none"}{" "}
+      right:{initialRightHostId ?? "none"}{" "}
       locked:
       {lockedLeftHostId ?? "none"}
       <span>

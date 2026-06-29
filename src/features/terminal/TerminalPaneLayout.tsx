@@ -18,6 +18,7 @@ import type {
 import { TerminalPaneErrorBoundary } from "./TerminalPaneErrorBoundary";
 import { TerminalPaneCard } from "./TerminalPaneCard";
 import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
+import type { ConnectionState } from "./XtermPane.helpers";
 
 interface TerminalPaneLayoutProps {
   draggingPaneId?: string;
@@ -30,6 +31,7 @@ interface TerminalPaneLayoutProps {
     paneId: string,
     event: ReactPointerEvent<HTMLButtonElement>,
   ) => void;
+  onConnectionStateChange?: (paneId: string, state: ConnectionState) => void;
   onCurrentCwdChange?: (paneId: string, cwd: string) => void;
   onFocusPane: (paneId: string) => void;
   onOpenLogs?: () => void;
@@ -50,7 +52,13 @@ interface TerminalPaneLayoutProps {
   resolvePaneOutputHistory?: (paneId: string) => string | undefined;
   resolvedTheme: ResolvedTheme;
   runtimeMount?: "inline" | "slot";
+  runtimeSlotsActive?: boolean;
   terminalAppearance: TerminalAppearance;
+  onRuntimeSlotChange?: (
+    paneId: string,
+    element: HTMLElement | null,
+    active: boolean,
+  ) => void;
 }
 
 type NormalizedTerminalSplitLayout = Extract<
@@ -81,6 +89,7 @@ function TerminalPaneLayoutNode({
   panelGroupId,
   onBeginPaneDrag,
   onClosePane,
+  onConnectionStateChange,
   onCurrentCwdChange,
   onFocusPane,
   onOpenLogs,
@@ -92,7 +101,9 @@ function TerminalPaneLayoutNode({
   resolvePaneOutputHistory,
   resolvedTheme,
   runtimeMount,
+  runtimeSlotsActive,
   terminalAppearance,
+  onRuntimeSlotChange,
 }: TerminalPaneLayoutProps) {
   if (layout.type !== "pane") {
     return (
@@ -104,6 +115,7 @@ function TerminalPaneLayoutNode({
         panelGroupId={panelGroupId ?? layout.id}
         onBeginPaneDrag={onBeginPaneDrag}
         onClosePane={onClosePane}
+        onConnectionStateChange={onConnectionStateChange}
         onCurrentCwdChange={onCurrentCwdChange}
         onFocusPane={onFocusPane}
         onOpenLogs={onOpenLogs}
@@ -115,7 +127,9 @@ function TerminalPaneLayoutNode({
         resolvePaneOutputHistory={resolvePaneOutputHistory}
         resolvedTheme={resolvedTheme}
         runtimeMount={runtimeMount}
+        runtimeSlotsActive={runtimeSlotsActive}
         terminalAppearance={terminalAppearance}
+        onRuntimeSlotChange={onRuntimeSlotChange}
       />
     );
   }
@@ -133,6 +147,7 @@ function TerminalPaneLayoutNode({
         machineGroups={machineGroups}
         onBeginPaneDrag={onBeginPaneDrag}
         onClosePane={onClosePane}
+        onConnectionStateChange={onConnectionStateChange}
         onCurrentCwdChange={onCurrentCwdChange}
         onFocusPane={onFocusPane}
         onOpenLogs={onOpenLogs}
@@ -143,7 +158,9 @@ function TerminalPaneLayoutNode({
         resolvePaneOutputHistory={resolvePaneOutputHistory}
         resolvedTheme={resolvedTheme}
         runtimeMount={runtimeMount}
+        runtimeSlotActive={runtimeSlotsActive}
         terminalAppearance={terminalAppearance}
+        onRuntimeSlotChange={onRuntimeSlotChange}
       />
     </TerminalPaneErrorBoundary>
   );
@@ -157,6 +174,7 @@ export function TerminalPaneLayout({
   panelGroupId,
   onBeginPaneDrag,
   onClosePane,
+  onConnectionStateChange,
   onCurrentCwdChange,
   onFocusPane,
   onOpenLogs,
@@ -168,7 +186,9 @@ export function TerminalPaneLayout({
   resolvePaneOutputHistory,
   resolvedTheme,
   runtimeMount,
+  runtimeSlotsActive = true,
   terminalAppearance,
+  onRuntimeSlotChange,
 }: TerminalPaneLayoutProps) {
   const normalizedLayout = normalizeRootLayout(layout);
   const resolvedPanelGroupId = panelGroupId ?? normalizedLayout.id;
@@ -215,6 +235,7 @@ export function TerminalPaneLayout({
                 panelGroupId={child.type === "split" ? child.id : undefined}
                 onBeginPaneDrag={onBeginPaneDrag}
                 onClosePane={onClosePane}
+                onConnectionStateChange={onConnectionStateChange}
                 onCurrentCwdChange={onCurrentCwdChange}
                 onFocusPane={onFocusPane}
                 onOpenLogs={onOpenLogs}
@@ -226,7 +247,9 @@ export function TerminalPaneLayout({
                 resolvePaneOutputHistory={resolvePaneOutputHistory}
                 resolvedTheme={resolvedTheme}
                 runtimeMount={runtimeMount}
+                runtimeSlotsActive={runtimeSlotsActive}
                 terminalAppearance={terminalAppearance}
+                onRuntimeSlotChange={onRuntimeSlotChange}
               />
             </ResizablePanel>
           </Fragment>

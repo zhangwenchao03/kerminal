@@ -10,12 +10,15 @@ export type TerminalPaneMoveDropZone =
   | "bottom"
   | "center";
 
+export type TerminalPaneMoveScope = "pane" | "workspace";
+
 export interface TerminalPaneMoveDropZonePoint {
   clientX: number;
   clientY: number;
 }
 
 export interface TerminalPaneMoveDropZoneOptions {
+  allowCenter?: boolean;
   inset?: number;
 }
 
@@ -26,6 +29,7 @@ export interface TerminalPaneMoveDropCandidate {
 
 export interface TerminalPaneMoveDropTarget {
   paneId: string;
+  scope: TerminalPaneMoveScope;
   zone: TerminalPaneMoveDropZone;
 }
 
@@ -92,6 +96,9 @@ export function resolveTerminalPaneMoveDropZone(
   }
 
   if (candidates.length === 0) {
+    if (options.allowCenter === false) {
+      return null;
+    }
     return "center";
   }
 
@@ -120,9 +127,36 @@ export function resolveTerminalPaneMoveDropTarget(
       options,
     );
     if (zone) {
-      return { paneId: candidate.paneId, zone };
+      return { paneId: candidate.paneId, scope: "pane", zone };
     }
   }
 
   return null;
+}
+
+export function resolveTerminalPaneMoveWorkspaceDropTarget(
+  paneIds: string[],
+  sourcePaneId: string,
+  rect: TerminalPaneMoveDropZoneRect,
+  point: TerminalPaneMoveDropZonePoint,
+  options: TerminalPaneMoveDropZoneOptions = {},
+): TerminalPaneMoveDropTarget | null {
+  const targetPaneId = paneIds.find((paneId) => paneId !== sourcePaneId);
+  if (!targetPaneId) {
+    return null;
+  }
+
+  const zone = resolveTerminalPaneMoveDropZone(rect, point, {
+    ...options,
+    allowCenter: false,
+  });
+  if (!zone || zone === "center") {
+    return null;
+  }
+
+  return {
+    paneId: targetPaneId,
+    scope: "workspace",
+    zone,
+  };
 }

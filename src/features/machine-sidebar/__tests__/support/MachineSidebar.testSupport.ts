@@ -101,16 +101,16 @@ export const terminalTransportSidebarGroups = [
     machines: [
       {
         authType: "agent" as const,
-        description: "legacy.internal:2323",
-        host: "legacy.internal",
-        id: "telnet-legacy",
+        description: "lab.internal:2323",
+        host: "lab.internal",
+        id: "telnet-lab",
         kind: "telnet" as const,
-        name: "legacy telnet",
+        name: "lab telnet",
         port: 2323,
         remoteGroupId: "group-console",
         status: "offline" as const,
         tags: ["telnet"],
-        target: { hostId: "telnet-legacy", kind: "telnet" as const },
+        target: { hostId: "telnet-lab", kind: "telnet" as const },
         username: "",
       },
       {

@@ -9,7 +9,8 @@ use std::{fs, path::Path};
 use kerminal_lib::{
     models::agent_session::{
         AgentId, AgentProviderSession, AgentSession, AgentSessionId, AgentSessionLaunch,
-        AgentSessionStatus, AGENT_SESSION_SCHEMA_VERSION,
+        AgentSessionStatus, AgentSessionTarget, AgentTargetLiveStatus,
+        AGENT_SESSION_SCHEMA_VERSION,
     },
     services::{
         agent_session_file_store::AgentSessionFileStore,
@@ -59,13 +60,25 @@ fn prepare_codex_writes_managed_files_without_clobbering_user_content() {
     assert!(config_reference.contains("File Relationships"));
     assert!(config_reference.contains("Required Field Matrix"));
     assert!(config_reference.contains("Common Change Recipes"));
+    assert!(config_reference.contains("Runtime MCP Boundaries"));
+    assert!(config_reference.contains("kerminal.app_guide"));
+    assert!(config_reference.contains("kerminal.config_guide"));
+    assert!(config_reference.contains("kerminal.tool_help"));
+    assert!(config_reference.contains("container.files.write_text"));
+    assert!(config_reference.contains("container.files.delete"));
     assert!(config_reference.contains("hosts/groups.toml"));
     assert!(config_reference.contains("Host creation checklist"));
     assert!(config_reference.contains(r#"cwd = "~/.kerminal""#));
     assert!(config_reference.contains(r#"credential_ref = "~/.ssh/id_ed25519""#));
-    assert!(config_reference.contains("secrets/hosts/*.toml"));
-    assert!(config_reference.contains(r#"credential_secret = "<password-or-inline-private-key>""#));
-    assert!(config_reference.contains("Never write `password =`"));
+    assert!(config_reference.contains("secrets/vault.toml"));
+    assert!(config_reference.contains("secret_ref"));
+    assert!(config_reference.contains("key_passphrase_ref"));
+    assert!(config_reference.contains("inline_private_key"));
+    assert!(config_reference.contains("[[ssh_options.jump_hosts]]"));
+    assert!(config_reference.contains("kerminal.host.upsert_with_credential"));
+    assert!(config_reference.contains("kerminal.vault.encrypt_secret"));
+    assert!(config_reference.contains("Never add plaintext keys such as `password`"));
+    assert!(!config_reference.contains("secrets/hosts/*.toml"));
     assert!(config_reference.contains("production = true"));
     assert!(config_reference.contains("production = false"));
     assert!(config_reference.contains("production` is required"));
@@ -88,13 +101,28 @@ fn prepare_codex_writes_managed_files_without_clobbering_user_content() {
     assert!(agents.contains("terminal.write"));
     assert!(agents.contains("bindingGeneration"));
     assert!(agents.contains("kerminal.agent.target_context"));
+    assert!(agents.contains("kerminal.app_guide"));
+    assert!(agents.contains("kerminal.config_guide"));
+    assert!(agents.contains("kerminal.capabilities"));
+    assert!(agents.contains("kerminal.tool_help"));
+    assert!(agents.contains("kerminal.operation_guide"));
+    assert!(agents.contains("kerminal.runtime_snapshot"));
     assert!(agents.contains("Before editing Kerminal configuration files"));
     assert!(agents.contains(CONFIG_REFERENCE_FILE_NAME));
     assert!(agents.contains("Do not use Kerminal MCP tools for settings"));
     assert!(agents.contains("remote_host.*"));
     assert!(agents.contains("history.search"));
+    assert!(agents.contains("tmux.*"));
+    assert!(agents.contains("container.files.write_text"));
+    assert!(agents.contains("container.files.delete"));
     assert!(agents.contains("kerminal.config.validate"));
-    assert!(agents.contains("use `credential_secret`"));
+    assert!(agents.contains("kerminal.host.upsert_with_credential"));
+    assert!(agents.contains("kerminal.vault.encrypt_secret"));
+    assert!(agents.contains("host files only keep `secret_ref` / `key_passphrase_ref`"));
+    assert!(
+        agents.contains("never write `password =`, `credential_secret`, or `inline_private_key`")
+    );
+    assert!(!agents.contains("use `credential_secret`, never `password`"));
     assert!(!agents.contains("validate-kerminal-config.mjs"));
     assert!(!agents.contains("C:/Users"));
     assert!(!agents.contains("C:\\Users"));
@@ -168,12 +196,30 @@ fn prepare_claude_merges_mcp_json() {
     assert!(claude.contains("MCP host policy owns confirmation"));
     assert!(claude.contains("terminal.write"));
     assert!(claude.contains("bindingGeneration"));
+    assert!(claude.contains("kerminal.app_guide"));
+    assert!(claude.contains("kerminal.config_guide"));
+    assert!(claude.contains("kerminal.capabilities"));
+    assert!(claude.contains("kerminal.tool_help"));
+    assert!(claude.contains("kerminal.operation_guide"));
+    assert!(claude.contains("kerminal.runtime_snapshot"));
+    assert!(claude.contains("context/target-binding.json"));
+    assert!(claude.contains("context/terminal-snapshot.json"));
     assert!(claude.contains(CONFIG_REFERENCE_FILE_NAME));
     assert!(claude.contains("Prefer direct file edits"));
     assert!(claude.contains("Do not use Kerminal MCP tools for settings"));
     assert!(claude.contains("remote_host.*"));
     assert!(claude.contains("history.search"));
+    assert!(claude.contains("tmux"));
+    assert!(claude.contains("container.files.write_text"));
+    assert!(claude.contains("container.files.delete"));
+    assert!(claude.contains("ssh.command_on_resolved_host"));
+    assert!(claude.contains("server_info.snapshot"));
     assert!(claude.contains("kerminal.config.validate"));
+    assert!(claude.contains("kerminal.host.upsert_with_credential"));
+    assert!(claude.contains("kerminal.vault.encrypt_secret"));
+    assert!(claude.contains("key_passphrase_ref"));
+    assert!(claude.contains("inline_private_key"));
+    assert!(!claude.contains("use `credential_secret`, never `password`"));
     assert!(!claude.contains("validate-kerminal-config.mjs"));
 }
 
@@ -459,12 +505,25 @@ fn shared_agents_instructions_include_config_boundaries_and_validator() {
     assert!(agents.contains("terminal.write"));
     assert!(agents.contains("bindingGeneration"));
     assert!(agents.contains("kerminal.agent.target_context"));
+    assert!(agents.contains("kerminal.app_guide"));
+    assert!(agents.contains("kerminal.config_guide"));
+    assert!(agents.contains("kerminal.capabilities"));
+    assert!(agents.contains("kerminal.tool_help"));
+    assert!(agents.contains("kerminal.operation_guide"));
+    assert!(agents.contains("kerminal.runtime_snapshot"));
+    assert!(agents.contains("context/target-binding.json"));
+    assert!(agents.contains("context/terminal-snapshot.json"));
     assert!(agents.contains("Prefer direct file edits"));
     assert!(agents.contains("use MCP for runtime operation"));
     assert!(agents.contains("Do not use Kerminal MCP tools for settings"));
     assert!(agents.contains("settings.*"));
     assert!(agents.contains("terminal.create"));
     assert!(agents.contains("data/command.sqlite"));
+    assert!(agents.contains("tmux.*"));
+    assert!(agents.contains("container.files.write_text"));
+    assert!(agents.contains("container.files.delete"));
+    assert!(agents.contains("kerminal.host.upsert_with_credential"));
+    assert!(agents.contains("kerminal.vault.encrypt_secret"));
 }
 
 #[test]
@@ -503,6 +562,17 @@ fn default_kerminal_workspace_paths_are_home_relative_in_agent_instructions() {
     assert!(!session_agents.contains(&path_to_string(temp.path())));
     let agents = fs::read_to_string(workspace_root.join("AGENTS.md")).expect("agents");
     assert!(agents.contains("kerminal.config.validate"));
+    assert!(agents.contains("kerminal.app_guide"));
+    assert!(agents.contains("kerminal.config_guide"));
+    assert!(agents.contains("kerminal.capabilities"));
+    assert!(agents.contains("kerminal.tool_help"));
+    assert!(agents.contains("kerminal.operation_guide"));
+    assert!(agents.contains("kerminal.runtime_snapshot"));
+    assert!(agents.contains("tmux.*"));
+    assert!(agents.contains("container.files.write_text"));
+    assert!(agents.contains("container.files.delete"));
+    assert!(agents.contains("kerminal.host.upsert_with_credential"));
+    assert!(agents.contains("kerminal.vault.encrypt_secret"));
     assert!(!agents.contains("validate-kerminal-config.mjs"));
     assert!(!agents.contains(&path_to_string(temp.path())));
 }
@@ -550,6 +620,14 @@ fn prepare_codex_agent_session_workspace_writes_scoped_files_and_env() {
     assert!(session_root.join("CLAUDE.md").is_file());
     assert!(session_root.join(".codex").join("config.toml").is_file());
     assert!(session_root.join(".mcp.json").is_file());
+    assert!(session_root
+        .join("context")
+        .join("target-binding.json")
+        .is_file());
+    assert!(session_root
+        .join("context")
+        .join("terminal-snapshot.json")
+        .is_file());
 
     let agents = fs::read_to_string(session_root.join("AGENTS.md")).expect("session agents");
     assert!(agents.contains(agent_session_id));
@@ -562,6 +640,20 @@ fn prepare_codex_agent_session_workspace_writes_scoped_files_and_env() {
     assert!(agents.contains("stale"));
     assert!(agents.contains("rebind"));
     assert!(agents.contains("kerminal.config.validate"));
+    assert!(agents.contains("kerminal.app_guide"));
+    assert!(agents.contains("kerminal.config_guide"));
+    assert!(agents.contains("kerminal.capabilities"));
+    assert!(agents.contains("kerminal.tool_help"));
+    assert!(agents.contains("kerminal.operation_guide"));
+    assert!(agents.contains("kerminal.runtime_snapshot"));
+    assert!(agents.contains("tmux.*"));
+    assert!(agents.contains("container.files.write_text"));
+    assert!(agents.contains("container.files.delete"));
+    assert!(agents.contains("kerminal.host.upsert_with_credential"));
+    assert!(agents.contains("kerminal.vault.encrypt_secret"));
+    assert!(agents.contains("key_passphrase_ref"));
+    assert!(agents.contains("inline_private_key"));
+    assert!(!agents.contains("use `credential_secret`, never `password`"));
     assert!(!agents.contains("validate-kerminal-config.mjs"));
 
     let codex = fs::read_to_string(session_root.join(".codex").join("config.toml")).expect("codex");
@@ -606,6 +698,160 @@ fn prepare_codex_agent_session_workspace_writes_scoped_files_and_env() {
             .pointer("/toolsOnly")
             .and_then(Value::as_bool),
         Some(true)
+    );
+
+    let target_context: Value = serde_json::from_str(
+        &fs::read_to_string(session_root.join("context").join("target-binding.json"))
+            .expect("target context"),
+    )
+    .expect("target json");
+    assert_eq!(
+        target_context
+            .pointer("/agentSessionId")
+            .and_then(Value::as_str),
+        Some(agent_session_id)
+    );
+    assert_eq!(
+        target_context
+            .pointer("/binding/status")
+            .and_then(Value::as_str),
+        Some("unbound")
+    );
+    assert_eq!(
+        target_context
+            .pointer("/binding/generation")
+            .and_then(Value::as_u64),
+        Some(0)
+    );
+    assert_eq!(
+        target_context
+            .pointer("/binding/stale")
+            .and_then(Value::as_bool),
+        Some(false)
+    );
+
+    let terminal_snapshot: Value = serde_json::from_str(
+        &fs::read_to_string(session_root.join("context").join("terminal-snapshot.json"))
+            .expect("terminal snapshot"),
+    )
+    .expect("terminal snapshot json");
+    assert_eq!(
+        terminal_snapshot
+            .pointer("/agentSessionId")
+            .and_then(Value::as_str),
+        Some(agent_session_id)
+    );
+    assert_eq!(
+        terminal_snapshot
+            .pointer("/capturedBytes")
+            .and_then(Value::as_u64),
+        Some(0)
+    );
+    assert_eq!(
+        terminal_snapshot.pointer("/output").and_then(Value::as_str),
+        Some("")
+    );
+    assert_eq!(
+        terminal_snapshot
+            .pointer("/maxBytes")
+            .and_then(Value::as_u64),
+        Some(24 * 1024)
+    );
+}
+
+#[test]
+fn prepare_agent_session_workspace_seeds_target_binding_from_session_toml() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let service = ExternalAgentWorkspaceService::new(
+        temp.path(),
+        Some("http://127.0.0.1:3026/mcp".to_owned()),
+        true,
+    );
+    let store = AgentSessionFileStore::new(temp.path());
+    let agent_session_id = AgentSessionId::new("ags_bound_target_20260629".to_owned()).expect("id");
+    let session_root = temp
+        .path()
+        .join("agents")
+        .join("sessions")
+        .join(agent_session_id.as_str());
+    store
+        .write_session(&AgentSession {
+            schema_version: AGENT_SESSION_SCHEMA_VERSION,
+            agent_session_id: agent_session_id.clone(),
+            agent_id: AgentId::Codex,
+            title: "Codex".to_owned(),
+            created_at: "20260629200000".to_owned(),
+            updated_at: "20260629200000".to_owned(),
+            status: AgentSessionStatus::Active,
+            workspace_root: path_to_string(temp.path()),
+            session_root: path_to_string(&session_root),
+            launch: AgentSessionLaunch {
+                command_label: "codex".to_owned(),
+                shell: "codex".to_owned(),
+                args: Vec::new(),
+                cwd: path_to_string(&session_root),
+            },
+            target: Some(AgentSessionTarget {
+                binding_id: Some("binding-1".to_owned()),
+                binding_generation: 7,
+                pane_id: Some("pane-1".to_owned()),
+                tab_id: Some("tab-1".to_owned()),
+                target_terminal_session_id: Some("terminal-1".to_owned()),
+                target_ref: Some("ssh:prod-web".to_owned()),
+                target_kind: Some("ssh".to_owned()),
+                cwd: Some("/srv/app".to_owned()),
+                shell: Some("bash".to_owned()),
+                live_status: AgentTargetLiveStatus::Ready,
+                last_seen_at: Some("20260629200001".to_owned()),
+            }),
+        })
+        .expect("write session");
+
+    service
+        .prepare(&PrepareExternalAgentWorkspaceRequest {
+            agent_id: "codex".to_owned(),
+            agent_session_id: Some(agent_session_id.as_str().to_owned()),
+            custom_command: None,
+            resume_provider_session: false,
+            dry_run: false,
+            overwrite_policy: ExternalAgentOverwritePolicy::BackupAndReplaceInvalid,
+        })
+        .expect("prepare codex session");
+
+    let target_context: Value = serde_json::from_str(
+        &fs::read_to_string(session_root.join("context").join("target-binding.json"))
+            .expect("target context"),
+    )
+    .expect("target json");
+    assert_eq!(
+        target_context
+            .pointer("/binding/status")
+            .and_then(Value::as_str),
+        Some("ready")
+    );
+    assert_eq!(
+        target_context
+            .pointer("/binding/generation")
+            .and_then(Value::as_u64),
+        Some(7)
+    );
+    assert_eq!(
+        target_context
+            .pointer("/binding/targetTerminalSessionId")
+            .and_then(Value::as_str),
+        Some("terminal-1")
+    );
+    assert_eq!(
+        target_context
+            .pointer("/binding/targetRef")
+            .and_then(Value::as_str),
+        Some("ssh:prod-web")
+    );
+    assert_eq!(
+        target_context
+            .pointer("/binding/cwd")
+            .and_then(Value::as_str),
+        Some("/srv/app")
     );
 }
 
@@ -793,6 +1039,21 @@ fn prepare_claude_agent_session_workspace_writes_default_provider_files() {
     assert!(claude.contains(CONFIG_REFERENCE_FILE_NAME));
     assert!(claude.contains("rebind"));
     assert!(claude.contains("kerminal.config.validate"));
+    assert!(claude.contains("kerminal.app_guide"));
+    assert!(claude.contains("kerminal.config_guide"));
+    assert!(claude.contains("kerminal.capabilities"));
+    assert!(claude.contains("kerminal.operation_guide"));
+    assert!(claude.contains("kerminal.runtime_snapshot"));
+    assert!(claude.contains("tmux.*"));
+    assert!(claude.contains("container.files.write_text"));
+    assert!(claude.contains("container.files.delete"));
+    assert!(claude.contains("ssh.command_on_resolved_host"));
+    assert!(claude.contains("server_info.snapshot"));
+    assert!(claude.contains("kerminal.host.upsert_with_credential"));
+    assert!(claude.contains("kerminal.vault.encrypt_secret"));
+    assert!(claude.contains("key_passphrase_ref"));
+    assert!(claude.contains("inline_private_key"));
+    assert!(!claude.contains("use `credential_secret`, never `password`"));
     assert!(!claude.contains("validate-kerminal-config.mjs"));
     assert!(session_root.join(".codex").join("config.toml").is_file());
     let mcp_root: Value =
@@ -846,6 +1107,14 @@ fn prepare_custom_agent_session_workspace_skips_provider_specific_files() {
     assert!(session_root
         .join("context")
         .join("mcp-endpoint.json")
+        .is_file());
+    assert!(session_root
+        .join("context")
+        .join("target-binding.json")
+        .is_file());
+    assert!(session_root
+        .join("context")
+        .join("terminal-snapshot.json")
         .is_file());
     assert!(!session_root.join("CLAUDE.md").exists());
     assert!(!session_root.join(".codex").exists());

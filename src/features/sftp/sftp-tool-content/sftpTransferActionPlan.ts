@@ -30,6 +30,8 @@ import {
 } from "./sftpPathModel";
 import type { SftpFileTarget, SftpStatus } from "./types";
 
+const DEFAULT_TRANSFER_CONFLICT_POLICY: SftpTransferConflictPolicy = "overwrite";
+
 export type SftpTransferActionItem = {
   queuedStatus: SftpStatus;
   request: SftpManagedTransferRequest;
@@ -357,7 +359,7 @@ export function buildSftpArchiveDownloadPlan({
       message: `已加入 ZIP 下载队列：${entry.path}`,
     },
     request: {
-      ...(conflictPolicy !== undefined ? { conflictPolicy } : {}),
+      conflictPolicy: conflictPolicy ?? DEFAULT_TRANSFER_CONFLICT_POLICY,
       hostId,
       kind,
       sourceRemotePath: normalizeRemotePath(entry.path),
@@ -418,7 +420,7 @@ export function buildSftpArchiveUploadPlan({
       )} -> ${targetRemotePath}`,
     },
     request: {
-      ...(conflictPolicy !== undefined ? { conflictPolicy } : {}),
+      conflictPolicy: conflictPolicy ?? DEFAULT_TRANSFER_CONFLICT_POLICY,
       hostId,
       kind,
       sourceLocalPath,
@@ -479,7 +481,7 @@ export function buildDownloadTransferPlan({
           : `已加入下载队列：${entry.path}`,
     },
     request: {
-      ...(conflictPolicy !== undefined ? { conflictPolicy } : {}),
+      conflictPolicy: conflictPolicy ?? DEFAULT_TRANSFER_CONFLICT_POLICY,
       direction: "download",
       hostId,
       kind,
@@ -608,7 +610,7 @@ function buildUploadTransferPlan({
       message: queuedStatusMessage,
     },
     request: {
-      ...(conflictPolicy !== undefined ? { conflictPolicy } : {}),
+      conflictPolicy: conflictPolicy ?? DEFAULT_TRANSFER_CONFLICT_POLICY,
       direction: "upload",
       hostId,
       kind,

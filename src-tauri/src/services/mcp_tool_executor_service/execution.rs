@@ -2,10 +2,17 @@ use super::*;
 
 pub(super) async fn execute_tool(
     context: &McpToolExecutionContext<'_>,
+    tools: &[ToolDefinition],
     tool_id: &str,
     arguments: &serde_json::Map<String, Value>,
 ) -> ToolExecutionResult {
     match tool_id {
+        "kerminal.app_guide" => execute_kerminal_app_guide(tools),
+        "kerminal.capabilities" => execute_kerminal_capabilities(tools),
+        "kerminal.config_guide" => execute_kerminal_config_guide(),
+        "kerminal.tool_help" => execute_kerminal_tool_help(tools, arguments),
+        "kerminal.operation_guide" => execute_kerminal_operation_guide(tools, arguments),
+        "kerminal.runtime_snapshot" => execute_kerminal_runtime_snapshot(context, tools),
         "terminal.list" => execute_terminal_list(context.terminals),
         "terminal.close" => execute_terminal_close(context.terminals, arguments),
         "terminal.log.start" => {
@@ -88,6 +95,69 @@ pub(super) async fn execute_tool(
             )
             .await
         }
+        "container.inspect" => {
+            execute_container_inspect(
+                context.docker_hosts,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
+        }
+        "container.logs.tail" => {
+            execute_container_logs_tail(
+                context.docker_hosts,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
+        }
+        "container.stats" => {
+            execute_container_stats(
+                context.docker_hosts,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
+        }
+        "container.start" => {
+            execute_container_start(
+                context.docker_hosts,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
+        }
+        "container.stop" => {
+            execute_container_stop(
+                context.docker_hosts,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
+        }
+        "container.restart" => {
+            execute_container_restart(
+                context.docker_hosts,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
+        }
+        "container.remove" => {
+            execute_container_remove(
+                context.docker_hosts,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
+        }
         "container.files.list" => {
             execute_container_files_list(
                 context.docker_hosts,
@@ -106,6 +176,102 @@ pub(super) async fn execute_tool(
             )
             .await
         }
+        "container.files.write_text" => {
+            execute_container_files_write_text(
+                context.docker_hosts,
+                context.remote_hosts,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
+        }
+        "container.files.create_directory" => {
+            execute_container_files_create_directory(
+                context.docker_hosts,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
+        }
+        "container.files.delete" => {
+            execute_container_files_delete(
+                context.docker_hosts,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
+        }
+        "container.files.rename" => {
+            execute_container_files_rename(
+                context.docker_hosts,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
+        }
+        "container.files.chmod" => {
+            execute_container_files_chmod(
+                context.docker_hosts,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
+        }
+        "container.files.upload" => {
+            execute_container_files_upload(context.docker_hosts, context.remote_hosts, arguments)
+                .await
+        }
+        "container.files.download" => {
+            execute_container_files_download(context.docker_hosts, context.remote_hosts, arguments)
+                .await
+        }
+        "tmux.probe" => {
+            execute_tmux_probe(context.tmux, context.paths, context.ssh_commands, arguments).await
+        }
+        "tmux.list_sessions" => {
+            execute_tmux_list_sessions(context.tmux, context.paths, context.ssh_commands, arguments)
+                .await
+        }
+        "tmux.create_session" => {
+            execute_tmux_create_session(
+                context.tmux,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
+        }
+        "tmux.rename_session" => {
+            execute_tmux_rename_session(
+                context.tmux,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
+        }
+        "tmux.kill_session" => {
+            execute_tmux_kill_session(context.tmux, context.paths, context.ssh_commands, arguments)
+                .await
+        }
+        "tmux.list_windows" => {
+            execute_tmux_list_windows(context.tmux, context.paths, context.ssh_commands, arguments)
+                .await
+        }
+        "tmux.list_panes" => {
+            execute_tmux_list_panes(context.tmux, context.paths, context.ssh_commands, arguments)
+                .await
+        }
+        "tmux.capture_pane" => {
+            execute_tmux_capture_pane(context.tmux, context.paths, context.ssh_commands, arguments)
+                .await
+        }
+        "tmux.attach_plan" => execute_tmux_attach_plan(context.tmux, arguments),
         "port_forward.create" => execute_port_forward_create(
             context.port_forwards,
             context.local_network_proxy,
@@ -149,6 +315,10 @@ pub(super) async fn execute_tool(
             context.terminal_session_bindings,
             arguments,
         ),
+        "kerminal.host.upsert_with_credential" => {
+            execute_host_upsert_with_credential(context.remote_hosts, arguments)
+        }
+        "kerminal.vault.encrypt_secret" => execute_vault_encrypt_secret(context.paths, arguments),
         "kerminal.config.validate" => execute_config_validate(context.paths, arguments),
         "terminal.write" => execute_terminal_write(
             context.agent_sessions,

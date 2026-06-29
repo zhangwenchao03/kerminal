@@ -25,9 +25,21 @@ function transfer(
     id: "transfer-1",
     kind: "file",
     localPath: "/Users/me/release.tgz",
+    operation: "upload",
     remotePath: "/opt/release.tgz",
+    source: {
+      kind: "local",
+      path: "/Users/me/release.tgz",
+    },
     status: "succeeded",
+    target: {
+      hostId: "prod-api",
+      hostLabel: "prod-api",
+      kind: "remote",
+      path: "/opt/release.tgz",
+    },
     totalBytes: 10,
+    transportMode: "singleHostSftp",
     updatedAt: 2,
     ...overrides,
   };
@@ -58,22 +70,22 @@ describe("sftpTransferSyncModel", () => {
       id: "other-tab",
       viewScope: "sftp-workbench:tab-b",
     });
-    const legacyTransfer = transfer({ id: "legacy-transfer" });
+    const unrelatedScopeTransfer = transfer({ id: "unrelated-scope-transfer" });
 
     expect(
       filterSftpTransfersForHost(
-        [currentTab, otherTab, legacyTransfer],
+        [currentTab, otherTab, unrelatedScopeTransfer],
         "prod-api",
         "sftp-workbench:tab-a",
       ),
     ).toEqual([currentTab]);
     expect(
       filterSftpTransfersForHost(
-        [currentTab, otherTab, legacyTransfer],
+        [currentTab, otherTab, unrelatedScopeTransfer],
         "prod-api",
         null,
       ),
-    ).toEqual([legacyTransfer]);
+    ).toEqual([unrelatedScopeTransfer]);
     expect(sftpTransferMatchesViewScope(otherTab, undefined)).toBe(true);
   });
 

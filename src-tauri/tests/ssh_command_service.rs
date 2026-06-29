@@ -5,7 +5,9 @@
 use kerminal_lib::{
     error::AppError,
     models::{
-        remote_host::{RemoteHost, RemoteHostAuthType, SshJumpHostOptions},
+        remote_host::{
+            RemoteHost, RemoteHostAuthType, RemoteHostCreateRequest, SshJumpHostOptions,
+        },
         ssh_command::SshCommandRequest,
     },
     paths::KerminalPaths,
@@ -15,7 +17,6 @@ use kerminal_lib::{
         SshCommandService,
     },
     state::AppState,
-    storage::config_file_store::ConfigFileStore,
 };
 use russh::{
     keys::{self, PrivateKey, PublicKey},
@@ -459,24 +460,23 @@ fn native_auth_material_rejects_missing_password_before_connect() {
 #[tokio::test]
 async fn native_command_executes_against_loopback_ssh_server() {
     let server = start_loopback_command_server().await;
-    let home = tempdir().expect("create temp home");
-    let paths = KerminalPaths::from_home_dir(home.path());
+    let (_home, state) = test_state();
     keys::known_hosts::learn_known_hosts_path(
         "127.0.0.1",
         server.addr.port(),
         &server.host_key,
-        paths.root.join("known_hosts"),
+        state.paths().root.join("known_hosts"),
     )
     .expect("trust loopback host key");
     let mut host = remote_host(RemoteHostAuthType::Password);
     host.host = "127.0.0.1".to_owned();
     host.port = server.addr.port();
     host.credential_secret = Some("secret".to_owned());
-    write_remote_host(&paths, &host);
+    let host = create_saved_password_remote_host(&state, host);
 
     let output = SshCommandService::new()
         .execute_native(
-            &paths,
+            state.paths(),
             SshCommandRequest {
                 host_id: host.id.clone(),
                 command: "printf ready".to_owned(),
@@ -499,9 +499,8 @@ async fn native_command_executes_against_loopback_ssh_server() {
 async fn native_command_executes_through_loopback_jump_host() {
     let target = start_loopback_command_server().await;
     let jump = start_loopback_jump_server(target.addr).await;
-    let home = tempdir().expect("create temp home");
-    let paths = KerminalPaths::from_home_dir(home.path());
-    let known_hosts_path = paths.root.join("known_hosts");
+    let (_home, state) = test_state();
+    let known_hosts_path = state.paths().root.join("known_hosts");
     keys::known_hosts::learn_known_hosts_path(
         "127.0.0.1",
         jump.addr.port(),
@@ -528,13 +527,16 @@ async fn native_command_executes_through_loopback_jump_host() {
         username: "jump".to_owned(),
         auth_type: RemoteHostAuthType::Password,
         credential_ref: None,
+        secret_ref: None,
+        key_passphrase_ref: None,
         credential_secret: Some("jump-secret".to_owned()),
+        credential_status: Default::default(),
     }];
-    write_remote_host(&paths, &host);
+    let host = create_saved_password_remote_host(&state, host);
 
     let output = SshCommandService::new()
         .execute_native(
-            &paths,
+            state.paths(),
             SshCommandRequest {
                 host_id: host.id.clone(),
                 command: "printf through-jump".to_owned(),
@@ -555,18 +557,17 @@ async fn native_command_executes_through_loopback_jump_host() {
 #[tokio::test]
 async fn native_command_rejects_untrusted_loopback_host_key() {
     let server = start_loopback_command_server().await;
-    let home = tempdir().expect("create temp home");
-    let paths = KerminalPaths::from_home_dir(home.path());
+    let (_home, state) = test_state();
     let mut host = remote_host(RemoteHostAuthType::Password);
     host.host = "127.0.0.1".to_owned();
     host.port = server.addr.port();
     host.credential_secret = Some("secret".to_owned());
-    write_remote_host(&paths, &host);
+    let host = create_saved_password_remote_host(&state, host);
 
     assert!(matches!(
         SshCommandService::new()
             .execute_native(
-                &paths,
+                state.paths(),
                 SshCommandRequest {
                     host_id: host.id.clone(),
                     command: "printf ready".to_owned(),
@@ -680,7 +681,10 @@ fn remote_host(auth_type: RemoteHostAuthType) -> RemoteHost {
         auth_type,
         credential_ref: (auth_type == RemoteHostAuthType::Key)
             .then(|| "/home/deploy/.ssh/id_ed25519".to_owned()),
+        secret_ref: None,
+        key_passphrase_ref: None,
         credential_secret: None,
+        credential_status: Default::default(),
         tags: vec!["dev".to_owned()],
         production: false,
         ssh_options: Default::default(),
@@ -697,8 +701,21 @@ fn test_state() -> (TempDir, AppState) {
     (home, state)
 }
 
-fn write_remote_host(paths: &KerminalPaths, host: &RemoteHost) {
-    ConfigFileStore::new(paths.root.clone())
-        .apply_remote_host_change_set(None, std::slice::from_ref(host), &[])
-        .expect("write remote host config");
+fn create_saved_password_remote_host(state: &AppState, mut host: RemoteHost) -> RemoteHost {
+    state
+        .remote_hosts()
+        .create_host(RemoteHostCreateRequest {
+            auth_type: host.auth_type,
+            credential_ref: host.credential_ref.take(),
+            credential_secret: host.credential_secret.take(),
+            group_id: None,
+            host: host.host,
+            name: host.name,
+            port: host.port,
+            production: host.production,
+            ssh_options: host.ssh_options,
+            tags: host.tags,
+            username: host.username,
+        })
+        .expect("create saved password host")
 }

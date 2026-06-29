@@ -227,20 +227,12 @@ function createBrowserPreviewConfigWatchStatus(): ConfigWatchStatusSnapshot {
       "backups/**",
       "data/**",
       "workspace/**",
-      "secrets/hosts/*.toml",
     ],
     lastBatchAt: null,
     lastDomains: [],
     lastError: null,
     lastSequence: 0,
     lastStatus: null,
-    watchedRoots: [
-      ".",
-      "profiles",
-      "hosts",
-      "secrets/hosts",
-      "snippets",
-      "workflows",
-    ],
+    watchedRoots: [".", "profiles", "hosts", "snippets", "workflows"],
   };
 }

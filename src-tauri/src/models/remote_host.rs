@@ -8,12 +8,25 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum RemoteHostAuthType {
-    /// 用户密码认证，密码随主机记录明文保存。
+    /// 用户密码认证，密码保存到 encrypted vault。
     Password,
-    /// 私钥认证，私钥路径或内联私钥内容随主机记录保存。
+    /// 私钥认证，私钥路径公开保存，内联私钥内容保存到 encrypted vault。
     Key,
     /// 使用系统 SSH agent。
     #[default]
+    Agent,
+}
+
+/// 远程主机凭据状态摘要，不包含明文。
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum RemoteHostCredentialStatus {
+    /// 没有保存凭据，需要交互输入或使用 agent/key path。
+    #[default]
+    Missing,
+    /// 凭据引用 encrypted vault。
+    Vault,
+    /// 使用 SSH agent。
     Agent,
 }
 
@@ -151,12 +164,21 @@ pub struct SshJumpHostOptions {
     /// 跳板认证方式。
     #[serde(default)]
     pub auth_type: RemoteHostAuthType,
-    /// 跳板私钥路径；密码和内联私钥走 `credential_secret`。
+    /// 跳板私钥路径；密码和内联私钥通过保存链路写入 encrypted vault。
     #[serde(default)]
     pub credential_ref: Option<String>,
-    /// 跳板密码或内联私钥内容，随 SSH 配置明文保存。
+    /// 跳板密码或内联私钥 encrypted vault 引用。
+    #[serde(default)]
+    pub secret_ref: Option<String>,
+    /// 跳板私钥 passphrase encrypted vault 引用。
+    #[serde(default)]
+    pub key_passphrase_ref: Option<String>,
+    /// 跳板密码或内联私钥内容，仅作为保存请求的瞬时输入。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub credential_secret: Option<String>,
+    /// 跳板凭据状态摘要。
+    #[serde(default)]
+    pub credential_status: RemoteHostCredentialStatus,
 }
 
 /// SSH 终端选项。
@@ -349,11 +371,20 @@ pub struct RemoteHost {
     pub username: String,
     /// 认证方式。
     pub auth_type: RemoteHostAuthType,
-    /// 私钥路径；密码和内联私钥内容走 `credential_secret`。
+    /// 私钥路径；密码和内联私钥通过保存链路写入 encrypted vault。
     pub credential_ref: Option<String>,
-    /// SSH 密码或内联私钥内容，随远程主机记录明文保存。
+    /// SSH 密码或内联私钥 encrypted vault 引用。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret_ref: Option<String>,
+    /// SSH 私钥 passphrase encrypted vault 引用。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_passphrase_ref: Option<String>,
+    /// SSH 密码或内联私钥内容，仅作为保存请求或运行态材料的瞬时值。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub credential_secret: Option<String>,
+    /// 凭据状态摘要。
+    #[serde(default)]
+    pub credential_status: RemoteHostCredentialStatus,
     /// 用户标签。
     pub tags: Vec<String>,
     /// 是否生产主机；后续用于确认策略。
@@ -367,6 +398,89 @@ pub struct RemoteHost {
     pub created_at: String,
     /// 更新时间。
     pub updated_at: String,
+}
+
+/// 单个主机编辑时的受控凭据 reveal 结果。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteHostCredentialReveal {
+    /// 主机 id。
+    pub host_id: String,
+    /// 当前主机认证方式。
+    pub auth_type: RemoteHostAuthType,
+    /// reveal 状态，不包含 secret。
+    pub status: RemoteHostCredentialRevealStatus,
+    /// 仅在 `status = available` 时返回给编辑表单的明文凭据。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_secret: Option<String>,
+    /// 可展示的非敏感说明。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+/// 单个主机编辑 reveal 状态。
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum RemoteHostCredentialRevealStatus {
+    /// 已解密并可回填。
+    Available,
+    /// 使用 SSH agent，无需 reveal。
+    Agent,
+    /// 使用公开私钥路径，无需 reveal。
+    ConfigPath,
+    /// 没有可 reveal 的保存凭据。
+    Missing,
+    /// 当前认证材料不支持在编辑框回显。
+    Unsupported,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedVaultSecretRef {
+    pub kind: String,
+    pub host_id: String,
+    pub scope: String,
+    pub material: String,
+}
+
+impl ParsedVaultSecretRef {
+    pub fn entry_id(&self) -> String {
+        build_vault_secret_ref(&self.kind, &self.host_id, &self.scope, &self.material)
+    }
+}
+
+pub fn build_vault_secret_ref(kind: &str, host_id: &str, scope: &str, material: &str) -> String {
+    format!(
+        "credential:kerminal:{}:{}:{}:{}:v1",
+        kind.trim(),
+        host_id.trim(),
+        scope.trim(),
+        material.trim()
+    )
+}
+
+pub fn parse_vault_secret_ref(value: &str) -> Result<ParsedVaultSecretRef, String> {
+    let parts = value.trim().split(':').collect::<Vec<_>>();
+    if parts.len() != 7 || parts[0] != "credential" || parts[1] != "kerminal" || parts[6] != "v1" {
+        return Err("invalid Kerminal vault secret ref".to_owned());
+    }
+    let kind = non_empty_ref_part("kind", parts[2])?;
+    let host_id = non_empty_ref_part("host_id", parts[3])?;
+    let scope = non_empty_ref_part("scope", parts[4])?;
+    let material = non_empty_ref_part("material", parts[5])?;
+    Ok(ParsedVaultSecretRef {
+        kind,
+        host_id,
+        scope,
+        material,
+    })
+}
+
+fn non_empty_ref_part(label: &str, value: &str) -> Result<String, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(format!("vault secret ref {label} is empty"));
+    }
+    Ok(value.to_owned())
 }
 
 /// 创建远程主机分组请求。
@@ -406,9 +520,9 @@ pub struct RemoteHostCreateRequest {
     pub username: String,
     /// 认证方式。
     pub auth_type: RemoteHostAuthType,
-    /// 私钥路径；密码和内联私钥内容走 `credential_secret`。
+    /// 私钥路径；密码和内联私钥通过保存链路写入 encrypted vault。
     pub credential_ref: Option<String>,
-    /// SSH 密码或内联私钥内容，随远程主机记录明文保存。
+    /// SSH 密码或内联私钥内容，仅作为保存请求的瞬时输入。
     #[serde(default)]
     pub credential_secret: Option<String>,
     /// 用户标签。
@@ -441,9 +555,9 @@ pub struct RemoteHostUpdateRequest {
     pub username: String,
     /// 认证方式。
     pub auth_type: RemoteHostAuthType,
-    /// 私钥路径；密码和内联私钥内容走 `credential_secret`。
+    /// 私钥路径；密码和内联私钥通过保存链路写入 encrypted vault。
     pub credential_ref: Option<String>,
-    /// SSH 密码或内联私钥内容，随远程主机记录明文保存。
+    /// SSH 密码或内联私钥内容，仅作为保存请求输入，持久化时写入 encrypted vault。
     #[serde(default)]
     pub credential_secret: Option<String>,
     /// 用户标签。

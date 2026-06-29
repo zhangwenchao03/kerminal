@@ -9,9 +9,13 @@ use kerminal_lib::{
     },
     models::{
         connection::RdpOpenRequest,
-        remote_host::{RemoteHost, RemoteHostAuthType, RemoteHostCreateRequest, SshOptions},
+        remote_host::{
+            build_vault_secret_ref, RemoteHost, RemoteHostAuthType, RemoteHostCreateRequest,
+            SshOptions,
+        },
     },
     paths::KerminalPaths,
+    services::encrypted_vault_service::EncryptedVaultService,
     state::AppState,
 };
 use tempfile::tempdir;
@@ -36,6 +40,7 @@ fn remote_host_request(tags: Vec<String>) -> RemoteHostCreateRequest {
 fn rdp_host(
     credential_secret: Option<&str>,
     credential_ref: Option<&str>,
+    secret_ref: Option<&str>,
     auth_type: RemoteHostAuthType,
 ) -> RemoteHost {
     RemoteHost {
@@ -47,7 +52,10 @@ fn rdp_host(
         username: "administrator".to_owned(),
         auth_type,
         credential_ref: credential_ref.map(str::to_owned),
+        secret_ref: secret_ref.map(str::to_owned),
+        key_passphrase_ref: None,
         credential_secret: credential_secret.map(str::to_owned),
+        credential_status: Default::default(),
         tags: vec!["rdp".to_owned()],
         production: false,
         ssh_options: SshOptions::default(),
@@ -90,19 +98,86 @@ fn builds_rdp_content_with_core_fields() {
 }
 
 #[test]
-fn saved_rdp_password_prefers_plaintext_secret() {
+fn saved_rdp_password_requires_secret_ref_even_with_plaintext_secret() {
     let home = tempdir().expect("create temp home");
     let state = AppState::initialize_with_paths(KerminalPaths::from_home_dir(home.path()))
         .expect("initialize app state");
     let host = rdp_host(
         Some("plain-rdp-secret"),
-        Some("credential:rdp/legacy/password"),
+        Some("credential:rdp/saved/password"),
+        None,
         RemoteHostAuthType::Password,
     );
 
+    let error = saved_rdp_password(&state, &host).expect_err("reject old plaintext secret");
+
+    assert!(error.to_string().contains("缺少已保存密码"));
+}
+
+#[test]
+fn saved_rdp_password_reads_vault_secret_ref() {
+    let home = tempdir().expect("create temp home");
+    let state = AppState::initialize_with_paths(KerminalPaths::from_home_dir(home.path()))
+        .expect("initialize app state");
+    let secret_ref = build_vault_secret_ref("rdp-host", "rdp-1", "target", "password");
+    let vault = EncryptedVaultService::new(state.paths().clone());
+    vault
+        .upsert_secret(
+            &secret_ref,
+            "rdp-host",
+            secret_ref.as_bytes(),
+            b"vault-rdp-secret",
+        )
+        .expect("write vault secret");
+    let host = rdp_host(None, None, Some(&secret_ref), RemoteHostAuthType::Password);
+
     let password = saved_rdp_password(&state, &host).expect("resolve saved password");
 
-    assert_eq!(password.as_deref(), Some("plain-rdp-secret"));
+    assert_eq!(password.as_deref(), Some("vault-rdp-secret"));
+}
+
+#[test]
+fn saved_rdp_password_rejects_non_rdp_vault_secret_ref() {
+    let home = tempdir().expect("create temp home");
+    let state = AppState::initialize_with_paths(KerminalPaths::from_home_dir(home.path()))
+        .expect("initialize app state");
+    let secret_ref = build_vault_secret_ref("ssh-host", "rdp-1", "target", "password");
+    let vault = EncryptedVaultService::new(state.paths().clone());
+    vault
+        .upsert_secret(
+            &secret_ref,
+            "ssh-host",
+            secret_ref.as_bytes(),
+            b"old-kind-rdp-secret",
+        )
+        .expect("write vault secret");
+    let host = rdp_host(None, None, Some(&secret_ref), RemoteHostAuthType::Password);
+
+    let error = saved_rdp_password(&state, &host).expect_err("reject old kind");
+
+    assert!(error.to_string().contains("rdp-host"));
+}
+
+#[test]
+fn saved_rdp_password_requires_latest_secret_ref() {
+    let home = tempdir().expect("create temp home");
+    let state = AppState::initialize_with_paths(KerminalPaths::from_home_dir(home.path()))
+        .expect("initialize app state");
+    let secret_ref = build_vault_secret_ref("rdp-host", "rdp-1", "target", "password");
+    let vault = EncryptedVaultService::new(state.paths().clone());
+    vault
+        .upsert_secret(
+            &secret_ref,
+            "rdp-host",
+            secret_ref.as_bytes(),
+            b"old-field-rdp-secret",
+        )
+        .expect("write vault secret");
+    let host = rdp_host(None, Some(&secret_ref), None, RemoteHostAuthType::Password);
+
+    let error = saved_rdp_password(&state, &host).expect_err("missing latest secret_ref");
+
+    assert!(error.to_string().contains("缺少已保存密码"));
 }
 
 #[tokio::test]

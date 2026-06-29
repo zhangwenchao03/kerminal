@@ -12,9 +12,8 @@ use crate::models::target::RemoteTargetRef;
 pub struct ServerInfoRequest {
     /// 远程主机 id。
     pub host_id: String,
-    /// 可选的统一目标引用；为空时按 SSH 主机采集。
-    #[serde(default)]
-    pub target: Option<RemoteTargetRef>,
+    /// 统一目标引用。
+    pub target: RemoteTargetRef,
 }
 
 /// SSH 远程主机的系统信息快照。

@@ -1,0 +1,228 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+describe("real xterm compatibility", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+  });
+
+  it("wraps exact long paste content when bracketed paste is enabled", async () => {
+    const harness = await createRealXtermHarness();
+    const longPaste = [
+      "first line",
+      "第二行 with unicode",
+      "last line " + "x".repeat(2048),
+    ].join("\n");
+
+    try {
+      await harness.write("\x1b[?2004h");
+      harness.terminal.paste(longPaste);
+
+      const normalizedPaste = longPaste.replace(/\n/g, "\r");
+      expect(harness.data.join("")).toBe(
+        `\x1b[200~${normalizedPaste}\x1b[201~`,
+      );
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  it("tracks alternate screen enter and exit without losing the normal buffer", async () => {
+    const harness = await createRealXtermHarness();
+
+    try {
+      await harness.write("normal buffer\r\n");
+      expect(harness.terminal.buffer.active.type).toBe("normal");
+
+      await harness.write("\x1b[?1049h");
+      expect(harness.terminal.buffer.active.type).toBe("alternate");
+
+      await harness.write("\x1b[?1049l");
+      expect(harness.terminal.buffer.active.type).toBe("normal");
+      expect(
+        harness.terminal.buffer.normal.getLine(0)?.translateToString(true),
+      ).toContain("normal buffer");
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  it("emits SGR mouse reports when terminal mouse tracking is enabled", async () => {
+    const harness = await createRealXtermHarness();
+    const terminalElement = harness.container.querySelector(".xterm");
+    const screenElement = harness.container.querySelector(".xterm-screen");
+
+    expect(terminalElement).toBeInstanceOf(HTMLElement);
+    expect(screenElement).toBeInstanceOf(HTMLElement);
+
+    try {
+      stubElementRect(screenElement as HTMLElement, {
+        height: 480,
+        left: 10,
+        top: 20,
+        width: 800,
+      });
+      await harness.write("\x1b[?1000h\x1b[?1006h");
+
+      terminalElement?.dispatchEvent(
+        new MouseEvent("mousedown", {
+          bubbles: true,
+          button: 0,
+          buttons: 1,
+          cancelable: true,
+          clientX: 25,
+          clientY: 35,
+        }),
+      );
+      document.dispatchEvent(
+        new MouseEvent("mouseup", {
+          bubbles: true,
+          button: 0,
+          buttons: 0,
+          cancelable: true,
+          clientX: 25,
+          clientY: 35,
+        }),
+      );
+
+      const rawData = harness.data.join("");
+      expect(rawData).toMatch(/\x1b\[<0;\d+;\d+M/);
+      expect(rawData).toMatch(/\x1b\[<0;\d+;\d+m/);
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  it("emits resize events and keeps normal scrollback bounded", async () => {
+    const harness = await createRealXtermHarness({ rows: 2, scrollback: 3 });
+    const resizeEvents: Array<{ cols: number; rows: number }> = [];
+    const disposable = harness.terminal.onResize((event) =>
+      resizeEvents.push(event),
+    );
+
+    try {
+      harness.terminal.resize(100, 30);
+      expect(resizeEvents).toContainEqual(
+        expect.objectContaining({ cols: 100, rows: 30 }),
+      );
+
+      await harness.write("one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix\r\n");
+      expect(harness.terminal.buffer.normal.length).toBeLessThanOrEqual(
+        harness.terminal.rows + 3,
+      );
+    } finally {
+      disposable.dispose();
+      harness.dispose();
+    }
+  });
+});
+
+async function createRealXtermHarness(options?: {
+  rows?: number;
+  scrollback?: number;
+}) {
+  installBrowserApiStubs();
+
+  const { Terminal: XtermTerminal } = await import("@xterm/xterm");
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const terminal = new XtermTerminal({
+    cols: 80,
+    rows: options?.rows ?? 24,
+    scrollback: options?.scrollback ?? 1000,
+  });
+  const data: string[] = [];
+  terminal.onData((entry) => data.push(entry));
+  terminal.open(container);
+
+  return {
+    container,
+    data,
+    dispose() {
+      terminal.dispose();
+      container.remove();
+    },
+    terminal,
+    write(entry: string) {
+      return new Promise<void>((resolve) => terminal.write(entry, resolve));
+    },
+  };
+}
+
+function stubElementRect(
+  element: HTMLElement,
+  rect: Pick<DOMRect, "height" | "left" | "top" | "width">,
+) {
+  element.style.paddingLeft = "0px";
+  element.style.paddingTop = "0px";
+  element.getBoundingClientRect = () =>
+    ({
+      bottom: rect.top + rect.height,
+      height: rect.height,
+      left: rect.left,
+      right: rect.left + rect.width,
+      top: rect.top,
+      width: rect.width,
+      x: rect.left,
+      y: rect.top,
+      toJSON: () => ({}),
+    }) as DOMRect;
+}
+
+function installBrowserApiStubs() {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: () => ({
+      addEventListener: vi.fn(),
+      addListener: vi.fn(),
+      dispatchEvent: vi.fn(() => false),
+      matches: false,
+      media: "",
+      onchange: null,
+      removeEventListener: vi.fn(),
+      removeListener: vi.fn(),
+    }),
+  });
+  Object.defineProperty(window, "ResizeObserver", {
+    configurable: true,
+    value: class ResizeObserver {
+      disconnect() {}
+      observe() {}
+      unobserve() {}
+    },
+  });
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    configurable: true,
+    value: window.ResizeObserver,
+  });
+
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
+    createCanvasContextStub() as unknown as CanvasRenderingContext2D,
+  );
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(320);
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(16);
+}
+
+function createCanvasContextStub() {
+  return {
+    beginPath: vi.fn(),
+    clearRect: vi.fn(),
+    clip: vi.fn(),
+    closePath: vi.fn(),
+    createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+    drawImage: vi.fn(),
+    fillRect: vi.fn(),
+    fillText: vi.fn(),
+    getImageData: vi.fn(() => ({ data: new Uint8ClampedArray(4) })),
+    measureText: vi.fn(() => ({ width: 10 })),
+    putImageData: vi.fn(),
+    rect: vi.fn(),
+    restore: vi.fn(),
+    save: vi.fn(),
+    scale: vi.fn(),
+    setTransform: vi.fn(),
+    strokeRect: vi.fn(),
+    strokeText: vi.fn(),
+    translate: vi.fn(),
+  };
+}

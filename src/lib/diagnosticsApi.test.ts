@@ -146,13 +146,13 @@ describe("diagnosticsApi", () => {
       backend: "native",
       enabled: true,
       fallbackReason: null,
-      ignoredGlobs: ["agents/**", "data/**", "secrets/hosts/*.toml"],
+      ignoredGlobs: ["agents/**", "data/**"],
       lastBatchAt: "2026-06-26T00:00:00+08:00",
       lastDomains: ["hosts"],
       lastError: null,
       lastSequence: 7,
       lastStatus: "ready",
-      watchedRoots: [".", "hosts", "secrets/hosts"],
+      watchedRoots: [".", "hosts"],
     });
     const { getConfigWatchStatus } = await import("./diagnosticsApi");
 
@@ -160,7 +160,7 @@ describe("diagnosticsApi", () => {
 
     expect(status.backend).toBe("native");
     expect(status.lastDomains).toEqual(["hosts"]);
-    expect(status.watchedRoots).toContain("secrets/hosts");
+    expect(status.watchedRoots).not.toContain("secrets/hosts");
     expect(JSON.stringify(status)).not.toContain("password");
     expect(JSON.stringify(status)).not.toContain("secret-host.toml");
     expect(invokeMock).toHaveBeenCalledWith("config_watch_status");
@@ -175,7 +175,7 @@ describe("diagnosticsApi", () => {
     expect(status.enabled).toBe(false);
     expect(status.backend).toBe("unavailable");
     expect(status.fallbackReason).toBe("browser-preview");
-    expect(status.watchedRoots).toContain("secrets/hosts");
+    expect(status.watchedRoots).not.toContain("secrets/hosts");
     expect(JSON.stringify(status)).not.toContain("password");
     expect(JSON.stringify(status)).not.toContain("credential");
     expect(invokeMock).not.toHaveBeenCalled();

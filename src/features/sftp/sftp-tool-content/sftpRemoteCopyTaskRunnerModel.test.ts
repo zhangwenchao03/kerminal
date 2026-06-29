@@ -15,6 +15,7 @@ const remoteCopyPlan: SftpRemoteCopyPlan = {
   destinationRemotePath: "/backup",
   requests: [
     {
+      conflictPolicy: "overwrite",
       kind: "file",
       sourceHostId: "host-left",
       sourceRemotePath: "/srv/app.log",
@@ -22,6 +23,7 @@ const remoteCopyPlan: SftpRemoteCopyPlan = {
       targetRemotePath: "/backup/app.log",
     },
     {
+      conflictPolicy: "overwrite",
       kind: "directory",
       sourceHostId: "host-left",
       sourceRemotePath: "/srv/conf",

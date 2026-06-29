@@ -2,6 +2,7 @@ import {
   Bell,
   Clipboard,
   GitBranch,
+  KeyRound,
   Info,
   Keyboard,
   MonitorCog,
@@ -87,6 +88,12 @@ export const settingsSections: Array<{
     icon: Puzzle,
     id: "settings-mcp",
     label: "MCP",
+  },
+  {
+    description: "Git 与密钥",
+    icon: KeyRound,
+    id: "settings-sync",
+    label: "同步",
   },
   {
     description: "通知和后台事件",

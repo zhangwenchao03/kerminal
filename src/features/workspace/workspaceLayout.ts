@@ -14,6 +14,7 @@ export type TerminalPaneMovePlacement =
 
 export interface MovePaneInLayoutCommand {
   placement: TerminalPaneMovePlacement;
+  scope?: "pane" | "workspace";
   sourcePaneId: string;
   splitId: string;
   targetPaneId: string;
@@ -124,7 +125,13 @@ export function movePaneInLayout(
   layout: TerminalLayoutNode,
   command: MovePaneInLayoutCommand,
 ): TerminalLayoutNode {
-  const { placement, sourcePaneId, splitId, targetPaneId } = command;
+  const {
+    placement,
+    scope = "pane",
+    sourcePaneId,
+    splitId,
+    targetPaneId,
+  } = command;
   if (
     sourcePaneId === targetPaneId ||
     !layoutContainsPane(layout, sourcePaneId) ||
@@ -142,6 +149,16 @@ export function movePaneInLayout(
     return layout;
   }
 
+  if (scope === "workspace") {
+    return dockPaneAtRoot(
+      layoutWithoutSource,
+      { type: "pane", paneId: sourcePaneId },
+      directionForMovePlacement(placement),
+      splitId,
+      splitPlacementForMovePlacement(placement),
+    );
+  }
+
   return insertPaneRelativeToTarget(
     layoutWithoutSource,
     { type: "pane", paneId: sourcePaneId },
@@ -150,6 +167,30 @@ export function movePaneInLayout(
     splitId,
     splitPlacementForMovePlacement(placement),
   );
+}
+
+function dockPaneAtRoot(
+  layout: TerminalLayoutNode,
+  sourcePane: TerminalLayoutNode,
+  direction: TerminalSplitDirection,
+  splitId: string,
+  placement: TerminalSplitPlacement,
+): TerminalLayoutNode {
+  if (layout.type === "split" && layout.direction === direction) {
+    const children =
+      placement === "before"
+        ? [sourcePane, ...layout.children]
+        : [...layout.children, sourcePane];
+    return splitWithoutSizes(layout, children);
+  }
+
+  return {
+    type: "split",
+    id: splitId,
+    direction,
+    children:
+      placement === "before" ? [sourcePane, layout] : [layout, sourcePane],
+  };
 }
 
 export function swapPanePositionsInLayout(

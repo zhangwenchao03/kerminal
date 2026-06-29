@@ -7,7 +7,7 @@ export type SuggestionCleanupState = "idle" | "running" | "done" | "error";
 
 export interface SettingsToolContentProps {
   externalChangeNotice?: string | null;
-  initialSectionId?: SettingsSectionId;
+  initialSectionId?: VisibleSettingsSectionId;
   resolvedTheme?: ResolvedTheme;
   settings: AppSettings;
   saveError?: string | null;
@@ -19,22 +19,9 @@ export type SettingsSectionId =
   | "settings-appearance"
   | "settings-desktop"
   | "settings-mcp"
+  | "settings-sync"
   | "settings-sftp"
-  | "settings-terminal"
   | "settings-keybindings"
   | "settings-about";
 
-export type VisibleSettingsSectionId = Exclude<
-  SettingsSectionId,
-  "settings-terminal"
->;
-
-export function visibleSettingsSectionId(
-  sectionId: SettingsSectionId,
-): VisibleSettingsSectionId {
-  if (sectionId === "settings-terminal") {
-    return "settings-appearance";
-  }
-
-  return sectionId;
-}
+export type VisibleSettingsSectionId = SettingsSectionId;

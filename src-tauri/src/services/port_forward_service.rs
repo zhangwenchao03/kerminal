@@ -283,11 +283,6 @@ impl PortForwardService {
         Ok(true)
     }
 
-    /// 兼容旧调用方：close 等价于 stop，保留已保存配置。
-    pub fn close(&self, storage: &RuntimeFileStore, forward_id: &str) -> AppResult<bool> {
-        self.stop(storage, forward_id)
-    }
-
     /// 删除端口转发配置；如果正在运行会先停止子进程。
     pub fn delete(&self, storage: &RuntimeFileStore, forward_id: &str) -> AppResult<bool> {
         let removed = {

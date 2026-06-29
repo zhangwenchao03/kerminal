@@ -1,13 +1,10 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { DockerContainerSummary } from "../../../lib/dockerApi";
 import type {
   RemoteHost,
   RemoteHostAuthType,
   SshOptions,
 } from "../../../lib/remoteHostApi";
-import type { ContainerRuntime } from "../../../lib/targetModel";
 import type { Machine } from "../../workspace/types";
-import { DockerHostContextGuidancePanel } from "./docker-panels";
 import { LocalEnvironmentPanel, LocalPropertiesPanel } from "./local-panels";
 import {
   type ConnectionMode,
@@ -45,16 +42,6 @@ interface RemoteHostDialogSectionContentProps {
   authType: RemoteHostAuthType;
   credentialRef: string;
   credentialSecret: string;
-  dockerContainerId: string;
-  dockerContainers: DockerContainerSummary[];
-  dockerHostId: string;
-  dockerIncludeStopped: boolean;
-  dockerLoadError: string | null;
-  dockerLoading: boolean;
-  dockerRuntime: ContainerRuntime;
-  dockerShell: string;
-  dockerUser: string;
-  dockerWorkdir: string;
   editingHost?: RemoteHost;
   editingLocalMachine?: Machine;
   groupId: string;
@@ -70,7 +57,6 @@ interface RemoteHostDialogSectionContentProps {
   mode: ConnectionMode;
   name: string;
   onCreateGroupClick?: () => void;
-  onDockerRefresh: () => void;
   port: string;
   rdpFullscreen: boolean;
   rdpHeight: string;
@@ -89,13 +75,6 @@ interface RemoteHostDialogSectionContentProps {
   setAuthType: Dispatch<SetStateAction<RemoteHostAuthType>>;
   setCredentialRef: StringSetter;
   setCredentialSecret: StringSetter;
-  setDockerContainerId: StringSetter;
-  setDockerHostId: StringSetter;
-  setDockerIncludeStopped: BooleanSetter;
-  setDockerRuntime: Dispatch<SetStateAction<ContainerRuntime>>;
-  setDockerShell: StringSetter;
-  setDockerUser: StringSetter;
-  setDockerWorkdir: StringSetter;
   setError: NullableStringSetter;
   setGroupId: StringSetter;
   setHost: StringSetter;
@@ -317,15 +296,6 @@ export function RemoteHostDialogSectionContent({
         setSerialPort={setSerialPort}
         setSerialStopBits={setSerialStopBits}
       />
-    ) : (
-      <DeferredSection
-        modeLabel={selectedProtocolLabel}
-        section={activeSectionDefinition}
-      />
-    )
-  ) : mode === "docker" ? (
-    activeSection === "properties" ? (
-      <DockerHostContextGuidancePanel />
     ) : (
       <DeferredSection
         modeLabel={selectedProtocolLabel}

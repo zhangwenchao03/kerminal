@@ -14,6 +14,8 @@ describe("serverInfoApi", () => {
     isTauriMock.mockReset();
   });
 
+  const sshTarget = { hostId: "host-lab", kind: "ssh" as const };
+
   it("loads server info through the Tauri command", async () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockResolvedValue({
@@ -27,11 +29,14 @@ describe("serverInfoApi", () => {
     });
     const { getServerInfoSnapshot } = await import("./serverInfoApi");
 
-    const snapshot = await getServerInfoSnapshot({ hostId: "host-lab" });
+    const snapshot = await getServerInfoSnapshot({
+      hostId: "host-lab",
+      target: sshTarget,
+    });
 
     expect(snapshot.hostName).toBe("lab");
     expect(invokeMock).toHaveBeenCalledWith("server_info_snapshot", {
-      request: { hostId: "host-lab" },
+      request: { hostId: "host-lab", target: sshTarget },
     });
   });
 
@@ -39,7 +44,10 @@ describe("serverInfoApi", () => {
     isTauriMock.mockReturnValue(false);
     const { getServerInfoSnapshot } = await import("./serverInfoApi");
 
-    const snapshot = await getServerInfoSnapshot({ hostId: "host-lab" });
+    const snapshot = await getServerInfoSnapshot({
+      hostId: "host-lab",
+      target: sshTarget,
+    });
 
     expect(invokeMock).not.toHaveBeenCalled();
     expect(snapshot.hostId).toBe("host-lab");

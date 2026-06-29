@@ -42,6 +42,8 @@ pub struct KerminalPaths {
     pub logs: PathBuf,
     /// 本地缓存目录。
     pub cache: PathBuf,
+    /// Encrypted credential vault directory.
+    pub secrets: PathBuf,
     /// 主题文件目录。
     pub themes: PathBuf,
     /// 脚本片段目录。
@@ -91,6 +93,7 @@ impl KerminalPaths {
             data: root.join("data"),
             logs: root.join("logs"),
             cache: root.join("cache"),
+            secrets: root.join("secrets"),
             themes: root.join("themes"),
             snippets: root.join("snippets"),
             exports: root.join("exports"),
@@ -101,12 +104,13 @@ impl KerminalPaths {
     }
 
     /// 返回所有需要启动时创建的目录。
-    pub fn managed_directories(&self) -> [&Path; 9] {
+    pub fn managed_directories(&self) -> [&Path; 10] {
         [
             self.root.as_path(),
             self.data.as_path(),
             self.logs.as_path(),
             self.cache.as_path(),
+            self.secrets.as_path(),
             self.themes.as_path(),
             self.snippets.as_path(),
             self.exports.as_path(),
@@ -127,6 +131,21 @@ impl KerminalPaths {
     /// 返回当前 Tauri 日志插件活跃日志文件路径。
     pub fn app_log_file(&self) -> PathBuf {
         self.logs.join(APP_LOG_FILE_NAME)
+    }
+
+    /// Return the workspace `.gitignore` path.
+    pub fn gitignore_file(&self) -> PathBuf {
+        self.root.join(".gitignore")
+    }
+
+    /// Return the encrypted vault key file path.
+    pub fn vault_key_file(&self) -> PathBuf {
+        self.secrets.join("vault-key.toml")
+    }
+
+    /// Return the encrypted vault file path.
+    pub fn vault_file(&self) -> PathBuf {
+        self.secrets.join("vault.toml")
     }
 }
 

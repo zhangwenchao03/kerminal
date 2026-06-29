@@ -563,7 +563,7 @@ describe("terminalCommandBlocks", () => {
     ]);
   });
 
-  it("keeps collapsed command blocks muted in alternate screen without folding rows", () => {
+  it("hides command block views while a TUI owns the alternate buffer", () => {
     const block = createTerminalCommandBlock({
       command: "vim file.txt",
       id: "block-1",
@@ -572,7 +572,7 @@ describe("terminalCommandBlocks", () => {
     });
     block.collapsed = true;
 
-    const [view] = buildTerminalCommandBlockViews([block], {
+    const views = buildTerminalCommandBlockViews([block], {
       activeBufferType: "alternate",
       bufferLength: 10,
       cols: 80,
@@ -581,12 +581,93 @@ describe("terminalCommandBlocks", () => {
       viewportY: 0,
     });
 
-    expect(view).toMatchObject({
-      collapsed: true,
-      height: 18,
-      hiddenLineCount: 0,
-      muted: true,
+    expect(views).toEqual([]);
+  });
+
+  it("hides command block views while a normal-buffer TUI command is running", () => {
+    const claudeBlock = createTerminalCommandBlock({
+      command: "claude",
+      id: "block-1",
+      index: 0,
+      marker: mockMarker(1),
     });
+    const promptInsideTui = createTerminalCommandBlock({
+      command: "",
+      id: "block-2",
+      index: 1,
+      marker: mockMarker(12),
+      submitted: false,
+    });
+
+    const views = buildTerminalCommandBlockViews([claudeBlock, promptInsideTui], {
+      activeBufferType: "normal",
+      bufferLength: 24,
+      cols: 80,
+      contentBottomLine: 20,
+      promptLine: 12,
+      rowHeight: 18,
+      rows: 12,
+      viewportY: 0,
+    });
+
+    expect(views).toEqual([]);
+  });
+
+  it("hides command block views when typing inside a normal-buffer TUI prompt", () => {
+    const codexBlock = createTerminalCommandBlock({
+      command: "codex",
+      id: "block-1",
+      index: 0,
+      marker: mockMarker(1),
+    });
+    codexBlock.endMarker = mockMarker(10);
+    const promptInsideTui = createTerminalCommandBlock({
+      command: "nihao",
+      id: "block-2",
+      index: 1,
+      marker: mockMarker(12),
+      submitted: false,
+    });
+
+    const views = buildTerminalCommandBlockViews([codexBlock, promptInsideTui], {
+      activeBufferType: "normal",
+      bufferLength: 24,
+      cols: 80,
+      contentBottomLine: 20,
+      promptLine: 12,
+      rowHeight: 18,
+      rows: 12,
+      viewportY: 0,
+    });
+
+    expect(views).toEqual([]);
+  });
+
+  it("restores command block views after a normal-buffer TUI command exits", () => {
+    const claudeBlock = createTerminalCommandBlock({
+      command: "claude",
+      id: "block-1",
+      index: 0,
+      marker: mockMarker(1),
+    });
+    claudeBlock.endMarker = mockMarker(8);
+
+    const views = buildTerminalCommandBlockViews([claudeBlock], {
+      activeBufferType: "normal",
+      bufferLength: 24,
+      cols: 80,
+      contentBottomLine: 8,
+      promptLine: 10,
+      rowHeight: 18,
+      rows: 12,
+      viewportY: 0,
+    });
+
+    expect(views[0]).toMatchObject({
+      command: "claude",
+      startLine: 1,
+    });
+    expect(views.length).toBeGreaterThan(0);
   });
 
   it("copies a command block as a PNG clipboard item when supported", async () => {

@@ -670,6 +670,7 @@ describe("LocalTransferPane", () => {
     await user.click(await screen.findByRole("menuitem", { name: "传输到右侧" }));
 
     expect(sftpApiMock.enqueueSftpTransfer).toHaveBeenCalledWith({
+      conflictPolicy: "overwrite",
       direction: "upload",
       hostId: "host-right",
       kind: "file",
@@ -836,6 +837,7 @@ describe("LocalTransferPane", () => {
 
     await waitFor(() =>
       expect(sftpApiMock.enqueueSftpTransfer).toHaveBeenCalledWith({
+        conflictPolicy: "overwrite",
         direction: "upload",
         hostId: "host-right",
         kind: "file",
@@ -927,6 +929,7 @@ describe("LocalTransferPane", () => {
       expect(sftpApiMock.enqueueSftpTransfer).toHaveBeenCalledTimes(2),
     );
     expect(sftpApiMock.enqueueSftpTransfer).toHaveBeenNthCalledWith(1, {
+      conflictPolicy: "overwrite",
       direction: "download",
       hostId: "host-left",
       kind: "file",
@@ -935,6 +938,7 @@ describe("LocalTransferPane", () => {
       viewScope: "sftp-workbench:tab-a",
     });
     expect(sftpApiMock.enqueueSftpTransfer).toHaveBeenNthCalledWith(2, {
+      conflictPolicy: "overwrite",
       direction: "download",
       hostId: "host-left",
       kind: "directory",

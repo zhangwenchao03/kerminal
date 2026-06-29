@@ -16,7 +16,12 @@ use crate::{
         terminal::{TerminalSecretInputEntry, TerminalSecretInputPlan},
     },
     paths::KerminalPaths,
-    services::ssh_identity_file::resolve_identity_file_path,
+    services::{
+        ssh_credential_resolver::{
+            ResolvedSshAuthMaterial, ResolvedSshHopAuth, ResolvedSshRouteAuth,
+        },
+        ssh_identity_file::resolve_identity_file_path,
+    },
 };
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
@@ -44,6 +49,33 @@ pub fn build_ssh_route_plan(remote_host: &RemoteHost) -> AppResult<SshRoutePlan>
         .map(|(index, jump)| build_jump_hop(index, jump))
         .collect::<AppResult<Vec<_>>>()?;
     let target = build_target_hop(remote_host)?;
+    let known_hosts = build_known_hosts(&jumps, &target);
+    let secret_plan = build_secret_plan(&jumps, &target);
+
+    Ok(SshRoutePlan {
+        target,
+        jumps,
+        known_hosts,
+        secret_plan,
+        cleanup_paths: Vec::new(),
+    })
+}
+
+/// Builds a route plan from already-resolved SSH auth material.
+///
+/// This is the preferred runtime path for terminal launches that have already
+/// passed through `SshCredentialResolver`: vault errors and prompt-only states
+/// are resolved before OpenSSH args or PTY secret input plans are created.
+pub fn build_ssh_route_plan_from_resolved(
+    resolved_auth: &ResolvedSshRouteAuth,
+) -> AppResult<SshRoutePlan> {
+    let jumps = resolved_auth
+        .jumps
+        .iter()
+        .enumerate()
+        .map(|(index, jump)| build_resolved_hop(format!("jump-{index}"), jump))
+        .collect::<AppResult<Vec<_>>>()?;
+    let target = build_resolved_hop("target".to_owned(), &resolved_auth.target)?;
     let known_hosts = build_known_hosts(&jumps, &target);
     let secret_plan = build_secret_plan(&jumps, &target);
 
@@ -517,6 +549,45 @@ fn build_target_hop(remote_host: &RemoteHost) -> AppResult<SshHopPlan> {
         username,
         auth,
     })
+}
+
+fn build_resolved_hop(hop_id: String, hop: &ResolvedSshHopAuth) -> AppResult<SshHopPlan> {
+    let label = format!("{}@{}:{}", hop.username, hop.host, hop.port);
+    let auth = resolved_auth_plan(&hop_id, &label, &hop.material)?;
+    Ok(SshHopPlan {
+        id: hop_id,
+        label,
+        host: hop.host.clone(),
+        port: hop.port,
+        username: hop.username.clone(),
+        auth,
+    })
+}
+
+fn resolved_auth_plan(
+    hop_id: &str,
+    label: &str,
+    material: &ResolvedSshAuthMaterial,
+) -> AppResult<SshRouteAuthPlan> {
+    match material {
+        ResolvedSshAuthMaterial::Agent { .. } => Ok(SshRouteAuthPlan::Agent),
+        ResolvedSshAuthMaterial::Password { value, .. } => Ok(SshRouteAuthPlan::Password {
+            secret: SshSecret::new(value),
+        }),
+        ResolvedSshAuthMaterial::PrivateKeyPath { path, .. } => Ok(SshRouteAuthPlan::Key {
+            material: SshRouteKeyMaterial::Path(resolve_identity_file_path(
+                &path.to_string_lossy(),
+            )?),
+        }),
+        ResolvedSshAuthMaterial::PrivateKeyPem { content, .. } => Ok(SshRouteAuthPlan::Key {
+            material: SshRouteKeyMaterial::InlinePrivateKey {
+                content: SshSecret::new(normalize_private_key_content(content)?),
+            },
+        }),
+        ResolvedSshAuthMaterial::PromptOnly { reason, .. } => Err(invalid_route_plan(format!(
+            "{hop_id} `{label}` requires interactive prompt: {reason}"
+        ))),
+    }
 }
 
 fn build_auth_plan(

@@ -18,9 +18,11 @@ import {
   TerminalWorkspace,
 } from "../features/terminal/TerminalWorkspace";
 import type { TerminalSplitDropIndicator } from "../features/terminal/TerminalSplitDropOverlay";
+import type { ConnectionState } from "../features/terminal/XtermPane.helpers";
 import { ToolPanel } from "../features/tool-panel/ToolPanel";
 import type {
   MachineGroup,
+  MachineStatus,
   TerminalSplitDirection,
   ToolId,
 } from "../features/workspace/types";
@@ -102,6 +104,16 @@ const getToolPanelWorkspaceSnapshot = () =>
 const getTerminalWorkspaceSnapshot = () =>
   buildTerminalWorkspaceSnapshot(useWorkspaceStore.getState());
 
+function paneStatusForConnectionState(state: ConnectionState): MachineStatus {
+  if (state === "connected") {
+    return "online";
+  }
+  if (state === "connecting" || state === "error") {
+    return "warning";
+  }
+  return "offline";
+}
+
 export function WorkspaceTerminalSurface({
   contentRightInset,
   createdSftpHostTarget,
@@ -149,6 +161,7 @@ export function WorkspaceTerminalSurface({
   const updatePaneOutputHistory = useWorkspaceStore(
     (state) => state.updatePaneOutputHistory,
   );
+  const updatePaneStatus = useWorkspaceStore((state) => state.updatePaneStatus);
   const updateTerminalSplitLayoutSizes = useWorkspaceStore(
     (state) => state.updateTerminalSplitLayoutSizes,
   );
@@ -182,6 +195,9 @@ export function WorkspaceTerminalSurface({
       onOpenAgentTool={onOpenAgentTool}
       onOpenConnection={onOpenConnection}
       onMovePane={moveTerminalPane}
+      onPaneConnectionStateChange={(paneId, state) =>
+        updatePaneStatus(paneId, paneStatusForConnectionState(state))
+      }
       onPaneCurrentCwdChange={updatePaneCurrentCwd}
       onPaneOutputHistoryChange={updatePaneOutputHistory}
       onSplitLayoutSizesChange={updateTerminalSplitLayoutSizes}
@@ -198,7 +214,6 @@ export function WorkspaceTerminalSurface({
             createdHostTarget={createdSftpHostTarget}
             desktopNotifications={desktopNotifications}
             groups={machineGroups}
-            initialLeftHostId={tab.leftHostId}
             initialRightHostId={tab.rightHostId}
             interfaceDensity={interfaceDensity}
             lockedLeftHostId={tab.lockedLeftHostId}
@@ -265,7 +280,6 @@ export function ToolPanelStoreBridge({
       focusedPane={workspaceContext.focusedPane}
       onClosePane={closePane}
       onOpenTmuxTerminal={openTmuxAttachTerminal}
-      selectedMachine={workspaceContext.selectedMachine}
       terminalPanes={workspaceContext.terminalPanes}
       terminalTabs={workspaceContext.terminalTabs}
       tools={tools}

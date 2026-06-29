@@ -343,17 +343,12 @@ function normalizeKeybindings(
     }
 
     const fallback = defaultsByAction.get(keybinding.action);
-    const binding =
-      readString(keybinding.binding) ||
-      readString(keybinding.windowsBinding) ||
-      fallback?.binding ||
-      "";
-    const windowsBinding =
-      readString(keybinding.windowsBinding) ||
-      fallback?.windowsBinding ||
-      binding;
-    const macBinding =
-      readString(keybinding.macBinding) || fallback?.macBinding || binding;
+    const windowsBinding = readString(keybinding.windowsBinding);
+    const macBinding = readString(keybinding.macBinding);
+    if (!windowsBinding || !macBinding) {
+      continue;
+    }
+    const binding = readString(keybinding.binding) || windowsBinding;
 
     normalizedByAction.set(keybinding.action, {
       action: keybinding.action,

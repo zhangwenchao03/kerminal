@@ -8,7 +8,6 @@ import { describe, expect, it } from "vitest";
 import type { SftpEntry } from "../../../lib/sftpApi";
 import type { SftpClipboard, SftpRemoteTransferTarget } from "./types";
 import {
-  SFTP_REMOTE_DOWNLOAD_DRAG_MIME,
   SFTP_REMOTE_DRAG_PAYLOAD_MIME,
   buildRemoteDownloadDragStartPlan,
   buildSftpRemoteDragPayload,
@@ -112,10 +111,6 @@ describe("sftpRemoteTransferModel", () => {
     ).toEqual({
       dataTransferItems: [
         {
-          type: SFTP_REMOTE_DOWNLOAD_DRAG_MIME,
-          value: JSON.stringify(["/srv/current.log"]),
-        },
-        {
           type: "text/plain",
           value: "/srv/current.log",
         },
@@ -141,10 +136,6 @@ describe("sftpRemoteTransferModel", () => {
 
     expect(plan).toEqual({
       dataTransferItems: [
-        {
-          type: SFTP_REMOTE_DOWNLOAD_DRAG_MIME,
-          value: JSON.stringify(["/srv/selected.log", "/srv/data"]),
-        },
         {
           type: "text/plain",
           value: "/srv/selected.log\n/srv/data",
@@ -277,10 +268,6 @@ describe("sftpRemoteTransferModel", () => {
     expect(plan?.entriesToDrag).toEqual([unselectedFile]);
     expect(plan?.selectOnlyEntryPath).toBe("/srv/other.log");
     expect(plan?.dataTransferItems).toEqual([
-      {
-        type: SFTP_REMOTE_DOWNLOAD_DRAG_MIME,
-        value: JSON.stringify(["/srv/other.log"]),
-      },
       {
         type: "text/plain",
         value: "/srv/other.log",
@@ -417,6 +404,7 @@ describe("sftpRemoteTransferModel", () => {
     );
     expect(plan.requests).toEqual([
       {
+        conflictPolicy: "overwrite",
         kind: "file",
         sourceHostId: "host-left",
         sourceRemotePath: "/var/app.log",

@@ -354,8 +354,20 @@ function transferSummary(
     id: "transfer-1",
     kind: "file",
     localPath: "/tmp/source.log",
+    operation: "upload",
     remotePath: "/srv/source.log",
+    source: {
+      kind: "local",
+      path: "/tmp/source.log",
+    },
     status: "queued",
+    target: {
+      hostId: "host-right",
+      hostLabel: "host-right",
+      kind: "remote",
+      path: "/srv/source.log",
+    },
+    transportMode: "singleHostSftp",
     updatedAt: 1,
     ...overrides,
   };

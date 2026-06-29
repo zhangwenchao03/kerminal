@@ -145,6 +145,22 @@ pub(super) fn enum_field(
     )
 }
 
+pub(super) fn object_field(
+    name: &str,
+    description: &str,
+    required: bool,
+    fields: Vec<FieldSchema>,
+) -> FieldSchema {
+    let mut schema = object_schema(fields);
+    if let Some(object) = schema.as_object_mut() {
+        object.insert(
+            "description".to_owned(),
+            Value::String(description.to_owned()),
+        );
+    }
+    field(name, required, schema)
+}
+
 fn field(name: &str, required: bool, schema: Value) -> FieldSchema {
     FieldSchema {
         name: name.to_string(),

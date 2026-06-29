@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultAppSettings } from "../settings/settingsModel";
@@ -75,11 +75,13 @@ vi.mock("./XtermPane", async () => {
 
   return {
     XtermPane: ({
+      onConnectionStateChange,
       onOpenLogs,
       onSplitPane,
       paneId,
       title,
     }: {
+      onConnectionStateChange?: (state: "closed") => void;
       onOpenLogs?: () => void;
       onSplitPane?: (direction: "horizontal" | "vertical") => void;
       paneId: string;
@@ -104,6 +106,12 @@ vi.mock("./XtermPane", async () => {
           </button>
           <button onClick={() => onSplitPane?.("horizontal")} type="button">
             测试左右分屏
+          </button>
+          <button
+            onClick={() => onConnectionStateChange?.("closed")}
+            type="button"
+          >
+            测试关闭状态
           </button>
         </div>
       );
@@ -177,6 +185,35 @@ describe("TerminalWorkspace", () => {
       screen.queryByRole("button", { name: "关闭当前分屏" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByLabelText("批量命令")).not.toBeInTheDocument();
+  });
+
+  it("derives terminal tab status from its pane status", () => {
+    const offlinePane: TerminalPane = {
+      ...baseTerminalPane,
+      status: "offline",
+    };
+
+    render(<TerminalWorkspace {...workspaceProps({ panes: [offlinePane] })} />);
+
+    const tabButton = screen.getByRole("button", { name: "本地 PowerShell" });
+    expect(tabButton.previousElementSibling).toHaveClass("bg-zinc-400");
+  });
+
+  it("forwards pane connection state changes from xterm panes", () => {
+    const onPaneConnectionStateChange = vi.fn();
+
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({ onPaneConnectionStateChange })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "测试关闭状态" }));
+
+    expect(onPaneConnectionStateChange).toHaveBeenCalledWith(
+      baseTerminalPane.id,
+      "closed",
+    );
   });
 
   it("keeps the existing terminal pane mounted when a split is added", () => {
@@ -289,7 +326,7 @@ describe("TerminalWorkspace", () => {
     });
   });
 
-  it("keeps an existing terminal pane mounted when a nested split is added", () => {
+  it("renders existing and new terminal panes when a nested split is added", () => {
     const rightPane: TerminalPane = {
       ...baseTerminalPane,
       id: "pane-local-2",
@@ -359,12 +396,9 @@ describe("TerminalWorkspace", () => {
       />,
     );
 
-    expect(xtermPaneMockState.unmountedPaneIds).not.toContain(rightPane.id);
-    expect(xtermPaneMockState.mountedPaneIds).toEqual([
-      baseTerminalPane.id,
-      rightPane.id,
-      bottomPane.id,
-    ]);
+    expect(screen.getByLabelText("本地 PowerShell xterm 终端")).toBeInTheDocument();
+    expect(screen.getByLabelText("右侧分屏 xterm 终端")).toBeInTheDocument();
+    expect(screen.getByLabelText("下方分屏 xterm 终端")).toBeInTheDocument();
   });
 
   it("keeps the no-tab empty state as a quiet brand placeholder", () => {
@@ -735,6 +769,57 @@ describe("TerminalWorkspace", () => {
     }
   });
 
+  it("mounts runtime panes for repeated host tabs so each SSH tab auto-connects", () => {
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          activeTabId: "tab-dev-a",
+          focusedPaneId: "pane-dev-a",
+          panes: groupedSshPanes,
+          tabs: groupedSshTabs,
+        })}
+      />,
+    );
+
+    expect(xtermPaneMockState.mountedPaneIds).toEqual([
+      "pane-dev-a",
+      "pane-dev-b",
+      "pane-lab",
+    ]);
+  });
+
+  it("mounts split runtime panes inside their own slots", async () => {
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          activeTabId: "tab-batch",
+          focusedPaneId: "pane-batch-local",
+          panes: batchPanes,
+          tabs: batchTabs,
+        })}
+      />,
+    );
+
+    const slots = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        "[data-terminal-pane-runtime-slot]",
+      ),
+    );
+
+    expect(slots.map((slot) => slot.dataset.terminalPaneRuntimeSlot)).toEqual([
+      "pane-batch-local",
+      "pane-batch-ssh",
+    ]);
+    await waitFor(() => {
+      expect(
+        within(slots[0]).getByLabelText("本地批量 xterm 终端"),
+      ).toBeInTheDocument();
+      expect(
+        within(slots[1]).getByLabelText("SSH 批量 xterm 终端"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("lets the all-tabs menu follow the document theme", async () => {
     const user = userEvent.setup();
     const restoreTabListMetrics = mockTabListMetrics({
@@ -1090,6 +1175,55 @@ describe("TerminalWorkspace", () => {
     });
     expect(
       screen.queryByRole("menu", { name: "左右分屏目标选择" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens the split target menu on secondary-button press", () => {
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          activeTabId: "tab-batch",
+          focusedPaneId: "pane-batch-local",
+          machineGroups: terminalMachineGroups,
+          panes: batchPanes,
+          tabs: batchTabs,
+        })}
+      />,
+    );
+
+    fireEvent.mouseDown(
+      screen.getByRole("button", { name: "本地批量 左右分屏" }),
+      { button: 2 },
+    );
+
+    expect(
+      screen.getByRole("menu", { name: "左右分屏目标选择" }),
+    ).toBeInTheDocument();
+  });
+
+  it("portals the split target menu outside the pane card", () => {
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          activeTabId: "tab-batch",
+          focusedPaneId: "pane-batch-local",
+          machineGroups: terminalMachineGroups,
+          panes: batchPanes,
+          tabs: batchTabs,
+        })}
+      />,
+    );
+
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: "本地批量 左右分屏" }),
+    );
+
+    const splitTargetMenu = screen.getByRole("menu", {
+      name: "左右分屏目标选择",
+    });
+    expect(splitTargetMenu.parentElement).toBe(document.body);
+    expect(
+      splitTargetMenu.closest("[data-terminal-pane-card]"),
     ).not.toBeInTheDocument();
   });
 

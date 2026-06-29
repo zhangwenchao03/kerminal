@@ -15,6 +15,7 @@ function transferRequest(
   overrides: Partial<SftpManagedTransferRequest> = {},
 ): SftpManagedTransferRequest {
   return {
+    conflictPolicy: "overwrite",
     direction,
     hostId: "prod-api",
     kind: "file",
@@ -37,6 +38,7 @@ function remoteCopyRequest(
   overrides: Partial<SftpRemoteCopyRequest> = {},
 ): SftpRemoteCopyRequest {
   return {
+    conflictPolicy: "overwrite",
     kind: "file",
     sourceHostId: "prod-api",
     sourceRemotePath: "/var/www/release.tgz",
@@ -50,6 +52,7 @@ function archiveDownloadRequest(
   overrides: Partial<SftpArchiveDownloadRequest> = {},
 ): SftpArchiveDownloadRequest {
   return {
+    conflictPolicy: "overwrite",
     hostId: "prod-api",
     kind: "directory",
     sourceRemotePath: "/var/www/releases",
@@ -62,6 +65,7 @@ function archiveUploadRequest(
   overrides: Partial<SftpArchiveUploadRequest> = {},
 ): SftpArchiveUploadRequest {
   return {
+    conflictPolicy: "overwrite",
     hostId: "prod-api",
     kind: "directory",
     sourceLocalPath: "/Users/me/releases",

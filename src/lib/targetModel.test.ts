@@ -31,12 +31,12 @@ describe("targetModel", () => {
   });
 
   it("builds stable ids for Telnet and Serial targets", () => {
-    const telnet = telnetTarget(" legacy-host ");
+    const telnet = telnetTarget(" lab-host ");
     const serial = serialTarget(" console-port ");
 
-    expect(targetStableId(telnet)).toBe("telnet:legacy-host");
+    expect(targetStableId(telnet)).toBe("telnet:lab-host");
     expect(targetStableId(serial)).toBe("serial:console-port");
-    expect(targetHostId(telnet)).toBe("legacy-host");
+    expect(targetHostId(telnet)).toBe("lab-host");
     expect(targetHostId(serial)).toBe("console-port");
   });
 
@@ -66,10 +66,10 @@ describe("targetModel", () => {
     });
     expect(
       normalizeRemoteTargetRef({
-        hostId: " legacy-host ",
+        hostId: " lab-host ",
         kind: "telnet",
       }),
-    ).toEqual({ hostId: "legacy-host", kind: "telnet" });
+    ).toEqual({ hostId: "lab-host", kind: "telnet" });
     expect(
       normalizeRemoteTargetRef({
         hostId: " console-port ",

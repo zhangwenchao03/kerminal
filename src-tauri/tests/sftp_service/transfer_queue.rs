@@ -113,27 +113,27 @@ async fn remote_copy_task_uses_source_and_target_hosts() {
         summary.local_path,
         format!("sftp://{source_host_id}/var/log/app.log")
     );
-    assert_eq!(summary.operation, Some(SftpTransferOperation::RemoteCopy));
+    assert_eq!(summary.operation, SftpTransferOperation::RemoteCopy);
     assert_eq!(
         summary.transport_mode,
-        Some(SftpTransferTransportMode::ClientBridge)
+        SftpTransferTransportMode::ClientBridge
     );
     assert_eq!(summary.phase.as_deref(), Some("queued"));
     assert_eq!(
         summary.source,
-        Some(SftpTransferEndpoint::Remote {
+        SftpTransferEndpoint::Remote {
             host_id: source_host_id,
             host_label: "source host".to_owned(),
             path: "/var/log/app.log".to_owned(),
-        })
+        }
     );
     assert_eq!(
         summary.target,
-        Some(SftpTransferEndpoint::Remote {
+        SftpTransferEndpoint::Remote {
             host_id: target_host_id,
             host_label: "target host".to_owned(),
             path: "/srv/app/app.log".to_owned(),
-        })
+        }
     );
 
     wait_for_transfer_success(&state, &summary.id).await;
@@ -180,7 +180,7 @@ async fn staged_remote_copy_removes_temp_dir_on_success() {
 
     assert_eq!(
         summary.transport_mode,
-        Some(SftpTransferTransportMode::LocalStage)
+        SftpTransferTransportMode::LocalStage
     );
     wait_for_transfer_success(&state, &summary.id).await;
 
@@ -322,16 +322,16 @@ fn transfer_summary(
         cancel_requested: status == SftpTransferStatus::Canceled,
         created_at,
         updated_at: created_at,
-        operation: Some(SftpTransferOperation::Download),
-        source: Some(SftpTransferEndpoint::Remote {
+        operation: SftpTransferOperation::Download,
+        source: SftpTransferEndpoint::Remote {
             host_id: "host-1".to_owned(),
             host_label: "dev".to_owned(),
             path: "/var/log/app.log".to_owned(),
-        }),
-        target: Some(SftpTransferEndpoint::Local {
+        },
+        target: SftpTransferEndpoint::Local {
             path: "C:/tmp/app.log".to_owned(),
-        }),
-        transport_mode: Some(SftpTransferTransportMode::SingleHostSftp),
+        },
+        transport_mode: SftpTransferTransportMode::SingleHostSftp,
         phase: Some("queued".to_owned()),
         current_item: None,
     }

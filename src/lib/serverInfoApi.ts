@@ -3,7 +3,7 @@ import type { RemoteTargetRef } from "./targetModel";
 
 export interface ServerInfoRequest {
   hostId: string;
-  target?: RemoteTargetRef;
+  target: RemoteTargetRef;
 }
 
 export interface ServerInfoSnapshot {

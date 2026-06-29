@@ -18,9 +18,21 @@ function transfer(
     id,
     kind: "file",
     localPath: `C:\\Downloads\\${id}.log`,
+    operation: "download",
     remotePath: `/srv/${id}.log`,
+    source: {
+      hostId: "host-1",
+      hostLabel: "host-1",
+      kind: "remote",
+      path: `/srv/${id}.log`,
+    },
     status,
+    target: {
+      kind: "local",
+      path: `C:\\Downloads\\${id}.log`,
+    },
     totalBytes: 100,
+    transportMode: "singleHostSftp",
     updatedAt: 100,
   };
 }

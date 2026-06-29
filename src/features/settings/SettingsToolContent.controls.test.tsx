@@ -322,6 +322,20 @@ describe("SettingsToolContent controls", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /桌面/ }));
+    await user.click(screen.getByText("启用桌面通知"));
+    expect(onSettingsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        desktopNotifications: expect.objectContaining({ enabled: true }),
+      }),
+    );
+
+    await user.click(screen.getByText("启用桌面通知"));
+    expect(onSettingsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        desktopNotifications: expect.objectContaining({ enabled: false }),
+      }),
+    );
+
     await user.click(screen.getByLabelText("启用桌面通知"));
     expect(onSettingsChange).toHaveBeenLastCalledWith(
       expect.objectContaining({

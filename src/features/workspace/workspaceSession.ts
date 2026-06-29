@@ -21,9 +21,6 @@ import {
   dockerContainerTarget,
   localTarget,
   normalizeRemoteTargetRef,
-  serialTarget,
-  sshTarget,
-  telnetTarget,
 } from "../../lib/targetModel";
 
 export const WORKSPACE_SESSION_VERSION = 2;
@@ -54,14 +51,11 @@ export function normalizeWorkspaceSessionSnapshot(
   const source = isRecord(value)
     ? (value as Partial<WorkspaceSessionSnapshot>)
     : null;
-  const sessionVersion = normalizeWorkspaceSessionVersion(
-    isRecord(value) ? value.version : undefined,
-  );
   const rawPanes = Array.isArray(source?.terminalPanes)
     ? source.terminalPanes
     : [];
   const terminalPanes = rawPanes
-    .map((pane) => normalizeTerminalPane(pane, sessionVersion))
+    .map(normalizeTerminalPane)
     .filter((pane): pane is TerminalPane => Boolean(pane));
   const paneIds = new Set(terminalPanes.map((pane) => pane.id));
   const rawTabs = Array.isArray(source?.terminalTabs) ? source.terminalTabs : [];
@@ -184,10 +178,7 @@ export function appendTerminalOutputHistory(
   return trimTerminalOutputHistory(`${currentHistory ?? ""}${data}`);
 }
 
-function normalizeTerminalPane(
-  value: unknown,
-  sessionVersion: number,
-): TerminalPane | undefined {
+function normalizeTerminalPane(value: unknown): TerminalPane | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
@@ -224,16 +215,7 @@ function normalizeTerminalPane(
     remoteHostProduction: readOptionalBoolean(value.remoteHostProduction),
     shell: readOptionalString(value.shell),
     status,
-    target:
-      normalizeRemoteTargetRef(value.target) ??
-      migrateLegacyPaneTarget(
-        sessionVersion,
-        mode,
-        machineId,
-        remoteHostId,
-        profileId,
-        readOptionalString(value.containerId),
-      ),
+    target: normalizeRemoteTargetRef(value.target),
     tmuxBinding: normalizeTmuxPaneBinding(value.tmuxBinding),
     title,
   };
@@ -581,42 +563,6 @@ function normalizePaneMode(value: unknown): TerminalPane["mode"] | undefined {
     value === "preview"
     ? value
     : undefined;
-}
-
-function normalizeWorkspaceSessionVersion(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? value
-    : 1;
-}
-
-function migrateLegacyPaneTarget(
-  sessionVersion: number,
-  mode: TerminalPane["mode"],
-  machineId: string,
-  remoteHostId: string | undefined,
-  profileId: string | undefined,
-  containerId: string | undefined,
-) {
-  if (sessionVersion >= 2) {
-    return undefined;
-  }
-
-  if (mode === "local") {
-    return localTarget(profileId);
-  }
-  if (mode === "ssh") {
-    return sshTarget(remoteHostId ?? machineId);
-  }
-  if (mode === "telnet") {
-    return telnetTarget(remoteHostId ?? machineId);
-  }
-  if (mode === "serial") {
-    return serialTarget(remoteHostId ?? machineId);
-  }
-  if (mode === "container" && remoteHostId && containerId) {
-    return dockerContainerTarget({ containerId, hostId: remoteHostId });
-  }
-  return undefined;
 }
 
 function normalizeMachineStatus(value: unknown): MachineStatus {

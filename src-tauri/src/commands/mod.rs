@@ -29,3 +29,4 @@ pub mod terminal_session_binding;
 pub mod tmux;
 pub mod workflow;
 pub mod workspace_session;
+pub mod workspace_sync;

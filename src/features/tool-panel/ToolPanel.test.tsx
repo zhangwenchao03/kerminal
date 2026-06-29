@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { tools } from "../workspace/workspaceData";
-import type { Machine } from "../workspace/types";
+import type { Machine, TerminalTab } from "../workspace/types";
 import { clearServerInfoSnapshotCacheForTest } from "./ServerInfoToolContent";
 import { ToolPanel } from "./ToolPanel";
 
@@ -91,6 +91,13 @@ const sshMachine: Machine = {
   status: "warning",
   tags: ["ssh", "prod"],
   username: "deploy",
+};
+
+const sshTerminalTab: TerminalTab = {
+  id: "tab-prod-api",
+  layout: { paneId: "pane-prod-api", type: "pane" },
+  machineId: sshMachine.id,
+  title: sshMachine.name,
 };
 
 const localMachine: Machine = {
@@ -386,8 +393,9 @@ describe("ToolPanel", () => {
     const { rerender } = render(
       <ToolPanel
         activeTool={null}
+        activeMachine={sshMachine}
+        activeTab={sshTerminalTab}
         onActiveToolChange={onActiveToolChange}
-        selectedMachine={sshMachine}
         tools={tools}
       />,
     );
@@ -398,14 +406,15 @@ describe("ToolPanel", () => {
     rerender(
       <ToolPanel
         activeTool="tmux"
+        activeMachine={sshMachine}
+        activeTab={sshTerminalTab}
         onActiveToolChange={onActiveToolChange}
-        selectedMachine={sshMachine}
         tools={tools}
       />,
     );
 
     expect(await screen.findByText("tmux 3.4")).toBeInTheDocument();
-    expect(screen.getByText("暂无 session")).toBeInTheDocument();
+    expect(screen.getByText("no sessions")).toBeInTheDocument();
   });
 
   it("shows the diagnostics bundle action on the logs title row", async () => {
@@ -414,8 +423,8 @@ describe("ToolPanel", () => {
     render(
       <ToolPanel
         activeTool="logs"
+        activeMachine={localMachine}
         onActiveToolChange={vi.fn()}
-        selectedMachine={localMachine}
         tools={tools}
       />,
     );
@@ -471,8 +480,8 @@ describe("ToolPanel", () => {
     render(
       <ToolPanel
         activeTool="system"
+        activeMachine={localMachine}
         onActiveToolChange={vi.fn()}
-        selectedMachine={localMachine}
         tools={tools}
       />,
     );
@@ -485,14 +494,14 @@ describe("ToolPanel", () => {
     expect(serverInfoApiMocks.getServerInfoSnapshot).not.toHaveBeenCalled();
   });
 
-  it("loads and refreshes system metrics for the selected SSH host", async () => {
+  it("loads and refreshes system metrics for the active SSH host", async () => {
     const user = userEvent.setup();
 
     render(
       <ToolPanel
         activeTool="system"
+        activeMachine={sshMachine}
         onActiveToolChange={vi.fn()}
-        selectedMachine={sshMachine}
         tools={tools}
       />,
     );
@@ -637,8 +646,8 @@ describe("ToolPanel", () => {
     render(
       <ToolPanel
         activeTool="system"
+        activeMachine={sshMachine}
         onActiveToolChange={vi.fn()}
-        selectedMachine={sshMachine}
         tools={tools}
       />,
     );
@@ -697,8 +706,8 @@ describe("ToolPanel", () => {
     render(
       <ToolPanel
         activeTool="system"
+        activeMachine={sshMachine}
         onActiveToolChange={vi.fn()}
-        selectedMachine={sshMachine}
         tools={tools}
       />,
     );
@@ -718,12 +727,12 @@ describe("ToolPanel", () => {
     expect(screen.getAllByText("-").length).toBeGreaterThan(0);
   });
 
-  it("loads system metrics from the selected container target", async () => {
+  it("loads system metrics from the active container target", async () => {
     render(
       <ToolPanel
         activeTool="system"
+        activeMachine={containerMachine}
         onActiveToolChange={vi.fn()}
-        selectedMachine={containerMachine}
         tools={tools}
       />,
     );
@@ -760,8 +769,8 @@ describe("ToolPanel", () => {
     render(
       <ToolPanel
         activeTool="system"
+        activeMachine={sshMachine}
         onActiveToolChange={vi.fn()}
-        selectedMachine={sshMachine}
         tools={tools}
       />,
     );
@@ -815,8 +824,8 @@ describe("ToolPanel", () => {
     render(
       <ToolPanel
         activeTool="system"
+        activeMachine={sshMachine}
         onActiveToolChange={vi.fn()}
-        selectedMachine={sshMachine}
         tools={tools}
       />,
     );
@@ -868,8 +877,8 @@ describe("ToolPanel", () => {
     render(
       <ToolPanel
         activeTool="system"
+        activeMachine={sshMachine}
         onActiveToolChange={vi.fn()}
-        selectedMachine={sshMachine}
         tools={tools}
       />,
     );
@@ -886,8 +895,8 @@ describe("ToolPanel", () => {
     render(
       <ToolPanel
         activeTool="sftp"
+        activeMachine={localMachine}
         onActiveToolChange={vi.fn()}
-        selectedMachine={localMachine}
         tools={tools}
       />,
     );
@@ -900,12 +909,12 @@ describe("ToolPanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the shared remote file panel for a selected container machine", async () => {
+  it("renders the shared remote file panel for an active container machine", async () => {
     render(
       <ToolPanel
         activeTool="sftp"
+        activeMachine={containerMachine}
         onActiveToolChange={vi.fn()}
-        selectedMachine={containerMachine}
         tools={tools}
       />,
     );
@@ -925,8 +934,8 @@ describe("ToolPanel", () => {
     render(
       <ToolPanel
         activeTool="ports"
+        activeMachine={localMachine}
         onActiveToolChange={vi.fn()}
-        selectedMachine={localMachine}
         tools={tools}
       />,
     );
@@ -935,7 +944,7 @@ describe("ToolPanel", () => {
     expect(screen.getByText(/请选择 SSH 主机/)).toBeInTheDocument();
   });
 
-  it("creates and stops a local port forward for the selected SSH host", async () => {
+  it("creates and stops a local port forward for the active SSH host", async () => {
     const user = userEvent.setup();
     portForwardApiMocks.listPortForwards
       .mockResolvedValueOnce([])
@@ -972,8 +981,8 @@ describe("ToolPanel", () => {
     render(
       <ToolPanel
         activeTool="ports"
+        activeMachine={sshMachine}
         onActiveToolChange={vi.fn()}
-        selectedMachine={sshMachine}
         tools={tools}
       />,
     );

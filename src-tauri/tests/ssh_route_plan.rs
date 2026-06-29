@@ -409,7 +409,10 @@ fn remote_host(
         username: "target-user".to_owned(),
         auth_type,
         credential_ref: credential_ref.map(str::to_owned),
+        secret_ref: None,
+        key_passphrase_ref: None,
         credential_secret: credential_secret.map(str::to_owned),
+        credential_status: Default::default(),
         tags: Vec::new(),
         production: false,
         ssh_options: SshOptions::default(),
@@ -434,7 +437,10 @@ fn jump_host(
         username: username.to_owned(),
         auth_type,
         credential_ref: credential_ref.map(str::to_owned),
+        secret_ref: None,
+        key_passphrase_ref: None,
         credential_secret: credential_secret.map(str::to_owned),
+        credential_status: Default::default(),
     }
 }
 

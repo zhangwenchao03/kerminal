@@ -130,7 +130,7 @@ describe("XtermPane session targets and appearance", () => {
 
     await waitFor(() => {
       expect(mocks.api.createSshTerminalSession).toHaveBeenCalledWith(
-        { cols: 80, hostId: "host-lab", rows: 24 },
+        { cols: 100, hostId: "host-lab", rows: 30 },
         expect.any(Function),
       );
     });
@@ -144,6 +144,61 @@ describe("XtermPane session targets and appearance", () => {
         "hello from ssh",
       );
     });
+  });
+
+  it("clears the default SSH startup notice before redacted auth output", async () => {
+    mocks.api.createSshTerminalSession.mockImplementationOnce(
+      async (_request, onOutput) => {
+        mocks.setLatestOutputHandler(onOutput);
+        mocks.getLatestOutputHandler()?.({
+          data: "\r\x1b[2K",
+          kind: "data",
+          sessionId: "ssh-session-redacted",
+        });
+        mocks.getLatestOutputHandler()?.({
+          data: "ubuntu@ubuntu:~$ ",
+          kind: "data",
+          sessionId: "ssh-session-redacted",
+        });
+        return {
+          cols: 80,
+          id: "ssh-session-redacted",
+          rows: 24,
+          shell: "ssh",
+          status: "running",
+        };
+      },
+    );
+
+    render(
+      <XtermPane
+        focused
+        paneId="pane-ssh-redacted"
+        remoteHostId="host-lab"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="lab server"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    const writes = mocks.terminalInstances[0].write.mock.calls.map(([data]) =>
+      String(data),
+    );
+    const startupIndex = writes.findIndex((data) =>
+      data.includes("正在连接 SSH 主机"),
+    );
+    const frontendClearIndex = writes.indexOf("\x1b[1A\x1b[2K\r");
+    const authClearIndex = writes.indexOf("\r\x1b[2K");
+    const promptIndex = writes.indexOf("ubuntu@ubuntu:~$ ");
+
+    expect(startupIndex).toBeGreaterThanOrEqual(0);
+    expect(frontendClearIndex).toBeGreaterThan(startupIndex);
+    expect(authClearIndex).toBeGreaterThan(frontendClearIndex);
+    expect(promptIndex).toBeGreaterThan(authClearIndex);
   });
 
   it("passes the tracked cwd when starting an SSH split terminal", async () => {
@@ -161,7 +216,7 @@ describe("XtermPane session targets and appearance", () => {
 
     await waitFor(() => {
       expect(mocks.api.createSshTerminalSession).toHaveBeenCalledWith(
-        { cols: 80, cwd: "/dev", hostId: "host-lab", rows: 24 },
+        { cols: 100, cwd: "/dev", hostId: "host-lab", rows: 30 },
         expect.any(Function),
       );
     });
@@ -173,15 +228,15 @@ describe("XtermPane session targets and appearance", () => {
         focused
         paneId="pane-telnet"
         resolvedTheme="dark"
-        target={{ hostId: "telnet-legacy", kind: "telnet" }}
+        target={{ hostId: "telnet-lab", kind: "telnet" }}
         terminalAppearance={defaultAppSettings.terminal}
-        title="legacy telnet"
+        title="lab telnet"
       />,
     );
 
     await waitFor(() => {
       expect(mocks.api.createTelnetTerminalSession).toHaveBeenCalledWith(
-        { cols: 80, hostId: "telnet-legacy", rows: 24 },
+        { cols: 100, hostId: "telnet-lab", rows: 30 },
         expect.any(Function),
       );
     });
@@ -209,7 +264,7 @@ describe("XtermPane session targets and appearance", () => {
 
     await waitFor(() => {
       expect(mocks.api.createSerialTerminalSession).toHaveBeenCalledWith(
-        { cols: 80, hostId: "serial-console", rows: 24 },
+        { cols: 100, hostId: "serial-console", rows: 30 },
         expect.any(Function),
       );
     });
@@ -347,7 +402,7 @@ describe("XtermPane session targets and appearance", () => {
     expect(terminalElement).toHaveStyle({
       fontFamily: "JetBrains Mono, monospace",
     });
-    expect(terminal.refresh).toHaveBeenCalledWith(0, 23);
+    expect(terminal.refresh).toHaveBeenCalledWith(0, 29);
     expect(mocks.terminalInstances).toHaveLength(1);
   });
 

@@ -79,13 +79,36 @@ export interface RemoteHost {
   username: string;
   authType: RemoteHostAuthType;
   credentialRef?: string;
+  secretRef?: string;
+  keyPassphraseRef?: string;
   credentialSecret?: string;
+  credentialStatus?: RemoteHostCredentialStatus;
   tags: string[];
   production: boolean;
   sshOptions: SshOptions;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export type RemoteHostCredentialStatus =
+  | "missing"
+  | "vault"
+  | "agent";
+
+export type RemoteHostCredentialRevealStatus =
+  | "available"
+  | "agent"
+  | "configPath"
+  | "missing"
+  | "unsupported";
+
+export interface RemoteHostCredentialReveal {
+  hostId: string;
+  authType: RemoteHostAuthType;
+  status: RemoteHostCredentialRevealStatus;
+  credentialSecret?: string;
+  message?: string;
 }
 
 export interface RemoteHostGroupWithHosts extends RemoteHostGroup {
@@ -385,6 +408,53 @@ export async function deleteRemoteHost(hostId: string): Promise<boolean> {
   }
 
   return invoke<boolean>("remote_host_delete", { hostId });
+}
+
+export async function revealRemoteHostCredential(
+  hostId: string,
+): Promise<RemoteHostCredentialReveal> {
+  if (!isTauri()) {
+    const host = browserPreviewRemoteHostState
+      .flatMap((group) => group.hosts)
+      .find((host) => host.id === hostId);
+    if (!host) {
+      throw new Error("远程主机不存在。");
+    }
+    if (host.authType === "agent") {
+      return {
+        authType: host.authType,
+        hostId,
+        message: "SSH Agent 认证不需要保存密码。",
+        status: "agent",
+      };
+    }
+    if (host.authType === "key" && host.credentialRef?.trim()) {
+      return {
+        authType: host.authType,
+        hostId,
+        message: "该主机使用私钥路径，无需回显私钥内容。",
+        status: "configPath",
+      };
+    }
+    if (host.credentialSecret?.trim()) {
+      return {
+        authType: host.authType,
+        credentialSecret: host.credentialSecret,
+        hostId,
+        status: "available",
+      };
+    }
+    return {
+      authType: host.authType,
+      hostId,
+      message: "没有可回显的保存凭据。",
+      status: "missing",
+    };
+  }
+
+  return invoke<RemoteHostCredentialReveal>("remote_host_reveal_credential", {
+    hostId,
+  });
 }
 
 function normalizeRemoteHostRequest(

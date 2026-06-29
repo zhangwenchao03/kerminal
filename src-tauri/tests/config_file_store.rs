@@ -7,7 +7,10 @@ use std::{collections::HashMap, fs};
 use kerminal_lib::{
     models::{
         profile::TerminalProfile,
-        remote_host::{RemoteHost, RemoteHostAuthType, SshJumpHostOptions, SshOptions},
+        remote_host::{
+            RemoteHost, RemoteHostAuthType, RemoteHostCredentialStatus, SshJumpHostOptions,
+            SshOptions,
+        },
         settings::{AppSettings, ThemeMode},
     },
     storage::{config_file_store::ConfigFileStore, file_store::FileStoreError},
@@ -94,7 +97,7 @@ fn settings_toml_rejects_wrong_schema_version() {
 }
 
 #[test]
-fn remote_host_toml_splits_and_merges_secrets() {
+fn remote_host_toml_does_not_persist_transient_secrets() {
     let temp = tempdir().expect("temp dir");
     let store = ConfigFileStore::new(temp.path());
     let mut host = RemoteHost {
@@ -106,7 +109,10 @@ fn remote_host_toml_splits_and_merges_secrets() {
         username: "deploy".to_owned(),
         auth_type: RemoteHostAuthType::Password,
         credential_ref: None,
+        secret_ref: None,
+        key_passphrase_ref: None,
         credential_secret: Some("target-secret".to_owned()),
+        credential_status: Default::default(),
         tags: vec!["prod".to_owned()],
         production: true,
         ssh_options: SshOptions::default(),
@@ -121,7 +127,10 @@ fn remote_host_toml_splits_and_merges_secrets() {
         username: "ops".to_owned(),
         auth_type: RemoteHostAuthType::Password,
         credential_ref: None,
+        secret_ref: None,
+        key_passphrase_ref: None,
         credential_secret: Some("jump-secret".to_owned()),
+        credential_status: Default::default(),
     });
 
     store
@@ -130,8 +139,6 @@ fn remote_host_toml_splits_and_merges_secrets() {
 
     let host_source =
         fs::read_to_string(temp.path().join("hosts/host-1.toml")).expect("host source");
-    let secret_source =
-        fs::read_to_string(temp.path().join("secrets/hosts/host-1.toml")).expect("secret source");
     let loaded = store
         .remote_host_by_id("host-1")
         .expect("read host")
@@ -139,9 +146,17 @@ fn remote_host_toml_splits_and_merges_secrets() {
 
     assert!(!host_source.contains("target-secret"));
     assert!(!host_source.contains("jump-secret"));
-    assert!(secret_source.contains("target-secret"));
-    assert!(secret_source.contains("jump-secret"));
-    assert_eq!(loaded, host);
+    assert!(!host_source.contains("credential_secret"));
+    assert!(!temp.path().join("secrets/hosts/host-1.toml").exists());
+    assert_eq!(loaded.credential_secret, None);
+    assert_eq!(
+        loaded
+            .ssh_options
+            .jump_hosts
+            .first()
+            .and_then(|jump| jump.credential_secret.as_ref()),
+        None
+    );
 }
 
 #[test]
@@ -157,7 +172,10 @@ fn remote_host_toml_tree_uses_runtime_ungrouped_group() {
         username: "deploy".to_owned(),
         auth_type: RemoteHostAuthType::Agent,
         credential_ref: None,
+        secret_ref: None,
+        key_passphrase_ref: None,
         credential_secret: None,
+        credential_status: RemoteHostCredentialStatus::Agent,
         tags: Vec::new(),
         production: false,
         ssh_options: SshOptions::default(),

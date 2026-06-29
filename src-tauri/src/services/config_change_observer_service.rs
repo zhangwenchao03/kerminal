@@ -251,14 +251,7 @@ fn prepare_watch_roots(root: &Path) -> Result<Vec<PathBuf>, String> {
         )
     })?;
 
-    let relative_dirs = [
-        "profiles",
-        "hosts",
-        "secrets",
-        "secrets/hosts",
-        "snippets",
-        "workflows",
-    ];
+    let relative_dirs = ["profiles", "hosts", "secrets", "snippets", "workflows"];
     for relative_dir in relative_dirs {
         fs::create_dir_all(root.join(relative_dir)).map_err(|error| {
             format!("failed to create config watch dir {relative_dir}: {error}")
@@ -278,18 +271,10 @@ fn prepare_watch_roots(root: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 fn watch_root_labels() -> Vec<String> {
-    [
-        ".",
-        "profiles",
-        "hosts",
-        "secrets",
-        "secrets/hosts",
-        "snippets",
-        "workflows",
-    ]
-    .into_iter()
-    .map(str::to_owned)
-    .collect()
+    [".", "profiles", "hosts", "secrets", "snippets", "workflows"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect()
 }
 
 fn ignored_globs() -> Vec<String> {

@@ -148,9 +148,9 @@ describe("workspaceTerminalOpenState", () => {
     expect(telnetPatch.terminalPanes?.[0]).toMatchObject({
       id: "pane-telnet-4",
       mode: "telnet",
-      prompt: "legacy.internal:2323>",
+      prompt: "lab.internal:2323>",
       remoteHostProduction: false,
-      target: { hostId: "telnet-legacy", kind: "telnet" },
+      target: { hostId: "telnet-lab", kind: "telnet" },
     });
     expect(serialPatch.terminalPanes?.[0]).toMatchObject({
       id: "pane-serial-5",

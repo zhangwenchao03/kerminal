@@ -23,7 +23,11 @@ use uuid::Uuid;
 
 use crate::{
     error::{AppError, AppResult},
-    models::agent_session::{AgentId, AgentProvider, AgentProviderSession, AgentSessionId},
+    models::agent_session::{
+        AgentId, AgentProvider, AgentProviderSession, AgentSessionId, AgentTargetBindingContext,
+        AgentTargetBindingContextBinding, AgentTargetBindingStatus, AgentTerminalSnapshotContext,
+        AGENT_SESSION_SCHEMA_VERSION,
+    },
     services::agent_session_file_store::AgentSessionFileStore,
 };
 
@@ -32,11 +36,12 @@ const MANAGED_BLOCK_START: &str = "<!-- KERMINAL_EXTERNAL_AGENT_START -->";
 const MANAGED_BLOCK_END: &str = "<!-- KERMINAL_EXTERNAL_AGENT_END -->";
 const CONFIG_REFERENCE_FILE_NAME: &str = "kerminal-config.md";
 const CONFIG_VALIDATOR_TOOL_ID: &str = "kerminal.config.validate";
+const AGENT_SESSION_TERMINAL_SNAPSHOT_BYTES: usize = 24 * 1024;
 #[cfg(windows)]
 const WINDOWS_AGENT_PWSH: &str = "pwsh.exe";
 #[cfg(windows)]
 const WINDOWS_AGENT_POWERSHELL: &str = "powershell.exe";
-const CONFIG_REFERENCE_BODY: &str = r#"<!-- @author kongweiguang -->
+pub(crate) const CONFIG_REFERENCE_BODY: &str = r#"<!-- @author kongweiguang -->
 
 # Kerminal Configuration Guide
 
@@ -63,7 +68,8 @@ Read this file before editing Kerminal configuration. Do not guess field names o
   cache/
   exports/
   temp/
-  secrets/hosts/*.toml
+  secrets/vault.toml
+  secrets/vault-key.toml
 ```
 
 ## Cross-platform Paths
@@ -79,7 +85,7 @@ Read this file before editing Kerminal configuration. Do not guess field names o
 2. Use precise search for an id, name, host, tag, or field. Do not reformat every TOML file.
 3. Preserve `schema_version = 1`, comments, unknown fields, timestamps, and sort order unless the request needs them changed.
 4. Keep each file relationship valid: host `group_id` must reference `hosts/groups.toml`; file names must match `id`; workflow step ids must be unique.
-5. Do not write secrets to ordinary TOML files. Do not read or edit `secrets/` unless the user explicitly asks for credential work.
+5. Do not write passwords, inline private keys, key passphrases, tokens, or other plaintext secrets to ordinary TOML files. Do not read or edit `secrets/` unless the user explicitly asks for credential work.
 6. After edits, call MCP tool `kerminal.config.validate` with `scope = "all"` or the narrowest matching scope. If Kerminal MCP is unavailable, manually check the rules below and tell the user validation was manual only.
 
 ## Validation
@@ -88,6 +94,20 @@ Read this file before editing Kerminal configuration. Do not guess field names o
 - Use `scope = "all"` for cross-file edits, or one of `settings`, `profiles`, `hosts`, `snippets`, `workflows` for narrow edits.
 - The tool is read-only. It validates the current runtime workspace through Kerminal's own TOML loaders and relationship checks; it does not edit config files and does not require Node.js or a source checkout.
 - If the MCP server is unavailable, manually check schema versions, file ids, group references, explicit host `production`, workflow step ids, sort order, forbidden secret-like keys, and host secret field names before reporting success.
+
+## Runtime MCP Boundaries
+
+Use Kerminal MCP for live app features that require the running application or saved connection context: app guide, tool help, terminal sessions, SSH commands, SFTP files, tmux sessions, containers, port forwarding, server info, command history, diagnostics, runtime snapshot, and authorized credential saving.
+
+Use `kerminal.app_guide` when an external Agent needs the Kerminal product/UI structure map before choosing lower-level tools. It explains the machine sidebar, terminal workspace, right tool panel, Agent Launcher, configuration workspace, and matching MCP tool families; it does not perform UI choreography.
+
+Use `kerminal.config_guide` when an external Agent needs these generated configuration rules through MCP, especially when it was not launched inside the initialized `~/.kerminal` workspace. It returns the same guide content as `kerminal-config.md` and does not perform config CRUD.
+
+Use `kerminal.tool_help` with `toolId`, `family`, or `query` when an external Agent needs exact input schema, example arguments, safety annotations, and deliberately absent-tool guidance for one tool or tool family.
+
+Container runtime tools include lifecycle/status tools and container file tools. Use `container.files.list` and `container.files.preview` before editing; use `container.files.write_text`, `container.files.upload`, `container.files.download`, `container.files.create_directory`, `container.files.rename`, `container.files.chmod`, and `container.files.delete` only for explicitly requested container file work. `container.files.delete` is destructive and depends on MCP host approval/audit.
+
+Do not look for MCP CRUD tools for `settings.*`, `profile.*`, `remote_host.*`, `snippet.*`, `workflow.*`, or `workspace.*`; those configuration changes are direct file edits plus `kerminal.config.validate`.
 
 ## Runtime Auto-refresh
 
@@ -104,11 +124,12 @@ If a save leaves TOML temporarily invalid, Kerminal keeps the last-known-good UI
 | `settings.toml` | App appearance, terminal appearance, keybindings, SFTP performance | Standalone; business ranges are validated by Kerminal. |
 | `profiles/*.toml` | Local terminal launch profiles | Filename must be `<id>.toml`; optional `sidebar_group_id` pins the profile into an existing host group in the left sidebar. |
 | `hosts/groups.toml` | Host groups and ordering | `groups[].id` is referenced by host `group_id`; `__ungrouped__` is runtime-only and must not be written. |
-| `hosts/*.toml` | Host metadata for SSH/Telnet/Serial/RDP/container targets | Filename must be `<id>.toml`; secret values belong in `secrets/hosts/<id>.toml`. |
+| `hosts/*.toml` | Host metadata for SSH/Telnet/Serial/RDP/container targets | Filename must be `<id>.toml`; saved secret values are referenced by `secret_ref` / `key_passphrase_ref` and encrypted in the vault. |
 | `snippets/*.toml` | Reusable single commands | Filename must be `<id>.toml`; `scope` is `any`, `local`, or `ssh`. |
 | `workflows/*.toml` | Multi-step command workflows | Filename must be `<id>.toml`; `[[steps]]` are stored in the same file and sorted by `sort_order`. |
 | `data/command.sqlite` | Command history and suggestion data | Do not edit directly. Use MCP `history.search` to read history. |
-| `secrets/hosts/*.toml` | Passwords, inline private keys, jump-host secrets | Off limits unless the user explicitly asks for credential work; secret values must use `credential_secret`, never `password`. |
+| `secrets/vault.toml` | Encrypted SSH passwords, inline private keys, key passphrases, and jump-host secrets | Do not edit directly; save credentials through the UI or Kerminal credential tools. |
+| `secrets/vault-key.toml` | Local workspace vault key | Must stay local and ignored by Git; do not copy it into chat, docs, logs, or commits. |
 
 ## Common Rules
 
@@ -118,20 +139,19 @@ If a save leaves TOML temporarily invalid, Kerminal keeps the last-known-good UI
 - IDs should be stable ASCII identifiers using letters, numbers, `.`, `_`, or `-`.
 - Sort fields are numeric and drive UI order. Prefer increments such as `10`, `20`, `30`.
 - Timestamps are strings. Preserve existing values unless creating or intentionally updating an entry.
-- Never add keys such as `password`, `secret`, `credential_secret`, `apiKey`, `privateKey`, or `token` to ordinary config files.
-- In `secrets/hosts/*.toml`, the only top-level host credential value Kerminal reads is `credential_secret`; `password =` is ignored by runtime and must not be written.
+- Never add plaintext keys such as `password`, `credential_secret`, `inline_private_key`, `apiKey`, `privateKey`, `key_passphrase`, or `token` to ordinary config files. `secret_ref` and `key_passphrase_ref` are encrypted vault references, not plaintext.
+- Do not edit `secrets/vault*.toml` directly. Save or replace SSH passwords, inline private keys, key passphrases, and jump-host secrets through the UI save flow, `kerminal.host.upsert_with_credential`, or `kerminal.vault.encrypt_secret`.
 
 ## Required Field Matrix
 
-These fields must be present when an Agent creates or rewrites a file. Runtime code may keep compatibility defaults for older files, but Agent-authored files must be explicit.
+These fields must be present when an Agent creates or rewrites a file. Agent-authored files must be explicit.
 
 | File | Required fields |
 | --- | --- |
 | `settings.toml` | `schema_version` plus documented settings fields being changed. |
 | `profiles/*.toml` | `schema_version`, `id`, `name`, `shell`, `is_default`, `sort_order`, `created_at`, `updated_at`. |
 | `hosts/groups.toml` | `schema_version`; each `[[groups]]` entry needs `id`, `name`, `sort_order`, `created_at`, `updated_at`. |
-| `hosts/*.toml` | `schema_version`, `id`, `name`, `host`, `port`, `username`, `auth_type`, `tags`, `production`, `sort_order`, `created_at`, `updated_at`. |
-| `secrets/hosts/*.toml` | `schema_version`, `id`, and `credential_secret` when storing the host password or inline private key; each `[[jump_hosts]]` entry needs `index` and `credential_secret`. |
+| `hosts/*.toml` | `schema_version`, `id`, `name`, `host`, `port`, `username`, `auth_type`, `tags`, `production`, `sort_order`, `created_at`, `updated_at`; saved password or inline-private-key hosts also need `secret_ref`, key passphrases use `key_passphrase_ref`, and jump-host secrets use `[[ssh_options.jump_hosts]].secret_ref`; all references are generated by the save flow. |
 | `snippets/*.toml` | `schema_version`, `id`, `title`, `command`, `scope`, `sort_order`, `created_at`, `updated_at`. |
 | `workflows/*.toml` | `schema_version`, `id`, `title`, `scope`, `sort_order`, `created_at`, `updated_at`; each `[[steps]]` needs `id`, `title`, `command`, `requires_confirmation`, `sort_order`, `created_at`, `updated_at`. |
 
@@ -170,8 +190,8 @@ Create a workflow:
 Save a host password or inline private key:
 
 1. Only do this when the user explicitly asks for credential work.
-2. Create or edit `secrets/hosts/<id>.toml` for the matching `hosts/<id>.toml`.
-3. Use `credential_secret = "<password-or-inline-private-key>"`. Never write `password =`.
+2. Use the Kerminal UI save flow or call `kerminal.host.upsert_with_credential` / `kerminal.vault.encrypt_secret`; do not edit `secrets/vault*.toml` directly.
+3. Confirm the matching `hosts/<id>.toml` references the generated `secret_ref` / `key_passphrase_ref` and contains no `credential_secret`, `password`, `inline_private_key`, key passphrase, or private key body.
 4. Validate with `kerminal.config.validate` using `scope = "hosts"` or `scope = "all"`.
 
 ## settings.toml
@@ -279,8 +299,10 @@ name = "prod-web-01"
 host = "10.0.0.10"
 port = 22
 username = "deploy"
-auth_type = "agent"
+auth_type = "key"
 credential_ref = "~/.ssh/id_ed25519"
+secret_ref = "credential:kerminal:ssh-host:prod-web-01:target:private-key:v1"
+key_passphrase_ref = "credential:kerminal:ssh-host:prod-web-01:target:key-passphrase:v1"
 tags = ["prod", "web"]
 production = true
 sort_order = 10
@@ -289,6 +311,14 @@ updated_at = "1"
 
 [ssh_options.proxy]
 protocol = "none"
+
+[[ssh_options.jump_hosts]]
+index = 0
+host = "jump.example.com"
+port = 22
+username = "deploy"
+auth_type = "password"
+secret_ref = "credential:kerminal:jump-host:prod-web-01:jump-0:password:v1"
 ```
 
 Fields:
@@ -301,6 +331,8 @@ Fields:
 - `username`: login username when applicable.
 - `auth_type`: `password`, `key`, or `agent`.
 - `credential_ref`: path or reference for key-based auth. For local private key files, `~/.ssh/id_ed25519` is portable and Kerminal expands it to the current user's home directory. This is not the secret body.
+- `secret_ref`: encrypted vault reference for a saved password or inline private key. Top-level `secret_ref` belongs to the target host; `[[ssh_options.jump_hosts]].secret_ref` belongs to that jump host.
+- `key_passphrase_ref`: encrypted vault reference for a private-key passphrase.
 - `tags`: user labels.
 - `production`: marks a production host for host-side confirmation policy. New host files should set this explicitly; if omitted, Kerminal treats it as `false`.
 - `ssh_options`: proxy, tunnel, jump host, terminal, and transfer settings. Preserve existing nested tables unless the request targets them.
@@ -308,8 +340,8 @@ Fields:
 Rules:
 
 - `production` is required for Agent-authored host files. Use `true` for production or safety-sensitive hosts and `false` for ordinary dev/test/local targets. Do not omit it.
-- Do not put `credential_secret`, passwords, private key bodies, API keys, or tokens here.
-- Passwords, inline keys, and jump-host secrets live under `secrets/hosts/<id>.toml` and require explicit user instruction.
+- Do not put `credential_secret`, `password`, `inline_private_key`, private key bodies, key passphrases, API keys, or tokens here.
+- Passwords, inline keys, key passphrases, and jump-host secrets are encrypted in `secrets/vault.toml`; ordinary host files only keep `secret_ref` / `key_passphrase_ref`.
 
 Host creation checklist:
 
@@ -317,43 +349,28 @@ Host creation checklist:
 2. Pick a stable ASCII `id` and create `hosts/<id>.toml`; the filename stem and `id` must match exactly.
 3. Fill every required host field, including `production = true` or `production = false`.
 4. Use `auth_type = "agent"` when relying on ssh-agent; use `auth_type = "key"` with `credential_ref = "~/.ssh/id_ed25519"` for a local key path; use `auth_type = "password"` only for metadata and do not write the password in this file.
-5. Preserve or add `[ssh_options.*]` only when the user requested proxy, tunnels, jump hosts, terminal, or transfer behavior.
-6. Call `kerminal.config.validate` with `scope = "hosts"` or `scope = "all"` and fix every diagnostic before reporting success.
+5. For saved passwords, inline private keys, key passphrases, or jump-host secrets, use the UI save flow or authorized credential tools and verify that only `secret_ref` / `key_passphrase_ref` landed in host TOML.
+6. Preserve or add `[ssh_options.*]` only when the user requested proxy, tunnels, jump hosts, terminal, or transfer behavior.
+7. Call `kerminal.config.validate` with `scope = "hosts"` or `scope = "all"` and fix every diagnostic before reporting success.
 
 Common host failures:
 
 - File exists but app does not show it: check `id` versus filename, TOML parse errors, missing required fields, and validator diagnostics.
 - Host appears in wrong group: check `group_id` references an id in `hosts/groups.toml`; `__ungrouped__` must not be written.
-- Login still asks for credentials: ordinary host TOML intentionally does not store password or inline key secret. Credential work requires explicit user instruction and `secrets/hosts/<id>.toml`.
+- Login still asks for credentials: ordinary host TOML intentionally does not store password, inline key, or key passphrase plaintext. Credential work requires explicit user instruction and the UI/vault save flow so valid `secret_ref` / `key_passphrase_ref` references exist.
 - Validator passes manually but app behaves differently: rerun MCP `kerminal.config.validate` because it uses Kerminal runtime loaders.
 
-## secrets/hosts/*.toml
+## secrets/vault.toml and secrets/vault-key.toml
 
-Purpose: credentials for a saved host. Do not read or edit this directory unless the user explicitly asks for credential work.
-
-```toml
-schema_version = 1
-id = "prod-web-01"
-credential_secret = "<password-or-inline-private-key>"
-```
-
-Jump-host secret example:
-
-```toml
-schema_version = 1
-id = "prod-web-01"
-
-[[jump_hosts]]
-index = 0
-credential_secret = "<jump-host-password-or-inline-key>"
-```
+Purpose: encrypted credentials for saved SSH hosts, jump hosts, inline private keys, and key passphrases. Do not read or edit these files unless the user explicitly asks for credential work.
 
 Rules:
 
-- The filename stem and `id` must match the public host id.
-- `credential_secret` is the only top-level host password or inline private key field Kerminal reads.
-- Never write `password =`; runtime ignores it, so password SSH hosts will still prompt.
+- `secrets/vault.toml` stores encrypted entries referenced by `secret_ref` / `key_passphrase_ref` in host TOML.
+- `secrets/vault-key.toml` is the local workspace key and must stay out of Git.
+- Do not hand-write ciphertext, keys, passwords, or private key bodies in these files. Use the UI save flow or Kerminal credential tools.
 - Do not copy secret values into chat, docs, logs, tests, or ordinary config files.
+- Ensure `.gitignore` keeps `secrets/vault-key.toml` local before syncing a Kerminal workspace.
 
 ## snippets/*.toml
 
@@ -948,12 +965,14 @@ impl ExternalAgentWorkspaceService {
         include_claude_file: bool,
         options: &WorkspaceWriteOptions,
     ) -> AppResult<Vec<ExternalAgentFileOperation>> {
-        let mut operations = Vec::with_capacity(if include_claude_file { 3 } else { 2 });
+        let mut operations = Vec::with_capacity(if include_claude_file { 5 } else { 4 });
         operations.push(self.ensure_agent_session_instructions(context, options)?);
         if include_claude_file {
             operations.push(self.ensure_agent_session_claude_instructions(context, options)?);
         }
         operations.push(self.ensure_agent_session_mcp_endpoint(context, options)?);
+        operations.push(self.ensure_agent_session_target_binding(context, options)?);
+        operations.push(self.ensure_agent_session_terminal_snapshot(context, options)?);
         Ok(operations)
     }
 
@@ -993,20 +1012,21 @@ impl ExternalAgentWorkspaceService {
 - This is a Kerminal runtime workspace, not a source-code repository.
 - Read `context/mcp-endpoint.json`, `context/target-binding.json`, and `context/terminal-snapshot.json` before runtime work. They contain the scoped endpoint, target binding, and most recent bounded target output snapshot.
 - Kerminal MCP is tools-only; use it for live runtime actions, not file-backed configuration CRUD.
-- Operate Kerminal through MCP when the task needs the live app: terminal sessions, SSH commands, SFTP files, containers, port forwarding, server info, command history, or diagnostics.
+- Operate Kerminal through MCP when the task needs the live app: terminal sessions, SSH commands, SFTP files, tmux sessions, containers, port forwarding, server info, command history, diagnostics, runtime snapshot, or authorized credential saving.
+- Start by calling `kerminal.app_guide` when you need the product/UI structure map; call `kerminal.capabilities` when you need the current tool map, file-first configuration boundary, or deliberately absent tool families; call `kerminal.tool_help` with `toolId`, `family`, or `query` when you need exact schemas, examples, and safety annotations; call `kerminal.config_guide` when you need the generated configuration rules through MCP; call `kerminal.operation_guide` with an intent such as `terminal`, `session-terminal`, `ssh-command`, `config`, `sftp`, `tmux`, `container`, `port-forward`, `server-info`, `history`, `credentials`, or `diagnostics` when you need a concrete tool sequence; call `kerminal.runtime_snapshot` when you need the current running terminals, Agent sessions, port forwards, and next actions.
 - MCP host policy owns confirmation, approval, permissions, hooks, and audit. Kerminal exposes tools and validates arguments; it does not provide a second pending/confirm queue.
 - Start runtime work by calling `kerminal.agent.current_session` or `kerminal.agent.target_context` on the session-scoped endpoint; these tools also refresh `context/terminal-snapshot.json` when the target is live.
 - Before reading or writing the bound target terminal, resolve the target with `kerminal.agent.target_context` or `terminal.resolve_agent_target`; then inspect output with `terminal.snapshot`.
 - Use `terminal.write` only when the resolved target is live and generation-matched. For session-bound writes pass `agentSessionId`, the returned `bindingGeneration`, and `data`; for explicit writes pass `sessionId` and `data`.
 - If the target is stale, closed, missing, or generation-mismatched, stop and ask the user to rebind the target in Kerminal; never write to a guessed terminal.
-- Useful runtime tool families: `terminal.*`, `ssh.command`, `ssh.command_on_resolved_host`, `sftp.*`, `container.*`, `port_forward.*`, `server_info.snapshot`, `history.search`, and `diagnostics.*`.
+- Useful runtime tool families: `terminal.*`, `ssh.command`, `ssh.command_on_resolved_host`, `sftp.*`, `tmux.*`, `container.*` including `container.files.*` (`container.files.list`, `container.files.preview`, `container.files.write_text`, `container.files.upload`, `container.files.download`, `container.files.create_directory`, `container.files.rename`, `container.files.chmod`, `container.files.delete`), `port_forward.*`, `server_info.snapshot`, `history.search`, `diagnostics.*`, `kerminal.app_guide`, `kerminal.config_guide`, `kerminal.capabilities`, `kerminal.tool_help`, `kerminal.operation_guide`, `kerminal.runtime_snapshot`, `kerminal.host.upsert_with_credential`, and `kerminal.vault.encrypt_secret`.
 - File-backed Kerminal configuration is file-first: edit files under the workspace root directly, including `settings.toml`, `profiles/*.toml`, `hosts/groups.toml`, `hosts/*.toml`, `snippets/*.toml`, and `workflows/*.toml`.
-- Before editing Kerminal configuration files, read `{}` from the workspace root. It documents file purposes, relationships, fields, examples, forbidden edits, and validation.
+- Before editing Kerminal configuration files, read `{}` from the workspace root or call `kerminal.config_guide` for the same generated rules. It documents file purposes, relationships, fields, examples, forbidden edits, and validation.
 - After editing Kerminal configuration files, call MCP tool `{CONFIG_VALIDATOR_TOOL_ID}` with `scope = "all"` or the narrowest matching scope. If MCP validation is unavailable, manually check the guide and say validation was manual only.
 - If Kerminal is running, valid file-backed config edits auto-refresh the UI and show a concise `cfg: ...` notice; invalid TOML keeps last-known-good. This feedback does not replace validation.
 - Do not expect MCP config CRUD for settings, profiles, hosts, snippets, workflows, UI choreography, history writes, or approval/audit queues.
 - Do not edit `data/command.sqlite` directly; use command history lookup tools when command history is needed.
-- Do not read or edit `secrets/` unless the user explicitly asks for credential work; when authorized, follow `kerminal-config.md` and use `credential_secret`, never `password`.
+- Do not read or edit `secrets/` unless the user explicitly asks for credential work; when authorized, follow `kerminal-config.md` and use the UI save flow, `kerminal.host.upsert_with_credential`, or `kerminal.vault.encrypt_secret` so ordinary host files only keep `secret_ref` / `key_passphrase_ref`; never write `password`, `credential_secret`, or `inline_private_key` into ordinary config files.
 {MANAGED_BLOCK_END}
 "#,
             context.agent_id,
@@ -1040,15 +1060,17 @@ impl ExternalAgentWorkspaceService {
 - This is a Kerminal runtime workspace, not a source-code repository.
 - Kerminal MCP is tools-only; use it for live runtime actions, not file-backed configuration CRUD.
 - MCP host policy owns confirmation, approval, permissions, hooks, and audit; Kerminal does not provide a second pending/confirm queue.
+- Call `kerminal.app_guide` when you need the product/UI structure map; call `kerminal.capabilities` when you need the current runtime tool map or config/tool boundary; call `kerminal.tool_help` with `toolId`, `family`, or `query` when you need exact schemas, examples, and safety annotations; call `kerminal.config_guide` when you need the generated configuration rules through MCP; call `kerminal.operation_guide` with an intent such as `session-terminal`, `ssh-command`, `config`, `sftp`, `tmux`, `container`, `port-forward`, `server-info`, `history`, `credentials`, or `diagnostics` when you need a concrete tool sequence; call `kerminal.runtime_snapshot` when you need the current running terminals, Agent sessions, port forwards, and next actions.
 - Read `context/mcp-endpoint.json`, `context/target-binding.json`, and `context/terminal-snapshot.json`, then use the session-scoped endpoint for `kerminal.agent.current_session`, `kerminal.agent.target_context`, `terminal.snapshot`, and `terminal.write`.
 - When writing to the bound terminal, pass `agentSessionId`, the returned `bindingGeneration`, and `data`.
+- Use runtime tool families from `AGENTS.md`, including `terminal.*`, `ssh.command`, `ssh.command_on_resolved_host`, `sftp.*`, `tmux.*`, `container.*` including `container.files.*` (`container.files.list`, `container.files.preview`, `container.files.write_text`, `container.files.upload`, `container.files.download`, `container.files.create_directory`, `container.files.rename`, `container.files.chmod`, `container.files.delete`), `port_forward.*`, `server_info.snapshot`, `history.search`, `diagnostics.*`, `kerminal.app_guide`, `kerminal.config_guide`, `kerminal.capabilities`, `kerminal.tool_help`, `kerminal.operation_guide`, `kerminal.runtime_snapshot`, and credential helpers.
 - Prefer direct file edits in the Kerminal workspace root for `settings.toml`, `profiles/*.toml`, `hosts/*.toml`, `snippets/*.toml`, and `workflows/*.toml`.
-- Before editing Kerminal configuration files, read `{}` from the workspace root.
+- Before editing Kerminal configuration files, read `{}` from the workspace root or call `kerminal.config_guide` for the same generated rules.
 - After editing Kerminal configuration files, call MCP tool `{CONFIG_VALIDATOR_TOOL_ID}` with `scope = "all"` or the narrowest matching scope. If MCP validation is unavailable, manually check the guide and say validation was manual only.
 - If Kerminal is running, valid file-backed config edits auto-refresh the UI and show a concise `cfg: ...` notice; invalid TOML keeps last-known-good. This feedback does not replace validation.
 - Use the session-scoped MCP endpoint `{}`.
 - If the target is stale, closed, missing, or generation-mismatched, ask the user to rebind before writing to any terminal.
-- Do not read or edit `secrets/` unless the user explicitly asks for credential work; when authorized, follow `kerminal-config.md` and use `credential_secret`, never `password`.
+- Do not read or edit `secrets/` unless the user explicitly asks for credential work; when authorized, follow `kerminal-config.md` and use the UI save flow, `kerminal.host.upsert_with_credential`, or `kerminal.vault.encrypt_secret` so ordinary host files only keep `secret_ref` / `key_passphrase_ref`; never write `password`, `credential_secret`, or `inline_private_key` into ordinary config files.
 {MANAGED_BLOCK_END}
 "#,
             CONFIG_REFERENCE_FILE_NAME, context.mcp_endpoint
@@ -1192,6 +1214,86 @@ enabled = true
         )
     }
 
+    fn ensure_agent_session_target_binding(
+        &self,
+        context: &AgentSessionWorkspaceContext,
+        options: &WorkspaceWriteOptions,
+    ) -> AppResult<ExternalAgentFileOperation> {
+        let target_context = self.seed_agent_session_target_binding_context(context)?;
+        let next = serde_json::to_string_pretty(&target_context)?;
+        let path = context
+            .session_root
+            .join("context")
+            .join("target-binding.json");
+        let current = read_optional_string(&path)?;
+        apply_text_plan(
+            WorkspaceTextPlan {
+                path,
+                next: format!("{next}\n"),
+                current,
+                current_snippet: None,
+                next_snippet: next,
+                reason: "Update session target binding context.".to_owned(),
+            },
+            options,
+        )
+    }
+
+    fn ensure_agent_session_terminal_snapshot(
+        &self,
+        context: &AgentSessionWorkspaceContext,
+        options: &WorkspaceWriteOptions,
+    ) -> AppResult<ExternalAgentFileOperation> {
+        let agent_session_id = AgentSessionId::new(context.agent_session_id.clone())?;
+        let snapshot_context = AgentTerminalSnapshotContext {
+            schema_version: AGENT_SESSION_SCHEMA_VERSION,
+            agent_session_id,
+            target_terminal_session_id: None,
+            captured_bytes: 0,
+            max_bytes: AGENT_SESSION_TERMINAL_SNAPSHOT_BYTES,
+            truncated: false,
+            redacted: false,
+            output: String::new(),
+            generated_at: current_unix_timestamp_string(),
+        };
+        let next = serde_json::to_string_pretty(&snapshot_context)?;
+        let path = context
+            .session_root
+            .join("context")
+            .join("terminal-snapshot.json");
+        let current = read_optional_string(&path)?;
+        apply_text_plan(
+            WorkspaceTextPlan {
+                path,
+                next: format!("{next}\n"),
+                current,
+                current_snippet: None,
+                next_snippet: next,
+                reason: "Update session terminal snapshot context.".to_owned(),
+            },
+            options,
+        )
+    }
+
+    fn seed_agent_session_target_binding_context(
+        &self,
+        context: &AgentSessionWorkspaceContext,
+    ) -> AppResult<AgentTargetBindingContext> {
+        let agent_session_id = AgentSessionId::new(context.agent_session_id.clone())?;
+        let generated_at = current_unix_timestamp_string();
+        let store = AgentSessionFileStore::new(&self.workspace_dir);
+        match store.read_session(&agent_session_id) {
+            Ok(session) => Ok(AgentTargetBindingContext::from_session_target(
+                &session,
+                generated_at,
+            )),
+            Err(AppError::Io(error)) if error.kind() == ErrorKind::NotFound => Ok(
+                unbound_agent_target_binding_context(agent_session_id, generated_at),
+            ),
+            Err(error) => Err(error),
+        }
+    }
+
     fn agent_status(
         &self,
         id: &str,
@@ -1298,16 +1400,17 @@ enabled = true
 
 - Treat this directory as the Kerminal runtime workspace, not a source-code repository.
 - Your job is to operate Kerminal for the user through the Kerminal MCP server and edit file-backed configuration only when the user asks for configuration changes.
-- Operate Kerminal through MCP for live app features: terminal sessions, SSH commands, SFTP files, containers, port forwarding, server info, command history, and diagnostics. MCP endpoint: `{}`.
+- Operate Kerminal through MCP for live app features: terminal sessions, SSH commands, SFTP files, tmux sessions, containers, port forwarding, server info, command history, diagnostics, runtime snapshot, and authorized credential saving. MCP endpoint: `{}`.
+- Call MCP tool `kerminal.app_guide` when you need the product/UI structure map; call `kerminal.capabilities` when you need the current Kerminal tool map, recommended first calls, file-first config boundary, or deliberately absent tool families; call `kerminal.tool_help` with `toolId`, `family`, or `query` when you need exact schemas, examples, and safety annotations; call `kerminal.config_guide` when you need the generated configuration rules through MCP; call `kerminal.operation_guide` with an intent such as `terminal`, `session-terminal`, `ssh-command`, `config`, `sftp`, `tmux`, `container`, `port-forward`, `server-info`, `history`, `credentials`, or `diagnostics` when you need a concrete tool sequence; call `kerminal.runtime_snapshot` when you need the current running terminals, Agent sessions, port forwards, and next actions.
 - MCP host policy owns confirmation, approval, permissions, hooks, and audit. Kerminal exposes tools and validates arguments; it does not provide a second pending/confirm queue.
-- Useful MCP tool families include `terminal.*`, `ssh.command`, `ssh.command_on_resolved_host`, `sftp.*`, `container.*`, `port_forward.*`, `server_info.snapshot`, `history.search`, `diagnostics.*`, and, in session workspaces, `kerminal.agent.*`.
-- If this workspace has an agent session under `agents/sessions/<id>/`, prefer launching from that session directory so `AGENTS.md`, `context/mcp-endpoint.json`, and the session-scoped endpoint bind tools to the correct target.
+- Useful MCP tool families include `terminal.*`, `ssh.command`, `ssh.command_on_resolved_host`, `sftp.*`, `tmux.*`, `container.*` including `container.files.*` (`container.files.list`, `container.files.preview`, `container.files.write_text`, `container.files.upload`, `container.files.download`, `container.files.create_directory`, `container.files.rename`, `container.files.chmod`, `container.files.delete`), `port_forward.*`, `server_info.snapshot`, `history.search`, `diagnostics.*`, `kerminal.app_guide`, `kerminal.config_guide`, `kerminal.capabilities`, `kerminal.tool_help`, `kerminal.operation_guide`, `kerminal.runtime_snapshot`, credential helpers (`kerminal.host.upsert_with_credential`, `kerminal.vault.encrypt_secret`), and, in session workspaces, `kerminal.agent.*`.
+- If this workspace has an agent session under `agents/sessions/<id>/`, prefer launching from that session directory so `AGENTS.md`, `context/mcp-endpoint.json`, `context/target-binding.json`, `context/terminal-snapshot.json`, and the session-scoped endpoint bind tools to the correct target.
 - In the global workspace there is no implicit target terminal. Before terminal work, ask the user which Kerminal terminal/host to use or call read-only tools such as `terminal.list` and `terminal.snapshot`; never infer a target from filenames.
 - Before any `terminal.write`, resolve and inspect the target. In a session workspace use `kerminal.agent.target_context` or `terminal.resolve_agent_target`; otherwise use an explicit live terminal session id.
 - For session-bound `terminal.write`, pass `agentSessionId`, the returned `bindingGeneration`, and `data`; for explicit terminal writes, pass `sessionId` and `data`.
 - If the target is stale, closed, missing, or generation-mismatched, ask the user to rebind it in Kerminal.
-- Use Kerminal MCP for saved credentials and remote access. Do not read `secrets/` to get passwords or private keys.
-- Before editing Kerminal configuration files, read `{CONFIG_REFERENCE_FILE_NAME}`. It documents file purposes, relationships, fields, examples, forbidden edits, and validation.
+- Use Kerminal MCP for saved credentials and remote access. Do not read `secrets/` to get passwords, private keys, or key passphrases.
+- Before editing Kerminal configuration files, read `{CONFIG_REFERENCE_FILE_NAME}` or call `kerminal.config_guide` for the same generated rules. It documents file purposes, relationships, fields, examples, forbidden edits, and validation.
 - Prefer direct file edits for file-backed Kerminal configuration; use MCP for runtime operation rather than config CRUD.
 - Editable config files by default: `settings.toml`, `profiles/*.toml`, `hosts/groups.toml`, `hosts/*.toml`, `snippets/*.toml`, and `workflows/*.toml`.
 - When Kerminal is running, valid file-backed config edits auto-refresh the UI and show a short `cfg: ...` notice; invalid TOML keeps last-known-good. Still validate with `{CONFIG_VALIDATOR_TOOL_ID}` before reporting success.
@@ -1316,7 +1419,7 @@ enabled = true
 - Kerminal-owned runtime areas: `data/`, `logs/`, `cache/`, `temp/`, and `exports/`; prefer MCP tools over direct edits there.
 - Do not edit `data/command.sqlite` directly; use `history.search` when command history is needed.
 - Secret scope: do not read or edit `secrets/` unless the user explicitly asks for credential work.
-- When credential work is authorized, follow `kerminal-config.md` and use `credential_secret` in `secrets/hosts/<id>.toml`; never write `password =`.
+- When credential work is authorized, follow `kerminal-config.md` and use the UI save flow, `kerminal.host.upsert_with_credential`, or `kerminal.vault.encrypt_secret` so host files only keep `secret_ref` / `key_passphrase_ref`; never write `password =`, `credential_secret`, or `inline_private_key` into ordinary config files.
 - Never store API keys, tokens, passwords, or private keys in ordinary config files.
 - Keep edits small and targeted; do not reformat all TOML or remove comments outside the requested change.
 {}
@@ -1394,17 +1497,19 @@ enabled = true
 
 - Treat this directory as the Kerminal runtime workspace, not a source-code repository.
 - Follow `AGENTS.md` first.
-- Operate Kerminal through MCP for live terminal, SSH/SFTP, container, port forwarding, server info, history, and diagnostics work: `{}`.
+- Operate Kerminal through MCP for live terminal, SSH/SFTP, tmux, container, port forwarding, server info, history, diagnostics, runtime snapshot, and authorized credential saving work: `{}`.
+- Call MCP tool `kerminal.app_guide` when you need the product/UI structure map; call `kerminal.capabilities` when you need the current Kerminal tool map or config/tool boundary; call `kerminal.tool_help` with `toolId`, `family`, or `query` when you need exact schemas, examples, and safety annotations; call `kerminal.config_guide` when you need the generated configuration rules through MCP; call `kerminal.operation_guide` with an intent such as `terminal`, `session-terminal`, `ssh-command`, `config`, `sftp`, `tmux`, `container`, `port-forward`, `server-info`, `history`, `credentials`, or `diagnostics` when you need a concrete tool sequence; call `kerminal.runtime_snapshot` when you need the current running terminals, Agent sessions, port forwards, and next actions.
+- Useful runtime tool families include `terminal.*`, `kerminal.agent.*`, `ssh.command`, `ssh.command_on_resolved_host`, `sftp.*`, `tmux.*`, `container.*` including `container.files.*` (`container.files.list`, `container.files.preview`, `container.files.write_text`, `container.files.upload`, `container.files.download`, `container.files.create_directory`, `container.files.rename`, `container.files.chmod`, `container.files.delete`), `port_forward.*`, `server_info.snapshot`, `history.search`, `diagnostics.*`, `kerminal.app_guide`, `kerminal.config_guide`, `kerminal.capabilities`, `kerminal.tool_help`, `kerminal.operation_guide`, `kerminal.runtime_snapshot`, `kerminal.host.upsert_with_credential`, and `kerminal.vault.encrypt_secret`.
 - MCP host policy owns confirmation, approval, permissions, hooks, and audit; Kerminal does not provide a second pending/confirm queue.
-- In a session workspace, read `context/mcp-endpoint.json` and use `kerminal.agent.target_context` before `terminal.write`.
+- In a session workspace, read `context/mcp-endpoint.json`, `context/target-binding.json`, and `context/terminal-snapshot.json`, then use `kerminal.agent.target_context` before `terminal.write`.
 - When writing to the bound terminal, pass `agentSessionId`, the returned `bindingGeneration`, and `data`.
-- Before editing Kerminal configuration files, read `{CONFIG_REFERENCE_FILE_NAME}`.
+- Before editing Kerminal configuration files, read `{CONFIG_REFERENCE_FILE_NAME}` or call `kerminal.config_guide` for the same generated rules.
 - After editing Kerminal configuration files, call MCP tool `{CONFIG_VALIDATOR_TOOL_ID}` with `scope = "all"` or the narrowest matching scope. If MCP validation is unavailable, manually check `{CONFIG_REFERENCE_FILE_NAME}` and say validation was manual only.
-- Prefer direct file edits for file-backed Kerminal configuration; use the Kerminal MCP server only for runtime actions that require the live app, an existing terminal session, saved connection credentials, SSH/SFTP, containers, port forwarding, server info, or diagnostics: `{}`.
+- Prefer direct file edits for file-backed Kerminal configuration; use the Kerminal MCP server only for runtime actions that require the live app, an existing terminal session, saved connection credentials, SSH/SFTP, tmux, containers, port forwarding, server info, history, diagnostics, runtime snapshot, or authorized credential saving: `{}`.
 - Do not use Kerminal MCP tools for settings, profile, host, snippet, or workflow CRUD when direct file edits can express the change.
 - Do not expect MCP tools for config CRUD or UI choreography such as `settings.*`, `profile.*`, `remote_host.*`, `snippet.*`, `workflow.*`, `workspace.*`, `terminal.create`, `terminal.resolve_current`, or history write/delete/clear operations.
 - Do not edit `data/command.sqlite` directly; use `history.search` when command history is needed.
-- Do not edit `secrets/` unless the user explicitly asks; when authorized, follow `kerminal-config.md` and use `credential_secret`, never `password`.
+- Do not edit `secrets/` unless the user explicitly asks; when authorized, follow `kerminal-config.md` and use the UI save flow, `kerminal.host.upsert_with_credential`, or `kerminal.vault.encrypt_secret` so ordinary host files only keep `secret_ref` / `key_passphrase_ref`; never write `password`, `credential_secret`, or `inline_private_key` into ordinary config files.
 {MANAGED_BLOCK_END}
 "#,
             self.mcp_endpoint, self.mcp_endpoint
@@ -1581,6 +1686,30 @@ fn current_unix_timestamp_string() -> String {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs().to_string())
         .unwrap_or_else(|_| "0".to_owned())
+}
+
+fn unbound_agent_target_binding_context(
+    agent_session_id: AgentSessionId,
+    generated_at: String,
+) -> AgentTargetBindingContext {
+    AgentTargetBindingContext {
+        schema_version: AGENT_SESSION_SCHEMA_VERSION,
+        agent_session_id,
+        binding: AgentTargetBindingContextBinding {
+            binding_id: None,
+            generation: 0,
+            status: AgentTargetBindingStatus::Unbound,
+            stale: false,
+            pane_id: None,
+            tab_id: None,
+            target_terminal_session_id: None,
+            target_ref: None,
+            cwd: None,
+            shell: None,
+        },
+        agent_terminal: None,
+        generated_at,
+    }
 }
 
 fn patch_managed_block(

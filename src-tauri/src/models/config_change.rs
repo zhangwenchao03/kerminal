@@ -19,7 +19,7 @@ pub enum ConfigDomain {
     Settings,
     /// `profiles/*.toml`。
     Profiles,
-    /// `hosts/groups.toml`、`hosts/*.toml` 和 `secrets/hosts/*.toml`。
+    /// `hosts/groups.toml` 和 `hosts/*.toml`。
     Hosts,
     /// `snippets/*.toml`。
     Snippets,
@@ -128,9 +128,7 @@ pub struct ConfigWatchStatusSnapshot {
 pub struct ConfigPathClassification {
     /// 该路径会失效的配置域。
     pub domain: ConfigDomain,
-    /// 是否来自 secret 目录。
-    pub secret: bool,
-    /// 可安全展示的相对路径；secret 相关路径不返回。
+    /// 可安全展示的相对路径。
     pub safe_relative_path: Option<String>,
 }
 
@@ -138,16 +136,7 @@ impl ConfigPathClassification {
     fn public(domain: ConfigDomain, normalized_relative_path: String) -> Self {
         Self {
             domain,
-            secret: false,
             safe_relative_path: Some(normalized_relative_path),
-        }
-    }
-
-    fn secret(domain: ConfigDomain) -> Self {
-        Self {
-            domain,
-            secret: true,
-            safe_relative_path: None,
         }
     }
 }
@@ -188,9 +177,6 @@ pub fn classify_config_relative_path(
             ConfigDomain::Hosts,
             normalized_path,
         )),
-        ["secrets", "hosts", file_name] if is_toml_file(file_name) => {
-            Some(ConfigPathClassification::secret(ConfigDomain::Hosts))
-        }
         ["snippets", file_name] if is_toml_file(file_name) => Some(
             ConfigPathClassification::public(ConfigDomain::Snippets, normalized_path),
         ),

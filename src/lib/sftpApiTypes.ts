@@ -116,7 +116,7 @@ export interface SftpTransferRequest {
   remotePath: string;
   localPath: string;
   viewScope?: string | null;
-  conflictPolicy?: SftpTransferConflictPolicy;
+  conflictPolicy: SftpTransferConflictPolicy;
 }
 
 export type SftpTransferDirection = "upload" | "download";
@@ -148,7 +148,7 @@ export interface SftpManagedTransferRequest extends SftpTransferRequest {
 }
 
 export interface SftpRemoteCopyRequest {
-  conflictPolicy?: SftpTransferConflictPolicy;
+  conflictPolicy: SftpTransferConflictPolicy;
   sourceHostId: string;
   sourceRemotePath: string;
   targetHostId: string;
@@ -158,7 +158,7 @@ export interface SftpRemoteCopyRequest {
 }
 
 export interface SftpArchiveDownloadRequest {
-  conflictPolicy?: SftpTransferConflictPolicy;
+  conflictPolicy: SftpTransferConflictPolicy;
   hostId: string;
   sourceRemotePath: string;
   targetLocalPath: string;
@@ -167,7 +167,7 @@ export interface SftpArchiveDownloadRequest {
 }
 
 export interface SftpArchiveUploadRequest {
-  conflictPolicy?: SftpTransferConflictPolicy;
+  conflictPolicy: SftpTransferConflictPolicy;
   hostId: string;
   sourceLocalPath: string;
   targetRemotePath: string;
@@ -217,10 +217,10 @@ export interface SftpTransferSummary {
   cancelRequested: boolean;
   createdAt: number;
   updatedAt: number;
-  operation?: SftpTransferOperation | null;
-  source?: SftpTransferEndpoint | null;
-  target?: SftpTransferEndpoint | null;
-  transportMode?: SftpTransferTransportMode | null;
+  operation: SftpTransferOperation;
+  source: SftpTransferEndpoint;
+  target: SftpTransferEndpoint;
+  transportMode: SftpTransferTransportMode;
   phase?: string | null;
   currentItem?: string | null;
 }

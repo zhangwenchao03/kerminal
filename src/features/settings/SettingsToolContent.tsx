@@ -29,12 +29,12 @@ import { McpSkillsSettingsSection } from "./settings-tool-content/mcp-section";
 import { settingsSections } from "./settings-tool-content/options";
 import { SettingsSaveNotice } from "./settings-tool-content/shared-controls";
 import { SftpSettingsSection } from "./settings-tool-content/sftp-section";
+import { SyncSettingsSection } from "./settings-tool-content/sync-section";
 import {
   type SettingsToolContentProps,
   type SuggestionCleanupState,
   type SuggestionTelemetryLoadState,
   type VisibleSettingsSectionId,
-  visibleSettingsSectionId,
 } from "./settings-tool-content/types";
 
 export type {
@@ -52,9 +52,7 @@ export function SettingsToolContent({
   settings,
 }: SettingsToolContentProps) {
   const [activeSectionId, setActiveSectionId] =
-    useState<VisibleSettingsSectionId>(() =>
-      visibleSettingsSectionId(initialSectionId),
-    );
+    useState<VisibleSettingsSectionId>(initialSectionId);
   const [suggestionTelemetry, setSuggestionTelemetry] =
     useState<CommandSuggestionTelemetrySummary | null>(null);
   const [suggestionTelemetryError, setSuggestionTelemetryError] = useState<
@@ -120,7 +118,7 @@ export function SettingsToolContent({
   };
 
   useEffect(() => {
-    setActiveSectionId(visibleSettingsSectionId(initialSectionId));
+    setActiveSectionId(initialSectionId);
   }, [initialSectionId]);
 
   useEffect(() => {
@@ -309,6 +307,8 @@ export function SettingsToolContent({
             />
           </div>
         ) : null}
+
+        {activeSectionId === "settings-sync" ? <SyncSettingsSection /> : null}
 
         {activeSectionId === "settings-desktop" ? (
           <DesktopSettingsSection

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { movePaneInLayout } from "../workspace/workspaceLayout";
 import type { TerminalPane, TerminalTab } from "../workspace/types";
@@ -95,9 +95,134 @@ describe("TerminalWorkspace runtime overlay", () => {
 
   it("keeps real XtermPane sessions alive when pane move changes split structure", async () => {
     await expectRuntimeSessionsSurvivePaneMove({
-      expectedIndicatorText: "移动到右侧 · 右侧 runtime",
+      expectedIndicatorText: "停靠到右侧整列",
       pointerUp: { clientX: 790, clientY: 150 },
     });
+  });
+
+  it("adds a split session without reconnecting the source SSH pane", async () => {
+    let sessionIndex = 0;
+    resizableMockState.groups = [];
+    mocks.api.createSshTerminalSession.mockImplementation(
+      async (request, onOutput) => {
+        sessionIndex += 1;
+        const sessionId = `ssh-session-split-${sessionIndex}`;
+        onOutput({
+          data: `hello from ${sessionId}`,
+          kind: "data",
+          sessionId,
+        });
+        return {
+          cols: request.cols,
+          id: sessionId,
+          rows: request.rows,
+          shell: "ssh",
+          status: "running",
+        };
+      },
+    );
+
+    const sourcePane: TerminalPane = {
+      ...baseTerminalPane,
+      currentCwd: "/dev",
+      cwd: "/bwy",
+      id: "pane-ssh-source",
+      machineId: "host-prod",
+      mode: "ssh",
+      prompt: "deploy@prod.internal:~$",
+      remoteHostId: "host-prod",
+      remoteHostProduction: true,
+      title: "源 SSH",
+    };
+    const sourceTab: TerminalTab = {
+      id: "tab-ssh-source",
+      layout: { paneId: sourcePane.id, type: "pane" },
+      machineId: "host-prod",
+      title: "源 SSH",
+    };
+
+    function ControlledWorkspace() {
+      const [focusedPaneId, setFocusedPaneId] = useState(sourcePane.id);
+      const [panes, setPanes] = useState<TerminalPane[]>([sourcePane]);
+      const [tabs, setTabs] = useState<TerminalTab[]>([sourceTab]);
+
+      return (
+        <TerminalWorkspace
+          {...workspaceProps({
+            activeTabId: sourceTab.id,
+            focusedPaneId,
+            onFocusPane: setFocusedPaneId,
+            onSplitPane: (direction) => {
+              const inheritedCwd = sourcePane.currentCwd ?? sourcePane.cwd;
+              const splitPane: TerminalPane = {
+                ...sourcePane,
+                currentCwd: inheritedCwd,
+                cwd: inheritedCwd,
+                id: "pane-ssh-split",
+                lines: [],
+                outputHistory: undefined,
+                title: direction === "horizontal" ? "右侧分屏" : "下方分屏",
+              };
+              setPanes((currentPanes) =>
+                currentPanes.some((pane) => pane.id === splitPane.id)
+                  ? currentPanes
+                  : [...currentPanes, splitPane],
+              );
+              setTabs((currentTabs) =>
+                currentTabs.map((tab) =>
+                  tab.id === sourceTab.id && "layout" in tab
+                    ? {
+                        ...tab,
+                        layout: {
+                          children: [
+                            { paneId: sourcePane.id, type: "pane" },
+                            { paneId: splitPane.id, type: "pane" },
+                          ],
+                          direction,
+                          id: "split-added",
+                          type: "split",
+                        },
+                      }
+                    : tab,
+                ),
+              );
+              setFocusedPaneId(splitPane.id);
+            },
+            panes,
+            tabs,
+          })}
+        />
+      );
+    }
+
+    render(<ControlledWorkspace />);
+
+    await waitFor(() => {
+      expect(mocks.api.createSshTerminalSession).toHaveBeenCalledTimes(1);
+    });
+    mocks.api.createSshTerminalSession.mockClear();
+    mocks.api.closeTerminal.mockClear();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "源 SSH 左右分屏" }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.api.createSshTerminalSession).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.api.closeTerminal).not.toHaveBeenCalled();
+    expect(mocks.api.createSshTerminalSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cwd: "/dev",
+        hostId: "host-prod",
+      }),
+      expect.any(Function),
+    );
+    expect(
+      Array.from(
+        document.querySelectorAll<HTMLElement>("[data-terminal-pane-card]"),
+      ).map((card) => card.dataset.terminalPaneCard),
+    ).toEqual(["pane-ssh-source", "pane-ssh-split"]);
   });
 
   it("ignores hidden tab pane cards when resolving pane move targets", async () => {
@@ -135,7 +260,7 @@ describe("TerminalWorkspace runtime overlay", () => {
             activeTabId: "tab-runtime",
             focusedPaneId,
             onFocusPane: setFocusedPaneId,
-            onMovePane: (sourcePaneId, targetPaneId, placement) => {
+            onMovePane: (sourcePaneId, targetPaneId, placement, scope) => {
               movePane(sourcePaneId, targetPaneId, placement);
               setTabs((currentTabs) =>
                 currentTabs.map((tab) =>
@@ -144,6 +269,7 @@ describe("TerminalWorkspace runtime overlay", () => {
                         ...tab,
                         layout: movePaneInLayout(tab.layout, {
                           placement,
+                          scope,
                           sourcePaneId,
                           splitId: "split-runtime-moved",
                           targetPaneId,
@@ -186,6 +312,22 @@ describe("TerminalWorkspace runtime overlay", () => {
     expect(leftCard).toBeTruthy();
     expect(rightCard).toBeTruthy();
 
+    const workspaceContent = document.querySelector<HTMLElement>(
+      "[data-terminal-workspace-content]",
+    );
+    expect(workspaceContent).toBeTruthy();
+
+    vi.spyOn(workspaceContent!, "getBoundingClientRect").mockReturnValue({
+      bottom: 300,
+      height: 300,
+      left: 0,
+      right: 800,
+      top: 0,
+      width: 800,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
     vi.spyOn(hiddenCard!, "getBoundingClientRect").mockReturnValue({
       bottom: 300,
       height: 300,
@@ -226,11 +368,22 @@ describe("TerminalWorkspace runtime overlay", () => {
       }),
       { clientX: 20, clientY: 20, pointerId: 23 },
     );
+    await act(async () => {});
     fireEvent.pointerMove(window, { clientX: 620, clientY: 150, pointerId: 23 });
 
-    expect(await screen.findByText("交换位置 · 右侧 runtime")).toBeInTheDocument();
-    expect(screen.getByLabelText("正在拖动终端分屏")).toBeInTheDocument();
-    expect(screen.queryByText("交换位置 · 隐藏 172.16.41.60")).toBeNull();
+    expect(
+      await screen.findByLabelText(
+        "终端分屏移动目标：交换位置 · 右侧 runtime",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("正在拖动终端分屏：交换位置 · 右侧 runtime"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(
+        "终端分屏移动目标：交换位置 · 隐藏 172.16.41.60",
+      ),
+    ).toBeNull();
 
     fireEvent.pointerUp(window, { clientX: 620, clientY: 150, pointerId: 23 });
 
@@ -360,7 +513,7 @@ async function expectRuntimeSessionsSurvivePaneMove({
           activeTabId: "tab-runtime",
           focusedPaneId,
           onFocusPane: setFocusedPaneId,
-          onMovePane: (sourcePaneId, targetPaneId, placement) => {
+          onMovePane: (sourcePaneId, targetPaneId, placement, scope) => {
             setTabs((currentTabs) =>
               currentTabs.map((tab) =>
                 tab.id === runtimeTab.id && "layout" in tab
@@ -368,6 +521,7 @@ async function expectRuntimeSessionsSurvivePaneMove({
                       ...tab,
                       layout: movePaneInLayout(tab.layout, {
                         placement,
+                        scope,
                         sourcePaneId,
                         splitId: "split-runtime-moved",
                         targetPaneId,
@@ -396,6 +550,22 @@ async function expectRuntimeSessionsSurvivePaneMove({
   const cards = Array.from(
     document.querySelectorAll<HTMLElement>("[data-terminal-pane-card]"),
   );
+  const workspaceContent = document.querySelector<HTMLElement>(
+    "[data-terminal-workspace-content]",
+  );
+  expect(workspaceContent).toBeTruthy();
+
+  vi.spyOn(workspaceContent!, "getBoundingClientRect").mockReturnValue({
+    bottom: 300,
+    height: 300,
+    left: 0,
+    right: 800,
+    top: 0,
+    width: 800,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  });
   vi.spyOn(cards[0], "getBoundingClientRect").mockReturnValue({
     bottom: 300,
     height: 300,
@@ -425,9 +595,12 @@ async function expectRuntimeSessionsSurvivePaneMove({
     }),
     { clientX: 20, clientY: 20, pointerId: 17 },
   );
+  await act(async () => {});
   fireEvent.pointerMove(window, { ...pointerUp, pointerId: 17 });
 
-  expect(await screen.findByText(expectedIndicatorText)).toBeInTheDocument();
+  expect(
+    await screen.findByLabelText(`终端分屏移动目标：${expectedIndicatorText}`),
+  ).toBeInTheDocument();
 
   fireEvent.pointerUp(window, { ...pointerUp, pointerId: 17 });
 

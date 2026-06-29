@@ -1509,20 +1509,10 @@ export function KerminalShell() {
             editingLocalMachine={editingLocalMachine}
             externalConfigConflict={connectionConfigConflict?.message}
             groups={machineGroups}
-            onAddDockerContainer={async (request) => {
-              const groupId = await resolveTargetGroupId(request.groupId);
-              addDockerContainer(request.container, {
-                groupId,
-                shell: request.shell,
-                user: request.user,
-                workdir: request.workdir,
-              });
-            }}
             onClose={handleConnectionDialogClose}
             onCreateGroup={createRemoteHostGroup}
             onCreateLocal={handleCreateLocalProfile}
             onCreateHost={handleCreateRemoteHost}
-            onListDockerContainers={listDockerContainers}
             onUpdateHost={updateRemoteHost}
             onUpdateLocal={handleUpdateLocalProfile}
             onCreated={handleConnectionDialogCreated}

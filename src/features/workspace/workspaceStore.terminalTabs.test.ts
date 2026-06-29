@@ -179,7 +179,7 @@ describe("workspaceStore terminal tabs", () => {
         useWorkspaceStore
           .getState()
           .setRemoteHostTree(remoteHostTreeWithTerminalTransports);
-        useWorkspaceStore.getState().openTelnetTerminal("telnet-legacy");
+        useWorkspaceStore.getState().openTelnetTerminal("telnet-lab");
       },
     },
     {
@@ -254,13 +254,13 @@ describe("workspaceStore terminal tabs", () => {
       expectedMode: "telnet",
       expectedPaneIdPrefix: "pane-telnet-",
       expectedProduction: false,
-      expectedTarget: { hostId: "telnet-legacy", kind: "telnet" },
+      expectedTarget: { hostId: "telnet-lab", kind: "telnet" },
       name: "Telnet",
       prepareTargetMachine: () => {
         useWorkspaceStore
           .getState()
           .setRemoteHostTree(remoteHostTreeWithTerminalTransports);
-        return "telnet-legacy";
+        return "telnet-lab";
       },
     },
     {

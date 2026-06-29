@@ -7,7 +7,8 @@ use std::fs;
 use kerminal_lib::{
     error::AppError,
     models::remote_host::{
-        RemoteHostAuthType, RemoteHostCreateRequest, RemoteHostGroupCreateRequest,
+        build_vault_secret_ref, RemoteHostAuthType, RemoteHostCreateRequest,
+        RemoteHostCredentialRevealStatus, RemoteHostCredentialStatus, RemoteHostGroupCreateRequest,
         RemoteHostGroupUpdateRequest, RemoteHostUpdateRequest, SshJumpHostOptions, SshOptions,
         SshProxyProtocol, SshTunnelKind, SshTunnelOptions,
     },
@@ -72,7 +73,7 @@ fn create_host_persists_tags_private_key_path_and_production_flag() {
 }
 
 #[test]
-fn create_password_host_splits_plaintext_secret_into_secret_file() {
+fn create_password_host_writes_encrypted_vault_ref() {
     let (home, state) = test_state();
 
     let host = state
@@ -93,14 +94,24 @@ fn create_password_host_splits_plaintext_secret_into_secret_file() {
         .expect("create password host");
 
     assert_eq!(host.credential_ref, None);
-    assert_eq!(host.credential_secret.as_deref(), Some("s3cr3t"));
+    assert_eq!(host.credential_secret, None);
+    assert_eq!(
+        host.secret_ref.as_deref(),
+        Some(build_vault_secret_ref("ssh-host", &host.id, "target", "password").as_str())
+    );
+    assert_eq!(host.credential_status, RemoteHostCredentialStatus::Vault);
 
     let reloaded = state
         .remote_hosts()
         .host_by_id(&host.id)
         .expect("load host")
         .expect("host exists");
-    assert_eq!(reloaded.credential_secret.as_deref(), Some("s3cr3t"));
+    assert_eq!(reloaded.credential_secret, None);
+    assert_eq!(reloaded.secret_ref, host.secret_ref);
+    assert_eq!(
+        reloaded.credential_status,
+        RemoteHostCredentialStatus::Vault
+    );
 
     let config_root = KerminalPaths::from_home_dir(home.path()).root;
     let host_toml = fs::read_to_string(config_root.join("hosts").join(format!("{}.toml", host.id)))
@@ -108,16 +119,204 @@ fn create_password_host_splits_plaintext_secret_into_secret_file() {
     assert!(!host_toml.contains("credential_secret"));
     assert!(!host_toml.contains("credentialSecret"));
     assert!(!host_toml.contains("s3cr3t"));
+    assert!(host_toml.contains("secret_ref"));
 
-    let secret_toml = fs::read_to_string(
-        config_root
-            .join("secrets")
-            .join("hosts")
-            .join(format!("{}.toml", host.id)),
-    )
-    .expect("read host secret toml");
-    assert!(secret_toml.contains("credential_secret"));
-    assert!(secret_toml.contains("s3cr3t"));
+    assert!(!config_root
+        .join("secrets")
+        .join("hosts")
+        .join(format!("{}.toml", host.id))
+        .exists());
+
+    let vault_toml = fs::read_to_string(config_root.join("secrets").join("vault.toml"))
+        .expect("read vault toml");
+    assert!(vault_toml.contains("credential:kerminal:ssh-host"));
+    assert!(!vault_toml.contains("s3cr3t"));
+}
+
+#[test]
+fn create_rdp_password_host_writes_rdp_vault_ref() {
+    let (home, state) = test_state();
+
+    let host = state
+        .remote_hosts()
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "office rdp".to_owned(),
+            host: "rdp.internal".to_owned(),
+            port: 3389,
+            username: "administrator".to_owned(),
+            auth_type: RemoteHostAuthType::Password,
+            credential_ref: None,
+            credential_secret: Some("rdp-secret".to_owned()),
+            tags: vec!["rdp".to_owned()],
+            production: false,
+            ssh_options: Default::default(),
+        })
+        .expect("create rdp host");
+
+    assert_eq!(
+        host.secret_ref.as_deref(),
+        Some(build_vault_secret_ref("rdp-host", &host.id, "target", "password").as_str())
+    );
+    assert_eq!(host.credential_status, RemoteHostCredentialStatus::Vault);
+
+    let config_root = KerminalPaths::from_home_dir(home.path()).root;
+    let vault_toml = fs::read_to_string(config_root.join("secrets").join("vault.toml"))
+        .expect("read vault toml");
+    assert!(vault_toml.contains("credential:kerminal:rdp-host"));
+    assert!(!vault_toml.contains("rdp-secret"));
+}
+
+#[test]
+fn update_rdp_host_rejects_reusing_ssh_vault_ref_without_password() {
+    let (_home, state) = test_state();
+
+    let host = state
+        .remote_hosts()
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "ssh password host".to_owned(),
+            host: "rdp.internal".to_owned(),
+            port: 22,
+            username: "administrator".to_owned(),
+            auth_type: RemoteHostAuthType::Password,
+            credential_ref: None,
+            credential_secret: Some("ssh-secret".to_owned()),
+            tags: Vec::new(),
+            production: false,
+            ssh_options: Default::default(),
+        })
+        .expect("create ssh password host");
+    assert_eq!(
+        host.secret_ref.as_deref(),
+        Some(build_vault_secret_ref("ssh-host", &host.id, "target", "password").as_str())
+    );
+
+    let error = state
+        .remote_hosts()
+        .update_host(RemoteHostUpdateRequest {
+            id: host.id.clone(),
+            group_id: None,
+            name: "office rdp".to_owned(),
+            host: "rdp.internal".to_owned(),
+            port: 3389,
+            username: "administrator".to_owned(),
+            auth_type: RemoteHostAuthType::Password,
+            credential_ref: None,
+            credential_secret: None,
+            tags: vec!["rdp".to_owned()],
+            production: false,
+            ssh_options: Default::default(),
+            sort_order: host.sort_order,
+        })
+        .expect_err("old ssh-host ref cannot satisfy rdp-host password");
+
+    assert!(matches!(error, AppError::InvalidInput(_)));
+    assert!(error.to_string().contains("RDP 密码认证需要填写明文密码"));
+}
+
+#[test]
+fn reveal_password_host_credential_returns_vault_secret_without_exposing_tree() {
+    let (_home, state) = test_state();
+
+    let host = state
+        .remote_hosts()
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "password host".to_owned(),
+            host: "password.internal".to_owned(),
+            port: 22,
+            username: "deploy".to_owned(),
+            auth_type: RemoteHostAuthType::Password,
+            credential_ref: None,
+            credential_secret: Some("edit-form-secret".to_owned()),
+            tags: Vec::new(),
+            production: false,
+            ssh_options: Default::default(),
+        })
+        .expect("create password host");
+
+    let reveal = state
+        .remote_hosts()
+        .reveal_host_credential(&host.id)
+        .expect("reveal saved credential");
+
+    assert_eq!(reveal.host_id, host.id);
+    assert_eq!(reveal.auth_type, RemoteHostAuthType::Password);
+    assert_eq!(reveal.status, RemoteHostCredentialRevealStatus::Available);
+    assert_eq!(
+        reveal.credential_secret.as_deref(),
+        Some("edit-form-secret")
+    );
+    assert_eq!(reveal.message, None);
+
+    let tree = state.remote_hosts().list_tree().expect("list host tree");
+    let listed_host = tree
+        .iter()
+        .flat_map(|group| group.hosts.iter())
+        .find(|item| item.id == host.id)
+        .unwrap();
+    assert_eq!(listed_host.credential_secret, None);
+    assert_eq!(listed_host.secret_ref, host.secret_ref);
+    assert_eq!(
+        listed_host.credential_status,
+        RemoteHostCredentialStatus::Vault
+    );
+}
+
+#[test]
+fn reveal_non_secret_host_credentials_returns_status_without_secret() {
+    let (_home, state) = test_state();
+
+    let key_host = state
+        .remote_hosts()
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "key path host".to_owned(),
+            host: "key.internal".to_owned(),
+            port: 22,
+            username: "deploy".to_owned(),
+            auth_type: RemoteHostAuthType::Key,
+            credential_ref: Some("/home/deploy/.ssh/id_ed25519".to_owned()),
+            credential_secret: None,
+            tags: Vec::new(),
+            production: false,
+            ssh_options: Default::default(),
+        })
+        .expect("create key path host");
+    let agent_host = state
+        .remote_hosts()
+        .create_host(RemoteHostCreateRequest {
+            group_id: None,
+            name: "agent host".to_owned(),
+            host: "agent.internal".to_owned(),
+            port: 22,
+            username: "deploy".to_owned(),
+            auth_type: RemoteHostAuthType::Agent,
+            credential_ref: None,
+            credential_secret: None,
+            tags: Vec::new(),
+            production: false,
+            ssh_options: Default::default(),
+        })
+        .expect("create agent host");
+
+    let key_reveal = state
+        .remote_hosts()
+        .reveal_host_credential(&key_host.id)
+        .expect("reveal key status");
+    let agent_reveal = state
+        .remote_hosts()
+        .reveal_host_credential(&agent_host.id)
+        .expect("reveal agent status");
+
+    assert_eq!(
+        key_reveal.status,
+        RemoteHostCredentialRevealStatus::ConfigPath
+    );
+    assert_eq!(key_reveal.credential_secret, None);
+    assert_eq!(agent_reveal.status, RemoteHostCredentialRevealStatus::Agent);
+    assert_eq!(agent_reveal.credential_secret, None);
 }
 
 #[test]
@@ -143,7 +342,10 @@ fn create_host_persists_ssh_options() {
         username: "ops".to_owned(),
         auth_type: RemoteHostAuthType::Key,
         credential_ref: Some("/home/ops/.ssh/bastion".to_owned()),
+        secret_ref: None,
+        key_passphrase_ref: None,
         credential_secret: None,
+        credential_status: Default::default(),
     });
     ssh_options.terminal.connect_timeout_seconds = 45;
     ssh_options.terminal.keepalive_seconds = 30;
@@ -180,7 +382,7 @@ fn create_host_persists_ssh_options() {
 }
 
 #[test]
-fn update_key_host_saves_private_key_content_as_plaintext_secret() {
+fn update_key_host_saves_inline_private_key_into_vault() {
     let (_home, state) = test_state();
     let host = state
         .remote_hosts()
@@ -219,10 +421,12 @@ fn update_key_host_saves_private_key_content_as_plaintext_secret() {
         .expect("update key host");
 
     assert_eq!(updated.credential_ref, None);
+    assert_eq!(updated.credential_secret, None);
     assert_eq!(
-        updated.credential_secret.as_deref(),
-        Some("-----BEGIN OPENSSH PRIVATE KEY-----\n...\n")
+        updated.secret_ref.as_deref(),
+        Some(build_vault_secret_ref("ssh-host", &updated.id, "target", "private-key").as_str())
     );
+    assert_eq!(updated.credential_status, RemoteHostCredentialStatus::Vault);
 }
 
 #[test]
@@ -283,9 +487,14 @@ fn update_group_and_host_persist_changes() {
     assert_eq!(updated_host.port, 2222);
     assert_eq!(updated_host.username, "deploy");
     assert_eq!(updated_host.auth_type, RemoteHostAuthType::Password);
+    assert_eq!(updated_host.credential_secret, None);
     assert_eq!(
-        updated_host.credential_secret.as_deref(),
-        Some("updated-password")
+        updated_host.credential_status,
+        RemoteHostCredentialStatus::Vault
+    );
+    assert_eq!(
+        updated_host.secret_ref.as_deref(),
+        Some(build_vault_secret_ref("ssh-host", &updated_host.id, "target", "password").as_str())
     );
     assert!(updated_host.production);
 }
@@ -413,8 +622,8 @@ fn create_telnet_host_allows_empty_username_and_normalizes_tags() {
         .remote_hosts()
         .create_host(RemoteHostCreateRequest {
             group_id: None,
-            name: "legacy telnet".to_owned(),
-            host: "legacy.internal".to_owned(),
+            name: "lab telnet".to_owned(),
+            host: "lab.internal".to_owned(),
             port: 23,
             username: "   ".to_owned(),
             auth_type: RemoteHostAuthType::Agent,

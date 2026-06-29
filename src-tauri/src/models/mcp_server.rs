@@ -17,6 +17,8 @@ pub enum ToolCategory {
     Sftp,
     /// Docker/Podman 容器能力。
     Container,
+    /// tmux 会话管理能力。
+    Tmux,
     /// SSH 端口转发能力。
     PortForward,
     /// 服务器信息读取能力。
@@ -37,6 +39,7 @@ impl ToolCategory {
             Self::Ssh => "SSH",
             Self::Sftp => "SFTP",
             Self::Container => "容器",
+            Self::Tmux => "tmux",
             Self::PortForward => "端口转发",
             Self::ServerInfo => "服务器信息",
             Self::Snippet => "脚本片段",

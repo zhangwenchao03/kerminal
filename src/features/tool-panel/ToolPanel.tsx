@@ -45,7 +45,6 @@ interface ToolPanelProps {
   defaultRemoteGroupId?: string;
   defaultRemoteHostId?: string;
   focusedPane?: TerminalPane;
-  selectedMachine?: Machine;
   terminalPanes?: TerminalPane[];
   terminalTabs?: TerminalTab[];
   tools: ToolSummary[];
@@ -113,7 +112,6 @@ export function ToolPanel({
   onFocusTab,
   onOpenTmuxTerminal,
   resolvedTheme = "dark",
-  selectedMachine,
   settings,
   snippetConfigRevision,
   terminalPanes,
@@ -243,26 +241,27 @@ export function ToolPanel({
                           settings?.terminal ??
                           defaultTerminalAppearance
                         }
+                        terminalTabs={terminalTabs}
                       />
                     ) : null}
                     {toolId === "system" ? (
-                      <ServerInfoToolContent selectedMachine={selectedMachine} />
+                      <ServerInfoToolContent selectedMachine={activeMachine} />
                     ) : null}
                     {toolId === "sftp" ? (
                       <SftpToolContent
                         followedRemotePath={
                           focusedPane?.mode === "ssh" &&
-                          focusedPane.remoteHostId === selectedMachine?.id
+                          focusedPane.remoteHostId === activeMachine?.id
                             ? focusedPane.currentCwd
                             : focusedPane?.mode === "container" &&
-                                focusedPane.machineId === selectedMachine?.id
+                                focusedPane.machineId === activeMachine?.id
                               ? focusedPane.currentCwd
                               : undefined
                         }
                         interfaceDensity={interfaceDensity}
-                        selectedMachine={selectedMachine}
+                        selectedMachine={activeMachine}
                         transferViewScope={sftpSidebarTransferViewScope({
-                          hostId: selectedMachine?.id,
+                          hostId: activeMachine?.id,
                           tabId: activeTab?.id,
                         })}
                       />
@@ -270,7 +269,7 @@ export function ToolPanel({
                     {toolId === "ports" ? (
                       <PortForwardToolContent
                         focusedPane={focusedPane}
-                        selectedMachine={selectedMachine}
+                        selectedMachine={activeMachine}
                       />
                     ) : null}
                     {toolId === "tmux" ? (
@@ -281,7 +280,6 @@ export function ToolPanel({
                         onClosePane={onClosePane}
                         onFocusTab={onFocusTab}
                         onOpenTmuxTerminal={onOpenTmuxTerminal}
-                        selectedMachine={selectedMachine}
                         terminalPanes={terminalPanes}
                         terminalTabs={terminalTabs}
                       />

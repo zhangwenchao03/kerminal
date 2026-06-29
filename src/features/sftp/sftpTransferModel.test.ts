@@ -37,9 +37,21 @@ function transfer(
     id: "transfer-1",
     kind: "file",
     localPath: "C:\\Downloads\\archive.zip",
+    operation: "download",
     remotePath: "/srv/archive.zip",
+    source: {
+      hostId: "host-1",
+      hostLabel: "host-1",
+      kind: "remote",
+      path: "/srv/archive.zip",
+    },
     status: "queued",
+    target: {
+      kind: "local",
+      path: "C:\\Downloads\\archive.zip",
+    },
     totalBytes: 100,
+    transportMode: "singleHostSftp",
     updatedAt: 100,
     ...overrides,
   };
@@ -155,13 +167,25 @@ describe("sftpTransferModel", () => {
       direction: "upload",
       localPath: "C:\\logs\\app.log",
       remotePath: "/var/log/app.log",
+      source: {
+        kind: "local",
+        path: "C:\\logs\\app.log",
+      },
       status: "running",
+      target: {
+        hostId: "host-1",
+        hostLabel: "host-1",
+        kind: "remote",
+        path: "/var/log/app.log",
+      },
       totalBytes: 3072,
     });
 
     expect(transferTitle(running)).toBe("app.log");
     expect(transferPercentLabel(running)).toBe("50%");
-    expect(transferPathSummary(running)).toBe("C:\\logs\\app.log -> /var/log/app.log");
+    expect(transferPathSummary(running)).toBe(
+      "C:\\logs\\app.log -> host-1:/var/log/app.log",
+    );
     expect(transferStatusLabel("running")).toBe("传输中");
     expect(formatTransferBytes(running)).toBe("1.5 KB / 3.0 KB");
   });
@@ -193,36 +217,15 @@ describe("sftpTransferModel", () => {
     );
   });
 
-  it("labels legacy snake_case remote endpoints without showing undefined", () => {
-    const archiveDownload = transfer({
-      operation: "archiveDownload",
-      source: {
-        host_id: "source-host",
-        host_label: "dev",
-        kind: "remote",
-        path: "/bwy/app/abc/.codex/jdk-21.0.2",
-      } as unknown as SftpTransferSummary["source"],
-      target: {
-        kind: "local",
-        path: "C:\\Users\\24052\\Downloads\\jdk-21.0.2.zip",
-      },
-    });
-
-    expect(transferPathSummary(archiveDownload)).toBe(
-      "dev:/bwy/app/abc/.codex/jdk-21.0.2 -> C:\\Users\\24052\\Downloads\\jdk-21.0.2.zip",
-    );
-  });
-
   it("falls back from placeholder endpoint labels before rendering paths", () => {
     const archiveDownload = transfer({
       operation: "archiveDownload",
       source: {
-        host_id: "source-host",
-        host_label: "undefined",
         hostLabel: "null",
+        hostId: "source-host",
         kind: "remote",
         path: "/bwy/app/abc/.codex/jdk-21.0.2",
-      } as unknown as SftpTransferSummary["source"],
+      },
       target: {
         kind: "local",
         path: "C:\\Users\\24052\\Downloads\\jdk-21.0.2.zip",

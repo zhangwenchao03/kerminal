@@ -105,12 +105,10 @@ impl ServerInfoService {
         Ok(snapshot)
     }
 
-    /// 从 IPC 请求解析有效目标；兼容旧的仅 host_id 请求。
+    /// 从 IPC 请求解析有效目标。
     pub fn target_from_request(request: ServerInfoRequest) -> AppResult<RemoteTargetRef> {
         let request_host_id = normalize_plain_text("远程主机 id", &request.host_id)?;
-        let target = request.target.unwrap_or(RemoteTargetRef::Ssh {
-            host_id: request_host_id.clone(),
-        });
+        let target = request.target;
         target.validate()?;
         let target_host_id = target.host_id().ok_or_else(|| {
             AppError::InvalidInput("服务器信息目标必须是 SSH 主机或容器".to_owned())

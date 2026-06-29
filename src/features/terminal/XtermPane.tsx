@@ -107,6 +107,7 @@ interface XtermPaneProps {
   title: string;
   transientStartupMessage?: boolean;
   onCurrentCwdChange?: (cwd: string) => void;
+  onConnectionStateChange?: (state: ConnectionState) => void;
   onOpenLogs?: () => void;
   onOutputHistoryChange?: (outputHistory: string | undefined) => void;
   onSessionFinished?: (event: XtermPaneSessionFinishedEvent) => void;
@@ -157,6 +158,7 @@ export function XtermPane({
   title,
   transientStartupMessage = false,
   onCurrentCwdChange,
+  onConnectionStateChange,
   onOpenLogs,
   onOutputHistoryChange,
   onSessionFinished,
@@ -179,6 +181,7 @@ export function XtermPane({
   const currentCwdRef = useRef(currentCwd ?? cwd);
   const ghostSuggestionRef = useRef<TerminalGhostSuggestion | null>(null);
   const onCurrentCwdChangeRef = useRef(onCurrentCwdChange);
+  const onConnectionStateChangeRef = useRef(onConnectionStateChange);
   const onOutputHistoryChangeRef = useRef(onOutputHistoryChange);
   const onSessionFinishedRef = useRef(onSessionFinished);
   const onTerminalDimensionsChangeRef = useRef(onTerminalDimensionsChange);
@@ -351,6 +354,14 @@ export function XtermPane({
   useEffect(() => {
     onCurrentCwdChangeRef.current = onCurrentCwdChange;
   }, [onCurrentCwdChange]);
+
+  useEffect(() => {
+    onConnectionStateChangeRef.current = onConnectionStateChange;
+  }, [onConnectionStateChange]);
+
+  useEffect(() => {
+    onConnectionStateChangeRef.current?.(connectionState);
+  }, [connectionState]);
 
   useEffect(() => {
     onOutputHistoryChangeRef.current = onOutputHistoryChange;

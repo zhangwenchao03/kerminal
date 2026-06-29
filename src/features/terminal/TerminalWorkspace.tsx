@@ -26,6 +26,7 @@ import {
 import { collectPaneIds } from "../workspace/workspaceLayout";
 import {
   isTerminalSessionTab,
+  type MachineStatus,
   type MachineGroup,
   type TerminalPane,
   type TerminalSplitDirection,
@@ -36,9 +37,13 @@ import {
 } from "../workspace/types";
 import { TerminalBroadcastBar } from "./TerminalBroadcastBar";
 import { TerminalWorkspaceContent } from "./TerminalWorkspaceContent";
-import type { TerminalPaneMoveDropZone } from "./terminalPaneMoveDropZones";
+import type {
+  TerminalPaneMoveDropZone,
+  TerminalPaneMoveScope,
+} from "./terminalPaneMoveDropZones";
 import type { TerminalSplitDropIndicator } from "./TerminalSplitDropOverlay";
 import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
+import type { ConnectionState } from "./XtermPane.helpers";
 import { useTerminalBroadcastTargets } from "./useTerminalBroadcastTargets";
 import {
   buildTerminalTabGroups,
@@ -50,6 +55,7 @@ import {
   TerminalTabGroupEditDialog,
   TerminalTabGroupHeader,
   TerminalTabRenameDialog,
+  terminalTabStatusDotClassName,
   type TerminalTabGroup,
   type TerminalTabContextMenu,
   type TerminalTabContextMenuPayload,
@@ -102,6 +108,11 @@ interface TerminalWorkspaceProps {
     sourcePaneId: string,
     targetPaneId: string,
     placement: TerminalPaneMoveDropZone,
+    scope?: TerminalPaneMoveScope,
+  ) => void;
+  onPaneConnectionStateChange?: (
+    paneId: string,
+    state: ConnectionState,
   ) => void;
   onPaneCurrentCwdChange?: (paneId: string, cwd: string) => void;
   onPaneOutputHistoryChange?: (
@@ -146,6 +157,7 @@ export function TerminalWorkspace({
   onOpenAgentTool,
   onOpenConnection,
   onMovePane,
+  onPaneConnectionStateChange,
   onPaneCurrentCwdChange,
   onPaneOutputHistoryChange,
   onSplitLayoutSizesChange,
@@ -192,6 +204,13 @@ export function TerminalWorkspace({
   const panesById = useMemo(
     () => new Map(panes.map((pane) => [pane.id, pane])),
     [panes],
+  );
+  const tabStatusById = useMemo(
+    () =>
+      new Map(
+        tabs.map((tab) => [tab.id, resolveTerminalTabStatus(tab, panesById)]),
+      ),
+    [panesById, tabs],
   );
   const activePaneIds = useMemo(
     () =>
@@ -729,9 +748,10 @@ export function TerminalWorkspace({
                             <span
                               className={cn(
                                 "h-2 w-2 shrink-0 rounded-full",
-                                tab.kind === "sftpTransfer"
-                                  ? "bg-sky-400"
-                                  : "bg-emerald-400",
+                                terminalTabStatusDotClassName(
+                                  tab,
+                                  tabStatusById.get(tab.id),
+                                ),
                               )}
                             />
                             <span className="min-w-0 flex-1 truncate">
@@ -796,6 +816,7 @@ export function TerminalWorkspace({
                         1
                       : undefined
                   }
+                  status={tabStatusById.get(tab.id)}
                   tab={tab}
                 />
               ));
@@ -848,6 +869,7 @@ export function TerminalWorkspace({
                               ) + 1
                             : undefined
                         }
+                        status={tabStatusById.get(tab.id)}
                         tab={tab}
                       />
                     ))
@@ -928,6 +950,7 @@ export function TerminalWorkspace({
         onOpenConnection={onOpenConnection}
         onOpenLogs={onOpenLogs}
         onMovePane={onMovePane}
+        onPaneConnectionStateChange={onPaneConnectionStateChange}
         onPaneCurrentCwdChange={onPaneCurrentCwdChange}
         onPaneOutputHistoryChange={onPaneOutputHistoryChange}
         onSplitLayoutSizesChange={onSplitLayoutSizesChange}
@@ -945,4 +968,26 @@ export function TerminalWorkspace({
       />
     </main>
   );
+}
+
+function resolveTerminalTabStatus(
+  tab: TerminalTab,
+  panesById: Map<string, TerminalPane>,
+): MachineStatus {
+  if (!isTerminalSessionTab(tab)) {
+    return "online";
+  }
+  const statuses = collectPaneIds(tab.layout)
+    .map((paneId) => panesById.get(paneId)?.status)
+    .filter((status): status is MachineStatus => Boolean(status));
+  if (statuses.length === 0) {
+    return "offline";
+  }
+  if (statuses.every((status) => status === "online")) {
+    return "online";
+  }
+  if (statuses.every((status) => status === "offline")) {
+    return "offline";
+  }
+  return "warning";
 }

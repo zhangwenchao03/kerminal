@@ -4,8 +4,9 @@
 
 use crate::{
     models::remote_host::{
-        RemoteHost, RemoteHostCreateRequest, RemoteHostGroup, RemoteHostGroupCreateRequest,
-        RemoteHostGroupUpdateRequest, RemoteHostGroupWithHosts, RemoteHostUpdateRequest,
+        RemoteHost, RemoteHostCreateRequest, RemoteHostCredentialReveal, RemoteHostGroup,
+        RemoteHostGroupCreateRequest, RemoteHostGroupUpdateRequest, RemoteHostGroupWithHosts,
+        RemoteHostUpdateRequest,
     },
     state::AppState,
 };
@@ -97,5 +98,17 @@ pub fn remote_host_delete(state: State<'_, AppState>, host_id: String) -> Result
     state
         .remote_hosts()
         .delete_host(&host_id)
+        .map_err(|error| error.to_string())
+}
+
+/// 受控读取单个远程主机编辑所需的保存凭据。
+#[tauri::command]
+pub fn remote_host_reveal_credential(
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<RemoteHostCredentialReveal, String> {
+    state
+        .remote_hosts()
+        .reveal_host_credential(&host_id)
         .map_err(|error| error.to_string())
 }

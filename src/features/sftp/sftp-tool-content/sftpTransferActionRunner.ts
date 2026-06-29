@@ -7,6 +7,8 @@ import type {
   SftpTransferActionItem,
 } from "./sftpTransferActionPlan";
 
+const DEFAULT_TRANSFER_CONFLICT_POLICY: SftpTransferConflictPolicy = "overwrite";
+
 export type RunSftpTransferActionItem = (
   item: SftpTransferActionItem,
 ) => Promise<void>;
@@ -47,7 +49,7 @@ export function buildWorkbenchClipboardUploadItems({
           message: `已加入剪贴板上传队列：${task.entryName}`,
         },
         request: {
-          ...(conflictPolicy !== undefined ? { conflictPolicy } : {}),
+          conflictPolicy: conflictPolicy ?? DEFAULT_TRANSFER_CONFLICT_POLICY,
           direction: "upload",
           hostId,
           kind: task.entryKind,

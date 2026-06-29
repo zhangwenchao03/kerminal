@@ -1,5 +1,12 @@
 import { Columns2, PanelBottom, Search } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
 import type {
@@ -42,6 +49,7 @@ const statusDotClassNames: Record<SplitTargetOption["status"], string> = {
   online: "bg-emerald-400",
   warning: "bg-amber-400",
 };
+const menuViewportInset = 12;
 
 function groupTargetsByGroup(targets: SplitTargetOption[]) {
   const groups: Array<{
@@ -89,8 +97,10 @@ export function TerminalSplitTargetSelector({
   machineGroups,
   onSplitPane,
 }: TerminalSplitTargetSelectorProps) {
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
   const selectorRef = useRef<HTMLDivElement>(null);
   const splitLabel = directionLabels[direction];
   const buttonLabel = labelPrefix ? `${labelPrefix} ${splitLabel}` : splitLabel;
@@ -117,7 +127,10 @@ export function TerminalSplitTargetSelector({
       if (!(target instanceof Node)) {
         return;
       }
-      if (selectorRef.current?.contains(target)) {
+      if (
+        selectorRef.current?.contains(target) ||
+        menuRef.current?.contains(target)
+      ) {
         return;
       }
       setSelectorOpen(false);
@@ -135,6 +148,40 @@ export function TerminalSplitTargetSelector({
     };
   }, [selectorOpen]);
 
+  useLayoutEffect(() => {
+    if (!selectorOpen || typeof window === "undefined") {
+      return;
+    }
+
+    const button = selectorRef.current;
+    const menu = menuRef.current;
+    if (!button || !menu) {
+      return;
+    }
+
+    const buttonRect = button.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const unclampedLeft =
+      menuAlign === "end"
+        ? buttonRect.right - menuRect.width
+        : buttonRect.left;
+    const maxLeft = Math.max(
+      menuViewportInset,
+      window.innerWidth - menuRect.width - menuViewportInset,
+    );
+    const maxTop = Math.max(
+      menuViewportInset,
+      window.innerHeight - menuRect.height - menuViewportInset,
+    );
+    setMenuPosition({
+      left: Math.max(menuViewportInset, Math.min(unclampedLeft, maxLeft)),
+      top: Math.max(
+        menuViewportInset,
+        Math.min(buttonRect.bottom + 8, maxTop),
+      ),
+    });
+  }, [menuAlign, selectorOpen, targetGroups.length]);
+
   const splitCurrentTarget = () => {
     onSplitPane(direction);
   };
@@ -144,6 +191,16 @@ export function TerminalSplitTargetSelector({
       return;
     }
     setSelectorOpen(true);
+  };
+
+  const openTargetSelectorFromSecondaryButton = (
+    event: Pick<MouseEvent, "button" | "preventDefault">,
+  ) => {
+    if (event.button !== 2) {
+      return;
+    }
+    event.preventDefault();
+    openTargetSelector();
   };
 
   const splitTarget = (target: SplitTargetOption) => {
@@ -165,6 +222,9 @@ export function TerminalSplitTargetSelector({
           event.preventDefault();
           openTargetSelector();
         }}
+        onMouseDown={(event) => {
+          openTargetSelectorFromSecondaryButton(event);
+        }}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" || event.key === "ContextMenu") {
             event.preventDefault();
@@ -179,88 +239,90 @@ export function TerminalSplitTargetSelector({
         <Icon className="h-4 w-4" />
       </Button>
 
-      {selectorOpen ? (
-        <div
-          aria-label={`${splitLabel}目标选择`}
-          className={cn(
-            "kerminal-floating-enter absolute top-[calc(100%+0.5rem)] z-[1000] w-[22rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] p-2 text-sm shadow-2xl shadow-black/20 backdrop-blur-xl dark:shadow-black/50",
-            menuAlign === "end" ? "right-0" : "left-0",
-          )}
-          role="menu"
-        >
-          <div className="px-1 pb-2">
-            <div className="text-sm font-medium text-zinc-950 dark:text-zinc-50">
-              选择主机分屏
-            </div>
-            <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-              {splitLabel}到指定目标
-            </div>
-          </div>
-
-          <label className="relative block">
-            <span className="sr-only">搜索分屏主机</span>
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
-            <input
-              autoFocus
-              className="kerminal-field-surface h-9 w-full rounded-xl border py-1 pl-8 pr-3 text-sm text-zinc-950 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600"
-              onChange={(event) => setSearchQuery(event.currentTarget.value)}
-              placeholder="搜索主机、协议或分组"
-              value={searchQuery}
-            />
-          </label>
-
-          <div className="mt-2 max-h-72 space-y-2 overflow-y-auto">
-            {targetGroups.length > 0 ? (
-              targetGroups.map((group) => (
-                <div key={group.groupId}>
-                  <div className="px-1.5 py-1 text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                    {group.groupTitle}
-                  </div>
-                  <div className="space-y-1">
-                    {group.targets.map((target) => (
-                      <button
-                        className="kerminal-focus-ring kerminal-pressable flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-zinc-700 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-zinc-50"
-                        key={target.id}
-                        onClick={() => splitTarget(target)}
-                        role="menuitem"
-                        type="button"
-                      >
-                        <span
-                          aria-hidden="true"
-                          className={cn(
-                            "h-2 w-2 shrink-0 rounded-full",
-                            statusDotClassNames[target.status],
-                          )}
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">
-                            {target.title}
-                          </span>
-                          <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">
-                            {target.subtitle || target.id}
-                          </span>
-                        </span>
-                        <span className="rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium uppercase text-zinc-500 dark:text-zinc-400">
-                          {kindLabels[target.kind]}
-                        </span>
-                        {target.production ? (
-                          <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-200">
-                            生产
-                          </span>
-                        ) : null}
-                      </button>
-                    ))}
-                  </div>
+      {selectorOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              aria-label={`${splitLabel}目标选择`}
+              className="kerminal-floating-enter fixed z-[1100] w-[22rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] p-2 text-sm shadow-2xl shadow-black/20 backdrop-blur-xl dark:shadow-black/50"
+              ref={menuRef}
+              role="menu"
+              style={menuPosition}
+            >
+              <div className="px-1 pb-2">
+                <div className="text-sm font-medium text-zinc-950 dark:text-zinc-50">
+                  选择主机分屏
                 </div>
-              ))
-            ) : (
-              <div className="rounded-xl bg-[var(--surface-hover)] px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">
-                没有匹配的终端主机。
+                <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                  {splitLabel}到指定目标
+                </div>
               </div>
-            )}
-          </div>
-        </div>
-      ) : null}
+
+              <label className="relative block">
+                <span className="sr-only">搜索分屏主机</span>
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
+                <input
+                  autoFocus
+                  className="kerminal-field-surface h-9 w-full rounded-xl border py-1 pl-8 pr-3 text-sm text-zinc-950 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600"
+                  onChange={(event) => setSearchQuery(event.currentTarget.value)}
+                  placeholder="搜索主机、协议或分组"
+                  value={searchQuery}
+                />
+              </label>
+
+              <div className="mt-2 max-h-72 space-y-2 overflow-y-auto">
+                {targetGroups.length > 0 ? (
+                  targetGroups.map((group) => (
+                    <div key={group.groupId}>
+                      <div className="px-1.5 py-1 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                        {group.groupTitle}
+                      </div>
+                      <div className="space-y-1">
+                        {group.targets.map((target) => (
+                          <button
+                            className="kerminal-focus-ring kerminal-pressable flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-zinc-700 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-zinc-50"
+                            key={target.id}
+                            onClick={() => splitTarget(target)}
+                            role="menuitem"
+                            type="button"
+                          >
+                            <span
+                              aria-hidden="true"
+                              className={cn(
+                                "h-2 w-2 shrink-0 rounded-full",
+                                statusDotClassNames[target.status],
+                              )}
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-medium">
+                                {target.title}
+                              </span>
+                              <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">
+                                {target.subtitle || target.id}
+                              </span>
+                            </span>
+                            <span className="rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                              {kindLabels[target.kind]}
+                            </span>
+                            {target.production ? (
+                              <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-200">
+                                生产
+                              </span>
+                            ) : null}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-xl bg-[var(--surface-hover)] px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">
+                    没有匹配的终端主机。
+                  </div>
+                )}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

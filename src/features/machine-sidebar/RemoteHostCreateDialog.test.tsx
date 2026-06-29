@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDefaultSshOptions,
+  revealRemoteHostCredential,
   type RemoteHost,
 } from "../../lib/remoteHostApi";
 import { testRemoteConnection } from "../../lib/connectionApi";
@@ -18,10 +19,25 @@ vi.mock("../../lib/connectionApi", () => ({
   testRemoteConnection: vi.fn(),
 }));
 
+vi.mock("../../lib/remoteHostApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/remoteHostApi")>();
+  return {
+    ...actual,
+    revealRemoteHostCredential: vi.fn(),
+  };
+});
+
 describe("RemoteHostCreateDialog", () => {
   beforeEach(() => {
     window.localStorage.clear();
     vi.mocked(testRemoteConnection).mockReset();
+    vi.mocked(revealRemoteHostCredential).mockReset();
+    vi.mocked(revealRemoteHostCredential).mockResolvedValue({
+      authType: "password",
+      hostId: "host-1",
+      message: "没有可回显的保存凭据。",
+      status: "missing",
+    });
     vi.mocked(testRemoteConnection).mockResolvedValue({
       connected: true,
       latencyMs: 12,
@@ -637,59 +653,6 @@ describe("RemoteHostCreateDialog", () => {
     expect(screen.queryByText("选择后加入侧栏。")).not.toBeInTheDocument();
   });
 
-  it("shows host-context guidance for the legacy Docker default mode", () => {
-    const onAddDockerContainer = vi.fn();
-    const onListDockerContainers = vi.fn();
-
-    render(
-      <RemoteHostCreateDialog
-        defaultMode="docker"
-        groups={groupsWithSsh}
-        onAddDockerContainer={onAddDockerContainer}
-        onClose={vi.fn()}
-        onCreateHost={vi.fn()}
-        onListDockerContainers={onListDockerContainers}
-        open
-      />,
-    );
-
-    expect(screen.getByText("容器入口已移到主机右键菜单")).toBeInTheDocument();
-    expect(
-      screen.getByText(/在左侧列表右击 SSH 主机，选择「容器」/),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("combobox", { name: "主机" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "确认" }),
-    ).not.toBeInTheDocument();
-    expect(onListDockerContainers).not.toHaveBeenCalled();
-    expect(onAddDockerContainer).not.toHaveBeenCalled();
-  });
-
-  it("closes the legacy Docker guidance without adding a container", async () => {
-    const user = userEvent.setup();
-    const onAddDockerContainer = vi.fn();
-    const onClose = vi.fn();
-
-    render(
-      <RemoteHostCreateDialog
-        defaultMode="docker"
-        groups={groupsWithSsh}
-        onAddDockerContainer={onAddDockerContainer}
-        onClose={onClose}
-        onCreateHost={vi.fn()}
-        onListDockerContainers={vi.fn()}
-        open
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "取消" }));
-
-    expect(onAddDockerContainer).not.toHaveBeenCalled();
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
   it("prefills plaintext SSH password and inline private key when editing", () => {
     const passwordHost: RemoteHost = {
       ...createdHost,
@@ -731,6 +694,41 @@ describe("RemoteHostCreateDialog", () => {
 
     expect(screen.getByLabelText("私钥内容")).toHaveValue(
       "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n",
+    );
+  });
+
+  it("reveals a saved vault SSH password when editing", async () => {
+    vi.mocked(revealRemoteHostCredential).mockResolvedValueOnce({
+      authType: "password",
+      credentialSecret: "vault-visible-password",
+      hostId: "host-1",
+      status: "available",
+    });
+    const passwordHost: RemoteHost = {
+      ...createdHost,
+      authType: "password",
+      credentialRef: undefined,
+      credentialSecret: undefined,
+      credentialStatus: "vault",
+      secretRef: "credential:kerminal:ssh-host:host-1:target:password:v1",
+    };
+
+    render(
+      <RemoteHostCreateDialog
+        editingHost={passwordHost}
+        groups={groups}
+        onClose={vi.fn()}
+        onCreateHost={vi.fn()}
+        onUpdateHost={vi.fn()}
+        open
+      />,
+    );
+
+    expect(revealRemoteHostCredential).toHaveBeenCalledWith("host-1");
+    await waitFor(() =>
+      expect(screen.getByLabelText("SSH 密码")).toHaveValue(
+        "vault-visible-password",
+      ),
     );
   });
 
@@ -895,13 +893,13 @@ describe("RemoteHostCreateDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("prefills and updates plaintext RDP password when editing", async () => {
+  it("reveals and updates saved RDP password when editing", async () => {
     const user = userEvent.setup();
     const editingHost: RemoteHost = {
       authType: "password",
       createdAt: "now",
       credentialRef: undefined,
-      credentialSecret: "visible-rdp-secret",
+      secretRef: "credential:kerminal:rdp-host:rdp-1:target:password:v1",
       groupId: "group-dev",
       host: "rdp.internal",
       id: "rdp-1",
@@ -916,11 +914,16 @@ describe("RemoteHostCreateDialog", () => {
     };
     const updatedHost: RemoteHost = {
       ...editingHost,
-      credentialSecret: "next-rdp-secret",
       updatedAt: "later",
     };
     const onUpdateHost = vi.fn().mockResolvedValue(updatedHost);
     const onCreated = vi.fn();
+    vi.mocked(revealRemoteHostCredential).mockResolvedValueOnce({
+      authType: "password",
+      credentialSecret: "visible-rdp-secret",
+      hostId: "rdp-1",
+      status: "available",
+    });
 
     render(
       <RemoteHostCreateDialog
@@ -936,7 +939,7 @@ describe("RemoteHostCreateDialog", () => {
 
     const passwordInput = screen.getByLabelText("密码");
     expect(passwordInput).toHaveAttribute("type", "text");
-    expect(passwordInput).toHaveValue("visible-rdp-secret");
+    await waitFor(() => expect(passwordInput).toHaveValue("visible-rdp-secret"));
 
     await user.clear(passwordInput);
     await user.type(passwordInput, "next-rdp-secret");
@@ -957,6 +960,59 @@ describe("RemoteHostCreateDialog", () => {
       username: "administrator",
     });
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(updatedHost));
+  });
+
+  it("keeps existing RDP password auth when saving before reveal finishes", async () => {
+    const user = userEvent.setup();
+    const editingHost: RemoteHost = {
+      authType: "password",
+      createdAt: "now",
+      groupId: "group-dev",
+      host: "rdp.internal",
+      id: "rdp-1",
+      name: "office-rdp",
+      port: 3389,
+      production: false,
+      secretRef: "credential:kerminal:rdp-host:rdp-1:target:password:v1",
+      sshOptions: createDefaultSshOptions(),
+      sortOrder: 10,
+      tags: ["rdp"],
+      updatedAt: "now",
+      username: "administrator",
+    };
+    const onUpdateHost = vi.fn().mockResolvedValue(editingHost);
+    vi.mocked(revealRemoteHostCredential).mockImplementationOnce(
+      () => new Promise(() => {}),
+    );
+
+    render(
+      <RemoteHostCreateDialog
+        editingHost={editingHost}
+        groups={groups}
+        onClose={vi.fn()}
+        onCreateHost={vi.fn()}
+        onUpdateHost={onUpdateHost}
+        open
+      />,
+    );
+
+    expect(screen.getByLabelText("密码")).toHaveValue("");
+    await user.click(screen.getByRole("button", { name: "确认" }));
+
+    expect(onUpdateHost).toHaveBeenCalledWith({
+      authType: "password",
+      credentialRef: undefined,
+      credentialSecret: undefined,
+      groupId: "group-dev",
+      host: "rdp.internal",
+      id: "rdp-1",
+      name: "office-rdp",
+      port: 3389,
+      production: false,
+      sortOrder: 10,
+      tags: ["rdp"],
+      username: "administrator",
+    });
   });
 
   it("creates a group from the RDP form and keeps the form values", async () => {

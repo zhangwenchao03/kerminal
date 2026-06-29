@@ -40,7 +40,7 @@ describe("XtermPane sessions and command blocks", () => {
 
     await waitFor(() => {
       expect(mocks.api.createTerminalSession).toHaveBeenCalledWith(
-        { cols: 80, rows: 24 },
+        { cols: 100, rows: 30 },
         expect.any(Function),
       );
     });
@@ -106,6 +106,58 @@ describe("XtermPane sessions and command blocks", () => {
       sessionId: "session-1",
     });
     expect(screen.getByText("已结束")).toBeInTheDocument();
+  });
+
+  it("marks the active terminal session closed when status polling sees it exited", async () => {
+    vi.useFakeTimers();
+    const onConnectionStateChange = vi.fn();
+    const onSessionFinished = vi.fn();
+
+    render(
+      <XtermPane
+        focused
+        onConnectionStateChange={onConnectionStateChange}
+        onSessionFinished={onSessionFinished}
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(screen.getByText("已连接")).toBeInTheDocument();
+
+    mocks.api.listTerminalSessions.mockResolvedValue([
+      {
+        cols: 80,
+        id: "session-1",
+        rows: 24,
+        shell: "powershell.exe",
+        status: "exited",
+      },
+    ]);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+
+    expect(mocks.api.listTerminalSessions).toHaveBeenCalled();
+    expect(onSessionFinished).toHaveBeenCalledWith({
+      durationMs: expect.any(Number),
+      reason: "closed",
+      sessionId: "session-1",
+    });
+    expect(onConnectionStateChange).toHaveBeenLastCalledWith("closed");
+    expect(screen.getByText("已结束")).toBeInTheDocument();
+    expect(
+      mocks.terminalInstances[0].write.mock.calls.some(([data]) =>
+        String(data).includes("会话已退出"),
+      ),
+    ).toBe(true);
   });
 
   it("clears a transient agent startup message when real output arrives", async () => {
@@ -302,7 +354,7 @@ describe("XtermPane sessions and command blocks", () => {
     expect(mocks.terminalInstances[0].dispose).not.toHaveBeenCalled();
     expect(mocks.api.createSshTerminalSession).toHaveBeenNthCalledWith(
       2,
-      { cols: 80, cwd: "/dev", hostId: "host-lab", rows: 24 },
+      { cols: 100, cwd: "/dev", hostId: "host-lab", rows: 30 },
       expect.any(Function),
     );
   });

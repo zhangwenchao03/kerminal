@@ -122,6 +122,25 @@ describe("remoteHostApi", () => {
     });
   });
 
+  it("reveals a saved credential through Tauri", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue({
+      authType: "password",
+      credentialSecret: "s3cr3t",
+      hostId: "host-1",
+      status: "available",
+    });
+    const { revealRemoteHostCredential } = await import("./remoteHostApi");
+
+    await expect(revealRemoteHostCredential("host-1")).resolves.toMatchObject({
+      credentialSecret: "s3cr3t",
+      status: "available",
+    });
+    expect(invokeMock).toHaveBeenCalledWith("remote_host_reveal_credential", {
+      hostId: "host-1",
+    });
+  });
+
   it("starts with an empty browser remote host tree outside Tauri", async () => {
     isTauriMock.mockReturnValue(false);
     const { listRemoteHostTree } = await import("./remoteHostApi");
@@ -238,9 +257,12 @@ describe("remoteHostApi", () => {
 
   it("stores credential secrets in browser preview host state", async () => {
     isTauriMock.mockReturnValue(false);
-    const { createRemoteHost, listRemoteHostTree, updateRemoteHost } = await import(
-      "./remoteHostApi"
-    );
+    const {
+      createRemoteHost,
+      listRemoteHostTree,
+      revealRemoteHostCredential,
+      updateRemoteHost,
+    } = await import("./remoteHostApi");
 
     const host = await createRemoteHost({
       authType: "password",
@@ -273,6 +295,10 @@ describe("remoteHostApi", () => {
       credentialSecret: "updated-s3cr3t",
       host: "secret.internal",
       name: "secret",
+    });
+    await expect(revealRemoteHostCredential(host.id)).resolves.toMatchObject({
+      credentialSecret: "updated-s3cr3t",
+      status: "available",
     });
   });
 });

@@ -134,11 +134,11 @@ describe("terminalApi", () => {
     const onOutput = vi.fn();
 
     const session = await createTelnetTerminalSession(
-      { cols: 100, hostId: "telnet-legacy", rows: 30 },
+      { cols: 100, hostId: "telnet-lab", rows: 30 },
       onOutput,
     );
     channelMessageHandler?.({
-      data: "legacy output",
+      data: "lab output",
       kind: "data",
       sessionId: "telnet-session-1",
     });
@@ -146,10 +146,10 @@ describe("terminalApi", () => {
     expect(session.id).toBe("telnet-session-1");
     expect(invokeMock).toHaveBeenCalledWith("telnet_create_session", {
       output: expect.any(MockChannel),
-      request: { cols: 100, hostId: "telnet-legacy", rows: 30 },
+      request: { cols: 100, hostId: "telnet-lab", rows: 30 },
     });
     expect(onOutput).toHaveBeenCalledWith({
-      data: "legacy output",
+      data: "lab output",
       kind: "data",
       sessionId: "telnet-session-1",
     });
@@ -350,7 +350,7 @@ describe("terminalApi", () => {
     const onSerialOutput = vi.fn();
 
     const telnetSession = await createTelnetTerminalSession(
-      { cols: 80, hostId: "telnet-legacy", rows: 24 },
+      { cols: 80, hostId: "telnet-lab", rows: 24 },
       onTelnetOutput,
     );
     const serialSession = await createSerialTerminalSession(

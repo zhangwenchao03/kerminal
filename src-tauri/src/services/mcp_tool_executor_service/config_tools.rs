@@ -162,7 +162,7 @@ fn validate_hosts(store: &ConfigFileStore, root: &Path, report: &mut ConfigValid
     };
 
     validate_host_public_files_are_explicit(root, report);
-    validate_host_secret_files(root, report);
+    validate_host_gitignore_rules(root, report);
 
     match store.list_remote_host_metadata() {
         Ok(hosts) => {
@@ -240,173 +240,40 @@ fn validate_host_public_files_are_explicit(root: &Path, report: &mut ConfigValid
     }
 }
 
-fn validate_host_secret_files(root: &Path, report: &mut ConfigValidationReport) {
-    let secret_dir = root.join("secrets").join("hosts");
-    let entries = match fs::read_dir(&secret_dir) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+fn validate_host_gitignore_rules(root: &Path, report: &mut ConfigValidationReport) {
+    let gitignore_path = root.join(".gitignore");
+    let source = match fs::read_to_string(&gitignore_path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            report.error(
+                "hosts",
+                ".gitignore",
+                "missing .gitignore; add secrets/vault-key.toml",
+            );
+            return;
+        }
         Err(error) => {
-            report.error("hosts", "secrets/hosts", error.to_string());
+            report.error("hosts", ".gitignore", error.to_string());
             return;
         }
     };
-
-    let mut checked_count = 0usize;
-    for entry in entries.filter_map(Result::ok) {
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        if !file_type.is_file() {
-            continue;
-        }
-        let file_name = entry.file_name();
-        let file_name = file_name.to_string_lossy();
-        if !file_name.ends_with(".toml") {
-            continue;
-        }
-        checked_count += 1;
-        let display_path = format!("secrets/hosts/{file_name}");
-        let expected_id = entry
-            .path()
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or_default()
-            .to_owned();
-        let source = match fs::read_to_string(entry.path()) {
-            Ok(source) => source,
-            Err(error) => {
-                report.error("hosts", display_path, error.to_string());
-                continue;
-            }
-        };
-        let parsed = match toml::from_str::<toml::Value>(&source) {
-            Ok(parsed) => parsed,
-            Err(error) => {
-                report.error(
-                    "hosts",
-                    display_path,
-                    format!("invalid host secret TOML: {error}"),
-                );
-                continue;
-            }
-        };
-        validate_host_secret_document(&display_path, &expected_id, &parsed, report);
-    }
-
-    if checked_count > 0 {
-        report.checked(
-            "hosts",
-            "secrets/hosts/*.toml",
-            format!("{checked_count} host secret file(s) checked"),
-        );
-    }
-}
-
-fn validate_host_secret_document(
-    display_path: &str,
-    expected_id: &str,
-    parsed: &toml::Value,
-    report: &mut ConfigValidationReport,
-) {
-    let Some(table) = parsed.as_table() else {
-        report.error(
-            "hosts",
-            display_path,
-            "host secret file must be a TOML table",
-        );
-        return;
-    };
-
-    match table.get("schema_version") {
-        Some(toml::Value::Integer(version)) if *version == 1 => {}
-        Some(_) => report.error("hosts", display_path, "schema_version must be integer 1"),
-        None => report.error("hosts", display_path, "missing top-level schema_version"),
-    }
-
-    match table.get("id").and_then(toml::Value::as_str) {
-        Some(id) if id == expected_id => {}
-        Some(id) => report.error(
-            "hosts",
-            display_path,
-            format!("host secret id `{id}` does not match file name `{expected_id}.toml`"),
-        ),
-        None => report.error("hosts", display_path, "id must be a non-empty string"),
-    }
-
-    if table.contains_key("password") {
-        report.error(
-            "hosts",
-            display_path,
-            "host secret key `password` is ignored by Kerminal; use `credential_secret` instead",
-        );
-    }
-    if let Some(value) = table.get("credential_secret") {
-        validate_secret_string(value, display_path, "credential_secret", report);
-    }
-
-    let Some(jump_hosts) = table.get("jump_hosts") else {
-        return;
-    };
-    let Some(jump_hosts) = jump_hosts.as_array() else {
-        report.error("hosts", display_path, "jump_hosts must be an array table");
-        return;
-    };
-    for (index, secret) in jump_hosts.iter().enumerate() {
-        let label = format!("jump_hosts[{index}]");
-        let Some(secret) = secret.as_table() else {
-            report.error("hosts", display_path, format!("{label} must be a table"));
-            continue;
-        };
-        match secret.get("index") {
-            Some(toml::Value::Integer(value)) if *value >= 0 => {}
-            Some(_) => report.error(
-                "hosts",
-                display_path,
-                format!("{label}.index must be a non-negative integer"),
-            ),
-            None => report.error(
-                "hosts",
-                display_path,
-                format!("{label}.index must be a non-negative integer"),
-            ),
-        }
-        match secret.get("credential_secret") {
-            Some(value) => validate_secret_string(
-                value,
-                display_path,
-                &format!("{label}.credential_secret"),
-                report,
-            ),
-            None => report.error(
-                "hosts",
-                display_path,
-                format!("{label}.credential_secret must be a non-empty string"),
-            ),
-        }
-        if secret.contains_key("password") {
+    for rule in ["secrets/vault-key.toml"] {
+        if !gitignore_contains_rule(&source, rule) {
             report.error(
                 "hosts",
-                display_path,
-                format!("{label}.password is ignored by Kerminal; use {label}.credential_secret instead"),
+                ".gitignore",
+                format!("missing required Kerminal secret ignore rule `{rule}`"),
             );
         }
     }
 }
 
-fn validate_secret_string(
-    value: &toml::Value,
-    display_path: &str,
-    label: &str,
-    report: &mut ConfigValidationReport,
-) {
-    match value.as_str() {
-        Some(value) if !value.trim().is_empty() => {}
-        _ => report.error(
-            "hosts",
-            display_path,
-            format!("{label} must be a non-empty string"),
-        ),
-    }
+fn gitignore_contains_rule(source: &str, rule: &str) -> bool {
+    source
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .any(|line| line == rule)
 }
 
 fn validate_snippets(store: &ConfigFileStore, report: &mut ConfigValidationReport) {

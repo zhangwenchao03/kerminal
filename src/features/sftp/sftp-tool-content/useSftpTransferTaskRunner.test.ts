@@ -48,6 +48,7 @@ const uploadTransferPlan: SftpTransferActionItem = {
     message: "已加入上传队列：release.tgz",
   },
   request: {
+    conflictPolicy: "overwrite",
     direction: "upload",
     hostId: "prod-api",
     kind: "file",
@@ -243,8 +244,20 @@ function transferSummary(
     id: "transfer-1",
     kind: "file",
     localPath: "/Users/me/release.tgz",
+    operation: "upload",
     remotePath: "/app/release.tgz",
+    source: {
+      kind: "local",
+      path: "/Users/me/release.tgz",
+    },
     status: "queued",
+    target: {
+      hostId: "prod-api",
+      hostLabel: "prod-api",
+      kind: "remote",
+      path: "/app/release.tgz",
+    },
+    transportMode: "singleHostSftp",
     updatedAt: 1,
     ...overrides,
   };

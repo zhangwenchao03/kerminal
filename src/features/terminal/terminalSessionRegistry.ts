@@ -18,8 +18,10 @@ import {
 
 export interface PaneSessionRecord {
   sessionId: string;
+  commandBlockText?: string;
   containerId?: string;
   containerRuntime?: string;
+  selectedText?: string;
   targetRef?: string;
   targetToken?: string;
   tabId?: string;
@@ -32,6 +34,11 @@ export interface PaneSessionRecord {
 
 export interface PaneSessionListRecord extends PaneSessionRecord {
   paneId: string;
+}
+
+export interface TerminalPaneRuntimeContext {
+  commandBlockText?: string;
+  selectedText?: string;
 }
 
 const paneSessions = new Map<string, PaneSessionRecord>();
@@ -140,6 +147,20 @@ export function updateTerminalPaneSessionCwd(paneId: string, cwd: string) {
   reportTerminalSessionMetadataUpdated(paneId, {
     ...currentSession,
     cwd,
+  });
+}
+
+export function updateTerminalPaneRuntimeContext(
+  paneId: string,
+  context: TerminalPaneRuntimeContext,
+) {
+  const currentSession = paneSessions.get(paneId);
+  if (!currentSession) {
+    return;
+  }
+  paneSessions.set(paneId, {
+    ...currentSession,
+    ...context,
   });
 }
 

@@ -16,35 +16,19 @@ export interface DockerComposeContainerMetadata {
   project?: string | null;
   service?: string | null;
   workingDir?: string | null;
-  working_dir?: string | null;
   configFiles?: string[] | null;
-  config_files?: string[] | null;
   configPaths?: string[] | null;
-  config_paths?: string[] | null;
   containerNumber?: string | null;
-  container_number?: string | null;
   oneoff?: boolean | null;
   runtimeFamily?: string | null;
-  runtime_family?: string | null;
 }
-
-export interface LegacyComposeContainerFields {
-  composeProject?: string;
-  composeService?: string;
-  labels?: Record<string, string>;
-  project?: string;
-}
-
-export type ComposeAwareContainerSummary =
-  DockerContainerSummary & LegacyComposeContainerFields;
 
 export type ComposeProjectContainerSummary = Omit<
   DockerContainerSummary,
   "compose"
-> &
-  LegacyComposeContainerFields & {
-    compose?: DockerComposeContainerMetadata | null;
-  };
+> & {
+  compose?: DockerComposeContainerMetadata | null;
+};
 
 export interface ComposeConfigPathResolution {
   configFiles: string[];
@@ -192,8 +176,6 @@ export function readContainerComposeProject(
 ) {
   return (
     trimText(container.compose?.project) ||
-    trimText(container.project) ||
-    trimText(container.composeProject) ||
     readLabel(container, dockerComposeLabels.project) ||
     readLabel(container, podmanComposeLabels.project) ||
     ""
@@ -205,7 +187,6 @@ export function readContainerComposeService(
 ) {
   return (
     trimText(container.compose?.service) ||
-    trimText(container.composeService) ||
     readLabel(container, dockerComposeLabels.service) ||
     readLabel(container, podmanComposeLabels.service) ||
     ""
@@ -225,7 +206,6 @@ export function readContainerComposeConfigPathResolution(
     configFiles: readContainerComposeConfigFiles(container),
     configPaths: firstNonEmptyStringList([
       readStringList(container.compose?.configPaths),
-      readStringList(container.compose?.config_paths),
     ]),
     workingDir: readContainerComposeWorkingDir(container),
   });
@@ -460,7 +440,6 @@ function readContainerComposeWorkingDir(
 ) {
   return (
     trimText(container.compose?.workingDir) ||
-    trimText(container.compose?.working_dir) ||
     readLabel(container, dockerComposeLabels.workingDir) ||
     readLabel(container, podmanComposeLabels.workingDir) ||
     ""
@@ -472,7 +451,6 @@ function readContainerComposeConfigFiles(
 ) {
   return firstNonEmptyStringList([
     readStringList(container.compose?.configFiles),
-    readStringList(container.compose?.config_files),
     splitComposeConfigFiles(
       readLabel(container, dockerComposeLabels.configFiles),
     ),
@@ -487,7 +465,6 @@ function readContainerComposeContainerNumber(
 ) {
   return (
     trimText(container.compose?.containerNumber) ||
-    trimText(container.compose?.container_number) ||
     readLabel(container, dockerComposeLabels.containerNumber) ||
     ""
   );
@@ -507,8 +484,7 @@ function readContainerComposeRuntimeFamily(
   container: ComposeProjectContainerSummary,
 ): ComposeRuntimeFamily {
   const runtimeFamily = (
-    trimText(container.compose?.runtimeFamily) ||
-    trimText(container.compose?.runtime_family)
+    trimText(container.compose?.runtimeFamily)
   ).toLowerCase();
   if (runtimeFamily.includes("podman")) {
     return "podman";

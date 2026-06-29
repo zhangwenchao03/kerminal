@@ -20,9 +20,15 @@ use crate::{
         },
         diagnostics::{DiagnosticBundle, RuntimeHealthSnapshot},
         docker::{
+            DockerContainerChmodRequest, DockerContainerDeleteRequest,
             DockerContainerDirectoryListing, DockerContainerFilePreview,
-            DockerContainerListRequest, DockerContainerPathRequest, DockerContainerPreviewRequest,
-            DockerContainerSummary,
+            DockerContainerInfoRequest, DockerContainerInspectSummary,
+            DockerContainerLifecycleAction, DockerContainerLifecycleRequest,
+            DockerContainerLifecycleResult, DockerContainerListRequest, DockerContainerLogsRequest,
+            DockerContainerLogsResult, DockerContainerPathRequest, DockerContainerPreviewRequest,
+            DockerContainerRenameRequest, DockerContainerStatsRequest, DockerContainerStatsResult,
+            DockerContainerSummary, DockerContainerTransferRequest,
+            DockerContainerWriteTextFileRequest, DockerContainerWriteTextFileResponse,
         },
         mcp_server::ToolDefinition,
         port_forward::{
@@ -30,7 +36,10 @@ use crate::{
             PortForwardProxyApplyScope, PortForwardProxyProtocol, PortForwardPurpose,
             PortForwardRemoteAccessScope, PortForwardStatus, PortForwardSummary,
         },
-        remote_host::RemoteHost,
+        remote_host::{
+            build_vault_secret_ref, parse_vault_secret_ref, RemoteHost, RemoteHostAuthType,
+            RemoteHostCreateRequest, RemoteHostUpdateRequest,
+        },
         server_info::{ServerInfoRequest, ServerInfoSnapshot},
         sftp::{
             SftpChmodRequest, SftpDeleteRequest, SftpDirectoryListing, SftpEntryKind,
@@ -40,9 +49,17 @@ use crate::{
             SftpTransferRequest, SftpTransferStatus, SftpTransferSummary,
         },
         ssh_command::{SshCommandOutput, SshCommandRequest},
+        target::RemoteTargetRef,
         terminal::{
             TerminalOutputSnapshot, TerminalResizeRequest, TerminalSessionLogState,
             TerminalSessionSummary,
+        },
+        tmux::{
+            TmuxAttachLaunch, TmuxAttachSessionRequest, TmuxCapabilityStatus,
+            TmuxCapturePaneRequest, TmuxCreateSessionRequest, TmuxKillSessionRequest,
+            TmuxListPanesRequest, TmuxListSessionsRequest, TmuxListWindowsRequest, TmuxPaneCapture,
+            TmuxPaneSummary, TmuxProbeRequest, TmuxRenameSessionRequest, TmuxSessionSummary,
+            TmuxTargetRef, TmuxWindowSummary,
         },
     },
     paths::KerminalPaths,
@@ -55,6 +72,7 @@ use crate::{
         command_history_service::CommandHistoryService,
         diagnostics_service::DiagnosticsService,
         docker_host_service::DockerHostService,
+        encrypted_vault_service::EncryptedVaultService,
         local_network_proxy_service::{LocalNetworkProxyService, LocalProxyEntryRequest},
         port_forward_service::PortForwardService,
         remote_host_service::RemoteHostService,
@@ -66,6 +84,7 @@ use crate::{
         terminal_session_binding_service::{
             AgentTargetBindingSnapshot, TerminalSessionBindingService,
         },
+        tmux_service::TmuxService,
     },
     storage::{config_file_store::ConfigFileStore, CommandSqliteStore, RuntimeFileStore},
 };
@@ -77,10 +96,12 @@ mod diagnostics_tools;
 mod execution;
 mod execution_result;
 mod history_tools;
+mod host_vault_tools;
 mod port_forward_tools;
 mod sftp_tools;
 mod ssh_tools;
 mod terminal_tools;
+mod tmux_tools;
 
 pub use self::{
     diagnostics_tools::summarize_server_info_snapshot_for_agent,
@@ -110,12 +131,19 @@ pub mod rules {
     ) -> AppResult<SshCommandRequest> {
         super::ssh_tools::ssh_command_request_from_arguments(arguments)
     }
+
+    /// 解析 MCP `tmux.probe` 工具参数。
+    pub fn tmux_probe_request_from_arguments(
+        arguments: &serde_json::Map<String, Value>,
+    ) -> AppResult<crate::models::tmux::TmuxProbeRequest> {
+        super::tmux_tools::tmux_probe_request_from_arguments(arguments)
+    }
 }
 
 use self::{
     arguments::*, config_tools::*, container_tools::*, diagnostics_tools::*, execution::*,
-    execution_result::*, history_tools::*, port_forward_tools::*, sftp_tools::*, ssh_tools::*,
-    terminal_tools::*,
+    execution_result::*, history_tools::*, host_vault_tools::*, port_forward_tools::*,
+    sftp_tools::*, ssh_tools::*, terminal_tools::*, tmux_tools::*,
 };
 
 const MCP_CALL_LOG_FIELD_MAX_CHARS: usize = 4096;
@@ -214,6 +242,8 @@ pub struct McpToolExecutionContext<'a> {
     pub sftp: &'a SftpService,
     /// Docker/Podman 容器服务。
     pub docker_hosts: &'a DockerHostService,
+    /// tmux 会话管理服务。
+    pub tmux: &'a TmuxService,
     /// SSH 端口转发服务。
     pub port_forwards: &'a PortForwardService,
     /// 本机共享网络代理服务。
@@ -248,7 +278,7 @@ impl McpToolExecutorService {
         let tool = find_enabled_tool(tools, tool_id)?;
         let arguments = normalized_arguments(arguments)?;
         validate_required_arguments(&tool, &arguments)?;
-        let result = execute_tool(&context, &tool.id, &arguments).await;
+        let result = execute_tool(&context, tools, &tool.id, &arguments).await;
         append_agent_mcp_call_log(&context, &tool.id, &arguments, &result);
         Ok(result.into())
     }

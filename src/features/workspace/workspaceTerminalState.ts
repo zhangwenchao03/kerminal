@@ -12,10 +12,12 @@ import {
   serialTarget,
   sshTarget,
   telnetTarget,
+  targetStableId,
 } from "../../lib/targetModel";
 import {
   isTerminalSessionTab,
   type Machine,
+  type MachineStatus,
   type TerminalPane,
   type TerminalSplitDirection,
   type TerminalSplitLayoutSizes,
@@ -206,11 +208,7 @@ export function splitFocusedPaneState(
   }
 
   const paneTemplate = command.targetPane ?? sourcePane;
-  const sourceCwd = sourcePane.currentCwd ?? sourcePane.cwd;
-  const templateCwd = command.targetPane
-    ? (command.targetPane.currentCwd ?? command.targetPane.cwd)
-    : undefined;
-  const currentCwd = sourceCwd ?? templateCwd;
+  const currentCwd = splitPaneInitialCwd(sourcePane, command.targetPane);
   const newPane: TerminalPane = {
     ...paneTemplate,
     cwd: currentCwd,
@@ -451,6 +449,23 @@ export function updatePaneOutputHistoryState(
   };
 }
 
+export function updatePaneStatusState(
+  state: TerminalWorkspaceStateSlice,
+  paneId: string,
+  status: MachineStatus,
+): TerminalWorkspaceStatePatch | TerminalWorkspaceStateSlice {
+  const targetPane = state.terminalPanes.find((pane) => pane.id === paneId);
+  if (!targetPane || targetPane.status === status) {
+    return state;
+  }
+
+  return {
+    terminalPanes: state.terminalPanes.map((pane) =>
+      pane.id === paneId ? { ...pane, status } : pane,
+    ),
+  };
+}
+
 function paneIdPrefixForSplitMode(mode: TerminalPane["mode"]): string {
   switch (mode) {
     case "ssh":
@@ -466,6 +481,40 @@ function paneIdPrefixForSplitMode(mode: TerminalPane["mode"]): string {
     default:
       return "pane-local";
   }
+}
+
+function splitPaneInitialCwd(
+  sourcePane: TerminalPane,
+  targetPane: TerminalPane | undefined,
+) {
+  const sourceCwd = sourcePane.currentCwd ?? sourcePane.cwd;
+  if (!targetPane || isSameSplitTarget(sourcePane, targetPane)) {
+    return sourceCwd ?? targetPane?.currentCwd ?? targetPane?.cwd;
+  }
+  return targetPane.currentCwd ?? targetPane.cwd;
+}
+
+function isSameSplitTarget(left: TerminalPane, right: TerminalPane) {
+  return terminalPaneTargetKey(left) === terminalPaneTargetKey(right);
+}
+
+function terminalPaneTargetKey(pane: TerminalPane) {
+  if (pane.mode === "local") {
+    return `local:${pane.profileId ?? pane.machineId}`;
+  }
+  if (pane.target) {
+    return targetStableId(pane.target);
+  }
+  if (pane.mode === "ssh") {
+    return `ssh:${pane.remoteHostId ?? pane.machineId}`;
+  }
+  if (pane.mode === "telnet" || pane.mode === "serial") {
+    return `${pane.mode}:${pane.remoteHostId ?? pane.machineId}`;
+  }
+  if (pane.mode === "container") {
+    return `container:${pane.remoteHostId ?? ""}:${pane.containerId ?? pane.machineId}`;
+  }
+  return `${pane.mode}:${pane.machineId}`;
 }
 
 function terminalPaneModeForMachine(

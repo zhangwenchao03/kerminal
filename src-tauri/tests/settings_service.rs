@@ -82,6 +82,11 @@ fn settings_service_persists_settings_in_toml() {
         settings.sftp.pipeline_depth = 96;
         settings.sftp.packet_bytes = 256 * 1024;
         settings.sftp.timeout_seconds = 45;
+        settings.desktop_notifications.enabled = true;
+        settings.desktop_notifications.background_only = false;
+        settings.desktop_notifications.important_only = true;
+        settings.desktop_notifications.min_duration_ms = 25_000;
+        settings.desktop_notifications.throttle_ms = 60_000;
 
         let stored = state
             .settings()
@@ -106,6 +111,11 @@ fn settings_service_persists_settings_in_toml() {
             TerminalColorScheme::TokyoNight
         );
         assert_eq!(stored.terminal.font_size, 16);
+        assert!(stored.desktop_notifications.enabled);
+        assert!(!stored.desktop_notifications.background_only);
+        assert!(stored.desktop_notifications.important_only);
+        assert_eq!(stored.desktop_notifications.min_duration_ms, 25_000);
+        assert_eq!(stored.desktop_notifications.throttle_ms, 60_000);
     }
 
     let state = AppState::initialize_with_paths(paths.clone()).expect("reopen app state");
@@ -175,10 +185,17 @@ fn settings_service_persists_settings_in_toml() {
     assert_eq!(settings.sftp.pipeline_depth, 96);
     assert_eq!(settings.sftp.packet_bytes, 256 * 1024);
     assert_eq!(settings.sftp.timeout_seconds, 45);
+    assert!(settings.desktop_notifications.enabled);
+    assert!(!settings.desktop_notifications.background_only);
+    assert!(settings.desktop_notifications.important_only);
+    assert_eq!(settings.desktop_notifications.min_duration_ms, 25_000);
+    assert_eq!(settings.desktop_notifications.throttle_ms, 60_000);
     let settings_source =
         std::fs::read_to_string(paths.root.join("settings.toml")).expect("settings toml");
     assert!(settings_source.contains("schema_version = 1"));
     assert!(settings_source.contains("themeMode = \"light\""));
+    assert!(settings_source.contains("[desktopNotifications]"));
+    assert!(settings_source.contains("enabled = true"));
 }
 
 #[test]

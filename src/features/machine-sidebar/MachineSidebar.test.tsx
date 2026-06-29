@@ -648,16 +648,16 @@ describe("MachineSidebar", () => {
         onSearchChange={vi.fn()}
         onSelectMachine={onSelectMachine}
         search=""
-        selectedMachineId="telnet-legacy"
+        selectedMachineId="telnet-lab"
       />,
     );
 
-    fireEvent.doubleClick(screen.getByRole("button", { name: /legacy telnet/i }));
+    fireEvent.doubleClick(screen.getByRole("button", { name: /lab telnet/i }));
     fireEvent.doubleClick(screen.getByRole("button", { name: /console serial/i }));
 
-    expect(onSelectMachine).toHaveBeenCalledWith("telnet-legacy");
+    expect(onSelectMachine).toHaveBeenCalledWith("telnet-lab");
     expect(onSelectMachine).toHaveBeenCalledWith("serial-console");
-    expect(onOpenTelnetTerminal).toHaveBeenCalledWith("telnet-legacy");
+    expect(onOpenTelnetTerminal).toHaveBeenCalledWith("telnet-lab");
     expect(onOpenSerialTerminal).toHaveBeenCalledWith("serial-console");
     expect(onOpenSshTerminal).not.toHaveBeenCalled();
   });

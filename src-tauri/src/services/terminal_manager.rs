@@ -32,6 +32,7 @@ const READ_BUFFER_SIZE: usize = 8192;
 const TERMINAL_CONTEXT_BUFFER_BYTES: usize = 64 * 1024;
 const LOG_REDACTION_PENDING_CHARS: usize = 4096;
 const TERMINAL_TARGET_TOKEN_TTL_MS: u64 = 5 * 60 * 1000;
+const CLEAR_CURRENT_TERMINAL_LINE: &str = "\r\x1b[2K";
 
 type ChildHandle = Box<dyn Child + Send + Sync>;
 type MasterHandle = Box<dyn MasterPty + Send>;
@@ -601,7 +602,9 @@ fn spawn_reader_thread(
 
 struct TerminalSecretInputResponder {
     entries: Vec<TerminalSecretInputResponderEntry>,
+    held_prompt_output: String,
     marker_buffer: String,
+    pending_prompt_redactions: Vec<String>,
     redact_values: Vec<String>,
 }
 
@@ -623,7 +626,9 @@ impl TerminalSecretInputResponder {
             .collect();
         Self {
             entries,
+            held_prompt_output: String::new(),
             marker_buffer: String::new(),
+            pending_prompt_redactions: Vec::new(),
             redact_values,
         }
     }
@@ -646,6 +651,7 @@ impl TerminalSecretInputResponder {
             let _ = writer.write_all(b"\r");
             let _ = writer.flush();
         }
+        self.pending_prompt_redactions = entry.prompt_markers.clone();
         entry.responses_sent = entry.responses_sent.saturating_add(1);
         self.marker_buffer.clear();
     }
@@ -668,16 +674,45 @@ impl TerminalSecretInputResponder {
         best.map(|(index, _)| index)
     }
 
-    fn redact_output(&self, data: &str) -> String {
-        if self.redact_values.is_empty() {
-            return data.to_owned();
+    fn redact_output(&mut self, data: &str) -> String {
+        let mut combined = String::new();
+        if !self.held_prompt_output.is_empty() {
+            combined.push_str(&self.held_prompt_output);
+            self.held_prompt_output.clear();
         }
+        combined.push_str(data);
 
-        let mut redacted = data.to_owned();
+        let mut redacted = combined;
         for value in &self.redact_values {
             redacted = redacted.replace(value, "[已脱敏]");
         }
+        if !self.pending_prompt_redactions.is_empty() {
+            let before_prompt_redaction = redacted.clone();
+            redacted = redact_prompt_markers(&redacted, &self.pending_prompt_redactions);
+            if redacted == before_prompt_redaction {
+                redacted.clear();
+            }
+            self.pending_prompt_redactions.clear();
+            return format!("{CLEAR_CURRENT_TERMINAL_LINE}{redacted}");
+        }
+
+        if self.entries.iter().any(|entry| entry.can_respond()) {
+            if let Some((safe_output, held_output)) =
+                split_potential_prompt_fragment(&redacted, &self.active_prompt_markers())
+            {
+                self.held_prompt_output = held_output;
+                return safe_output;
+            }
+        }
         redacted
+    }
+
+    fn active_prompt_markers(&self) -> Vec<String> {
+        self.entries
+            .iter()
+            .filter(|entry| entry.can_respond())
+            .flat_map(|entry| entry.prompt_markers.iter().cloned())
+            .collect()
     }
 }
 
@@ -853,6 +888,119 @@ fn trim_marker_buffer(buffer: &mut String) {
 
     let drain_end = next_char_boundary(buffer, buffer.len() - MAX_MARKER_BUFFER_BYTES);
     buffer.drain(..drain_end);
+}
+
+fn redact_prompt_markers(data: &str, prompt_markers: &[String]) -> String {
+    let lowered = data.to_ascii_lowercase();
+    let mut ranges = Vec::<(usize, usize)>::new();
+
+    for marker in prompt_markers
+        .iter()
+        .map(|marker| marker.trim())
+        .filter(|marker| !marker.is_empty())
+    {
+        let mut search_start = 0;
+        while let Some(relative_index) = lowered[search_start..].find(marker) {
+            let start = search_start + relative_index;
+            let mut end = start + marker.len();
+            while end < lowered.len() {
+                let Some(character) = lowered[end..].chars().next() else {
+                    break;
+                };
+                if character != ' ' && character != '\t' {
+                    break;
+                }
+                end += character.len_utf8();
+            }
+            let line_start = lowered[..start]
+                .rfind(['\r', '\n'])
+                .map(|index| index + 1)
+                .unwrap_or(0);
+            ranges.push((line_start, end));
+            search_start = end;
+        }
+    }
+
+    if ranges.is_empty() {
+        return data.to_owned();
+    }
+
+    ranges.sort_unstable_by_key(|(start, end)| (*start, *end));
+    let mut merged = Vec::<(usize, usize)>::new();
+    for (start, end) in ranges {
+        if let Some((_, previous_end)) = merged.last_mut() {
+            if start <= *previous_end {
+                *previous_end = (*previous_end).max(end);
+                continue;
+            }
+        }
+        merged.push((start, end));
+    }
+
+    let mut result = String::with_capacity(data.len());
+    let mut cursor = 0;
+    for (start, end) in merged {
+        result.push_str(&data[cursor..start]);
+        cursor = end;
+    }
+    result.push_str(&data[cursor..]);
+    result
+}
+
+fn split_potential_prompt_fragment(
+    data: &str,
+    prompt_markers: &[String],
+) -> Option<(String, String)> {
+    let tail_start = data.rfind(['\r', '\n']).map(|index| index + 1).unwrap_or(0);
+    let tail = &data[tail_start..];
+    if !looks_like_prompt_fragment(tail, prompt_markers) {
+        return None;
+    }
+
+    Some((data[..tail_start].to_owned(), tail.to_owned()))
+}
+
+fn looks_like_prompt_fragment(fragment: &str, prompt_markers: &[String]) -> bool {
+    let visible_fragment = strip_terminal_controls(fragment);
+    let visible_fragment = visible_fragment.trim_end().to_ascii_lowercase();
+    if visible_fragment.len() < 8 {
+        return false;
+    }
+    if prompt_markers
+        .iter()
+        .any(|marker| marker.trim().eq_ignore_ascii_case("password:"))
+        && generic_password_prompt_fragment(&visible_fragment)
+    {
+        return true;
+    }
+
+    prompt_markers
+        .iter()
+        .map(|marker| marker.trim().to_ascii_lowercase())
+        .filter(|marker| marker.len() > visible_fragment.len())
+        .any(|marker| marker.starts_with(&visible_fragment))
+}
+
+fn generic_password_prompt_fragment(fragment: &str) -> bool {
+    if looks_like_password_history_line(fragment) {
+        return false;
+    }
+    fragment == "password"
+        || fragment == "password:"
+        || fragment.starts_with("enter password")
+        || fragment.starts_with("password for ")
+        || generic_owner_password_prompt_fragment(fragment)
+        || fragment.ends_with("'s pass")
+        || fragment.ends_with("'s password")
+        || fragment.ends_with("'s password:")
+}
+
+fn generic_owner_password_prompt_fragment(fragment: &str) -> bool {
+    let Some(owner_suffix_start) = fragment.rfind("'s ") else {
+        return false;
+    };
+    let suffix = &fragment[owner_suffix_start + "'s ".len()..];
+    "password:".starts_with(suffix)
 }
 
 struct CleanupPathGuard {

@@ -97,6 +97,53 @@ fn local_russh_loopback_password_terminal_auto_login_smoke() {
 }
 
 #[test]
+fn local_russh_loopback_password_terminal_auto_login_smoke_reconnects_with_same_saved_secret() {
+    if !open_ssh_client_available() {
+        eprintln!(
+            "skipping local loopback SSH terminal reconnect smoke: OpenSSH client is not available"
+        );
+        return;
+    }
+
+    let server = LoopbackTerminalServer::start();
+    let config = PasswordSmokeConfig {
+        host: "127.0.0.1".to_owned(),
+        port: server.addr.port(),
+        username: LOOPBACK_USER.to_owned(),
+        password: LOOPBACK_PASSWORD.to_owned(),
+        known_host_line: None,
+        ready_marker: Some(LOOPBACK_READY_MARKER.to_owned()),
+        expect_auth_failure: false,
+    };
+    let (_home, state) = create_loopback_terminal_harness(&server);
+    let host_id = create_remote_host(&state, &config);
+
+    let first_output = connect_and_capture_loopback_output(&state, &host_id, &config)
+        .expect("first reconnect smoke terminal flow");
+    assert!(first_output.contains(COMMAND_MARKER), "{first_output:?}");
+    assert!(
+        first_output.contains(UNICODE_COMMAND_MARKER),
+        "{first_output:?}"
+    );
+    assert!(
+        !first_output.contains(&config.password),
+        "terminal output must not echo saved password on first connect: {first_output:?}",
+    );
+
+    let second_output = connect_and_capture_loopback_output(&state, &host_id, &config)
+        .expect("second reconnect smoke terminal flow");
+    assert!(second_output.contains(COMMAND_MARKER), "{second_output:?}");
+    assert!(
+        second_output.contains(UNICODE_COMMAND_MARKER),
+        "{second_output:?}"
+    );
+    assert!(
+        !second_output.contains(&config.password),
+        "terminal output must not echo saved password on second connect: {second_output:?}",
+    );
+}
+
+#[test]
 fn local_russh_loopback_password_jump_terminal_auto_login_smoke() {
     if !open_ssh_client_available() {
         eprintln!(
@@ -275,6 +322,34 @@ fn real_openssh_password_terminal_auto_login_smoke() {
         !output.contains(&config.password),
         "terminal output must not echo saved password: {output:?}",
     );
+}
+
+fn connect_and_capture_loopback_output(
+    state: &AppState,
+    host_id: &str,
+    config: &PasswordSmokeConfig,
+) -> Result<String, String> {
+    let (sender, receiver) = mpsc::channel();
+    let summary = state
+        .ssh_terminals()
+        .create_session(
+            state.remote_hosts(),
+            state.paths(),
+            state.terminals(),
+            SshTerminalCreateRequest {
+                host_id: host_id.to_owned(),
+                cwd: None,
+                remote_command: None,
+                cols: 96,
+                rows: 28,
+            },
+            move |event| sender.send(event).is_ok(),
+        )
+        .map_err(|error| error.to_string())?;
+
+    let result = run_smoke_terminal_flow(state.terminals(), &summary.id, &receiver, config);
+    let _ = state.terminals().close(&summary.id);
+    result
 }
 
 fn open_ssh_client_available() -> bool {
@@ -774,7 +849,10 @@ fn create_remote_host_with_password_jump(
     request.ssh_options.jump_hosts.push(SshJumpHostOptions {
         auth_type: RemoteHostAuthType::Password,
         credential_ref: None,
+        secret_ref: None,
+        key_passphrase_ref: None,
         credential_secret: Some(LOOPBACK_JUMP_PASSWORD.to_owned()),
+        credential_status: Default::default(),
         host: "127.0.0.1".to_owned(),
         name: "Loopback jump".to_owned(),
         port: jump.addr.port(),

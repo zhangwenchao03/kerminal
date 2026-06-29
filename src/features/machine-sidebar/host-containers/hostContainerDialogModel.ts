@@ -12,7 +12,7 @@ import {
   readContainerComposeConfigPaths,
   readContainerComposeProject,
   readContainerComposeService,
-  type ComposeAwareContainerSummary,
+  type ComposeProjectContainerSummary,
 } from "./composeProjectModel";
 
 export type HostContainerGroupMode = "compose" | "status" | "flat";
@@ -23,7 +23,7 @@ export type HostContainerLifecycleAction =
   | "remove";
 export type HostContainerInspectorTab = "details" | "stats";
 
-export type HostContainerMetadata = ComposeAwareContainerSummary;
+export type HostContainerMetadata = ComposeProjectContainerSummary;
 
 export interface HostContainerDialogViewOptions {
   groupMode: HostContainerGroupMode;

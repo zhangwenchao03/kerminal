@@ -98,12 +98,12 @@ describe("composeProjectModel", () => {
     );
   });
 
-  it("supports Docker labels, legacy fields, and preserves multi-file config order", () => {
+  it("supports Docker labels and preserves multi-file config order", () => {
     const view = buildComposeProjectViews([
       container({
         id: "web111111111",
         labels: {
-          "com.docker.compose.project": "legacy-shop",
+          "com.docker.compose.project": "label-shop",
           "com.docker.compose.project.config_files":
             "compose.yaml,compose.prod.yaml",
           "com.docker.compose.project.working_dir": "/opt/shop",
@@ -112,8 +112,10 @@ describe("composeProjectModel", () => {
         name: "web",
       }),
       container({
-        composeProject: "legacy-shop",
-        composeService: "jobs",
+        labels: {
+          "com.docker.compose.project": "label-shop",
+          "com.docker.compose.service": "jobs",
+        },
         id: "jobs11111111",
         name: "jobs",
         status: "dead",
@@ -126,7 +128,7 @@ describe("composeProjectModel", () => {
       configFiles: ["compose.yaml", "compose.prod.yaml"],
       configPaths: ["/opt/shop/compose.yaml", "/opt/shop/compose.prod.yaml"],
       errorCount: 1,
-      project: "legacy-shop",
+      project: "label-shop",
       warningCount: 0,
     });
     expect(view.projects[0]!.services.map((service) => service.service)).toEqual(

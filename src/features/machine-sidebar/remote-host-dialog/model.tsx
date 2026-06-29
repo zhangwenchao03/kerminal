@@ -1,5 +1,4 @@
 import {
-  Box,
   Cable,
   Monitor,
   Network,
@@ -11,10 +10,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { SelectOption } from "../../../components/ui/select";
-import type {
-  DockerContainerListRequest,
-  DockerContainerSummary,
-} from "../../../lib/dockerApi";
 import type {
   RemoteHost,
   RemoteHostAuthType,
@@ -35,9 +30,6 @@ export interface RemoteHostCreateDialogProps {
   externalConfigConflict?: string;
   groups: MachineGroup[];
   open: boolean;
-  onAddDockerContainer?: (
-    request: DockerContainerCreateRequest,
-  ) => void | Promise<void>;
   onClose: () => void;
   onCreateLocal?: (
     options?: LocalTerminalCreateOptions,
@@ -46,9 +38,6 @@ export interface RemoteHostCreateDialogProps {
   onCreateGroup?: (
     request: RemoteHostGroupCreateRequest,
   ) => Promise<RemoteHostGroup>;
-  onListDockerContainers?: (
-    request: DockerContainerListRequest,
-  ) => Promise<DockerContainerSummary[]>;
   onUpdateHost?: (request: RemoteHostUpdateRequest) => Promise<RemoteHost>;
   onUpdateLocal?: (
     machineId: string,
@@ -61,7 +50,6 @@ export interface RemoteHostCreateDialogProps {
 export type ConnectionMode =
   | "ssh"
   | "local"
-  | "docker"
   | "rdp"
   | "telnet"
   | "serial"
@@ -93,14 +81,6 @@ export interface LocalTerminalCreateOptions {
   groupId?: string;
   shell?: string;
   title?: string;
-}
-
-export interface DockerContainerCreateRequest {
-  container: DockerContainerSummary;
-  groupId?: string;
-  shell?: string;
-  user?: string;
-  workdir?: string;
 }
 
 export interface SectionTab {
@@ -156,7 +136,6 @@ export const sectionTabsByMode: Partial<Record<ConnectionMode, SectionTab[]>> =
       { Icon: Monitor, id: "properties", label: "属性" },
       { Icon: Terminal, id: "environment", label: "终端" },
     ],
-    docker: [{ Icon: Box, id: "properties", label: "容器管理" }],
     rdp: [
       { Icon: Monitor, id: "properties", label: "属性" },
       { Icon: PanelTop, id: "display", label: "显示" },
@@ -244,35 +223,7 @@ export const terminalTypeOptions = [
   "linux",
 ];
 
-export const LAST_DOCKER_HOST_STORAGE_KEY =
-  "kerminal.remote-host-dialog.last-docker-host-id";
 export const DEFAULT_GROUP_LABEL = "默认分组";
-
-export function readRememberedDockerHostId(sshMachines: Machine[]) {
-  try {
-    const rememberedHostId = window.localStorage.getItem(
-      LAST_DOCKER_HOST_STORAGE_KEY,
-    );
-    return rememberedHostId &&
-      sshMachines.some((machine) => machine.id === rememberedHostId)
-      ? rememberedHostId
-      : "";
-  } catch {
-    return "";
-  }
-}
-
-export function rememberDockerHostId(hostId: string) {
-  try {
-    if (hostId) {
-      window.localStorage.setItem(LAST_DOCKER_HOST_STORAGE_KEY, hostId);
-      return;
-    }
-    window.localStorage.removeItem(LAST_DOCKER_HOST_STORAGE_KEY);
-  } catch {
-    // localStorage may be unavailable in restricted browser contexts.
-  }
-}
 
 export function buildGroupOptions(groups: MachineGroup[]) {
   const options = groups.map((group) => ({

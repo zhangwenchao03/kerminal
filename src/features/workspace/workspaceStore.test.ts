@@ -349,10 +349,10 @@ describe("workspaceStore", () => {
     const state = useWorkspaceStore.getState();
     expect(state.machineGroups[0].machines).toMatchObject([
       {
-        description: "legacy.internal:2323",
-        id: "telnet-legacy",
+        description: "lab.internal:2323",
+        id: "telnet-lab",
         kind: "telnet",
-        target: { hostId: "telnet-legacy", kind: "telnet" },
+        target: { hostId: "telnet-lab", kind: "telnet" },
       },
       {
         description: "COM9 · 115200 bps",
@@ -362,15 +362,15 @@ describe("workspaceStore", () => {
       },
     ]);
 
-    useWorkspaceStore.getState().openTelnetTerminal("telnet-legacy");
+    useWorkspaceStore.getState().openTelnetTerminal("telnet-lab");
     useWorkspaceStore.getState().openSerialTerminal("serial-console");
 
     expect(useWorkspaceStore.getState().terminalPanes).toMatchObject([
       {
-        machineId: "telnet-legacy",
+        machineId: "telnet-lab",
         mode: "telnet",
-        prompt: "legacy.internal:2323>",
-        target: { hostId: "telnet-legacy", kind: "telnet" },
+        prompt: "lab.internal:2323>",
+        target: { hostId: "telnet-lab", kind: "telnet" },
       },
       {
         machineId: "serial-console",

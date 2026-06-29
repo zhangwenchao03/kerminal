@@ -27,7 +27,11 @@ use crate::{
         },
     },
     paths::KerminalPaths,
-    services::ssh_identity_file::resolve_identity_file_path,
+    services::{
+        encrypted_vault_service::EncryptedVaultService,
+        ssh_credential_resolver::SshCredentialResolver,
+        ssh_identity_file::resolve_identity_file_path,
+    },
     storage::{config_file_store::ConfigFileStore, file_store::FileStoreError},
 };
 
@@ -643,6 +647,9 @@ fn push_limited_bytes(buffer: &mut Vec<u8>, bytes: &[u8], max_bytes: usize) {
 
 pub(super) fn resolve_endpoint(paths: &KerminalPaths, host_id: &str) -> AppResult<SftpEndpoint> {
     let host = resolve_host(paths, host_id)?;
+    let host = SshCredentialResolver::new(EncryptedVaultService::new(paths.clone()))
+        .resolve_runtime_host(&host)?
+        .host;
     let auth = resolve_auth_material(&host)?;
     Ok(SftpEndpoint {
         host,
@@ -676,7 +683,7 @@ fn resolve_auth_material(host: &RemoteHost) -> AppResult<SftpAuthMaterial> {
     match host.auth_type {
         RemoteHostAuthType::Agent => Ok(SftpAuthMaterial::Agent),
         RemoteHostAuthType::Password => {
-            let password = required_credential_secret(host, "密码认证需要保存明文 SSH 密码")?;
+            let password = required_credential_secret(host, "密码认证需要已保存 SSH 密码")?;
             Ok(SftpAuthMaterial::Password(password))
         }
         RemoteHostAuthType::Key => {

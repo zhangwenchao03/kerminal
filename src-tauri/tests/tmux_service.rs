@@ -64,7 +64,7 @@ fn parses_unquoted_numeric_session_name_from_tmux_27() {
     let sep = FIELD_SEPARATOR;
     let output = format!("$0{sep}0{sep}0{sep}0{sep}1710000000{sep}1710000100{sep}{sep}1\n");
 
-    let sessions = parse_sessions(&output, "ssh:legacy").expect("parse sessions");
+    let sessions = parse_sessions(&output, "ssh:primary").expect("parse sessions");
 
     assert_eq!(sessions.len(), 1);
     assert_eq!(sessions[0].id, "$0");
@@ -80,7 +80,7 @@ fn parses_raw_tmux_fields_with_apostrophes() {
     let output =
         format!("$1{sep}api's{sep}0{sep}0{sep}1710000000{sep}1710000100{sep}/srv/api's{sep}1\n");
 
-    let sessions = parse_sessions(&output, "ssh:legacy").expect("parse sessions");
+    let sessions = parse_sessions(&output, "ssh:primary").expect("parse sessions");
 
     assert_eq!(sessions[0].name, "api's");
     assert_eq!(sessions[0].current_path.as_deref(), Some("/srv/api's"));

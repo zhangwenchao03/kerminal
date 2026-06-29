@@ -87,7 +87,7 @@ SFTP 工作台支持双栏浏览、上传下载、远端复制、服务器到服
 | 文件操作 | SFTP 双栏浏览、上传下载、目录传输、远端复制、跨主机复制、ZIP 上传/下载、冲突策略、传输队列、远程文本预览和远程工作区编辑 |
 | 网络与隧道 | SSH local/remote/dynamic forwarding、主机网络助手、本机受管 HTTP CONNECT proxy、远端 SOCKS、无外网主机借本机网络出口 |
 | 机器观测 | CPU、核心占用、内存、Swap、磁盘、网络接口、进程、运行体检、诊断包、GPU 名称/驱动/显存/占用/温度 |
-| 外部 Agent 协作 | Codex、Claude、自定义 CLI；会话级 `AGENTS.md` / `CLAUDE.md` / `.codex/config.toml` / `.mcp.json`；Kerminal MCP Server 提供终端、SSH/SFTP、容器、端口转发、服务器信息和诊断工具 |
+| 外部 Agent 协作 | Codex、Claude、自定义 CLI；会话级 `AGENTS.md` / `CLAUDE.md` / `.codex/config.toml` / `.mcp.json`；Kerminal MCP Server 提供 `kerminal.app_guide` 应用导航入口、`kerminal.config_guide` 配置规则入口、`kerminal.capabilities` 自发现入口、`kerminal.tool_help` schema/示例/安全标注入口、`kerminal.operation_guide` 任务意图操作指南、`kerminal.runtime_snapshot` 运行态概览，以及终端、SSH/SFTP、tmux、容器、端口转发、服务器信息、命令历史、诊断和授权凭据工具 |
 | 配置与热刷新 | `~/.kerminal` 下 settings、profiles、hosts、snippets、workflows 文件优先；外部写入自动刷新；坏 TOML 保持 last-known-good；validator 暴露给外部 Agent |
 | 桌面集成 | Tauri window-state、single-instance、原生文本剪贴板、系统通知、应用日志和最小 capability 配置 |
 
@@ -118,7 +118,7 @@ node scripts/capture-readme-screenshots.mjs http://127.0.0.1:<port>/
 
 ## 本地边界
 
-Kerminal 是本地桌面应用，默认把工作区状态、会话、主机、文件传输和设置保存在本机。当前 SSH 密码和内联私钥随远程主机记录明文保存和展示，用于 SSH、SFTP、Docker 容器、端口转发、命令建议和 Kerminal MCP 工具执行路径复用同一份认证信息。
+Kerminal 是本地桌面应用，默认把工作区状态、会话、主机、文件传输和设置保存在本机。当前 SSH 密码和内联私钥通过保存链路写入本地 encrypted vault；主机 TOML 只保存 `secret_ref`，运行 SSH、SFTP、Docker 容器、端口转发、命令建议和 Kerminal MCP 工具时按需解密复用同一份认证信息。
 
 Kerminal MCP Server 面向 Codex、Claude 和其它 MCP host 时只提供运行态 tools。生产主机、破坏性命令、远程写操作、文件删除和外部发布的批准流程由外部 Agent host 负责；Kerminal 只做工具目录、参数边界、loopback/Host 校验和输出脱敏。
 

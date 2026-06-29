@@ -107,10 +107,10 @@ describe("useSftpTransferActions helpers", () => {
 });
 
 function archiveDownloadRequest(
-  conflictPolicy?: SftpArchiveDownloadRequest["conflictPolicy"],
+  conflictPolicy: SftpArchiveDownloadRequest["conflictPolicy"] = "overwrite",
 ): SftpArchiveDownloadRequest {
   return {
-    ...(conflictPolicy !== undefined ? { conflictPolicy } : {}),
+    conflictPolicy,
     hostId: "prod-api",
     kind: "file",
     sourceRemotePath: "/srv/app.log",
@@ -119,10 +119,10 @@ function archiveDownloadRequest(
 }
 
 function archiveUploadRequest(
-  conflictPolicy?: SftpArchiveUploadRequest["conflictPolicy"],
+  conflictPolicy: SftpArchiveUploadRequest["conflictPolicy"] = "overwrite",
 ): SftpArchiveUploadRequest {
   return {
-    ...(conflictPolicy !== undefined ? { conflictPolicy } : {}),
+    conflictPolicy,
     hostId: "prod-api",
     kind: "directory",
     sourceLocalPath: "C:/tmp/dist",
@@ -142,8 +142,20 @@ function transferSummary(
     id: "transfer-1",
     kind: "file",
     localPath: "C:/downloads/app.log.zip",
+    operation: "download",
     remotePath: "/srv/app.log",
+    source: {
+      hostId: "prod-api",
+      hostLabel: "prod-api",
+      kind: "remote",
+      path: "/srv/app.log",
+    },
     status: "queued",
+    target: {
+      kind: "local",
+      path: "C:/downloads/app.log.zip",
+    },
+    transportMode: "singleHostSftp",
     updatedAt: 1,
     ...overrides,
   };

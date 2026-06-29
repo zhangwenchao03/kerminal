@@ -122,7 +122,7 @@ describe("useSftpTransferSync", () => {
         id: "other-scope",
         viewScope: "sftp-workbench:tab-b",
       }),
-      transferSummary({ hostId: "host-a", id: "legacy-scope" }),
+      transferSummary({ hostId: "host-a", id: "unrelated-scope" }),
     ]);
     const loadDirectory = vi.fn();
 
@@ -282,8 +282,20 @@ function transferSummary(
     id: "transfer-1",
     kind: "file",
     localPath: "C:/tmp/source.log",
+    operation: "download",
     remotePath: "/srv/app/source.log",
+    source: {
+      hostId: "host-a",
+      hostLabel: "host-a",
+      kind: "remote",
+      path: "/srv/app/source.log",
+    },
     status: "queued",
+    target: {
+      kind: "local",
+      path: "C:/tmp/source.log",
+    },
+    transportMode: "singleHostSftp",
     updatedAt: 1,
     ...overrides,
   };

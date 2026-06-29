@@ -132,8 +132,8 @@ fn normalize_remote_copy_request_rejects_unsafe_boundaries() {
 }
 
 #[test]
-fn remote_copy_request_deserializes_default_conflict_policy() {
-    let request: SftpRemoteCopyRequest = serde_json::from_value(serde_json::json!({
+fn remote_copy_request_requires_conflict_policy() {
+    let error = serde_json::from_value::<SftpRemoteCopyRequest>(serde_json::json!({
         "sourceHostId": "source-host",
         "sourceRemotePath": "/var/log/app.log",
         "targetHostId": "target-host",
@@ -141,41 +141,32 @@ fn remote_copy_request_deserializes_default_conflict_policy() {
         "kind": "file",
         "viewScope": null
     }))
-    .expect("deserialize remote copy request");
+    .expect_err("reject remote copy request without conflict policy");
 
-    assert_eq!(
-        request.conflict_policy,
-        SftpTransferConflictPolicy::Overwrite
-    );
+    assert!(error.to_string().contains("conflictPolicy"));
 }
 
 #[test]
-fn archive_requests_deserialize_default_conflict_policy() {
-    let download: SftpArchiveDownloadRequest = serde_json::from_value(serde_json::json!({
+fn archive_requests_require_conflict_policy() {
+    let download_error = serde_json::from_value::<SftpArchiveDownloadRequest>(serde_json::json!({
         "hostId": "source-host",
         "sourceRemotePath": "/var/log",
         "targetLocalPath": "C:/tmp/log.zip",
         "kind": "directory",
         "viewScope": null
     }))
-    .expect("deserialize archive download request");
-    let upload: SftpArchiveUploadRequest = serde_json::from_value(serde_json::json!({
+    .expect_err("reject archive download request without conflict policy");
+    let upload_error = serde_json::from_value::<SftpArchiveUploadRequest>(serde_json::json!({
         "hostId": "target-host",
         "sourceLocalPath": "C:/tmp/logs",
         "targetRemotePath": "/uploads/logs.zip",
         "kind": "directory",
         "viewScope": null
     }))
-    .expect("deserialize archive upload request");
+    .expect_err("reject archive upload request without conflict policy");
 
-    assert_eq!(
-        download.conflict_policy,
-        SftpTransferConflictPolicy::Overwrite
-    );
-    assert_eq!(
-        upload.conflict_policy,
-        SftpTransferConflictPolicy::Overwrite
-    );
+    assert!(download_error.to_string().contains("conflictPolicy"));
+    assert!(upload_error.to_string().contains("conflictPolicy"));
 }
 
 #[test]

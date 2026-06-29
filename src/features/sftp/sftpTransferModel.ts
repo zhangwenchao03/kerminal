@@ -7,14 +7,6 @@
 import type { SftpTransferEndpoint, SftpTransferSummary } from "../../lib/sftpApi";
 import { fileNameFromPath, formatFileSize } from "./sftpFileUtils";
 
-type CompatibleRemoteTransferEndpoint = Extract<
-  SftpTransferEndpoint,
-  { kind: "remote" }
-> & {
-  host_id?: string;
-  host_label?: string;
-};
-
 /**
  * 按用户关注优先级排序后台传输任务。
  */
@@ -137,9 +129,7 @@ export function transferProgressPercent(transfer: SftpTransferSummary) {
  * 获取传输任务的主标题。
  */
 export function transferTitle(transfer: SftpTransferSummary) {
-  const path =
-    transfer.source?.path ??
-    (transfer.direction === "upload" ? transfer.localPath : transfer.remotePath);
+  const path = transfer.source.path;
   return fileNameFromPath(
     path,
     transfer.kind === "directory" ? "folder" : "file",
@@ -167,12 +157,7 @@ export function transferPercentLabel(transfer: SftpTransferSummary) {
  * 获取上传或下载方向摘要。
  */
 export function transferPathSummary(transfer: SftpTransferSummary) {
-  if (transfer.source && transfer.target) {
-    return `${transferEndpointLabel(transfer.source)} -> ${transferEndpointLabel(transfer.target)}`;
-  }
-  return transfer.direction === "upload"
-    ? `${transfer.localPath} -> ${transfer.remotePath}`
-    : `${transfer.remotePath} -> ${transfer.localPath}`;
+  return `${transferEndpointLabel(transfer.source)} -> ${transferEndpointLabel(transfer.target)}`;
 }
 
 /**
@@ -189,7 +174,6 @@ export function transferMethodLabel(transfer: SftpTransferSummary) {
     if (transfer.transportMode === "singleHostSftp") {
       return "远端复制";
     }
-    return "远端复制";
   }
 
   if (transfer.operation === "archiveDownload") {
@@ -275,14 +259,11 @@ function transferEndpointLabel(endpoint: SftpTransferEndpoint) {
   if (endpoint.kind === "local") {
     return endpoint.path;
   }
-  const remoteEndpoint = endpoint as CompatibleRemoteTransferEndpoint;
   const hostLabel =
-    readableEndpointPart(remoteEndpoint.hostLabel) ??
-    readableEndpointPart(remoteEndpoint.host_label) ??
-    readableEndpointPart(remoteEndpoint.hostId) ??
-    readableEndpointPart(remoteEndpoint.host_id) ??
+    readableEndpointPart(endpoint.hostLabel) ??
+    readableEndpointPart(endpoint.hostId) ??
     "远端";
-  return `${hostLabel}:${remoteEndpoint.path}`;
+  return `${hostLabel}:${endpoint.path}`;
 }
 
 function readableEndpointPart(value: string | undefined) {

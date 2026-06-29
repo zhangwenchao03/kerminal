@@ -487,33 +487,8 @@ describe("workspaceSession", () => {
     expect(session.terminalPanes[0]?.lines).toEqual([]);
   });
 
-  it("migrates missing pane targets only for legacy workspace session snapshots", () => {
-    const legacySession = normalizeWorkspaceSessionSnapshot({
-      version: 1,
-      activeTabId: "tab-1",
-      focusedPaneId: "pane-1",
-      terminalPanes: [
-        {
-          id: "pane-1",
-          machineId: "machine-local",
-          mode: "local",
-          profileId: "profile-pwsh",
-          prompt: "PS>",
-          status: "online",
-          title: "Local",
-        },
-      ],
-      terminalTabs: [
-        {
-          id: "tab-1",
-          layout: { paneId: "pane-1", type: "pane" },
-          machineId: "machine-local",
-          title: "Local",
-        },
-      ],
-    });
-    const currentSession = normalizeWorkspaceSessionSnapshot({
-      version: 2,
+  it("does not derive pane targets from snapshots that omit target refs", () => {
+    const session = normalizeWorkspaceSessionSnapshot({
       activeTabId: "tab-1",
       focusedPaneId: "pane-1",
       terminalPanes: [
@@ -537,11 +512,7 @@ describe("workspaceSession", () => {
       ],
     });
 
-    expect(legacySession.terminalPanes[0]?.target).toEqual({
-      kind: "local",
-      profileId: "profile-pwsh",
-    });
-    expect(currentSession.terminalPanes[0]?.target).toBeUndefined();
+    expect(session.terminalPanes[0]?.target).toBeUndefined();
   });
 
   it("keeps append output history bounded and stable for empty chunks", () => {

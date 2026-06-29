@@ -950,8 +950,20 @@ function transferSummary(
     id: "transfer-1",
     kind: "file",
     localPath: "C:/downloads/app.log",
+    operation: "download",
     remotePath: "/srv/app.log",
+    source: {
+      hostId: "host-left",
+      hostLabel: "host-left",
+      kind: "remote",
+      path: "/srv/app.log",
+    },
     status: "queued",
+    target: {
+      kind: "local",
+      path: "C:/downloads/app.log",
+    },
+    transportMode: "singleHostSftp",
     updatedAt: 1,
     ...overrides,
   };

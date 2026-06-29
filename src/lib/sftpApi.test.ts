@@ -107,21 +107,25 @@ describe("sftpApi", () => {
       path: "/tmp/a",
     });
     await uploadSftpFile({
+      conflictPolicy: "overwrite",
       hostId: "host-lab",
       localPath: "C:\\tmp\\a.log",
       remotePath: "/tmp/a.log",
     });
     await uploadSftpDirectory({
+      conflictPolicy: "overwrite",
       hostId: "host-lab",
       localPath: "C:\\tmp\\dist",
       remotePath: "/tmp/dist",
     });
     await downloadSftpFile({
+      conflictPolicy: "overwrite",
       hostId: "host-lab",
       localPath: "C:\\tmp\\a.log",
       remotePath: "/tmp/a.log",
     });
     await downloadSftpDirectory({
+      conflictPolicy: "overwrite",
       hostId: "host-lab",
       localPath: "C:\\tmp\\dist",
       remotePath: "/tmp/dist",
@@ -153,6 +157,7 @@ describe("sftpApi", () => {
     });
     expect(invokeMock).toHaveBeenCalledWith("sftp_upload", {
       request: {
+        conflictPolicy: "overwrite",
         hostId: "host-lab",
         localPath: "C:\\tmp\\a.log",
         remotePath: "/tmp/a.log",
@@ -160,6 +165,7 @@ describe("sftpApi", () => {
     });
     expect(invokeMock).toHaveBeenCalledWith("sftp_upload_directory", {
       request: {
+        conflictPolicy: "overwrite",
         hostId: "host-lab",
         localPath: "C:\\tmp\\dist",
         remotePath: "/tmp/dist",
@@ -167,6 +173,7 @@ describe("sftpApi", () => {
     });
     expect(invokeMock).toHaveBeenCalledWith("sftp_download", {
       request: {
+        conflictPolicy: "overwrite",
         hostId: "host-lab",
         localPath: "C:\\tmp\\a.log",
         remotePath: "/tmp/a.log",
@@ -174,6 +181,7 @@ describe("sftpApi", () => {
     });
     expect(invokeMock).toHaveBeenCalledWith("sftp_download_directory", {
       request: {
+        conflictPolicy: "overwrite",
         hostId: "host-lab",
         localPath: "C:\\tmp\\dist",
         remotePath: "/tmp/dist",
@@ -217,6 +225,7 @@ describe("sftpApi", () => {
     ).resolves.toBe(true);
     await expect(
       uploadSftpFile({
+        conflictPolicy: "overwrite",
         hostId: "host-lab",
         localPath: "C:\\tmp\\a.log",
         remotePath: "/tmp/a.log",
@@ -224,6 +233,7 @@ describe("sftpApi", () => {
     ).resolves.toBe(true);
     await expect(
       uploadSftpDirectory({
+        conflictPolicy: "overwrite",
         hostId: "host-lab",
         localPath: "C:\\tmp\\dist",
         remotePath: "/tmp/dist",
@@ -231,6 +241,7 @@ describe("sftpApi", () => {
     ).resolves.toBe(true);
     await expect(
       downloadSftpFile({
+        conflictPolicy: "overwrite",
         hostId: "host-lab",
         localPath: "C:\\tmp\\a.log",
         remotePath: "/tmp/a.log",
@@ -238,6 +249,7 @@ describe("sftpApi", () => {
     ).resolves.toBe(true);
     await expect(
       downloadSftpDirectory({
+        conflictPolicy: "overwrite",
         hostId: "host-lab",
         localPath: "C:\\tmp\\dist",
         remotePath: "/tmp/dist",
@@ -286,6 +298,7 @@ describe("sftpApi", () => {
       remotePath: "/tmp/a.log",
     });
     await enqueueSftpRemoteCopy({
+      conflictPolicy: "overwrite",
       kind: "file",
       sourceHostId: "host-a",
       sourceRemotePath: "/var/log/app.log",
@@ -293,12 +306,14 @@ describe("sftpApi", () => {
       targetRemotePath: "/srv/app/app.log",
     });
     await enqueueSftpArchiveDownload({
+      conflictPolicy: "overwrite",
       hostId: "host-lab",
       kind: "directory",
       sourceRemotePath: "/var/log",
       targetLocalPath: "C:\\tmp\\var-log.zip",
     });
     await enqueueSftpArchiveUpload({
+      conflictPolicy: "overwrite",
       hostId: "host-lab",
       kind: "directory",
       sourceLocalPath: "C:\\tmp\\dist",
@@ -334,6 +349,7 @@ describe("sftpApi", () => {
     });
     expect(invokeMock).toHaveBeenCalledWith("sftp_enqueue_remote_copy", {
       request: {
+        conflictPolicy: "overwrite",
         kind: "file",
         sourceHostId: "host-a",
         sourceRemotePath: "/var/log/app.log",
@@ -343,6 +359,7 @@ describe("sftpApi", () => {
     });
     expect(invokeMock).toHaveBeenCalledWith("sftp_enqueue_archive_download", {
       request: {
+        conflictPolicy: "overwrite",
         hostId: "host-lab",
         kind: "directory",
         sourceRemotePath: "/var/log",
@@ -351,6 +368,7 @@ describe("sftpApi", () => {
     });
     expect(invokeMock).toHaveBeenCalledWith("sftp_enqueue_archive_upload", {
       request: {
+        conflictPolicy: "overwrite",
         hostId: "host-lab",
         kind: "directory",
         sourceLocalPath: "C:\\tmp\\dist",
@@ -413,6 +431,7 @@ describe("sftpApi", () => {
     } = await import("./sftpApi");
 
     const transfer = await enqueueSftpTransfer({
+      conflictPolicy: "overwrite",
       direction: "download",
       hostId: "host-lab",
       kind: "file",
@@ -435,6 +454,7 @@ describe("sftpApi", () => {
       await import("./sftpApi");
 
     const transfer = await enqueueSftpRemoteCopy({
+      conflictPolicy: "overwrite",
       kind: "file",
       sourceHostId: "host-a",
       sourceRemotePath: "/var/log/app.log",
@@ -455,6 +475,7 @@ describe("sftpApi", () => {
       await import("./sftpApi");
 
     const transfer = await enqueueSftpArchiveDownload({
+      conflictPolicy: "overwrite",
       hostId: "host-lab",
       kind: "directory",
       sourceRemotePath: "/var/log",
@@ -475,6 +496,7 @@ describe("sftpApi", () => {
       await import("./sftpApi");
 
     const transfer = await enqueueSftpArchiveUpload({
+      conflictPolicy: "overwrite",
       hostId: "host-lab",
       kind: "directory",
       sourceLocalPath: "/Users/me/dist",

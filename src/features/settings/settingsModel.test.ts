@@ -9,67 +9,6 @@ import {
 } from "./settingsModel";
 
 describe("settingsModel", () => {
-  it("fills appearance defaults for legacy settings payloads", () => {
-    const settings = normalizeAppSettings({
-      terminal: {
-        cursorBlink: false,
-        fontFamily: "Consolas, monospace",
-        fontSize: 15,
-        lineHeight: 1.4,
-        scrollback: 8000,
-      } as Partial<
-        typeof defaultAppSettings.terminal
-      > as typeof defaultAppSettings.terminal,
-      themeMode: "light",
-    });
-
-    expect(settings.interfaceDensity).toBe("comfortable");
-    expect(settings.appearance).toMatchObject({
-      backgroundEnabled: false,
-      backgroundFit: "cover",
-      backgroundImagePath: "",
-      backgroundOpacity: 100,
-      interfaceLanguage: "system",
-      windowOpacity: 100,
-    });
-    expect(settings.terminal).toMatchObject({
-      autoReconnect: true,
-      colorScheme: "kerminal",
-      confirmCloseTab: true,
-      cursorStyle: "block",
-      darkColorScheme: "kerminal",
-      fontWeight: "normal",
-      lightColorScheme: "kerminal",
-      macOptionIsMeta: false,
-      rightClickBehavior: "menu",
-      selectionCopy: false,
-      showTabNumbers: false,
-    });
-    expect(settings.terminal.inlineSuggestion).toEqual(
-      defaultAppSettings.terminal.inlineSuggestion,
-    );
-    expect(settings.desktopNotifications).toEqual(
-      defaultAppSettings.desktopNotifications,
-    );
-    expect(settings.keybindings).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          action: "settings.open",
-          description: "打开设置。",
-          macBinding: "Cmd+,",
-          windowsBinding: "Ctrl+Alt+S",
-        }),
-      ]),
-    );
-    expect(settings.sftp).toMatchObject({
-      globalTransfers: 4,
-      hostTransfers: 2,
-      packetBytes: 256 * 1024,
-      pipelineDepth: 64,
-      timeoutSeconds: 30,
-    });
-  });
-
   it("normalizes invalid appearance values to safe defaults", () => {
     const settings = normalizeAppSettings({
       appearance: {
@@ -257,7 +196,7 @@ describe("settingsModel", () => {
     );
   });
 
-  it("enriches legacy keybinding payloads with platform bindings", () => {
+  it("ignores incomplete keybinding payloads and keeps current defaults", () => {
     const settings = normalizeAppSettings({
       keybindings: [
         {
@@ -274,6 +213,7 @@ describe("settingsModel", () => {
       expect.arrayContaining([
         expect.objectContaining({
           action: "terminal.newTab",
+          label: "新建本地终端",
           macBinding: "Cmd+Shift+T",
           windowsBinding: "Ctrl+Shift+T",
         }),

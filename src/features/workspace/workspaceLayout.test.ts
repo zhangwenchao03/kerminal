@@ -178,6 +178,34 @@ describe("workspaceLayout", () => {
     });
   });
 
+  it("docks a pane to the workspace edge as a whole column", () => {
+    const nextLayout = movePaneInLayout(splitLayout, {
+      placement: "right",
+      scope: "workspace",
+      sourcePaneId: "pane-a",
+      splitId: "split-workspace-right",
+      targetPaneId: "pane-b",
+    });
+
+    expect(nextLayout).toEqual({
+      type: "split",
+      id: "split-workspace-right",
+      direction: "horizontal",
+      children: [
+        {
+          type: "split",
+          id: "split-nested",
+          direction: "vertical",
+          children: [
+            { type: "pane", paneId: "pane-b" },
+            { type: "pane", paneId: "pane-c" },
+          ],
+        },
+        { type: "pane", paneId: "pane-a" },
+      ],
+    });
+  });
+
   it("swaps pane positions without changing split structure", () => {
     const nextLayout = swapPanePositionsInLayout(
       splitLayout,

@@ -39,25 +39,27 @@ import {
 } from "./TerminalSplitDropOverlay";
 import {
   resolveTerminalPaneMoveDropTarget,
+  resolveTerminalPaneMoveWorkspaceDropTarget,
   type TerminalPaneMoveDropCandidate,
+  type TerminalPaneMoveScope,
   type TerminalPaneMoveDropTarget,
   type TerminalPaneMoveDropZone,
 } from "./terminalPaneMoveDropZones";
 import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
 import { XtermPane } from "./XtermPane";
+import type { ConnectionState } from "./XtermPane.helpers";
 
-const terminalPaneRuntimeSlotAttribute = "data-terminal-pane-runtime-slot";
 const terminalPaneCardAttribute = "data-terminal-pane-card";
 const PANE_MOVE_DRAG_THRESHOLD_PX = 6;
-
-type TerminalPaneRuntimeRect = Pick<
-  CSSProperties,
-  "height" | "left" | "top" | "width"
->;
 
 interface TerminalRuntimePane {
   active: boolean;
   pane: TerminalPane;
+}
+
+interface TerminalPaneRuntimeSlot {
+  active: boolean;
+  element: HTMLElement;
 }
 
 interface TerminalPaneMoveDragState {
@@ -85,6 +87,11 @@ interface TerminalWorkspaceContentProps {
     sourcePaneId: string,
     targetPaneId: string,
     placement: TerminalPaneMoveDropZone,
+    scope?: TerminalPaneMoveScope,
+  ) => void;
+  onPaneConnectionStateChange?: (
+    paneId: string,
+    state: ConnectionState,
   ) => void;
   onPaneCurrentCwdChange?: (paneId: string, cwd: string) => void;
   onPaneOutputHistoryChange?: (
@@ -123,6 +130,7 @@ export function TerminalWorkspaceContent({
   onOpenConnection,
   onOpenLogs,
   onMovePane,
+  onPaneConnectionStateChange,
   onPaneCurrentCwdChange,
   onPaneOutputHistoryChange,
   onSplitLayoutSizesChange,
@@ -139,13 +147,14 @@ export function TerminalWorkspaceContent({
   workspacePaddingClass,
 }: TerminalWorkspaceContentProps) {
   const workspaceRef = useRef<HTMLDivElement | null>(null);
-  const [runtimeSlotRects, setRuntimeSlotRects] = useState<
-    Record<string, TerminalPaneRuntimeRect>
+  const [runtimeSlots, setRuntimeSlots] = useState<
+    Record<string, TerminalPaneRuntimeSlot[]>
   >({});
   const [paneMoveDrag, setPaneMoveDrag] =
     useState<TerminalPaneMoveDragState | null>(null);
   const [paneMoveTarget, setPaneMoveTarget] =
     useState<TerminalPaneMoveDropTarget | null>(null);
+  const paneMovePointerOwnerRef = useRef<HTMLButtonElement | null>(null);
   const runtimePanes = useMemo(
     () => resolveTerminalRuntimePanes(tabs, activeTab, panesById),
     [activeTab, panesById, tabs],
@@ -154,19 +163,65 @@ export function TerminalWorkspaceContent({
     () => (isTerminalSessionTab(activeTab) ? collectPaneIds(activeTab.layout) : []),
     [activeTab],
   );
+  const registerRuntimeSlot = useCallback(
+    (paneId: string, element: HTMLElement | null, active: boolean) => {
+      setRuntimeSlots((current) => {
+        if (!element) {
+          return current;
+        }
+        const existingSlots = current[paneId] ?? [];
+        const slotsWithoutElement = existingSlots.filter(
+          (slot) => slot.element !== element,
+        );
+        const nextSlots = [...slotsWithoutElement, { active, element }];
+        if (nextSlots.length === existingSlots.length) {
+          const unchanged =
+            nextSlots.length === 0 ||
+            nextSlots.every((slot, index) => {
+              const currentSlot = existingSlots[index];
+              return (
+                currentSlot?.element === slot.element &&
+                currentSlot.active === slot.active
+              );
+            });
+          if (unchanged) {
+            return current;
+          }
+        }
+        const next = { ...current };
+        if (nextSlots.length > 0) {
+          next[paneId] = nextSlots;
+        } else {
+          delete next[paneId];
+        }
+        return next;
+      });
+    },
+    [],
+  );
   const paneMoveIndicator = useMemo<TerminalPaneMoveIndicator | null>(() => {
     if (!paneMoveDrag?.active || !paneMoveTarget) {
       return null;
     }
     const targetTitle = panesById.get(paneMoveTarget.paneId)?.title;
-    if (!targetTitle) {
+    if (paneMoveTarget.scope === "pane" && !targetTitle) {
       return null;
     }
     return {
+      scope: paneMoveTarget.scope,
       targetTitle,
       zone: paneMoveTarget.zone,
     };
   }, [paneMoveDrag, paneMoveTarget, panesById]);
+  const paneMoveSourcePane = paneMoveDrag?.active
+    ? panesById.get(paneMoveDrag.sourcePaneId)
+    : undefined;
+  const paneMovePreviewLines =
+    paneMoveDrag?.active && paneMoveDrag.sourcePaneId
+      ? (resolvePaneLines?.(paneMoveDrag.sourcePaneId) ??
+          paneMoveSourcePane?.lines ??
+          [])
+      : [];
   const paneMovePreview =
     paneMoveDrag?.active && typeof document !== "undefined"
       ? createPortal(
@@ -176,15 +231,25 @@ export function TerminalWorkspaceContent({
                 ? terminalPaneMoveIndicatorLabel(paneMoveIndicator)
                 : undefined
             }
-            title={
-              panesById.get(paneMoveDrag.sourcePaneId)?.title ?? "终端分屏"
-            }
+            lines={paneMovePreviewLines}
+            title={paneMoveSourcePane?.title ?? "终端分屏"}
             x={paneMoveDrag.currentX}
             y={paneMoveDrag.currentY}
           />,
           document.body,
         )
       : null;
+  const releasePaneMovePointerCapture = useCallback((pointerId?: number) => {
+    const pointerOwner = paneMovePointerOwnerRef.current;
+    if (
+      pointerOwner &&
+      pointerId !== undefined &&
+      pointerOwner.hasPointerCapture?.(pointerId)
+    ) {
+      pointerOwner.releasePointerCapture(pointerId);
+    }
+    paneMovePointerOwnerRef.current = null;
+  }, []);
   const resolvePaneMoveTarget = useCallback(
     (
       sourcePaneId: string,
@@ -193,6 +258,17 @@ export function TerminalWorkspaceContent({
       const workspace = workspaceRef.current;
       if (!workspace) {
         return null;
+      }
+
+      const workspaceTarget = resolveTerminalPaneMoveWorkspaceDropTarget(
+        activePaneIds,
+        sourcePaneId,
+        workspace.getBoundingClientRect(),
+        point,
+        { inset: 96 },
+      );
+      if (workspaceTarget) {
+        return workspaceTarget;
       }
 
       const candidates: TerminalPaneMoveDropCandidate[] = [];
@@ -210,41 +286,11 @@ export function TerminalWorkspaceContent({
     },
     [activePaneIds],
   );
-  const updateRuntimeSlotRects = useCallback(() => {
-    const workspace = workspaceRef.current;
-    if (!workspace) {
-      return;
-    }
-
-    const workspaceRect = workspace.getBoundingClientRect();
-    const nextRects: Record<string, TerminalPaneRuntimeRect> = {};
-    const slots = workspace.querySelectorAll<HTMLElement>(
-      `[${terminalPaneRuntimeSlotAttribute}]`,
-    );
-    slots.forEach((slot) => {
-      const paneId = slot.dataset.terminalPaneRuntimeSlot;
-      if (!paneId) {
-        return;
-      }
-      const slotRect = slot.getBoundingClientRect();
-      nextRects[paneId] = {
-        height: slotRect.height,
-        left: slotRect.left - workspaceRect.left,
-        top: slotRect.top - workspaceRect.top,
-        width: slotRect.width,
-      };
-    });
-    setRuntimeSlotRects((current) =>
-      terminalPaneRuntimeRectsEqual(current, nextRects)
-        ? current
-        : nextRects,
-    );
-  }, []);
-
-  const cancelPaneMoveDrag = useCallback(() => {
+  const cancelPaneMoveDrag = useCallback((pointerId?: number) => {
+    releasePaneMovePointerCapture(pointerId);
     setPaneMoveDrag(null);
     setPaneMoveTarget(null);
-  }, []);
+  }, [releasePaneMovePointerCapture]);
 
   const beginPaneMoveDrag = useCallback(
     (paneId: string, event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -266,6 +312,8 @@ export function TerminalWorkspaceContent({
         sourcePaneId: paneId,
       });
       setPaneMoveTarget(null);
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      paneMovePointerOwnerRef.current = event.currentTarget;
     },
     [activePaneIds, onMovePane],
   );
@@ -278,6 +326,8 @@ export function TerminalWorkspaceContent({
     if (!paneMoveDrag || !onMovePane) {
       return undefined;
     }
+
+    const handleWindowBlur = () => cancelPaneMoveDrag(paneMoveDrag.pointerId);
 
     const movedFarEnough = (event: PointerEvent) =>
       paneMoveDrag.active ||
@@ -325,21 +375,26 @@ export function TerminalWorkspaceContent({
       event.preventDefault();
       const target = movedFarEnough(event) ? updateTarget(event) : null;
       if (target) {
-        onMovePane(paneMoveDrag.sourcePaneId, target.paneId, target.zone);
+        onMovePane(
+          paneMoveDrag.sourcePaneId,
+          target.paneId,
+          target.zone,
+          target.scope,
+        );
       }
-      cancelPaneMoveDrag();
+      cancelPaneMoveDrag(paneMoveDrag.pointerId);
     };
 
     const handlePointerCancel = (event: PointerEvent) => {
       if (event.pointerId === paneMoveDrag.pointerId) {
-        cancelPaneMoveDrag();
+        cancelPaneMoveDrag(paneMoveDrag.pointerId);
       }
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        cancelPaneMoveDrag();
+        cancelPaneMoveDrag(paneMoveDrag.pointerId);
       }
     };
 
@@ -347,48 +402,23 @@ export function TerminalWorkspaceContent({
     window.addEventListener("pointerup", handlePointerUp);
     window.addEventListener("pointercancel", handlePointerCancel);
     window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("blur", cancelPaneMoveDrag);
+    window.addEventListener("blur", handleWindowBlur);
 
     return () => {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("pointercancel", handlePointerCancel);
       window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("blur", cancelPaneMoveDrag);
+      window.removeEventListener("blur", handleWindowBlur);
+      releasePaneMovePointerCapture(paneMoveDrag.pointerId);
     };
-  }, [cancelPaneMoveDrag, onMovePane, paneMoveDrag, resolvePaneMoveTarget]);
-
-  useLayoutEffect(() => {
-    updateRuntimeSlotRects();
-
-    const workspace = workspaceRef.current;
-    if (!workspace) {
-      return undefined;
-    }
-
-    const frameId =
-      typeof window.requestAnimationFrame === "function"
-        ? window.requestAnimationFrame(updateRuntimeSlotRects)
-        : undefined;
-    const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? undefined
-        : new ResizeObserver(updateRuntimeSlotRects);
-
-    resizeObserver?.observe(workspace);
-    workspace
-      .querySelectorAll<HTMLElement>(`[${terminalPaneRuntimeSlotAttribute}]`)
-      .forEach((slot) => resizeObserver?.observe(slot));
-    window.addEventListener("resize", updateRuntimeSlotRects);
-
-    return () => {
-      if (frameId !== undefined) {
-        window.cancelAnimationFrame(frameId);
-      }
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", updateRuntimeSlotRects);
-    };
-  }, [activeTab?.id, tabs, terminalInset, updateRuntimeSlotRects]);
+  }, [
+    cancelPaneMoveDrag,
+    onMovePane,
+    paneMoveDrag,
+    releasePaneMovePointerCapture,
+    resolvePaneMoveTarget,
+  ]);
 
   return (
     <div
@@ -407,68 +437,30 @@ export function TerminalWorkspaceContent({
         <TerminalPaneMoveOverlay indicator={paneMoveIndicator} />
       ) : null}
       {paneMovePreview}
-      {runtimePanes.length > 0 ? (
-        <div className="pointer-events-none absolute inset-0 z-20">
-          {runtimePanes.map(({ active, pane }) => {
-            const rect = runtimeSlotRects[pane.id];
-            const visible = active && Boolean(rect);
-            const splitPane = (
-              direction: TerminalSplitDirection,
-              options?: TerminalSplitPaneOptions,
-            ) => {
-              const splitOptions = { ...options, sourcePaneId: pane.id };
-              onFocusPane(pane.id);
-              onSplitPane(direction, splitOptions);
-            };
+      {runtimePanes.map(({ active, pane }) => {
+        const slot = resolveRuntimeSlot(runtimeSlots[pane.id], active);
+        if (!slot) {
+          return null;
+        }
 
-            return (
-              <div
-                className={cn(
-                  "absolute flex min-h-0",
-                  visible
-                    ? "pointer-events-auto"
-                    : "pointer-events-none invisible",
-                )}
-                key={pane.id}
-                onPointerDown={() => onFocusPane(pane.id)}
-                style={rect ?? { height: 1, left: 0, top: 0, width: 1 }}
-              >
-                <TerminalPaneErrorBoundary onOpenLogs={onOpenLogs} pane={pane}>
-                  <XtermPane
-                    args={pane.args}
-                    currentCwd={pane.currentCwd}
-                    cwd={pane.cwd}
-                    env={pane.env}
-                    focused={visible && pane.id === focusedPaneId}
-                    paneId={pane.id}
-                    profileId={pane.profileId}
-                    remoteCommand={pane.remoteCommand}
-                    remoteHostId={pane.remoteHostId}
-                    remoteHostProduction={pane.remoteHostProduction}
-                    onCurrentCwdChange={(cwd) =>
-                      onPaneCurrentCwdChange?.(pane.id, cwd)
-                    }
-                    onOpenLogs={onOpenLogs}
-                    onOutputHistoryChange={(outputHistory) =>
-                      onPaneOutputHistoryChange?.(pane.id, outputHistory)
-                    }
-                    onSplitPane={splitPane}
-                    outputHistory={pane.outputHistory}
-                    resolveInitialOutputHistory={() =>
-                      resolvePaneOutputHistory?.(pane.id) ?? pane.outputHistory
-                    }
-                    resolvedTheme={resolvedTheme}
-                    shell={pane.shell}
-                    target={pane.target}
-                    terminalAppearance={terminalAppearance}
-                    title={pane.title}
-                  />
-                </TerminalPaneErrorBoundary>
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
+        return (
+          <TerminalRuntimePortal
+            focused={active && pane.id === focusedPaneId}
+            key={pane.id}
+            onFocusPane={onFocusPane}
+            onOpenLogs={onOpenLogs}
+            onPaneConnectionStateChange={onPaneConnectionStateChange}
+            onPaneCurrentCwdChange={onPaneCurrentCwdChange}
+            onPaneOutputHistoryChange={onPaneOutputHistoryChange}
+            onSplitPane={onSplitPane}
+            pane={pane}
+            resolvePaneOutputHistory={resolvePaneOutputHistory}
+            resolvedTheme={resolvedTheme}
+            slot={slot}
+            terminalAppearance={terminalAppearance}
+          />
+        );
+      })}
       {tabs.length > 0 ? (
         tabs.map((tab) => {
           const active = tab.id === activeTab?.id;
@@ -499,6 +491,7 @@ export function TerminalWorkspaceContent({
                       : undefined
                   }
                   onClosePane={onClosePane}
+                  onConnectionStateChange={onPaneConnectionStateChange}
                   onCurrentCwdChange={onPaneCurrentCwdChange}
                   onFocusPane={onFocusPane}
                   onOpenLogs={onOpenLogs}
@@ -510,7 +503,9 @@ export function TerminalWorkspaceContent({
                   resolvePaneOutputHistory={resolvePaneOutputHistory}
                   resolvedTheme={resolvedTheme}
                   runtimeMount="slot"
+                  runtimeSlotsActive={active}
                   terminalAppearance={terminalAppearance}
+                  onRuntimeSlotChange={registerRuntimeSlot}
                 />
               ) : (
                 (renderCustomTab?.(tab, active) ?? (
@@ -531,6 +526,147 @@ export function TerminalWorkspaceContent({
       )}
     </div>
   );
+}
+
+interface TerminalRuntimePortalProps {
+  focused: boolean;
+  onFocusPane: (paneId: string) => void;
+  onOpenLogs?: () => void;
+  onPaneConnectionStateChange?: (
+    paneId: string,
+    state: ConnectionState,
+  ) => void;
+  onPaneCurrentCwdChange?: (paneId: string, cwd: string) => void;
+  onPaneOutputHistoryChange?: (
+    paneId: string,
+    outputHistory: string | undefined,
+  ) => void;
+  onSplitPane: (
+    direction: TerminalSplitDirection,
+    options?: TerminalSplitPaneOptions,
+  ) => void;
+  pane: TerminalPane;
+  resolvePaneOutputHistory?: (paneId: string) => string | undefined;
+  resolvedTheme: ResolvedTheme;
+  slot: TerminalPaneRuntimeSlot;
+  terminalAppearance: TerminalAppearance;
+}
+
+function TerminalRuntimePortal({
+  focused,
+  onFocusPane,
+  onOpenLogs,
+  onPaneConnectionStateChange,
+  onPaneCurrentCwdChange,
+  onPaneOutputHistoryChange,
+  onSplitPane,
+  pane,
+  resolvePaneOutputHistory,
+  resolvedTheme,
+  slot,
+  terminalAppearance,
+}: TerminalRuntimePortalProps) {
+  const hostRef = useRef<HTMLElement | null>(null);
+  if (!hostRef.current && typeof document !== "undefined") {
+    const host = document.createElement("div");
+    host.className = "flex h-full min-h-0 w-full";
+    host.dataset.terminalPaneRuntimeHost = pane.id;
+    hostRef.current = host;
+  }
+
+  const host = hostRef.current;
+  useLayoutEffect(() => {
+    if (!host) {
+      return undefined;
+    }
+
+    host.dataset.terminalPaneRuntimeHost = pane.id;
+    host.className = "flex h-full min-h-0 w-full";
+    if (host.parentElement !== slot.element) {
+      slot.element.append(host);
+    }
+
+    return () => {
+      if (host.parentElement === slot.element) {
+        host.remove();
+      }
+    };
+  }, [host, pane.id, slot.element]);
+
+  const splitPane = useCallback(
+    (direction: TerminalSplitDirection, options?: TerminalSplitPaneOptions) => {
+      const splitOptions = { ...options, sourcePaneId: pane.id };
+      onFocusPane(pane.id);
+      onSplitPane(direction, splitOptions);
+    },
+    [onFocusPane, onSplitPane, pane.id],
+  );
+
+  if (!host) {
+    return null;
+  }
+
+  return createPortal(
+    <TerminalPaneErrorBoundary onOpenLogs={onOpenLogs} pane={pane}>
+      <XtermPane
+        args={pane.args}
+        currentCwd={pane.currentCwd}
+        cwd={pane.cwd}
+        env={pane.env}
+        focused={focused}
+        paneId={pane.id}
+        profileId={pane.profileId}
+        remoteCommand={pane.remoteCommand}
+        remoteHostId={pane.remoteHostId}
+        remoteHostProduction={pane.remoteHostProduction}
+        onConnectionStateChange={(state) =>
+          onPaneConnectionStateChange?.(pane.id, state)
+        }
+        onCurrentCwdChange={(cwd) => onPaneCurrentCwdChange?.(pane.id, cwd)}
+        onOpenLogs={onOpenLogs}
+        onOutputHistoryChange={(outputHistory) =>
+          onPaneOutputHistoryChange?.(pane.id, outputHistory)
+        }
+        onSplitPane={splitPane}
+        outputHistory={pane.outputHistory}
+        resolveInitialOutputHistory={() =>
+          resolvePaneOutputHistory?.(pane.id) ?? pane.outputHistory
+        }
+        resolvedTheme={resolvedTheme}
+        shell={pane.shell}
+        target={pane.target}
+        terminalAppearance={terminalAppearance}
+        title={pane.title}
+      />
+    </TerminalPaneErrorBoundary>,
+    host,
+    pane.id,
+  );
+}
+
+function resolveRuntimeSlot(
+  slots: TerminalPaneRuntimeSlot[] | undefined,
+  active: boolean,
+) {
+  if (!slots?.length) {
+    return undefined;
+  }
+  if (active) {
+    return findLastRuntimeSlot(slots, true) ?? slots[slots.length - 1];
+  }
+  return findLastRuntimeSlot(slots, false) ?? slots[slots.length - 1];
+}
+
+function findLastRuntimeSlot(
+  slots: TerminalPaneRuntimeSlot[],
+  active: boolean,
+) {
+  for (let index = slots.length - 1; index >= 0; index -= 1) {
+    if (slots[index].active === active) {
+      return slots[index];
+    }
+  }
+  return undefined;
 }
 
 function resolveTerminalRuntimePanes(
@@ -560,27 +696,5 @@ function resolveTerminalRuntimePanes(
   return paneIds.flatMap((paneId) => {
     const pane = panesById.get(paneId);
     return pane ? [{ active: activePaneIds.has(paneId), pane }] : [];
-  });
-}
-
-function terminalPaneRuntimeRectsEqual(
-  left: Record<string, TerminalPaneRuntimeRect>,
-  right: Record<string, TerminalPaneRuntimeRect>,
-) {
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  if (leftKeys.length !== rightKeys.length) {
-    return false;
-  }
-  return leftKeys.every((key) => {
-    const leftRect = left[key];
-    const rightRect = right[key];
-    return (
-      Boolean(rightRect) &&
-      leftRect.height === rightRect.height &&
-      leftRect.left === rightRect.left &&
-      leftRect.top === rightRect.top &&
-      leftRect.width === rightRect.width
-    );
   });
 }

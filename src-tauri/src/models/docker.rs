@@ -163,7 +163,7 @@ pub struct DockerContainerSummary {
     /// Compose/Podman Compose 元数据；独立容器为空。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compose: Option<DockerComposeMetadata>,
-    /// 列表阶段保留的 Compose 相关 labels，供前端兼容和排障使用。
+    /// 列表阶段保留的 Compose 相关 labels，供当前 UI 展示和排障使用。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub labels: BTreeMap<String, String>,
 }

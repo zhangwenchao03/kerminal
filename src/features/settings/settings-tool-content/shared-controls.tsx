@@ -1,5 +1,5 @@
 import { Check, type LucideIcon } from "lucide-react";
-import { Switch } from "../../../components/ui/switch";
+import { cn } from "../../../lib/cn";
 import type { KeybindingScope } from "../settingsModel";
 import type { SettingsSaveState } from "./types";
 
@@ -88,13 +88,40 @@ export function PolicyToggle({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="kerminal-muted-surface flex min-h-11 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300">
+    <button
+      aria-checked={checked}
+      aria-label={label}
+      className={cn(
+        "group kerminal-muted-surface kerminal-focus-ring kerminal-pressable flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] dark:text-zinc-300",
+        checked &&
+          "border-sky-400/30 bg-[var(--surface-selected)] text-zinc-950 dark:text-zinc-100",
+      )}
+      data-state={checked ? "checked" : "unchecked"}
+      onClick={() => onChange(!checked)}
+      role="switch"
+      type="button"
+    >
       <span className="flex min-w-0 items-center gap-2">
         {Icon ? <Icon className="h-4 w-4 shrink-0 text-zinc-400" /> : null}
         <span className="min-w-0 text-left leading-5">{label}</span>
       </span>
-      <Switch aria-label={label} checked={checked} onCheckedChange={onChange} />
-    </div>
+      <span
+        aria-hidden="true"
+        className={cn(
+          "relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border border-[var(--border-subtle)] bg-[var(--surface-hover)] p-0.5 transition-[background-color,border-color,box-shadow,opacity] duration-150",
+          checked
+            ? "border-[#0A84FF]/40 bg-[#0A84FF]"
+            : "group-hover:bg-[var(--surface-muted)]",
+        )}
+      >
+        <span
+          className={cn(
+            "h-5 w-5 rounded-full bg-white shadow-sm shadow-black/20 transition-transform duration-150",
+            checked ? "translate-x-4" : "translate-x-0",
+          )}
+        />
+      </span>
+    </button>
   );
 }
 

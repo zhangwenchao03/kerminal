@@ -110,6 +110,26 @@ const localMachine: Machine = {
   tags: ["local"],
 };
 
+const containerMachine: Machine = {
+  containerId: "container-api",
+  containerName: "api",
+  description: "api on prod api",
+  id: "docker:prod-api:container-api",
+  kind: "dockerContainer",
+  name: "api",
+  parentMachineId: "prod-api",
+  runtime: "docker",
+  status: "online",
+  tags: ["container", "docker"],
+  target: {
+    containerId: "container-api",
+    containerName: "api",
+    hostId: "prod-api",
+    kind: "dockerContainer",
+    runtime: "docker",
+  },
+};
+
 const focusedSshPane: TerminalPane = {
   id: "pane-prod",
   lines: [],
@@ -478,6 +498,14 @@ describe("PortForwardToolContent", () => {
 
     expect(await screen.findByText("SSH 隧道")).toBeInTheDocument();
     expect(screen.getByText(/请选择 SSH 主机/)).toBeInTheDocument();
+  });
+
+  it("does not load SSH tunnel sessions for container targets", async () => {
+    render(<PortForwardToolContent selectedMachine={containerMachine} />);
+
+    expect(await screen.findByText("SSH 隧道")).toBeInTheDocument();
+    expect(screen.getByText(/当前容器目标不支持/)).toBeInTheDocument();
+    expect(portForwardApiMocks.listPortForwards).not.toHaveBeenCalled();
   });
 
   it("does not render a default development host badge", async () => {

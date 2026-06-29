@@ -27,6 +27,16 @@ pub const MAX_TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS: u32 = 3650;
 pub const DEFAULT_TERMINAL_INLINE_SUGGESTION_AUDIT_RETENTION_DAYS: u32 = 30;
 /// 终端 inline suggestion 反馈事件默认保留天数。
 pub const DEFAULT_TERMINAL_INLINE_SUGGESTION_FEEDBACK_RETENTION_DAYS: u32 = 365;
+/// 桌面通知默认最小时长阈值，单位毫秒。
+pub const DEFAULT_DESKTOP_NOTIFICATION_MIN_DURATION_MS: u32 = 10_000;
+/// 桌面通知默认同类事件节流，单位毫秒。
+pub const DEFAULT_DESKTOP_NOTIFICATION_THROTTLE_MS: u32 = 30_000;
+/// 桌面通知最小时长阈值下限，单位毫秒。
+pub const MIN_DESKTOP_NOTIFICATION_MIN_DURATION_MS: u32 = 1_000;
+/// 桌面通知最小时长阈值上限，单位毫秒。
+pub const MAX_DESKTOP_NOTIFICATION_MIN_DURATION_MS: u32 = 120_000;
+/// 桌面通知同类事件节流上限，单位毫秒。
+pub const MAX_DESKTOP_NOTIFICATION_THROTTLE_MS: u32 = 600_000;
 /// 深浅色主题模式。
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -343,6 +353,50 @@ impl Default for AppearanceSettings {
     }
 }
 
+/// 桌面系统通知设置。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopNotificationSettings {
+    /// 是否启用桌面通知。
+    #[serde(default)]
+    pub enabled: bool,
+    /// 是否优先通知后台和耗时事件。
+    #[serde(default = "default_true")]
+    pub background_only: bool,
+    /// 是否只通知重要事件。
+    #[serde(default)]
+    pub important_only: bool,
+    /// 前台任务低于该时长不发通知，单位毫秒。
+    #[serde(default = "default_desktop_notification_min_duration_ms")]
+    pub min_duration_ms: u32,
+    /// 同类事件在该时间内只发一次，单位毫秒。
+    #[serde(default = "default_desktop_notification_throttle_ms")]
+    pub throttle_ms: u32,
+}
+
+impl Default for DesktopNotificationSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            background_only: true,
+            important_only: false,
+            min_duration_ms: DEFAULT_DESKTOP_NOTIFICATION_MIN_DURATION_MS,
+            throttle_ms: DEFAULT_DESKTOP_NOTIFICATION_THROTTLE_MS,
+        }
+    }
+}
+
+impl DesktopNotificationSettings {
+    fn normalized(mut self) -> Self {
+        self.min_duration_ms = self.min_duration_ms.clamp(
+            MIN_DESKTOP_NOTIFICATION_MIN_DURATION_MS,
+            MAX_DESKTOP_NOTIFICATION_MIN_DURATION_MS,
+        );
+        self.throttle_ms = self.throttle_ms.min(MAX_DESKTOP_NOTIFICATION_THROTTLE_MS);
+        self
+    }
+}
+
 /// 快捷键生效范围。
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -403,6 +457,9 @@ pub struct AppSettings {
     /// SFTP 传输和连接性能设置。
     #[serde(default)]
     pub sftp: SftpPerformanceSettings,
+    /// 桌面系统通知设置。
+    #[serde(default)]
+    pub desktop_notifications: DesktopNotificationSettings,
 }
 
 impl Default for AppSettings {
@@ -414,6 +471,7 @@ impl Default for AppSettings {
             terminal: TerminalAppearance::default(),
             keybindings: default_keybindings(),
             sftp: SftpPerformanceSettings::default(),
+            desktop_notifications: DesktopNotificationSettings::default(),
         }
     }
 }
@@ -471,6 +529,7 @@ impl AppSettings {
             self.keybindings = default_keybindings();
         }
         self.sftp = self.sftp.normalized();
+        self.desktop_notifications = self.desktop_notifications.normalized();
 
         Ok(self)
     }
@@ -486,6 +545,14 @@ fn default_terminal_inline_suggestion_audit_retention_days() -> u32 {
 
 fn default_terminal_inline_suggestion_feedback_retention_days() -> u32 {
     DEFAULT_TERMINAL_INLINE_SUGGESTION_FEEDBACK_RETENTION_DAYS
+}
+
+fn default_desktop_notification_min_duration_ms() -> u32 {
+    DEFAULT_DESKTOP_NOTIFICATION_MIN_DURATION_MS
+}
+
+fn default_desktop_notification_throttle_ms() -> u32 {
+    DEFAULT_DESKTOP_NOTIFICATION_THROTTLE_MS
 }
 
 fn default_background_opacity() -> u8 {

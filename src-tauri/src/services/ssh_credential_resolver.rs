@@ -1,0 +1,570 @@
+//! SSH credential resolution from host config and encrypted workspace vault.
+//!
+//! @author kongweiguang
+
+use std::{fmt, path::PathBuf};
+
+use serde::Serialize;
+
+use crate::{
+    error::{AppError, AppResult},
+    models::remote_host::{
+        parse_vault_secret_ref, RemoteHost, RemoteHostAuthType, SshJumpHostOptions,
+    },
+    services::encrypted_vault_service::EncryptedVaultService,
+};
+
+#[derive(Clone)]
+pub struct SshCredentialResolver {
+    vault: EncryptedVaultService,
+}
+
+impl fmt::Debug for SshCredentialResolver {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SshCredentialResolver")
+            .field("vault", &"<workspace vault>")
+            .finish()
+    }
+}
+
+impl SshCredentialResolver {
+    pub fn new(vault: EncryptedVaultService) -> Self {
+        Self { vault }
+    }
+
+    pub fn resolve_host(&self, host: &RemoteHost) -> AppResult<ResolvedSshRouteAuth> {
+        let jumps = host
+            .ssh_options
+            .jump_hosts
+            .iter()
+            .enumerate()
+            .map(|(index, jump)| self.resolve_jump(index, jump))
+            .collect::<AppResult<Vec<_>>>()?;
+        let target = self.resolve_target(host)?;
+        Ok(ResolvedSshRouteAuth {
+            summary: ResolvedSshRouteAuthSummary {
+                target: target.summary.clone(),
+                jumps: jumps.iter().map(|jump| jump.summary.clone()).collect(),
+            },
+            target,
+            jumps,
+        })
+    }
+
+    pub fn resolve_runtime_host(&self, host: &RemoteHost) -> AppResult<ResolvedSshRuntimeHost> {
+        let auth = self.resolve_host(host)?;
+        let host = materialize_runtime_host(host, &auth);
+        Ok(ResolvedSshRuntimeHost { host, auth })
+    }
+
+    fn resolve_target(&self, host: &RemoteHost) -> AppResult<ResolvedSshHopAuth> {
+        let material = self.resolve_material(
+            ResolvedSshHopRole::Target,
+            host.auth_type,
+            host.credential_ref.as_deref(),
+            host.secret_ref.as_deref(),
+            host.key_passphrase_ref.as_deref(),
+        )?;
+        Ok(ResolvedSshHopAuth::new(
+            ResolvedSshHopRole::Target,
+            host.host.clone(),
+            host.port,
+            host.username.clone(),
+            material,
+        ))
+    }
+
+    fn resolve_jump(
+        &self,
+        index: usize,
+        jump: &SshJumpHostOptions,
+    ) -> AppResult<ResolvedSshHopAuth> {
+        let role = ResolvedSshHopRole::Jump { index };
+        let material = self.resolve_material(
+            role,
+            jump.auth_type,
+            jump.credential_ref.as_deref(),
+            jump.secret_ref.as_deref(),
+            jump.key_passphrase_ref.as_deref(),
+        )?;
+        Ok(ResolvedSshHopAuth::new(
+            role,
+            jump.host.clone(),
+            jump.port,
+            jump.username.clone(),
+            material,
+        ))
+    }
+
+    fn resolve_material(
+        &self,
+        role: ResolvedSshHopRole,
+        auth_type: RemoteHostAuthType,
+        credential_ref: Option<&str>,
+        secret_ref: Option<&str>,
+        key_passphrase_ref: Option<&str>,
+    ) -> AppResult<ResolvedSshAuthMaterial> {
+        match auth_type {
+            RemoteHostAuthType::Agent => Ok(ResolvedSshAuthMaterial::Agent {
+                source: ResolvedSshCredentialSource::Agent,
+            }),
+            RemoteHostAuthType::Password => self.resolve_password(role, secret_ref),
+            RemoteHostAuthType::Key => {
+                self.resolve_private_key(credential_ref, secret_ref, key_passphrase_ref)
+            }
+        }
+    }
+
+    fn resolve_password(
+        &self,
+        role: ResolvedSshHopRole,
+        secret_ref: Option<&str>,
+    ) -> AppResult<ResolvedSshAuthMaterial> {
+        if let Some(secret_ref) = normalized(secret_ref) {
+            return Ok(ResolvedSshAuthMaterial::Password {
+                value: self.decrypt_secret_ref(secret_ref, "password")?,
+                source: ResolvedSshCredentialSource::Vault(vault_source(secret_ref)?),
+            });
+        }
+        Ok(ResolvedSshAuthMaterial::PromptOnly {
+            source: ResolvedSshCredentialSource::PromptOnly,
+            reason: format!("{} password is not stored", role.label()),
+        })
+    }
+
+    fn resolve_private_key(
+        &self,
+        credential_ref: Option<&str>,
+        secret_ref: Option<&str>,
+        key_passphrase_ref: Option<&str>,
+    ) -> AppResult<ResolvedSshAuthMaterial> {
+        let passphrase = self.resolve_key_passphrase(key_passphrase_ref)?;
+        if let Some(path) = normalized(credential_ref) {
+            return Ok(ResolvedSshAuthMaterial::PrivateKeyPath {
+                path: PathBuf::from(path),
+                passphrase,
+                source: ResolvedSshCredentialSource::ConfigPath,
+            });
+        }
+        if let Some(secret_ref) = normalized(secret_ref) {
+            return Ok(ResolvedSshAuthMaterial::PrivateKeyPem {
+                content: self.decrypt_secret_ref(secret_ref, "private-key")?,
+                passphrase,
+                source: ResolvedSshCredentialSource::Vault(vault_source(secret_ref)?),
+            });
+        }
+        Ok(ResolvedSshAuthMaterial::PromptOnly {
+            source: ResolvedSshCredentialSource::PromptOnly,
+            reason: "private key material is not configured".to_owned(),
+        })
+    }
+
+    fn resolve_key_passphrase(
+        &self,
+        key_passphrase_ref: Option<&str>,
+    ) -> AppResult<Option<ResolvedSshSecretValue>> {
+        let Some(secret_ref) = normalized(key_passphrase_ref) else {
+            return Ok(None);
+        };
+        Ok(Some(ResolvedSshSecretValue {
+            value: self.decrypt_secret_ref(secret_ref, "key-passphrase")?,
+            source: ResolvedSshCredentialSource::Vault(vault_source(secret_ref)?),
+        }))
+    }
+
+    fn decrypt_secret_ref(&self, secret_ref: &str, expected_material: &str) -> AppResult<String> {
+        let parsed = parse_vault_secret_ref(secret_ref).map_err(AppError::InvalidInput)?;
+        if parsed.material != expected_material {
+            return Err(AppError::InvalidInput(format!(
+                "vault ref material {} cannot be used as {expected_material}",
+                parsed.material
+            )));
+        }
+        let key = self
+            .vault
+            .read_key()
+            .map_err(|_| AppError::Credential("vault key is missing or unreadable".to_owned()))?;
+        let entry_id = parsed.entry_id();
+        let entry = self
+            .vault
+            .entry_by_id(&entry_id)?
+            .ok_or_else(|| AppError::Credential(format!("vault entry is missing: {entry_id}")))?;
+        let plaintext = self
+            .vault
+            .decrypt_secret(&key, &entry, secret_ref.as_bytes())
+            .map_err(|_| {
+                AppError::Credential(format!("vault entry cannot be decrypted: {entry_id}"))
+            })?;
+        String::from_utf8(plaintext)
+            .map_err(|_| AppError::Credential(format!("vault entry is not utf-8 text: {entry_id}")))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedSshRuntimeHost {
+    pub host: RemoteHost,
+    pub auth: ResolvedSshRouteAuth,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedSshRouteAuth {
+    pub target: ResolvedSshHopAuth,
+    pub jumps: Vec<ResolvedSshHopAuth>,
+    pub summary: ResolvedSshRouteAuthSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedSshHopAuth {
+    pub role: ResolvedSshHopRole,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub material: ResolvedSshAuthMaterial,
+    pub secret_input_plan: TerminalSecretInputPlan,
+    pub summary: ResolvedSshAuthSummary,
+}
+
+impl ResolvedSshHopAuth {
+    fn new(
+        role: ResolvedSshHopRole,
+        host: String,
+        port: u16,
+        username: String,
+        material: ResolvedSshAuthMaterial,
+    ) -> Self {
+        let secret_input_plan = TerminalSecretInputPlan::from_material(&material);
+        let summary =
+            ResolvedSshAuthSummary::from_material(role, &host, port, &username, &material);
+        Self {
+            role,
+            host,
+            port,
+            username,
+            material,
+            secret_input_plan,
+            summary,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ResolvedSshHopRole {
+    Target,
+    Jump { index: usize },
+}
+
+impl ResolvedSshHopRole {
+    fn label(self) -> String {
+        match self {
+            Self::Target => "target".to_owned(),
+            Self::Jump { index } => format!("jump[{index}]"),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum ResolvedSshAuthMaterial {
+    Agent {
+        source: ResolvedSshCredentialSource,
+    },
+    Password {
+        value: String,
+        source: ResolvedSshCredentialSource,
+    },
+    PrivateKeyPath {
+        path: PathBuf,
+        passphrase: Option<ResolvedSshSecretValue>,
+        source: ResolvedSshCredentialSource,
+    },
+    PrivateKeyPem {
+        content: String,
+        passphrase: Option<ResolvedSshSecretValue>,
+        source: ResolvedSshCredentialSource,
+    },
+    PromptOnly {
+        source: ResolvedSshCredentialSource,
+        reason: String,
+    },
+}
+
+impl fmt::Debug for ResolvedSshAuthMaterial {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Agent { source } => formatter
+                .debug_struct("Agent")
+                .field("source", source)
+                .finish(),
+            Self::Password { source, .. } => formatter
+                .debug_struct("Password")
+                .field("value", &"<redacted>")
+                .field("source", source)
+                .finish(),
+            Self::PrivateKeyPath {
+                path,
+                passphrase,
+                source,
+            } => formatter
+                .debug_struct("PrivateKeyPath")
+                .field("path", path)
+                .field("passphrase", &passphrase.as_ref().map(|_| "<redacted>"))
+                .field("source", source)
+                .finish(),
+            Self::PrivateKeyPem {
+                passphrase, source, ..
+            } => formatter
+                .debug_struct("PrivateKeyPem")
+                .field("content", &"<redacted>")
+                .field("passphrase", &passphrase.as_ref().map(|_| "<redacted>"))
+                .field("source", source)
+                .finish(),
+            Self::PromptOnly { source, reason } => formatter
+                .debug_struct("PromptOnly")
+                .field("source", source)
+                .field("reason", reason)
+                .finish(),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct ResolvedSshSecretValue {
+    pub value: String,
+    pub source: ResolvedSshCredentialSource,
+}
+
+impl fmt::Debug for ResolvedSshSecretValue {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ResolvedSshSecretValue")
+            .field("value", &"<redacted>")
+            .field("source", &self.source)
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ResolvedSshCredentialSource {
+    Agent,
+    ConfigPath,
+    PromptOnly,
+    Vault(VaultResolvedSource),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultResolvedSource {
+    pub secret_ref: String,
+    pub entry_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalSecretInputPlan {
+    pub mode: TerminalSecretInputMode,
+    pub source: ResolvedSshCredentialSource,
+}
+
+impl TerminalSecretInputPlan {
+    fn from_material(material: &ResolvedSshAuthMaterial) -> Self {
+        match material {
+            ResolvedSshAuthMaterial::Password { source, .. } => Self {
+                mode: TerminalSecretInputMode::Password,
+                source: source.clone(),
+            },
+            ResolvedSshAuthMaterial::PromptOnly { source, .. } => Self {
+                mode: TerminalSecretInputMode::PromptOnly,
+                source: source.clone(),
+            },
+            ResolvedSshAuthMaterial::Agent { source }
+            | ResolvedSshAuthMaterial::PrivateKeyPath { source, .. }
+            | ResolvedSshAuthMaterial::PrivateKeyPem { source, .. } => Self {
+                mode: TerminalSecretInputMode::None,
+                source: source.clone(),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalSecretInputMode {
+    None,
+    Password,
+    PromptOnly,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedSshRouteAuthSummary {
+    pub target: ResolvedSshAuthSummary,
+    pub jumps: Vec<ResolvedSshAuthSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedSshAuthSummary {
+    pub role: ResolvedSshHopRole,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub auth_kind: ResolvedSshAuthKind,
+    pub source: ResolvedSshCredentialSource,
+    pub has_secret_material: bool,
+    pub has_key_passphrase: bool,
+    pub prompt_required: bool,
+}
+
+impl ResolvedSshAuthSummary {
+    fn from_material(
+        role: ResolvedSshHopRole,
+        host: &str,
+        port: u16,
+        username: &str,
+        material: &ResolvedSshAuthMaterial,
+    ) -> Self {
+        let (auth_kind, source, has_secret_material, has_key_passphrase, prompt_required) =
+            match material {
+                ResolvedSshAuthMaterial::Agent { source } => (
+                    ResolvedSshAuthKind::Agent,
+                    source.clone(),
+                    false,
+                    false,
+                    false,
+                ),
+                ResolvedSshAuthMaterial::Password { source, .. } => (
+                    ResolvedSshAuthKind::Password,
+                    source.clone(),
+                    true,
+                    false,
+                    false,
+                ),
+                ResolvedSshAuthMaterial::PrivateKeyPath {
+                    passphrase, source, ..
+                } => (
+                    ResolvedSshAuthKind::PrivateKeyPath,
+                    source.clone(),
+                    false,
+                    passphrase.is_some(),
+                    false,
+                ),
+                ResolvedSshAuthMaterial::PrivateKeyPem {
+                    passphrase, source, ..
+                } => (
+                    ResolvedSshAuthKind::PrivateKeyPem,
+                    source.clone(),
+                    true,
+                    passphrase.is_some(),
+                    false,
+                ),
+                ResolvedSshAuthMaterial::PromptOnly { source, .. } => (
+                    ResolvedSshAuthKind::PromptOnly,
+                    source.clone(),
+                    false,
+                    false,
+                    true,
+                ),
+            };
+        Self {
+            role,
+            host: host.to_owned(),
+            port,
+            username: username.to_owned(),
+            auth_kind,
+            source,
+            has_secret_material,
+            has_key_passphrase,
+            prompt_required,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ResolvedSshAuthKind {
+    Agent,
+    Password,
+    PrivateKeyPath,
+    PrivateKeyPem,
+    PromptOnly,
+}
+
+fn vault_source(secret_ref: &str) -> AppResult<VaultResolvedSource> {
+    let parsed = parse_vault_secret_ref(secret_ref).map_err(AppError::InvalidInput)?;
+    Ok(VaultResolvedSource {
+        secret_ref: secret_ref.to_owned(),
+        entry_id: parsed.entry_id(),
+    })
+}
+
+fn normalized(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
+fn materialize_runtime_host(host: &RemoteHost, resolved_auth: &ResolvedSshRouteAuth) -> RemoteHost {
+    let mut runtime_host = host.clone();
+    apply_material_to_host(&mut runtime_host, &resolved_auth.target.material);
+    for (jump, resolved_jump) in runtime_host
+        .ssh_options
+        .jump_hosts
+        .iter_mut()
+        .zip(&resolved_auth.jumps)
+    {
+        apply_material_to_jump(jump, &resolved_jump.material);
+    }
+    runtime_host
+}
+
+fn apply_material_to_host(host: &mut RemoteHost, material: &ResolvedSshAuthMaterial) {
+    match material {
+        ResolvedSshAuthMaterial::Agent { .. } => {
+            host.credential_ref = None;
+            host.credential_secret = None;
+        }
+        ResolvedSshAuthMaterial::Password { value, .. } => {
+            host.credential_ref = None;
+            host.credential_secret = Some(value.clone());
+        }
+        ResolvedSshAuthMaterial::PrivateKeyPath { path, .. } => {
+            host.credential_ref = Some(display_path_arg(path));
+            host.credential_secret = None;
+        }
+        ResolvedSshAuthMaterial::PrivateKeyPem { content, .. } => {
+            host.credential_ref = None;
+            host.credential_secret = Some(content.clone());
+        }
+        ResolvedSshAuthMaterial::PromptOnly { .. } => {
+            host.credential_secret = None;
+        }
+    }
+}
+
+fn apply_material_to_jump(jump: &mut SshJumpHostOptions, material: &ResolvedSshAuthMaterial) {
+    match material {
+        ResolvedSshAuthMaterial::Agent { .. } => {
+            jump.credential_ref = None;
+            jump.credential_secret = None;
+        }
+        ResolvedSshAuthMaterial::Password { value, .. } => {
+            jump.credential_ref = None;
+            jump.credential_secret = Some(value.clone());
+        }
+        ResolvedSshAuthMaterial::PrivateKeyPath { path, .. } => {
+            jump.credential_ref = Some(display_path_arg(path));
+            jump.credential_secret = None;
+        }
+        ResolvedSshAuthMaterial::PrivateKeyPem { content, .. } => {
+            jump.credential_ref = None;
+            jump.credential_secret = Some(content.clone());
+        }
+        ResolvedSshAuthMaterial::PromptOnly { .. } => {
+            jump.credential_secret = None;
+        }
+    }
+}
+
+fn display_path_arg(path: &std::path::Path) -> String {
+    path.to_string_lossy().into_owned()
+}

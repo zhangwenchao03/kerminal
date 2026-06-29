@@ -5,11 +5,110 @@
 use crate::models::mcp_server::{ToolCategory, ToolDefinition};
 
 use super::super::schema::{
-    enum_field, number_field, object_schema, string_field, tool, tool_with_exposure, ToolEffect,
+    boolean_field, enum_field, number_field, object_schema, string_field, tool, tool_with_exposure,
+    ToolEffect,
 };
 
 pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
     vec![
+        tool(
+            "kerminal.capabilities",
+            "读取 Kerminal MCP 能力指南",
+            "返回外部 Agent 使用 Kerminal MCP 的结构化能力地图、推荐起步工具、会话上下文文件、文件型配置边界和故意不提供的 MCP CRUD/UI 编排工具族。",
+            ToolCategory::Diagnostics,
+            ToolEffect::Read,
+            object_schema(vec![]),
+        ),
+        tool(
+            "kerminal.app_guide",
+            "读取 Kerminal 应用导航指南",
+            "返回面向外部 Agent 的 Kerminal 产品结构地图：左栏主机、中间终端工作区、右栏工具、Agent 会话、文件型配置和对应 MCP 工具族；不执行 UI 编排。",
+            ToolCategory::Diagnostics,
+            ToolEffect::Read,
+            object_schema(vec![]),
+        ),
+        tool(
+            "kerminal.config_guide",
+            "读取 Kerminal 配置指南",
+            "返回与工作空间 kerminal-config.md 同源的文件型配置规则正文、可编辑文件、受保护路径、验证入口和 secret 边界；只读，不做配置 CRUD。",
+            ToolCategory::Diagnostics,
+            ToolEffect::Read,
+            object_schema(vec![]),
+        ),
+        tool(
+            "kerminal.tool_help",
+            "读取 Kerminal 工具帮助",
+            "按 toolId、family 或 query 返回当前暴露 MCP tool 的 schema、示例参数和安全标注，并说明故意缺席的配置 CRUD/UI 编排/历史写入工具族；只读，不执行动作。",
+            ToolCategory::Diagnostics,
+            ToolEffect::Read,
+            object_schema(vec![
+                string_field("toolId", "精确 MCP tool id，例如 terminal.write。", false),
+                enum_field(
+                    "family",
+                    "工具族过滤，可用于读取一组相关 tools。",
+                    false,
+                    vec![
+                        "discovery",
+                        "agent-session",
+                        "terminal",
+                        "ssh",
+                        "sftp",
+                        "tmux",
+                        "container",
+                        "port-forward",
+                        "server-info",
+                        "history",
+                        "diagnostics",
+                        "config",
+                        "credentials",
+                    ],
+                ),
+                string_field("query", "按工具 id、标题、描述或分类做大小写不敏感搜索。", false),
+                boolean_field(
+                    "includeSchemas",
+                    "是否返回 inputSchema，默认 true；false 时只返回摘要、示例和安全标注。",
+                    false,
+                ),
+            ]),
+        ),
+        tool(
+            "kerminal.operation_guide",
+            "读取 Kerminal 操作指南",
+            "按任务意图返回外部 Agent 操作 Kerminal 的推荐 MCP 调用顺序、文件优先配置边界、安全停顿条件和缺席工具说明；不读取 secrets，不执行动作。",
+            ToolCategory::Diagnostics,
+            ToolEffect::Read,
+            object_schema(vec![
+                enum_field(
+                    "intent",
+                    "操作意图，默认 overview。",
+                    false,
+                    vec![
+                        "overview",
+                        "terminal",
+                        "session-terminal",
+                        "ssh-command",
+                        "sftp",
+                        "tmux",
+                        "container",
+                        "port-forward",
+                        "server-info",
+                        "history",
+                        "config",
+                        "credentials",
+                        "diagnostics",
+                    ],
+                ),
+                string_field("goal", "用户目标的可选自然语言摘要；仅回显帮助 Agent 对齐上下文。", false),
+            ]),
+        ),
+        tool(
+            "kerminal.runtime_snapshot",
+            "读取 Kerminal 运行态快照",
+            "返回当前 Kerminal 运行态摘要：终端、Agent session、端口转发、本机代理入口和 MCP 工具数量；不读取 secrets，不提供文件型配置 CRUD。",
+            ToolCategory::Diagnostics,
+            ToolEffect::Read,
+            object_schema(vec![]),
+        ),
         tool(
             "terminal.write",
             "写入终端",

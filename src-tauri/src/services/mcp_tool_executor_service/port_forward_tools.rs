@@ -30,7 +30,7 @@ pub(super) fn execute_port_forward_close(
         Ok(summary) => summary,
         Err(error) => return failure(error.to_string()),
     };
-    match port_forwards.close(storage, &forward_id) {
+    match port_forwards.stop(storage, &forward_id) {
         Ok(true) => {
             if let Some(entry_id) = summary.and_then(|summary| summary.local_proxy_entry_id) {
                 let _ = local_network_proxy.release_entry(&entry_id);

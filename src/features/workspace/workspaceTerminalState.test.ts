@@ -7,6 +7,7 @@ import {
   resolveFocusedPaneSplitTarget,
   selectTerminalTabState,
   splitFocusedPaneState,
+  updatePaneStatusState,
   updateTerminalSplitLayoutSizesState,
   type TerminalWorkspaceStateSlice,
 } from "./workspaceTerminalState";
@@ -109,6 +110,71 @@ describe("workspaceTerminalState split pane", () => {
       currentCwd: "/srv/app",
       cwd: "/srv/app",
     });
+  });
+
+  it("keeps inheriting cwd when an explicit split target points at the same host", () => {
+    const state = terminalState({
+      terminalPanes: [
+        terminalPane({
+          currentCwd: "/srv/app",
+          cwd: "/home/root",
+        }),
+      ],
+    });
+
+    const patch = splitFocusedPaneState(state, {
+      direction: "horizontal",
+      paneId: "pane-ssh-2",
+      splitId: "split-1",
+      targetPane: terminalPane({
+        id: "pane-ssh-template",
+        machineId: "host-lab",
+        remoteHostId: "host-lab",
+        target: { hostId: "host-lab", kind: "ssh" },
+      }),
+    });
+
+    expect(patch.terminalPanes?.[1]).toMatchObject({
+      currentCwd: "/srv/app",
+      cwd: "/srv/app",
+      machineId: "host-lab",
+    });
+  });
+
+  it("uses the target default cwd when an explicit split target is another host", () => {
+    const state = terminalState({
+      terminalPanes: [
+        terminalPane({
+          currentCwd: "/dev",
+          cwd: "/bwy",
+        }),
+      ],
+    });
+
+    const patch = splitFocusedPaneState(state, {
+      direction: "horizontal",
+      paneId: "pane-ssh-2",
+      splitId: "split-1",
+      targetPane: terminalPane({
+        cwd: undefined,
+        currentCwd: undefined,
+        id: "pane-ssh-other-template",
+        machineId: "host-other",
+        remoteHostId: "host-other",
+        target: { hostId: "host-other", kind: "ssh" },
+        title: "other server",
+      }),
+    });
+
+    const splitPane = patch.terminalPanes?.[1];
+    expect(splitPane).toMatchObject({
+      id: "pane-ssh-2",
+      machineId: "host-other",
+      remoteHostId: "host-other",
+      title: "other server",
+    });
+    expect(splitPane?.cwd).toBeUndefined();
+    expect(splitPane?.currentCwd).toBeUndefined();
   });
 
   it("uses vertical split titles and keeps split prefixes compatible", () => {
@@ -589,5 +655,34 @@ describe("workspaceTerminalState tab and pane focus", () => {
     });
 
     expect(closeTerminalPaneState(state, "pane-ssh-3")).toEqual({});
+  });
+});
+
+describe("workspaceTerminalState pane status", () => {
+  it("updates only the matching terminal pane status", () => {
+    const otherPane = terminalPane({
+      id: "pane-ssh-2",
+      status: "online",
+      title: "other",
+    });
+    const state = terminalState({
+      terminalPanes: [terminalPane(), otherPane],
+    });
+
+    const patch = updatePaneStatusState(state, "pane-ssh-1", "offline");
+
+    expect(patch).toEqual({
+      terminalPanes: [
+        { ...state.terminalPanes[0], status: "offline" },
+        otherPane,
+      ],
+    });
+  });
+
+  it("returns the same state when the pane status is unchanged or missing", () => {
+    const state = terminalState();
+
+    expect(updatePaneStatusState(state, "pane-ssh-1", "online")).toBe(state);
+    expect(updatePaneStatusState(state, "pane-missing", "offline")).toBe(state);
   });
 });

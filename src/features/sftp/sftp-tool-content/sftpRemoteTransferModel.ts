@@ -19,6 +19,9 @@ import type {
   SftpStatus,
 } from "./types";
 
+const DEFAULT_REMOTE_TRANSFER_CONFLICT_POLICY: SftpTransferConflictPolicy =
+  "overwrite";
+
 type RemoteEntrySelection = {
   entry: SftpEntry | null;
   selectedEntries: SftpEntry[];
@@ -112,8 +115,6 @@ export type SftpRemoteDragPayload = {
   sourceHostLabel: string;
 };
 
-export const SFTP_REMOTE_DOWNLOAD_DRAG_MIME =
-  "application/x-kerminal-sftp-entry-paths";
 export const SFTP_REMOTE_DRAG_PAYLOAD_MIME =
   "application/x-kerminal-sftp-remote-drag";
 
@@ -148,16 +149,6 @@ export function buildRemoteDownloadDragStartPlan({
   }
 
   const paths = entriesToDrag.map((nextEntry) => nextEntry.path);
-  const dataTransferItems = [
-    {
-      type: SFTP_REMOTE_DOWNLOAD_DRAG_MIME,
-      value: JSON.stringify(paths),
-    },
-    {
-      type: "text/plain",
-      value: paths.join("\n"),
-    },
-  ];
   const remotePayload =
     sourceHostId && sourceHostLabel
       ? buildSftpRemoteDragPayload({
@@ -169,7 +160,10 @@ export function buildRemoteDownloadDragStartPlan({
 
   return {
     dataTransferItems: [
-      ...dataTransferItems,
+      {
+        type: "text/plain",
+        value: paths.join("\n"),
+      },
       ...(remotePayload
         ? [
             {
@@ -382,7 +376,7 @@ export function buildSftpClipboardPastePlan({
   const targetDescription = sameHost ? "远程复制" : "跨主机传输";
   const sourceDescription = sameHost ? "当前主机" : clipboard.sourceHostLabel;
   const requests = clipboard.entries.map((entry) => ({
-    ...(conflictPolicy !== undefined ? { conflictPolicy } : {}),
+    conflictPolicy: conflictPolicy ?? DEFAULT_REMOTE_TRANSFER_CONFLICT_POLICY,
     kind: entry.kind,
     sourceHostId: clipboard.sourceHostId,
     sourceRemotePath: entry.path,
@@ -447,7 +441,7 @@ export function buildSftpTargetTransferPlan({
       path: entry.path,
     };
     return {
-      ...(conflictPolicy !== undefined ? { conflictPolicy } : {}),
+      conflictPolicy: conflictPolicy ?? DEFAULT_REMOTE_TRANSFER_CONFLICT_POLICY,
       kind,
       sourceHostId,
       sourceRemotePath: entry.path,

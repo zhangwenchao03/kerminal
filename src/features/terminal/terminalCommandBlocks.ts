@@ -6,6 +6,8 @@ const MAX_IMAGE_TEXT_LINES = 160;
 const MAX_IMAGE_LINE_LENGTH = 120;
 export const COMMAND_BLOCK_OUTPUT_MAX_CHARS = 128_000;
 export const COMMAND_BLOCKS_MAX_COUNT = 240;
+const INTERACTIVE_TUI_COMMAND_RE =
+  /(?:^|[/\\\s])(codex|claude|vim|nvim|vi|nano|less|more|man|top|htop|btop|tmux)(?:\.(?:cmd|exe|ps1))?(?:\s|$)/i;
 
 export type TerminalBufferKind = "normal" | "alternate";
 
@@ -89,7 +91,12 @@ export function buildTerminalCommandBlockViews(
   blocks: TerminalCommandBlock[],
   layout: TerminalCommandBlockLayoutInput,
 ): TerminalCommandBlockView[] {
-  if (layout.rows <= 0 || layout.rowHeight <= 0 || layout.bufferLength <= 0) {
+  if (
+    layout.activeBufferType === "alternate" ||
+    layout.rows <= 0 ||
+    layout.rowHeight <= 0 ||
+    layout.bufferLength <= 0
+  ) {
     return [];
   }
 
@@ -101,6 +108,9 @@ export function buildTerminalCommandBlockViews(
       (left, right) =>
         left.marker.line - right.marker.line || left.createdAt - right.createdAt,
     );
+  if (hasRunningInteractiveTuiCommand(sortedBlocks)) {
+    return [];
+  }
   const hasPromptBlock =
     typeof layout.promptLine === "number" &&
     sortedBlocks.some(
@@ -194,10 +204,9 @@ export function buildTerminalCommandBlockViews(
       visibleLineCount * layout.rowHeight,
     );
     const collapsedHeight = layout.rowHeight;
-    const hiddenLineCount =
-      layoutBlock.collapsed && layout.activeBufferType !== "alternate"
-        ? Math.max(0, visibleLineCount - 1)
-        : 0;
+    const hiddenLineCount = layoutBlock.collapsed
+      ? Math.max(0, visibleLineCount - 1)
+      : 0;
 
     views.push({
       collapsed: layoutBlock.collapsed,
@@ -208,7 +217,7 @@ export function buildTerminalCommandBlockViews(
       hiddenLineCount,
       id: layoutBlock.id,
       lineCount: endLine - startLine + 1,
-      muted: layout.activeBufferType === "alternate",
+      muted: false,
       originalTop,
       rowHeight: layout.rowHeight,
       startLine,
@@ -224,6 +233,28 @@ export function buildTerminalCommandBlockViews(
   }
 
   return views.filter((view) => view.top + view.height > 0);
+}
+
+export function hasRunningInteractiveTuiCommand(
+  blocks: TerminalCommandBlock[],
+): boolean {
+  let hasSeenInteractiveTuiCommand = false;
+  for (const block of blocks) {
+    if (
+      block.submitted &&
+      INTERACTIVE_TUI_COMMAND_RE.test(block.command.trim())
+    ) {
+      if (!block.endMarker) {
+        return true;
+      }
+      hasSeenInteractiveTuiCommand = true;
+      continue;
+    }
+    if (hasSeenInteractiveTuiCommand && !block.submitted && !block.endMarker) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function appendCommandBlockOutput(

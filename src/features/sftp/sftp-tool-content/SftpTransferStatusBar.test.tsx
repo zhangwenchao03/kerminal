@@ -22,9 +22,21 @@ function transfer(
     id: "transfer-running",
     kind: "file",
     localPath: "/Users/me/Downloads/app.log",
+    operation: "download",
     remotePath: "/var/log/app.log",
+    source: {
+      hostId: "prod-api",
+      hostLabel: "prod-api",
+      kind: "remote",
+      path: "/var/log/app.log",
+    },
     status: "running",
+    target: {
+      kind: "local",
+      path: "/Users/me/Downloads/app.log",
+    },
     totalBytes: 1024,
+    transportMode: "singleHostSftp",
     updatedAt: 1,
     ...overrides,
   };

@@ -1,4 +1,4 @@
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, type PointerEvent as ReactPointerEvent } from "react";
 import { GripVertical, Terminal, X } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
@@ -15,6 +15,7 @@ import { XtermPane } from "./XtermPane";
 import { TerminalSplitTargetSelector } from "./TerminalSplitTargetSelector";
 import { buildTerminalPaneCardModel } from "./terminalPaneCardModel";
 import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
+import type { ConnectionState } from "./XtermPane.helpers";
 
 interface TerminalPaneCardProps {
   dragging?: boolean;
@@ -23,18 +24,25 @@ interface TerminalPaneCardProps {
   pane: TerminalPane;
   resolvedTheme: ResolvedTheme;
   runtimeMount?: "inline" | "slot";
+  runtimeSlotActive?: boolean;
   terminalAppearance: TerminalAppearance;
   onClosePane: (paneId: string) => void;
   onBeginPaneDrag?: (
     paneId: string,
     event: ReactPointerEvent<HTMLButtonElement>,
   ) => void;
+  onConnectionStateChange?: (paneId: string, state: ConnectionState) => void;
   onCurrentCwdChange?: (paneId: string, cwd: string) => void;
   onFocusPane: (paneId: string) => void;
   onOpenLogs?: () => void;
   onOutputHistoryChange?: (
     paneId: string,
     outputHistory: string | undefined,
+  ) => void;
+  onRuntimeSlotChange?: (
+    paneId: string,
+    element: HTMLElement | null,
+    active: boolean,
   ) => void;
   onSplitPane?: (
     direction: TerminalSplitDirection,
@@ -50,16 +58,19 @@ export function TerminalPaneCard({
   machineGroups = [],
   onBeginPaneDrag,
   onClosePane,
+  onConnectionStateChange,
   onCurrentCwdChange,
   onFocusPane,
   onOpenLogs,
   onOutputHistoryChange,
+  onRuntimeSlotChange,
   onSplitPane,
   pane,
   resolvePaneLines,
   resolvePaneOutputHistory,
   resolvedTheme,
   runtimeMount = "inline",
+  runtimeSlotActive = true,
   terminalAppearance,
 }: TerminalPaneCardProps) {
   const model = buildTerminalPaneCardModel(pane);
@@ -75,14 +86,20 @@ export function TerminalPaneCard({
     onFocusPane(pane.id);
     onSplitPane?.(direction, splitOptions);
   };
+  const runtimeSlotRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      onRuntimeSlotChange?.(pane.id, element, runtimeSlotActive);
+    },
+    [onRuntimeSlotChange, pane.id, runtimeSlotActive],
+  );
 
   return (
     <section
       aria-label={model.ariaLabel}
       className={cn(
-        "kerminal-terminal-surface flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border transition-[opacity,transform,box-shadow] duration-150",
+        "kerminal-terminal-surface flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border transition-[opacity,transform,box-shadow] duration-[180ms] ease-out",
         dragging &&
-          "scale-[0.985] opacity-45 ring-2 ring-dashed ring-amber-400/70",
+          "scale-[0.985] opacity-35 ring-2 ring-dashed ring-sky-400/70",
       )}
       data-terminal-pane-card={pane.id}
       data-dragging={dragging || undefined}
@@ -97,7 +114,7 @@ export function TerminalPaneCard({
               className={cn(
                 "kerminal-focus-ring flex h-7 w-6 shrink-0 cursor-grab items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-[var(--surface-hover)] hover:text-zinc-700 active:cursor-grabbing dark:text-zinc-500 dark:hover:text-zinc-200",
                 dragging &&
-                  "bg-amber-400/10 text-amber-700 dark:text-amber-100",
+                  "bg-sky-400/10 text-sky-700 dark:text-sky-100",
               )}
               onClick={(event) => event.stopPropagation()}
               onContextMenu={(event) => event.stopPropagation()}
@@ -162,8 +179,9 @@ export function TerminalPaneCard({
       </div>
       {model.renderKind === "runtime" && runtimeMount === "slot" ? (
         <div
-          className="min-h-0 flex-1"
+          className="flex min-h-0 flex-1"
           data-terminal-pane-runtime-slot={pane.id}
+          ref={runtimeSlotRef}
         />
       ) : model.renderKind === "runtime" ? (
         <XtermPane
@@ -177,6 +195,9 @@ export function TerminalPaneCard({
           remoteCommand={pane.remoteCommand}
           remoteHostId={pane.remoteHostId}
           remoteHostProduction={pane.remoteHostProduction}
+          onConnectionStateChange={(state) =>
+            onConnectionStateChange?.(pane.id, state)
+          }
           onCurrentCwdChange={(cwd) => onCurrentCwdChange?.(pane.id, cwd)}
           onOpenLogs={onOpenLogs}
           onOutputHistoryChange={(outputHistory) =>

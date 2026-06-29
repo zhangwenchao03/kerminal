@@ -1,4 +1,3 @@
-import type { DockerContainerSummary } from "../../../lib/dockerApi";
 import {
   createDefaultSshOptions,
   type RemoteHost,
@@ -246,6 +245,7 @@ export function buildRdpRequest({
 }
 
 export function buildRdpHostRequest({
+  existingAuthType,
   groupId,
   host,
   name,
@@ -255,6 +255,7 @@ export function buildRdpHostRequest({
   tags,
   username,
 }: {
+  existingAuthType?: RemoteHostAuthType;
   groupId: string;
   host: string;
   name: string;
@@ -265,8 +266,9 @@ export function buildRdpHostRequest({
   username: string;
 }): RemoteHostCreateRequest {
   const trimmedPassword = password.trim();
+  const usePasswordAuth = Boolean(trimmedPassword) || existingAuthType === "password";
   return {
-    authType: trimmedPassword ? "password" : "agent",
+    authType: usePasswordAuth ? "password" : "agent",
     credentialRef: undefined,
     credentialSecret: trimmedPassword ? password : undefined,
     groupId: groupId || undefined,
@@ -541,41 +543,6 @@ export function validatePort(port: number | undefined) {
     return "端口必须是 1 到 65535 之间的数字。";
   }
   return null;
-}
-
-export function dockerStatusLabel(status: DockerContainerSummary["status"]) {
-  if (status === "running") {
-    return "运行中";
-  }
-  if (status === "exited") {
-    return "已停止";
-  }
-  if (status === "paused") {
-    return "已暂停";
-  }
-  if (status === "restarting") {
-    return "重启中";
-  }
-  if (status === "created") {
-    return "已创建";
-  }
-  if (status === "dead") {
-    return "异常";
-  }
-  return "未知";
-}
-
-export function dockerStatusClassName(status: DockerContainerSummary["status"]) {
-  if (status === "running") {
-    return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-200";
-  }
-  if (status === "exited" || status === "created") {
-    return "bg-zinc-500/10 text-zinc-600 dark:text-zinc-300";
-  }
-  if (status === "dead") {
-    return "bg-red-500/10 text-red-700 dark:text-red-200";
-  }
-  return "bg-amber-500/10 text-amber-700 dark:text-amber-200";
 }
 
 export function parseTags(value: string) {

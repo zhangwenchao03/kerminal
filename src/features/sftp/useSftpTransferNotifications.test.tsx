@@ -103,8 +103,20 @@ function transfer(
     id,
     kind: "file",
     localPath: "C:\\tmp\\artifact.txt",
+    operation: "upload",
     remotePath: "/tmp/artifact.txt",
+    source: {
+      kind: "local",
+      path: "C:\\tmp\\artifact.txt",
+    },
     status: "queued",
+    target: {
+      hostId: "host-1",
+      hostLabel: "host-1",
+      kind: "remote",
+      path: "/tmp/artifact.txt",
+    },
+    transportMode: "singleHostSftp",
     updatedAt: Date.now(),
     ...rest,
   };

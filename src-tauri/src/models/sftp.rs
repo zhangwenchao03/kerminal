@@ -266,8 +266,7 @@ pub struct SftpTransferRequest {
     pub remote_path: String,
     /// 本地路径。
     pub local_path: String,
-    /// 目标冲突处理策略；为空时保持旧行为：覆盖目标。
-    #[serde(default)]
+    /// 目标冲突处理策略。
     pub conflict_policy: SftpTransferConflictPolicy,
 }
 
@@ -292,11 +291,10 @@ pub enum SftpTransferKind {
 }
 
 /// SFTP 传输目标冲突处理策略。
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum SftpTransferConflictPolicy {
-    /// 覆盖已存在目标，兼容旧传输行为。
-    #[default]
+    /// 覆盖已存在目标。
     Overwrite,
     /// 目标已存在时跳过该文件。
     Skip,
@@ -363,9 +361,8 @@ pub struct SftpManagedTransferRequest {
     /// 传输对象类型。
     pub kind: SftpTransferKind,
     /// 目标冲突处理策略。
-    #[serde(default)]
     pub conflict_policy: SftpTransferConflictPolicy,
-    /// 发起该传输的前端视图 scope；为空表示旧的全局队列任务。
+    /// 发起该传输的前端视图 scope。
     pub view_scope: Option<String>,
 }
 
@@ -383,8 +380,7 @@ pub struct SftpRemoteCopyRequest {
     pub target_remote_path: String,
     /// 传输对象类型。
     pub kind: SftpTransferKind,
-    /// 目标冲突处理策略；为空时保持旧行为：覆盖目标。
-    #[serde(default)]
+    /// 目标冲突处理策略。
     pub conflict_policy: SftpTransferConflictPolicy,
     /// 发起该传输的前端视图 scope。
     pub view_scope: Option<String>,
@@ -402,8 +398,7 @@ pub struct SftpArchiveDownloadRequest {
     pub target_local_path: String,
     /// 源传输对象类型。
     pub kind: SftpTransferKind,
-    /// 目标冲突处理策略；为空时保持旧行为：覆盖目标。
-    #[serde(default)]
+    /// 目标冲突处理策略。
     pub conflict_policy: SftpTransferConflictPolicy,
     /// 发起该传输的前端视图 scope。
     pub view_scope: Option<String>,
@@ -421,8 +416,7 @@ pub struct SftpArchiveUploadRequest {
     pub target_remote_path: String,
     /// 源传输对象类型。
     pub kind: SftpTransferKind,
-    /// 目标冲突处理策略；为空时保持旧行为：覆盖目标。
-    #[serde(default)]
+    /// 目标冲突处理策略。
     pub conflict_policy: SftpTransferConflictPolicy,
     /// 发起该传输的前端视图 scope。
     pub view_scope: Option<String>,
@@ -520,7 +514,7 @@ pub struct SftpTransferSummary {
     pub id: String,
     /// 远程主机 id。
     pub host_id: String,
-    /// 发起该传输的前端视图 scope；为空表示旧的全局队列任务。
+    /// 发起该传输的前端视图 scope；为空表示不绑定特定视图。
     pub view_scope: Option<String>,
     /// 远程路径。
     pub remote_path: String,
@@ -544,14 +538,14 @@ pub struct SftpTransferSummary {
     pub created_at: u64,
     /// 最近更新时间，Unix 秒。
     pub updated_at: u64,
-    /// 结构化操作类型；旧字段保留用于兼容。
-    pub operation: Option<SftpTransferOperation>,
-    /// 结构化来源端点；旧字段保留用于兼容。
-    pub source: Option<SftpTransferEndpoint>,
-    /// 结构化目标端点；旧字段保留用于兼容。
-    pub target: Option<SftpTransferEndpoint>,
+    /// 结构化操作类型。
+    pub operation: SftpTransferOperation,
+    /// 结构化来源端点。
+    pub source: SftpTransferEndpoint,
+    /// 结构化目标端点。
+    pub target: SftpTransferEndpoint,
     /// 结构化传输方式。
-    pub transport_mode: Option<SftpTransferTransportMode>,
+    pub transport_mode: SftpTransferTransportMode,
     /// 当前阶段，例如排队、桥接、临时中转。
     pub phase: Option<String>,
     /// 当前正在处理的文件或目录。

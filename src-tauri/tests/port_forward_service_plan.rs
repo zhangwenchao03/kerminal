@@ -10,14 +10,12 @@ use kerminal_lib::{
         port_forward::{
             PortForwardCreateRequest, PortForwardEndpoint, PortForwardKind, PortForwardOrigin,
             PortForwardProxyProtocol, PortForwardPurpose, PortForwardRemoteAccessScope,
-            PortForwardSummary,
         },
         remote_host::{RemoteHost, RemoteHostAuthType, SshJumpHostOptions},
     },
     paths::KerminalPaths,
     services::{port_forward_service::plan::build_forward_plan, ssh_command_plan::cleanup_paths},
 };
-use serde_json::json;
 use tempfile::tempdir;
 
 fn remote_host(auth_type: RemoteHostAuthType) -> RemoteHost {
@@ -48,7 +46,10 @@ fn remote_host_with_credentials(
         username: "deploy".to_owned(),
         auth_type,
         credential_ref,
+        secret_ref: None,
+        key_passphrase_ref: None,
         credential_secret,
+        credential_status: Default::default(),
         tags: vec!["dev".to_owned()],
         production: false,
         ssh_options: Default::default(),
@@ -86,7 +87,10 @@ fn jump_host(
         username: username.to_owned(),
         auth_type,
         credential_ref: credential_ref.map(str::to_owned),
+        secret_ref: None,
+        key_passphrase_ref: None,
         credential_secret: credential_secret.map(str::to_owned),
+        credential_status: Default::default(),
     }
 }
 
@@ -672,47 +676,4 @@ fn build_forward_plan_rejects_invalid_ports_and_hosts() {
     )
     .expect_err("reject host whitespace");
     assert!(matches!(error, AppError::InvalidInput(_)));
-}
-
-#[test]
-fn old_port_forward_create_request_json_still_deserializes() {
-    let request: PortForwardCreateRequest = serde_json::from_value(json!({
-        "hostId": "host-1",
-        "name": "legacy",
-        "kind": "local",
-        "bindHost": "127.0.0.1",
-        "sourcePort": 15432,
-        "targetHost": "127.0.0.1",
-        "targetPort": 5432
-    }))
-    .expect("deserialize legacy request");
-
-    assert_eq!(request.purpose, PortForwardPurpose::Generic);
-    assert_eq!(request.origin, PortForwardOrigin::User);
-    assert_eq!(request.proxy_apply_scope, Default::default());
-    assert_eq!(request.local_endpoint, None);
-}
-
-#[test]
-fn old_port_forward_summary_json_still_deserializes() {
-    let summary: PortForwardSummary = serde_json::from_value(json!({
-        "id": "forward-1",
-        "hostId": "host-1",
-        "hostName": "dev",
-        "name": "legacy",
-        "kind": "remote",
-        "bindHost": "127.0.0.1",
-        "sourcePort": 18080,
-        "targetHost": "127.0.0.1",
-        "targetPort": 3000,
-        "pid": 42,
-        "status": "running",
-        "createdAt": "1"
-    }))
-    .expect("deserialize legacy summary");
-
-    assert_eq!(summary.purpose, PortForwardPurpose::Generic);
-    assert_eq!(summary.origin, PortForwardOrigin::User);
-    assert_eq!(summary.command_preview, "");
-    assert_eq!(summary.proxy_url, None);
 }

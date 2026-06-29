@@ -13,9 +13,14 @@ use crate::{
     },
     paths::KerminalPaths,
     services::{
+        encrypted_vault_service::EncryptedVaultService,
         remote_host_service::RemoteHostService,
+        ssh_credential_resolver::{
+            ResolvedSshAuthMaterial, ResolvedSshHopAuth, ResolvedSshRouteAuth,
+            SshCredentialResolver,
+        },
         ssh_identity_file::resolve_identity_file_path,
-        ssh_route_plan::{build_ssh_route_plan, materialize_openssh_route_plan},
+        ssh_route_plan::{build_ssh_route_plan_from_resolved, materialize_openssh_route_plan},
         terminal_manager::TerminalManager,
     },
 };
@@ -94,11 +99,15 @@ impl SshTerminalService {
     ) -> AppResult<ResolvedTerminalLaunch> {
         validate_terminal_size(request.rows, request.cols)?;
         let host = remote_hosts.require_host(&request.host_id)?;
+        let resolved_auth = resolve_route_auth(paths, &host)?;
+        let secret_input_plan =
+            terminal_secret_input_plan_from_resolved_route(&host, &resolved_auth);
         let ssh = resolve_ssh_executable()?;
 
         if !host.ssh_options.jump_hosts.is_empty() {
             return build_jump_terminal_launch(
                 &host,
+                &resolved_auth,
                 ssh,
                 paths,
                 paths.root.join("known_hosts"),
@@ -109,8 +118,7 @@ impl SshTerminalService {
             );
         }
 
-        let identity = resolve_identity(&host, paths)?;
-        let secret_input_plan = resolve_secret_input_plan(&host);
+        let identity = resolve_identity(&resolved_auth.target.material, paths)?;
 
         let terminal_request = build_ssh_terminal_request(
             &host,
@@ -129,6 +137,11 @@ impl SshTerminalService {
     }
 }
 
+fn resolve_route_auth(paths: &KerminalPaths, host: &RemoteHost) -> AppResult<ResolvedSshRouteAuth> {
+    let resolver = SshCredentialResolver::new(EncryptedVaultService::new(paths.clone()));
+    resolver.resolve_host(host)
+}
+
 #[derive(Debug, Clone)]
 struct ResolvedTerminalLaunch {
     request: TerminalCreateRequest,
@@ -143,18 +156,17 @@ struct ResolvedSshIdentity {
 
 #[doc(hidden)]
 pub mod rules {
-    use std::{
-        path::{Path, PathBuf},
-        time::Duration,
-    };
+    use std::{path::PathBuf, time::Duration};
 
     use crate::{
         error::AppResult,
-        models::{
-            remote_host::RemoteHost,
-            terminal::{TerminalCreateRequest, TerminalSecretInputPlan},
+        models::terminal::{
+            SshTerminalCreateRequest, TerminalCreateRequest, TerminalSecretInputPlan,
         },
         paths::KerminalPaths,
+        services::{
+            remote_host_service::RemoteHostService, ssh_terminal_service::SshTerminalService,
+        },
     };
 
     pub struct TerminalLaunchPlan {
@@ -162,26 +174,13 @@ pub mod rules {
         pub secret_input_plan: Option<TerminalSecretInputPlan>,
     }
 
-    pub fn build_jump_terminal_launch(
-        host: &RemoteHost,
-        ssh_executable: String,
+    pub fn resolve_terminal_launch(
+        service: &SshTerminalService,
+        remote_hosts: &RemoteHostService,
         paths: &KerminalPaths,
-        known_hosts_path: impl AsRef<Path>,
-        initial_cwd: Option<&str>,
-        remote_command: Option<&str>,
-        rows: u16,
-        cols: u16,
+        request: SshTerminalCreateRequest,
     ) -> AppResult<TerminalLaunchPlan> {
-        let launch = super::build_jump_terminal_launch(
-            host,
-            ssh_executable,
-            paths,
-            known_hosts_path,
-            initial_cwd,
-            remote_command,
-            rows,
-            cols,
-        )?;
+        let launch = service.resolve_terminal_launch(remote_hosts, paths, request)?;
         Ok(TerminalLaunchPlan {
             request: launch.request,
             secret_input_plan: launch.secret_input_plan,
@@ -198,14 +197,11 @@ pub mod rules {
     pub fn temporary_identity_directory(paths: &KerminalPaths) -> PathBuf {
         super::temporary_identity_directory(paths)
     }
-
-    pub fn resolve_secret_input_plan(host: &RemoteHost) -> Option<TerminalSecretInputPlan> {
-        super::resolve_secret_input_plan(host)
-    }
 }
 
 fn build_jump_terminal_launch(
     host: &RemoteHost,
+    resolved_auth: &ResolvedSshRouteAuth,
     ssh_executable: String,
     paths: &KerminalPaths,
     known_hosts_path: impl AsRef<Path>,
@@ -215,7 +211,7 @@ fn build_jump_terminal_launch(
     cols: u16,
 ) -> AppResult<ResolvedTerminalLaunch> {
     validate_terminal_size(rows, cols)?;
-    let route = build_ssh_route_plan(host)?;
+    let route = build_ssh_route_plan_from_resolved(resolved_auth)?;
     let open_ssh = materialize_openssh_route_plan(&route, paths, known_hosts_path)?;
     let mut args = vec!["-tt".to_owned(), "-a".to_owned()];
     args.extend(open_ssh.args);
@@ -231,8 +227,71 @@ fn build_jump_terminal_launch(
             env: terminal_environment(host),
             cleanup_paths: open_ssh.cleanup_paths,
         },
-        secret_input_plan: Some(open_ssh.secret_input_plan),
+        secret_input_plan: terminal_secret_input_plan_from_resolved_route(host, resolved_auth)
+            .or(Some(open_ssh.secret_input_plan)),
     })
+}
+
+fn terminal_secret_input_plan_from_resolved_route(
+    host: &RemoteHost,
+    auth: &ResolvedSshRouteAuth,
+) -> Option<TerminalSecretInputPlan> {
+    let mut entries = Vec::new();
+    for (index, jump) in auth.jumps.iter().enumerate() {
+        let label = host
+            .ssh_options
+            .jump_hosts
+            .get(index)
+            .and_then(|jump| (!jump.name.trim().is_empty()).then(|| jump.name.clone()))
+            .unwrap_or_else(|| format!("{}@{}:{}", jump.username, jump.host, jump.port));
+        if let Some(entry) =
+            password_secret_input_entry(format!("jump-{index}:password"), label, jump)
+        {
+            entries.push(entry);
+        }
+    }
+
+    let target_label = if host.name.trim().is_empty() {
+        format!(
+            "{}@{}:{}",
+            auth.target.username, auth.target.host, auth.target.port
+        )
+    } else {
+        host.name.clone()
+    };
+    if let Some(entry) =
+        password_secret_input_entry("target:password".to_owned(), target_label, &auth.target)
+    {
+        entries.push(entry);
+    }
+
+    (!entries.is_empty()).then_some(TerminalSecretInputPlan { entries })
+}
+
+fn password_secret_input_entry(
+    id: String,
+    label: String,
+    hop: &ResolvedSshHopAuth,
+) -> Option<TerminalSecretInputEntry> {
+    let ResolvedSshAuthMaterial::Password { value, .. } = &hop.material else {
+        return None;
+    };
+    Some(TerminalSecretInputEntry {
+        id,
+        label,
+        prompt_markers: resolved_password_prompt_markers(hop),
+        response: value.clone(),
+        redact_values: vec![value.clone()],
+        max_responses: 1,
+    })
+}
+
+fn resolved_password_prompt_markers(hop: &ResolvedSshHopAuth) -> Vec<String> {
+    vec![
+        format!("{}@{}'s password:", hop.username, hop.host),
+        format!("{}'s password:", hop.host),
+        "password:".to_owned(),
+    ]
 }
 
 fn build_ssh_terminal_request(
@@ -353,7 +412,7 @@ fn validate_terminal_size(rows: u16, cols: u16) -> AppResult<()> {
 
 fn auth_args(auth_type: RemoteHostAuthType) -> Vec<String> {
     let preferred = match auth_type {
-        RemoteHostAuthType::Password => "password,keyboard-interactive",
+        RemoteHostAuthType::Password => "publickey,password,keyboard-interactive",
         RemoteHostAuthType::Key => "publickey",
         RemoteHostAuthType::Agent => "publickey,keyboard-interactive,password",
     };
@@ -364,74 +423,33 @@ fn auth_args(auth_type: RemoteHostAuthType) -> Vec<String> {
     ]
 }
 
-fn resolve_identity(host: &RemoteHost, paths: &KerminalPaths) -> AppResult<ResolvedSshIdentity> {
-    if host.auth_type != RemoteHostAuthType::Key {
-        return Ok(ResolvedSshIdentity::default());
+fn resolve_identity(
+    material: &ResolvedSshAuthMaterial,
+    paths: &KerminalPaths,
+) -> AppResult<ResolvedSshIdentity> {
+    match material {
+        ResolvedSshAuthMaterial::PrivateKeyPem { content, .. } => {
+            let private_key = normalize_private_key_content(content.to_owned())?;
+            let path = write_temporary_identity_file(paths, &private_key)?;
+            Ok(identity_file_args(path, true))
+        }
+        ResolvedSshAuthMaterial::PrivateKeyPath { path, .. } => {
+            let credential_ref = path.to_string_lossy();
+            if credential_ref.trim().starts_with("credential:") {
+                return Err(AppError::InvalidInput(
+                    "SSH 主机不再支持 credential: 私钥引用，请保存私钥路径或明文私钥内容"
+                        .to_owned(),
+                ));
+            }
+            Ok(identity_file_args(
+                resolve_identity_file_path(&credential_ref)?,
+                false,
+            ))
+        }
+        ResolvedSshAuthMaterial::Agent { .. }
+        | ResolvedSshAuthMaterial::Password { .. }
+        | ResolvedSshAuthMaterial::PromptOnly { .. } => Ok(ResolvedSshIdentity::default()),
     }
-
-    if let Some(private_key) = normalized_credential_secret(host) {
-        let private_key = normalize_private_key_content(private_key.to_owned())?;
-        let path = write_temporary_identity_file(paths, &private_key)?;
-        return Ok(identity_file_args(path, true));
-    }
-
-    let Some(credential_ref) = host.credential_ref.as_deref() else {
-        return Ok(ResolvedSshIdentity::default());
-    };
-    let credential_ref = credential_ref.trim();
-    if credential_ref.is_empty() {
-        return Ok(ResolvedSshIdentity::default());
-    }
-
-    if credential_ref.starts_with("credential:") {
-        return Err(AppError::InvalidInput(
-            "SSH 主机不再支持 credential: 私钥引用，请保存私钥路径或明文私钥内容".to_owned(),
-        ));
-    }
-
-    Ok(identity_file_args(
-        resolve_identity_file_path(credential_ref)?,
-        false,
-    ))
-}
-
-fn resolve_secret_input_plan(host: &RemoteHost) -> Option<TerminalSecretInputPlan> {
-    if host.auth_type != RemoteHostAuthType::Password {
-        return None;
-    }
-
-    let password = normalized_credential_secret(host)?.to_owned();
-
-    let label = if host.name.trim().is_empty() {
-        format!("{}@{}", host.username, host.host)
-    } else {
-        host.name.clone()
-    };
-
-    Some(TerminalSecretInputPlan {
-        entries: vec![TerminalSecretInputEntry {
-            id: "target:password".to_owned(),
-            label,
-            prompt_markers: password_prompt_markers(host),
-            response: password.clone(),
-            redact_values: vec![password],
-            max_responses: 1,
-        }],
-    })
-}
-
-fn normalized_credential_secret(host: &RemoteHost) -> Option<&str> {
-    host.credential_secret
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-}
-
-fn password_prompt_markers(host: &RemoteHost) -> Vec<String> {
-    vec![
-        format!("{}@{}'s password:", host.username, host.host),
-        format!("{}'s password:", host.host),
-        "password:".to_owned(),
-    ]
 }
 
 fn identity_file_args(path: PathBuf, cleanup: bool) -> ResolvedSshIdentity {

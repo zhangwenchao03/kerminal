@@ -437,6 +437,7 @@ export function browserEnqueueRemoteCopy(
 ): SftpTransferSummary {
   return browserEnqueueTransfer(
     {
+      conflictPolicy: request.conflictPolicy,
       direction: "upload",
       hostId: request.targetHostId,
       kind: request.kind,
@@ -464,6 +465,7 @@ export function browserEnqueueArchiveDownload(
 ): SftpTransferSummary {
   return browserEnqueueTransfer(
     {
+      conflictPolicy: request.conflictPolicy,
       direction: "download",
       hostId: request.hostId,
       kind: request.kind,
@@ -480,6 +482,7 @@ export function browserEnqueueArchiveUpload(
 ): SftpTransferSummary {
   return browserEnqueueTransfer(
     {
+      conflictPolicy: request.conflictPolicy,
       direction: "upload",
       hostId: request.hostId,
       kind: "file",
@@ -496,6 +499,7 @@ export function browserEnqueueClipboardDownload(
 ): SftpTransferSummary {
   return browserEnqueueTransfer(
     {
+      conflictPolicy: "overwrite",
       direction: "download",
       hostId: request.hostId,
       kind: request.kind,

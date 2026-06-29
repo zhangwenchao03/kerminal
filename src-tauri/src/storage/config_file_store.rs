@@ -17,7 +17,8 @@ use crate::{
     models::{
         profile::TerminalProfile,
         remote_host::{
-            RemoteHost, RemoteHostAuthType, RemoteHostGroup, RemoteHostGroupWithHosts, SshOptions,
+            RemoteHost, RemoteHostAuthType, RemoteHostCredentialStatus, RemoteHostGroup,
+            RemoteHostGroupWithHosts, SshOptions,
         },
         settings::AppSettings,
         snippet::{CommandSnippet, SnippetScope},
@@ -34,7 +35,6 @@ const SETTINGS_RELATIVE_PATH: &str = "settings.toml";
 const PROFILES_RELATIVE_DIR: &str = "profiles";
 const HOSTS_RELATIVE_DIR: &str = "hosts";
 const HOST_GROUPS_RELATIVE_PATH: &str = "hosts/groups.toml";
-const HOST_SECRETS_RELATIVE_DIR: &str = "secrets/hosts";
 const SNIPPETS_RELATIVE_DIR: &str = "snippets";
 const WORKFLOWS_RELATIVE_DIR: &str = "workflows";
 const UNGROUPED_REMOTE_HOST_GROUP_ID: &str = "__ungrouped__";
@@ -362,7 +362,7 @@ impl ConfigFileStore {
             .find(|group| group.id == group_id))
     }
 
-    /// Read one remote host from `hosts/<id>.toml` and merge `secrets/hosts/<id>.toml`.
+    /// Read one remote host from `hosts/<id>.toml`.
     pub fn remote_host_by_id(&self, host_id: &str) -> FileStoreResult<Option<RemoteHost>> {
         match self.read_remote_host(host_id) {
             Ok(host) => Ok(Some(host)),
@@ -374,20 +374,11 @@ impl ConfigFileStore {
     /// Read all remote host TOML files, ordered by group, sort order and name.
     pub fn list_remote_hosts(&self) -> FileStoreResult<Vec<RemoteHost>> {
         let mut hosts = self.list_remote_host_metadata()?;
-        for host in &mut hosts {
-            match self.files.read_toml::<RemoteHostSecretsTomlDocument>(
-                remote_host_secret_relative_path(&host.id)?,
-            ) {
-                Ok(secrets) => secrets.merge_into_host(host)?,
-                Err(FileStoreError::Io(error)) if error.kind() == ErrorKind::NotFound => {}
-                Err(error) => return Err(error),
-            }
-        }
         sort_remote_hosts(&mut hosts);
         Ok(hosts)
     }
 
-    /// Read public remote host TOML files without merging `secrets/hosts`.
+    /// Read public remote host TOML files.
     pub fn list_remote_host_metadata(&self) -> FileStoreResult<Vec<RemoteHost>> {
         let hosts_dir = self.files.path_for(HOSTS_RELATIVE_DIR)?;
         let entries = match fs::read_dir(&hosts_dir) {
@@ -498,7 +489,6 @@ impl ConfigFileStore {
         let timestamp = timestamp_now();
         let change_set_id = format!("remote-hosts-{}", Uuid::new_v4());
         let mut changes = Vec::new();
-        let mut secret_paths_to_harden = Vec::new();
 
         if let Some(groups) = groups {
             let document = RemoteHostGroupsTomlDocument::from_groups(groups.to_vec());
@@ -510,52 +500,26 @@ impl ConfigFileStore {
 
         for host in hosts_to_write {
             let host_path = remote_host_relative_path(&host.id)?;
-            let secret_path = remote_host_secret_relative_path(&host.id)?;
-            let (host_document, secrets_document) =
-                RemoteHostTomlDocument::from_host_with_secrets(host.clone());
+            let host_document = RemoteHostTomlDocument::from_host(host.clone());
             changes.push(FileStoreChange::new(
                 host_path,
                 host_document.encode_toml()?.into_bytes(),
             )?);
-            if secrets_document.has_secrets() {
-                changes.push(FileStoreChange::new(
-                    &secret_path,
-                    secrets_document.encode_toml()?.into_bytes(),
-                )?);
-                secret_paths_to_harden.push(secret_path);
-            } else {
-                changes.push(FileStoreChange::delete(&secret_path)?);
-            }
         }
 
         for host_id in host_ids_to_delete {
             changes.push(FileStoreChange::delete(remote_host_relative_path(
                 host_id,
             )?)?);
-            changes.push(FileStoreChange::delete(remote_host_secret_relative_path(
-                host_id,
-            )?)?);
         }
 
         self.files
             .apply_change_set(&change_set_id, &timestamp, changes)?;
-        for secret_path in secret_paths_to_harden {
-            self.harden_secret_permissions(&secret_path)?;
-        }
         Ok(())
     }
 
     fn read_remote_host(&self, host_id: &str) -> FileStoreResult<RemoteHost> {
-        let mut host = self.read_remote_host_metadata(host_id)?;
-        match self
-            .files
-            .read_toml::<RemoteHostSecretsTomlDocument>(remote_host_secret_relative_path(host_id)?)
-        {
-            Ok(secrets) => secrets.merge_into_host(&mut host)?,
-            Err(FileStoreError::Io(error)) if error.kind() == ErrorKind::NotFound => {}
-            Err(error) => return Err(error),
-        }
-        Ok(host)
+        self.read_remote_host_metadata(host_id)
     }
 
     fn read_remote_host_metadata(&self, host_id: &str) -> FileStoreResult<RemoteHost> {
@@ -611,11 +575,6 @@ impl ConfigFileStore {
             )));
         }
         Ok(workflow)
-    }
-
-    fn harden_secret_permissions(&self, relative_path: &Path) -> FileStoreResult<()> {
-        let absolute_path = self.files.path_for(relative_path)?;
-        harden_secret_file_permissions(&absolute_path)
     }
 }
 
@@ -966,6 +925,10 @@ struct RemoteHostTomlDocument {
     username: String,
     auth_type: RemoteHostAuthType,
     credential_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    secret_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    key_passphrase_ref: Option<String>,
     #[serde(default)]
     tags: Vec<String>,
     #[serde(default)]
@@ -978,9 +941,12 @@ struct RemoteHostTomlDocument {
 }
 
 impl RemoteHostTomlDocument {
-    fn from_host_with_secrets(mut host: RemoteHost) -> (Self, RemoteHostSecretsTomlDocument) {
-        let secrets = RemoteHostSecretsTomlDocument::from_host(&mut host);
-        let document = Self {
+    fn from_host(host: RemoteHost) -> Self {
+        let mut ssh_options = host.ssh_options;
+        for jump_host in &mut ssh_options.jump_hosts {
+            jump_host.credential_secret = None;
+        }
+        Self {
             schema_version: CONFIG_FILE_SCHEMA_VERSION,
             id: host.id,
             group_id: host.group_id,
@@ -990,18 +956,24 @@ impl RemoteHostTomlDocument {
             username: host.username,
             auth_type: host.auth_type,
             credential_ref: host.credential_ref,
+            secret_ref: host.secret_ref,
+            key_passphrase_ref: host.key_passphrase_ref,
             tags: host.tags,
             production: host.production,
-            ssh_options: host.ssh_options,
+            ssh_options,
             sort_order: host.sort_order,
             created_at: host.created_at,
             updated_at: host.updated_at,
-        };
-        (document, secrets)
+        }
     }
 
     fn into_host(self) -> FileStoreResult<RemoteHost> {
         validate_schema_version(self.schema_version)?;
+        let secret_ref = self.secret_ref;
+        let key_passphrase_ref = self.key_passphrase_ref;
+        let ssh_options = normalize_jump_host_credential_statuses(self.ssh_options);
+        let credential_status =
+            credential_status_from_metadata(self.auth_type, secret_ref.as_deref());
         Ok(RemoteHost {
             id: self.id,
             group_id: self.group_id,
@@ -1011,10 +983,13 @@ impl RemoteHostTomlDocument {
             username: self.username,
             auth_type: self.auth_type,
             credential_ref: self.credential_ref,
+            secret_ref,
+            key_passphrase_ref,
             credential_secret: None,
+            credential_status,
             tags: self.tags,
             production: self.production,
-            ssh_options: self.ssh_options,
+            ssh_options,
             sort_order: self.sort_order,
             created_at: self.created_at,
             updated_at: self.updated_at,
@@ -1031,97 +1006,6 @@ impl TomlDocument for RemoteHostTomlDocument {
         reject_secret_keys_in_host_toml(source)?;
         decode_toml(source)
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct RemoteHostSecretsTomlDocument {
-    schema_version: u32,
-    id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    credential_secret: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    jump_hosts: Vec<RemoteHostJumpSecretTomlDocument>,
-}
-
-impl RemoteHostSecretsTomlDocument {
-    fn from_host(host: &mut RemoteHost) -> Self {
-        let credential_secret = host.credential_secret.take();
-        let jump_hosts = host
-            .ssh_options
-            .jump_hosts
-            .iter_mut()
-            .enumerate()
-            .filter_map(|(index, jump_host)| {
-                jump_host.credential_secret.take().map(|credential_secret| {
-                    RemoteHostJumpSecretTomlDocument {
-                        index,
-                        credential_secret,
-                    }
-                })
-            })
-            .collect();
-        Self {
-            schema_version: CONFIG_FILE_SCHEMA_VERSION,
-            id: host.id.clone(),
-            credential_secret,
-            jump_hosts,
-        }
-    }
-
-    fn has_secrets(&self) -> bool {
-        self.credential_secret
-            .as_deref()
-            .is_some_and(|secret| !secret.trim().is_empty())
-            || self
-                .jump_hosts
-                .iter()
-                .any(|secret| !secret.credential_secret.trim().is_empty())
-    }
-
-    fn merge_into_host(self, host: &mut RemoteHost) -> FileStoreResult<()> {
-        validate_schema_version(self.schema_version)?;
-        if self.id != host.id {
-            return Err(FileStoreError::TomlParse(TomlParseError::single(
-                1,
-                1,
-                format!(
-                    "remote host secrets id mismatch: expected {}, found {}",
-                    host.id, self.id
-                ),
-            )));
-        }
-        host.credential_secret = self.credential_secret;
-        for secret in self.jump_hosts {
-            let Some(jump_host) = host.ssh_options.jump_hosts.get_mut(secret.index) else {
-                return Err(FileStoreError::TomlParse(TomlParseError::single(
-                    1,
-                    1,
-                    format!(
-                        "jump host secret index {} is out of range for host {}",
-                        secret.index, host.id
-                    ),
-                )));
-            };
-            jump_host.credential_secret = Some(secret.credential_secret);
-        }
-        Ok(())
-    }
-}
-
-impl TomlDocument for RemoteHostSecretsTomlDocument {
-    fn encode_toml(&self) -> FileStoreResult<String> {
-        encode_toml(self)
-    }
-
-    fn decode_toml(source: &str) -> Result<Self, TomlParseError> {
-        decode_toml(source)
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct RemoteHostJumpSecretTomlDocument {
-    index: usize,
-    credential_secret: String,
 }
 
 fn validate_schema_version(schema_version: u32) -> FileStoreResult<()> {
@@ -1176,13 +1060,6 @@ fn remote_host_relative_path(host_id: &str) -> FileStoreResult<PathBuf> {
     )))
 }
 
-fn remote_host_secret_relative_path(host_id: &str) -> FileStoreResult<PathBuf> {
-    Ok(PathBuf::from(HOST_SECRETS_RELATIVE_DIR).join(format!(
-        "{}.toml",
-        sanitize_file_id("remote host id", host_id)?
-    )))
-}
-
 fn sanitize_file_id(field: &str, value: &str) -> FileStoreResult<String> {
     let value = value.trim();
     if value.is_empty()
@@ -1198,6 +1075,27 @@ fn sanitize_file_id(field: &str, value: &str) -> FileStoreResult<String> {
         )));
     }
     Ok(value.to_owned())
+}
+
+fn credential_status_from_metadata(
+    auth_type: RemoteHostAuthType,
+    secret_ref: Option<&str>,
+) -> RemoteHostCredentialStatus {
+    if matches!(auth_type, RemoteHostAuthType::Agent) {
+        return RemoteHostCredentialStatus::Agent;
+    }
+    if secret_ref.is_some_and(|value| !value.trim().is_empty()) {
+        return RemoteHostCredentialStatus::Vault;
+    }
+    RemoteHostCredentialStatus::Missing
+}
+
+fn normalize_jump_host_credential_statuses(mut options: SshOptions) -> SshOptions {
+    for jump_host in &mut options.jump_hosts {
+        jump_host.credential_status =
+            credential_status_from_metadata(jump_host.auth_type, jump_host.secret_ref.as_deref());
+    }
+    options
 }
 
 fn sort_remote_hosts(hosts: &mut [RemoteHost]) {
@@ -1266,25 +1164,9 @@ fn reject_secret_keys_in_host_toml(source: &str) -> Result<(), TomlParseError> {
             return Err(TomlParseError::single(
                 line_index + 1,
                 1,
-                "ordinary host config must not contain credential secret fields; use secrets/hosts/<id>.toml",
+                "ordinary host config must not contain credential secret fields; save credentials through encrypted vault",
             ));
         }
     }
-    Ok(())
-}
-
-#[cfg(unix)]
-fn harden_secret_file_permissions(path: &Path) -> FileStoreResult<()> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let mut permissions = fs::metadata(path)?.permissions();
-    permissions.set_mode(0o600);
-    fs::set_permissions(path, permissions)?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn harden_secret_file_permissions(path: &Path) -> FileStoreResult<()> {
-    let _ = fs::metadata(path)?;
     Ok(())
 }

@@ -365,6 +365,10 @@ fn secret_input_plan_answers_prompt_and_redacts_echoed_secret() {
     assert!(received.contains("auth-ok"));
     assert!(received.contains("[已脱敏]"));
     assert!(
+        !received.to_ascii_lowercase().contains("password:"),
+        "auto-submitted password prompt should not stay visible: {received:?}",
+    );
+    assert!(
         !received.contains(secret),
         "secret input response must not be echoed to frontend output: {received:?}",
     );
@@ -401,8 +405,8 @@ fn secret_input_plan_does_not_repeat_after_second_prompt() {
 
     assert!(received.contains("first-read"));
     assert!(
-        received.to_ascii_lowercase().matches("password:").count() >= 2,
-        "expected the second password prompt to stay visible, got: {received:?}",
+        received.to_ascii_lowercase().matches("password:").count() >= 1,
+        "expected only the later password prompt to stay visible, got: {received:?}",
     );
     assert!(
         !received.contains("unexpected-second-read"),
@@ -468,6 +472,69 @@ fn secret_input_plan_answers_split_prompt_across_reads() {
     manager.close(&summary.id).unwrap();
 
     assert!(received.contains("auth-ok"));
+    assert!(
+        !received.to_ascii_lowercase().contains("password:"),
+        "split auto-submitted password prompt should not stay visible: {received:?}",
+    );
+    assert!(!received.contains(secret));
+}
+
+#[test]
+fn secret_input_plan_answers_split_host_prompt_with_generic_marker() {
+    let manager = TerminalManager::new();
+    let (sender, receiver) = mpsc::channel();
+    let secret = "genericSplitSecret123";
+    let request = split_password_prompt_request(secret);
+    let secret_input_plan = TerminalSecretInputPlan {
+        entries: vec![secret_entry("generic-target", "password:", secret)],
+    };
+
+    let summary = manager
+        .create_session_with_secret_input_plan(request, Some(secret_input_plan), move |event| {
+            sender.send(event).is_ok()
+        })
+        .unwrap();
+
+    let received = collect_until_output(&manager, &summary.id, &receiver, "auth-ok");
+    manager.close(&summary.id).unwrap();
+
+    assert!(received.contains("auth-ok"));
+    assert!(
+        !received.to_ascii_lowercase().contains("password:"),
+        "generic split password prompt should not stay visible: {received:?}",
+    );
+    assert!(
+        !received.contains("deploy@dev.internal"),
+        "generic split password prompt prefix should be redacted: {received:?}",
+    );
+    assert!(!received.contains(secret));
+}
+
+#[test]
+fn secret_input_plan_clears_generic_prompt_line_when_owner_prefix_was_split() {
+    let manager = TerminalManager::new();
+    let (sender, receiver) = mpsc::channel();
+    let secret = "genericOwnerSplitSecret123";
+    let request = early_split_password_prompt_request(secret);
+    let secret_input_plan = TerminalSecretInputPlan {
+        entries: vec![secret_entry("generic-owner-target", "password:", secret)],
+    };
+
+    let summary = manager
+        .create_session_with_secret_input_plan(request, Some(secret_input_plan), move |event| {
+            sender.send(event).is_ok()
+        })
+        .unwrap();
+
+    let received = collect_until_output(&manager, &summary.id, &receiver, "auth-ok");
+    manager.close(&summary.id).unwrap();
+
+    assert!(received.contains("\r\x1b[2K"));
+    assert!(received.contains("auth-ok"));
+    assert!(
+        !received.to_ascii_lowercase().contains("password:"),
+        "split generic password prompt should not stay visible: {received:?}",
+    );
     assert!(!received.contains(secret));
 }
 
@@ -503,8 +570,8 @@ fn secret_input_plan_fallback_marker_advances_entries_without_overrepeating() {
     assert!(received.contains("first-read"));
     assert!(received.contains("second-read"));
     assert!(
-        received.to_ascii_lowercase().matches("password:").count() >= 3,
-        "expected the third fallback prompt to stay visible, got: {received:?}",
+        received.to_ascii_lowercase().matches("password:").count() >= 1,
+        "expected only the unanswered fallback prompt to stay visible, got: {received:?}",
     );
     assert!(
         !received.contains("unexpected-third-read"),
@@ -629,6 +696,23 @@ fn split_password_prompt_request(secret: &str) -> TerminalCreateRequest {
 }
 
 #[cfg(target_os = "windows")]
+fn early_split_password_prompt_request(secret: &str) -> TerminalCreateRequest {
+    TerminalCreateRequest {
+        shell: Some("powershell.exe".to_owned()),
+        args: vec![
+            "-NoProfile".to_owned(),
+            "-Command".to_owned(),
+            format!(
+                "$secret = '{secret}'; [Console]::Out.Write(\"deploy@dev.internal's \"); Start-Sleep -Milliseconds 100; [Console]::Out.Write('password: '); $p = [Console]::In.ReadLine(); if ($p -eq $secret) {{ [Console]::Out.WriteLine('auth-ok') }}"
+            ),
+        ],
+        rows: 24,
+        cols: 80,
+        ..TerminalCreateRequest::default()
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn two_password_prompts_request(jump_secret: &str, target_secret: &str) -> TerminalCreateRequest {
     TerminalCreateRequest {
         shell: Some("cmd.exe".to_owned()),
@@ -710,6 +794,22 @@ fn split_password_prompt_request(secret: &str) -> TerminalCreateRequest {
             "-lc".to_owned(),
             format!(
                 "printf \"deploy@dev.internal's pass\"; sleep 0.1; printf \"word: \"; IFS= read -r p; if [ \"$p\" = \"{secret}\" ]; then printf 'auth-ok\\n'; fi"
+            ),
+        ],
+        rows: 24,
+        cols: 80,
+        ..TerminalCreateRequest::default()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn early_split_password_prompt_request(secret: &str) -> TerminalCreateRequest {
+    TerminalCreateRequest {
+        shell: Some("/bin/sh".to_owned()),
+        args: vec![
+            "-lc".to_owned(),
+            format!(
+                "printf \"deploy@dev.internal's \"; sleep 0.1; printf \"password: \"; IFS= read -r p; if [ \"$p\" = \"{secret}\" ]; then printf 'auth-ok\\n'; fi"
             ),
         ],
         rows: 24,

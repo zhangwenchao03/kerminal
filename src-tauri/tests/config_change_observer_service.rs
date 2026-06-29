@@ -69,7 +69,6 @@ fn classifies_all_supported_config_domains() {
     for (path, expected_domain) in cases {
         let classification = classify_config_relative_path(path).expect("classified path");
         assert_eq!(classification.domain, expected_domain, "{path}");
-        assert!(!classification.secret, "{path}");
         assert_eq!(classification.safe_relative_path.as_deref(), Some(path));
     }
 }
@@ -87,16 +86,6 @@ fn classifies_windows_separators_without_leaking_backslashes() {
 }
 
 #[test]
-fn maps_secret_host_changes_to_hosts_without_safe_path() {
-    let classification =
-        classify_config_relative_path("secrets/hosts/staging-api.toml").expect("secret host");
-
-    assert_eq!(classification.domain, ConfigDomain::Hosts);
-    assert!(classification.secret);
-    assert_eq!(classification.safe_relative_path, None);
-}
-
-#[test]
 fn ignores_runtime_temp_backup_agent_and_log_paths() {
     let ignored = [
         ".storage.lock",
@@ -109,6 +98,7 @@ fn ignores_runtime_temp_backup_agent_and_log_paths() {
         "hosts/.tmp-123.toml",
         "hosts/.staging-api.toml.tmp-123",
         "profiles/default.toml.tmp",
+        "secrets/hosts/staging-api.toml",
     ];
 
     for path in ignored {
@@ -140,7 +130,7 @@ fn watcher_status_uses_relative_roots_and_redacts_secret_files() {
 
     assert!(!status.enabled);
     assert_eq!(status.backend, ConfigWatchBackend::Unavailable);
-    assert!(status.watched_roots.contains(&"secrets/hosts".to_owned()));
+    assert!(!status.watched_roots.contains(&"secrets/hosts".to_owned()));
     assert!(status
         .watched_roots
         .iter()
@@ -294,7 +284,10 @@ fn seed_rendered_config_files(root: &Path) {
                 username: "smoke".to_owned(),
                 auth_type: RemoteHostAuthType::Agent,
                 credential_ref: None,
+                secret_ref: None,
+                key_passphrase_ref: None,
                 credential_secret: None,
+                credential_status: Default::default(),
                 tags: vec!["smoke".to_owned()],
                 production: false,
                 ssh_options: SshOptions::default(),

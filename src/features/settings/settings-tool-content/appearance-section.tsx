@@ -385,7 +385,7 @@ export function AppearanceSettingsSection({
       </div>
       <section
         className={appearancePanelClassName}
-        id="settings-terminal-panel"
+        id="settings-appearance-terminal-panel"
       >
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">

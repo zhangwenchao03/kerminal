@@ -61,7 +61,10 @@ async fn native_sftp_service_uses_password_jump_for_list_preview_and_shell_delet
                 username: "jump".to_owned(),
                 auth_type: RemoteHostAuthType::Password,
                 credential_ref: None,
+                secret_ref: None,
+                key_passphrase_ref: None,
                 credential_secret: Some("jump-secret".to_owned()),
+                credential_status: Default::default(),
             }],
             ..SshOptions::default()
         },

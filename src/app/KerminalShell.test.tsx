@@ -248,7 +248,7 @@ describe("KerminalShell", () => {
     await user.click(screen.getByRole("menuitem", { name: "新建传输 Tab" }));
 
     expect(await screen.findByLabelText("SFTP 传输工作台")).toHaveTextContent(
-      "left:none right:db980b17-2ed0-44e5-b72a-6ecadf788439 locked:none",
+      "right:db980b17-2ed0-44e5-b72a-6ecadf788439 locked:none",
     );
     expect(
       screen.getByRole("complementary", { name: "工具面板" }),

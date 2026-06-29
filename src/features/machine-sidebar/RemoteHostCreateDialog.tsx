@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
-import type { DockerContainerSummary } from "../../lib/dockerApi";
 import { testRemoteConnection } from "../../lib/connectionApi";
 import { detectShells, type ShellCandidate } from "../../lib/profileApi";
-import { createDefaultSshOptions } from "../../lib/remoteHostApi";
+import {
+  createDefaultSshOptions,
+  revealRemoteHostCredential,
+} from "../../lib/remoteHostApi";
 import type {
   RemoteHostAuthType,
   RemoteHostGroup,
   SshOptions,
 } from "../../lib/remoteHostApi";
-import type { ContainerRuntime } from "../../lib/targetModel";
 import { evaluateConnectionCheck } from "./remote-host-dialog/connection-check";
 import {
   buildLocalShellPresets,
@@ -26,7 +27,6 @@ import {
   type DialogSection,
   initialTargetGroupId,
   protocolTabs,
-  readRememberedDockerHostId,
   type RemoteHostCreateDialogProps,
   sectionTabsByMode,
 } from "./remote-host-dialog/model";
@@ -53,7 +53,6 @@ import {
 import { RemoteHostGroupCreateDialog } from "./RemoteHostGroupCreateDialog";
 
 export type {
-  DockerContainerCreateRequest,
   LocalTerminalCreateOptions,
 } from "./remote-host-dialog/model";
 
@@ -99,20 +98,6 @@ export function RemoteHostCreateDialog({
   const [authType, setAuthType] = useState<RemoteHostAuthType>("password");
   const [credentialRef, setCredentialRef] = useState("");
   const [credentialSecret, setCredentialSecret] = useState("");
-  const [dockerContainerId, setDockerContainerId] = useState("");
-  const [dockerContainers, setDockerContainers] = useState<
-    DockerContainerSummary[]
-  >([]);
-  const [dockerHostId, setDockerHostId] = useState("");
-  const [dockerIncludeStopped, setDockerIncludeStopped] = useState(true);
-  const [dockerLoadError, setDockerLoadError] = useState<string | null>(null);
-  const [dockerLoading, setDockerLoading] = useState(false);
-  const [dockerRefreshToken, setDockerRefreshToken] = useState(0);
-  const [dockerRuntime, setDockerRuntime] =
-    useState<ContainerRuntime>("docker");
-  const [dockerShell, setDockerShell] = useState("");
-  const [dockerUser, setDockerUser] = useState("");
-  const [dockerWorkdir, setDockerWorkdir] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [groupId, setGroupId] = useState("");
   const [host, setHost] = useState("");
@@ -157,6 +142,7 @@ export function RemoteHostCreateDialog({
   const [telnetNote, setTelnetNote] = useState("");
   const [username, setUsername] = useState("");
   const initializedFormTargetKeyRef = useRef<string | null>(null);
+  const credentialRevealRequestRef = useRef(0);
   const formTargetKey = editingLocalMachine
     ? `local:${editingLocalMachine.id}`
     : editingHost
@@ -166,6 +152,7 @@ export function RemoteHostCreateDialog({
   useEffect(() => {
     if (!open) {
       initializedFormTargetKeyRef.current = null;
+      credentialRevealRequestRef.current += 1;
       return;
     }
     if (initializedFormTargetKeyRef.current === formTargetKey) {
@@ -188,7 +175,6 @@ export function RemoteHostCreateDialog({
             : editingHost
               ? "ssh"
               : defaultMode;
-    const initialDockerHostId = readRememberedDockerHostId(sshMachines);
     setActiveSection("properties");
     setAuthType(
       editingHost?.authType ??
@@ -202,17 +188,6 @@ export function RemoteHostCreateDialog({
         ? (editingHost.credentialSecret ?? "")
         : "",
     );
-    setDockerContainerId("");
-    setDockerContainers([]);
-    setDockerHostId(initialDockerHostId);
-    setDockerIncludeStopped(true);
-    setDockerLoadError(null);
-    setDockerLoading(false);
-    setDockerRefreshToken(0);
-    setDockerRuntime("docker");
-    setDockerShell("");
-    setDockerUser("");
-    setDockerWorkdir("");
     setError(null);
     setGroupId(initialGroupId);
     setHost(editingHost?.host ?? "");
@@ -288,6 +263,58 @@ export function RemoteHostCreateDialog({
   ]);
 
   useEffect(() => {
+    if (!open || !editingHost) {
+      return undefined;
+    }
+    if (editingHost.credentialSecret?.trim()) {
+      return undefined;
+    }
+    const shouldReveal =
+      editingHost.authType === "password" ||
+      (editingHost.authType === "key" && !editingHost.credentialRef?.trim());
+    if (!shouldReveal) {
+      return undefined;
+    }
+
+    let disposed = false;
+    const requestId = credentialRevealRequestRef.current + 1;
+    credentialRevealRequestRef.current = requestId;
+
+    revealRemoteHostCredential(editingHost.id)
+      .then((result) => {
+        if (disposed || credentialRevealRequestRef.current !== requestId) {
+          return;
+        }
+        if (result.status === "available" && result.credentialSecret) {
+          setCredentialSecret(result.credentialSecret);
+          if (isRdpRemoteHost(editingHost)) {
+            setRdpPassword(result.credentialSecret);
+          }
+          return;
+        }
+        if (result.message) {
+          setError(result.message);
+        }
+      })
+      .catch((caught) => {
+        if (disposed || credentialRevealRequestRef.current !== requestId) {
+          return;
+        }
+        setError(`读取已保存凭据失败：${errorMessage(caught)}`);
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [
+    editingHost?.authType,
+    editingHost?.credentialRef,
+    editingHost?.credentialSecret,
+    editingHost?.id,
+    open,
+  ]);
+
+  useEffect(() => {
     if (!open) {
       return undefined;
     }
@@ -311,18 +338,6 @@ export function RemoteHostCreateDialog({
       disposed = true;
     };
   }, [open]);
-
-  useEffect(() => {
-    if (!open || mode !== "docker") {
-      return undefined;
-    }
-
-    setDockerLoadError(null);
-    setDockerLoading(false);
-    setDockerContainers([]);
-    setDockerContainerId("");
-    return undefined;
-  }, [dockerRefreshToken, mode, open]);
 
   const confirm = async () => {
     setConnectionTestFeedback(null);
@@ -396,6 +411,10 @@ export function RemoteHostCreateDialog({
 
     if (mode === "rdp") {
       const request = buildRdpHostRequest({
+        existingAuthType:
+          editingHost && isRdpRemoteHost(editingHost)
+            ? editingHost.authType
+            : undefined,
         groupId,
         host,
         name,
@@ -429,11 +448,6 @@ export function RemoteHostCreateDialog({
       } finally {
         setSavingAction(null);
       }
-      return;
-    }
-
-    if (mode === "docker") {
-      setError("容器现在从左侧 SSH 主机右键菜单进入。");
       return;
     }
 
@@ -563,8 +577,6 @@ export function RemoteHostCreateDialog({
       authType,
       credentialRef,
       credentialSecret,
-      dockerContainerId,
-      dockerHostId,
       editingLocalMachine: Boolean(editingLocalMachine),
       groupId,
       host,
@@ -624,13 +636,9 @@ export function RemoteHostCreateDialog({
     }
   };
 
-  const selectedProtocolLabel =
-    mode === "docker"
-      ? "容器"
-      : (
-          protocolTabs.find((protocol) => protocol.id === mode) ??
-          protocolTabs[0]
-        ).label;
+  const selectedProtocolLabel = (
+    protocolTabs.find((protocol) => protocol.id === mode) ?? protocolTabs[0]
+  ).label;
   const activeSections = sectionTabsByMode[mode] ?? sectionTabsByMode.ssh ?? [];
   const activeSectionDefinition =
     activeSections.find((section) => section.id === activeSection) ??
@@ -660,16 +668,6 @@ export function RemoteHostCreateDialog({
       authType={authType}
       credentialRef={credentialRef}
       credentialSecret={credentialSecret}
-      dockerContainerId={dockerContainerId}
-      dockerContainers={dockerContainers}
-      dockerHostId={dockerHostId}
-      dockerIncludeStopped={dockerIncludeStopped}
-      dockerLoadError={dockerLoadError}
-      dockerLoading={dockerLoading}
-      dockerRuntime={dockerRuntime}
-      dockerShell={dockerShell}
-      dockerUser={dockerUser}
-      dockerWorkdir={dockerWorkdir}
       editingHost={editingHost}
       editingLocalMachine={editingLocalMachine}
       groupId={groupId}
@@ -687,7 +685,6 @@ export function RemoteHostCreateDialog({
       onCreateGroupClick={
         onCreateGroup ? () => setInlineGroupDialogOpen(true) : undefined
       }
-      onDockerRefresh={() => setDockerRefreshToken((current) => current + 1)}
       port={port}
       rdpFullscreen={rdpFullscreen}
       rdpHeight={rdpHeight}
@@ -706,13 +703,6 @@ export function RemoteHostCreateDialog({
       setAuthType={setAuthType}
       setCredentialRef={setCredentialRef}
       setCredentialSecret={setCredentialSecret}
-      setDockerContainerId={setDockerContainerId}
-      setDockerHostId={setDockerHostId}
-      setDockerIncludeStopped={setDockerIncludeStopped}
-      setDockerRuntime={setDockerRuntime}
-      setDockerShell={setDockerShell}
-      setDockerUser={setDockerUser}
-      setDockerWorkdir={setDockerWorkdir}
       setError={setError}
       setGroupId={setGroupId}
       setHost={setHost}
@@ -782,16 +772,14 @@ export function RemoteHostCreateDialog({
                 {savingAction === "test" ? "测试中..." : "测试连接"}
               </Button>
             ) : null}
-            {mode === "docker" ? null : (
-              <Button
-                disabled={savingAction !== null || Boolean(externalConfigConflict)}
-                onClick={() => void confirm()}
-                type="button"
-                variant="primary"
-              >
-                {savingAction === "confirm" ? "处理中..." : "确认"}
-              </Button>
-            )}
+            <Button
+              disabled={savingAction !== null || Boolean(externalConfigConflict)}
+              onClick={() => void confirm()}
+              type="button"
+              variant="primary"
+            >
+              {savingAction === "confirm" ? "处理中..." : "确认"}
+            </Button>
           </>
         }
         description={
@@ -922,4 +910,8 @@ export function RemoteHostCreateDialog({
       ) : null}
     </>
   );
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }

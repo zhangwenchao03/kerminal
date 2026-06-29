@@ -24,7 +24,7 @@ use crate::{
         ssh_command_service::SshCommandService, ssh_terminal_service::SshTerminalService,
         telnet_terminal_service::TelnetTerminalService, terminal_manager::TerminalManager,
         terminal_session_binding_service::TerminalSessionBindingService, tmux_service::TmuxService,
-        workflow_service::WorkflowService,
+        workflow_service::WorkflowService, workspace_sync_service::WorkspaceSyncService,
     },
     storage::{config_file_store::ConfigFileStore, CommandSqliteStore, RuntimeFileStore},
 };
@@ -62,6 +62,7 @@ pub struct AppState {
     tmux: TmuxService,
     mcp_tool_catalog: McpToolCatalogService,
     workflows: WorkflowService,
+    workspace_sync: WorkspaceSyncService,
 }
 
 impl AppState {
@@ -87,6 +88,8 @@ impl AppState {
         let docker_hosts = DockerHostService::new();
         let local_network_proxy = LocalNetworkProxyService::new();
         let config_files = ConfigFileStore::new(paths.root.clone());
+        let workspace_sync = WorkspaceSyncService::new(paths.clone());
+        workspace_sync.ensure_bootstrap()?;
         let settings = SettingsService::new(config_files.clone());
         settings.ensure_seed_settings()?;
         let port_forwards = PortForwardService::new();
@@ -137,6 +140,7 @@ impl AppState {
             tmux,
             mcp_tool_catalog,
             workflows,
+            workspace_sync,
         })
     }
 
@@ -288,5 +292,10 @@ impl AppState {
     /// 返回命令工作流服务。
     pub fn workflows(&self) -> &WorkflowService {
         &self.workflows
+    }
+
+    /// 返回工作空间同步与 encrypted vault bootstrap 服务。
+    pub fn workspace_sync(&self) -> &WorkspaceSyncService {
+        &self.workspace_sync
     }
 }

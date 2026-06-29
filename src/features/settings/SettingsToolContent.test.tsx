@@ -45,13 +45,6 @@ describe("SettingsToolContent", () => {
     expect(screen.queryByText("关于 Kerminal")).not.toBeInTheDocument();
   });
 
-  it("maps legacy terminal section links to current visible sections", async () => {
-    renderSettingsToolContent({ initialSectionId: "settings-terminal" });
-
-    expect(await screen.findByText("终端外观")).toBeInTheDocument();
-    expect(screen.getByText("外观")).toBeInTheDocument();
-  });
-
   it("shows minimal MCP server status, endpoint and controls", async () => {
     const user = userEvent.setup();
 

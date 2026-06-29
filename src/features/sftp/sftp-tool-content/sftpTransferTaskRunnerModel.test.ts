@@ -15,6 +15,7 @@ const transferPlan: SftpTransferActionItem = {
     message: "已加入上传队列：release.tgz",
   },
   request: {
+    conflictPolicy: "overwrite",
     direction: "upload",
     hostId: "prod-api",
     kind: "file",
@@ -117,6 +118,7 @@ describe("buildSftpTransferTaskExecutionPlan", () => {
         message: "已加入下载队列：/app/package.json",
       },
       request: {
+        conflictPolicy: "overwrite",
         direction: "download",
         hostId: "prod-api",
         kind: "file",

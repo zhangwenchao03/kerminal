@@ -17,6 +17,7 @@ import { ModalShell } from "../../components/ui/modal-shell";
 import { cn } from "../../lib/cn";
 import {
   terminalTabGroupColorIds,
+  type MachineStatus,
   type TerminalTab,
   type TerminalTabGroupColor,
   type TerminalTabGroupPreference,
@@ -186,6 +187,22 @@ const terminalTabMenuItemClassName =
 const terminalTabMenuIdleClassName =
   "";
 
+export function terminalTabStatusDotClassName(
+  tab: TerminalTab,
+  status: MachineStatus = "online",
+) {
+  if (tab.kind === "sftpTransfer") {
+    return "bg-sky-400";
+  }
+  if (status === "offline") {
+    return "bg-zinc-400 dark:bg-zinc-500";
+  }
+  if (status === "warning") {
+    return "bg-amber-400";
+  }
+  return "bg-emerald-400";
+}
+
 export function TerminalTabButton({
   active,
   compact = false,
@@ -193,6 +210,7 @@ export function TerminalTabButton({
   onContextMenu,
   onSelectTab,
   showClose,
+  status = "online",
   tab,
   tabNumber,
 }: {
@@ -202,6 +220,7 @@ export function TerminalTabButton({
   onContextMenu: (event: ReactMouseEvent) => void;
   onSelectTab: (tabId: string) => void;
   showClose: boolean;
+  status?: MachineStatus;
   tab: TerminalTab;
   tabNumber?: number;
 }) {
@@ -226,7 +245,7 @@ export function TerminalTabButton({
       <span
         className={cn(
           "h-2 w-2 shrink-0 rounded-full",
-          tab.kind === "sftpTransfer" ? "bg-sky-400" : "bg-emerald-400",
+          terminalTabStatusDotClassName(tab, status),
         )}
       />
       <button

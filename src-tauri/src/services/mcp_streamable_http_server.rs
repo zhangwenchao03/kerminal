@@ -44,7 +44,7 @@ const DEFAULT_MCP_HTTP_PORT: u16 = 37657;
 const MCP_HTTP_PORT_SCAN_LIMIT: u16 = 64;
 const MCP_PATH: &str = "/mcp";
 const MCP_AGENT_PATH: &str = "/mcp/agents";
-const MCP_SERVER_INSTRUCTIONS: &str = "Kerminal exposes local runtime tools for existing terminal sessions, SSH/SFTP, containers, port forwarding, server info, diagnostics, and read-only file-backed config validation. Edit Kerminal configuration directly in the external agent workspace according to AGENTS.md and CLAUDE.md, then call kerminal.config.validate. MCP tool approval is owned by the MCP host; Kerminal validates its allowlist, arguments, local-only transport, and sensitive output boundaries.";
+const MCP_SERVER_INSTRUCTIONS: &str = "Kerminal exposes local runtime tools for existing terminal sessions, SSH/SFTP, tmux, containers, port forwarding, server info, command history, diagnostics, authorized credential saving, and read-only file-backed config validation. Edit Kerminal configuration directly in the external agent workspace according to AGENTS.md and CLAUDE.md, then call kerminal.config.validate. MCP tool approval is owned by the MCP host; Kerminal validates its allowlist, arguments, local-only transport, and sensitive output boundaries.";
 
 /// Streamable HTTP MCP server runtime rules used by integration tests.
 #[doc(hidden)]
@@ -461,6 +461,7 @@ fn execution_context<'a>(state: &'a AppState) -> McpToolExecutionContext<'a> {
         diagnostics: state.diagnostics(),
         sftp: state.sftp(),
         docker_hosts: state.docker_hosts(),
+        tmux: state.tmux(),
         port_forwards: state.port_forwards(),
         local_network_proxy: state.local_network_proxy(),
         ssh_commands: state.ssh_commands(),

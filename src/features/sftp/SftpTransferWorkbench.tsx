@@ -55,7 +55,6 @@ export interface SftpTransferWorkbenchProps {
   createdHostTarget?: SftpTransferCreatedHostTarget;
   desktopNotifications?: DesktopNotificationSettings;
   groups: MachineGroup[];
-  initialLeftHostId?: string;
   initialRightHostId?: string;
   interfaceDensity?: InterfaceDensity;
   lockedLeftHostId?: string;
@@ -80,7 +79,6 @@ export function SftpTransferWorkbench({
   createdHostTarget,
   desktopNotifications = defaultDesktopNotificationSettings,
   groups,
-  initialLeftHostId,
   initialRightHostId,
   interfaceDensity = "comfortable",
   lockedLeftHostId,
@@ -104,7 +102,6 @@ export function SftpTransferWorkbench({
     sshMachineIds,
     initialRightHostId,
     lockedLeftHostId,
-    initialLeftHostId,
   );
   const [leftTabs, setLeftTabs] = useState<SftpTransferHostTab[]>([]);
   const [activeLeftTabId, setActiveLeftTabId] = useState(

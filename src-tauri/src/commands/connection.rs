@@ -23,8 +23,11 @@ use crate::{
             ConnectionTestMode, ConnectionTestRequest, ConnectionTestResult, RdpOpenRequest,
             RdpOpenResult,
         },
-        remote_host::{RemoteHost, RemoteHostAuthType, RemoteHostCreateRequest},
+        remote_host::{
+            parse_vault_secret_ref, RemoteHost, RemoteHostAuthType, RemoteHostCreateRequest,
+        },
     },
+    services::encrypted_vault_service::EncryptedVaultService,
     state::AppState,
 };
 use tauri::State;
@@ -147,30 +150,54 @@ fn open_saved_rdp_connection(state: &AppState, host_id: &str) -> AppResult<RdpOp
 fn saved_rdp_password(state: &AppState, host: &RemoteHost) -> AppResult<Option<String>> {
     match host.auth_type {
         RemoteHostAuthType::Password => {
-            if let Some(secret) = host
-                .credential_secret
+            if let Some(secret_ref) = host
+                .secret_ref
                 .as_deref()
-                .filter(|secret| !secret.trim().is_empty())
+                .filter(|secret_ref| !secret_ref.trim().is_empty())
             {
-                return Ok(Some(secret.to_string()));
+                return Ok(Some(decrypt_vault_password_secret_ref(
+                    &EncryptedVaultService::new(state.paths().clone()),
+                    secret_ref,
+                )?));
             }
 
-            let credential_ref = host
-                .credential_ref
-                .as_deref()
-                .filter(|credential_ref| !credential_ref.trim().is_empty())
-                .ok_or_else(|| AppError::Credential("RDP 密码认证缺少已保存密码".to_string()))?;
-            Ok(Some(
-                state
-                    .credentials()
-                    .get_secret(credential_ref)?
-                    .ok_or_else(|| {
-                        AppError::Credential(format!("未找到 RDP 密码凭据: {credential_ref}"))
-                    })?,
+            Err(AppError::Credential(
+                "RDP 密码认证缺少已保存密码".to_string(),
             ))
         }
         RemoteHostAuthType::Agent | RemoteHostAuthType::Key => Ok(None),
     }
+}
+
+fn decrypt_vault_password_secret_ref(
+    vault: &EncryptedVaultService,
+    secret_ref: &str,
+) -> AppResult<String> {
+    let parsed = parse_vault_secret_ref(secret_ref).map_err(AppError::InvalidInput)?;
+    if parsed.kind != "rdp-host" {
+        return Err(AppError::InvalidInput(format!(
+            "RDP 只能使用 rdp-host 类型的 vault 凭据，当前为 {}",
+            parsed.kind
+        )));
+    }
+    if parsed.material != "password" {
+        return Err(AppError::InvalidInput(format!(
+            "RDP 只能使用 password 类型的 vault 凭据，当前为 {}",
+            parsed.material
+        )));
+    }
+    let key = vault
+        .read_key()
+        .map_err(|_| AppError::Credential("RDP vault key is missing or unreadable".to_owned()))?;
+    let entry_id = parsed.entry_id();
+    let entry = vault
+        .entry_by_id(&entry_id)?
+        .ok_or_else(|| AppError::Credential(format!("未找到 RDP vault 凭据: {entry_id}")))?;
+    let plaintext = vault
+        .decrypt_secret(&key, &entry, secret_ref.as_bytes())
+        .map_err(|_| AppError::Credential(format!("RDP vault 凭据无法解密: {entry_id}")))?;
+    String::from_utf8(plaintext)
+        .map_err(|_| AppError::Credential(format!("RDP vault 凭据不是 UTF-8 文本: {entry_id}")))
 }
 
 async fn test_connection(
@@ -302,7 +329,10 @@ fn remote_host_from_create_request(
         username,
         auth_type: request.auth_type,
         credential_ref,
+        secret_ref: None,
+        key_passphrase_ref: None,
         credential_secret,
+        credential_status: Default::default(),
         tags,
         production: request.production,
         ssh_options: request.ssh_options,

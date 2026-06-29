@@ -6,15 +6,14 @@ use kerminal_lib::{
     error::AppError,
     models::{
         remote_host::{
-            RemoteHost, RemoteHostAuthType, RemoteHostCreateRequest, RemoteHostGroupCreateRequest,
+            RemoteHostAuthType, RemoteHostCreateRequest, RemoteHostGroupCreateRequest,
             SshJumpHostOptions, SshOptions,
         },
         terminal::SshTerminalCreateRequest,
     },
     paths::KerminalPaths,
     services::ssh_terminal_service::rules::{
-        build_jump_terminal_launch, cleanup_temporary_identity_files, resolve_secret_input_plan,
-        temporary_identity_directory,
+        cleanup_temporary_identity_files, resolve_terminal_launch, temporary_identity_directory,
     },
     state::AppState,
 };
@@ -328,7 +327,7 @@ fn resolve_terminal_request_materializes_inline_private_key_for_openssh() {
 }
 
 #[test]
-fn resolve_secret_input_plan_uses_plaintext_password_without_exposing_args() {
+fn resolve_terminal_request_uses_saved_vault_password_without_exposing_args() {
     let (_home, state) = test_state();
     let host_id = create_test_remote_host_with_secret(
         &state,
@@ -356,11 +355,50 @@ fn resolve_secret_input_plan_uses_plaintext_password_without_exposing_args() {
         .args
         .iter()
         .any(|arg| arg.contains("credential:ssh") || arg.contains(TEST_PASSWORD)));
+    assert!(request
+        .args
+        .contains(&"PreferredAuthentications=publickey,password,keyboard-interactive".to_owned(),));
     let host = state
         .remote_hosts()
         .require_host(&host_id)
         .expect("stored host");
-    let secret_plan = resolve_secret_input_plan(&host).expect("password prompt plan");
+    assert!(
+        host.secret_ref.is_some(),
+        "stored host should keep encrypted vault ref"
+    );
+    assert_eq!(host.credential_secret, None);
+}
+
+#[test]
+fn resolve_terminal_launch_uses_saved_vault_password_secret_plan() {
+    let (_home, state) = test_state();
+    let host_id = create_test_remote_host_with_secret(
+        &state,
+        RemoteHostAuthType::Password,
+        None,
+        Some(TEST_PASSWORD.to_owned()),
+    );
+
+    let launch = resolve_terminal_launch(
+        state.ssh_terminals(),
+        state.remote_hosts(),
+        state.paths(),
+        SshTerminalCreateRequest {
+            host_id: host_id.clone(),
+            cwd: None,
+            remote_command: None,
+            cols: 80,
+            rows: 24,
+        },
+    )
+    .expect("resolve ssh terminal launch");
+
+    assert!(!launch
+        .request
+        .args
+        .iter()
+        .any(|arg| arg.contains(TEST_PASSWORD)));
+    let secret_plan = launch.secret_input_plan.expect("password prompt plan");
     assert_eq!(secret_plan.entries.len(), 1);
     let entry = &secret_plan.entries[0];
     assert_eq!(entry.id, "target:password");
@@ -371,6 +409,13 @@ fn resolve_secret_input_plan_uses_plaintext_password_without_exposing_args() {
         .prompt_markers
         .iter()
         .any(|marker| marker == "deploy@dev.internal's password:"));
+
+    let host = state
+        .remote_hosts()
+        .require_host(&host_id)
+        .expect("stored host");
+    assert!(host.secret_ref.is_some());
+    assert_eq!(host.credential_secret, None);
 }
 
 #[test]
@@ -384,7 +429,10 @@ fn resolve_terminal_request_uses_openssh_config_alias_for_jump_route() {
             username: "jump".to_owned(),
             auth_type: RemoteHostAuthType::Agent,
             credential_ref: None,
+            secret_ref: None,
+            key_passphrase_ref: None,
             credential_secret: None,
+            credential_status: Default::default(),
         }],
         ..Default::default()
     };
@@ -501,33 +549,49 @@ fn cleanup_stale_temporary_identity_files_honors_age_gate() {
 
 #[test]
 fn jump_terminal_launch_uses_multi_secret_plan_without_leaking_args() {
-    let home = tempdir().expect("create temp home");
-    let paths = KerminalPaths::from_home_dir(home.path());
-    let mut host = direct_remote_host_with_credential(RemoteHostAuthType::Password, None);
-    host.credential_secret = Some(TARGET_PASSWORD.to_owned());
-    host.ssh_options.jump_hosts = vec![SshJumpHostOptions {
-        name: "password-jump".to_owned(),
-        host: "bastion.internal".to_owned(),
-        port: 2022,
-        username: "jump".to_owned(),
-        auth_type: RemoteHostAuthType::Password,
-        credential_ref: None,
-        credential_secret: Some(JUMP_PASSWORD.to_owned()),
-    }];
-
-    let launch = build_jump_terminal_launch(
-        &host,
-        "ssh".to_owned(),
-        &paths,
-        paths.root.join("known_hosts"),
-        Some("/dev"),
+    let (_home, state) = test_state();
+    let ssh_options = SshOptions {
+        jump_hosts: vec![SshJumpHostOptions {
+            name: "password-jump".to_owned(),
+            host: "bastion.internal".to_owned(),
+            port: 2022,
+            username: "jump".to_owned(),
+            auth_type: RemoteHostAuthType::Password,
+            credential_ref: None,
+            secret_ref: None,
+            key_passphrase_ref: None,
+            credential_secret: Some(JUMP_PASSWORD.to_owned()),
+            credential_status: Default::default(),
+        }],
+        ..Default::default()
+    };
+    let host_id = create_test_remote_host_with_secret_and_options(
+        &state,
+        RemoteHostAuthType::Password,
         None,
-        24,
-        80,
+        Some(TARGET_PASSWORD.to_owned()),
+        ssh_options,
+    );
+
+    let launch = resolve_terminal_launch(
+        state.ssh_terminals(),
+        state.remote_hosts(),
+        state.paths(),
+        SshTerminalCreateRequest {
+            host_id,
+            cwd: Some("/dev".to_owned()),
+            remote_command: None,
+            cols: 80,
+            rows: 24,
+        },
     )
     .expect("build jump terminal launch");
 
-    assert_eq!(launch.request.shell.as_deref(), Some("ssh"));
+    assert!(launch
+        .request
+        .shell
+        .as_deref()
+        .is_some_and(|shell| shell.ends_with("ssh") || shell.ends_with("ssh.exe")));
     assert!(launch
         .request
         .args
@@ -570,29 +634,6 @@ fn jump_terminal_launch_uses_multi_secret_plan_without_leaking_args() {
     );
 
     cleanup_paths(&launch.request.cleanup_paths);
-}
-
-fn direct_remote_host_with_credential(
-    auth_type: RemoteHostAuthType,
-    credential_ref: Option<String>,
-) -> RemoteHost {
-    RemoteHost {
-        id: "host-1".to_owned(),
-        group_id: Some("group-1".to_owned()),
-        name: "dev".to_owned(),
-        host: "dev.internal".to_owned(),
-        port: 2222,
-        username: "deploy".to_owned(),
-        auth_type,
-        credential_ref,
-        credential_secret: None,
-        tags: vec!["dev".to_owned()],
-        production: false,
-        ssh_options: Default::default(),
-        sort_order: 10,
-        created_at: "now".to_owned(),
-        updated_at: "now".to_owned(),
-    }
 }
 
 fn create_test_remote_host(

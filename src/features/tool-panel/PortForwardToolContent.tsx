@@ -207,6 +207,13 @@ export function PortForwardToolContent({
     : "聚焦终端不是当前 SSH 主机。";
 
   const refresh = useCallback(async () => {
+    if (!selectedHostId) {
+      setSessions([]);
+      setSessionsLoaded(false);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     setLoading(true);
     setSessionsLoaded(false);
     setError(null);
@@ -218,20 +225,24 @@ export function PortForwardToolContent({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedHostId]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   if (!selectedMachine || selectedMachine.kind !== "ssh") {
+    const message =
+      selectedMachine?.kind === "dockerContainer"
+        ? "当前容器目标不支持直接创建 SSH 隧道。请切回宿主 SSH 主机管理端口转发。"
+        : "请选择 SSH 主机。";
     return (
       <section className="kerminal-solid-surface rounded-2xl border p-4 text-sm text-zinc-500 dark:text-zinc-400">
         <h3 className="font-medium text-zinc-950 dark:text-zinc-100">
           SSH 隧道
         </h3>
         <p className="mt-2 leading-6">
-          请选择 SSH 主机。
+          {message}
         </p>
       </section>
     );

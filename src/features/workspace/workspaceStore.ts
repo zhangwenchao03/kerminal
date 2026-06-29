@@ -14,6 +14,7 @@ import type { TmuxAttachLaunch, TmuxPaneBinding } from "../../lib/tmuxApi";
 import type { RemoteHostGroupWithHosts } from "../../lib/remoteHostApi";
 import { machineGroups, terminalPanes, terminalTabs, tools } from "./workspaceData";
 import type { TerminalPaneMovePlacement } from "./workspaceLayout";
+import type { TerminalPaneMoveScope } from "../terminal/terminalPaneMoveDropZones";
 import {
   maxGeneratedTerminalCounters,
   normalizeWorkspaceSessionSnapshot,
@@ -21,6 +22,7 @@ import {
 } from "./workspaceSession";
 import type {
   Machine,
+  MachineStatus,
   MachineGroup,
   SftpTransferWorkspaceTab,
   TerminalPane,
@@ -71,6 +73,7 @@ import {
   updatePaneCurrentCwdState,
   updateTerminalSplitLayoutSizesState,
   updatePaneOutputHistoryState,
+  updatePaneStatusState,
 } from "./workspaceTerminalState";
 import {
   createContainerTerminalOpenState,
@@ -185,6 +188,7 @@ export interface WorkspaceState {
     sourcePaneId: string,
     targetPaneId: string,
     placement: TerminalPaneMovePlacement,
+    scope?: TerminalPaneMoveScope,
   ) => void;
   closePane: (paneId: string) => void;
   focusPane: (paneId: string) => void;
@@ -197,6 +201,7 @@ export interface WorkspaceState {
     paneId: string,
     outputHistory: string | undefined,
   ) => void;
+  updatePaneStatus: (paneId: string, status: MachineStatus) => void;
   restoreWorkspaceSession: (session: WorkspaceSessionSnapshot) => void;
   setActiveTool: (toolId: ToolId | null) => void;
   setMachineSearch: (query: string) => void;
@@ -807,7 +812,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
       }
       return splitPatch;
     }),
-  moveTerminalPane: (sourcePaneId, targetPaneId, placement) =>
+  moveTerminalPane: (sourcePaneId, targetPaneId, placement, scope) =>
     set((state) => {
       if (sourcePaneId === targetPaneId) {
         return {};
@@ -816,6 +821,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
       generatedSplitCount += 1;
       return moveTerminalPaneState(state, {
         placement,
+        scope,
         sourcePaneId,
         splitId: `split-${generatedSplitCount}`,
         targetPaneId,
@@ -831,6 +837,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
     set((state) => updateTerminalSplitLayoutSizesState(state, splitId, sizes)),
   updatePaneOutputHistory: (paneId, outputHistory) =>
     set((state) => updatePaneOutputHistoryState(state, paneId, outputHistory)),
+  updatePaneStatus: (paneId, status) =>
+    set((state) => updatePaneStatusState(state, paneId, status)),
   restoreWorkspaceSession: (session) =>
     set((state) => {
       const normalized = normalizeWorkspaceSessionSnapshot(session);

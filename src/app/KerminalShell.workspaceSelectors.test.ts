@@ -138,7 +138,7 @@ describe("KerminalShell workspace selector snapshots", () => {
     );
   });
 
-  it("uses the sidebar-selected SSH host for the tool panel even when a local pane is focused", () => {
+  it("keeps the sidebar selection separate from the active tool panel target", () => {
     const machineGroups: MachineGroup[] = [
       {
         id: "local",
@@ -183,6 +183,128 @@ describe("KerminalShell workspace selector snapshots", () => {
     );
 
     expect(context.focusedPane?.id).toBe("pane-local-1");
+    expect(context.activeMachine?.id).toBe("local-pwsh");
+    expect(context.selectedMachine?.id).toBe("host-lab");
+  });
+
+  it("uses the focused container pane target for the active tool panel target", () => {
+    const containerTab: TerminalTab = {
+      id: "tab-container-api",
+      layout: { paneId: "pane-container-api", type: "pane" },
+      machineId: "docker:host-lab:c0ffee1234567890",
+      title: "api",
+    };
+    const containerPane: TerminalPane = {
+      containerId: "c0ffee1234567890",
+      currentCwd: "/srv/api",
+      id: "pane-container-api",
+      lines: [],
+      machineId: "docker:host-lab:c0ffee1234567890",
+      mode: "container",
+      prompt: "api:/$",
+      remoteHostId: "host-lab",
+      remoteHostProduction: true,
+      status: "online",
+      target: {
+        containerId: "c0ffee1234567890",
+        containerName: "api",
+        hostId: "host-lab",
+        kind: "dockerContainer",
+        runtime: "docker",
+      },
+      title: "api",
+    };
+    const machineGroups: MachineGroup[] = [
+      {
+        id: "remote",
+        title: "Remote",
+        machines: [
+          {
+            authType: "agent",
+            description: "Lab server",
+            host: "lab.example.test",
+            id: "host-lab",
+            kind: "ssh",
+            name: "Lab",
+            port: 22,
+            production: true,
+            remoteGroupId: "remote",
+            status: "online",
+            tags: [],
+            username: "ops",
+          },
+        ],
+      },
+    ];
+
+    const context = buildToolPanelWorkspaceContext(
+      workspaceState({
+        activeTabId: containerTab.id,
+        focusedPaneId: containerPane.id,
+        selectedMachineId: containerPane.machineId,
+        terminalPanes: [containerPane],
+        terminalTabs: [containerTab],
+      }),
+      machineGroups,
+    );
+
+    expect(context.activeMachine).toMatchObject({
+      host: "lab.example.test",
+      id: "docker:host-lab:c0ffee1234567890",
+      kind: "dockerContainer",
+      name: "api",
+      parentMachineId: "host-lab",
+      production: true,
+      username: "ops",
+      workdir: "/srv/api",
+    });
+    expect(context.activeMachine?.target).toMatchObject({
+      containerId: "c0ffee1234567890",
+      containerName: "api",
+      hostId: "host-lab",
+      kind: "dockerContainer",
+      runtime: "docker",
+      workdir: "/srv/api",
+    });
+    expect(context.selectedMachine?.id).toBe(context.activeMachine?.id);
+  });
+
+  it("does not fall back to the sidebar selection for the active tool panel target", () => {
+    const machineGroups: MachineGroup[] = [
+      {
+        id: "remote",
+        title: "Remote",
+        machines: [
+          {
+            authType: "agent",
+            description: "Lab server",
+            host: "lab.example.test",
+            id: "host-lab",
+            kind: "ssh",
+            name: "Lab",
+            port: 22,
+            production: false,
+            remoteGroupId: "remote",
+            status: "online",
+            tags: [],
+            username: "ops",
+          },
+        ],
+      },
+    ];
+
+    const context = buildToolPanelWorkspaceContext(
+      workspaceState({
+        activeTabId: "",
+        focusedPaneId: "",
+        selectedMachineId: "host-lab",
+        terminalPanes: [],
+        terminalTabs: [],
+      }),
+      machineGroups,
+    );
+
+    expect(context.activeMachine).toBeUndefined();
     expect(context.selectedMachine?.id).toBe("host-lab");
   });
 });

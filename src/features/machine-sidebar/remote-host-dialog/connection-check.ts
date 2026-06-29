@@ -20,8 +20,6 @@ export interface ConnectionCheckInput {
   authType: RemoteHostAuthType;
   credentialRef: string;
   credentialSecret: string;
-  dockerContainerId: string;
-  dockerHostId: string;
   editingLocalMachine: boolean;
   groupId: string;
   host: string;
@@ -126,13 +124,6 @@ export function evaluateConnectionCheck({
     return validationError
       ? { error: validationError, ok: false }
       : { ok: true, testRequest: { mode: "rdp", request } };
-  }
-
-  if (mode === "docker") {
-    return {
-      ok: true,
-      statusMessage: "容器现在从左侧 SSH 主机右键菜单进入。",
-    };
   }
 
   if (mode === "telnet") {

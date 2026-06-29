@@ -851,6 +851,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "chacha20poly1305"
+version = "0.11.0-rc.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c9ed179664f12fd6f155f6dd632edf5f3806d48c228c67ff78366f2a0eb6b5e"
+dependencies = [
+ "aead",
+ "chacha20",
+ "cipher 0.5.2",
+ "poly1305",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3011,15 +3023,17 @@ dependencies = [
 
 [[package]]
 name = "kerminal"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "axum",
  "base64 0.22.1",
  "bssh-russh-sftp",
+ "chacha20poly1305",
  "clipboard-win",
  "dirs",
  "futures",
+ "getrandom 0.3.4",
  "hmac 0.12.1",
  "http",
  "image",

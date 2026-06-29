@@ -21,9 +21,9 @@ describe("RemoteHostCreateDialog Telnet and Serial modes", () => {
       ...createdHost,
       authType: "agent",
       credentialRef: undefined,
-      host: "legacy.internal",
-      id: "telnet-legacy",
-      name: "legacy telnet",
+      host: "lab.internal",
+      id: "telnet-lab",
+      name: "lab telnet",
       port: 2323,
       tags: ["telnet"],
       username: "",
@@ -43,8 +43,8 @@ describe("RemoteHostCreateDialog Telnet and Serial modes", () => {
       />,
     );
 
-    await user.type(screen.getByLabelText("名称"), "legacy telnet");
-    await user.type(screen.getByLabelText("主机"), "legacy.internal");
+    await user.type(screen.getByLabelText("名称"), "lab telnet");
+    await user.type(screen.getByLabelText("主机"), "lab.internal");
     await user.clear(screen.getByLabelText("端口"));
     await user.type(screen.getByLabelText("端口"), "2323");
     await user.click(screen.getByRole("button", { name: "确认" }));
@@ -54,8 +54,8 @@ describe("RemoteHostCreateDialog Telnet and Serial modes", () => {
       credentialRef: undefined,
       credentialSecret: undefined,
       groupId: "group-dev",
-      host: "legacy.internal",
-      name: "legacy telnet",
+      host: "lab.internal",
+      name: "lab telnet",
       port: 2323,
       production: false,
       tags: ["telnet"],
