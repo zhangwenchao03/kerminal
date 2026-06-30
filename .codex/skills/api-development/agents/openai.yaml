@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "api-development"
+  short_description: "Tauri command and API development guidance"
+  default_prompt: "Use $api-development when implementing or reviewing Tauri commands, API contracts, request validation, and Rust/TypeScript boundaries."

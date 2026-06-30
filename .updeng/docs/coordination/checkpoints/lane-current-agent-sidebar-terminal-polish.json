@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-25T11:21:28.880Z",
+  "laneId": "lane-current-agent-sidebar-terminal-polish",
+  "title": "修复右侧 AI 助手终端错层",
+  "plan": ".updeng/docs/in-progress.md",
+  "branch": null,
+  "worktree": "C:/dev/rust/kerminal",
+  "changedPaths": [
+    "src/features/machine-sidebar/HostContainersDialog.tsx",
+    "src/features/terminal/TerminalWorkspaceContent.tsx",
+    "src/features/terminal/XtermPane.runtime.ts",
+    "src/features/terminal/XtermPane.test.tsx",
+    "src/features/terminal/XtermPane.tsx",
+    "src/features/tool-panel/AgentLauncherToolContent.test.tsx",
+    "src/features/tool-panel/AgentLauncherToolContent.tsx"
+  ],
+  "trackedPatchPaths": [
+    "src/features/terminal/XtermPane.runtime.ts",
+    "src/features/terminal/XtermPane.test.tsx",
+    "src/features/terminal/XtermPane.tsx"
+  ],
+  "untrackedPaths": [
+    "src/features/machine-sidebar/HostContainersDialog.tsx",
+    "src/features/terminal/TerminalWorkspaceContent.tsx",
+    "src/features/tool-panel/AgentLauncherToolContent.test.tsx",
+    "src/features/tool-panel/AgentLauncherToolContent.tsx"
+  ],
+  "untrackedSnapshotPath": ".updeng/docs/coordination/checkpoints/lane-current-agent-sidebar-terminal-polish.untracked.json",
+  "untrackedSnapshotCount": 4,
+  "omittedSnapshotPaths": [],
+  "sharedPaths": [
+    "src/features/machine-sidebar/HostContainersDialog.tsx",
+    "src/features/terminal/TerminalWorkspaceContent.tsx"
+  ],
+  "relatedConflicts": [
+    {
+      "path": "src/features/terminal/XtermPane.runtime.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-current-agent-sidebar-terminal-polish",
+          "kind": "owned",
+          "pattern": "src/features/terminal/XtermPane.runtime.ts"
+        },
+        {
+          "id": "lane-current-terminal-split-reconnect-fix",
+          "kind": "shared",
+          "pattern": "src/features/terminal/XtermPane.runtime.ts"
+        }
+      ]
+    },
+    {
+      "path": "src/features/terminal/XtermPane.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-current-agent-sidebar-terminal-polish",
+          "kind": "owned",
+          "pattern": "src/features/terminal/XtermPane.tsx"
+        },
+        {
+          "id": "lane-current-terminal-split-reconnect-fix",
+          "kind": "shared",
+          "pattern": "src/features/terminal/XtermPane.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/features/machine-sidebar/HostContainersDialog.tsx",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-current-mcp-settings-simplification",
+          "kind": "shared",
+          "pattern": "src/features/machine-sidebar/HostContainersDialog.tsx"
+        },
+        {
+          "id": "lane-current-left-terminal-layout-restore",
+          "kind": "shared",
+          "pattern": "src/features/machine-sidebar/HostContainersDialog.tsx"
+        },
+        {
+          "id": "lane-current-agent-sidebar-terminal-polish",
+          "kind": "shared",
+          "pattern": "src/features/machine-sidebar/HostContainersDialog.tsx"
+        },
+        {
+          "id": "lane-compose-aware-container-management-implementation",
+          "kind": "owned",
+          "pattern": "src/features/machine-sidebar/HostContainersDialog.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/features/terminal/TerminalWorkspaceContent.tsx",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-current-left-terminal-layout-restore",
+          "kind": "owned",
+          "pattern": "src/features/terminal/TerminalWorkspaceContent.tsx"
+        },
+        {
+          "id": "lane-current-agent-sidebar-terminal-polish",
+          "kind": "shared",
+          "pattern": "src/features/terminal/TerminalWorkspaceContent.tsx"
+        },
+        {
+          "id": "lane-current-terminal-split-reconnect-fix",
+          "kind": "owned",
+          "pattern": "src/features/terminal/TerminalWorkspaceContent.tsx"
+        }
+      ]
+    }
+  ],
+  "note": "Patch contains tracked file diffs. Untracked and ignored workflow assets are captured in the untracked snapshot JSON when they are readable UTF-8 text."
+}

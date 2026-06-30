@@ -5,7 +5,8 @@
 use crate::{
     models::terminal::{
         local_terminal_target_ref, TerminalCreateRequest, TerminalOutputEvent,
-        TerminalResizeRequest, TerminalSessionLogState, TerminalSessionSummary,
+        TerminalResizeRequest, TerminalSessionLogState, TerminalSessionReapDiagnostics,
+        TerminalSessionSummary,
     },
     state::AppState,
 };
@@ -62,6 +63,24 @@ pub fn terminal_close(state: State<'_, AppState>, session_id: String) -> Result<
         .terminals()
         .close(&session_id)
         .map_err(|error| error.to_string())
+}
+
+/// 收割当前进程内的本地 PTY orphan 会话。
+#[tauri::command]
+pub fn terminal_reap_orphan_sessions(
+    state: State<'_, AppState>,
+) -> Result<TerminalSessionReapDiagnostics, String> {
+    let diagnostics = state
+        .terminals()
+        .reap_orphan_sessions()
+        .map_err(|error| error.to_string())?;
+    tauri_plugin_log::log::info!(
+        "terminal orphan reaper completed: reaped_count={} session_ids={:?} elapsed_ms={}",
+        diagnostics.reaped_count,
+        diagnostics.session_ids,
+        diagnostics.elapsed_ms
+    );
+    Ok(diagnostics)
 }
 
 /// 列出当前终端会话。

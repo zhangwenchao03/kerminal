@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "Skill 自进化"
+  short_description: "事件采集、候选整理、边界确认和受控技能迭代"
+  default_prompt: "使用 bwy-skill-evolution 从用户纠正、hook 事件、验证失败和评审发现中提炼 skill 优化候选；默认整理为受限修改边界，用户确认后再修改并验证，严格场景再走提案和回放审计。"

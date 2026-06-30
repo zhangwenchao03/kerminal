@@ -67,6 +67,7 @@ import {
 } from "../lib/remoteHostApi";
 import { getSettings } from "../lib/settingsApi";
 import { listSnippets } from "../lib/snippetApi";
+import { reapOrphanTerminalSessions } from "../lib/terminalApi";
 import { useDocumentTheme } from "../lib/useDocumentTheme";
 import { useTauriWindowFrameState } from "../lib/useTauriWindowFrameState";
 import { listWorkflows } from "../lib/workflowApi";
@@ -211,7 +212,7 @@ const terminalSplitDropZoneLabels: Record<TerminalSplitDropZone, string> = {
 
 const TOOL_PANEL_INITIAL_MAX_WIDTH = 384;
 const TOOL_PANEL_MIN_WIDTH = 300;
-const TOOL_PANEL_RESIZE_MAX_WIDTH = 620;
+const TOOL_PANEL_RESIZE_MAX_WIDTH = 720;
 
 const shellToolRailIcons: Partial<Record<ToolId, typeof Bot>> = {
   agentLauncher: Bot,
@@ -1098,7 +1099,18 @@ export function KerminalShell() {
     },
     [handleRemoteHostCreated, pendingSftpHostTarget],
   );
+  const reapLocalOrphanTerminalSessions = useCallback(async () => {
+    try {
+      const diagnostics = await reapOrphanTerminalSessions();
+      if (diagnostics.reapedCount > 0) {
+        console.info("Kerminal local PTY orphan reaper completed", diagnostics);
+      }
+    } catch (error) {
+      console.warn("Kerminal local PTY orphan reaper failed", error);
+    }
+  }, []);
   useWorkspaceSessionPersistence({
+    beforeRestore: reapLocalOrphanTerminalSessions,
     onShellLayoutRestored: handleWorkspaceShellLayoutRestored,
     shellLayout: workspaceShellLayout,
   });

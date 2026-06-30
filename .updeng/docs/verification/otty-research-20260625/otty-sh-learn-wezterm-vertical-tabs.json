@@ -1,0 +1,183 @@
+{
+  "url": "https://otty.sh/learn/wezterm-vertical-tabs/",
+  "title": "Does WezTerm support vertical tabs? | Otty Learn",
+  "description": "WezTerm's tab bar can only sit at the top or bottom — there is no built-in vertical or side tab layout. Otty ships vertical tabs as its default left sidebar.",
+  "viewport": {
+    "width": 1440,
+    "height": 1200
+  },
+  "documentHeight": 2761,
+  "headings": [
+    {
+      "level": "h1",
+      "text": "Does WezTerm support vertical tabs?"
+    },
+    {
+      "level": "h2",
+      "text": "Short answer"
+    },
+    {
+      "level": "h2",
+      "text": "WezTerm's tab bar: top or bottom only"
+    },
+    {
+      "level": "h2",
+      "text": "Workarounds in WezTerm"
+    },
+    {
+      "level": "h2",
+      "text": "Otty: vertical tabs as the default layout"
+    },
+    {
+      "level": "h2",
+      "text": "From WezTerm's Lua to Otty's key = value"
+    },
+    {
+      "level": "h2",
+      "text": "Related"
+    },
+    {
+      "level": "h2",
+      "text": "Sources"
+    }
+  ],
+  "buttons": [
+    {
+      "tag": "a",
+      "text": "Otty",
+      "href": "https://otty.sh/"
+    },
+    {
+      "tag": "a",
+      "text": "Learn",
+      "href": "https://otty.sh/learn/"
+    },
+    {
+      "tag": "a",
+      "text": "Docs",
+      "href": "https://docs.otty.sh/"
+    },
+    {
+      "tag": "a",
+      "text": "Does Ghostty support vertical tabs?",
+      "href": "https://otty.sh/learn/ghostty-vertical-tabs/"
+    },
+    {
+      "tag": "a",
+      "text": "Does Kitty support vertical tabs?",
+      "href": "https://otty.sh/learn/kitty-vertical-tabs/"
+    },
+    {
+      "tag": "a",
+      "text": "WezTerm documentation: tab_bar_at_bottom",
+      "href": "https://wezterm.org/config/lua/config/tab_bar_at_bottom.html"
+    },
+    {
+      "tag": "a",
+      "text": "Otty documentation: Windows, tabs, and splits",
+      "href": "https://docs.otty.sh/user-interface/window-tab-split"
+    },
+    {
+      "tag": "a",
+      "text": "Otty documentation: Configuration reference",
+      "href": "https://docs.otty.sh/reference/configuration"
+    },
+    {
+      "tag": "a",
+      "text": "Otty Windows, Tabs, and Splits documentation",
+      "href": "https://docs.otty.sh/user-interface/window-tab-split"
+    }
+  ],
+  "links": [
+    {
+      "href": "/",
+      "resolved": "https://otty.sh/",
+      "text": "Otty"
+    },
+    {
+      "href": "/learn/",
+      "resolved": "https://otty.sh/learn/",
+      "text": "Learn"
+    },
+    {
+      "href": "https://docs.otty.sh/",
+      "resolved": "https://docs.otty.sh/",
+      "text": "Docs"
+    },
+    {
+      "href": "/learn/ghostty-vertical-tabs/",
+      "resolved": "https://otty.sh/learn/ghostty-vertical-tabs/",
+      "text": "Does Ghostty support vertical tabs?"
+    },
+    {
+      "href": "/learn/kitty-vertical-tabs/",
+      "resolved": "https://otty.sh/learn/kitty-vertical-tabs/",
+      "text": "Does Kitty support vertical tabs?"
+    },
+    {
+      "href": "https://wezterm.org/config/lua/config/tab_bar_at_bottom.html",
+      "resolved": "https://wezterm.org/config/lua/config/tab_bar_at_bottom.html",
+      "text": "WezTerm documentation: tab_bar_at_bottom"
+    },
+    {
+      "href": "https://docs.otty.sh/user-interface/window-tab-split",
+      "resolved": "https://docs.otty.sh/user-interface/window-tab-split",
+      "text": "Otty documentation: Windows, tabs, and splits"
+    },
+    {
+      "href": "https://docs.otty.sh/reference/configuration",
+      "resolved": "https://docs.otty.sh/reference/configuration",
+      "text": "Otty documentation: Configuration reference"
+    },
+    {
+      "href": "https://docs.otty.sh/user-interface/window-tab-split",
+      "resolved": "https://docs.otty.sh/user-interface/window-tab-split",
+      "text": "Otty Windows, Tabs, and Splits documentation"
+    }
+  ],
+  "colors": {
+    "text": [
+      {
+        "value": "rgb(170, 162, 154)",
+        "count": 34
+      },
+      {
+        "value": "rgb(242, 239, 233)",
+        "count": 30
+      },
+      {
+        "value": "rgb(158, 158, 255)",
+        "count": 1
+      }
+    ],
+    "background": [
+      {
+        "value": "rgb(29, 29, 32)",
+        "count": 8
+      }
+    ],
+    "border": [
+      {
+        "value": "rgb(170, 162, 154)",
+        "count": 33
+      },
+      {
+        "value": "rgb(242, 239, 233)",
+        "count": 28
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.13) rgb(242, 239, 233) rgb(242, 239, 233)",
+        "count": 2
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.13) rgb(170, 162, 154) rgb(170, 162, 154)",
+        "count": 1
+      },
+      {
+        "value": "rgb(158, 158, 255)",
+        "count": 1
+      }
+    ]
+  },
+  "bodyTextSample": "Otty Learn Docs VERTICAL TABS Does WezTerm support vertical tabs? WezTerm's tab bar can only sit at the top or bottom — there is no built-in vertical or side tab layout. Otty ships vertical tabs as its default left sidebar. Short answer WezTerm does not support a vertical or side tab bar. Its tab bar can only sit at the top (default) or bottom of the window via the Lua option tab_bar_at_bottom; there is no left or right placement. If you want vertical tabs in a native terminal, Otty uses a left tab sidebar as its default layout, set with a single configuration key. WezTerm is a fast, highly configurable terminal with its own built-in multiplexer, so it is reasonable to expect a vertical or side tab list. The short answer is that WezTerm keeps its tab bar horizontal. Here is exactly what it supports, the closest workarounds, and how Otty — a native macOS terminal — makes a vertical sidebar the default layout. WezTerm's tab bar: top or bottom only WezTerm renders its tab bar across the full width of the window, and you can move it between two positions with a single Lua option: -- top is the default; set to true to move it to the bottom config.tab_bar_at_bottom = true That is the full range: top or bottom. There is no option to place the tab bar on the left or right edge, so a true vertical tab list is not part of WezTerm's built-in layout. WezTerm does have a complete native tab and pane system — windows, tabs, and splits with their own scrollback — it just renders the tab strip horizontally. Workarounds in WezTerm People get close to a side list in a few ways, with trade-offs: tmux inside WezTerm. Run tmux and use its status line to list windows. It gives you a persistent session list, but it lives inside one pane and is styled by tmux. Lua tab-bar plugins. Projects like bar.wezterm and wezterm-bar restyle the tab bar, but their position options are still top or bottom — they do not move tabs to the side. Splits over tabs. Use panes for parallel work and keep tab co"
+}

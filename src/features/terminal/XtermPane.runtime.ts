@@ -12,6 +12,7 @@ import { appendCommandBlockOutput, terminalCommandBlockPlainText } from "./termi
 import {
   clearTerminalCommandBlocks,
   closeLatestTerminalCommandBlock,
+  syncTerminalCommandProtocolPromptBlock,
   submitTerminalCommandBlock,
 } from "./terminalCommandBlockLifecycle";
 import { applyTerminalInputData, createTerminalInputModelState, terminalSuggestionEligibility, updateTerminalInputBufferKind, updateTerminalInputComposition } from "./terminalInputModel";
@@ -25,13 +26,14 @@ import {
 import { buildTerminalCreateRequest, collectCurrentDirOscSequences, errorMessage, isRightArrowInput, normalizeTerminalSessionSize, resolveGhostSuggestionLayout, terminalGhostSuggestionEqual, terminalSuggestionProviders, type TerminalGhostSuggestion } from "./XtermPane.helpers";
 import { registerCommandBlockClearHandlers, terminalSessionFailureLabel, terminalSessionTargetKind } from "./XtermPane.runtime.helpers";
 import { KITTY_KEYBOARD_PROTOCOL_ENABLE, resolveTerminalInputCompatibilityOverride, resolveTerminalRuntimeKeydownOverride, shouldEnableKittyKeyboardProtocol } from "./terminalKeyboardPolicy";
+import { applyTerminalShellIntegrationOsc7, collectTerminalShellIntegrationOsc133Segments, createTerminalShellIntegrationState, parseTerminalShellIntegrationOsc133, reduceTerminalShellIntegrationState, type TerminalShellIntegrationOsc133Event } from "./terminalShellIntegrationModel";
 
 const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000;
 const INITIAL_REMOTE_OUTPUT_IMMEDIATE_WRITE_MS = 8_000;
 const TERMINAL_SESSION_STATUS_POLL_MS = 2_000;
 
 export function installXtermPaneRuntime(params: any) {
-  const { args, commandBlockCounterRef, commandBlocksRef, containerRef, cwd, cwdTrackingBufferRef, currentCwdRef, disconnectSessionRef, env, fitAddonRef, focusedRef, ghostSuggestionRef, inputBufferRef, inputModelRef, onCurrentCwdChangeRef, onOutputHistoryChangeRef, onSessionFinishedRef, onTerminalDimensionsChangeRef, outputHistoryRef, paneId, profileId, promptLineRef, reconnectSessionRef, remoteCommand, remoteHostId, remoteHostProduction, searchAddonRef, sessionIdRef, setCommandBlockNotice, setCommandBlockViews, setConnectionState, setGhostSuggestion, setLogNotice, setLogState, setSearchResults, shell, shellAssistEnabled = true, startupMessage, syncCommandBlockViews, target, terminalAppearance, terminalAppearanceRef, terminalFontWeight, terminalRef, terminalTheme, transientStartupMessage } = params;
+  const { args, commandBlockCounterRef, commandBlocksRef, containerRef, cwd, cwdTrackingBufferRef, currentCwdRef, disconnectSessionRef, env, fitAddonRef, focusedRef, ghostSuggestionRef, inputBufferRef, inputModelRef, onAgentSignalRef, onCurrentCwdChangeRef, onOutputHistoryChangeRef, onSessionFinishedRef, onTerminalDimensionsChangeRef, outputHistoryRef, paneId, profileId, promptLineRef, reconnectSessionRef, remoteCommand, remoteHostId, remoteHostProduction, searchAddonRef, sessionIdRef, setCommandBlockNotice, setCommandBlockViews, setConnectionState, setGhostSuggestion, setLogNotice, setLogState, setSearchResults, shellIntegrationCommandBlockProtocolRef, shell, shellAssistEnabled = true, startupMessage, syncCommandBlockViews, target, terminalAppearance, terminalAppearanceRef, terminalFontWeight, terminalRef, terminalTheme, transientStartupMessage } = params;
     const container = containerRef.current;
     if (!container) {
       return undefined;
@@ -45,6 +47,10 @@ export function installXtermPaneRuntime(params: any) {
     let suggestionRequestRun = 0;
     let suggestionTimer: number | null = null;
     let commandBlockViewSyncFrame: number | null = null;
+    let shellIntegrationState = createTerminalShellIntegrationState();
+    let shellIntegrationOsc133Buffer = "";
+    let pendingProtocolCommand: string | undefined;
+    let protocolCommandOutputActive = false;
     const assistEnabled = shellAssistEnabled !== false;
     const inputCompatibilityMode =
       params.inputCompatibilityMode === "agentTui" ? "agentTui" : "shell";
@@ -142,6 +148,143 @@ export function installXtermPaneRuntime(params: any) {
         scheduleCommandBlockViewSync();
       }
     };
+    const latestOpenSubmittedCommandBlock = () => {
+      const block = commandBlocksRef.current[commandBlocksRef.current.length - 1];
+      if (!block || !block.submitted || block.endMarker) {
+        return undefined;
+      }
+      return block;
+    };
+    const currentTerminalLine = () => {
+      const activeBuffer = terminal.buffer.active as {
+        baseY?: number;
+        cursorY?: number;
+      };
+      return typeof activeBuffer.baseY === "number" &&
+        typeof activeBuffer.cursorY === "number"
+        ? activeBuffer.baseY + activeBuffer.cursorY
+        : undefined;
+    };
+    const syncProtocolPromptBlock = () => {
+      if (
+        !assistEnabled ||
+        !shellIntegrationCommandBlockProtocolRef.current ||
+        terminal.buffer.active.type !== "normal"
+      ) {
+        return;
+      }
+      const promptLine = currentTerminalLine();
+      promptLineRef.current = promptLine;
+      if (
+        syncTerminalCommandProtocolPromptBlock({
+          commandBlockCounterRef,
+          commandBlocksRef,
+          onEndMarkerDispose: () => {
+            if (!disposed) {
+              scheduleCommandBlockViewSync();
+            }
+          },
+          onStartMarkerDispose: () => {
+            if (!disposed) {
+              scheduleCommandBlockViewSync();
+            }
+          },
+          paneId,
+          promptLine,
+          terminal,
+        })
+      ) {
+        scheduleCommandBlockViewSync();
+      }
+    };
+    const startProtocolCommandBlock = (commandFromOsc?: string) => {
+      if (
+        !assistEnabled ||
+        !shellIntegrationCommandBlockProtocolRef.current ||
+        terminal.buffer.active.type !== "normal"
+      ) {
+        return;
+      }
+      const command = (
+        commandFromOsc ??
+        pendingProtocolCommand ??
+        inputModelRef.current.command
+      ).trim();
+      if (!command) {
+        return;
+      }
+      const latestBlock = latestOpenSubmittedCommandBlock();
+      if (latestBlock?.command === command) {
+        protocolCommandOutputActive = true;
+        pendingProtocolCommand = undefined;
+        return;
+      }
+      registerCommandBlock(command);
+      protocolCommandOutputActive = true;
+      pendingProtocolCommand = undefined;
+    };
+    const finishProtocolCommandBlock = (options: { closeMarker: boolean }) => {
+      if (!assistEnabled || !shellIntegrationCommandBlockProtocolRef.current) {
+        return;
+      }
+      protocolCommandOutputActive = false;
+      pendingProtocolCommand = undefined;
+      if (options.closeMarker) {
+        closeCurrentCommandBlock();
+      }
+    };
+    const handleShellIntegrationOsc133 = (
+      event: TerminalShellIntegrationOsc133Event,
+      source: "output" | "parser",
+    ) => {
+      if (!shellIntegrationCommandBlockProtocolRef.current) {
+        return;
+      }
+      switch (event.marker) {
+        case "A":
+        case "B":
+          syncProtocolPromptBlock();
+          return;
+        case "C":
+          startProtocolCommandBlock(event.command);
+          return;
+        case "D":
+          finishProtocolCommandBlock({ closeMarker: source === "parser" });
+          return;
+      }
+    };
+    const appendProtocolCommandOutput = (data: string) => {
+      if (!assistEnabled || !protocolCommandOutputActive) {
+        return;
+      }
+      appendCommandBlockOutput(commandBlocksRef.current, data);
+    };
+    const appendShellIntegrationCommandOutput = (data: string) => {
+      if (
+        !assistEnabled ||
+        !shellIntegrationCommandBlockProtocolRef.current ||
+        !shellIntegrationState.trusted
+      ) {
+        appendCommandBlockOutput(commandBlocksRef.current, data);
+        return;
+      }
+      const collected = collectTerminalShellIntegrationOsc133Segments(
+        shellIntegrationOsc133Buffer,
+        data,
+      );
+      shellIntegrationOsc133Buffer = collected.buffer;
+      for (const segment of collected.segments) {
+        if (segment.type === "data") {
+          appendProtocolCommandOutput(segment.data);
+          continue;
+        }
+        shellIntegrationState = reduceTerminalShellIntegrationState(
+          shellIntegrationState,
+          { payload: segment.event.marker, type: "osc133" },
+        );
+        handleShellIntegrationOsc133(segment.event, "output");
+      }
+    };
     const clearCommandBlockViewSyncFrame = () => {
       if (commandBlockViewSyncFrame === null) {
         return;
@@ -219,6 +362,52 @@ export function installXtermPaneRuntime(params: any) {
     const terminalOutputInstrumentation = createTerminalOutputInstrumentation({
       paneId,
     });
+    const updateCurrentCwdFromTerminal = (
+      nextCwd: string,
+      options: { prewarmRemoteSuggestions: boolean },
+    ) => {
+      if (nextCwd === currentCwdRef.current) {
+        return;
+      }
+      currentCwdRef.current = nextCwd;
+      updateTerminalPaneSessionCwd(paneId, nextCwd);
+      onCurrentCwdChangeRef.current?.(nextCwd);
+      if (!assistEnabled || !options.prewarmRemoteSuggestions) {
+        return;
+      }
+      runTerminalOutputInstrumentationStep(
+        terminalOutputInstrumentation,
+        "remotePrewarmGit",
+        nextCwd.length,
+        () => remoteSuggestionPrewarm.scheduleGit(nextCwd),
+      );
+      runTerminalOutputInstrumentationStep(
+        terminalOutputInstrumentation,
+        "remotePrewarmPath",
+        nextCwd.length,
+        () => remoteSuggestionPrewarm.scheduleRemotePath(nextCwd),
+      );
+    };
+    const shellIntegrationOscDisposables = installShellIntegrationOscHandlers(
+      terminal,
+      {
+        onCurrentCwd: (nextCwd) =>
+          updateCurrentCwdFromTerminal(nextCwd, {
+            prewarmRemoteSuggestions: false,
+          }),
+        reduceState: (event) => {
+          shellIntegrationState = reduceTerminalShellIntegrationState(
+            shellIntegrationState,
+            event,
+          );
+        },
+        readState: () => shellIntegrationState,
+        writeState: (nextState) => {
+          shellIntegrationState = nextState;
+        },
+        onOsc133: (event) => handleShellIntegrationOsc133(event, "parser"),
+      },
+    );
     const clearGhostSuggestion = () => {
       clearSuggestionTimer();
       suggestionRequestRun += 1;
@@ -417,11 +606,23 @@ export function installXtermPaneRuntime(params: any) {
         collected.state,
         terminal.buffer.active.type,
       );
+      shellIntegrationState = reduceTerminalShellIntegrationState(
+        shellIntegrationState,
+        { data, type: "input" },
+      );
       inputBufferRef.current = inputModelRef.current.command;
       for (const command of collected.commands) {
         const dismissedSuggestion = ghostSuggestionRef.current;
         clearGhostSuggestion();
-        registerCommandBlock(command);
+        if (
+          assistEnabled &&
+          shellIntegrationCommandBlockProtocolRef.current &&
+          shellIntegrationState.trusted
+        ) {
+          pendingProtocolCommand = command;
+        } else {
+          registerCommandBlock(command);
+        }
         if (!command) {
           continue;
         }
@@ -478,6 +679,10 @@ export function installXtermPaneRuntime(params: any) {
         event.stopPropagation();
         const sessionId = sessionIdRef.current;
         if (sessionId) {
+          shellIntegrationState = reduceTerminalShellIntegrationState(
+            shellIntegrationState,
+            { data: compatibilityOverride.data, type: "input" },
+          );
           void writeTerminal(sessionId, compatibilityOverride.data);
         }
         return false;
@@ -516,6 +721,13 @@ export function installXtermPaneRuntime(params: any) {
     });
     const bufferChangeDisposable = terminal.buffer.onBufferChange(() => {
       const nextBufferType = terminal.buffer.active.type;
+      shellIntegrationState = reduceTerminalShellIntegrationState(
+        shellIntegrationState,
+        {
+          bufferType: nextBufferType === "alternate" ? "alternate" : "normal",
+          type: "buffer",
+        },
+      );
       if (nextBufferType === "alternate") {
         closeCurrentCommandBlock();
       }
@@ -590,6 +802,10 @@ export function installXtermPaneRuntime(params: any) {
       }
       const sessionId = sessionIdRef.current;
       if (sessionId) {
+        shellIntegrationState = reduceTerminalShellIntegrationState(
+          shellIntegrationState,
+          { data: runtimeOverride.data, type: "input" },
+        );
         void writeTerminal(sessionId, runtimeOverride.data);
       }
     };
@@ -638,6 +854,11 @@ export function installXtermPaneRuntime(params: any) {
         sessionIdRef.current = null;
       }
       unregisterTerminalPaneSession(paneId, sessionId);
+      shellIntegrationState = createTerminalShellIntegrationState();
+      shellIntegrationCommandBlockProtocolRef.current = false;
+      shellIntegrationOsc133Buffer = "";
+      pendingProtocolCommand = undefined;
+      protocolCommandOutputActive = false;
       setLogState({ active: false, bytesWritten: 0 });
     };
 
@@ -811,6 +1032,11 @@ export function installXtermPaneRuntime(params: any) {
       inputBufferRef.current = "";
       inputModelRef.current = createTerminalInputModelState();
       cwdTrackingBufferRef.current = "";
+      shellIntegrationState = createTerminalShellIntegrationState();
+      shellIntegrationCommandBlockProtocolRef.current = false;
+      shellIntegrationOsc133Buffer = "";
+      pendingProtocolCommand = undefined;
+      protocolCommandOutputActive = false;
       clearGhostSuggestion();
       const startupNotice = startupNoticeFor(reason);
       transientStartupNoticeVisible =
@@ -822,6 +1048,13 @@ export function installXtermPaneRuntime(params: any) {
 
       const handleOutput = (event: TerminalOutputEvent) => {
         if (disposed || sessionRun !== currentRun) {
+          return;
+        }
+
+        if (event.kind === "agentSignal") {
+          if (event.agentSignal) {
+            onAgentSignalRef?.current?.(event.agentSignal);
+          }
           return;
         }
 
@@ -843,25 +1076,9 @@ export function installXtermPaneRuntime(params: any) {
             );
             cwdTrackingBufferRef.current = tracked.buffer;
             for (const nextCwd of tracked.paths) {
-              if (nextCwd !== currentCwdRef.current) {
-                currentCwdRef.current = nextCwd;
-                updateTerminalPaneSessionCwd(paneId, nextCwd);
-                onCurrentCwdChangeRef.current?.(nextCwd);
-                if (assistEnabled) {
-                  runTerminalOutputInstrumentationStep(
-                    terminalOutputInstrumentation,
-                    "remotePrewarmGit",
-                    nextCwd.length,
-                    () => remoteSuggestionPrewarm.scheduleGit(nextCwd),
-                  );
-                  runTerminalOutputInstrumentationStep(
-                    terminalOutputInstrumentation,
-                    "remotePrewarmPath",
-                    nextCwd.length,
-                    () => remoteSuggestionPrewarm.scheduleRemotePath(nextCwd),
-                  );
-                }
-              }
+              updateCurrentCwdFromTerminal(nextCwd, {
+                prewarmRemoteSuggestions: true,
+              });
             }
           }
           if (assistEnabled) {
@@ -869,7 +1086,7 @@ export function installXtermPaneRuntime(params: any) {
               terminalOutputInstrumentation,
               "commandBlock",
               event.data.length,
-              () => appendCommandBlockOutput(commandBlocksRef.current, event.data),
+              () => appendShellIntegrationCommandOutput(event.data),
             );
           }
           runTerminalOutputInstrumentationStep(
@@ -975,6 +1192,18 @@ export function installXtermPaneRuntime(params: any) {
           void closeTerminal(session.id);
           return;
         }
+        const shellIntegrationTrusted =
+          !hasRemoteTerminalTarget() &&
+          session.shellIntegration?.status === "enabled";
+        shellIntegrationState = reduceTerminalShellIntegrationState(
+          shellIntegrationState,
+          {
+            trusted: shellIntegrationTrusted,
+            type: "session",
+          },
+        );
+        shellIntegrationCommandBlockProtocolRef.current =
+          assistEnabled && shellIntegrationTrusted;
         sessionIdRef.current = session.id;
         registerTerminalPaneSession(paneId, session.id, {
           containerId:
@@ -1114,9 +1343,16 @@ export function installXtermPaneRuntime(params: any) {
       container.removeEventListener("keydown", handleRuntimeKeydown, true);
       container.removeEventListener("paste", handleRuntimePaste, true);
       clearRuntimePasteSuppression();
+      for (const disposable of shellIntegrationOscDisposables) {
+        disposable.dispose();
+      }
       commandBlockClearHandlersDisposable.dispose();
       const sessionId = sessionIdRef.current;
       sessionIdRef.current = null;
+      shellIntegrationCommandBlockProtocolRef.current = false;
+      shellIntegrationOsc133Buffer = "";
+      pendingProtocolCommand = undefined;
+      protocolCommandOutputActive = false;
       reconnectSessionRef.current = null;
       disconnectSessionRef.current = null;
       if (sessionId) {
@@ -1134,6 +1370,61 @@ export function installXtermPaneRuntime(params: any) {
       setLogState({ active: false, bytesWritten: 0 });
       setLogNotice(null);
     };
+}
+
+type XtermOscDisposable = { dispose: () => void };
+
+interface XtermOscParserHost {
+  parser?: {
+    registerOscHandler?: (
+      identifier: number,
+      handler: (data: string) => boolean,
+    ) => XtermOscDisposable;
+  };
+}
+
+function installShellIntegrationOscHandlers(
+  terminal: XtermTerminal,
+  callbacks: {
+    onCurrentCwd: (cwd: string) => void;
+    readState: () => ReturnType<typeof createTerminalShellIntegrationState>;
+    reduceState: (
+      event: Parameters<typeof reduceTerminalShellIntegrationState>[1],
+    ) => void;
+    onOsc133?: (event: TerminalShellIntegrationOsc133Event) => void;
+    writeState: (
+      state: ReturnType<typeof createTerminalShellIntegrationState>,
+    ) => void;
+  },
+): XtermOscDisposable[] {
+  const parser = (terminal as XtermOscParserHost).parser;
+  if (typeof parser?.registerOscHandler !== "function") {
+    return [];
+  }
+
+  const osc7Disposable = parser.registerOscHandler(7, (payload) => {
+    const result = applyTerminalShellIntegrationOsc7(
+      callbacks.readState(),
+      payload,
+    );
+    callbacks.writeState(result.state);
+    if (result.cwd) {
+      callbacks.onCurrentCwd(result.cwd);
+      return true;
+    }
+    return result.state.trusted;
+  });
+  const osc133Disposable = parser.registerOscHandler(133, (payload) => {
+    const previousState = callbacks.readState();
+    const event = parseTerminalShellIntegrationOsc133(payload);
+    callbacks.reduceState({ payload, type: "osc133" });
+    if (previousState.trusted && event) {
+      callbacks.onOsc133?.(event);
+    }
+    return previousState.trusted;
+  });
+
+  return [osc7Disposable, osc133Disposable];
 }
 
 function isClearScreenCommand(command: string) {

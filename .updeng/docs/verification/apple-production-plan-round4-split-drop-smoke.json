@@ -1,0 +1,141 @@
+{
+  "appUrl": "http://127.0.0.1:5176/",
+  "pass": true,
+  "results": [
+    {
+      "errors": [],
+      "invocations": [
+        "settings_get",
+        "plugin:event|listen",
+        "profile_list",
+        "remote_host_tree",
+        "settings_get",
+        "plugin:event|listen",
+        "profile_list",
+        "remote_host_tree",
+        "plugin:event|listen",
+        "ssh_create_session",
+        "terminal_session_binding_register",
+        "terminal_session_binding_ready",
+        "terminal_log_state",
+        "terminal_resize",
+        "plugin:event|unlisten",
+        "plugin:event|unlisten",
+        "terminal_resize",
+        "plugin:event|unlisten",
+        "plugin:event|listen",
+        "ssh_create_session",
+        "terminal_session_binding_register",
+        "terminal_session_binding_ready",
+        "terminal_log_state",
+        "terminal_resize",
+        "terminal_resize",
+        "terminal_resize"
+      ],
+      "paneLabels": [
+        "prod-api xterm 终端",
+        "staging-api xterm 终端"
+      ],
+      "splitHintVisible": false,
+      "themeClass": "dark",
+      "themeData": "dark",
+      "outputPath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\apple-production-plan-round4-dark.png",
+      "theme": {
+        "label": "dark",
+        "systemPrefers": "dark",
+        "theme": "dark",
+        "captureDuringDrag": true
+      }
+    },
+    {
+      "errors": [],
+      "invocations": [
+        "settings_get",
+        "plugin:event|listen",
+        "profile_list",
+        "remote_host_tree",
+        "settings_get",
+        "plugin:event|listen",
+        "profile_list",
+        "remote_host_tree",
+        "plugin:event|listen",
+        "ssh_create_session",
+        "terminal_session_binding_register",
+        "terminal_session_binding_ready",
+        "terminal_log_state",
+        "terminal_resize",
+        "plugin:event|unlisten",
+        "plugin:event|unlisten",
+        "terminal_resize",
+        "plugin:event|unlisten",
+        "plugin:event|listen",
+        "ssh_create_session",
+        "terminal_session_binding_register",
+        "terminal_session_binding_ready",
+        "terminal_log_state",
+        "terminal_resize",
+        "terminal_resize",
+        "terminal_resize"
+      ],
+      "paneLabels": [
+        "prod-api xterm 终端",
+        "staging-api xterm 终端"
+      ],
+      "splitHintVisible": false,
+      "themeClass": "",
+      "themeData": "light",
+      "outputPath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\apple-production-plan-round4-light.png",
+      "theme": {
+        "label": "light",
+        "systemPrefers": "light",
+        "theme": "light",
+        "captureDuringDrag": false
+      }
+    },
+    {
+      "errors": [],
+      "invocations": [
+        "settings_get",
+        "plugin:event|listen",
+        "profile_list",
+        "remote_host_tree",
+        "settings_get",
+        "plugin:event|listen",
+        "profile_list",
+        "remote_host_tree",
+        "plugin:event|listen",
+        "ssh_create_session",
+        "terminal_session_binding_register",
+        "terminal_session_binding_ready",
+        "terminal_log_state",
+        "terminal_resize",
+        "plugin:event|unlisten",
+        "plugin:event|unlisten",
+        "terminal_resize",
+        "plugin:event|unlisten",
+        "plugin:event|listen",
+        "ssh_create_session",
+        "terminal_session_binding_register",
+        "terminal_session_binding_ready",
+        "terminal_log_state",
+        "terminal_resize",
+        "terminal_resize",
+        "terminal_resize"
+      ],
+      "paneLabels": [
+        "prod-api xterm 终端",
+        "staging-api xterm 终端"
+      ],
+      "splitHintVisible": false,
+      "themeClass": "dark",
+      "themeData": "dark",
+      "outputPath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\apple-production-plan-round4-system.png",
+      "theme": {
+        "label": "system",
+        "systemPrefers": "dark",
+        "theme": "system",
+        "captureDuringDrag": false
+      }
+    }
+  ]
+}

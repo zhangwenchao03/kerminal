@@ -1,0 +1,459 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-24T03:42:22.614Z",
+  "laneId": "lane-ai-sidebar-external-agent-launcher",
+  "plan": ".updeng/docs/plan/active/PLAN-20260623-221108-ai-sidebar-external-agent-launcher.md",
+  "branch": null,
+  "worktree": "C:/dev/rust/kerminal",
+  "changedPaths": [
+    ".updeng/docs/config/external-agent-workspace.md",
+    ".updeng/docs/coordination/lanes.json",
+    ".updeng/docs/decisions/ADR-0017-external-agent-launcher-and-mcp-only.md",
+    ".updeng/docs/discovery/2026-06-23-ai-sidebar-external-agent-launcher.md",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/plan/INDEX.md",
+    ".updeng/docs/plan/active/PLAN-20260623-221108-ai-sidebar-external-agent-launcher.md",
+    ".updeng/docs/reports/ai-removal-inventory-20260623.md",
+    "README.md",
+    "docs/assets/kerminal-settings.png",
+    "scripts/capture-readme-screenshots.mjs",
+    "src-tauri/Cargo.toml",
+    "src-tauri/src/commands/external_agent_workspace.rs",
+    "src-tauri/src/services/external_agent_workspace.rs",
+    "src-tauri/src/services/mcp_streamable_http_server.rs",
+    "src-tauri/src/state.rs",
+    "src-tauri/tests/mcp_streamable_http_server.rs",
+    "src/features/settings/LlmProviderSettingsSection.test.tsx",
+    "src/features/settings/LlmProviderSettingsSection.tsx",
+    "src/features/settings/SettingsDialog.tsx",
+    "src/features/settings/SettingsToolContent.appearance-theme.test.tsx",
+    "src/features/settings/SettingsToolContent.controls.test.tsx",
+    "src/features/settings/SettingsToolContent.mcp.test.tsx",
+    "src/features/settings/SettingsToolContent.test.tsx",
+    "src/features/settings/SettingsToolContent.testHarness.tsx",
+    "src/features/settings/SettingsToolContent.testSupport.ts",
+    "src/features/settings/SettingsToolContent.tsx",
+    "src/features/settings/llmProviderModel.ts",
+    "src/features/settings/settings-tool-content/ai-section.tsx",
+    "src/features/settings/settings-tool-content/mcp-catalog.tsx",
+    "src/features/settings/settings-tool-content/mcp-custom.tsx",
+    "src/features/settings/settings-tool-content/mcp-section.tsx",
+    "src/features/settings/settings-tool-content/options.ts",
+    "src/features/settings/settings-tool-content/types.ts",
+    "src/features/settings/settingsDefaults.ts",
+    "src/features/settings/settingsLimits.ts",
+    "src/features/settings/settingsModel.test.ts",
+    "src/features/settings/settingsModel.ts",
+    "src/features/tool-panel/AgentLauncherToolContent.test.tsx",
+    "src/features/tool-panel/AgentLauncherToolContent.tsx",
+    "src/features/tool-panel/ToolPanel.tsx",
+    "src/features/tool-panel/agent-launcher/agentLauncherModel.test.ts",
+    "src/features/tool-panel/agent-launcher/agentLauncherModel.ts",
+    "src/lib/agentLauncherApi.ts"
+  ],
+  "trackedPatchPaths": [
+    "README.md",
+    "docs/assets/kerminal-settings.png",
+    "scripts/capture-readme-screenshots.mjs",
+    "src-tauri/Cargo.toml",
+    "src-tauri/src/services/mcp_streamable_http_server.rs",
+    "src-tauri/src/state.rs",
+    "src/features/settings/LlmProviderSettingsSection.test.tsx",
+    "src/features/settings/LlmProviderSettingsSection.tsx",
+    "src/features/settings/SettingsDialog.tsx",
+    "src/features/settings/SettingsToolContent.appearance-theme.test.tsx",
+    "src/features/settings/SettingsToolContent.controls.test.tsx",
+    "src/features/settings/SettingsToolContent.mcp.test.tsx",
+    "src/features/settings/SettingsToolContent.test.tsx",
+    "src/features/settings/SettingsToolContent.testHarness.tsx",
+    "src/features/settings/SettingsToolContent.testSupport.ts",
+    "src/features/settings/SettingsToolContent.tsx",
+    "src/features/settings/llmProviderModel.ts",
+    "src/features/settings/settings-tool-content/ai-section.tsx",
+    "src/features/settings/settings-tool-content/mcp-catalog.tsx",
+    "src/features/settings/settings-tool-content/mcp-custom.tsx",
+    "src/features/settings/settings-tool-content/mcp-section.tsx",
+    "src/features/settings/settings-tool-content/options.ts",
+    "src/features/settings/settings-tool-content/types.ts",
+    "src/features/settings/settingsDefaults.ts",
+    "src/features/settings/settingsLimits.ts",
+    "src/features/settings/settingsModel.test.ts",
+    "src/features/settings/settingsModel.ts",
+    "src/features/tool-panel/ToolPanel.tsx"
+  ],
+  "untrackedPaths": [
+    ".updeng/docs/config/external-agent-workspace.md",
+    ".updeng/docs/coordination/lanes.json",
+    ".updeng/docs/decisions/ADR-0017-external-agent-launcher-and-mcp-only.md",
+    ".updeng/docs/discovery/2026-06-23-ai-sidebar-external-agent-launcher.md",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/plan/INDEX.md",
+    ".updeng/docs/plan/active/PLAN-20260623-221108-ai-sidebar-external-agent-launcher.md",
+    ".updeng/docs/reports/ai-removal-inventory-20260623.md",
+    "src-tauri/src/commands/external_agent_workspace.rs",
+    "src-tauri/src/services/external_agent_workspace.rs",
+    "src-tauri/tests/mcp_streamable_http_server.rs",
+    "src/features/tool-panel/AgentLauncherToolContent.test.tsx",
+    "src/features/tool-panel/AgentLauncherToolContent.tsx",
+    "src/features/tool-panel/agent-launcher/agentLauncherModel.test.ts",
+    "src/features/tool-panel/agent-launcher/agentLauncherModel.ts",
+    "src/lib/agentLauncherApi.ts"
+  ],
+  "untrackedSnapshotPath": ".updeng/docs/coordination/checkpoints/lane-ai-sidebar-external-agent-launcher.untracked.json",
+  "untrackedSnapshotCount": 16,
+  "omittedSnapshotPaths": [],
+  "sharedPaths": [
+    "src-tauri/Cargo.toml",
+    "src-tauri/src/state.rs",
+    "src/features/settings/LlmProviderSettingsSection.test.tsx",
+    "src/features/settings/LlmProviderSettingsSection.tsx",
+    "src/features/settings/SettingsDialog.tsx",
+    "src/features/settings/SettingsToolContent.appearance-theme.test.tsx",
+    "src/features/settings/SettingsToolContent.controls.test.tsx",
+    "src/features/settings/SettingsToolContent.mcp.test.tsx",
+    "src/features/settings/SettingsToolContent.test.tsx",
+    "src/features/settings/SettingsToolContent.testHarness.tsx",
+    "src/features/settings/SettingsToolContent.testSupport.ts",
+    "src/features/settings/SettingsToolContent.tsx",
+    "src/features/settings/llmProviderModel.ts",
+    "src/features/settings/settings-tool-content/ai-section.tsx",
+    "src/features/settings/settings-tool-content/mcp-catalog.tsx",
+    "src/features/settings/settings-tool-content/mcp-custom.tsx",
+    "src/features/settings/settings-tool-content/mcp-section.tsx",
+    "src/features/settings/settings-tool-content/options.ts",
+    "src/features/settings/settings-tool-content/types.ts",
+    "src/features/settings/settingsDefaults.ts",
+    "src/features/settings/settingsLimits.ts",
+    "src/features/settings/settingsModel.test.ts",
+    "src/features/settings/settingsModel.ts",
+    "src/features/tool-panel/ToolPanel.tsx",
+    ".updeng/docs/coordination/lanes.json",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/plan/INDEX.md"
+  ],
+  "relatedConflicts": [
+    {
+      "path": "src-tauri/Cargo.toml",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src-tauri/Cargo.toml"
+        },
+        {
+          "id": "lane-file-first-storage-codex-workdir",
+          "kind": "shared",
+          "pattern": "src-tauri/Cargo.toml"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/state.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src-tauri/src/state.rs"
+        },
+        {
+          "id": "lane-file-first-storage-codex-workdir",
+          "kind": "shared",
+          "pattern": "src-tauri/src/state.rs"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/LlmProviderSettingsSection.test.tsx",
+      "status": " D",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/LlmProviderSettingsSection.tsx",
+      "status": " D",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/SettingsDialog.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/SettingsToolContent.appearance-theme.test.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/SettingsToolContent.controls.test.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/SettingsToolContent.mcp.test.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/SettingsToolContent.test.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/SettingsToolContent.testHarness.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/SettingsToolContent.testSupport.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/SettingsToolContent.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/llmProviderModel.ts",
+      "status": " D",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/settings-tool-content/ai-section.tsx",
+      "status": " D",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/settings-tool-content/mcp-catalog.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/settings-tool-content/mcp-custom.tsx",
+      "status": " D",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/settings-tool-content/mcp-section.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/settings-tool-content/options.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/settings-tool-content/types.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/settingsDefaults.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/settingsLimits.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/settingsModel.test.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/settings/settingsModel.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/settings/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/tool-panel/ToolPanel.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src/features/tool-panel/ToolPanel.tsx"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/coordination/lanes.json",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": ".updeng/docs/coordination/lanes.json"
+        },
+        {
+          "id": "lane-file-first-storage-codex-workdir",
+          "kind": "shared",
+          "pattern": ".updeng/docs/coordination/lanes.json"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/in-progress.md",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": ".updeng/docs/in-progress.md"
+        },
+        {
+          "id": "lane-file-first-storage-codex-workdir",
+          "kind": "shared",
+          "pattern": ".updeng/docs/in-progress.md"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/plan/INDEX.md",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": ".updeng/docs/plan/INDEX.md"
+        },
+        {
+          "id": "lane-file-first-storage-codex-workdir",
+          "kind": "shared",
+          "pattern": ".updeng/docs/plan/INDEX.md"
+        }
+      ]
+    }
+  ],
+  "note": "Patch contains tracked file diffs. Untracked and ignored workflow assets are captured in the untracked snapshot JSON when they are readable UTF-8 text."
+}

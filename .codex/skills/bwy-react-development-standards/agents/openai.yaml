@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "北武院 React 前端规范"
+  short_description: "React 官方规则、TypeScript 严格类型、Hooks/Effects、服务层、测试位置、文件规模、视觉还原和脚手架契约规范"
+  default_prompt: "使用 bwy-react-development-standards 实现或评审 React 前端变更，遵守 React 官方规则、TypeScript 严格类型、当前项目接口契约、测试位置和文件规模要求；涉及 UI 时运行真实页面、截图并对照原型或参考界面。"

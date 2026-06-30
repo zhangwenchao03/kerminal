@@ -127,6 +127,7 @@ pub fn register_kerminal_commands(
         crate::commands::terminal::terminal_write,
         crate::commands::terminal::terminal_resize,
         crate::commands::terminal::terminal_close,
+        crate::commands::terminal::terminal_reap_orphan_sessions,
         crate::commands::terminal::terminal_list_sessions,
         crate::commands::terminal::terminal_start_log,
         crate::commands::terminal::terminal_stop_log,

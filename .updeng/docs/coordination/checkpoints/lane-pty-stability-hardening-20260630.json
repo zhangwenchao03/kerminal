@@ -1,0 +1,464 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-30T07:31:28.556Z",
+  "laneId": "lane-pty-stability-hardening-20260630",
+  "plan": ".updeng/docs/plan/active/PLAN-20260630-103212-pty-stability-hardening.md",
+  "branch": "main",
+  "worktree": "C:\\dev\\rust\\kerminal",
+  "changedPaths": [
+    ".updeng/docs/coordination/lanes.json",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/plan/INDEX.md",
+    ".updeng/docs/plan/active/PLAN-20260630-103212-pty-stability-hardening.md",
+    ".updeng/docs/verification/agent-cli-hitl-smoke.md",
+    "package.json",
+    "scripts/perf-terminal-input.mjs",
+    "src-tauri/Cargo.lock",
+    "src-tauri/Cargo.toml",
+    "src-tauri/src/commands/registry.rs",
+    "src-tauri/src/commands/terminal.rs",
+    "src-tauri/src/models/terminal.rs",
+    "src-tauri/src/services/mcp_tool_executor_service/diagnostics_tools.rs",
+    "src-tauri/src/services/mod.rs",
+    "src-tauri/src/services/pty_process_guard.rs",
+    "src-tauri/src/services/terminal_agent_signal_detector.rs",
+    "src-tauri/src/services/terminal_escape_responder.rs",
+    "src-tauri/src/services/terminal_manager.rs",
+    "src-tauri/src/services/terminal_output_pump.rs",
+    "src-tauri/src/services/terminal_shell_integration.rs",
+    "src-tauri/src/state.rs",
+    "src-tauri/tests/pty_process_guard.rs",
+    "src-tauri/tests/terminal_agent_cli_hitl_matrix.rs",
+    "src-tauri/tests/terminal_agent_signal_detector.rs",
+    "src-tauri/tests/terminal_escape_responder.rs",
+    "src-tauri/tests/terminal_interaction_matrix.rs",
+    "src-tauri/tests/terminal_manager.rs",
+    "src-tauri/tests/terminal_output_pump.rs",
+    "src-tauri/tests/terminal_shell_integration.rs",
+    "src-tauri/tests/terminal_tui_program_matrix.rs",
+    "src/app/KerminalShell.test.tsx",
+    "src/app/KerminalShell.tsx",
+    "src/app/__tests__/support/KerminalShell.testSupport.tsx",
+    "src/app/useWorkspaceSessionPersistence.ts",
+    "src/features/terminal/XtermPane.contextMenu.test.tsx",
+    "src/features/terminal/XtermPane.inputCompatibility.test.tsx",
+    "src/features/terminal/XtermPane.runtime.ts",
+    "src/features/terminal/XtermPane.sessionTargets.test.tsx",
+    "src/features/terminal/XtermPane.tsx",
+    "src/features/terminal/__tests__/support/XtermPane.testSupport.tsx",
+    "src/features/terminal/terminalCommandBlockLifecycle.ts",
+    "src/features/terminal/terminalShellIntegrationModel.test.ts",
+    "src/features/terminal/terminalShellIntegrationModel.ts",
+    "src/features/tool-panel/AgentLauncherToolContent.test.tsx",
+    "src/features/tool-panel/AgentLauncherToolContent.tsx",
+    "src/lib/terminalApi.test.ts",
+    "src/lib/terminalApi.ts"
+  ],
+  "trackedPatchPaths": [
+    "package.json",
+    "src-tauri/Cargo.lock",
+    "src-tauri/Cargo.toml",
+    "src-tauri/src/commands/registry.rs",
+    "src-tauri/src/commands/terminal.rs",
+    "src-tauri/src/models/terminal.rs",
+    "src-tauri/src/services/mcp_tool_executor_service/diagnostics_tools.rs",
+    "src-tauri/src/services/mod.rs",
+    "src-tauri/src/services/terminal_manager.rs",
+    "src-tauri/src/state.rs",
+    "src-tauri/tests/terminal_manager.rs",
+    "src/app/KerminalShell.test.tsx",
+    "src/app/KerminalShell.tsx",
+    "src/app/__tests__/support/KerminalShell.testSupport.tsx",
+    "src/app/useWorkspaceSessionPersistence.ts",
+    "src/features/terminal/XtermPane.contextMenu.test.tsx",
+    "src/features/terminal/XtermPane.inputCompatibility.test.tsx",
+    "src/features/terminal/XtermPane.runtime.ts",
+    "src/features/terminal/XtermPane.sessionTargets.test.tsx",
+    "src/features/terminal/XtermPane.tsx",
+    "src/features/terminal/__tests__/support/XtermPane.testSupport.tsx",
+    "src/features/terminal/terminalCommandBlockLifecycle.ts",
+    "src/features/tool-panel/AgentLauncherToolContent.test.tsx",
+    "src/features/tool-panel/AgentLauncherToolContent.tsx",
+    "src/lib/terminalApi.test.ts",
+    "src/lib/terminalApi.ts"
+  ],
+  "untrackedPaths": [
+    ".updeng/docs/coordination/lanes.json",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/plan/INDEX.md",
+    ".updeng/docs/plan/active/PLAN-20260630-103212-pty-stability-hardening.md",
+    ".updeng/docs/verification/agent-cli-hitl-smoke.md",
+    "scripts/perf-terminal-input.mjs",
+    "src-tauri/src/services/pty_process_guard.rs",
+    "src-tauri/src/services/terminal_agent_signal_detector.rs",
+    "src-tauri/src/services/terminal_escape_responder.rs",
+    "src-tauri/src/services/terminal_output_pump.rs",
+    "src-tauri/src/services/terminal_shell_integration.rs",
+    "src-tauri/tests/pty_process_guard.rs",
+    "src-tauri/tests/terminal_agent_cli_hitl_matrix.rs",
+    "src-tauri/tests/terminal_agent_signal_detector.rs",
+    "src-tauri/tests/terminal_escape_responder.rs",
+    "src-tauri/tests/terminal_interaction_matrix.rs",
+    "src-tauri/tests/terminal_output_pump.rs",
+    "src-tauri/tests/terminal_shell_integration.rs",
+    "src-tauri/tests/terminal_tui_program_matrix.rs",
+    "src/features/terminal/terminalShellIntegrationModel.test.ts",
+    "src/features/terminal/terminalShellIntegrationModel.ts"
+  ],
+  "untrackedSnapshotPath": ".updeng/docs/coordination/checkpoints/lane-pty-stability-hardening-20260630.untracked.json",
+  "untrackedSnapshotCount": 21,
+  "omittedSnapshotPaths": [],
+  "sharedPaths": [
+    "package.json",
+    "src-tauri/Cargo.lock",
+    "src-tauri/Cargo.toml",
+    "src-tauri/src/commands/registry.rs",
+    "src-tauri/src/commands/terminal.rs",
+    "src-tauri/src/models/terminal.rs",
+    "src-tauri/src/services/mcp_tool_executor_service/diagnostics_tools.rs",
+    "src-tauri/src/services/mod.rs",
+    "src-tauri/src/services/terminal_manager.rs",
+    "src-tauri/src/state.rs",
+    "src-tauri/tests/terminal_manager.rs",
+    "src/app/KerminalShell.test.tsx",
+    "src/app/KerminalShell.tsx",
+    "src/app/__tests__/support/KerminalShell.testSupport.tsx",
+    "src/app/useWorkspaceSessionPersistence.ts",
+    "src/features/terminal/XtermPane.contextMenu.test.tsx",
+    "src/features/terminal/XtermPane.inputCompatibility.test.tsx",
+    "src/features/terminal/XtermPane.runtime.ts",
+    "src/features/terminal/XtermPane.sessionTargets.test.tsx",
+    "src/features/terminal/XtermPane.tsx",
+    "src/features/terminal/__tests__/support/XtermPane.testSupport.tsx",
+    "src/features/terminal/terminalCommandBlockLifecycle.ts",
+    "src/features/tool-panel/AgentLauncherToolContent.test.tsx",
+    "src/features/tool-panel/AgentLauncherToolContent.tsx",
+    "src/lib/terminalApi.test.ts",
+    "src/lib/terminalApi.ts",
+    ".updeng/docs/coordination/lanes.json",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/plan/INDEX.md"
+  ],
+  "relatedConflicts": [
+    {
+      "path": "package.json",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "package.json"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/Cargo.lock",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src-tauri/Cargo.lock"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/Cargo.toml",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src-tauri/Cargo.toml"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/commands/registry.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src-tauri/src/commands/registry.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/commands/terminal.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src-tauri/src/commands/terminal.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/models/terminal.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src-tauri/src/models/terminal.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/mcp_tool_executor_service/diagnostics_tools.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/mcp_tool_executor_service/diagnostics_tools.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/mod.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/mod.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/terminal_manager.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/terminal_manager.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/state.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src-tauri/src/state.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/tests/terminal_manager.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src-tauri/tests/terminal_manager.rs"
+        }
+      ]
+    },
+    {
+      "path": "src/app/KerminalShell.test.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src/app/KerminalShell.test.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/app/KerminalShell.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src/app/KerminalShell.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/app/__tests__/support/KerminalShell.testSupport.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src/app/__tests__/support/KerminalShell.testSupport.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/app/useWorkspaceSessionPersistence.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src/app/useWorkspaceSessionPersistence.ts"
+        }
+      ]
+    },
+    {
+      "path": "src/features/terminal/XtermPane.contextMenu.test.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src/features/terminal/XtermPane.contextMenu.test.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/features/terminal/XtermPane.inputCompatibility.test.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src/features/terminal/XtermPane.inputCompatibility.test.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/features/terminal/XtermPane.runtime.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src/features/terminal/XtermPane.runtime.ts"
+        }
+      ]
+    },
+    {
+      "path": "src/features/terminal/XtermPane.sessionTargets.test.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src/features/terminal/XtermPane.sessionTargets.test.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/features/terminal/XtermPane.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src/features/terminal/XtermPane.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/features/terminal/__tests__/support/XtermPane.testSupport.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src/features/terminal/__tests__/support/XtermPane.testSupport.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/features/terminal/terminalCommandBlockLifecycle.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src/features/terminal/terminalCommandBlockLifecycle.ts"
+        }
+      ]
+    },
+    {
+      "path": "src/features/tool-panel/AgentLauncherToolContent.test.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src/features/tool-panel/AgentLauncherToolContent.test.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/features/tool-panel/AgentLauncherToolContent.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src/features/tool-panel/AgentLauncherToolContent.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/lib/terminalApi.test.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src/lib/terminalApi.test.ts"
+        }
+      ]
+    },
+    {
+      "path": "src/lib/terminalApi.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": "src/lib/terminalApi.ts"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/coordination/lanes.json",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": ".updeng/docs/coordination/lanes.json"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/in-progress.md",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": ".updeng/docs/in-progress.md"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/plan/INDEX.md",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-pty-stability-hardening-20260630",
+          "kind": "shared",
+          "pattern": ".updeng/docs/plan/INDEX.md"
+        }
+      ]
+    }
+  ],
+  "note": "Patch contains tracked file diffs. Untracked and ignored workflow assets are captured in the untracked snapshot JSON when they are readable UTF-8 text."
+}

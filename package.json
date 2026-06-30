@@ -28,6 +28,7 @@
     "verify:command-suggestion-latency": "cd src-tauri && cargo test --test command_suggestion_performance command_suggestion_mixed_provider_latency_gate -- --exact --nocapture",
     "perf:frontend-bundle": "npm run build && node scripts/report-frontend-bundle.mjs",
     "perf:rust-timings": "cd src-tauri && cargo build --timings",
+    "perf:terminal-input": "node scripts/perf-terminal-input.mjs",
     "perf:terminal-output": "node scripts/perf-terminal-output.mjs",
     "perf:terminal-report": "node scripts/perf-terminal-output-report.mjs",
     "perf:directory-list": "node scripts/perf-directory-list.mjs",

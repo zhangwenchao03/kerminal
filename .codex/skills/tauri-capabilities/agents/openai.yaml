@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "tauri-capabilities"
+  short_description: "Tauri capability configuration"
+  default_prompt: "Use $tauri-capabilities when adding, reviewing, or debugging Tauri capability files and permission scopes."

@@ -2,9 +2,16 @@ import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import { readDesktopClipboardText } from "./desktopClipboardApi";
 import type { ContainerRuntime } from "./targetModel";
 
-export type TerminalOutputKind = "data" | "closed" | "error";
+export type TerminalOutputKind = "data" | "agentSignal" | "closed" | "error";
 
 export type TerminalSessionStatus = "running" | "exited";
+export type TerminalShellIntegrationStatus = "enabled" | "disabled";
+export type TerminalAgentKind = "codex" | "claude" | "gemini";
+export type TerminalAgentStatus =
+  | "working"
+  | "attention"
+  | "finished"
+  | "exited";
 
 export interface TerminalCreateRequest {
   shell?: string;
@@ -55,6 +62,7 @@ export interface TerminalOutputEvent {
   sessionId: string;
   kind: TerminalOutputKind;
   data: string;
+  agentSignal?: TerminalAgentSignal;
 }
 
 export interface TerminalSessionSummary {
@@ -67,6 +75,29 @@ export interface TerminalSessionSummary {
   status: TerminalSessionStatus;
   targetRef?: string;
   targetToken?: string;
+  shellIntegration: TerminalShellIntegrationSummary;
+  agentSessionId?: string;
+  agentSignal?: TerminalAgentSignal;
+}
+
+export interface TerminalShellIntegrationSummary {
+  status: TerminalShellIntegrationStatus;
+  shell?: string;
+  scriptPath?: string;
+  reason?: string;
+}
+
+export interface TerminalAgentSignal {
+  agentSessionId?: string;
+  terminalSessionId: string;
+  agent: TerminalAgentKind;
+  status: TerminalAgentStatus;
+}
+
+export interface TerminalSessionReapDiagnostics {
+  reapedCount: number;
+  sessionIds: string[];
+  elapsedMs: number;
 }
 
 export interface TerminalSessionLogState {
@@ -232,6 +263,20 @@ export async function closeTerminal(sessionId: string): Promise<void> {
   await invoke("terminal_close", { sessionId });
 }
 
+export async function reapOrphanTerminalSessions(): Promise<TerminalSessionReapDiagnostics> {
+  if (!isTauri()) {
+    return {
+      elapsedMs: 0,
+      reapedCount: 0,
+      sessionIds: [],
+    };
+  }
+
+  return invoke<TerminalSessionReapDiagnostics>(
+    "terminal_reap_orphan_sessions",
+  );
+}
+
 export async function listTerminalSessions(): Promise<TerminalSessionSummary[]> {
   if (!isTauri()) {
     return Array.from(browserPreviewSessions.keys()).map((id) => ({
@@ -240,6 +285,10 @@ export async function listTerminalSessions(): Promise<TerminalSessionSummary[]> 
       cols: 80,
       rows: 24,
       status: "running",
+      shellIntegration: {
+        reason: "browser preview",
+        status: "disabled",
+      },
     }));
   }
 
@@ -329,6 +378,10 @@ function createBrowserPreviewSession(
     rows: request.rows,
     status: "running",
     targetRef: "local",
+    shellIntegration: {
+      reason: "browser preview",
+      status: "disabled",
+    },
   };
 }
 

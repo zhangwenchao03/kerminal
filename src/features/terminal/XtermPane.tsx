@@ -17,6 +17,7 @@ import {
   startTerminalLog,
   stopTerminalLog,
   writeTerminal,
+  type TerminalAgentSignal,
   type TerminalSessionLogState,
 } from "../../lib/terminalApi";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
@@ -106,6 +107,7 @@ interface XtermPaneProps {
   target?: RemoteTargetRef;
   title: string;
   transientStartupMessage?: boolean;
+  onAgentSignal?: (signal: TerminalAgentSignal) => void;
   onCurrentCwdChange?: (cwd: string) => void;
   onConnectionStateChange?: (state: ConnectionState) => void;
   onOpenLogs?: () => void;
@@ -157,6 +159,7 @@ export function XtermPane({
   target,
   title,
   transientStartupMessage = false,
+  onAgentSignal,
   onCurrentCwdChange,
   onConnectionStateChange,
   onOpenLogs,
@@ -180,6 +183,7 @@ export function XtermPane({
   const cwdTrackingBufferRef = useRef("");
   const currentCwdRef = useRef(currentCwd ?? cwd);
   const ghostSuggestionRef = useRef<TerminalGhostSuggestion | null>(null);
+  const onAgentSignalRef = useRef(onAgentSignal);
   const onCurrentCwdChangeRef = useRef(onCurrentCwdChange);
   const onConnectionStateChangeRef = useRef(onConnectionStateChange);
   const onOutputHistoryChangeRef = useRef(onOutputHistoryChange);
@@ -191,6 +195,7 @@ export function XtermPane({
   const promptLineRef = useRef<number | undefined>(undefined);
   const manualClearSyncFrameRef = useRef<number | null>(null);
   const suppressCommandBlockSyncRef = useRef(false);
+  const shellIntegrationCommandBlockProtocolRef = useRef(false);
   const reconnectSessionRef = useRef<(() => Promise<void>) | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -265,12 +270,16 @@ export function XtermPane({
     }
 
     const activeBuffer = terminal.buffer.active;
-    const promptLine = resolveTerminalPromptLine(
-      terminal,
-      inputBufferRef.current,
-    );
-    promptLineRef.current = promptLine;
+    const useProtocolCommandBlocks =
+      shellIntegrationCommandBlockProtocolRef.current;
+    const promptLine = useProtocolCommandBlocks
+      ? promptLineRef.current
+      : resolveTerminalPromptLine(terminal, inputBufferRef.current);
+    if (!useProtocolCommandBlocks) {
+      promptLineRef.current = promptLine;
+    }
     if (
+      !useProtocolCommandBlocks &&
       typeof promptLine === "number" &&
       terminal.buffer.active.type === "normal"
     ) {
@@ -352,6 +361,10 @@ export function XtermPane({
   }, [currentCwd, cwd]);
 
   useEffect(() => {
+    onAgentSignalRef.current = onAgentSignal;
+  }, [onAgentSignal]);
+
+  useEffect(() => {
     onCurrentCwdChangeRef.current = onCurrentCwdChange;
   }, [onCurrentCwdChange]);
 
@@ -407,6 +420,7 @@ export function XtermPane({
       inputBufferRef,
       inputModelRef,
       inputCompatibilityMode,
+      onAgentSignalRef,
       onCurrentCwdChangeRef,
       onOutputHistoryChangeRef,
       onSessionFinishedRef,
@@ -429,6 +443,7 @@ export function XtermPane({
       setLogNotice,
       setLogState,
       setSearchResults,
+      shellIntegrationCommandBlockProtocolRef,
       shell,
       startupMessage,
       syncCommandBlockViews,

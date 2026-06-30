@@ -1,0 +1,480 @@
+{
+  "appUrl": "http://127.0.0.1:10446/",
+  "artifacts": {
+    "json": ".updeng\\docs\\verification\\terminal-command-block-rail.json",
+    "screenshot": ".updeng\\docs\\verification\\terminal-command-block-rail.png"
+  },
+  "before": {
+    "activeElementClass": "xterm-helper-textarea",
+    "consoleMessages": [],
+    "errors": [],
+    "invocations": [
+      {
+        "cmd": "settings_get",
+        "args": {}
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "kerminal://native-menu-action",
+          "target": {
+            "kind": "Any"
+          },
+          "handler": 1
+        }
+      },
+      {
+        "cmd": "profile_list",
+        "args": {}
+      },
+      {
+        "cmd": "remote_host_tree",
+        "args": {}
+      },
+      {
+        "cmd": "settings_get",
+        "args": {}
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "kerminal://native-menu-action",
+          "target": {
+            "kind": "Any"
+          },
+          "handler": 2
+        }
+      },
+      {
+        "cmd": "profile_list",
+        "args": {}
+      },
+      {
+        "cmd": "remote_host_tree",
+        "args": {}
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "kerminal://native-menu-action",
+          "target": {
+            "kind": "Any"
+          },
+          "handler": 3
+        }
+      },
+      {
+        "cmd": "ssh_create_session",
+        "args": {
+          "output": "__CHANNEL__:4",
+          "request": {
+            "cols": 102,
+            "hostId": "prod-api",
+            "rows": 32
+          }
+        }
+      },
+      {
+        "cmd": "terminal_session_binding_register",
+        "args": {
+          "metadata": {
+            "cwd": "/home/ubuntu",
+            "remoteHostId": "prod-api",
+            "targetRef": "ssh:host:prod-api:pane:pane-ssh-rail-smoke",
+            "targetKind": "ssh"
+          },
+          "paneId": "pane-ssh-rail-smoke",
+          "sessionId": "ssh-rail-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_session_binding_ready",
+        "args": {
+          "metadata": {
+            "cwd": "/home/ubuntu",
+            "remoteHostId": "prod-api",
+            "targetRef": "ssh:host:prod-api:pane:pane-ssh-rail-smoke",
+            "targetKind": "ssh"
+          },
+          "paneId": "pane-ssh-rail-smoke",
+          "sessionId": "ssh-rail-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_log_state",
+        "args": {
+          "sessionId": "ssh-rail-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_resize",
+        "args": {
+          "request": {
+            "cols": 102,
+            "rows": 32
+          },
+          "sessionId": "ssh-rail-smoke-1"
+        }
+      },
+      {
+        "cmd": "plugin:event|unlisten",
+        "args": {
+          "event": "kerminal://native-menu-action",
+          "eventId": "rail-smoke-event-listener"
+        }
+      },
+      {
+        "cmd": "plugin:event|unlisten",
+        "args": {
+          "event": "kerminal://native-menu-action",
+          "eventId": "rail-smoke-event-listener"
+        }
+      },
+      {
+        "cmd": "terminal_resize",
+        "args": {
+          "request": {
+            "cols": 102,
+            "rows": 32
+          },
+          "sessionId": "ssh-rail-smoke-1"
+        }
+      }
+    ],
+    "promptRows": [
+      {
+        "index": 3,
+        "rect": {
+          "bottom": 181,
+          "height": 20,
+          "left": 301,
+          "right": 1078,
+          "top": 161,
+          "width": 777
+        },
+        "text": "ubuntu@ubuntu:~$  "
+      }
+    ],
+    "railButtons": [
+      {
+        "label": "当前命令行色条 当前命令行",
+        "rect": {
+          "bottom": 181,
+          "height": 20,
+          "left": 281,
+          "right": 289,
+          "top": 161,
+          "width": 8
+        },
+        "parentRect": {
+          "bottom": 181,
+          "height": 20,
+          "left": 281,
+          "right": 289,
+          "top": 161,
+          "width": 8
+        },
+        "topStyle": "60px",
+        "heightStyle": "20px"
+      }
+    ],
+    "rowTexts": [
+      "正在连接 SSH 主机...",
+      "*** System restart required ***",
+      "Last login: Sun Jun 21 07:02:58 2026 from 172.16.10.123",
+      "ubuntu@ubuntu:~$  ",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "terminalRect": {
+      "bottom": 743,
+      "height": 642,
+      "left": 301,
+      "right": 1095,
+      "top": 101,
+      "width": 794
+    },
+    "writes": []
+  },
+  "after": {
+    "activeElementClass": "xterm-helper-textarea",
+    "consoleMessages": [],
+    "errors": [],
+    "invocations": [
+      {
+        "cmd": "settings_get",
+        "args": {}
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "kerminal://native-menu-action",
+          "target": {
+            "kind": "Any"
+          },
+          "handler": 1
+        }
+      },
+      {
+        "cmd": "profile_list",
+        "args": {}
+      },
+      {
+        "cmd": "remote_host_tree",
+        "args": {}
+      },
+      {
+        "cmd": "settings_get",
+        "args": {}
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "kerminal://native-menu-action",
+          "target": {
+            "kind": "Any"
+          },
+          "handler": 2
+        }
+      },
+      {
+        "cmd": "profile_list",
+        "args": {}
+      },
+      {
+        "cmd": "remote_host_tree",
+        "args": {}
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "kerminal://native-menu-action",
+          "target": {
+            "kind": "Any"
+          },
+          "handler": 3
+        }
+      },
+      {
+        "cmd": "ssh_create_session",
+        "args": {
+          "output": "__CHANNEL__:4",
+          "request": {
+            "cols": 102,
+            "hostId": "prod-api",
+            "rows": 32
+          }
+        }
+      },
+      {
+        "cmd": "terminal_session_binding_register",
+        "args": {
+          "metadata": {
+            "cwd": "/home/ubuntu",
+            "remoteHostId": "prod-api",
+            "targetRef": "ssh:host:prod-api:pane:pane-ssh-rail-smoke",
+            "targetKind": "ssh"
+          },
+          "paneId": "pane-ssh-rail-smoke",
+          "sessionId": "ssh-rail-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_session_binding_ready",
+        "args": {
+          "metadata": {
+            "cwd": "/home/ubuntu",
+            "remoteHostId": "prod-api",
+            "targetRef": "ssh:host:prod-api:pane:pane-ssh-rail-smoke",
+            "targetKind": "ssh"
+          },
+          "paneId": "pane-ssh-rail-smoke",
+          "sessionId": "ssh-rail-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_log_state",
+        "args": {
+          "sessionId": "ssh-rail-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_resize",
+        "args": {
+          "request": {
+            "cols": 102,
+            "rows": 32
+          },
+          "sessionId": "ssh-rail-smoke-1"
+        }
+      },
+      {
+        "cmd": "plugin:event|unlisten",
+        "args": {
+          "event": "kerminal://native-menu-action",
+          "eventId": "rail-smoke-event-listener"
+        }
+      },
+      {
+        "cmd": "plugin:event|unlisten",
+        "args": {
+          "event": "kerminal://native-menu-action",
+          "eventId": "rail-smoke-event-listener"
+        }
+      },
+      {
+        "cmd": "terminal_resize",
+        "args": {
+          "request": {
+            "cols": 102,
+            "rows": 32
+          },
+          "sessionId": "ssh-rail-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_write",
+        "args": {
+          "data": "\r",
+          "sessionId": "ssh-rail-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_write",
+        "args": {
+          "data": "\r",
+          "sessionId": "ssh-rail-smoke-1"
+        }
+      }
+    ],
+    "promptRows": [
+      {
+        "index": 3,
+        "rect": {
+          "bottom": 181,
+          "height": 20,
+          "left": 301,
+          "right": 1078,
+          "top": 161,
+          "width": 777
+        },
+        "text": "ubuntu@ubuntu:~$ "
+      },
+      {
+        "index": 4,
+        "rect": {
+          "bottom": 201,
+          "height": 20,
+          "left": 301,
+          "right": 1078,
+          "top": 181,
+          "width": 777
+        },
+        "text": "ubuntu@ubuntu:~$ "
+      },
+      {
+        "index": 5,
+        "rect": {
+          "bottom": 221,
+          "height": 20,
+          "left": 301,
+          "right": 1078,
+          "top": 201,
+          "width": 777
+        },
+        "text": "ubuntu@ubuntu:~$  "
+      }
+    ],
+    "railButtons": [
+      {
+        "label": "折叠命令块 空命令",
+        "rect": {
+          "bottom": 181,
+          "height": 20,
+          "left": 281,
+          "right": 289,
+          "top": 161,
+          "width": 8
+        },
+        "parentRect": {
+          "bottom": 181,
+          "height": 20,
+          "left": 281,
+          "right": 289,
+          "top": 161,
+          "width": 8
+        },
+        "topStyle": "60px",
+        "heightStyle": "20px"
+      },
+      {
+        "label": "折叠命令块 空命令",
+        "rect": {
+          "bottom": 201,
+          "height": 20,
+          "left": 281,
+          "right": 289,
+          "top": 181,
+          "width": 8
+        },
+        "parentRect": {
+          "bottom": 201,
+          "height": 20,
+          "left": 281,
+          "right": 289,
+          "top": 181,
+          "width": 8
+        },
+        "topStyle": "80px",
+        "heightStyle": "20px"
+      },
+      {
+        "label": "当前命令行色条 当前命令行",
+        "rect": {
+          "bottom": 221,
+          "height": 20,
+          "left": 281,
+          "right": 289,
+          "top": 201,
+          "width": 8
+        },
+        "parentRect": {
+          "bottom": 221,
+          "height": 20,
+          "left": 281,
+          "right": 289,
+          "top": 201,
+          "width": 8
+        },
+        "topStyle": "100px",
+        "heightStyle": "20px"
+      }
+    ],
+    "rowTexts": [
+      "正在连接 SSH 主机...",
+      "*** System restart required ***",
+      "Last login: Sun Jun 21 07:02:58 2026 from 172.16.10.123",
+      "ubuntu@ubuntu:~$ ",
+      "ubuntu@ubuntu:~$ ",
+      "ubuntu@ubuntu:~$  ",
+      "",
+      ""
+    ],
+    "terminalRect": {
+      "bottom": 743,
+      "height": 642,
+      "left": 301,
+      "right": 1095,
+      "top": 101,
+      "width": 794
+    },
+    "writes": [
+      "\r",
+      "\r"
+    ]
+  },
+  "pass": true,
+  "failures": []
+}

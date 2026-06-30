@@ -1,0 +1,75 @@
+{
+  "generatedAt": "2026-06-23T15:03:45.648Z",
+  "url": "http://127.0.0.1:5184/",
+  "results": [
+    {
+      "mode": "dark",
+      "systemPrefers": "dark",
+      "remotePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\performance-task007-sftp-remote-dark.png",
+      "localPath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\performance-task007-sftp-local-dark.png",
+      "remote": {
+        "theme": "dark",
+        "virtualized": "true",
+        "totalRows": "500",
+        "renderedRows": "20",
+        "rowCount": 20,
+        "text": true
+      },
+      "local": {
+        "theme": "dark",
+        "virtualized": "true",
+        "totalRows": "500",
+        "renderedRows": "13",
+        "rowCount": 13,
+        "text": true
+      },
+      "cdpLogEventCount": 13
+    },
+    {
+      "mode": "light",
+      "systemPrefers": "dark",
+      "remotePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\performance-task007-sftp-remote-light.png",
+      "localPath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\performance-task007-sftp-local-light.png",
+      "remote": {
+        "theme": "light",
+        "virtualized": "true",
+        "totalRows": "500",
+        "renderedRows": "20",
+        "rowCount": 20,
+        "text": true
+      },
+      "local": {
+        "theme": "light",
+        "virtualized": "true",
+        "totalRows": "500",
+        "renderedRows": "13",
+        "rowCount": 13,
+        "text": true
+      },
+      "cdpLogEventCount": 13
+    },
+    {
+      "mode": "system",
+      "systemPrefers": "light",
+      "remotePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\performance-task007-sftp-remote-system.png",
+      "localPath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\performance-task007-sftp-local-system.png",
+      "remote": {
+        "theme": "light",
+        "virtualized": "true",
+        "totalRows": "500",
+        "renderedRows": "20",
+        "rowCount": 20,
+        "text": true
+      },
+      "local": {
+        "theme": "light",
+        "virtualized": "true",
+        "totalRows": "500",
+        "renderedRows": "13",
+        "rowCount": 13,
+        "text": true
+      },
+      "cdpLogEventCount": 13
+    }
+  ]
+}

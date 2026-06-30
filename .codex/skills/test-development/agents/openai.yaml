@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "test-development"
+  short_description: "Tauri test development and verification"
+  default_prompt: "Use $test-development when adding or reviewing Rust, frontend, integration, or end-to-end tests for Tauri behavior."

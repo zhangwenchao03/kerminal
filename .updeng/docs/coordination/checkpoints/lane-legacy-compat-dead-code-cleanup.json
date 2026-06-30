@@ -1,0 +1,492 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-25T03:05:07.546Z",
+  "laneId": "lane-legacy-compat-dead-code-cleanup",
+  "plan": ".updeng/docs/plan/active/PLAN-20260625-093610-legacy-compat-dead-code-cleanup.md",
+  "branch": null,
+  "worktree": "C:/dev/rust/kerminal",
+  "changedPaths": [
+    ".updeng/docs/coordination/lanes.json",
+    ".updeng/docs/decisions/ADR-0001-terminal-technology-stack.md",
+    ".updeng/docs/decisions/ADR-0002-ai-agent-control-plane.md",
+    ".updeng/docs/decisions/ADR-0003-ai-agent-framework-rig-rmcp.md",
+    ".updeng/docs/decisions/README.md",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/plan/INDEX.md",
+    ".updeng/docs/plan/active/PLAN-20260625-093610-legacy-compat-dead-code-cleanup.md",
+    ".updeng/docs/reports/doc-hidden-rules-evaluation-20260625.md",
+    ".updeng/docs/reports/legacy-compat-dead-code-inventory-20260625.md",
+    ".updeng/docs/verification/perf-directory-list-baseline.json",
+    ".updeng/docs/verification/performance-baseline-20260625.json",
+    ".updeng/docs/verification/terminal-output-baseline.json",
+    "scripts/perf-collect-baseline.mjs",
+    "src-tauri/Cargo.lock",
+    "src-tauri/Cargo.toml",
+    "src-tauri/src/commands/agent_session.rs",
+    "src-tauri/src/lib.rs",
+    "src-tauri/src/models/terminal.rs",
+    "src-tauri/src/services/agent_target_hydration_service.rs",
+    "src-tauri/src/services/docker_host_service/terminal_request.rs",
+    "src-tauri/src/services/external_agent_workspace.rs",
+    "src-tauri/src/services/port_forward_service.rs",
+    "src-tauri/src/services/port_forward_service/plan.rs",
+    "src-tauri/src/services/remote_host_service.rs",
+    "src-tauri/src/services/serial_terminal_service.rs",
+    "src-tauri/src/services/sftp_service/runtime_tasks.rs",
+    "src-tauri/src/services/snippet_service.rs",
+    "src-tauri/src/services/ssh_command_plan.rs",
+    "src-tauri/src/services/ssh_terminal_service.rs",
+    "src-tauri/src/services/telnet_terminal_service.rs",
+    "src-tauri/src/services/terminal_manager.rs",
+    "src-tauri/src/services/workflow_service.rs",
+    "src-tauri/tests/agent_target_hydration_service.rs",
+    "src-tauri/tests/config_file_store.rs",
+    "src-tauri/tests/mcp_streamable_http_server.rs",
+    "src-tauri/tests/port_forward_service_plan.rs",
+    "src-tauri/tests/serial_terminal_service.rs",
+    "src-tauri/tests/sftp_service/transfer_queue.rs",
+    "src-tauri/tests/ssh_command_service.rs",
+    "src-tauri/tests/ssh_terminal_service.rs",
+    "src-tauri/tests/telnet_terminal_service.rs",
+    "src-tauri/tests/terminal_manager.rs",
+    "src-tauri/tests/terminal_model.rs",
+    "src/features/workspace/workspaceSession.test.ts",
+    "src/features/workspace/workspaceSession.ts"
+  ],
+  "trackedPatchPaths": [
+    "src-tauri/Cargo.lock",
+    "src-tauri/Cargo.toml",
+    "src-tauri/src/lib.rs",
+    "src-tauri/src/models/terminal.rs",
+    "src-tauri/src/services/docker_host_service/terminal_request.rs",
+    "src-tauri/src/services/port_forward_service.rs",
+    "src-tauri/src/services/remote_host_service.rs",
+    "src-tauri/src/services/serial_terminal_service.rs",
+    "src-tauri/src/services/sftp_service/runtime_tasks.rs",
+    "src-tauri/src/services/snippet_service.rs",
+    "src-tauri/src/services/ssh_command_plan.rs",
+    "src-tauri/src/services/ssh_terminal_service.rs",
+    "src-tauri/src/services/telnet_terminal_service.rs",
+    "src-tauri/src/services/terminal_manager.rs",
+    "src-tauri/src/services/workflow_service.rs",
+    "src-tauri/tests/ssh_command_service.rs",
+    "src-tauri/tests/ssh_terminal_service.rs",
+    "src-tauri/tests/terminal_manager.rs",
+    "src-tauri/tests/terminal_model.rs",
+    "src/features/workspace/workspaceSession.test.ts",
+    "src/features/workspace/workspaceSession.ts"
+  ],
+  "untrackedPaths": [
+    ".updeng/docs/coordination/lanes.json",
+    ".updeng/docs/decisions/ADR-0001-terminal-technology-stack.md",
+    ".updeng/docs/decisions/ADR-0002-ai-agent-control-plane.md",
+    ".updeng/docs/decisions/ADR-0003-ai-agent-framework-rig-rmcp.md",
+    ".updeng/docs/decisions/README.md",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/plan/INDEX.md",
+    ".updeng/docs/plan/active/PLAN-20260625-093610-legacy-compat-dead-code-cleanup.md",
+    ".updeng/docs/reports/doc-hidden-rules-evaluation-20260625.md",
+    ".updeng/docs/reports/legacy-compat-dead-code-inventory-20260625.md",
+    ".updeng/docs/verification/perf-directory-list-baseline.json",
+    ".updeng/docs/verification/performance-baseline-20260625.json",
+    ".updeng/docs/verification/terminal-output-baseline.json",
+    "scripts/perf-collect-baseline.mjs",
+    "src-tauri/src/commands/agent_session.rs",
+    "src-tauri/src/services/agent_target_hydration_service.rs",
+    "src-tauri/src/services/external_agent_workspace.rs",
+    "src-tauri/src/services/port_forward_service/plan.rs",
+    "src-tauri/tests/agent_target_hydration_service.rs",
+    "src-tauri/tests/config_file_store.rs",
+    "src-tauri/tests/mcp_streamable_http_server.rs",
+    "src-tauri/tests/port_forward_service_plan.rs",
+    "src-tauri/tests/serial_terminal_service.rs",
+    "src-tauri/tests/sftp_service/transfer_queue.rs",
+    "src-tauri/tests/telnet_terminal_service.rs"
+  ],
+  "untrackedSnapshotPath": ".updeng/docs/coordination/checkpoints/lane-legacy-compat-dead-code-cleanup.untracked.json",
+  "untrackedSnapshotCount": 25,
+  "omittedSnapshotPaths": [],
+  "sharedPaths": [
+    "src-tauri/src/services/docker_host_service/terminal_request.rs",
+    "src-tauri/src/services/port_forward_service.rs",
+    "src-tauri/src/services/remote_host_service.rs",
+    "src-tauri/src/services/serial_terminal_service.rs",
+    "src-tauri/src/services/sftp_service/runtime_tasks.rs",
+    "src-tauri/src/services/snippet_service.rs",
+    "src-tauri/src/services/ssh_terminal_service.rs",
+    "src-tauri/src/services/telnet_terminal_service.rs",
+    "src-tauri/src/services/terminal_manager.rs",
+    "src-tauri/src/services/workflow_service.rs",
+    "src-tauri/tests/ssh_command_service.rs",
+    "src-tauri/tests/ssh_terminal_service.rs",
+    "src-tauri/tests/terminal_manager.rs",
+    "src/features/workspace/workspaceSession.test.ts",
+    "src/features/workspace/workspaceSession.ts",
+    "src-tauri/src/commands/agent_session.rs",
+    "src-tauri/src/services/agent_target_hydration_service.rs",
+    "src-tauri/src/services/external_agent_workspace.rs",
+    "src-tauri/src/services/port_forward_service/plan.rs",
+    "src-tauri/tests/agent_target_hydration_service.rs",
+    "src-tauri/tests/config_file_store.rs",
+    "src-tauri/tests/mcp_streamable_http_server.rs",
+    "src-tauri/tests/port_forward_service_plan.rs",
+    "src-tauri/tests/serial_terminal_service.rs",
+    "src-tauri/tests/sftp_service/transfer_queue.rs",
+    "src-tauri/tests/telnet_terminal_service.rs",
+    ".updeng/docs/coordination/lanes.json",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/plan/INDEX.md"
+  ],
+  "relatedConflicts": [
+    {
+      "path": "src-tauri/src/services/docker_host_service/terminal_request.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/docker_host_service/terminal_request.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/port_forward_service.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/port_forward_service.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/remote_host_service.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/remote_host_service.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/serial_terminal_service.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/serial_terminal_service.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/sftp_service/runtime_tasks.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/sftp_service/runtime_tasks.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/snippet_service.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/snippet_service.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/ssh_terminal_service.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/ssh_terminal_service.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/telnet_terminal_service.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/telnet_terminal_service.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/terminal_manager.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/terminal_manager.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/workflow_service.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/workflow_service.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/tests/ssh_command_service.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/tests/ssh_command_service.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/tests/ssh_terminal_service.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/tests/ssh_terminal_service.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/tests/terminal_manager.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/tests/terminal_manager.rs"
+        }
+      ]
+    },
+    {
+      "path": "src/features/workspace/workspaceSession.test.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src/features/workspace/workspaceSession.test.ts"
+        }
+      ]
+    },
+    {
+      "path": "src/features/workspace/workspaceSession.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src/features/workspace/workspaceSession.ts"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/commands/agent_session.rs",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/src/commands/agent_session.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/agent_target_hydration_service.rs",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/agent_target_hydration_service.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/external_agent_workspace.rs",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/external_agent_workspace.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/port_forward_service/plan.rs",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/port_forward_service/plan.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/tests/agent_target_hydration_service.rs",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/tests/agent_target_hydration_service.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/tests/config_file_store.rs",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/tests/config_file_store.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/tests/mcp_streamable_http_server.rs",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/tests/mcp_streamable_http_server.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/tests/port_forward_service_plan.rs",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/tests/port_forward_service_plan.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/tests/serial_terminal_service.rs",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/tests/serial_terminal_service.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/tests/sftp_service/transfer_queue.rs",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/tests/sftp_service/transfer_queue.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/tests/telnet_terminal_service.rs",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": "src-tauri/tests/telnet_terminal_service.rs"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/coordination/lanes.json",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-terminal-context-menu-position",
+          "kind": "shared",
+          "pattern": ".updeng/docs/coordination/lanes.json"
+        },
+        {
+          "id": "lane-agent-permission-skip-launch",
+          "kind": "shared",
+          "pattern": ".updeng/docs/coordination/lanes.json"
+        },
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": ".updeng/docs/coordination/lanes.json"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/in-progress.md",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-terminal-context-menu-position",
+          "kind": "shared",
+          "pattern": ".updeng/docs/in-progress.md"
+        },
+        {
+          "id": "lane-agent-permission-skip-launch",
+          "kind": "shared",
+          "pattern": ".updeng/docs/in-progress.md"
+        },
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": ".updeng/docs/in-progress.md"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/plan/INDEX.md",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-terminal-context-menu-position",
+          "kind": "shared",
+          "pattern": ".updeng/docs/plan/INDEX.md"
+        },
+        {
+          "id": "lane-agent-permission-skip-launch",
+          "kind": "shared",
+          "pattern": ".updeng/docs/plan/INDEX.md"
+        },
+        {
+          "id": "lane-legacy-compat-dead-code-cleanup",
+          "kind": "shared",
+          "pattern": ".updeng/docs/plan/INDEX.md"
+        }
+      ]
+    }
+  ],
+  "note": "Patch contains tracked file diffs. Untracked and ignored workflow assets are captured in the untracked snapshot JSON when they are readable UTF-8 text."
+}

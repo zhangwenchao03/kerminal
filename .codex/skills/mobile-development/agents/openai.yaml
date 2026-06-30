@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "mobile-development"
+  short_description: "Tauri mobile development guidance"
+  default_prompt: "Use $mobile-development when working on Android or iOS behavior, mobile packaging, capabilities, and platform constraints."

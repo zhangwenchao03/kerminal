@@ -1,0 +1,119 @@
+{
+  "frames": [
+    {
+      "bufferEvents": [
+        "normal",
+        "alternate",
+        "normal"
+      ],
+      "checkpoints": [
+        {
+          "bufferType": "normal",
+          "color": "rgba(113, 113, 122, 0.76)",
+          "cursorX": 25,
+          "cursorY": 0,
+          "failures": [],
+          "ghost": {
+            "bottom": 62.8,
+            "height": 16.8,
+            "left": 271,
+            "right": 394.05,
+            "top": 46,
+            "width": 123.05
+          },
+          "label": "normal-visible",
+          "pass": true
+        },
+        {
+          "bufferType": "alternate",
+          "failures": [],
+          "label": "alternate-hidden",
+          "pass": true
+        },
+        {
+          "bufferType": "alternate",
+          "failures": [],
+          "label": "alternate-stale-response-hidden",
+          "pass": true
+        },
+        {
+          "bufferType": "normal",
+          "color": "rgba(113, 113, 122, 0.76)",
+          "cursorX": 24,
+          "cursorY": 1,
+          "failures": [],
+          "ghost": {
+            "bottom": 81.8,
+            "height": 16.8,
+            "left": 262.8,
+            "right": 295.61,
+            "top": 65,
+            "width": 32.81
+          },
+          "label": "normal-recovered-visible",
+          "pass": true
+        }
+      ],
+      "pass": true,
+      "theme": "light"
+    },
+    {
+      "bufferEvents": [
+        "normal",
+        "alternate",
+        "normal"
+      ],
+      "checkpoints": [
+        {
+          "bufferType": "normal",
+          "color": "rgba(161, 161, 170, 0.78)",
+          "cursorX": 25,
+          "cursorY": 0,
+          "failures": [],
+          "ghost": {
+            "bottom": 386.8,
+            "height": 16.8,
+            "left": 271,
+            "right": 394.05,
+            "top": 370,
+            "width": 123.05
+          },
+          "label": "normal-visible",
+          "pass": true
+        },
+        {
+          "bufferType": "alternate",
+          "failures": [],
+          "label": "alternate-hidden",
+          "pass": true
+        },
+        {
+          "bufferType": "alternate",
+          "failures": [],
+          "label": "alternate-stale-response-hidden",
+          "pass": true
+        },
+        {
+          "bufferType": "normal",
+          "color": "rgba(161, 161, 170, 0.78)",
+          "cursorX": 24,
+          "cursorY": 1,
+          "failures": [],
+          "ghost": {
+            "bottom": 405.8,
+            "height": 16.8,
+            "left": 262.8,
+            "right": 295.61,
+            "top": 389,
+            "width": 32.81
+          },
+          "label": "normal-recovered-visible",
+          "pass": true
+        }
+      ],
+      "pass": true,
+      "theme": "dark"
+    }
+  ],
+  "pass": true
+}

@@ -1,0 +1,66 @@
+{
+  "appUrl": "http://127.0.0.1:9793/",
+  "artifacts": {
+    "json": "C:\\dev\\rust\\kerminal\\.updeng\\data\\verification\\terminal-ghost-app.json",
+    "screenshot": "C:\\dev\\rust\\kerminal\\.updeng\\data\\verification\\terminal-ghost-app.png"
+  },
+  "ghost": {
+    "ariaLabel": "终端命令灰色提示",
+    "color": "oklab(0.552 0.00439355 -0.015385 / 0.85)",
+    "fontFamily": "\"JetBrains Mono\", \"SF Mono\", \"Cascadia Code\", Consolas, monospace",
+    "fontSize": "13px",
+    "provider": "remoteCommand",
+    "rect": {
+      "height": 20,
+      "left": 568.5,
+      "top": 174,
+      "width": 45.703125
+    },
+    "inputRow": {
+      "bottom": 194,
+      "height": 20,
+      "left": 340,
+      "right": 1254,
+      "top": 174,
+      "width": 914
+    },
+    "text": "nalctl",
+    "title": "远端 PATH 命令，来自 app smoke fake IPC"
+  },
+  "invocations": [
+    "settings_get",
+    "plugin:event|listen",
+    "profile_list",
+    "remote_host_tree",
+    "settings_get",
+    "plugin:event|listen",
+    "profile_list",
+    "remote_host_tree",
+    "plugin:event|listen",
+    "ssh_create_session",
+    "terminal_session_binding_register",
+    "terminal_session_binding_ready",
+    "terminal_log_state",
+    "terminal_resize",
+    "plugin:event|unlisten",
+    "plugin:event|unlisten",
+    "terminal_resize",
+    "terminal_write",
+    "terminal_write",
+    "terminal_write",
+    "terminal_write",
+    "command_suggestion_list",
+    "command_suggestion_refresh_remote_paths",
+    "command_suggestion_record_feedback",
+    "terminal_write"
+  ],
+  "pass": true,
+  "failures": [],
+  "writes": [
+    "j",
+    "o",
+    "u",
+    "r",
+    "nalctl"
+  ]
+}

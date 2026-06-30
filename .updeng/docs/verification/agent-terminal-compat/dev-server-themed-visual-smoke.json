@@ -1,0 +1,85 @@
+{
+  "url": "http://127.0.0.1:1437/",
+  "captures": [
+    {
+      "name": "agent-terminal-light-explicit",
+      "theme": "light",
+      "colorScheme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "screenshotPath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\agent-terminal-compat\\agent-terminal-light-explicit.png",
+      "dataTheme": "light",
+      "darkClass": false,
+      "warningText": "终端 22x31，建议至少 80x24；拖宽右栏获得完整 TUI。",
+      "xtermRect": {
+        "x": 1162,
+        "y": 138,
+        "width": 209,
+        "height": 744
+      },
+      "bodyTextSample": "主机\n\n0 个分组 / 0 台主机\n\n搜索主机\n没有匹配的主机。\n\n光标还没闪，AI 已经开始脑补命令了。\n\nCodex\nClaude\n自定义\nCodex\ncodex · ~/.kerminal/agents/sessions/preview-codex-mqup3iug\n未绑定\n终端 22x31，建议至少 80x24；拖宽右栏获得完整 TUI。\nKerminal 浏览器预览\n请在桌面应用中使用真实\n PTY。\n \n已连接"
+    },
+    {
+      "name": "agent-terminal-dark-explicit",
+      "theme": "dark",
+      "colorScheme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "screenshotPath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\agent-terminal-compat\\agent-terminal-dark-explicit.png",
+      "dataTheme": "dark",
+      "darkClass": true,
+      "warningText": "终端 22x31，建议至少 80x24；拖宽右栏获得完整 TUI。",
+      "xtermRect": {
+        "x": 1162,
+        "y": 138,
+        "width": 209,
+        "height": 744
+      },
+      "bodyTextSample": "主机\n\n0 个分组 / 0 台主机\n\n搜索主机\n没有匹配的主机。\n\n光标还没闪，AI 已经开始脑补命令了。\n\nCodex\nClaude\n自定义\nCodex\ncodex · ~/.kerminal/agents/sessions/preview-codex-mqup3mcx\n未绑定\n终端 22x31，建议至少 80x24；拖宽右栏获得完整 TUI。\nKerminal 浏览器预览\n请在桌面应用中使用真实\n PTY。\n \n已连接"
+    },
+    {
+      "name": "agent-terminal-system-light",
+      "theme": "system",
+      "colorScheme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "screenshotPath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\agent-terminal-compat\\agent-terminal-system-light.png",
+      "dataTheme": "light",
+      "darkClass": false,
+      "warningText": "终端 22x31，建议至少 80x24；拖宽右栏获得完整 TUI。",
+      "xtermRect": {
+        "x": 1162,
+        "y": 138,
+        "width": 209,
+        "height": 744
+      },
+      "bodyTextSample": "主机\n\n0 个分组 / 0 台主机\n\n搜索主机\n没有匹配的主机。\n\n光标还没闪，AI 已经开始脑补命令了。\n\nCodex\nClaude\n自定义\nCodex\ncodex · ~/.kerminal/agents/sessions/preview-codex-mqup3puu\n未绑定\n终端 22x31，建议至少 80x24；拖宽右栏获得完整 TUI。\nKerminal 浏览器预览\n请在桌面应用中使用真实\n PTY。\n \n已连接"
+    },
+    {
+      "name": "agent-terminal-system-dark-narrow",
+      "theme": "system",
+      "colorScheme": "dark",
+      "viewport": {
+        "width": 1100,
+        "height": 720
+      },
+      "screenshotPath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\agent-terminal-compat\\agent-terminal-system-dark-narrow.png",
+      "dataTheme": "dark",
+      "darkClass": true,
+      "warningText": "终端 22x23，建议至少 80x24；拖宽右栏获得完整 TUI。",
+      "xtermRect": {
+        "x": 822,
+        "y": 138,
+        "width": 209,
+        "height": 552
+      },
+      "bodyTextSample": "主机\n\n0 个分组 / 0 台主机\n\n搜索主机\n没有匹配的主机。\n\n光标还没闪，AI 已经开始脑补命令了。\n\nCodex\nClaude\n自定义\nCodex\ncodex · ~/.kerminal/agents/sessions/preview-codex-mqup3tq6\n未绑定\n终端 22x23，建议至少 80x24；拖宽右栏获得完整 TUI。\nKerminal 浏览器预览\n请在桌面应用中使用真实\n PTY。\n \n已连接"
+    }
+  ]
+}

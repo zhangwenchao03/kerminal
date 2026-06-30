@@ -1,0 +1,85 @@
+{
+  "capturedAt": "2026-06-25T03:22:07.116Z",
+  "seedUrls": [
+    "file:///C:/dev/rust/kerminal/.updeng/docs/prototypes/otty-inspired-kerminal-workspace.prototype.html"
+  ],
+  "visited": [
+    {
+      "url": "file:///C:/dev/rust/kerminal/.updeng/docs/prototypes/otty-inspired-kerminal-workspace.prototype.html",
+      "title": "PROTOTYPE - Otty-inspired Kerminal Workspace",
+      "description": "",
+      "documentHeight": 1208,
+      "headings": [
+        {
+          "level": "h1",
+          "text": "PROTOTYPE - Kerminal Context Workspace"
+        },
+        {
+          "level": "h2",
+          "text": "Context Inspector"
+        },
+        {
+          "level": "h3",
+          "text": "Pane Info"
+        },
+        {
+          "level": "h3",
+          "text": "Outline"
+        },
+        {
+          "level": "h3",
+          "text": "Artifacts"
+        },
+        {
+          "level": "h2",
+          "text": "Quick Surfaces"
+        },
+        {
+          "level": "h3",
+          "text": "Open Quickly providers"
+        },
+        {
+          "level": "h3",
+          "text": "Command Palette scopes"
+        },
+        {
+          "level": "h2",
+          "text": "Agent Task Monitor"
+        },
+        {
+          "level": "h3",
+          "text": "Current agent"
+        },
+        {
+          "level": "h3",
+          "text": "Prompt Queue"
+        },
+        {
+          "level": "h3",
+          "text": "Composer"
+        },
+        {
+          "level": "h2",
+          "text": "Files and Links"
+        },
+        {
+          "level": "h3",
+          "text": "Detected in focused pane"
+        },
+        {
+          "level": "h3",
+          "text": "Preview"
+        },
+        {
+          "level": "h2",
+          "text": "Open Quickly"
+        },
+        {
+          "level": "h2",
+          "text": "Command Palette"
+        }
+      ],
+      "screenshotPath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\otty-research-20260625\\c-dev-rust-kerminal-updeng-docs-prototypes-otty-inspired-kerminal-workspace-prototype-html.png"
+    }
+  ]
+}

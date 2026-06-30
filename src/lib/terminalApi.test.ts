@@ -64,6 +64,44 @@ describe("terminalApi", () => {
     });
   });
 
+  it("passes typed agent signal events through the Tauri Channel", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue({
+      cols: 80,
+      id: "session-1",
+      rows: 24,
+      shell: "codex",
+      status: "running",
+    });
+    const { createTerminalSession } = await import("./terminalApi");
+    const onOutput = vi.fn();
+
+    await createTerminalSession({ cols: 80, rows: 24 }, onOutput);
+    channelMessageHandler?.({
+      agentSignal: {
+        agent: "codex",
+        agentSessionId: "ags-codex",
+        status: "attention",
+        terminalSessionId: "session-1",
+      },
+      data: "",
+      kind: "agentSignal",
+      sessionId: "session-1",
+    });
+
+    expect(onOutput).toHaveBeenCalledWith({
+      agentSignal: {
+        agent: "codex",
+        agentSessionId: "ags-codex",
+        status: "attention",
+        terminalSessionId: "session-1",
+      },
+      data: "",
+      kind: "agentSignal",
+      sessionId: "session-1",
+    });
+  });
+
   it("uses a browser preview session outside Tauri", async () => {
     isTauriMock.mockReturnValue(false);
     const { createTerminalSession, writeTerminal } = await import(
@@ -267,6 +305,37 @@ describe("terminalApi", () => {
     expect(invokeMock).toHaveBeenNthCalledWith(3, "terminal_log_state", {
       sessionId: "session-1",
     });
+  });
+
+  it("reaps local orphan terminal sessions through the Tauri command", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue({
+      elapsedMs: 5,
+      reapedCount: 2,
+      sessionIds: ["session-a", "session-b"],
+    });
+    const { reapOrphanTerminalSessions } = await import("./terminalApi");
+
+    await expect(reapOrphanTerminalSessions()).resolves.toEqual({
+      elapsedMs: 5,
+      reapedCount: 2,
+      sessionIds: ["session-a", "session-b"],
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith("terminal_reap_orphan_sessions");
+  });
+
+  it("no-ops orphan terminal reaping outside Tauri", async () => {
+    isTauriMock.mockReturnValue(false);
+    const { reapOrphanTerminalSessions } = await import("./terminalApi");
+
+    await expect(reapOrphanTerminalSessions()).resolves.toEqual({
+      elapsedMs: 0,
+      reapedCount: 0,
+      sessionIds: [],
+    });
+
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 
   it("keeps a browser preview log state without touching Tauri", async () => {

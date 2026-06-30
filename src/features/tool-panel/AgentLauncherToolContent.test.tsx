@@ -71,12 +71,19 @@ vi.mock("../terminal/XtermPane", () => ({
     args?: string[];
     cwd?: string;
     focused?: boolean;
+    inputCompatibilityMode?: string;
     paneId?: string;
     shell?: string;
     shellAssistEnabled?: boolean;
     startupMessage?: string;
     title: string;
     transientStartupMessage?: boolean;
+    onAgentSignal?: (signal: {
+      agent: "codex" | "claude" | "gemini";
+      agentSessionId?: string;
+      status: "working" | "attention" | "finished" | "exited";
+      terminalSessionId: string;
+    }) => void;
     onSessionFinished?: (event: { durationMs: number; sessionId: string }) => void;
   }) => {
     terminalMocks.renderXtermPane(props);
@@ -85,6 +92,7 @@ vi.mock("../terminal/XtermPane", () => ({
         data-args={(props.args ?? []).join(" ")}
         data-cwd={props.cwd}
         data-focused={String(props.focused)}
+        data-input-compatibility-mode={props.inputCompatibilityMode}
         data-pane-id={props.paneId}
         data-shell={props.shell}
         data-shell-assist-enabled={String(props.shellAssistEnabled)}
@@ -267,6 +275,7 @@ describe("AgentLauncherToolContent", () => {
         ],
         cwd: "C:/Users/me/.kerminal/agents/sessions/ags-codex",
         focused: true,
+        inputCompatibilityMode: "agentTui",
         shell: "pwsh.exe",
         shellAssistEnabled: false,
         startupMessage: "加载 Codex...\r\n",
@@ -274,6 +283,37 @@ describe("AgentLauncherToolContent", () => {
         transientStartupMessage: true,
       }),
     );
+  });
+
+  it("shows typed agent signal status without restoring the composer UI", async () => {
+    const user = userEvent.setup();
+
+    renderAgentLauncher();
+
+    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
+
+    await waitFor(() => {
+      expect(terminalMocks.renderXtermPane).toHaveBeenCalled();
+    });
+    const latestProps =
+      terminalMocks.renderXtermPane.mock.calls[
+        terminalMocks.renderXtermPane.mock.calls.length - 1
+      ]?.[0];
+
+    act(() => {
+      latestProps.onAgentSignal?.({
+        agent: "codex",
+        agentSessionId: "ags-codex",
+        status: "attention",
+        terminalSessionId: "terminal-codex",
+      });
+    });
+
+    expect(await screen.findByTestId("agent-terminal-signal")).toHaveTextContent(
+      "需处理",
+    );
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByText("队列")).not.toBeInTheDocument();
   });
 
   it("opens Codex with skipped permissions from the launcher context menu", async () => {

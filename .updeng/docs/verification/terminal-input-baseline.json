@@ -1,0 +1,197 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-30T06:33:09.953Z",
+  "environment": {
+    "node": "v22.22.0",
+    "platform": "win32"
+  },
+  "note": "Measures the current terminal_write JSON payload cost in Node as a repeatable proxy. Full WebView/Tauri invoke latency still requires runtime smoke; this report decides whether raw IPC needs deeper investigation.",
+  "results": [
+    {
+      "name": "single-key",
+      "input": {
+        "chars": 1,
+        "iterations": 20000,
+        "utf8Bytes": 1
+      },
+      "json": {
+        "bytes": 50,
+        "expansionRatio": 50
+      },
+      "pass": true,
+      "thresholds": {
+        "p95Ms": 1
+      },
+      "timing": {
+        "parseMs": {
+          "max": 0.1087999999999738,
+          "p50": 0.0005999999993946403,
+          "p95": 0.0009000000000014552,
+          "p99": 0.001299999999901047
+        },
+        "stringifyMs": {
+          "max": 0.0591999999996915,
+          "p50": 0.00030000000060681487,
+          "p95": 0.0005000000001018634,
+          "p99": 0.0009000000000014552
+        }
+      }
+    },
+    {
+      "name": "agent-shift-enter-lf",
+      "input": {
+        "chars": 1,
+        "iterations": 20000,
+        "utf8Bytes": 1
+      },
+      "json": {
+        "bytes": 51,
+        "expansionRatio": 51
+      },
+      "pass": true,
+      "thresholds": {
+        "p95Ms": 1
+      },
+      "timing": {
+        "parseMs": {
+          "max": 0.06639999999970314,
+          "p50": 0.0005000000001018634,
+          "p95": 0.0007000000005064066,
+          "p99": 0.0014000000001033186
+        },
+        "stringifyMs": {
+          "max": 0.023599999999532884,
+          "p50": 0.00029999999969732016,
+          "p95": 0.0004000000008090865,
+          "p99": 0.0007999999997991836
+        }
+      }
+    },
+    {
+      "name": "ime-unicode-composition",
+      "input": {
+        "chars": 16,
+        "iterations": 10000,
+        "utf8Bytes": 40
+      },
+      "json": {
+        "bytes": 89,
+        "expansionRatio": 2.225
+      },
+      "pass": true,
+      "thresholds": {
+        "p95Ms": 1
+      },
+      "timing": {
+        "parseMs": {
+          "max": 0.017300000000432192,
+          "p50": 0.0005999999993946403,
+          "p95": 0.000699999999596912,
+          "p99": 0.0007999999997991836
+        },
+        "stringifyMs": {
+          "max": 0.010199999999713327,
+          "p50": 0.0003999999998995918,
+          "p95": 0.000600000000304135,
+          "p99": 0.0007000000005064066
+        }
+      }
+    },
+    {
+      "name": "paste-1k",
+      "input": {
+        "chars": 1024,
+        "iterations": 3000,
+        "utf8Bytes": 1024
+      },
+      "json": {
+        "bytes": 1123,
+        "expansionRatio": 1.0967
+      },
+      "pass": true,
+      "thresholds": {
+        "p95Ms": 1
+      },
+      "timing": {
+        "parseMs": {
+          "max": 0.010600000000522414,
+          "p50": 0.0015999999995983671,
+          "p95": 0.0026000000007115887,
+          "p99": 0.004899999999906868
+        },
+        "stringifyMs": {
+          "max": 0.025200000000040745,
+          "p50": 0.0016000000005078618,
+          "p95": 0.0027000000000043656,
+          "p99": 0.005200000000513683
+        }
+      }
+    },
+    {
+      "name": "paste-64k",
+      "input": {
+        "chars": 65536,
+        "iterations": 300,
+        "utf8Bytes": 65536
+      },
+      "json": {
+        "bytes": 68861,
+        "expansionRatio": 1.0507
+      },
+      "pass": true,
+      "thresholds": {
+        "p95Ms": 8
+      },
+      "timing": {
+        "parseMs": {
+          "max": 0.4223999999994703,
+          "p50": 0.06210000000010041,
+          "p95": 0.08370000000013533,
+          "p99": 0.1408000000001266
+        },
+        "stringifyMs": {
+          "max": 1.1271999999999025,
+          "p50": 0.09529999999995198,
+          "p95": 0.13450000000011642,
+          "p99": 0.3499000000001615
+        }
+      }
+    },
+    {
+      "name": "paste-1m",
+      "input": {
+        "chars": 1048576,
+        "iterations": 30,
+        "utf8Bytes": 1048576
+      },
+      "json": {
+        "bytes": 1101053,
+        "expansionRatio": 1.05
+      },
+      "pass": true,
+      "thresholds": {
+        "p95Ms": 75
+      },
+      "timing": {
+        "parseMs": {
+          "max": 1.8901999999998225,
+          "p50": 1.0732000000007247,
+          "p95": 1.3342000000002372,
+          "p99": 1.6570000000001528
+        },
+        "stringifyMs": {
+          "max": 3.2467999999998938,
+          "p50": 2.3023999999995794,
+          "p95": 2.6449000000002343,
+          "p99": 2.6575999999995474
+        }
+      }
+    }
+  ],
+  "summary": {
+    "parseP95MaxMs": 1.3342000000002372,
+    "pass": true,
+    "stringifyP95MaxMs": 2.6449000000002343,
+    "worstScenario": "paste-1m"
+  }
+}

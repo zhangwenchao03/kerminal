@@ -1,0 +1,515 @@
+{
+  "url": "https://otty.sh/",
+  "title": "Otty — A native, beautiful terminal app",
+  "description": "Otty is a native, beautiful terminal app. Designed for anyone who cares about the feel of every keystroke.",
+  "viewport": {
+    "width": 1440,
+    "height": 1200
+  },
+  "documentHeight": 5794,
+  "headings": [
+    {
+      "level": "h1",
+      "text": "Otty"
+    },
+    {
+      "level": "h2",
+      "text": "Simple where you start."
+    },
+    {
+      "level": "h2",
+      "text": "Modern from the ground up."
+    },
+    {
+      "level": "h2",
+      "text": "One window, many threads."
+    },
+    {
+      "level": "h2",
+      "text": "Every command, a shortcut away."
+    },
+    {
+      "level": "h2",
+      "text": "Also, plays well with the agents you already run."
+    },
+    {
+      "level": "h2",
+      "text": "Want Otty?"
+    },
+    {
+      "level": "h3",
+      "text": "PRODUCT"
+    },
+    {
+      "level": "h3",
+      "text": "LEGAL"
+    },
+    {
+      "level": "h3",
+      "text": "CONTACT"
+    },
+    {
+      "level": "h3",
+      "text": "STAY IN THE LOOP"
+    },
+    {
+      "level": "h3",
+      "text": "Join the waitlist"
+    }
+  ],
+  "buttons": [
+    {
+      "tag": "a",
+      "text": "Windows (coming soon)",
+      "href": null
+    },
+    {
+      "tag": "a",
+      "text": "macOS Apple Silicon",
+      "href": "https://downloads.otty.sh/macos/Otty.dmg"
+    },
+    {
+      "tag": "a",
+      "text": "macOS Intel",
+      "href": "https://downloads.otty.sh/macos/Otty-x64.dmg"
+    },
+    {
+      "tag": "button",
+      "text": "Windows Coming",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Linux Coming",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "iOS Coming",
+      "href": null
+    },
+    {
+      "tag": "a",
+      "text": "Documents",
+      "href": "https://docs.otty.sh/"
+    },
+    {
+      "tag": "button",
+      "text": "Traditionally Terminal",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Complex ADE",
+      "href": null
+    },
+    {
+      "tag": "a",
+      "text": "Read the docs",
+      "href": "https://docs.otty.sh/"
+    },
+    {
+      "tag": "button",
+      "text": "Parallels and monitor Tasks Run agents side by side and track every task's progress.",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Session history",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Fork & Branch",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Composer and Prompt Queue",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Send to Chat",
+      "href": null
+    },
+    {
+      "tag": "a",
+      "text": "Download for Mac Apple Silicon",
+      "href": "https://downloads.otty.sh/macos/Otty.dmg"
+    },
+    {
+      "tag": "a",
+      "text": "Download for Mac Intel",
+      "href": "https://downloads.otty.sh/macos/Otty-x64.dmg"
+    },
+    {
+      "tag": "button",
+      "text": "Join the waitlist",
+      "href": null
+    },
+    {
+      "tag": "a",
+      "text": "Documents",
+      "href": "https://docs.otty.sh/"
+    },
+    {
+      "tag": "a",
+      "text": "Articles",
+      "href": "https://otty.sh/learn/"
+    },
+    {
+      "tag": "a",
+      "text": "Change Log",
+      "href": "https://otty.sh/releases/all"
+    },
+    {
+      "tag": "a",
+      "text": "Price",
+      "href": "https://docs.otty.sh/pricing"
+    },
+    {
+      "tag": "a",
+      "text": "License Agreement",
+      "href": "https://docs.otty.sh/license"
+    },
+    {
+      "tag": "a",
+      "text": "Privacy Policy",
+      "href": "https://docs.otty.sh/privacy"
+    },
+    {
+      "tag": "a",
+      "text": "Credits",
+      "href": "https://docs.otty.sh/reference/credits"
+    },
+    {
+      "tag": "a",
+      "text": "Team",
+      "href": "https://appmakes.io/"
+    },
+    {
+      "tag": "a",
+      "text": "Email",
+      "href": "mailto:otty@appmakes.io"
+    },
+    {
+      "tag": "a",
+      "text": "Twitter",
+      "href": "https://x.com/appmakes"
+    },
+    {
+      "tag": "button",
+      "text": "Subscribe",
+      "href": null
+    },
+    {
+      "tag": "a",
+      "text": "appmakes.io",
+      "href": "https://appmakes.io/"
+    },
+    {
+      "tag": "button",
+      "text": "Join the waitlist",
+      "href": null
+    }
+  ],
+  "links": [
+    {
+      "href": "https://downloads.otty.sh/macos/Otty.dmg",
+      "resolved": "https://downloads.otty.sh/macos/Otty.dmg",
+      "text": "macOS Apple Silicon"
+    },
+    {
+      "href": "https://downloads.otty.sh/macos/Otty-x64.dmg",
+      "resolved": "https://downloads.otty.sh/macos/Otty-x64.dmg",
+      "text": "macOS Intel"
+    },
+    {
+      "href": "https://docs.otty.sh",
+      "resolved": "https://docs.otty.sh/",
+      "text": "Documents"
+    },
+    {
+      "href": "https://docs.otty.sh",
+      "resolved": "https://docs.otty.sh/",
+      "text": "Read the docs"
+    },
+    {
+      "href": "https://docs.otty.sh/user-interface/command-palette",
+      "resolved": "https://docs.otty.sh/user-interface/command-palette",
+      "text": ""
+    },
+    {
+      "href": "https://docs.otty.sh/terminal-features/autocomplete",
+      "resolved": "https://docs.otty.sh/terminal-features/autocomplete",
+      "text": ""
+    },
+    {
+      "href": "https://docs.otty.sh/user-interface/open-quickly",
+      "resolved": "https://docs.otty.sh/user-interface/open-quickly",
+      "text": ""
+    },
+    {
+      "href": "https://docs.otty.sh/workflows/recipes",
+      "resolved": "https://docs.otty.sh/workflows/recipes",
+      "text": ""
+    },
+    {
+      "href": "https://downloads.otty.sh/macos/Otty.dmg",
+      "resolved": "https://downloads.otty.sh/macos/Otty.dmg",
+      "text": "Download for Mac Apple Silicon"
+    },
+    {
+      "href": "https://downloads.otty.sh/macos/Otty-x64.dmg",
+      "resolved": "https://downloads.otty.sh/macos/Otty-x64.dmg",
+      "text": "Download for Mac Intel"
+    },
+    {
+      "href": "mailto:otty@appmakes.io",
+      "resolved": "mailto:otty@appmakes.io",
+      "text": ""
+    },
+    {
+      "href": "https://x.com/appmakes",
+      "resolved": "https://x.com/appmakes",
+      "text": ""
+    },
+    {
+      "href": "https://docs.otty.sh",
+      "resolved": "https://docs.otty.sh/",
+      "text": "Documents"
+    },
+    {
+      "href": "/learn/",
+      "resolved": "https://otty.sh/learn/",
+      "text": "Articles"
+    },
+    {
+      "href": "/releases/all",
+      "resolved": "https://otty.sh/releases/all",
+      "text": "Change Log"
+    },
+    {
+      "href": "https://docs.otty.sh/pricing",
+      "resolved": "https://docs.otty.sh/pricing",
+      "text": "Price"
+    },
+    {
+      "href": "https://docs.otty.sh/license",
+      "resolved": "https://docs.otty.sh/license",
+      "text": "License Agreement"
+    },
+    {
+      "href": "https://docs.otty.sh/privacy",
+      "resolved": "https://docs.otty.sh/privacy",
+      "text": "Privacy Policy"
+    },
+    {
+      "href": "https://docs.otty.sh/reference/credits",
+      "resolved": "https://docs.otty.sh/reference/credits",
+      "text": "Credits"
+    },
+    {
+      "href": "https://appmakes.io",
+      "resolved": "https://appmakes.io/",
+      "text": "Team"
+    },
+    {
+      "href": "mailto:otty@appmakes.io",
+      "resolved": "mailto:otty@appmakes.io",
+      "text": "Email"
+    },
+    {
+      "href": "https://x.com/appmakes",
+      "resolved": "https://x.com/appmakes",
+      "text": "Twitter"
+    },
+    {
+      "href": "https://appmakes.io",
+      "resolved": "https://appmakes.io/",
+      "text": "appmakes.io"
+    }
+  ],
+  "colors": {
+    "text": [
+      {
+        "value": "rgb(236, 236, 239)",
+        "count": 233
+      },
+      {
+        "value": "rgb(198, 205, 217)",
+        "count": 75
+      },
+      {
+        "value": "rgb(150, 152, 172)",
+        "count": 41
+      },
+      {
+        "value": "rgb(13, 13, 15)",
+        "count": 32
+      },
+      {
+        "value": "rgb(81, 89, 103)",
+        "count": 29
+      },
+      {
+        "value": "rgb(121, 130, 143)",
+        "count": 20
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.45)",
+        "count": 14
+      },
+      {
+        "value": "rgb(10, 10, 10)",
+        "count": 9
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.62)",
+        "count": 9
+      },
+      {
+        "value": "rgb(87, 211, 100)",
+        "count": 6
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.6)",
+        "count": 6
+      },
+      {
+        "value": "rgb(192, 153, 255)",
+        "count": 5
+      },
+      {
+        "value": "rgb(10, 13, 19)",
+        "count": 4
+      },
+      {
+        "value": "rgb(108, 176, 255)",
+        "count": 4
+      },
+      {
+        "value": "rgb(255, 255, 255)",
+        "count": 4
+      },
+      {
+        "value": "rgb(140, 233, 154)",
+        "count": 2
+      }
+    ],
+    "background": [
+      {
+        "value": "rgb(236, 236, 239)",
+        "count": 10
+      },
+      {
+        "value": "rgb(22, 22, 25)",
+        "count": 9
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.08)",
+        "count": 8
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.5)",
+        "count": 8
+      },
+      {
+        "value": "rgb(29, 29, 33)",
+        "count": 7
+      },
+      {
+        "value": "rgb(29, 29, 34)",
+        "count": 6
+      },
+      {
+        "value": "rgb(14, 19, 28)",
+        "count": 6
+      },
+      {
+        "value": "rgb(252, 251, 249)",
+        "count": 6
+      },
+      {
+        "value": "rgb(255, 255, 255)",
+        "count": 5
+      },
+      {
+        "value": "rgb(87, 211, 100)",
+        "count": 5
+      },
+      {
+        "value": "rgb(17, 22, 31)",
+        "count": 5
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.32)",
+        "count": 4
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.9)",
+        "count": 3
+      },
+      {
+        "value": "rgb(240, 162, 92)",
+        "count": 3
+      },
+      {
+        "value": "rgb(108, 176, 255)",
+        "count": 3
+      },
+      {
+        "value": "rgb(22, 29, 41)",
+        "count": 3
+      }
+    ],
+    "border": [
+      {
+        "value": "rgb(229, 231, 235)",
+        "count": 448
+      },
+      {
+        "value": "rgb(236, 236, 239)",
+        "count": 27
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.06)",
+        "count": 11
+      },
+      {
+        "value": "rgb(229, 231, 235) rgb(229, 231, 235) rgba(255, 255, 255, 0.06)",
+        "count": 6
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.1)",
+        "count": 3
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.11)",
+        "count": 3
+      },
+      {
+        "value": "rgb(10, 10, 10)",
+        "count": 2
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.15)",
+        "count": 1
+      },
+      {
+        "value": "rgb(229, 231, 235) rgba(255, 255, 255, 0.06) rgb(229, 231, 235) rgb(229, 231, 235)",
+        "count": 1
+      },
+      {
+        "value": "rgb(150, 152, 172)",
+        "count": 1
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.62)",
+        "count": 1
+      }
+    ]
+  },
+  "bodyTextSample": "Otty A native, beautiful terminal app. Designed for anyone who cares about the feel of every keystroke. Tuned for code agents you already run. Windows (coming soon) macOS Apple Silicon macOS Intel Windows Coming Linux Coming iOS Coming Documents WHY OTTY agent shell git :3000 + ⌘K SESSIONS 7 Search sessions… agent · review 3 feat/socket-metadata web preview :3000 main · localhost ssh · prod-01 ~/deploy · ext-pty inbox ui ui/inbox bench runner bench/socket-meta docs site docs/vt-osc token audit chore/tokens zsh — review ⌄ ⌃ ~/web-app feat/socket-metadata $ agent run --review socket.rs ● analyzing main-thread hot path… modified src/ipc/socket.rs - self.flush_all_metadata(); + self.coalesce(&mut pending); + if pending.len() > BATCH { flush() } ✓ 3 files · +42 −18 · 1.2s $ cargo bench socket_meta main-thread lag 58.3ms ▸ 23.1ms ● watching · 2 agents active agent online A Agent · review Coalesced the socket metadata writes — main-thread lag down ~60%. Patch applied & benched. edit socket.rs bench ✓ open PR ↗ Reply to agent… ↑ socket.rs RUST 13 fn coalesce(&mut self, p: &mut Vec<Meta>) { 14 for m in p.drain(..) { 15 self.buf.merge(m); 16 } 17 self.dirty = true; // batch 18 } localhost:3000 ⟳ Ship faster. Live preview updates as the agent edits your code. Get started Docs Pull Request #209 Merged 2h ago Reduce main-thread lag from repeated socket metadata updates coalesce writes +42 −18 ✓ 4 checks passed Otty Complex ADE Simple where you start. Otty sits between a traditional terminal and a full agent dev environment. Keep the focused, keyboard-first UI you already love — and gain the workflows you actually reach for, without the panels, buttons, and complexity of an IDE getting in the way. Drag the handle to see how it compares. COMPARE WITH Traditionally Terminal Complex ADE Modern from the ground up. A native, GPU-accelerated terminal that feels like a modern app — designed for how you actually use a terminal in 2026. Ligatures & Unicode Programming ligatures with full "
+}

@@ -2,7 +2,7 @@ import { vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   class MockTerminal {
-    buffer: {
+	    buffer: {
       active: {
         baseY: number;
         getLine: ReturnType<typeof vi.fn>;
@@ -28,8 +28,9 @@ const mocks = vi.hoisted(() => {
         viewportY: number;
       };
       onBufferChange: ReturnType<typeof vi.fn>;
-    };
-    cols = 80;
+	    };
+	    attachCustomKeyEventHandler = vi.fn();
+	    cols = 80;
     clear = vi.fn();
     dispose = vi.fn();
     focus = vi.fn();
@@ -162,10 +163,11 @@ const mocks = vi.hoisted(() => {
     },
     terminalApi: {
       closeTerminal: vi.fn(),
-      createSshTerminalSession: vi.fn(),
-      createTerminalSession: vi.fn(),
-      getTerminalLogState: vi.fn(),
-      resizeTerminal: vi.fn(),
+	      createSshTerminalSession: vi.fn(),
+	      createTerminalSession: vi.fn(),
+	      getTerminalLogState: vi.fn(),
+	      reapOrphanTerminalSessions: vi.fn(),
+	      resizeTerminal: vi.fn(),
       startTerminalLog: vi.fn(),
       stopTerminalLog: vi.fn(),
       writeTerminal: vi.fn(),
@@ -346,10 +348,12 @@ vi.mock("../../../lib/terminalApi", () => ({
     mocks.terminalApi.createSshTerminalSession(...args),
   createTerminalSession: (...args: unknown[]) =>
     mocks.terminalApi.createTerminalSession(...args),
-  getTerminalLogState: (...args: unknown[]) =>
-    mocks.terminalApi.getTerminalLogState(...args),
-  resizeTerminal: (...args: unknown[]) =>
-    mocks.terminalApi.resizeTerminal(...args),
+	  getTerminalLogState: (...args: unknown[]) =>
+	    mocks.terminalApi.getTerminalLogState(...args),
+	  reapOrphanTerminalSessions: (...args: unknown[]) =>
+	    mocks.terminalApi.reapOrphanTerminalSessions(...args),
+	  resizeTerminal: (...args: unknown[]) =>
+	    mocks.terminalApi.resizeTerminal(...args),
   startTerminalLog: (...args: unknown[]) =>
     mocks.terminalApi.startTerminalLog(...args),
   stopTerminalLog: (...args: unknown[]) =>

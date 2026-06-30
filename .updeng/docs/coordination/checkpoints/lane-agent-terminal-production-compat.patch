@@ -1,0 +1,1499 @@
+diff --git a/src/app/KerminalShell.test.tsx b/src/app/KerminalShell.test.tsx
+index 4eb91a5b..dff7962a 100644
+--- a/src/app/KerminalShell.test.tsx
++++ b/src/app/KerminalShell.test.tsx
+@@ -436,6 +436,35 @@ describe("KerminalShell", () => {
+     });
+   });
+ 
++  it("does not run app keybindings for keydown events from focused xterm DOM", async () => {
++    render(<KerminalShell />);
++
++    await waitFor(() => {
++      expect(mocks.settingsApi.getSettings).toHaveBeenCalled();
++    });
++    mocks.terminalApi.createTerminalSession.mockClear();
++    const terminal = document.createElement("div");
++    terminal.className = "xterm";
++    const textarea = document.createElement("textarea");
++    textarea.className = "xterm-helper-textarea";
++    terminal.append(textarea);
++    document.body.append(terminal);
++
++    try {
++      fireEvent.keyDown(textarea, {
++        code: "KeyT",
++        ctrlKey: true,
++        key: "t",
++        keyCode: 84,
++        shiftKey: true,
++      });
++
++      expect(mocks.terminalApi.createTerminalSession).not.toHaveBeenCalled();
++    } finally {
++      terminal.remove();
++    }
++  });
++
+   it("uses saved custom keybindings at runtime", async () => {
+     mocks.settingsApi.getSettings.mockResolvedValue({
+       ...defaultAppSettings,
+diff --git a/src/app/KerminalShell.tsx b/src/app/KerminalShell.tsx
+index abd9ca99..e417be0c 100644
+--- a/src/app/KerminalShell.tsx
++++ b/src/app/KerminalShell.tsx
+@@ -19,6 +19,7 @@ import {
+ } from "lucide-react";
+ import { Button } from "../components/ui/button";
+ import { AppTitleBar } from "./AppTitleBar";
++import { shouldAppHandleKeybinding } from "./appKeybindingPolicy";
+ import type { MachineSidebarMachineDragEvent } from "../features/machine-sidebar/MachineSidebar.shared";
+ import type {
+   SettingsSaveState,
+@@ -1200,7 +1201,7 @@ export function KerminalShell() {
+   useEffect(() => {
+     const platform = shortcutPlatform();
+     const handleKeyDown = (event: KeyboardEvent) => {
+-      if (event.defaultPrevented) {
++      if (!shouldAppHandleKeybinding(event)) {
+         return;
+       }
+ 
+diff --git a/src/app/__tests__/support/KerminalShell.testSupport.tsx b/src/app/__tests__/support/KerminalShell.testSupport.tsx
+index 98980c96..ba28163f 100644
+--- a/src/app/__tests__/support/KerminalShell.testSupport.tsx
++++ b/src/app/__tests__/support/KerminalShell.testSupport.tsx
+@@ -31,6 +31,9 @@ const mocks = vi.hoisted(() => {
+     };
+     cols = 80;
+     clear = vi.fn();
++    customKeyEventHandler:
++      | ((event: KeyboardEvent) => boolean)
++      | undefined;
+     dispose = vi.fn();
+     focus = vi.fn();
+     getSelection = vi.fn(() => "");
+@@ -70,6 +73,10 @@ const mocks = vi.hoisted(() => {
+       };
+     }
+ 
++    attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean) {
++      this.customKeyEventHandler = handler;
++    }
++
+     onData() {
+       return { dispose: vi.fn() };
+     }
+diff --git a/src/features/terminal/XtermPane.contextMenu.test.tsx b/src/features/terminal/XtermPane.contextMenu.test.tsx
+index fe201ac7..0dc25643 100644
+--- a/src/features/terminal/XtermPane.contextMenu.test.tsx
++++ b/src/features/terminal/XtermPane.contextMenu.test.tsx
+@@ -173,6 +173,62 @@ describe("XtermPane context menu search and logging", () => {
+     ).not.toBeInTheDocument();
+   });
+ 
++  it("pastes clipboard text from terminal keyboard shortcuts", async () => {
++    render(
++      <XtermPane
++        focused
++        paneId="pane-local"
++        resolvedTheme="dark"
++        terminalAppearance={defaultAppSettings.terminal}
++        title="本地 PowerShell"
++      />,
++    );
++
++    await waitFor(() => {
++      expect(screen.getByText("已连接")).toBeInTheDocument();
++    });
++
++    const terminal = mocks.terminalInstances[0];
++    let shortcut = terminal.triggerCustomKeyEvent({ ctrlKey: true, key: "v" });
++    expect(shortcut).toEqual({ defaultPrevented: true, result: false });
++    await waitFor(() => {
++      expect(mocks.api.readTerminalClipboardText).toHaveBeenCalledTimes(1);
++      expect(terminal.paste).toHaveBeenCalledWith("echo pasted\r");
++    });
++
++    mocks.api.readTerminalClipboardText.mockClear();
++    terminal.paste.mockClear();
++
++    shortcut = terminal.triggerCustomKeyEvent({
++      ctrlKey: true,
++      key: "V",
++      shiftKey: true,
++    });
++    expect(shortcut).toEqual({ defaultPrevented: true, result: false });
++    await waitFor(() => {
++      expect(mocks.api.readTerminalClipboardText).toHaveBeenCalledTimes(1);
++      expect(terminal.paste).toHaveBeenCalledWith("echo pasted\r");
++    });
++
++    mocks.api.readTerminalClipboardText.mockClear();
++    terminal.paste.mockClear();
++
++    shortcut = terminal.triggerCustomKeyEvent({ key: "Insert", shiftKey: true });
++    expect(shortcut).toEqual({ defaultPrevented: true, result: false });
++    await waitFor(() => {
++      expect(mocks.api.readTerminalClipboardText).toHaveBeenCalledTimes(1);
++      expect(terminal.paste).toHaveBeenCalledWith("echo pasted\r");
++    });
++
++    mocks.api.readTerminalClipboardText.mockClear();
++    terminal.paste.mockClear();
++
++    shortcut = terminal.triggerCustomKeyEvent({ key: "a" });
++    expect(shortcut).toEqual({ defaultPrevented: false, result: true });
++    expect(mocks.api.readTerminalClipboardText).not.toHaveBeenCalled();
++    expect(terminal.paste).not.toHaveBeenCalled();
++  });
++
+   it("focuses only on right-click when terminal actions are disabled", async () => {
+     const clipboard = installClipboardMock();
+ 
+@@ -526,9 +582,9 @@ describe("XtermPane context menu search and logging", () => {
+     });
+     expect(mocks.api.createTerminalSession).toHaveBeenLastCalledWith(
+       {
+-        cols: 80,
++        cols: 100,
+         cwd: "C:/dev/rust/kerminal",
+-        rows: 24,
++        rows: 30,
+         shell: "powershell.exe",
+       },
+       expect.any(Function),
+@@ -606,7 +662,7 @@ describe("XtermPane context menu search and logging", () => {
+     });
+     expect(mocks.api.closeTerminal).toHaveBeenCalledWith("ssh-session-1");
+     expect(mocks.api.createSshTerminalSession).toHaveBeenLastCalledWith(
+-      { cols: 80, hostId: "host-lab", rows: 24 },
++      { cols: 100, hostId: "host-lab", rows: 30 },
+       expect.any(Function),
+     );
+     expect(await screen.findByText("已连接")).toBeInTheDocument();
+diff --git a/src/features/terminal/XtermPane.runtime.ts b/src/features/terminal/XtermPane.runtime.ts
+index 0cb7ac13..fb568ad5 100644
+--- a/src/features/terminal/XtermPane.runtime.ts
++++ b/src/features/terminal/XtermPane.runtime.ts
+@@ -6,15 +6,15 @@ import type { TerminalOutputEvent } from "../../lib/terminalApi";
+ import { recordCommandHistory } from "../../lib/commandHistoryApi";
+ import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
+ import { listTerminalSuggestions, recordTerminalSuggestionFeedback } from "../../lib/terminalSuggestionApi";
+-import { markTerminalPaneSessionDisconnected, markTerminalPaneSessionReconnected, registerTerminalPaneSession, updateTerminalPaneSessionCwd, unregisterTerminalPaneSession } from "./terminalSessionRegistry";
++import { markTerminalPaneSessionDisconnected, markTerminalPaneSessionReconnected, registerTerminalPaneSession, updateTerminalPaneRuntimeContext, updateTerminalPaneSessionCwd, unregisterTerminalPaneSession } from "./terminalSessionRegistry";
+ import { createTerminalOutputWriter } from "./terminalOutputWriter";
+-import { appendCommandBlockOutput } from "./terminalCommandBlocks";
++import { appendCommandBlockOutput, terminalCommandBlockPlainText } from "./terminalCommandBlocks";
+ import {
+   clearTerminalCommandBlocks,
+   closeLatestTerminalCommandBlock,
+   submitTerminalCommandBlock,
+ } from "./terminalCommandBlockLifecycle";
+-import { applyTerminalInputData, createTerminalInputModelState, terminalSuggestionEligibility, updateTerminalInputBufferKind } from "./terminalInputModel";
++import { applyTerminalInputData, createTerminalInputModelState, terminalSuggestionEligibility, updateTerminalInputBufferKind, updateTerminalInputComposition } from "./terminalInputModel";
+ import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeScheduler";
+ import { createTerminalRemoteSuggestionPrewarm } from "./terminalRemoteSuggestionPrewarm";
+ import { createTerminalOutputHistoryBuffer } from "./terminalOutputHistoryBuffer";
+@@ -22,13 +22,14 @@ import {
+   createTerminalOutputInstrumentation,
+   runTerminalOutputInstrumentationStep,
+ } from "./terminalOutputInstrumentation";
+-import { buildTerminalCreateRequest, collectCurrentDirOscSequences, errorMessage, isRightArrowInput, normalizeTerminalSessionSize, resolveGhostSuggestionLayout, terminalGhostSuggestionEqual, terminalSuggestionProviders, type TerminalGhostSuggestion } from "./XtermPane.helpers";
++import { buildTerminalCreateRequest, collectCurrentDirOscSequences, errorMessage, isRightArrowInput, normalizeTerminalSessionSize, pasteIntoTerminal, resolveGhostSuggestionLayout, terminalGhostSuggestionEqual, terminalSuggestionProviders, type TerminalGhostSuggestion } from "./XtermPane.helpers";
+ import { registerCommandBlockClearHandlers, terminalSessionFailureLabel, terminalSessionTargetKind } from "./XtermPane.runtime.helpers";
++import { resolveTerminalInputCompatibilityOverride } from "./terminalKeyboardPolicy";
+ 
+ const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000;
+ 
+ export function installXtermPaneRuntime(params: any) {
+-  const { args, commandBlockCounterRef, commandBlocksRef, containerRef, cwd, cwdTrackingBufferRef, currentCwdRef, disconnectSessionRef, env, fitAddonRef, focusedRef, ghostSuggestionRef, inputBufferRef, inputModelRef, onCurrentCwdChangeRef, onOutputHistoryChangeRef, onSessionFinishedRef, outputHistoryRef, paneId, profileId, promptLineRef, reconnectSessionRef, remoteCommand, remoteHostId, remoteHostProduction, searchAddonRef, sessionIdRef, setCommandBlockNotice, setCommandBlockViews, setConnectionState, setGhostSuggestion, setLogNotice, setLogState, setSearchResults, shell, shellAssistEnabled = true, startupMessage, syncCommandBlockViews, target, terminalAppearance, terminalAppearanceRef, terminalFontWeight, terminalRef, terminalTheme, transientStartupMessage } = params;
++  const { args, commandBlockCounterRef, commandBlocksRef, containerRef, cwd, cwdTrackingBufferRef, currentCwdRef, disconnectSessionRef, env, fitAddonRef, focusedRef, ghostSuggestionRef, inputBufferRef, inputModelRef, onCurrentCwdChangeRef, onOutputHistoryChangeRef, onSessionFinishedRef, onTerminalDimensionsChangeRef, outputHistoryRef, paneId, profileId, promptLineRef, reconnectSessionRef, remoteCommand, remoteHostId, remoteHostProduction, searchAddonRef, sessionIdRef, setCommandBlockNotice, setCommandBlockViews, setConnectionState, setGhostSuggestion, setLogNotice, setLogState, setSearchResults, shell, shellAssistEnabled = true, startupMessage, syncCommandBlockViews, target, terminalAppearance, terminalAppearanceRef, terminalFontWeight, terminalRef, terminalTheme, transientStartupMessage } = params;
+     const container = containerRef.current;
+     if (!container) {
+       return undefined;
+@@ -42,6 +43,8 @@ export function installXtermPaneRuntime(params: any) {
+     let suggestionTimer: number | null = null;
+     let commandBlockViewSyncFrame: number | null = null;
+     const assistEnabled = shellAssistEnabled !== false;
++    const inputCompatibilityMode =
++      params.inputCompatibilityMode === "agentTui" ? "agentTui" : "shell";
+     commandBlocksRef.current = [];
+     inputModelRef.current = createTerminalInputModelState();
+     setCommandBlockViews([]);
+@@ -147,6 +150,20 @@ export function installXtermPaneRuntime(params: any) {
+       }
+       commandBlockViewSyncFrame = null;
+     };
++    const latestCommandBlockText = () => {
++      if (!assistEnabled) {
++        return undefined;
++      }
++      const block = [...commandBlocksRef.current]
++        .reverse()
++        .find((candidate) => candidate.submitted && candidate.command.trim());
++      return block ? terminalCommandBlockPlainText(block) : undefined;
++    };
++    const syncCommandBlockRuntimeContext = () => {
++      updateTerminalPaneRuntimeContext(paneId, {
++        commandBlockText: latestCommandBlockText(),
++      });
++    };
+     const scheduleCommandBlockViewSync = () => {
+       if (!assistEnabled) {
+         return;
+@@ -160,12 +177,14 @@ export function installXtermPaneRuntime(params: any) {
+               commandBlockViewSyncFrame = null;
+               if (!disposed) {
+                 syncCommandBlockViews();
++                syncCommandBlockRuntimeContext();
+               }
+             })
+           : window.setTimeout(() => {
+               commandBlockViewSyncFrame = null;
+               if (!disposed) {
+                 syncCommandBlockViews();
++                syncCommandBlockRuntimeContext();
+               }
+             }, 16);
+     };
+@@ -446,11 +465,36 @@ export function installXtermPaneRuntime(params: any) {
+         scheduleGhostSuggestion();
+       }
+     });
++    terminal.attachCustomKeyEventHandler((event) => {
++      const compatibilityOverride = resolveTerminalInputCompatibilityOverride(
++        event,
++        inputCompatibilityMode,
++      );
++      if (compatibilityOverride) {
++        event.preventDefault();
++        event.stopPropagation();
++        const sessionId = sessionIdRef.current;
++        if (sessionId) {
++          void writeTerminal(sessionId, compatibilityOverride.data);
++        }
++        return false;
++      }
++      if (!isTerminalPasteShortcut(event)) {
++        return true;
++      }
++      event.preventDefault();
++      event.stopPropagation();
++      void pasteIntoTerminal(terminal, sessionIdRef.current).catch(
++        () => undefined,
++      );
++      return false;
++    });
+     const selectionDisposable = terminal.onSelectionChange(() => {
++      const selection = terminal.getSelection?.() ?? "";
++      updateTerminalPaneRuntimeContext(paneId, { selectedText: selection });
+       if (!terminalAppearanceRef.current.selectionCopy) {
+         return;
+       }
+-      const selection = terminal.getSelection?.() ?? "";
+       if (selection) {
+         void writeDesktopClipboardText(selection);
+       }
+@@ -472,6 +516,7 @@ export function installXtermPaneRuntime(params: any) {
+     const writeParsedDisposable = terminal.onWriteParsed(() => {
+       clearCommandBlockViewSyncFrame();
+       syncCommandBlockViews();
++      syncCommandBlockRuntimeContext();
+       refreshGhostSuggestionLayout();
+     });
+     const bufferChangeDisposable = terminal.buffer.onBufferChange(() => {
+@@ -491,6 +536,29 @@ export function installXtermPaneRuntime(params: any) {
+       }
+       scheduleCommandBlockViewSync();
+     });
++    const xtermElement = container.querySelector(".xterm");
++    const compositionTarget = xtermElement ?? container;
++    const handleCompositionStart = () => {
++      inputModelRef.current = updateTerminalInputComposition(
++        inputModelRef.current,
++        true,
++      );
++      inputBufferRef.current = inputModelRef.current.command;
++      clearGhostSuggestion();
++    };
++    const handleCompositionEnd = () => {
++      inputModelRef.current = updateTerminalInputComposition(
++        inputModelRef.current,
++        false,
++      );
++      inputBufferRef.current = inputModelRef.current.command;
++      scheduleGhostSuggestion();
++    };
++    compositionTarget.addEventListener(
++      "compositionstart",
++      handleCompositionStart,
++    );
++    compositionTarget.addEventListener("compositionend", handleCompositionEnd);
+     terminal.open(container);
+     terminalRef.current = terminal;
+     const commandBlockClearHandlersDisposable = registerCommandBlockClearHandlers(
+@@ -511,15 +579,13 @@ export function installXtermPaneRuntime(params: any) {
+     const fitAndResize = () => {
+       fitAddon.fit();
+       const sessionId = sessionIdRef.current;
+-      const dimensions = fitAddon.proposeDimensions();
+-      if (!sessionId || !dimensions) {
++      const dimensions = { cols: terminal.cols, rows: terminal.rows };
++      onTerminalDimensionsChangeRef.current?.(dimensions);
++      if (!sessionId) {
+         return;
+       }
+ 
+-      void resizeTerminal(sessionId, {
+-        cols: dimensions.cols,
+-        rows: dimensions.rows,
+-      });
++      void resizeTerminal(sessionId, dimensions);
+       refreshGhostSuggestionLayout();
+     };
+ 
+@@ -894,6 +960,14 @@ export function installXtermPaneRuntime(params: any) {
+       scrollDisposable.dispose();
+       writeParsedDisposable.dispose();
+       bufferChangeDisposable.dispose();
++      compositionTarget.removeEventListener(
++        "compositionstart",
++        handleCompositionStart,
++      );
++      compositionTarget.removeEventListener(
++        "compositionend",
++        handleCompositionEnd,
++      );
+       commandBlockClearHandlersDisposable.dispose();
+       const sessionId = sessionIdRef.current;
+       sessionIdRef.current = null;
+@@ -919,3 +993,23 @@ export function installXtermPaneRuntime(params: any) {
+ function isClearScreenCommand(command: string) {
+   return /^(?:clear|cls|clear-host|reset)(?:\s|$)/i.test(command.trim());
+ }
++
++function isTerminalPasteShortcut(event: KeyboardEvent) {
++  if (event.type !== "keydown" || event.altKey) {
++    return false;
++  }
++
++  if (
++    event.key.toLowerCase() === "v" &&
++    (event.ctrlKey || event.metaKey)
++  ) {
++    return true;
++  }
++
++  return (
++    event.key === "Insert" &&
++    event.shiftKey &&
++    !event.ctrlKey &&
++    !event.metaKey
++  );
++}
+diff --git a/src/features/terminal/XtermPane.tsx b/src/features/terminal/XtermPane.tsx
+index 0dcb484d..bdd71713 100644
+--- a/src/features/terminal/XtermPane.tsx
++++ b/src/features/terminal/XtermPane.tsx
+@@ -77,6 +77,7 @@ export {
+   collectSubmittedCommands,
+ } from "./XtermPane.helpers";
+ import { installXtermPaneRuntime } from "./XtermPane.runtime";
++import type { TerminalInputCompatibilityMode } from "./terminalKeyboardPolicy";
+ 
+ const TERMINAL_CLEAR_SCREEN_INPUT = "\x0c";
+ const TERMINAL_FRONTEND_CLEAR_SCREEN_SEQUENCE = "\x1b[H\x1b[2J\x1b[3J";
+@@ -86,7 +87,10 @@ interface XtermPaneProps {
+   currentCwd?: string;
+   cwd?: string;
+   env?: Record<string, string>;
++  focusRequestToken?: number;
+   focused: boolean;
++  inputCompatibilityMode?: TerminalInputCompatibilityMode;
++  inputRequest?: XtermPaneInputRequest | null;
+   paneId: string;
+   profileId?: string;
+   remoteCommand?: string;
+@@ -105,10 +109,22 @@ interface XtermPaneProps {
+   onOutputHistoryChange?: (outputHistory: string | undefined) => void;
+   onSessionFinished?: (event: XtermPaneSessionFinishedEvent) => void;
+   onSplitPane?: (direction: TerminalSplitDirection) => void;
++  onTerminalDimensionsChange?: (dimensions: XtermPaneDimensions) => void;
+   outputHistory?: string;
+   resolveInitialOutputHistory?: () => string | undefined;
+ }
+ 
++export interface XtermPaneDimensions {
++  cols: number;
++  rows: number;
++}
++
++export interface XtermPaneInputRequest {
++  id: string;
++  submit?: boolean;
++  text: string;
++}
++
+ export interface XtermPaneSessionFinishedEvent {
+   durationMs: number;
+   reason: "closed";
+@@ -120,7 +136,10 @@ export function XtermPane({
+   currentCwd,
+   cwd,
+   env,
++  focusRequestToken,
+   focused,
++  inputCompatibilityMode = "shell",
++  inputRequest,
+   paneId,
+   profileId,
+   remoteCommand,
+@@ -139,6 +158,7 @@ export function XtermPane({
+   onOutputHistoryChange,
+   onSessionFinished,
+   onSplitPane,
++  onTerminalDimensionsChange,
+   outputHistory,
+   resolveInitialOutputHistory,
+ }: XtermPaneProps) {
+@@ -158,6 +178,7 @@ export function XtermPane({
+   const onCurrentCwdChangeRef = useRef(onCurrentCwdChange);
+   const onOutputHistoryChangeRef = useRef(onOutputHistoryChange);
+   const onSessionFinishedRef = useRef(onSessionFinished);
++  const onTerminalDimensionsChangeRef = useRef(onTerminalDimensionsChange);
+   const outputHistoryRef = useRef(
+     outputHistory ?? resolveInitialOutputHistory?.(),
+   );
+@@ -167,6 +188,7 @@ export function XtermPane({
+   const reconnectSessionRef = useRef<(() => Promise<void>) | null>(null);
+   const searchAddonRef = useRef<SearchAddon | null>(null);
+   const sessionIdRef = useRef<string | null>(null);
++  const lastInputRequestIdRef = useRef<string | null>(null);
+   const terminalAppearanceRef = useRef(terminalAppearance);
+   const terminalRef = useRef<XtermTerminal | null>(null);
+   const searchInputId = useId();
+@@ -333,6 +355,10 @@ export function XtermPane({
+     onSessionFinishedRef.current = onSessionFinished;
+   }, [onSessionFinished]);
+ 
++  useEffect(() => {
++    onTerminalDimensionsChangeRef.current = onTerminalDimensionsChange;
++  }, [onTerminalDimensionsChange]);
++
+   useEffect(() => {
+     if (resolveInitialOutputHistory) {
+       return;
+@@ -364,9 +390,11 @@ export function XtermPane({
+       ghostSuggestionRef,
+       inputBufferRef,
+       inputModelRef,
++      inputCompatibilityMode,
+       onCurrentCwdChangeRef,
+       onOutputHistoryChangeRef,
+       onSessionFinishedRef,
++      onTerminalDimensionsChangeRef,
+       outputHistoryRef,
+       paneId,
+       profileId,
+@@ -400,6 +428,7 @@ export function XtermPane({
+     argsDependencyKey,
+     cwd,
+     envDependencyKey,
++    inputCompatibilityMode,
+     paneId,
+     profileId,
+     remoteCommand,
+@@ -420,6 +449,32 @@ export function XtermPane({
+     }
+   }, [focused]);
+ 
++  useEffect(() => {
++    if (typeof focusRequestToken === "number") {
++      terminalRef.current?.focus();
++    }
++  }, [focusRequestToken]);
++
++  useEffect(() => {
++    if (!inputRequest || lastInputRequestIdRef.current === inputRequest.id) {
++      return;
++    }
++    const terminal = terminalRef.current;
++    const sessionId = sessionIdRef.current;
++    if (!terminal || !sessionId) {
++      return;
++    }
++
++    lastInputRequestIdRef.current = inputRequest.id;
++    if (inputRequest.text.length > 0) {
++      terminal.paste(inputRequest.text);
++    }
++    if (inputRequest.submit) {
++      void writeTerminal(sessionId, "\r");
++    }
++    terminal.focus();
++  }, [connectionState, inputRequest]);
++
+   useEffect(() => {
+     const terminal = terminalRef.current;
+     if (!terminal) {
+@@ -439,15 +494,13 @@ export function XtermPane({
+     if (containerRef.current) {
+       containerRef.current.style.fontFamily = terminalAppearance.fontFamily;
+     }
+-    terminal.refresh?.(0, Math.max(0, terminal.rows - 1));
+     fitAddonRef.current?.fit();
+-    const dimensions = fitAddonRef.current?.proposeDimensions();
++    terminal.refresh?.(0, Math.max(0, terminal.rows - 1));
++    const dimensions = { cols: terminal.cols, rows: terminal.rows };
+     const sessionId = sessionIdRef.current;
+-    if (sessionId && dimensions) {
+-      void resizeTerminal(sessionId, {
+-        cols: dimensions.cols,
+-        rows: dimensions.rows,
+-      });
++    onTerminalDimensionsChangeRef.current?.(dimensions);
++    if (sessionId) {
++      void resizeTerminal(sessionId, dimensions);
+     }
+   }, [terminalAppearance, terminalFontWeight, terminalTheme]);
+ 
+@@ -744,6 +797,7 @@ export function XtermPane({
+         className={`h-full min-h-0 w-full overflow-hidden py-2 pr-3 ${
+           shellAssistEnabled ? "pl-6" : "pl-3"
+         }`}
++        onPointerDown={() => terminalRef.current?.focus()}
+       >
+         <div
+           aria-label={`${title} xterm 终端`}
+diff --git a/src/features/terminal/__tests__/support/XtermPane.testSupport.tsx b/src/features/terminal/__tests__/support/XtermPane.testSupport.tsx
+index 4b04ebdf..5685960a 100644
+--- a/src/features/terminal/__tests__/support/XtermPane.testSupport.tsx
++++ b/src/features/terminal/__tests__/support/XtermPane.testSupport.tsx
+@@ -72,10 +72,15 @@ const mocks = vi.hoisted(() => {
+     cols = 80;
+     clear = vi.fn();
+     rows = 24;
++    customKeyEventHandler:
++      | ((event: KeyboardEvent) => boolean)
++      | undefined;
+     dispose = vi.fn();
+     focus = vi.fn();
+     getSelection = vi.fn(() => "selected output");
+-    loadAddon = vi.fn();
++    loadAddon = vi.fn((addon: { activate?: (terminal: MockTerminal) => void }) => {
++      addon.activate?.(this);
++    });
+     onDataCallback: ((data: string) => void) | undefined;
+     onScrollCallback: ((viewportY: number) => void) | undefined;
+     onSelectionChangeCallback: (() => void) | undefined;
+@@ -175,6 +180,10 @@ const mocks = vi.hoisted(() => {
+       terminalInstances.push(this);
+     }
+ 
++    attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean) {
++      this.customKeyEventHandler = handler;
++    }
++
+     onData(callback: (data: string) => void) {
+       this.onDataCallback = callback;
+       return { dispose: vi.fn() };
+@@ -255,11 +264,36 @@ const mocks = vi.hoisted(() => {
+     emitSelectionChange() {
+       this.onSelectionChangeCallback?.();
+     }
++
++    triggerCustomKeyEvent(init: KeyboardEventInit) {
++      const event = new KeyboardEvent("keydown", {
++        bubbles: true,
++        cancelable: true,
++        ...init,
++      });
++      const result = this.customKeyEventHandler?.(event);
++      return {
++        defaultPrevented: event.defaultPrevented,
++        result,
++      };
++    }
+   }
+ 
+   class MockFitAddon {
++    private terminal: MockTerminal | null = null;
++
++    activate(terminal: MockTerminal) {
++      this.terminal = terminal;
++    }
++
+     dispose = vi.fn();
+-    fit = vi.fn();
++    fit = vi.fn(() => {
++      const dimensions = this.proposeDimensions();
++      if (this.terminal && dimensions) {
++        this.terminal.cols = dimensions.cols;
++        this.terminal.rows = dimensions.rows;
++      }
++    });
+     proposeDimensions = vi.fn(() => ({ cols: 100, rows: 30 }));
+ 
+     constructor() {
+diff --git a/src/features/terminal/terminalSessionRegistry.test.ts b/src/features/terminal/terminalSessionRegistry.test.ts
+index e4be8620..17dce6fc 100644
+--- a/src/features/terminal/terminalSessionRegistry.test.ts
++++ b/src/features/terminal/terminalSessionRegistry.test.ts
+@@ -1,10 +1,12 @@
+ import { beforeEach, describe, expect, it, vi } from "vitest";
+ import {
+   getTerminalPaneSession,
++  getTerminalPaneRuntimeContext,
+   markTerminalPaneSessionDisconnected,
+   markTerminalPaneSessionReconnected,
+   registerTerminalPaneSession,
+   resetTerminalPaneSessionsForTests,
++  updateTerminalPaneRuntimeContext,
+   updateTerminalPaneSessionCwd,
+   unregisterTerminalPaneSession,
+   writeBroadcastCommand,
+@@ -107,6 +109,38 @@ describe("terminalSessionRegistry", () => {
+     expect(getTerminalPaneSession("pane-a")).toBeUndefined();
+   });
+ 
++  it("tracks transient runtime context separately from session metadata", () => {
++    registerTerminalPaneSession("pane-a", "session-a");
++
++    updateTerminalPaneRuntimeContext(
++      "pane-a",
++      { selectedText: "selected output" },
++      100,
++    );
++    updateTerminalPaneRuntimeContext(
++      "pane-a",
++      { commandBlockText: "$ npm test\nok" },
++      200,
++    );
++
++    expect(getTerminalPaneRuntimeContext("pane-a")).toEqual({
++      commandBlockText: "$ npm test\nok",
++      paneId: "pane-a",
++      selectedText: "selected output",
++      updatedAt: 200,
++    });
++    updateTerminalPaneRuntimeContext("pane-a", { selectedText: "" }, 300);
++    expect(getTerminalPaneRuntimeContext("pane-a")).toEqual({
++      commandBlockText: "$ npm test\nok",
++      paneId: "pane-a",
++      selectedText: "",
++      updatedAt: 300,
++    });
++
++    unregisterTerminalPaneSession("pane-a", "session-a");
++    expect(getTerminalPaneRuntimeContext("pane-a")).toBeUndefined();
++  });
++
+   it("auto injects host network assist exports into later same-host SSH sessions", async () => {
+     setHostNetworkAssistAutoInjection({
+       command: "export HTTP_PROXY='http://127.0.0.1:18080'",
+diff --git a/src/features/terminal/terminalSessionRegistry.ts b/src/features/terminal/terminalSessionRegistry.ts
+index ccff8c2b..da0ad5fc 100644
+--- a/src/features/terminal/terminalSessionRegistry.ts
++++ b/src/features/terminal/terminalSessionRegistry.ts
+@@ -34,7 +34,18 @@ export interface PaneSessionListRecord extends PaneSessionRecord {
+   paneId: string;
+ }
+ 
++export interface TerminalPaneRuntimeContext {
++  commandBlockText?: string;
++  paneId: string;
++  selectedText?: string;
++  updatedAt: number;
++}
++
+ const paneSessions = new Map<string, PaneSessionRecord>();
++const paneRuntimeContexts = new Map<
++  string,
++  Omit<TerminalPaneRuntimeContext, "paneId">
++>();
+ const hostNetworkAssistInjectionTasks = new Map<string, Promise<void>>();
+ 
+ export interface BroadcastWriteRequest {
+@@ -105,6 +116,7 @@ export function unregisterTerminalPaneSession(
+   }
+   clearInjectedHostNetworkAssistSessions(paneId, currentSession?.sessionId);
+   paneSessions.delete(paneId);
++  paneRuntimeContexts.delete(paneId);
+   if (currentSession) {
+     reportTerminalSessionClosed(paneId, currentSession.sessionId);
+   }
+@@ -143,6 +155,37 @@ export function updateTerminalPaneSessionCwd(paneId: string, cwd: string) {
+   });
+ }
+ 
++export function updateTerminalPaneRuntimeContext(
++  paneId: string,
++  patch: Partial<Omit<TerminalPaneRuntimeContext, "paneId" | "updatedAt">>,
++  now = Date.now(),
++) {
++  const current = paneRuntimeContexts.get(paneId);
++  const next = {
++    commandBlockText:
++      "commandBlockText" in patch
++        ? patch.commandBlockText
++        : current?.commandBlockText,
++    selectedText:
++      "selectedText" in patch ? patch.selectedText : current?.selectedText,
++    updatedAt: now,
++  };
++
++  if (!next.commandBlockText?.trim() && !next.selectedText?.trim()) {
++    paneRuntimeContexts.delete(paneId);
++    return;
++  }
++
++  paneRuntimeContexts.set(paneId, next);
++}
++
++export function getTerminalPaneRuntimeContext(
++  paneId: string,
++): TerminalPaneRuntimeContext | undefined {
++  const current = paneRuntimeContexts.get(paneId);
++  return current ? { ...current, paneId } : undefined;
++}
++
+ export function markTerminalPaneSessionDisconnected(
+   paneId: string,
+   sessionId?: string,
+@@ -169,6 +212,7 @@ export function markTerminalPaneSessionReconnected(
+ 
+ export function resetTerminalPaneSessionsForTests() {
+   paneSessions.clear();
++  paneRuntimeContexts.clear();
+   hostNetworkAssistInjectionTasks.clear();
+   resetHostNetworkAssistAutoInjectionForTests();
+ }
+diff --git a/src/features/tool-panel/AgentLauncherToolContent.test.tsx b/src/features/tool-panel/AgentLauncherToolContent.test.tsx
+index 60811d29..819735ad 100644
+--- a/src/features/tool-panel/AgentLauncherToolContent.test.tsx
++++ b/src/features/tool-panel/AgentLauncherToolContent.test.tsx
+@@ -65,7 +65,15 @@ vi.mock("../terminal/XtermPane", () => ({
+   XtermPane: (props: {
+     args?: string[];
+     cwd?: string;
++    env?: Record<string, string>;
++    focusRequestToken?: number;
+     focused?: boolean;
++    inputCompatibilityMode?: string;
++    inputRequest?: { id: string; submit?: boolean; text: string } | null;
++    onTerminalDimensionsChange?: (dimensions: {
++      cols: number;
++      rows: number;
++    }) => void;
+     paneId?: string;
+     shell?: string;
+     shellAssistEnabled?: boolean;
+@@ -79,7 +87,14 @@ vi.mock("../terminal/XtermPane", () => ({
+       <div
+         data-args={(props.args ?? []).join(" ")}
+         data-cwd={props.cwd}
++        data-env-colorterm={props.env?.COLORTERM ?? ""}
++        data-env-term={props.env?.TERM ?? ""}
++        data-focus-request-token={String(props.focusRequestToken)}
+         data-focused={String(props.focused)}
++        data-input-compatibility-mode={props.inputCompatibilityMode}
++        data-input-request-id={props.inputRequest?.id ?? ""}
++        data-input-request-submit={String(props.inputRequest?.submit ?? false)}
++        data-input-request-text={props.inputRequest?.text ?? ""}
+         data-pane-id={props.paneId}
+         data-shell={props.shell}
+         data-shell-assist-enabled={String(props.shellAssistEnabled)}
+@@ -187,14 +202,14 @@ describe("AgentLauncherToolContent", () => {
+   it("starts as three minimal launcher buttons", async () => {
+     render(<AgentLauncherToolContent />);
+ 
+-    expect(await screen.findByRole("button", { name: "Open Codex" })).toBeInTheDocument();
++    expect(await screen.findByRole("button", { name: "打开Codex" })).toBeInTheDocument();
+     expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+-      "Open Codex",
+-      "Open Claude",
+-      "Open Custom Agent",
++      "打开Codex",
++      "打开Claude",
++      "打开自定义 Agent",
+     ]);
+     expect(
+-      screen.queryByRole("textbox", { name: "Custom agent command" }),
++      screen.queryByRole("textbox", { name: "自定义 Agent 命令" }),
+     ).not.toBeInTheDocument();
+   });
+ 
+@@ -204,12 +219,12 @@ describe("AgentLauncherToolContent", () => {
+     render(<AgentLauncherToolContent />);
+ 
+     expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+-      "Open Codex",
+-      "Open Claude",
+-      "Open Custom Agent",
++      "打开Codex",
++      "打开Claude",
++      "打开自定义 Agent",
+     ]);
+     expect(
+-      screen.queryByRole("textbox", { name: "Custom agent command" }),
++      screen.queryByRole("textbox", { name: "自定义 Agent 命令" }),
+     ).not.toBeInTheDocument();
+   });
+ 
+@@ -218,9 +233,9 @@ describe("AgentLauncherToolContent", () => {
+ 
+     render(<AgentLauncherToolContent />);
+ 
+-    expect(await screen.findByRole("button", { name: "Open Codex" })).toBeInTheDocument();
++    expect(await screen.findByRole("button", { name: "打开Codex" })).toBeInTheDocument();
+ 
+-    await user.click(screen.getByRole("button", { name: "Open Codex" }));
++    await user.click(screen.getByRole("button", { name: "打开Codex" }));
+ 
+     await waitFor(() => {
+       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
+@@ -252,7 +267,15 @@ describe("AgentLauncherToolContent", () => {
+           "codex",
+         ],
+         cwd: "C:/Users/me/.kerminal/agents/sessions/ags-codex",
++        env: expect.objectContaining({
++          COLORTERM: "truecolor",
++          KERMINAL_AGENT_SESSION_ID: "ags-codex",
++          KERMINAL_MCP_ENDPOINT:
++            "http://127.0.0.1:37657/mcp/agents/ags-codex",
++          TERM: "xterm-256color",
++        }),
+         focused: true,
++        inputCompatibilityMode: "agentTui",
+         shell: "pwsh.exe",
+         shellAssistEnabled: false,
+         startupMessage: "加载 Codex...\r\n",
+@@ -262,12 +285,117 @@ describe("AgentLauncherToolContent", () => {
+     );
+   });
+ 
++  it("opens agents as a native terminal without an external prompt composer", async () => {
++    const user = userEvent.setup();
++
++    render(<AgentLauncherToolContent />);
++
++    await user.click(await screen.findByRole("button", { name: "打开Codex" }));
++
++    expect(await screen.findByTestId("agent-xterm")).toBeInTheDocument();
++    expect(
++      screen.queryByRole("textbox", { name: "Agent 提示词编辑器" }),
++    ).not.toBeInTheDocument();
++    expect(
++      screen.queryByRole("button", { name: "发送提示词到 Agent" }),
++    ).not.toBeInTheDocument();
++    expect(
++      screen.queryByRole("button", { name: "将提示词加入队列" }),
++    ).not.toBeInTheDocument();
++    expect(
++      screen.queryByRole("button", { name: "切换等待用户状态" }),
++    ).not.toBeInTheDocument();
++    expect(screen.queryByTestId("agent-prompt-queue-count")).not.toBeInTheDocument();
++  });
++
++  it("preserves an explicit non-dumb TERM from the launch spec", async () => {
++    const user = userEvent.setup();
++    apiMocks.prepareExternalAgentWorkspace.mockResolvedValueOnce({
++      agentId: "codex",
++      agentSessionId: "ags-codex",
++      args: ["codex"],
++      cwd: "C:/Users/me/.kerminal/agents/sessions/ags-codex",
++      env: {
++        COLORTERM: "24bit",
++        KERMINAL_AGENT_SESSION_ID: "ags-codex",
++        TERM: "xterm-kitty",
++      },
++      shell: "pwsh.exe",
++      title: "Codex",
++    });
++
++    render(<AgentLauncherToolContent />);
++
++    await user.click(await screen.findByRole("button", { name: "打开Codex" }));
++
++    expect(await screen.findByTestId("agent-xterm")).toHaveAttribute(
++      "data-env-term",
++      "xterm-kitty",
++    );
++    expect(screen.getByTestId("agent-xterm")).toHaveAttribute(
++      "data-env-colorterm",
++      "24bit",
++    );
++  });
++
++  it("warns when the embedded agent terminal is smaller than 80x24", async () => {
++    const user = userEvent.setup();
++
++    render(<AgentLauncherToolContent />);
++
++    await user.click(await screen.findByRole("button", { name: "打开Codex" }));
++    expect(await screen.findByTestId("agent-xterm")).toBeInTheDocument();
++
++    const xtermProps = terminalMocks.renderXtermPane.mock.lastCall?.[0] as {
++      onTerminalDimensionsChange?: (dimensions: {
++        cols: number;
++        rows: number;
++      }) => void;
++    };
++    act(() => {
++      xtermProps.onTerminalDimensionsChange?.({ cols: 72, rows: 18 });
++    });
++
++    expect(screen.getByTestId("agent-terminal-size-warning")).toHaveTextContent(
++      "终端 72x18，建议至少 80x24",
++    );
++
++    act(() => {
++      xtermProps.onTerminalDimensionsChange?.({ cols: 100, rows: 30 });
++    });
++
++    await waitFor(() => {
++      expect(
++        screen.queryByTestId("agent-terminal-size-warning"),
++      ).not.toBeInTheDocument();
++    });
++  });
++
++  it("requests terminal focus from passive header clicks", async () => {
++    const user = userEvent.setup();
++
++    render(<AgentLauncherToolContent />);
++
++    await user.click(await screen.findByRole("button", { name: "打开Codex" }));
++    expect(await screen.findByTestId("agent-xterm")).toHaveAttribute(
++      "data-focus-request-token",
++      "0",
++    );
++
++    fireEvent.pointerDown(screen.getByTestId("agent-terminal-command"));
++
++    expect(screen.getByTestId("agent-xterm")).toHaveAttribute(
++      "data-focus-request-token",
++      "1",
++    );
++  });
++
+   it("opens Codex with skipped permissions from the launcher context menu", async () => {
+     const user = userEvent.setup();
+ 
+     render(<AgentLauncherToolContent />);
+ 
+-    const codexButton = await screen.findByRole("button", { name: "Open Codex" });
++    const codexButton = await screen.findByRole("button", { name: "打开Codex" });
+     fireEvent.contextMenu(codexButton, { clientX: 120, clientY: 160 });
+ 
+     const menu = await screen.findByRole("menu");
+@@ -278,7 +406,7 @@ describe("AgentLauncherToolContent", () => {
+ 
+     await user.click(
+       screen.getByRole("menuitem", {
+-        name: "Launch Codex with skipped permissions",
++        name: "跳过权限打开Codex",
+       }),
+     );
+ 
+@@ -303,12 +431,12 @@ describe("AgentLauncherToolContent", () => {
+ 
+     render(<AgentLauncherToolContent />);
+ 
+-    const claudeButton = await screen.findByRole("button", { name: "Open Claude" });
++    const claudeButton = await screen.findByRole("button", { name: "打开Claude" });
+     fireEvent.contextMenu(claudeButton, { clientX: 120, clientY: 160 });
+ 
+     await user.click(
+       await screen.findByRole("menuitem", {
+-        name: "Launch Claude with skipped permissions",
++        name: "跳过权限打开Claude",
+       }),
+     );
+ 
+@@ -352,7 +480,7 @@ describe("AgentLauncherToolContent", () => {
+       />,
+     );
+ 
+-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
++    await user.click(await screen.findByRole("button", { name: "打开Codex" }));
+ 
+     await waitFor(() => {
+       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
+@@ -406,15 +534,15 @@ describe("AgentLauncherToolContent", () => {
+ 
+     render(<AgentLauncherToolContent />);
+ 
+-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
++    await user.click(await screen.findByRole("button", { name: "打开Codex" }));
+     expect(await screen.findByTestId("agent-target-chip")).toHaveTextContent(
+       "未绑定",
+     );
+ 
+-    await user.click(screen.getByRole("button", { name: "Rebind agent target" }));
++    await user.click(screen.getByRole("button", { name: "重新绑定 Agent 目标" }));
+     await user.click(
+       await screen.findByRole("button", {
+-        name: "Bind agent target to rebind-host",
++        name: "将 Agent 目标绑定到 rebind-host",
+       }),
+     );
+ 
+@@ -436,6 +564,10 @@ describe("AgentLauncherToolContent", () => {
+     expect(screen.getByTestId("agent-target-chip")).toHaveTextContent(
+       "rebind-host · /srv/rebound",
+     );
++    expect(screen.getByTestId("agent-xterm")).toHaveAttribute(
++      "data-focus-request-token",
++      "1",
++    );
+   });
+ 
+   it("continues a persisted Codex agent session without creating a new one", async () => {
+@@ -463,7 +595,7 @@ describe("AgentLauncherToolContent", () => {
+ 
+     render(<AgentLauncherToolContent />);
+ 
+-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
++    await user.click(await screen.findByRole("button", { name: "打开Codex" }));
+ 
+     expect(await screen.findByRole("button", { name: "继续上次" })).toBeInTheDocument();
+     expect(screen.getByRole("button", { name: "新会话" })).toBeInTheDocument();
+@@ -512,7 +644,7 @@ describe("AgentLauncherToolContent", () => {
+ 
+     render(<AgentLauncherToolContent />);
+ 
+-    await user.click(await screen.findByRole("button", { name: "Open Claude" }));
++    await user.click(await screen.findByRole("button", { name: "打开Claude" }));
+     await user.click(await screen.findByRole("button", { name: "继续上次" }));
+ 
+     await waitFor(() => {
+@@ -551,7 +683,7 @@ describe("AgentLauncherToolContent", () => {
+ 
+     render(<AgentLauncherToolContent />);
+ 
+-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
++    await user.click(await screen.findByRole("button", { name: "打开Codex" }));
+     await user.click(await screen.findByRole("button", { name: "新会话" }));
+ 
+     await waitFor(() => {
+@@ -607,7 +739,7 @@ describe("AgentLauncherToolContent", () => {
+ 
+     render(<AgentLauncherToolContent />);
+ 
+-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
++    await user.click(await screen.findByRole("button", { name: "打开Codex" }));
+ 
+     expect(await screen.findByTestId("agent-restore-target-chip")).toHaveTextContent(
+       "已失效",
+@@ -632,7 +764,7 @@ describe("AgentLauncherToolContent", () => {
+ 
+     render(<AgentLauncherToolContent />);
+ 
+-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
++    await user.click(await screen.findByRole("button", { name: "打开Codex" }));
+ 
+     await waitFor(() => {
+       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledTimes(1);
+@@ -643,11 +775,11 @@ describe("AgentLauncherToolContent", () => {
+     );
+ 
+     await user.click(
+-      screen.getByRole("button", { name: "Back to agent launcher" }),
++      screen.getByRole("button", { name: "返回 Agent 启动器" }),
+     );
+ 
+     expect(
+-      await screen.findByRole("button", { name: "Open Codex" }),
++      await screen.findByRole("button", { name: "打开Codex" }),
+     ).toBeInTheDocument();
+     expect(screen.getByTestId("agent-xterm")).toBeInTheDocument();
+     expect(screen.getByTestId("agent-xterm")).toHaveAttribute(
+@@ -655,7 +787,7 @@ describe("AgentLauncherToolContent", () => {
+       "false",
+     );
+ 
+-    await user.click(screen.getByRole("button", { name: "Open Codex" }));
++    await user.click(screen.getByRole("button", { name: "打开Codex" }));
+ 
+     expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledTimes(1);
+     await waitFor(() => {
+@@ -694,7 +826,7 @@ describe("AgentLauncherToolContent", () => {
+ 
+     render(<AgentLauncherToolContent />);
+ 
+-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
++    await user.click(await screen.findByRole("button", { name: "打开Codex" }));
+ 
+     await waitFor(() => {
+       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
+@@ -705,10 +837,10 @@ describe("AgentLauncherToolContent", () => {
+     });
+ 
+     await user.click(
+-      screen.getByRole("button", { name: "Back to agent launcher" }),
++      screen.getByRole("button", { name: "返回 Agent 启动器" }),
+     );
+ 
+-    await user.click(await screen.findByRole("button", { name: "Open Claude" }));
++    await user.click(await screen.findByRole("button", { name: "打开Claude" }));
+ 
+     await waitFor(() => {
+       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
+@@ -733,9 +865,9 @@ describe("AgentLauncherToolContent", () => {
+     );
+ 
+     await user.click(
+-      screen.getByRole("button", { name: "Back to agent launcher" }),
++      screen.getByRole("button", { name: "返回 Agent 启动器" }),
+     );
+-    await user.click(screen.getByRole("button", { name: "Open Codex" }));
++    await user.click(screen.getByRole("button", { name: "打开Codex" }));
+ 
+     expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledTimes(2);
+     await waitFor(() => {
+@@ -762,7 +894,7 @@ describe("AgentLauncherToolContent", () => {
+       />,
+     );
+ 
+-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
++    await user.click(await screen.findByRole("button", { name: "打开Codex" }));
+     await waitFor(() => {
+       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledTimes(1);
+     });
+@@ -819,9 +951,9 @@ describe("AgentLauncherToolContent", () => {
+       />,
+     );
+ 
+-    expect(await screen.findByRole("button", { name: "Open Codex" })).toBeInTheDocument();
+-    expect(screen.getByRole("button", { name: "Open Claude" })).toBeInTheDocument();
+-    expect(screen.getByRole("button", { name: "Open Custom Agent" })).toBeInTheDocument();
++    expect(await screen.findByRole("button", { name: "打开Codex" })).toBeInTheDocument();
++    expect(screen.getByRole("button", { name: "打开Claude" })).toBeInTheDocument();
++    expect(screen.getByRole("button", { name: "打开自定义 Agent" })).toBeInTheDocument();
+   });
+ 
+   it("keeps a launched agent terminal while switching right-panel tools", async () => {
+@@ -834,7 +966,7 @@ describe("AgentLauncherToolContent", () => {
+       />,
+     );
+ 
+-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
++    await user.click(await screen.findByRole("button", { name: "打开Codex" }));
+ 
+     await waitFor(() => {
+       expect(apiMocks.createAgentSession).toHaveBeenCalledTimes(1);
+@@ -891,10 +1023,10 @@ describe("AgentLauncherToolContent", () => {
+ 
+     render(<AgentLauncherToolContent />);
+ 
+-    await user.click(await screen.findByRole("button", { name: "Open Custom Agent" }));
+-    await user.type(screen.getByRole("textbox", { name: "Custom agent command" }), "kimi --fast");
++    await user.click(await screen.findByRole("button", { name: "打开自定义 Agent" }));
++    await user.type(screen.getByRole("textbox", { name: "自定义 Agent 命令" }), "kimi --fast");
+     await user.click(
+-      screen.getByRole("button", { name: "Open custom agent command" }),
++      screen.getByRole("button", { name: "打开自定义 Agent 命令" }),
+     );
+ 
+     await waitFor(() => {
+@@ -924,10 +1056,10 @@ describe("AgentLauncherToolContent", () => {
+ 
+     render(<AgentLauncherToolContent />);
+ 
+-    await user.click(await screen.findByRole("button", { name: "Open Custom Agent" }));
++    await user.click(await screen.findByRole("button", { name: "打开自定义 Agent" }));
+ 
+     expect(
+-      screen.getByRole("button", { name: "Open custom agent command" }),
++      screen.getByRole("button", { name: "打开自定义 Agent 命令" }),
+     ).toBeDisabled();
+ 
+     await user.keyboard("{Enter}");
+diff --git a/src/features/tool-panel/AgentLauncherToolContent.tsx b/src/features/tool-panel/AgentLauncherToolContent.tsx
+index e3a7d061..cdd7eaab 100644
+--- a/src/features/tool-panel/AgentLauncherToolContent.tsx
++++ b/src/features/tool-panel/AgentLauncherToolContent.tsx
+@@ -52,7 +52,10 @@ import {
+   type PaneSessionListRecord,
+   type PaneSessionRecord,
+ } from "../terminal/terminalSessionRegistry";
+-import { XtermPane } from "../terminal/XtermPane";
++import {
++  XtermPane,
++  type XtermPaneDimensions,
++} from "../terminal/XtermPane";
+ import type { TerminalPane, TerminalTab } from "../workspace/types";
+ import {
+   agentLauncherErrorMessage,
+@@ -64,6 +67,7 @@ import {
+   type AgentLaunchPermissionMode,
+   type AgentActionViewModel,
+ } from "./agent-launcher/agentLauncherModel";
++import { resolveAgentTerminalViewportStatus } from "./agent-launcher/agentTerminalViewportModel";
+ 
+ interface AgentLauncherToolContentProps {
+   activeTab?: TerminalTab;
+@@ -124,38 +128,38 @@ const AGENT_LAUNCH_CONTEXT_MENU_INSET = 8;
+ 
+ const initialAgentActions: AgentActionViewModel[] = [
+   {
+-    actionLabel: "Open Codex",
++    actionLabel: "打开Codex",
+     agentId: "codex",
+     cliCommand: "codex",
+     configLabel: "Workspace",
+     configPath: "~/.kerminal/.codex/config.toml",
+     disabled: false,
+-    installLabel: "Launch",
+-    statusDetail: "Open Codex in the Kerminal workspace.",
++    installLabel: "启动",
++    statusDetail: "在 Kerminal 工作区打开 Codex。",
+     title: "Codex",
+     tone: "muted",
+   },
+   {
+-    actionLabel: "Open Claude",
++    actionLabel: "打开Claude",
+     agentId: "claude",
+     cliCommand: "claude",
+     configLabel: "Workspace",
+     configPath: "~/.kerminal/.mcp.json",
+     disabled: false,
+-    installLabel: "Launch",
+-    statusDetail: "Open Claude in the Kerminal workspace.",
++    installLabel: "启动",
++    statusDetail: "在 Kerminal 工作区打开 Claude。",
+     title: "Claude",
+     tone: "muted",
+   },
+   {
+-    actionLabel: "Open Custom Agent",
++    actionLabel: "打开自定义 Agent",
+     agentId: "custom",
+-    cliCommand: "User supplied CLI",
+-    configLabel: "Explicit command",
++    cliCommand: "用户提供的 CLI",
++    configLabel: "显式命令",
+     configPath: "~/.kerminal",
+     disabled: false,
+-    installLabel: "Launch",
+-    statusDetail: "Enter a custom CLI command to run in the Kerminal workspace.",
++    installLabel: "启动",
++    statusDetail: "输入自定义 CLI 命令，在 Kerminal 工作区运行。",
+     title: "Custom",
+     tone: "muted",
+   },
+@@ -564,11 +568,9 @@ export function AgentLauncherToolContent({
+                   launchCustomAgent();
+                 }}
+               >
+-                <label className="sr-only">
+-                  Custom CLI command
+-                </label>
++                <label className="sr-only">自定义 CLI 命令</label>
+                 <input
+-                  aria-label="Custom agent command"
++                  aria-label="自定义 Agent 命令"
+                   autoFocus
+                   className="h-8 min-w-0 flex-1 rounded-xl border border-transparent bg-transparent px-2 font-mono text-xs text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-sky-400/50 focus:bg-white/70 focus:ring-4 focus:ring-sky-400/15 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:bg-white/10"
+                   onChange={(event) => setCustomCommand(event.target.value)}
+@@ -576,7 +578,7 @@ export function AgentLauncherToolContent({
+                   value={customCommand}
+                 />
+                 <Button
+-                  aria-label="Open custom agent command"
++                  aria-label="打开自定义 Agent 命令"
+                   disabled={actionState !== null || !customCommand.trim()}
+                   size="icon"
+                   type="submit"
+@@ -604,9 +606,9 @@ export function AgentLauncherToolContent({
+         </div>
+ 
+         {loadState === "error" && !status ? (
+-          <InlineError message={loadError ?? "Agent workspace unavailable."}>
++          <InlineError message={loadError ?? "Agent 工作区不可用。"}>
+             <Button onClick={() => void loadStatus("loading")} size="sm">
+-              Retry
++              重试
+             </Button>
+           </InlineError>
+         ) : null}
+@@ -920,7 +922,7 @@ function AgentIconButton({
+ 
+   return (
+     <button
+-      aria-label={agent.agentId === "custom" ? "Open Custom Agent" : `Open ${agent.title}`}
++      aria-label={agent.agentId === "custom" ? "打开自定义 Agent" : `打开${agent.title}`}
+       className={cn(
+         "kerminal-pressable kerminal-focus-ring flex h-16 min-w-0 flex-col items-center justify-center gap-1.5 rounded-2xl border border-transparent bg-transparent text-zinc-700 transition hover:border-[var(--border-subtle)] hover:bg-[var(--surface-hover)] active:scale-[0.98] dark:text-zinc-200",
+         disabled && "cursor-not-allowed opacity-45",
+@@ -965,7 +967,7 @@ function AgentLaunchContextMenu({
+ 
+   return (
+     <div
+-      aria-label={`${agent.title} launch options`}
++      aria-label={`${agent.title} 启动选项`}
+       className={agentLaunchContextMenuClassName}
+       onClick={(event) => event.stopPropagation()}
+       onContextMenu={(event) => event.preventDefault()}
+@@ -977,7 +979,7 @@ function AgentLaunchContextMenu({
+     >
+       <div className="kerminal-context-menu-group">
+         <button
+-          aria-label={`Launch ${agent.title} with skipped permissions`}
++          aria-label={`跳过权限打开${agent.title}`}
+           className="kerminal-context-menu-item kerminal-agent-launch-menu-item"
+           onClick={() => onLaunch("skipPermissions")}
+           role="menuitem"
+@@ -1015,6 +1017,9 @@ function AgentTerminalView({
+   terminalAppearance: TerminalAppearance;
+ }) {
+   const [rebindOpen, setRebindOpen] = useState(false);
++  const [focusRequestToken, setFocusRequestToken] = useState(0);
++  const [terminalDimensions, setTerminalDimensions] =
++    useState<XtermPaneDimensions | null>(null);
+   const [availableTargets, setAvailableTargets] = useState<
+     PaneSessionListRecord[]
+   >([]);
+@@ -1024,6 +1029,7 @@ function AgentTerminalView({
+   const workspacePath = compactWorkspacePath(session.cwd);
+   const title = session.title === "Custom" ? "自定义" : session.title;
+   const targetLabel = formatTargetChipLabel(session.target);
++  const viewportStatus = resolveAgentTerminalViewportStatus(terminalDimensions);
+   const notificationLastSentAtRef = useRef<Record<string, number | undefined>>(
+     {},
+   );
+@@ -1053,6 +1059,9 @@ function AgentTerminalView({
+     },
+     [desktopNotifications, session.agentSessionId, title],
+   );
++  const requestTerminalFocus = useCallback(() => {
++    setFocusRequestToken((current) => current + 1);
++  }, []);
+   const openRebindTargets = () => {
+     setAvailableTargets(
+       listTerminalPaneSessionRecords().filter(
+@@ -1061,11 +1070,36 @@ function AgentTerminalView({
+     );
+     setRebindOpen((open) => !open);
+   };
++  const focusTerminalFromPassiveHeader = (
++    event: ReactMouseEvent<HTMLElement>,
++  ) => {
++    if (
++      (event.target as HTMLElement | null)?.closest(
++        "button,a,input,textarea,select,[role='menu']",
++      )
++    ) {
++      return;
++    }
++    requestTerminalFocus();
++  };
++  const handleTerminalDimensionsChange = useCallback(
++    (dimensions: XtermPaneDimensions) => {
++      setTerminalDimensions((current) =>
++        current?.cols === dimensions.cols && current.rows === dimensions.rows
++          ? current
++          : dimensions,
++      );
++    },
++    [],
++  );
+   return (
+     <section className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--surface-terminal)]">
+-      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface-solid)] px-2.5">
++      <header
++        className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface-solid)] px-2.5"
++        onPointerDown={focusTerminalFromPassiveHeader}
++      >
+         <Button
+-          aria-label="Back to agent launcher"
++          aria-label="返回 Agent 启动器"
+           className="h-8 w-8 rounded-xl"
+           onClick={onBack}
+           size="icon"
+@@ -1090,7 +1124,7 @@ function AgentTerminalView({
+         </div>
+         <div className="relative shrink-0">
+           <button
+-            aria-label="Rebind agent target"
++            aria-label="重新绑定 Agent 目标"
+             className={cn(
+               "kerminal-pressable kerminal-focus-ring flex h-7 max-w-[132px] items-center gap-1.5 rounded-full border px-2 text-[11px] font-medium transition",
+               session.target?.liveStatus === "stale" ||
+@@ -1116,7 +1150,7 @@ function AgentTerminalView({
+                     const targetKey = `${record.paneId}:${record.sessionId}`;
+                     return (
+                       <button
+-                        aria-label={`Bind agent target to ${formatPaneRecordTitle(record)}`}
++                        aria-label={`将 Agent 目标绑定到 ${formatPaneRecordTitle(record)}`}
+                         className="kerminal-pressable kerminal-focus-ring flex w-full min-w-0 items-start gap-2 rounded-xl px-2 py-2 text-left transition hover:bg-[var(--surface-hover)]"
+                         disabled={rebindBusyTarget !== null}
+                         key={targetKey}
+@@ -1126,6 +1160,7 @@ function AgentTerminalView({
+                           setRebindBusyTarget(null);
+                           if (ok) {
+                             setRebindOpen(false);
++                            requestTerminalFocus();
+                           }
+                         }}
+                         type="button"
+@@ -1155,13 +1190,28 @@ function AgentTerminalView({
+           ) : null}
+         </div>
+       </header>
+-      <div className="min-h-0 flex-1 p-2">
+-        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-[var(--border-subtle)] bg-[var(--surface-terminal)] shadow-sm shadow-black/5 dark:shadow-black/25">
++      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--surface-terminal)]">
++        {viewportStatus.tooSmall && viewportStatus.currentLabel ? (
++          <div
++            className="flex shrink-0 items-start gap-2 border-b border-amber-400/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-4 text-amber-800 dark:text-amber-100"
++            data-testid="agent-terminal-size-warning"
++            role="status"
++          >
++            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
++            <span className="min-w-0 flex-1 break-words">
++              终端 {viewportStatus.currentLabel}，建议至少{" "}
++              {viewportStatus.minLabel}；拖宽右栏获得完整 TUI。
++            </span>
++          </div>
++        ) : null}
++        <div className="flex min-h-0 flex-1">
+           <XtermPane
+             args={session.args}
+             cwd={session.cwd}
+-            env={session.env}
++            env={resolveAgentTerminalEnv(session.env)}
++            focusRequestToken={focusRequestToken}
+             focused={focused}
++            inputCompatibilityMode="agentTui"
+             key={session.agentSessionId}
+             paneId={paneId}
+             resolvedTheme={resolvedTheme}
+@@ -1172,6 +1222,7 @@ function AgentTerminalView({
+             title={session.title}
+             transientStartupMessage
+             onSessionFinished={notifyAgentSessionFinished}
++            onTerminalDimensionsChange={handleTerminalDimensionsChange}
+           />
+         </div>
+       </div>
+@@ -1179,6 +1230,16 @@ function AgentTerminalView({
+   );
+ }
+ 
++function resolveAgentTerminalEnv(
++  env?: Record<string, string>,
++): Record<string, string> {
++  return {
++    ...env,
++    TERM: env?.TERM && env.TERM !== "dumb" ? env.TERM : "xterm-256color",
++    COLORTERM: env?.COLORTERM ?? "truecolor",
++  };
++}
++
+ function clampAgentLaunchContextMenuPosition(
+   x: number,
+   y: number,

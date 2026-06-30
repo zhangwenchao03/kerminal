@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "performance-doctor"
+  short_description: "Tauri performance diagnosis and optimization"
+  default_prompt: "Use $performance-doctor when investigating startup time, memory, rendering, IPC latency, build size, or runtime performance."

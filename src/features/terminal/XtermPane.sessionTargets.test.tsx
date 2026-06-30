@@ -5,6 +5,7 @@ import {
   mocks,
 } from "./__tests__/support/XtermPane.testSupport";
 import { XtermPane, collectCurrentDirOscSequences } from "./XtermPane";
+import { getTerminalPaneSessionRecord } from "./terminalSessionRegistry";
 
 describe("XtermPane session targets and appearance", () => {
   it("creates a command block for an empty enter without recording history", async () => {
@@ -116,6 +117,240 @@ describe("XtermPane session targets and appearance", () => {
     expect(onCurrentCwdChange).toHaveBeenLastCalledWith("/dev");
   });
 
+  it("trusts OSC 7 cwd updates only for local shell integration enabled sessions", async () => {
+    const onCurrentCwdChange = vi.fn();
+    mocks.api.createTerminalSession.mockImplementationOnce(
+      async (_request, onOutput) => {
+        mocks.setLatestOutputHandler(onOutput);
+        return {
+          cols: 80,
+          id: "session-integrated",
+          rows: 24,
+          shell: "pwsh.exe",
+          shellIntegration: {
+            shell: "powershell7",
+            status: "enabled",
+          },
+          status: "running",
+        };
+      },
+    );
+
+    render(
+      <XtermPane
+        focused
+        onCurrentCwdChange={onCurrentCwdChange}
+        paneId="pane-local-integrated"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="local pwsh"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    expect(mocks.terminalInstances[0].triggerOsc(7, "file:///C:/dev/app")).toBe(
+      true,
+    );
+    expect(onCurrentCwdChange).toHaveBeenLastCalledWith("C:/dev/app");
+
+    expect(mocks.terminalInstances[0].triggerOsc(133, "C")).toBe(true);
+    expect(
+      mocks.terminalInstances[0].triggerOsc(7, "file:///C:/tmp/spoof"),
+    ).toBe(true);
+    expect(onCurrentCwdChange).not.toHaveBeenLastCalledWith("C:/tmp/spoof");
+
+    expect(mocks.terminalInstances[0].triggerOsc(133, "D;0")).toBe(true);
+    expect(mocks.terminalInstances[0].triggerOsc(7, "file://host/c/work")).toBe(
+      true,
+    );
+    expect(onCurrentCwdChange).toHaveBeenLastCalledWith("C:/work");
+  });
+
+  it("uses trusted OSC 133 command start before creating integrated command blocks", async () => {
+    mocks.api.createTerminalSession.mockImplementationOnce(
+      async (_request, onOutput) => {
+        mocks.setLatestOutputHandler(onOutput);
+        return {
+          cols: 80,
+          id: "session-integrated-command",
+          rows: 24,
+          shell: "pwsh.exe",
+          shellIntegration: {
+            shell: "powershell7",
+            status: "enabled",
+          },
+          status: "running",
+        };
+      },
+    );
+
+    render(
+      <XtermPane
+        focused
+        paneId="pane-local-integrated-command"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="local pwsh"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    mocks.terminalInstances[0].onDataCallback?.("echo hi\r");
+    expect(screen.queryByLabelText("折叠命令块 echo hi")).not.toBeInTheDocument();
+    expect(mocks.api.writeTerminal).toHaveBeenCalledWith(
+      "session-integrated-command",
+      "echo hi\r",
+    );
+    expect(mocks.api.recordCommandHistory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "echo hi",
+        sessionId: "session-integrated-command",
+        target: "local",
+      }),
+    );
+
+    mocks.getLatestOutputHandler()?.({
+      data: "\u001b]133;C;echo hi\u0007hello\r\n\u001b]133;D;0\u0007PS> ",
+      kind: "data",
+      sessionId: "session-integrated-command",
+    });
+
+    expect(
+      await screen.findByLabelText("折叠命令块 echo hi"),
+    ).toBeInTheDocument();
+    mocks.terminalInstances[0].triggerOsc(133, "D;0");
+    await waitFor(() => {
+      expect(
+        getTerminalPaneSessionRecord("pane-local-integrated-command")
+          ?.commandBlockText,
+      ).toContain("hello");
+    });
+    expect(
+      getTerminalPaneSessionRecord("pane-local-integrated-command")
+        ?.commandBlockText,
+    ).not.toContain("PS>");
+  });
+
+  it("ignores OSC 7 cwd updates for local shell integration disabled sessions", async () => {
+    const onCurrentCwdChange = vi.fn();
+
+    render(
+      <XtermPane
+        focused
+        onCurrentCwdChange={onCurrentCwdChange}
+        paneId="pane-local-disabled"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="local shell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    expect(
+      mocks.terminalInstances[0].triggerOsc(7, "file://host/srv/app"),
+    ).toBe(false);
+    expect(onCurrentCwdChange).not.toHaveBeenCalled();
+  });
+
+  it("does not create command blocks for agent terminals with shell assist disabled", async () => {
+    mocks.api.createTerminalSession.mockImplementationOnce(
+      async (_request, onOutput) => {
+        mocks.setLatestOutputHandler(onOutput);
+        return {
+          cols: 80,
+          id: "session-agent-integrated",
+          rows: 24,
+          shell: "pwsh.exe",
+          shellIntegration: {
+            shell: "powershell7",
+            status: "enabled",
+          },
+          status: "running",
+        };
+      },
+    );
+
+    render(
+      <XtermPane
+        focused
+        paneId="pane-agent-integrated"
+        resolvedTheme="dark"
+        shellAssistEnabled={false}
+        terminalAppearance={defaultAppSettings.terminal}
+        title="agent terminal"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    mocks.terminalInstances[0].onDataCallback?.("echo hidden\r");
+    mocks.getLatestOutputHandler()?.({
+      data: "\u001b]133;C;echo hidden\u0007hidden\r\n\u001b]133;D;0\u0007",
+      kind: "data",
+      sessionId: "session-agent-integrated",
+    });
+    mocks.terminalInstances[0].triggerOsc(133, "C;echo hidden");
+
+    expect(screen.queryByLabelText(/命令块 echo hidden/)).not.toBeInTheDocument();
+    expect(mocks.api.recordCommandHistory).not.toHaveBeenCalled();
+    expect(
+      getTerminalPaneSessionRecord("pane-agent-integrated")?.commandBlockText,
+    ).toBeUndefined();
+  });
+
+  it("routes agent signal events without writing them into the terminal", async () => {
+    const onAgentSignal = vi.fn();
+
+    render(
+      <XtermPane
+        focused
+        onAgentSignal={onAgentSignal}
+        paneId="pane-agent-signal"
+        resolvedTheme="dark"
+        shellAssistEnabled={false}
+        terminalAppearance={defaultAppSettings.terminal}
+        title="agent terminal"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    mocks.terminalInstances[0].write.mockClear();
+    mocks.getLatestOutputHandler()?.({
+      agentSignal: {
+        agent: "codex",
+        agentSessionId: "ags-codex",
+        status: "working",
+        terminalSessionId: "session-1",
+      },
+      data: "",
+      kind: "agentSignal",
+      sessionId: "session-1",
+    });
+
+    expect(onAgentSignal).toHaveBeenCalledWith({
+      agent: "codex",
+      agentSessionId: "ags-codex",
+      status: "working",
+      terminalSessionId: "session-1",
+    });
+    expect(mocks.terminalInstances[0].write).not.toHaveBeenCalled();
+    expect(mocks.api.recordCommandHistory).not.toHaveBeenCalled();
+  });
+
   it("starts an SSH terminal session when a remote host id is provided", async () => {
     render(
       <XtermPane
@@ -165,6 +400,7 @@ describe("XtermPane session targets and appearance", () => {
           id: "ssh-session-redacted",
           rows: 24,
           shell: "ssh",
+          shellIntegration: { reason: "remote test default", status: "disabled" },
           status: "running",
         };
       },

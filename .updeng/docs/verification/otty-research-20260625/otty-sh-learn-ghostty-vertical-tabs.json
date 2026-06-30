@@ -1,0 +1,183 @@
+{
+  "url": "https://otty.sh/learn/ghostty-vertical-tabs/",
+  "title": "Does Ghostty support vertical tabs? | Otty Learn",
+  "description": "Ghostty uses native macOS top tabs and has no built-in vertical or side tab layout. Otty ships vertical tabs as its default sidebar and reads Ghostty-style config.",
+  "viewport": {
+    "width": 1440,
+    "height": 1200
+  },
+  "documentHeight": 3488,
+  "headings": [
+    {
+      "level": "h1",
+      "text": "Does Ghostty support vertical tabs?"
+    },
+    {
+      "level": "h2",
+      "text": "Short answer"
+    },
+    {
+      "level": "h2",
+      "text": "How tabs work in Ghostty"
+    },
+    {
+      "level": "h2",
+      "text": "Why people want vertical tabs in a terminal"
+    },
+    {
+      "level": "h2",
+      "text": "Workarounds in Ghostty"
+    },
+    {
+      "level": "h2",
+      "text": "Otty: vertical tabs as the default layout"
+    },
+    {
+      "level": "h2",
+      "text": "Migrating from Ghostty is low-friction"
+    },
+    {
+      "level": "h2",
+      "text": "Sources"
+    }
+  ],
+  "buttons": [
+    {
+      "tag": "a",
+      "text": "Otty",
+      "href": "https://otty.sh/"
+    },
+    {
+      "tag": "a",
+      "text": "Learn",
+      "href": "https://otty.sh/learn/"
+    },
+    {
+      "tag": "a",
+      "text": "Docs",
+      "href": "https://docs.otty.sh/"
+    },
+    {
+      "tag": "a",
+      "text": "Ghostty documentation",
+      "href": "https://ghostty.org/docs"
+    },
+    {
+      "tag": "a",
+      "text": "Otty vs Ghostty",
+      "href": "https://otty.sh/learn/otty-vs-ghostty/"
+    },
+    {
+      "tag": "a",
+      "text": "Otty documentation: Windows, tabs, and splits",
+      "href": "https://docs.otty.sh/user-interface/window-tab-split"
+    },
+    {
+      "tag": "a",
+      "text": "Otty documentation: Configuration reference",
+      "href": "https://docs.otty.sh/reference/configuration"
+    },
+    {
+      "tag": "a",
+      "text": "Ghostty documentation",
+      "href": "https://ghostty.org/docs"
+    },
+    {
+      "tag": "a",
+      "text": "Otty Windows, Tabs, and Splits documentation",
+      "href": "https://docs.otty.sh/user-interface/window-tab-split"
+    }
+  ],
+  "links": [
+    {
+      "href": "/",
+      "resolved": "https://otty.sh/",
+      "text": "Otty"
+    },
+    {
+      "href": "/learn/",
+      "resolved": "https://otty.sh/learn/",
+      "text": "Learn"
+    },
+    {
+      "href": "https://docs.otty.sh/",
+      "resolved": "https://docs.otty.sh/",
+      "text": "Docs"
+    },
+    {
+      "href": "https://ghostty.org/docs",
+      "resolved": "https://ghostty.org/docs",
+      "text": "Ghostty documentation"
+    },
+    {
+      "href": "/learn/otty-vs-ghostty/",
+      "resolved": "https://otty.sh/learn/otty-vs-ghostty/",
+      "text": "Otty vs Ghostty"
+    },
+    {
+      "href": "https://docs.otty.sh/user-interface/window-tab-split",
+      "resolved": "https://docs.otty.sh/user-interface/window-tab-split",
+      "text": "Otty documentation: Windows, tabs, and splits"
+    },
+    {
+      "href": "https://docs.otty.sh/reference/configuration",
+      "resolved": "https://docs.otty.sh/reference/configuration",
+      "text": "Otty documentation: Configuration reference"
+    },
+    {
+      "href": "https://ghostty.org/docs",
+      "resolved": "https://ghostty.org/docs",
+      "text": "Ghostty documentation"
+    },
+    {
+      "href": "https://docs.otty.sh/user-interface/window-tab-split",
+      "resolved": "https://docs.otty.sh/user-interface/window-tab-split",
+      "text": "Otty Windows, Tabs, and Splits documentation"
+    }
+  ],
+  "colors": {
+    "text": [
+      {
+        "value": "rgb(170, 162, 154)",
+        "count": 54
+      },
+      {
+        "value": "rgb(242, 239, 233)",
+        "count": 29
+      },
+      {
+        "value": "rgb(158, 158, 255)",
+        "count": 1
+      }
+    ],
+    "background": [
+      {
+        "value": "rgb(29, 29, 32)",
+        "count": 7
+      }
+    ],
+    "border": [
+      {
+        "value": "rgb(170, 162, 154)",
+        "count": 53
+      },
+      {
+        "value": "rgb(242, 239, 233)",
+        "count": 27
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.13) rgb(242, 239, 233) rgb(242, 239, 233)",
+        "count": 2
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.13) rgb(170, 162, 154) rgb(170, 162, 154)",
+        "count": 1
+      },
+      {
+        "value": "rgb(158, 158, 255)",
+        "count": 1
+      }
+    ]
+  },
+  "bodyTextSample": "Otty Learn Docs VERTICAL TABS Does Ghostty support vertical tabs? Ghostty uses native macOS top tabs and has no built-in vertical or side tab layout. Otty ships vertical tabs as its default sidebar and reads Ghostty-style config. Short answer Ghostty does not ship a built-in vertical or side-tab layout; on macOS it uses native top tabs. If you want vertical tabs in a native terminal, Otty uses a left tab sidebar as its default layout and reads Ghostty-style configuration, so switching keeps your config syntax and muscle memory. Ghostty is a fast, native terminal, and one of the most common questions from people setting it up is whether it can show tabs vertically — a side list of tabs down the edge of the window instead of a horizontal row across the top. It is a familiar layout from browsers like Arc, Edge, and Firefox, and it scales much better once you keep many sessions open. This article explains how tabs work in Ghostty today, why a vertical or side layout is hard to get there, and how Otty — a native macOS terminal that reads Ghostty-style configuration — ships vertical tabs as its default layout. How tabs work in Ghostty On macOS, Ghostty uses the native macOS tabbing model, which places tabs in a horizontal strip at the top of the window. That gives you system-native behavior — tab switching shortcuts, the tab overview, and full-screen tabs — but the orientation is fixed: tabs run left to right across the top. As of this writing, Ghostty does not ship a built-in vertical or side tab layout where tabs are listed down the left or right edge of the window. Terminal projects move quickly, so if you are evaluating the current state, check the Ghostty documentation for the version you are running. Why people want vertical tabs in a terminal Vertical tabs are not only an aesthetic preference. They solve real problems once you keep more than a handful of sessions open: Readable titles. A horizontal strip truncates tab titles fast. A vertical list gives each tab a f"
+}

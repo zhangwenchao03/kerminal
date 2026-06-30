@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-25T11:37:30.355Z",
+  "laneId": "lane-current-terminal-split-reconnect-fix",
+  "title": "修复新建分屏导致其他屏重新连接",
+  "plan": ".updeng/docs/plan/active/PLAN-20260625-185344-terminal-split-reconnect-fix.md",
+  "branch": null,
+  "worktree": "C:/dev/rust/kerminal",
+  "changedPaths": [
+    ".updeng/docs/plan/active/PLAN-20260625-185344-terminal-split-reconnect-fix.md",
+    "src/features/terminal/TerminalPaneCard.tsx",
+    "src/features/terminal/TerminalPaneLayout.tsx",
+    "src/features/terminal/TerminalWorkspace.test.tsx",
+    "src/features/terminal/TerminalWorkspaceContent.tsx",
+    "src/features/terminal/XtermPane.runtime.ts",
+    "src/features/terminal/XtermPane.tsx",
+    "src/features/workspace/types.ts",
+    "src/features/workspace/workspaceLayout.ts",
+    "src/features/workspace/workspaceStore.ts",
+    "src/features/workspace/workspaceTerminalState.ts"
+  ],
+  "trackedPatchPaths": [
+    "src/features/terminal/TerminalPaneCard.tsx",
+    "src/features/terminal/TerminalPaneLayout.tsx",
+    "src/features/terminal/TerminalWorkspace.test.tsx",
+    "src/features/terminal/XtermPane.runtime.ts",
+    "src/features/terminal/XtermPane.tsx",
+    "src/features/workspace/types.ts",
+    "src/features/workspace/workspaceLayout.ts",
+    "src/features/workspace/workspaceStore.ts",
+    "src/features/workspace/workspaceTerminalState.ts"
+  ],
+  "untrackedPaths": [
+    ".updeng/docs/plan/active/PLAN-20260625-185344-terminal-split-reconnect-fix.md",
+    "src/features/terminal/TerminalWorkspaceContent.tsx"
+  ],
+  "untrackedSnapshotPath": ".updeng/docs/coordination/checkpoints/lane-current-terminal-split-reconnect-fix.untracked.json",
+  "untrackedSnapshotCount": 2,
+  "omittedSnapshotPaths": [],
+  "sharedPaths": [
+    "src/features/terminal/XtermPane.runtime.ts",
+    "src/features/terminal/XtermPane.tsx",
+    "src/features/workspace/types.ts",
+    "src/features/workspace/workspaceLayout.ts",
+    "src/features/workspace/workspaceStore.ts",
+    "src/features/workspace/workspaceTerminalState.ts"
+  ],
+  "relatedConflicts": [
+    {
+      "path": "src/features/terminal/TerminalPaneLayout.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-current-left-terminal-layout-restore",
+          "kind": "owned",
+          "pattern": "src/features/terminal/TerminalPaneLayout.tsx"
+        },
+        {
+          "id": "lane-current-terminal-split-reconnect-fix",
+          "kind": "owned",
+          "pattern": "src/features/terminal/TerminalPaneLayout.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/features/terminal/TerminalWorkspace.test.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-current-left-terminal-layout-restore",
+          "kind": "owned",
+          "pattern": "src/features/terminal/TerminalWorkspace.test.tsx"
+        },
+        {
+          "id": "lane-current-terminal-split-reconnect-fix",
+          "kind": "owned",
+          "pattern": "src/features/terminal/TerminalWorkspace.test.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/features/terminal/XtermPane.runtime.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-current-agent-sidebar-terminal-polish",
+          "kind": "owned",
+          "pattern": "src/features/terminal/XtermPane.runtime.ts"
+        },
+        {
+          "id": "lane-current-terminal-split-reconnect-fix",
+          "kind": "shared",
+          "pattern": "src/features/terminal/XtermPane.runtime.ts"
+        }
+      ]
+    },
+    {
+      "path": "src/features/terminal/XtermPane.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-current-agent-sidebar-terminal-polish",
+          "kind": "owned",
+          "pattern": "src/features/terminal/XtermPane.tsx"
+        },
+        {
+          "id": "lane-current-terminal-split-reconnect-fix",
+          "kind": "shared",
+          "pattern": "src/features/terminal/XtermPane.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/features/workspace/types.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-current-left-terminal-layout-restore",
+          "kind": "owned",
+          "pattern": "src/features/workspace/types.ts"
+        },
+        {
+          "id": "lane-current-terminal-split-reconnect-fix",
+          "kind": "shared",
+          "pattern": "src/features/workspace/types.ts"
+        }
+      ]
+    },
+    {
+      "path": "src/features/workspace/workspaceLayout.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-current-left-terminal-layout-restore",
+          "kind": "owned",
+          "pattern": "src/features/workspace/workspaceLayout.ts"
+        },
+        {
+          "id": "lane-current-terminal-split-reconnect-fix",
+          "kind": "shared",
+          "pattern": "src/features/workspace/workspaceLayout.ts"
+        }
+      ]
+    },
+    {
+      "path": "src/features/workspace/workspaceStore.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-current-left-terminal-layout-restore",
+          "kind": "owned",
+          "pattern": "src/features/workspace/workspaceStore.ts"
+        },
+        {
+          "id": "lane-current-terminal-split-reconnect-fix",
+          "kind": "shared",
+          "pattern": "src/features/workspace/workspaceStore.ts"
+        },
+        {
+          "id": "lane-compose-aware-container-management-implementation",
+          "kind": "shared",
+          "pattern": "src/features/workspace/workspaceStore.ts"
+        }
+      ]
+    },
+    {
+      "path": "src/features/workspace/workspaceTerminalState.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-current-left-terminal-layout-restore",
+          "kind": "owned",
+          "pattern": "src/features/workspace/workspaceTerminalState.ts"
+        },
+        {
+          "id": "lane-current-terminal-split-reconnect-fix",
+          "kind": "shared",
+          "pattern": "src/features/workspace/workspaceTerminalState.ts"
+        }
+      ]
+    },
+    {
+      "path": "src/features/terminal/TerminalWorkspaceContent.tsx",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-current-left-terminal-layout-restore",
+          "kind": "owned",
+          "pattern": "src/features/terminal/TerminalWorkspaceContent.tsx"
+        },
+        {
+          "id": "lane-current-agent-sidebar-terminal-polish",
+          "kind": "shared",
+          "pattern": "src/features/terminal/TerminalWorkspaceContent.tsx"
+        },
+        {
+          "id": "lane-current-terminal-split-reconnect-fix",
+          "kind": "owned",
+          "pattern": "src/features/terminal/TerminalWorkspaceContent.tsx"
+        }
+      ]
+    }
+  ],
+  "note": "Patch contains tracked file diffs. Untracked and ignored workflow assets are captured in the untracked snapshot JSON when they are readable UTF-8 text."
+}

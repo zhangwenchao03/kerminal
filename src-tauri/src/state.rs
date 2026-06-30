@@ -108,6 +108,7 @@ impl AppState {
         let tmux = TmuxService::new();
         let workflows = WorkflowService::new(config_files.clone());
         let config_change_observer = ConfigChangeObserverService::new(config_files);
+        let shell_integration_cache = paths.cache.clone();
 
         Ok(Self {
             agent_context,
@@ -136,7 +137,7 @@ impl AppState {
             telnet_terminals,
             storage,
             terminal_session_bindings: TerminalSessionBindingService::default(),
-            terminals: TerminalManager::new(),
+            terminals: TerminalManager::with_shell_integration_cache_dir(shell_integration_cache),
             tmux,
             mcp_tool_catalog,
             workflows,

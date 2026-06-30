@@ -725,10 +725,21 @@ pub(super) fn execute_kerminal_runtime_snapshot(
                 "rows": session.rows,
                 "pid": session.pid,
                 "status": session.status,
-                "targetRef": session.target_ref
+                "targetRef": session.target_ref,
+                "agentSessionId": session.agent_session_id,
+                "agentSignal": session.agent_signal
             })
         })
         .collect::<Vec<_>>();
+    let agent_signal_by_agent_session_id = terminals
+        .iter()
+        .filter_map(|session| {
+            Some((
+                session.agent_session_id.as_ref()?.clone(),
+                session.agent_signal.clone()?,
+            ))
+        })
+        .collect::<std::collections::HashMap<_, _>>();
 
     let agent_sessions = match context.agent_sessions.list_sessions() {
         Ok(list) => {
@@ -760,6 +771,9 @@ pub(super) fn execute_kerminal_runtime_snapshot(
         .iter()
         .map(|record| {
             let status = serialized_name(&record.session.status);
+            let agent_signal = agent_signal_by_agent_session_id
+                .get(record.session.agent_session_id.as_str())
+                .cloned();
             match status.as_str() {
                 "active" => active_agent_sessions += 1,
                 "archived" => archived_agent_sessions += 1,
@@ -772,6 +786,7 @@ pub(super) fn execute_kerminal_runtime_snapshot(
                 "title": record.session.title,
                 "status": record.session.status,
                 "sessionRoot": record.session.session_root,
+                "agentSignal": agent_signal,
                 "target": record.session.target.as_ref().map(|target| {
                     json!({
                         "liveStatus": target.live_status,
@@ -855,15 +870,21 @@ pub(super) fn execute_kerminal_runtime_snapshot(
             "type": "terminalSession",
             "id": session.id,
             "status": session.status,
-            "targetRef": session.target_ref
+            "targetRef": session.target_ref,
+            "agentSessionId": session.agent_session_id,
+            "agentSignal": session.agent_signal
         })
     }));
     entities.extend(agent_sessions.iter().map(|record| {
+        let agent_signal = agent_signal_by_agent_session_id
+            .get(record.session.agent_session_id.as_str())
+            .cloned();
         json!({
             "type": "agentSession",
             "id": record.session.agent_session_id.as_str(),
             "status": record.session.status,
-            "title": record.session.title
+            "title": record.session.title,
+            "agentSignal": agent_signal
         })
     }));
     entities.extend(port_forwards.iter().map(|summary| {

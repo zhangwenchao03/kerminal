@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "PRD 与 Issue 规划"
+  short_description: "把需求和方案拆成 PRD、垂直切片和 agent brief"
+  default_prompt: "使用 $bwy-issue-planning 把当前需求整理成 PRD、AFK/HITL issue 切片和可验证验收标准。"

@@ -1,0 +1,171 @@
+{
+  "url": "https://otty.sh/learn/osc-26-terminal-agent-protocol/",
+  "title": "OSC 26 terminal agent protocol | Otty Learn",
+  "description": "OSC 26, also called the Terminal Agent Protocol, is Otty's proposed OSC sequence for letting code agents report identity, status, task progress, and session actions to a terminal.",
+  "viewport": {
+    "width": 1440,
+    "height": 1200
+  },
+  "documentHeight": 2768,
+  "headings": [
+    {
+      "level": "h1",
+      "text": "OSC 26 terminal agent protocol"
+    },
+    {
+      "level": "h2",
+      "text": "Short answer"
+    },
+    {
+      "level": "h2",
+      "text": "Short form"
+    },
+    {
+      "level": "h2",
+      "text": "What OSC 26 can carry"
+    },
+    {
+      "level": "h2",
+      "text": "Why code agents need it"
+    },
+    {
+      "level": "h2",
+      "text": "Relationship to OSC 88"
+    },
+    {
+      "level": "h2",
+      "text": "Status"
+    },
+    {
+      "level": "h2",
+      "text": "Sources"
+    }
+  ],
+  "buttons": [
+    {
+      "tag": "a",
+      "text": "Otty",
+      "href": "https://otty.sh/"
+    },
+    {
+      "tag": "a",
+      "text": "Learn",
+      "href": "https://otty.sh/learn/"
+    },
+    {
+      "tag": "a",
+      "text": "Docs",
+      "href": "https://docs.otty.sh/"
+    },
+    {
+      "tag": "a",
+      "text": "Otty documentation: OSC 26",
+      "href": "https://docs.otty.sh/vt/osc/osc-26"
+    },
+    {
+      "tag": "a",
+      "text": "Otty documentation: OSC 88",
+      "href": "https://docs.otty.sh/vt/osc/osc-88"
+    },
+    {
+      "tag": "a",
+      "text": "OSC 26 spec repository",
+      "href": "https://github.com/Otty-sh/osc-26"
+    },
+    {
+      "tag": "a",
+      "text": "OSC 26 Terminal Agent Protocol",
+      "href": "https://docs.otty.sh/vt/osc/osc-26"
+    }
+  ],
+  "links": [
+    {
+      "href": "/",
+      "resolved": "https://otty.sh/",
+      "text": "Otty"
+    },
+    {
+      "href": "/learn/",
+      "resolved": "https://otty.sh/learn/",
+      "text": "Learn"
+    },
+    {
+      "href": "https://docs.otty.sh/",
+      "resolved": "https://docs.otty.sh/",
+      "text": "Docs"
+    },
+    {
+      "href": "https://docs.otty.sh/vt/osc/osc-26",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-26",
+      "text": "Otty documentation: OSC 26"
+    },
+    {
+      "href": "https://docs.otty.sh/vt/osc/osc-88",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-88",
+      "text": "Otty documentation: OSC 88"
+    },
+    {
+      "href": "https://github.com/Otty-sh/osc-26",
+      "resolved": "https://github.com/Otty-sh/osc-26",
+      "text": "OSC 26 spec repository"
+    },
+    {
+      "href": "https://docs.otty.sh/vt/osc/osc-26",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-26",
+      "text": "OSC 26 Terminal Agent Protocol"
+    }
+  ],
+  "colors": {
+    "text": [
+      {
+        "value": "rgb(242, 239, 233)",
+        "count": 64
+      },
+      {
+        "value": "rgb(170, 162, 154)",
+        "count": 38
+      },
+      {
+        "value": "rgb(158, 158, 255)",
+        "count": 1
+      }
+    ],
+    "background": [
+      {
+        "value": "rgb(29, 29, 32)",
+        "count": 30
+      }
+    ],
+    "border": [
+      {
+        "value": "rgb(242, 239, 233)",
+        "count": 60
+      },
+      {
+        "value": "rgb(170, 162, 154) rgb(170, 162, 154) rgba(255, 255, 255, 0.13)",
+        "count": 20
+      },
+      {
+        "value": "rgb(170, 162, 154)",
+        "count": 17
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.13) rgb(242, 239, 233) rgb(242, 239, 233)",
+        "count": 2
+      },
+      {
+        "value": "rgb(242, 239, 233) rgb(242, 239, 233) rgba(255, 255, 255, 0.13)",
+        "count": 2
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.13) rgb(170, 162, 154) rgb(170, 162, 154)",
+        "count": 1
+      },
+      {
+        "value": "rgb(158, 158, 255)",
+        "count": 1
+      }
+    ]
+  },
+  "bodyTextSample": "Otty Learn Docs TERMINAL PROTOCOLS OSC 26 terminal agent protocol OSC 26, also called the Terminal Agent Protocol, is Otty's proposed OSC sequence for letting code agents report identity, status, task progress, and session actions to a terminal. Short answer OSC 26 is the proposed Terminal Agent Protocol for code agents. It lets tools such as Codex, Claude Code, OpenCode, or Aider declare their agent identity, session id, status, task progress, title, project folder, resume method, and fork method to a supporting terminal. OSC 26 is Otty's proposed Terminal Agent Protocol, or TAP. It is an OSC escape sequence that gives terminal-based coding agents a small structured channel for live metadata. The goal is simple: instead of a terminal guessing what a code agent is doing by scraping process names, private files, or screen text, the agent can announce its own state. Short form OSC 26 ; CodeAgent=claude ; Status=running ; TaskProgress=1/4 ST In raw bytes, OSC is ESC ] and ST is either ESC \\ or BEL. What OSC 26 can carry Field Meaning CodeAgent The agent kind, such as claude, codex, opencode, or aider. SessionId The agent session identifier. SessionTitle A title hint for the terminal tab or pane. ProjectFolder The project root for this agent session. Status A closed state such as idle, running, awaiting-approval, awaiting-input, error, or finished. Detail An open display detail such as thinking, before-tool-call, or edit-file. TaskList Newline-separated task labels. TaskProgress A literal fraction like 1/4. MethodResume A declarative hint for how to resume the session. MethodFork A declarative hint for how to fork or branch the session. Values that may contain spaces, semicolons, equals signs, or non-ASCII text are base64-encoded UTF-8. Stable tokens such as status enums can be sent literally. Why code agents need it Agent CLIs run inside ordinary terminal panes, but their useful state is not ordinary terminal text. A terminal wants to know whether an agent is thinking,"
+}

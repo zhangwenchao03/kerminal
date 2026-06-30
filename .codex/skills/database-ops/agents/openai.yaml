@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "database-ops"
+  short_description: "Tauri local database and migration operations"
+  default_prompt: "Use $database-ops when working with local database access, migrations, schema changes, or data verification in a Tauri app."

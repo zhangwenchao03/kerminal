@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-24T00:06:59.539Z",
+  "git": {
+    "branch": "main",
+    "commit": "160ccca5",
+    "dirty": true
+  },
+  "environment": {
+    "node": "v22.22.0",
+    "platform": "win32"
+  },
+  "config": {
+    "deltaCount": 1000,
+    "deltaIntervalMs": 12,
+    "deltaSize": 16,
+    "flushDelayMs": 32,
+    "stepCount": 20
+  },
+  "aiStreaming": {
+    "contentMatches": true,
+    "deltaCount": 1000,
+    "deltaSize": 16,
+    "elapsedMs": 11.651499999999999,
+    "finalBytes": 16000,
+    "heap": {
+      "deltaBytes": -219632,
+      "endBytes": 5170432,
+      "startBytes": 5390064
+    },
+    "localStorageWrites": 1020,
+    "serializedBytes": 8429502,
+    "stateUpdates": 1020,
+    "stepCount": 20
+  },
+  "bufferedAiStreaming": {
+    "contentMatches": true,
+    "deltaCount": 1000,
+    "deltaIntervalMs": 12,
+    "deltaSize": 16,
+    "elapsedMs": 0.20179999999999865,
+    "finalBytes": 16000,
+    "flushDelayMs": 32,
+    "heap": {
+      "deltaBytes": 180336,
+      "endBytes": 5576816,
+      "startBytes": 5396480
+    },
+    "localStorageWrites": 1,
+    "serializedBytes": 17506,
+    "stateUpdates": 354,
+    "stepCount": 20
+  },
+  "summary": {
+    "bufferedLocalStorageWrites": 1,
+    "bufferedStateUpdates": 354,
+    "contentMatches": true,
+    "elapsedMs": 11.651499999999999,
+    "localStorageWrites": 1020,
+    "localStorageWriteReduction": 1019,
+    "pass": true,
+    "stateUpdateReduction": 666,
+    "stateUpdates": 1020
+  }
+}

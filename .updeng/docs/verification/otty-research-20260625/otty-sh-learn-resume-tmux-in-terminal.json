@@ -1,0 +1,129 @@
+{
+  "url": "https://otty.sh/learn/resume-tmux-in-terminal/",
+  "title": "How to resume a tmux session after restarting your terminal | Otty Learn",
+  "description": "Otty can restore your previous terminal layout and reattach tmux sessions after restart, so long-running work comes back where you left it.",
+  "viewport": {
+    "width": 1440,
+    "height": 1200
+  },
+  "documentHeight": 2436,
+  "headings": [
+    {
+      "level": "h1",
+      "text": "How to resume a tmux session after restarting your terminal"
+    },
+    {
+      "level": "h2",
+      "text": "Short answer"
+    },
+    {
+      "level": "h2",
+      "text": "The short setup"
+    },
+    {
+      "level": "h2",
+      "text": "Why this works"
+    },
+    {
+      "level": "h2",
+      "text": "A practical workflow"
+    },
+    {
+      "level": "h2",
+      "text": "What Otty restores"
+    },
+    {
+      "level": "h2",
+      "text": "What tmux still owns"
+    }
+  ],
+  "buttons": [
+    {
+      "tag": "a",
+      "text": "Otty",
+      "href": "https://otty.sh/"
+    },
+    {
+      "tag": "a",
+      "text": "Learn",
+      "href": "https://otty.sh/learn/"
+    },
+    {
+      "tag": "a",
+      "text": "Docs",
+      "href": "https://docs.otty.sh/"
+    },
+    {
+      "tag": "a",
+      "text": "Otty Session Recovery documentation",
+      "href": "https://docs.otty.sh/workflows/session-recovery"
+    }
+  ],
+  "links": [
+    {
+      "href": "/",
+      "resolved": "https://otty.sh/",
+      "text": "Otty"
+    },
+    {
+      "href": "/learn/",
+      "resolved": "https://otty.sh/learn/",
+      "text": "Learn"
+    },
+    {
+      "href": "https://docs.otty.sh/",
+      "resolved": "https://docs.otty.sh/",
+      "text": "Docs"
+    },
+    {
+      "href": "https://docs.otty.sh/workflows/session-recovery",
+      "resolved": "https://docs.otty.sh/workflows/session-recovery",
+      "text": "Otty Session Recovery documentation"
+    }
+  ],
+  "colors": {
+    "text": [
+      {
+        "value": "rgb(170, 162, 154)",
+        "count": 26
+      },
+      {
+        "value": "rgb(242, 239, 233)",
+        "count": 21
+      },
+      {
+        "value": "rgb(158, 158, 255)",
+        "count": 1
+      }
+    ],
+    "background": [
+      {
+        "value": "rgb(29, 29, 32)",
+        "count": 3
+      }
+    ],
+    "border": [
+      {
+        "value": "rgb(170, 162, 154)",
+        "count": 25
+      },
+      {
+        "value": "rgb(242, 239, 233)",
+        "count": 19
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.13) rgb(242, 239, 233) rgb(242, 239, 233)",
+        "count": 2
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.13) rgb(170, 162, 154) rgb(170, 162, 154)",
+        "count": 1
+      },
+      {
+        "value": "rgb(158, 158, 255)",
+        "count": 1
+      }
+    ]
+  },
+  "bodyTextSample": "Otty Learn Docs SESSION RECOVERY How to resume a tmux session after restarting your terminal Otty can restore your previous terminal layout and reattach tmux sessions after restart, so long-running work comes back where you left it. Short answer Yes. Otty can automatically restore your terminal windows, tabs, panes, working directories, scrollback, and tmux-backed multiplexer sessions after a restart. Leave Restore Multiplayer enabled and Otty reattaches tmux instead of opening a fresh shell. If you use tmux to keep development sessions alive, the best terminal restart is the one that does not make you rebuild your workspace. Otty's session recovery can reopen your previous windows, tabs, splits, working directories, and scrollback, then reattach the tmux session behind a restored pane. The short setup Keep On Launch set to Restore Last Session. Keep Restore Multiplayer enabled under Settings -> Shell -> Session Restore. Start tmux normally, for example tmux new -A -s work. Quit or restart Otty. Open Otty again and the restored pane reattaches to the tmux session instead of starting over. tmux new -A -s work is useful because it is idempotent: if the session exists, tmux attaches to it; if it does not, tmux creates it. Why this works tmux keeps the actual shell processes alive in a tmux server. Otty restores the terminal shape around that server: the app window, tab, split pane, working directory, scrollback, and the fact that the pane was connected to a multiplexer session. When Restore Multiplayer is on, Otty treats tmux as a live session to reattach, not as a one-off command to blindly replay. That is safer than rerunning arbitrary commands and closer to what tmux users expect. A practical workflow Start a named tmux session for a project: tmux new -A -s otty-work Run your editor, dev server, logs, tests, or code-agent shells inside tmux. If Otty restarts after an update, crash, reboot, or clean launch with restore enabled, Otty brings back the terminal workspace"
+}

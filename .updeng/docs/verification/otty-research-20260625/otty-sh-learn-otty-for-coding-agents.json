@@ -1,0 +1,133 @@
+{
+  "url": "https://otty.sh/learn/otty-for-coding-agents/",
+  "title": "Otty for coding agents | Otty Learn",
+  "description": "Otty is a native macOS terminal designed for running code agents like Codex, Claude Code, and OpenCode as first-class terminal sessions.",
+  "viewport": {
+    "width": 1440,
+    "height": 1200
+  },
+  "documentHeight": 2334,
+  "headings": [
+    {
+      "level": "h1",
+      "text": "Otty for coding agents"
+    },
+    {
+      "level": "h2",
+      "text": "Short answer"
+    },
+    {
+      "level": "h2",
+      "text": "What makes a terminal good for agents?"
+    },
+    {
+      "level": "h2",
+      "text": "Otty does not replace your agent CLI"
+    },
+    {
+      "level": "h2",
+      "text": "Why native terminal behavior still matters"
+    },
+    {
+      "level": "h2",
+      "text": "Best fit"
+    }
+  ],
+  "buttons": [
+    {
+      "tag": "a",
+      "text": "Otty",
+      "href": "https://otty.sh/"
+    },
+    {
+      "tag": "a",
+      "text": "Learn",
+      "href": "https://otty.sh/learn/"
+    },
+    {
+      "tag": "a",
+      "text": "Docs",
+      "href": "https://docs.otty.sh/"
+    },
+    {
+      "tag": "a",
+      "text": "Working with Code Agents",
+      "href": "https://docs.otty.sh/agents/agents-overview"
+    }
+  ],
+  "links": [
+    {
+      "href": "/",
+      "resolved": "https://otty.sh/",
+      "text": "Otty"
+    },
+    {
+      "href": "/learn/",
+      "resolved": "https://otty.sh/learn/",
+      "text": "Learn"
+    },
+    {
+      "href": "https://docs.otty.sh/",
+      "resolved": "https://docs.otty.sh/",
+      "text": "Docs"
+    },
+    {
+      "href": "https://docs.otty.sh/agents/agents-overview",
+      "resolved": "https://docs.otty.sh/agents/agents-overview",
+      "text": "Working with Code Agents"
+    }
+  ],
+  "colors": {
+    "text": [
+      {
+        "value": "rgb(242, 239, 233)",
+        "count": 30
+      },
+      {
+        "value": "rgb(170, 162, 154)",
+        "count": 25
+      },
+      {
+        "value": "rgb(158, 158, 255)",
+        "count": 1
+      }
+    ],
+    "background": [
+      {
+        "value": "rgb(29, 29, 32)",
+        "count": 3
+      }
+    ],
+    "border": [
+      {
+        "value": "rgb(242, 239, 233)",
+        "count": 26
+      },
+      {
+        "value": "rgb(170, 162, 154) rgb(170, 162, 154) rgba(255, 255, 255, 0.13)",
+        "count": 14
+      },
+      {
+        "value": "rgb(170, 162, 154)",
+        "count": 10
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.13) rgb(242, 239, 233) rgb(242, 239, 233)",
+        "count": 2
+      },
+      {
+        "value": "rgb(242, 239, 233) rgb(242, 239, 233) rgba(255, 255, 255, 0.13)",
+        "count": 2
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.13) rgb(170, 162, 154) rgb(170, 162, 154)",
+        "count": 1
+      },
+      {
+        "value": "rgb(158, 158, 255)",
+        "count": 1
+      }
+    ]
+  },
+  "bodyTextSample": "Otty Learn Docs CODING AGENTS Otty for coding agents Otty is a native macOS terminal designed for running code agents like Codex, Claude Code, and OpenCode as first-class terminal sessions. Short answer Otty is a native macOS terminal built for code-agent work. It keeps Codex, Claude Code, and OpenCode inside real terminal panes while adding agent state badges, notifications, prompt composition, session history, resume, fork, queueing, GPU rendering, and VT compatibility around them. Otty is for developers who spend real time inside terminal-based coding agents. Codex, Claude Code, and OpenCode still run as their own CLIs; Otty wraps those panes with native terminal UI that understands when an agent is running, idle, finished, or waiting on you. What makes a terminal good for agents? A coding-agent terminal has to do more than render text quickly. It needs to help you coordinate long-running conversations, approvals, background work, and recovered sessions without forcing you to stare at every pane. Need What Otty adds See agent state Tab badges for processing, task complete, and awaiting input. Avoid babysitting macOS notifications when an agent finishes or needs approval. Keep work moving Prompt Queue sends the next command when the pane returns to an idle prompt. Write better prompts Composer gives multiline editing, undo, image paste, and a floating input panel. Resume old context Agent History renders Codex, Claude Code, and OpenCode transcripts and can resume sessions. Split exploration Fork or branch an agent session into another pane or tab. Recover after restart Session restore can reopen agent panes and resume supported sessions. Otty does not replace your agent CLI Otty does not run a proprietary agent. You keep using the CLI you already trust, such as codex, claude, or opencode. The integration is a small hook or plugin that lets the agent report state back to the terminal. That boundary matters. The agent owns the conversation and model behavior; Otty o"
+}

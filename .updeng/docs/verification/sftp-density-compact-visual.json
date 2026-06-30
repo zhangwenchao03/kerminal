@@ -1,0 +1,61 @@
+{
+  "capturedAt": "2026-06-24T15:20:04.369Z",
+  "devServer": "http://127.0.0.1:5187/",
+  "viewport": {
+    "width": 2048,
+    "height": 1152
+  },
+  "variants": [
+    {
+      "name": "dark",
+      "themeMode": "dark",
+      "media": "dark",
+      "pngPath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\sftp-density-compact-dark.png",
+      "state": {
+        "density": "compact",
+        "themeMode": "dark",
+        "documentDensity": "compact",
+        "documentTheme": "dark",
+        "darkClass": true,
+        "localRowHeight": "36",
+        "remoteRowHeight": "36",
+        "tabCount": 0,
+        "hasWorkbench": true
+      }
+    },
+    {
+      "name": "light",
+      "themeMode": "light",
+      "media": "light",
+      "pngPath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\sftp-density-compact-light.png",
+      "state": {
+        "density": "compact",
+        "themeMode": "light",
+        "documentDensity": "compact",
+        "documentTheme": "light",
+        "darkClass": false,
+        "localRowHeight": "36",
+        "remoteRowHeight": "36",
+        "tabCount": 0,
+        "hasWorkbench": true
+      }
+    },
+    {
+      "name": "system",
+      "themeMode": "system",
+      "media": "dark",
+      "pngPath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\sftp-density-compact-system.png",
+      "state": {
+        "density": "compact",
+        "themeMode": "system",
+        "documentDensity": "compact",
+        "documentTheme": "dark",
+        "darkClass": true,
+        "localRowHeight": "36",
+        "remoteRowHeight": "36",
+        "tabCount": 0,
+        "hasWorkbench": true
+      }
+    }
+  ]
+}

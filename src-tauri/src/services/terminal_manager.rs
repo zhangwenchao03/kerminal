@@ -5,37 +5,52 @@
 use crate::{
     error::{AppError, AppResult},
     models::terminal::{
-        TerminalCreateRequest, TerminalOutputEvent, TerminalOutputSnapshot, TerminalResizeRequest,
+        TerminalAgentSignal, TerminalAgentSignalSummary, TerminalCreateRequest,
+        TerminalOutputEvent, TerminalOutputKind, TerminalOutputSnapshot, TerminalResizeRequest,
         TerminalSecretInputEntry, TerminalSecretInputPlan, TerminalSessionLogState,
-        TerminalSessionStatus, TerminalSessionSummary,
+        TerminalSessionReapDiagnostics, TerminalSessionStatus, TerminalSessionSummary,
     },
     security::redaction::redact_terminal_text,
+    services::{
+        pty_process_guard::{
+            with_conpty_lifecycle_lock, PtyMasterGuard, PtyProcessGuard, SharedPtyChildHandle,
+        },
+        terminal_agent_signal_detector::TerminalAgentSignalDetector,
+        terminal_escape_responder::TerminalEscapeResponder,
+        terminal_output_pump::{PtyOutputPump, PtyOutputPumpConfig, PtyOutputSink},
+        terminal_shell_integration::build_terminal_shell_launch,
+    },
 };
 #[path = "terminal_target_token.rs"]
 mod terminal_target_token;
 
-use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use std::{
     collections::HashMap,
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{mpsc, Arc, Mutex, MutexGuard},
     thread,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 pub use terminal_target_token::TerminalTargetTokenClaims;
 use terminal_target_token::{TerminalTargetCapability, TerminalTargetTokenSigner};
 use uuid::Uuid;
 
-const READ_BUFFER_SIZE: usize = 8192;
+const READ_BUFFER_SIZE: usize = 16 * 1024;
+const PTY_OUTPUT_FLUSH_BYTES: usize = 64 * 1024;
+const PTY_OUTPUT_MAX_PENDING_BYTES: usize = 4 * 1024 * 1024;
+const PTY_OUTPUT_COALESCE: Duration = Duration::from_millis(4);
+const PTY_OUTPUT_MAX_IDLE: Duration = Duration::from_millis(50);
+const PTY_CHILD_EXIT_POLL_INTERVAL: Duration = Duration::from_millis(20);
+const PTY_READER_EOF_GRACE: Duration = Duration::from_millis(500);
 const TERMINAL_CONTEXT_BUFFER_BYTES: usize = 64 * 1024;
 const LOG_REDACTION_PENDING_CHARS: usize = 4096;
 const TERMINAL_TARGET_TOKEN_TTL_MS: u64 = 5 * 60 * 1000;
 const CLEAR_CURRENT_TERMINAL_LINE: &str = "\r\x1b[2K";
+const KERMINAL_AGENT_SESSION_ID_ENV: &str = "KERMINAL_AGENT_SESSION_ID";
 
-type ChildHandle = Box<dyn Child + Send + Sync>;
-type MasterHandle = Box<dyn MasterPty + Send>;
 type WriterHandle = Box<dyn Write + Send>;
 type SharedWriterHandle = Arc<Mutex<WriterHandle>>;
 type OutputEmitter = Box<dyn Fn(TerminalOutputEvent) -> bool + Send + 'static>;
@@ -43,6 +58,7 @@ type OutputEmitter = Box<dyn Fn(TerminalOutputEvent) -> bool + Send + 'static>;
 /// 管理进程内所有本地终端会话。
 pub struct TerminalManager {
     sessions: Mutex<HashMap<String, TerminalSession>>,
+    shell_integration_cache: PathBuf,
     target_token_signer: TerminalTargetTokenSigner,
 }
 
@@ -58,6 +74,7 @@ impl Default for TerminalManager {
     fn default() -> Self {
         Self {
             sessions: Mutex::new(HashMap::new()),
+            shell_integration_cache: default_shell_integration_cache_dir(),
             target_token_signer: TerminalTargetTokenSigner::default(),
         }
     }
@@ -67,6 +84,15 @@ impl TerminalManager {
     /// 创建空的终端会话管理器。
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// 创建使用指定 cache 目录写入 shell integration 脚本的终端会话管理器。
+    pub fn with_shell_integration_cache_dir(cache_dir: impl Into<PathBuf>) -> Self {
+        Self {
+            sessions: Mutex::new(HashMap::new()),
+            shell_integration_cache: cache_dir.into(),
+            target_token_signer: TerminalTargetTokenSigner::default(),
+        }
     }
 
     /// 创建本地 PTY 会话，并把输出推给调用方提供的回调。
@@ -104,48 +130,67 @@ impl TerminalManager {
         let size = normalize_size(rows, cols)?;
         let shell = normalize_shell(shell)?;
         let cwd = normalize_cwd(cwd)?;
+        let agent_session_id = normalize_agent_session_id(env.get(KERMINAL_AGENT_SESSION_ID_ENV));
+        let launch_plan =
+            build_terminal_shell_launch(&shell, &args, &env, &self.shell_integration_cache);
 
-        let pty_system = native_pty_system();
-        let pair = pty_system
-            .openpty(size)
-            .map_err(|error| AppError::Terminal(error.to_string()))?;
-
-        let mut command = CommandBuilder::new(&shell);
-        command.args(args.iter().map(String::as_str));
+        let mut command = CommandBuilder::new(&launch_plan.shell);
+        command.args(launch_plan.args.iter().map(String::as_str));
         if let Some(cwd) = &cwd {
             command.cwd(cwd.as_os_str());
         }
-        for (key, value) in &env {
+        for (key, value) in &launch_plan.env {
             command.env(key, value);
         }
 
-        let child = pair
-            .slave
-            .spawn_command(command)
-            .map_err(|error| AppError::Terminal(error.to_string()))?;
-        let pid = child.process_id();
-        let reader = pair
-            .master
-            .try_clone_reader()
-            .map_err(|error| AppError::Terminal(error.to_string()))?;
-        let writer = pair
-            .master
-            .take_writer()
-            .map_err(|error| AppError::Terminal(error.to_string()))?;
+        let (pair, child) = with_conpty_lifecycle_lock(|| {
+            let pty_system = native_pty_system();
+            let pair = pty_system
+                .openpty(size)
+                .map_err(|error| AppError::Terminal(error.to_string()))?;
+            let child = pair
+                .slave
+                .spawn_command(command)
+                .map_err(|error| AppError::Terminal(error.to_string()))?;
+            Ok::<_, AppError>((pair, child))
+        })?;
+        let process_guard = PtyProcessGuard::new(child);
+        let pid = process_guard.pid();
+        let master = PtyMasterGuard::new(pair.master);
+        let reader = master.try_clone_reader().map_err(AppError::Terminal)?;
+        let writer = master.take_writer().map_err(AppError::Terminal)?;
         let writer = Arc::new(Mutex::new(writer));
 
         let session_id = Uuid::new_v4().to_string();
         let output_buffer = Arc::new(Mutex::new(TerminalOutputBuffer::default()));
         let log_sink = Arc::new(Mutex::new(None));
-        spawn_reader_thread(
+        let latest_agent_signal = Arc::new(Mutex::new(None));
+        let agent_detector = Arc::new(Mutex::new(TerminalAgentSignalDetector::new()));
+        let (pump_sender, pump_receiver) = mpsc::channel();
+        spawn_output_flusher_thread(
             session_id.clone(),
-            reader,
+            agent_session_id.clone(),
+            pump_receiver,
             output_buffer.clone(),
             log_sink.clone(),
+            latest_agent_signal.clone(),
+            Box::new(output),
+        );
+        let reader_done = spawn_reader_thread(
+            reader,
             cleanup_paths.clone(),
             writer.clone(),
             secret_input_plan,
-            Box::new(output),
+            pump_sender.clone(),
+            agent_detector.clone(),
+        );
+        spawn_child_exit_waiter_thread(
+            session_id.clone(),
+            process_guard.shared_child(),
+            pump_sender,
+            reader_done,
+            cleanup_paths.clone(),
+            agent_detector,
         );
 
         let summary = TerminalSessionSummary {
@@ -158,21 +203,27 @@ impl TerminalManager {
             status: TerminalSessionStatus::Running,
             target_ref: None,
             target_token: None,
+            shell_integration: launch_plan.integration.clone(),
+            agent_session_id: agent_session_id.clone(),
+            agent_signal: None,
         };
 
         let session = TerminalSession {
-            child: Mutex::new(child),
+            process_guard,
             cols: size.cols,
             cwd,
             id: session_id.clone(),
-            master: pair.master,
+            master,
             pid,
             rows: size.rows,
             shell: summary.shell.clone(),
+            shell_integration: summary.shell_integration.clone(),
             target_ref: None,
             target_token: None,
             output_buffer,
             log_sink,
+            latest_agent_signal,
+            agent_session_id,
             cleanup_paths,
             writer,
         };
@@ -224,18 +275,30 @@ impl TerminalManager {
             .lock_sessions()?
             .remove(session_id)
             .ok_or_else(|| AppError::Terminal(format!("终端会话不存在: {session_id}")))?;
-        let close_result = (|| {
-            let mut child = session
-                .child
-                .lock()
-                .map_err(|_| AppError::StateLockPoisoned("terminal_child"))?;
-            if child.try_wait()?.is_none() {
-                child.kill()?;
-            }
-            Ok(())
-        })();
-        cleanup_session_paths(&session.cleanup_paths);
-        close_result
+        session.close_detached();
+        Ok(())
+    }
+
+    /// 收割当前进程内仍挂在本地 PTY 管理器中的 orphan 会话。
+    pub fn reap_orphan_sessions(&self) -> AppResult<TerminalSessionReapDiagnostics> {
+        let started_at = Instant::now();
+        let sessions = {
+            let mut sessions = self.lock_sessions()?;
+            sessions.drain().collect::<Vec<_>>()
+        };
+        let mut session_ids = Vec::with_capacity(sessions.len());
+
+        for (session_id, session) in sessions {
+            session_ids.push(session_id);
+            session.close_detached();
+        }
+
+        let elapsed_ms = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+        Ok(TerminalSessionReapDiagnostics {
+            reaped_count: session_ids.len(),
+            session_ids,
+            elapsed_ms,
+        })
     }
 
     /// 返回当前管理器中的终端会话摘要。
@@ -357,29 +420,28 @@ impl TerminalManager {
 }
 
 struct TerminalSession {
-    child: Mutex<ChildHandle>,
+    process_guard: PtyProcessGuard,
     cols: u16,
     cwd: Option<PathBuf>,
     id: String,
-    master: MasterHandle,
+    master: PtyMasterGuard,
     pid: Option<u32>,
     rows: u16,
     shell: String,
+    shell_integration: crate::models::terminal::TerminalShellIntegrationSummary,
     target_ref: Option<String>,
     target_token: Option<TerminalTargetCapability>,
     output_buffer: Arc<Mutex<TerminalOutputBuffer>>,
     log_sink: Arc<Mutex<Option<ActiveTerminalLog>>>,
+    latest_agent_signal: Arc<Mutex<Option<TerminalAgentSignalSummary>>>,
+    agent_session_id: Option<String>,
     cleanup_paths: Vec<PathBuf>,
     writer: SharedWriterHandle,
 }
 
 impl TerminalSession {
     fn summary(&self) -> AppResult<TerminalSessionSummary> {
-        let mut child = self
-            .child
-            .lock()
-            .map_err(|_| AppError::StateLockPoisoned("terminal_child"))?;
-        let status = if child.try_wait()?.is_some() {
+        let status = if self.process_guard.try_wait_status()?.is_some() {
             TerminalSessionStatus::Exited
         } else {
             TerminalSessionStatus::Running
@@ -401,7 +463,22 @@ impl TerminalSession {
                 .target_token
                 .as_ref()
                 .map(TerminalTargetCapability::token),
+            shell_integration: self.shell_integration.clone(),
+            agent_session_id: self.agent_session_id.clone(),
+            agent_signal: self
+                .latest_agent_signal
+                .lock()
+                .ok()
+                .and_then(|signal| signal.clone()),
         })
+    }
+
+    fn close_detached(mut self) {
+        cleanup_session_paths(&self.cleanup_paths);
+        self.cleanup_paths.clear();
+        thread::spawn(move || {
+            let _ = self.process_guard.best_effort_kill();
+        });
     }
 
     fn output_snapshot(&self, max_bytes: usize) -> AppResult<TerminalOutputSnapshot> {
@@ -551,53 +628,299 @@ fn split_prefix_before_tail(input: &str, tail_chars: usize) -> Option<usize> {
         .map(|(byte_index, _)| byte_index)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn spawn_reader_thread(
-    session_id: String,
     mut reader: Box<dyn Read + Send>,
-    output_buffer: Arc<Mutex<TerminalOutputBuffer>>,
-    log_sink: Arc<Mutex<Option<ActiveTerminalLog>>>,
     cleanup_paths: Vec<PathBuf>,
     writer: SharedWriterHandle,
     secret_input_plan: Option<TerminalSecretInputPlan>,
-    output: OutputEmitter,
-) {
+    pump_sender: mpsc::Sender<PtyOutputPumpMessage>,
+    agent_detector: Arc<Mutex<TerminalAgentSignalDetector>>,
+) -> mpsc::Receiver<()> {
+    let (reader_done_sender, reader_done_receiver) = mpsc::channel();
     thread::spawn(move || {
         let mut buffer = vec![0_u8; READ_BUFFER_SIZE];
+        let mut escape_responder = TerminalEscapeResponder::new();
         let mut secret_responder = secret_input_plan.map(TerminalSecretInputResponder::new);
 
         loop {
             match reader.read(&mut buffer) {
                 Ok(0) => {
-                    let _ = output(TerminalOutputEvent::closed(&session_id));
+                    send_finished_agent_signal(&agent_detector, &pump_sender);
+                    let _ = pump_sender.send(PtyOutputPumpMessage::Closed);
                     break;
                 }
                 Ok(bytes_read) => {
                     let mut data = String::from_utf8_lossy(&buffer[..bytes_read]).into_owned();
+                    let observation = escape_responder.observe(&data);
+                    if let Err(error) =
+                        write_terminal_escape_responses(&writer, &observation.responses)
+                    {
+                        let _ = pump_sender.send(PtyOutputPumpMessage::Error(error.to_string()));
+                        break;
+                    }
+                    data = observation.data;
                     if let Some(responder) = secret_responder.as_mut() {
                         responder.observe_and_maybe_respond(&data, &writer);
                         data = responder.redact_output(&data);
                     }
-                    if let Ok(mut output_buffer) = output_buffer.lock() {
-                        output_buffer.push(&data);
-                    }
-                    if let Ok(mut log_sink) = log_sink.lock() {
-                        if let Some(active_log) = log_sink.as_mut() {
-                            let _ = active_log.append(&data);
+                    let observed = match agent_detector.lock() {
+                        Ok(mut detector) => detector.observe_and_filter(&data),
+                        Err(_) => {
+                            let _ = pump_sender.send(PtyOutputPumpMessage::Error(
+                                "terminal agent signal detector lock poisoned".to_owned(),
+                            ));
+                            break;
+                        }
+                    };
+                    let mut signal_send_failed = false;
+                    for signal in observed.signals {
+                        if pump_sender
+                            .send(PtyOutputPumpMessage::AgentSignal(signal))
+                            .is_err()
+                        {
+                            signal_send_failed = true;
+                            break;
                         }
                     }
-                    if !output(TerminalOutputEvent::data(&session_id, data)) {
+                    if signal_send_failed {
+                        break;
+                    }
+                    if !observed.data.is_empty()
+                        && pump_sender
+                            .send(PtyOutputPumpMessage::Data(observed.data))
+                            .is_err()
+                    {
                         break;
                     }
                 }
                 Err(error) => {
-                    let _ = output(TerminalOutputEvent::error(&session_id, error.to_string()));
+                    send_finished_agent_signal(&agent_detector, &pump_sender);
+                    let _ = pump_sender.send(PtyOutputPumpMessage::Error(error.to_string()));
                     break;
                 }
             }
         }
+        let _ = reader_done_sender.send(());
         cleanup_session_paths(&cleanup_paths);
     });
+    reader_done_receiver
+}
+
+fn write_terminal_escape_responses(
+    writer: &SharedWriterHandle,
+    responses: &[&'static str],
+) -> AppResult<()> {
+    if responses.is_empty() {
+        return Ok(());
+    }
+
+    let mut writer = writer
+        .lock()
+        .map_err(|_| AppError::StateLockPoisoned("terminal_writer"))?;
+    for response in responses {
+        writer.write_all(response.as_bytes())?;
+    }
+    writer.flush()?;
+    Ok(())
+}
+
+enum PtyOutputPumpMessage {
+    Data(String),
+    AgentSignal(TerminalAgentSignal),
+    Closed,
+    Error(String),
+}
+
+fn spawn_output_flusher_thread(
+    session_id: String,
+    agent_session_id: Option<String>,
+    receiver: mpsc::Receiver<PtyOutputPumpMessage>,
+    output_buffer: Arc<Mutex<TerminalOutputBuffer>>,
+    log_sink: Arc<Mutex<Option<ActiveTerminalLog>>>,
+    latest_agent_signal: Arc<Mutex<Option<TerminalAgentSignalSummary>>>,
+    output: OutputEmitter,
+) {
+    thread::spawn(move || {
+        let mut pump = PtyOutputPump::new(session_id.clone(), terminal_output_pump_config());
+        let mut sink = TerminalOutputDeliverySink {
+            output_buffer,
+            log_sink,
+            output,
+        };
+        let mut first_pending_at: Option<Instant> = None;
+        let mut last_input_at: Option<Instant> = None;
+
+        loop {
+            match receive_pump_message(&receiver, first_pending_at, last_input_at) {
+                PumpReceiveResult::Message(PtyOutputPumpMessage::Data(data)) => {
+                    let now = Instant::now();
+                    if !pump.push_data(&data, &mut sink) {
+                        break;
+                    }
+                    if pump.pending_bytes() == 0 {
+                        first_pending_at = None;
+                        last_input_at = None;
+                    } else {
+                        first_pending_at.get_or_insert(now);
+                        last_input_at = Some(now);
+                    }
+                }
+                PumpReceiveResult::Message(PtyOutputPumpMessage::AgentSignal(signal)) => {
+                    let summary = TerminalAgentSignalSummary::new(
+                        &session_id,
+                        agent_session_id.as_deref(),
+                        signal,
+                    );
+                    if let Ok(mut latest_agent_signal) = latest_agent_signal.lock() {
+                        *latest_agent_signal = Some(summary.clone());
+                    }
+                    if !sink.on_terminal_output(TerminalOutputEvent::agent_signal(summary)) {
+                        break;
+                    }
+                }
+                PumpReceiveResult::Message(PtyOutputPumpMessage::Closed) => {
+                    let _ = pump.finish_closed(&mut sink);
+                    break;
+                }
+                PumpReceiveResult::Message(PtyOutputPumpMessage::Error(message)) => {
+                    let _ = pump.finish_error(message, &mut sink);
+                    break;
+                }
+                PumpReceiveResult::Timeout => {
+                    if !pump.flush(&mut sink) {
+                        break;
+                    }
+                    first_pending_at = None;
+                    last_input_at = None;
+                }
+                PumpReceiveResult::Disconnected => {
+                    let _ = pump.flush(&mut sink);
+                    break;
+                }
+            }
+        }
+    });
+}
+
+fn spawn_child_exit_waiter_thread(
+    session_id: String,
+    child: SharedPtyChildHandle,
+    pump_sender: mpsc::Sender<PtyOutputPumpMessage>,
+    reader_done: mpsc::Receiver<()>,
+    cleanup_paths: Vec<PathBuf>,
+    agent_detector: Arc<Mutex<TerminalAgentSignalDetector>>,
+) {
+    thread::spawn(move || loop {
+        match reader_done.try_recv() {
+            Ok(()) | Err(mpsc::TryRecvError::Disconnected) => return,
+            Err(mpsc::TryRecvError::Empty) => {}
+        }
+
+        let child_exited = {
+            let mut child = match child.lock() {
+                Ok(child) => child,
+                Err(_) => {
+                    let _ = pump_sender.send(PtyOutputPumpMessage::Error(
+                        "terminal child lock poisoned".to_owned(),
+                    ));
+                    return;
+                }
+            };
+            match child.try_wait() {
+                Ok(Some(_status)) => true,
+                Ok(None) => false,
+                Err(error) => {
+                    let _ = pump_sender.send(PtyOutputPumpMessage::Error(format!(
+                        "failed to monitor terminal process {session_id}: {error}"
+                    )));
+                    return;
+                }
+            }
+        };
+
+        if child_exited {
+            cleanup_session_paths(&cleanup_paths);
+            match reader_done.recv_timeout(PTY_READER_EOF_GRACE) {
+                Ok(()) => return,
+                Err(mpsc::RecvTimeoutError::Timeout)
+                | Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    send_finished_agent_signal(&agent_detector, &pump_sender);
+                    let _ = pump_sender.send(PtyOutputPumpMessage::Closed);
+                    return;
+                }
+            }
+        }
+
+        thread::sleep(PTY_CHILD_EXIT_POLL_INTERVAL);
+    });
+}
+
+enum PumpReceiveResult {
+    Message(PtyOutputPumpMessage),
+    Timeout,
+    Disconnected,
+}
+
+fn receive_pump_message(
+    receiver: &mpsc::Receiver<PtyOutputPumpMessage>,
+    first_pending_at: Option<Instant>,
+    last_input_at: Option<Instant>,
+) -> PumpReceiveResult {
+    let Some(timeout) = next_output_flush_timeout(first_pending_at, last_input_at) else {
+        return receiver
+            .recv()
+            .map(PumpReceiveResult::Message)
+            .unwrap_or(PumpReceiveResult::Disconnected);
+    };
+
+    match receiver.recv_timeout(timeout) {
+        Ok(message) => PumpReceiveResult::Message(message),
+        Err(mpsc::RecvTimeoutError::Timeout) => PumpReceiveResult::Timeout,
+        Err(mpsc::RecvTimeoutError::Disconnected) => PumpReceiveResult::Disconnected,
+    }
+}
+
+fn next_output_flush_timeout(
+    first_pending_at: Option<Instant>,
+    last_input_at: Option<Instant>,
+) -> Option<Duration> {
+    let first_pending_at = first_pending_at?;
+    let last_input_at = last_input_at.unwrap_or(first_pending_at);
+    let coalesce_due = last_input_at + PTY_OUTPUT_COALESCE;
+    let max_idle_due = first_pending_at + PTY_OUTPUT_MAX_IDLE;
+    let due = coalesce_due.min(max_idle_due);
+    let now = Instant::now();
+    Some(due.saturating_duration_since(now))
+}
+
+fn terminal_output_pump_config() -> PtyOutputPumpConfig {
+    PtyOutputPumpConfig {
+        flush_bytes: PTY_OUTPUT_FLUSH_BYTES,
+        max_pending_bytes: PTY_OUTPUT_MAX_PENDING_BYTES,
+        ..PtyOutputPumpConfig::default()
+    }
+}
+
+struct TerminalOutputDeliverySink {
+    output_buffer: Arc<Mutex<TerminalOutputBuffer>>,
+    log_sink: Arc<Mutex<Option<ActiveTerminalLog>>>,
+    output: OutputEmitter,
+}
+
+impl PtyOutputSink for TerminalOutputDeliverySink {
+    fn on_terminal_output(&mut self, event: TerminalOutputEvent) -> bool {
+        if event.kind == TerminalOutputKind::Data {
+            if let Ok(mut output_buffer) = self.output_buffer.lock() {
+                output_buffer.push(&event.data);
+            }
+            if let Ok(mut log_sink) = self.log_sink.lock() {
+                if let Some(active_log) = log_sink.as_mut() {
+                    let _ = active_log.append(&event.data);
+                }
+            }
+        }
+        (self.output)(event)
+    }
 }
 
 struct TerminalSecretInputResponder {
@@ -1052,6 +1375,20 @@ fn normalize_size(rows: u16, cols: u16) -> AppResult<PtySize> {
     })
 }
 
+fn send_finished_agent_signal(
+    agent_detector: &Arc<Mutex<TerminalAgentSignalDetector>>,
+    pump_sender: &mpsc::Sender<PtyOutputPumpMessage>,
+) {
+    let Some(signal) = agent_detector
+        .lock()
+        .ok()
+        .and_then(|mut detector| detector.finish_pty())
+    else {
+        return;
+    };
+    let _ = pump_sender.send(PtyOutputPumpMessage::AgentSignal(signal));
+}
+
 #[derive(Default)]
 struct TerminalOutputBuffer {
     data: String,
@@ -1115,6 +1452,12 @@ fn normalize_target_ref(value: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn normalize_agent_session_id(value: Option<&String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+}
+
 fn normalize_cwd(cwd: Option<String>) -> AppResult<Option<PathBuf>> {
     cwd.map(|value| {
         let trimmed = value.trim();
@@ -1158,4 +1501,8 @@ fn default_shell() -> String {
     {
         std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned())
     }
+}
+
+fn default_shell_integration_cache_dir() -> PathBuf {
+    std::env::temp_dir().join("kerminal").join("cache")
 }

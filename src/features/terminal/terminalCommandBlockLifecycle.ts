@@ -186,6 +186,45 @@ export function syncTerminalCommandPromptBlocks({
   );
 }
 
+export function syncTerminalCommandProtocolPromptBlock({
+  commandBlockCounterRef,
+  commandBlocksRef,
+  onEndMarkerDispose,
+  onStartMarkerDispose,
+  paneId,
+  promptLine,
+  terminal,
+}: {
+  promptLine?: number;
+  terminal: XtermTerminal;
+} & TerminalCommandBlockRefs &
+  TerminalCommandBlockCallbacks) {
+  if (
+    typeof promptLine !== "number" ||
+    terminal.buffer.active.type !== "normal"
+  ) {
+    return false;
+  }
+
+  let changed = closeLatestSubmittedBlockBeforePrompt({
+    commandBlocksRef,
+    onEndMarkerDispose,
+    promptLine,
+    terminal,
+  });
+  changed = removeStaleCurrentPromptBlock(commandBlocksRef, promptLine) || changed;
+  return (
+    ensureCurrentPromptCommandBlock({
+      commandBlockCounterRef,
+      commandBlocksRef,
+      onStartMarkerDispose,
+      paneId,
+      promptLine,
+      terminal,
+    }) || changed
+  );
+}
+
 export function collectTrailingEmptyPromptLines(
   terminal: XtermTerminal,
   promptLine: number,

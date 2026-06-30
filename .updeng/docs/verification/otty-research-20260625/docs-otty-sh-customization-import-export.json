@@ -1,0 +1,1866 @@
+{
+  "url": "https://docs.otty.sh/customization/import-export",
+  "title": "Import / Export | Otty",
+  "description": "A modern cross-platform terminal — documentation",
+  "viewport": {
+    "width": 1440,
+    "height": 1200
+  },
+  "documentHeight": 4123,
+  "headings": [
+    {
+      "level": "h2",
+      "text": "Getting Started"
+    },
+    {
+      "level": "h2",
+      "text": "User Interface"
+    },
+    {
+      "level": "h2",
+      "text": "Workflows"
+    },
+    {
+      "level": "h2",
+      "text": "Terminal Features"
+    },
+    {
+      "level": "h2",
+      "text": "Working with Agents"
+    },
+    {
+      "level": "h2",
+      "text": "Customization"
+    },
+    {
+      "level": "h2",
+      "text": "Terminal API (VT)"
+    },
+    {
+      "level": "h3",
+      "text": "Concepts"
+    },
+    {
+      "level": "h3",
+      "text": "Control"
+    },
+    {
+      "level": "h3",
+      "text": "ESC"
+    },
+    {
+      "level": "h3",
+      "text": "CSI"
+    },
+    {
+      "level": "h3",
+      "text": "OSC"
+    },
+    {
+      "level": "h2",
+      "text": "Reference"
+    },
+    {
+      "level": "h2",
+      "text": "About"
+    },
+    {
+      "level": "h1",
+      "text": "Import / Export ​"
+    },
+    {
+      "level": "h2",
+      "text": "Supported sources ​"
+    },
+    {
+      "level": "h3",
+      "text": "Ghostty ​"
+    },
+    {
+      "level": "h3",
+      "text": "Kitty ​"
+    },
+    {
+      "level": "h3",
+      "text": "Alacritty ​"
+    },
+    {
+      "level": "h2",
+      "text": "CLI usage ​"
+    },
+    {
+      "level": "h2",
+      "text": "GUI flow ​"
+    },
+    {
+      "level": "h2",
+      "text": "See also ​"
+    }
+  ],
+  "buttons": [
+    {
+      "tag": "a",
+      "text": "Skip to content",
+      "href": "https://docs.otty.sh/customization/import-export#VPContent"
+    },
+    {
+      "tag": "a",
+      "text": "Otty",
+      "href": "https://docs.otty.sh/"
+    },
+    {
+      "tag": "button",
+      "text": "Search K",
+      "href": null
+    },
+    {
+      "tag": "a",
+      "text": "Home Page",
+      "href": "https://otty.sh/"
+    },
+    {
+      "tag": "button",
+      "text": "Menu",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "On this page",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "Getting Started",
+      "href": null
+    },
+    {
+      "tag": "a",
+      "text": "Installation",
+      "href": "https://docs.otty.sh/getting-started/installation"
+    },
+    {
+      "tag": "a",
+      "text": "First Launch",
+      "href": "https://docs.otty.sh/getting-started/first-launch"
+    },
+    {
+      "tag": "div",
+      "text": "User Interface",
+      "href": null
+    },
+    {
+      "tag": "a",
+      "text": "Window, Tab and Split",
+      "href": "https://docs.otty.sh/user-interface/window-tab-split"
+    },
+    {
+      "tag": "a",
+      "text": "Details Panel",
+      "href": "https://docs.otty.sh/user-interface/details-panel"
+    },
+    {
+      "tag": "a",
+      "text": "Status Bar",
+      "href": "https://docs.otty.sh/user-interface/status-bar"
+    },
+    {
+      "tag": "a",
+      "text": "Files and Links",
+      "href": "https://docs.otty.sh/user-interface/files-and-links"
+    },
+    {
+      "tag": "a",
+      "text": "Drag and Drop",
+      "href": "https://docs.otty.sh/user-interface/drag-and-drop"
+    },
+    {
+      "tag": "a",
+      "text": "Find",
+      "href": "https://docs.otty.sh/user-interface/find"
+    },
+    {
+      "tag": "a",
+      "text": "Open Quickly",
+      "href": "https://docs.otty.sh/user-interface/open-quickly"
+    },
+    {
+      "tag": "a",
+      "text": "Command Palette",
+      "href": "https://docs.otty.sh/user-interface/command-palette"
+    },
+    {
+      "tag": "a",
+      "text": "Outline / Jump To",
+      "href": "https://docs.otty.sh/user-interface/outline"
+    },
+    {
+      "tag": "div",
+      "text": "Workflows",
+      "href": null
+    },
+    {
+      "tag": "a",
+      "text": "Recipes",
+      "href": "https://docs.otty.sh/workflows/recipes"
+    },
+    {
+      "tag": "a",
+      "text": "Session Recovery",
+      "href": "https://docs.otty.sh/workflows/session-recovery"
+    },
+    {
+      "tag": "a",
+      "text": "Frequent Folders",
+      "href": "https://docs.otty.sh/workflows/frequent-folders"
+    },
+    {
+      "tag": "a",
+      "text": "Using the CLI in your Shell",
+      "href": "https://docs.otty.sh/workflows/cli-usage"
+    },
+    {
+      "tag": "a",
+      "text": "Data Sync",
+      "href": "https://docs.otty.sh/workflows/data-sync"
+    },
+    {
+      "tag": "a",
+      "text": "SSH / Remote Development",
+      "href": "https://docs.otty.sh/workflows/ssh-remote"
+    },
+    {
+      "tag": "div",
+      "text": "Terminal Features",
+      "href": null
+    },
+    {
+      "tag": "a",
+      "text": "Cursor and Mouse",
+      "href": "https://docs.otty.sh/terminal-features/cursor-and-mouse"
+    },
+    {
+      "tag": "a",
+      "text": "Selection",
+      "href": "https://docs.otty.sh/terminal-features/selection"
+    },
+    {
+      "tag": "a",
+      "text": "Scroll",
+      "href": "https://docs.otty.sh/terminal-features/scroll"
+    },
+    {
+      "tag": "a",
+      "text": "Input",
+      "href": "https://docs.otty.sh/terminal-features/input"
+    },
+    {
+      "tag": "a",
+      "text": "Copy and Paste",
+      "href": "https://docs.otty.sh/terminal-features/copy-and-paste"
+    },
+    {
+      "tag": "a",
+      "text": "Autocomplete / Inline Suggest",
+      "href": "https://docs.otty.sh/terminal-features/autocomplete"
+    },
+    {
+      "tag": "a",
+      "text": "Unicode and Text Styles",
+      "href": "https://docs.otty.sh/terminal-features/unicode-and-text-styles"
+    },
+    {
+      "tag": "a",
+      "text": "Box Drawing",
+      "href": "https://docs.otty.sh/terminal-features/box-drawing"
+    },
+    {
+      "tag": "a",
+      "text": "Images",
+      "href": "https://docs.otty.sh/terminal-features/images"
+    },
+    {
+      "tag": "a",
+      "text": "Progress State",
+      "href": "https://docs.otty.sh/terminal-features/progress-state"
+    },
+    {
+      "tag": "a",
+      "text": "Privilege and Notifications",
+      "href": "https://docs.otty.sh/terminal-features/notifications"
+    },
+    {
+      "tag": "a",
+      "text": "Vi Mode",
+      "href": "https://docs.otty.sh/terminal-features/vi-mode"
+    },
+    {
+      "tag": "a",
+      "text": "Hint Mode",
+      "href": "https://docs.otty.sh/terminal-features/hint-mode"
+    },
+    {
+      "tag": "a",
+      "text": "Read-only Mode",
+      "href": "https://docs.otty.sh/terminal-features/read-only-mode"
+    },
+    {
+      "tag": "a",
+      "text": "Shell Integration",
+      "href": "https://docs.otty.sh/terminal-features/shell-integration"
+    },
+    {
+      "tag": "a",
+      "text": "$TERM and Identification",
+      "href": "https://docs.otty.sh/terminal-features/term-value"
+    },
+    {
+      "tag": "div",
+      "text": "Working with Agents",
+      "href": null
+    },
+    {
+      "tag": "a",
+      "text": "Overview",
+      "href": "https://docs.otty.sh/agents/agents-overview"
+    },
+    {
+      "tag": "a",
+      "text": "Setup",
+      "href": "https://docs.otty.sh/agents/setup"
+    },
+    {
+      "tag": "a",
+      "text": "Monitor Tasks",
+      "href": "https://docs.otty.sh/agents/parallel-tasks"
+    },
+    {
+      "tag": "a",
+      "text": "History",
+      "href": "https://docs.otty.sh/agents/history"
+    },
+    {
+      "tag": "a",
+      "text": "Composer",
+      "href": "https://docs.otty.sh/agents/composer"
+    },
+    {
+      "tag": "a",
+      "text": "Prompt Queue",
+      "href": "https://docs.otty.sh/agents/prompt-queue"
+    },
+    {
+      "tag": "a",
+      "text": "Send to Chat",
+      "href": "https://docs.otty.sh/agents/send-to-chat"
+    },
+    {
+      "tag": "a",
+      "text": "Fork / Branch Session",
+      "href": "https://docs.otty.sh/agents/fork-branch-session"
+    },
+    {
+      "tag": "a",
+      "text": "Supported Agents",
+      "href": "https://docs.otty.sh/agents/supported-agents"
+    },
+    {
+      "tag": "div",
+      "text": "Customization",
+      "href": null
+    },
+    {
+      "tag": "a",
+      "text": "Themes",
+      "href": "https://docs.otty.sh/customization/themes"
+    },
+    {
+      "tag": "a",
+      "text": "Fonts and Text Rendering",
+      "href": "https://docs.otty.sh/customization/fonts"
+    },
+    {
+      "tag": "a",
+      "text": "Keybindings",
+      "href": "https://docs.otty.sh/customization/custom-keybindings"
+    },
+    {
+      "tag": "a",
+      "text": "Custom Commands / Layouts / Snippets",
+      "href": "https://docs.otty.sh/customization/custom-commands"
+    },
+    {
+      "tag": "a",
+      "text": "Config File",
+      "href": "https://docs.otty.sh/customization/config-file"
+    },
+    {
+      "tag": "a",
+      "text": "Advanced / All Settings",
+      "href": "https://docs.otty.sh/customization/advanced-settings"
+    },
+    {
+      "tag": "a",
+      "text": "Import / Export Settings",
+      "href": "https://docs.otty.sh/customization/import-export"
+    },
+    {
+      "tag": "div",
+      "text": "Terminal API (VT)",
+      "href": null
+    },
+    {
+      "tag": "a",
+      "text": "VT Overview",
+      "href": "https://docs.otty.sh/vt/overview"
+    },
+    {
+      "tag": "a",
+      "text": "Sequence Reference",
+      "href": "https://docs.otty.sh/vt/sequence-reference"
+    },
+    {
+      "tag": "a",
+      "text": "External Protocols",
+      "href": "https://docs.otty.sh/vt/external-protocols"
+    },
+    {
+      "tag": "a",
+      "text": "Terminal Comparison",
+      "href": "https://docs.otty.sh/vt/terminal-comparison"
+    },
+    {
+      "tag": "div",
+      "text": "Concepts",
+      "href": null
+    },
+    {
+      "tag": "a",
+      "text": "Control Sequences",
+      "href": "https://docs.otty.sh/vt/concepts/control-sequences"
+    },
+    {
+      "tag": "a",
+      "text": "Cursor",
+      "href": "https://docs.otty.sh/vt/concepts/cursor"
+    },
+    {
+      "tag": "a",
+      "text": "Screen",
+      "href": "https://docs.otty.sh/vt/concepts/screen"
+    },
+    {
+      "tag": "a",
+      "text": "Colors",
+      "href": "https://docs.otty.sh/vt/concepts/colors"
+    },
+    {
+      "tag": "a",
+      "text": "Control",
+      "href": "https://docs.otty.sh/vt/c0/"
+    },
+    {
+      "tag": "a",
+      "text": "BEL — Bell",
+      "href": "https://docs.otty.sh/vt/c0/bel"
+    },
+    {
+      "tag": "a",
+      "text": "BS — Backspace",
+      "href": "https://docs.otty.sh/vt/c0/bs"
+    },
+    {
+      "tag": "a",
+      "text": "CAN — Cancel",
+      "href": "https://docs.otty.sh/vt/c0/can"
+    },
+    {
+      "tag": "a",
+      "text": "CR — Carriage Return",
+      "href": "https://docs.otty.sh/vt/c0/cr"
+    },
+    {
+      "tag": "a",
+      "text": "DEL — Delete",
+      "href": "https://docs.otty.sh/vt/c0/del"
+    },
+    {
+      "tag": "a",
+      "text": "ESC — Escape",
+      "href": "https://docs.otty.sh/vt/c0/esc"
+    },
+    {
+      "tag": "a",
+      "text": "FF — Form Feed",
+      "href": "https://docs.otty.sh/vt/c0/ff"
+    },
+    {
+      "tag": "a",
+      "text": "HT — Horizontal Tab",
+      "href": "https://docs.otty.sh/vt/c0/ht"
+    },
+    {
+      "tag": "a",
+      "text": "LF — Line Feed",
+      "href": "https://docs.otty.sh/vt/c0/lf"
+    },
+    {
+      "tag": "a",
+      "text": "SI — Shift In",
+      "href": "https://docs.otty.sh/vt/c0/si"
+    },
+    {
+      "tag": "a",
+      "text": "SO — Shift Out",
+      "href": "https://docs.otty.sh/vt/c0/so"
+    },
+    {
+      "tag": "a",
+      "text": "SUB — Substitute",
+      "href": "https://docs.otty.sh/vt/c0/sub"
+    },
+    {
+      "tag": "a",
+      "text": "VT — Vertical Tab",
+      "href": "https://docs.otty.sh/vt/c0/vt"
+    },
+    {
+      "tag": "a",
+      "text": "ESC",
+      "href": "https://docs.otty.sh/vt/esc/"
+    },
+    {
+      "tag": "a",
+      "text": "DECALN — Screen Alignment Display",
+      "href": "https://docs.otty.sh/vt/esc/decaln"
+    },
+    {
+      "tag": "a",
+      "text": "DECKPAM — Keypad Application Mode",
+      "href": "https://docs.otty.sh/vt/esc/deckpam"
+    },
+    {
+      "tag": "a",
+      "text": "DECKPNM — Keypad Numeric Mode",
+      "href": "https://docs.otty.sh/vt/esc/deckpnm"
+    },
+    {
+      "tag": "a",
+      "text": "DECRC — Restore Cursor",
+      "href": "https://docs.otty.sh/vt/esc/decrc"
+    },
+    {
+      "tag": "a",
+      "text": "DECSC — Save Cursor",
+      "href": "https://docs.otty.sh/vt/esc/decsc"
+    },
+    {
+      "tag": "a",
+      "text": "HTS — Set Tab Stop",
+      "href": "https://docs.otty.sh/vt/esc/hts"
+    },
+    {
+      "tag": "a",
+      "text": "IND — Index",
+      "href": "https://docs.otty.sh/vt/esc/ind"
+    },
+    {
+      "tag": "a",
+      "text": "NEL — Next Line",
+      "href": "https://docs.otty.sh/vt/esc/nel"
+    },
+    {
+      "tag": "a",
+      "text": "RI — Reverse Index",
+      "href": "https://docs.otty.sh/vt/esc/ri"
+    },
+    {
+      "tag": "a",
+      "text": "RIS — Full Reset",
+      "href": "https://docs.otty.sh/vt/esc/ris"
+    },
+    {
+      "tag": "a",
+      "text": "CSI",
+      "href": "https://docs.otty.sh/vt/csi/"
+    },
+    {
+      "tag": "a",
+      "text": "CUB — Cursor Back",
+      "href": "https://docs.otty.sh/vt/csi/cub"
+    },
+    {
+      "tag": "a",
+      "text": "CUD — Cursor Down",
+      "href": "https://docs.otty.sh/vt/csi/cud"
+    },
+    {
+      "tag": "a",
+      "text": "CUF — Cursor Forward",
+      "href": "https://docs.otty.sh/vt/csi/cuf"
+    },
+    {
+      "tag": "a",
+      "text": "CUP — Cursor Position",
+      "href": "https://docs.otty.sh/vt/csi/cup"
+    },
+    {
+      "tag": "a",
+      "text": "CUU — Cursor Up",
+      "href": "https://docs.otty.sh/vt/csi/cuu"
+    },
+    {
+      "tag": "a",
+      "text": "DCH — Delete Characters",
+      "href": "https://docs.otty.sh/vt/csi/dch"
+    },
+    {
+      "tag": "a",
+      "text": "DECRST — Reset DEC Private Mode",
+      "href": "https://docs.otty.sh/vt/csi/decrst"
+    },
+    {
+      "tag": "a",
+      "text": "DECSCA — Character Protection",
+      "href": "https://docs.otty.sh/vt/csi/decsca"
+    },
+    {
+      "tag": "a",
+      "text": "DECSCUSR — Set Cursor Style",
+      "href": "https://docs.otty.sh/vt/csi/decscusr"
+    },
+    {
+      "tag": "a",
+      "text": "DECSET — Set DEC Private Mode",
+      "href": "https://docs.otty.sh/vt/csi/decset"
+    },
+    {
+      "tag": "a",
+      "text": "DECSTR — Soft Terminal Reset",
+      "href": "https://docs.otty.sh/vt/csi/decstr"
+    },
+    {
+      "tag": "a",
+      "text": "DL — Delete Lines",
+      "href": "https://docs.otty.sh/vt/csi/dl"
+    },
+    {
+      "tag": "a",
+      "text": "DSR — Device Status Report",
+      "href": "https://docs.otty.sh/vt/csi/dsr"
+    },
+    {
+      "tag": "a",
+      "text": "ED — Erase in Display",
+      "href": "https://docs.otty.sh/vt/csi/ed"
+    },
+    {
+      "tag": "a",
+      "text": "EL — Erase in Line",
+      "href": "https://docs.otty.sh/vt/csi/el"
+    },
+    {
+      "tag": "a",
+      "text": "ICH — Insert Characters",
+      "href": "https://docs.otty.sh/vt/csi/ich"
+    },
+    {
+      "tag": "a",
+      "text": "IL — Insert Lines",
+      "href": "https://docs.otty.sh/vt/csi/il"
+    },
+    {
+      "tag": "a",
+      "text": "SGR — Select Graphic Rendition",
+      "href": "https://docs.otty.sh/vt/csi/sgr"
+    },
+    {
+      "tag": "a",
+      "text": "XTPUSHCOLORS / XTPOPCOLORS / XTREPORTCOLORS",
+      "href": "https://docs.otty.sh/vt/csi/xt-colors"
+    },
+    {
+      "tag": "a",
+      "text": "XTWINOPS — Window Ops & Size Reports",
+      "href": "https://docs.otty.sh/vt/csi/xtwinops"
+    },
+    {
+      "tag": "a",
+      "text": "OSC",
+      "href": "https://docs.otty.sh/vt/osc/"
+    },
+    {
+      "tag": "a",
+      "text": "OSC 0 / OSC 2 — Set Window Title",
+      "href": "https://docs.otty.sh/vt/osc/osc-0-2"
+    },
+    {
+      "tag": "a",
+      "text": "OSC 4 — Palette Set / Query",
+      "href": "https://docs.otty.sh/vt/osc/osc-4"
+    },
+    {
+      "tag": "a",
+      "text": "OSC 5 — \"Special\" Color Set",
+      "href": "https://docs.otty.sh/vt/osc/osc-5"
+    },
+    {
+      "tag": "a",
+      "text": "OSC 7 — Current Working Directory",
+      "href": "https://docs.otty.sh/vt/osc/osc-7"
+    },
+    {
+      "tag": "a",
+      "text": "OSC 8 — Hyperlinks",
+      "href": "https://docs.otty.sh/vt/osc/osc-8"
+    },
+    {
+      "tag": "a",
+      "text": "OSC 9 — Desktop Notification (iTerm style)",
+      "href": "https://docs.otty.sh/vt/osc/osc-9"
+    },
+    {
+      "tag": "a",
+      "text": "OSC 9;4 — Progress / Task State (ConEmu)",
+      "href": "https://docs.otty.sh/vt/osc/osc-9-4"
+    },
+    {
+      "tag": "a",
+      "text": "OSC 10 / 11 / 12 / 17 / 19 — Dynamic Color Set / Query",
+      "href": "https://docs.otty.sh/vt/osc/osc-10-19"
+    },
+    {
+      "tag": "a",
+      "text": "OSC 22 — Mouse Cursor Shape",
+      "href": "https://docs.otty.sh/vt/osc/osc-22"
+    },
+    {
+      "tag": "a",
+      "text": "OSC 52 — Clipboard Manipulation",
+      "href": "https://docs.otty.sh/vt/osc/osc-52"
+    },
+    {
+      "tag": "a",
+      "text": "OSC 88 — Terminal Resume Protocol Proposal",
+      "href": "https://docs.otty.sh/vt/osc/osc-88"
+    },
+    {
+      "tag": "a",
+      "text": "OSC 99 — Kitty Desktop Notification Protocol",
+      "href": "https://docs.otty.sh/vt/osc/osc-99"
+    },
+    {
+      "tag": "a",
+      "text": "OSC 104 / 105 / 110-119 — Color Reset",
+      "href": "https://docs.otty.sh/vt/osc/osc-104-119"
+    },
+    {
+      "tag": "a",
+      "text": "OSC 133 — Shell Integration (FTCS)",
+      "href": "https://docs.otty.sh/vt/osc/osc-133"
+    },
+    {
+      "tag": "a",
+      "text": "OSC 777 — Desktop Notification (urxvt style)",
+      "href": "https://docs.otty.sh/vt/osc/osc-777"
+    },
+    {
+      "tag": "a",
+      "text": "OSC 1337 — iTerm2 Inline Image",
+      "href": "https://docs.otty.sh/vt/osc/osc-1337"
+    },
+    {
+      "tag": "div",
+      "text": "Reference",
+      "href": null
+    },
+    {
+      "tag": "a",
+      "text": "CLI Reference",
+      "href": "https://docs.otty.sh/reference/cli"
+    },
+    {
+      "tag": "a",
+      "text": "Otty Configuration Reference",
+      "href": "https://docs.otty.sh/reference/configuration"
+    },
+    {
+      "tag": "a",
+      "text": "Keybindings Reference",
+      "href": "https://docs.otty.sh/reference/keybindings"
+    },
+    {
+      "tag": "a",
+      "text": "Config File Format",
+      "href": "https://docs.otty.sh/reference/config-file-format"
+    },
+    {
+      "tag": "a",
+      "text": "Theme Format",
+      "href": "https://docs.otty.sh/reference/theme-format"
+    },
+    {
+      "tag": "a",
+      "text": "Performance",
+      "href": "https://docs.otty.sh/reference/performance"
+    },
+    {
+      "tag": "a",
+      "text": "Credits",
+      "href": "https://docs.otty.sh/reference/credits"
+    },
+    {
+      "tag": "div",
+      "text": "About",
+      "href": null
+    },
+    {
+      "tag": "a",
+      "text": "Changelog",
+      "href": "https://docs.otty.sh/changelog"
+    },
+    {
+      "tag": "a",
+      "text": "Pricing",
+      "href": "https://docs.otty.sh/pricing"
+    },
+    {
+      "tag": "a",
+      "text": "License Agreement",
+      "href": "https://docs.otty.sh/license"
+    },
+    {
+      "tag": "a",
+      "text": "Privacy Policy",
+      "href": "https://docs.otty.sh/privacy"
+    },
+    {
+      "tag": "a",
+      "text": "Supported sources",
+      "href": "https://docs.otty.sh/customization/import-export#supported-sources"
+    },
+    {
+      "tag": "a",
+      "text": "Ghostty",
+      "href": "https://docs.otty.sh/customization/import-export#ghostty"
+    },
+    {
+      "tag": "a",
+      "text": "Kitty",
+      "href": "https://docs.otty.sh/customization/import-export#kitty"
+    },
+    {
+      "tag": "a",
+      "text": "Alacritty",
+      "href": "https://docs.otty.sh/customization/import-export#alacritty"
+    },
+    {
+      "tag": "a",
+      "text": "CLI usage",
+      "href": "https://docs.otty.sh/customization/import-export#cli-usage"
+    },
+    {
+      "tag": "a",
+      "text": "GUI flow",
+      "href": "https://docs.otty.sh/customization/import-export#gui-flow"
+    },
+    {
+      "tag": "a",
+      "text": "See also",
+      "href": "https://docs.otty.sh/customization/import-export#see-also"
+    },
+    {
+      "tag": "a",
+      "text": "​",
+      "href": "https://docs.otty.sh/customization/import-export#import-export"
+    },
+    {
+      "tag": "a",
+      "text": "​",
+      "href": "https://docs.otty.sh/customization/import-export#supported-sources"
+    },
+    {
+      "tag": "a",
+      "text": "​",
+      "href": "https://docs.otty.sh/customization/import-export#ghostty"
+    },
+    {
+      "tag": "a",
+      "text": "​",
+      "href": "https://docs.otty.sh/customization/import-export#kitty"
+    },
+    {
+      "tag": "a",
+      "text": "​",
+      "href": "https://docs.otty.sh/customization/import-export#alacritty"
+    },
+    {
+      "tag": "a",
+      "text": "​",
+      "href": "https://docs.otty.sh/customization/import-export#cli-usage"
+    },
+    {
+      "tag": "a",
+      "text": "​",
+      "href": "https://docs.otty.sh/customization/import-export#gui-flow"
+    },
+    {
+      "tag": "a",
+      "text": "configuration reference",
+      "href": "https://docs.otty.sh/reference/configuration"
+    },
+    {
+      "tag": "a",
+      "text": "​",
+      "href": "https://docs.otty.sh/customization/import-export#see-also"
+    },
+    {
+      "tag": "a",
+      "text": "Config File",
+      "href": "https://docs.otty.sh/customization/config-file"
+    },
+    {
+      "tag": "a",
+      "text": "Configuration Reference",
+      "href": "https://docs.otty.sh/reference/configuration"
+    },
+    {
+      "tag": "a",
+      "text": "Themes",
+      "href": "https://docs.otty.sh/customization/themes"
+    },
+    {
+      "tag": "a",
+      "text": "CLI Reference",
+      "href": "https://docs.otty.sh/reference/cli"
+    },
+    {
+      "tag": "a",
+      "text": "Previous page Advanced / All Settings",
+      "href": "https://docs.otty.sh/customization/advanced-settings"
+    },
+    {
+      "tag": "a",
+      "text": "Next page VT Overview",
+      "href": "https://docs.otty.sh/vt/overview"
+    }
+  ],
+  "links": [
+    {
+      "href": "#VPContent",
+      "resolved": "https://docs.otty.sh/customization/import-export#VPContent",
+      "text": "Skip to content"
+    },
+    {
+      "href": "/",
+      "resolved": "https://docs.otty.sh/",
+      "text": "Otty"
+    },
+    {
+      "href": "https://otty.sh",
+      "resolved": "https://otty.sh/",
+      "text": "Home Page"
+    },
+    {
+      "href": "/getting-started/installation",
+      "resolved": "https://docs.otty.sh/getting-started/installation",
+      "text": "Installation"
+    },
+    {
+      "href": "/getting-started/first-launch",
+      "resolved": "https://docs.otty.sh/getting-started/first-launch",
+      "text": "First Launch"
+    },
+    {
+      "href": "/user-interface/window-tab-split",
+      "resolved": "https://docs.otty.sh/user-interface/window-tab-split",
+      "text": "Window, Tab and Split"
+    },
+    {
+      "href": "/user-interface/details-panel",
+      "resolved": "https://docs.otty.sh/user-interface/details-panel",
+      "text": "Details Panel"
+    },
+    {
+      "href": "/user-interface/status-bar",
+      "resolved": "https://docs.otty.sh/user-interface/status-bar",
+      "text": "Status Bar"
+    },
+    {
+      "href": "/user-interface/files-and-links",
+      "resolved": "https://docs.otty.sh/user-interface/files-and-links",
+      "text": "Files and Links"
+    },
+    {
+      "href": "/user-interface/drag-and-drop",
+      "resolved": "https://docs.otty.sh/user-interface/drag-and-drop",
+      "text": "Drag and Drop"
+    },
+    {
+      "href": "/user-interface/find",
+      "resolved": "https://docs.otty.sh/user-interface/find",
+      "text": "Find"
+    },
+    {
+      "href": "/user-interface/open-quickly",
+      "resolved": "https://docs.otty.sh/user-interface/open-quickly",
+      "text": "Open Quickly"
+    },
+    {
+      "href": "/user-interface/command-palette",
+      "resolved": "https://docs.otty.sh/user-interface/command-palette",
+      "text": "Command Palette"
+    },
+    {
+      "href": "/user-interface/outline",
+      "resolved": "https://docs.otty.sh/user-interface/outline",
+      "text": "Outline / Jump To"
+    },
+    {
+      "href": "/workflows/recipes",
+      "resolved": "https://docs.otty.sh/workflows/recipes",
+      "text": "Recipes"
+    },
+    {
+      "href": "/workflows/session-recovery",
+      "resolved": "https://docs.otty.sh/workflows/session-recovery",
+      "text": "Session Recovery"
+    },
+    {
+      "href": "/workflows/frequent-folders",
+      "resolved": "https://docs.otty.sh/workflows/frequent-folders",
+      "text": "Frequent Folders"
+    },
+    {
+      "href": "/workflows/cli-usage",
+      "resolved": "https://docs.otty.sh/workflows/cli-usage",
+      "text": "Using the CLI in your Shell"
+    },
+    {
+      "href": "/workflows/data-sync",
+      "resolved": "https://docs.otty.sh/workflows/data-sync",
+      "text": "Data Sync"
+    },
+    {
+      "href": "/workflows/ssh-remote",
+      "resolved": "https://docs.otty.sh/workflows/ssh-remote",
+      "text": "SSH / Remote Development"
+    },
+    {
+      "href": "/terminal-features/cursor-and-mouse",
+      "resolved": "https://docs.otty.sh/terminal-features/cursor-and-mouse",
+      "text": "Cursor and Mouse"
+    },
+    {
+      "href": "/terminal-features/selection",
+      "resolved": "https://docs.otty.sh/terminal-features/selection",
+      "text": "Selection"
+    },
+    {
+      "href": "/terminal-features/scroll",
+      "resolved": "https://docs.otty.sh/terminal-features/scroll",
+      "text": "Scroll"
+    },
+    {
+      "href": "/terminal-features/input",
+      "resolved": "https://docs.otty.sh/terminal-features/input",
+      "text": "Input"
+    },
+    {
+      "href": "/terminal-features/copy-and-paste",
+      "resolved": "https://docs.otty.sh/terminal-features/copy-and-paste",
+      "text": "Copy and Paste"
+    },
+    {
+      "href": "/terminal-features/autocomplete",
+      "resolved": "https://docs.otty.sh/terminal-features/autocomplete",
+      "text": "Autocomplete / Inline Suggest"
+    },
+    {
+      "href": "/terminal-features/unicode-and-text-styles",
+      "resolved": "https://docs.otty.sh/terminal-features/unicode-and-text-styles",
+      "text": "Unicode and Text Styles"
+    },
+    {
+      "href": "/terminal-features/box-drawing",
+      "resolved": "https://docs.otty.sh/terminal-features/box-drawing",
+      "text": "Box Drawing"
+    },
+    {
+      "href": "/terminal-features/images",
+      "resolved": "https://docs.otty.sh/terminal-features/images",
+      "text": "Images"
+    },
+    {
+      "href": "/terminal-features/progress-state",
+      "resolved": "https://docs.otty.sh/terminal-features/progress-state",
+      "text": "Progress State"
+    },
+    {
+      "href": "/terminal-features/notifications",
+      "resolved": "https://docs.otty.sh/terminal-features/notifications",
+      "text": "Privilege and Notifications"
+    },
+    {
+      "href": "/terminal-features/vi-mode",
+      "resolved": "https://docs.otty.sh/terminal-features/vi-mode",
+      "text": "Vi Mode"
+    },
+    {
+      "href": "/terminal-features/hint-mode",
+      "resolved": "https://docs.otty.sh/terminal-features/hint-mode",
+      "text": "Hint Mode"
+    },
+    {
+      "href": "/terminal-features/read-only-mode",
+      "resolved": "https://docs.otty.sh/terminal-features/read-only-mode",
+      "text": "Read-only Mode"
+    },
+    {
+      "href": "/terminal-features/shell-integration",
+      "resolved": "https://docs.otty.sh/terminal-features/shell-integration",
+      "text": "Shell Integration"
+    },
+    {
+      "href": "/terminal-features/term-value",
+      "resolved": "https://docs.otty.sh/terminal-features/term-value",
+      "text": "$TERM and Identification"
+    },
+    {
+      "href": "/agents/agents-overview",
+      "resolved": "https://docs.otty.sh/agents/agents-overview",
+      "text": "Overview"
+    },
+    {
+      "href": "/agents/setup",
+      "resolved": "https://docs.otty.sh/agents/setup",
+      "text": "Setup"
+    },
+    {
+      "href": "/agents/parallel-tasks",
+      "resolved": "https://docs.otty.sh/agents/parallel-tasks",
+      "text": "Monitor Tasks"
+    },
+    {
+      "href": "/agents/history",
+      "resolved": "https://docs.otty.sh/agents/history",
+      "text": "History"
+    },
+    {
+      "href": "/agents/composer",
+      "resolved": "https://docs.otty.sh/agents/composer",
+      "text": "Composer"
+    },
+    {
+      "href": "/agents/prompt-queue",
+      "resolved": "https://docs.otty.sh/agents/prompt-queue",
+      "text": "Prompt Queue"
+    },
+    {
+      "href": "/agents/send-to-chat",
+      "resolved": "https://docs.otty.sh/agents/send-to-chat",
+      "text": "Send to Chat"
+    },
+    {
+      "href": "/agents/fork-branch-session",
+      "resolved": "https://docs.otty.sh/agents/fork-branch-session",
+      "text": "Fork / Branch Session"
+    },
+    {
+      "href": "/agents/supported-agents",
+      "resolved": "https://docs.otty.sh/agents/supported-agents",
+      "text": "Supported Agents"
+    },
+    {
+      "href": "/customization/themes",
+      "resolved": "https://docs.otty.sh/customization/themes",
+      "text": "Themes"
+    },
+    {
+      "href": "/customization/fonts",
+      "resolved": "https://docs.otty.sh/customization/fonts",
+      "text": "Fonts and Text Rendering"
+    },
+    {
+      "href": "/customization/custom-keybindings",
+      "resolved": "https://docs.otty.sh/customization/custom-keybindings",
+      "text": "Keybindings"
+    },
+    {
+      "href": "/customization/custom-commands",
+      "resolved": "https://docs.otty.sh/customization/custom-commands",
+      "text": "Custom Commands / Layouts / Snippets"
+    },
+    {
+      "href": "/customization/config-file",
+      "resolved": "https://docs.otty.sh/customization/config-file",
+      "text": "Config File"
+    },
+    {
+      "href": "/customization/advanced-settings",
+      "resolved": "https://docs.otty.sh/customization/advanced-settings",
+      "text": "Advanced / All Settings"
+    },
+    {
+      "href": "/customization/import-export",
+      "resolved": "https://docs.otty.sh/customization/import-export",
+      "text": "Import / Export Settings"
+    },
+    {
+      "href": "/vt/overview",
+      "resolved": "https://docs.otty.sh/vt/overview",
+      "text": "VT Overview"
+    },
+    {
+      "href": "/vt/sequence-reference",
+      "resolved": "https://docs.otty.sh/vt/sequence-reference",
+      "text": "Sequence Reference"
+    },
+    {
+      "href": "/vt/external-protocols",
+      "resolved": "https://docs.otty.sh/vt/external-protocols",
+      "text": "External Protocols"
+    },
+    {
+      "href": "/vt/terminal-comparison",
+      "resolved": "https://docs.otty.sh/vt/terminal-comparison",
+      "text": "Terminal Comparison"
+    },
+    {
+      "href": "/vt/concepts/control-sequences",
+      "resolved": "https://docs.otty.sh/vt/concepts/control-sequences",
+      "text": "Control Sequences"
+    },
+    {
+      "href": "/vt/concepts/cursor",
+      "resolved": "https://docs.otty.sh/vt/concepts/cursor",
+      "text": "Cursor"
+    },
+    {
+      "href": "/vt/concepts/screen",
+      "resolved": "https://docs.otty.sh/vt/concepts/screen",
+      "text": "Screen"
+    },
+    {
+      "href": "/vt/concepts/colors",
+      "resolved": "https://docs.otty.sh/vt/concepts/colors",
+      "text": "Colors"
+    },
+    {
+      "href": "/vt/c0/",
+      "resolved": "https://docs.otty.sh/vt/c0/",
+      "text": "Control"
+    },
+    {
+      "href": "/vt/c0/bel",
+      "resolved": "https://docs.otty.sh/vt/c0/bel",
+      "text": "BEL — Bell"
+    },
+    {
+      "href": "/vt/c0/bs",
+      "resolved": "https://docs.otty.sh/vt/c0/bs",
+      "text": "BS — Backspace"
+    },
+    {
+      "href": "/vt/c0/can",
+      "resolved": "https://docs.otty.sh/vt/c0/can",
+      "text": "CAN — Cancel"
+    },
+    {
+      "href": "/vt/c0/cr",
+      "resolved": "https://docs.otty.sh/vt/c0/cr",
+      "text": "CR — Carriage Return"
+    },
+    {
+      "href": "/vt/c0/del",
+      "resolved": "https://docs.otty.sh/vt/c0/del",
+      "text": "DEL — Delete"
+    },
+    {
+      "href": "/vt/c0/esc",
+      "resolved": "https://docs.otty.sh/vt/c0/esc",
+      "text": "ESC — Escape"
+    },
+    {
+      "href": "/vt/c0/ff",
+      "resolved": "https://docs.otty.sh/vt/c0/ff",
+      "text": "FF — Form Feed"
+    },
+    {
+      "href": "/vt/c0/ht",
+      "resolved": "https://docs.otty.sh/vt/c0/ht",
+      "text": "HT — Horizontal Tab"
+    },
+    {
+      "href": "/vt/c0/lf",
+      "resolved": "https://docs.otty.sh/vt/c0/lf",
+      "text": "LF — Line Feed"
+    },
+    {
+      "href": "/vt/c0/si",
+      "resolved": "https://docs.otty.sh/vt/c0/si",
+      "text": "SI — Shift In"
+    },
+    {
+      "href": "/vt/c0/so",
+      "resolved": "https://docs.otty.sh/vt/c0/so",
+      "text": "SO — Shift Out"
+    },
+    {
+      "href": "/vt/c0/sub",
+      "resolved": "https://docs.otty.sh/vt/c0/sub",
+      "text": "SUB — Substitute"
+    },
+    {
+      "href": "/vt/c0/vt",
+      "resolved": "https://docs.otty.sh/vt/c0/vt",
+      "text": "VT — Vertical Tab"
+    },
+    {
+      "href": "/vt/esc/",
+      "resolved": "https://docs.otty.sh/vt/esc/",
+      "text": "ESC"
+    },
+    {
+      "href": "/vt/esc/decaln",
+      "resolved": "https://docs.otty.sh/vt/esc/decaln",
+      "text": "DECALN — Screen Alignment Display"
+    },
+    {
+      "href": "/vt/esc/deckpam",
+      "resolved": "https://docs.otty.sh/vt/esc/deckpam",
+      "text": "DECKPAM — Keypad Application Mode"
+    },
+    {
+      "href": "/vt/esc/deckpnm",
+      "resolved": "https://docs.otty.sh/vt/esc/deckpnm",
+      "text": "DECKPNM — Keypad Numeric Mode"
+    },
+    {
+      "href": "/vt/esc/decrc",
+      "resolved": "https://docs.otty.sh/vt/esc/decrc",
+      "text": "DECRC — Restore Cursor"
+    },
+    {
+      "href": "/vt/esc/decsc",
+      "resolved": "https://docs.otty.sh/vt/esc/decsc",
+      "text": "DECSC — Save Cursor"
+    },
+    {
+      "href": "/vt/esc/hts",
+      "resolved": "https://docs.otty.sh/vt/esc/hts",
+      "text": "HTS — Set Tab Stop"
+    },
+    {
+      "href": "/vt/esc/ind",
+      "resolved": "https://docs.otty.sh/vt/esc/ind",
+      "text": "IND — Index"
+    },
+    {
+      "href": "/vt/esc/nel",
+      "resolved": "https://docs.otty.sh/vt/esc/nel",
+      "text": "NEL — Next Line"
+    },
+    {
+      "href": "/vt/esc/ri",
+      "resolved": "https://docs.otty.sh/vt/esc/ri",
+      "text": "RI — Reverse Index"
+    },
+    {
+      "href": "/vt/esc/ris",
+      "resolved": "https://docs.otty.sh/vt/esc/ris",
+      "text": "RIS — Full Reset"
+    },
+    {
+      "href": "/vt/csi/",
+      "resolved": "https://docs.otty.sh/vt/csi/",
+      "text": "CSI"
+    },
+    {
+      "href": "/vt/csi/cub",
+      "resolved": "https://docs.otty.sh/vt/csi/cub",
+      "text": "CUB — Cursor Back"
+    },
+    {
+      "href": "/vt/csi/cud",
+      "resolved": "https://docs.otty.sh/vt/csi/cud",
+      "text": "CUD — Cursor Down"
+    },
+    {
+      "href": "/vt/csi/cuf",
+      "resolved": "https://docs.otty.sh/vt/csi/cuf",
+      "text": "CUF — Cursor Forward"
+    },
+    {
+      "href": "/vt/csi/cup",
+      "resolved": "https://docs.otty.sh/vt/csi/cup",
+      "text": "CUP — Cursor Position"
+    },
+    {
+      "href": "/vt/csi/cuu",
+      "resolved": "https://docs.otty.sh/vt/csi/cuu",
+      "text": "CUU — Cursor Up"
+    },
+    {
+      "href": "/vt/csi/dch",
+      "resolved": "https://docs.otty.sh/vt/csi/dch",
+      "text": "DCH — Delete Characters"
+    },
+    {
+      "href": "/vt/csi/decrst",
+      "resolved": "https://docs.otty.sh/vt/csi/decrst",
+      "text": "DECRST — Reset DEC Private Mode"
+    },
+    {
+      "href": "/vt/csi/decsca",
+      "resolved": "https://docs.otty.sh/vt/csi/decsca",
+      "text": "DECSCA — Character Protection"
+    },
+    {
+      "href": "/vt/csi/decscusr",
+      "resolved": "https://docs.otty.sh/vt/csi/decscusr",
+      "text": "DECSCUSR — Set Cursor Style"
+    },
+    {
+      "href": "/vt/csi/decset",
+      "resolved": "https://docs.otty.sh/vt/csi/decset",
+      "text": "DECSET — Set DEC Private Mode"
+    },
+    {
+      "href": "/vt/csi/decstr",
+      "resolved": "https://docs.otty.sh/vt/csi/decstr",
+      "text": "DECSTR — Soft Terminal Reset"
+    },
+    {
+      "href": "/vt/csi/dl",
+      "resolved": "https://docs.otty.sh/vt/csi/dl",
+      "text": "DL — Delete Lines"
+    },
+    {
+      "href": "/vt/csi/dsr",
+      "resolved": "https://docs.otty.sh/vt/csi/dsr",
+      "text": "DSR — Device Status Report"
+    },
+    {
+      "href": "/vt/csi/ed",
+      "resolved": "https://docs.otty.sh/vt/csi/ed",
+      "text": "ED — Erase in Display"
+    },
+    {
+      "href": "/vt/csi/el",
+      "resolved": "https://docs.otty.sh/vt/csi/el",
+      "text": "EL — Erase in Line"
+    },
+    {
+      "href": "/vt/csi/ich",
+      "resolved": "https://docs.otty.sh/vt/csi/ich",
+      "text": "ICH — Insert Characters"
+    },
+    {
+      "href": "/vt/csi/il",
+      "resolved": "https://docs.otty.sh/vt/csi/il",
+      "text": "IL — Insert Lines"
+    },
+    {
+      "href": "/vt/csi/sgr",
+      "resolved": "https://docs.otty.sh/vt/csi/sgr",
+      "text": "SGR — Select Graphic Rendition"
+    },
+    {
+      "href": "/vt/csi/xt-colors",
+      "resolved": "https://docs.otty.sh/vt/csi/xt-colors",
+      "text": "XTPUSHCOLORS / XTPOPCOLORS / XTREPORTCOLORS"
+    },
+    {
+      "href": "/vt/csi/xtwinops",
+      "resolved": "https://docs.otty.sh/vt/csi/xtwinops",
+      "text": "XTWINOPS — Window Ops & Size Reports"
+    },
+    {
+      "href": "/vt/osc/",
+      "resolved": "https://docs.otty.sh/vt/osc/",
+      "text": "OSC"
+    },
+    {
+      "href": "/vt/osc/osc-0-2",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-0-2",
+      "text": "OSC 0 / OSC 2 — Set Window Title"
+    },
+    {
+      "href": "/vt/osc/osc-4",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-4",
+      "text": "OSC 4 — Palette Set / Query"
+    },
+    {
+      "href": "/vt/osc/osc-5",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-5",
+      "text": "OSC 5 — \"Special\" Color Set"
+    },
+    {
+      "href": "/vt/osc/osc-7",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-7",
+      "text": "OSC 7 — Current Working Directory"
+    },
+    {
+      "href": "/vt/osc/osc-8",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-8",
+      "text": "OSC 8 — Hyperlinks"
+    },
+    {
+      "href": "/vt/osc/osc-9",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-9",
+      "text": "OSC 9 — Desktop Notification (iTerm style)"
+    },
+    {
+      "href": "/vt/osc/osc-9-4",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-9-4",
+      "text": "OSC 9;4 — Progress / Task State (ConEmu)"
+    },
+    {
+      "href": "/vt/osc/osc-10-19",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-10-19",
+      "text": "OSC 10 / 11 / 12 / 17 / 19 — Dynamic Color Set / Query"
+    },
+    {
+      "href": "/vt/osc/osc-22",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-22",
+      "text": "OSC 22 — Mouse Cursor Shape"
+    },
+    {
+      "href": "/vt/osc/osc-52",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-52",
+      "text": "OSC 52 — Clipboard Manipulation"
+    },
+    {
+      "href": "/vt/osc/osc-88",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-88",
+      "text": "OSC 88 — Terminal Resume Protocol Proposal"
+    },
+    {
+      "href": "/vt/osc/osc-99",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-99",
+      "text": "OSC 99 — Kitty Desktop Notification Protocol"
+    },
+    {
+      "href": "/vt/osc/osc-104-119",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-104-119",
+      "text": "OSC 104 / 105 / 110-119 — Color Reset"
+    },
+    {
+      "href": "/vt/osc/osc-133",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-133",
+      "text": "OSC 133 — Shell Integration (FTCS)"
+    },
+    {
+      "href": "/vt/osc/osc-777",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-777",
+      "text": "OSC 777 — Desktop Notification (urxvt style)"
+    },
+    {
+      "href": "/vt/osc/osc-1337",
+      "resolved": "https://docs.otty.sh/vt/osc/osc-1337",
+      "text": "OSC 1337 — iTerm2 Inline Image"
+    },
+    {
+      "href": "/reference/cli",
+      "resolved": "https://docs.otty.sh/reference/cli",
+      "text": "CLI Reference"
+    },
+    {
+      "href": "/reference/configuration",
+      "resolved": "https://docs.otty.sh/reference/configuration",
+      "text": "Otty Configuration Reference"
+    },
+    {
+      "href": "/reference/keybindings",
+      "resolved": "https://docs.otty.sh/reference/keybindings",
+      "text": "Keybindings Reference"
+    },
+    {
+      "href": "/reference/config-file-format",
+      "resolved": "https://docs.otty.sh/reference/config-file-format",
+      "text": "Config File Format"
+    },
+    {
+      "href": "/reference/theme-format",
+      "resolved": "https://docs.otty.sh/reference/theme-format",
+      "text": "Theme Format"
+    },
+    {
+      "href": "/reference/performance",
+      "resolved": "https://docs.otty.sh/reference/performance",
+      "text": "Performance"
+    },
+    {
+      "href": "/reference/credits",
+      "resolved": "https://docs.otty.sh/reference/credits",
+      "text": "Credits"
+    },
+    {
+      "href": "/changelog",
+      "resolved": "https://docs.otty.sh/changelog",
+      "text": "Changelog"
+    },
+    {
+      "href": "/pricing",
+      "resolved": "https://docs.otty.sh/pricing",
+      "text": "Pricing"
+    },
+    {
+      "href": "/license",
+      "resolved": "https://docs.otty.sh/license",
+      "text": "License Agreement"
+    },
+    {
+      "href": "/privacy",
+      "resolved": "https://docs.otty.sh/privacy",
+      "text": "Privacy Policy"
+    },
+    {
+      "href": "#supported-sources",
+      "resolved": "https://docs.otty.sh/customization/import-export#supported-sources",
+      "text": "Supported sources"
+    },
+    {
+      "href": "#ghostty",
+      "resolved": "https://docs.otty.sh/customization/import-export#ghostty",
+      "text": "Ghostty"
+    },
+    {
+      "href": "#kitty",
+      "resolved": "https://docs.otty.sh/customization/import-export#kitty",
+      "text": "Kitty"
+    },
+    {
+      "href": "#alacritty",
+      "resolved": "https://docs.otty.sh/customization/import-export#alacritty",
+      "text": "Alacritty"
+    },
+    {
+      "href": "#cli-usage",
+      "resolved": "https://docs.otty.sh/customization/import-export#cli-usage",
+      "text": "CLI usage"
+    },
+    {
+      "href": "#gui-flow",
+      "resolved": "https://docs.otty.sh/customization/import-export#gui-flow",
+      "text": "GUI flow"
+    },
+    {
+      "href": "#see-also",
+      "resolved": "https://docs.otty.sh/customization/import-export#see-also",
+      "text": "See also"
+    },
+    {
+      "href": "#import-export",
+      "resolved": "https://docs.otty.sh/customization/import-export#import-export",
+      "text": "​"
+    },
+    {
+      "href": "#supported-sources",
+      "resolved": "https://docs.otty.sh/customization/import-export#supported-sources",
+      "text": "​"
+    },
+    {
+      "href": "#ghostty",
+      "resolved": "https://docs.otty.sh/customization/import-export#ghostty",
+      "text": "​"
+    },
+    {
+      "href": "#kitty",
+      "resolved": "https://docs.otty.sh/customization/import-export#kitty",
+      "text": "​"
+    },
+    {
+      "href": "#alacritty",
+      "resolved": "https://docs.otty.sh/customization/import-export#alacritty",
+      "text": "​"
+    },
+    {
+      "href": "#cli-usage",
+      "resolved": "https://docs.otty.sh/customization/import-export#cli-usage",
+      "text": "​"
+    },
+    {
+      "href": "#gui-flow",
+      "resolved": "https://docs.otty.sh/customization/import-export#gui-flow",
+      "text": "​"
+    },
+    {
+      "href": "/reference/configuration",
+      "resolved": "https://docs.otty.sh/reference/configuration",
+      "text": "configuration reference"
+    },
+    {
+      "href": "#see-also",
+      "resolved": "https://docs.otty.sh/customization/import-export#see-also",
+      "text": "​"
+    },
+    {
+      "href": "/customization/config-file",
+      "resolved": "https://docs.otty.sh/customization/config-file",
+      "text": "Config File"
+    },
+    {
+      "href": "/reference/configuration",
+      "resolved": "https://docs.otty.sh/reference/configuration",
+      "text": "Configuration Reference"
+    },
+    {
+      "href": "/customization/themes",
+      "resolved": "https://docs.otty.sh/customization/themes",
+      "text": "Themes"
+    },
+    {
+      "href": "/reference/cli",
+      "resolved": "https://docs.otty.sh/reference/cli",
+      "text": "CLI Reference"
+    },
+    {
+      "href": "/customization/advanced-settings",
+      "resolved": "https://docs.otty.sh/customization/advanced-settings",
+      "text": "Previous page Advanced / All Settings"
+    },
+    {
+      "href": "/vt/overview",
+      "resolved": "https://docs.otty.sh/vt/overview",
+      "text": "Next page VT Overview"
+    }
+  ],
+  "colors": {
+    "text": [
+      {
+        "value": "rgb(223, 223, 214)",
+        "count": 1610
+      },
+      {
+        "value": "rgb(168, 177, 255)",
+        "count": 1339
+      },
+      {
+        "value": "rgb(152, 152, 159)",
+        "count": 124
+      },
+      {
+        "value": "rgb(106, 106, 113)",
+        "count": 29
+      },
+      {
+        "value": "rgb(158, 203, 255)",
+        "count": 22
+      },
+      {
+        "value": "rgb(179, 146, 240)",
+        "count": 9
+      },
+      {
+        "value": "rgb(106, 115, 125)",
+        "count": 6
+      },
+      {
+        "value": "rgb(121, 184, 255)",
+        "count": 5
+      },
+      {
+        "value": "rgb(249, 117, 131)",
+        "count": 1
+      }
+    ],
+    "background": [
+      {
+        "value": "rgba(101, 117, 133, 0.16)",
+        "count": 721
+      },
+      {
+        "value": "rgb(32, 33, 39)",
+        "count": 202
+      },
+      {
+        "value": "rgb(22, 22, 24)",
+        "count": 193
+      },
+      {
+        "value": "rgb(106, 106, 113)",
+        "count": 14
+      },
+      {
+        "value": "rgb(223, 223, 214)",
+        "count": 2
+      },
+      {
+        "value": "rgb(152, 152, 159)",
+        "count": 1
+      },
+      {
+        "value": "rgb(0, 0, 0)",
+        "count": 1
+      }
+    ],
+    "border": [
+      {
+        "value": "rgb(168, 177, 255)",
+        "count": 1339
+      },
+      {
+        "value": "rgb(46, 46, 50)",
+        "count": 850
+      },
+      {
+        "value": "rgb(223, 223, 214)",
+        "count": 414
+      },
+      {
+        "value": "rgb(46, 46, 50) rgb(223, 223, 214) rgb(223, 223, 214)",
+        "count": 368
+      },
+      {
+        "value": "rgb(152, 152, 159)",
+        "count": 95
+      },
+      {
+        "value": "rgb(106, 106, 113)",
+        "count": 29
+      },
+      {
+        "value": "rgb(158, 203, 255)",
+        "count": 22
+      },
+      {
+        "value": "rgb(179, 146, 240)",
+        "count": 9
+      },
+      {
+        "value": "rgb(106, 115, 125)",
+        "count": 6
+      },
+      {
+        "value": "rgb(121, 184, 255)",
+        "count": 5
+      },
+      {
+        "value": "rgb(223, 223, 214) rgb(223, 223, 214) rgba(0, 0, 0, 0)",
+        "count": 1
+      },
+      {
+        "value": "rgb(46, 46, 50) rgb(152, 152, 159) rgb(46, 46, 50) rgb(46, 46, 50)",
+        "count": 1
+      },
+      {
+        "value": "rgb(46, 46, 50) rgb(46, 46, 50) rgb(46, 46, 50) rgb(152, 152, 159)",
+        "count": 1
+      },
+      {
+        "value": "rgb(60, 63, 68)",
+        "count": 1
+      },
+      {
+        "value": "rgb(223, 223, 214) rgb(0, 0, 0) rgb(223, 223, 214) rgb(223, 223, 214)",
+        "count": 1
+      },
+      {
+        "value": "rgb(223, 223, 214) rgb(223, 223, 214) rgb(223, 223, 214) rgb(46, 46, 50)",
+        "count": 1
+      }
+    ]
+  },
+  "bodyTextSample": "Skip to content Otty Search K Main Navigation Home Page Sidebar Navigation Getting Started Installation First Launch User Interface Window, Tab and Split Details Panel Status Bar Files and Links Drag and Drop Find Open Quickly Command Palette Outline / Jump To Workflows Recipes Session Recovery Frequent Folders Using the CLI in your Shell Data Sync SSH / Remote Development Terminal Features Cursor and Mouse Selection Scroll Input Copy and Paste Autocomplete / Inline Suggest Unicode and Text Styles Box Drawing Images Progress State Privilege and Notifications Vi Mode Hint Mode Read-only Mode Shell Integration $TERM and Identification Working with Agents Overview Setup Monitor Tasks History Composer Prompt Queue Send to Chat Fork / Branch Session Supported Agents Customization Themes Fonts and Text Rendering Keybindings Custom Commands / Layouts / Snippets Config File Advanced / All Settings Import / Export Settings Terminal API (VT) VT Overview Sequence Reference External Protocols Terminal Comparison Concepts Control ESC CSI OSC Reference CLI Reference Otty Configuration Reference Keybindings Reference Config File Format Theme Format Performance Credits About Changelog Pricing License Agreement Privacy Policy On this page Supported sources Ghostty Kitty Alacritty CLI usage GUI flow See also Import / Export ​ Otty can read configs from other terminals (Ghostty, Kitty, Alacritty) and write your current Otty config back out in any of those formats — useful when you're trying Otty alongside an existing setup, or when you want to share a configuration with someone who hasn't switched. The same machinery is reachable two ways: Settings → Advanced → Config File has Import / Export rows with a source picker (Ghostty / Kitty / Alacritty). CLI: otty import <source> [path] and otty export <source> [-o path]. All conversions go through Otty's classification engine. Every line in the source file lands in one of four buckets: Bucket What it means Supported Otty has the same key; "
+}

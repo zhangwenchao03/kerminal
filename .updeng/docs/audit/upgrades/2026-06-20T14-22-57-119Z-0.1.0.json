@@ -1,0 +1,352 @@
+{
+  "apiVersion": "updeng/v1",
+  "kind": "UpgradeReport",
+  "version": 1,
+  "generatedAt": "2026-06-20T14:22:57.119Z",
+  "targetRoot": "C:\\dev\\rust\\kerminal",
+  "package": {
+    "name": "@kong/updeng",
+    "version": "0.1.0"
+  },
+  "fromVersion": "0.1.0",
+  "installedVersion": "0.1.0",
+  "toVersion": "0.1.0",
+  "packageUpdateRequired": false,
+  "refreshedSkills": false,
+  "dryRun": false,
+  "force": false,
+  "groups": [
+    "core-workflow",
+    "engineering-workflow",
+    "frontend",
+    "tauri"
+  ],
+  "categories": [
+    "governance",
+    "review",
+    "engineering-workflow",
+    "discovery",
+    "domain-context",
+    "planning",
+    "prototype",
+    "architecture",
+    "diagnostics",
+    "testing",
+    "evolution",
+    "frontend",
+    "tauri"
+  ],
+  "skills": [
+    "bwy-code-review",
+    "bwy-development-governance",
+    "bwy-project-skill-maintenance",
+    "bwy-skill-evolution",
+    "bwy-tech-decision",
+    "bwy-updeng-workflow",
+    "bwy-architecture-deepening",
+    "bwy-diagnose",
+    "bwy-domain-context",
+    "bwy-issue-planning",
+    "bwy-prototype",
+    "bwy-requirement-discovery",
+    "bwy-tdd-development",
+    "apple-inspired-ui-style",
+    "bwy-frontend-development",
+    "bwy-react-development-standards",
+    "api-development",
+    "architecture-design",
+    "bug-detective",
+    "code-patterns",
+    "collaborating-with-gemini",
+    "database-ops",
+    "docs-management",
+    "error-handler",
+    "file-storage",
+    "general-development-standards",
+    "json-serialization",
+    "mobile-development",
+    "notification-system",
+    "performance-doctor",
+    "project-init",
+    "release-publish",
+    "rust-fundamentals",
+    "rust-tauri-development-standards",
+    "security-permissions",
+    "store-management",
+    "task-tracker",
+    "tauri-capabilities",
+    "tauri-commands",
+    "tauri-events",
+    "tauri-packaging",
+    "tauri-plugins",
+    "tauri-updater",
+    "tauri-window-management",
+    "test-development",
+    "utils-toolkit"
+  ],
+  "platforms": [
+    "codex"
+  ],
+  "skillScopes": [
+    "project"
+  ],
+  "userHome": null,
+  "actions": [
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.codex\\config.toml",
+      "detail": "from C:\\kong\\skills\\project\\templates\\adapters\\codex\\config.toml"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.codex\\hooks\\pre-tool-use.cjs",
+      "detail": "from C:\\kong\\skills\\project\\templates\\adapters\\codex\\hooks\\pre-tool-use.cjs"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.codex\\hooks\\skill-forced-eval.cjs",
+      "detail": "from C:\\kong\\skills\\project\\templates\\adapters\\codex\\hooks\\skill-forced-eval.cjs"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.codex\\hooks\\workflow-event.cjs",
+      "detail": "from C:\\kong\\skills\\project\\templates\\adapters\\codex\\hooks\\workflow-event.cjs"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.codex\\hooks.json",
+      "detail": "from C:\\kong\\skills\\project\\templates\\adapters\\codex\\hooks.json"
+    },
+    {
+      "kind": "dir",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\specs",
+      "detail": "ensure directory"
+    },
+    {
+      "kind": "skip",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\specs\\.gitkeep",
+      "detail": "exists"
+    },
+    {
+      "kind": "dir",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\changes",
+      "detail": "ensure directory"
+    },
+    {
+      "kind": "skip",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\changes\\.gitkeep",
+      "detail": "exists"
+    },
+    {
+      "kind": "dir",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\archive",
+      "detail": "ensure directory"
+    },
+    {
+      "kind": "skip",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\archive\\.gitkeep",
+      "detail": "exists"
+    },
+    {
+      "kind": "dir",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\metrics",
+      "detail": "ensure directory"
+    },
+    {
+      "kind": "skip",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\metrics\\.gitkeep",
+      "detail": "exists"
+    },
+    {
+      "kind": "dir",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\audit",
+      "detail": "ensure directory"
+    },
+    {
+      "kind": "skip",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\audit\\.gitkeep",
+      "detail": "exists"
+    },
+    {
+      "kind": "dir",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\context",
+      "detail": "ensure directory"
+    },
+    {
+      "kind": "skip",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\context\\.gitkeep",
+      "detail": "exists"
+    },
+    {
+      "kind": "dir",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\context\\index",
+      "detail": "ensure directory"
+    },
+    {
+      "kind": "skip",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\context\\index\\.gitkeep",
+      "detail": "exists"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.github\\workflows\\updeng-validate.yml",
+      "detail": "from C:\\kong\\skills\\project\\templates\\github\\workflows\\updeng-validate.yml"
+    },
+    {
+      "kind": "write",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\config.yaml",
+      "detail": "migrate docs layout"
+    },
+    {
+      "kind": "migrate-dir",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\archive\\legacy-data-2",
+      "detail": "from C:\\dev\\rust\\kerminal\\.updeng\\data"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\README.md",
+      "detail": "from C:\\kong\\skills\\project\\templates\\project\\.updeng\\README.md"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\context\\README.md",
+      "detail": "from C:\\kong\\skills\\project\\templates\\project\\.updeng\\docs\\context\\README.md"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\README.md",
+      "detail": "from C:\\kong\\skills\\project\\templates\\project\\.updeng\\docs\\README.md"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\updeng-workflow.md",
+      "detail": "from C:\\kong\\skills\\project\\templates\\project\\.updeng\\docs\\updeng-workflow.md"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\updeng-production-runbook.md",
+      "detail": "from C:\\kong\\skills\\project\\templates\\project\\.updeng\\docs\\updeng-production-runbook.md"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\plan\\README.md",
+      "detail": "from C:\\kong\\skills\\project\\templates\\project\\.updeng\\docs\\plan\\README.md"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\plan\\_template.md",
+      "detail": "from C:\\kong\\skills\\project\\templates\\project\\.updeng\\docs\\plan\\_template.md"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\discovery\\README.md",
+      "detail": "from C:\\kong\\skills\\project\\templates\\project\\.updeng\\docs\\discovery\\README.md"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\domain\\README.md",
+      "detail": "from C:\\kong\\skills\\project\\templates\\project\\.updeng\\docs\\domain\\README.md"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\issues\\README.md",
+      "detail": "from C:\\kong\\skills\\project\\templates\\project\\.updeng\\docs\\issues\\README.md"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\biz\\README.md",
+      "detail": "from C:\\kong\\skills\\project\\templates\\project\\.updeng\\docs\\biz\\README.md"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\decisions\\README.md",
+      "detail": "from C:\\kong\\skills\\project\\templates\\project\\.updeng\\docs\\decisions\\README.md"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\sql\\README.md",
+      "detail": "from C:\\kong\\skills\\project\\templates\\project\\.updeng\\docs\\sql\\README.md"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\review\\README.md",
+      "detail": "from C:\\kong\\skills\\project\\templates\\project\\.updeng\\docs\\review\\README.md"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\reports\\README.md",
+      "detail": "from C:\\kong\\skills\\project\\templates\\project\\.updeng\\docs\\reports\\README.md"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\config\\README.md",
+      "detail": "from C:\\kong\\skills\\project\\templates\\project\\.updeng\\docs\\config\\README.md"
+    },
+    {
+      "kind": "copy",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\config\\remote-servers.example.json",
+      "detail": "from C:\\kong\\skills\\project\\templates\\project\\.updeng\\docs\\config\\remote-servers.example.json"
+    },
+    {
+      "kind": "skip",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\plan\\INDEX.md",
+      "detail": "exists"
+    },
+    {
+      "kind": "dir",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\plan",
+      "detail": "ensure directory"
+    },
+    {
+      "kind": "skip",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\plan\\.gitkeep",
+      "detail": "exists"
+    },
+    {
+      "kind": "dir",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\plan\\active",
+      "detail": "ensure directory"
+    },
+    {
+      "kind": "skip",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\plan\\active\\.gitkeep",
+      "detail": "exists"
+    },
+    {
+      "kind": "dir",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\plan\\next",
+      "detail": "ensure directory"
+    },
+    {
+      "kind": "skip",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\plan\\next\\.gitkeep",
+      "detail": "exists"
+    },
+    {
+      "kind": "dir",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\plan\\blocked",
+      "detail": "ensure directory"
+    },
+    {
+      "kind": "skip",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\plan\\blocked\\.gitkeep",
+      "detail": "exists"
+    },
+    {
+      "kind": "dir",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\plan\\done",
+      "detail": "ensure directory"
+    },
+    {
+      "kind": "skip",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\plan\\done\\.gitkeep",
+      "detail": "exists"
+    },
+    {
+      "kind": "write",
+      "filePath": "C:\\dev\\rust\\kerminal\\.updeng\\manifest.json",
+      "detail": "overwrite"
+    }
+  ],
+  "warnings": []
+}

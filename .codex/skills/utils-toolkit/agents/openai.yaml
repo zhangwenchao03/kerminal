@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "utils-toolkit"
+  short_description: "Tauri utility helpers and shared toolkit"
+  default_prompt: "Use $utils-toolkit when creating or changing shared utilities, helper modules, and reusable support code."

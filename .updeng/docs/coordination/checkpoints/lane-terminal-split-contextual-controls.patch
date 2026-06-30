@@ -1,0 +1,1290 @@
+diff --git a/src/features/terminal/TerminalBroadcastBar.tsx b/src/features/terminal/TerminalBroadcastBar.tsx
+index 8d2d8e9c..7b839adc 100644
+--- a/src/features/terminal/TerminalBroadcastBar.tsx
++++ b/src/features/terminal/TerminalBroadcastBar.tsx
+@@ -1,9 +1,4 @@
+-import {
+-  Columns2,
+-  PanelBottom,
+-  Send,
+-  SplitSquareHorizontal,
+-} from "lucide-react";
++import { Send } from "lucide-react";
+ import type { CSSProperties, KeyboardEvent } from "react";
+ import { Button } from "../../components/ui/button";
+ import { cn } from "../../lib/cn";
+@@ -11,21 +6,28 @@ import {
+   canBroadcastCommand,
+   type BroadcastCommandAnalysis,
+ } from "./broadcastCommandPolicy";
+-import type { TerminalSplitDirection } from "../workspace/types";
++import { TerminalBroadcastTargetSelector } from "./TerminalBroadcastTargetSelector";
++import type {
++  BroadcastTargetMode,
++  BroadcastTargetOption,
++} from "./terminalBroadcastTargets";
+ 
+ interface TerminalBroadcastBarProps {
+   analysis: BroadcastCommandAnalysis;
+   draft: string;
+   error: string | null;
+   focusedPaneId: string;
+-  onClosePane: (paneId: string) => void;
+   onDraftChange: (draft: string) => void;
+   onRequestBroadcast: () => void;
+-  onSplitPane: (direction: TerminalSplitDirection) => void;
++  onTargetModeChange: (mode: BroadcastTargetMode) => void;
++  onToggleCustomTarget: (paneId: string, selected: boolean) => void;
++  productionTargetCount: number;
++  selectedTargetPaneIds: string[];
+   sending: boolean;
+   status: string | null;
+   style?: CSSProperties;
+-  targetCount: number;
++  targetMode: BroadcastTargetMode;
++  targetOptions: BroadcastTargetOption[];
+   toolbarPaddingClass: string;
+ }
+ 
+@@ -34,16 +36,24 @@ export function TerminalBroadcastBar({
+   draft,
+   error,
+   focusedPaneId,
+-  onClosePane,
+   onDraftChange,
+   onRequestBroadcast,
+-  onSplitPane,
++  onTargetModeChange,
++  onToggleCustomTarget,
++  productionTargetCount,
++  selectedTargetPaneIds,
+   sending,
+   status,
+   style,
+-  targetCount,
++  targetMode,
++  targetOptions,
+   toolbarPaddingClass,
+ }: TerminalBroadcastBarProps) {
++  const sendLabel =
++    analysis.targetCount > 0
++      ? `发送到 ${analysis.targetCount} 个目标`
++      : "没有可发送目标";
++
+   const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+     if (event.key !== "Enter") {
+       return;
+@@ -61,33 +71,16 @@ export function TerminalBroadcastBar({
+         )}
+         style={style}
+       >
+-        <Button
+-          aria-label="左右分屏"
+-          onClick={() => onSplitPane("horizontal")}
+-          size="sm"
+-          title="左右分屏"
+-          variant="secondary"
+-        >
+-          <Columns2 className="h-4 w-4" />
+-        </Button>
+-        <Button
+-          aria-label="上下分屏"
+-          onClick={() => onSplitPane("vertical")}
+-          size="sm"
+-          title="上下分屏"
+-          variant="secondary"
+-        >
+-          <PanelBottom className="h-4 w-4" />
+-        </Button>
+-        <Button
+-          aria-label="关闭当前分屏"
+-          onClick={() => onClosePane(focusedPaneId)}
+-          size="sm"
+-          title="关闭当前分屏"
+-          variant="ghost"
+-        >
+-          <SplitSquareHorizontal className="h-4 w-4" />
+-        </Button>
++        <TerminalBroadcastTargetSelector
++          focusedPaneId={focusedPaneId}
++          onTargetModeChange={onTargetModeChange}
++          onToggleCustomTarget={onToggleCustomTarget}
++          productionTargetCount={productionTargetCount}
++          selectedTargetPaneIds={selectedTargetPaneIds}
++          targetCount={analysis.targetCount}
++          targetMode={targetMode}
++          targetOptions={targetOptions}
++        />
+         <label className="sr-only" htmlFor="broadcast-command">
+           批量命令
+         </label>
+@@ -96,18 +89,18 @@ export function TerminalBroadcastBar({
+           id="broadcast-command"
+           onChange={(event) => onDraftChange(event.currentTarget.value)}
+           onKeyDown={handleInputKeyDown}
+-          placeholder="向所有分屏发送命令..."
++          placeholder="向所选目标发送命令..."
+           value={draft}
+         />
+         <span className="hidden shrink-0 rounded-lg bg-[var(--surface-hover)] px-2 py-1 text-xs text-zinc-500 dark:text-zinc-400 xl:inline">
+-          {targetCount} 个目标
++          {analysis.targetCount} 个目标
+         </span>
+         <Button
+-          aria-label={sending ? "发送中" : "发送到全部"}
++          aria-label={sending ? "发送中" : sendLabel}
+           disabled={!canBroadcastCommand(analysis) || sending}
+           onClick={onRequestBroadcast}
+-          size="sm"
+-          title={sending ? "发送中" : "发送到全部"}
++          size="icon"
++          title={sending ? "发送中" : sendLabel}
+           variant="primary"
+         >
+           <Send className="h-4 w-4" />
+diff --git a/src/features/terminal/TerminalPaneCard.test.tsx b/src/features/terminal/TerminalPaneCard.test.tsx
+index 249dd0b2..c0332133 100644
+--- a/src/features/terminal/TerminalPaneCard.test.tsx
++++ b/src/features/terminal/TerminalPaneCard.test.tsx
+@@ -3,10 +3,14 @@ import userEvent from "@testing-library/user-event";
+ import { beforeEach, describe, expect, it, vi } from "vitest";
+ import { defaultAppSettings } from "../settings/settingsModel";
+ import type { TerminalPane } from "../workspace/types";
+-import { baseTerminalPane } from "./TerminalWorkspace.testSupport";
++import {
++  baseTerminalPane,
++  terminalMachineGroups,
++} from "./TerminalWorkspace.testSupport";
+ import { TerminalPaneCard } from "./TerminalPaneCard";
+ 
+ const xtermPaneMock = vi.hoisted(() => ({
++  lastInitialOutputHistory: undefined as string | undefined,
+   renderCount: 0,
+ }));
+ 
+@@ -15,14 +19,17 @@ vi.mock("./XtermPane", () => ({
+     onCurrentCwdChange,
+     onOutputHistoryChange,
+     onSplitPane,
++    resolveInitialOutputHistory,
+     title,
+   }: {
+     onCurrentCwdChange?: (cwd: string) => void;
+     onOutputHistoryChange?: (outputHistory: string | undefined) => void;
+     onSplitPane?: (direction: "horizontal" | "vertical") => void;
++    resolveInitialOutputHistory?: () => string | undefined;
+     title: string;
+   }) => {
+     xtermPaneMock.renderCount += 1;
++    xtermPaneMock.lastInitialOutputHistory = resolveInitialOutputHistory?.();
+ 
+     return (
+       <div aria-label={`${title} xterm 终端`}>
+@@ -62,6 +69,7 @@ function renderPaneCard(
+ 
+ describe("TerminalPaneCard", () => {
+   beforeEach(() => {
++    xtermPaneMock.lastInitialOutputHistory = undefined;
+     xtermPaneMock.renderCount = 0;
+   });
+ 
+@@ -94,7 +102,54 @@ describe("TerminalPaneCard", () => {
+ 
+     expect(onCurrentCwdChange).toHaveBeenCalledWith("pane-ssh", "C:\\repo");
+     expect(onOutputHistoryChange).toHaveBeenCalledWith("pane-ssh", "history");
+-    expect(onSplitPane).toHaveBeenCalledWith("vertical");
++    expect(onSplitPane).toHaveBeenCalledWith("vertical", {
++      sourcePaneId: "pane-ssh",
++    });
++  });
++
++  it("keeps split actions beside the pane close control", async () => {
++    const user = userEvent.setup();
++    const onFocusPane = vi.fn();
++    const onSplitPane = vi.fn();
++    const sshPane: TerminalPane = {
++      ...baseTerminalPane,
++      id: "pane-ssh",
++      machineId: "host-prod",
++      mode: "ssh",
++      remoteHostId: "host-prod",
++      title: "prod-api",
++    };
++
++    renderPaneCard(sshPane, {
++      machineGroups: terminalMachineGroups,
++      onFocusPane,
++      onSplitPane,
++    });
++
++    await user.click(screen.getByRole("button", { name: "prod-api 左右分屏" }));
++
++    expect(onFocusPane).toHaveBeenCalledWith("pane-ssh");
++    expect(onSplitPane).toHaveBeenCalledWith("horizontal", {
++      sourcePaneId: "pane-ssh",
++    });
++    expect(
++      screen.getByRole("button", { name: "关闭 prod-api 分屏" }),
++    ).toBeInTheDocument();
++  });
++
++  it("hydrates stripped runtime pane output from the resolver", () => {
++    renderPaneCard(
++      {
++        ...baseTerminalPane,
++        outputHistory: undefined,
++      },
++      {
++        resolvePaneOutputHistory: (paneId) =>
++          paneId === "pane-local" ? "restored history" : undefined,
++      },
++    );
++
++    expect(xtermPaneMock.lastInitialOutputHistory).toBe("restored history");
+   });
+ 
+   it("renders preview panes without mounting the xterm runtime", () => {
+@@ -111,7 +166,30 @@ describe("TerminalPaneCard", () => {
+     expect(screen.getByText("第一行")).toBeInTheDocument();
+     expect(screen.getByText("第二行")).toBeInTheDocument();
+     expect(screen.getByText("ERR>")).toBeInTheDocument();
+-    expect(screen.queryByLabelText("诊断输出 xterm 终端")).not.toBeInTheDocument();
++    expect(
++      screen.queryByLabelText("诊断输出 xterm 终端"),
++    ).not.toBeInTheDocument();
++    expect(xtermPaneMock.renderCount).toBe(0);
++  });
++
++  it("hydrates stripped preview pane lines from the resolver", () => {
++    renderPaneCard(
++      {
++        ...baseTerminalPane,
++        id: "pane-preview",
++        lines: [],
++        mode: "preview",
++        prompt: "ERR>",
++        title: "诊断输出",
++      },
++      {
++        resolvePaneLines: (paneId) =>
++          paneId === "pane-preview" ? ["恢复第一行", "恢复第二行"] : [],
++      },
++    );
++
++    expect(screen.getByText("恢复第一行")).toBeInTheDocument();
++    expect(screen.getByText("恢复第二行")).toBeInTheDocument();
+     expect(xtermPaneMock.renderCount).toBe(0);
+   });
+ 
+diff --git a/src/features/terminal/TerminalPaneCard.tsx b/src/features/terminal/TerminalPaneCard.tsx
+index 62c89398..9c93fdcc 100644
+--- a/src/features/terminal/TerminalPaneCard.tsx
++++ b/src/features/terminal/TerminalPaneCard.tsx
+@@ -5,13 +5,19 @@ import type {
+   ResolvedTheme,
+   TerminalAppearance,
+ } from "../settings/settingsModel";
+-import type { TerminalPane } from "../workspace/types";
+-import type { TerminalSplitDirection } from "../workspace/types";
++import type {
++  MachineGroup,
++  TerminalPane,
++  TerminalSplitDirection,
++} from "../workspace/types";
+ import { XtermPane } from "./XtermPane";
++import { TerminalSplitTargetSelector } from "./TerminalSplitTargetSelector";
+ import { buildTerminalPaneCardModel } from "./terminalPaneCardModel";
++import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
+ 
+ interface TerminalPaneCardProps {
+   focused: boolean;
++  machineGroups?: MachineGroup[];
+   pane: TerminalPane;
+   resolvedTheme: ResolvedTheme;
+   terminalAppearance: TerminalAppearance;
+@@ -23,11 +29,17 @@ interface TerminalPaneCardProps {
+     paneId: string,
+     outputHistory: string | undefined,
+   ) => void;
+-  onSplitPane?: (direction: TerminalSplitDirection) => void;
++  onSplitPane?: (
++    direction: TerminalSplitDirection,
++    options?: TerminalSplitPaneOptions,
++  ) => void;
++  resolvePaneLines?: (paneId: string) => string[];
++  resolvePaneOutputHistory?: (paneId: string) => string | undefined;
+ }
+ 
+ export function TerminalPaneCard({
+   focused,
++  machineGroups = [],
+   onClosePane,
+   onCurrentCwdChange,
+   onFocusPane,
+@@ -35,10 +47,24 @@ export function TerminalPaneCard({
+   onOutputHistoryChange,
+   onSplitPane,
+   pane,
++  resolvePaneLines,
++  resolvePaneOutputHistory,
+   resolvedTheme,
+   terminalAppearance,
+ }: TerminalPaneCardProps) {
+   const model = buildTerminalPaneCardModel(pane);
++  const paneLines =
++    model.renderKind === "runtime"
++      ? pane.lines
++      : (resolvePaneLines?.(pane.id) ?? pane.lines);
++  const splitPane = (
++    direction: TerminalSplitDirection,
++    options?: TerminalSplitPaneOptions,
++  ) => {
++    const splitOptions = { ...options, sourcePaneId: pane.id };
++    onFocusPane(pane.id);
++    onSplitPane?.(direction, splitOptions);
++  };
+ 
+   return (
+     <section
+@@ -56,12 +82,34 @@ export function TerminalPaneCard({
+             {model.title}
+           </span>
+         </div>
+-        <div className="flex items-center gap-2">
++        <div className="flex items-center gap-1.5">
+           {model.latencyLabel ? (
+-            <span className="rounded-lg bg-emerald-400/10 px-2 py-1 text-xs text-emerald-300">
++            <span className="mr-0.5 rounded-lg bg-emerald-400/10 px-2 py-1 text-xs text-emerald-300">
+               {model.latencyLabel}
+             </span>
+           ) : null}
++          <div
++            className="flex items-center gap-1 opacity-80 transition-opacity hover:opacity-100"
++            onClick={(event) => event.stopPropagation()}
++            onContextMenu={(event) => event.stopPropagation()}
++          >
++            <TerminalSplitTargetSelector
++              buttonClassName="h-8 w-8 rounded-lg"
++              direction="horizontal"
++              labelPrefix={model.title}
++              machineGroups={machineGroups}
++              menuAlign="end"
++              onSplitPane={splitPane}
++            />
++            <TerminalSplitTargetSelector
++              buttonClassName="h-8 w-8 rounded-lg"
++              direction="vertical"
++              labelPrefix={model.title}
++              machineGroups={machineGroups}
++              menuAlign="end"
++              onSplitPane={splitPane}
++            />
++          </div>
+           <Button
+             aria-label={model.closeAriaLabel}
+             onClick={(event) => {
+@@ -91,8 +139,11 @@ export function TerminalPaneCard({
+           onOutputHistoryChange={(outputHistory) =>
+             onOutputHistoryChange?.(pane.id, outputHistory)
+           }
+-          onSplitPane={onSplitPane}
++          onSplitPane={splitPane}
+           outputHistory={pane.outputHistory}
++          resolveInitialOutputHistory={() =>
++            resolvePaneOutputHistory?.(pane.id) ?? pane.outputHistory
++          }
+           resolvedTheme={resolvedTheme}
+           shell={pane.shell}
+           target={pane.target}
+@@ -101,7 +152,7 @@ export function TerminalPaneCard({
+         />
+       ) : (
+         <pre className="min-h-0 flex-1 overflow-auto bg-[#f7f7fa] p-4 font-mono text-[13px] leading-6 text-zinc-800 dark:bg-[#1f1f21] dark:text-zinc-200">
+-          {pane.lines.map((line, index) => (
++          {paneLines.map((line, index) => (
+             <code className="block" key={`${pane.id}-${index}-${line}`}>
+               {line}
+             </code>
+diff --git a/src/features/terminal/TerminalPaneLayout.tsx b/src/features/terminal/TerminalPaneLayout.tsx
+index 5b622c13..473ab562 100644
+--- a/src/features/terminal/TerminalPaneLayout.tsx
++++ b/src/features/terminal/TerminalPaneLayout.tsx
+@@ -9,16 +9,19 @@ import type {
+   TerminalAppearance,
+ } from "../settings/settingsModel";
+ import type {
++  MachineGroup,
+   TerminalLayoutNode,
+   TerminalPane,
+   TerminalSplitDirection,
+ } from "../workspace/types";
+ import { TerminalPaneErrorBoundary } from "./TerminalPaneErrorBoundary";
+ import { TerminalPaneCard } from "./TerminalPaneCard";
++import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
+ 
+ interface TerminalPaneLayoutProps {
+   focusedPaneId: string;
+   layout: TerminalLayoutNode;
++  machineGroups?: MachineGroup[];
+   onClosePane: (paneId: string) => void;
+   onCurrentCwdChange?: (paneId: string, cwd: string) => void;
+   onFocusPane: (paneId: string) => void;
+@@ -27,8 +30,13 @@ interface TerminalPaneLayoutProps {
+     paneId: string,
+     outputHistory: string | undefined,
+   ) => void;
+-  onSplitPane?: (direction: TerminalSplitDirection) => void;
++  onSplitPane?: (
++    direction: TerminalSplitDirection,
++    options?: TerminalSplitPaneOptions,
++  ) => void;
+   panesById: Map<string, TerminalPane>;
++  resolvePaneLines?: (paneId: string) => string[];
++  resolvePaneOutputHistory?: (paneId: string) => string | undefined;
+   resolvedTheme: ResolvedTheme;
+   terminalAppearance: TerminalAppearance;
+ }
+@@ -56,6 +64,7 @@ function normalizeRootLayout(
+ function TerminalPaneLayoutNode({
+   focusedPaneId,
+   layout,
++  machineGroups,
+   onClosePane,
+   onCurrentCwdChange,
+   onFocusPane,
+@@ -63,6 +72,8 @@ function TerminalPaneLayoutNode({
+   onOutputHistoryChange,
+   onSplitPane,
+   panesById,
++  resolvePaneLines,
++  resolvePaneOutputHistory,
+   resolvedTheme,
+   terminalAppearance,
+ }: TerminalPaneLayoutProps) {
+@@ -71,6 +82,7 @@ function TerminalPaneLayoutNode({
+       <TerminalPaneLayout
+         focusedPaneId={focusedPaneId}
+         layout={layout}
++        machineGroups={machineGroups}
+         onClosePane={onClosePane}
+         onCurrentCwdChange={onCurrentCwdChange}
+         onFocusPane={onFocusPane}
+@@ -78,6 +90,8 @@ function TerminalPaneLayoutNode({
+         onOutputHistoryChange={onOutputHistoryChange}
+         onSplitPane={onSplitPane}
+         panesById={panesById}
++        resolvePaneLines={resolvePaneLines}
++        resolvePaneOutputHistory={resolvePaneOutputHistory}
+         resolvedTheme={resolvedTheme}
+         terminalAppearance={terminalAppearance}
+       />
+@@ -93,6 +107,7 @@ function TerminalPaneLayoutNode({
+     <TerminalPaneErrorBoundary onOpenLogs={onOpenLogs} pane={pane}>
+       <TerminalPaneCard
+         focused={pane.id === focusedPaneId}
++        machineGroups={machineGroups}
+         onClosePane={onClosePane}
+         onCurrentCwdChange={onCurrentCwdChange}
+         onFocusPane={onFocusPane}
+@@ -100,6 +115,8 @@ function TerminalPaneLayoutNode({
+         onOutputHistoryChange={onOutputHistoryChange}
+         onSplitPane={onSplitPane}
+         pane={pane}
++        resolvePaneLines={resolvePaneLines}
++        resolvePaneOutputHistory={resolvePaneOutputHistory}
+         resolvedTheme={resolvedTheme}
+         terminalAppearance={terminalAppearance}
+       />
+@@ -110,6 +127,7 @@ function TerminalPaneLayoutNode({
+ export function TerminalPaneLayout({
+   focusedPaneId,
+   layout,
++  machineGroups,
+   onClosePane,
+   onCurrentCwdChange,
+   onFocusPane,
+@@ -117,6 +135,8 @@ export function TerminalPaneLayout({
+   onOutputHistoryChange,
+   onSplitPane,
+   panesById,
++  resolvePaneLines,
++  resolvePaneOutputHistory,
+   resolvedTheme,
+   terminalAppearance,
+ }: TerminalPaneLayoutProps) {
+@@ -146,6 +166,7 @@ export function TerminalPaneLayout({
+               <TerminalPaneLayoutNode
+                 focusedPaneId={focusedPaneId}
+                 layout={child}
++                machineGroups={machineGroups}
+                 onClosePane={onClosePane}
+                 onCurrentCwdChange={onCurrentCwdChange}
+                 onFocusPane={onFocusPane}
+@@ -153,6 +174,8 @@ export function TerminalPaneLayout({
+                 onOutputHistoryChange={onOutputHistoryChange}
+                 onSplitPane={onSplitPane}
+                 panesById={panesById}
++                resolvePaneLines={resolvePaneLines}
++                resolvePaneOutputHistory={resolvePaneOutputHistory}
+                 resolvedTheme={resolvedTheme}
+                 terminalAppearance={terminalAppearance}
+               />
+diff --git a/src/features/terminal/TerminalWorkspace.broadcast.test.tsx b/src/features/terminal/TerminalWorkspace.broadcast.test.tsx
+index 78c68f6f..602a1609 100644
+--- a/src/features/terminal/TerminalWorkspace.broadcast.test.tsx
++++ b/src/features/terminal/TerminalWorkspace.broadcast.test.tsx
+@@ -1,5 +1,5 @@
+ import { useState, type ReactNode } from "react";
+-import { render, screen } from "@testing-library/react";
++import { render, screen, within } from "@testing-library/react";
+ import userEvent from "@testing-library/user-event";
+ import { describe, expect, it, vi } from "vitest";
+ import type { TerminalPane, TerminalTab } from "../workspace/types";
+@@ -89,7 +89,7 @@ describe("TerminalWorkspace broadcast command", () => {
+     render(<ControlledWorkspace />);
+ 
+     await user.type(screen.getByLabelText("批量命令"), "uptime");
+-    await user.click(screen.getByRole("button", { name: "发送到全部" }));
++    await user.click(screen.getByRole("button", { name: "发送到 1 个目标" }));
+ 
+     expect(onBroadcastCommand).toHaveBeenCalledWith({
+       command: "uptime",
+@@ -136,8 +136,8 @@ describe("TerminalWorkspace broadcast command", () => {
+     await user.keyboard("systemctl status nginx");
+     expect(onBroadcastDraftChange).toHaveBeenCalled();
+     expect(screen.getByLabelText("批量命令")).toHaveValue("systemctl status nginx");
+-    expect(screen.getByRole("button", { name: "发送到全部" })).toBeEnabled();
+-    await user.click(screen.getByRole("button", { name: "发送到全部" }));
++    expect(screen.getByRole("button", { name: "发送到 2 个目标" })).toBeEnabled();
++    await user.click(screen.getByRole("button", { name: "发送到 2 个目标" }));
+ 
+     expect(onBroadcastCommand).toHaveBeenCalledWith({
+       command: "systemctl status nginx",
+@@ -147,6 +147,208 @@ describe("TerminalWorkspace broadcast command", () => {
+     expect(screen.getByRole("status")).toHaveTextContent("1 个分屏尚未连接");
+   });
+ 
++  it("can send only to the focused pane from a split tab", async () => {
++    const user = userEvent.setup();
++    const onBroadcastCommand = vi.fn().mockResolvedValue({
++      missingPaneIds: [],
++      sentPaneIds: ["pane-batch-ssh"],
++    });
++
++    function ControlledWorkspace() {
++      const [broadcastDraft, setBroadcastDraft] = useState("");
++
++      return (
++        <TerminalWorkspace
++          {...workspaceProps({
++            activeTabId: "tab-batch",
++            broadcastDraft,
++            focusedPaneId: "pane-batch-ssh",
++            onBroadcastCommand,
++            onBroadcastDraftChange: setBroadcastDraft,
++            panes: batchPanes,
++            tabs: batchTabs,
++          })}
++        />
++      );
++    }
++
++    render(<ControlledWorkspace />);
++
++    await user.type(screen.getByLabelText("批量命令"), "hostname");
++    await user.click(
++      screen.getByRole("button", { name: "发送目标：全部分屏 · 2" }),
++    );
++    await user.click(
++      within(screen.getByRole("menu", { name: "发送目标选择" })).getByRole(
++        "button",
++        { name: /当前分屏/ },
++      ),
++    );
++    await user.click(screen.getByRole("button", { name: "发送到 1 个目标" }));
++
++    expect(onBroadcastCommand).toHaveBeenCalledWith({
++      command: "hostname",
++      data: "hostname\r",
++      targetPaneIds: ["pane-batch-ssh"],
++    });
++  });
++
++  it("can send to a custom subset of split panes", async () => {
++    const user = userEvent.setup();
++    const onBroadcastCommand = vi.fn().mockResolvedValue({
++      missingPaneIds: [],
++      sentPaneIds: ["pane-batch-local"],
++    });
++
++    function ControlledWorkspace() {
++      const [broadcastDraft, setBroadcastDraft] = useState("");
++
++      return (
++        <TerminalWorkspace
++          {...workspaceProps({
++            activeTabId: "tab-batch",
++            broadcastDraft,
++            focusedPaneId: "pane-batch-local",
++            onBroadcastCommand,
++            onBroadcastDraftChange: setBroadcastDraft,
++            panes: batchPanes,
++            tabs: batchTabs,
++          })}
++        />
++      );
++    }
++
++    render(<ControlledWorkspace />);
++
++    await user.type(screen.getByLabelText("批量命令"), "date");
++    await user.click(
++      screen.getByRole("button", { name: "发送目标：全部分屏 · 2" }),
++    );
++    const targetMenu = screen.getByRole("menu", { name: "发送目标选择" });
++    await user.click(within(targetMenu).getByRole("button", { name: /自定义/ }));
++    await user.click(
++      within(targetMenu).getByRole("checkbox", { name: /SSH 批量/ }),
++    );
++    await user.click(screen.getByRole("button", { name: "发送到 1 个目标" }));
++
++    expect(onBroadcastCommand).toHaveBeenCalledWith({
++      command: "date",
++      data: "date\r",
++      targetPaneIds: ["pane-batch-local"],
++    });
++  });
++
++  it("hides broadcast controls after switching from a split tab to a single pane tab", async () => {
++    const user = userEvent.setup();
++    const onBroadcastCommand = vi.fn().mockResolvedValue({
++      missingPaneIds: [],
++      sentPaneIds: ["pane-local"],
++    });
++
++    function ControlledWorkspace() {
++      const [activeTabId, setActiveTabId] = useState("tab-batch");
++      const [broadcastDraft, setBroadcastDraft] = useState("");
++      const focusedPaneId =
++        activeTabId === "tab-batch" ? "pane-batch-local" : "pane-local";
++
++      return (
++        <>
++          <button onClick={() => setActiveTabId("tab-local")} type="button">
++            切换到本地
++          </button>
++          <TerminalWorkspace
++            {...workspaceProps({
++              activeTabId,
++              broadcastDraft,
++              focusedPaneId,
++              onBroadcastCommand,
++              onBroadcastDraftChange: setBroadcastDraft,
++              panes: [...batchPanes, baseTerminalPane],
++              tabs: [...batchTabs, {
++                ...baseTerminalPane,
++                id: "tab-local",
++                layout: { paneId: "pane-local", type: "pane" as const },
++                machineId: "local-powershell",
++                title: "本地 PowerShell",
++              } as TerminalTab],
++            })}
++          />
++        </>
++      );
++    }
++
++    render(<ControlledWorkspace />);
++
++    await user.click(
++      screen.getByRole("button", { name: "发送目标：全部分屏 · 2" }),
++    );
++    await user.click(
++      within(screen.getByRole("menu", { name: "发送目标选择" })).getByRole(
++        "button",
++        { name: /自定义/ },
++      ),
++    );
++    expect(
++      screen.getByRole("button", { name: "发送目标：自定义 · 2" }),
++    ).toBeInTheDocument();
++
++    await user.click(screen.getByRole("button", { name: "切换到本地" }));
++
++    expect(screen.queryByLabelText("批量命令")).not.toBeInTheDocument();
++    expect(
++      screen.queryByRole("button", { name: /发送目标/ }),
++    ).not.toBeInTheDocument();
++    expect(onBroadcastCommand).not.toHaveBeenCalled();
++  });
++
++  it("surfaces production targets inline without blocking send", async () => {
++    const user = userEvent.setup();
++    const onBroadcastCommand = vi.fn().mockResolvedValue({
++      missingPaneIds: [],
++      sentPaneIds: ["pane-batch-local", "pane-batch-ssh"],
++    });
++    const panes: TerminalPane[] = batchPanes.map((pane) =>
++      pane.id === "pane-batch-ssh"
++        ? { ...pane, remoteHostProduction: true }
++        : pane,
++    );
++
++    function ControlledWorkspace() {
++      const [broadcastDraft, setBroadcastDraft] = useState("");
++
++      return (
++        <TerminalWorkspace
++          {...workspaceProps({
++            activeTabId: "tab-batch",
++            broadcastDraft,
++            focusedPaneId: "pane-batch-local",
++            onBroadcastCommand,
++            onBroadcastDraftChange: setBroadcastDraft,
++            panes,
++            tabs: batchTabs,
++          })}
++        />
++      );
++    }
++
++    render(<ControlledWorkspace />);
++
++    expect(
++      screen.getByRole("button", {
++        name: "发送目标：全部分屏 · 2 · 生产 1",
++      }),
++    ).toBeInTheDocument();
++
++    await user.type(screen.getByLabelText("批量命令"), "uptime");
++    await user.click(screen.getByRole("button", { name: "发送到 2 个目标" }));
++
++    expect(onBroadcastCommand).toHaveBeenCalledWith({
++      command: "uptime",
++      data: "uptime\r",
++      targetPaneIds: ["pane-batch-local", "pane-batch-ssh"],
++    });
++  });
++
+   it("includes telnet and serial panes in broadcast targets without confirmation", async () => {
+     const user = userEvent.setup();
+     const onBroadcastCommand = vi.fn().mockResolvedValue({
+@@ -215,7 +417,7 @@ describe("TerminalWorkspace broadcast command", () => {
+     render(<ControlledWorkspace />);
+ 
+     await user.type(screen.getByLabelText("批量命令"), "show version");
+-    await user.click(screen.getByRole("button", { name: "发送到全部" }));
++    await user.click(screen.getByRole("button", { name: "发送到 2 个目标" }));
+ 
+     expect(onBroadcastCommand).toHaveBeenCalledWith({
+       command: "show version",
+@@ -250,7 +452,7 @@ describe("TerminalWorkspace broadcast command", () => {
+ 
+     await user.type(screen.getByLabelText("批量命令"), "uptime");
+ 
+-    expect(screen.getByRole("button", { name: "发送到全部" })).toBeDisabled();
++    expect(screen.getByRole("button", { name: "没有可发送目标" })).toBeDisabled();
+     expect(onBroadcastCommand).not.toHaveBeenCalled();
+   });
+ });
+diff --git a/src/features/terminal/TerminalWorkspace.test.tsx b/src/features/terminal/TerminalWorkspace.test.tsx
+index d24505c6..a7cd3a5f 100644
+--- a/src/features/terminal/TerminalWorkspace.test.tsx
++++ b/src/features/terminal/TerminalWorkspace.test.tsx
+@@ -23,6 +23,7 @@ import {
+   mixedSplitPanes,
+   mixedSplitTabs,
+   sftpTransferTab,
++  terminalMachineGroups,
+   workspaceProps,
+ } from "./TerminalWorkspace.testSupport";
+ 
+@@ -115,7 +116,13 @@ describe("TerminalWorkspace", () => {
+     ).not.toBeInTheDocument();
+     expect(screen.queryByLabelText("终端配置")).not.toBeInTheDocument();
+     expect(
+-      screen.queryByRole("button", { name: "左右分屏" }),
++      screen.getByRole("button", { name: "本地 PowerShell 左右分屏" }),
++    ).toBeInTheDocument();
++    expect(
++      screen.getByRole("button", { name: "本地 PowerShell 上下分屏" }),
++    ).toBeInTheDocument();
++    expect(
++      screen.queryByRole("button", { name: "关闭当前分屏" }),
+     ).not.toBeInTheDocument();
+     expect(screen.queryByLabelText("批量命令")).not.toBeInTheDocument();
+   });
+@@ -177,7 +184,7 @@ describe("TerminalWorkspace", () => {
+ 
+     expect(screen.getByRole("img", { name: "Kerminal" })).toBeInTheDocument();
+     expect(
+-      screen.getByText("光标还没闪，AI 已经开始脑补命令了。"),
++      screen.getByText("打开终端，或从右侧启动外部 Agent。"),
+     ).toBeInTheDocument();
+     expect(
+       screen.queryByRole("button", { name: "添加连接" }),
+@@ -186,7 +193,7 @@ describe("TerminalWorkspace", () => {
+       screen.queryByRole("button", { name: "本地终端" }),
+     ).not.toBeInTheDocument();
+     expect(
+-      screen.queryByRole("button", { name: "打开 AI 面板" }),
++      screen.queryByRole("button", { name: "打开 Agent 面板" }),
+     ).not.toBeInTheDocument();
+   });
+ 
+@@ -745,11 +752,103 @@ describe("TerminalWorkspace", () => {
+       />,
+     );
+ 
+-    await user.click(screen.getByRole("button", { name: "左右分屏" }));
+-    await user.click(screen.getByRole("button", { name: "上下分屏" }));
++    const focusedPane = within(screen.getByLabelText("本地批量 终端分屏"));
++
++    await user.click(
++      focusedPane.getByRole("button", { name: "本地批量 左右分屏" }),
++    );
++    await user.click(
++      focusedPane.getByRole("button", { name: "本地批量 上下分屏" }),
++    );
+ 
+-    expect(onSplitPane).toHaveBeenNthCalledWith(1, "horizontal");
+-    expect(onSplitPane).toHaveBeenNthCalledWith(2, "vertical");
++    expect(onSplitPane).toHaveBeenNthCalledWith(1, "horizontal", {
++      sourcePaneId: "pane-batch-local",
++    });
++    expect(onSplitPane).toHaveBeenNthCalledWith(2, "vertical", {
++      sourcePaneId: "pane-batch-local",
++    });
++  });
++
++  it("can split the active tab to a selected host from the split button menu", async () => {
++    const user = userEvent.setup();
++    const onSplitPane = vi.fn();
++
++    render(
++      <TerminalWorkspace
++        {...workspaceProps({
++          activeTabId: "tab-batch",
++          focusedPaneId: "pane-batch-local",
++          machineGroups: terminalMachineGroups,
++          onSplitPane,
++          panes: batchPanes,
++          tabs: batchTabs,
++        })}
++      />,
++    );
++
++    fireEvent.contextMenu(
++      screen.getByRole("button", { name: "本地批量 左右分屏" }),
++    );
++    const splitTargetMenu = screen.getByRole("menu", {
++      name: "左右分屏目标选择",
++    });
++
++    expect(
++      within(splitTargetMenu).getByRole("menuitem", { name: /生产 SSH/ }),
++    ).toBeInTheDocument();
++    expect(
++      within(splitTargetMenu).queryByRole("menuitem", { name: /办公桌面/ }),
++    ).not.toBeInTheDocument();
++
++    await user.click(
++      within(splitTargetMenu).getByRole("menuitem", { name: /生产 SSH/ }),
++    );
++
++    expect(onSplitPane).toHaveBeenCalledWith("horizontal", {
++      sourcePaneId: "pane-batch-local",
++      targetMachineId: "host-prod",
++    });
++    expect(
++      screen.queryByRole("menu", { name: "左右分屏目标选择" }),
++    ).not.toBeInTheDocument();
++  });
++
++  it("filters split host choices from the split target menu", async () => {
++    const user = userEvent.setup();
++    const onSplitPane = vi.fn();
++
++    render(
++      <TerminalWorkspace
++        {...workspaceProps({
++          activeTabId: "tab-batch",
++          focusedPaneId: "pane-batch-local",
++          machineGroups: terminalMachineGroups,
++          onSplitPane,
++          panes: batchPanes,
++          tabs: batchTabs,
++        })}
++      />,
++    );
++
++    fireEvent.contextMenu(
++      screen.getByRole("button", { name: "本地批量 上下分屏" }),
++    );
++    const splitTargetMenu = screen.getByRole("menu", {
++      name: "上下分屏目标选择",
++    });
++    await user.type(
++      within(splitTargetMenu).getByLabelText("搜索分屏主机"),
++      "serial",
++    );
++
++    await user.click(
++      within(splitTargetMenu).getByRole("menuitem", { name: /串口控制台/ }),
++    );
++
++    expect(onSplitPane).toHaveBeenCalledWith("vertical", {
++      sourcePaneId: "pane-batch-local",
++      targetMachineId: "serial-console",
++    });
+   });
+ 
+   it("passes context menu workspace actions to terminal panes", async () => {
+@@ -770,7 +869,9 @@ describe("TerminalWorkspace", () => {
+     await user.click(screen.getByRole("button", { name: "测试左右分屏" }));
+ 
+     expect(onOpenLogs).toHaveBeenCalled();
+-    expect(onSplitPane).toHaveBeenCalledWith("horizontal");
++    expect(onSplitPane).toHaveBeenCalledWith("horizontal", {
++      sourcePaneId: "pane-local",
++    });
+   });
+ 
+   it("requests closing the focused pane", async () => {
+@@ -789,7 +890,7 @@ describe("TerminalWorkspace", () => {
+       />,
+     );
+ 
+-    await user.click(screen.getByRole("button", { name: "关闭当前分屏" }));
++    await user.click(screen.getByRole("button", { name: "关闭 本地批量 分屏" }));
+ 
+     expect(onClosePane).toHaveBeenCalledWith("pane-batch-local");
+   });
+diff --git a/src/features/terminal/TerminalWorkspace.tsx b/src/features/terminal/TerminalWorkspace.tsx
+index d0161880..e3983650 100644
+--- a/src/features/terminal/TerminalWorkspace.tsx
++++ b/src/features/terminal/TerminalWorkspace.tsx
+@@ -21,21 +21,23 @@ import type {
+ import {
+   analyzeBroadcastCommand,
+   canBroadcastCommand,
+-  isBroadcastCommandTargetMode,
+   type BroadcastCommandAnalysis,
+ } from "./broadcastCommandPolicy";
+ import { collectPaneIds } from "../workspace/workspaceLayout";
+-import type {
+-  TerminalPane,
+-  TerminalSplitDirection,
+-  TerminalTab,
+-  TerminalTabGroupPreference,
+-  TerminalTabGroupPreferences,
++import {
++  isTerminalSessionTab,
++  type MachineGroup,
++  type TerminalPane,
++  type TerminalSplitDirection,
++  type TerminalTab,
++  type TerminalTabGroupPreference,
++  type TerminalTabGroupPreferences,
+ } from "../workspace/types";
+-import { isTerminalSessionTab } from "../workspace/types";
+-import { TerminalPaneLayout } from "./TerminalPaneLayout";
+-import { TerminalEmptyState } from "./TerminalEmptyState";
+ import { TerminalBroadcastBar } from "./TerminalBroadcastBar";
++import { TerminalWorkspaceContent } from "./TerminalWorkspaceContent";
++import type { TerminalSplitDropIndicator } from "./TerminalSplitDropOverlay";
++import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
++import { useTerminalBroadcastTargets } from "./useTerminalBroadcastTargets";
+ import {
+   buildTerminalTabGroups,
+   clampContextMenuPosition,
+@@ -77,6 +79,7 @@ interface TerminalWorkspaceProps {
+   contentRightInset?: number;
+   focusedPaneId: string;
+   interfaceDensity?: InterfaceDensity;
++  machineGroups?: MachineGroup[];
+   panes: TerminalPane[];
+   resolvedTheme: ResolvedTheme;
+   tabs: TerminalTab[];
+@@ -90,7 +93,7 @@ interface TerminalWorkspaceProps {
+   onCloseTab: (tabId: string) => void;
+   onCreateTerminal?: () => void;
+   onFocusPane: (paneId: string) => void;
+-  onOpenAiTool?: () => void;
++  onOpenAgentTool?: () => void;
+   onOpenConnection?: () => void;
+   onPaneCurrentCwdChange?: (paneId: string, cwd: string) => void;
+   onPaneOutputHistoryChange?: (
+@@ -104,9 +107,15 @@ interface TerminalWorkspaceProps {
+     preference: TerminalTabGroupPreference,
+   ) => void;
+   reserveRightTitleBarControls?: boolean;
++  resolvePaneLines?: (paneId: string) => string[];
++  resolvePaneOutputHistory?: (paneId: string) => string | undefined;
+   renderCustomTab?: (tab: TerminalTab, active: boolean) => ReactNode;
+   onSelectTab: (tabId: string) => void;
+-  onSplitPane: (direction: TerminalSplitDirection) => void;
++  onSplitPane: (
++    direction: TerminalSplitDirection,
++    options?: TerminalSplitPaneOptions,
++  ) => void;
++  splitDropIndicator?: TerminalSplitDropIndicator | null;
+ }
+ 
+ export function TerminalWorkspace({
+@@ -115,13 +124,14 @@ export function TerminalWorkspace({
+   contentRightInset = 0,
+   focusedPaneId,
+   interfaceDensity = "comfortable",
++  machineGroups = [],
+   onBroadcastCommand,
+   onBroadcastDraftChange,
+   onClosePane,
+   onCloseTab,
+   onCreateTerminal,
+   onFocusPane,
+-  onOpenAiTool,
++  onOpenAgentTool,
+   onOpenConnection,
+   onPaneCurrentCwdChange,
+   onPaneOutputHistoryChange,
+@@ -129,11 +139,14 @@ export function TerminalWorkspace({
+   onRenameTab,
+   onUpdateTabGroupPreference,
+   reserveRightTitleBarControls = true,
++  resolvePaneLines,
++  resolvePaneOutputHistory,
+   renderCustomTab,
+   onSelectTab,
+   onSplitPane,
+   panes,
+   resolvedTheme,
++  splitDropIndicator,
+   tabs,
+   tabGroupPreferences = {},
+   terminalAppearance,
+@@ -176,23 +189,19 @@ export function TerminalWorkspace({
+     [activeTab],
+   );
+   const hasActiveSplit = activePaneIds.length > 1;
+-  const broadcastTargets = useMemo(
+-    () =>
+-      activePaneIds.flatMap((paneId) => {
+-        const pane = panesById.get(paneId);
+-        if (!pane || !isBroadcastCommandTargetMode(pane.mode)) {
+-          return [];
+-        }
+-        return [
+-          {
+-            mode: pane.mode,
+-            paneId: pane.id,
+-            title: pane.title,
+-          },
+-        ];
+-      }),
+-    [activePaneIds, panesById],
+-  );
++  const {
++    broadcastTargets,
++    broadcastTargetMode,
++    broadcastTargetOptions,
++    handleBroadcastTargetModeChange,
++    handleToggleCustomTarget,
++    productionTargetCount,
++    selectedTargetPaneIds,
++  } = useTerminalBroadcastTargets({
++    activePaneIds,
++    focusedPaneId,
++    panesById,
++  });
+   const broadcastAnalysis = useMemo(
+     () => analyzeBroadcastCommand(broadcastDraft, broadcastTargets),
+     [broadcastDraft, broadcastTargets],
+@@ -237,13 +246,13 @@ export function TerminalWorkspace({
+     contentRightInset > 0
+       ? ({ marginRight: contentRightInset } satisfies CSSProperties)
+       : undefined;
+-  const shouldShowTabOverview =
+-    tabs.length > 1 && tabOverviewAvailable;
++  const shouldShowTabOverview = tabs.length > 1 && tabOverviewAvailable;
+ 
+   const updateTabOverviewAvailability = useCallback(() => {
+     const tabList = tabListRef.current;
+     const hasHorizontalOverflow = tabList
+-      ? tabList.scrollWidth - tabList.clientWidth > TAB_OVERVIEW_OVERFLOW_TOLERANCE
++      ? tabList.scrollWidth - tabList.clientWidth >
++        TAB_OVERVIEW_OVERFLOW_TOLERANCE
+       : false;
+     setTabOverviewAvailable(
+       tabs.length >= TAB_OVERVIEW_ALWAYS_SHOW_COUNT || hasHorizontalOverflow,
+@@ -371,7 +380,9 @@ export function TerminalWorkspace({
+       return;
+     }
+ 
+-    const nextGroup = tabGroups.find((group) => group.id === editingTabGroup.id);
++    const nextGroup = tabGroups.find(
++      (group) => group.id === editingTabGroup.id,
++    );
+     if (!nextGroup) {
+       setEditingTabGroup(null);
+       return;
+@@ -414,7 +425,7 @@ export function TerminalWorkspace({
+     }
+     setContextMenu((current) =>
+       current === contextMenu ? { ...current, ...nextPosition } : current,
+-      );
++    );
+   }, [contextMenu]);
+ 
+   useLayoutEffect(() => {
+@@ -516,7 +527,12 @@ export function TerminalWorkspace({
+     (event: ReactMouseEvent, menu: TerminalTabContextMenuPayload) => {
+       event.preventDefault();
+       event.stopPropagation();
+-      const position = clampContextMenuPosition(event.clientX, event.clientY, 0, 0);
++      const position = clampContextMenuPosition(
++        event.clientX,
++        event.clientY,
++        0,
++        0,
++      );
+       setContextMenu({ ...menu, ...position });
+     },
+     [],
+@@ -722,7 +738,9 @@ export function TerminalWorkspace({
+         >
+           {tabGroups.map((group) => {
+             const collapsed = collapsedTabGroupIds.has(group.id);
+-            const groupActive = group.tabs.some((tab) => tab.id === activeTabId);
++            const groupActive = group.tabs.some(
++              (tab) => tab.id === activeTabId,
++            );
+             if (!group.grouped) {
+               return group.tabs.map((tab) => (
+                 <TerminalTabButton
+@@ -736,7 +754,8 @@ export function TerminalWorkspace({
+                   showClose
+                   tabNumber={
+                     terminalAppearance.showTabNumbers
+-                      ? tabs.findIndex((candidate) => candidate.id === tab.id) + 1
++                      ? tabs.findIndex((candidate) => candidate.id === tab.id) +
++                        1
+                       : undefined
+                   }
+                   tab={tab}
+@@ -786,7 +805,9 @@ export function TerminalWorkspace({
+                         showClose
+                         tabNumber={
+                           terminalAppearance.showTabNumbers
+-                            ? tabs.findIndex((candidate) => candidate.id === tab.id) + 1
++                            ? tabs.findIndex(
++                                (candidate) => candidate.id === tab.id,
++                              ) + 1
+                             : undefined
+                         }
+                         tab={tab}
+@@ -842,73 +863,46 @@ export function TerminalWorkspace({
+           draft={broadcastDraft}
+           error={broadcastError}
+           focusedPaneId={focusedPaneId}
+-          onClosePane={onClosePane}
+           onDraftChange={handleDraftChange}
+           onRequestBroadcast={requestBroadcast}
+-          onSplitPane={onSplitPane}
++          onTargetModeChange={handleBroadcastTargetModeChange}
++          onToggleCustomTarget={handleToggleCustomTarget}
++          productionTargetCount={productionTargetCount}
++          selectedTargetPaneIds={selectedTargetPaneIds}
+           sending={sendingBroadcast}
+           status={broadcastStatus}
+           style={contentInsetStyle}
+-          targetCount={broadcastTargets.length}
++          targetMode={broadcastTargetMode}
++          targetOptions={broadcastTargetOptions}
+           toolbarPaddingClass={toolbarPaddingClass}
+         />
+       ) : null}
+ 
+-      <div
+-        className={cn(
+-          "relative min-h-0 flex-1 transition-[margin-right] duration-200 ease-out",
+-          workspacePaddingClass,
+-        )}
+-        data-terminal-workspace-content
+-        style={contentInsetStyle}
+-      >
+-        {tabs.length > 0 ? (
+-          tabs.map((tab) => {
+-            const active = tab.id === activeTab?.id;
+-            return (
+-              <div
+-                aria-hidden={!active || undefined}
+-                className={cn(
+-                  "absolute min-h-0",
+-                  active
+-                    ? "pointer-events-auto z-10"
+-                    : "pointer-events-none invisible z-0",
+-                )}
+-                key={tab.id}
+-                style={{ inset: terminalInset }}
+-              >
+-                {isTerminalSessionTab(tab) ? (
+-                  <TerminalPaneLayout
+-                    focusedPaneId={active ? focusedPaneId : ""}
+-                    layout={tab.layout}
+-                    onClosePane={onClosePane}
+-                    onCurrentCwdChange={onPaneCurrentCwdChange}
+-                    onFocusPane={onFocusPane}
+-                    onOpenLogs={onOpenLogs}
+-                    onOutputHistoryChange={onPaneOutputHistoryChange}
+-                    onSplitPane={onSplitPane}
+-                    panesById={panesById}
+-                    resolvedTheme={resolvedTheme}
+-                    terminalAppearance={terminalAppearance}
+-                  />
+-                ) : (
+-                  renderCustomTab?.(tab, active) ?? (
+-                    <div className="kerminal-solid-surface flex h-full items-center justify-center rounded-2xl border text-sm text-zinc-500 dark:text-zinc-400">
+-                      此标签暂不可用。
+-                    </div>
+-                  )
+-                )}
+-              </div>
+-            );
+-          })
+-        ) : (
+-          <TerminalEmptyState
+-            onCreateTerminal={onCreateTerminal}
+-            onOpenAiTool={onOpenAiTool}
+-            onOpenConnection={onOpenConnection}
+-          />
+-        )}
+-      </div>
++      <TerminalWorkspaceContent
++        activeTab={activeTab}
++        contentInsetStyle={contentInsetStyle}
++        focusedPaneId={focusedPaneId}
++        machineGroups={machineGroups}
++        onClosePane={onClosePane}
++        onCreateTerminal={onCreateTerminal}
++        onFocusPane={onFocusPane}
++        onOpenAgentTool={onOpenAgentTool}
++        onOpenConnection={onOpenConnection}
++        onOpenLogs={onOpenLogs}
++        onPaneCurrentCwdChange={onPaneCurrentCwdChange}
++        onPaneOutputHistoryChange={onPaneOutputHistoryChange}
++        onSplitPane={onSplitPane}
++        panesById={panesById}
++        resolvePaneLines={resolvePaneLines}
++        resolvePaneOutputHistory={resolvePaneOutputHistory}
++        renderCustomTab={renderCustomTab}
++        resolvedTheme={resolvedTheme}
++        splitDropIndicator={splitDropIndicator}
++        tabs={tabs}
++        terminalAppearance={terminalAppearance}
++        terminalInset={terminalInset}
++        workspacePaddingClass={workspacePaddingClass}
++      />
+     </main>
+   );
+ }

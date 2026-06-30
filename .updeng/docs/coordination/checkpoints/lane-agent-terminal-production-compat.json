@@ -1,0 +1,256 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-26T11:30:18.595Z",
+  "laneId": "lane-agent-terminal-production-compat",
+  "title": "右栏 Agent 终端生产级兼容",
+  "plan": ".updeng/docs/plan/active/PLAN-20260626-155809-agent-terminal-production-compat.md",
+  "branch": null,
+  "worktree": "C:/dev/rust/kerminal",
+  "changedPaths": [
+    ".updeng/docs/config/external-agent-workspace.md",
+    ".updeng/docs/coordination/lanes.json",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/plan/INDEX.md",
+    ".updeng/docs/plan/active/PLAN-20260626-155809-agent-terminal-production-compat.md",
+    ".updeng/docs/verification/agent-terminal-compat/summary-20260626.md",
+    "src/app/KerminalShell.test.tsx",
+    "src/app/KerminalShell.tsx",
+    "src/app/__tests__/support/KerminalShell.testSupport.tsx",
+    "src/app/appKeybindingPolicy.test.ts",
+    "src/app/appKeybindingPolicy.ts",
+    "src/features/terminal/XtermPane.contextMenu.test.tsx",
+    "src/features/terminal/XtermPane.inputCompatibility.test.tsx",
+    "src/features/terminal/XtermPane.realXtermCompatibility.test.ts",
+    "src/features/terminal/XtermPane.runtime.ts",
+    "src/features/terminal/XtermPane.tsx",
+    "src/features/terminal/__tests__/support/XtermPane.testSupport.tsx",
+    "src/features/terminal/terminalKeyboardPolicy.test.ts",
+    "src/features/terminal/terminalKeyboardPolicy.ts",
+    "src/features/terminal/terminalSessionRegistry.test.ts",
+    "src/features/terminal/terminalSessionRegistry.ts",
+    "src/features/tool-panel/AgentLauncherToolContent.test.tsx",
+    "src/features/tool-panel/AgentLauncherToolContent.tsx",
+    "src/features/tool-panel/agent-launcher/agentPromptQueueModel.test.ts",
+    "src/features/tool-panel/agent-launcher/agentPromptQueueModel.ts",
+    "src/features/tool-panel/agent-launcher/agentTerminalContextModel.test.ts",
+    "src/features/tool-panel/agent-launcher/agentTerminalContextModel.ts",
+    "src/features/tool-panel/agent-launcher/agentTerminalViewportModel.test.ts",
+    "src/features/tool-panel/agent-launcher/agentTerminalViewportModel.ts"
+  ],
+  "trackedPatchPaths": [
+    "src/app/KerminalShell.test.tsx",
+    "src/app/KerminalShell.tsx",
+    "src/app/__tests__/support/KerminalShell.testSupport.tsx",
+    "src/features/terminal/XtermPane.contextMenu.test.tsx",
+    "src/features/terminal/XtermPane.runtime.ts",
+    "src/features/terminal/XtermPane.tsx",
+    "src/features/terminal/__tests__/support/XtermPane.testSupport.tsx",
+    "src/features/terminal/terminalSessionRegistry.test.ts",
+    "src/features/terminal/terminalSessionRegistry.ts",
+    "src/features/tool-panel/AgentLauncherToolContent.test.tsx",
+    "src/features/tool-panel/AgentLauncherToolContent.tsx"
+  ],
+  "untrackedPaths": [
+    ".updeng/docs/config/external-agent-workspace.md",
+    ".updeng/docs/coordination/lanes.json",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/plan/INDEX.md",
+    ".updeng/docs/plan/active/PLAN-20260626-155809-agent-terminal-production-compat.md",
+    ".updeng/docs/verification/agent-terminal-compat/summary-20260626.md",
+    "src/app/appKeybindingPolicy.test.ts",
+    "src/app/appKeybindingPolicy.ts",
+    "src/features/terminal/XtermPane.inputCompatibility.test.tsx",
+    "src/features/terminal/XtermPane.realXtermCompatibility.test.ts",
+    "src/features/terminal/terminalKeyboardPolicy.test.ts",
+    "src/features/terminal/terminalKeyboardPolicy.ts",
+    "src/features/tool-panel/agent-launcher/agentPromptQueueModel.test.ts",
+    "src/features/tool-panel/agent-launcher/agentPromptQueueModel.ts",
+    "src/features/tool-panel/agent-launcher/agentTerminalContextModel.test.ts",
+    "src/features/tool-panel/agent-launcher/agentTerminalContextModel.ts",
+    "src/features/tool-panel/agent-launcher/agentTerminalViewportModel.test.ts",
+    "src/features/tool-panel/agent-launcher/agentTerminalViewportModel.ts"
+  ],
+  "untrackedSnapshotPath": ".updeng/docs/coordination/checkpoints/lane-agent-terminal-production-compat.untracked.json",
+  "untrackedSnapshotCount": 18,
+  "omittedSnapshotPaths": [],
+  "sharedPaths": [
+    "src/app/KerminalShell.test.tsx",
+    "src/app/KerminalShell.tsx",
+    "src/features/terminal/XtermPane.runtime.ts",
+    "src/features/terminal/XtermPane.tsx",
+    "src/features/tool-panel/AgentLauncherToolContent.test.tsx",
+    "src/features/tool-panel/AgentLauncherToolContent.tsx",
+    ".updeng/docs/config/external-agent-workspace.md",
+    ".updeng/docs/coordination/lanes.json",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/plan/INDEX.md"
+  ],
+  "relatedConflicts": [
+    {
+      "path": "src/app/KerminalShell.test.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-agent-terminal-production-compat",
+          "kind": "shared",
+          "pattern": "src/app/KerminalShell.test.tsx"
+        },
+        {
+          "id": "lane-current-sidebar-layout-width-integrating",
+          "kind": "owned",
+          "pattern": "src/app/KerminalShell.test.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/app/KerminalShell.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-agent-terminal-production-compat",
+          "kind": "shared",
+          "pattern": "src/app/KerminalShell.tsx"
+        },
+        {
+          "id": "lane-current-sidebar-layout-width-integrating",
+          "kind": "owned",
+          "pattern": "src/app/KerminalShell.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/features/terminal/XtermPane.runtime.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-agent-terminal-production-compat",
+          "kind": "shared",
+          "pattern": "src/features/terminal/XtermPane.runtime.ts"
+        },
+        {
+          "id": "lane-terminal-pane-drag-reconnect-diagnosis",
+          "kind": "shared",
+          "pattern": "src/features/terminal/XtermPane.runtime.ts"
+        },
+        {
+          "id": "lane-current-agent-sidebar-terminal-polish",
+          "kind": "owned",
+          "pattern": "src/features/terminal/XtermPane.runtime.ts"
+        }
+      ]
+    },
+    {
+      "path": "src/features/terminal/XtermPane.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-agent-terminal-production-compat",
+          "kind": "shared",
+          "pattern": "src/features/terminal/XtermPane.tsx"
+        },
+        {
+          "id": "lane-terminal-pane-drag-reconnect-diagnosis",
+          "kind": "shared",
+          "pattern": "src/features/terminal/XtermPane.tsx"
+        },
+        {
+          "id": "lane-current-agent-sidebar-terminal-polish",
+          "kind": "owned",
+          "pattern": "src/features/terminal/XtermPane.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/features/tool-panel/AgentLauncherToolContent.test.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-agent-terminal-production-compat",
+          "kind": "shared",
+          "pattern": "src/features/tool-panel/AgentLauncherToolContent.test.tsx"
+        },
+        {
+          "id": "lane-current-agent-sidebar-terminal-polish",
+          "kind": "owned",
+          "pattern": "src/features/tool-panel/AgentLauncherToolContent.test.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/features/tool-panel/AgentLauncherToolContent.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-agent-terminal-production-compat",
+          "kind": "shared",
+          "pattern": "src/features/tool-panel/AgentLauncherToolContent.tsx"
+        },
+        {
+          "id": "lane-current-agent-sidebar-terminal-polish",
+          "kind": "owned",
+          "pattern": "src/features/tool-panel/AgentLauncherToolContent.tsx"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/config/external-agent-workspace.md",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-agent-terminal-production-compat",
+          "kind": "shared",
+          "pattern": ".updeng/docs/config/external-agent-workspace.md"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/coordination/lanes.json",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-ssh-credential-vault-auth-runtime-design",
+          "kind": "shared",
+          "pattern": ".updeng/docs/coordination/lanes.json"
+        },
+        {
+          "id": "lane-agent-terminal-production-compat",
+          "kind": "shared",
+          "pattern": ".updeng/docs/coordination/lanes.json"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/in-progress.md",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-ssh-credential-vault-auth-runtime-design",
+          "kind": "shared",
+          "pattern": ".updeng/docs/in-progress.md"
+        },
+        {
+          "id": "lane-agent-terminal-production-compat",
+          "kind": "shared",
+          "pattern": ".updeng/docs/in-progress.md"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/plan/INDEX.md",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-ssh-credential-vault-auth-runtime-design",
+          "kind": "shared",
+          "pattern": ".updeng/docs/plan/INDEX.md"
+        },
+        {
+          "id": "lane-agent-terminal-production-compat",
+          "kind": "shared",
+          "pattern": ".updeng/docs/plan/INDEX.md"
+        }
+      ]
+    }
+  ],
+  "note": "Patch contains tracked file diffs. Untracked and ignored workflow assets are captured in the untracked snapshot JSON when they are readable UTF-8 text."
+}

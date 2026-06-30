@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { defaultAppSettings } from "../settings/settingsModel";
 import { mocks } from "./__tests__/support/XtermPane.testSupport";
@@ -213,6 +213,33 @@ describe("XtermPane input compatibility", () => {
     expect(mocks.api.writeTerminal).not.toHaveBeenCalledWith("session-1", "\x16");
     expect(terminal.paste).not.toHaveBeenCalled();
     expect(mocks.api.readTerminalClipboardText).not.toHaveBeenCalled();
+  });
+
+  it("forwards large xterm input payloads to the backend as one write", async () => {
+    render(
+      <XtermPane
+        focused
+        inputCompatibilityMode="agentTui"
+        paneId="pane-agent-large-paste"
+        resolvedTheme="dark"
+        shellAssistEnabled={false}
+        terminalAppearance={defaultAppSettings.terminal}
+        title="Codex"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+    mocks.api.writeTerminal.mockClear();
+
+    const payload = "p".repeat(8 * 1024);
+    act(() => {
+      mocks.terminalInstances[0].onDataCallback?.(payload);
+    });
+
+    expect(mocks.api.writeTerminal).toHaveBeenCalledTimes(1);
+    expect(mocks.api.writeTerminal).toHaveBeenCalledWith("session-1", payload);
   });
 
   it("captures real DOM Ctrl+Shift+V as one PTY paste signal without browser paste duplication", async () => {

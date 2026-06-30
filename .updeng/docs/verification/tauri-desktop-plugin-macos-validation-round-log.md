@@ -1,0 +1,24 @@
+- 2026-06-26T02:09:17.171Z：macOS Tauri desktop plugin validation dry-run only; macOS acceptance not executed.
+  - 环境：platform=win32；详见 `.updeng/docs/verification/tauri-desktop-plugin-macos-validation-automated.json`。
+  - 范围：本地 dry-run 只验证命令计划与报告生成，所有命令均未执行。
+  - 自动化：
+    - macOS version: dry-run
+    - kernel version: dry-run
+    - node version: dry-run
+    - npm version: dry-run
+    - rustc version: dry-run
+    - cargo version: dry-run
+    - xcode-select path: dry-run
+    - frontend desktop plugin tests: dry-run
+    - tauri security config tests: dry-run
+    - sftp system file clipboard platform tests: dry-run
+    - frontend production build: dry-run
+  - 启动：<运行 `KERMINAL_CONFIG_ROOT=... CARGO_TARGET_DIR=... npm run tauri:dev`，记录窗口截图/日志路径>。
+  - single-instance：<主窗口打开/最小化/关闭到 Dock 或 tray 后二次启动结果>。
+  - window-state：<size/position/maximized/显示器变化恢复结果>。
+  - notification：<granted/denied/真实事件结果>。
+  - log：<日志目录、脱敏 grep 结果、诊断包是否只含元数据>。
+  - clipboard：<official clipboard-manager token 写读结果、终端/tmux/SFTP UI 复制结果>。
+  - SFTP：<内部 clipboard、Finder 拖放、Finder 文件列表系统剪贴板降级结果>。
+  - tauri:build：<通过或阻塞原因>。
+  - 结论：dry-run 不证明 macOS 真实运行验收；按当前目标口径，它只作为 CI/runbook 证据，不阻塞计划 done。

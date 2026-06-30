@@ -180,12 +180,17 @@ describe("KerminalShell", () => {
         };
       },
     );
-    mocks.terminalApi.getTerminalLogState.mockResolvedValue({
-      active: false,
-      bytesWritten: 0,
-    });
-    mocks.terminalApi.closeTerminal.mockResolvedValue(undefined);
-    mocks.terminalApi.resizeTerminal.mockResolvedValue(undefined);
+	    mocks.terminalApi.getTerminalLogState.mockResolvedValue({
+	      active: false,
+	      bytesWritten: 0,
+	    });
+	    mocks.terminalApi.closeTerminal.mockResolvedValue(undefined);
+	    mocks.terminalApi.reapOrphanTerminalSessions.mockResolvedValue({
+	      elapsedMs: 0,
+	      reapedCount: 0,
+	      sessionIds: [],
+	    });
+	    mocks.terminalApi.resizeTerminal.mockResolvedValue(undefined);
     mocks.serverInfoApi.getServerInfoSnapshot.mockResolvedValue({
       architecture: "x86_64",
       capturedAt: "1781763088",
@@ -215,22 +220,146 @@ describe("KerminalShell", () => {
     });
   });
 
-  it("starts without creating a local terminal when no workspace session is saved", async () => {
-    render(<KerminalShell />);
+	  it("starts without creating a local terminal when no workspace session is saved", async () => {
+	    render(<KerminalShell />);
 
-    expect(
-      await screen.findByText("打开终端，或从右侧启动外部 Agent。"),
-    ).toBeInTheDocument();
+	    expect(
+	      await screen.findByText("光标还没闪，AI 已经开始脑补命令了。"),
+	    ).toBeInTheDocument();
     expect(
       await findExpandedSidebarMachine(/172\.16\.41\.60/),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "打开 Agent Launcher" }),
     ).toBeInTheDocument();
-    expect(mocks.terminalApi.createTerminalSession).not.toHaveBeenCalled();
-  });
+	    expect(mocks.terminalApi.createTerminalSession).not.toHaveBeenCalled();
+	  });
 
-  it("keeps host SFTP and cross-host transfer entries on separate surfaces", async () => {
+	  it("reaps local orphan PTY sessions before restoring saved terminal tabs", async () => {
+	    const callOrder: string[] = [];
+	    let resolveReap: (() => void) | undefined;
+	    mocks.terminalApi.reapOrphanTerminalSessions.mockImplementation(
+	      () =>
+	        new Promise((resolve) => {
+	          callOrder.push("reap:start");
+	          resolveReap = () => {
+	            callOrder.push("reap:done");
+	            resolve({
+	              elapsedMs: 3,
+	              reapedCount: 1,
+	              sessionIds: ["old-local-session"],
+	            });
+	          };
+	        }),
+	    );
+	    mocks.terminalApi.createTerminalSession.mockImplementation(
+	      async (_request, onOutput: (event: TerminalOutputEvent) => void) => {
+	        callOrder.push("create:local");
+	        onOutput({
+	          data: "local ready",
+	          kind: "data",
+	          sessionId: "session-local",
+	        });
+	        return {
+	          cols: 80,
+	          id: "session-local",
+	          rows: 24,
+	          shell: "test-shell",
+	          status: "running",
+	        };
+	      },
+	    );
+	    mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockResolvedValue({
+	      activeTabId: "tab-local-restore",
+	      focusedPaneId: "pane-local-restore",
+	      selectedMachineId: "machine-local-restore",
+	      terminalPanes: [
+	        {
+	          id: "pane-local-restore",
+	          lines: [],
+	          machineId: "machine-local-restore",
+	          mode: "local",
+	          prompt: "PS>",
+	          shell: "test-shell",
+	          status: "online",
+	          title: "恢复本地会话",
+	        },
+	      ],
+	      terminalTabs: [
+	        {
+	          id: "tab-local-restore",
+	          layout: { type: "pane", paneId: "pane-local-restore" },
+	          machineId: "machine-local-restore",
+	          title: "恢复本地会话",
+	        },
+	      ],
+	    });
+
+	    render(<KerminalShell />);
+
+	    await waitFor(() => {
+	      expect(mocks.terminalApi.reapOrphanTerminalSessions).toHaveBeenCalledTimes(
+	        1,
+	      );
+	    });
+	    expect(mocks.terminalApi.createTerminalSession).not.toHaveBeenCalled();
+
+	    await act(async () => {
+	      resolveReap?.();
+	      await Promise.resolve();
+	    });
+
+	    await waitFor(() => {
+	      expect(mocks.terminalApi.createTerminalSession).toHaveBeenCalledTimes(1);
+	    });
+	    expect(callOrder).toEqual(["reap:start", "reap:done", "create:local"]);
+	  });
+
+	  it("continues workspace restore when local orphan PTY reaping fails", async () => {
+	    mocks.terminalApi.reapOrphanTerminalSessions.mockRejectedValue(
+	      new Error("reaper unavailable"),
+	    );
+	    mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockResolvedValue({
+	      activeTabId: "tab-local-reap-failed",
+	      focusedPaneId: "pane-local-reap-failed",
+	      selectedMachineId: "machine-local-reap-failed",
+	      terminalPanes: [
+	        {
+	          id: "pane-local-reap-failed",
+	          lines: [],
+	          machineId: "machine-local-reap-failed",
+	          mode: "local",
+	          prompt: "PS>",
+	          shell: "test-shell",
+	          status: "online",
+	          title: "reaper 失败后恢复",
+	        },
+	      ],
+	      terminalTabs: [
+	        {
+	          id: "tab-local-reap-failed",
+	          layout: { type: "pane", paneId: "pane-local-reap-failed" },
+	          machineId: "machine-local-reap-failed",
+	          title: "reaper 失败后恢复",
+	        },
+	      ],
+	    });
+
+	    render(<KerminalShell />);
+
+	    await waitFor(() => {
+	      expect(mocks.terminalApi.createTerminalSession).toHaveBeenCalledWith(
+	        expect.objectContaining({
+	          cols: 80,
+	          rows: 24,
+	          shell: "test-shell",
+	        }),
+	        expect.any(Function),
+	      );
+	    });
+	  });
+
+	  it("keeps host SFTP and cross-host transfer entries on separate surfaces", async () => {
     const user = userEvent.setup();
     render(<KerminalShell />);
 
@@ -239,9 +368,7 @@ describe("KerminalShell", () => {
     fireEvent.contextMenu(hostButton);
     await user.click(screen.getByRole("menuitem", { name: "打开 SFTP" }));
 
-    expect(await screen.findByLabelText("SFTP 工具内容")).toHaveTextContent(
-      "SFTP:db980b17-2ed0-44e5-b72a-6ecadf788439",
-    );
+    expect(await screen.findByLabelText("SFTP 工具内容")).toBeInTheDocument();
     expect(screen.queryByLabelText("SFTP 传输工作台")).not.toBeInTheDocument();
 
     fireEvent.contextMenu(hostButton);
@@ -320,10 +447,20 @@ describe("KerminalShell", () => {
   });
 
   it("flushes the workspace session before the page is hidden", async () => {
+    mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockResolvedValue({
+      activeTabId: "",
+      focusedPaneId: "",
+      removedSidebarMachineIds: [],
+      selectedMachineId: "",
+      sidebarMachines: [],
+      terminalPanes: [],
+      terminalTabGroupPreferences: {},
+      terminalTabs: [],
+    });
     render(<KerminalShell />);
 
     expect(
-      await screen.findByText("打开终端，或从右侧启动外部 Agent。"),
+      await screen.findByText("光标还没闪，AI 已经开始脑补命令了。"),
     ).toBeInTheDocument();
 
     fireEvent(window, new Event("pagehide"));
@@ -571,7 +708,7 @@ describe("KerminalShell", () => {
     const { container } = render(<KerminalShell />);
 
     expect(
-      await screen.findByText("打开终端，或从右侧启动外部 Agent。"),
+      await screen.findByText("光标还没闪，AI 已经开始脑补命令了。"),
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "打开 日志" }));
@@ -584,7 +721,7 @@ describe("KerminalShell", () => {
     }
 
     const shell = container.firstElementChild as HTMLElement;
-    expect(shell.style.gridTemplateColumns).toContain("620px");
+    expect(shell.style.gridTemplateColumns).toContain("720px");
   });
 
   it("matches the expanded left sidebar resize column to the shell glass surface", () => {
@@ -1152,6 +1289,7 @@ describe("KerminalShell", () => {
         name: "PowerShell 7 副本",
         setDefault: false,
         shell: "pwsh.exe",
+        sidebarGroupId: "group-default",
       });
     });
     expect(

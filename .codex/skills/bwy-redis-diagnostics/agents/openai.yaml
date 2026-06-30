@@ -1,0 +1,4 @@
+interface:
+  display_name: "Redis 诊断能力"
+  short_description: "按环境连接 Redis 并执行只读缓存诊断"
+  default_prompt: "使用 bwy-redis-diagnostics 对 Redis 做只读诊断；配置读取当前仓库 Spring Boot application*.yml。"

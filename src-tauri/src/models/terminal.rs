@@ -146,10 +146,111 @@ pub struct TerminalResizeRequest {
 pub enum TerminalOutputKind {
     /// PTY 输出的数据块。
     Data,
+    /// PTY 内 Agent CLI 发出的状态信号，不属于可写入终端的数据流。
+    AgentSignal,
     /// PTY 输出流已经关闭。
     Closed,
     /// 读取 PTY 输出时发生错误。
     Error,
+}
+
+/// Kerminal 识别的外部 Agent 类型。
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalAgentKind {
+    /// OpenAI Codex CLI。
+    Codex,
+    /// Anthropic Claude Code CLI。
+    Claude,
+    /// Google Gemini CLI。
+    Gemini,
+}
+
+impl TerminalAgentKind {
+    /// 返回稳定的协议 id。
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Codex => "codex",
+            Self::Claude => "claude",
+            Self::Gemini => "gemini",
+        }
+    }
+
+    /// 从协议 id 解析 Agent 类型。
+    pub fn from_id(id: &str) -> Option<Self> {
+        match id.trim().to_ascii_lowercase().as_str() {
+            "codex" => Some(Self::Codex),
+            "claude" => Some(Self::Claude),
+            "gemini" => Some(Self::Gemini),
+            _ => None,
+        }
+    }
+}
+
+/// Kerminal 识别的 Agent CLI 运行态。
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalAgentStatus {
+    /// Agent 正在处理任务。
+    Working,
+    /// Agent 需要用户注意或输入。
+    Attention,
+    /// Agent 已完成当前任务。
+    Finished,
+    /// Agent 所在 PTY 已退出。
+    Exited,
+}
+
+impl TerminalAgentStatus {
+    /// 从 Kerminal OSC marker event 解析状态。
+    pub fn from_marker_event(event: &str) -> Option<Self> {
+        match event.trim().to_ascii_lowercase().as_str() {
+            "working" => Some(Self::Working),
+            "attention" => Some(Self::Attention),
+            "finished" => Some(Self::Finished),
+            _ => None,
+        }
+    }
+}
+
+/// 从 PTY OSC 序列解析出的 Agent 状态信号。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TerminalAgentSignal {
+    /// Agent 类型。
+    pub agent: TerminalAgentKind,
+    /// Agent 状态。
+    pub status: TerminalAgentStatus,
+}
+
+/// 前端、MCP 和 session summary 可消费的 typed Agent 状态事件。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalAgentSignalSummary {
+    /// Agent terminal 所属的 Kerminal Agent session id。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_session_id: Option<String>,
+    /// 产生信号的终端 session id。
+    pub terminal_session_id: String,
+    /// Agent 类型。
+    pub agent: TerminalAgentKind,
+    /// Agent 状态。
+    pub status: TerminalAgentStatus,
+}
+
+impl TerminalAgentSignalSummary {
+    /// 将 detector 信号补充为带 session 归属的 IPC summary。
+    pub fn new(
+        terminal_session_id: &str,
+        agent_session_id: Option<&str>,
+        signal: TerminalAgentSignal,
+    ) -> Self {
+        Self {
+            agent_session_id: agent_session_id.map(str::to_owned),
+            terminal_session_id: terminal_session_id.to_owned(),
+            agent: signal.agent,
+            status: signal.status,
+        }
+    }
 }
 
 /// Rust 通过 Tauri Channel 推送给前端的终端输出事件。
@@ -162,6 +263,9 @@ pub struct TerminalOutputEvent {
     pub kind: TerminalOutputKind,
     /// 输出数据或错误摘要。
     pub data: String,
+    /// Agent 状态事件；只有 `kind == AgentSignal` 时有值。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_signal: Option<TerminalAgentSignalSummary>,
 }
 
 impl TerminalOutputEvent {
@@ -171,6 +275,17 @@ impl TerminalOutputEvent {
             session_id: session_id.to_owned(),
             kind: TerminalOutputKind::Data,
             data,
+            agent_signal: None,
+        }
+    }
+
+    /// 创建 Agent typed signal 事件。
+    pub fn agent_signal(summary: TerminalAgentSignalSummary) -> Self {
+        Self {
+            session_id: summary.terminal_session_id.clone(),
+            kind: TerminalOutputKind::AgentSignal,
+            data: String::new(),
+            agent_signal: Some(summary),
         }
     }
 
@@ -180,6 +295,7 @@ impl TerminalOutputEvent {
             session_id: session_id.to_owned(),
             kind: TerminalOutputKind::Closed,
             data: String::new(),
+            agent_signal: None,
         }
     }
 
@@ -189,6 +305,7 @@ impl TerminalOutputEvent {
             session_id: session_id.to_owned(),
             kind: TerminalOutputKind::Error,
             data: message,
+            agent_signal: None,
         }
     }
 }
@@ -225,6 +342,62 @@ pub struct TerminalSessionSummary {
     pub target_ref: Option<String>,
     /// 后端签发的目标绑定 capability token；前端只能原样透传，不能生成。
     pub target_token: Option<String>,
+    /// 本地 shell integration 启用状态；远程、容器和裸 shell 会保持 disabled。
+    pub shell_integration: TerminalShellIntegrationSummary,
+    /// 如果这是右栏 Agent terminal，则为对应 Kerminal Agent session id。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_session_id: Option<String>,
+    /// 该终端最近一次 Agent typed signal。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_signal: Option<TerminalAgentSignalSummary>,
+}
+
+/// 终端 shell integration 状态。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalShellIntegrationStatus {
+    /// 后端已用 Kerminal shell integration wrapper 启动本地 shell。
+    Enabled,
+    /// 本会话未启用 shell integration，继续使用裸 shell 行为。
+    Disabled,
+}
+
+/// 终端 shell integration 摘要。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalShellIntegrationSummary {
+    /// 是否启用 shell integration。
+    pub status: TerminalShellIntegrationStatus,
+    /// 启用时识别到的 shell kind。
+    pub shell: Option<String>,
+    /// 启用时注入的脚本路径。
+    pub script_path: Option<String>,
+    /// 禁用或降级原因。
+    pub reason: Option<String>,
+}
+
+impl TerminalShellIntegrationSummary {
+    /// 返回禁用状态摘要。
+    pub fn disabled(reason: impl Into<String>) -> Self {
+        Self {
+            status: TerminalShellIntegrationStatus::Disabled,
+            shell: None,
+            script_path: None,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+/// 本地终端 orphan 会话收割诊断。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalSessionReapDiagnostics {
+    /// 本次从本地 PTY 管理器中移除的会话数量。
+    pub reaped_count: usize,
+    /// 被移除的本地 PTY session id。
+    pub session_ids: Vec<String>,
+    /// 同步移除、清理临时路径并调度后台 kill 所花费的毫秒数。
+    pub elapsed_ms: u64,
 }
 
 /// 当前终端会话日志记录状态。

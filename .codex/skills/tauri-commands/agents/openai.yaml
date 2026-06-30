@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "tauri-commands"
+  short_description: "Tauri command implementation and IPC"
+  default_prompt: "Use $tauri-commands when implementing, changing, or debugging Tauri commands and invoke contracts."

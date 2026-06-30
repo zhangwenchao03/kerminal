@@ -34,6 +34,7 @@ interface WorkspaceSessionSnapshotInput {
 }
 
 interface WorkspaceSessionPersistenceOptions {
+  beforeRestore?: () => Promise<void> | void;
   onShellLayoutRestored?: (shellLayout: WorkspaceShellLayout) => void;
   shellLayout?: WorkspaceShellLayout;
 }
@@ -87,6 +88,7 @@ export function buildWorkspaceSessionStableKey({
 }
 
 export function useWorkspaceSessionPersistence({
+  beforeRestore,
   onShellLayoutRestored,
   shellLayout,
 }: WorkspaceSessionPersistenceOptions = {}) {
@@ -105,7 +107,12 @@ export function useWorkspaceSessionPersistence({
   const latestShellLayoutRef = useRef<WorkspaceShellLayout | undefined>(
     shellLayout,
   );
+  const beforeRestoreRef = useRef(beforeRestore);
   const onShellLayoutRestoredRef = useRef(onShellLayoutRestored);
+
+  useEffect(() => {
+    beforeRestoreRef.current = beforeRestore;
+  }, [beforeRestore]);
 
   useEffect(() => {
     onShellLayoutRestoredRef.current = onShellLayoutRestored;
@@ -237,8 +244,10 @@ export function useWorkspaceSessionPersistence({
       captureWorkspaceSession(state);
     });
 
-    void loadWorkspaceSession()
-      .catch(() => null)
+    void Promise.resolve()
+      .then(() => beforeRestoreRef.current?.())
+      .catch(() => undefined)
+      .then(() => loadWorkspaceSession().catch(() => null))
       .then((session) => {
         if (disposed) {
           return;

@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "Apple-inspired UI Style"
+  short_description: "Clean quiet premium Apple-like interface style guidance with designer-grade composition and workbench polish"
+  default_prompt: "Use apple-inspired-ui-style to design or refine a clean, restrained, premium, Apple-like interface with strong composition, hierarchy, proportion, material depth, humane motion, and designer-quality review, including dense developer workbenches, terminal/file-management UIs, and settings surfaces, without copying Apple assets or exact system UI."

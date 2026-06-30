@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-21T02:22:34.759Z",
+  "laneId": "lane-updeng-parallel-evolution",
+  "title": "Updeng 并行任务与自进化工作流生产化",
+  "plan": ".updeng/docs/plan/active/2026-06-21-updeng-parallel-evolution-workflow.md",
+  "branch": "main",
+  "worktree": "C:/dev/rust/kerminal",
+  "changedPaths": [
+    ".codex/hooks/evolution-metrics.cjs",
+    ".codex/hooks/lane-coordination.cjs",
+    ".codex/hooks/pre-tool-use.cjs",
+    ".codex/hooks/skill-forced-eval.cjs",
+    ".codex/hooks/validate-hooks.cjs",
+    ".codex/hooks/workflow-event.cjs",
+    ".codex/skills/bwy-development-governance/SKILL.md",
+    ".codex/skills/bwy-development-governance/agents/openai.yaml",
+    ".codex/skills/bwy-development-governance/references/business-doc-template.md",
+    ".codex/skills/bwy-development-governance/references/completed-doc-template.md",
+    ".codex/skills/bwy-project-skill-maintenance/SKILL.md",
+    ".codex/skills/bwy-project-skill-maintenance/agents/openai.yaml",
+    ".codex/skills/bwy-project-skill-maintenance/scripts/validate_skills.js",
+    ".codex/skills/bwy-project-skill-maintenance/scripts/validate_skills.test.mjs",
+    ".codex/skills/bwy-skill-evolution/SKILL.md",
+    ".codex/skills/bwy-skill-evolution/agents/openai.yaml",
+    ".codex/skills/bwy-updeng-workflow/SKILL.md",
+    ".codex/skills/bwy-updeng-workflow/agents/openai.yaml",
+    ".updeng/config.yaml",
+    ".updeng/docs/README.md",
+    ".updeng/docs/coordination/README.md",
+    ".updeng/docs/coordination/lanes.json",
+    ".updeng/docs/coordination/research-2026-06-21.md",
+    ".updeng/docs/decisions/ADR-0013-updeng-parallel-agent-workflow.md",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/metrics/evolution-candidates.jsonl",
+    ".updeng/docs/metrics/evolution-current.json",
+    ".updeng/docs/metrics/evolution-current.md",
+    ".updeng/docs/metrics/hooks.jsonl",
+    ".updeng/docs/plan/INDEX.md",
+    "AGENTS.md"
+  ],
+  "trackedPatchPaths": [],
+  "untrackedPaths": [
+    ".codex/hooks/evolution-metrics.cjs",
+    ".codex/hooks/lane-coordination.cjs",
+    ".codex/hooks/pre-tool-use.cjs",
+    ".codex/hooks/skill-forced-eval.cjs",
+    ".codex/hooks/validate-hooks.cjs",
+    ".codex/hooks/workflow-event.cjs",
+    ".codex/skills/bwy-development-governance/SKILL.md",
+    ".codex/skills/bwy-development-governance/agents/openai.yaml",
+    ".codex/skills/bwy-development-governance/references/business-doc-template.md",
+    ".codex/skills/bwy-development-governance/references/completed-doc-template.md",
+    ".codex/skills/bwy-project-skill-maintenance/SKILL.md",
+    ".codex/skills/bwy-project-skill-maintenance/agents/openai.yaml",
+    ".codex/skills/bwy-project-skill-maintenance/scripts/validate_skills.js",
+    ".codex/skills/bwy-project-skill-maintenance/scripts/validate_skills.test.mjs",
+    ".codex/skills/bwy-skill-evolution/SKILL.md",
+    ".codex/skills/bwy-skill-evolution/agents/openai.yaml",
+    ".codex/skills/bwy-updeng-workflow/SKILL.md",
+    ".codex/skills/bwy-updeng-workflow/agents/openai.yaml",
+    ".updeng/config.yaml",
+    ".updeng/docs/README.md",
+    ".updeng/docs/coordination/README.md",
+    ".updeng/docs/coordination/lanes.json",
+    ".updeng/docs/coordination/research-2026-06-21.md",
+    ".updeng/docs/decisions/ADR-0013-updeng-parallel-agent-workflow.md",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/metrics/evolution-candidates.jsonl",
+    ".updeng/docs/metrics/evolution-current.json",
+    ".updeng/docs/metrics/evolution-current.md",
+    ".updeng/docs/metrics/hooks.jsonl",
+    ".updeng/docs/plan/INDEX.md",
+    "AGENTS.md"
+  ],
+  "untrackedSnapshotPath": ".updeng/docs/coordination/checkpoints/lane-updeng-parallel-evolution.untracked.json",
+  "untrackedSnapshotCount": 31,
+  "omittedSnapshotPaths": [
+    ".updeng/docs/metrics/hooks.jsonl"
+  ],
+  "sharedPaths": [
+    ".updeng/config.yaml",
+    ".updeng/docs/README.md",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/metrics/evolution-candidates.jsonl",
+    ".updeng/docs/metrics/evolution-current.json",
+    ".updeng/docs/metrics/evolution-current.md",
+    ".updeng/docs/metrics/hooks.jsonl",
+    ".updeng/docs/plan/INDEX.md",
+    "AGENTS.md"
+  ],
+  "relatedConflicts": [
+    {
+      "path": ".updeng/config.yaml",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-updeng-parallel-evolution",
+          "kind": "shared",
+          "pattern": ".updeng/config.yaml"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/README.md",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-updeng-parallel-evolution",
+          "kind": "shared",
+          "pattern": ".updeng/docs/README.md"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/in-progress.md",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "shared",
+          "pattern": ".updeng/docs/in-progress.md"
+        },
+        {
+          "id": "lane-ai-assistant-context",
+          "kind": "shared",
+          "pattern": ".updeng/docs/in-progress.md"
+        },
+        {
+          "id": "lane-updeng-parallel-evolution",
+          "kind": "shared",
+          "pattern": ".updeng/docs/in-progress.md"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/metrics/evolution-candidates.jsonl",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-updeng-parallel-evolution",
+          "kind": "shared",
+          "pattern": ".updeng/docs/metrics/evolution-candidates.jsonl"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/metrics/evolution-current.json",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-updeng-parallel-evolution",
+          "kind": "shared",
+          "pattern": ".updeng/docs/metrics/evolution-current.json"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/metrics/evolution-current.md",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-updeng-parallel-evolution",
+          "kind": "shared",
+          "pattern": ".updeng/docs/metrics/evolution-current.md"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/metrics/hooks.jsonl",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-updeng-parallel-evolution",
+          "kind": "shared",
+          "pattern": ".updeng/docs/metrics/hooks.jsonl"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/plan/INDEX.md",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "shared",
+          "pattern": ".updeng/docs/plan/INDEX.md"
+        },
+        {
+          "id": "lane-ai-assistant-context",
+          "kind": "shared",
+          "pattern": ".updeng/docs/plan/INDEX.md"
+        },
+        {
+          "id": "lane-updeng-parallel-evolution",
+          "kind": "shared",
+          "pattern": ".updeng/docs/plan/INDEX.md"
+        }
+      ]
+    },
+    {
+      "path": "AGENTS.md",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-updeng-parallel-evolution",
+          "kind": "shared",
+          "pattern": "AGENTS.md"
+        }
+      ]
+    }
+  ],
+  "note": "Patch contains tracked file diffs. Untracked and ignored workflow assets are captured in the untracked snapshot JSON when they are readable UTF-8 text."
+}

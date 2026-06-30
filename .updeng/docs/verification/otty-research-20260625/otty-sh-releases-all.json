@@ -1,0 +1,130 @@
+{
+  "url": "https://otty.sh/releases/all",
+  "title": "Otty for macOS — Changelog",
+  "description": "All notable changes to Otty.",
+  "viewport": {
+    "width": 1440,
+    "height": 1200
+  },
+  "documentHeight": 2147,
+  "headings": [
+    {
+      "level": "h1",
+      "text": "Changelog"
+    },
+    {
+      "level": "h3",
+      "text": "Highlights"
+    },
+    {
+      "level": "h3",
+      "text": "Notes"
+    }
+  ],
+  "buttons": [
+    {
+      "tag": "a",
+      "text": "Download for macOS (Apple Silicon)",
+      "href": "https://downloads.otty.sh/macos/Otty-1.0.4-arm64.zip"
+    },
+    {
+      "tag": "a",
+      "text": "Download for macOS (Intel)",
+      "href": "https://downloads.otty.sh/macos/Otty-1.0.4-x86_64.zip"
+    },
+    {
+      "tag": "a",
+      "text": "otty@appmakes.io",
+      "href": "mailto:otty@appmakes.io"
+    },
+    {
+      "tag": "a",
+      "text": "Documentation",
+      "href": "https://docs.otty.sh/"
+    }
+  ],
+  "links": [
+    {
+      "href": "https://otty.sh/",
+      "resolved": "https://otty.sh/",
+      "text": ""
+    },
+    {
+      "href": "https://downloads.otty.sh/macos/Otty-1.0.4-arm64.zip",
+      "resolved": "https://downloads.otty.sh/macos/Otty-1.0.4-arm64.zip",
+      "text": "Download for macOS (Apple Silicon)"
+    },
+    {
+      "href": "https://downloads.otty.sh/macos/Otty-1.0.4-x86_64.zip",
+      "resolved": "https://downloads.otty.sh/macos/Otty-1.0.4-x86_64.zip",
+      "text": "Download for macOS (Intel)"
+    },
+    {
+      "href": "mailto:otty@appmakes.io",
+      "resolved": "mailto:otty@appmakes.io",
+      "text": "otty@appmakes.io"
+    },
+    {
+      "href": "https://docs.otty.sh/",
+      "resolved": "https://docs.otty.sh/",
+      "text": "Documentation"
+    }
+  ],
+  "colors": {
+    "text": [
+      {
+        "value": "rgb(162, 162, 170)",
+        "count": 47
+      },
+      {
+        "value": "rgb(241, 241, 243)",
+        "count": 25
+      },
+      {
+        "value": "rgb(27, 27, 31)",
+        "count": 8
+      }
+    ],
+    "background": [
+      {
+        "value": "rgb(42, 42, 48)",
+        "count": 6
+      },
+      {
+        "value": "rgb(241, 241, 243)",
+        "count": 2
+      },
+      {
+        "value": "rgb(40, 40, 46)",
+        "count": 2
+      }
+    ],
+    "border": [
+      {
+        "value": "rgb(162, 162, 170)",
+        "count": 46
+      },
+      {
+        "value": "rgb(241, 241, 243)",
+        "count": 21
+      },
+      {
+        "value": "rgb(27, 27, 31)",
+        "count": 8
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.12) rgb(241, 241, 243) rgb(241, 241, 243)",
+        "count": 3
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.12)",
+        "count": 1
+      },
+      {
+        "value": "rgba(255, 255, 255, 0.12) rgb(162, 162, 170) rgb(162, 162, 170)",
+        "count": 1
+      }
+    ]
+  },
+  "bodyTextSample": "Changelog All notable changes to Otty. v 1.1.0 June 23, 2026 Improvement File ▸ Open Recent now records non-blank windows when you close them. Double-click the divider line in the tabs panel to set its text. Fixed known issues v 1.0.4 June 18, 2026 Fix known issues. Download for macOS (Apple Silicon) Download for macOS (Intel) v 1.0.1 June 10, 2026 The first public release of Otty for macOS. Highlights GPU-accelerated rendering on Metal — smooth scrolling, ligatures, true color, and inline images. Tabs, splits, and panes with drag-to-rearrange layouts, live status badges, and unread dots. Session recovery — close the lid, reopen, and every pane is right where you left it. Command Palette (⌘⇧P), Open Quickly (⌘⇧O), and inline autocomplete. Recipes — save commands, layouts, and snippets, then replay them. First-class agent affordances — session history, fork & branch, the Composer and prompt queue, and send-to-chat. Notes Native on macOS (Apple Silicon and Intel). Windows and Linux are on the way. Need help? otty@appmakes.io · Documentation"
+}

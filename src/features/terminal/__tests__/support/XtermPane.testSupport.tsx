@@ -103,8 +103,10 @@ const mocks = vi.hoisted(() => {
     parser: {
       csiHandlers: Map<string, (params: Array<number | number[]>) => boolean>;
       escHandlers: Map<string, () => boolean>;
+      oscHandlers: Map<number, (data: string) => boolean>;
       registerCsiHandler: ReturnType<typeof vi.fn>;
       registerEscHandler: ReturnType<typeof vi.fn>;
+      registerOscHandler: ReturnType<typeof vi.fn>;
     };
     paste = vi.fn();
     refresh = vi.fn();
@@ -121,9 +123,11 @@ const mocks = vi.hoisted(() => {
         (params: Array<number | number[]>) => boolean
       >();
       const escHandlers = new Map<string, () => boolean>();
+      const oscHandlers = new Map<number, (data: string) => boolean>();
       this.parser = {
         csiHandlers,
         escHandlers,
+        oscHandlers,
         registerCsiHandler: vi.fn(
           (
             identifier: { final: string; prefix?: string },
@@ -144,6 +148,16 @@ const mocks = vi.hoisted(() => {
             return {
               dispose: vi.fn(() => {
                 escHandlers.delete(identifier.final);
+              }),
+            };
+          },
+        ),
+        registerOscHandler: vi.fn(
+          (identifier: number, handler: (data: string) => boolean) => {
+            oscHandlers.set(identifier, handler);
+            return {
+              dispose: vi.fn(() => {
+                oscHandlers.delete(identifier);
               }),
             };
           },
@@ -260,6 +274,10 @@ const mocks = vi.hoisted(() => {
       prefix = "",
     ) {
       return this.parser.csiHandlers.get(`${prefix}${final}`)?.(params);
+    }
+
+    triggerOsc(identifier: number, data: string) {
+      return this.parser.oscHandlers.get(identifier)?.(data);
     }
 
     emitSelectionChange() {
@@ -603,6 +621,7 @@ beforeEach(() => {
         id: "session-1",
         rows: 24,
         shell: "powershell.exe",
+        shellIntegration: { reason: "test default", status: "disabled" },
         status: "running",
       };
     },
@@ -622,6 +641,7 @@ beforeEach(() => {
         id: "ssh-session-1",
         rows: 24,
         shell: "ssh",
+        shellIntegration: { reason: "remote test default", status: "disabled" },
         status: "running",
       };
     },
@@ -641,6 +661,7 @@ beforeEach(() => {
         id: "telnet-session-1",
         rows: 24,
         shell: "telnet",
+        shellIntegration: { reason: "remote test default", status: "disabled" },
         status: "running",
       };
     },
@@ -660,6 +681,7 @@ beforeEach(() => {
         id: "serial-session-1",
         rows: 24,
         shell: "plink",
+        shellIntegration: { reason: "remote test default", status: "disabled" },
         status: "running",
       };
     },
@@ -679,6 +701,7 @@ beforeEach(() => {
       id: "session-1",
       rows: 24,
       shell: "powershell.exe",
+      shellIntegration: { reason: "test default", status: "disabled" },
       status: "running",
     },
     {
@@ -686,6 +709,7 @@ beforeEach(() => {
       id: "ssh-session-1",
       rows: 24,
       shell: "ssh",
+      shellIntegration: { reason: "remote test default", status: "disabled" },
       status: "running",
     },
     {
@@ -693,6 +717,7 @@ beforeEach(() => {
       id: "telnet-session-1",
       rows: 24,
       shell: "telnet",
+      shellIntegration: { reason: "remote test default", status: "disabled" },
       status: "running",
     },
     {
@@ -700,6 +725,7 @@ beforeEach(() => {
       id: "serial-session-1",
       rows: 24,
       shell: "plink",
+      shellIntegration: { reason: "remote test default", status: "disabled" },
       status: "running",
     },
   ]);

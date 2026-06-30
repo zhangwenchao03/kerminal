@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "bug-detective"
+  short_description: "Tauri bug investigation and regression analysis"
+  default_prompt: "Use $bug-detective when diagnosing Tauri, Rust, frontend, IPC, build, or runtime defects."

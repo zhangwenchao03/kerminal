@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "notification-system"
+  short_description: "Tauri notifications and messaging"
+  default_prompt: "Use $notification-system when implementing or debugging notifications, user prompts, background messages, or event delivery."

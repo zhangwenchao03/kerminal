@@ -1,0 +1,331 @@
+{
+  "capturedAt": "2026-06-26T09:36:08.550Z",
+  "devServer": "http://127.0.0.1:1439/",
+  "note": "Browser preview validates Agent terminal/composer layout and theme propagation. Real Codex/Claude TUI smoke remains TASK-006 HITL.",
+  "results": [
+    {
+      "file": "C:/dev/rust/kerminal/.updeng/docs/verification/agent-terminal-compat/agent-terminal-composer-light-explicit-v3.png",
+      "themeAfterSettings": "light",
+      "metrics": {
+        "bodyTextIncludesQueueOne": true,
+        "composer": {
+          "bottom": 836,
+          "height": 64,
+          "left": 1149,
+          "right": 1384,
+          "top": 772,
+          "width": 235
+        },
+        "composerPanel": {
+          "bottom": 920,
+          "height": 157,
+          "left": 1141,
+          "right": 1392,
+          "top": 763,
+          "width": 251
+        },
+        "queue": {
+          "bottom": 906,
+          "height": 17,
+          "left": 1260,
+          "right": 1294,
+          "top": 890,
+          "width": 34
+        },
+        "terminal": {
+          "bottom": 753,
+          "height": 624,
+          "left": 1153,
+          "right": 1380,
+          "top": 129,
+          "width": 227
+        },
+        "terminalOverlapsComposerPanel": false,
+        "warningText": "终端 24x26，建议至少 80x24；拖宽右栏获得完整 TUI。",
+        "buttons": [
+          {
+            "name": "Paste composer to agent",
+            "height": 28,
+            "width": 68,
+            "x": 1149,
+            "y": 850,
+            "disabled": false
+          },
+          {
+            "name": "Send composer to agent",
+            "height": 28,
+            "width": 68,
+            "x": 1223,
+            "y": 850,
+            "disabled": false
+          },
+          {
+            "name": "Queue composer prompt",
+            "height": 28,
+            "width": 68,
+            "x": 1297,
+            "y": 850,
+            "disabled": false
+          },
+          {
+            "name": "Run next queued prompt",
+            "height": 28,
+            "width": 84,
+            "x": 1300,
+            "y": 884,
+            "disabled": false
+          }
+        ],
+        "htmlTheme": "light",
+        "darkClass": false,
+        "viewport": {
+          "width": 1440,
+          "height": 920
+        }
+      }
+    },
+    {
+      "file": "C:/dev/rust/kerminal/.updeng/docs/verification/agent-terminal-compat/agent-terminal-composer-dark-explicit-v3.png",
+      "themeAfterSettings": "dark",
+      "metrics": {
+        "bodyTextIncludesQueueOne": true,
+        "composer": {
+          "bottom": 836,
+          "height": 64,
+          "left": 1149,
+          "right": 1384,
+          "top": 772,
+          "width": 235
+        },
+        "composerPanel": {
+          "bottom": 920,
+          "height": 157,
+          "left": 1141,
+          "right": 1392,
+          "top": 763,
+          "width": 251
+        },
+        "queue": {
+          "bottom": 906,
+          "height": 17,
+          "left": 1260,
+          "right": 1294,
+          "top": 890,
+          "width": 34
+        },
+        "terminal": {
+          "bottom": 753,
+          "height": 624,
+          "left": 1153,
+          "right": 1380,
+          "top": 129,
+          "width": 227
+        },
+        "terminalOverlapsComposerPanel": false,
+        "warningText": "终端 24x26，建议至少 80x24；拖宽右栏获得完整 TUI。",
+        "buttons": [
+          {
+            "name": "Paste composer to agent",
+            "height": 28,
+            "width": 68,
+            "x": 1149,
+            "y": 850,
+            "disabled": false
+          },
+          {
+            "name": "Send composer to agent",
+            "height": 28,
+            "width": 68,
+            "x": 1223,
+            "y": 850,
+            "disabled": false
+          },
+          {
+            "name": "Queue composer prompt",
+            "height": 28,
+            "width": 68,
+            "x": 1297,
+            "y": 850,
+            "disabled": false
+          },
+          {
+            "name": "Run next queued prompt",
+            "height": 28,
+            "width": 84,
+            "x": 1300,
+            "y": 884,
+            "disabled": false
+          }
+        ],
+        "htmlTheme": "dark",
+        "darkClass": true,
+        "viewport": {
+          "width": 1440,
+          "height": 920
+        }
+      }
+    },
+    {
+      "file": "C:/dev/rust/kerminal/.updeng/docs/verification/agent-terminal-compat/agent-terminal-composer-system-light-narrow-v3.png",
+      "themeAfterSettings": "light",
+      "metrics": {
+        "bodyTextIncludesQueueOne": true,
+        "composer": {
+          "bottom": 676,
+          "height": 64,
+          "left": 609,
+          "right": 844,
+          "top": 612,
+          "width": 235
+        },
+        "composerPanel": {
+          "bottom": 760,
+          "height": 157,
+          "left": 601,
+          "right": 852,
+          "top": 603,
+          "width": 251
+        },
+        "queue": {
+          "bottom": 746,
+          "height": 17,
+          "left": 720,
+          "right": 754,
+          "top": 730,
+          "width": 34
+        },
+        "terminal": {
+          "bottom": 585,
+          "height": 456,
+          "left": 613,
+          "right": 840,
+          "top": 129,
+          "width": 227
+        },
+        "terminalOverlapsComposerPanel": false,
+        "warningText": "终端 24x19，建议至少 80x24；拖宽右栏获得完整 TUI。",
+        "buttons": [
+          {
+            "name": "Paste composer to agent",
+            "height": 28,
+            "width": 68,
+            "x": 609,
+            "y": 690,
+            "disabled": false
+          },
+          {
+            "name": "Send composer to agent",
+            "height": 28,
+            "width": 68,
+            "x": 683,
+            "y": 690,
+            "disabled": false
+          },
+          {
+            "name": "Queue composer prompt",
+            "height": 28,
+            "width": 68,
+            "x": 757,
+            "y": 690,
+            "disabled": false
+          },
+          {
+            "name": "Run next queued prompt",
+            "height": 28,
+            "width": 84,
+            "x": 760,
+            "y": 724,
+            "disabled": false
+          }
+        ],
+        "htmlTheme": "light",
+        "darkClass": false,
+        "viewport": {
+          "width": 900,
+          "height": 760
+        }
+      }
+    },
+    {
+      "file": "C:/dev/rust/kerminal/.updeng/docs/verification/agent-terminal-compat/agent-terminal-composer-system-dark-narrow-v3.png",
+      "themeAfterSettings": "dark",
+      "metrics": {
+        "bodyTextIncludesQueueOne": true,
+        "composer": {
+          "bottom": 676,
+          "height": 64,
+          "left": 609,
+          "right": 844,
+          "top": 612,
+          "width": 235
+        },
+        "composerPanel": {
+          "bottom": 760,
+          "height": 157,
+          "left": 601,
+          "right": 852,
+          "top": 603,
+          "width": 251
+        },
+        "queue": {
+          "bottom": 746,
+          "height": 17,
+          "left": 720,
+          "right": 754,
+          "top": 730,
+          "width": 34
+        },
+        "terminal": {
+          "bottom": 585,
+          "height": 456,
+          "left": 613,
+          "right": 840,
+          "top": 129,
+          "width": 227
+        },
+        "terminalOverlapsComposerPanel": false,
+        "warningText": "终端 24x19，建议至少 80x24；拖宽右栏获得完整 TUI。",
+        "buttons": [
+          {
+            "name": "Paste composer to agent",
+            "height": 28,
+            "width": 68,
+            "x": 609,
+            "y": 690,
+            "disabled": false
+          },
+          {
+            "name": "Send composer to agent",
+            "height": 28,
+            "width": 68,
+            "x": 683,
+            "y": 690,
+            "disabled": false
+          },
+          {
+            "name": "Queue composer prompt",
+            "height": 28,
+            "width": 68,
+            "x": 757,
+            "y": 690,
+            "disabled": false
+          },
+          {
+            "name": "Run next queued prompt",
+            "height": 28,
+            "width": 84,
+            "x": 760,
+            "y": 724,
+            "disabled": false
+          }
+        ],
+        "htmlTheme": "dark",
+        "darkClass": true,
+        "viewport": {
+          "width": 900,
+          "height": 760
+        }
+      }
+    }
+  ]
+}

@@ -217,6 +217,7 @@ describe("XtermPane context menu search and logging", () => {
           id: sessionId,
           rows: 24,
           shell: "powershell.exe",
+          shellIntegration: { reason: "test default", status: "disabled" },
           status: "running",
         };
       },
@@ -477,6 +478,7 @@ describe("XtermPane context menu search and logging", () => {
           id: sessionId,
           rows: 24,
           shell: "powershell.exe",
+          shellIntegration: { reason: "test default", status: "disabled" },
           status: "running",
         };
       },
@@ -526,9 +528,9 @@ describe("XtermPane context menu search and logging", () => {
     });
     expect(mocks.api.createTerminalSession).toHaveBeenLastCalledWith(
       {
-        cols: 80,
+        cols: 100,
         cwd: "C:/dev/rust/kerminal",
-        rows: 24,
+        rows: 30,
         shell: "powershell.exe",
       },
       expect.any(Function),
@@ -578,6 +580,7 @@ describe("XtermPane context menu search and logging", () => {
           id: sessionId,
           rows: 24,
           shell: "ssh",
+          shellIntegration: { reason: "remote test default", status: "disabled" },
           status: "running",
         };
       },
@@ -606,7 +609,7 @@ describe("XtermPane context menu search and logging", () => {
     });
     expect(mocks.api.closeTerminal).toHaveBeenCalledWith("ssh-session-1");
     expect(mocks.api.createSshTerminalSession).toHaveBeenLastCalledWith(
-      { cols: 80, hostId: "host-lab", rows: 24 },
+      { cols: 100, hostId: "host-lab", rows: 30 },
       expect.any(Function),
     );
     expect(await screen.findByText("已连接")).toBeInTheDocument();

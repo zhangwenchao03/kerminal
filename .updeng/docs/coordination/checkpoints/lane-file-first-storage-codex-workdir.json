@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-24T04:47:35.001Z",
+  "laneId": "lane-file-first-storage-codex-workdir",
+  "plan": ".updeng/docs/plan/active/PLAN-20260623-193041-file-first-storage-codex-workdir.md",
+  "branch": null,
+  "worktree": "C:/dev/rust/kerminal",
+  "changedPaths": [
+    ".codex/skills/bwy-kerminal-config-files/SKILL.md",
+    ".codex/skills/bwy-kerminal-config-files/agents/openai.yaml",
+    ".codex/skills/bwy-kerminal-config-files/scripts/validate-kerminal-config.mjs",
+    ".updeng/docs/coordination/lanes.json",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/plan/INDEX.md",
+    ".updeng/docs/plan/active/PLAN-20260623-193041-file-first-storage-codex-workdir.md",
+    ".updeng/docs/reports/storage-inventory-20260623.md",
+    "src-tauri/Cargo.lock",
+    "src-tauri/Cargo.toml",
+    "src-tauri/src/commands/profile.rs",
+    "src-tauri/src/commands/settings.rs",
+    "src-tauri/src/services/profile_service.rs",
+    "src-tauri/src/services/settings_service.rs",
+    "src-tauri/src/state.rs",
+    "src-tauri/src/storage/audit_log_store.rs",
+    "src-tauri/src/storage/config_file_store.rs",
+    "src-tauri/src/storage/file_store.rs",
+    "src-tauri/src/storage/migrations.rs",
+    "src-tauri/src/storage/mod.rs",
+    "src-tauri/src/storage/storage_manifest.rs",
+    "src-tauri/tests/profile_service.rs",
+    "src-tauri/tests/settings_service.rs"
+  ],
+  "trackedPatchPaths": [
+    "src-tauri/Cargo.lock",
+    "src-tauri/Cargo.toml",
+    "src-tauri/src/commands/profile.rs",
+    "src-tauri/src/commands/settings.rs",
+    "src-tauri/src/services/profile_service.rs",
+    "src-tauri/src/services/settings_service.rs",
+    "src-tauri/src/state.rs",
+    "src-tauri/src/storage/migrations.rs",
+    "src-tauri/src/storage/mod.rs",
+    "src-tauri/tests/profile_service.rs",
+    "src-tauri/tests/settings_service.rs"
+  ],
+  "untrackedPaths": [
+    ".codex/skills/bwy-kerminal-config-files/SKILL.md",
+    ".codex/skills/bwy-kerminal-config-files/agents/openai.yaml",
+    ".codex/skills/bwy-kerminal-config-files/scripts/validate-kerminal-config.mjs",
+    ".updeng/docs/coordination/lanes.json",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/plan/INDEX.md",
+    ".updeng/docs/plan/active/PLAN-20260623-193041-file-first-storage-codex-workdir.md",
+    ".updeng/docs/reports/storage-inventory-20260623.md",
+    "src-tauri/src/storage/audit_log_store.rs",
+    "src-tauri/src/storage/config_file_store.rs",
+    "src-tauri/src/storage/file_store.rs",
+    "src-tauri/src/storage/storage_manifest.rs"
+  ],
+  "untrackedSnapshotPath": ".updeng/docs/coordination/checkpoints/lane-file-first-storage-codex-workdir.untracked.json",
+  "untrackedSnapshotCount": 12,
+  "omittedSnapshotPaths": [],
+  "sharedPaths": [
+    "src-tauri/Cargo.lock",
+    "src-tauri/Cargo.toml",
+    "src-tauri/src/state.rs",
+    "src-tauri/src/storage/migrations.rs",
+    "src-tauri/src/storage/mod.rs",
+    ".updeng/docs/coordination/lanes.json",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/plan/INDEX.md"
+  ],
+  "relatedConflicts": [
+    {
+      "path": "src-tauri/Cargo.lock",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-file-first-storage-codex-workdir",
+          "kind": "shared",
+          "pattern": "src-tauri/Cargo.lock"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/Cargo.toml",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src-tauri/Cargo.toml"
+        },
+        {
+          "id": "lane-file-first-storage-codex-workdir",
+          "kind": "shared",
+          "pattern": "src-tauri/Cargo.toml"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/state.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": "src-tauri/src/state.rs"
+        },
+        {
+          "id": "lane-file-first-storage-codex-workdir",
+          "kind": "shared",
+          "pattern": "src-tauri/src/state.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/storage/migrations.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-file-first-storage-codex-workdir",
+          "kind": "shared",
+          "pattern": "src-tauri/src/storage/migrations.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/storage/mod.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-file-first-storage-codex-workdir",
+          "kind": "shared",
+          "pattern": "src-tauri/src/storage/mod.rs"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/coordination/lanes.json",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": ".updeng/docs/coordination/lanes.json"
+        },
+        {
+          "id": "lane-file-first-storage-codex-workdir",
+          "kind": "shared",
+          "pattern": ".updeng/docs/coordination/lanes.json"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/in-progress.md",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": ".updeng/docs/in-progress.md"
+        },
+        {
+          "id": "lane-file-first-storage-codex-workdir",
+          "kind": "shared",
+          "pattern": ".updeng/docs/in-progress.md"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/plan/INDEX.md",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-ai-sidebar-external-agent-launcher",
+          "kind": "shared",
+          "pattern": ".updeng/docs/plan/INDEX.md"
+        },
+        {
+          "id": "lane-file-first-storage-codex-workdir",
+          "kind": "shared",
+          "pattern": ".updeng/docs/plan/INDEX.md"
+        }
+      ]
+    }
+  ],
+  "note": "Patch contains tracked file diffs. Untracked and ignored workflow assets are captured in the untracked snapshot JSON when they are readable UTF-8 text."
+}

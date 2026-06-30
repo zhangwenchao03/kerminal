@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "architecture-design"
+  short_description: "Tauri architecture and module design guidance"
+  default_prompt: "Use $architecture-design when shaping Tauri app architecture, module boundaries, state ownership, and cross-layer contracts."

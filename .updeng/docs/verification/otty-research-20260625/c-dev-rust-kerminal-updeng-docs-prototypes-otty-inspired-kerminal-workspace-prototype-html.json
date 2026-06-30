@@ -1,0 +1,531 @@
+{
+  "url": "file:///C:/dev/rust/kerminal/.updeng/docs/prototypes/otty-inspired-kerminal-workspace.prototype.html",
+  "title": "PROTOTYPE - Otty-inspired Kerminal Workspace",
+  "description": "",
+  "viewport": {
+    "width": 1440,
+    "height": 1200
+  },
+  "documentHeight": 1208,
+  "headings": [
+    {
+      "level": "h1",
+      "text": "PROTOTYPE - Kerminal Context Workspace"
+    },
+    {
+      "level": "h2",
+      "text": "Context Inspector"
+    },
+    {
+      "level": "h3",
+      "text": "Pane Info"
+    },
+    {
+      "level": "h3",
+      "text": "Outline"
+    },
+    {
+      "level": "h3",
+      "text": "Artifacts"
+    },
+    {
+      "level": "h2",
+      "text": "Quick Surfaces"
+    },
+    {
+      "level": "h3",
+      "text": "Open Quickly providers"
+    },
+    {
+      "level": "h3",
+      "text": "Command Palette scopes"
+    },
+    {
+      "level": "h2",
+      "text": "Agent Task Monitor"
+    },
+    {
+      "level": "h3",
+      "text": "Current agent"
+    },
+    {
+      "level": "h3",
+      "text": "Prompt Queue"
+    },
+    {
+      "level": "h3",
+      "text": "Composer"
+    },
+    {
+      "level": "h2",
+      "text": "Files and Links"
+    },
+    {
+      "level": "h3",
+      "text": "Detected in focused pane"
+    },
+    {
+      "level": "h3",
+      "text": "Preview"
+    },
+    {
+      "level": "h2",
+      "text": "Open Quickly"
+    },
+    {
+      "level": "h2",
+      "text": "Command Palette"
+    }
+  ],
+  "buttons": [
+    {
+      "tag": "button",
+      "text": "Context",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Quick",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Agents",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Files",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Dark",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Light",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "System",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "S prod-api deploy@10.23.42.18:22",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "J jump-box ops@10.23.19.22",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "D docker-gpu 2 containers",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "L local PowerShell profile",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "R rdp-lab administrator@10.24.8.9",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "prod-api ssh - running deploy check",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "agent: codex waiting for input",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "sftp bridge prod-api -> docker-gpu",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Info",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Outline",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Files",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Git",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Tasks",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "1 git status --short changed files",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "2 docker ps api, worker",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "3 tail app.log warn, artifact",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "F /var/log/kerminal/app.log Preview",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "U internal.example/builds/7821 Open",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "D src/features/tool-panel/ToolPanel.tsx Diff",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "PPane actionssplit, find, copy cwd",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "WWindow actionsnew tab, theme",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "AApp actionssettings, diagnostics",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "Nextfires on idle prompt Run focused tests and summarize failures.",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "Draftmanual review Open the SFTP artifact and compare release bundle size.",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Send to Chat",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Fork Session",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Queue Prompt",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "F/var/log/kerminal/app.logOpen preview",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "S/opt/releases/kerminal-0.2.0.tar.gzSend to SFTP",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "Gsrc/features/terminal/terminalCommandBlocks.tsOpen diff",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "Uhttps://internal.example/builds/7821Open browser",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Copy Path",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Attach to Agent",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Open in SFTP",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "C",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "A",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "F",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "P",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "L",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "All",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Hosts",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Tabs",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Paths",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Commands",
+      "href": null
+    },
+    {
+      "tag": "button",
+      "text": "Agents",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "F/var/log/kerminal/app.logprod-api SSH pane artifactPreview",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "Sprod-apideploy@10.23.42.18Focus",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "Ttail app.logRecent command in focused paneRun",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "Acodex waiting inputAgent session ag-4821Open",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "PSplit focused pane rightPane scopeAlt+Shift+R",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "PSplit focused pane downPane scopeAlt+Shift+D",
+      "href": null
+    },
+    {
+      "tag": "div",
+      "text": "WSave layout as recipeWindow scopeManual",
+      "href": null
+    }
+  ],
+  "links": [],
+  "colors": {
+    "text": [
+      {
+        "value": "rgb(223, 223, 214)",
+        "count": 101
+      },
+      {
+        "value": "rgb(152, 152, 159)",
+        "count": 57
+      },
+      {
+        "value": "rgb(104, 216, 245)",
+        "count": 9
+      },
+      {
+        "value": "rgb(168, 177, 255)",
+        "count": 9
+      }
+    ],
+    "background": [
+      {
+        "value": "rgb(27, 28, 32)",
+        "count": 18
+      },
+      {
+        "value": "color(srgb 0.12549 0.129412 0.14902 / 0.68)",
+        "count": 6
+      },
+      {
+        "value": "color(srgb 0.181961 0.272941 0.311373)",
+        "count": 5
+      },
+      {
+        "value": "rgb(56, 217, 154)",
+        "count": 4
+      },
+      {
+        "value": "rgba(168, 177, 255, 0.16)",
+        "count": 3
+      },
+      {
+        "value": "rgb(21, 21, 24)",
+        "count": 3
+      },
+      {
+        "value": "color(srgb 0.148157 0.21302 0.242431)",
+        "count": 2
+      },
+      {
+        "value": "rgb(234, 184, 79)",
+        "count": 2
+      },
+      {
+        "value": "rgb(249, 117, 131)",
+        "count": 2
+      },
+      {
+        "value": "color(srgb 0.082353 0.082353 0.0941176 / 0.94)",
+        "count": 1
+      },
+      {
+        "value": "rgb(32, 33, 38)",
+        "count": 1
+      },
+      {
+        "value": "rgb(16, 16, 18)",
+        "count": 1
+      },
+      {
+        "value": "color(srgb 0.161176 0.168235 0.212941)",
+        "count": 1
+      },
+      {
+        "value": "rgb(24, 25, 27)",
+        "count": 1
+      },
+      {
+        "value": "color(srgb 0.105882 0.109804 0.12549 / 0.84)",
+        "count": 1
+      },
+      {
+        "value": "color(srgb 0.105882 0.109804 0.12549 / 0.9)",
+        "count": 1
+      }
+    ],
+    "border": [
+      {
+        "value": "rgb(223, 223, 214)",
+        "count": 73
+      },
+      {
+        "value": "rgb(152, 152, 159)",
+        "count": 41
+      },
+      {
+        "value": "rgba(223, 223, 214, 0.12)",
+        "count": 19
+      },
+      {
+        "value": "rgb(104, 216, 245)",
+        "count": 9
+      },
+      {
+        "value": "rgb(168, 177, 255)",
+        "count": 9
+      },
+      {
+        "value": "rgb(223, 223, 214) rgb(223, 223, 214) rgba(223, 223, 214, 0.12)",
+        "count": 3
+      },
+      {
+        "value": "color(srgb 0.68576 0.716646 0.97992 / 0.525647)",
+        "count": 2
+      },
+      {
+        "value": "rgb(223, 223, 214) rgb(223, 223, 214) rgb(223, 223, 214) rgba(223, 223, 214, 0.12)",
+        "count": 2
+      },
+      {
+        "value": "rgba(223, 223, 214, 0.2)",
+        "count": 1
+      },
+      {
+        "value": "rgb(223, 223, 214) rgba(223, 223, 214, 0.12) rgb(223, 223, 214) rgb(223, 223, 214)",
+        "count": 1
+      },
+      {
+        "value": "color(srgb 0.407843 0.847059 0.960784 / 0.38)",
+        "count": 1
+      },
+      {
+        "value": "color(srgb 0.686725 0.717454 0.979201 / 0.516863)",
+        "count": 1
+      },
+      {
+        "value": "color(srgb 0.474926 0.851005 0.943309 / 0.49051)",
+        "count": 1
+      },
+      {
+        "value": "rgb(152, 152, 159) rgb(152, 152, 159) rgba(223, 223, 214, 0.12)",
+        "count": 1
+      },
+      {
+        "value": "color(srgb 0.470373 0.850737 0.944495 / 0.508078)",
+        "count": 1
+      },
+      {
+        "value": "color(srgb 0.689828 0.720049 0.976888 / 0.49051)",
+        "count": 1
+      }
+    ]
+  },
+  "bodyTextSample": "K PROTOTYPE - Kerminal Context Workspace Otty-inspired information architecture adapted to a machine-first terminal workbench. Context Quick Agents Files Dark Light System PRODUCTION 3 S prod-api deploy@10.23.42.18:22 J jump-box ops@10.23.19.22 D docker-gpu 2 containers DEVELOPMENT 2 L local PowerShell profile R rdp-lab administrator@10.24.8.9 prod-api ssh - running deploy check agent: codex waiting for input sftp bridge prod-api -> docker-gpu prod-api /srv/kerminal connected 3s ago deploy@prod-api:/srv/kerminal$ git status --short M src/features/tool-panel/ToolPanel.tsx M src/features/terminal/terminalCommandBlocks.ts detected: git diff, changed files, working tree deploy@prod-api:/srv/kerminal$ docker ps --format \"table {{.Names}}\\t{{.Status}}\" NAME STATUS TARGET api Up 12m container worker Up 8m container deploy@prod-api:/srv/kerminal$ tail -n 80 /var/log/kerminal/app.log WARN port-forward session pf-2042 retried after remote close INFO artifact ready https://internal.example/builds/7821 INFO upload target /opt/releases/kerminal-0.2.0.tar.gz deploy@prod-api:/srv/kerminal$ # queued: npm run test:frontend Context Inspector Focused pane: prod-api /srv/kerminal Info Outline Files Git Tasks Pane Info Machine prod-api Mode SSH terminal Working dir /srv/kerminal Shell bash 5.2 Last command tail -n 80 /var/log/kerminal/app.log Outline 1 git status --short changed files 2 docker ps api, worker 3 tail app.log warn, artifact Artifacts F /var/log/kerminal/app.log Preview U internal.example/builds/7821 Open D src/features/tool-panel/ToolPanel.tsx Diff C A F P L Prototype interactions ready."
+}

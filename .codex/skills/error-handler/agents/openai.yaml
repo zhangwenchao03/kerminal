@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "error-handler"
+  short_description: "Tauri error handling and user-facing failures"
+  default_prompt: "Use $error-handler when designing or fixing Rust, IPC, frontend, and user-facing error paths in a Tauri app."

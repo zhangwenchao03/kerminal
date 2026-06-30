@@ -1,0 +1,2448 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-22T02:01:22.321Z",
+  "laneId": "lane-code-quality",
+  "title": "代码规范、设计模式与性能治理",
+  "plan": ".updeng/docs/plan/active/2026-06-20-code-quality-architecture-performance.md",
+  "branch": "main",
+  "worktree": "C:/dev/rust/kerminal",
+  "changedPaths": [
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/plan/INDEX.md",
+    "src-tauri/src/commands/mod.rs",
+    "src-tauri/src/commands/registry.rs",
+    "src-tauri/src/services/mod.rs",
+    "src-tauri/src/services/sftp_service/remote_text.rs",
+    "src-tauri/src/services/sftp_service/runtime_tasks.rs",
+    "src-tauri/src/services/sftp_service/tests/archive_clipboard.rs",
+    "src-tauri/src/services/sftp_service/tests/loopback.rs",
+    "src-tauri/src/services/sftp_service/tests/mod.rs",
+    "src-tauri/src/services/sftp_service/tests/native_backend.rs",
+    "src-tauri/src/services/sftp_service/tests/support.rs",
+    "src-tauri/src/services/sftp_service/tests/transfer_queue.rs",
+    "src-tauri/src/services/sftp_service/tests/validation.rs",
+    "src-tauri/src/services/sftp_service/transfer.rs",
+    "src-tauri/src/services/sftp_service/transfer_io.rs",
+    "src-tauri/src/services/sftp_service/transfer_lifecycle.rs",
+    "src-tauri/src/services/sftp_service/transfer_paths.rs",
+    "src-tauri/src/services/sftp_service/transfer_registry.rs",
+    "src-tauri/src/services/tool_registry_service/catalog.rs",
+    "src-tauri/src/services/tool_registry_service/catalog/automation.rs",
+    "src-tauri/src/services/tool_registry_service/catalog/foundation.rs",
+    "src-tauri/src/services/tool_registry_service/catalog/remote.rs",
+    "src-tauri/src/services/tool_registry_service/catalog/sftp.rs",
+    "src-tauri/src/state.rs",
+    "src-tauri/src/storage/migrations.rs",
+    "src/app/AppTitleBar.test.tsx",
+    "src/app/AppTitleBar.tsx",
+    "src/app/KerminalShell.helpers.tsx",
+    "src/app/KerminalShell.test.tsx",
+    "src/app/KerminalShell.testSupport.tsx",
+    "src/app/KerminalShell.tsx",
+    "src/app/KerminalShell.workspaceBridge.tsx",
+    "src/app/KerminalShell.workspaceSelectors.test.ts",
+    "src/app/KerminalShell.workspaceSelectors.ts",
+    "src/app/useKerminalShellSettings.test.tsx",
+    "src/app/useKerminalShellSettings.ts",
+    "src/app/useWorkspaceSessionPersistence.test.ts",
+    "src/app/useWorkspaceSessionPersistence.ts",
+    "src/features/sftp/ContainerFilesToolContent.tsx",
+    "src/features/sftp/LazySftpTransferWorkbench.tsx",
+    "src/features/sftp/LocalTransferPane.test.tsx",
+    "src/features/sftp/LocalTransferPane.tsx",
+    "src/features/sftp/RemoteFilePreviewEditor.tsx",
+    "src/features/sftp/RemoteWorkspaceEditor.tsx",
+    "src/features/sftp/RemoteWorkspaceWindow.tsx",
+    "src/features/sftp/SftpToolContent.clipboard.test.tsx",
+    "src/features/sftp/SftpToolContent.dialogs.test.tsx",
+    "src/features/sftp/SftpToolContent.localDrop.test.tsx",
+    "src/features/sftp/SftpToolContent.remoteBrowser.test.tsx",
+    "src/features/sftp/SftpToolContent.selection.test.tsx",
+    "src/features/sftp/SftpToolContent.test.tsx",
+    "src/features/sftp/SftpToolContent.testSupport.tsx",
+    "src/features/sftp/SftpToolContent.transfers.test.tsx",
+    "src/features/sftp/SftpToolContent.tsx",
+    "src/features/sftp/SftpToolContent.workspaceDialog.test.tsx",
+    "src/features/sftp/SftpTransferWorkbench.parts.tsx",
+    "src/features/sftp/SftpTransferWorkbench.test.tsx",
+    "src/features/sftp/SftpTransferWorkbench.tsx",
+    "src/features/sftp/localTransferPaneModel.test.ts",
+    "src/features/sftp/localTransferPaneModel.ts",
+    "src/features/sftp/remoteWorkspaceEditorModel.test.ts",
+    "src/features/sftp/remoteWorkspaceEditorModel.ts",
+    "src/features/sftp/remoteWorkspaceEditorTransport.test.ts",
+    "src/features/sftp/remoteWorkspaceEditorTransport.ts",
+    "src/features/sftp/sftp-tool-content/RemoteWorkspaceEditorFallback.tsx",
+    "src/features/sftp/sftp-tool-content/SftpActionDialog.tsx",
+    "src/features/sftp/sftp-tool-content/SftpBrowserView.tsx",
+    "src/features/sftp/sftp-tool-content/SftpContextMenu.test.tsx",
+    "src/features/sftp/sftp-tool-content/SftpContextMenu.tsx",
+    "src/features/sftp/sftp-tool-content/SftpEntryRow.tsx",
+    "src/features/sftp/sftp-tool-content/SftpTransferStatusBar.test.tsx",
+    "src/features/sftp/sftp-tool-content/SftpTransferStatusBar.tsx",
+    "src/features/sftp/sftp-tool-content/ToolbarButton.tsx",
+    "src/features/sftp/sftp-tool-content/sftpContextMenuActionModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpContextMenuActionModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpContextMenuModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpContextMenuModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpDialogModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpDialogModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpFollowDirectoryModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpFollowDirectoryModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpLocalUploadDropModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpLocalUploadDropModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpRemoteBrowserModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpRemoteBrowserModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpRemoteCopyTaskRunnerModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpRemoteCopyTaskRunnerModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpRemoteSetupModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpRemoteSetupModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpRemoteTransferModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpRemoteTransferModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpSelectionModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpSelectionModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpTransferActionPlan.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpTransferActionPlan.ts",
+    "src/features/sftp/sftp-tool-content/sftpTransferScopeModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpTransferScopeModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpTransferSyncModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpTransferSyncModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpTransferTaskRunnerModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpTransferTaskRunnerModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpWorkspaceDialogModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpWorkspaceDialogModel.ts",
+    "src/features/sftp/sftp-tool-content/types.ts",
+    "src/features/sftp/sftp-tool-content/useSftpContextMenuActions.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpContextMenuActions.ts",
+    "src/features/sftp/sftp-tool-content/useSftpDialogActions.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpDialogActions.ts",
+    "src/features/sftp/sftp-tool-content/useSftpLocalUploadDropActions.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpLocalUploadDropActions.ts",
+    "src/features/sftp/sftp-tool-content/useSftpRemoteCopyTaskRunner.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpRemoteCopyTaskRunner.ts",
+    "src/features/sftp/sftp-tool-content/useSftpRemoteDownloadDragActions.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpRemoteDownloadDragActions.ts",
+    "src/features/sftp/sftp-tool-content/useSftpRemoteSetupActions.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpRemoteSetupActions.ts",
+    "src/features/sftp/sftp-tool-content/useSftpTransferActions.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpTransferActions.ts",
+    "src/features/sftp/sftp-tool-content/useSftpTransferSync.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpTransferSync.ts",
+    "src/features/sftp/sftp-tool-content/useSftpTransferTaskRunner.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpTransferTaskRunner.ts",
+    "src/features/sftp/sftp-tool-content/useSftpWorkspaceDialogActions.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpWorkspaceDialogActions.ts",
+    "src/features/sftp/sftpTransferModel.test.ts",
+    "src/features/sftp/sftpTransferModel.ts",
+    "src/features/sftp/sftpTransferResolver.test.ts",
+    "src/features/sftp/sftpTransferResolver.ts",
+    "src/features/sftp/sftpTransferWorkbenchModel.test.ts",
+    "src/features/sftp/sftpTransferWorkbenchModel.ts",
+    "src/features/sftp/useSftpManagedTransferQueue.test.ts",
+    "src/features/sftp/useSftpManagedTransferQueue.ts",
+    "src/features/sftp/useSftpTransferQueueSync.test.ts",
+    "src/features/sftp/useSftpTransferQueueSync.ts",
+    "src/features/terminal/TerminalBroadcastBar.tsx",
+    "src/features/terminal/TerminalBroadcastConfirmation.tsx",
+    "src/features/terminal/TerminalCommandBlockRail.test.tsx",
+    "src/features/terminal/TerminalCommandBlockRail.tsx",
+    "src/features/terminal/TerminalContextMenu.test.tsx",
+    "src/features/terminal/TerminalContextMenu.tsx",
+    "src/features/terminal/TerminalEmptyState.test.tsx",
+    "src/features/terminal/TerminalEmptyState.tsx",
+    "src/features/terminal/TerminalPaneCard.test.tsx",
+    "src/features/terminal/TerminalPaneCard.tsx",
+    "src/features/terminal/TerminalPaneErrorBoundary.tsx",
+    "src/features/terminal/TerminalSearchPanel.test.tsx",
+    "src/features/terminal/TerminalSearchPanel.tsx",
+    "src/features/terminal/TerminalWorkspace.test.tsx",
+    "src/features/terminal/TerminalWorkspace.testSupport.ts",
+    "src/features/terminal/TerminalWorkspace.tsx",
+    "src/features/terminal/XtermPane.commandRail.test.tsx",
+    "src/features/terminal/XtermPane.contextMenu.test.tsx",
+    "src/features/terminal/XtermPane.helpers.ts",
+    "src/features/terminal/XtermPane.runtime.helpers.ts",
+    "src/features/terminal/XtermPane.runtime.ts",
+    "src/features/terminal/XtermPane.test.tsx",
+    "src/features/terminal/XtermPane.testSupport.tsx",
+    "src/features/terminal/XtermPane.tsx",
+    "src/features/terminal/broadcastCommandPolicy.test.ts",
+    "src/features/terminal/broadcastCommandPolicy.ts",
+    "src/features/terminal/terminalCommandBlockLifecycle.ts",
+    "src/features/terminal/terminalCommandBlockRailModel.test.ts",
+    "src/features/terminal/terminalCommandBlockRailModel.ts",
+    "src/features/terminal/terminalCommandBlocks.test.ts",
+    "src/features/terminal/terminalCommandBlocks.ts",
+    "src/features/terminal/terminalContextMenuModel.test.ts",
+    "src/features/terminal/terminalContextMenuModel.ts",
+    "src/features/terminal/terminalEmptyStateModel.test.ts",
+    "src/features/terminal/terminalEmptyStateModel.ts",
+    "src/features/terminal/terminalOutputHistoryBuffer.test.ts",
+    "src/features/terminal/terminalOutputHistoryBuffer.ts",
+    "src/features/terminal/terminalOutputWriter.test.ts",
+    "src/features/terminal/terminalOutputWriter.ts",
+    "src/features/terminal/terminalPaneCardModel.test.ts",
+    "src/features/terminal/terminalPaneCardModel.ts",
+    "src/features/terminal/terminalProxyAutoInjection.ts",
+    "src/features/terminal/terminalRemoteSuggestionPrewarm.test.ts",
+    "src/features/terminal/terminalRemoteSuggestionPrewarm.ts",
+    "src/features/terminal/terminalSearchPanelModel.test.ts",
+    "src/features/terminal/terminalSearchPanelModel.ts",
+    "src/features/terminal/terminalSessionRegistry.test.ts",
+    "src/features/terminal/terminalSessionRegistry.ts",
+    "src/features/terminal/terminalTabChrome.test.tsx",
+    "src/features/terminal/terminalTabChrome.tsx",
+    "src/features/tool-panel/ai-tool-content/aiToolContentModel.ts",
+    "src/features/workspace/workspaceMachineModel.ts",
+    "src/features/workspace/workspaceSession.test.ts",
+    "src/features/workspace/workspaceSession.ts",
+    "src/features/workspace/workspaceStore.terminalOpen.test.ts",
+    "src/features/workspace/workspaceStore.terminalTabs.test.ts",
+    "src/features/workspace/workspaceStore.test.ts",
+    "src/features/workspace/workspaceStore.ts",
+    "src/features/workspace/workspaceTerminalOpenState.test.ts",
+    "src/features/workspace/workspaceTerminalOpenState.ts",
+    "src/features/workspace/workspaceTerminalState.test.ts",
+    "src/features/workspace/workspaceTerminalState.ts",
+    "src/lib/sftpApi.preview.ts",
+    "src/lib/sftpApi.tauriTransport.ts",
+    "src/lib/sftpApi.test.ts",
+    "src/lib/sftpApi.ts",
+    "src/lib/sftpApiTypes.ts",
+    "src/lib/toolRegistryApi.test.ts",
+    "src/lib/toolRegistryApi.ts",
+    "src/lib/toolRegistryContract.fixture.json",
+    "src/lib/toolRegistryPreview.ts"
+  ],
+  "trackedPatchPaths": [
+    "src-tauri/src/commands/mod.rs",
+    "src-tauri/src/services/mod.rs",
+    "src-tauri/src/services/sftp_service/remote_text.rs",
+    "src-tauri/src/services/sftp_service/runtime_tasks.rs",
+    "src-tauri/src/services/sftp_service/tests/archive_clipboard.rs",
+    "src-tauri/src/services/sftp_service/tests/loopback.rs",
+    "src-tauri/src/services/sftp_service/tests/mod.rs",
+    "src-tauri/src/services/sftp_service/tests/native_backend.rs",
+    "src-tauri/src/services/sftp_service/tests/support.rs",
+    "src-tauri/src/services/sftp_service/tests/transfer_queue.rs",
+    "src-tauri/src/services/sftp_service/tests/validation.rs",
+    "src-tauri/src/services/sftp_service/transfer.rs",
+    "src-tauri/src/services/sftp_service/transfer_io.rs",
+    "src-tauri/src/services/sftp_service/transfer_paths.rs",
+    "src-tauri/src/services/tool_registry_service/catalog.rs",
+    "src-tauri/src/state.rs",
+    "src-tauri/src/storage/migrations.rs",
+    "src/app/AppTitleBar.test.tsx",
+    "src/app/AppTitleBar.tsx",
+    "src/app/KerminalShell.helpers.tsx",
+    "src/app/KerminalShell.test.tsx",
+    "src/app/KerminalShell.testSupport.tsx",
+    "src/app/KerminalShell.tsx",
+    "src/features/sftp/ContainerFilesToolContent.tsx",
+    "src/features/sftp/RemoteWorkspaceEditor.tsx",
+    "src/features/sftp/RemoteWorkspaceWindow.tsx",
+    "src/features/sftp/SftpToolContent.clipboard.test.tsx",
+    "src/features/sftp/SftpToolContent.dialogs.test.tsx",
+    "src/features/sftp/SftpToolContent.test.tsx",
+    "src/features/sftp/SftpToolContent.testSupport.tsx",
+    "src/features/sftp/SftpToolContent.transfers.test.tsx",
+    "src/features/sftp/SftpToolContent.tsx",
+    "src/features/sftp/SftpTransferWorkbench.test.tsx",
+    "src/features/sftp/SftpTransferWorkbench.tsx",
+    "src/features/sftp/remoteWorkspaceEditorModel.test.ts",
+    "src/features/sftp/remoteWorkspaceEditorModel.ts",
+    "src/features/sftp/sftp-tool-content/RemoteWorkspaceEditorFallback.tsx",
+    "src/features/sftp/sftp-tool-content/SftpActionDialog.tsx",
+    "src/features/sftp/sftp-tool-content/SftpBrowserView.tsx",
+    "src/features/sftp/sftp-tool-content/SftpContextMenu.tsx",
+    "src/features/sftp/sftp-tool-content/SftpEntryRow.tsx",
+    "src/features/sftp/sftp-tool-content/SftpTransferStatusBar.tsx",
+    "src/features/sftp/sftp-tool-content/ToolbarButton.tsx",
+    "src/features/sftp/sftp-tool-content/sftpDialogModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpSelectionModel.ts",
+    "src/features/sftp/sftp-tool-content/types.ts",
+    "src/features/sftp/sftp-tool-content/useSftpDialogActions.ts",
+    "src/features/sftp/sftp-tool-content/useSftpTransferActions.ts",
+    "src/features/sftp/sftpTransferModel.test.ts",
+    "src/features/sftp/sftpTransferModel.ts",
+    "src/features/terminal/TerminalCommandBlockRail.tsx",
+    "src/features/terminal/TerminalContextMenu.test.tsx",
+    "src/features/terminal/TerminalContextMenu.tsx",
+    "src/features/terminal/TerminalPaneCard.tsx",
+    "src/features/terminal/TerminalPaneErrorBoundary.tsx",
+    "src/features/terminal/TerminalSearchPanel.tsx",
+    "src/features/terminal/TerminalWorkspace.test.tsx",
+    "src/features/terminal/TerminalWorkspace.tsx",
+    "src/features/terminal/XtermPane.contextMenu.test.tsx",
+    "src/features/terminal/XtermPane.helpers.ts",
+    "src/features/terminal/XtermPane.runtime.ts",
+    "src/features/terminal/XtermPane.test.tsx",
+    "src/features/terminal/XtermPane.testSupport.tsx",
+    "src/features/terminal/XtermPane.tsx",
+    "src/features/terminal/broadcastCommandPolicy.test.ts",
+    "src/features/terminal/broadcastCommandPolicy.ts",
+    "src/features/terminal/terminalCommandBlocks.test.ts",
+    "src/features/terminal/terminalCommandBlocks.ts",
+    "src/features/terminal/terminalOutputWriter.test.ts",
+    "src/features/terminal/terminalOutputWriter.ts",
+    "src/features/terminal/terminalSessionRegistry.test.ts",
+    "src/features/terminal/terminalSessionRegistry.ts",
+    "src/features/terminal/terminalTabChrome.tsx",
+    "src/features/tool-panel/ai-tool-content/aiToolContentModel.ts",
+    "src/features/workspace/workspaceMachineModel.ts",
+    "src/features/workspace/workspaceSession.test.ts",
+    "src/features/workspace/workspaceSession.ts",
+    "src/features/workspace/workspaceStore.test.ts",
+    "src/features/workspace/workspaceStore.ts",
+    "src/lib/sftpApi.test.ts",
+    "src/lib/sftpApi.ts",
+    "src/lib/toolRegistryApi.test.ts",
+    "src/lib/toolRegistryApi.ts"
+  ],
+  "untrackedPaths": [
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/plan/INDEX.md",
+    "src-tauri/src/commands/registry.rs",
+    "src-tauri/src/services/sftp_service/transfer_lifecycle.rs",
+    "src-tauri/src/services/sftp_service/transfer_registry.rs",
+    "src-tauri/src/services/tool_registry_service/catalog/automation.rs",
+    "src-tauri/src/services/tool_registry_service/catalog/foundation.rs",
+    "src-tauri/src/services/tool_registry_service/catalog/remote.rs",
+    "src-tauri/src/services/tool_registry_service/catalog/sftp.rs",
+    "src/app/KerminalShell.workspaceBridge.tsx",
+    "src/app/KerminalShell.workspaceSelectors.test.ts",
+    "src/app/KerminalShell.workspaceSelectors.ts",
+    "src/app/useKerminalShellSettings.test.tsx",
+    "src/app/useKerminalShellSettings.ts",
+    "src/app/useWorkspaceSessionPersistence.test.ts",
+    "src/app/useWorkspaceSessionPersistence.ts",
+    "src/features/sftp/LazySftpTransferWorkbench.tsx",
+    "src/features/sftp/LocalTransferPane.test.tsx",
+    "src/features/sftp/LocalTransferPane.tsx",
+    "src/features/sftp/RemoteFilePreviewEditor.tsx",
+    "src/features/sftp/SftpToolContent.localDrop.test.tsx",
+    "src/features/sftp/SftpToolContent.remoteBrowser.test.tsx",
+    "src/features/sftp/SftpToolContent.selection.test.tsx",
+    "src/features/sftp/SftpToolContent.workspaceDialog.test.tsx",
+    "src/features/sftp/SftpTransferWorkbench.parts.tsx",
+    "src/features/sftp/localTransferPaneModel.test.ts",
+    "src/features/sftp/localTransferPaneModel.ts",
+    "src/features/sftp/remoteWorkspaceEditorTransport.test.ts",
+    "src/features/sftp/remoteWorkspaceEditorTransport.ts",
+    "src/features/sftp/sftp-tool-content/SftpContextMenu.test.tsx",
+    "src/features/sftp/sftp-tool-content/SftpTransferStatusBar.test.tsx",
+    "src/features/sftp/sftp-tool-content/sftpContextMenuActionModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpContextMenuActionModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpContextMenuModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpContextMenuModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpDialogModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpFollowDirectoryModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpFollowDirectoryModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpLocalUploadDropModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpLocalUploadDropModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpRemoteBrowserModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpRemoteBrowserModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpRemoteCopyTaskRunnerModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpRemoteCopyTaskRunnerModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpRemoteSetupModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpRemoteSetupModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpRemoteTransferModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpRemoteTransferModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpSelectionModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpTransferActionPlan.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpTransferActionPlan.ts",
+    "src/features/sftp/sftp-tool-content/sftpTransferScopeModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpTransferScopeModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpTransferSyncModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpTransferSyncModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpTransferTaskRunnerModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpTransferTaskRunnerModel.ts",
+    "src/features/sftp/sftp-tool-content/sftpWorkspaceDialogModel.test.ts",
+    "src/features/sftp/sftp-tool-content/sftpWorkspaceDialogModel.ts",
+    "src/features/sftp/sftp-tool-content/useSftpContextMenuActions.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpContextMenuActions.ts",
+    "src/features/sftp/sftp-tool-content/useSftpDialogActions.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpLocalUploadDropActions.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpLocalUploadDropActions.ts",
+    "src/features/sftp/sftp-tool-content/useSftpRemoteCopyTaskRunner.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpRemoteCopyTaskRunner.ts",
+    "src/features/sftp/sftp-tool-content/useSftpRemoteDownloadDragActions.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpRemoteDownloadDragActions.ts",
+    "src/features/sftp/sftp-tool-content/useSftpRemoteSetupActions.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpRemoteSetupActions.ts",
+    "src/features/sftp/sftp-tool-content/useSftpTransferActions.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpTransferSync.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpTransferSync.ts",
+    "src/features/sftp/sftp-tool-content/useSftpTransferTaskRunner.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpTransferTaskRunner.ts",
+    "src/features/sftp/sftp-tool-content/useSftpWorkspaceDialogActions.test.ts",
+    "src/features/sftp/sftp-tool-content/useSftpWorkspaceDialogActions.ts",
+    "src/features/sftp/sftpTransferResolver.test.ts",
+    "src/features/sftp/sftpTransferResolver.ts",
+    "src/features/sftp/sftpTransferWorkbenchModel.test.ts",
+    "src/features/sftp/sftpTransferWorkbenchModel.ts",
+    "src/features/sftp/useSftpManagedTransferQueue.test.ts",
+    "src/features/sftp/useSftpManagedTransferQueue.ts",
+    "src/features/sftp/useSftpTransferQueueSync.test.ts",
+    "src/features/sftp/useSftpTransferQueueSync.ts",
+    "src/features/terminal/TerminalBroadcastBar.tsx",
+    "src/features/terminal/TerminalBroadcastConfirmation.tsx",
+    "src/features/terminal/TerminalCommandBlockRail.test.tsx",
+    "src/features/terminal/TerminalEmptyState.test.tsx",
+    "src/features/terminal/TerminalEmptyState.tsx",
+    "src/features/terminal/TerminalPaneCard.test.tsx",
+    "src/features/terminal/TerminalSearchPanel.test.tsx",
+    "src/features/terminal/TerminalWorkspace.testSupport.ts",
+    "src/features/terminal/XtermPane.commandRail.test.tsx",
+    "src/features/terminal/XtermPane.runtime.helpers.ts",
+    "src/features/terminal/terminalCommandBlockLifecycle.ts",
+    "src/features/terminal/terminalCommandBlockRailModel.test.ts",
+    "src/features/terminal/terminalCommandBlockRailModel.ts",
+    "src/features/terminal/terminalContextMenuModel.test.ts",
+    "src/features/terminal/terminalContextMenuModel.ts",
+    "src/features/terminal/terminalEmptyStateModel.test.ts",
+    "src/features/terminal/terminalEmptyStateModel.ts",
+    "src/features/terminal/terminalOutputHistoryBuffer.test.ts",
+    "src/features/terminal/terminalOutputHistoryBuffer.ts",
+    "src/features/terminal/terminalPaneCardModel.test.ts",
+    "src/features/terminal/terminalPaneCardModel.ts",
+    "src/features/terminal/terminalProxyAutoInjection.ts",
+    "src/features/terminal/terminalRemoteSuggestionPrewarm.test.ts",
+    "src/features/terminal/terminalRemoteSuggestionPrewarm.ts",
+    "src/features/terminal/terminalSearchPanelModel.test.ts",
+    "src/features/terminal/terminalSearchPanelModel.ts",
+    "src/features/terminal/terminalTabChrome.test.tsx",
+    "src/features/workspace/workspaceStore.terminalOpen.test.ts",
+    "src/features/workspace/workspaceStore.terminalTabs.test.ts",
+    "src/features/workspace/workspaceTerminalOpenState.test.ts",
+    "src/features/workspace/workspaceTerminalOpenState.ts",
+    "src/features/workspace/workspaceTerminalState.test.ts",
+    "src/features/workspace/workspaceTerminalState.ts",
+    "src/lib/sftpApi.preview.ts",
+    "src/lib/sftpApi.tauriTransport.ts",
+    "src/lib/sftpApiTypes.ts",
+    "src/lib/toolRegistryContract.fixture.json",
+    "src/lib/toolRegistryPreview.ts"
+  ],
+  "untrackedSnapshotPath": ".updeng/docs/coordination/checkpoints/lane-code-quality.untracked.json",
+  "untrackedSnapshotCount": 123,
+  "omittedSnapshotPaths": [],
+  "sharedPaths": [
+    "src-tauri/src/commands/mod.rs",
+    "src-tauri/src/services/mod.rs",
+    "src-tauri/src/state.rs",
+    "src-tauri/src/storage/migrations.rs",
+    "src/app/KerminalShell.tsx",
+    "src/features/tool-panel/ai-tool-content/aiToolContentModel.ts",
+    "src-tauri/src/commands/registry.rs",
+    ".updeng/docs/in-progress.md",
+    ".updeng/docs/plan/INDEX.md"
+  ],
+  "relatedConflicts": [
+    {
+      "path": "src-tauri/src/commands/mod.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "shared",
+          "pattern": "src-tauri/src/commands/mod.rs"
+        },
+        {
+          "id": "lane-ai-assistant-context",
+          "kind": "shared",
+          "pattern": "src-tauri/src/commands/mod.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/mod.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/mod.rs"
+        },
+        {
+          "id": "lane-ai-assistant-context",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/mod.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/sftp_service/remote_text.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/sftp_service/runtime_tasks.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        },
+        {
+          "id": "lane-sftp-runtime-crash-fix",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/sftp_service/runtime_tasks.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/sftp_service/tests/archive_clipboard.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/sftp_service/tests/loopback.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/sftp_service/tests/mod.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/sftp_service/tests/native_backend.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/sftp_service/tests/support.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/sftp_service/tests/transfer_queue.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/sftp_service/tests/validation.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/sftp_service/transfer.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/sftp_service/transfer_io.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/sftp_service/transfer_paths.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/state.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "shared",
+          "pattern": "src-tauri/src/state.rs"
+        },
+        {
+          "id": "lane-ai-assistant-context",
+          "kind": "shared",
+          "pattern": "src-tauri/src/state.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/storage/migrations.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "shared",
+          "pattern": "src-tauri/src/storage/migrations.rs"
+        },
+        {
+          "id": "lane-ai-assistant-context",
+          "kind": "shared",
+          "pattern": "src-tauri/src/storage/migrations.rs"
+        }
+      ]
+    },
+    {
+      "path": "src/app/KerminalShell.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "shared",
+          "pattern": "src/app/KerminalShell.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/ContainerFilesToolContent.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/RemoteWorkspaceEditor.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/RemoteWorkspaceWindow.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/SftpToolContent.clipboard.test.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/SftpToolContent.dialogs.test.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/SftpToolContent.test.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/SftpToolContent.testSupport.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/SftpToolContent.transfers.test.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/SftpToolContent.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/SftpTransferWorkbench.test.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/SftpTransferWorkbench.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/remoteWorkspaceEditorModel.test.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/remoteWorkspaceEditorModel.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/RemoteWorkspaceEditorFallback.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/SftpActionDialog.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/SftpBrowserView.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/SftpContextMenu.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/SftpEntryRow.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/SftpTransferStatusBar.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/ToolbarButton.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpDialogModel.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpSelectionModel.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/types.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpDialogActions.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpTransferActions.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftpTransferModel.test.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftpTransferModel.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/tool-panel/ai-tool-content/aiToolContentModel.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "shared",
+          "pattern": "src/features/tool-panel/ai-tool-content/aiToolContentModel.ts"
+        },
+        {
+          "id": "lane-ai-assistant-context",
+          "kind": "shared",
+          "pattern": "src/features/tool-panel/ai-tool-content/aiToolContentModel.ts"
+        }
+      ]
+    },
+    {
+      "path": "src/lib/sftpApi.test.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/lib/sftpApi*"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/lib/sftpApi*"
+        }
+      ]
+    },
+    {
+      "path": "src/lib/sftpApi.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/lib/sftpApi*"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/lib/sftpApi*"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/commands/registry.rs",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "shared",
+          "pattern": "src-tauri/src/commands/registry.rs"
+        },
+        {
+          "id": "lane-ai-assistant-context",
+          "kind": "shared",
+          "pattern": "src-tauri/src/commands/registry.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/sftp_service/transfer_lifecycle.rs",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/sftp_service/transfer_registry.rs",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/sftp_service/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/LazySftpTransferWorkbench.tsx",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/LocalTransferPane.test.tsx",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/LocalTransferPane.tsx",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/RemoteFilePreviewEditor.tsx",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/SftpToolContent.localDrop.test.tsx",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/SftpToolContent.remoteBrowser.test.tsx",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/SftpToolContent.selection.test.tsx",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/SftpToolContent.workspaceDialog.test.tsx",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/SftpTransferWorkbench.parts.tsx",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/localTransferPaneModel.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/localTransferPaneModel.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/remoteWorkspaceEditorTransport.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/remoteWorkspaceEditorTransport.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/SftpContextMenu.test.tsx",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/SftpTransferStatusBar.test.tsx",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpContextMenuActionModel.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpContextMenuActionModel.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpContextMenuModel.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpContextMenuModel.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpDialogModel.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpFollowDirectoryModel.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpFollowDirectoryModel.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpLocalUploadDropModel.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpLocalUploadDropModel.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpRemoteBrowserModel.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpRemoteBrowserModel.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpRemoteCopyTaskRunnerModel.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpRemoteCopyTaskRunnerModel.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpRemoteSetupModel.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpRemoteSetupModel.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpRemoteTransferModel.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpRemoteTransferModel.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpSelectionModel.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpTransferActionPlan.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpTransferActionPlan.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpTransferScopeModel.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpTransferScopeModel.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpTransferSyncModel.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpTransferSyncModel.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpTransferTaskRunnerModel.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpTransferTaskRunnerModel.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpWorkspaceDialogModel.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/sftpWorkspaceDialogModel.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpContextMenuActions.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpContextMenuActions.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpDialogActions.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpLocalUploadDropActions.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpLocalUploadDropActions.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpRemoteCopyTaskRunner.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpRemoteCopyTaskRunner.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpRemoteDownloadDragActions.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpRemoteDownloadDragActions.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpRemoteSetupActions.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpRemoteSetupActions.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpTransferActions.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpTransferSync.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpTransferSync.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpTransferTaskRunner.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpTransferTaskRunner.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpWorkspaceDialogActions.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftp-tool-content/useSftpWorkspaceDialogActions.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftpTransferResolver.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftpTransferResolver.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftpTransferWorkbenchModel.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/sftpTransferWorkbenchModel.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/useSftpManagedTransferQueue.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/useSftpManagedTransferQueue.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/useSftpTransferQueueSync.test.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/features/sftp/useSftpTransferQueueSync.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/features/sftp/**"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/features/sftp/**"
+        }
+      ]
+    },
+    {
+      "path": "src/lib/sftpApi.preview.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/lib/sftpApi*"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/lib/sftpApi*"
+        }
+      ]
+    },
+    {
+      "path": "src/lib/sftpApi.tauriTransport.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/lib/sftpApi*"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/lib/sftpApi*"
+        }
+      ]
+    },
+    {
+      "path": "src/lib/sftpApiTypes.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "owned",
+          "pattern": "src/lib/sftpApi*"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": "src/lib/sftpApi*"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/in-progress.md",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "shared",
+          "pattern": ".updeng/docs/in-progress.md"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": ".updeng/docs/in-progress.md"
+        },
+        {
+          "id": "lane-ai-assistant-context",
+          "kind": "shared",
+          "pattern": ".updeng/docs/in-progress.md"
+        },
+        {
+          "id": "lane-sftp-runtime-crash-fix",
+          "kind": "shared",
+          "pattern": ".updeng/docs/in-progress.md"
+        }
+      ]
+    },
+    {
+      "path": ".updeng/docs/plan/INDEX.md",
+      "status": "!!",
+      "lanes": [
+        {
+          "id": "lane-code-quality",
+          "kind": "shared",
+          "pattern": ".updeng/docs/plan/INDEX.md"
+        },
+        {
+          "id": "lane-sftp-transfer-workbench-production",
+          "kind": "shared",
+          "pattern": ".updeng/docs/plan/INDEX.md"
+        },
+        {
+          "id": "lane-ai-assistant-context",
+          "kind": "shared",
+          "pattern": ".updeng/docs/plan/INDEX.md"
+        },
+        {
+          "id": "lane-sftp-runtime-crash-fix",
+          "kind": "shared",
+          "pattern": ".updeng/docs/plan/INDEX.md"
+        }
+      ]
+    }
+  ],
+  "note": "Patch contains tracked file diffs. Untracked and ignored workflow assets are captured in the untracked snapshot JSON when they are readable UTF-8 text."
+}

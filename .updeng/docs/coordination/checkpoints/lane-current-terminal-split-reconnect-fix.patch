@@ -1,0 +1,2155 @@
+diff --git a/src/features/terminal/TerminalPaneCard.tsx b/src/features/terminal/TerminalPaneCard.tsx
+index 62c89398..03ceb416 100644
+--- a/src/features/terminal/TerminalPaneCard.tsx
++++ b/src/features/terminal/TerminalPaneCard.tsx
+@@ -5,15 +5,22 @@ import type {
+   ResolvedTheme,
+   TerminalAppearance,
+ } from "../settings/settingsModel";
+-import type { TerminalPane } from "../workspace/types";
+-import type { TerminalSplitDirection } from "../workspace/types";
++import type {
++  MachineGroup,
++  TerminalPane,
++  TerminalSplitDirection,
++} from "../workspace/types";
+ import { XtermPane } from "./XtermPane";
++import { TerminalSplitTargetSelector } from "./TerminalSplitTargetSelector";
+ import { buildTerminalPaneCardModel } from "./terminalPaneCardModel";
++import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
+ 
+ interface TerminalPaneCardProps {
+   focused: boolean;
++  machineGroups?: MachineGroup[];
+   pane: TerminalPane;
+   resolvedTheme: ResolvedTheme;
++  runtimeMount?: "inline" | "slot";
+   terminalAppearance: TerminalAppearance;
+   onClosePane: (paneId: string) => void;
+   onCurrentCwdChange?: (paneId: string, cwd: string) => void;
+@@ -23,11 +30,17 @@ interface TerminalPaneCardProps {
+     paneId: string,
+     outputHistory: string | undefined,
+   ) => void;
+-  onSplitPane?: (direction: TerminalSplitDirection) => void;
++  onSplitPane?: (
++    direction: TerminalSplitDirection,
++    options?: TerminalSplitPaneOptions,
++  ) => void;
++  resolvePaneLines?: (paneId: string) => string[];
++  resolvePaneOutputHistory?: (paneId: string) => string | undefined;
+ }
+ 
+ export function TerminalPaneCard({
+   focused,
++  machineGroups = [],
+   onClosePane,
+   onCurrentCwdChange,
+   onFocusPane,
+@@ -35,39 +48,77 @@ export function TerminalPaneCard({
+   onOutputHistoryChange,
+   onSplitPane,
+   pane,
++  resolvePaneLines,
++  resolvePaneOutputHistory,
+   resolvedTheme,
++  runtimeMount = "inline",
+   terminalAppearance,
+ }: TerminalPaneCardProps) {
+   const model = buildTerminalPaneCardModel(pane);
++  const paneLines =
++    model.renderKind === "runtime"
++      ? pane.lines
++      : (resolvePaneLines?.(pane.id) ?? pane.lines);
++  const splitPane = (
++    direction: TerminalSplitDirection,
++    options?: TerminalSplitPaneOptions,
++  ) => {
++    const splitOptions = { ...options, sourcePaneId: pane.id };
++    onFocusPane(pane.id);
++    onSplitPane?.(direction, splitOptions);
++  };
+ 
+   return (
+     <section
+       aria-label={model.ariaLabel}
+       className={cn(
+         "kerminal-terminal-surface flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border",
+-        focused ? "border-sky-400/70" : "border-[var(--border-subtle)]",
+       )}
++      data-focused={focused || undefined}
+       onClick={() => onFocusPane(pane.id)}
+     >
+-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--border-subtle)] px-3">
++      <div className="kerminal-terminal-header flex h-9 shrink-0 items-center justify-between border-b px-3">
+         <div className="flex min-w-0 items-center gap-2">
+           <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+           <span className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">
+             {model.title}
+           </span>
+         </div>
+-        <div className="flex items-center gap-2">
++        <div className="flex items-center gap-1.5">
+           {model.latencyLabel ? (
+-            <span className="rounded-lg bg-emerald-400/10 px-2 py-1 text-xs text-emerald-300">
++            <span className="mr-0.5 rounded-lg bg-emerald-400/10 px-2 py-1 text-xs text-emerald-300">
+               {model.latencyLabel}
+             </span>
+           ) : null}
++          <div
++            className="flex items-center gap-1 opacity-80 transition-opacity hover:opacity-100"
++            onClick={(event) => event.stopPropagation()}
++            onContextMenu={(event) => event.stopPropagation()}
++          >
++            <TerminalSplitTargetSelector
++              buttonClassName="h-8 w-8 rounded-lg"
++              direction="horizontal"
++              labelPrefix={model.title}
++              machineGroups={machineGroups}
++              menuAlign="end"
++              onSplitPane={splitPane}
++            />
++            <TerminalSplitTargetSelector
++              buttonClassName="h-8 w-8 rounded-lg"
++              direction="vertical"
++              labelPrefix={model.title}
++              machineGroups={machineGroups}
++              menuAlign="end"
++              onSplitPane={splitPane}
++            />
++          </div>
+           <Button
+             aria-label={model.closeAriaLabel}
+             onClick={(event) => {
+               event.stopPropagation();
+               onClosePane(pane.id);
+             }}
++            className="h-8 w-8 rounded-lg"
+             size="icon"
+             variant="ghost"
+           >
+@@ -75,7 +126,12 @@ export function TerminalPaneCard({
+           </Button>
+         </div>
+       </div>
+-      {model.renderKind === "runtime" ? (
++      {model.renderKind === "runtime" && runtimeMount === "slot" ? (
++        <div
++          className="min-h-0 flex-1"
++          data-terminal-pane-runtime-slot={pane.id}
++        />
++      ) : model.renderKind === "runtime" ? (
+         <XtermPane
+           args={pane.args}
+           currentCwd={pane.currentCwd}
+@@ -84,6 +140,7 @@ export function TerminalPaneCard({
+           focused={focused}
+           paneId={pane.id}
+           profileId={pane.profileId}
++          remoteCommand={pane.remoteCommand}
+           remoteHostId={pane.remoteHostId}
+           remoteHostProduction={pane.remoteHostProduction}
+           onCurrentCwdChange={(cwd) => onCurrentCwdChange?.(pane.id, cwd)}
+@@ -91,8 +148,11 @@ export function TerminalPaneCard({
+           onOutputHistoryChange={(outputHistory) =>
+             onOutputHistoryChange?.(pane.id, outputHistory)
+           }
+-          onSplitPane={onSplitPane}
++          onSplitPane={splitPane}
+           outputHistory={pane.outputHistory}
++          resolveInitialOutputHistory={() =>
++            resolvePaneOutputHistory?.(pane.id) ?? pane.outputHistory
++          }
+           resolvedTheme={resolvedTheme}
+           shell={pane.shell}
+           target={pane.target}
+@@ -100,8 +160,8 @@ export function TerminalPaneCard({
+           title={pane.title}
+         />
+       ) : (
+-        <pre className="min-h-0 flex-1 overflow-auto bg-[#f7f7fa] p-4 font-mono text-[13px] leading-6 text-zinc-800 dark:bg-[#1f1f21] dark:text-zinc-200">
+-          {pane.lines.map((line, index) => (
++        <pre className="kerminal-terminal-preview min-h-0 flex-1 overflow-auto p-4 font-mono text-[13px] leading-6 text-zinc-800 dark:text-zinc-200">
++          {paneLines.map((line, index) => (
+             <code className="block" key={`${pane.id}-${index}-${line}`}>
+               {line}
+             </code>
+diff --git a/src/features/terminal/TerminalPaneLayout.tsx b/src/features/terminal/TerminalPaneLayout.tsx
+index 5b622c13..dd008ee2 100644
+--- a/src/features/terminal/TerminalPaneLayout.tsx
++++ b/src/features/terminal/TerminalPaneLayout.tsx
+@@ -9,16 +9,20 @@ import type {
+   TerminalAppearance,
+ } from "../settings/settingsModel";
+ import type {
++  MachineGroup,
+   TerminalLayoutNode,
+   TerminalPane,
+   TerminalSplitDirection,
+ } from "../workspace/types";
+ import { TerminalPaneErrorBoundary } from "./TerminalPaneErrorBoundary";
+ import { TerminalPaneCard } from "./TerminalPaneCard";
++import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
+ 
+ interface TerminalPaneLayoutProps {
+   focusedPaneId: string;
+   layout: TerminalLayoutNode;
++  machineGroups?: MachineGroup[];
++  panelGroupId?: string;
+   onClosePane: (paneId: string) => void;
+   onCurrentCwdChange?: (paneId: string, cwd: string) => void;
+   onFocusPane: (paneId: string) => void;
+@@ -27,9 +31,19 @@ interface TerminalPaneLayoutProps {
+     paneId: string,
+     outputHistory: string | undefined,
+   ) => void;
+-  onSplitPane?: (direction: TerminalSplitDirection) => void;
++  onSplitLayoutSizesChange?: (
++    splitId: string,
++    sizes: Record<string, number>,
++  ) => void;
++  onSplitPane?: (
++    direction: TerminalSplitDirection,
++    options?: TerminalSplitPaneOptions,
++  ) => void;
+   panesById: Map<string, TerminalPane>;
++  resolvePaneLines?: (paneId: string) => string[];
++  resolvePaneOutputHistory?: (paneId: string) => string | undefined;
+   resolvedTheme: ResolvedTheme;
++  runtimeMount?: "inline" | "slot";
+   terminalAppearance: TerminalAppearance;
+ }
+ 
+@@ -56,14 +70,20 @@ function normalizeRootLayout(
+ function TerminalPaneLayoutNode({
+   focusedPaneId,
+   layout,
++  machineGroups,
++  panelGroupId,
+   onClosePane,
+   onCurrentCwdChange,
+   onFocusPane,
+   onOpenLogs,
+   onOutputHistoryChange,
++  onSplitLayoutSizesChange,
+   onSplitPane,
+   panesById,
++  resolvePaneLines,
++  resolvePaneOutputHistory,
+   resolvedTheme,
++  runtimeMount,
+   terminalAppearance,
+ }: TerminalPaneLayoutProps) {
+   if (layout.type !== "pane") {
+@@ -71,14 +91,20 @@ function TerminalPaneLayoutNode({
+       <TerminalPaneLayout
+         focusedPaneId={focusedPaneId}
+         layout={layout}
++        machineGroups={machineGroups}
++        panelGroupId={panelGroupId ?? layout.id}
+         onClosePane={onClosePane}
+         onCurrentCwdChange={onCurrentCwdChange}
+         onFocusPane={onFocusPane}
+         onOpenLogs={onOpenLogs}
+         onOutputHistoryChange={onOutputHistoryChange}
++        onSplitLayoutSizesChange={onSplitLayoutSizesChange}
+         onSplitPane={onSplitPane}
+         panesById={panesById}
++        resolvePaneLines={resolvePaneLines}
++        resolvePaneOutputHistory={resolvePaneOutputHistory}
+         resolvedTheme={resolvedTheme}
++        runtimeMount={runtimeMount}
+         terminalAppearance={terminalAppearance}
+       />
+     );
+@@ -93,6 +119,7 @@ function TerminalPaneLayoutNode({
+     <TerminalPaneErrorBoundary onOpenLogs={onOpenLogs} pane={pane}>
+       <TerminalPaneCard
+         focused={pane.id === focusedPaneId}
++        machineGroups={machineGroups}
+         onClosePane={onClosePane}
+         onCurrentCwdChange={onCurrentCwdChange}
+         onFocusPane={onFocusPane}
+@@ -100,7 +127,10 @@ function TerminalPaneLayoutNode({
+         onOutputHistoryChange={onOutputHistoryChange}
+         onSplitPane={onSplitPane}
+         pane={pane}
++        resolvePaneLines={resolvePaneLines}
++        resolvePaneOutputHistory={resolvePaneOutputHistory}
+         resolvedTheme={resolvedTheme}
++        runtimeMount={runtimeMount}
+         terminalAppearance={terminalAppearance}
+       />
+     </TerminalPaneErrorBoundary>
+@@ -110,22 +140,41 @@ function TerminalPaneLayoutNode({
+ export function TerminalPaneLayout({
+   focusedPaneId,
+   layout,
++  machineGroups,
++  panelGroupId,
+   onClosePane,
+   onCurrentCwdChange,
+   onFocusPane,
+   onOpenLogs,
+   onOutputHistoryChange,
++  onSplitLayoutSizesChange,
+   onSplitPane,
+   panesById,
++  resolvePaneLines,
++  resolvePaneOutputHistory,
+   resolvedTheme,
++  runtimeMount,
+   terminalAppearance,
+ }: TerminalPaneLayoutProps) {
+   const normalizedLayout = normalizeRootLayout(layout);
++  const resolvedPanelGroupId = panelGroupId ?? normalizedLayout.id;
++  const childKeys = normalizedLayout.children.map((child) =>
++    child.type === "pane" ? child.paneId : child.id,
++  );
++  const defaultLayout = normalizedLayout.sizes
++    ? childKeys.every((key) => typeof normalizedLayout.sizes?.[key] === "number")
++      ? normalizedLayout.sizes
++      : undefined
++    : undefined;
+ 
+   return (
+     <ResizablePanelGroup
++      defaultLayout={defaultLayout}
+       direction={normalizedLayout.direction}
+-      id={normalizedLayout.id}
++      id={resolvedPanelGroupId}
++      onLayoutChanged={(sizes) =>
++        onSplitLayoutSizesChange?.(normalizedLayout.id, sizes)
++      }
+     >
+       {normalizedLayout.children.map((child, index) => {
+         const childKey = child.type === "pane" ? child.paneId : child.id;
+@@ -140,20 +189,27 @@ export function TerminalPaneLayout({
+             ) : null}
+             <ResizablePanel
+               defaultSize={`${100 / normalizedLayout.children.length}%`}
++              id={childKey}
+               key={childKey}
+               minSize="20%"
+             >
+               <TerminalPaneLayoutNode
+                 focusedPaneId={focusedPaneId}
+                 layout={child}
++                machineGroups={machineGroups}
++                panelGroupId={child.type === "split" ? child.id : undefined}
+                 onClosePane={onClosePane}
+                 onCurrentCwdChange={onCurrentCwdChange}
+                 onFocusPane={onFocusPane}
+                 onOpenLogs={onOpenLogs}
+                 onOutputHistoryChange={onOutputHistoryChange}
++                onSplitLayoutSizesChange={onSplitLayoutSizesChange}
+                 onSplitPane={onSplitPane}
+                 panesById={panesById}
++                resolvePaneLines={resolvePaneLines}
++                resolvePaneOutputHistory={resolvePaneOutputHistory}
+                 resolvedTheme={resolvedTheme}
++                runtimeMount={runtimeMount}
+                 terminalAppearance={terminalAppearance}
+               />
+             </ResizablePanel>
+diff --git a/src/features/terminal/TerminalWorkspace.test.tsx b/src/features/terminal/TerminalWorkspace.test.tsx
+index d24505c6..e9d7faa3 100644
+--- a/src/features/terminal/TerminalWorkspace.test.tsx
++++ b/src/features/terminal/TerminalWorkspace.test.tsx
+@@ -23,8 +23,9 @@ import {
+   mixedSplitPanes,
+   mixedSplitTabs,
+   sftpTransferTab,
++  terminalMachineGroups,
+   workspaceProps,
+-} from "./TerminalWorkspace.testSupport";
++} from "./__tests__/support/TerminalWorkspace.testSupport";
+ 
+ const xtermPaneMockState = vi.hoisted(() => ({
+   mountedPaneIds: [] as string[],
+@@ -33,6 +34,14 @@ const xtermPaneMockState = vi.hoisted(() => ({
+   unmountedPaneIds: [] as string[],
+ }));
+ 
++const resizableMockState = vi.hoisted(() => ({
++  groups: [] as Array<{
++    defaultLayout?: Record<string, number>;
++    id?: string;
++    onLayoutChanged?: (layout: Record<string, number>) => void;
++  }>,
++}));
++
+ vi.mock("./XtermPane", async () => {
+   const React = await vi.importActual<typeof import("react")>("react");
+ 
+@@ -81,8 +90,23 @@ vi.mock("../../components/ui/resizable", () => ({
+   ResizablePanel: ({ children }: { children: ReactNode }) => (
+     <div>{children}</div>
+   ),
+-  ResizablePanelGroup: ({ children }: { children: ReactNode }) => (
+-    <div>{children}</div>
++  ResizablePanelGroup: ({
++    children,
++    defaultLayout,
++    id,
++    onLayoutChanged,
++  }: {
++    children: ReactNode;
++    defaultLayout?: Record<string, number>;
++    id?: string;
++    onLayoutChanged?: (layout: Record<string, number>) => void;
++  }) => (
++    resizableMockState.groups.push({ defaultLayout, id, onLayoutChanged }),
++    (
++      <div data-default-layout={JSON.stringify(defaultLayout ?? null)} data-panel-group-id={id}>
++        {children}
++      </div>
++    )
+   ),
+ }));
+ 
+@@ -96,6 +120,7 @@ describe("TerminalWorkspace", () => {
+     xtermPaneMockState.renderCount = 0;
+     xtermPaneMockState.shouldThrow = false;
+     xtermPaneMockState.unmountedPaneIds = [];
++    resizableMockState.groups = [];
+   });
+ 
+   it("renders the active local tab and terminal pane", () => {
+@@ -115,7 +140,13 @@ describe("TerminalWorkspace", () => {
+     ).not.toBeInTheDocument();
+     expect(screen.queryByLabelText("终端配置")).not.toBeInTheDocument();
+     expect(
+-      screen.queryByRole("button", { name: "左右分屏" }),
++      screen.getByRole("button", { name: "本地 PowerShell 左右分屏" }),
++    ).toBeInTheDocument();
++    expect(
++      screen.getByRole("button", { name: "本地 PowerShell 上下分屏" }),
++    ).toBeInTheDocument();
++    expect(
++      screen.queryByRole("button", { name: "关闭当前分屏" }),
+     ).not.toBeInTheDocument();
+     expect(screen.queryByLabelText("批量命令")).not.toBeInTheDocument();
+   });
+@@ -140,9 +171,14 @@ describe("TerminalWorkspace", () => {
+       machineId: baseTerminalTab.machineId,
+       title: baseTerminalTab.title,
+     };
+-    const { rerender } = render(<TerminalWorkspace {...workspaceProps()} />);
++    const { container, rerender } = render(
++      <TerminalWorkspace {...workspaceProps()} />,
++    );
+ 
+     expect(xtermPaneMockState.mountedPaneIds).toEqual([baseTerminalPane.id]);
++    expect(
++      container.querySelector('[data-panel-group-id="tab-local"]'),
++    ).toBeInTheDocument();
+ 
+     rerender(
+       <TerminalWorkspace
+@@ -157,12 +193,152 @@ describe("TerminalWorkspace", () => {
+     expect(xtermPaneMockState.unmountedPaneIds).not.toContain(
+       baseTerminalPane.id,
+     );
++    expect(
++      container.querySelector('[data-panel-group-id="tab-local"]'),
++    ).toBeInTheDocument();
++    expect(
++      container.querySelector('[data-panel-group-id="split-local-1"]'),
++    ).not.toBeInTheDocument();
+     expect(xtermPaneMockState.mountedPaneIds).toEqual([
+       baseTerminalPane.id,
+       nextPane.id,
+     ]);
+   });
+ 
++  it("restores persisted split sizes and reports resize changes", () => {
++    const onSplitLayoutSizesChange = vi.fn();
++    const rightPane: TerminalPane = {
++      ...baseTerminalPane,
++      id: "pane-local-2",
++      title: "右侧分屏",
++    };
++    const splitTab: TerminalTab = {
++      id: baseTerminalTab.id,
++      layout: {
++        children: [
++          { paneId: baseTerminalPane.id, type: "pane" },
++          { paneId: rightPane.id, type: "pane" },
++        ],
++        direction: "horizontal",
++        id: "split-local-1",
++        sizes: {
++          [baseTerminalPane.id]: 31.25,
++          [rightPane.id]: 68.75,
++        },
++        type: "split",
++      },
++      machineId: baseTerminalTab.machineId,
++      title: baseTerminalTab.title,
++    };
++
++    render(
++      <TerminalWorkspace
++        {...workspaceProps({
++          focusedPaneId: rightPane.id,
++          onSplitLayoutSizesChange,
++          panes: [baseTerminalPane, rightPane],
++          tabs: [splitTab],
++        })}
++      />,
++    );
++
++    const rootGroup = resizableMockState.groups.find(
++      (group) => group.id === "tab-local",
++    );
++    expect(rootGroup?.defaultLayout).toEqual({
++      [baseTerminalPane.id]: 31.25,
++      [rightPane.id]: 68.75,
++    });
++
++    rootGroup?.onLayoutChanged?.({
++      [baseTerminalPane.id]: 42,
++      [rightPane.id]: 58,
++    });
++
++    expect(onSplitLayoutSizesChange).toHaveBeenCalledWith("split-local-1", {
++      [baseTerminalPane.id]: 42,
++      [rightPane.id]: 58,
++    });
++  });
++
++  it("keeps an existing terminal pane mounted when a nested split is added", () => {
++    const rightPane: TerminalPane = {
++      ...baseTerminalPane,
++      id: "pane-local-2",
++      title: "右侧分屏",
++    };
++    const bottomPane: TerminalPane = {
++      ...baseTerminalPane,
++      id: "pane-local-3",
++      title: "下方分屏",
++    };
++    const splitTab: TerminalTab = {
++      id: baseTerminalTab.id,
++      layout: {
++        children: [
++          { paneId: baseTerminalPane.id, type: "pane" },
++          { paneId: rightPane.id, type: "pane" },
++        ],
++        direction: "horizontal",
++        id: "split-local-1",
++        type: "split",
++      },
++      machineId: baseTerminalTab.machineId,
++      title: baseTerminalTab.title,
++    };
++    const nestedSplitTab: TerminalTab = {
++      ...splitTab,
++      layout: {
++        children: [
++          { paneId: baseTerminalPane.id, type: "pane" },
++          {
++            children: [
++              { paneId: rightPane.id, type: "pane" },
++              { paneId: bottomPane.id, type: "pane" },
++            ],
++            direction: "vertical",
++            id: "split-local-2",
++            type: "split",
++          },
++        ],
++        direction: "horizontal",
++        id: "split-local-1",
++        type: "split",
++      },
++    };
++    const { rerender } = render(
++      <TerminalWorkspace
++        {...workspaceProps({
++          focusedPaneId: rightPane.id,
++          panes: [baseTerminalPane, rightPane],
++          tabs: [splitTab],
++        })}
++      />,
++    );
++
++    expect(xtermPaneMockState.mountedPaneIds).toEqual([
++      baseTerminalPane.id,
++      rightPane.id,
++    ]);
++
++    rerender(
++      <TerminalWorkspace
++        {...workspaceProps({
++          focusedPaneId: bottomPane.id,
++          panes: [baseTerminalPane, rightPane, bottomPane],
++          tabs: [nestedSplitTab],
++        })}
++      />,
++    );
++
++    expect(xtermPaneMockState.unmountedPaneIds).not.toContain(rightPane.id);
++    expect(xtermPaneMockState.mountedPaneIds).toEqual([
++      baseTerminalPane.id,
++      rightPane.id,
++      bottomPane.id,
++    ]);
++  });
++
+   it("keeps the no-tab empty state as a quiet brand placeholder", () => {
+     render(
+       <TerminalWorkspace
+@@ -177,7 +353,7 @@ describe("TerminalWorkspace", () => {
+ 
+     expect(screen.getByRole("img", { name: "Kerminal" })).toBeInTheDocument();
+     expect(
+-      screen.getByText("光标还没闪，AI 已经开始脑补命令了。"),
++      screen.getByText("打开终端，或从右侧启动外部 Agent。"),
+     ).toBeInTheDocument();
+     expect(
+       screen.queryByRole("button", { name: "添加连接" }),
+@@ -186,7 +362,7 @@ describe("TerminalWorkspace", () => {
+       screen.queryByRole("button", { name: "本地终端" }),
+     ).not.toBeInTheDocument();
+     expect(
+-      screen.queryByRole("button", { name: "打开 AI 面板" }),
++      screen.queryByRole("button", { name: "打开 Agent 面板" }),
+     ).not.toBeInTheDocument();
+   });
+ 
+@@ -228,7 +404,7 @@ describe("TerminalWorkspace", () => {
+ 
+     const workspace = screen.getByRole("main", { name: "终端工作区" });
+     expect(workspace).toHaveAttribute("data-density", "compact");
+-    expect(workspace.firstElementChild).toHaveClass("h-10");
++    expect(workspace.firstElementChild).toHaveClass("h-9");
+   });
+ 
+   it("does not reserve right titlebar control space when controls are on macOS left", () => {
+@@ -745,11 +921,103 @@ describe("TerminalWorkspace", () => {
+       />,
+     );
+ 
+-    await user.click(screen.getByRole("button", { name: "左右分屏" }));
+-    await user.click(screen.getByRole("button", { name: "上下分屏" }));
++    const focusedPane = within(screen.getByLabelText("本地批量 终端分屏"));
++
++    await user.click(
++      focusedPane.getByRole("button", { name: "本地批量 左右分屏" }),
++    );
++    await user.click(
++      focusedPane.getByRole("button", { name: "本地批量 上下分屏" }),
++    );
+ 
+-    expect(onSplitPane).toHaveBeenNthCalledWith(1, "horizontal");
+-    expect(onSplitPane).toHaveBeenNthCalledWith(2, "vertical");
++    expect(onSplitPane).toHaveBeenNthCalledWith(1, "horizontal", {
++      sourcePaneId: "pane-batch-local",
++    });
++    expect(onSplitPane).toHaveBeenNthCalledWith(2, "vertical", {
++      sourcePaneId: "pane-batch-local",
++    });
++  });
++
++  it("can split the active tab to a selected host from the split button menu", async () => {
++    const user = userEvent.setup();
++    const onSplitPane = vi.fn();
++
++    render(
++      <TerminalWorkspace
++        {...workspaceProps({
++          activeTabId: "tab-batch",
++          focusedPaneId: "pane-batch-local",
++          machineGroups: terminalMachineGroups,
++          onSplitPane,
++          panes: batchPanes,
++          tabs: batchTabs,
++        })}
++      />,
++    );
++
++    fireEvent.contextMenu(
++      screen.getByRole("button", { name: "本地批量 左右分屏" }),
++    );
++    const splitTargetMenu = screen.getByRole("menu", {
++      name: "左右分屏目标选择",
++    });
++
++    expect(
++      within(splitTargetMenu).getByRole("menuitem", { name: /生产 SSH/ }),
++    ).toBeInTheDocument();
++    expect(
++      within(splitTargetMenu).queryByRole("menuitem", { name: /办公桌面/ }),
++    ).not.toBeInTheDocument();
++
++    await user.click(
++      within(splitTargetMenu).getByRole("menuitem", { name: /生产 SSH/ }),
++    );
++
++    expect(onSplitPane).toHaveBeenCalledWith("horizontal", {
++      sourcePaneId: "pane-batch-local",
++      targetMachineId: "host-prod",
++    });
++    expect(
++      screen.queryByRole("menu", { name: "左右分屏目标选择" }),
++    ).not.toBeInTheDocument();
++  });
++
++  it("filters split host choices from the split target menu", async () => {
++    const user = userEvent.setup();
++    const onSplitPane = vi.fn();
++
++    render(
++      <TerminalWorkspace
++        {...workspaceProps({
++          activeTabId: "tab-batch",
++          focusedPaneId: "pane-batch-local",
++          machineGroups: terminalMachineGroups,
++          onSplitPane,
++          panes: batchPanes,
++          tabs: batchTabs,
++        })}
++      />,
++    );
++
++    fireEvent.contextMenu(
++      screen.getByRole("button", { name: "本地批量 上下分屏" }),
++    );
++    const splitTargetMenu = screen.getByRole("menu", {
++      name: "上下分屏目标选择",
++    });
++    await user.type(
++      within(splitTargetMenu).getByLabelText("搜索分屏主机"),
++      "serial",
++    );
++
++    await user.click(
++      within(splitTargetMenu).getByRole("menuitem", { name: /串口控制台/ }),
++    );
++
++    expect(onSplitPane).toHaveBeenCalledWith("vertical", {
++      sourcePaneId: "pane-batch-local",
++      targetMachineId: "serial-console",
++    });
+   });
+ 
+   it("passes context menu workspace actions to terminal panes", async () => {
+@@ -770,7 +1038,9 @@ describe("TerminalWorkspace", () => {
+     await user.click(screen.getByRole("button", { name: "测试左右分屏" }));
+ 
+     expect(onOpenLogs).toHaveBeenCalled();
+-    expect(onSplitPane).toHaveBeenCalledWith("horizontal");
++    expect(onSplitPane).toHaveBeenCalledWith("horizontal", {
++      sourcePaneId: "pane-local",
++    });
+   });
+ 
+   it("requests closing the focused pane", async () => {
+@@ -789,7 +1059,7 @@ describe("TerminalWorkspace", () => {
+       />,
+     );
+ 
+-    await user.click(screen.getByRole("button", { name: "关闭当前分屏" }));
++    await user.click(screen.getByRole("button", { name: "关闭 本地批量 分屏" }));
+ 
+     expect(onClosePane).toHaveBeenCalledWith("pane-batch-local");
+   });
+diff --git a/src/features/terminal/XtermPane.runtime.ts b/src/features/terminal/XtermPane.runtime.ts
+index 554c7212..21dfcdeb 100644
+--- a/src/features/terminal/XtermPane.runtime.ts
++++ b/src/features/terminal/XtermPane.runtime.ts
+@@ -17,13 +17,17 @@ import { applyTerminalInputData, createTerminalInputModelState, terminalSuggesti
+ import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeScheduler";
+ import { createTerminalRemoteSuggestionPrewarm } from "./terminalRemoteSuggestionPrewarm";
+ import { createTerminalOutputHistoryBuffer } from "./terminalOutputHistoryBuffer";
+-import { buildTerminalCreateRequest, collectCurrentDirOscSequences, errorMessage, isRightArrowInput, resolveGhostSuggestionLayout, terminalGhostSuggestionEqual, terminalSuggestionProviders, type TerminalGhostSuggestion } from "./XtermPane.helpers";
++import {
++  createTerminalOutputInstrumentation,
++  runTerminalOutputInstrumentationStep,
++} from "./terminalOutputInstrumentation";
++import { buildTerminalCreateRequest, collectCurrentDirOscSequences, errorMessage, isRightArrowInput, normalizeTerminalSessionSize, resolveGhostSuggestionLayout, terminalGhostSuggestionEqual, terminalSuggestionProviders, type TerminalGhostSuggestion } from "./XtermPane.helpers";
+ import { registerCommandBlockClearHandlers, terminalSessionFailureLabel, terminalSessionTargetKind } from "./XtermPane.runtime.helpers";
+ 
+ const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000;
+ 
+ export function installXtermPaneRuntime(params: any) {
+-  const { args, commandBlockCounterRef, commandBlocksRef, containerRef, cwd, cwdTrackingBufferRef, currentCwdRef, disconnectSessionRef, env, fitAddonRef, focusedRef, ghostSuggestionRef, inputBufferRef, inputModelRef, onCurrentCwdChangeRef, onOutputHistoryChangeRef, outputHistoryRef, paneId, profileId, promptLineRef, reconnectSessionRef, remoteHostId, remoteHostProduction, searchAddonRef, sessionIdRef, setCommandBlockNotice, setCommandBlockViews, setConnectionState, setGhostSuggestion, setLogNotice, setLogState, setSearchResults, shell, syncCommandBlockViews, target, terminalAppearance, terminalAppearanceRef, terminalFontWeight, terminalRef, terminalTheme } = params;
++  const { args, commandBlockCounterRef, commandBlocksRef, containerRef, cwd, cwdTrackingBufferRef, currentCwdRef, disconnectSessionRef, env, fitAddonRef, focusedRef, ghostSuggestionRef, inputBufferRef, inputModelRef, onCurrentCwdChangeRef, onOutputHistoryChangeRef, outputHistoryRef, paneId, profileId, promptLineRef, reconnectSessionRef, remoteCommand, remoteHostId, remoteHostProduction, searchAddonRef, sessionIdRef, setCommandBlockNotice, setCommandBlockViews, setConnectionState, setGhostSuggestion, setLogNotice, setLogState, setSearchResults, shell, shellAssistEnabled = true, startupMessage, syncCommandBlockViews, target, terminalAppearance, terminalAppearanceRef, terminalFontWeight, terminalRef, terminalTheme, transientStartupMessage } = params;
+     const container = containerRef.current;
+     if (!container) {
+       return undefined;
+@@ -36,6 +40,7 @@ export function installXtermPaneRuntime(params: any) {
+     let suggestionRequestRun = 0;
+     let suggestionTimer: number | null = null;
+     let commandBlockViewSyncFrame: number | null = null;
++    const assistEnabled = shellAssistEnabled !== false;
+     commandBlocksRef.current = [];
+     inputModelRef.current = createTerminalInputModelState();
+     setCommandBlockViews([]);
+@@ -62,6 +67,9 @@ export function installXtermPaneRuntime(params: any) {
+     fitAddonRef.current = fitAddon;
+     searchAddonRef.current = searchAddon;
+     const shouldPreserveCommandBlockForOriginEraseBelow = () => {
++      if (!assistEnabled) {
++        return false;
++      }
+       const block = commandBlocksRef.current[commandBlocksRef.current.length - 1];
+       if (!block || block.endMarker || isClearScreenCommand(block.command)) {
+         return false;
+@@ -72,6 +80,9 @@ export function installXtermPaneRuntime(params: any) {
+       );
+     };
+     const closeCurrentCommandBlock = () => {
++      if (!assistEnabled) {
++        return;
++      }
+       if (
+         closeLatestTerminalCommandBlock({
+           commandBlocksRef,
+@@ -87,12 +98,20 @@ export function installXtermPaneRuntime(params: any) {
+       }
+     };
+     const clearCommandBlocks = () => {
++      if (!assistEnabled) {
++        setCommandBlockViews([]);
++        setCommandBlockNotice(null);
++        return;
++      }
+       clearTerminalCommandBlocks(commandBlocksRef);
+       setCommandBlockViews([]);
+       setCommandBlockNotice(null);
+       scheduleCommandBlockViewSync();
+     };
+     const registerCommandBlock = (command: string) => {
++      if (!assistEnabled) {
++        return;
++      }
+       if (
+         submitTerminalCommandBlock({
+           command,
+@@ -128,6 +147,9 @@ export function installXtermPaneRuntime(params: any) {
+       commandBlockViewSyncFrame = null;
+     };
+     const scheduleCommandBlockViewSync = () => {
++      if (!assistEnabled) {
++        return;
++      }
+       if (commandBlockViewSyncFrame !== null) {
+         return;
+       }
+@@ -171,6 +193,9 @@ export function installXtermPaneRuntime(params: any) {
+       target,
+       terminalAppearanceRef,
+     });
++    const terminalOutputInstrumentation = createTerminalOutputInstrumentation({
++      paneId,
++    });
+     const clearGhostSuggestion = () => {
+       clearSuggestionTimer();
+       suggestionRequestRun += 1;
+@@ -194,6 +219,10 @@ export function installXtermPaneRuntime(params: any) {
+       updateGhostSuggestion({ ...suggestion, ...layout });
+     };
+     const scheduleGhostSuggestion = () => {
++      if (!assistEnabled) {
++        clearGhostSuggestion();
++        return;
++      }
+       clearSuggestionTimer();
+       const inlineSuggestion = terminalAppearanceRef.current.inlineSuggestion;
+       if (!inlineSuggestion.enabled) {
+@@ -373,40 +402,42 @@ export function installXtermPaneRuntime(params: any) {
+         if (!command) {
+           continue;
+         }
+-        if (
+-          dismissedSuggestion &&
+-          dismissedSuggestion.candidate.replacementText !== command
+-        ) {
+-          recordGhostSuggestionFeedback("dismissed", dismissedSuggestion, command);
++        if (assistEnabled) {
++          if (
++            dismissedSuggestion &&
++            dismissedSuggestion.candidate.replacementText !== command
++          ) {
++            recordGhostSuggestionFeedback("dismissed", dismissedSuggestion, command);
++          }
++          const commandCwd = currentCwdRef.current ?? cwd;
++          const containerHostId =
++            target?.kind === "dockerContainer" ? target.hostId : undefined;
++          const telnetHostId = target?.kind === "telnet" ? target.hostId : undefined;
++          const serialHostId = target?.kind === "serial" ? target.hostId : undefined;
++          const sshHostId = telnetHostId || serialHostId ? undefined : remoteHostId;
++          const historyRemoteHostId =
++            containerHostId ?? telnetHostId ?? serialHostId ?? sshHostId;
++          const historyTarget = containerHostId
++            ? "dockerContainer"
++            : telnetHostId
++              ? "telnet"
++              : serialHostId
++                ? "serial"
++              : sshHostId
++                ? "ssh"
++                : "local";
++          void recordCommandHistory({
++            command,
++            cwd: commandCwd,
++            paneId,
++            profileId,
++            remoteHostId: historyRemoteHostId,
++            sessionId,
++            shell,
++            source: "user",
++            target: historyTarget,
++          });
+         }
+-        const commandCwd = currentCwdRef.current ?? cwd;
+-        const containerHostId =
+-          target?.kind === "dockerContainer" ? target.hostId : undefined;
+-        const telnetHostId = target?.kind === "telnet" ? target.hostId : undefined;
+-        const serialHostId = target?.kind === "serial" ? target.hostId : undefined;
+-        const sshHostId = telnetHostId || serialHostId ? undefined : remoteHostId;
+-        const historyRemoteHostId =
+-          containerHostId ?? telnetHostId ?? serialHostId ?? sshHostId;
+-        const historyTarget = containerHostId
+-          ? "dockerContainer"
+-          : telnetHostId
+-            ? "telnet"
+-            : serialHostId
+-              ? "serial"
+-            : sshHostId
+-              ? "ssh"
+-              : "local";
+-        void recordCommandHistory({
+-          command,
+-          cwd: commandCwd,
+-          paneId,
+-          profileId,
+-          remoteHostId: historyRemoteHostId,
+-          sessionId,
+-          shell,
+-          source: "user",
+-          target: historyTarget,
+-        });
+       }
+       void writeTerminal(sessionId, data);
+       if (collected.commands.length === 0) {
+@@ -520,6 +551,25 @@ export function installXtermPaneRuntime(params: any) {
+       }, 3000);
+     };
+ 
++    let transientStartupNoticeVisible = false;
++    const startupNoticeFor = (reason: "initial" | "reconnect") => {
++      if (reason === "reconnect") {
++        return "\r\n正在重新连接...\r\n";
++      }
++      if (typeof startupMessage === "string") {
++        return startupMessage;
++      }
++      return target?.kind === "dockerContainer"
++        ? "正在进入容器...\r\n"
++        : target?.kind === "telnet"
++          ? "正在连接 Telnet 主机...\r\n"
++          : target?.kind === "serial"
++            ? "正在连接 Serial 设备...\r\n"
++          : remoteHostId
++            ? "正在连接 SSH 主机...\r\n"
++            : "正在启动本地终端...\r\n";
++    };
++
+     const closeActiveSession = async () => {
+       const sessionId = sessionIdRef.current;
+       if (!sessionId) {
+@@ -555,19 +605,13 @@ export function installXtermPaneRuntime(params: any) {
+       inputModelRef.current = createTerminalInputModelState();
+       cwdTrackingBufferRef.current = "";
+       clearGhostSuggestion();
+-      outputWriter.writeNow(
+-        reason === "reconnect"
+-          ? "\r\n正在重新连接...\r\n"
+-          : target?.kind === "dockerContainer"
+-          ? "正在进入容器...\r\n"
+-          : target?.kind === "telnet"
+-            ? "正在连接 Telnet 主机...\r\n"
+-            : target?.kind === "serial"
+-              ? "正在连接 Serial 设备...\r\n"
+-            : remoteHostId
+-              ? "正在连接 SSH 主机...\r\n"
+-              : "正在启动本地终端...\r\n",
++      const startupNotice = startupNoticeFor(reason);
++      transientStartupNoticeVisible = Boolean(
++        transientStartupMessage &&
++          reason === "initial" &&
++          startupNotice.trim().length > 0,
+       );
++      outputWriter.writeNow(startupNotice);
+ 
+       const handleOutput = (event: TerminalOutputEvent) => {
+         if (disposed || sessionRun !== currentRun) {
+@@ -575,10 +619,20 @@ export function installXtermPaneRuntime(params: any) {
+         }
+ 
+         if (event.kind === "data") {
++          if (transientStartupNoticeVisible) {
++            outputWriter.writeNow("\x1b[1A\x1b[2K\r");
++            transientStartupNoticeVisible = false;
++          }
+           if (remoteHostId || target?.kind === "dockerContainer") {
+-            const tracked = collectCurrentDirOscSequences(
+-              cwdTrackingBufferRef.current,
+-              event.data,
++            const tracked = runTerminalOutputInstrumentationStep(
++              terminalOutputInstrumentation,
++              "cwdOsc",
++              event.data.length,
++              () =>
++                collectCurrentDirOscSequences(
++                  cwdTrackingBufferRef.current,
++                  event.data,
++                ),
+             );
+             cwdTrackingBufferRef.current = tracked.buffer;
+             for (const nextCwd of tracked.paths) {
+@@ -586,14 +640,43 @@ export function installXtermPaneRuntime(params: any) {
+                 currentCwdRef.current = nextCwd;
+                 updateTerminalPaneSessionCwd(paneId, nextCwd);
+                 onCurrentCwdChangeRef.current?.(nextCwd);
+-                remoteSuggestionPrewarm.scheduleGit(nextCwd);
+-                remoteSuggestionPrewarm.scheduleRemotePath(nextCwd);
++                if (assistEnabled) {
++                  runTerminalOutputInstrumentationStep(
++                    terminalOutputInstrumentation,
++                    "remotePrewarmGit",
++                    nextCwd.length,
++                    () => remoteSuggestionPrewarm.scheduleGit(nextCwd),
++                  );
++                  runTerminalOutputInstrumentationStep(
++                    terminalOutputInstrumentation,
++                    "remotePrewarmPath",
++                    nextCwd.length,
++                    () => remoteSuggestionPrewarm.scheduleRemotePath(nextCwd),
++                  );
++                }
+               }
+             }
+           }
+-          appendCommandBlockOutput(commandBlocksRef.current, event.data);
+-          outputWriter.write(event.data);
+-          outputHistoryBuffer.append(event.data);
++          if (assistEnabled) {
++            runTerminalOutputInstrumentationStep(
++              terminalOutputInstrumentation,
++              "commandBlock",
++              event.data.length,
++              () => appendCommandBlockOutput(commandBlocksRef.current, event.data),
++            );
++          }
++          runTerminalOutputInstrumentationStep(
++            terminalOutputInstrumentation,
++            "writer",
++            event.data.length,
++            () => outputWriter.write(event.data),
++          );
++          runTerminalOutputInstrumentationStep(
++            terminalOutputInstrumentation,
++            "history",
++            event.data.length,
++            () => outputHistoryBuffer.append(event.data),
++          );
+           return;
+         }
+         if (event.kind === "closed") {
+@@ -613,14 +696,18 @@ export function installXtermPaneRuntime(params: any) {
+       };
+ 
+       try {
++        const sessionSize = normalizeTerminalSessionSize({
++          cols: terminal.cols,
++          rows: terminal.rows,
++        });
+         const session =
+           target?.kind === "dockerContainer"
+             ? await createDockerContainerTerminalSession(
+                 {
+-                  cols: terminal.cols,
++                  cols: sessionSize.cols,
+                   containerId: target.containerId,
+                   hostId: target.hostId,
+-                  rows: terminal.rows,
++                  rows: sessionSize.rows,
+                   runtime: target.runtime,
+                   shell,
+                   user: target.user,
+@@ -631,37 +718,41 @@ export function installXtermPaneRuntime(params: any) {
+             : target?.kind === "telnet"
+               ? await createTelnetTerminalSession(
+                   {
+-                    cols: terminal.cols,
++                    cols: sessionSize.cols,
+                     hostId: target.hostId,
+-                    rows: terminal.rows,
++                    rows: sessionSize.rows,
+                   },
+                   handleOutput,
+                 )
+               : target?.kind === "serial"
+                 ? await createSerialTerminalSession(
+                     {
+-                      cols: terminal.cols,
++                      cols: sessionSize.cols,
+                       hostId: target.hostId,
+-                      rows: terminal.rows,
++                      rows: sessionSize.rows,
+                     },
+                     handleOutput,
+                   )
+             : remoteHostId
+               ? await createSshTerminalSession(
+                   {
+-                    cols: terminal.cols,
++                    cols: sessionSize.cols,
++                    ...(currentCwdRef.current ?? cwd
++                      ? { cwd: currentCwdRef.current ?? cwd }
++                      : {}),
+                     hostId: remoteHostId,
+-                    rows: terminal.rows,
++                    ...(remoteCommand ? { remoteCommand } : {}),
++                    rows: sessionSize.rows,
+                   },
+                   handleOutput,
+                 )
+               : await createTerminalSession(
+                   buildTerminalCreateRequest({
+                     args,
+-                    cols: terminal.cols,
++                    cols: sessionSize.cols,
+                     cwd,
+                     env,
+-                    rows: terminal.rows,
++                    rows: sessionSize.rows,
+                     shell,
+                   }),
+                   handleOutput,
+@@ -696,10 +787,12 @@ export function installXtermPaneRuntime(params: any) {
+           markTerminalPaneSessionReconnected(paneId, session.id);
+         }
+         setConnectionState("connected");
+-        remoteSuggestionPrewarm.scheduleGit(currentCwdRef.current ?? cwd);
+-        remoteSuggestionPrewarm.scheduleRemoteCommand();
+-        remoteSuggestionPrewarm.scheduleRemoteHistory();
+-        remoteSuggestionPrewarm.scheduleRemotePath(currentCwdRef.current ?? cwd);
++        if (assistEnabled) {
++          remoteSuggestionPrewarm.scheduleGit(currentCwdRef.current ?? cwd);
++          remoteSuggestionPrewarm.scheduleRemoteCommand();
++          remoteSuggestionPrewarm.scheduleRemoteHistory();
++          remoteSuggestionPrewarm.scheduleRemotePath(currentCwdRef.current ?? cwd);
++        }
+         void getTerminalLogState(session.id)
+           .then((nextState) => {
+             if (
+diff --git a/src/features/terminal/XtermPane.tsx b/src/features/terminal/XtermPane.tsx
+index e2d78e9f..0ae2bb26 100644
+--- a/src/features/terminal/XtermPane.tsx
++++ b/src/features/terminal/XtermPane.tsx
+@@ -59,7 +59,6 @@ import { TerminalSearchPanel } from "./TerminalSearchPanel";
+ import type { TerminalSplitDirection } from "../workspace/types";
+ import {
+   applyTerminalCommandBlockFolding,
+-  clampMenuPosition,
+   errorMessage,
+   formatLogPath,
+   pasteIntoTerminal,
+@@ -89,18 +88,23 @@ interface XtermPaneProps {
+   focused: boolean;
+   paneId: string;
+   profileId?: string;
++  remoteCommand?: string;
+   remoteHostId?: string;
+   remoteHostProduction?: boolean;
+   resolvedTheme: ResolvedTheme;
+   shell?: string;
++  shellAssistEnabled?: boolean;
++  startupMessage?: string;
+   terminalAppearance: TerminalAppearance;
+   target?: RemoteTargetRef;
+   title: string;
++  transientStartupMessage?: boolean;
+   onCurrentCwdChange?: (cwd: string) => void;
+   onOpenLogs?: () => void;
+   onOutputHistoryChange?: (outputHistory: string | undefined) => void;
+   onSplitPane?: (direction: TerminalSplitDirection) => void;
+   outputHistory?: string;
++  resolveInitialOutputHistory?: () => string | undefined;
+ }
+ 
+ export function XtermPane({
+@@ -111,18 +115,23 @@ export function XtermPane({
+   focused,
+   paneId,
+   profileId,
++  remoteCommand,
+   remoteHostId,
+   remoteHostProduction = false,
+   resolvedTheme,
+   shell,
++  shellAssistEnabled = true,
++  startupMessage,
+   terminalAppearance,
+   target,
+   title,
++  transientStartupMessage = false,
+   onCurrentCwdChange,
+   onOpenLogs,
+   onOutputHistoryChange,
+   onSplitPane,
+   outputHistory,
++  resolveInitialOutputHistory,
+ }: XtermPaneProps) {
+   const commandBlockCounterRef = useRef(0);
+   const commandBlocksRef = useRef<TerminalCommandBlock[]>([]);
+@@ -139,7 +148,9 @@ export function XtermPane({
+   const ghostSuggestionRef = useRef<TerminalGhostSuggestion | null>(null);
+   const onCurrentCwdChangeRef = useRef(onCurrentCwdChange);
+   const onOutputHistoryChangeRef = useRef(onOutputHistoryChange);
+-  const outputHistoryRef = useRef(outputHistory);
++  const outputHistoryRef = useRef(
++    outputHistory ?? resolveInitialOutputHistory?.(),
++  );
+   const promptLineRef = useRef<number | undefined>(undefined);
+   const manualClearSyncFrameRef = useRef<number | null>(null);
+   const suppressCommandBlockSyncRef = useRef(false);
+@@ -192,8 +203,18 @@ export function XtermPane({
+     () => terminalFontWeightValue(terminalAppearance.fontWeight),
+     [terminalAppearance.fontWeight],
+   );
++  const argsDependencyKey = useMemo(() => stableJsonDependencyKey(args), [args]);
++  const envDependencyKey = useMemo(() => stableJsonDependencyKey(env), [env]);
++  const targetDependencyKey = useMemo(
++    () => stableJsonDependencyKey(target),
++    [target],
++  );
+ 
+   const syncCommandBlockViews = useCallback(() => {
++    if (!shellAssistEnabled) {
++      setCommandBlockViews((current) => (current.length === 0 ? current : []));
++      return;
++    }
+     if (suppressCommandBlockSyncRef.current) {
+       return;
+     }
+@@ -241,7 +262,7 @@ export function XtermPane({
+     setCommandBlockViews((current) =>
+       commandBlockViewsEqual(current, nextViews) ? current : nextViews,
+     );
+-  }, []);
++  }, [shellAssistEnabled]);
+ 
+   const scheduleCommandBlockViewsSync = useCallback(() => {
+     if (manualClearSyncFrameRef.current !== null) {
+@@ -299,8 +320,11 @@ export function XtermPane({
+   }, [onOutputHistoryChange]);
+ 
+   useEffect(() => {
++    if (resolveInitialOutputHistory) {
++      return;
++    }
+     outputHistoryRef.current = outputHistory;
+-  }, [outputHistory]);
++  }, [outputHistory, resolveInitialOutputHistory]);
+ 
+   useEffect(() => {
+     terminalAppearanceRef.current = terminalAppearance;
+@@ -333,6 +357,7 @@ export function XtermPane({
+       profileId,
+       promptLineRef,
+       reconnectSessionRef,
++      remoteCommand,
+       remoteHostId,
+       remoteHostProduction,
+       searchAddonRef,
+@@ -341,10 +366,12 @@ export function XtermPane({
+       setCommandBlockViews,
+       setConnectionState,
+       setGhostSuggestion,
++      shellAssistEnabled,
+       setLogNotice,
+       setLogState,
+       setSearchResults,
+       shell,
++      startupMessage,
+       syncCommandBlockViews,
+       target,
+       terminalAppearance,
+@@ -352,18 +379,23 @@ export function XtermPane({
+       terminalFontWeight,
+       terminalRef,
+       terminalTheme,
++      transientStartupMessage,
+     }),
+   [
+-    args,
++    argsDependencyKey,
+     cwd,
+-    env,
++    envDependencyKey,
+     paneId,
+     profileId,
++    remoteCommand,
+     remoteHostId,
+     remoteHostProduction,
+     shell,
++    shellAssistEnabled,
++    startupMessage,
+     syncCommandBlockViews,
+-    target,
++    targetDependencyKey,
++    transientStartupMessage,
+   ]);
+ 
+   useEffect(() => {
+@@ -430,9 +462,9 @@ export function XtermPane({
+   useLayoutEffect(() => {
+     return applyTerminalCommandBlockFolding(
+       containerRef.current,
+-      commandBlockViews,
++      shellAssistEnabled ? commandBlockViews : [],
+     );
+-  }, [commandBlockViews]);
++  }, [commandBlockViews, shellAssistEnabled]);
+ 
+   const startLogging = useCallback(async () => {
+     const sessionId = sessionIdRef.current;
+@@ -563,7 +595,10 @@ export function XtermPane({
+       const selection = terminal?.getSelection?.() ?? "";
+       const menuState = {
+         canCopy: selection.length > 0,
+-        position: clampMenuPosition(event.clientX, event.clientY),
++        position: {
++          x: event.clientX,
++          y: event.clientY,
++        },
+       };
+       setContextMenu(menuState);
+       terminal?.focus();
+@@ -678,18 +713,24 @@ export function XtermPane({
+       className="relative min-h-0 flex-1 bg-[#f7f7fa] dark:bg-[#1f1f21]"
+       onContextMenu={openContextMenu}
+     >
+-      <TerminalCommandBlockRail
+-        blocks={commandBlockViews}
+-        onAction={executeCommandBlockAction}
+-      />
+-      <div className="h-full min-h-0 w-full overflow-hidden py-2 pl-6 pr-3">
++      {shellAssistEnabled ? (
++        <TerminalCommandBlockRail
++          blocks={commandBlockViews}
++          onAction={executeCommandBlockAction}
++        />
++      ) : null}
++      <div
++        className={`h-full min-h-0 w-full overflow-hidden py-2 pr-3 ${
++          shellAssistEnabled ? "pl-6" : "pl-3"
++        }`}
++      >
+         <div
+           aria-label={`${title} xterm 终端`}
+           className="h-full min-h-0 w-full overflow-hidden"
+           ref={containerRef}
+         />
+       </div>
+-      {ghostSuggestion ? (
++      {shellAssistEnabled && ghostSuggestion ? (
+         <div
+           aria-label="终端命令灰色提示"
+           className="pointer-events-none absolute z-10 select-none overflow-hidden whitespace-pre font-mono text-zinc-400/75 dark:text-zinc-500/85"
+@@ -729,7 +770,7 @@ export function XtermPane({
+           {logNotice}
+         </div>
+       ) : null}
+-      {commandBlockNotice ? (
++      {shellAssistEnabled && commandBlockNotice ? (
+         <div
+           aria-label="命令块操作提示"
+           className="kerminal-muted-surface pointer-events-none absolute left-3 max-w-[min(560px,calc(100%-1.5rem))] truncate rounded-md border px-2 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-xl dark:text-zinc-300"
+@@ -760,6 +801,7 @@ export function XtermPane({
+           canDisconnect={connectionState === "connected"}
+           canCopy={contextMenu.canCopy}
+           canReconnect={connectionState !== "connecting"}
++          canSplit={Boolean(onSplitPane)}
+           onAction={executeContextMenuAction}
+           onClose={() => setContextMenu(null)}
+           position={contextMenu.position}
+@@ -768,3 +810,21 @@ export function XtermPane({
+     </div>
+   );
+ }
++
++function stableJsonDependencyKey(value: unknown): string {
++  return JSON.stringify(sortJsonValue(value));
++}
++
++function sortJsonValue(value: unknown): unknown {
++  if (!value || typeof value !== "object") {
++    return value;
++  }
++  if (Array.isArray(value)) {
++    return value.map(sortJsonValue);
++  }
++  return Object.fromEntries(
++    Object.entries(value as Record<string, unknown>)
++      .sort(([left], [right]) => left.localeCompare(right))
++      .map(([key, entryValue]) => [key, sortJsonValue(entryValue)]),
++  );
++}
+diff --git a/src/features/workspace/types.ts b/src/features/workspace/types.ts
+index 9a762935..e81bf4ac 100644
+--- a/src/features/workspace/types.ts
++++ b/src/features/workspace/types.ts
+@@ -1,5 +1,6 @@
+ import type { RemoteTargetRef } from "../../lib/targetModel";
+ import type { SshOptions } from "../../lib/remoteHostApi";
++import type { TmuxPaneBinding } from "../../lib/tmuxApi";
+ 
+ export type MachineStatus = "online" | "offline" | "warning";
+ 
+@@ -121,6 +122,8 @@ export function isSftpTransferWorkspaceTab(
+ }
+ 
+ export type TerminalSplitDirection = "horizontal" | "vertical";
++export type TerminalSplitPlacement = "after" | "before";
++export type TerminalSplitLayoutSizes = Record<string, number>;
+ 
+ export type TerminalLayoutNode =
+   | {
+@@ -132,6 +135,7 @@ export type TerminalLayoutNode =
+       id: string;
+       direction: TerminalSplitDirection;
+       children: TerminalLayoutNode[];
++      sizes?: TerminalSplitLayoutSizes;
+     };
+ 
+ export interface TerminalPane {
+@@ -149,6 +153,8 @@ export interface TerminalPane {
+   cwd?: string;
+   currentCwd?: string;
+   env?: Record<string, string>;
++  remoteCommand?: string;
++  tmuxBinding?: TmuxPaneBinding;
+   prompt: string;
+   status: MachineStatus;
+   latencyMs?: number;
+@@ -157,10 +163,11 @@ export interface TerminalPane {
+ }
+ 
+ export const toolIds = [
+-  "ai",
++  "agentLauncher",
+   "system",
+   "sftp",
+   "ports",
++  "tmux",
+   "snippets",
+   "logs",
+   "settings",
+diff --git a/src/features/workspace/workspaceLayout.ts b/src/features/workspace/workspaceLayout.ts
+index 222616bd..b6e0433f 100644
+--- a/src/features/workspace/workspaceLayout.ts
++++ b/src/features/workspace/workspaceLayout.ts
+@@ -1,6 +1,8 @@
+ import type {
+   TerminalLayoutNode,
+   TerminalSplitDirection,
++  TerminalSplitLayoutSizes,
++  TerminalSplitPlacement,
+ } from "./types";
+ 
+ export function collectPaneIds(layout: TerminalLayoutNode): string[] {
+@@ -31,6 +33,7 @@ export function splitPaneInLayout(
+   newPaneId: string,
+   direction: TerminalSplitDirection,
+   splitId: string,
++  placement: TerminalSplitPlacement = "after",
+ ): TerminalLayoutNode {
+   if (layout.type === "pane") {
+     if (layout.paneId !== targetPaneId) {
+@@ -41,21 +44,68 @@ export function splitPaneInLayout(
+       type: "split",
+       id: splitId,
+       direction,
+-      children: [
+-        { type: "pane", paneId: targetPaneId },
+-        { type: "pane", paneId: newPaneId },
+-      ],
++      children:
++        placement === "before"
++          ? [
++              { type: "pane", paneId: newPaneId },
++              { type: "pane", paneId: targetPaneId },
++            ]
++          : [
++              { type: "pane", paneId: targetPaneId },
++              { type: "pane", paneId: newPaneId },
++            ],
+     };
+   }
+ 
+   return {
+     ...layout,
+     children: layout.children.map((child) =>
+-      splitPaneInLayout(child, targetPaneId, newPaneId, direction, splitId),
++      splitPaneInLayout(
++        child,
++        targetPaneId,
++        newPaneId,
++        direction,
++        splitId,
++        placement,
++      ),
+     ),
+   };
+ }
+ 
++export function updateSplitLayoutSizes(
++  layout: TerminalLayoutNode,
++  splitId: string,
++  sizes: TerminalSplitLayoutSizes,
++): TerminalLayoutNode {
++  if (layout.type === "pane") {
++    return layout;
++  }
++
++  const children = layout.children.map((child) =>
++    updateSplitLayoutSizes(child, splitId, sizes),
++  );
++  const childrenChanged = children.some(
++    (child, index) => child !== layout.children[index],
++  );
++  const currentLayout = childrenChanged ? { ...layout, children } : layout;
++
++  if (layout.id !== splitId) {
++    return currentLayout;
++  }
++
++  const nextSizes = normalizeSplitLayoutSizes(children, sizes);
++  if (sameSplitLayoutSizes(layout.sizes, nextSizes)) {
++    return currentLayout;
++  }
++
++  if (!nextSizes) {
++    const { sizes: _sizes, ...withoutSizes } = currentLayout;
++    return withoutSizes;
++  }
++
++  return { ...currentLayout, sizes: nextSizes };
++}
++
+ export function removePaneFromLayout(
+   layout: TerminalLayoutNode,
+   paneId: string,
+@@ -76,8 +126,60 @@ export function removePaneFromLayout(
+     return children[0];
+   }
+ 
++  const nextSizes = normalizeSplitLayoutSizes(children, layout.sizes);
++  if (!nextSizes) {
++    const { sizes: _sizes, ...withoutSizes } = layout;
++    return {
++      ...withoutSizes,
++      children,
++    };
++  }
++
+   return {
+     ...layout,
+     children,
++    sizes: nextSizes,
+   };
+ }
++
++function normalizeSplitLayoutSizes(
++  children: TerminalLayoutNode[],
++  sizes: TerminalSplitLayoutSizes | undefined,
++) {
++  if (!sizes) {
++    return undefined;
++  }
++
++  const normalized: TerminalSplitLayoutSizes = {};
++  for (const child of children) {
++    const key = layoutChildKey(child);
++    const size = sizes[key];
++    if (typeof size !== "number" || !Number.isFinite(size) || size <= 0) {
++      return undefined;
++    }
++    normalized[key] = Math.round(size * 1000) / 1000;
++  }
++
++  return Object.keys(normalized).length === children.length
++    ? normalized
++    : undefined;
++}
++
++function sameSplitLayoutSizes(
++  left: TerminalSplitLayoutSizes | undefined,
++  right: TerminalSplitLayoutSizes | undefined,
++) {
++  if (!left || !right) {
++    return left === right;
++  }
++  const leftKeys = Object.keys(left);
++  const rightKeys = Object.keys(right);
++  return (
++    leftKeys.length === rightKeys.length &&
++    leftKeys.every((key) => left[key] === right[key])
++  );
++}
++
++function layoutChildKey(child: TerminalLayoutNode) {
++  return child.type === "pane" ? child.paneId : child.id;
++}
+diff --git a/src/features/workspace/workspaceStore.ts b/src/features/workspace/workspaceStore.ts
+index 674b7ab4..04f9d651 100644
+--- a/src/features/workspace/workspaceStore.ts
++++ b/src/features/workspace/workspaceStore.ts
+@@ -10,6 +10,7 @@ import {
+ } from "../../lib/profileApi";
+ import type { DockerContainerSummary } from "../../lib/dockerApi";
+ import { localTarget } from "../../lib/targetModel";
++import type { TmuxAttachLaunch, TmuxPaneBinding } from "../../lib/tmuxApi";
+ import type { RemoteHostGroupWithHosts } from "../../lib/remoteHostApi";
+ import { machineGroups, terminalPanes, terminalTabs, tools } from "./workspaceData";
+ import {
+@@ -23,6 +24,8 @@ import type {
+   SftpTransferWorkspaceTab,
+   TerminalPane,
+   TerminalSplitDirection,
++  TerminalSplitLayoutSizes,
++  TerminalSplitPlacement,
+   TerminalTab,
+   TerminalTabGroupPreference,
+   TerminalTabGroupPreferences,
+@@ -57,10 +60,13 @@ import {
+   closeTerminalPaneState,
+   closeTerminalTabState,
+   focusTerminalPaneState,
++  paneIdPrefixForSplitMachine,
+   resolveFocusedPaneSplitTarget,
+   selectTerminalTabState,
+   splitFocusedPaneState,
++  splitTargetPaneForMachine,
+   updatePaneCurrentCwdState,
++  updateTerminalSplitLayoutSizesState,
+   updatePaneOutputHistoryState,
+ } from "./workspaceTerminalState";
+ import {
+@@ -72,6 +78,7 @@ import {
+   focusExistingMachineTabState,
+   syncContainerTerminalOpenState,
+ } from "./workspaceTerminalOpenState";
++import { openTmuxAttachTerminalState } from "./workspaceTmuxState";
+ 
+ export interface AddTerminalTabOptions {
+   title?: string;
+@@ -81,6 +88,7 @@ export interface AddTerminalTabOptions {
+   args?: string[];
+   cwd?: string;
+   env?: Record<string, string>;
++  tmuxBinding?: TmuxPaneBinding;
+ }
+ 
+ export interface AddDockerContainerOptions {
+@@ -96,6 +104,20 @@ export interface OpenSftpTransferTabOptions {
+   rightHostId?: string;
+ }
+ 
++export interface SplitFocusedPaneOptions {
++  placement?: TerminalSplitPlacement;
++  sourcePaneId?: string;
++  targetMachineId?: string;
++}
++
++export interface OpenSshCommandTerminalOptions {
++  cwd?: string;
++  remoteCommand: string;
++  title: string;
++}
++
++export type TmuxAttachPlacement = "pane" | "tab";
++
+ export interface WorkspaceState {
+   profiles: TerminalProfile[];
+   activeProfileId: string;
+@@ -119,6 +141,10 @@ export interface WorkspaceState {
+     container: DockerContainerSummary,
+     options?: AddDockerContainerOptions,
+   ) => void;
++  openDockerContainerTerminal: (
++    container: DockerContainerSummary,
++    options?: AddDockerContainerOptions,
++  ) => void;
+   addLocalProfileMachine: (profile: TerminalProfile, groupId?: string) => void;
+   moveSidebarMachine: (machineId: string, groupId: string) => void;
+   pinMachineGroup: (groupId: string, pinned?: boolean) => void;
+@@ -131,6 +157,14 @@ export interface WorkspaceState {
+   openSftpTransferTab: (options?: OpenSftpTransferTabOptions) => void;
+   openLocalTerminal: (machineId: string) => void;
+   openSshTerminal: (hostId: string) => void;
++  openSshCommandTerminal: (
++    hostId: string,
++    options: OpenSshCommandTerminalOptions,
++  ) => void;
++  openTmuxAttachTerminal: (
++    launch: TmuxAttachLaunch,
++    placement?: TmuxAttachPlacement,
++  ) => void;
+   openTelnetTerminal: (hostId: string) => void;
+   openSerialTerminal: (hostId: string) => void;
+   openContainerTerminal: (machineId: string) => void;
+@@ -140,10 +174,17 @@ export interface WorkspaceState {
+     groupId: string,
+     preference: TerminalTabGroupPreference,
+   ) => void;
+-  splitFocusedPane: (direction: TerminalSplitDirection) => void;
++  splitFocusedPane: (
++    direction: TerminalSplitDirection,
++    options?: SplitFocusedPaneOptions,
++  ) => void;
+   closePane: (paneId: string) => void;
+   focusPane: (paneId: string) => void;
+   updatePaneCurrentCwd: (paneId: string, currentCwd: string) => void;
++  updateTerminalSplitLayoutSizes: (
++    splitId: string,
++    sizes: TerminalSplitLayoutSizes,
++  ) => void;
+   updatePaneOutputHistory: (
+     paneId: string,
+     outputHistory: string | undefined,
+@@ -263,6 +304,31 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
+         terminalTabs: openState.terminalTabs,
+       };
+     }),
++  openDockerContainerTerminal: (container, options) =>
++    set((state) => {
++      if (container.status !== "running") {
++        return {};
++      }
++
++      const hostMachine = findMachine(state.machineGroups, container.hostId);
++      if (!hostMachine || hostMachine.kind !== "ssh") {
++        return {};
++      }
++
++      const machine = containerToMachine(container, hostMachine, options);
++      const focusState = focusExistingMachineTabState(state, machine.id);
++      if (focusState) {
++        return focusState;
++      }
++
++      generatedPaneCount += 1;
++      generatedTabCount += 1;
++
++      return createContainerTerminalOpenState(state, machine, {
++        paneId: `pane-container-${generatedPaneCount}`,
++        tabId: `tab-container-${generatedTabCount}`,
++      });
++    }),
+   addLocalProfileMachine: (profile, groupId) =>
+     set((state) => {
+       const machine = {
+@@ -465,6 +531,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
+         profile,
+         shell: options?.shell ?? profile?.shell,
+         tabId,
++        tmuxBinding: options?.tmuxBinding,
+         title,
+       });
+       return {
+@@ -559,6 +626,44 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
+         tabId: `tab-ssh-${generatedTabCount}`,
+       });
+     }),
++  openSshCommandTerminal: (hostId, options) =>
++    set((state) => {
++      const machine = findMachine(state.machineGroups, hostId);
++      if (!machine || machine.kind !== "ssh") {
++        return {};
++      }
++
++      generatedTabCount += 1;
++      generatedPaneCount += 1;
++      return createSshTerminalOpenState(state, machine, {
++        cwd: options.cwd,
++        paneId: `pane-ssh-${generatedPaneCount}`,
++        remoteCommand: options.remoteCommand,
++        tabId: `tab-ssh-${generatedTabCount}`,
++        title: options.title,
++      });
++    }),
++  openTmuxAttachTerminal: (launch, placement = "pane") =>
++    set((state) => {
++      const result = openTmuxAttachTerminalState(state, {
++        launch,
++        nextLocalMachineId: `machine-tmux-local-${generatedTabCount + 1}`,
++        nextPaneId: `pane-tmux-${generatedPaneCount + 1}`,
++        nextSplitId: `split-${generatedSplitCount + 1}`,
++        nextTabId: `tab-tmux-${generatedTabCount + 1}`,
++        placement,
++      });
++      if (result.consumedPane) {
++        generatedPaneCount += 1;
++      }
++      if (result.consumedSplit) {
++        generatedSplitCount += 1;
++      }
++      if (result.consumedTab) {
++        generatedTabCount += 1;
++      }
++      return result.patch;
++    }),
+   openTelnetTerminal: (hostId) =>
+     set((state) => {
+       const machine = findMachine(state.machineGroups, hostId);
+@@ -642,20 +747,51 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
+ 
+       return { terminalTabGroupPreferences: nextPreferences };
+     }),
+-  splitFocusedPane: (direction) =>
++  splitFocusedPane: (direction, options) =>
+     set((state) => {
+-      const splitTarget = resolveFocusedPaneSplitTarget(state);
++      const splitTarget = resolveFocusedPaneSplitTarget(
++        state,
++        options?.sourcePaneId,
++      );
+       if (!splitTarget) {
+         return {};
+       }
++      const targetMachine = options?.targetMachineId
++        ? findMachine(state.machineGroups, options.targetMachineId)
++        : undefined;
++      if (options?.targetMachineId && !targetMachine) {
++        return {};
++      }
++      const targetPaneIdPrefix = targetMachine
++        ? paneIdPrefixForSplitMachine(targetMachine)
++        : undefined;
++      if (targetMachine && !targetPaneIdPrefix) {
++        return {};
++      }
+ 
+       generatedPaneCount += 1;
+       generatedSplitCount += 1;
+-      return splitFocusedPaneState(state, {
++      const paneId = `${
++        targetPaneIdPrefix ?? splitTarget.paneIdPrefix
++      }-${generatedPaneCount}`;
++      const targetPane = targetMachine
++        ? splitTargetPaneForMachine(targetMachine, paneId)
++        : undefined;
++      if (targetMachine && !targetPane) {
++        return {};
++      }
++      const splitPatch = splitFocusedPaneState(state, {
+         direction,
+-        paneId: `${splitTarget.paneIdPrefix}-${generatedPaneCount}`,
++        paneId,
++        placement: options?.placement,
++        sourcePaneId: splitTarget.sourcePaneId,
+         splitId: `split-${generatedSplitCount}`,
++        ...(targetPane ? { targetPane } : {}),
+       });
++      if (targetPane && "focusedPaneId" in splitPatch) {
++        return { ...splitPatch, selectedMachineId: targetPane.machineId };
++      }
++      return splitPatch;
+     }),
+   closePane: (paneId) =>
+     set((state) => closeTerminalPaneState(state, paneId)),
+@@ -663,6 +799,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
+     set((state) => focusTerminalPaneState(state, focusedPaneId)),
+   updatePaneCurrentCwd: (paneId, currentCwd) =>
+     set((state) => updatePaneCurrentCwdState(state, paneId, currentCwd)),
++  updateTerminalSplitLayoutSizes: (splitId, sizes) =>
++    set((state) => updateTerminalSplitLayoutSizesState(state, splitId, sizes)),
+   updatePaneOutputHistory: (paneId, outputHistory) =>
+     set((state) => updatePaneOutputHistoryState(state, paneId, outputHistory)),
+   restoreWorkspaceSession: (session) =>
+diff --git a/src/features/workspace/workspaceTerminalState.ts b/src/features/workspace/workspaceTerminalState.ts
+index ccc74ce4..4c58ac79 100644
+--- a/src/features/workspace/workspaceTerminalState.ts
++++ b/src/features/workspace/workspaceTerminalState.ts
+@@ -3,11 +3,21 @@ import {
+   findFirstPaneId,
+   removePaneFromLayout,
+   splitPaneInLayout,
++  updateSplitLayoutSizes,
+ } from "./workspaceLayout";
++import {
++  localTarget,
++  serialTarget,
++  sshTarget,
++  telnetTarget,
++} from "../../lib/targetModel";
+ import {
+   isTerminalSessionTab,
++  type Machine,
+   type TerminalPane,
+   type TerminalSplitDirection,
++  type TerminalSplitLayoutSizes,
++  type TerminalSplitPlacement,
+   type TerminalTab,
+ } from "./types";
+ 
+@@ -28,7 +38,10 @@ export interface FocusedPaneSplitTarget {
+ export interface SplitFocusedPaneCommand {
+   direction: TerminalSplitDirection;
+   paneId: string;
++  placement?: TerminalSplitPlacement;
++  sourcePaneId?: string;
+   splitId: string;
++  targetPane?: TerminalPane;
+ }
+ 
+ export function selectTerminalTabState(
+@@ -146,12 +159,13 @@ export function focusTerminalPaneState(
+ 
+ export function resolveFocusedPaneSplitTarget(
+   state: TerminalWorkspaceStateSlice,
++  sourcePaneId = state.focusedPaneId,
+ ): FocusedPaneSplitTarget | undefined {
+   const activeTab = state.terminalTabs.find(
+     (tab) => tab.id === state.activeTabId,
+   );
+   const sourcePane = state.terminalPanes.find(
+-    (pane) => pane.id === state.focusedPaneId,
++    (pane) => pane.id === sourcePaneId,
+   );
+   if (
+     !activeTab ||
+@@ -176,7 +190,7 @@ export function splitFocusedPaneState(
+     (tab) => tab.id === state.activeTabId,
+   );
+   const sourcePane = state.terminalPanes.find(
+-    (pane) => pane.id === state.focusedPaneId,
++    (pane) => pane.id === (command.sourcePaneId ?? state.focusedPaneId),
+   );
+   if (
+     !activeTab ||
+@@ -187,15 +201,22 @@ export function splitFocusedPaneState(
+     return {};
+   }
+ 
++  const paneTemplate = command.targetPane ?? sourcePane;
++  const sourceCwd = sourcePane.currentCwd ?? sourcePane.cwd;
++  const templateCwd = command.targetPane
++    ? (command.targetPane.currentCwd ?? command.targetPane.cwd)
++    : undefined;
++  const currentCwd = sourceCwd ?? templateCwd;
+   const newPane: TerminalPane = {
+-    ...sourcePane,
+-    cwd: sourcePane.currentCwd ?? sourcePane.cwd,
+-    currentCwd: sourcePane.currentCwd ?? sourcePane.cwd,
++    ...paneTemplate,
++    cwd: currentCwd,
++    currentCwd,
+     id: command.paneId,
+     lines: [],
+-    machineId: sourcePane.machineId,
+-    mode: sourcePane.mode,
+-    title: command.direction === "horizontal" ? "右侧分屏" : "下方分屏",
++    outputHistory: undefined,
++    title:
++      command.targetPane?.title ??
++      (command.direction === "horizontal" ? "右侧分屏" : "下方分屏"),
+   };
+   const terminalTabs = state.terminalTabs.map((tab) =>
+     tab.id === activeTab.id && isTerminalSessionTab(tab)
+@@ -207,6 +228,7 @@ export function splitFocusedPaneState(
+             command.paneId,
+             command.direction,
+             command.splitId,
++            command.placement,
+           ),
+         }
+       : tab,
+@@ -219,6 +241,139 @@ export function splitFocusedPaneState(
+   };
+ }
+ 
++export function updateTerminalSplitLayoutSizesState(
++  state: TerminalWorkspaceStateSlice,
++  splitId: string,
++  sizes: TerminalSplitLayoutSizes,
++): TerminalWorkspaceStatePatch | TerminalWorkspaceStateSlice {
++  const activeTab = state.terminalTabs.find(
++    (tab) => tab.id === state.activeTabId,
++  );
++  if (!activeTab || !isTerminalSessionTab(activeTab)) {
++    return state;
++  }
++
++  const nextLayout = updateSplitLayoutSizes(activeTab.layout, splitId, sizes);
++  if (nextLayout === activeTab.layout) {
++    return state;
++  }
++
++  return {
++    terminalTabs: state.terminalTabs.map((tab) =>
++      tab.id === activeTab.id && isTerminalSessionTab(tab)
++        ? { ...tab, layout: nextLayout }
++        : tab,
++    ),
++  };
++}
++
++export function paneIdPrefixForSplitMachine(
++  machine: Machine,
++): string | undefined {
++  const mode = terminalPaneModeForMachine(machine);
++  return mode ? paneIdPrefixForSplitMode(mode) : undefined;
++}
++
++export function splitTargetPaneForMachine(
++  machine: Machine,
++  paneId: string,
++): TerminalPane | undefined {
++  if (machine.kind === "local") {
++    return {
++      args: machine.args,
++      cwd: machine.cwd,
++      env: machine.env,
++      id: paneId,
++      lines: [],
++      machineId: machine.id,
++      mode: "local",
++      profileId: machine.profileId,
++      prompt: "PS>",
++      shell: machine.shell,
++      status: "online",
++      target: localTarget(machine.profileId),
++      title: machine.name,
++    };
++  }
++
++  if (machine.kind === "ssh") {
++    const hostLabel = machine.host ?? machine.name;
++    const userLabel = machine.username ?? "ssh";
++    return {
++      id: paneId,
++      latencyMs: machine.latencyMs,
++      lines: [],
++      machineId: machine.id,
++      mode: "ssh",
++      prompt: `${userLabel}@${hostLabel}:~$`,
++      remoteHostId: machine.id,
++      remoteHostProduction: machine.production ?? false,
++      status: machine.status,
++      target:
++        machine.target?.kind === "ssh" ? machine.target : sshTarget(machine.id),
++      title: machine.name,
++    };
++  }
++
++  if (machine.kind === "telnet") {
++    const hostLabel = machine.host ?? machine.name;
++    return {
++      id: paneId,
++      latencyMs: machine.latencyMs,
++      lines: [],
++      machineId: machine.id,
++      mode: "telnet",
++      prompt: `${hostLabel}:${machine.port ?? 23}>`,
++      remoteHostProduction: machine.production ?? false,
++      status: machine.status,
++      target:
++        machine.target?.kind === "telnet"
++          ? machine.target
++          : telnetTarget(machine.id),
++      title: machine.name,
++    };
++  }
++
++  if (machine.kind === "serial") {
++    const serialPort =
++      serialPortName(machine.tags) ?? machine.host ?? machine.name;
++    return {
++      id: paneId,
++      latencyMs: machine.latencyMs,
++      lines: [],
++      machineId: machine.id,
++      mode: "serial",
++      prompt: `${serialPort}>`,
++      remoteHostProduction: machine.production ?? false,
++      status: machine.status,
++      target:
++        machine.target?.kind === "serial"
++          ? machine.target
++          : serialTarget(machine.id),
++      title: machine.name,
++    };
++  }
++
++  if (machine.kind === "dockerContainer" && machine.target) {
++    return {
++      containerId: machine.containerId,
++      id: paneId,
++      lines: [],
++      machineId: machine.id,
++      mode: "container",
++      prompt: `${machine.name}:/$`,
++      remoteHostId: machine.parentMachineId,
++      remoteHostProduction: machine.production ?? false,
++      shell: machine.shell,
++      status: machine.status,
++      target: machine.target,
++      title: machine.name,
++    };
++  }
++
++  return undefined;
++}
++
+ export function updatePaneCurrentCwdState(
+   state: TerminalWorkspaceStateSlice,
+   paneId: string,
+@@ -261,6 +416,8 @@ function paneIdPrefixForSplitMode(mode: TerminalPane["mode"]): string {
+       return "pane-telnet";
+     case "serial":
+       return "pane-serial";
++    case "container":
++      return "pane-container";
+     case "preview":
+       return "pane-preview";
+     default:
+@@ -268,6 +425,30 @@ function paneIdPrefixForSplitMode(mode: TerminalPane["mode"]): string {
+   }
+ }
+ 
++function terminalPaneModeForMachine(
++  machine: Machine,
++): TerminalPane["mode"] | undefined {
++  if (
++    machine.kind === "local" ||
++    machine.kind === "ssh" ||
++    machine.kind === "telnet" ||
++    machine.kind === "serial"
++  ) {
++    return machine.kind;
++  }
++  if (machine.kind === "dockerContainer") {
++    return "container";
++  }
++  return undefined;
++}
++
++function serialPortName(tags: string[]) {
++  const prefix = "serial-port:";
++  const tag = tags.find((candidate) => candidate.startsWith(prefix));
++  const port = tag?.slice(prefix.length).trim();
++  return port || undefined;
++}
++
+ function resolveFocusForTerminalTab(
+   state: TerminalWorkspaceStateSlice,
+   tab: TerminalTab,

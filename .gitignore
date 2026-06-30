@@ -29,10 +29,13 @@ dist-ssr
 *.sw?
 
 # BEGIN UPDENG
-/.updeng
-/.codegraph
-/.codex
+.updeng/docs/config/remote-servers.json
+.updeng/docs/context/index/
+.updeng/docs/coordination/status.json
+.updeng/docs/coordination/status.md
+.updeng/docs/metrics/*.jsonl
+.updeng/runtime/
+.updeng/tmp/
+.codegraph/
 tmp/
-.tmp/
 # END UPDENG
-/AGENTS.md

@@ -40,6 +40,7 @@ import {
   type ExternalAgentWorkspaceStatus,
 } from "../../lib/agentLauncherApi";
 import { targetStableId } from "../../lib/targetModel";
+import type { TerminalAgentSignal } from "../../lib/terminalApi";
 import {
   defaultTerminalAppearance,
   type ResolvedTheme,
@@ -103,6 +104,7 @@ interface AgentTerminalSession {
   args: string[];
   cwd: string;
   env?: Record<string, string>;
+  agentSignal?: TerminalAgentSignal;
   status: ExternalAgentSessionStatus;
   customCommand?: string;
   permissionMode: AgentLaunchPermissionMode;
@@ -475,6 +477,39 @@ export function AgentLauncherToolContent({
     activateAgentSessionForTab(options.tabId, nextSession.agentSessionId);
   };
 
+  const handleAgentSignal = useCallback((signal: TerminalAgentSignal) => {
+    const agentSessionId = signal.agentSessionId?.trim();
+    if (!agentSessionId) {
+      return;
+    }
+    setAgentSessions((current) => {
+      const session = current[agentSessionId];
+      if (!session) {
+        return current;
+      }
+      if (
+        session.agentId !== "custom" &&
+        session.agentId !== signal.agent
+      ) {
+        return current;
+      }
+      if (
+        session.agentSignal?.terminalSessionId === signal.terminalSessionId &&
+        session.agentSignal?.agent === signal.agent &&
+        session.agentSignal?.status === signal.status
+      ) {
+        return current;
+      }
+      return {
+        ...current,
+        [agentSessionId]: {
+          ...session,
+          agentSignal: signal,
+        },
+      };
+    });
+  }, []);
+
   const prepareAndLaunchAgent = async (
     agentId: ExternalAgentId,
     agentSession: AgentSessionSelection,
@@ -749,6 +784,7 @@ export function AgentLauncherToolContent({
                 setTabView(activeAgentTabId, "launcher");
               }
             }}
+            onAgentSignal={handleAgentSignal}
             resolvedTheme={resolvedTheme}
             terminalAppearance={terminalAppearance}
           />
@@ -1067,6 +1103,7 @@ function AgentLaunchContextMenu({
 function AgentTerminalView({
   desktopNotifications,
   focused,
+  onAgentSignal,
   onBack,
   resolvedTheme,
   session,
@@ -1074,6 +1111,7 @@ function AgentTerminalView({
 }: {
   desktopNotifications?: DesktopNotificationSettings;
   focused: boolean;
+  onAgentSignal: (signal: TerminalAgentSignal) => void;
   onBack: () => void;
   resolvedTheme: ResolvedTheme;
   session: AgentTerminalSession;
@@ -1083,6 +1121,9 @@ function AgentTerminalView({
   const Icon = agentIcons[session.agentId];
   const workspacePath = compactWorkspacePath(session.cwd);
   const title = session.title === "Custom" ? "自定义" : session.title;
+  const agentSignalView = session.agentSignal
+    ? agentSignalStatusView(session.agentSignal)
+    : null;
   const notificationLastSentAtRef = useRef<Record<string, number | undefined>>(
     {},
   );
@@ -1139,6 +1180,18 @@ function AgentTerminalView({
             {session.commandLabel} · {workspacePath}
           </div>
         </div>
+        {agentSignalView ? (
+          <span
+            className={cn(
+              "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-4",
+              agentSignalView.className,
+            )}
+            data-testid="agent-terminal-signal"
+            title={agentSignalView.title}
+          >
+            {agentSignalView.label}
+          </span>
+        ) : null}
       </header>
       <div className="min-h-0 flex-1 p-2">
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-[var(--border-subtle)] bg-[var(--surface-terminal)] shadow-sm shadow-black/5 dark:shadow-black/25">
@@ -1147,7 +1200,9 @@ function AgentTerminalView({
             cwd={session.cwd}
             env={session.env}
             focused={focused}
+            inputCompatibilityMode="agentTui"
             key={session.agentSessionId}
+            onAgentSignal={onAgentSignal}
             paneId={paneId}
             resolvedTheme={resolvedTheme}
             shell={session.shell}
@@ -1194,6 +1249,43 @@ function clampAgentLaunchContextMenuPosition(
 
 function formatLaunchCommand(spec: ExternalAgentLaunchSpec): string {
   return agentLaunchDisplayCommand(spec) || spec.title;
+}
+
+function agentSignalStatusView(signal: TerminalAgentSignal): {
+  className: string;
+  label: string;
+  title: string;
+} {
+  switch (signal.status) {
+    case "working":
+      return {
+        className:
+          "border-sky-400/40 bg-sky-500/10 text-sky-700 dark:text-sky-200",
+        label: "工作中",
+        title: `${signal.agent} is working`,
+      };
+    case "attention":
+      return {
+        className:
+          "border-amber-400/45 bg-amber-500/10 text-amber-700 dark:text-amber-200",
+        label: "需处理",
+        title: `${signal.agent} needs attention`,
+      };
+    case "finished":
+      return {
+        className:
+          "border-emerald-400/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200",
+        label: "已完成",
+        title: `${signal.agent} finished`,
+      };
+    case "exited":
+      return {
+        className:
+          "border-[var(--border-subtle)] bg-[var(--surface-hover)] text-zinc-600 dark:text-zinc-300",
+        label: "已退出",
+        title: `${signal.agent} exited`,
+      };
+  }
 }
 
 function compactWorkspacePath(path: string): string {

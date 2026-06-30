@@ -1,0 +1,308 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-25T14:52:33.131Z",
+  "laneId": "lane-compose-aware-container-management-implementation",
+  "title": "Compose-aware 容器管理生产级实施",
+  "plan": ".updeng/docs/plan/active/PLAN-20260625-181734-compose-aware-container-management.md",
+  "branch": null,
+  "worktree": "C:/dev/rust/kerminal",
+  "changedPaths": [
+    ".updeng/docs/plan/active/PLAN-20260625-181734-compose-aware-container-management.md",
+    "src-tauri/src/commands/docker.rs",
+    "src-tauri/src/commands/registry.rs",
+    "src-tauri/src/models/docker.rs",
+    "src-tauri/src/services/docker_host_service.rs",
+    "src-tauri/src/services/docker_host_service/parsing.rs",
+    "src-tauri/src/services/docker_host_service/script.rs",
+    "src-tauri/src/services/docker_host_service/terminal_request.rs",
+    "src-tauri/tests/docker_host_service.rs",
+    "src/app/KerminalShell.tsx",
+    "src/app/__tests__/support/KerminalShell.testSupport.tsx",
+    "src/features/machine-sidebar/HostContainersDialog.test.tsx",
+    "src/features/machine-sidebar/HostContainersDialog.tsx",
+    "src/features/machine-sidebar/host-containers/HostContainerActionsMenu.tsx",
+    "src/features/machine-sidebar/host-containers/HostContainerInspector.tsx",
+    "src/features/machine-sidebar/host-containers/HostContainerList.tsx",
+    "src/features/machine-sidebar/host-containers/composeProjectModel.ts",
+    "src/features/machine-sidebar/host-containers/hostContainerDialogModel.test.ts",
+    "src/features/machine-sidebar/host-containers/hostContainerDialogModel.ts",
+    "src/features/workspace/workspaceStore.terminalOpen.test.ts",
+    "src/features/workspace/workspaceStore.ts",
+    "src/lib/dockerApi.test.ts",
+    "src/lib/dockerApi.ts"
+  ],
+  "trackedPatchPaths": [
+    "src-tauri/src/commands/docker.rs",
+    "src-tauri/src/commands/registry.rs",
+    "src-tauri/src/models/docker.rs",
+    "src-tauri/src/services/docker_host_service.rs",
+    "src-tauri/src/services/docker_host_service/parsing.rs",
+    "src-tauri/src/services/docker_host_service/script.rs",
+    "src-tauri/src/services/docker_host_service/terminal_request.rs",
+    "src/app/KerminalShell.tsx",
+    "src/features/workspace/workspaceStore.terminalOpen.test.ts",
+    "src/features/workspace/workspaceStore.ts",
+    "src/lib/dockerApi.test.ts",
+    "src/lib/dockerApi.ts"
+  ],
+  "untrackedPaths": [
+    ".updeng/docs/plan/active/PLAN-20260625-181734-compose-aware-container-management.md",
+    "src-tauri/tests/docker_host_service.rs",
+    "src/app/__tests__/support/KerminalShell.testSupport.tsx",
+    "src/features/machine-sidebar/HostContainersDialog.test.tsx",
+    "src/features/machine-sidebar/HostContainersDialog.tsx",
+    "src/features/machine-sidebar/host-containers/HostContainerActionsMenu.tsx",
+    "src/features/machine-sidebar/host-containers/HostContainerInspector.tsx",
+    "src/features/machine-sidebar/host-containers/HostContainerList.tsx",
+    "src/features/machine-sidebar/host-containers/composeProjectModel.ts",
+    "src/features/machine-sidebar/host-containers/hostContainerDialogModel.test.ts",
+    "src/features/machine-sidebar/host-containers/hostContainerDialogModel.ts"
+  ],
+  "untrackedSnapshotPath": ".updeng/docs/coordination/checkpoints/lane-compose-aware-container-management-implementation.untracked.json",
+  "untrackedSnapshotCount": 11,
+  "omittedSnapshotPaths": [],
+  "sharedPaths": [
+    "src-tauri/src/services/docker_host_service/terminal_request.rs",
+    "src/app/KerminalShell.tsx",
+    "src/features/workspace/workspaceStore.terminalOpen.test.ts",
+    "src/features/workspace/workspaceStore.ts",
+    "src/app/__tests__/support/KerminalShell.testSupport.tsx"
+  ],
+  "relatedConflicts": [
+    {
+      "path": "src-tauri/src/commands/docker.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-current-container-enter-password-fix",
+          "kind": "owned",
+          "pattern": "src-tauri/src/commands/docker.rs"
+        },
+        {
+          "id": "lane-compose-aware-container-management-implementation",
+          "kind": "owned",
+          "pattern": "src-tauri/src/commands/docker.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/commands/registry.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-current-container-enter-password-fix",
+          "kind": "shared",
+          "pattern": "src-tauri/src/commands/registry.rs"
+        },
+        {
+          "id": "lane-compose-aware-container-management-implementation",
+          "kind": "owned",
+          "pattern": "src-tauri/src/commands/registry.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/models/docker.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-current-container-enter-password-fix",
+          "kind": "shared",
+          "pattern": "src-tauri/src/models/docker.rs"
+        },
+        {
+          "id": "lane-compose-aware-container-management-implementation",
+          "kind": "owned",
+          "pattern": "src-tauri/src/models/docker.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/docker_host_service.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-current-container-enter-password-fix",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/docker_host_service.rs"
+        },
+        {
+          "id": "lane-compose-aware-container-management-implementation",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/docker_host_service.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/docker_host_service/parsing.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-current-container-enter-password-fix",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/docker_host_service/parsing.rs"
+        },
+        {
+          "id": "lane-compose-aware-container-management-implementation",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/docker_host_service/parsing.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/docker_host_service/script.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-current-container-enter-password-fix",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/docker_host_service/script.rs"
+        },
+        {
+          "id": "lane-compose-aware-container-management-implementation",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/docker_host_service/script.rs"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/src/services/docker_host_service/terminal_request.rs",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-current-container-enter-password-fix",
+          "kind": "owned",
+          "pattern": "src-tauri/src/services/docker_host_service/terminal_request.rs"
+        },
+        {
+          "id": "lane-compose-aware-container-management-implementation",
+          "kind": "shared",
+          "pattern": "src-tauri/src/services/docker_host_service/terminal_request.rs"
+        }
+      ]
+    },
+    {
+      "path": "src/app/KerminalShell.tsx",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-terminal-pane-drag-reorder",
+          "kind": "shared",
+          "pattern": "src/app/KerminalShell.tsx"
+        },
+        {
+          "id": "lane-current-left-terminal-layout-restore",
+          "kind": "owned",
+          "pattern": "src/app/KerminalShell.tsx"
+        },
+        {
+          "id": "lane-current-sidebar-layout-width-integrating",
+          "kind": "owned",
+          "pattern": "src/app/KerminalShell.tsx"
+        },
+        {
+          "id": "lane-compose-aware-container-management-implementation",
+          "kind": "shared",
+          "pattern": "src/app/KerminalShell.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/features/workspace/workspaceStore.terminalOpen.test.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-compose-aware-container-management-implementation",
+          "kind": "shared",
+          "pattern": "src/features/workspace/workspaceStore.terminalOpen.test.ts"
+        }
+      ]
+    },
+    {
+      "path": "src/features/workspace/workspaceStore.ts",
+      "status": " M",
+      "lanes": [
+        {
+          "id": "lane-terminal-pane-drag-reorder",
+          "kind": "shared",
+          "pattern": "src/features/workspace/workspaceStore.ts"
+        },
+        {
+          "id": "lane-current-left-terminal-layout-restore",
+          "kind": "owned",
+          "pattern": "src/features/workspace/workspaceStore.ts"
+        },
+        {
+          "id": "lane-compose-aware-container-management-implementation",
+          "kind": "shared",
+          "pattern": "src/features/workspace/workspaceStore.ts"
+        }
+      ]
+    },
+    {
+      "path": "src-tauri/tests/docker_host_service.rs",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-current-container-enter-password-fix",
+          "kind": "owned",
+          "pattern": "src-tauri/tests/docker_host_service.rs"
+        },
+        {
+          "id": "lane-compose-aware-container-management-implementation",
+          "kind": "owned",
+          "pattern": "src-tauri/tests/docker_host_service.rs"
+        }
+      ]
+    },
+    {
+      "path": "src/app/__tests__/support/KerminalShell.testSupport.tsx",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-compose-aware-container-management-implementation",
+          "kind": "shared",
+          "pattern": "src/app/__tests__/support/KerminalShell.testSupport.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/features/machine-sidebar/HostContainersDialog.tsx",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-current-left-terminal-layout-restore",
+          "kind": "shared",
+          "pattern": "src/features/machine-sidebar/HostContainersDialog.tsx"
+        },
+        {
+          "id": "lane-current-agent-sidebar-terminal-polish",
+          "kind": "shared",
+          "pattern": "src/features/machine-sidebar/HostContainersDialog.tsx"
+        },
+        {
+          "id": "lane-compose-aware-container-management-implementation",
+          "kind": "owned",
+          "pattern": "src/features/machine-sidebar/HostContainersDialog.tsx"
+        }
+      ]
+    },
+    {
+      "path": "src/features/machine-sidebar/host-containers/composeProjectModel.ts",
+      "status": "??",
+      "lanes": [
+        {
+          "id": "lane-current-left-terminal-layout-restore",
+          "kind": "shared",
+          "pattern": "src/features/machine-sidebar/host-containers/composeProjectModel.ts"
+        },
+        {
+          "id": "lane-compose-aware-container-management-implementation",
+          "kind": "owned",
+          "pattern": "src/features/machine-sidebar/host-containers/composeProjectModel.ts"
+        }
+      ]
+    }
+  ],
+  "note": "Patch contains tracked file diffs. Untracked and ignored workflow assets are captured in the untracked snapshot JSON when they are readable UTF-8 text."
+}

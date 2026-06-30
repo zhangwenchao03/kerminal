@@ -1,0 +1,744 @@
+{
+  "appUrl": "http://127.0.0.1:10780/",
+  "artifacts": {
+    "json": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\ai-run-timeline-system-light.json",
+    "screenshot": "C:\\dev\\rust\\kerminal\\.updeng\\docs\\verification\\ai-run-timeline-system-light.png"
+  },
+  "failures": [],
+  "pass": true,
+  "snapshot": {
+    "bodyText": "主机\n\n1 个分组 / 1 台主机\n\n搜索主机\nbwy\n1\nprod-api\nroot@172.16.40.104:22\nbwy\n设置\nprod-api\nprod-api\n正在连接 SSH 主机...\nroot@prod-api:~#  \n已连接\nKerminal Agent\n终端\n后台\nAI 当前绑定\n窗格会话\nprod-api\n槽位 pane:pane-ai-run-smoke\n主机 prod-api · 标签 prod-api · 窗格 prod-api\n当前对话 把 172.16.40.104 加到 bwy 分...\n把 172.16.40.104 加到 bwy 分组并连接\n请求已整理\n上下文已附加\nssh-ai-run-smoke-1\n模型已返回\nundefined · gpt-5.5\n回复渲染完成\n完成\n\n我会用 agent run 添加主机并在审批后继续。\n\n无终端上下文\nAgent run\nrun-ai-smoke\n已完成\n模型判断\n完成\n已解析 bwy 分组和 172.16.40.104。\n工具调用\n完成\nssh.ensure_connected 已批准执行\n工具结果\n完成\nSSH 连接已建立。\n最终回复\n完成\n已经完成 run timeline 验证。\n已经完成 run timeline 验证。\nAI 对话输入\n安全\n5.5",
+    "errors": [],
+    "finalVisible": true,
+    "invocations": [
+      {
+        "cmd": "settings_get",
+        "args": {}
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "kerminal://native-menu-action",
+          "target": {
+            "kind": "Any"
+          },
+          "handler": 1
+        }
+      },
+      {
+        "cmd": "profile_list",
+        "args": {}
+      },
+      {
+        "cmd": "remote_host_tree",
+        "args": {}
+      },
+      {
+        "cmd": "settings_get",
+        "args": {}
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "kerminal://native-menu-action",
+          "target": {
+            "kind": "Any"
+          },
+          "handler": 2
+        }
+      },
+      {
+        "cmd": "profile_list",
+        "args": {}
+      },
+      {
+        "cmd": "remote_host_tree",
+        "args": {}
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "kerminal://native-menu-action",
+          "target": {
+            "kind": "Any"
+          },
+          "handler": 3
+        }
+      },
+      {
+        "cmd": "ssh_create_session",
+        "args": {
+          "output": "__CHANNEL__:4",
+          "request": {
+            "cols": 112,
+            "hostId": "prod-api",
+            "rows": 37
+          }
+        }
+      },
+      {
+        "cmd": "terminal_session_binding_register",
+        "args": {
+          "metadata": {
+            "cwd": "/home/root",
+            "remoteHostId": "prod-api",
+            "targetRef": "ssh:host:prod-api:pane:pane-ai-run-smoke",
+            "targetKind": "ssh"
+          },
+          "paneId": "pane-ai-run-smoke",
+          "sessionId": "ssh-ai-run-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_session_binding_ready",
+        "args": {
+          "metadata": {
+            "cwd": "/home/root",
+            "remoteHostId": "prod-api",
+            "targetRef": "ssh:host:prod-api:pane:pane-ai-run-smoke",
+            "targetKind": "ssh"
+          },
+          "paneId": "pane-ai-run-smoke",
+          "sessionId": "ssh-ai-run-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_log_state",
+        "args": {
+          "sessionId": "ssh-ai-run-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_resize",
+        "args": {
+          "request": {
+            "cols": 112,
+            "rows": 37
+          },
+          "sessionId": "ssh-ai-run-smoke-1"
+        }
+      },
+      {
+        "cmd": "plugin:event|unlisten",
+        "args": {
+          "event": "kerminal://native-menu-action",
+          "eventId": "ai-run-smoke-event-listener"
+        }
+      },
+      {
+        "cmd": "plugin:event|unlisten",
+        "args": {
+          "event": "kerminal://native-menu-action",
+          "eventId": "ai-run-smoke-event-listener"
+        }
+      },
+      {
+        "cmd": "terminal_resize",
+        "args": {
+          "request": {
+            "cols": 112,
+            "rows": 37
+          },
+          "sessionId": "ssh-ai-run-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_resize",
+        "args": {
+          "request": {
+            "cols": 98,
+            "rows": 37
+          },
+          "sessionId": "ssh-ai-run-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_resize",
+        "args": {
+          "request": {
+            "cols": 89,
+            "rows": 37
+          },
+          "sessionId": "ssh-ai-run-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_resize",
+        "args": {
+          "request": {
+            "cols": 81,
+            "rows": 37
+          },
+          "sessionId": "ssh-ai-run-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_resize",
+        "args": {
+          "request": {
+            "cols": 76,
+            "rows": 37
+          },
+          "sessionId": "ssh-ai-run-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_resize",
+        "args": {
+          "request": {
+            "cols": 71,
+            "rows": 37
+          },
+          "sessionId": "ssh-ai-run-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_resize",
+        "args": {
+          "request": {
+            "cols": 68,
+            "rows": 37
+          },
+          "sessionId": "ssh-ai-run-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_resize",
+        "args": {
+          "request": {
+            "cols": 65,
+            "rows": 37
+          },
+          "sessionId": "ssh-ai-run-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_resize",
+        "args": {
+          "request": {
+            "cols": 62,
+            "rows": 37
+          },
+          "sessionId": "ssh-ai-run-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_resize",
+        "args": {
+          "request": {
+            "cols": 61,
+            "rows": 37
+          },
+          "sessionId": "ssh-ai-run-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_resize",
+        "args": {
+          "request": {
+            "cols": 60,
+            "rows": 37
+          },
+          "sessionId": "ssh-ai-run-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_resize",
+        "args": {
+          "request": {
+            "cols": 59,
+            "rows": 37
+          },
+          "sessionId": "ssh-ai-run-smoke-1"
+        }
+      },
+      {
+        "cmd": "terminal_resize",
+        "args": {
+          "request": {
+            "cols": 59,
+            "rows": 37
+          },
+          "sessionId": "ssh-ai-run-smoke-1"
+        }
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "tauri://drag-enter",
+          "target": {
+            "kind": "Webview",
+            "label": "main"
+          },
+          "handler": 5
+        }
+      },
+      {
+        "cmd": "ai_conversation_slot_get",
+        "args": {
+          "slotKey": "pane:pane-ai-run-smoke"
+        }
+      },
+      {
+        "cmd": "ai_tool_pending_list",
+        "args": {}
+      },
+      {
+        "cmd": "ai_terminal_context_snapshot",
+        "args": {
+          "request": {
+            "machineId": "prod-api",
+            "machineKind": "ssh",
+            "machineName": "prod-api",
+            "maxOutputBytes": 12288,
+            "paneId": "pane-ai-run-smoke",
+            "paneTitle": "prod-api",
+            "sessionId": "ssh-ai-run-smoke-1",
+            "tabId": "tab-ai-run-smoke",
+            "tabTitle": "prod-api"
+          }
+        }
+      },
+      {
+        "cmd": "llm_provider_list",
+        "args": {}
+      },
+      {
+        "cmd": "ai_tool_audit_list",
+        "args": {
+          "request": {
+            "limit": 20
+          }
+        }
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "tauri://drag-enter",
+          "target": {
+            "kind": "Webview",
+            "label": "main"
+          },
+          "handler": 6
+        }
+      },
+      {
+        "cmd": "ai_conversation_slot_get",
+        "args": {
+          "slotKey": "pane:pane-ai-run-smoke"
+        }
+      },
+      {
+        "cmd": "ai_tool_pending_list",
+        "args": {}
+      },
+      {
+        "cmd": "ai_terminal_context_snapshot",
+        "args": {
+          "request": {
+            "machineId": "prod-api",
+            "machineKind": "ssh",
+            "machineName": "prod-api",
+            "maxOutputBytes": 12288,
+            "paneId": "pane-ai-run-smoke",
+            "paneTitle": "prod-api",
+            "sessionId": "ssh-ai-run-smoke-1",
+            "tabId": "tab-ai-run-smoke",
+            "tabTitle": "prod-api"
+          }
+        }
+      },
+      {
+        "cmd": "llm_provider_list",
+        "args": {}
+      },
+      {
+        "cmd": "ai_tool_audit_list",
+        "args": {
+          "request": {
+            "limit": 20
+          }
+        }
+      },
+      {
+        "cmd": "ai_conversation_create",
+        "args": {
+          "request": {
+            "scopeKind": "lockedPane",
+            "scopeRefJson": "{\"kind\":\"pane\",\"machineId\":\"prod-api\",\"machineKind\":\"ssh\",\"machineName\":\"prod-api\",\"paneId\":\"pane-ai-run-smoke\",\"paneTitle\":\"prod-api\",\"tabId\":\"tab-ai-run-smoke\",\"tabTitle\":\"prod-api\"}",
+            "title": "prod-api",
+            "targetKey": "pane:pane-ai-run-smoke",
+            "hostId": "prod-api",
+            "tabId": "tab-ai-run-smoke",
+            "paneId": "pane-ai-run-smoke"
+          }
+        }
+      },
+      {
+        "cmd": "ai_conversation_create",
+        "args": {
+          "request": {
+            "scopeKind": "lockedPane",
+            "scopeRefJson": "{\"kind\":\"pane\",\"machineId\":\"prod-api\",\"machineKind\":\"ssh\",\"machineName\":\"prod-api\",\"paneId\":\"pane-ai-run-smoke\",\"paneTitle\":\"prod-api\",\"tabId\":\"tab-ai-run-smoke\",\"tabTitle\":\"prod-api\"}",
+            "title": "prod-api",
+            "targetKey": "pane:pane-ai-run-smoke",
+            "hostId": "prod-api",
+            "tabId": "tab-ai-run-smoke",
+            "paneId": "pane-ai-run-smoke"
+          }
+        }
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "tauri://drag-over",
+          "target": {
+            "kind": "Webview",
+            "label": "main"
+          },
+          "handler": 7
+        }
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "tauri://drag-over",
+          "target": {
+            "kind": "Webview",
+            "label": "main"
+          },
+          "handler": 8
+        }
+      },
+      {
+        "cmd": "ai_conversation_slot_set_active",
+        "args": {
+          "request": {
+            "slotKey": "pane:pane-ai-run-smoke",
+            "routeMode": "followWorkspaceTarget",
+            "targetRefJson": "{\"kind\":\"pane\",\"machineId\":\"prod-api\",\"machineKind\":\"ssh\",\"machineName\":\"prod-api\",\"paneId\":\"pane-ai-run-smoke\",\"paneTitle\":\"prod-api\",\"tabId\":\"tab-ai-run-smoke\",\"tabTitle\":\"prod-api\"}",
+            "activeConversationId": "conversation-ai-run-smoke"
+          }
+        }
+      },
+      {
+        "cmd": "ai_conversation_slot_set_active",
+        "args": {
+          "request": {
+            "slotKey": "pane:pane-ai-run-smoke",
+            "routeMode": "followWorkspaceTarget",
+            "targetRefJson": "{\"kind\":\"pane\",\"machineId\":\"prod-api\",\"machineKind\":\"ssh\",\"machineName\":\"prod-api\",\"paneId\":\"pane-ai-run-smoke\",\"paneTitle\":\"prod-api\",\"tabId\":\"tab-ai-run-smoke\",\"tabTitle\":\"prod-api\"}",
+            "activeConversationId": "conversation-ai-run-smoke"
+          }
+        }
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "tauri://drag-drop",
+          "target": {
+            "kind": "Webview",
+            "label": "main"
+          },
+          "handler": 9
+        }
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "tauri://drag-drop",
+          "target": {
+            "kind": "Webview",
+            "label": "main"
+          },
+          "handler": 10
+        }
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "tauri://drag-leave",
+          "target": {
+            "kind": "Webview",
+            "label": "main"
+          },
+          "handler": 11
+        }
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "tauri://drag-leave",
+          "target": {
+            "kind": "Webview",
+            "label": "main"
+          },
+          "handler": 12
+        }
+      },
+      {
+        "cmd": "plugin:event|unlisten",
+        "args": {
+          "event": "tauri://drag-enter",
+          "eventId": "ai-run-smoke-event-listener"
+        }
+      },
+      {
+        "cmd": "plugin:event|unlisten",
+        "args": {
+          "event": "tauri://drag-drop",
+          "eventId": "ai-run-smoke-event-listener"
+        }
+      },
+      {
+        "cmd": "plugin:event|unlisten",
+        "args": {
+          "event": "tauri://drag-over",
+          "eventId": "ai-run-smoke-event-listener"
+        }
+      },
+      {
+        "cmd": "plugin:event|unlisten",
+        "args": {
+          "event": "tauri://drag-leave",
+          "eventId": "ai-run-smoke-event-listener"
+        }
+      },
+      {
+        "cmd": "plugin:event|unlisten",
+        "args": {
+          "event": "tauri://drag-enter",
+          "eventId": "ai-run-smoke-event-listener"
+        }
+      },
+      {
+        "cmd": "plugin:event|unlisten",
+        "args": {
+          "event": "tauri://drag-drop",
+          "eventId": "ai-run-smoke-event-listener"
+        }
+      },
+      {
+        "cmd": "plugin:event|unlisten",
+        "args": {
+          "event": "tauri://drag-over",
+          "eventId": "ai-run-smoke-event-listener"
+        }
+      },
+      {
+        "cmd": "plugin:event|unlisten",
+        "args": {
+          "event": "tauri://drag-leave",
+          "eventId": "ai-run-smoke-event-listener"
+        }
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "tauri://drag-enter",
+          "target": {
+            "kind": "Webview",
+            "label": "main"
+          },
+          "handler": 13
+        }
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "tauri://drag-over",
+          "target": {
+            "kind": "Webview",
+            "label": "main"
+          },
+          "handler": 14
+        }
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "tauri://drag-drop",
+          "target": {
+            "kind": "Webview",
+            "label": "main"
+          },
+          "handler": 15
+        }
+      },
+      {
+        "cmd": "plugin:event|listen",
+        "args": {
+          "event": "tauri://drag-leave",
+          "target": {
+            "kind": "Webview",
+            "label": "main"
+          },
+          "handler": 16
+        }
+      },
+      {
+        "cmd": "ai_terminal_context_snapshot",
+        "args": {
+          "request": {
+            "machineId": "prod-api",
+            "machineKind": "ssh",
+            "machineName": "prod-api",
+            "maxOutputBytes": 12288,
+            "paneId": "pane-ai-run-smoke",
+            "paneTitle": "prod-api",
+            "sessionId": "ssh-ai-run-smoke-1",
+            "tabId": "tab-ai-run-smoke",
+            "tabTitle": "prod-api"
+          }
+        }
+      },
+      {
+        "cmd": "ai_context_snapshot_create",
+        "args": {
+          "request": {
+            "conversationId": "conversation-ai-run-smoke",
+            "scopeKind": "lockedPane",
+            "scopeRefJson": "{\"kind\":\"pane\",\"machineId\":\"prod-api\",\"machineKind\":\"ssh\",\"machineName\":\"prod-api\",\"paneId\":\"pane-ai-run-smoke\",\"paneTitle\":\"prod-api\",\"tabId\":\"tab-ai-run-smoke\",\"tabTitle\":\"prod-api\"}",
+            "routeMode": "followWorkspaceTarget",
+            "targetRefJson": "{\"kind\":\"pane\",\"machineId\":\"prod-api\",\"machineKind\":\"ssh\",\"machineName\":\"prod-api\",\"paneId\":\"pane-ai-run-smoke\",\"paneTitle\":\"prod-api\",\"tabId\":\"tab-ai-run-smoke\",\"tabTitle\":\"prod-api\"}",
+            "terminalContextJson": "{\"error\":null,\"request\":{\"machineId\":\"prod-api\",\"machineKind\":\"ssh\",\"machineName\":\"prod-api\",\"maxOutputBytes\":12288,\"paneId\":\"pane-ai-run-smoke\",\"paneTitle\":\"prod-api\",\"sessionId\":\"ssh-ai-run-smoke-1\",\"tabId\":\"tab-ai-run-smoke\",\"tabTitle\":\"prod-api\"},\"snapshot\":{\"generatedAt\":\"1782134207\",\"output\":{\"capturedBytes\":24,\"data\":\"root@prod-api:~# uptime\",\"maxBytes\":12288,\"truncated\":false},\"policy\":{\"includesFullHistory\":false,\"includesRecentOutput\":true,\"maxOutputBytes\":12288,\"mode\":\"currentTerminal\",\"secretRedaction\":true},\"redacted\":false,\"session\":{\"cols\":80,\"cwd\":\"/home/root\",\"id\":\"ssh-ai-run-smoke-1\",\"rows\":24,\"shell\":\"ssh\",\"status\":\"running\"},\"source\":{\"machineId\":\"prod-api\",\"machineKind\":\"ssh\",\"machineName\":\"prod-api\",\"maxOutputBytes\":12288,\"paneId\":\"pane-ai-run-smoke\",\"paneTitle\":\"prod-api\",\"sessionId\":\"ssh-ai-run-smoke-1\",\"tabId\":\"tab-ai-run-smoke\",\"tabTitle\":\"prod-api\"}}}",
+            "applicationContextJson": "{\"activeToolId\":\"ai\",\"activeTab\":{\"id\":\"tab-ai-run-smoke\",\"machineId\":\"prod-api\",\"title\":\"prod-api\"},\"focusedPane\":{\"id\":\"pane-ai-run-smoke\",\"machineId\":\"prod-api\",\"mode\":\"ssh\",\"sessionId\":\"ssh-ai-run-smoke-1\",\"status\":\"online\",\"title\":\"prod-api\"},\"selectedMachine\":{\"id\":\"prod-api\",\"kind\":\"ssh\",\"name\":\"prod-api\",\"production\":false,\"status\":\"offline\"}}",
+            "attachmentRefsJson": "[]",
+            "policyJson": "{\"executionVisibility\":\"terminal\",\"providerContextStrategy\":\"currentTerminal\",\"providerId\":\"provider-openai-smoke\",\"providerModel\":\"gpt-5.5\",\"providerName\":\"OpenAI Smoke\",\"source\":\"AiToolContent.submit\",\"terminalContextRequested\":true,\"terminalSnapshotCaptured\":true}"
+          }
+        }
+      },
+      {
+        "cmd": "ai_conversation_message_append",
+        "args": {
+          "request": {
+            "conversationId": "conversation-ai-run-smoke",
+            "role": "user",
+            "content": "把 172.16.40.104 加到 bwy 分组并连接",
+            "status": "complete",
+            "contextSnapshotId": "ctx-ai-run-smoke",
+            "attachments": []
+          }
+        }
+      },
+      {
+        "cmd": "ai_chat",
+        "args": {
+          "request": {
+            "conversationId": "conversation-ai-run-smoke",
+            "conversationSlotJson": "{\"createRequest\":{\"hostId\":\"prod-api\",\"paneId\":\"pane-ai-run-smoke\",\"scopeKind\":\"lockedPane\",\"scopeRefJson\":\"{\\\"kind\\\":\\\"pane\\\",\\\"machineId\\\":\\\"prod-api\\\",\\\"machineKind\\\":\\\"ssh\\\",\\\"machineName\\\":\\\"prod-api\\\",\\\"paneId\\\":\\\"pane-ai-run-smoke\\\",\\\"paneTitle\\\":\\\"prod-api\\\",\\\"tabId\\\":\\\"tab-ai-run-smoke\\\",\\\"tabTitle\\\":\\\"prod-api\\\"}\",\"tabId\":\"tab-ai-run-smoke\",\"targetKey\":\"pane:pane-ai-run-smoke\",\"title\":\"prod-api\"},\"routeMode\":\"followWorkspaceTarget\",\"slotKey\":\"pane:pane-ai-run-smoke\",\"targetRefJson\":\"{\\\"kind\\\":\\\"pane\\\",\\\"machineId\\\":\\\"prod-api\\\",\\\"machineKind\\\":\\\"ssh\\\",\\\"machineName\\\":\\\"prod-api\\\",\\\"paneId\\\":\\\"pane-ai-run-smoke\\\",\\\"paneTitle\\\":\\\"prod-api\\\",\\\"tabId\\\":\\\"tab-ai-run-smoke\\\",\\\"tabTitle\\\":\\\"prod-api\\\"}\"}",
+            "message": "把 172.16.40.104 加到 bwy 分组并连接",
+            "applicationContext": {
+              "activeToolId": "ai",
+              "activeTab": {
+                "id": "tab-ai-run-smoke"
+              },
+              "focusedPane": {
+                "id": "pane-ai-run-smoke"
+              },
+              "selectedMachine": {
+                "id": "prod-api"
+              }
+            },
+            "providerId": "provider-openai-smoke",
+            "terminalContext": {
+              "machineId": "prod-api",
+              "machineKind": "ssh",
+              "machineName": "prod-api",
+              "maxOutputBytes": 12288,
+              "paneId": "pane-ai-run-smoke",
+              "paneTitle": "prod-api",
+              "sessionId": "ssh-ai-run-smoke-1",
+              "tabId": "tab-ai-run-smoke",
+              "tabTitle": "prod-api"
+            },
+            "executionVisibility": "terminal"
+          }
+        }
+      },
+      {
+        "cmd": "ai_conversation_message_append",
+        "args": {
+          "request": {
+            "conversationId": "conversation-ai-run-smoke",
+            "role": "assistant",
+            "content": "我会用 agent run 添加主机并在审批后继续。",
+            "status": "complete",
+            "providerId": "provider-openai-smoke",
+            "model": "gpt-5.5",
+            "attachments": []
+          }
+        }
+      },
+      {
+        "cmd": "ai_agent_run_get",
+        "args": {
+          "request": {
+            "runId": "run-ai-smoke"
+          }
+        }
+      },
+      {
+        "cmd": "ai_tool_confirm",
+        "args": {
+          "request": {
+            "approved": true,
+            "auditContext": {
+              "assistantMessageId": "assistant-mqp8oz1d-kpyx53",
+              "contextSnapshotId": "ctx-ai-run-smoke",
+              "conversationId": "conversation-ai-run-smoke",
+              "hostId": "prod-api",
+              "paneId": "pane-ai-run-smoke",
+              "routeMode": "followWorkspaceTarget",
+              "scopeKind": "lockedHost",
+              "scopeRefJson": "{\"hostId\":\"prod-api\"}",
+              "tabId": "tab-ai-run-smoke",
+              "targetKey": "ssh:prod-api",
+              "targetRefJson": "{\"kind\":\"pane\",\"machineId\":\"prod-api\",\"machineKind\":\"ssh\",\"machineName\":\"prod-api\",\"paneId\":\"pane-ai-run-smoke\",\"paneTitle\":\"prod-api\",\"tabId\":\"tab-ai-run-smoke\",\"tabTitle\":\"prod-api\"}",
+              "userMessageId": "user-mqp8oz1c-5lnae9"
+            },
+            "invocationId": "pending-ai-run-smoke"
+          }
+        }
+      },
+      {
+        "cmd": "ai_agent_run_resume",
+        "args": {
+          "request": {
+            "audit": {
+              "id": "audit-ai-run-smoke"
+            },
+            "runId": "run-ai-smoke"
+          }
+        }
+      }
+    ],
+    "pendingApproved": true,
+    "resumeCalled": true,
+    "themeClass": "",
+    "themeData": "light",
+    "timelineRect": {
+      "bottom": 664,
+      "height": 292.5,
+      "left": 832,
+      "right": 1204,
+      "top": 371.5,
+      "width": 372
+    },
+    "timelineText": "Agent runrun-ai-smoke已完成模型判断完成已解析 bwy 分组和 172.16.40.104。工具调用完成ssh.ensure_connected 已批准执行工具结果完成SSH 连接已建立。最终回复完成已经完成 run timeline 验证。已经完成 run timeline 验证。",
+    "visibleButtons": [
+      "bwy1",
+      "prod-apiroot@172.16.40.104:22bwy",
+      "设置",
+      "prod-api",
+      "终端",
+      "后台",
+      "安全",
+      "5.5"
+    ]
+  },
+  "theme": {
+    "requested": "system",
+    "systemPrefers": "light"
+  }
+}

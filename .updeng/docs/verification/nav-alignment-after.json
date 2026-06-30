@@ -1,0 +1,52 @@
+{
+  "metricsAfterTab": {
+    "activeTab": {
+      "height": 20,
+      "left": 317,
+      "right": 415,
+      "top": 14,
+      "width": 98
+    },
+    "gapFromMainToActiveTab": 27,
+    "gapFromMainToPane": 8,
+    "gapFromSidebarToActiveTab": 35,
+    "main": {
+      "height": 720,
+      "left": 290,
+      "right": 1280,
+      "top": 0,
+      "width": 990
+    },
+    "pane": {
+      "height": 660,
+      "left": 298,
+      "right": 1208,
+      "top": 52,
+      "width": 910
+    },
+    "sidebar": {
+      "height": 676,
+      "left": 0,
+      "right": 282,
+      "top": 44,
+      "width": 282
+    },
+    "tabbar": {
+      "height": 36,
+      "left": 290,
+      "right": 1120,
+      "top": 6,
+      "width": 830
+    },
+    "theme": "dark",
+    "topbar": {
+      "height": 44,
+      "left": 290,
+      "right": 1280,
+      "top": 0,
+      "width": 990
+    },
+    "topbarPaddingLeft": "0px"
+  },
+  "logsAfterTab": []
+}

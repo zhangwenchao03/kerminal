@@ -1,0 +1,5 @@
+# @author kongweiguang
+interface:
+  display_name: "json-serialization"
+  short_description: "Rust and TypeScript JSON serialization contracts"
+  default_prompt: "Use $json-serialization when changing serde models, TypeScript DTOs, IPC payloads, or compatibility-sensitive JSON formats."
