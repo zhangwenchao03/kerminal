@@ -4,8 +4,8 @@
 
 use kerminal_lib::{
     commands::connection::rules::{
-        build_rdp_file_content, format_rdp_full_address, remote_host_from_create_request,
-        saved_rdp_password, test_tcp_endpoint,
+        build_rdp_file_content, encrypted_rdp_password, format_rdp_full_address,
+        remote_host_from_create_request, saved_rdp_password, test_tcp_endpoint,
     },
     models::{
         connection::RdpOpenRequest,
@@ -95,6 +95,24 @@ fn builds_rdp_content_with_core_fields() {
     assert!(content.contains("desktopwidth:i:1440"));
     assert!(content.contains("password 51:b:encrypted"));
     assert!(content.contains("prompt for credentials:i:0"));
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn encrypted_rdp_password_accepts_shell_sensitive_characters() {
+    let encrypted = encrypted_rdp_password(Some("pa'ss $word"))
+        .expect("encrypt rdp password")
+        .expect("encrypted blob");
+
+    assert!(!encrypted.trim().is_empty());
+}
+
+#[cfg(not(target_os = "windows"))]
+#[test]
+fn encrypted_rdp_password_is_windows_only() {
+    let encrypted = encrypted_rdp_password(Some("password")).expect("skip non-windows password");
+
+    assert!(encrypted.is_none());
 }
 
 #[test]

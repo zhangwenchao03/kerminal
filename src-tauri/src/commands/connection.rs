@@ -7,12 +7,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[cfg(target_os = "windows")]
-use std::io::Write;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use std::process::Command;
 #[cfg(target_os = "windows")]
 use std::process::Stdio;
+#[cfg(target_os = "windows")]
+use std::{io::Write, os::windows::process::CommandExt};
 
 use uuid::Uuid;
 
@@ -33,6 +33,9 @@ use crate::{
 use tauri::State;
 use tokio::net::TcpStream;
 
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 #[doc(hidden)]
 pub mod rules {
     use crate::{
@@ -46,6 +49,10 @@ pub mod rules {
 
     pub fn build_rdp_file_content(request: &RdpOpenRequest, password_blob: Option<&str>) -> String {
         super::build_rdp_file_content(request, password_blob)
+    }
+
+    pub fn encrypted_rdp_password(password: Option<&str>) -> AppResult<Option<String>> {
+        super::encrypted_rdp_password(password)
     }
 
     pub fn format_rdp_full_address(host: &str, port: u16) -> String {
@@ -480,7 +487,8 @@ fn encrypted_rdp_password(password: Option<&str>) -> AppResult<Option<String>> {
             return Ok(None);
         };
 
-        let mut child = Command::new("powershell")
+        let mut command = Command::new("powershell.exe");
+        command
             .args([
                 "-NoProfile",
                 "-NonInteractive",
@@ -490,8 +498,14 @@ fn encrypted_rdp_password(password: Option<&str>) -> AppResult<Option<String>> {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .spawn()
-            .map_err(AppError::Io)?;
+            .creation_flags(CREATE_NO_WINDOW);
+        // Avoid Windows PowerShell autoloading incompatible PowerShell 7 modules
+        // inherited from shells that prepend pwsh module paths.
+        if let Some(module_path) = windows_powershell_module_path() {
+            command.env("PSModulePath", module_path);
+        }
+
+        let mut child = command.spawn().map_err(AppError::Io)?;
 
         if let Some(stdin) = child.stdin.as_mut() {
             stdin.write_all(password.as_bytes()).map_err(AppError::Io)?;
@@ -517,11 +531,30 @@ fn encrypted_rdp_password(password: Option<&str>) -> AppResult<Option<String>> {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn windows_powershell_module_path() -> Option<String> {
+    let windir = std::env::var("WINDIR")
+        .or_else(|_| std::env::var("SystemRoot"))
+        .ok()?;
+    let mut paths = Vec::new();
+    if let Ok(user_profile) = std::env::var("USERPROFILE") {
+        paths.push(format!(
+            r"{user_profile}\Documents\WindowsPowerShell\Modules"
+        ));
+    }
+    if let Ok(program_files) = std::env::var("ProgramFiles") {
+        paths.push(format!(r"{program_files}\WindowsPowerShell\Modules"));
+    }
+    paths.push(format!(r"{windir}\system32\WindowsPowerShell\v1.0\Modules"));
+    Some(paths.join(";"))
+}
+
 fn launch_system_rdp_client(file_path: &std::path::Path) -> AppResult<()> {
     #[cfg(target_os = "windows")]
     {
         Command::new("mstsc")
             .arg(file_path)
+            .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map_err(AppError::Io)?;
         Ok(())
