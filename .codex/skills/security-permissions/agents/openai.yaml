@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "security-permissions"
-  short_description: "Tauri security, capabilities, and permissions"
-  default_prompt: "Use $security-permissions when changing capabilities, permissions, CSP, filesystem access, shell access, or security-sensitive behavior."

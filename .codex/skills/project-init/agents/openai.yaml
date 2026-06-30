@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "project-init"
-  short_description: "Tauri project initialization and setup"
-  default_prompt: "Use $project-init when creating, repairing, or standardizing Tauri project setup, configuration, and baseline structure."

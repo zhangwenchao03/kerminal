@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "collaborating-with-gemini"
-  short_description: "Controlled Gemini collaboration for Tauri work"
-  default_prompt: "Use $collaborating-with-gemini when a Tauri task explicitly needs Gemini-assisted review or implementation support."

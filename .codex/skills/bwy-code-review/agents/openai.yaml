@@ -1,4 +1,0 @@
-interface:
-  display_name: "实现评审能力"
-  short_description: "交付前检查实现差异中的缺陷回归和漏测"
-  default_prompt: "使用 bwy-code-review 评审这次实现差异。"

@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "领域上下文"
-  short_description: "澄清业务术语并维护项目共享语言文档"
-  default_prompt: "使用 $bwy-domain-context 澄清当前需求的领域词汇、边界和待确认问题，并沉淀到项目上下文文档。"

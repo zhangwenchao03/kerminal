@@ -1,4 +1,0 @@
-interface:
-  display_name: "前端开发能力"
-  short_description: "实现页面组件接口状态截图对照和浏览器验证流程"
-  default_prompt: "使用 bwy-frontend-development 实现这个前端需求；涉及 UI 时运行真实页面、截图并对照原型或参考界面。"

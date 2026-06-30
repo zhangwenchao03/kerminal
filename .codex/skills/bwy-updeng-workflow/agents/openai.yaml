@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "Updeng 工作流总控"
-  short_description: "任务分类、技能编排、任务台账、验证门禁、安全护栏和自进化信号"
-  default_prompt: "使用 bwy-updeng-workflow 自动完成任务分类、技能路由、流程深度判断、真相源回读、任务台账推进、安全护栏和完成门禁；direct 简单任务直接处理并验证，普通持续任务走 plan，高风险/强审计任务在 plan 上叠加 audit package，再调用专项技能推进。"

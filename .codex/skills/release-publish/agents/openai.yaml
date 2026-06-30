@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "release-publish"
-  short_description: "Tauri release and publishing workflow"
-  default_prompt: "Use $release-publish when preparing builds, release notes, signing, publishing, or distribution changes for a Tauri app."

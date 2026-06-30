@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "技术决策记录"
-  short_description: "记录架构、依赖、数据、安全和发布方案的 ADR 取舍"
-  default_prompt: "使用 bwy-tech-decision 梳理技术选型或架构取舍，输出包含背景、备选方案、决策、影响、回滚和验证的 ADR。"

@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "通用开发规范"
-  short_description: "跨语言可复用的文档治理、中文注释、文件规模、测试覆盖和对外边界开发规范"
-  default_prompt: "Use $general-development-standards to keep this change aligned with the project-wide development standards, including file-size, test coverage, documentation, and external-boundary rules."

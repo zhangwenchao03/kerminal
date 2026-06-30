@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "架构深化评估"
-  short_description: "发现深模块机会、测试缝隙和重构切片"
-  default_prompt: "使用 $bwy-architecture-deepening 分析当前代码的模块深度、耦合、测试缝隙和可执行重构方案。"

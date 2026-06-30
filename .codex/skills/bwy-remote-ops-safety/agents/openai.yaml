@@ -1,4 +1,0 @@
-interface:
-  display_name: "远程安全排查"
-  short_description: "支持安全模式、allowlist、审计和 SSH 配置的远程排查规范"
-  default_prompt: "使用 bwy-remote-ops-safety 安全排查服务器问题；非危险操作可执行，危险操作先确认，并按 target 安全模式执行。"

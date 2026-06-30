@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "Rust/Tauri 开发规范"
-  short_description: "Rust 官方 Style/API Guidelines、Tauri 边界、错误处理、rustdoc、clippy、测试位置和文件规模规范"
-  default_prompt: "使用 rust-tauri-development-standards 实现或评审 Rust/Tauri 变更，遵守 Rust 官方风格、API 设计、错误处理、rustdoc、clippy、测试位置、文件规模和当前项目边界。"

@@ -1,4 +1,0 @@
-interface:
-  display_name: "项目技能维护"
-  short_description: "创建更新项目级技能、引用资料和脚本规则"
-  default_prompt: "使用 bwy-project-skill-maintenance 维护当前仓库 skills。"

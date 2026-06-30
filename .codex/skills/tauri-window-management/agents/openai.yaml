@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "tauri-window-management"
-  short_description: "Tauri window lifecycle and multi-window behavior"
-  default_prompt: "Use $tauri-window-management when changing windows, trays, focus, visibility, sizing, or multi-window coordination."

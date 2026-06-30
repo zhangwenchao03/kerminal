@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "tauri-plugins"
-  short_description: "Tauri plugin usage and integration"
-  default_prompt: "Use $tauri-plugins when adding, configuring, or debugging Tauri plugins and their permissions."

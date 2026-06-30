@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "store-management"
-  short_description: "Tauri app state and store management"
-  default_prompt: "Use $store-management when changing frontend stores, Rust state, persistence, synchronization, or cross-window state behavior."

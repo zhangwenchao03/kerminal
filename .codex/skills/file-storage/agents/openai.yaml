@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "file-storage"
-  short_description: "Tauri filesystem and storage guidance"
-  default_prompt: "Use $file-storage when implementing file IO, app data storage, path handling, imports, exports, or persistence behavior."

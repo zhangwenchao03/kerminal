@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "需求发现与头脑风暴"
-  short_description: "把模糊需求收敛成目标、方案和下一步"
-  default_prompt: "使用 $bwy-requirement-discovery 先澄清这个模糊需求，给出关键问题、推荐答案、候选方案和下一步。"

@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "tauri-events"
-  short_description: "Tauri event emission and listeners"
-  default_prompt: "Use $tauri-events when working with event emission, listeners, subscriptions, cleanup, and cross-window messaging."

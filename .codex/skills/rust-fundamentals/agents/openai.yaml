@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "rust-fundamentals"
-  short_description: "Rust implementation fundamentals for Tauri"
-  default_prompt: "Use $rust-fundamentals when writing or reviewing Rust ownership, error handling, async, traits, modules, and tests."

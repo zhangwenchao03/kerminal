@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "测试先行开发"
-  short_description: "按红绿重构和垂直切片实现可验证行为"
-  default_prompt: "使用 $bwy-tdd-development 先写行为测试，再按一个 vertical slice 一个循环实现并验证。"

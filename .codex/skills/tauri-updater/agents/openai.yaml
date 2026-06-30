@@ -1,5 +1,0 @@
-# @author kongweiguang
-interface:
-  display_name: "tauri-updater"
-  short_description: "Tauri updater configuration and release flow"
-  default_prompt: "Use $tauri-updater when changing update endpoints, signing keys, update metadata, or in-app update behavior."
