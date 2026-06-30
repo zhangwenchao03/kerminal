@@ -30,6 +30,7 @@ dist-ssr
 *.sw?
 
 # BEGIN UPDENG
+.updeng/
 .updeng/docs/config/remote-servers.json
 .updeng/docs/context/index/
 .updeng/docs/coordination/status.json
