@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-06-30T10:49:52.376Z",
+  "updatedAt": "2026-06-30T11:04:03.000Z",
   "policy": {
     "defaultIsolation": "worktree",
     "sameFilePolicy": "warn-and-sync",
@@ -8,6 +8,32 @@
     "evolutionPolicy": "用户重复反馈、工作流缺口、AI 工具/验证失败和 Stop 收口缺口写入候选池；正式 skill/hook 修改必须人工可审查。"
   },
   "lanes": [
+    {
+      "id": "lane-release-0-2-3",
+      "status": "active",
+      "owner": "ai",
+      "threadId": "019f1823-95c7-7a63-8b70-0dff090b7476",
+      "branch": "main",
+      "worktree": "C:\\dev\\rust\\kerminal",
+      "plan": ".updeng/docs/plan/active/PLAN-20260630-190403-release-0-2-3.md",
+      "ownedPaths": [
+        ".updeng/docs/plan/active/PLAN-20260630-190403-release-0-2-3.md",
+        "package.json",
+        "package-lock.json",
+        "src-tauri/Cargo.toml",
+        "src-tauri/Cargo.lock",
+        "src-tauri/tauri.conf.json"
+      ],
+      "sharedPaths": [
+        ".updeng/docs/plan/INDEX.md",
+        ".updeng/docs/in-progress.md",
+        ".updeng/docs/coordination/lanes.json",
+        ".github/workflows/release.yml"
+      ],
+      "syncProtocol": "Release lane owns the 0.2.3 version bump, release plan, tag push, GitHub Actions release verification, and Release publication. Stage explicit paths only; do not include runtime metrics JSONL or generated coordination status snapshots.",
+      "createdAt": "2026-06-30T19:04:03+08:00",
+      "updatedAt": "2026-06-30T19:04:03+08:00"
+    },
     {
       "id": "lane-pty-stability-hardening-20260630",
       "status": "done",

@@ -2,11 +2,11 @@
 
 只记录当前仍在实施的 Updeng 事项。已完成、阻塞、过期或仅保留历史记录的计划不要放在这里；状态以 `plan/INDEX.md`、计划文件所在目录和 `coordination/lanes.json` 为准。
 
-整理时间：2026-06-30T18:13:19+08:00。
+整理时间：2026-06-30T19:04:03+08:00。
 
 ## Active
 
-- 当前没有 active 人工计划。
+- [发布 0.2.3 版本](plan/active/PLAN-20260630-190403-release-0-2-3.md)：同步版本、提交 release commit、推送 `v0.2.3` tag，并核对 GitHub Release assets/latest.json。
 
 ## Blocked
 
