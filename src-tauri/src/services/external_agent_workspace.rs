@@ -2,6 +2,8 @@
 //!
 //! @author kongweiguang
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::{
     collections::BTreeMap,
     env,
@@ -41,6 +43,8 @@ const AGENT_SESSION_TERMINAL_SNAPSHOT_BYTES: usize = 24 * 1024;
 const WINDOWS_AGENT_PWSH: &str = "pwsh.exe";
 #[cfg(windows)]
 const WINDOWS_AGENT_POWERSHELL: &str = "powershell.exe";
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 pub(crate) const CONFIG_REFERENCE_BODY: &str = r#"<!-- @author kongweiguang -->
 
 # Kerminal Configuration Guide
@@ -1941,6 +1945,7 @@ fn preferred_windows_agent_shell() -> Option<&'static str> {
 #[cfg(windows)]
 fn windows_agent_shell_available(shell: &str) -> bool {
     Command::new(shell)
+        .creation_flags(CREATE_NO_WINDOW)
         .arg("-NoLogo")
         .arg("-NoProfile")
         .arg("-Command")
