@@ -206,6 +206,13 @@ function routeMatches(prompt, cwd) {
   return [matches, depth];
 }
 
+function workflowDepthDisplay(depth) {
+  if (depth === 'planned') return 'plan';
+  if (depth === 'high-risk') return 'plan + audit package';
+  if (depth === 'worker-assisted') return 'plan + lane';
+  return depth;
+}
+
 function capturePromptTextEnabled(cwd) {
   let text = '';
   try {
@@ -594,6 +601,7 @@ function main() {
     : '- 无额外命中技能';
   const topRuleText = TOP_RULES.map((rule) => `- ${rule}`).join('\n');
   const laneText = activeLaneSummary(cwd);
+  const workflowDepthText = workflowDepthDisplay(workflowDepth);
 
   let collaborationSwitchText = 'Claude worker 总开关未开启：默认由 Codex 直接开发；只有用户明确要求 Claude Code/多模型协作时才评估外部协作技能。';
   if (claudeWorkerEnabled) collaborationSwitchText = 'Claude worker 总开关已开启：开发/修改任务默认评估并优先采用 Codex leader + Claude Code worker。';
@@ -607,9 +615,10 @@ ${topRuleText}
 - 只评估实际项目 \`.codex/skills\` 下存在的技能；本仓库内容是模板，映射到项目后以项目内 \`.codex/skills\` 为准。
 - 先读完必载和命中技能的 \`SKILL.md\`，再执行 Bash、shell、apply_patch 或搜索命令。
 - 不在上下文中展开全部 skill description；除必载技能外，只在用户明确点名或任务语义强命中时读取对应 \`SKILL.md\`。
-- 智能执行：direct 深度表示简单回答、单文件小改、文案/配置微调或明确的小修复；无需创建 change、计划文档或反复问答，直接处理，完成时说明验证或跳过原因。
-- planned/high-risk/evolution 深度才需要创建或维护 Updeng 证据链；需求明确且低风险时不要为了流程向用户索要确认。
-- 并行 lane 可见性：planned/high-risk/evolution 任务开始实现前必须登记 \`.updeng/docs/coordination/lanes.json\`；写入 shared path 前先读 \`status.md\`、对方计划、最新文件、diff 和最近 checkpoint。
+- 智能执行：direct 表示简单回答、单文件小改、文案/配置微调或明确的小修复；无需创建 plan 或审计包，直接处理，完成时说明验证或跳过原因。
+- plan 是默认证据链：普通持续任务维护 \`.updeng/docs/plan/INDEX.md\` 和当前 plan 文件；需求明确且低风险时不要为了流程向用户索要确认。
+- audit package 只按需叠加：高风险、发布、迁移、公共契约、生产或强审计任务，才在当前 plan 上创建或维护 \`.updeng/docs/changes/<change-id>/\`。
+- lane 可见性：多个 active plan、长任务、共享路径、脏工作区或 worker-assisted 任务开始实现前必须登记 \`.updeng/docs/coordination/lanes.json\`；写入 shared path 前先读 \`status.md\`、对方计划、最新文件、diff 和最近 checkpoint。
 - ${collaborationSwitchText}
 ${commandRoute.command ? `- 本轮由 \`${commandRoute.command}\` 显式触发技能路由，按去掉命令前缀后的需求处理。` : '- 本轮按默认技能路由处理，用户无需显式提到 Updeng。'}
 
@@ -622,12 +631,12 @@ ${mandatoryText}
 建议命中技能：
 ${matchedText}
 
-建议流程深度：\`${workflowDepth}\`
+建议流程层：\`${workflowDepthText}\`
 
 输出要求：
 1. 先列出必载技能，再列出命中技能，格式：\`技能名: 理由\`。
 2. 没有额外命中时写“无额外命中技能”。
-3. 说明本轮流程深度是 direct、planned、high-risk、worker-assisted 还是 evolution。
+3. 说明本轮流程层是 direct、plan、plan + lane、plan + audit package 还是 evolution。
 4. 禁止引用项目外技能，禁止边读边执行。`);
 }
 

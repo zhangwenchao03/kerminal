@@ -35,7 +35,7 @@
 
 ## 并行任务协作约束
 
-- 多个 Codex 会话可以并行开发；多个 active plan、长任务、共享路径、脏工作区、worker-assisted、evolution 或 formal change 都必须登记一个 lane，入口为 `.updeng/docs/coordination/lanes.json`；计划、分支/worktree、owner session、主要写入路径、共享热点文件和同步口径必须可见。
+- 多个 Codex 会话可以并行开发；多个 active plan、长任务、共享路径、脏工作区、worker-assisted、evolution 或 audit package 都必须登记一个 lane，入口为 `.updeng/docs/coordination/lanes.json`；计划、分支/worktree、owner session、主要写入路径、共享热点文件和同步口径必须可见。
 - 默认使用独立 worktree/分支承载新并行任务；当前已有脏工作区无法立即迁移时，必须先登记 lane 并把共享文件列入 `sharedPaths`，再继续最小合并。
 - 修改别人 lane 的 `ownedPaths` 或任何 `sharedPaths` 前，先读取对应计划、最新文件和当前 diff；只做最小兼容修改，并在本轮 Round Log 或 coordination ledger 记录同步结果。
 - 同一文件并行修改不要求停工，但要求可见：不要静默覆盖对方改动，不要宽泛格式化共享文件，不要把“顺手修”混进共享热点文件。
@@ -55,14 +55,14 @@
 
 ### 工作流边界
 
-- 每轮开工先重读真相源：`AGENTS.md`、`README.md`、`.updeng/docs/README.md`、`.updeng/docs/in-progress.md`、`.updeng/docs/BLOCKERS.md`、`.updeng/docs/plan/INDEX.md`、当前 `plan/active/*.md`、`coordination/status.md`，以及正式 change 的 `proposal.md`、`specs/*/spec.md`、`design.md`、`tasks.md`、`verification.md|json`；不要只依赖对话记忆。
+- 每轮开工先重读真相源：`AGENTS.md`、`README.md`、`.updeng/docs/README.md`、`.updeng/docs/in-progress.md`、`.updeng/docs/BLOCKERS.md`、`.updeng/docs/plan/INDEX.md`、当前 `plan/active/*.md`、`coordination/status.md`，以及审计包的 `proposal.md`、`specs/*/spec.md`、`design.md`、`tasks.md`、`verification.md|json`；不要只依赖对话记忆。
 - direct 任务：范围清楚、风险低、无跨模块影响时，直接实现并运行必要验证。
 - plan 是默认主流程：普通功能、跨文件修改、缺陷修复、技能维护和持续推进任务，先明确目标、影响范围、验证方式和回滚口径，再登记 `.updeng/docs/plan/INDEX.md` 和对应状态目录。
-- formal change 是按需审计流程：只有数据库、权限、安全、生产、发布、公共契约、迁移、强审计或长期多人协作任务，才使用 `updeng new -> explore -> spec -> design -> plan -> build -> verify -> archive`。
+- audit package 是按需审计包，不是和 plan 并列的任务类型：只有数据库、权限、安全、生产、发布、公共契约、迁移、强审计或长期多人协作任务，才在当前 plan 上叠加 `updeng new -> explore -> spec -> design -> plan -> build -> verify -> archive`。
 - 人工计划不平铺堆在 `.updeng/docs/plan/`：先更新 `.updeng/docs/plan/INDEX.md`，文件按状态放入 `plan/next/`、`plan/active/`、`plan/blocked/` 或 `plan/done/`，文件名使用 `PLAN-YYYYMMDD-HHMMSS-<slug>.md`。
 - 多个 active plan、长任务、共享文件、脏工作区或 worker-assisted 任务必须登记 `.updeng/docs/coordination/lanes.json`，并读取/刷新 `coordination/status.md`；每个 changed path 要么归属到 lane，要么作为 unclaimed 风险汇报。
-- 正式 change 使用 `.updeng/docs/changes/<change-id>/tasks.md` 作为审计台账；人工计划使用 `plan/active/*.md` 作为默认任务台账。每轮挑第一个依赖满足的未勾选 `TASK-*`，只做一个最小可提交单元，完成后勾选并补 Round Log。
-- subagent/batch 工作用 `updeng sdd task-brief`、worker report、`updeng sdd review-package` 和 `updeng sdd progress` 进行文件交接；`.updeng/tmp/sdd/` 是被忽略 scratch，正式结论写回 plan 或 change artifact。
+- audit package 使用 `.updeng/docs/changes/<change-id>/tasks.md` 作为审计台账；人工计划使用 `plan/active/*.md` 作为默认任务台账。每轮挑第一个依赖满足的未勾选 `TASK-*`，只做一个最小可提交单元，完成后勾选并补 Round Log。
+- subagent/batch 工作用 `updeng sdd task-brief`、worker report、`updeng sdd review-package` 和 `updeng sdd progress` 进行文件交接；`.updeng/tmp/sdd/` 是被忽略 scratch，正式结论写回 plan 或 audit package。
 - 任务实现后先运行对应验证，验证通过后才提交或记录未提交原因；同一任务连续 2 轮验证不绿，或连续 3 轮无实质进展，停下汇报阻塞。
 - UI/前端/桌面窗口变更必须运行真实界面并截图；有原型、设计图、参考 HTML 或旧页面时并排比对，关键视觉差异未消除前不提交。
 - 自主循环必须有上限：默认最多 3 轮无实质进展即停，同一任务最多 2 轮修不绿即停；用户或计划设置了 token/成本/轮数上限时，以更严格者为准。
@@ -72,7 +72,7 @@
 
 - 人工可读文档写入 `.updeng/docs/`，包括计划、业务事实、决策、完成记录和运行说明。
 - `.updeng/docs/plan/INDEX.md` 是人工计划入口；`created_at` 表示生成顺序，`started_at` 表示执行顺序，`completed_at` 表示收口时间。
-- `.updeng/docs/changes/` 不是普通任务默认入口；它只承载升级后的 formal change。不要因为计划存在就补建空 change。
+- `.updeng/docs/changes/` 不是普通任务默认入口；它只承载按需叠加的审计包。不要因为计划存在就补建空审计包。
 - 低风险、可逆的默认选择和待确认点写入 `.updeng/docs/BLOCKERS.md` 或任务 Round Log；不可逆、合规、安全、架构、生产、凭据或外部授权问题必须停下询问。
 - 需求发现和头脑风暴结论写入 `.updeng/docs/discovery/`；共享语言写入 `.updeng/docs/domain/`；没有外部 issue tracker 时，PRD、issue 切片和 agent brief 写入 `.updeng/docs/issues/`。
 - 机器状态、事件、上下文、worker 结果、审计、指标和自进化提案写入 `.updeng/docs/`。
