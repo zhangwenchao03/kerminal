@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-06-30T11:04:03.000Z",
+  "updatedAt": "2026-06-30T11:32:58.000Z",
   "policy": {
     "defaultIsolation": "worktree",
     "sameFilePolicy": "warn-and-sync",
@@ -10,14 +10,14 @@
   "lanes": [
     {
       "id": "lane-release-0-2-3",
-      "status": "active",
+      "status": "done",
       "owner": "ai",
       "threadId": "019f1823-95c7-7a63-8b70-0dff090b7476",
       "branch": "main",
       "worktree": "C:\\dev\\rust\\kerminal",
-      "plan": ".updeng/docs/plan/active/PLAN-20260630-190403-release-0-2-3.md",
+      "plan": ".updeng/docs/plan/done/PLAN-20260630-190403-release-0-2-3.md",
       "ownedPaths": [
-        ".updeng/docs/plan/active/PLAN-20260630-190403-release-0-2-3.md",
+        ".updeng/docs/plan/done/PLAN-20260630-190403-release-0-2-3.md",
         "package.json",
         "package-lock.json",
         "src-tauri/Cargo.toml",
@@ -32,7 +32,9 @@
       ],
       "syncProtocol": "Release lane owns the 0.2.3 version bump, release plan, tag push, GitHub Actions release verification, and Release publication. Stage explicit paths only; do not include runtime metrics JSONL or generated coordination status snapshots.",
       "createdAt": "2026-06-30T19:04:03+08:00",
-      "updatedAt": "2026-06-30T19:04:03+08:00"
+      "updatedAt": "2026-06-30T19:32:58+08:00",
+      "checkpoint": "完成：bf343097 PTY 稳定性加固提交、e9f30da5 release commit、v0.2.3 tag、origin/main/tag push、GitHub Actions Release run 28440144981 success、公开 Release assets/latest.json/updater HEAD 核验通过。残余 main branch CI：Updeng Validate 因 @kong/updeng@0.1.0 npm 404 失败，Native SFTP Cross Platform 因 Windows frontend SFTP transfer request conflictPolicy=overwrite 与旧断言不匹配失败；两者非 tag Release blocker。",
+      "completedAt": "2026-06-30T19:32:58+08:00"
     },
     {
       "id": "lane-pty-stability-hardening-20260630",

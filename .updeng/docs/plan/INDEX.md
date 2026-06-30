@@ -2,13 +2,13 @@
 
 本文件只做人工计划总览入口。执行细节写入对应计划的 Round Log；完成、阻塞或删除时同步状态目录和下表，避免在索引里堆流水账。
 
-整理时间：2026-06-30T19:04:03+08:00。
+整理时间：2026-06-30T19:32:58+08:00。
 
 ## Active
 
 | 创建时间 | 计划 | 当前状态 | 下一步 |
 | --- | --- | --- | --- |
-| 2026-06-30T19:04:03+08:00 | [发布 0.2.3 版本](active/PLAN-20260630-190403-release-0-2-3.md) | active | 同步版本到 `0.2.3`，提交 release commit，推送 tag 并核对 GitHub Release。 |
+| - | 当前没有 active 人工计划。 | - | - |
 
 ## Next
 
@@ -30,6 +30,7 @@
 
 | 完成时间 | 创建时间 | 计划 | 结果 |
 | --- | --- | --- | --- |
+| 2026-06-30T19:32:58+08:00 | 2026-06-30T19:04:03+08:00 | [发布 0.2.3 版本](done/PLAN-20260630-190403-release-0-2-3.md) | 完成 `bf343097` PTY 稳定性加固提交、`e9f30da5 release: v0.2.3` commit、`v0.2.3` tag、`origin/main`/tag push、GitHub Actions Release run `28440144981` 和公开 Release；13 个 assets 完整，`latest.json` 为 `0.2.3`，9 个平台条目/5 个唯一 updater URL HEAD 均为 200。残余：`main` 分支 `Updeng Validate` 和 `Native SFTP Cross Platform` 独立 workflow 失败，非 tag Release blocker。 |
 | 2026-06-30T18:13:19+08:00 | 2026-06-30T10:32:12+08:00 | [PTY 稳定性与健壮性生产级加固方案](done/PLAN-20260630-103212-pty-stability-hardening.md) | 完成 Terax-inspired PTY 稳定性加固：输出 coalescing/backpressure/final tail、Windows process guard、orphan reaper、shell integration、OSC trust、Agent signal、DA/DSR responder、输入性能基线、本地 shell/TUI 自动化矩阵和 Agent CLI HITL harness；用户 UI 复验确认 Codex `Alt+Enter` 换行/图片粘贴正常，Claude `Ctrl+J` 换行/`Alt+V` 图片粘贴正常，CLI 快捷键差异不作为 Kerminal PTY blocker。 |
 | 2026-06-30T09:57:25+08:00 | 2026-06-30T09:31:04+08:00 | [发布 0.2.2 版本](done/PLAN-20260630-093104-release-0-2-2.md) | 完成 Windows RDP 密码加密修复提交、`release: v0.2.2` commit、`v0.2.2` tag、`origin/main`/tag push、GitHub Actions release 矩阵和公开 Release；13 个 assets 完整，`latest.json` 为 `0.2.2` 且 5 个唯一 updater URL HEAD 均为 200。 |
 | 2026-06-30T00:38:56+08:00 | 2026-06-30T00:12:06+08:00 | [发布 0.2.1 版本](done/PLAN-20260630-001206-release-0-2-1.md) | 完成 `release: v0.2.1` commit、`v0.2.1` tag、`origin/main`/tag push、GitHub Actions release 矩阵和公开 Release；13 个 assets 完整，`latest.json` 为 `0.2.1` 且 5 个唯一 updater URL HEAD 均为 200。 |
@@ -39,7 +40,6 @@
 | 2026-06-29T19:00:00+08:00 | 2026-06-26T23:36:45+08:00 | [进入 TUI 时命令块色条回归修复](done/PLAN-20260626-233645-terminal-command-rail-tui-fix.md) | `buildTerminalCommandBlockViews(...)` 在 alternate buffer 下返回空视图，只隐藏 rail 不清空命令块数据；`npm run test -- --run src/features/terminal/terminalCommandBlocks.test.ts` 通过，最终 build 随文档清理收口执行。 |
 | 2026-06-29T15:22:47+08:00 | 2026-06-29T12:42:29+08:00 | [兼容性代码清理](done/PLAN-20260629-124229-compat-cleanup.md) | 清理 SSH 凭据 legacy plaintext secrets、迁移工具、旧字段 fallback、SFTP/port-forward/settings/workspace/Compose/Docker/dialog/drag 等旧契约兼容路径；剩余 compat 命中仅为当前协议/平台能力或“不迁移旧 SQLite”说明。Rust/前端聚焦测试、rustfmt、build、dev server 和 `tauri:dev` 启动通过。 |
 | 2026-06-29T10:48:45+08:00 | 2026-06-29T10:14:37+08:00 | [设置同步页 Git 与密钥极简改造](done/PLAN-20260629-101437-settings-sync-git-key-simplification.md) | 设置同步页收敛为 Git 初始化状态、初始化后“同步”按钮、密钥路径、密钥内容编辑和“保存”按钮；后端新增受控 pull/rebase + 本地 commit 同步命令、密钥读取/保存校验，并显式排除本地专用密钥路径进入提交。前端/Rust 聚焦测试、build、dev server 三主题和窄视口截图通过；最终加固后 `tauri:dev` 隔离 target 增量启动通过，宽过滤复跑受 Windows 页面文件不足/链接卡住影响未完成。 |
-| 2026-06-29T10:32:59+08:00 | 2026-06-29T10:04:10+08:00 | [设置通知入口点击修复](done/PLAN-20260629-100410-settings-notification-nav-fix.md) | 修复桌面通知设置行左侧文案区域不可点击，并补齐 Rust `AppSettings.desktopNotifications` 持久化模型，避免 `settings_update` 返回值把开关冲回默认值；前端控件测试、Rust settings service、build、dev server 冒烟和 `tauri:dev` 启动通过。 |
 
 ## Removed
 
