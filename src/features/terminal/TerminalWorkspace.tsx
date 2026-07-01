@@ -129,6 +129,7 @@ interface TerminalWorkspaceProps {
     groupId: string,
     preference: TerminalTabGroupPreference,
   ) => void;
+  leftTitleBarInset?: number;
   reserveRightTitleBarControls?: boolean;
   resolvePaneLines?: (paneId: string) => string[];
   resolvePaneOutputHistory?: (paneId: string) => string | undefined;
@@ -147,6 +148,7 @@ export function TerminalWorkspace({
   contentRightInset = 0,
   focusedPaneId,
   interfaceDensity = "comfortable",
+  leftTitleBarInset = 0,
   machineGroups = [],
   onBroadcastCommand,
   onBroadcastDraftChange,
@@ -276,6 +278,10 @@ export function TerminalWorkspace({
   const contentInsetStyle =
     contentRightInset > 0
       ? ({ marginRight: contentRightInset } satisfies CSSProperties)
+      : undefined;
+  const tabBarStyle =
+    leftTitleBarInset > 0
+      ? ({ paddingLeft: leftTitleBarInset } satisfies CSSProperties)
       : undefined;
   const shouldShowTabOverview = tabs.length > 1 && tabOverviewAvailable;
 
@@ -786,6 +792,7 @@ export function TerminalWorkspace({
           tabBarHeightClass,
         )}
         data-tauri-drag-region
+        style={tabBarStyle}
       >
         <div
           aria-label="终端标签栏"

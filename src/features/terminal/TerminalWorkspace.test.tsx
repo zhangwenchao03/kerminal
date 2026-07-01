@@ -500,6 +500,18 @@ describe("TerminalWorkspace", () => {
     }
   });
 
+  it("reserves left titlebar control space when window chrome overlaps the tab bar", () => {
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({ leftTitleBarInset: 112 })}
+      />,
+    );
+
+    const tabBar = screen.getByLabelText("终端标签栏").parentElement;
+
+    expect(tabBar).toHaveStyle({ paddingLeft: "112px" });
+  });
+
   it("isolates terminal pane render errors and opens logs from the fallback", async () => {
     const user = userEvent.setup();
     const consoleError = vi

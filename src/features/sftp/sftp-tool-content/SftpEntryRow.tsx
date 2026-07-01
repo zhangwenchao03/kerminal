@@ -50,7 +50,7 @@ export function SftpEntryRow({
   return (
     <div
       className={cn(
-        "grid h-full min-h-0 w-full grid-cols-[minmax(0,1fr)_5.75rem] items-center gap-2 px-2.5 py-1.5 text-left text-sm transition-colors min-[560px]:grid-cols-[minmax(0,1fr)_4.25rem_5.75rem] min-[720px]:grid-cols-[minmax(0,1fr)_4.75rem_4.25rem_5.75rem]",
+        "kerminal-sftp-entry-grid grid h-full min-h-0 w-full items-center gap-2 px-2.5 py-1.5 text-left text-sm transition-colors",
         (contextMenuOpen || selected) &&
           "bg-[var(--surface-selected)] ring-1 ring-inset ring-sky-400/25 dark:ring-sky-300/20",
         isDirectory
@@ -130,10 +130,10 @@ export function SftpEntryRow({
           {entry.name}
         </span>
       </button>
-      <span className="hidden truncate text-right font-mono text-[11px] text-zinc-500 dark:text-zinc-400 min-[720px]:block">
+      <span className="kerminal-sftp-permissions-column hidden truncate text-right font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
         {entry.permissions ?? "-"}
       </span>
-      <span className="hidden truncate text-right font-mono text-[11px] text-zinc-500 dark:text-zinc-400 min-[560px]:block">
+      <span className="kerminal-sftp-size-column hidden truncate text-right font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
         {formatEntrySize(entry)}
       </span>
       <span className="truncate text-right font-mono text-[11px] text-zinc-500 dark:text-zinc-400">

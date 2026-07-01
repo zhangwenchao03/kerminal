@@ -9,7 +9,7 @@ import { convertFileSrc, isTauri } from "@tauri-apps/api/core";
 import { Button } from "../components/ui/button";
 import { ModalShell } from "../components/ui/modal-shell";
 import { cn } from "../lib/cn";
-import { LEFT_RAIL_WIDTH, TOOL_RAIL_WIDTH } from "./KerminalShell.static";
+import { TOOL_RAIL_WIDTH } from "./KerminalShell.static";
 import type { LocalTerminalCreateOptions } from "../features/machine-sidebar/RemoteHostCreateDialog";
 import type { AppSettings } from "../features/settings/settingsModel";
 import type { Machine, MachineGroup } from "../features/workspace/types";
@@ -140,9 +140,7 @@ export function resolveShellLayout({
   const compactShell = viewportWidth < 900;
   const effectiveLeftPanelCollapsed = leftPanelCollapsed || compactShell;
   const effectiveRightPanelOpen = activeToolOpen && !compactShell;
-  const leftPanelColumnWidth = effectiveLeftPanelCollapsed
-    ? LEFT_RAIL_WIDTH
-    : leftPanelWidth;
+  const leftPanelColumnWidth = effectiveLeftPanelCollapsed ? 0 : leftPanelWidth;
   const rightPanelColumnWidth = effectiveRightPanelOpen
     ? toolPanelWidth
     : TOOL_RAIL_WIDTH;

@@ -57,6 +57,7 @@ type WorkspaceTerminalSurfaceProps = {
   onOpenAgentTool: () => void;
   onOpenConnection: () => void;
   onOpenLogs: () => void;
+  leftTitleBarInset: number;
   reserveRightTitleBarControls: boolean;
   resolvedTheme: ResolvedTheme;
   splitDropIndicator?: TerminalSplitDropIndicator | null;
@@ -119,6 +120,7 @@ export function WorkspaceTerminalSurface({
   createdSftpHostTarget,
   desktopNotifications,
   interfaceDensity,
+  leftTitleBarInset,
   machineGroups,
   onBroadcastCommand,
   onCreateSftpHost,
@@ -204,6 +206,7 @@ export function WorkspaceTerminalSurface({
       onOpenLogs={onOpenLogs}
       onRenameTab={renameTerminalTab}
       onUpdateTabGroupPreference={updateTerminalTabGroupPreference}
+      leftTitleBarInset={leftTitleBarInset}
       reserveRightTitleBarControls={reserveRightTitleBarControls}
       resolvePaneLines={resolvePaneLines}
       resolvePaneOutputHistory={resolvePaneOutputHistory}

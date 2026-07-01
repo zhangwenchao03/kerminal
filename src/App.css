@@ -260,6 +260,34 @@ body {
   scrollbar-gutter: stable;
 }
 
+.kerminal-sftp-entry-list {
+  container-type: inline-size;
+}
+
+.kerminal-sftp-entry-grid {
+  grid-template-columns: minmax(0, 1fr) 5.75rem;
+}
+
+@container (min-width: 400px) {
+  .kerminal-sftp-entry-grid {
+    grid-template-columns: minmax(0, 1fr) 4.25rem 5.75rem;
+  }
+
+  .kerminal-sftp-size-column {
+    display: block;
+  }
+}
+
+@container (min-width: 540px) {
+  .kerminal-sftp-entry-grid {
+    grid-template-columns: minmax(0, 1fr) 4.75rem 4.25rem 5.75rem;
+  }
+
+  .kerminal-sftp-permissions-column {
+    display: block;
+  }
+}
+
 *:not(.scrollbar-none)::-webkit-scrollbar {
   height: 10px;
   width: 10px;

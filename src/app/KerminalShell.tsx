@@ -210,7 +210,8 @@ const terminalSplitDropZoneLabels: Record<TerminalSplitDropZone, string> = {
   top: "上方",
 };
 
-const TOOL_PANEL_INITIAL_MAX_WIDTH = 384;
+const TOOL_PANEL_INITIAL_MAX_WIDTH = 444;
+const TOOL_PANEL_INITIAL_MIN_WIDTH = 340;
 const TOOL_PANEL_MIN_WIDTH = 300;
 const TOOL_PANEL_RESIZE_MAX_WIDTH = 720;
 
@@ -347,9 +348,9 @@ export function KerminalShell() {
     }),
   );
   const [toolPanelWidth, setToolPanelWidth] = useState(() =>
-    initialPanelWidth(0.19, {
+    initialPanelWidth(0.24, {
       max: TOOL_PANEL_INITIAL_MAX_WIDTH,
-      min: TOOL_PANEL_MIN_WIDTH,
+      min: TOOL_PANEL_INITIAL_MIN_WIDTH,
     }),
   );
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
@@ -558,6 +559,11 @@ export function KerminalShell() {
     toolPanelWidth,
     viewportWidth,
   });
+  const leftTitleBarInset = effectiveLeftPanelCollapsed
+    ? windowControlPlatform === "mac"
+      ? 112
+      : 48
+    : 0;
   const handleBroadcastCommand = useCallback(writeBroadcastCommand, []);
   const resolveTerminalDropZone = useCallback(
     (event: MachineSidebarMachineDragEvent) => {
@@ -1387,54 +1393,56 @@ export function KerminalShell() {
         surface={false}
         windowControlPlatform={windowControlPlatform}
       />
-      <div className="col-[1/2] row-[2/3] h-full overflow-hidden">
-        <MachineSidebarStoreBridge
-          collapsed={effectiveLeftPanelCollapsed}
-          collapsedGroupIds={collapsedMachineGroupIds}
-          groups={machineGroups}
-          onAddConnection={openConnectionDialog}
-          onAddGroup={() => openRemoteGroupDialog()}
-          onAddMachine={(groupId) =>
-            openConnectionDialog({ groupId, mode: "ssh" })
-          }
-          onDeleteGroup={requestDeleteGroup}
-          onDeleteMachine={requestDeleteMachine}
-          onCollapsedGroupIdsChange={handleCollapsedMachineGroupIdsChange}
-          onDuplicateMachine={(machineId) =>
-            void handleDuplicateMachine(machineId)
-          }
-          onEditGroup={openRemoteGroupDialog}
-          onEditMachine={(hostId) => openConnectionDialog({ hostId })}
-          onExternalMachineDrag={handleExternalMachineDrag}
-          onExternalMachineDragEnd={handleExternalMachineDragEnd}
-          onExternalMachineDrop={handleExternalMachineDrop}
-          onMoveMachine={(machineId, groupId) =>
-            void handleMoveMachineToGroup(machineId, groupId)
-          }
-          onOpenSettings={() => openSettingsTool()}
-          onOpenLocalTerminal={openLocalTerminal}
-          onOpenContainerTerminal={openContainerTerminal}
-          onOpenContainerDetails={openContainerDetails}
-          onOpenHostContainers={openHostContainersDialog}
-          onOpenRdpConnection={(machineId) =>
-            void openSavedRdpMachine(machineId)
-          }
-          onOpenSftp={openSftpForMachine}
-          onOpenSshTerminal={openSshTerminal}
-          onOpenSftpTransferWorkbench={openSftpTransferWorkbench}
-          onOpenTransferWorkbench={() => openSftpTransferWorkbench()}
-          onOpenTelnetTerminal={openTelnetTerminal}
-          onOpenSerialTerminal={openSerialTerminal}
-          onPinGroup={(groupId, pinned) =>
-            void handlePinMachineGroup(groupId, pinned)
-          }
-          onSearchChange={setMachineSearch}
-          onSelectMachine={selectMachine}
-          search={machineSearch}
-          selectedMachineId={selectedMachineId}
-          settingsSelected={settingsDialogOpen}
-        />
-      </div>
+      {effectiveLeftPanelCollapsed ? null : (
+        <div className="col-[1/2] row-[2/3] h-full overflow-hidden">
+          <MachineSidebarStoreBridge
+            collapsed={false}
+            collapsedGroupIds={collapsedMachineGroupIds}
+            groups={machineGroups}
+            onAddConnection={openConnectionDialog}
+            onAddGroup={() => openRemoteGroupDialog()}
+            onAddMachine={(groupId) =>
+              openConnectionDialog({ groupId, mode: "ssh" })
+            }
+            onDeleteGroup={requestDeleteGroup}
+            onDeleteMachine={requestDeleteMachine}
+            onCollapsedGroupIdsChange={handleCollapsedMachineGroupIdsChange}
+            onDuplicateMachine={(machineId) =>
+              void handleDuplicateMachine(machineId)
+            }
+            onEditGroup={openRemoteGroupDialog}
+            onEditMachine={(hostId) => openConnectionDialog({ hostId })}
+            onExternalMachineDrag={handleExternalMachineDrag}
+            onExternalMachineDragEnd={handleExternalMachineDragEnd}
+            onExternalMachineDrop={handleExternalMachineDrop}
+            onMoveMachine={(machineId, groupId) =>
+              void handleMoveMachineToGroup(machineId, groupId)
+            }
+            onOpenSettings={() => openSettingsTool()}
+            onOpenLocalTerminal={openLocalTerminal}
+            onOpenContainerTerminal={openContainerTerminal}
+            onOpenContainerDetails={openContainerDetails}
+            onOpenHostContainers={openHostContainersDialog}
+            onOpenRdpConnection={(machineId) =>
+              void openSavedRdpMachine(machineId)
+            }
+            onOpenSftp={openSftpForMachine}
+            onOpenSshTerminal={openSshTerminal}
+            onOpenSftpTransferWorkbench={openSftpTransferWorkbench}
+            onOpenTransferWorkbench={() => openSftpTransferWorkbench()}
+            onOpenTelnetTerminal={openTelnetTerminal}
+            onOpenSerialTerminal={openSerialTerminal}
+            onPinGroup={(groupId, pinned) =>
+              void handlePinMachineGroup(groupId, pinned)
+            }
+            onSearchChange={setMachineSearch}
+            onSelectMachine={selectMachine}
+            search={machineSearch}
+            selectedMachineId={selectedMachineId}
+            settingsSelected={settingsDialogOpen}
+          />
+        </div>
+      )}
       <ShellResizeSeparator
         className="kerminal-shell-separator col-[2/3] row-[2/3]"
         hidden={effectiveLeftPanelCollapsed}
@@ -1457,6 +1465,7 @@ export function KerminalShell() {
           onOpenAgentTool={() => setActiveTool("agentLauncher")}
           onOpenConnection={() => openConnectionDialog({ mode: "ssh" })}
           onOpenLogs={openLogsTool}
+          leftTitleBarInset={leftTitleBarInset}
           reserveRightTitleBarControls={reserveRightTitleBarControls}
           resolvedTheme={resolvedTheme}
           splitDropIndicator={terminalSplitDropIndicator}

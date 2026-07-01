@@ -1,4 +1,7 @@
+import { FolderOpen } from "lucide-react";
+import { Button } from "../../../components/ui/button";
 import { Select } from "../../../components/ui/select";
+import { selectLocalFile } from "../../../lib/fileDialogApi";
 import type { RemoteHostAuthType } from "../../../lib/remoteHostApi";
 import { authOptions } from "./model";
 import { FieldRow, GroupSelectRow, inputClassName } from "./shared-ui";
@@ -16,6 +19,7 @@ export function SshPropertiesPanel({
   setAuthType,
   setCredentialRef,
   setCredentialSecret,
+  setError,
   setGroupId,
   setHost,
   setName,
@@ -37,6 +41,7 @@ export function SshPropertiesPanel({
   setAuthType: (value: RemoteHostAuthType) => void;
   setCredentialRef: (value: string) => void;
   setCredentialSecret: (value: string) => void;
+  setError: (value: string | null) => void;
   setGroupId: (value: string) => void;
   setHost: (value: string) => void;
   setName: (value: string) => void;
@@ -100,6 +105,7 @@ export function SshPropertiesPanel({
             setAuthType={setAuthType}
             setCredentialRef={setCredentialRef}
             setCredentialSecret={setCredentialSecret}
+            setError={setError}
           />
         </FieldRow>
         <FieldRow label="标签">
@@ -128,6 +134,7 @@ export function SshAuthFields({
   setAuthType,
   setCredentialRef,
   setCredentialSecret,
+  setError,
 }: {
   authType: RemoteHostAuthType;
   credentialRef: string;
@@ -135,7 +142,22 @@ export function SshAuthFields({
   setAuthType: (value: RemoteHostAuthType) => void;
   setCredentialRef: (value: string) => void;
   setCredentialSecret: (value: string) => void;
+  setError: (value: string | null) => void;
 }) {
+  const choosePrivateKeyFile = async () => {
+    try {
+      const selected = await selectLocalFile();
+      if (!selected) {
+        return;
+      }
+      setError(null);
+      setCredentialRef(selected);
+      setCredentialSecret("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  };
+
   return (
     <div className="grid gap-3">
       <Select
@@ -178,13 +200,27 @@ export function SshAuthFields({
             </div>
           ) : (
             <div className="grid gap-2">
-              <input
-                aria-label="私钥路径"
-                className={inputClassName}
-                onChange={(event) => setCredentialRef(event.currentTarget.value)}
-                placeholder="~/.ssh/id_ed25519"
-                value={credentialRef}
-              />
+              <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_40px]">
+                <input
+                  aria-label="私钥路径"
+                  className={inputClassName}
+                  onChange={(event) =>
+                    setCredentialRef(event.currentTarget.value)
+                  }
+                  placeholder="~/.ssh/id_ed25519"
+                  value={credentialRef}
+                />
+                <Button
+                  aria-label="Choose private key file"
+                  className="h-10 w-10 px-0"
+                  onClick={() => void choosePrivateKeyFile()}
+                  title="Choose private key file"
+                  type="button"
+                  variant="secondary"
+                >
+                  <FolderOpen className="h-4 w-4" />
+                </Button>
+              </div>
               <textarea
                 aria-label="私钥内容"
                 className={`${inputClassName} min-h-[140px] resize-none py-2 font-mono text-xs`}

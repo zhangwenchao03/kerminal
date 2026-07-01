@@ -15,8 +15,18 @@ import {
   groupsWithSsh,
 } from "./__tests__/support/RemoteHostCreateDialog.testSupport";
 
+const fileDialogApiMock = vi.hoisted(() => ({
+  selectLocalDirectory: vi.fn(),
+  selectLocalFile: vi.fn(),
+}));
+
 vi.mock("../../lib/connectionApi", () => ({
   testRemoteConnection: vi.fn(),
+}));
+
+vi.mock("../../lib/fileDialogApi", () => ({
+  selectLocalDirectory: fileDialogApiMock.selectLocalDirectory,
+  selectLocalFile: fileDialogApiMock.selectLocalFile,
 }));
 
 vi.mock("../../lib/remoteHostApi", async (importOriginal) => {
@@ -30,6 +40,10 @@ vi.mock("../../lib/remoteHostApi", async (importOriginal) => {
 describe("RemoteHostCreateDialog", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    fileDialogApiMock.selectLocalDirectory.mockReset();
+    fileDialogApiMock.selectLocalFile.mockReset();
+    fileDialogApiMock.selectLocalDirectory.mockResolvedValue(null);
+    fileDialogApiMock.selectLocalFile.mockResolvedValue(null);
     vi.mocked(testRemoteConnection).mockReset();
     vi.mocked(revealRemoteHostCredential).mockReset();
     vi.mocked(revealRemoteHostCredential).mockResolvedValue({
@@ -88,6 +102,40 @@ describe("RemoteHostCreateDialog", () => {
       username: "ubuntu",
     });
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(createdHost));
+  });
+
+  it("fills the SSH private key path from the local file picker", async () => {
+    const user = userEvent.setup();
+    fileDialogApiMock.selectLocalFile.mockResolvedValueOnce(
+      "C:\\Users\\dev\\.ssh\\id_ed25519",
+    );
+
+    render(
+      <RemoteHostCreateDialog
+        defaultMode="ssh"
+        groups={groups}
+        onClose={vi.fn()}
+        onCreateHost={vi.fn()}
+        open
+      />,
+    );
+
+    await chooseSelectOption(user, "认证方式", "密钥");
+    fireEvent.change(screen.getByLabelText("私钥内容"), {
+      target: { value: "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n" },
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: "Choose private key file" }),
+    );
+
+    await waitFor(() => {
+      expect(fileDialogApiMock.selectLocalFile).toHaveBeenCalledTimes(1);
+      expect(screen.getByLabelText("私钥路径")).toHaveValue(
+        "C:\\Users\\dev\\.ssh\\id_ed25519",
+      );
+    });
+    expect(screen.getByLabelText("私钥内容")).toHaveValue("");
   });
 
   it("shows SSH authentication methods as password, key, then SSH agent", async () => {

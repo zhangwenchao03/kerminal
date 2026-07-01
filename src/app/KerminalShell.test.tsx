@@ -698,9 +698,9 @@ describe("KerminalShell", () => {
     ).toHaveAttribute("aria-expanded", "true");
     expect(workspace.parentElement).toHaveStyle({ gridColumn: "3 / 6" });
     expect(screen.getByLabelText("终端标签栏").parentElement).not.toHaveStyle({
-      marginRight: "308px",
+      marginRight: "348px",
     });
-    expect(content).toHaveStyle({ marginRight: "308px" });
+    expect(content).toHaveStyle({ marginRight: "348px" });
   });
 
   it("allows the right tool panel to expand to the wider resize limit", async () => {
@@ -734,6 +734,28 @@ describe("KerminalShell", () => {
     expect(leftSeparator).toHaveClass("kerminal-shell-separator");
     expect(leftSeparator).not.toHaveClass("kerminal-material-nav");
     expect(leftSeparator).not.toHaveClass("kerminal-terminal-surface");
+  });
+
+  it("removes the whole left sidebar when collapsed from the title bar", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<KerminalShell />);
+
+    expect(
+      await screen.findByRole("complementary", { name: "主机侧边栏" }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "折叠主机侧边栏" }),
+    );
+
+    const shell = container.firstElementChild as HTMLElement;
+    expect(
+      screen.queryByRole("complementary", { name: "主机侧边栏" }),
+    ).not.toBeInTheDocument();
+    expect(shell.style.gridTemplateColumns).toMatch(/^0px 0px /);
+    expect(screen.getByLabelText("终端标签栏").parentElement).toHaveStyle({
+      paddingLeft: "48px",
+    });
   });
 
   it("applies appearance language and workspace background settings", async () => {

@@ -316,6 +316,7 @@ export function RemoteHostDialogSectionContent({
       setAuthType={setAuthType}
       setCredentialRef={setCredentialRef}
       setCredentialSecret={setCredentialSecret}
+      setError={setError}
       setGroupId={setGroupId}
       setHost={setHost}
       setName={setName}

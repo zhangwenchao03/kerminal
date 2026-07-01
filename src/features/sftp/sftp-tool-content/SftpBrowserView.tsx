@@ -679,18 +679,18 @@ export function SftpBrowserView({
               </div>
             ) : null}
             {!loading && !error && visibleEntries.length > 0 ? (
-              <div className="flex h-full min-h-0 flex-col">
+              <div className="kerminal-sftp-entry-list flex h-full min-h-0 flex-col">
                 <div
                   className={cn(
-                    "kerminal-muted-surface grid grid-cols-[minmax(0,1fr)_5.75rem] gap-2 border-b text-xs font-medium text-zinc-500 dark:text-zinc-400 min-[560px]:grid-cols-[minmax(0,1fr)_4.25rem_5.75rem] min-[720px]:grid-cols-[minmax(0,1fr)_4.75rem_4.25rem_5.75rem]",
+                    "kerminal-muted-surface kerminal-sftp-entry-grid grid gap-2 border-b text-xs font-medium text-zinc-500 dark:text-zinc-400",
                     listHeaderPaddingClass,
                   )}
                 >
                   <span className="pl-6">名称</span>
-                  <span className="hidden text-right min-[720px]:block">
+                  <span className="kerminal-sftp-permissions-column hidden text-right">
                     权限
                   </span>
-                  <span className="hidden text-right min-[560px]:block">大小</span>
+                  <span className="kerminal-sftp-size-column hidden text-right">大小</span>
                   <span className="text-right" title="修改时间">
                     时间
                   </span>
