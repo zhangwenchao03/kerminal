@@ -311,9 +311,9 @@ impl WorkspaceSyncService {
             gitignore,
             vault: WorkspaceVaultStatus {
                 secrets_dir: path_to_string(&self.paths.secrets),
-                vault_path: path_to_string(&self.paths.vault_file()),
+                vault_path: path_to_string(self.paths.vault_file()),
                 vault_present,
-                vault_key_path: path_to_string(&self.paths.vault_key_file()),
+                vault_key_path: path_to_string(self.paths.vault_key_file()),
                 vault_key_present,
                 key_id: key.map(|value| value.key_id),
                 entry_count,

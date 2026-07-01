@@ -1,0 +1,392 @@
+//! External agent workspace generated text templates.
+//!
+//! @author kongweiguang
+
+pub(crate) const CONFIG_REFERENCE_BODY: &str = r#"<!-- @author kongweiguang -->
+
+# Kerminal Configuration Guide
+
+Read this file before editing Kerminal configuration. Do not guess field names or relationships from filenames alone.
+
+## Workspace Layout
+
+```text
+~/.kerminal/
+  AGENTS.md
+  CLAUDE.md
+  kerminal-config.md
+  .codex/config.toml
+  .mcp.json
+  settings.toml
+  profiles/*.toml
+  hosts/groups.toml
+  hosts/*.toml
+  snippets/*.toml
+  workflows/*.toml
+  data/command.sqlite
+  data/port-forwards/
+  logs/
+  cache/
+  exports/
+  temp/
+  secrets/vault.toml
+  secrets/vault-key.toml
+```
+
+## Cross-platform Paths
+
+- `~/.kerminal` means the current user's Kerminal root on Windows, macOS, and Linux. Do not replace it with a machine-specific path such as `C:/Users/...`, `/Users/...`, or `/home/...` unless the user explicitly asks for an absolute path.
+- `~/.ssh/id_ed25519` is valid for local SSH/SFTP private key paths. Kerminal expands `~`, `~/...`, and `~\...` to the current user's home directory before passing the path to OpenSSH, russh, or SFTP.
+- Do not use `~otheruser/...`; Kerminal only expands the current user's home notation.
+- Prefer portable examples in docs and generated config. Use platform-specific shells only inside profile examples.
+
+## Edit Protocol
+
+1. Identify whether the request changes settings, a terminal profile, a host, a host group, a snippet, or a workflow.
+2. Use precise search for an id, name, host, tag, or field. Do not reformat every TOML file.
+3. Preserve `schema_version = 1`, comments, unknown fields, timestamps, and sort order unless the request needs them changed.
+4. Keep each file relationship valid: host `group_id` must reference `hosts/groups.toml`; file names must match `id`; workflow step ids must be unique.
+5. Do not write passwords, inline private keys, key passphrases, tokens, or other plaintext secrets to ordinary TOML files. Do not read or edit `secrets/` unless the user explicitly asks for credential work.
+6. After edits, call MCP tool `kerminal.config.validate` with `scope = "all"` or the narrowest matching scope. If Kerminal MCP is unavailable, manually check the rules below and tell the user validation was manual only.
+
+## Validation
+
+- Preferred validation path: call MCP tool `kerminal.config.validate`.
+- Use `scope = "all"` for cross-file edits, or one of `settings`, `profiles`, `hosts`, `snippets`, `workflows` for narrow edits.
+- The tool is read-only. It validates the current runtime workspace through Kerminal's own TOML loaders and relationship checks; it does not edit config files and does not require Node.js or a source checkout.
+- If the MCP server is unavailable, manually check schema versions, file ids, group references, explicit host `production`, workflow step ids, sort order, forbidden secret-like keys, and host secret field names before reporting success.
+
+## Runtime MCP Boundaries
+
+Use Kerminal MCP for live app features that require the running application or saved connection context: app guide, tool help, terminal sessions, SSH commands, SFTP files, tmux sessions, containers, port forwarding, server info, command history, diagnostics, runtime snapshot, and authorized credential saving.
+
+Use `kerminal.app_guide` when an external Agent needs the Kerminal product/UI structure map before choosing lower-level tools. It explains the machine sidebar, terminal workspace, right tool panel, Agent Launcher, configuration workspace, and matching MCP tool families; it does not perform UI choreography.
+
+Use `kerminal.config_guide` when an external Agent needs these generated configuration rules through MCP, especially when it was not launched inside the initialized `~/.kerminal` workspace. It returns the same guide content as `kerminal-config.md` and does not perform config CRUD.
+
+Use `kerminal.tool_help` with `toolId`, `family`, or `query` when an external Agent needs exact input schema, example arguments, safety annotations, and deliberately absent-tool guidance for one tool or tool family.
+
+Container runtime tools include lifecycle/status tools and container file tools. Use `container.files.list` and `container.files.preview` before editing; use `container.files.write_text`, `container.files.upload`, `container.files.download`, `container.files.create_directory`, `container.files.rename`, `container.files.chmod`, and `container.files.delete` only for explicitly requested container file work. `container.files.delete` is destructive and depends on MCP host approval/audit.
+
+Do not look for MCP CRUD tools for `settings.*`, `profile.*`, `remote_host.*`, `snippet.*`, `workflow.*`, or `workspace.*`; those configuration changes are direct file edits plus `kerminal.config.validate`.
+
+## Runtime Auto-refresh
+
+When Kerminal is running, it watches file-backed configuration and refreshes the UI after external Agent, editor, or script edits settle. Valid changes to `settings.toml`, `profiles/*.toml`, `hosts/groups.toml`, `hosts/*.toml`, `snippets/*.toml`, and `workflows/*.toml` are reloaded from the same typed runtime loaders used by validation.
+
+Successful external refreshes show a concise auto-closing notice such as `cfg: +1 host "staging-api"`, `cfg: hosts +2, snippets +1`, or `cfg: settings reloaded`. Notices are generated from public UI state only. They must not expose local absolute paths, raw TOML values, passwords, private keys, tokens, or secret filenames.
+
+If a save leaves TOML temporarily invalid, Kerminal keeps the last-known-good UI, does not clear the host tree, and does not close existing terminals. It may show `cfg: invalid TOML, kept last-known-good`; fix the file and save again. Auto-refresh is user feedback, not validation. Always run `kerminal.config.validate` before reporting success.
+
+## File Relationships
+
+| File | Purpose | Relationship |
+| --- | --- | --- |
+| `settings.toml` | App appearance, terminal appearance, keybindings, SFTP performance | Standalone; business ranges are validated by Kerminal. |
+| `profiles/*.toml` | Local terminal launch profiles | Filename must be `<id>.toml`; optional `sidebar_group_id` pins the profile into an existing host group in the left sidebar. |
+| `hosts/groups.toml` | Host groups and ordering | `groups[].id` is referenced by host `group_id`; `__ungrouped__` is runtime-only and must not be written. |
+| `hosts/*.toml` | Host metadata for SSH/Telnet/Serial/RDP/container targets | Filename must be `<id>.toml`; saved secret values are referenced by `secret_ref` / `key_passphrase_ref` and encrypted in the vault. |
+| `snippets/*.toml` | Reusable single commands | Filename must be `<id>.toml`; `scope` is `any`, `local`, or `ssh`. |
+| `workflows/*.toml` | Multi-step command workflows | Filename must be `<id>.toml`; `[[steps]]` are stored in the same file and sorted by `sort_order`. |
+| `data/command.sqlite` | Command history and suggestion data | Do not edit directly. Use MCP `history.search` to read history. |
+| `secrets/vault.toml` | Encrypted SSH passwords, inline private keys, key passphrases, and jump-host secrets | Do not edit directly; save credentials through the UI or Kerminal credential tools. |
+| `secrets/vault-key.toml` | Local workspace vault key | Must stay local and ignored by Git; do not copy it into chat, docs, logs, or commits. |
+
+## Common Rules
+
+- Ordinary TOML files use top-level `schema_version = 1`.
+- Wrapper fields use snake_case: `schema_version`, `group_id`, `sidebar_group_id`, `auth_type`, `sort_order`, `created_at`, `updated_at`, `ssh_options`, `requires_confirmation`.
+- `settings.toml` business fields follow the app settings model and often use camelCase, for example `themeMode` and `interfaceDensity`. Preserve existing settings field spelling.
+- IDs should be stable ASCII identifiers using letters, numbers, `.`, `_`, or `-`.
+- Sort fields are numeric and drive UI order. Prefer increments such as `10`, `20`, `30`.
+- Timestamps are strings. Preserve existing values unless creating or intentionally updating an entry.
+- Never add plaintext keys such as `password`, `credential_secret`, `inline_private_key`, `apiKey`, `privateKey`, `key_passphrase`, or `token` to ordinary config files. `secret_ref` and `key_passphrase_ref` are encrypted vault references, not plaintext.
+- Do not edit `secrets/vault*.toml` directly. Save or replace SSH passwords, inline private keys, key passphrases, and jump-host secrets through the UI save flow, `kerminal.host.upsert_with_credential`, or `kerminal.vault.encrypt_secret`.
+
+## Required Field Matrix
+
+These fields must be present when an Agent creates or rewrites a file. Agent-authored files must be explicit.
+
+| File | Required fields |
+| --- | --- |
+| `settings.toml` | `schema_version` plus documented settings fields being changed. |
+| `profiles/*.toml` | `schema_version`, `id`, `name`, `shell`, `is_default`, `sort_order`, `created_at`, `updated_at`. |
+| `hosts/groups.toml` | `schema_version`; each `[[groups]]` entry needs `id`, `name`, `sort_order`, `created_at`, `updated_at`. |
+| `hosts/*.toml` | `schema_version`, `id`, `name`, `host`, `port`, `username`, `auth_type`, `tags`, `production`, `sort_order`, `created_at`, `updated_at`; saved password or inline-private-key hosts also need `secret_ref`, key passphrases use `key_passphrase_ref`, and jump-host secrets use `[[ssh_options.jump_hosts]].secret_ref`; all references are generated by the save flow. |
+| `snippets/*.toml` | `schema_version`, `id`, `title`, `command`, `scope`, `sort_order`, `created_at`, `updated_at`. |
+| `workflows/*.toml` | `schema_version`, `id`, `title`, `scope`, `sort_order`, `created_at`, `updated_at`; each `[[steps]]` needs `id`, `title`, `command`, `requires_confirmation`, `sort_order`, `created_at`, `updated_at`. |
+
+Use string timestamps such as `"1"` only for examples. Preserve real timestamp strings in existing files.
+
+## Common Change Recipes
+
+Create a host group:
+
+1. Edit `hosts/groups.toml`.
+2. Append one `[[groups]]` entry with `id`, `name`, `sort_order`, `created_at`, and `updated_at`.
+3. Do not use `groups` or `__ungrouped__` as an id.
+4. Validate with `kerminal.config.validate` using `scope = "hosts"`.
+
+Create a local profile:
+
+1. Create `profiles/<id>.toml`.
+2. Fill `id`, `name`, `shell`, `args`, `cwd`, `is_default`, `sort_order`, `created_at`, and `updated_at`.
+3. Add `sidebar_group_id` only when the profile should appear in the left host tree; the group must exist in `hosts/groups.toml`.
+4. Do not put secrets in `[env]`.
+
+Create a snippet:
+
+1. Create `snippets/<id>.toml`.
+2. Fill `title`, `command`, `scope`, `sort_order`, `created_at`, and `updated_at`.
+3. Use `scope = "any"` for cross-target commands, `local` for local-only commands, or `ssh` for SSH commands.
+4. Do not put passwords, tokens, or private keys in `command`.
+
+Create a workflow:
+
+1. Create `workflows/<id>.toml`.
+2. Fill workflow metadata first, then add `[[steps]]` entries in execution order.
+3. Every step needs a unique `id`; `sort_order` must increase in file order.
+4. Set `requires_confirmation = true` for dangerous local workflow steps. This is UI policy, not an MCP approval queue.
+
+Save a host password or inline private key:
+
+1. Only do this when the user explicitly asks for credential work.
+2. Use the Kerminal UI save flow or call `kerminal.host.upsert_with_credential` / `kerminal.vault.encrypt_secret`; do not edit `secrets/vault*.toml` directly.
+3. Confirm the matching `hosts/<id>.toml` references the generated `secret_ref` / `key_passphrase_ref` and contains no `credential_secret`, `password`, `inline_private_key`, key passphrase, or private key body.
+4. Validate with `kerminal.config.validate` using `scope = "hosts"` or `scope = "all"`.
+
+## settings.toml
+
+Purpose: app appearance, terminal appearance, keybindings, SFTP performance, and low-frequency preferences.
+
+Minimal example:
+
+```toml
+schema_version = 1
+themeMode = "dark"
+interfaceDensity = "comfortable"
+```
+
+Known settings groups:
+
+- `themeMode`: `dark`, `light`, or `system`.
+- `interfaceDensity`: `compact`, `comfortable`, or `spacious`.
+- `[appearance]`: background image path, background opacity, window opacity, interface language.
+- `[terminal]`: font family, font size, line height, scrollback, cursor, color scheme, inline suggestion settings.
+- `[[keybindings]]`: keyboard shortcuts.
+- `[sftp]`: transfer concurrency, timeout, packet size, pipeline depth.
+
+Do not invent settings fields. If a field is not already present and is not documented here, inspect the current Kerminal settings model or ask the user.
+
+## profiles/*.toml
+
+Purpose: local terminal profile.
+
+macOS/Linux example:
+
+```toml
+schema_version = 1
+id = "default-zsh"
+name = "zsh"
+shell = "zsh"
+args = ["-l"]
+cwd = "~/.kerminal"
+is_default = true
+sort_order = 10
+created_at = "1"
+updated_at = "1"
+
+[env]
+RUST_LOG = "info"
+```
+
+Windows example:
+
+```toml
+schema_version = 1
+id = "default-pwsh"
+name = "PowerShell"
+shell = "pwsh"
+args = ["-NoLogo"]
+cwd = "~/.kerminal"
+is_default = true
+sort_order = 20
+created_at = "1"
+updated_at = "1"
+```
+
+Fields:
+
+- `id`: stable profile id and filename stem.
+- `name`: user-visible name.
+- `shell`: executable or shell command.
+- `args`: default arguments. Common examples are `["-l"]` for `zsh` on macOS/Linux and `["-NoLogo"]` for PowerShell on Windows.
+- `cwd`: default working directory; `~/.kerminal` is portable across Windows, macOS, and Linux. Omit or set null when inheriting app cwd.
+- `[env]`: environment overrides. Do not put tokens or passwords here.
+- `is_default`: default local terminal profile flag.
+- `sidebar_group_id`: optional host group id. Set it only when this local profile should appear as a saved left-sidebar connection; the value must exist in `hosts/groups.toml`.
+- `sort_order`, `created_at`, `updated_at`: UI ordering and metadata.
+
+## hosts/groups.toml
+
+Purpose: host group names and ordering.
+
+```toml
+schema_version = 1
+
+[[groups]]
+id = "prod"
+name = "Production"
+sort_order = 10
+created_at = "1"
+updated_at = "1"
+```
+
+Rules:
+
+- `groups[].id` must be unique.
+- Host `group_id` values must either be absent/empty or reference one of these ids.
+- Do not write `__ungrouped__`; Kerminal uses it only at runtime.
+
+## hosts/*.toml
+
+Purpose: ordinary host metadata. Credentials and inline private keys are not stored here.
+
+```toml
+schema_version = 1
+id = "prod-web-01"
+group_id = "prod"
+name = "prod-web-01"
+host = "10.0.0.10"
+port = 22
+username = "deploy"
+auth_type = "key"
+credential_ref = "~/.ssh/id_ed25519"
+secret_ref = "credential:kerminal:ssh-host:prod-web-01:target:private-key:v1"
+key_passphrase_ref = "credential:kerminal:ssh-host:prod-web-01:target:key-passphrase:v1"
+tags = ["prod", "web"]
+production = true
+sort_order = 10
+created_at = "1"
+updated_at = "1"
+
+[ssh_options.proxy]
+protocol = "none"
+
+[[ssh_options.jump_hosts]]
+index = 0
+host = "jump.example.com"
+port = 22
+username = "deploy"
+auth_type = "password"
+secret_ref = "credential:kerminal:jump-host:prod-web-01:jump-0:password:v1"
+```
+
+Fields:
+
+- `id`: stable host id and filename stem.
+- `group_id`: optional group id from `hosts/groups.toml`.
+- `name`: user-visible host name.
+- `host`: DNS name, IP, serial endpoint, or target host value depending on target type.
+- `port`: target port when applicable.
+- `username`: login username when applicable.
+- `auth_type`: `password`, `key`, or `agent`.
+- `credential_ref`: path or reference for key-based auth. For local private key files, `~/.ssh/id_ed25519` is portable and Kerminal expands it to the current user's home directory. This is not the secret body.
+- `secret_ref`: encrypted vault reference for a saved password or inline private key. Top-level `secret_ref` belongs to the target host; `[[ssh_options.jump_hosts]].secret_ref` belongs to that jump host.
+- `key_passphrase_ref`: encrypted vault reference for a private-key passphrase.
+- `tags`: user labels.
+- `production`: marks a production host for host-side confirmation policy. New host files should set this explicitly; if omitted, Kerminal treats it as `false`.
+- `ssh_options`: proxy, tunnel, jump host, terminal, and transfer settings. Preserve existing nested tables unless the request targets them.
+
+Rules:
+
+- `production` is required for Agent-authored host files. Use `true` for production or safety-sensitive hosts and `false` for ordinary dev/test/local targets. Do not omit it.
+- Do not put `credential_secret`, `password`, `inline_private_key`, private key bodies, key passphrases, API keys, or tokens here.
+- Passwords, inline keys, key passphrases, and jump-host secrets are encrypted in `secrets/vault.toml`; ordinary host files only keep `secret_ref` / `key_passphrase_ref`.
+
+Host creation checklist:
+
+1. Read `hosts/groups.toml` and choose an existing `group_id`, or omit `group_id` for the runtime ungrouped bucket. Never write `__ungrouped__`.
+2. Pick a stable ASCII `id` and create `hosts/<id>.toml`; the filename stem and `id` must match exactly.
+3. Fill every required host field, including `production = true` or `production = false`.
+4. Use `auth_type = "agent"` when relying on ssh-agent; use `auth_type = "key"` with `credential_ref = "~/.ssh/id_ed25519"` for a local key path; use `auth_type = "password"` only for metadata and do not write the password in this file.
+5. For saved passwords, inline private keys, key passphrases, or jump-host secrets, use the UI save flow or authorized credential tools and verify that only `secret_ref` / `key_passphrase_ref` landed in host TOML.
+6. Preserve or add `[ssh_options.*]` only when the user requested proxy, tunnels, jump hosts, terminal, or transfer behavior.
+7. Call `kerminal.config.validate` with `scope = "hosts"` or `scope = "all"` and fix every diagnostic before reporting success.
+
+Common host failures:
+
+- File exists but app does not show it: check `id` versus filename, TOML parse errors, missing required fields, and validator diagnostics.
+- Host appears in wrong group: check `group_id` references an id in `hosts/groups.toml`; `__ungrouped__` must not be written.
+- Login still asks for credentials: ordinary host TOML intentionally does not store password, inline key, or key passphrase plaintext. Credential work requires explicit user instruction and the UI/vault save flow so valid `secret_ref` / `key_passphrase_ref` references exist.
+- Validator passes manually but app behaves differently: rerun MCP `kerminal.config.validate` because it uses Kerminal runtime loaders.
+
+## secrets/vault.toml and secrets/vault-key.toml
+
+Purpose: encrypted credentials for saved SSH hosts, jump hosts, inline private keys, and key passphrases. Do not read or edit these files unless the user explicitly asks for credential work.
+
+Rules:
+
+- `secrets/vault.toml` stores encrypted entries referenced by `secret_ref` / `key_passphrase_ref` in host TOML.
+- `secrets/vault-key.toml` is the local workspace key and must stay out of Git.
+- Do not hand-write ciphertext, keys, passwords, or private key bodies in these files. Use the UI save flow or Kerminal credential tools.
+- Do not copy secret values into chat, docs, logs, tests, or ordinary config files.
+- Ensure `.gitignore` keeps `secrets/vault-key.toml` local before syncing a Kerminal workspace.
+
+## snippets/*.toml
+
+Purpose: reusable command snippets.
+
+```toml
+schema_version = 1
+id = "restart-service"
+title = "Restart service"
+description = "Restart app service"
+command = "systemctl restart app"
+tags = ["systemd"]
+scope = "ssh"
+sort_order = 10
+created_at = "1"
+updated_at = "1"
+```
+
+Fields:
+
+- `scope`: `any`, `local`, or `ssh`.
+- `command`: command text. Do not embed passwords, tokens, or private keys.
+
+## workflows/*.toml
+
+Purpose: multi-step command workflows. Workflow metadata and steps are stored in one file.
+
+```toml
+schema_version = 1
+id = "deploy-check"
+title = "Deploy check"
+description = "Check service before deploy"
+tags = ["deploy"]
+scope = "ssh"
+sort_order = 10
+created_at = "1"
+updated_at = "1"
+
+[[steps]]
+id = "check-disk"
+title = "Check disk"
+description = "Show disk usage"
+command = "df -h"
+scope = "ssh"
+requires_confirmation = false
+sort_order = 10
+created_at = "1"
+updated_at = "1"
+```
+
+Rules:
+
+- Workflow `scope` and step `scope` are `any`, `local`, or `ssh`.
+- Step `scope` may be omitted/null to inherit workflow intent.
+- Step ids must be unique inside the workflow file.
+- Step `sort_order` should increase in file order.
+- Use `requires_confirmation = true` for dangerous workflow steps. This is local workflow UI policy, not MCP pending/approval.
+"#;

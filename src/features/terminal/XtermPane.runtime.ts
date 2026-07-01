@@ -5,17 +5,11 @@ import { closeTerminal, createDockerContainerTerminalSession, createSerialTermin
 import type { TerminalOutputEvent } from "../../lib/terminalApi";
 import { recordCommandHistory } from "../../lib/commandHistoryApi";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
-import { listTerminalSuggestions, recordTerminalSuggestionFeedback } from "../../lib/terminalSuggestionApi";
 import { markTerminalPaneSessionDisconnected, markTerminalPaneSessionReconnected, registerTerminalPaneSession, updateTerminalPaneRuntimeContext, updateTerminalPaneSessionCwd, unregisterTerminalPaneSession } from "./terminalSessionRegistry";
 import { createTerminalOutputWriter } from "./terminalOutputWriter";
-import { appendCommandBlockOutput, terminalCommandBlockPlainText } from "./terminalCommandBlocks";
-import {
-  clearTerminalCommandBlocks,
-  closeLatestTerminalCommandBlock,
-  syncTerminalCommandProtocolPromptBlock,
-  submitTerminalCommandBlock,
-} from "./terminalCommandBlockLifecycle";
-import { applyTerminalInputData, createTerminalInputModelState, terminalSuggestionEligibility, updateTerminalInputBufferKind, updateTerminalInputComposition } from "./terminalInputModel";
+import { createXtermPaneCommandBlockRuntime } from "./XtermPane.commandBlockRuntime";
+import { createXtermPaneGhostSuggestions } from "./XtermPane.ghostSuggestions";
+import { applyTerminalInputData, createTerminalInputModelState, updateTerminalInputBufferKind, updateTerminalInputComposition } from "./terminalInputModel";
 import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeScheduler";
 import { createTerminalRemoteSuggestionPrewarm } from "./terminalRemoteSuggestionPrewarm";
 import { createTerminalOutputHistoryBuffer } from "./terminalOutputHistoryBuffer";
@@ -23,10 +17,11 @@ import {
   createTerminalOutputInstrumentation,
   runTerminalOutputInstrumentationStep,
 } from "./terminalOutputInstrumentation";
-import { buildTerminalCreateRequest, collectCurrentDirOscSequences, errorMessage, isRightArrowInput, normalizeTerminalSessionSize, resolveGhostSuggestionLayout, terminalGhostSuggestionEqual, terminalSuggestionProviders, type TerminalGhostSuggestion } from "./XtermPane.helpers";
+import { buildTerminalCreateRequest, collectCurrentDirOscSequences, errorMessage, isRightArrowInput, normalizeTerminalSessionSize } from "./XtermPane.helpers";
 import { registerCommandBlockClearHandlers, terminalSessionFailureLabel, terminalSessionTargetKind } from "./XtermPane.runtime.helpers";
+import { installShellIntegrationOscHandlers, isClearScreenCommand } from "./XtermPane.shellIntegration";
 import { KITTY_KEYBOARD_PROTOCOL_ENABLE, resolveTerminalInputCompatibilityOverride, resolveTerminalRuntimeKeydownOverride, shouldEnableKittyKeyboardProtocol } from "./terminalKeyboardPolicy";
-import { applyTerminalShellIntegrationOsc7, collectTerminalShellIntegrationOsc133Segments, createTerminalShellIntegrationState, parseTerminalShellIntegrationOsc133, reduceTerminalShellIntegrationState, type TerminalShellIntegrationOsc133Event } from "./terminalShellIntegrationModel";
+import { createTerminalShellIntegrationState, reduceTerminalShellIntegrationState } from "./terminalShellIntegrationModel";
 
 const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000;
 const INITIAL_REMOTE_OUTPUT_IMMEDIATE_WRITE_MS = 8_000;
@@ -44,13 +39,7 @@ export function installXtermPaneRuntime(params: any) {
     let sessionStatusPollTimer: number | null = null;
     let resizeObserver: ResizeObserver | undefined;
     let sessionRun = 0;
-    let suggestionRequestRun = 0;
-    let suggestionTimer: number | null = null;
-    let commandBlockViewSyncFrame: number | null = null;
     let shellIntegrationState = createTerminalShellIntegrationState();
-    let shellIntegrationOsc133Buffer = "";
-    let pendingProtocolCommand: string | undefined;
-    let protocolCommandOutputActive = false;
     const assistEnabled = shellAssistEnabled !== false;
     const inputCompatibilityMode =
       params.inputCompatibilityMode === "agentTui" ? "agentTui" : "shell";
@@ -79,6 +68,53 @@ export function installXtermPaneRuntime(params: any) {
     const searchAddon = new SearchAddon({ highlightLimit: 1000 });
     fitAddonRef.current = fitAddon;
     searchAddonRef.current = searchAddon;
+    const reduceShellIntegrationRuntimeState = (
+      event: Parameters<typeof reduceTerminalShellIntegrationState>[1],
+    ) => {
+      shellIntegrationState = reduceTerminalShellIntegrationState(
+        shellIntegrationState,
+        event,
+      );
+      return shellIntegrationState;
+    };
+    const commandBlockRuntime = createXtermPaneCommandBlockRuntime({
+      assistEnabled,
+      commandBlockCounterRef,
+      commandBlocksRef,
+      isDisposed: () => disposed,
+      paneId,
+      promptLineRef,
+      readCurrentCommand: () => inputModelRef.current.command,
+      readShellIntegrationState: () => shellIntegrationState,
+      reduceShellIntegrationState: reduceShellIntegrationRuntimeState,
+      setCommandBlockNotice,
+      setCommandBlockViews,
+      shellIntegrationCommandBlockProtocolRef,
+      syncCommandBlockViews,
+      terminal,
+    });
+    const ghostSuggestions = createXtermPaneGhostSuggestions({
+      assistEnabled,
+      container,
+      currentCwdRef,
+      cwd,
+      ghostSuggestionRef,
+      inputBufferRef,
+      inputModelRef,
+      isDisposed: () => disposed,
+      paneId,
+      profileId,
+      remoteHostId,
+      remoteHostProduction,
+      scheduleCommandBlockViewSync:
+        commandBlockRuntime.scheduleCommandBlockViewSync,
+      sessionIdRef,
+      setGhostSuggestion,
+      shell,
+      target,
+      terminal,
+      terminalAppearanceRef,
+    });
     const shouldPreserveCommandBlockForOriginEraseBelow = () => {
       if (!assistEnabled) {
         return false;
@@ -90,266 +126,6 @@ export function installXtermPaneRuntime(params: any) {
       return (
         Date.now() - block.createdAt <=
         ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS
-      );
-    };
-    const closeCurrentCommandBlock = () => {
-      if (!assistEnabled) {
-        return;
-      }
-      if (
-        closeLatestTerminalCommandBlock({
-          commandBlocksRef,
-          onEndMarkerDispose: () => {
-            if (!disposed) {
-              scheduleCommandBlockViewSync();
-            }
-          },
-          terminal,
-        })
-      ) {
-        scheduleCommandBlockViewSync();
-      }
-    };
-    const clearCommandBlocks = () => {
-      if (!assistEnabled) {
-        setCommandBlockViews([]);
-        setCommandBlockNotice(null);
-        return;
-      }
-      clearTerminalCommandBlocks(commandBlocksRef);
-      setCommandBlockViews([]);
-      setCommandBlockNotice(null);
-      scheduleCommandBlockViewSync();
-    };
-    const registerCommandBlock = (command: string) => {
-      if (!assistEnabled) {
-        return;
-      }
-      if (
-        submitTerminalCommandBlock({
-          command,
-          commandBlockCounterRef,
-          commandBlocksRef,
-          onEndMarkerDispose: () => {
-            if (!disposed) {
-              scheduleCommandBlockViewSync();
-            }
-          },
-          onStartMarkerDispose: () => {
-            if (!disposed) {
-              scheduleCommandBlockViewSync();
-            }
-          },
-          paneId,
-          promptLine: promptLineRef.current,
-          terminal,
-        })
-      ) {
-        scheduleCommandBlockViewSync();
-      }
-    };
-    const latestOpenSubmittedCommandBlock = () => {
-      const block = commandBlocksRef.current[commandBlocksRef.current.length - 1];
-      if (!block || !block.submitted || block.endMarker) {
-        return undefined;
-      }
-      return block;
-    };
-    const currentTerminalLine = () => {
-      const activeBuffer = terminal.buffer.active as {
-        baseY?: number;
-        cursorY?: number;
-      };
-      return typeof activeBuffer.baseY === "number" &&
-        typeof activeBuffer.cursorY === "number"
-        ? activeBuffer.baseY + activeBuffer.cursorY
-        : undefined;
-    };
-    const syncProtocolPromptBlock = () => {
-      if (
-        !assistEnabled ||
-        !shellIntegrationCommandBlockProtocolRef.current ||
-        terminal.buffer.active.type !== "normal"
-      ) {
-        return;
-      }
-      const promptLine = currentTerminalLine();
-      promptLineRef.current = promptLine;
-      if (
-        syncTerminalCommandProtocolPromptBlock({
-          commandBlockCounterRef,
-          commandBlocksRef,
-          onEndMarkerDispose: () => {
-            if (!disposed) {
-              scheduleCommandBlockViewSync();
-            }
-          },
-          onStartMarkerDispose: () => {
-            if (!disposed) {
-              scheduleCommandBlockViewSync();
-            }
-          },
-          paneId,
-          promptLine,
-          terminal,
-        })
-      ) {
-        scheduleCommandBlockViewSync();
-      }
-    };
-    const startProtocolCommandBlock = (commandFromOsc?: string) => {
-      if (
-        !assistEnabled ||
-        !shellIntegrationCommandBlockProtocolRef.current ||
-        terminal.buffer.active.type !== "normal"
-      ) {
-        return;
-      }
-      const command = (
-        commandFromOsc ??
-        pendingProtocolCommand ??
-        inputModelRef.current.command
-      ).trim();
-      if (!command) {
-        return;
-      }
-      const latestBlock = latestOpenSubmittedCommandBlock();
-      if (latestBlock?.command === command) {
-        protocolCommandOutputActive = true;
-        pendingProtocolCommand = undefined;
-        return;
-      }
-      registerCommandBlock(command);
-      protocolCommandOutputActive = true;
-      pendingProtocolCommand = undefined;
-    };
-    const finishProtocolCommandBlock = (options: { closeMarker: boolean }) => {
-      if (!assistEnabled || !shellIntegrationCommandBlockProtocolRef.current) {
-        return;
-      }
-      protocolCommandOutputActive = false;
-      pendingProtocolCommand = undefined;
-      if (options.closeMarker) {
-        closeCurrentCommandBlock();
-      }
-    };
-    const handleShellIntegrationOsc133 = (
-      event: TerminalShellIntegrationOsc133Event,
-      source: "output" | "parser",
-    ) => {
-      if (!shellIntegrationCommandBlockProtocolRef.current) {
-        return;
-      }
-      switch (event.marker) {
-        case "A":
-        case "B":
-          syncProtocolPromptBlock();
-          return;
-        case "C":
-          startProtocolCommandBlock(event.command);
-          return;
-        case "D":
-          finishProtocolCommandBlock({ closeMarker: source === "parser" });
-          return;
-      }
-    };
-    const appendProtocolCommandOutput = (data: string) => {
-      if (!assistEnabled || !protocolCommandOutputActive) {
-        return;
-      }
-      appendCommandBlockOutput(commandBlocksRef.current, data);
-    };
-    const appendShellIntegrationCommandOutput = (data: string) => {
-      if (
-        !assistEnabled ||
-        !shellIntegrationCommandBlockProtocolRef.current ||
-        !shellIntegrationState.trusted
-      ) {
-        appendCommandBlockOutput(commandBlocksRef.current, data);
-        return;
-      }
-      const collected = collectTerminalShellIntegrationOsc133Segments(
-        shellIntegrationOsc133Buffer,
-        data,
-      );
-      shellIntegrationOsc133Buffer = collected.buffer;
-      for (const segment of collected.segments) {
-        if (segment.type === "data") {
-          appendProtocolCommandOutput(segment.data);
-          continue;
-        }
-        shellIntegrationState = reduceTerminalShellIntegrationState(
-          shellIntegrationState,
-          { payload: segment.event.marker, type: "osc133" },
-        );
-        handleShellIntegrationOsc133(segment.event, "output");
-      }
-    };
-    const clearCommandBlockViewSyncFrame = () => {
-      if (commandBlockViewSyncFrame === null) {
-        return;
-      }
-      if (typeof window.cancelAnimationFrame === "function") {
-        window.cancelAnimationFrame(commandBlockViewSyncFrame);
-      } else {
-        window.clearTimeout(commandBlockViewSyncFrame);
-      }
-      commandBlockViewSyncFrame = null;
-    };
-    const latestCommandBlockText = () => {
-      if (!assistEnabled) {
-        return undefined;
-      }
-      const block = [...commandBlocksRef.current]
-        .reverse()
-        .find((candidate) => candidate.submitted && candidate.command.trim());
-      return block ? terminalCommandBlockPlainText(block) : undefined;
-    };
-    const syncCommandBlockRuntimeContext = () => {
-      updateTerminalPaneRuntimeContext(paneId, {
-        commandBlockText: latestCommandBlockText(),
-      });
-    };
-    const scheduleCommandBlockViewSync = () => {
-      if (!assistEnabled) {
-        return;
-      }
-      if (commandBlockViewSyncFrame !== null) {
-        return;
-      }
-      commandBlockViewSyncFrame =
-        typeof window.requestAnimationFrame === "function"
-          ? window.requestAnimationFrame(() => {
-              commandBlockViewSyncFrame = null;
-              if (!disposed) {
-                syncCommandBlockViews();
-                syncCommandBlockRuntimeContext();
-              }
-            })
-          : window.setTimeout(() => {
-              commandBlockViewSyncFrame = null;
-              if (!disposed) {
-                syncCommandBlockViews();
-                syncCommandBlockRuntimeContext();
-              }
-            }, 16);
-    };
-    const clearSuggestionTimer = () => {
-      if (suggestionTimer !== null) {
-        window.clearTimeout(suggestionTimer);
-        suggestionTimer = null;
-      }
-    };
-    const updateGhostSuggestion = (suggestion: TerminalGhostSuggestion) => {
-      ghostSuggestionRef.current = suggestion;
-      setGhostSuggestion((current: TerminalGhostSuggestion | null) =>
-        terminalGhostSuggestionEqual(current, suggestion) ? current : suggestion,
-      );
-    };
-    const hideGhostSuggestion = () => {
-      ghostSuggestionRef.current = null;
-      setGhostSuggestion((current: TerminalGhostSuggestion | null) =>
-        current === null ? current : null,
       );
     };
     const remoteSuggestionPrewarm = createTerminalRemoteSuggestionPrewarm({
@@ -405,200 +181,19 @@ export function installXtermPaneRuntime(params: any) {
         writeState: (nextState) => {
           shellIntegrationState = nextState;
         },
-        onOsc133: (event) => handleShellIntegrationOsc133(event, "parser"),
+        onOsc133: (event) =>
+          commandBlockRuntime.handleShellIntegrationOsc133(event, "parser"),
       },
     );
-    const clearGhostSuggestion = () => {
-      clearSuggestionTimer();
-      suggestionRequestRun += 1;
-      hideGhostSuggestion();
-    };
-    const refreshGhostSuggestionLayout = () => {
-      const suggestion = ghostSuggestionRef.current;
-      if (!suggestion) {
-        return;
-      }
-      const layout = resolveGhostSuggestionLayout(
-        container,
-        terminal,
-        terminalAppearanceRef.current,
-        inputModelRef.current,
-      );
-      if (!layout) {
-        clearGhostSuggestion();
-        return;
-      }
-      updateGhostSuggestion({ ...suggestion, ...layout });
-    };
-    const scheduleGhostSuggestion = () => {
-      if (!assistEnabled) {
-        clearGhostSuggestion();
-        return;
-      }
-      clearSuggestionTimer();
-      const inlineSuggestion = terminalAppearanceRef.current.inlineSuggestion;
-      if (!inlineSuggestion.enabled) {
-        clearGhostSuggestion();
-        return;
-      }
-      inputModelRef.current = updateTerminalInputBufferKind(
-        inputModelRef.current,
-        terminal.buffer.active.type,
-      );
-      const eligibility = terminalSuggestionEligibility(inputModelRef.current);
-      if (!eligibility.eligible) {
-        clearGhostSuggestion();
-        return;
-      }
-      suggestionTimer = window.setTimeout(() => {
-        suggestionTimer = null;
-        const requestRun = ++suggestionRequestRun;
-        const model = inputModelRef.current;
-        const layout = resolveGhostSuggestionLayout(
-          container,
-          terminal,
-          terminalAppearanceRef.current,
-          model,
-        );
-        if (!layout) {
-          clearGhostSuggestion();
-          return;
-        }
-        const sessionId = sessionIdRef.current;
-        const containerHostId =
-          target?.kind === "dockerContainer" ? target.hostId : undefined;
-        const telnetHostId = target?.kind === "telnet" ? target.hostId : undefined;
-        const serialHostId = target?.kind === "serial" ? target.hostId : undefined;
-        const sshHostId = telnetHostId || serialHostId ? undefined : remoteHostId;
-        const suggestionRemoteHostId =
-          containerHostId ?? telnetHostId ?? serialHostId ?? sshHostId;
-        const suggestionTarget = containerHostId
-          ? "dockerContainer"
-          : telnetHostId
-            ? "telnet"
-            : serialHostId
-              ? "serial"
-            : sshHostId
-              ? "ssh"
-              : "local";
-        const suggestionProviders = terminalSuggestionProviders({
-          hasSshRemote: Boolean(sshHostId && !containerHostId),
-          inlineSuggestion: terminalAppearanceRef.current.inlineSuggestion,
-          remoteHostProduction,
-        });
-        if (suggestionProviders.length === 0) {
-          clearGhostSuggestion();
-          return;
-        }
-        void listTerminalSuggestions({
-          cursor: model.cursor,
-          cwd: currentCwdRef.current ?? cwd,
-          input: model.command,
-          limit: 1,
-          paneId,
-          profileId,
-          providers: suggestionProviders,
-          remoteHostId: suggestionRemoteHostId,
-          sessionId: sessionId ?? undefined,
-          shell,
-          target: suggestionTarget,
-        })
-          .then((suggestions) => {
-            if (disposed || requestRun !== suggestionRequestRun) {
-              return;
-            }
-            const candidate = suggestions.find(
-              (item) => item.suffix.length > 0,
-            );
-            if (!candidate) {
-              hideGhostSuggestion();
-              return;
-            }
-            const nextSuggestion = {
-              ...layout,
-              candidate,
-              suffix: candidate.suffix,
-            };
-            updateGhostSuggestion(nextSuggestion);
-          })
-          .catch(() => {
-            if (!disposed && requestRun === suggestionRequestRun) {
-              hideGhostSuggestion();
-            }
-          });
-      }, 60);
-    };
-    const recordGhostSuggestionFeedback = (
-      action: "accepted" | "dismissed",
-      suggestion: TerminalGhostSuggestion,
-      input: string,
-    ) => {
-      const sessionId = sessionIdRef.current;
-        const containerHostId =
-          target?.kind === "dockerContainer" ? target.hostId : undefined;
-        const telnetHostId = target?.kind === "telnet" ? target.hostId : undefined;
-        const serialHostId = target?.kind === "serial" ? target.hostId : undefined;
-        const sshHostId = telnetHostId || serialHostId ? undefined : remoteHostId;
-        const suggestionRemoteHostId =
-          containerHostId ?? telnetHostId ?? serialHostId ?? sshHostId;
-        const suggestionTarget = containerHostId
-          ? "dockerContainer"
-          : telnetHostId
-            ? "telnet"
-            : serialHostId
-              ? "serial"
-            : sshHostId
-            ? "ssh"
-            : "local";
-      const candidate = suggestion.candidate;
-      void recordTerminalSuggestionFeedback({
-        action,
-        cwd: currentCwdRef.current ?? cwd,
-        input,
-        paneId,
-        profileId,
-        provider: candidate.provider,
-        remoteHostId: suggestionRemoteHostId,
-        replacementText: candidate.replacementText,
-        sessionId: sessionId ?? undefined,
-        shell,
-        sourceId: candidate.sourceId,
-        target: suggestionTarget,
-      }).catch(() => undefined);
-    };
-    const acceptGhostSuggestion = (sessionId: string) => {
-      if (
-        terminalAppearanceRef.current.inlineSuggestion.acceptKey !==
-        "rightArrow"
-      ) {
-        return false;
-      }
-      const suggestion = ghostSuggestionRef.current;
-      if (!suggestion?.suffix) {
-        return false;
-      }
-      recordGhostSuggestionFeedback(
-        "accepted",
-        suggestion,
-        inputModelRef.current.command,
-      );
-      void writeTerminal(sessionId, suggestion.suffix);
-      const accepted = applyTerminalInputData(
-        inputModelRef.current,
-        suggestion.suffix,
-      );
-      inputModelRef.current = accepted.state;
-      inputBufferRef.current = accepted.state.command;
-      clearGhostSuggestion();
-      scheduleCommandBlockViewSync();
-      return true;
-    };
     const inputDisposable = terminal.onData((data) => {
       const sessionId = sessionIdRef.current;
       if (!sessionId) {
         return;
       }
-      if (isRightArrowInput(data) && acceptGhostSuggestion(sessionId)) {
+      if (
+        isRightArrowInput(data) &&
+        ghostSuggestions.acceptGhostSuggestion(sessionId)
+      ) {
         return;
       }
       const collected = applyTerminalInputData(inputModelRef.current, data);
@@ -613,15 +208,15 @@ export function installXtermPaneRuntime(params: any) {
       inputBufferRef.current = inputModelRef.current.command;
       for (const command of collected.commands) {
         const dismissedSuggestion = ghostSuggestionRef.current;
-        clearGhostSuggestion();
+        ghostSuggestions.clearGhostSuggestion();
         if (
           assistEnabled &&
           shellIntegrationCommandBlockProtocolRef.current &&
           shellIntegrationState.trusted
         ) {
-          pendingProtocolCommand = command;
+          commandBlockRuntime.setPendingProtocolCommand(command);
         } else {
-          registerCommandBlock(command);
+          commandBlockRuntime.registerCommandBlock(command);
         }
         if (!command) {
           continue;
@@ -631,7 +226,11 @@ export function installXtermPaneRuntime(params: any) {
             dismissedSuggestion &&
             dismissedSuggestion.candidate.replacementText !== command
           ) {
-            recordGhostSuggestionFeedback("dismissed", dismissedSuggestion, command);
+            ghostSuggestions.recordGhostSuggestionFeedback(
+              "dismissed",
+              dismissedSuggestion,
+              command,
+            );
           }
           const commandCwd = currentCwdRef.current ?? cwd;
           const containerHostId =
@@ -665,8 +264,8 @@ export function installXtermPaneRuntime(params: any) {
       }
       void writeTerminal(sessionId, data);
       if (collected.commands.length === 0) {
-        scheduleCommandBlockViewSync();
-        scheduleGhostSuggestion();
+        commandBlockRuntime.scheduleCommandBlockViewSync();
+        ghostSuggestions.scheduleGhostSuggestion();
       }
     });
     terminal.attachCustomKeyEventHandler((event) => {
@@ -710,14 +309,14 @@ export function installXtermPaneRuntime(params: any) {
       });
     });
     const scrollDisposable = terminal.onScroll(() => {
-      scheduleCommandBlockViewSync();
-      refreshGhostSuggestionLayout();
+      commandBlockRuntime.scheduleCommandBlockViewSync();
+      ghostSuggestions.refreshGhostSuggestionLayout();
     });
     const writeParsedDisposable = terminal.onWriteParsed(() => {
-      clearCommandBlockViewSyncFrame();
+      commandBlockRuntime.clearCommandBlockViewSyncFrame();
       syncCommandBlockViews();
-      syncCommandBlockRuntimeContext();
-      refreshGhostSuggestionLayout();
+      commandBlockRuntime.syncCommandBlockRuntimeContext();
+      ghostSuggestions.refreshGhostSuggestionLayout();
     });
     const bufferChangeDisposable = terminal.buffer.onBufferChange(() => {
       const nextBufferType = terminal.buffer.active.type;
@@ -729,7 +328,7 @@ export function installXtermPaneRuntime(params: any) {
         },
       );
       if (nextBufferType === "alternate") {
-        closeCurrentCommandBlock();
+        commandBlockRuntime.closeCurrentCommandBlock();
       }
       inputModelRef.current = updateTerminalInputBufferKind(
         inputModelRef.current,
@@ -737,11 +336,11 @@ export function installXtermPaneRuntime(params: any) {
       );
       inputBufferRef.current = inputModelRef.current.command;
       if (nextBufferType === "alternate") {
-        clearGhostSuggestion();
+        ghostSuggestions.clearGhostSuggestion();
       } else {
-        refreshGhostSuggestionLayout();
+        ghostSuggestions.refreshGhostSuggestionLayout();
       }
-      scheduleCommandBlockViewSync();
+      commandBlockRuntime.scheduleCommandBlockViewSync();
     });
     const xtermElement = container.querySelector(".xterm");
     const compositionTarget = xtermElement ?? container;
@@ -751,7 +350,7 @@ export function installXtermPaneRuntime(params: any) {
         true,
       );
       inputBufferRef.current = inputModelRef.current.command;
-      clearGhostSuggestion();
+      ghostSuggestions.clearGhostSuggestion();
     };
     const handleCompositionEnd = () => {
       inputModelRef.current = updateTerminalInputComposition(
@@ -759,7 +358,7 @@ export function installXtermPaneRuntime(params: any) {
         false,
       );
       inputBufferRef.current = inputModelRef.current.command;
-      scheduleGhostSuggestion();
+      ghostSuggestions.scheduleGhostSuggestion();
     };
     compositionTarget.addEventListener(
       "compositionstart",
@@ -823,7 +422,7 @@ export function installXtermPaneRuntime(params: any) {
     container.addEventListener("paste", handleRuntimePaste, true);
     const commandBlockClearHandlersDisposable = registerCommandBlockClearHandlers(
       terminal,
-      clearCommandBlocks,
+      commandBlockRuntime.clearCommandBlocks,
       {
         shouldPreserveOriginEraseBelow:
           shouldPreserveCommandBlockForOriginEraseBelow,
@@ -846,7 +445,7 @@ export function installXtermPaneRuntime(params: any) {
       }
 
       void resizeTerminal(sessionId, dimensions);
-      refreshGhostSuggestionLayout();
+      ghostSuggestions.refreshGhostSuggestionLayout();
     };
 
     const clearSessionState = (sessionId: string) => {
@@ -856,9 +455,7 @@ export function installXtermPaneRuntime(params: any) {
       unregisterTerminalPaneSession(paneId, sessionId);
       shellIntegrationState = createTerminalShellIntegrationState();
       shellIntegrationCommandBlockProtocolRef.current = false;
-      shellIntegrationOsc133Buffer = "";
-      pendingProtocolCommand = undefined;
-      protocolCommandOutputActive = false;
+      commandBlockRuntime.resetProtocolState();
       setLogState({ active: false, bytesWritten: 0 });
     };
 
@@ -952,7 +549,7 @@ export function installXtermPaneRuntime(params: any) {
         return;
       }
       clearSessionStatusPollTimer();
-      clearGhostSuggestion();
+      ghostSuggestions.clearGhostSuggestion();
       markTerminalPaneSessionDisconnected(paneId, sessionId);
       clearSessionState(sessionId);
       onSessionFinishedRef?.current?.({
@@ -1034,10 +631,8 @@ export function installXtermPaneRuntime(params: any) {
       cwdTrackingBufferRef.current = "";
       shellIntegrationState = createTerminalShellIntegrationState();
       shellIntegrationCommandBlockProtocolRef.current = false;
-      shellIntegrationOsc133Buffer = "";
-      pendingProtocolCommand = undefined;
-      protocolCommandOutputActive = false;
-      clearGhostSuggestion();
+      commandBlockRuntime.resetProtocolState();
+      ghostSuggestions.clearGhostSuggestion();
       const startupNotice = startupNoticeFor(reason);
       transientStartupNoticeVisible =
         reason === "initial" &&
@@ -1086,7 +681,10 @@ export function installXtermPaneRuntime(params: any) {
               terminalOutputInstrumentation,
               "commandBlock",
               event.data.length,
-              () => appendShellIntegrationCommandOutput(event.data),
+              () =>
+                commandBlockRuntime.appendShellIntegrationCommandOutput(
+                  event.data,
+                ),
             );
           }
           runTerminalOutputInstrumentationStep(
@@ -1117,7 +715,7 @@ export function installXtermPaneRuntime(params: any) {
           finishSessionClosed(event.sessionId, sessionStartedAtMs, currentRun);
           return;
         }
-        clearGhostSuggestion();
+        ghostSuggestions.clearGhostSuggestion();
         clearSessionStatusPollTimer();
         markTerminalPaneSessionDisconnected(paneId, event.sessionId);
         outputWriter.writeNow(`\r\n终端输出读取失败：${event.data}\r\n`);
@@ -1290,7 +888,7 @@ export function installXtermPaneRuntime(params: any) {
       inputBufferRef.current = "";
       inputModelRef.current = createTerminalInputModelState();
       cwdTrackingBufferRef.current = "";
-      clearGhostSuggestion();
+      ghostSuggestions.clearGhostSuggestion();
       try {
         await closeTerminal(sessionId);
         if (disposed || sessionRun !== currentRun) {
@@ -1323,8 +921,8 @@ export function installXtermPaneRuntime(params: any) {
       clearReconnectTimer();
       clearSessionStatusPollTimer();
       terminalSuggestionProbeScheduler.cancelOwner(paneId);
-      clearSuggestionTimer();
-      clearCommandBlockViewSyncFrame();
+      ghostSuggestions.dispose();
+      commandBlockRuntime.clearCommandBlockViewSyncFrame();
       outputHistoryBuffer.dispose();
       inputDisposable.dispose();
       selectionDisposable.dispose();
@@ -1350,9 +948,7 @@ export function installXtermPaneRuntime(params: any) {
       const sessionId = sessionIdRef.current;
       sessionIdRef.current = null;
       shellIntegrationCommandBlockProtocolRef.current = false;
-      shellIntegrationOsc133Buffer = "";
-      pendingProtocolCommand = undefined;
-      protocolCommandOutputActive = false;
+      commandBlockRuntime.resetProtocolState();
       reconnectSessionRef.current = null;
       disconnectSessionRef.current = null;
       if (sessionId) {
@@ -1370,63 +966,4 @@ export function installXtermPaneRuntime(params: any) {
       setLogState({ active: false, bytesWritten: 0 });
       setLogNotice(null);
     };
-}
-
-type XtermOscDisposable = { dispose: () => void };
-
-interface XtermOscParserHost {
-  parser?: {
-    registerOscHandler?: (
-      identifier: number,
-      handler: (data: string) => boolean,
-    ) => XtermOscDisposable;
-  };
-}
-
-function installShellIntegrationOscHandlers(
-  terminal: XtermTerminal,
-  callbacks: {
-    onCurrentCwd: (cwd: string) => void;
-    readState: () => ReturnType<typeof createTerminalShellIntegrationState>;
-    reduceState: (
-      event: Parameters<typeof reduceTerminalShellIntegrationState>[1],
-    ) => void;
-    onOsc133?: (event: TerminalShellIntegrationOsc133Event) => void;
-    writeState: (
-      state: ReturnType<typeof createTerminalShellIntegrationState>,
-    ) => void;
-  },
-): XtermOscDisposable[] {
-  const parser = (terminal as XtermOscParserHost).parser;
-  if (typeof parser?.registerOscHandler !== "function") {
-    return [];
-  }
-
-  const osc7Disposable = parser.registerOscHandler(7, (payload) => {
-    const result = applyTerminalShellIntegrationOsc7(
-      callbacks.readState(),
-      payload,
-    );
-    callbacks.writeState(result.state);
-    if (result.cwd) {
-      callbacks.onCurrentCwd(result.cwd);
-      return true;
-    }
-    return result.state.trusted;
-  });
-  const osc133Disposable = parser.registerOscHandler(133, (payload) => {
-    const previousState = callbacks.readState();
-    const event = parseTerminalShellIntegrationOsc133(payload);
-    callbacks.reduceState({ payload, type: "osc133" });
-    if (previousState.trusted && event) {
-      callbacks.onOsc133?.(event);
-    }
-    return previousState.trusted;
-  });
-
-  return [osc7Disposable, osc133Disposable];
-}
-
-function isClearScreenCommand(command: string) {
-  return /^(?:clear|cls|clear-host|reset)(?:\s|$)/i.test(command.trim());
 }

@@ -5,29 +5,14 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
 } from "react";
-import {
-  Bot,
-  Cpu,
-  FileText,
-  FolderOpen,
-  History,
-  Network,
-  PanelsTopLeft,
-  X,
-} from "lucide-react";
-import { Button } from "../components/ui/button";
 import { AppTitleBar } from "./AppTitleBar";
 import type { MachineSidebarMachineDragEvent } from "../features/machine-sidebar/MachineSidebar.shared";
 import type {
   SettingsSaveState,
   SettingsSectionId,
 } from "../features/settings/SettingsToolContent";
-import {
-  keybindingMatchesEvent,
-  shortcutPlatform,
-} from "../features/settings/keybindingUtils";
+import { shortcutPlatform } from "../features/settings/keybindingUtils";
 import {
   resolveThemeMode,
   type AppSettings,
@@ -42,7 +27,6 @@ import {
 import { isTerminalSplitMachineKind } from "../features/terminal/terminalSplitTargets";
 import { writeBroadcastCommand } from "../features/terminal/terminalSessionRegistry";
 import { useWorkspaceStore } from "../features/workspace/workspaceStore";
-import type { WorkspaceShellLayout } from "../features/workspace/workspaceSession";
 import { cn } from "../lib/cn";
 import {
   fetchDockerContainerStats,
@@ -56,47 +40,39 @@ import {
   type DockerContainerSummary,
 } from "../lib/dockerApi";
 import {
-  listenNativeMenuActions,
-  type NativeMenuAction,
-} from "../lib/nativeMenuApi";
-import { listProfiles } from "../lib/profileApi";
-import {
   createRemoteHostGroup,
   updateRemoteHost,
   type RemoteHost,
 } from "../lib/remoteHostApi";
-import { getSettings } from "../lib/settingsApi";
-import { listSnippets } from "../lib/snippetApi";
+import { listProfiles } from "../lib/profileApi";
 import { reapOrphanTerminalSessions } from "../lib/terminalApi";
 import { useDocumentTheme } from "../lib/useDocumentTheme";
 import { useTauriWindowFrameState } from "../lib/useTauriWindowFrameState";
-import { listWorkflows } from "../lib/workflowApi";
 import type {
   SftpTransferCreatedHostTarget,
   SftpTransferCreateHostRequest,
 } from "../features/sftp/SftpTransferWorkbench";
 import {
   isTerminalSessionTab,
-  isToolId,
-  type MachineGroup,
-  type ToolId,
 } from "../features/workspace/types";
-import { tools } from "../features/workspace/workspaceData";
 import {
   DeleteConfirmationDialog,
   DialogLazyFallback,
   ShellResizeSeparator,
-  clampPanelWidth,
   htmlLanguage,
-  initialPanelWidth,
   isRealRemoteGroup,
-  resolveShellLayout,
   useSystemThemePreference,
   useViewportWidth,
-  workspaceBackgroundImage,
-  workspaceBackgroundColor,
 } from "./KerminalShell.helpers";
+import {
+  KerminalShellNotices,
+  ShellToolRail,
+} from "./KerminalShell.view";
 import { useKerminalShellRemoteActions } from "./useKerminalShellRemoteActions";
+import { useKerminalShellBackgroundStyle } from "./useKerminalShellBackgroundStyle";
+import { useKerminalShellCommands } from "./useKerminalShellCommands";
+import { useKerminalShellConfigRefresh } from "./useKerminalShellConfigRefresh";
+import { useKerminalShellPanelResize } from "./useKerminalShellPanelResize";
 import { useKerminalShellSettings } from "./useKerminalShellSettings";
 import {
   DEFAULT_REMOTE_GROUP_NAME,
@@ -113,89 +89,14 @@ import {
   WorkspaceTerminalSurface,
 } from "./KerminalShell.workspaceBridge";
 import {
-  createConfigRefreshCoordinator,
-  type ConfigChangeNotice,
-} from "./configRefreshCoordinator";
-import {
-  configChangeNoticeSnapshot,
-  type ConfigChangeNoticeSnapshot,
-  type ConfigChangePublicItem,
-} from "./configChangeNoticeModel";
-import {
   resolveConnectionEditConflict,
   resolveRemoteGroupEditConflict,
-  shouldKeepSettingsEditorDraft,
 } from "./configDirtyGuardModel";
 import { useKerminalConfigEvents } from "./useKerminalConfigEvents";
 
 function isSftpCapableRemoteHost(host: RemoteHost) {
   return !host.tags.some((tag) =>
     ["rdp", "telnet", "serial"].includes(tag.trim().toLowerCase()),
-  );
-}
-
-function formatCssAlpha(value: number) {
-  return String(Number(value.toFixed(4)));
-}
-
-function clampCssAlpha(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function normalizeCollapsedMachineGroupIds(groupIds: readonly string[] = []) {
-  return [...new Set(groupIds.filter(Boolean))].sort();
-}
-
-function configHostNoticeItems(groups: MachineGroup[]): ConfigChangePublicItem[] {
-  return groups.flatMap((group) =>
-    group.machines
-      .filter((machine) =>
-        ["ssh", "rdp", "telnet", "serial"].includes(machine.kind),
-      )
-      .map((machine) => ({
-        id: machine.id,
-        label: machine.name,
-        revision: [
-          machine.updatedAt ?? "",
-          machine.remoteGroupId ?? group.id,
-          machine.host ?? "",
-          machine.port ?? "",
-          machine.production ? "prod" : "dev",
-          machine.tags.join(","),
-        ].join("|"),
-      })),
-  );
-}
-
-function configProfileNoticeItems(
-  profiles: Awaited<ReturnType<typeof listProfiles>>,
-): ConfigChangePublicItem[] {
-  return profiles.map((profile) => ({
-    id: profile.id,
-    label: profile.name,
-    revision: [
-      profile.updatedAt,
-      profile.sidebarGroupId ?? "",
-      profile.shell,
-      profile.args.join(" "),
-      profile.cwd ?? "",
-    ].join("|"),
-  }));
-}
-
-function configSettingsRevision(settings: AppSettings) {
-  return JSON.stringify(settings);
-}
-
-function shellNoticeClassName(level: ConfigChangeNotice["level"] | "warning") {
-  return cn(
-    "absolute bottom-3 left-1/2 z-20 flex max-w-[min(720px,calc(100%-32px))] -translate-x-1/2 items-start gap-2 rounded-xl border px-3 py-2 font-mono text-xs shadow-lg shadow-black/20",
-    level === "info" &&
-      "border-emerald-300/25 bg-emerald-50/95 text-emerald-900 dark:border-emerald-300/20 dark:bg-emerald-950/85 dark:text-emerald-100",
-    level === "warning" &&
-      "border-amber-300/30 bg-amber-50/95 text-amber-900 dark:border-amber-300/20 dark:bg-amber-950/85 dark:text-amber-100",
-    level === "error" &&
-      "border-rose-300/30 bg-rose-50/95 text-rose-900 dark:border-rose-300/20 dark:bg-rose-950/85 dark:text-rose-100",
   );
 }
 
@@ -209,62 +110,6 @@ const terminalSplitDropZoneLabels: Record<TerminalSplitDropZone, string> = {
   right: "右侧",
   top: "上方",
 };
-
-const TOOL_PANEL_INITIAL_MAX_WIDTH = 444;
-const TOOL_PANEL_INITIAL_MIN_WIDTH = 340;
-const TOOL_PANEL_MIN_WIDTH = 300;
-const TOOL_PANEL_RESIZE_MAX_WIDTH = 720;
-
-const shellToolRailIcons: Partial<Record<ToolId, typeof Bot>> = {
-  agentLauncher: Bot,
-  logs: History,
-  ports: Network,
-  sftp: FolderOpen,
-  snippets: FileText,
-  system: Cpu,
-  tmux: PanelsTopLeft,
-};
-
-function ShellToolRail({
-  onActiveToolChange,
-}: {
-  onActiveToolChange: (toolId: ToolId) => void;
-}) {
-  return (
-    <aside
-      aria-expanded={false}
-      aria-label="工具面板"
-      className="kerminal-material-nav flex h-full w-full min-w-0 justify-center border-l"
-    >
-      <nav
-        aria-label="工具栏"
-        className="flex w-11 shrink-0 flex-col items-center gap-1.5 py-2.5"
-      >
-        {tools
-          .filter((tool) => tool.id !== "settings")
-          .map((tool) => {
-            const Icon = shellToolRailIcons[tool.id];
-            if (!Icon) {
-              return null;
-            }
-            return (
-              <Button
-                aria-label={`打开 ${tool.title}`}
-                className="h-8 w-8 rounded-xl"
-                key={tool.id}
-                onClick={() => onActiveToolChange(tool.id)}
-                size="icon"
-                title={tool.title}
-                variant="ghost"
-              >
-                <Icon className="h-4 w-4" />
-              </Button>
-            );
-          })}
-      </nav>
-    </aside>
-  );
-}
 
 export function KerminalShell() {
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
@@ -334,29 +179,6 @@ export function KerminalShell() {
   const activeProfileId = useWorkspaceStore((state) => state.activeProfileId);
   const settings = useWorkspaceStore((state) => state.settings);
   const setSettings = useWorkspaceStore((state) => state.setSettings);
-  const [configNotice, setConfigNotice] = useState<ConfigChangeNotice | null>(
-    null,
-  );
-  const [configCatalogRevisions, setConfigCatalogRevisions] = useState({
-    snippets: 0,
-    workflows: 0,
-  });
-  const [leftPanelWidth, setLeftPanelWidth] = useState(() =>
-    initialPanelWidth(0.22, {
-      max: 320,
-      min: 240,
-    }),
-  );
-  const [toolPanelWidth, setToolPanelWidth] = useState(() =>
-    initialPanelWidth(0.24, {
-      max: TOOL_PANEL_INITIAL_MAX_WIDTH,
-      min: TOOL_PANEL_INITIAL_MIN_WIDTH,
-    }),
-  );
-  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
-  const [collapsedMachineGroupIds, setCollapsedMachineGroupIds] = useState<
-    string[]
-  >([]);
   const viewportWidth = useViewportWidth();
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [settingsInitialSectionId, setSettingsInitialSectionId] =
@@ -378,17 +200,9 @@ export function KerminalShell() {
   const workspaceFrameRef = useRef<HTMLDivElement>(null);
   const terminalSplitDropZoneRef = useRef<TerminalSplitDropZone | null>(null);
   const createdSftpHostSequenceRef = useRef(0);
-  const machineGroupsRef = useRef(machineGroups);
-  const profilesRef = useRef(profiles);
   const settingsDialogDirtyRef = useRef(false);
   const settingsDialogOpenRef = useRef(settingsDialogOpen);
   const settingsSaveStateRef = useRef<SettingsSaveState>("idle");
-  const settingsRef = useRef(settings);
-  const snippetNoticeItemsRef = useRef<ConfigChangePublicItem[]>([]);
-  const workflowNoticeItemsRef = useRef<ConfigChangePublicItem[]>([]);
-  machineGroupsRef.current = machineGroups;
-  profilesRef.current = profiles;
-  settingsRef.current = settings;
   const {
     handleSettingsChange,
     settingsLoadError,
@@ -408,121 +222,29 @@ export function KerminalShell() {
     lang: htmlLanguage(settings.appearance.interfaceLanguage),
     theme: resolvedTheme,
   });
-  const handleCollapsedMachineGroupIdsChange = useCallback(
-    (groupIds: string[]) => {
-      setCollapsedMachineGroupIds(normalizeCollapsedMachineGroupIds(groupIds));
-    },
-    [],
-  );
-  const handleWorkspaceShellLayoutRestored = useCallback(
-    (layout: WorkspaceShellLayout) => {
-      if (typeof layout.leftPanelWidth === "number") {
-        setLeftPanelWidth(
-          clampPanelWidth(layout.leftPanelWidth, { max: 520, min: 220 }),
-        );
-      }
-      if (typeof layout.toolPanelWidth === "number") {
-        setToolPanelWidth(
-          clampPanelWidth(layout.toolPanelWidth, {
-            max: TOOL_PANEL_RESIZE_MAX_WIDTH,
-            min: TOOL_PANEL_MIN_WIDTH,
-          }),
-        );
-      }
-      if (typeof layout.leftPanelCollapsed === "boolean") {
-        setLeftPanelCollapsed(layout.leftPanelCollapsed);
-      }
-      setCollapsedMachineGroupIds(
-        normalizeCollapsedMachineGroupIds(layout.collapsedMachineGroupIds),
-      );
-    },
-    [],
-  );
-  const workspaceShellLayout = useMemo<WorkspaceShellLayout>(
-    () => ({
-      collapsedMachineGroupIds,
-      leftPanelCollapsed,
-      leftPanelWidth,
-      toolPanelWidth,
-    }),
-    [
-      collapsedMachineGroupIds,
-      leftPanelCollapsed,
-      leftPanelWidth,
-      toolPanelWidth,
-    ],
-  );
-  const workspaceBackgroundStyle = useMemo<CSSProperties>(() => {
-    const windowOpacity =
-      Math.min(Math.max(settings.appearance.windowOpacity, 35), 100) / 100;
-    const backgroundImageVisible =
-      settings.appearance.backgroundEnabled &&
-      settings.appearance.backgroundImagePath.trim()
-        ? Math.min(Math.max(settings.appearance.backgroundOpacity, 0), 100) /
-          100
-        : 0;
-    const transparencyDepth = 1 - windowOpacity;
-    const chromeSurfaceOpacity = clampCssAlpha(
-      (resolvedTheme === "dark" ? 0.78 : 0.8) -
-        transparencyDepth * 0.1 -
-        backgroundImageVisible * 0.06,
-      resolvedTheme === "dark" ? 0.62 : 0.66,
-      0.82,
-    );
-    const terminalSurfaceOpacity = clampCssAlpha(
-      (resolvedTheme === "dark" ? 0.76 : 0.78) -
-        transparencyDepth * 0.12 -
-        backgroundImageVisible * 0.08,
-      resolvedTheme === "dark" ? 0.62 : 0.64,
-      0.84,
-    );
-    const terminalHeaderOpacity = clampCssAlpha(
-      terminalSurfaceOpacity + 0.05,
-      resolvedTheme === "dark" ? 0.68 : 0.7,
-      0.88,
-    );
-    const backgroundVeilOpacity =
-      backgroundImageVisible > 0
-        ? clampCssAlpha(
-            (resolvedTheme === "dark" ? 0.32 : 0.46) +
-              (1 - backgroundImageVisible) * 0.2,
-            resolvedTheme === "dark" ? 0.3 : 0.44,
-            resolvedTheme === "dark" ? 0.58 : 0.72,
-          )
-        : 0;
-    return {
-      "--app-background-veil-opacity": formatCssAlpha(backgroundVeilOpacity),
-      "--app-window-opacity": formatCssAlpha(windowOpacity),
-      "--app-nav-surface-opacity": formatCssAlpha(chromeSurfaceOpacity),
-      "--app-workspace-surface-opacity": formatCssAlpha(chromeSurfaceOpacity),
-      "--app-terminal-header-opacity": formatCssAlpha(terminalHeaderOpacity),
-      "--app-terminal-surface-opacity": formatCssAlpha(terminalSurfaceOpacity),
-      backgroundColor: workspaceBackgroundColor(
-        settings.appearance.windowOpacity,
-        resolvedTheme,
-      ),
-      backgroundImage: workspaceBackgroundImage(
-        settings.appearance.backgroundEnabled,
-        settings.appearance.backgroundImagePath,
-        settings.appearance.backgroundOpacity,
-        resolvedTheme,
-      ),
-      backgroundPosition: "center",
-      backgroundRepeat:
-        settings.appearance.backgroundFit === "tile" ? "repeat" : "no-repeat",
-      backgroundSize:
-        settings.appearance.backgroundFit === "tile"
-          ? "auto"
-          : settings.appearance.backgroundFit,
-    };
-  }, [
+  const {
+    beginPanelResize,
+    collapsedMachineGroupIds,
+    compactShell,
+    effectiveLeftPanelCollapsed,
+    effectiveRightPanelOpen,
+    gridTemplateColumns,
+    handleCollapsedMachineGroupIdsChange,
+    handleWorkspaceShellLayoutRestored,
+    leftPanelCollapsed,
+    resizeWithKeyboard,
+    rightWorkspaceInset,
+    setLeftPanelCollapsed,
+    workspaceShellLayout,
+  } = useKerminalShellPanelResize({
+    activeTool,
+    viewportWidth,
+    workspaceFrameRef,
+  });
+  const workspaceBackgroundStyle = useKerminalShellBackgroundStyle({
     resolvedTheme,
-    settings.appearance.backgroundEnabled,
-    settings.appearance.backgroundFit,
-    settings.appearance.backgroundImagePath,
-    settings.appearance.backgroundOpacity,
-    settings.appearance.windowOpacity,
-  ]) as CSSProperties;
+    settings,
+  });
   const defaultRemoteGroupId =
     machineGroups.find(
       (group) =>
@@ -544,21 +266,6 @@ export function KerminalShell() {
         : undefined,
     [hostContainersHostId, machineGroups],
   );
-  const {
-    compactShell,
-    effectiveLeftPanelCollapsed,
-    effectiveRightPanelOpen,
-    gridTemplateColumns,
-    leftPanelColumnWidth,
-    rightPanelColumnWidth,
-    rightWorkspaceInset,
-  } = resolveShellLayout({
-    activeToolOpen: activeTool !== null,
-    leftPanelCollapsed,
-    leftPanelWidth,
-    toolPanelWidth,
-    viewportWidth,
-  });
   const leftTitleBarInset = effectiveLeftPanelCollapsed
     ? windowControlPlatform === "mac"
       ? 112
@@ -629,10 +336,6 @@ export function KerminalShell() {
     },
     [handleExternalMachineDragEnd, resolveTerminalDropZone, splitFocusedPane],
   );
-  const openLogsTool = useCallback(
-    () => setActiveTool("logs"),
-    [setActiveTool],
-  );
   const openSettingsTool = useCallback(
     (sectionId: SettingsSectionId = DEFAULT_SETTINGS_SECTION_ID) => {
       settingsDialogDirtyRef.current = false;
@@ -642,6 +345,21 @@ export function KerminalShell() {
     },
     [],
   );
+  const { activateTool, openLogsTool } = useKerminalShellCommands({
+    activeTabId,
+    activeTool,
+    addTerminalTab,
+    closePane,
+    closeTerminalTab,
+    focusPane,
+    focusedPaneId,
+    keybindings: settings.keybindings,
+    openSettingsTool,
+    selectTab,
+    setActiveTool,
+    splitFocusedPane,
+    terminalTabs,
+  });
   const openSftpForMachine = useCallback(
     (machineId: string) => {
       selectMachine(machineId);
@@ -710,157 +428,6 @@ export function KerminalShell() {
     },
     [openSshCommandTerminal, setActiveTool],
   );
-  const activateTool = useCallback(
-    (toolId: ToolId) => {
-      if (toolId === "settings") {
-        openSettingsTool();
-        return;
-      }
-      setActiveTool(activeTool === toolId ? null : toolId);
-    },
-    [activeTool, openSettingsTool, setActiveTool],
-  );
-  const selectRelativeTerminalTab = useCallback(
-    (offset: number) => {
-      if (terminalTabs.length === 0) {
-        return false;
-      }
-
-      const currentIndex = Math.max(
-        terminalTabs.findIndex((tab) => tab.id === activeTabId),
-        0,
-      );
-      const nextIndex =
-        (currentIndex + offset + terminalTabs.length) % terminalTabs.length;
-      selectTab(terminalTabs[nextIndex].id);
-      return true;
-    },
-    [activeTabId, selectTab, terminalTabs],
-  );
-  const focusTerminalWorkspace = useCallback(() => {
-    setActiveTool(null);
-    if (!activeTabId) {
-      addTerminalTab();
-      return true;
-    }
-
-    selectTab(activeTabId);
-    if (focusedPaneId) {
-      focusPane(focusedPaneId);
-    }
-    return true;
-  }, [
-    activeTabId,
-    addTerminalTab,
-    focusPane,
-    focusedPaneId,
-    selectTab,
-    setActiveTool,
-  ]);
-  const runKeybindingAction = useCallback(
-    (action: string) => {
-      if (action.startsWith("tool.")) {
-        const toolId = action.slice("tool.".length);
-        if (isToolId(toolId)) {
-          activateTool(toolId);
-          return true;
-        }
-      }
-
-      if (action === "settings.open") {
-        openSettingsTool();
-        return true;
-      }
-      if (action === "settings.keybindings") {
-        openSettingsTool("settings-keybindings");
-        return true;
-      }
-      if (action === "terminal.focus") {
-        return focusTerminalWorkspace();
-      }
-      if (action === "terminal.newTab") {
-        addTerminalTab();
-        return true;
-      }
-      if (action === "terminal.closeTab") {
-        if (activeTabId) {
-          closeTerminalTab(activeTabId);
-        }
-        return true;
-      }
-      if (action === "terminal.closePane") {
-        closePane(focusedPaneId);
-        return true;
-      }
-      if (action === "terminal.splitHorizontal") {
-        splitFocusedPane("horizontal");
-        return true;
-      }
-      if (action === "terminal.splitVertical") {
-        splitFocusedPane("vertical");
-        return true;
-      }
-      if (action === "terminal.previousTab") {
-        return selectRelativeTerminalTab(-1);
-      }
-      if (action === "terminal.nextTab") {
-        return selectRelativeTerminalTab(1);
-      }
-
-      return false;
-    },
-    [
-      activateTool,
-      activeTabId,
-      addTerminalTab,
-      closePane,
-      closeTerminalTab,
-      focusTerminalWorkspace,
-      focusedPaneId,
-      openSettingsTool,
-      selectRelativeTerminalTab,
-      splitFocusedPane,
-    ],
-  );
-  const handleNativeMenuAction = useCallback(
-    (action: NativeMenuAction) => {
-      if (action === "newTerminal") {
-        addTerminalTab();
-      } else if (action === "closeTab") {
-        closeTerminalTab(activeTabId);
-      } else if (action === "closePane") {
-        closePane(focusedPaneId);
-      } else if (action === "openSettings") {
-        openSettingsTool();
-      } else if (action === "splitHorizontal") {
-        splitFocusedPane("horizontal");
-      } else if (action === "splitVertical") {
-        splitFocusedPane("vertical");
-      } else if (action === "openLogs") {
-        setActiveTool("logs");
-      } else if (action === "openAgentLauncher") {
-        setActiveTool("agentLauncher");
-      } else if (action === "openSystem") {
-        setActiveTool("system");
-      } else if (action === "openSftp") {
-        setActiveTool("sftp");
-      } else if (action === "openPorts") {
-        setActiveTool("ports");
-      } else if (action === "openSnippets") {
-        setActiveTool("snippets");
-      }
-    },
-    [
-      activeTabId,
-      addTerminalTab,
-      closePane,
-      closeTerminalTab,
-      focusedPaneId,
-      openSettingsTool,
-      setActiveTool,
-      splitFocusedPane,
-    ],
-  );
   const {
     closeConnectionDialog,
     closeRemoteGroupDialog,
@@ -913,26 +480,22 @@ export function KerminalShell() {
     setRemoteHostTree,
     updateLocalMachine,
   });
-  const refreshSettingsFromConfig = useCallback(async () => {
-    if (
-      shouldKeepSettingsEditorDraft({
-        dialogOpen: settingsDialogOpenRef.current,
-        dirty: settingsDialogDirtyRef.current,
-        saveState: settingsSaveStateRef.current,
-      })
-    ) {
-      setConfigNotice({
-        batchId: "settings-editor-draft",
-        domains: ["settings"],
-        id: `settings-editor-draft:${Date.now()}`,
-        level: "warning",
-        text: "cfg: settings changed externally; editor draft kept",
-        ttlMs: 3500,
-      });
-      return;
-    }
-    setSettings(await getSettings());
-  }, [setSettings]);
+  const {
+    configCatalogRevisions,
+    configNotice,
+    configRefreshCoordinator,
+    setConfigNotice,
+  } = useKerminalShellConfigRefresh({
+    machineGroups,
+    profiles,
+    refreshProfiles,
+    refreshRemoteHostTree,
+    setSettings,
+    settings,
+    settingsDialogDirtyRef,
+    settingsDialogOpenRef,
+    settingsSaveStateRef,
+  });
   const handleSettingsDialogChange = useCallback(
     (nextSettings: AppSettings) => {
       settingsDialogDirtyRef.current = true;
@@ -961,75 +524,6 @@ export function KerminalShell() {
         groups: machineGroups,
       }),
     [editingRemoteGroup, machineGroups],
-  );
-  const refreshSnippetNoticeSnapshot = useCallback(async () => {
-    const snippets = await listSnippets();
-    snippetNoticeItemsRef.current = snippets.map((snippet) => ({
-      id: snippet.id,
-      label: snippet.title,
-      revision: [
-        snippet.updatedAt,
-        snippet.scope,
-        snippet.tags.join(","),
-        snippet.command,
-      ].join("|"),
-    }));
-    setConfigCatalogRevisions((current) => ({
-      ...current,
-      snippets: current.snippets + 1,
-    }));
-  }, []);
-  const refreshWorkflowNoticeSnapshot = useCallback(async () => {
-    const workflows = await listWorkflows();
-    workflowNoticeItemsRef.current = workflows.map((workflow) => ({
-      id: workflow.id,
-      label: workflow.title,
-      revision: [
-        workflow.updatedAt,
-        workflow.scope,
-        workflow.tags.join(","),
-        workflow.steps.map((step) => `${step.id}:${step.updatedAt}`).join(","),
-      ].join("|"),
-    }));
-    setConfigCatalogRevisions((current) => ({
-      ...current,
-      workflows: current.workflows + 1,
-    }));
-  }, []);
-  const getConfigNoticeSnapshot = useCallback(
-    (): ConfigChangeNoticeSnapshot =>
-      configChangeNoticeSnapshot({
-        hosts: configHostNoticeItems(machineGroupsRef.current),
-        profiles: configProfileNoticeItems(profilesRef.current),
-        settingsRevision: configSettingsRevision(settingsRef.current),
-        snippets: snippetNoticeItemsRef.current,
-        workflows: workflowNoticeItemsRef.current,
-      }),
-    [],
-  );
-  const configRefreshCoordinator = useMemo(
-    () =>
-      createConfigRefreshCoordinator({
-        getSnapshot: getConfigNoticeSnapshot,
-        onNotice: setConfigNotice,
-        refreshers: {
-          hosts: refreshRemoteHostTree,
-          profiles: async () => {
-            await refreshProfiles();
-          },
-          settings: refreshSettingsFromConfig,
-          snippets: refreshSnippetNoticeSnapshot,
-          workflows: refreshWorkflowNoticeSnapshot,
-        },
-      }),
-    [
-      getConfigNoticeSnapshot,
-      refreshProfiles,
-      refreshRemoteHostTree,
-      refreshSettingsFromConfig,
-      refreshSnippetNoticeSnapshot,
-      refreshWorkflowNoticeSnapshot,
-    ],
   );
   const pinHostContainer = useCallback(
     async (container: DockerContainerSummary) => {
@@ -1129,45 +623,6 @@ export function KerminalShell() {
   }, [settingsSaveState]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    Promise.allSettled([listSnippets(), listWorkflows()]).then((results) => {
-      if (cancelled) {
-        return;
-      }
-      const [snippetsResult, workflowsResult] = results;
-      if (snippetsResult.status === "fulfilled") {
-        snippetNoticeItemsRef.current = snippetsResult.value.map((snippet) => ({
-          id: snippet.id,
-          label: snippet.title,
-          revision: [
-            snippet.updatedAt,
-            snippet.scope,
-            snippet.tags.join(","),
-            snippet.command,
-          ].join("|"),
-        }));
-      }
-      if (workflowsResult.status === "fulfilled") {
-        workflowNoticeItemsRef.current = workflowsResult.value.map((workflow) => ({
-          id: workflow.id,
-          label: workflow.title,
-          revision: [
-            workflow.updatedAt,
-            workflow.scope,
-            workflow.tags.join(","),
-            workflow.steps.map((step) => `${step.id}:${step.updatedAt}`).join(","),
-          ].join("|"),
-        }));
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
     if (!shellNoticeMessage) {
       setShellNoticeVisible(false);
       return undefined;
@@ -1179,65 +634,6 @@ export function KerminalShell() {
     }, 4200);
     return () => window.clearTimeout(timer);
   }, [shellNoticeMessage]);
-
-  useEffect(() => {
-    if (!configNotice) {
-      return undefined;
-    }
-
-    const timer = window.setTimeout(() => {
-      setConfigNotice((current) =>
-        current?.id === configNotice.id ? null : current,
-      );
-    }, configNotice.ttlMs);
-    return () => window.clearTimeout(timer);
-  }, [configNotice]);
-
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-
-    listenNativeMenuActions(handleNativeMenuAction)
-      .then((nextUnlisten) => {
-        if (disposed) {
-          nextUnlisten();
-          return;
-        }
-        unlisten = nextUnlisten;
-      })
-      .catch(() => {
-        // 原生菜单只在 Tauri 桌面端可用，监听失败不影响浏览器预览。
-      });
-
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [handleNativeMenuAction]);
-
-  useEffect(() => {
-    const platform = shortcutPlatform();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) {
-        return;
-      }
-
-      const matchedKeybinding = settings.keybindings.find((keybinding) =>
-        keybindingMatchesEvent(keybinding, event, platform),
-      );
-      if (!matchedKeybinding) {
-        return;
-      }
-
-      if (runKeybindingAction(matchedKeybinding.action)) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [runKeybindingAction, settings.keybindings]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1266,103 +662,11 @@ export function KerminalShell() {
     void refreshRemoteHostTree();
   }, [refreshRemoteHostTree]);
 
-  const beginPanelResize = useCallback(
-    (panel: "left" | "tools", event: React.PointerEvent<HTMLDivElement>) => {
-      if (
-        (panel === "left" && effectiveLeftPanelCollapsed) ||
-        (panel === "tools" && !effectiveRightPanelOpen)
-      ) {
-        return;
-      }
-      event.preventDefault();
-      const startX = event.clientX;
-      const startLeftWidth = leftPanelWidth;
-      const startToolWidth = toolPanelWidth;
-      const frameWidth =
-        workspaceFrameRef.current?.getBoundingClientRect().width ??
-        window.innerWidth;
-      const terminalMinWidth = 360;
-
-      const handlePointerMove = (moveEvent: PointerEvent) => {
-        if (panel === "left") {
-          const maxLeftWidth =
-            frameWidth - rightPanelColumnWidth - terminalMinWidth;
-          setLeftPanelWidth(
-            clampPanelWidth(startLeftWidth + moveEvent.clientX - startX, {
-              max: Math.min(520, maxLeftWidth),
-              min: 220,
-            }),
-          );
-          return;
-        }
-
-        const maxToolWidth =
-          frameWidth - leftPanelColumnWidth - terminalMinWidth;
-        setToolPanelWidth(
-          clampPanelWidth(startToolWidth - (moveEvent.clientX - startX), {
-            max: Math.min(TOOL_PANEL_RESIZE_MAX_WIDTH, maxToolWidth),
-            min: TOOL_PANEL_MIN_WIDTH,
-          }),
-        );
-      };
-      const stopResize = () => {
-        window.removeEventListener("pointermove", handlePointerMove);
-      };
-
-      window.addEventListener("pointermove", handlePointerMove);
-      window.addEventListener("pointerup", stopResize, { once: true });
-    },
-    [
-      effectiveLeftPanelCollapsed,
-      effectiveRightPanelOpen,
-      leftPanelColumnWidth,
-      leftPanelWidth,
-      rightPanelColumnWidth,
-      toolPanelWidth,
-    ],
-  );
-  const resizeWithKeyboard = useCallback(
-    (panel: "left" | "tools", event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
-        return;
-      }
-
-      if (
-        (panel === "left" && effectiveLeftPanelCollapsed) ||
-        (panel === "tools" && !effectiveRightPanelOpen)
-      ) {
-        return;
-      }
-      event.preventDefault();
-      const step = event.shiftKey ? 40 : 16;
-      if (panel === "left") {
-        setLeftPanelWidth((current) =>
-          clampPanelWidth(
-            current + (event.key === "ArrowRight" ? step : -step),
-            {
-              max: 520,
-              min: 220,
-            },
-          ),
-        );
-        return;
-      }
-
-      setToolPanelWidth((current) =>
-        clampPanelWidth(current + (event.key === "ArrowLeft" ? step : -step), {
-          max: TOOL_PANEL_RESIZE_MAX_WIDTH,
-          min: TOOL_PANEL_MIN_WIDTH,
-        }),
-      );
-    },
-    [effectiveLeftPanelCollapsed, effectiveRightPanelOpen],
-  );
-
   return (
     <div
       ref={workspaceFrameRef}
       className={cn(
-        "relative grid h-screen overflow-hidden transition-[grid-template-columns] duration-200 ease-out",
+        "relative grid h-screen overflow-hidden",
         resolvedTheme === "dark" ? "dark text-zinc-100" : "text-zinc-950",
       )}
       data-density={settings.interfaceDensity}
@@ -1587,35 +891,13 @@ export function KerminalShell() {
         onConfirm={() => void confirmDelete()}
         pendingDelete={pendingDelete}
       />
-      {configNotice ? (
-        <div
-          aria-live="polite"
-          className={shellNoticeClassName(configNotice.level)}
-          role={configNotice.level === "error" ? "alert" : "status"}
-        >
-          <span className="min-w-0 flex-1 truncate">{configNotice.text}</span>
-          <button
-            aria-label="关闭提示"
-            className="rounded-md p-1 opacity-75 transition hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
-            onClick={() => setConfigNotice(null)}
-            type="button"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      ) : shellNoticeMessage && shellNoticeVisible ? (
-        <div className={shellNoticeClassName("warning")} role="alert">
-          <span className="min-w-0 flex-1">{shellNoticeMessage}</span>
-          <button
-            aria-label="关闭提示"
-            className="rounded-md p-1 opacity-75 transition hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
-            onClick={() => setShellNoticeVisible(false)}
-            type="button"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      ) : null}
+      <KerminalShellNotices
+        configNotice={configNotice}
+        onConfigNoticeDismiss={() => setConfigNotice(null)}
+        onShellNoticeDismiss={() => setShellNoticeVisible(false)}
+        shellNoticeMessage={shellNoticeMessage}
+        shellNoticeVisible={shellNoticeVisible}
+      />
     </div>
   );
 }

@@ -34,7 +34,7 @@ import type {
   TerminalTabGroupPreferences,
   ToolId,
 } from "./types";
-import { isSftpTransferWorkspaceTab, isToolId } from "./types";
+import { isToolId } from "./types";
 import {
   addDockerContainerMachineToGroup,
   addMachineToGroup,
@@ -85,6 +85,12 @@ import {
   syncContainerTerminalOpenState,
 } from "./workspaceTerminalOpenState";
 import { openTmuxAttachTerminalState } from "./workspaceTmuxState";
+import {
+  restoredSelectedMachineId,
+  sanitizeRestoredSftpTransferTabs,
+  selectedMachineIdForUpdatedGroups,
+  selectedMachineIdFromWorkspaceTab,
+} from "./workspaceSelectionModel";
 
 export interface AddTerminalTabOptions {
   title?: string;
@@ -916,132 +922,6 @@ function removeRemovedSidebarMachineId(machineIds: string[], machineId: string) 
   return machineIds.includes(machineId)
     ? machineIds.filter((candidate) => candidate !== machineId)
     : machineIds;
-}
-
-function sanitizeRestoredSftpTransferTabs(
-  tabs: TerminalTab[],
-  machineGroups: MachineGroup[],
-) {
-  return tabs.map((tab) => {
-    if (!isSftpTransferWorkspaceTab(tab)) {
-      return tab;
-    }
-
-    const lockedLeftHostId = validSshHostId(machineGroups, tab.lockedLeftHostId);
-    const leftHostId =
-      lockedLeftHostId ?? validSshHostId(machineGroups, tab.leftHostId);
-    const rightHostId = validSshHostId(machineGroups, tab.rightHostId);
-    const machineHostId = validSshHostId(machineGroups, tab.machineId);
-    const primaryHostId =
-      rightHostId ?? lockedLeftHostId ?? leftHostId ?? machineHostId;
-
-    return {
-      ...tab,
-      leftHostId: leftHostId ?? machineHostId,
-      lockedLeftHostId,
-      machineId: primaryHostId ?? "sftp-transfer",
-      rightHostId,
-    };
-  });
-}
-
-function restoredSelectedMachineId({
-  activeTabId,
-  fallbackSelectedMachineId,
-  machineGroups,
-  selectedMachineId,
-  terminalTabs,
-}: {
-  activeTabId: string;
-  fallbackSelectedMachineId: string;
-  machineGroups: MachineGroup[];
-  selectedMachineId: string;
-  terminalTabs: TerminalTab[];
-}) {
-  const activeTabCandidate = selectedMachineIdCandidateFromTab(
-    terminalTabs.find((tab) => tab.id === activeTabId) ?? terminalTabs[0],
-  );
-
-  return (
-    validMachineId(machineGroups, activeTabCandidate) ||
-    activeTabCandidate ||
-    validMachineId(machineGroups, selectedMachineId) ||
-    pendingRemoteSelectionId(selectedMachineId) ||
-    validMachineId(machineGroups, fallbackSelectedMachineId) ||
-    ""
-  );
-}
-
-function selectedMachineIdForUpdatedGroups({
-  activeTabId,
-  allowPendingActiveTabSelection,
-  fallbackSelectedMachineId,
-  machineGroups,
-  terminalTabs,
-}: {
-  activeTabId: string;
-  allowPendingActiveTabSelection: boolean;
-  fallbackSelectedMachineId: string;
-  machineGroups: MachineGroup[];
-  terminalTabs: TerminalTab[];
-}) {
-  const activeTabCandidate = selectedMachineIdCandidateFromTab(
-    terminalTabs.find((tab) => tab.id === activeTabId) ?? terminalTabs[0],
-  );
-
-  return (
-    validMachineId(machineGroups, fallbackSelectedMachineId) ||
-    validMachineId(machineGroups, activeTabCandidate) ||
-    (allowPendingActiveTabSelection
-      ? pendingRemoteSelectionId(fallbackSelectedMachineId) ||
-        activeTabCandidate
-      : "") ||
-    ""
-  );
-}
-
-function pendingRemoteSelectionId(machineId: string | undefined) {
-  return machineId && machineId !== "sftp-transfer" ? machineId : "";
-}
-
-function selectedMachineIdFromWorkspaceTab(
-  tab: TerminalTab | undefined,
-  machineGroups: MachineGroup[],
-) {
-  return validMachineId(machineGroups, selectedMachineIdCandidateFromTab(tab));
-}
-
-function selectedMachineIdCandidateFromTab(tab: TerminalTab | undefined) {
-  if (!tab) {
-    return "";
-  }
-  if (isSftpTransferWorkspaceTab(tab)) {
-    return (
-      tab.rightHostId ||
-      tab.lockedLeftHostId ||
-      tab.leftHostId ||
-      (tab.machineId === "sftp-transfer" ? "" : tab.machineId)
-    );
-  }
-  return tab.machineId;
-}
-
-function validSshHostId(
-  machineGroups: MachineGroup[],
-  machineId: string | undefined,
-) {
-  const machine = machineId ? findMachine(machineGroups, machineId) : undefined;
-  return machine?.kind === "ssh" ? machine.id : undefined;
-}
-
-function validMachineId(
-  machineGroups: MachineGroup[],
-  machineId: string | undefined,
-) {
-  if (!machineId || machineId === "sftp-transfer") {
-    return "";
-  }
-  return findMachine(machineGroups, machineId)?.id ?? "";
 }
 
 function updateGeneratedCounters(session: WorkspaceSessionSnapshot) {

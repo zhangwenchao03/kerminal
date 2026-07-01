@@ -1,0 +1,178 @@
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ServerInfoSnapshot } from "../../../../src/lib/serverInfoApi";
+import type { ServerInfoTargetContext } from "../../../../src/features/tool-panel/serverInfoTargetModel";
+import {
+  clearServerInfoSnapshotCacheForTest,
+  resolveServerInfoRefreshDelay,
+  useServerInfoSnapshot,
+} from "../../../../src/features/tool-panel/useServerInfoSnapshot";
+
+const serverInfoApiMock = vi.hoisted(() => ({
+  getServerInfoSnapshot: vi.fn(),
+}));
+
+vi.mock("../../../../src/lib/serverInfoApi", async () => {
+  const actual = await vi.importActual<typeof import("../../../../src/lib/serverInfoApi")>(
+    "../../../../src/lib/serverInfoApi",
+  );
+  return {
+    ...actual,
+    getServerInfoSnapshot: serverInfoApiMock.getServerInfoSnapshot,
+  };
+});
+
+describe("useServerInfoSnapshot", () => {
+  beforeEach(() => {
+    clearServerInfoSnapshotCacheForTest();
+    serverInfoApiMock.getServerInfoSnapshot.mockReset();
+    serverInfoApiMock.getServerInfoSnapshot.mockResolvedValue(serverSnapshot());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    clearServerInfoSnapshotCacheForTest();
+  });
+
+  it("loads the first snapshot for the selected target", async () => {
+    const { result } = renderHook(() => useServerInfoSnapshot(targetContext));
+
+    await waitFor(() => {
+      expect(result.current.snapshot?.hostname).toBe("prod-api-01");
+    });
+
+    expect(serverInfoApiMock.getServerInfoSnapshot).toHaveBeenCalledWith({
+      hostId: "prod-api",
+      target: { hostId: "prod-api", kind: "ssh" },
+    });
+    expect(result.current.error).toBeNull();
+  });
+
+  it("uses the hidden refresh delay while the document is not visible", async () => {
+    vi.useFakeTimers();
+    serverInfoApiMock.getServerInfoSnapshot
+      .mockResolvedValueOnce(serverSnapshot({ capturedAt: "1" }))
+      .mockResolvedValueOnce(serverSnapshot({ capturedAt: "2" }));
+    let visible = false;
+    let visibilityHandler: (() => void) | undefined;
+    const documentVisible = () => visible;
+    const subscribeToVisibilityChange = vi.fn((handler: () => void) => {
+      visibilityHandler = handler;
+      return vi.fn();
+    });
+
+    const { result } = renderHook(() =>
+      useServerInfoSnapshot(targetContext, {
+        documentVisible,
+        hiddenRefreshIntervalMs: 1_000,
+        subscribeToVisibilityChange,
+      }),
+    );
+
+    await flushEffects();
+    expect(result.current.snapshot?.capturedAt).toBe("1");
+
+    act(() => {
+      result.current.setRefreshIntervalMs(100);
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(serverInfoApiMock.getServerInfoSnapshot).toHaveBeenCalledTimes(1);
+
+    visible = true;
+    act(() => {
+      visibilityHandler?.();
+    });
+    await flushEffects();
+    expect(result.current.snapshot?.capturedAt).toBe("2");
+  });
+
+  it("keeps manual refresh available when automatic refresh is disabled", async () => {
+    serverInfoApiMock.getServerInfoSnapshot
+      .mockResolvedValueOnce(serverSnapshot({ capturedAt: "1" }))
+      .mockResolvedValueOnce(serverSnapshot({ capturedAt: "manual" }));
+
+    const { result } = renderHook(() => useServerInfoSnapshot(targetContext));
+
+    await waitFor(() => {
+      expect(result.current.snapshot?.capturedAt).toBe("1");
+    });
+
+    act(() => {
+      result.current.setRefreshIntervalMs(0);
+    });
+
+    await flushEffects();
+    expect(serverInfoApiMock.getServerInfoSnapshot).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await result.current.refresh({ force: true });
+    });
+
+    expect(result.current.snapshot?.capturedAt).toBe("manual");
+    expect(serverInfoApiMock.getServerInfoSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it("resolves visibility-aware refresh delay", () => {
+    expect(
+      resolveServerInfoRefreshDelay({
+        documentVisible: true,
+        hiddenRefreshIntervalMs: 10_000,
+        refreshIntervalMs: 3_000,
+      }),
+    ).toBe(3_000);
+    expect(
+      resolveServerInfoRefreshDelay({
+        documentVisible: false,
+        hiddenRefreshIntervalMs: 10_000,
+        refreshIntervalMs: 3_000,
+      }),
+    ).toBe(10_000);
+    expect(
+      resolveServerInfoRefreshDelay({
+        documentVisible: true,
+        hiddenRefreshIntervalMs: 10_000,
+        refreshIntervalMs: 0,
+      }),
+    ).toBeNull();
+  });
+});
+
+async function flushEffects() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+const targetContext: ServerInfoTargetContext = {
+  cacheKey: "ssh:prod-api",
+  hostId: "prod-api",
+  refreshAriaLabel: "刷新服务器信息",
+  subtitle: "deploy@prod.internal:22",
+  target: { hostId: "prod-api", kind: "ssh" },
+  title: "远程服务器",
+};
+
+function serverSnapshot(
+  overrides: Partial<ServerInfoSnapshot> = {},
+): ServerInfoSnapshot {
+  return {
+    architecture: "x86_64",
+    capturedAt: "1",
+    cpuCount: 4,
+    diskMount: "/",
+    diskTotalBytes: 64 * 1024 * 1024 * 1024,
+    diskUsedBytes: 16 * 1024 * 1024 * 1024,
+    host: "prod.internal",
+    hostId: "prod-api",
+    hostName: "prod api",
+    hostname: "prod-api-01",
+    os: "Linux",
+    port: 22,
+    username: "deploy",
+    ...overrides,
+  };
+}

@@ -4,13 +4,9 @@ import {
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
-  FolderPlus,
-  Pencil,
-  Pin,
   Plus,
   Search,
   Settings,
-  Trash2,
 } from "lucide-react";
 import {
   useCallback,
@@ -36,11 +32,10 @@ import {
   type SidebarContextMenu,
   type SidebarContextMenuPayload,
 } from "./MachineSidebar.shared";
+import { MachineSidebarContextMenuPortal } from "./MachineSidebarContextMenuPortal";
 import {
   CollapsedHostPopover,
   CollapsedMachineSidebar,
-  ContextMenuItem,
-  MachineContextMenuItems,
   MachineDragPreviewCard,
   PinnedGroupBadge,
   clampContextMenuPosition,
@@ -50,17 +45,10 @@ import {
   sidebarDisplayStatus,
   statusTitle,
 } from "./MachineSidebar.parts";
-import {
-  MACHINE_GROUP_MENU_DOMAIN,
-  MACHINE_SIDEBAR_ROOT_MENU_DOMAIN,
-  machineSidebarMenuDomainForContextMenu,
-} from "./machineSidebarMenuModel";
 import { buildVisibleMachineGroups } from "./machineSidebarVisibilityModel";
 
 export type { ConnectionOpenOptions } from "./MachineSidebar.shared";
 
-const sidebarContextMenuSurfaceClassName =
-  "kerminal-context-menu kerminal-floating-enter fixed z-[1000] w-56";
 const sidebarAccentIconButtonClassName =
   "kerminal-pressable h-8 w-8 rounded-lg text-sky-600 hover:bg-[var(--surface-hover)] dark:text-sky-300";
 const sidebarIconButtonClassName =
@@ -578,125 +566,35 @@ export function MachineSidebar({
     setCollapsedHostPopoverOpen((open) => !open);
   };
 
-  const contextMenuElement =
-    contextMenu && typeof document !== "undefined"
-      ? createPortal(
-          <div
-            aria-label="主机操作菜单"
-            className={sidebarContextMenuSurfaceClassName}
-            onClick={(event) => event.stopPropagation()}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            ref={contextMenuRef}
-            role="menu"
-            data-menu-domain={machineSidebarMenuDomainForContextMenu(
-              contextMenu.type,
-            )}
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-          >
-            {contextMenu.type === "root" ? (
-              <>
-                <ContextMenuItem
-                  disabled={!onAddConnection}
-                  icon={<Plus className="h-4 w-4" />}
-                  label="添加连接"
-                  menuAction="addConnection"
-                  menuDomain={MACHINE_SIDEBAR_ROOT_MENU_DOMAIN}
-                  onClick={() =>
-                    runMenuAction(() => onAddConnection?.({ mode: "ssh" }))
-                  }
-                />
-                <ContextMenuItem
-                  disabled={!onAddGroup}
-                  icon={<FolderPlus className="h-4 w-4" />}
-                  label="新建分组"
-                  menuAction="addGroup"
-                  menuDomain={MACHINE_SIDEBAR_ROOT_MENU_DOMAIN}
-                  onClick={() => runMenuAction(onAddGroup)}
-                />
-              </>
-            ) : null}
-            {contextMenu.type === "group" && contextGroup ? (
-              <>
-                <ContextMenuItem
-                  disabled={!onAddMachine}
-                  icon={<Plus className="h-4 w-4" />}
-                  label="添加连接到此分组"
-                  menuAction="addMachineToGroup"
-                  menuDomain={MACHINE_GROUP_MENU_DOMAIN}
-                  onClick={() =>
-                    runMenuAction(() => onAddMachine?.(contextGroup.id))
-                  }
-                />
-                <ContextMenuItem
-                  disabled={!onEditGroup}
-                  icon={<Pencil className="h-4 w-4" />}
-                  label="重命名分组"
-                  menuAction="editGroup"
-                  menuDomain={MACHINE_GROUP_MENU_DOMAIN}
-                  onClick={() =>
-                    runMenuAction(() => onEditGroup?.(contextGroup.id))
-                  }
-                />
-                <ContextMenuItem
-                  disabled={!onPinGroup}
-                  icon={<Pin className="h-4 w-4" />}
-                  label={contextGroupPinned ? "取消置顶" : "置顶分组"}
-                  menuAction="togglePinGroup"
-                  menuDomain={MACHINE_GROUP_MENU_DOMAIN}
-                  onClick={() =>
-                    runMenuAction(() =>
-                      onPinGroup?.(contextGroup.id, !contextGroupPinned),
-                    )
-                  }
-                />
-                <ContextMenuItem
-                  danger
-                  disabled={!onDeleteGroup}
-                  icon={<Trash2 className="h-4 w-4" />}
-                  label="删除分组"
-                  menuAction="deleteGroup"
-                  menuDomain={MACHINE_GROUP_MENU_DOMAIN}
-                  onClick={() =>
-                    runMenuAction(() => onDeleteGroup?.(contextGroup.id))
-                  }
-                />
-                <ContextMenuItem
-                  disabled={!onAddGroup}
-                  icon={<FolderPlus className="h-4 w-4" />}
-                  label="新建分组"
-                  menuAction="addGroup"
-                  menuDomain={MACHINE_GROUP_MENU_DOMAIN}
-                  onClick={() => runMenuAction(onAddGroup)}
-                />
-              </>
-            ) : null}
-            {contextMenu.type === "machine" && contextMachine ? (
-              <MachineContextMenuItems
-                machine={contextMachine}
-                onAddMachine={onAddMachine}
-                onDeleteMachine={onDeleteMachine}
-                onDuplicateMachine={onDuplicateMachine}
-                onEditMachine={onEditMachine}
-                onOpenContainerDetails={onOpenContainerDetails}
-                onOpenHostContainers={onOpenHostContainers}
-                onOpenLocalTerminal={onOpenLocalTerminal}
-                onOpenContainerTerminal={onOpenContainerTerminal}
-                onOpenRdpConnection={onOpenRdpConnection}
-                onOpenSftp={onOpenSftp}
-                onOpenSshTerminal={onOpenSshTerminal}
-                onOpenSftpTransferWorkbench={onOpenSftpTransferWorkbench}
-                onOpenTelnetTerminal={onOpenTelnetTerminal}
-                onOpenSerialTerminal={onOpenSerialTerminal}
-                runMenuAction={runMenuAction}
-              />
-            ) : null}
-          </div>,
-          document.body,
-        )
-      : null;
+  const contextMenuElement = (
+    <MachineSidebarContextMenuPortal
+      contextGroup={contextGroup}
+      contextGroupPinned={contextGroupPinned}
+      contextMachine={contextMachine}
+      contextMenu={contextMenu}
+      menuRef={contextMenuRef}
+      onAddConnection={onAddConnection}
+      onAddGroup={onAddGroup}
+      onAddMachine={onAddMachine}
+      onDeleteGroup={onDeleteGroup}
+      onDeleteMachine={onDeleteMachine}
+      onDuplicateMachine={onDuplicateMachine}
+      onEditGroup={onEditGroup}
+      onEditMachine={onEditMachine}
+      onOpenContainerDetails={onOpenContainerDetails}
+      onOpenHostContainers={onOpenHostContainers}
+      onOpenLocalTerminal={onOpenLocalTerminal}
+      onOpenContainerTerminal={onOpenContainerTerminal}
+      onOpenRdpConnection={onOpenRdpConnection}
+      onOpenSftp={onOpenSftp}
+      onOpenSshTerminal={onOpenSshTerminal}
+      onOpenSftpTransferWorkbench={onOpenSftpTransferWorkbench}
+      onOpenTelnetTerminal={onOpenTelnetTerminal}
+      onOpenSerialTerminal={onOpenSerialTerminal}
+      onPinGroup={onPinGroup}
+      runMenuAction={runMenuAction}
+    />
+  );
 
   const collapsedHostPopoverElement = (
     <CollapsedHostPopover

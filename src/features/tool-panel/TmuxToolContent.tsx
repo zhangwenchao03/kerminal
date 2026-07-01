@@ -21,7 +21,6 @@ import { Button } from "../../components/ui/button";
 import { PromptDialog } from "../../components/ui/prompt-dialog";
 import { cn } from "../../lib/cn";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
-import { writeTerminal } from "../../lib/terminalApi";
 import {
   tmuxCreateSession,
   tmuxDetachCurrent,
@@ -31,17 +30,24 @@ import {
   tmuxRenameSession,
   type TmuxCapabilityStatus,
   type TmuxSessionSummary,
-  type TmuxTargetRef,
 } from "../../lib/tmuxApi";
-import {
-  getTerminalPaneSession,
-  writePaneCommand,
-} from "../terminal/terminalSessionRegistry";
+import { writePaneCommand } from "../terminal/terminalSessionRegistry";
 import type {
   Machine,
   TerminalPane,
   TerminalTab,
 } from "../workspace/types";
+import {
+  buildTmuxAttachCommand,
+  writeTmuxDetachShortcut,
+  writeTmuxShortcut,
+} from "./tmux/tmuxCommandModel";
+import {
+  COMMON_TMUX_COMMANDS,
+  COMMON_TMUX_SHORTCUTS,
+  tmuxQuickrefDisplay,
+  type TmuxQuickrefItem,
+} from "./tmux/tmuxQuickrefModel";
 import {
   defaultTmuxSessionName,
   resolveTmuxTarget,
@@ -68,127 +74,6 @@ type DialogState =
   | { kind: "rename"; name: string; session: TmuxSessionSummary }
   | { kind: "kill"; session: TmuxSessionSummary }
   | null;
-
-type TmuxCommandQuickrefItem = {
-  command: string;
-  kind: "command";
-  label: string;
-};
-
-type TmuxShortcutQuickrefItem = {
-  data: string;
-  kind: "shortcut";
-  label: string;
-  shortcut: string;
-};
-
-type TmuxQuickrefItem = TmuxCommandQuickrefItem | TmuxShortcutQuickrefItem;
-
-const TMUX_PREFIX = "\u0002";
-
-const COMMON_TMUX_COMMANDS: TmuxCommandQuickrefItem[] = [
-  { command: "tmux ls", kind: "command", label: "列出所有会话" },
-  {
-    command: "tmux new -s work",
-    kind: "command",
-    label: "新建名为 work 的会话",
-  },
-  {
-    command: "tmux attach -t work",
-    kind: "command",
-    label: "连接到 work 会话",
-  },
-  {
-    command: "tmux detach-client",
-    kind: "command",
-    label: "命令方式退出当前连接",
-  },
-  {
-    command: "tmux switch-client -t work",
-    kind: "command",
-    label: "在 tmux 内切换会话",
-  },
-  {
-    command: "tmux new-window -n logs",
-    kind: "command",
-    label: "新建名为 logs 的窗口",
-  },
-  { command: "tmux split-window -h", kind: "command", label: "左右分屏" },
-  { command: "tmux split-window -v", kind: "command", label: "上下分屏" },
-  {
-    command: "tmux list-windows -t work",
-    kind: "command",
-    label: "查看 work 会话窗口",
-  },
-  {
-    command: "tmux source-file ~/.tmux.conf",
-    kind: "command",
-    label: "重新加载 tmux 配置",
-  },
-];
-
-const COMMON_TMUX_SHORTCUTS: TmuxShortcutQuickrefItem[] = [
-  {
-    data: tmuxShortcutData("d"),
-    kind: "shortcut",
-    label: "快捷键退出当前 tmux 连接",
-    shortcut: "Ctrl-b d",
-  },
-  {
-    data: tmuxShortcutData("c"),
-    kind: "shortcut",
-    label: "新建窗口",
-    shortcut: "Ctrl-b c",
-  },
-  {
-    data: tmuxShortcutData("n"),
-    kind: "shortcut",
-    label: "切到下一个窗口",
-    shortcut: "Ctrl-b n",
-  },
-  {
-    data: tmuxShortcutData("p"),
-    kind: "shortcut",
-    label: "切到上一个窗口",
-    shortcut: "Ctrl-b p",
-  },
-  {
-    data: tmuxShortcutData("%"),
-    kind: "shortcut",
-    label: "左右分屏",
-    shortcut: "Ctrl-b %",
-  },
-  {
-    data: tmuxShortcutData('"'),
-    kind: "shortcut",
-    label: "上下分屏",
-    shortcut: 'Ctrl-b "',
-  },
-  {
-    data: tmuxShortcutData("o"),
-    kind: "shortcut",
-    label: "切换到下一个分屏",
-    shortcut: "Ctrl-b o",
-  },
-  {
-    data: tmuxShortcutData("x"),
-    kind: "shortcut",
-    label: "关闭当前分屏，tmux 会确认",
-    shortcut: "Ctrl-b x",
-  },
-  {
-    data: tmuxShortcutData("["),
-    kind: "shortcut",
-    label: "进入复制模式",
-    shortcut: "Ctrl-b [",
-  },
-  {
-    data: tmuxShortcutData("?"),
-    kind: "shortcut",
-    label: "查看 tmux 快捷键列表",
-    shortcut: "Ctrl-b ?",
-  },
-];
 
 export function TmuxToolContent({
   activeMachine,
@@ -965,55 +850,6 @@ function TmuxQuickrefGroup({
       </div>
     </div>
   );
-}
-
-function tmuxShortcutData(key: string) {
-  return `${TMUX_PREFIX}${key}`;
-}
-
-function tmuxQuickrefDisplay(item: TmuxQuickrefItem) {
-  return item.kind === "shortcut" ? item.shortcut : item.command;
-}
-
-function buildTmuxAttachCommand(
-  target: TmuxTargetRef,
-  session: TmuxSessionSummary,
-) {
-  const program = target.tmuxPath?.trim() || "tmux";
-  const args = [
-    ...socketArgs(target),
-    "attach-session",
-    "-t",
-    session.id || session.name,
-  ];
-  return [program, ...args.map(shellQuote)].join(" ");
-}
-
-async function writeTmuxDetachShortcut(paneId: string) {
-  return writeTmuxShortcut(paneId, tmuxShortcutData("d"));
-}
-
-async function writeTmuxShortcut(paneId: string, data: string) {
-  const terminalSessionId = getTerminalPaneSession(paneId);
-  if (!terminalSessionId) {
-    return false;
-  }
-  await writeTerminal(terminalSessionId, data);
-  return true;
-}
-
-function socketArgs(target: TmuxTargetRef) {
-  if (target.socketName?.trim()) {
-    return ["-L", target.socketName.trim()];
-  }
-  if (target.socketPath?.trim()) {
-    return ["-S", target.socketPath.trim()];
-  }
-  return [];
-}
-
-function shellQuote(value: string) {
-  return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 function errorMessage(error: unknown) {

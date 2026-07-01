@@ -7,10 +7,9 @@ use crate::{
     models::terminal::{
         TerminalAgentSignal, TerminalAgentSignalSummary, TerminalCreateRequest,
         TerminalOutputEvent, TerminalOutputKind, TerminalOutputSnapshot, TerminalResizeRequest,
-        TerminalSecretInputEntry, TerminalSecretInputPlan, TerminalSessionLogState,
-        TerminalSessionReapDiagnostics, TerminalSessionStatus, TerminalSessionSummary,
+        TerminalSecretInputPlan, TerminalSessionLogState, TerminalSessionReapDiagnostics,
+        TerminalSessionStatus, TerminalSessionSummary,
     },
-    security::redaction::redact_terminal_text,
     services::{
         pty_process_guard::{
             with_conpty_lifecycle_lock, PtyMasterGuard, PtyProcessGuard, SharedPtyChildHandle,
@@ -21,13 +20,19 @@ use crate::{
         terminal_shell_integration::build_terminal_shell_launch,
     },
 };
+mod output_state;
+mod secret_input;
 #[path = "terminal_target_token.rs"]
 mod terminal_target_token;
+mod text;
 
+use output_state::{ActiveTerminalLog, TerminalOutputBuffer};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+pub use secret_input::rules;
+use secret_input::TerminalSecretInputResponder;
 use std::{
     collections::HashMap,
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::{mpsc, Arc, Mutex, MutexGuard},
@@ -45,10 +50,7 @@ const PTY_OUTPUT_COALESCE: Duration = Duration::from_millis(4);
 const PTY_OUTPUT_MAX_IDLE: Duration = Duration::from_millis(50);
 const PTY_CHILD_EXIT_POLL_INTERVAL: Duration = Duration::from_millis(20);
 const PTY_READER_EOF_GRACE: Duration = Duration::from_millis(500);
-const TERMINAL_CONTEXT_BUFFER_BYTES: usize = 64 * 1024;
-const LOG_REDACTION_PENDING_CHARS: usize = 4096;
 const TERMINAL_TARGET_TOKEN_TTL_MS: u64 = 5 * 60 * 1000;
-const CLEAR_CURRENT_TERMINAL_LINE: &str = "\r\x1b[2K";
 const KERMINAL_AGENT_SESSION_ID_ENV: &str = "KERMINAL_AGENT_SESSION_ID";
 
 type WriterHandle = Box<dyn Write + Send>;
@@ -560,74 +562,6 @@ impl TerminalSession {
     }
 }
 
-struct ActiveTerminalLog {
-    bytes_written: u64,
-    file: File,
-    pending_text: String,
-    path: PathBuf,
-    started_at: String,
-}
-
-impl ActiveTerminalLog {
-    fn append(&mut self, data: &str) -> AppResult<()> {
-        self.pending_text.push_str(data);
-        let Some(flush_end) = self.redactable_prefix_end() else {
-            return Ok(());
-        };
-        let remaining = self.pending_text.split_off(flush_end);
-        let data = std::mem::replace(&mut self.pending_text, remaining);
-        self.write_redacted(&data)
-    }
-
-    fn flush_pending(&mut self) -> AppResult<()> {
-        if !self.pending_text.is_empty() {
-            let data = std::mem::take(&mut self.pending_text);
-            self.write_redacted(&data)?;
-        }
-        self.file.flush()?;
-        Ok(())
-    }
-
-    fn redactable_prefix_end(&self) -> Option<usize> {
-        if let Some(line_end) = self
-            .pending_text
-            .rfind('\n')
-            .map(|index| index + '\n'.len_utf8())
-        {
-            return Some(line_end);
-        }
-
-        split_prefix_before_tail(&self.pending_text, LOG_REDACTION_PENDING_CHARS)
-    }
-
-    fn write_redacted(&mut self, data: &str) -> AppResult<()> {
-        let (data, _) = redact_terminal_text(data);
-        self.file.write_all(data.as_bytes())?;
-        self.bytes_written += data.len() as u64;
-        Ok(())
-    }
-
-    fn state(&self, active: bool) -> TerminalSessionLogState {
-        TerminalSessionLogState {
-            active,
-            path: Some(self.path.to_string_lossy().into_owned()),
-            started_at: Some(self.started_at.clone()),
-            bytes_written: self.bytes_written,
-        }
-    }
-}
-
-fn split_prefix_before_tail(input: &str, tail_chars: usize) -> Option<usize> {
-    let split_char_index = input.chars().count().checked_sub(tail_chars)?;
-    if split_char_index == 0 {
-        return None;
-    }
-    input
-        .char_indices()
-        .nth(split_char_index)
-        .map(|(byte_index, _)| byte_index)
-}
-
 fn spawn_reader_thread(
     mut reader: Box<dyn Read + Send>,
     cleanup_paths: Vec<PathBuf>,
@@ -923,409 +857,6 @@ impl PtyOutputSink for TerminalOutputDeliverySink {
     }
 }
 
-struct TerminalSecretInputResponder {
-    entries: Vec<TerminalSecretInputResponderEntry>,
-    held_prompt_output: String,
-    marker_buffer: String,
-    pending_prompt_redactions: Vec<String>,
-    redact_values: Vec<String>,
-}
-
-struct TerminalSecretInputResponderEntry {
-    max_responses: usize,
-    prompt_markers: Vec<String>,
-    response: String,
-    responses_sent: usize,
-}
-
-impl TerminalSecretInputResponder {
-    fn new(config: impl Into<TerminalSecretInputPlan>) -> Self {
-        let config = config.into();
-        let redact_values = config.redact_values();
-        let entries = config
-            .entries
-            .into_iter()
-            .filter_map(TerminalSecretInputResponderEntry::from_entry)
-            .collect();
-        Self {
-            entries,
-            held_prompt_output: String::new(),
-            marker_buffer: String::new(),
-            pending_prompt_redactions: Vec::new(),
-            redact_values,
-        }
-    }
-
-    fn observe_and_maybe_respond(&mut self, data: &str, writer: &SharedWriterHandle) {
-        if !self.entries.iter().any(|entry| entry.can_respond()) {
-            return;
-        }
-
-        self.marker_buffer.push_str(&data.to_ascii_lowercase());
-        trim_marker_buffer(&mut self.marker_buffer);
-
-        let Some(entry_index) = self.best_matching_entry_index() else {
-            return;
-        };
-        let entry = &mut self.entries[entry_index];
-
-        if let Ok(mut writer) = writer.lock() {
-            let _ = writer.write_all(entry.response.as_bytes());
-            let _ = writer.write_all(b"\r");
-            let _ = writer.flush();
-        }
-        self.pending_prompt_redactions = entry.prompt_markers.clone();
-        entry.responses_sent = entry.responses_sent.saturating_add(1);
-        self.marker_buffer.clear();
-    }
-
-    fn best_matching_entry_index(&self) -> Option<usize> {
-        let mut best: Option<(usize, PromptMatchStrength)> = None;
-        for (index, entry) in self.entries.iter().enumerate() {
-            if !entry.can_respond() {
-                continue;
-            }
-            let Some(strength) =
-                secret_prompt_match_strength(&self.marker_buffer, &entry.prompt_markers)
-            else {
-                continue;
-            };
-            if best.is_none_or(|(_, best_strength)| strength > best_strength) {
-                best = Some((index, strength));
-            }
-        }
-        best.map(|(index, _)| index)
-    }
-
-    fn redact_output(&mut self, data: &str) -> String {
-        let mut combined = String::new();
-        if !self.held_prompt_output.is_empty() {
-            combined.push_str(&self.held_prompt_output);
-            self.held_prompt_output.clear();
-        }
-        combined.push_str(data);
-
-        let mut redacted = combined;
-        for value in &self.redact_values {
-            redacted = redacted.replace(value, "[已脱敏]");
-        }
-        if !self.pending_prompt_redactions.is_empty() {
-            let before_prompt_redaction = redacted.clone();
-            redacted = redact_prompt_markers(&redacted, &self.pending_prompt_redactions);
-            if redacted == before_prompt_redaction {
-                redacted.clear();
-            }
-            self.pending_prompt_redactions.clear();
-            return format!("{CLEAR_CURRENT_TERMINAL_LINE}{redacted}");
-        }
-
-        if self.entries.iter().any(|entry| entry.can_respond()) {
-            if let Some((safe_output, held_output)) =
-                split_potential_prompt_fragment(&redacted, &self.active_prompt_markers())
-            {
-                self.held_prompt_output = held_output;
-                return safe_output;
-            }
-        }
-        redacted
-    }
-
-    fn active_prompt_markers(&self) -> Vec<String> {
-        self.entries
-            .iter()
-            .filter(|entry| entry.can_respond())
-            .flat_map(|entry| entry.prompt_markers.iter().cloned())
-            .collect()
-    }
-}
-
-impl TerminalSecretInputResponderEntry {
-    fn from_entry(entry: TerminalSecretInputEntry) -> Option<Self> {
-        let prompt_markers = entry
-            .prompt_markers
-            .into_iter()
-            .map(|marker| marker.to_ascii_lowercase())
-            .filter(|marker| !marker.trim().is_empty())
-            .collect::<Vec<_>>();
-        if entry.response.is_empty() || entry.max_responses == 0 || prompt_markers.is_empty() {
-            return None;
-        }
-        Some(Self {
-            max_responses: entry.max_responses,
-            prompt_markers,
-            response: entry.response,
-            responses_sent: 0,
-        })
-    }
-
-    fn can_respond(&self) -> bool {
-        self.responses_sent < self.max_responses
-    }
-}
-
-#[doc(hidden)]
-pub mod rules {
-    /// 判断终端输出缓冲区当前行是否匹配敏感输入提示。
-    pub fn secret_prompt_matches(buffer: &str, prompt_markers: &[String]) -> bool {
-        super::secret_prompt_match_strength(buffer, prompt_markers).is_some()
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum PromptMatchStrength {
-    GenericFallback,
-    Specific,
-}
-
-fn secret_prompt_match_strength(
-    buffer: &str,
-    prompt_markers: &[String],
-) -> Option<PromptMatchStrength> {
-    let visible_buffer = strip_terminal_controls(buffer);
-    let prompt_line = visible_buffer
-        .rsplit(['\r', '\n'])
-        .next()
-        .unwrap_or(visible_buffer.as_str())
-        .trim_end();
-    if prompt_line.is_empty() {
-        return None;
-    }
-
-    prompt_markers
-        .iter()
-        .filter_map(|marker| prompt_line_match_strength(prompt_line, marker))
-        .max()
-}
-
-fn prompt_line_match_strength(prompt_line: &str, marker: &str) -> Option<PromptMatchStrength> {
-    let marker = marker.trim();
-    if marker.is_empty() {
-        return None;
-    }
-    if looks_like_password_history_line(prompt_line) {
-        return None;
-    }
-    if marker == "password:" {
-        return generic_password_prompt_line(prompt_line)
-            .then_some(PromptMatchStrength::GenericFallback);
-    }
-    (prompt_line == marker).then_some(PromptMatchStrength::Specific)
-}
-
-fn looks_like_password_history_line(prompt_line: &str) -> bool {
-    const FALSE_POSITIVE_FRAGMENTS: &[&str] = &[
-        "accepted password",
-        "bad password",
-        "failed password",
-        "failure password",
-        "invalid password",
-        "last failed",
-        "password changed",
-        "password expired",
-    ];
-
-    FALSE_POSITIVE_FRAGMENTS
-        .iter()
-        .any(|fragment| prompt_line.contains(fragment))
-}
-
-fn generic_password_prompt_line(prompt_line: &str) -> bool {
-    prompt_line == "password:"
-        || prompt_line.ends_with("'s password:")
-        || prompt_line.starts_with("enter password")
-        || prompt_line.starts_with("password for ")
-}
-
-fn strip_terminal_controls(input: &str) -> String {
-    let mut output = String::with_capacity(input.len());
-    let mut chars = input.chars().peekable();
-
-    while let Some(character) = chars.next() {
-        if character == '\u{1b}' {
-            consume_escape_sequence(&mut chars);
-            continue;
-        }
-        if character == '\u{7}' {
-            continue;
-        }
-        if character.is_control() && character != '\r' && character != '\n' && character != '\t' {
-            continue;
-        }
-        output.push(character);
-    }
-
-    output
-}
-
-fn consume_escape_sequence<I>(chars: &mut std::iter::Peekable<I>)
-where
-    I: Iterator<Item = char>,
-{
-    match chars.peek().copied() {
-        Some(']') => {
-            let _ = chars.next();
-            consume_osc_sequence(chars);
-        }
-        Some('[') => {
-            let _ = chars.next();
-            consume_csi_sequence(chars);
-        }
-        Some(_) => {
-            let _ = chars.next();
-        }
-        None => {}
-    }
-}
-
-fn consume_osc_sequence<I>(chars: &mut std::iter::Peekable<I>)
-where
-    I: Iterator<Item = char>,
-{
-    while let Some(character) = chars.next() {
-        if character == '\u{7}' {
-            break;
-        }
-        if character == '\u{1b}' && chars.peek().copied() == Some('\\') {
-            let _ = chars.next();
-            break;
-        }
-    }
-}
-
-fn consume_csi_sequence<I>(chars: &mut std::iter::Peekable<I>)
-where
-    I: Iterator<Item = char>,
-{
-    for character in chars.by_ref() {
-        if ('@'..='~').contains(&character) {
-            break;
-        }
-    }
-}
-
-fn trim_marker_buffer(buffer: &mut String) {
-    const MAX_MARKER_BUFFER_BYTES: usize = 1024;
-    if buffer.len() <= MAX_MARKER_BUFFER_BYTES {
-        return;
-    }
-
-    let drain_end = next_char_boundary(buffer, buffer.len() - MAX_MARKER_BUFFER_BYTES);
-    buffer.drain(..drain_end);
-}
-
-fn redact_prompt_markers(data: &str, prompt_markers: &[String]) -> String {
-    let lowered = data.to_ascii_lowercase();
-    let mut ranges = Vec::<(usize, usize)>::new();
-
-    for marker in prompt_markers
-        .iter()
-        .map(|marker| marker.trim())
-        .filter(|marker| !marker.is_empty())
-    {
-        let mut search_start = 0;
-        while let Some(relative_index) = lowered[search_start..].find(marker) {
-            let start = search_start + relative_index;
-            let mut end = start + marker.len();
-            while end < lowered.len() {
-                let Some(character) = lowered[end..].chars().next() else {
-                    break;
-                };
-                if character != ' ' && character != '\t' {
-                    break;
-                }
-                end += character.len_utf8();
-            }
-            let line_start = lowered[..start]
-                .rfind(['\r', '\n'])
-                .map(|index| index + 1)
-                .unwrap_or(0);
-            ranges.push((line_start, end));
-            search_start = end;
-        }
-    }
-
-    if ranges.is_empty() {
-        return data.to_owned();
-    }
-
-    ranges.sort_unstable_by_key(|(start, end)| (*start, *end));
-    let mut merged = Vec::<(usize, usize)>::new();
-    for (start, end) in ranges {
-        if let Some((_, previous_end)) = merged.last_mut() {
-            if start <= *previous_end {
-                *previous_end = (*previous_end).max(end);
-                continue;
-            }
-        }
-        merged.push((start, end));
-    }
-
-    let mut result = String::with_capacity(data.len());
-    let mut cursor = 0;
-    for (start, end) in merged {
-        result.push_str(&data[cursor..start]);
-        cursor = end;
-    }
-    result.push_str(&data[cursor..]);
-    result
-}
-
-fn split_potential_prompt_fragment(
-    data: &str,
-    prompt_markers: &[String],
-) -> Option<(String, String)> {
-    let tail_start = data.rfind(['\r', '\n']).map(|index| index + 1).unwrap_or(0);
-    let tail = &data[tail_start..];
-    if !looks_like_prompt_fragment(tail, prompt_markers) {
-        return None;
-    }
-
-    Some((data[..tail_start].to_owned(), tail.to_owned()))
-}
-
-fn looks_like_prompt_fragment(fragment: &str, prompt_markers: &[String]) -> bool {
-    let visible_fragment = strip_terminal_controls(fragment);
-    let visible_fragment = visible_fragment.trim_end().to_ascii_lowercase();
-    if visible_fragment.len() < 8 {
-        return false;
-    }
-    if prompt_markers
-        .iter()
-        .any(|marker| marker.trim().eq_ignore_ascii_case("password:"))
-        && generic_password_prompt_fragment(&visible_fragment)
-    {
-        return true;
-    }
-
-    prompt_markers
-        .iter()
-        .map(|marker| marker.trim().to_ascii_lowercase())
-        .filter(|marker| marker.len() > visible_fragment.len())
-        .any(|marker| marker.starts_with(&visible_fragment))
-}
-
-fn generic_password_prompt_fragment(fragment: &str) -> bool {
-    if looks_like_password_history_line(fragment) {
-        return false;
-    }
-    fragment == "password"
-        || fragment == "password:"
-        || fragment.starts_with("enter password")
-        || fragment.starts_with("password for ")
-        || generic_owner_password_prompt_fragment(fragment)
-        || fragment.ends_with("'s pass")
-        || fragment.ends_with("'s password")
-        || fragment.ends_with("'s password:")
-}
-
-fn generic_owner_password_prompt_fragment(fragment: &str) -> bool {
-    let Some(owner_suffix_start) = fragment.rfind("'s ") else {
-        return false;
-    };
-    let suffix = &fragment[owner_suffix_start + "'s ".len()..];
-    "password:".starts_with(suffix)
-}
-
 struct CleanupPathGuard {
     active: Mutex<bool>,
     paths: Vec<PathBuf>,
@@ -1387,54 +918,6 @@ fn send_finished_agent_signal(
         return;
     };
     let _ = pump_sender.send(PtyOutputPumpMessage::AgentSignal(signal));
-}
-
-#[derive(Default)]
-struct TerminalOutputBuffer {
-    data: String,
-    truncated: bool,
-}
-
-impl TerminalOutputBuffer {
-    fn push(&mut self, data: &str) {
-        self.data.push_str(data);
-        if self.data.len() <= TERMINAL_CONTEXT_BUFFER_BYTES {
-            return;
-        }
-
-        let overflow = self.data.len() - TERMINAL_CONTEXT_BUFFER_BYTES;
-        let drain_end = next_char_boundary(&self.data, overflow);
-        self.data.drain(..drain_end);
-        self.truncated = true;
-    }
-
-    fn snapshot(&self, max_bytes: usize) -> TerminalOutputSnapshot {
-        let max_bytes = max_bytes.clamp(1, TERMINAL_CONTEXT_BUFFER_BYTES);
-        let (data, truncated_by_request) = tail_by_bytes(&self.data, max_bytes);
-
-        TerminalOutputSnapshot {
-            captured_bytes: data.len(),
-            data,
-            max_bytes,
-            truncated: self.truncated || truncated_by_request,
-        }
-    }
-}
-
-fn tail_by_bytes(data: &str, max_bytes: usize) -> (String, bool) {
-    if data.len() <= max_bytes {
-        return (data.to_owned(), false);
-    }
-
-    let start = next_char_boundary(data, data.len() - max_bytes);
-    (data[start..].to_owned(), true)
-}
-
-fn next_char_boundary(data: &str, mut index: usize) -> usize {
-    while index < data.len() && !data.is_char_boundary(index) {
-        index += 1;
-    }
-    index
 }
 
 fn normalize_shell(shell: Option<String>) -> AppResult<String> {

@@ -111,10 +111,7 @@ impl SshTerminalService {
                 ssh,
                 paths,
                 paths.root.join("known_hosts"),
-                request.cwd.as_deref(),
-                request.remote_command.as_deref(),
-                request.rows,
-                request.cols,
+                TerminalLaunchShape::from_request(&request),
             );
         }
 
@@ -125,10 +122,7 @@ impl SshTerminalService {
             ssh,
             paths.root.join("known_hosts"),
             identity,
-            request.cwd.as_deref(),
-            request.remote_command.as_deref(),
-            request.rows,
-            request.cols,
+            TerminalLaunchShape::from_request(&request),
         )?;
         Ok(ResolvedTerminalLaunch {
             request: terminal_request,
@@ -152,6 +146,25 @@ struct ResolvedTerminalLaunch {
 struct ResolvedSshIdentity {
     args: Vec<String>,
     cleanup_paths: Vec<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TerminalLaunchShape<'a> {
+    initial_cwd: Option<&'a str>,
+    remote_command: Option<&'a str>,
+    rows: u16,
+    cols: u16,
+}
+
+impl<'a> TerminalLaunchShape<'a> {
+    fn from_request(request: &'a SshTerminalCreateRequest) -> Self {
+        Self {
+            initial_cwd: request.cwd.as_deref(),
+            remote_command: request.remote_command.as_deref(),
+            rows: request.rows,
+            cols: request.cols,
+        }
+    }
 }
 
 #[doc(hidden)]
@@ -205,11 +218,14 @@ fn build_jump_terminal_launch(
     ssh_executable: String,
     paths: &KerminalPaths,
     known_hosts_path: impl AsRef<Path>,
-    initial_cwd: Option<&str>,
-    remote_command: Option<&str>,
-    rows: u16,
-    cols: u16,
+    shape: TerminalLaunchShape<'_>,
 ) -> AppResult<ResolvedTerminalLaunch> {
+    let TerminalLaunchShape {
+        initial_cwd,
+        remote_command,
+        rows,
+        cols,
+    } = shape;
     validate_terminal_size(rows, cols)?;
     let route = build_ssh_route_plan_from_resolved(resolved_auth)?;
     let open_ssh = materialize_openssh_route_plan(&route, paths, known_hosts_path)?;
@@ -299,11 +315,14 @@ fn build_ssh_terminal_request(
     ssh_executable: String,
     known_hosts_path: impl AsRef<Path>,
     identity: ResolvedSshIdentity,
-    initial_cwd: Option<&str>,
-    remote_command: Option<&str>,
-    rows: u16,
-    cols: u16,
+    shape: TerminalLaunchShape<'_>,
 ) -> AppResult<TerminalCreateRequest> {
+    let TerminalLaunchShape {
+        initial_cwd,
+        remote_command,
+        rows,
+        cols,
+    } = shape;
     validate_terminal_size(rows, cols)?;
 
     let mut args = vec![

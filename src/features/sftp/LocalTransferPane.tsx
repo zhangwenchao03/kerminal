@@ -15,7 +15,6 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { Button } from "../../components/ui/button";
-import { PromptDialog } from "../../components/ui/prompt-dialog";
 import { cn } from "../../lib/cn";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 import {
@@ -53,11 +52,8 @@ import {
   type SftpWorkbenchLocalClipboard,
 } from "./sftpTransferClipboardModel";
 import {
-  LocalDirectoryEntryRow,
   isTransferableLocalEntry,
 } from "./LocalDirectoryEntryRow";
-import { LocalDeleteConfirmDialog } from "./LocalDeleteConfirmDialog";
-import { LocalRenameDialog } from "./LocalRenameDialog";
 import { LocalTransferToolbar } from "./LocalTransferToolbar";
 import {
   countRemoteUploadConflicts,
@@ -69,11 +65,13 @@ import {
   isLocalPasteShortcut,
   parentLocalPath,
 } from "./LocalTransferPaneKeyboard";
-import { SftpTransferConflictDialog } from "./SftpTransferConflictDialog";
 import {
   LocalTransferPaneContextMenu,
   type LocalContextMenuState,
 } from "./LocalTransferPaneContextMenu";
+import { LocalTransferPaneDialogs } from "./LocalTransferPaneDialogs";
+import { LocalTransferPaneListView } from "./LocalTransferPaneListView";
+import { LocalTransferPaneTargetFooter } from "./LocalTransferPaneTargetFooter";
 import {
   SFTP_REMOTE_DRAG_PAYLOAD_MIME,
   hasSftpRemoteDragPayloadType,
@@ -87,7 +85,6 @@ import {
 } from "./sftp-tool-content/sftpLocalUploadDropModel";
 import { buildBatchDownloadTransferPlan } from "./sftp-tool-content/sftpTransferActionPlan";
 import { withSftpTransferViewScope } from "./sftp-tool-content/sftpTransferScopeModel";
-import { FixedRowVirtualList } from "./FixedRowVirtualList";
 import {
   resolveTransferIntent,
   type ResolvedTransferPlan,
@@ -571,8 +568,8 @@ export function LocalTransferPane({
       return;
     }
     const decision = resolveSftpLocalPaneDropTarget({
-      hasLocalPayload: hasLocalDragPayload(event),
-      hasRemotePayload: hasRemoteDragPayload(event),
+      hasLocalPayload: event.dataTransfer.types.includes(SFTP_LOCAL_FILE_DRAG_PAYLOAD_MIME),
+      hasRemotePayload: hasSftpRemoteDragPayloadType(event.dataTransfer.types),
       type: "enter",
     });
     if (decision.kind === "ignore") {
@@ -595,8 +592,8 @@ export function LocalTransferPane({
       return;
     }
     const decision = resolveSftpLocalPaneDropTarget({
-      hasLocalPayload: hasLocalDragPayload(event),
-      hasRemotePayload: hasRemoteDragPayload(event),
+      hasLocalPayload: event.dataTransfer.types.includes(SFTP_LOCAL_FILE_DRAG_PAYLOAD_MIME),
+      hasRemotePayload: hasSftpRemoteDragPayloadType(event.dataTransfer.types),
       type: "over",
     });
     if (decision.kind === "ignore") {
@@ -625,8 +622,8 @@ export function LocalTransferPane({
       return;
     }
     const decision = resolveSftpLocalPaneDropTarget({
-      hasLocalPayload: hasLocalDragPayload(event),
-      hasRemotePayload: hasRemoteDragPayload(event),
+      hasLocalPayload: event.dataTransfer.types.includes(SFTP_LOCAL_FILE_DRAG_PAYLOAD_MIME),
+      hasRemotePayload: hasSftpRemoteDragPayloadType(event.dataTransfer.types),
       type: "drop",
     });
     if (decision.kind === "ignore") {
@@ -900,115 +897,32 @@ export function LocalTransferPane({
         />
       </div>
 
-      <div className={cn("min-h-0 flex-1", bodyPaddingClass)}>
-        <div
-          className={cn(
-            "kerminal-solid-surface relative flex h-full min-h-0 flex-col overflow-hidden border transition",
-            compactDensity ? "rounded-xl" : "rounded-2xl",
-          )}
-        >
-          <div
-            className={cn(
-              "flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)]",
-              paneHeaderPaddingClass,
-            )}
-          >
-            <div>
-              <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                本地目录
-              </div>
-              <div className="mt-0.5 text-xs text-zinc-500">
-                {directorySummary.directoryCount} 目录 / {directorySummary.fileCount} 文件
-                {!showHiddenEntries && hiddenEntryCount > 0
-                  ? ` / 已隐藏 ${hiddenEntryCount}`
-                  : ""}
-              </div>
-            </div>
-            {error ? null : (
-              <span className="kerminal-muted-surface rounded-lg border px-2 py-1 text-xs text-zinc-500 dark:text-zinc-400">
-                {listing ? "已就绪" : "等待中"}
-              </span>
-            )}
-          </div>
-          <div className="min-h-0 flex-1 overflow-hidden">
-            {loading ? (
-              <div
-                className="kerminal-muted-surface m-3 rounded-xl border px-3 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400"
-                role="status"
-              >
-                正在读取本地目录...
-              </div>
-            ) : null}
-            {error ? (
-              <div
-                className="m-3 rounded-xl border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100"
-                role="alert"
-              >
-                {error}
-              </div>
-            ) : null}
-            {!loading && !error && listing && visibleEntries.length === 0 ? (
-              <div className="kerminal-muted-surface m-3 rounded-xl border px-3 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-                当前视图没有可显示项目。
-              </div>
-            ) : null}
-            {!loading && !error && visibleEntries.length > 0 ? (
-              <div className="flex h-full min-h-0 flex-col">
-                <div
-                  className={cn(
-                    "kerminal-muted-surface grid grid-cols-[minmax(0,1fr)_5.75rem] gap-2 border-b text-xs font-medium text-zinc-500 dark:text-zinc-400 min-[560px]:grid-cols-[minmax(0,1fr)_4.25rem_5.75rem]",
-                    listHeaderPaddingClass,
-                  )}
-                >
-                  <span className="pl-6">名称</span>
-                  <span className="hidden text-right min-[560px]:block">大小</span>
-                  <span className="text-right" title="修改时间">
-                    时间
-                  </span>
-                </div>
-                <FixedRowVirtualList
-                  ariaLabel="本地目录项目"
-                  entries={visibleEntries}
-                  getKey={(entry) => entry.path}
-                  itemContainerClassName="divide-y divide-[var(--border-subtle)]"
-                  renderItem={(entry) => (
-                    <LocalDirectoryEntryRow
-                      dragEntries={
-                        selectedEntryPaths.has(entry.path) && selectedEntries.length > 0
-                          ? selectedEntries
-                          : [entry]
-                      }
-                      entry={entry}
-                      selected={selectedEntryPaths.has(entry.path)}
-                      onOpenDirectory={loadDirectory}
-                      onOpenContextMenu={openContextMenu}
-                      onSelect={selectEntry}
-                    />
-                  )}
-                  resetKey={`${listing?.path ?? ""}:${
-                    showHiddenEntries ? "shown" : "hidden"
-                  }:${entryFilter}`}
-                  rowHeight={fileRowHeight}
-                  testId="sftp-local-entry-list"
-                />
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </div>
+      <LocalTransferPaneListView
+        bodyPaddingClass={bodyPaddingClass}
+        compactDensity={compactDensity}
+        directorySummary={directorySummary}
+        entryFilter={entryFilter}
+        error={error}
+        fileRowHeight={fileRowHeight}
+        hiddenEntryCount={hiddenEntryCount}
+        listHeaderPaddingClass={listHeaderPaddingClass}
+        listing={listing}
+        loading={loading}
+        paneHeaderPaddingClass={paneHeaderPaddingClass}
+        selectedEntries={selectedEntries}
+        selectedEntryPaths={selectedEntryPaths}
+        showHiddenEntries={showHiddenEntries}
+        visibleEntries={visibleEntries}
+        onLoadDirectory={loadDirectory}
+        onOpenContextMenu={openContextMenu}
+        onSelectEntry={selectEntry}
+      />
 
-      <div
-        className={cn(
-          "shrink-0 border-t border-[var(--border-subtle)]",
-          chromePaddingClass,
-        )}
-      >
-        <div className="truncate font-mono text-xs text-zinc-500 dark:text-zinc-400">
-          {targetMachine
-            ? `目标：${targetMachine.name}:${targetPath ?? "/"}`
-            : "右侧未选择服务器"}
-        </div>
-      </div>
+      <LocalTransferPaneTargetFooter
+        chromePaddingClass={chromePaddingClass}
+        targetMachine={targetMachine}
+        targetPath={targetPath}
+      />
       <LocalTransferPaneContextMenu
         canTransferContextEntries={canTransferContextEntries}
         contextMenu={contextMenu}
@@ -1044,59 +958,40 @@ export function LocalTransferPane({
         }}
         transferableContextEntryCount={transferableContextEntries.length}
       />
-      <LocalDeleteConfirmDialog
+      <LocalTransferPaneDialogs
         busy={loading}
-        entry={deleteEntry}
-        onClose={() => setDeleteEntry(null)}
-        onConfirm={(confirmName) => {
+        createDirectoryDialogOpen={createDirectoryDialogOpen}
+        createDirectoryNameDraft={createDirectoryNameDraft}
+        deleteEntry={deleteEntry}
+        listingPath={listing?.path}
+        pendingConflictCount={pendingConflictCount}
+        pendingConflictOpen={Boolean(pendingConflictPlan)}
+        renameEntry={renameEntry}
+        onCloseCreateDirectory={() => setCreateDirectoryDialogOpen(false)}
+        onCloseDelete={() => setDeleteEntry(null)}
+        onCloseRename={() => setRenameEntry(null)}
+        onCloseTransferConflict={() => {
+          setPendingConflictPlan(null);
+          setPendingConflictCount(0);
+        }}
+        onConfirmCreateDirectory={(name) => {
+          void createDirectoryInCurrentDirectory(name);
+        }}
+        onConfirmDelete={(confirmName) => {
           if (deleteEntry) {
             void deleteLocalEntry(deleteEntry, confirmName);
           }
         }}
-      />
-      <PromptDialog
-        busy={loading}
-        confirmLabel="创建"
-        description={listing?.path}
-        inputLabel="文件夹名称"
-        onClose={() => setCreateDirectoryDialogOpen(false)}
-        onConfirm={(name) => {
-          void createDirectoryInCurrentDirectory(name);
-        }}
-        onValueChange={setCreateDirectoryNameDraft}
-        open={createDirectoryDialogOpen && Boolean(listing)}
-        placeholder="new-folder"
-        title="新建文件夹"
-        validate={(value) => (value.trim() ? null : "请填写文件夹名称。")}
-        value={createDirectoryNameDraft}
-      />
-      <LocalRenameDialog
-        busy={loading}
-        entry={renameEntry}
-        onClose={() => setRenameEntry(null)}
-        onConfirm={(name) => {
+        onConfirmRename={(name) => {
           if (renameEntry) {
             void renameLocalEntry(renameEntry, name);
           }
         }}
-      />
-      <SftpTransferConflictDialog
-        conflictCount={pendingConflictCount}
-        onClose={() => {
-          setPendingConflictPlan(null);
-          setPendingConflictCount(0);
-        }}
-        onConfirm={(policy) => void confirmConflictPolicy(policy)}
-        open={Boolean(pendingConflictPlan)}
+        onConfirmTransferConflictPolicy={(policy) =>
+          void confirmConflictPolicy(policy)
+        }
+        onCreateDirectoryNameDraftChange={setCreateDirectoryNameDraft}
       />
     </div>
   );
-}
-
-function hasRemoteDragPayload(event: ReactDragEvent<HTMLElement>) {
-  return hasSftpRemoteDragPayloadType(event.dataTransfer.types);
-}
-
-function hasLocalDragPayload(event: ReactDragEvent<HTMLElement>) {
-  return event.dataTransfer.types.includes(SFTP_LOCAL_FILE_DRAG_PAYLOAD_MIME);
 }

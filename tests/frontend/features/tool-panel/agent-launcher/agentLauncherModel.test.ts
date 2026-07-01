@@ -1,0 +1,247 @@
+import { describe, expect, it } from "vitest";
+import type {
+  ExternalAgentLaunchSpec,
+  ExternalAgentStatus,
+  ExternalAgentWorkspaceStatus,
+} from "../../../../../src/lib/agentLauncherApi";
+import {
+  agentLaunchDisplayCommand,
+  agentPermissionSkipFlag,
+  agentSupportsPermissionSkip,
+  applyAgentLaunchPermissionMode,
+  buildAgentActionViewModel,
+  buildAgentConfigSnippet,
+  buildAgentLauncherViewModel,
+  getMcpStatusView,
+  parseAgentCommandLine,
+} from "../../../../../src/features/tool-panel/agent-launcher/agentLauncherModel";
+
+const readyCodex: ExternalAgentStatus = {
+  cliCommand: "codex",
+  configPath: "C:/Users/me/.kerminal/.codex/config.toml",
+  configReady: true,
+  id: "codex",
+  installed: true,
+  statusDetail: "Codex CLI detected.",
+  title: "Codex",
+};
+
+describe("agentLauncherModel", () => {
+  it("describes installed agents with ready config", () => {
+    const view = buildAgentActionViewModel(readyCodex, {
+      mcpServerRunning: true,
+      terminalLauncherAvailable: true,
+    });
+
+    expect(view.installLabel).toBe("Installed");
+    expect(view.configLabel).toBe("Config ready");
+    expect(view.actionLabel).toBe("Open Codex");
+    expect(view.disabled).toBe(false);
+    expect(view.tone).toBe("ready");
+  });
+
+  it("keeps missing CLIs launchable so the terminal owns startup feedback", () => {
+    const view = buildAgentActionViewModel(
+      {
+        ...readyCodex,
+        cliCommand: "claude",
+        configReady: false,
+        id: "claude",
+        installed: false,
+        statusDetail: "",
+        title: "Claude",
+      },
+      {
+        mcpServerRunning: true,
+        terminalLauncherAvailable: true,
+      },
+    );
+
+    expect(view.installLabel).toBe("Missing CLI");
+    expect(view.configLabel).toBe("Config needs update");
+    expect(view.actionLabel).toBe("Prepare & Open");
+    expect(view.disabled).toBe(false);
+    expect(view.disabledReason).toBeUndefined();
+    expect(view.tone).toBe("warning");
+  });
+
+  it("keeps config repair launchable when the provider is installed", () => {
+    const view = buildAgentActionViewModel(
+      {
+        ...readyCodex,
+        configReady: false,
+        statusDetail: "",
+      },
+      {
+        mcpServerRunning: true,
+        terminalLauncherAvailable: true,
+      },
+    );
+
+    expect(view.actionLabel).toBe("Prepare & Open");
+    expect(view.disabled).toBe(false);
+    expect(view.configLabel).toBe("Config needs update");
+  });
+
+  it("treats Custom as an explicit command without default config files", () => {
+    const view = buildAgentActionViewModel(
+      {
+        ...readyCodex,
+        cliCommand: "",
+        configPath: "",
+        configReady: false,
+        id: "custom",
+        installed: false,
+        statusDetail: "",
+        title: "Custom",
+      },
+      {
+        mcpServerRunning: true,
+        terminalLauncherAvailable: true,
+      },
+    );
+
+    expect(view.configLabel).toBe("Enter command");
+    expect(view.configPath).toBe("User supplied CLI");
+    expect(view.disabledReason).toBeUndefined();
+    expect(view.disabled).toBe(false);
+  });
+
+  it("keeps installed Codex and Claude launchable when MCP is stopped", () => {
+    const view = buildAgentActionViewModel(readyCodex, {
+      mcpServerRunning: false,
+      terminalLauncherAvailable: true,
+    });
+
+    expect(view.actionLabel).toBe("Start & Open Codex");
+    expect(view.disabled).toBe(false);
+    expect(view.disabledReason).toBeUndefined();
+    expect(view.statusDetail).toBe(
+      "Kerminal MCP Server will be started before launch.",
+    );
+    expect(view.tone).toBe("ready");
+  });
+
+  it("orders Codex, Claude, and Custom cards from workspace status", () => {
+    const status: ExternalAgentWorkspaceStatus = {
+      agents: {
+        claude: {
+          ...readyCodex,
+          cliCommand: "claude",
+          id: "claude",
+          title: "Claude",
+        },
+        codex: readyCodex,
+        custom: {
+          ...readyCodex,
+          cliCommand: "custom-agent",
+          id: "custom",
+          title: "Custom",
+        },
+      },
+      mcpEndpoint: "http://127.0.0.1:37657/mcp",
+      mcpServerRunning: true,
+      workspaceDir: "C:/Users/me/.kerminal",
+    };
+
+    expect(buildAgentLauncherViewModel(status, true).map((view) => view.agentId)).toEqual([
+      "codex",
+      "claude",
+      "custom",
+    ]);
+  });
+
+  it("builds MCP status and copyable config snippets from endpoint", () => {
+    expect(
+      getMcpStatusView({
+        mcpEndpoint: "http://127.0.0.1:37657/mcp",
+        mcpServerRunning: true,
+      }),
+    ).toMatchObject({
+      label: "Running",
+      tone: "ready",
+    });
+    expect(
+      buildAgentConfigSnippet({
+        mcpEndpoint: "http://127.0.0.1:37657/mcp",
+      }),
+    ).toContain('url = "http://127.0.0.1:37657/mcp"');
+  });
+
+  it("applies provider permission skip flags without changing default launches", () => {
+    const codexSpec: ExternalAgentLaunchSpec = {
+      agentId: "codex",
+      agentSessionId: "ags-codex",
+      args: [
+        "-NoLogo",
+        "-NoProfile",
+        "-NoExit",
+        "-Command",
+        "codex resume --last",
+      ],
+      cwd: "C:/Users/me/.kerminal/agents/sessions/ags-codex",
+      message: "Codex workspace prepared.",
+      shell: "pwsh.exe",
+      title: "Codex",
+    };
+    const cmdCodexSpec: ExternalAgentLaunchSpec = {
+      ...codexSpec,
+      args: ["/d", "/s", "/k", "codex resume --last"],
+      shell: "cmd.exe",
+    };
+    const claudeSpec: ExternalAgentLaunchSpec = {
+      agentId: "claude",
+      agentSessionId: "ags-claude",
+      args: ["--permission-mode", "default"],
+      cwd: "/home/me/.kerminal/agents/sessions/ags-claude",
+      message: "Claude workspace prepared.",
+      shell: "claude",
+      title: "Claude",
+    };
+
+    expect(agentSupportsPermissionSkip("codex")).toBe(true);
+    expect(agentSupportsPermissionSkip("claude")).toBe(true);
+    expect(agentSupportsPermissionSkip("custom")).toBe(false);
+    expect(agentPermissionSkipFlag("custom")).toBeUndefined();
+    expect(applyAgentLaunchPermissionMode(codexSpec, "default")).toBe(codexSpec);
+    expect(applyAgentLaunchPermissionMode(codexSpec, "skipPermissions").args).toEqual([
+      "-NoLogo",
+      "-NoProfile",
+      "-NoExit",
+      "-Command",
+      "codex --dangerously-bypass-approvals-and-sandbox resume --last",
+    ]);
+    expect(agentLaunchDisplayCommand(codexSpec)).toBe("codex resume --last");
+    expect(applyAgentLaunchPermissionMode(cmdCodexSpec, "skipPermissions").args).toEqual([
+      "/d",
+      "/s",
+      "/k",
+      "codex --dangerously-bypass-approvals-and-sandbox resume --last",
+    ]);
+    expect(applyAgentLaunchPermissionMode(claudeSpec, "skipPermissions").args).toEqual([
+      "--dangerously-skip-permissions",
+      "--permission-mode",
+      "default",
+    ]);
+  });
+
+  it("parses custom agent command lines into shell and args", () => {
+    expect(parseAgentCommandLine('qwen --model "qwen max"')).toEqual({
+      args: ["--model", "qwen max"],
+      shell: "qwen",
+    });
+    expect(parseAgentCommandLine("C:\\Tools\\kimi.exe --fast")).toEqual({
+      args: ["--fast"],
+      shell: "C:\\Tools\\kimi.exe",
+    });
+    expect(
+      parseAgentCommandLine('"C:\\Program Files\\Kimi\\kimi.exe" --fast'),
+    ).toEqual({
+      args: ["--fast"],
+      shell: "C:\\Program Files\\Kimi\\kimi.exe",
+    });
+    expect(() => parseAgentCommandLine("   ")).toThrow(
+      "Enter a command to launch a custom agent.",
+    );
+  });
+});

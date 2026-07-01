@@ -320,12 +320,14 @@ impl RemoteHostService {
         let top_level = persist_primary_credential(
             &vault,
             &host.id,
-            primary_secret_kind,
-            host.auth_type,
-            host.credential_ref.take(),
-            host.secret_ref.take(),
-            host.credential_secret.take(),
-            existing,
+            PrimaryCredentialInput {
+                secret_kind: primary_secret_kind,
+                auth_type: host.auth_type,
+                credential_ref: host.credential_ref.take(),
+                secret_ref: host.secret_ref.take(),
+                credential_secret: host.credential_secret.take(),
+                existing,
+            },
         )?;
         host.credential_ref = top_level.credential_ref;
         host.secret_ref = top_level.secret_ref;
@@ -357,6 +359,16 @@ struct PersistedPrimaryCredential {
     secret_ref: Option<String>,
     key_passphrase_ref: Option<String>,
     credential_status: RemoteHostCredentialStatus,
+}
+
+#[derive(Debug)]
+struct PrimaryCredentialInput<'a> {
+    secret_kind: &'a str,
+    auth_type: RemoteHostAuthType,
+    credential_ref: Option<String>,
+    secret_ref: Option<String>,
+    credential_secret: Option<String>,
+    existing: Option<&'a RemoteHost>,
 }
 
 #[derive(Debug)]
@@ -517,13 +529,16 @@ fn normalize_ssh_credential(
 fn persist_primary_credential(
     vault: &EncryptedVaultService,
     host_id: &str,
-    secret_kind: &str,
-    auth_type: RemoteHostAuthType,
-    credential_ref: Option<String>,
-    secret_ref: Option<String>,
-    credential_secret: Option<String>,
-    existing: Option<&RemoteHost>,
+    input: PrimaryCredentialInput<'_>,
 ) -> AppResult<PersistedPrimaryCredential> {
+    let PrimaryCredentialInput {
+        secret_kind,
+        auth_type,
+        credential_ref,
+        secret_ref,
+        credential_secret,
+        existing,
+    } = input;
     let normalized_secret = normalize_optional_text(credential_secret);
     match auth_type {
         RemoteHostAuthType::Agent => Ok(PersistedPrimaryCredential {

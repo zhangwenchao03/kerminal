@@ -2,6 +2,8 @@
 //!
 //! @author kongweiguang
 
+mod support;
+
 use std::fs;
 
 use kerminal_lib::{
@@ -28,6 +30,13 @@ use rmcp::{
     ServiceExt,
 };
 use serde_json::Value;
+use support::mcp_streamable_http::{
+    assert_absent_tool_help_payload, assert_app_guide_payload, assert_capability_payload,
+    assert_config_operation_guide_payload, assert_config_reference_payload,
+    assert_container_tool_help_payload, assert_runtime_snapshot_payload,
+    assert_session_operation_guide_payload, assert_terminal_tool_help_payload,
+    assert_tool_reference_examples_match_schema, assert_tools_list_surface,
+};
 use tauri::Manager;
 
 #[tokio::test]
@@ -115,237 +124,7 @@ async fn generated_codex_and_claude_configs_connect_to_tools_list() {
         .list_tools(None)
         .await
         .expect("list tools through mcp endpoint");
-    let tool_names = tools
-        .tools
-        .iter()
-        .map(|tool| tool.name.as_ref())
-        .collect::<Vec<_>>();
-    let expected_tool_ids = [
-        "container.files.list",
-        "container.files.preview",
-        "container.files.write_text",
-        "container.files.create_directory",
-        "container.files.rename",
-        "container.files.chmod",
-        "container.files.upload",
-        "container.files.download",
-        "container.files.delete",
-        "container.inspect",
-        "container.list",
-        "container.logs.tail",
-        "container.remove",
-        "container.restart",
-        "container.start",
-        "container.stats",
-        "container.stop",
-        "diagnostics.create_bundle",
-        "diagnostics.runtime_health",
-        "history.search",
-        "kerminal.agent.current_session",
-        "kerminal.agent.target_context",
-        "kerminal.app_guide",
-        "kerminal.capabilities",
-        "kerminal.config_guide",
-        "kerminal.config.validate",
-        "kerminal.host.upsert_with_credential",
-        "kerminal.tool_help",
-        "kerminal.operation_guide",
-        "kerminal.runtime_snapshot",
-        "kerminal.vault.encrypt_secret",
-        "port_forward.close",
-        "port_forward.create",
-        "port_forward.list",
-        "server_info.snapshot",
-        "sftp.chmod",
-        "sftp.create_directory",
-        "sftp.delete",
-        "sftp.download",
-        "sftp.download_directory",
-        "sftp.list",
-        "sftp.move",
-        "sftp.preview",
-        "sftp.rename",
-        "sftp.transfer.cancel",
-        "sftp.transfer.clear_completed",
-        "sftp.transfer.enqueue",
-        "sftp.transfer.list",
-        "sftp.upload",
-        "sftp.upload_directory",
-        "ssh.command",
-        "ssh.command_on_resolved_host",
-        "terminal.close",
-        "terminal.list",
-        "terminal.log.start",
-        "terminal.log.state",
-        "terminal.log.stop",
-        "terminal.resize",
-        "terminal.resolve_agent_target",
-        "terminal.snapshot",
-        "terminal.write",
-        "tmux.attach_plan",
-        "tmux.capture_pane",
-        "tmux.create_session",
-        "tmux.kill_session",
-        "tmux.list_panes",
-        "tmux.list_sessions",
-        "tmux.list_windows",
-        "tmux.probe",
-        "tmux.rename_session",
-    ];
-    assert_eq!(
-        tool_names.len(),
-        expected_tool_ids.len(),
-        "tools/list changed; update Kerminal MCP capability docs and tests"
-    );
-    for expected_tool in expected_tool_ids {
-        assert!(
-            tool_names.contains(&expected_tool),
-            "expected {expected_tool} in tools/list"
-        );
-    }
-
-    assert!(
-        tools.tools.iter().any(|tool| tool.name == "terminal.write"),
-        "expected terminal.write in tools/list"
-    );
-    assert!(
-        tools.tools.iter().any(|tool| tool.name == "ssh.command"),
-        "expected ssh.command in tools/list"
-    );
-    assert!(
-        tools.tools.iter().any(|tool| tool.name == "history.search"),
-        "expected history.search in tools/list"
-    );
-    assert!(
-        tools
-            .tools
-            .iter()
-            .any(|tool| tool.name == "diagnostics.runtime_health"),
-        "expected diagnostics.runtime_health in tools/list"
-    );
-    assert!(
-        tools
-            .tools
-            .iter()
-            .any(|tool| tool.name == "kerminal.app_guide"),
-        "expected kerminal.app_guide in tools/list"
-    );
-    assert!(
-        tools
-            .tools
-            .iter()
-            .any(|tool| tool.name == "kerminal.capabilities"),
-        "expected kerminal.capabilities in tools/list"
-    );
-    assert!(
-        tools
-            .tools
-            .iter()
-            .any(|tool| tool.name == "kerminal.config_guide"),
-        "expected kerminal.config_guide in tools/list"
-    );
-    assert!(
-        tools
-            .tools
-            .iter()
-            .any(|tool| tool.name == "kerminal.config.validate"),
-        "expected kerminal.config.validate in tools/list"
-    );
-    assert!(
-        tools
-            .tools
-            .iter()
-            .any(|tool| tool.name == "kerminal.tool_help"),
-        "expected kerminal.tool_help in tools/list"
-    );
-    assert!(
-        tools
-            .tools
-            .iter()
-            .any(|tool| tool.name == "kerminal.operation_guide"),
-        "expected kerminal.operation_guide in tools/list"
-    );
-    assert!(
-        tools
-            .tools
-            .iter()
-            .any(|tool| tool.name == "kerminal.host.upsert_with_credential"),
-        "expected kerminal.host.upsert_with_credential in tools/list"
-    );
-    assert!(
-        tools
-            .tools
-            .iter()
-            .any(|tool| tool.name == "kerminal.vault.encrypt_secret"),
-        "expected kerminal.vault.encrypt_secret in tools/list"
-    );
-    for tmux_tool in [
-        "tmux.probe",
-        "tmux.list_sessions",
-        "tmux.capture_pane",
-        "tmux.attach_plan",
-    ] {
-        assert!(
-            tools.tools.iter().any(|tool| tool.name == tmux_tool),
-            "expected {tmux_tool} in tools/list"
-        );
-    }
-    for container_tool in [
-        "container.inspect",
-        "container.logs.tail",
-        "container.stats",
-        "container.start",
-        "container.stop",
-        "container.restart",
-        "container.remove",
-        "container.files.write_text",
-        "container.files.upload",
-        "container.files.download",
-        "container.files.delete",
-    ] {
-        assert!(
-            tools.tools.iter().any(|tool| tool.name == container_tool),
-            "expected {container_tool} in tools/list"
-        );
-    }
-    assert!(
-        tools.tools.iter().any(|tool| {
-            tool.name == "container.remove"
-                && tool
-                    .annotations
-                    .as_ref()
-                    .and_then(|annotations| annotations.destructive_hint)
-                    == Some(true)
-        }),
-        "container.remove must stay marked destructive"
-    );
-    assert!(
-        tools.tools.iter().any(|tool| {
-            tool.name == "container.files.delete"
-                && tool
-                    .annotations
-                    .as_ref()
-                    .and_then(|annotations| annotations.destructive_hint)
-                    == Some(true)
-        }),
-        "container.files.delete must stay marked destructive"
-    );
-    for removed_tool in [
-        "remote_host.tree",
-        "settings.get",
-        "profile.list",
-        "snippet.create",
-        "workflow.run",
-        "terminal.create",
-        "workspace.focus_tab",
-        "history.clear",
-        "kerminal.host.migrate_legacy_secrets",
-    ] {
-        assert!(
-            tools.tools.iter().all(|tool| tool.name != removed_tool),
-            "{removed_tool} must stay out of tools/list"
-        );
-    }
+    assert_tools_list_surface(&tools);
 
     let mut host_credential_arguments = serde_json::Map::new();
     host_credential_arguments.insert(
@@ -452,63 +231,7 @@ async fn generated_codex_and_claude_configs_connect_to_tools_list() {
         .structured_content
         .as_ref()
         .expect("structured app guide content");
-    assert_eq!(
-        app_guide_payload
-            .pointer("/data/schemaVersion")
-            .and_then(Value::as_u64),
-        Some(1)
-    );
-    assert!(app_guide_payload
-        .pointer("/data/applicationSurfaces")
-        .and_then(Value::as_array)
-        .is_some_and(|surfaces| surfaces.iter().any(|surface| {
-            surface.pointer("/surface").and_then(Value::as_str) == Some("rightToolPanel")
-                && surface
-                    .pointer("/runtimeTools/container")
-                    .and_then(Value::as_array)
-                    .is_some_and(|tool_ids| {
-                        tool_ids
-                            .iter()
-                            .any(|tool_id| tool_id.as_str() == Some("container.files.write_text"))
-                    })
-        })));
-    assert!(app_guide_payload
-        .pointer("/data/taskRoutes")
-        .and_then(Value::as_array)
-        .is_some_and(|routes| routes.iter().any(|route| {
-            route.pointer("/task").and_then(Value::as_str) == Some("edit-kerminal-config")
-                && route
-                    .pointer("/toolIds")
-                    .and_then(Value::as_array)
-                    .is_some_and(|tool_ids| {
-                        tool_ids
-                            .iter()
-                            .any(|tool_id| tool_id.as_str() == Some("kerminal.config_guide"))
-                            && tool_ids
-                                .iter()
-                                .any(|tool_id| tool_id.as_str() == Some("kerminal.config.validate"))
-                    })
-        })));
-    assert!(app_guide_payload
-        .pointer("/data/taskRoutes")
-        .and_then(Value::as_array)
-        .is_some_and(|routes| routes.iter().any(|route| {
-            route.pointer("/task").and_then(Value::as_str) == Some("discover-mcp-capabilities")
-                && route
-                    .pointer("/toolIds")
-                    .and_then(Value::as_array)
-                    .is_some_and(|tool_ids| {
-                        tool_ids
-                            .iter()
-                            .any(|tool_id| tool_id.as_str() == Some("kerminal.capabilities"))
-                    })
-        })));
-    assert!(app_guide_payload
-        .pointer("/data/mcpBoundaries/configCrudAbsent")
-        .and_then(Value::as_array)
-        .is_some_and(|families| families
-            .iter()
-            .any(|family| family.as_str() == Some("remote_host.*"))));
+    assert_app_guide_payload(app_guide_payload);
 
     let config_reference_guide = client
         .peer()
@@ -520,40 +243,7 @@ async fn generated_codex_and_claude_configs_connect_to_tools_list() {
         .structured_content
         .as_ref()
         .expect("structured config guide content");
-    assert_eq!(
-        config_reference_payload
-            .pointer("/data/schemaVersion")
-            .and_then(Value::as_u64),
-        Some(1)
-    );
-    assert_eq!(
-        config_reference_payload
-            .pointer("/data/guideFile")
-            .and_then(Value::as_str),
-        Some("kerminal-config.md")
-    );
-    assert_eq!(
-        config_reference_payload
-            .pointer("/data/validator")
-            .and_then(Value::as_str),
-        Some("kerminal.config.validate")
-    );
-    assert!(config_reference_payload
-        .pointer("/data/markdown")
-        .and_then(Value::as_str)
-        .is_some_and(|markdown| {
-            markdown.contains("Kerminal Configuration Guide")
-                && markdown.contains("Do not look for MCP CRUD tools")
-                && markdown.contains("kerminal.host.upsert_with_credential")
-                && markdown.contains("key_passphrase_ref")
-                && markdown.contains("inline_private_key")
-        }));
-    assert!(config_reference_payload
-        .pointer("/data/deliberatelyAbsentToolFamilies")
-        .and_then(Value::as_array)
-        .is_some_and(|families| families
-            .iter()
-            .any(|family| family.as_str() == Some("remote_host.*"))));
+    assert_config_reference_payload(config_reference_payload);
 
     let capability_guide = client
         .peer()
@@ -565,79 +255,7 @@ async fn generated_codex_and_claude_configs_connect_to_tools_list() {
         .structured_content
         .as_ref()
         .expect("structured capability guide content");
-    assert_eq!(
-        capability_payload
-            .pointer("/data/schemaVersion")
-            .and_then(Value::as_u64),
-        Some(1)
-    );
-    assert_eq!(
-        capability_payload
-            .pointer("/data/fileFirstConfiguration/manualGuideTool")
-            .and_then(Value::as_str),
-        Some("kerminal.config_guide")
-    );
-    assert_eq!(
-        capability_payload
-            .pointer("/data/fileFirstConfiguration/validator")
-            .and_then(Value::as_str),
-        Some("kerminal.config.validate")
-    );
-    let capability_families = capability_payload
-        .pointer("/data/runtimeToolFamilies")
-        .and_then(Value::as_array)
-        .expect("capability families");
-    assert!(capability_families.iter().any(|family| {
-        family
-            .pointer("/family")
-            .and_then(Value::as_str)
-            .is_some_and(|name| name == "tmux")
-            && family
-                .pointer("/toolIds")
-                .and_then(Value::as_array)
-                .is_some_and(|tool_ids| {
-                    tool_ids
-                        .iter()
-                        .any(|tool_id| tool_id.as_str() == Some("tmux.capture_pane"))
-                })
-    }));
-    let deliberately_absent = capability_payload
-        .pointer("/data/deliberatelyAbsentToolFamilies")
-        .and_then(Value::as_array)
-        .expect("absent tool families");
-    assert!(deliberately_absent
-        .iter()
-        .any(|tool_family| tool_family.as_str() == Some("settings.*")));
-    assert!(capability_payload
-        .pointer("/data/sessionWorkspace/readFirst")
-        .and_then(Value::as_array)
-        .is_some_and(|paths| paths
-            .iter()
-            .any(|path| path.as_str() == Some("context/target-binding.json"))));
-    assert!(capability_payload
-        .pointer("/data/recommendedFirstCalls")
-        .and_then(Value::as_array)
-        .is_some_and(|tool_ids| tool_ids
-            .iter()
-            .any(|tool_id| tool_id.as_str() == Some("kerminal.app_guide"))));
-    assert!(capability_payload
-        .pointer("/data/recommendedFirstCalls")
-        .and_then(Value::as_array)
-        .is_some_and(|tool_ids| tool_ids
-            .iter()
-            .any(|tool_id| tool_id.as_str() == Some("kerminal.config_guide"))));
-    assert!(capability_payload
-        .pointer("/data/recommendedFirstCalls")
-        .and_then(Value::as_array)
-        .is_some_and(|tool_ids| tool_ids
-            .iter()
-            .any(|tool_id| tool_id.as_str() == Some("kerminal.tool_help"))));
-    assert!(capability_payload
-        .pointer("/data/recommendedFirstCalls")
-        .and_then(Value::as_array)
-        .is_some_and(|tool_ids| tool_ids
-            .iter()
-            .any(|tool_id| tool_id.as_str() == Some("kerminal.operation_guide"))));
+    assert_capability_payload(capability_payload);
 
     let mut terminal_tool_help_arguments = serde_json::Map::new();
     terminal_tool_help_arguments.insert(
@@ -658,38 +276,7 @@ async fn generated_codex_and_claude_configs_connect_to_tools_list() {
         .structured_content
         .as_ref()
         .expect("structured terminal tool help content");
-    assert_eq!(
-        terminal_tool_help_payload
-            .pointer("/data/schemaVersion")
-            .and_then(Value::as_u64),
-        Some(1)
-    );
-    assert_eq!(
-        terminal_tool_help_payload
-            .pointer("/data/matchMode")
-            .and_then(Value::as_str),
-        Some("toolId")
-    );
-    assert_tool_reference_examples_match_schema(terminal_tool_help_payload);
-    assert!(terminal_tool_help_payload
-        .pointer("/data/toolReference")
-        .and_then(Value::as_array)
-        .is_some_and(|tool_references| {
-            tool_references.iter().any(|tool_reference| {
-                tool_reference.pointer("/id").and_then(Value::as_str) == Some("terminal.write")
-                    && tool_reference
-                        .pointer("/inputSchema/properties/data")
-                        .is_some()
-                    && tool_reference
-                        .pointer("/exampleArguments/bindingGeneration")
-                        .and_then(Value::as_u64)
-                        .is_some()
-                    && tool_reference
-                        .pointer("/annotations/readOnlyHint")
-                        .and_then(Value::as_bool)
-                        == Some(false)
-            })
-        }));
+    assert_terminal_tool_help_payload(terminal_tool_help_payload);
 
     let mut container_tool_help_arguments = serde_json::Map::new();
     container_tool_help_arguments
@@ -707,32 +294,7 @@ async fn generated_codex_and_claude_configs_connect_to_tools_list() {
         .structured_content
         .as_ref()
         .expect("structured container tool help content");
-    assert_eq!(
-        container_tool_help_payload
-            .pointer("/data/matchMode")
-            .and_then(Value::as_str),
-        Some("family")
-    );
-    assert_tool_reference_examples_match_schema(container_tool_help_payload);
-    assert!(container_tool_help_payload
-        .pointer("/data/availableToolIds")
-        .and_then(Value::as_array)
-        .is_some_and(|tool_ids| tool_ids
-            .iter()
-            .any(|tool_id| tool_id.as_str() == Some("container.files.write_text"))));
-    assert!(container_tool_help_payload
-        .pointer("/data/toolReference")
-        .and_then(Value::as_array)
-        .is_some_and(|tool_references| {
-            tool_references.iter().any(|tool_reference| {
-                tool_reference.pointer("/id").and_then(Value::as_str)
-                    == Some("container.files.delete")
-                    && tool_reference
-                        .pointer("/annotations/destructiveHint")
-                        .and_then(Value::as_bool)
-                        == Some(true)
-            })
-        }));
+    assert_container_tool_help_payload(container_tool_help_payload);
 
     let mut absent_tool_help_arguments = serde_json::Map::new();
     absent_tool_help_arguments.insert(
@@ -752,18 +314,7 @@ async fn generated_codex_and_claude_configs_connect_to_tools_list() {
         .structured_content
         .as_ref()
         .expect("structured absent tool help content");
-    assert_eq!(
-        absent_tool_help_payload
-            .pointer("/data/matchedToolCount")
-            .and_then(Value::as_u64),
-        Some(0)
-    );
-    assert!(absent_tool_help_payload
-        .pointer("/data/absentToolMatches")
-        .and_then(Value::as_array)
-        .is_some_and(|families| families
-            .iter()
-            .any(|family| family.as_str() == Some("remote_host.*"))));
+    assert_absent_tool_help_payload(absent_tool_help_payload);
 
     let mut config_guide_arguments = serde_json::Map::new();
     config_guide_arguments.insert("intent".to_owned(), Value::String("config".to_owned()));
@@ -784,71 +335,7 @@ async fn generated_codex_and_claude_configs_connect_to_tools_list() {
         .structured_content
         .as_ref()
         .expect("structured config operation guide content");
-    assert_eq!(
-        config_guide_payload
-            .pointer("/data/schemaVersion")
-            .and_then(Value::as_u64),
-        Some(1)
-    );
-    assert_eq!(
-        config_guide_payload
-            .pointer("/data/intent")
-            .and_then(Value::as_str),
-        Some("config")
-    );
-    assert_eq!(
-        config_guide_payload
-            .pointer("/data/fileFirstConfiguration/validator")
-            .and_then(Value::as_str),
-        Some("kerminal.config.validate")
-    );
-    assert!(config_guide_payload
-        .pointer("/data/workflow")
-        .and_then(Value::as_array)
-        .is_some_and(|steps| steps
-            .iter()
-            .any(|step| step.pointer("/toolId").and_then(Value::as_str)
-                == Some("kerminal.config_guide"))));
-    assert!(config_guide_payload
-        .pointer("/data/workflow")
-        .and_then(Value::as_array)
-        .is_some_and(|steps| steps
-            .iter()
-            .any(|step| step.pointer("/toolId").and_then(Value::as_str)
-                == Some("kerminal.config.validate"))));
-    assert!(config_guide_payload
-        .pointer("/data/deliberatelyAbsentToolFamilies")
-        .and_then(Value::as_array)
-        .is_some_and(|families| families
-            .iter()
-            .any(|family| family.as_str() == Some("remote_host.*"))));
-    assert_tool_reference_examples_match_schema(config_guide_payload);
-    assert!(config_guide_payload
-        .pointer("/data/toolReference")
-        .and_then(Value::as_array)
-        .is_some_and(
-            |tool_references| tool_references.iter().any(|tool_reference| {
-                tool_reference.pointer("/id").and_then(Value::as_str)
-                    == Some("kerminal.config_guide")
-                    && tool_reference
-                        .pointer("/exampleArguments")
-                        .and_then(Value::as_object)
-                        .is_some_and(|arguments| arguments.is_empty())
-            })
-        ));
-    assert!(config_guide_payload
-        .pointer("/data/toolReference")
-        .and_then(Value::as_array)
-        .is_some_and(
-            |tool_references| tool_references.iter().any(|tool_reference| {
-                tool_reference.pointer("/id").and_then(Value::as_str)
-                    == Some("kerminal.config.validate")
-                    && tool_reference
-                        .pointer("/exampleArguments/scope")
-                        .and_then(Value::as_str)
-                        == Some("all")
-            })
-        ));
+    assert_config_operation_guide_payload(config_guide_payload);
 
     let mut session_guide_arguments = serde_json::Map::new();
     session_guide_arguments.insert(
@@ -868,39 +355,7 @@ async fn generated_codex_and_claude_configs_connect_to_tools_list() {
         .structured_content
         .as_ref()
         .expect("structured session operation guide content");
-    assert_eq!(
-        session_guide_payload
-            .pointer("/data/intent")
-            .and_then(Value::as_str),
-        Some("session-terminal")
-    );
-    assert!(session_guide_payload
-        .pointer("/data/availableReferencedToolIds")
-        .and_then(Value::as_array)
-        .is_some_and(|tool_ids| tool_ids
-            .iter()
-            .any(|tool_id| tool_id.as_str() == Some("kerminal.agent.target_context"))));
-    assert!(session_guide_payload
-        .pointer("/data/workflow")
-        .and_then(Value::as_array)
-        .is_some_and(|steps| {
-            steps.iter().any(|step| {
-                step.pointer("/toolId").and_then(Value::as_str) == Some("terminal.write")
-            })
-        }));
-    assert_tool_reference_examples_match_schema(session_guide_payload);
-    assert!(session_guide_payload
-        .pointer("/data/toolReference")
-        .and_then(Value::as_array)
-        .is_some_and(
-            |tool_references| tool_references.iter().any(|tool_reference| {
-                tool_reference.pointer("/id").and_then(Value::as_str) == Some("terminal.write")
-                    && tool_reference
-                        .pointer("/exampleArguments/bindingGeneration")
-                        .and_then(Value::as_u64)
-                        .is_some()
-            })
-        ));
+    assert_session_operation_guide_payload(session_guide_payload);
 
     for guide_intent in [
         "overview",
@@ -999,64 +454,7 @@ async fn generated_codex_and_claude_configs_connect_to_tools_list() {
         .structured_content
         .as_ref()
         .expect("structured runtime snapshot content");
-    assert_eq!(
-        runtime_snapshot_payload
-            .pointer("/data/schemaVersion")
-            .and_then(Value::as_u64),
-        Some(1)
-    );
-    assert_eq!(
-        runtime_snapshot_payload
-            .pointer("/data/mcp/toolsOnly")
-            .and_then(Value::as_bool),
-        Some(true)
-    );
-    assert_eq!(
-        runtime_snapshot_payload
-            .pointer("/data/mcp/selfDiscoveryTool")
-            .and_then(Value::as_str),
-        Some("kerminal.capabilities")
-    );
-    assert_eq!(
-        runtime_snapshot_payload
-            .pointer("/data/mcp/appGuideTool")
-            .and_then(Value::as_str),
-        Some("kerminal.app_guide")
-    );
-    assert_eq!(
-        runtime_snapshot_payload
-            .pointer("/data/mcp/configGuideTool")
-            .and_then(Value::as_str),
-        Some("kerminal.config_guide")
-    );
-    assert_eq!(
-        runtime_snapshot_payload
-            .pointer("/data/mcp/toolHelpTool")
-            .and_then(Value::as_str),
-        Some("kerminal.tool_help")
-    );
-    assert_eq!(
-        runtime_snapshot_payload
-            .pointer("/data/mcp/operationGuideTool")
-            .and_then(Value::as_str),
-        Some("kerminal.operation_guide")
-    );
-    assert_eq!(
-        runtime_snapshot_payload
-            .pointer("/data/mcp/exposedToolCount")
-            .and_then(Value::as_u64),
-        Some(expected_tool_ids.len() as u64)
-    );
-    assert_eq!(
-        runtime_snapshot_payload
-            .pointer("/data/fileFirstConfiguration/validator")
-            .and_then(Value::as_str),
-        Some("kerminal.config.validate")
-    );
-    assert!(runtime_snapshot_payload
-        .pointer("/data/fileFirstConfiguration/hostDiscovery")
-        .and_then(Value::as_str)
-        .is_some_and(|rule| rule.contains("hosts/*.toml") && rule.contains("remote_host.*")));
+    assert_runtime_snapshot_payload(runtime_snapshot_payload);
 
     let config_validation = client
         .peer()
@@ -1349,41 +747,6 @@ fn parses_tmux_probe_arguments_from_flat_mcp_shape() {
     assert_eq!(request.target.socket_name.as_deref(), Some("work"));
     assert_eq!(request.target.socket_path, None);
     assert_eq!(request.target.tmux_path.as_deref(), Some("/usr/bin/tmux"));
-}
-
-fn assert_tool_reference_examples_match_schema(payload: &Value) {
-    let tool_references = payload
-        .pointer("/data/toolReference")
-        .and_then(Value::as_array)
-        .expect("operation guide toolReference");
-    assert!(
-        !tool_references.is_empty(),
-        "operation guide should include schema-backed tool references"
-    );
-
-    for tool_reference in tool_references {
-        let tool_id = tool_reference
-            .pointer("/id")
-            .and_then(Value::as_str)
-            .expect("tool reference id");
-        let schema_properties = tool_reference
-            .pointer("/inputSchema/properties")
-            .and_then(Value::as_object)
-            .expect("tool reference input schema properties");
-        let Some(example_arguments) = tool_reference
-            .pointer("/exampleArguments")
-            .and_then(Value::as_object)
-        else {
-            continue;
-        };
-
-        for key in example_arguments.keys() {
-            assert!(
-                schema_properties.contains_key(key),
-                "exampleArguments for {tool_id} contains `{key}`, but inputSchema does not"
-            );
-        }
-    }
 }
 
 #[tokio::test]

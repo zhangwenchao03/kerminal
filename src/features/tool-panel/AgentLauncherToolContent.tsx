@@ -9,19 +9,11 @@ import {
 } from "react";
 import {
   AlertTriangle,
-  ChevronLeft,
   Loader2,
-  ShieldOff,
-  Sparkles,
   Terminal,
-  Wrench,
 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
-import {
-  currentDesktopNotificationVisibility,
-  sendDesktopNotification,
-} from "../../lib/desktopNotificationApi";
 import type { DesktopNotificationSettings } from "../../lib/desktopNotificationPolicy";
 import {
   agentSessionRecordId,
@@ -36,21 +28,14 @@ import {
   type AgentSessionTargetRequest,
   type ExternalAgentId,
   type ExternalAgentLaunchSpec,
-  type ExternalAgentSessionStatus,
   type ExternalAgentWorkspaceStatus,
 } from "../../lib/agentLauncherApi";
-import { targetStableId } from "../../lib/targetModel";
 import type { TerminalAgentSignal } from "../../lib/terminalApi";
 import {
   defaultTerminalAppearance,
   type ResolvedTheme,
   type TerminalAppearance,
 } from "../settings/settingsModel";
-import {
-  getTerminalPaneSessionRecord,
-  type PaneSessionRecord,
-} from "../terminal/terminalSessionRegistry";
-import { XtermPane } from "../terminal/XtermPane";
 import {
   isTerminalSessionTab,
   type TerminalPane,
@@ -59,8 +44,6 @@ import {
 import {
   agentLauncherErrorMessage,
   agentLaunchDisplayCommand,
-  agentPermissionSkipFlag,
-  agentSupportsPermissionSkip,
   applyAgentLaunchPermissionMode,
   buildAgentLauncherViewModel,
   type AgentLaunchPermissionMode,
@@ -73,6 +56,18 @@ import {
   visibleAgentSessionForTab,
   type AgentSidebarSessionState,
 } from "./agent-launcher/agentTabSessionModel";
+import {
+  buildAgentSessionTarget,
+  formatTargetChipLabel,
+} from "./agent-launcher/agentSessionTargetModel";
+import {
+  AgentTerminalView,
+  type AgentTerminalSession,
+} from "./agent-launcher/AgentTerminalView";
+import {
+  AgentIconButton,
+  AgentLaunchContextMenu,
+} from "./agent-launcher/AgentLaunchControls";
 
 interface AgentLauncherToolContentProps {
   activeTab?: TerminalTab;
@@ -95,23 +90,6 @@ interface AgentLauncherContextMenuState {
   };
 }
 
-interface AgentTerminalSession {
-  agentSessionId: string;
-  agentId: ExternalAgentId;
-  title: string;
-  commandLabel: string;
-  shell: string;
-  args: string[];
-  cwd: string;
-  env?: Record<string, string>;
-  agentSignal?: TerminalAgentSignal;
-  status: ExternalAgentSessionStatus;
-  customCommand?: string;
-  permissionMode: AgentLaunchPermissionMode;
-  tabId: string;
-  target?: AgentSessionTargetRequest;
-}
-
 interface AgentSessionSelection {
   agentSessionId: string;
   tabId: string;
@@ -124,13 +102,6 @@ interface AgentRestoreChoice {
   session: AgentSessionSelection;
 }
 
-const agentIcons = {
-  claude: Sparkles,
-  codex: Terminal,
-  custom: Wrench,
-};
-const agentLaunchContextMenuClassName =
-  "kerminal-context-menu kerminal-agent-launch-menu kerminal-floating-enter absolute z-[1000] w-[136px]";
 const AGENT_LAUNCH_CONTEXT_MENU_WIDTH = 136;
 const AGENT_LAUNCH_CONTEXT_MENU_HEIGHT = 38;
 const AGENT_LAUNCH_CONTEXT_MENU_INSET = 8;
@@ -884,117 +855,6 @@ function AgentRestoreChoicePanel({
   );
 }
 
-function buildAgentSessionTarget(
-  focusedPane?: TerminalPane,
-  activeTab?: TerminalTab,
-): AgentSessionTargetRequest | undefined {
-  if (!focusedPane) {
-    return undefined;
-  }
-  const paneSession = getTerminalPaneSessionRecord(focusedPane.id);
-  if (!paneSession?.sessionId) {
-    return undefined;
-  }
-  return {
-    cwd: paneSession.cwd ?? focusedPane.currentCwd ?? focusedPane.cwd,
-    liveStatus: "ready",
-    paneId: focusedPane.id,
-    shell: paneSession.shell ?? focusedPane.shell,
-    tabId: paneSession.tabId ?? activeTab?.id,
-    targetKind: paneSession.target ?? paneTargetKind(focusedPane),
-    targetRef: buildAgentTargetRef(focusedPane, activeTab, paneSession),
-    targetTerminalSessionId: paneSession.sessionId,
-  };
-}
-
-function buildAgentTargetRef(
-  focusedPane: TerminalPane,
-  activeTab: TerminalTab | undefined,
-  paneSession: PaneSessionRecord,
-): string {
-  if (paneSession.targetRef?.trim()) {
-    return paneSession.targetRef.trim();
-  }
-  if (focusedPane.target) {
-    return targetStableId(focusedPane.target);
-  }
-  const tabPart = activeTab?.id ? `tab:${activeTab.id}` : undefined;
-  const panePart = `pane:${focusedPane.id}`;
-  if (paneSession.target === "dockerContainer") {
-    return joinTargetRefParts([
-      "dockerContainer",
-      paneSession.remoteHostId ? `host:${paneSession.remoteHostId}` : undefined,
-      paneSession.containerRuntime
-        ? `runtime:${paneSession.containerRuntime}`
-        : undefined,
-      paneSession.containerId ? `container:${paneSession.containerId}` : undefined,
-      tabPart,
-      panePart,
-    ]);
-  }
-  if (paneSession.target === "local") {
-    return joinTargetRefParts([
-      "local",
-      paneSession.profileId ? `profile:${paneSession.profileId}` : "profile:default",
-      tabPart,
-      panePart,
-    ]);
-  }
-  return joinTargetRefParts([
-    paneSession.target,
-    paneSession.remoteHostId ? `host:${paneSession.remoteHostId}` : undefined,
-    tabPart,
-    panePart,
-  ]);
-}
-
-function joinTargetRefParts(parts: Array<string | undefined>): string {
-  return parts.filter((part): part is string => Boolean(part?.trim())).join(":");
-}
-
-function formatTargetChipLabel(target?: AgentSessionTargetRequest): string {
-  if (!target?.targetTerminalSessionId) {
-    return "未绑定";
-  }
-  if (target.liveStatus === "closed") {
-    return "已关闭";
-  }
-  if (target.liveStatus === "stale") {
-    return "已失效";
-  }
-  const name = compactTargetName(target.targetRef ?? target.paneId);
-  const path = compactTargetPath(target.cwd);
-  return path ? `${name} · ${path}` : name;
-}
-
-function compactTargetName(value?: string): string {
-  const normalized = value?.trim();
-  if (!normalized) {
-    return "当前终端";
-  }
-  const parts = normalized.split(":").filter(Boolean);
-  return parts[parts.length - 1] ?? normalized;
-}
-
-function compactTargetPath(path?: string): string {
-  const normalized = path?.replace(/\\/g, "/").trim();
-  if (!normalized) {
-    return "cwd 未知";
-  }
-  const segments = normalized.split("/").filter(Boolean);
-  if (segments.length <= 2) {
-    return normalized;
-  }
-  return `.../${segments.slice(-2).join("/")}`;
-}
-
-function paneTargetKind(pane: TerminalPane): string | undefined {
-  if (pane.mode === "container") {
-    return "dockerContainer";
-  }
-  return pane.mode === "preview" ? undefined : pane.mode;
-}
-
 function agentTitle(agentId: ExternalAgentId): string {
   if (agentId === "claude") {
     return "Claude";
@@ -1003,220 +863,6 @@ function agentTitle(agentId: ExternalAgentId): string {
     return "Custom";
   }
   return "Codex";
-}
-
-function AgentIconButton({
-  actionState,
-  agent,
-  onLaunch,
-  onOpenMenu,
-}: {
-  actionState: ActionState;
-  agent: AgentActionViewModel;
-  onLaunch: (
-    agentId: ExternalAgentId,
-    permissionMode?: AgentLaunchPermissionMode,
-  ) => void;
-  onOpenMenu: (agent: AgentActionViewModel, event: ReactMouseEvent) => void;
-}) {
-  const Icon = agentIcons[agent.agentId];
-  const busy = actionState === agent.agentId;
-  const disabled = actionState !== null || agent.disabled;
-  const label = agent.agentId === "custom" ? "自定义" : agent.title;
-
-  return (
-    <button
-      aria-label={agent.agentId === "custom" ? "Open Custom Agent" : `Open ${agent.title}`}
-      className={cn(
-        "kerminal-pressable kerminal-focus-ring flex h-16 min-w-0 flex-col items-center justify-center gap-1.5 rounded-2xl border border-transparent bg-transparent text-zinc-700 transition hover:border-[var(--border-subtle)] hover:bg-[var(--surface-hover)] active:scale-[0.98] dark:text-zinc-200",
-        disabled && "cursor-not-allowed opacity-45",
-      )}
-      disabled={disabled}
-      onClick={() => onLaunch(agent.agentId)}
-      onContextMenu={(event) => {
-        if (disabled || !agentSupportsPermissionSkip(agent.agentId)) {
-          return;
-        }
-        onOpenMenu(agent, event);
-      }}
-      title={agent.disabledReason ?? agent.statusDetail}
-      type="button"
-    >
-      {busy ? (
-        <Loader2 className="h-5 w-5 animate-spin" />
-      ) : (
-        <Icon className="h-5 w-5" strokeWidth={1.75} />
-      )}
-      <span className="max-w-full truncate text-[11px] font-medium">{label}</span>
-    </button>
-  );
-}
-
-function AgentLaunchContextMenu({
-  agent,
-  onLaunch,
-  position,
-}: {
-  agent: AgentActionViewModel;
-  onLaunch: (permissionMode: AgentLaunchPermissionMode) => void;
-  position: {
-    x: number;
-    y: number;
-  };
-}) {
-  const skipFlag = agentPermissionSkipFlag(agent.agentId);
-  if (!skipFlag) {
-    return null;
-  }
-
-  return (
-    <div
-      aria-label={`${agent.title} launch options`}
-      className={agentLaunchContextMenuClassName}
-      onClick={(event) => event.stopPropagation()}
-      onContextMenu={(event) => event.preventDefault()}
-      role="menu"
-      style={{
-        left: position.x,
-        top: position.y,
-      }}
-    >
-      <div className="kerminal-context-menu-group">
-        <button
-          aria-label={`Launch ${agent.title} with skipped permissions`}
-          className="kerminal-context-menu-item kerminal-agent-launch-menu-item"
-          onClick={() => onLaunch("skipPermissions")}
-          role="menuitem"
-          title={skipFlag}
-          type="button"
-        >
-          <span className="kerminal-context-menu-icon">
-            <ShieldOff />
-          </span>
-          <span className="kerminal-context-menu-label">跳过权限打开</span>
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function AgentTerminalView({
-  desktopNotifications,
-  focused,
-  onAgentSignal,
-  onBack,
-  resolvedTheme,
-  session,
-  terminalAppearance,
-}: {
-  desktopNotifications?: DesktopNotificationSettings;
-  focused: boolean;
-  onAgentSignal: (signal: TerminalAgentSignal) => void;
-  onBack: () => void;
-  resolvedTheme: ResolvedTheme;
-  session: AgentTerminalSession;
-  terminalAppearance: TerminalAppearance;
-}) {
-  const paneId = `agent-terminal-${session.agentSessionId}`;
-  const Icon = agentIcons[session.agentId];
-  const workspacePath = compactWorkspacePath(session.cwd);
-  const title = session.title === "Custom" ? "自定义" : session.title;
-  const agentSignalView = session.agentSignal
-    ? agentSignalStatusView(session.agentSignal)
-    : null;
-  const notificationLastSentAtRef = useRef<Record<string, number | undefined>>(
-    {},
-  );
-  const notifiedSessionIdsRef = useRef<Set<string>>(new Set());
-  const notifyAgentSessionFinished = useCallback(
-    (event: { durationMs: number; sessionId: string }) => {
-      if (!desktopNotifications?.enabled) {
-        return;
-      }
-      if (notifiedSessionIdsRef.current.has(event.sessionId)) {
-        return;
-      }
-      notifiedSessionIdsRef.current.add(event.sessionId);
-      void sendDesktopNotification({
-        event: {
-          agentName: title,
-          durationMs: event.durationMs,
-          exitCode: null,
-          kind: "agent.process.finished",
-          notificationKey: `agent.process.finished:${session.agentSessionId}`,
-        },
-        lastSentAtByKey: notificationLastSentAtRef.current,
-        permissionPrompt: "important-event",
-        settings: desktopNotifications,
-        visibility: currentDesktopNotificationVisibility(),
-      });
-    },
-    [desktopNotifications, session.agentSessionId, title],
-  );
-  return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--surface-terminal)]">
-      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface-solid)] px-2.5">
-        <Button
-          aria-label="Back to agent launcher"
-          className="h-8 w-8 rounded-xl"
-          onClick={onBack}
-          size="icon"
-          variant="ghost"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <div className="grid h-7 w-7 shrink-0 place-items-center rounded-xl bg-[var(--surface-hover)] text-zinc-700 ring-1 ring-inset ring-[var(--border-subtle)] dark:text-zinc-200">
-          <Icon className="h-4 w-4" strokeWidth={1.75} />
-        </div>
-        <div className="min-w-0 flex-1 leading-tight">
-          <div className="truncate text-[13px] font-semibold text-zinc-900 dark:text-zinc-100">
-            {title}
-          </div>
-          <div
-            className="truncate font-mono text-[11px] text-zinc-500 dark:text-zinc-400"
-            data-testid="agent-terminal-command"
-            title={`${session.commandLabel} · ${session.cwd}`}
-          >
-            {session.commandLabel} · {workspacePath}
-          </div>
-        </div>
-        {agentSignalView ? (
-          <span
-            className={cn(
-              "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-4",
-              agentSignalView.className,
-            )}
-            data-testid="agent-terminal-signal"
-            title={agentSignalView.title}
-          >
-            {agentSignalView.label}
-          </span>
-        ) : null}
-      </header>
-      <div className="min-h-0 flex-1 p-2">
-        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-[var(--border-subtle)] bg-[var(--surface-terminal)] shadow-sm shadow-black/5 dark:shadow-black/25">
-          <XtermPane
-            args={session.args}
-            cwd={session.cwd}
-            env={session.env}
-            focused={focused}
-            inputCompatibilityMode="agentTui"
-            key={session.agentSessionId}
-            onAgentSignal={onAgentSignal}
-            paneId={paneId}
-            resolvedTheme={resolvedTheme}
-            shell={session.shell}
-            shellAssistEnabled={false}
-            startupMessage={`加载 ${title}...\r\n`}
-            terminalAppearance={terminalAppearance}
-            title={session.title}
-            transientStartupMessage
-            onSessionFinished={notifyAgentSessionFinished}
-          />
-        </div>
-      </div>
-    </section>
-  );
 }
 
 function clampAgentLaunchContextMenuPosition(
@@ -1249,47 +895,6 @@ function clampAgentLaunchContextMenuPosition(
 
 function formatLaunchCommand(spec: ExternalAgentLaunchSpec): string {
   return agentLaunchDisplayCommand(spec) || spec.title;
-}
-
-function agentSignalStatusView(signal: TerminalAgentSignal): {
-  className: string;
-  label: string;
-  title: string;
-} {
-  switch (signal.status) {
-    case "working":
-      return {
-        className:
-          "border-sky-400/40 bg-sky-500/10 text-sky-700 dark:text-sky-200",
-        label: "工作中",
-        title: `${signal.agent} is working`,
-      };
-    case "attention":
-      return {
-        className:
-          "border-amber-400/45 bg-amber-500/10 text-amber-700 dark:text-amber-200",
-        label: "需处理",
-        title: `${signal.agent} needs attention`,
-      };
-    case "finished":
-      return {
-        className:
-          "border-emerald-400/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200",
-        label: "已完成",
-        title: `${signal.agent} finished`,
-      };
-    case "exited":
-      return {
-        className:
-          "border-[var(--border-subtle)] bg-[var(--surface-hover)] text-zinc-600 dark:text-zinc-300",
-        label: "已退出",
-        title: `${signal.agent} exited`,
-      };
-  }
-}
-
-function compactWorkspacePath(path: string): string {
-  return path.replace(/\\/g, "/").endsWith("/.kerminal") ? "~/.kerminal" : path;
 }
 
 function InlineError({

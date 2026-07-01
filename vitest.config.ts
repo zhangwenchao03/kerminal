@@ -6,9 +6,9 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: true,
-    setupFiles: "./src/test/setup.ts",
+    setupFiles: "./tests/frontend/setup.ts",
     css: true,
-    include: ["src/**/*.test.{ts,tsx}"],
+    include: ["src/**/*.test.{ts,tsx}", "tests/frontend/**/*.test.{ts,tsx}"],
     exclude: ["node_modules", "dist", "src-tauri", ".codex", ".updeng"],
     testTimeout: 10000,
   },

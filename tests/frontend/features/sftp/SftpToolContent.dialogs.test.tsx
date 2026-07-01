@@ -1,0 +1,211 @@
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { act } from "react";
+import { describe,
+  expect,
+  it } from "vitest";
+import {  createSftpTransferSummary,
+  eventMocks,
+  openCurrentDirectoryContextMenu,
+  sftpApiMocks,
+  sshMachine,
+} from "../../support/sftp/SftpToolContent.testSupport.tsx";
+import { SftpToolContent } from "../../../../src/features/sftp/SftpToolContent";
+
+const sidebarViewScope = "sftp-sidebar:prod-api";
+
+describe("SftpToolContent events and dialogs", () => {
+  it("updates transfer progress from Tauri events without waiting for polling", async () => {
+    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ =
+      {};
+    sftpApiMocks.listSftpTransfers.mockResolvedValue([]);
+
+    render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    await screen.findByText("var");
+    await waitFor(() =>
+      expect(eventMocks.listen).toHaveBeenCalledWith(
+        "sftp-transfer-updated",
+        expect.any(Function),
+      ),
+    );
+
+    act(() => {
+      eventMocks.transferHandler?.({
+        payload: createSftpTransferSummary({
+          bytesTransferred: 512,
+          cancelRequested: false,
+          createdAt: 10,
+          direction: "download",
+          hostId: "prod-api",
+          id: "event-transfer-1",
+          kind: "file",
+          localPath: "/Users/me/Downloads/app.log",
+          remotePath: "/var/log/app.log",
+          status: "running",
+          totalBytes: 1024,
+          updatedAt: 11,
+          viewScope: sidebarViewScope,
+        }),
+      });
+    });
+
+    expect(await screen.findByText("SFTP 传输队列")).toBeInTheDocument();
+    expect(screen.getByText("50%")).toBeInTheDocument();
+    expect(
+      screen.getByRole("progressbar", { name: "传输进度 app.log" }),
+    ).toHaveAttribute("aria-valuenow", "50");
+
+    act(() => {
+      eventMocks.transferHandler?.({
+        payload: createSftpTransferSummary({
+          bytesTransferred: 512,
+          cancelRequested: false,
+          createdAt: 10,
+          direction: "download",
+          error: "SSH 认证失败",
+          hostId: "prod-api",
+          id: "event-transfer-1",
+          kind: "file",
+          localPath: "/Users/me/Downloads/app.log",
+          remotePath: "/var/log/app.log",
+          status: "failed",
+          totalBytes: 1024,
+          updatedAt: 12,
+          viewScope: sidebarViewScope,
+        }),
+      });
+    });
+
+    expect(await screen.findByText("失败")).toBeInTheDocument();
+    expect(screen.getByText("SSH 认证失败")).toBeInTheDocument();
+  });
+
+  it("toggles hidden dot files from the context menu", async () => {
+    const user = userEvent.setup();
+
+    render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    expect(await screen.findByText(".env")).toBeInTheDocument();
+    openCurrentDirectoryContextMenu();
+    await user.click(screen.getByRole("menuitem", { name: "隐藏隐藏文件" }));
+
+    expect(screen.queryByText(".env")).not.toBeInTheDocument();
+    openCurrentDirectoryContextMenu();
+    expect(
+      screen.getByRole("menuitem", { name: "显示隐藏文件" }),
+    ).toBeInTheDocument();
+  });
+
+  it("creates a remote directory from a modal", async () => {
+    const user = userEvent.setup();
+
+    render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    await screen.findByText("var");
+    await user.click(screen.getByRole("button", { name: "新建目录" }));
+    await user.clear(screen.getByLabelText("新目录路径"));
+    await user.type(screen.getByLabelText("新目录路径"), "new-folder");
+    await user.click(screen.getByRole("button", { name: "创建" }));
+
+    expect(sftpApiMocks.createSftpDirectory).toHaveBeenCalledWith({
+      hostId: "prod-api",
+      path: "/new-folder",
+    });
+    expect(await screen.findByText(/目录已创建/)).toBeInTheDocument();
+  });
+
+  it("renames a remote file from the context menu", async () => {
+    const user = userEvent.setup();
+
+    render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    await screen.findByText("var");
+    await user.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
+    expect(await screen.findByText("app.log")).toBeInTheDocument();
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: "文件 app.log" }),
+      {
+        clientX: 24,
+        clientY: 24,
+      },
+    );
+    await user.click(screen.getByRole("menuitem", { name: "重命名" }));
+
+    expect(screen.getByLabelText("目标路径")).toHaveValue(
+      "/var/log/app.log.renamed",
+    );
+    await user.clear(screen.getByLabelText("目标路径"));
+    await user.type(screen.getByLabelText("目标路径"), "/var/log/app.old.log");
+    await user.click(screen.getByRole("button", { name: "重命名" }));
+
+    expect(sftpApiMocks.renameSftpPath).toHaveBeenCalledWith({
+      fromPath: "/var/log/app.log",
+      hostId: "prod-api",
+      toPath: "/var/log/app.old.log",
+    });
+    expect(await screen.findByText(/已重命名/)).toBeInTheDocument();
+  });
+
+  it("changes permissions from the context menu", async () => {
+    const user = userEvent.setup();
+
+    render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    await screen.findByText("var");
+    await user.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
+    expect(await screen.findByText("app.log")).toBeInTheDocument();
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: "文件 app.log" }),
+      {
+        clientX: 24,
+        clientY: 24,
+      },
+    );
+    await user.click(screen.getByRole("menuitem", { name: "修改权限" }));
+
+    expect(screen.getByLabelText("权限模式")).toHaveValue("644");
+    await user.clear(screen.getByLabelText("权限模式"));
+    await user.type(screen.getByLabelText("权限模式"), "600");
+    await user.click(screen.getByRole("button", { name: "保存权限" }));
+
+    expect(sftpApiMocks.chmodSftpPath).toHaveBeenCalledWith({
+      hostId: "prod-api",
+      mode: "600",
+      path: "/var/log/app.log",
+    });
+    expect(await screen.findByText(/权限已修改/)).toBeInTheDocument();
+  });
+
+  it("requires confirmation before deleting a remote file", async () => {
+    const user = userEvent.setup();
+
+    render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    await screen.findByText("var");
+    await user.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
+    expect(await screen.findByText("app.log")).toBeInTheDocument();
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: "文件 app.log" }),
+      {
+        clientX: 24,
+        clientY: 24,
+      },
+    );
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
+
+    expect(screen.getByRole("dialog", { name: "删除" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+
+    expect(sftpApiMocks.deleteSftpPath).toHaveBeenCalledWith({
+      directory: false,
+      hostId: "prod-api",
+      path: "/var/log/app.log",
+    });
+    expect(await screen.findByText(/已删除/)).toBeInTheDocument();
+  });
+});

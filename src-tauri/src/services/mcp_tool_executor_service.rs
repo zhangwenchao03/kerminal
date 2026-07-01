@@ -89,19 +89,24 @@ use crate::{
     storage::{config_file_store::ConfigFileStore, CommandSqliteStore, RuntimeFileStore},
 };
 
+mod app_guides;
 mod arguments;
 mod config_tools;
 mod container_tools;
+mod diagnostics_common;
 mod diagnostics_tools;
 mod execution;
 mod execution_result;
 mod history_tools;
 mod host_vault_tools;
+mod operation_guide;
 mod port_forward_tools;
+mod runtime_snapshot;
 mod sftp_tools;
 mod ssh_tools;
 mod terminal_tools;
 mod tmux_tools;
+mod tool_examples;
 
 pub use self::{
     diagnostics_tools::summarize_server_info_snapshot_for_agent,
@@ -141,9 +146,10 @@ pub mod rules {
 }
 
 use self::{
-    arguments::*, config_tools::*, container_tools::*, diagnostics_tools::*, execution::*,
-    execution_result::*, history_tools::*, host_vault_tools::*, port_forward_tools::*,
-    sftp_tools::*, ssh_tools::*, terminal_tools::*, tmux_tools::*,
+    app_guides::*, arguments::*, config_tools::*, container_tools::*, diagnostics_tools::*,
+    execution::*, execution_result::*, history_tools::*, host_vault_tools::*, operation_guide::*,
+    port_forward_tools::*, runtime_snapshot::*, sftp_tools::*, ssh_tools::*, terminal_tools::*,
+    tmux_tools::*,
 };
 
 const MCP_CALL_LOG_FIELD_MAX_CHARS: usize = 4096;

@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Layers2 } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -36,6 +36,7 @@ import {
   type TerminalTabGroupPreferences,
 } from "../workspace/types";
 import { TerminalBroadcastBar } from "./TerminalBroadcastBar";
+import { TerminalTabOverviewMenu } from "./TerminalTabOverviewMenu";
 import { TerminalWorkspaceContent } from "./TerminalWorkspaceContent";
 import type {
   TerminalPaneMoveDropZone,
@@ -55,20 +56,13 @@ import {
   TerminalTabGroupEditDialog,
   TerminalTabGroupHeader,
   TerminalTabRenameDialog,
-  terminalTabStatusDotClassName,
   type TerminalTabGroup,
   type TerminalTabContextMenu,
   type TerminalTabContextMenuPayload,
 } from "./terminalTabChrome";
 
-const terminalFloatingPanelClassName =
-  "kerminal-floating-enter fixed z-[1000] border border-[var(--border-subtle)] bg-[var(--surface-overlay)] text-sm shadow-2xl shadow-black/20 backdrop-blur-xl dark:shadow-black/50";
 const terminalContextMenuPanelClassName =
   "kerminal-context-menu kerminal-floating-enter fixed z-[1000] w-56";
-const terminalOverviewItemClassName =
-  "kerminal-focus-ring kerminal-pressable flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left";
-const terminalOverviewIdleClassName =
-  "text-zinc-700 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-zinc-50";
 const TAB_OVERVIEW_OVERFLOW_TOLERANCE = 1;
 
 export interface BroadcastCommandRequest {
@@ -686,98 +680,19 @@ export function TerminalWorkspace({
           document.body,
         )
       : null;
-  const tabOverviewElement =
-    tabOverviewOpen && typeof document !== "undefined"
-      ? createPortal(
-          <div
-            aria-label="所有终端标签"
-            className={cn(
-              terminalFloatingPanelClassName,
-              "w-72 overflow-hidden rounded-2xl",
-            )}
-            onClick={(event) => event.stopPropagation()}
-            ref={tabOverviewMenuRef}
-            role="menu"
-            style={{ left: tabOverviewPosition.x, top: tabOverviewPosition.y }}
-          >
-            <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-3 py-2.5">
-              <div className="font-medium text-zinc-950 dark:text-zinc-50">
-                标签分组
-              </div>
-              <div className="rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-                {tabGroups.length} 组 / {tabs.length} 个
-              </div>
-            </div>
-            <div className="max-h-[min(70vh,420px)] overflow-y-auto p-1.5">
-              {tabGroups.map((group) => {
-                return (
-                  <div
-                    aria-label={`${group.title} 标签组`}
-                    className="py-1"
-                    key={group.id}
-                    role="group"
-                  >
-                    <div className="flex items-center gap-2 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500 dark:text-zinc-400">
-                      <Layers2 className="h-3.5 w-3.5 shrink-0 opacity-80" />
-                      <span className="min-w-0 flex-1 truncate normal-case tracking-normal">
-                        {group.title}
-                      </span>
-                      <span className="rounded-full bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium leading-none">
-                        {group.tabs.length} 个
-                      </span>
-                    </div>
-                    <div className="space-y-0.5">
-                      {group.tabs.map((tab) => {
-                        const active = tab.id === activeTabId;
-                        const tabIndex = tabs.findIndex(
-                          (candidate) => candidate.id === tab.id,
-                        );
-                        const title =
-                          terminalAppearance.showTabNumbers && tabIndex >= 0
-                            ? `${tabIndex + 1} · ${tab.title}`
-                            : tab.title;
-                        return (
-                          <button
-                            aria-current={active ? "page" : undefined}
-                            className={cn(
-                              terminalOverviewItemClassName,
-                              "pl-5",
-                              active
-                                ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
-                                : terminalOverviewIdleClassName,
-                            )}
-                            key={tab.id}
-                            onClick={() => selectTabFromOverview(tab.id)}
-                            role="menuitem"
-                            type="button"
-                          >
-                            <span
-                              className={cn(
-                                "h-2 w-2 shrink-0 rounded-full",
-                                terminalTabStatusDotClassName(
-                                  tab,
-                                  tabStatusById.get(tab.id),
-                                ),
-                              )}
-                            />
-                            <span className="min-w-0 flex-1 truncate">
-                              {title}
-                            </span>
-                            {active ? (
-                              <Check className="h-3.5 w-3.5 shrink-0" />
-                            ) : null}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>,
-          document.body,
-        )
-      : null;
+  const tabOverviewElement = (
+    <TerminalTabOverviewMenu
+      activeTabId={activeTabId}
+      menuRef={tabOverviewMenuRef}
+      onSelectTab={selectTabFromOverview}
+      open={tabOverviewOpen}
+      position={tabOverviewPosition}
+      tabGroups={tabGroups}
+      tabs={tabs}
+      tabStatusById={tabStatusById}
+      terminalAppearance={terminalAppearance}
+    />
+  );
 
   return (
     <main
