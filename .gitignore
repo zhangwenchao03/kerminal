@@ -18,8 +18,6 @@ dist-ssr
 *.local
 
 # Editor directories and files
-AGENTS.md
-.codex/
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -31,12 +29,10 @@ AGENTS.md
 *.sw?
 
 # BEGIN UPDENG
-.updeng/
-.updeng/docs/config/remote-servers.json
+AGENTS.md
+.codex/
 .updeng/docs/context/index/
-.updeng/docs/coordination/status.json
-.updeng/docs/coordination/status.md
-.updeng/docs/metrics/*.jsonl
+.updeng/docs/metrics/*.local.jsonl
 .updeng/runtime/
 .updeng/tmp/
 .codegraph/
