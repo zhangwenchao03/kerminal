@@ -63,6 +63,7 @@ export interface TerminalOutputEvent {
   kind: TerminalOutputKind;
   data: string;
   agentSignal?: TerminalAgentSignal;
+  error?: TerminalCommandError;
 }
 
 export interface TerminalSessionSummary {
@@ -100,6 +101,105 @@ export interface TerminalSessionReapDiagnostics {
   elapsedMs: number;
 }
 
+export type TerminalPtyOutputPumpFlushReason =
+  | "threshold"
+  | "idle"
+  | "closed"
+  | "error"
+  | "disconnected";
+
+export interface TerminalPtyOutputPumpStats {
+  bufferedChunks: number;
+  closedEvents: number;
+  coalescedChunks: number;
+  dataEvents: number;
+  droppedBytes: number;
+  errorEvents: number;
+  finalTailFlushCount: number;
+  finished: boolean;
+  flushCount: number;
+  inputBytes: number;
+  inputChunks: number;
+  lastFlushIntervalMs?: number;
+  lastFlushReason?: TerminalPtyOutputPumpFlushReason;
+  maxPendingBytes: number;
+  maxPendingHitCount: number;
+  outputBytes: number;
+  overflowCount: number;
+  pendingBytes: number;
+  sessionId: string;
+}
+
+export type TerminalErrorClass =
+  | "spawnFailed"
+  | "ptyReadFailed"
+  | "ptyWriteFailed"
+  | "resizeFailed"
+  | "sessionClosed"
+  | "sessionNotFound"
+  | "permissionDenied"
+  | "invalidInput"
+  | "encodingFailure"
+  | "loggingFailure"
+  | "stateUnavailable"
+  | "dependencyMissing"
+  | "unknown";
+
+export type TerminalErrorRecovery =
+  | "retryable"
+  | "userActionRequired"
+  | "notRetryable"
+  | "internal";
+
+export type TerminalErrorOperation =
+  | "createSession"
+  | "readOutput"
+  | "write"
+  | "resize"
+  | "close"
+  | "listSessions"
+  | "sessionSummary"
+  | "outputSnapshot"
+  | "startLog"
+  | "stopLog"
+  | "logState"
+  | "reapOrphanSessions"
+  | "diagnostics";
+
+export interface TerminalCommandError {
+  class: TerminalErrorClass;
+  recovery: TerminalErrorRecovery;
+  operation: TerminalErrorOperation;
+  message: string;
+  retryable: boolean;
+}
+
+export class TerminalApiError extends Error {
+  readonly terminalError: TerminalCommandError;
+
+  constructor(terminalError: TerminalCommandError) {
+    super(terminalError.message);
+    this.name = "TerminalApiError";
+    this.terminalError = terminalError;
+  }
+
+  toString() {
+    return this.message;
+  }
+}
+
+export function getTerminalCommandError(
+  error: unknown,
+): TerminalCommandError | undefined {
+  if (error instanceof TerminalApiError) {
+    return error.terminalError;
+  }
+  if (isTerminalCommandErrorPayload(error)) {
+    return error;
+  }
+  return undefined;
+}
+
 export interface TerminalSessionLogState {
   active: boolean;
   path?: string;
@@ -112,6 +212,59 @@ type TerminalOutputHandler = (event: TerminalOutputEvent) => void;
 const browserPreviewSessions = new Map<string, TerminalOutputHandler>();
 const browserPreviewLogStates = new Map<string, TerminalSessionLogState>();
 
+async function invokeTerminalCommand<T>(
+  command: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
+  try {
+    if (args === undefined) {
+      return await invoke<T>(command);
+    }
+    return await invoke<T>(command, args);
+  } catch (error) {
+    throw new TerminalApiError(normalizeTerminalCommandError(error));
+  }
+}
+
+function normalizeTerminalCommandError(error: unknown): TerminalCommandError {
+  if (isTerminalCommandErrorPayload(error)) {
+    return error;
+  }
+  if (error instanceof Error) {
+    return unknownTerminalCommandError(error.message);
+  }
+  return unknownTerminalCommandError(String(error));
+}
+
+function unknownTerminalCommandError(message: string): TerminalCommandError {
+  return {
+    class: "unknown",
+    recovery: "internal",
+    operation: "diagnostics",
+    message,
+    retryable: false,
+  };
+}
+
+function isTerminalCommandErrorPayload(
+  value: unknown,
+): value is TerminalCommandError {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    typeof value.class === "string" &&
+    typeof value.recovery === "string" &&
+    typeof value.operation === "string" &&
+    typeof value.message === "string" &&
+    typeof value.retryable === "boolean"
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 export async function createTerminalSession(
   request: TerminalCreateRequest,
   onOutput: TerminalOutputHandler,
@@ -121,7 +274,7 @@ export async function createTerminalSession(
   }
 
   const output = new Channel<TerminalOutputEvent>((event) => onOutput(event));
-  return invoke<TerminalSessionSummary>("terminal_create_session", {
+  return invokeTerminalCommand<TerminalSessionSummary>("terminal_create_session", {
     output,
     request: normalizeCreateRequest(request),
   });
@@ -147,7 +300,7 @@ export async function createSshTerminalSession(
   }
 
   const output = new Channel<TerminalOutputEvent>((event) => onOutput(event));
-  return invoke<TerminalSessionSummary>("ssh_create_session", {
+  return invokeTerminalCommand<TerminalSessionSummary>("ssh_create_session", {
     output,
     request,
   });
@@ -170,7 +323,7 @@ export async function createTelnetTerminalSession(
   }
 
   const output = new Channel<TerminalOutputEvent>((event) => onOutput(event));
-  return invoke<TerminalSessionSummary>("telnet_create_session", {
+  return invokeTerminalCommand<TerminalSessionSummary>("telnet_create_session", {
     output,
     request,
   });
@@ -193,7 +346,7 @@ export async function createSerialTerminalSession(
   }
 
   const output = new Channel<TerminalOutputEvent>((event) => onOutput(event));
-  return invoke<TerminalSessionSummary>("serial_create_session", {
+  return invokeTerminalCommand<TerminalSessionSummary>("serial_create_session", {
     output,
     request,
   });
@@ -216,10 +369,13 @@ export async function createDockerContainerTerminalSession(
   }
 
   const output = new Channel<TerminalOutputEvent>((event) => onOutput(event));
-  return invoke<TerminalSessionSummary>("docker_create_container_session", {
-    output,
-    request: normalizeDockerContainerCreateRequest(request),
-  });
+  return invokeTerminalCommand<TerminalSessionSummary>(
+    "docker_create_container_session",
+    {
+      output,
+      request: normalizeDockerContainerCreateRequest(request),
+    },
+  );
 }
 
 export async function writeTerminal(
@@ -235,7 +391,7 @@ export async function writeTerminal(
     return;
   }
 
-  await invoke("terminal_write", { data, sessionId });
+  await invokeTerminalCommand("terminal_write", { data, sessionId });
 }
 
 export async function readTerminalClipboardText(): Promise<string> {
@@ -250,7 +406,7 @@ export async function resizeTerminal(
     return;
   }
 
-  await invoke("terminal_resize", { request, sessionId });
+  await invokeTerminalCommand("terminal_resize", { request, sessionId });
 }
 
 export async function closeTerminal(sessionId: string): Promise<void> {
@@ -260,7 +416,7 @@ export async function closeTerminal(sessionId: string): Promise<void> {
     return;
   }
 
-  await invoke("terminal_close", { sessionId });
+  await invokeTerminalCommand("terminal_close", { sessionId });
 }
 
 export async function reapOrphanTerminalSessions(): Promise<TerminalSessionReapDiagnostics> {
@@ -272,7 +428,7 @@ export async function reapOrphanTerminalSessions(): Promise<TerminalSessionReapD
     };
   }
 
-  return invoke<TerminalSessionReapDiagnostics>(
+  return invokeTerminalCommand<TerminalSessionReapDiagnostics>(
     "terminal_reap_orphan_sessions",
   );
 }
@@ -292,7 +448,24 @@ export async function listTerminalSessions(): Promise<TerminalSessionSummary[]> 
     }));
   }
 
-  return invoke<TerminalSessionSummary[]>("terminal_list_sessions");
+  return invokeTerminalCommand<TerminalSessionSummary[]>(
+    "terminal_list_sessions",
+  );
+}
+
+export async function getTerminalPtyOutputPumpStats(
+  sessionId: string,
+): Promise<TerminalPtyOutputPumpStats> {
+  if (!isTauri()) {
+    return inactiveBrowserPreviewPumpStats(sessionId);
+  }
+
+  return invokeTerminalCommand<TerminalPtyOutputPumpStats>(
+    "terminal_pty_output_pump_stats",
+    {
+      sessionId,
+    },
+  );
 }
 
 export async function startTerminalLog(
@@ -302,7 +475,9 @@ export async function startTerminalLog(
     return startBrowserPreviewLog(sessionId);
   }
 
-  return invoke<TerminalSessionLogState>("terminal_start_log", { sessionId });
+  return invokeTerminalCommand<TerminalSessionLogState>("terminal_start_log", {
+    sessionId,
+  });
 }
 
 export async function stopTerminalLog(
@@ -317,7 +492,9 @@ export async function stopTerminalLog(
     return stopped;
   }
 
-  return invoke<TerminalSessionLogState>("terminal_stop_log", { sessionId });
+  return invokeTerminalCommand<TerminalSessionLogState>("terminal_stop_log", {
+    sessionId,
+  });
 }
 
 export async function getTerminalLogState(
@@ -327,7 +504,9 @@ export async function getTerminalLogState(
     return browserPreviewLogStates.get(sessionId) ?? inactiveLogState();
   }
 
-  return invoke<TerminalSessionLogState>("terminal_log_state", { sessionId });
+  return invokeTerminalCommand<TerminalSessionLogState>("terminal_log_state", {
+    sessionId,
+  });
 }
 
 function normalizeCreateRequest(
@@ -405,5 +584,29 @@ function inactiveLogState(): TerminalSessionLogState {
   return {
     active: false,
     bytesWritten: 0,
+  };
+}
+
+function inactiveBrowserPreviewPumpStats(
+  sessionId: string,
+): TerminalPtyOutputPumpStats {
+  return {
+    bufferedChunks: 0,
+    closedEvents: 0,
+    coalescedChunks: 0,
+    dataEvents: 0,
+    droppedBytes: 0,
+    errorEvents: 0,
+    finalTailFlushCount: 0,
+    finished: false,
+    flushCount: 0,
+    inputBytes: 0,
+    inputChunks: 0,
+    maxPendingBytes: 0,
+    maxPendingHitCount: 0,
+    outputBytes: 0,
+    overflowCount: 0,
+    pendingBytes: 0,
+    sessionId,
   };
 }

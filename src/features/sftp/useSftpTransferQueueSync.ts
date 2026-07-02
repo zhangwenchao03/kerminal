@@ -17,6 +17,7 @@ import {
   listSftpTransfers,
   type SftpTransferSummary,
 } from "../../lib/sftpApi";
+import { updateSftpRuntimeDiagnosticsTransfers } from "./sftpRuntimeDiagnostics";
 import { sftpTransferMatchesViewScope } from "./sftp-tool-content/sftpTransferSyncModel";
 import { mergeTransferSnapshot, replaceTransferQueue } from "./sftpTransferModel";
 
@@ -94,6 +95,10 @@ export function useSftpTransferQueueSync({
   const clearQueueError = useCallback(() => {
     setQueueError(null);
   }, []);
+
+  useEffect(() => {
+    updateSftpRuntimeDiagnosticsTransfers(transfers);
+  }, [transfers]);
 
   const refreshTransfers = useCallback(async () => {
     if (!active) {

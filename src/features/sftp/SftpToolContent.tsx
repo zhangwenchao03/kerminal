@@ -567,6 +567,7 @@ export function SftpToolContent({
     handleSftpKeyDown,
     pasteSftpClipboard,
     pendingTransferConflict,
+    retryTransfer,
     startRemoteEntryDrag,
     transferSelectedEntriesToTarget,
     uploadLocalArchive,
@@ -700,6 +701,7 @@ export function SftpToolContent({
         remoteDownloadDragActive={remoteDownloadDragActive}
         remoteDownloadDropActive={remoteDownloadDropActive}
         remoteDragEntriesRef={remoteDragEntriesRef}
+        retryTransfer={retryTransfer}
         selectEntry={selectEntry}
         selectedEntries={selectedEntries}
         selectedEntryPaths={selectedEntryPaths}

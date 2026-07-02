@@ -372,10 +372,21 @@ impl TransferProgress {
             return;
         };
         let next_summary = if let Ok(mut transfers) = transfers.lock() {
-            transfers.get_mut(transfer_id).map(|task| {
+            let next_summary = if let Some(task) = transfers.get_mut(transfer_id) {
                 update(&mut task.summary);
-                task.summary.clone()
-            })
+                Some(task.summary.clone())
+            } else {
+                None
+            };
+            if next_summary.as_ref().is_some_and(|summary| {
+                super::transfer_registry::is_completed_transfer_status(summary.status)
+            }) {
+                super::transfer_registry::prune_completed_transfers(
+                    &mut transfers,
+                    unix_timestamp(),
+                );
+            }
+            next_summary
         } else {
             None
         };

@@ -4,6 +4,9 @@
 
 use super::*;
 
+pub(super) const RECENT_COMPLETED_TRANSFER_LIMIT: usize = 200;
+pub(super) const RECENT_COMPLETED_TRANSFER_SECONDS: u64 = 24 * 60 * 60;
+
 impl SftpService {
     /// 列出传输任务。
     pub fn list_transfers(&self) -> AppResult<Vec<SftpTransferSummary>> {
@@ -15,8 +18,9 @@ impl SftpService {
         &self,
         request: SftpTransferScopeRequest,
     ) -> AppResult<Vec<SftpTransferSummary>> {
-        let mut summaries = self
-            .transfers()?
+        let mut transfers = self.transfers()?;
+        prune_completed_transfers(&mut transfers, unix_timestamp());
+        let mut summaries = transfers
             .values()
             .filter(|task| transfer_matches_scope(&task.summary, request.view_scope.as_deref()))
             .map(|task| task.summary.clone())
@@ -68,6 +72,9 @@ impl SftpService {
             task.summary.status = SftpTransferStatus::Canceled;
         }
         let summary = task.summary.clone();
+        if is_completed_transfer_status(summary.status) {
+            prune_completed_transfers(&mut transfers, unix_timestamp());
+        }
         drop(transfers);
         if let Some(emitter) = &event_emitter {
             emitter.emit(&summary, true);
@@ -95,6 +102,7 @@ impl SftpService {
                         | SftpTransferStatus::Canceled
                 )
         });
+        prune_completed_transfers(&mut transfers, unix_timestamp());
         let mut summaries = transfers
             .values()
             .filter(|task| transfer_matches_scope(&task.summary, request.view_scope.as_deref()))
@@ -112,4 +120,58 @@ pub(super) fn transfer_matches_scope(
     view_scope
         .map(|scope| summary.view_scope.as_deref() == Some(scope))
         .unwrap_or(true)
+}
+
+pub(super) fn prune_completed_transfers(
+    transfers: &mut HashMap<String, TransferTask>,
+    now: u64,
+) -> usize {
+    let prune_ids = completed_transfer_prune_ids(transfers.values().map(|task| &task.summary), now);
+    let pruned = prune_ids.len();
+    for id in prune_ids {
+        transfers.remove(&id);
+    }
+    pruned
+}
+
+pub(super) fn completed_transfer_prune_ids<'a>(
+    summaries: impl IntoIterator<Item = &'a SftpTransferSummary>,
+    now: u64,
+) -> HashSet<String> {
+    let min_updated_at = now.saturating_sub(RECENT_COMPLETED_TRANSFER_SECONDS);
+    let mut prune_ids = HashSet::new();
+    let mut recent_completed = Vec::new();
+
+    for summary in summaries {
+        if !is_completed_transfer_status(summary.status) {
+            continue;
+        }
+        if summary.updated_at < min_updated_at {
+            prune_ids.insert(summary.id.clone());
+            continue;
+        }
+        recent_completed.push((summary.updated_at, summary.created_at, summary.id.clone()));
+    }
+
+    if recent_completed.len() > RECENT_COMPLETED_TRANSFER_LIMIT {
+        recent_completed.sort_by(|left, right| {
+            left.0
+                .cmp(&right.0)
+                .then_with(|| left.1.cmp(&right.1))
+                .then_with(|| left.2.cmp(&right.2))
+        });
+        let excess_completed = recent_completed.len() - RECENT_COMPLETED_TRANSFER_LIMIT;
+        for (_, _, id) in recent_completed.into_iter().take(excess_completed) {
+            prune_ids.insert(id);
+        }
+    }
+
+    prune_ids
+}
+
+pub(super) fn is_completed_transfer_status(status: SftpTransferStatus) -> bool {
+    matches!(
+        status,
+        SftpTransferStatus::Succeeded | SftpTransferStatus::Failed | SftpTransferStatus::Canceled
+    )
 }

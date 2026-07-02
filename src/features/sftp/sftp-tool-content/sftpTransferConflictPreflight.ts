@@ -29,10 +29,31 @@ export type SftpTransferConflictPreflightStats = {
   statSftpPath?: typeof statSftpPath;
 };
 
+export type SftpTransferConflictPreflightProgress = {
+  checked: number;
+  conflicts: number;
+  inFlight: number;
+  queued: number;
+  total: number;
+};
+
 export type SftpTransferConflictPreflightOptions = {
+  concurrency?: number;
   localRootPath?: string;
+  onProgress?: (progress: SftpTransferConflictPreflightProgress) => void;
+  signal?: AbortSignal;
   stats?: SftpTransferConflictPreflightStats;
 };
+
+export const DEFAULT_SFTP_TRANSFER_CONFLICT_PREFLIGHT_CONCURRENCY = 8;
+export const MAX_SFTP_TRANSFER_CONFLICT_PREFLIGHT_CONCURRENCY = 16;
+
+export class SftpTransferConflictPreflightCanceledError extends Error {
+  constructor() {
+    super("SFTP 传输冲突预检已取消");
+    this.name = "AbortError";
+  }
+}
 
 export async function countSftpTransferConflicts(
   input: SftpTransferConflictPreflightInput,
@@ -45,16 +66,77 @@ export async function countSftpTransferConflicts(
     ...options.stats,
   };
 
-  const results = await Promise.all(
-    requests.map((request) =>
-      transferRequestConflicts(request, {
-        localRootPath: options.localRootPath,
-        stats,
-      }),
+  if (requests.length === 0) {
+    options.onProgress?.({
+      checked: 0,
+      conflicts: 0,
+      inFlight: 0,
+      queued: 0,
+      total: 0,
+    });
+    return 0;
+  }
+
+  throwIfPreflightAborted(options.signal);
+
+  const concurrency = normalizePreflightConcurrency(options.concurrency);
+  let checked = 0;
+  let conflicts = 0;
+  let inFlight = 0;
+  let nextIndex = 0;
+  let stopped = false;
+
+  const emitProgress = () => {
+    options.onProgress?.({
+      checked,
+      conflicts,
+      inFlight,
+      queued: Math.max(0, requests.length - checked - inFlight),
+      total: requests.length,
+    });
+  };
+
+  emitProgress();
+
+  const runWorker = async () => {
+    while (!stopped) {
+      throwIfPreflightAborted(options.signal);
+      const requestIndex = nextIndex;
+      nextIndex += 1;
+      if (requestIndex >= requests.length) {
+        return;
+      }
+
+      inFlight += 1;
+      emitProgress();
+      try {
+        if (
+          await transferRequestConflicts(requests[requestIndex], {
+            localRootPath: options.localRootPath,
+            stats,
+          })
+        ) {
+          conflicts += 1;
+        }
+      } catch (error) {
+        stopped = true;
+        throw error;
+      } finally {
+        inFlight -= 1;
+      }
+      throwIfPreflightAborted(options.signal);
+      checked += 1;
+      emitProgress();
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, requests.length) }, () =>
+      runWorker(),
     ),
   );
 
-  return results.filter(Boolean).length;
+  return conflicts;
 }
 
 export function transferRequestsFromPreflightInput(
@@ -156,6 +238,31 @@ function statErrorMessage(error: unknown): string {
     return typeof message === "string" ? message : "";
   }
   return "";
+}
+
+export function isSftpTransferConflictPreflightCanceledError(
+  error: unknown,
+): boolean {
+  return (
+    error instanceof SftpTransferConflictPreflightCanceledError ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
+function normalizePreflightConcurrency(value: number | undefined): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_SFTP_TRANSFER_CONFLICT_PREFLIGHT_CONCURRENCY;
+  }
+  return Math.min(
+    MAX_SFTP_TRANSFER_CONFLICT_PREFLIGHT_CONCURRENCY,
+    Math.max(1, Math.floor(value ?? 1)),
+  );
+}
+
+function throwIfPreflightAborted(signal: AbortSignal | undefined) {
+  if (signal?.aborted) {
+    throw new SftpTransferConflictPreflightCanceledError();
+  }
 }
 
 function transferRequestFromPreflightItem(

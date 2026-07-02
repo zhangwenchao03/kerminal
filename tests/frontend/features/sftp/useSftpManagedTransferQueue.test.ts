@@ -13,6 +13,7 @@ import { useSftpManagedTransferQueue } from "../../../../src/features/sftp/useSf
 const sftpApiMock = vi.hoisted(() => ({
   cancelSftpTransfer: vi.fn(),
   clearCompletedSftpTransfers: vi.fn(),
+  enqueueSftpTransfer: vi.fn(),
 }));
 
 vi.mock("../../../../src/lib/sftpApi", async () => {
@@ -23,6 +24,7 @@ vi.mock("../../../../src/lib/sftpApi", async () => {
     ...actual,
     cancelSftpTransfer: sftpApiMock.cancelSftpTransfer,
     clearCompletedSftpTransfers: sftpApiMock.clearCompletedSftpTransfers,
+    enqueueSftpTransfer: sftpApiMock.enqueueSftpTransfer,
   };
 });
 
@@ -30,6 +32,7 @@ describe("useSftpManagedTransferQueue", () => {
   beforeEach(() => {
     sftpApiMock.cancelSftpTransfer.mockReset();
     sftpApiMock.clearCompletedSftpTransfers.mockReset();
+    sftpApiMock.enqueueSftpTransfer.mockReset();
   });
 
   it("upserts a canceled transfer, reports success, and refreshes the queue", async () => {
@@ -187,6 +190,89 @@ describe("useSftpManagedTransferQueue", () => {
     expect(sftpApiMock.clearCompletedSftpTransfers).toHaveBeenCalledWith({
       viewScope: "sftp-workbench:tab-a",
     });
+  });
+
+  it("re-enqueues a safely retryable failed transfer and refreshes the queue", async () => {
+    const failedTransfer = transferSummary({
+      conflictPolicy: "rename",
+      id: "failed-download",
+      status: "failed",
+      viewScope: "old-scope",
+    });
+    const queuedRetry = transferSummary({
+      conflictPolicy: "rename",
+      id: "retry-download",
+      status: "queued",
+      viewScope: "sftp-workbench:tab-a",
+    });
+    sftpApiMock.enqueueSftpTransfer.mockResolvedValue(queuedRetry);
+    const transfersRef = { current: [failedTransfer] };
+    const onRetrySuccess = vi.fn();
+    const onRetryUnavailable = vi.fn();
+    const onError = vi.fn();
+    const refreshTransfers = vi.fn().mockResolvedValue(undefined);
+    const setTransfers = createTransferSetter(transfersRef);
+
+    const { result } = renderHook(() =>
+      useSftpManagedTransferQueue({
+        onError,
+        onRetrySuccess,
+        onRetryUnavailable,
+        refreshTransfers,
+        setTransfers,
+        viewScope: "sftp-workbench:tab-a",
+      }),
+    );
+
+    await act(async () => {
+      await result.current.retryTransfer(failedTransfer);
+    });
+
+    expect(sftpApiMock.enqueueSftpTransfer).toHaveBeenCalledWith({
+      conflictPolicy: "rename",
+      direction: "upload",
+      hostId: "host-right",
+      kind: "file",
+      localPath: "/tmp/source.log",
+      remotePath: "/srv/source.log",
+      viewScope: "sftp-workbench:tab-a",
+    });
+    expect(transfersRef.current.map((transfer) => transfer.id)).toEqual([
+      "retry-download",
+      "failed-download",
+    ]);
+    expect(onRetrySuccess).toHaveBeenCalledWith(queuedRetry);
+    expect(refreshTransfers).toHaveBeenCalledTimes(1);
+    expect(onRetryUnavailable).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("reports non-retryable failed transfers without enqueueing", async () => {
+    const failedRemoteCopy = transferSummary({
+      conflictPolicy: "overwrite",
+      operation: "remoteCopy",
+      status: "failed",
+    });
+    const transfersRef = { current: [failedRemoteCopy] };
+    const onRetryUnavailable = vi.fn();
+    const setTransfers = createTransferSetter(transfersRef);
+
+    const { result } = renderHook(() =>
+      useSftpManagedTransferQueue({
+        onRetryUnavailable,
+        setTransfers,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.retryTransfer(failedRemoteCopy);
+    });
+
+    expect(sftpApiMock.enqueueSftpTransfer).not.toHaveBeenCalled();
+    expect(setTransfers).not.toHaveBeenCalled();
+    expect(onRetryUnavailable).toHaveBeenCalledWith(
+      "该传输类型暂不支持安全重试。",
+    );
   });
 
   it("reports clear failures without replacing the queue", async () => {

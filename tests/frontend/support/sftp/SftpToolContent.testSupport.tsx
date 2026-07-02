@@ -312,6 +312,7 @@ export function createSftpTransferSummary(
   return {
     bytesTransferred: 0,
     cancelRequested: false,
+    conflictPolicy: "overwrite",
     createdAt: 1,
     currentItem: null,
     direction,

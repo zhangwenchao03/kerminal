@@ -1,6 +1,7 @@
 use std::{collections::HashSet, fs, path::Path};
 
 use super::*;
+use crate::storage::file_store::{FileStoreError, ParseDiagnostic};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ConfigValidationScope {
@@ -104,7 +105,7 @@ fn config_validation_scope_from_arguments(
 fn validate_settings(store: &ConfigFileStore, report: &mut ConfigValidationReport) {
     match store.read_settings() {
         Ok(_) => report.checked("settings", "settings.toml", "settings loaded"),
-        Err(error) => report.error("settings", "settings.toml", error.to_string()),
+        Err(error) => report.error_from_file_store("settings", "settings.toml", error),
     }
 }
 
@@ -120,18 +121,26 @@ fn validate_profiles(store: &ConfigFileStore, report: &mut ConfigValidationRepor
             for profile in profiles {
                 if let Some(group_id) = profile.sidebar_group_id.as_deref() {
                     if !groups.contains(group_id) {
-                        report.error(
+                        report.error_with_details(
                             "profiles",
                             format!("profiles/{}.toml", profile.id),
                             format!(
                                 "sidebar_group_id `{group_id}` does not reference hosts/groups.toml"
                             ),
+                            ConfigDiagnosticDetails {
+                                key: Some("sidebar_group_id".to_owned()),
+                                recovery: Some(
+                                    "Add the group to hosts/groups.toml or clear sidebar_group_id."
+                                        .to_owned(),
+                                ),
+                                ..ConfigDiagnosticDetails::default()
+                            },
                         );
                     }
                 }
             }
         }
-        Err(error) => report.error("profiles", "profiles/*.toml", error.to_string()),
+        Err(error) => report.error_from_file_store("profiles", "profiles/*.toml", error),
     }
 }
 
@@ -141,10 +150,17 @@ fn validate_hosts(store: &ConfigFileStore, root: &Path, report: &mut ConfigValid
             let mut seen = HashSet::new();
             for group in &groups {
                 if !seen.insert(group.id.clone()) {
-                    report.error(
+                    report.error_with_details(
                         "hosts",
                         "hosts/groups.toml",
                         format!("duplicate group id `{}`", group.id),
+                        ConfigDiagnosticDetails {
+                            key: Some("id".to_owned()),
+                            recovery: Some(
+                                "Keep each hosts/groups.toml group id unique.".to_owned(),
+                            ),
+                            ..ConfigDiagnosticDetails::default()
+                        },
                     );
                 }
             }
@@ -156,7 +172,7 @@ fn validate_hosts(store: &ConfigFileStore, root: &Path, report: &mut ConfigValid
             seen
         }
         Err(error) => {
-            report.error("hosts", "hosts/groups.toml", error.to_string());
+            report.error_from_file_store("hosts", "hosts/groups.toml", error);
             HashSet::new()
         }
     };
@@ -174,16 +190,24 @@ fn validate_hosts(store: &ConfigFileStore, root: &Path, report: &mut ConfigValid
             for host in hosts {
                 if let Some(group_id) = host.group_id.as_deref() {
                     if !groups.contains(group_id) {
-                        report.error(
+                        report.error_with_details(
                             "hosts",
                             format!("hosts/{}.toml", host.id),
                             format!("group_id `{group_id}` does not reference hosts/groups.toml"),
+                            ConfigDiagnosticDetails {
+                                key: Some("group_id".to_owned()),
+                                recovery: Some(
+                                    "Add the group to hosts/groups.toml or clear group_id."
+                                        .to_owned(),
+                                ),
+                                ..ConfigDiagnosticDetails::default()
+                            },
                         );
                     }
                 }
             }
         }
-        Err(error) => report.error("hosts", "hosts/*.toml", error.to_string()),
+        Err(error) => report.error_from_file_store("hosts", "hosts/*.toml", error),
     }
 }
 
@@ -226,15 +250,26 @@ fn validate_host_public_files_are_explicit(root: &Path, report: &mut ConfigValid
         };
         match parsed.get("production") {
             Some(toml::Value::Boolean(_)) => {}
-            Some(_) => report.error(
+            Some(_) => report.error_with_details(
                 "hosts",
                 display_path,
                 "production must be a boolean and explicitly set to true or false",
+                ConfigDiagnosticDetails {
+                    line: line_for_toml_key(&source, "production"),
+                    key: Some("production".to_owned()),
+                    recovery: Some("Set production = true or production = false.".to_owned()),
+                    ..ConfigDiagnosticDetails::default()
+                },
             ),
-            None => report.warning(
+            None => report.warning_with_details(
                 "hosts",
                 display_path,
                 "production must be explicitly set to true or false",
+                ConfigDiagnosticDetails {
+                    key: Some("production".to_owned()),
+                    recovery: Some("Add production = true or production = false.".to_owned()),
+                    ..ConfigDiagnosticDetails::default()
+                },
             ),
         }
     }
@@ -259,10 +294,15 @@ fn validate_host_gitignore_rules(root: &Path, report: &mut ConfigValidationRepor
     };
     for rule in ["secrets/vault-key.toml"] {
         if !gitignore_contains_rule(&source, rule) {
-            report.error(
+            report.error_with_details(
                 "hosts",
                 ".gitignore",
                 format!("missing required Kerminal secret ignore rule `{rule}`"),
+                ConfigDiagnosticDetails {
+                    key: Some(rule.to_owned()),
+                    recovery: Some(format!("Add `{rule}` to .gitignore.")),
+                    ..ConfigDiagnosticDetails::default()
+                },
             );
         }
     }
@@ -283,7 +323,7 @@ fn validate_snippets(store: &ConfigFileStore, report: &mut ConfigValidationRepor
             "snippets/*.toml",
             format!("{} snippet(s) loaded", snippets.len()),
         ),
-        Err(error) => report.error("snippets", "snippets/*.toml", error.to_string()),
+        Err(error) => report.error_from_file_store("snippets", "snippets/*.toml", error),
     }
 }
 
@@ -300,21 +340,37 @@ fn validate_workflows(store: &ConfigFileStore, report: &mut ConfigValidationRepo
                 let mut previous_sort_order = None;
                 for step in &workflow.steps {
                     if !step_ids.insert(step.id.clone()) {
-                        report.error(
+                        report.error_with_details(
                             "workflows",
                             format!("workflows/{}.toml", workflow.id),
                             format!("duplicate workflow step id `{}`", step.id),
+                            ConfigDiagnosticDetails {
+                                key: Some("steps.id".to_owned()),
+                                recovery: Some(
+                                    "Make each workflow step id unique within the workflow."
+                                        .to_owned(),
+                                ),
+                                ..ConfigDiagnosticDetails::default()
+                            },
                         );
                     }
                     if let Some(previous) = previous_sort_order {
                         if step.sort_order <= previous {
-                            report.error(
+                            report.error_with_details(
                                 "workflows",
                                 format!("workflows/{}.toml", workflow.id),
                                 format!(
                                     "workflow step `{}` sort_order must increase after {previous}",
                                     step.id
                                 ),
+                                ConfigDiagnosticDetails {
+                                    key: Some("steps.sort_order".to_owned()),
+                                    recovery: Some(
+                                        "Sort workflow steps by increasing sort_order values."
+                                            .to_owned(),
+                                    ),
+                                    ..ConfigDiagnosticDetails::default()
+                                },
                             );
                         }
                     }
@@ -322,7 +378,7 @@ fn validate_workflows(store: &ConfigFileStore, report: &mut ConfigValidationRepo
                 }
             }
         }
-        Err(error) => report.error("workflows", "workflows/*.toml", error.to_string()),
+        Err(error) => report.error_from_file_store("workflows", "workflows/*.toml", error),
     }
 }
 
@@ -333,10 +389,18 @@ fn remote_host_group_ids(
     match store.list_remote_host_groups() {
         Ok(groups) => groups.into_iter().map(|group| group.id).collect(),
         Err(error) => {
-            report.error("hosts", "hosts/groups.toml", error.to_string());
+            report.error_from_file_store("hosts", "hosts/groups.toml", error);
             HashSet::new()
         }
     }
+}
+
+#[derive(Debug, Default)]
+struct ConfigDiagnosticDetails {
+    line: Option<usize>,
+    column: Option<usize>,
+    key: Option<String>,
+    recovery: Option<String>,
 }
 
 #[derive(Debug)]
@@ -378,28 +442,66 @@ impl ConfigValidationReport {
         path: impl Into<String>,
         message: impl Into<String>,
     ) {
-        self.error_count += 1;
-        self.diagnostics.push(json!({
-            "severity": "error",
-            "scope": scope.into(),
-            "path": path.into(),
-            "message": message.into(),
-        }));
+        self.error_with_details(scope, path, message, ConfigDiagnosticDetails::default());
     }
 
-    fn warning(
+    fn error_with_details(
         &mut self,
         scope: impl Into<String>,
         path: impl Into<String>,
         message: impl Into<String>,
+        details: ConfigDiagnosticDetails,
+    ) {
+        self.error_count += 1;
+        self.diagnostics.push(config_diagnostic_json(
+            "error", scope, path, message, details,
+        ));
+    }
+
+    fn error_from_file_store(
+        &mut self,
+        scope: impl Into<String>,
+        fallback_path: impl Into<String>,
+        error: FileStoreError,
+    ) {
+        let scope = scope.into();
+        let fallback_path = fallback_path.into();
+        match error {
+            FileStoreError::TomlParse(parse_error) => {
+                let diagnostics = parse_error.diagnostics();
+                if diagnostics.is_empty() {
+                    self.error(scope, fallback_path, "TOML parse failed");
+                    return;
+                }
+                for diagnostic in diagnostics {
+                    let path = diagnostic
+                        .path
+                        .as_deref()
+                        .and_then(safe_config_path_label)
+                        .unwrap_or_else(|| fallback_path.clone());
+                    self.error_with_details(
+                        scope.clone(),
+                        path,
+                        diagnostic.message.clone(),
+                        details_from_parse_diagnostic(diagnostic),
+                    );
+                }
+            }
+            other => self.error(scope, fallback_path, other.to_string()),
+        }
+    }
+
+    fn warning_with_details(
+        &mut self,
+        scope: impl Into<String>,
+        path: impl Into<String>,
+        message: impl Into<String>,
+        details: ConfigDiagnosticDetails,
     ) {
         self.warning_count += 1;
-        self.diagnostics.push(json!({
-            "severity": "warning",
-            "scope": scope.into(),
-            "path": path.into(),
-            "message": message.into(),
-        }));
+        self.diagnostics.push(config_diagnostic_json(
+            "warning", scope, path, message, details,
+        ));
     }
 
     fn error_count(&self) -> usize {
@@ -422,4 +524,69 @@ impl ConfigValidationReport {
             "diagnostics": self.diagnostics,
         })
     }
+}
+
+fn details_from_parse_diagnostic(diagnostic: &ParseDiagnostic) -> ConfigDiagnosticDetails {
+    ConfigDiagnosticDetails {
+        line: Some(diagnostic.line),
+        column: Some(diagnostic.column),
+        key: diagnostic.key.clone(),
+        recovery: diagnostic.recovery.clone(),
+    }
+}
+
+fn config_diagnostic_json(
+    severity: &str,
+    scope: impl Into<String>,
+    path: impl Into<String>,
+    message: impl Into<String>,
+    details: ConfigDiagnosticDetails,
+) -> Value {
+    let mut value = serde_json::Map::new();
+    value.insert("severity".to_owned(), Value::String(severity.to_owned()));
+    value.insert("scope".to_owned(), Value::String(scope.into()));
+    value.insert("path".to_owned(), Value::String(path.into()));
+    value.insert("message".to_owned(), Value::String(message.into()));
+    if let Some(line) = details.line {
+        value.insert("line".to_owned(), json!(line));
+    }
+    if let Some(column) = details.column {
+        value.insert("column".to_owned(), json!(column));
+    }
+    if let Some(key) = details.key {
+        value.insert("key".to_owned(), Value::String(key));
+    }
+    if let Some(recovery) = details.recovery {
+        value.insert("recovery".to_owned(), Value::String(recovery));
+    }
+    Value::Object(value)
+}
+
+fn safe_config_path_label(path: &Path) -> Option<String> {
+    if path.is_absolute() {
+        return None;
+    }
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    if normalized.is_empty()
+        || normalized.starts_with('/')
+        || normalized.contains("..")
+        || normalized.starts_with("secrets/")
+        || normalized.contains("/secrets/")
+    {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+fn line_for_toml_key(source: &str, key: &str) -> Option<usize> {
+    source
+        .lines()
+        .position(|line| {
+            let Some((raw_key, _)) = line.split_once('=') else {
+                return false;
+            };
+            raw_key.trim().trim_matches('"').trim_matches('\'') == key
+        })
+        .map(|index| index + 1)
 }

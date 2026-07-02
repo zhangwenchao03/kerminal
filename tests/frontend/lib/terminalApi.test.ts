@@ -102,6 +102,79 @@ describe("terminalApi", () => {
     });
   });
 
+  it("passes typed terminal error events through the Tauri Channel", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue({
+      cols: 80,
+      id: "session-1",
+      rows: 24,
+      shell: "powershell.exe",
+      status: "running",
+    });
+    const { createTerminalSession } = await import("../../../src/lib/terminalApi");
+    const onOutput = vi.fn();
+
+    await createTerminalSession({ cols: 80, rows: 24 }, onOutput);
+    channelMessageHandler?.({
+      data: "read failed",
+      error: {
+        class: "ptyReadFailed",
+        message: "read failed",
+        operation: "readOutput",
+        recovery: "retryable",
+        retryable: true,
+      },
+      kind: "error",
+      sessionId: "session-1",
+    });
+
+    expect(onOutput).toHaveBeenCalledWith({
+      data: "read failed",
+      error: {
+        class: "ptyReadFailed",
+        message: "read failed",
+        operation: "readOutput",
+        recovery: "retryable",
+        retryable: true,
+      },
+      kind: "error",
+      sessionId: "session-1",
+    });
+  });
+
+  it("normalizes typed terminal command failures without losing the display message", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockRejectedValue({
+      class: "sessionNotFound",
+      message: "终端会话不存在: missing",
+      operation: "write",
+      recovery: "notRetryable",
+      retryable: false,
+    });
+    const { TerminalApiError, getTerminalCommandError, writeTerminal } =
+      await import("../../../src/lib/terminalApi");
+
+    await expect(writeTerminal("missing", "pwd\r")).rejects.toMatchObject({
+      message: "终端会话不存在: missing",
+      terminalError: {
+        class: "sessionNotFound",
+        operation: "write",
+        recovery: "notRetryable",
+        retryable: false,
+      },
+    });
+    try {
+      await writeTerminal("missing", "pwd\r");
+    } catch (error) {
+      expect(error).toBeInstanceOf(TerminalApiError);
+      expect(String(error)).toBe("终端会话不存在: missing");
+      expect(getTerminalCommandError(error)).toMatchObject({
+        class: "sessionNotFound",
+        operation: "write",
+      });
+    }
+  });
+
   it("uses a browser preview session outside Tauri", async () => {
     isTauriMock.mockReturnValue(false);
     const { createTerminalSession, writeTerminal } = await import(
@@ -325,6 +398,46 @@ describe("terminalApi", () => {
     expect(invokeMock).toHaveBeenCalledWith("terminal_reap_orphan_sessions");
   });
 
+  it("reads non-sensitive PTY output pump stats through the Tauri command", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue({
+      bufferedChunks: 0,
+      closedEvents: 1,
+      coalescedChunks: 2,
+      dataEvents: 1,
+      droppedBytes: 0,
+      errorEvents: 0,
+      finalTailFlushCount: 1,
+      finished: true,
+      flushCount: 1,
+      inputBytes: 24,
+      inputChunks: 2,
+      lastFlushIntervalMs: 3,
+      lastFlushReason: "closed",
+      maxPendingBytes: 24,
+      maxPendingHitCount: 0,
+      outputBytes: 24,
+      overflowCount: 0,
+      pendingBytes: 0,
+      sessionId: "session-1",
+    });
+    const { getTerminalPtyOutputPumpStats } = await import(
+      "../../../src/lib/terminalApi"
+    );
+
+    await expect(getTerminalPtyOutputPumpStats("session-1")).resolves.toEqual(
+      expect.objectContaining({
+        finished: true,
+        lastFlushReason: "closed",
+        sessionId: "session-1",
+      }),
+    );
+
+    expect(invokeMock).toHaveBeenCalledWith("terminal_pty_output_pump_stats", {
+      sessionId: "session-1",
+    });
+  });
+
   it("no-ops orphan terminal reaping outside Tauri", async () => {
     isTauriMock.mockReturnValue(false);
     const { reapOrphanTerminalSessions } = await import("../../../src/lib/terminalApi");
@@ -335,6 +448,34 @@ describe("terminalApi", () => {
       sessionIds: [],
     });
 
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("returns inactive PTY output pump stats outside Tauri", async () => {
+    isTauriMock.mockReturnValue(false);
+    const { getTerminalPtyOutputPumpStats } = await import(
+      "../../../src/lib/terminalApi"
+    );
+
+    await expect(getTerminalPtyOutputPumpStats("preview-1")).resolves.toEqual({
+      bufferedChunks: 0,
+      closedEvents: 0,
+      coalescedChunks: 0,
+      dataEvents: 0,
+      droppedBytes: 0,
+      errorEvents: 0,
+      finalTailFlushCount: 0,
+      finished: false,
+      flushCount: 0,
+      inputBytes: 0,
+      inputChunks: 0,
+      maxPendingBytes: 0,
+      maxPendingHitCount: 0,
+      outputBytes: 0,
+      overflowCount: 0,
+      pendingBytes: 0,
+      sessionId: "preview-1",
+    });
     expect(invokeMock).not.toHaveBeenCalled();
   });
 

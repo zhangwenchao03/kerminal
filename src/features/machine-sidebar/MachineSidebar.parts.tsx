@@ -61,7 +61,7 @@ const sidebarStatusDotClassName =
 const sidebarEmptyStateClassName =
   "kerminal-muted-surface rounded-2xl border border-dashed px-3 py-6 text-center text-sm text-zinc-500";
 const collapsedSidebarRootClassName =
-  "kerminal-material-nav relative flex h-full w-full min-w-0 flex-col border-r";
+  "kerminal-material-nav kerminal-shell-sidebar relative flex h-full w-full min-w-0 flex-col border-r";
 const collapsedSidebarButtonBaseClassName =
   "kerminal-sidebar-collapsed-button kerminal-focus-ring kerminal-pressable relative flex items-center justify-center rounded-xl transition";
 const collapsedSidebarButtonSelectedClassName =

@@ -131,13 +131,12 @@ export function useSftpTransferActions({
     setTransfers,
     viewScope,
   });
-  const { cancelTransfer, clearFinishedTransfers } = useSftpManagedTransferQueue({
-    onCancelSuccess: () =>
-      setOperationStatus({ kind: "info", message: "已请求取消传输。" }),
-    onClearSuccess: () =>
-      setOperationStatus({ kind: "info", message: "已清理完成的传输任务。" }),
-    onError: (nextError) =>
-      setOperationStatus({ kind: "error", message: errorMessage(nextError) }),
+  const { cancelTransfer, clearFinishedTransfers, retryTransfer } = useSftpManagedTransferQueue({
+    onCancelSuccess: () => setOperationStatus({ kind: "info", message: "已请求取消传输。" }),
+    onClearSuccess: () => setOperationStatus({ kind: "info", message: "已清理完成的传输任务。" }),
+    onError: (nextError) => setOperationStatus({ kind: "error", message: errorMessage(nextError) }),
+    onRetrySuccess: () => setOperationStatus({ kind: "info", message: "已重新加入传输队列；断点续传未默认启用，将按完整任务重试。" }),
+    onRetryUnavailable: (message) => setOperationStatus({ kind: "error", message }),
     refreshTransfers,
     setTransfers,
     viewScope,
@@ -155,6 +154,16 @@ export function useSftpTransferActions({
           ? `${errorMessagePrefix}：${errorMessage(nextError)}`
           : errorMessage(nextError),
       }),
+    onProgress: (progress) => {
+      if (!progress || progress.total === 0) {
+        setOperationStatus(null);
+        return;
+      }
+      setOperationStatus({
+        kind: "info",
+        message: `正在检查传输冲突 ${progress.checked}/${progress.total}。`,
+      });
+    },
   });
 
   const uploadLocalFile = async (targetRemotePath = currentPath) => {
@@ -967,6 +976,7 @@ export function useSftpTransferActions({
     handleSftpKeyDown,
     pasteSftpClipboard,
     pendingTransferConflict,
+    retryTransfer,
     startRemoteEntryDrag,
     transferSelectedEntriesToTarget,
     uploadLocalArchive,

@@ -56,17 +56,104 @@ describe("terminalOutputHistoryBuffer", () => {
     buffer.append("hello");
     buffer.append(" world");
 
-    expect(outputHistoryRef.current).toBe("previous hello world");
+    expect(outputHistoryRef.current).toBe("previous ");
     expect(onOutputHistoryChange).not.toHaveBeenCalled();
     expect(manual.timer.setTimeout).toHaveBeenCalledTimes(1);
+    expect(manual.timer.setTimeout).toHaveBeenNthCalledWith(
+      1,
+      expect.any(Function),
+      100,
+    );
     expect(buffer.pendingFlush()).toBe(true);
+    expect(buffer.stats()).toMatchObject({
+      appendCount: 2,
+      appendedChars: "hello world".length,
+      pendingFlush: true,
+      pendingSnapshotChars: "previous hello world".length,
+      scheduledFlushCount: 0,
+      storeUpdateCount: 0,
+      tailChars: "previous hello world".length,
+    });
 
     expect(manual.runNext()).toBe(true);
 
     expect(onOutputHistoryChange).toHaveBeenCalledTimes(1);
     expect(onOutputHistoryChange).toHaveBeenCalledWith("previous hello world");
+    expect(outputHistoryRef.current).toBe("previous hello world");
     expect(buffer.pendingFlush()).toBe(false);
     expect(manual.pendingCount()).toBe(0);
+    expect(buffer.stats()).toMatchObject({
+      flushCount: 1,
+      pendingFlush: false,
+      scheduledFlushCount: 1,
+      storeUpdateCount: 1,
+    });
+  });
+
+  it("records flush duration, slow flushes, and unchanged snapshots", () => {
+    let now = 1;
+    const manual = createManualTimer();
+    const outputHistoryRef = { current: undefined as string | undefined };
+    const onOutputHistoryChange = vi.fn(() => {
+      now += 20;
+    });
+    const buffer = createTerminalOutputHistoryBuffer({
+      now: () => now,
+      onOutputHistoryChangeRef: { current: onOutputHistoryChange },
+      outputHistoryRef,
+      slowFlushMs: 10,
+      timer: manual.timer,
+    });
+
+    buffer.append("visible output");
+    manual.runNext();
+    buffer.flush();
+
+    expect(buffer.stats()).toMatchObject({
+      flushCount: 2,
+      lastFlushMs: 0,
+      lastSlowFlushAt: 21,
+      manualFlushCount: 1,
+      maxFlushMs: 20,
+      scheduledFlushCount: 1,
+      skippedUnchangedSnapshotCount: 1,
+      slowFlushCount: 1,
+      storeUpdateCount: 1,
+    });
+    expect(JSON.stringify(buffer.stats())).not.toContain("visible output");
+  });
+
+  it("uses the latest dynamic flush delay for each output batch", () => {
+    const manual = createManualTimer();
+    let flushDelayMs = 100;
+    const outputHistoryRef = { current: undefined as string | undefined };
+    const onOutputHistoryChange = vi.fn();
+    const buffer = createTerminalOutputHistoryBuffer({
+      flushDelayMs: () => flushDelayMs,
+      onOutputHistoryChangeRef: { current: onOutputHistoryChange },
+      outputHistoryRef,
+      timer: manual.timer,
+    });
+
+    buffer.append("visible");
+    expect(manual.timer.setTimeout).toHaveBeenNthCalledWith(
+      1,
+      expect.any(Function),
+      100,
+    );
+    manual.runNext();
+
+    flushDelayMs = 2_000;
+    buffer.append(" hidden");
+
+    expect(manual.timer.setTimeout).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Function),
+      2_000,
+    );
+    manual.runNext();
+    expect(onOutputHistoryChange).toHaveBeenLastCalledWith("visible hidden");
+    expect(outputHistoryRef.current).toBe("visible hidden");
   });
 
   it("does not schedule a flush for blank output", () => {
@@ -130,6 +217,39 @@ describe("terminalOutputHistoryBuffer", () => {
     expect(onOutputHistoryChange).toHaveBeenCalledWith(
       outputHistoryRef.current,
     );
+    expect(buffer.stats()).toMatchObject({
+      droppedTailChars: 1,
+      truncatedTail: true,
+    });
+  });
+
+  it("keeps hot output in the runtime buffer until a cold snapshot flush", () => {
+    const manual = createManualTimer();
+    const outputHistoryRef = { current: "saved " as string | undefined };
+    const onOutputHistoryChange = vi.fn();
+    const buffer = createTerminalOutputHistoryBuffer({
+      flushDelayMs: 100,
+      onOutputHistoryChangeRef: { current: onOutputHistoryChange },
+      outputHistoryRef,
+      timer: manual.timer,
+    });
+
+    buffer.append("chunk-1");
+    buffer.append(" chunk-2");
+
+    expect(outputHistoryRef.current).toBe("saved ");
+    expect(onOutputHistoryChange).not.toHaveBeenCalled();
+
+    flushPendingTerminalOutputHistoryBuffers();
+
+    expect(outputHistoryRef.current).toBe("saved chunk-1 chunk-2");
+    expect(onOutputHistoryChange).toHaveBeenCalledTimes(1);
+    expect(onOutputHistoryChange).toHaveBeenCalledWith(
+      "saved chunk-1 chunk-2",
+    );
+    expect(manual.pendingCount()).toBe(0);
+
+    buffer.dispose();
   });
 
   it("flushes every active pending buffer before workspace session save", () => {

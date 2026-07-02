@@ -148,9 +148,9 @@ describe("SftpToolContent basic behavior", () => {
     expect(
       screen.getByRole("menuitem", { name: "下载文件夹" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("menuitem", { name: "下载为 ZIP" }),
-    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "下载为 ZIP" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("menuitem", { name: "下载到剪贴板" }),
     ).toBeInTheDocument();
@@ -177,9 +177,9 @@ describe("SftpToolContent basic behavior", () => {
       screen.getByRole("menuitem", { name: "打开编辑器" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "下载" })).not.toBeDisabled();
-    expect(
-      screen.getByRole("menuitem", { name: "下载为 ZIP" }),
-    ).not.toBeDisabled();
+    expect(
+      screen.queryByRole("menuitem", { name: "下载为 ZIP" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("menuitem", { name: "下载到剪贴板" }),
     ).not.toBeDisabled();

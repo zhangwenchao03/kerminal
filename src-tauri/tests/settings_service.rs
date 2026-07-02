@@ -7,11 +7,11 @@ use kerminal_lib::{
     models::settings::{
         AppSettings, BackgroundImageFit, InterfaceDensity, InterfaceLanguage, TerminalColorScheme,
         TerminalCursorStyle, TerminalFontWeight, TerminalInlineSuggestionAcceptKey,
-        TerminalInlineSuggestionProductionHostPolicy, TerminalRightClickBehavior, ThemeMode,
-        MAX_SFTP_GLOBAL_TRANSFERS, MAX_SFTP_HOST_TRANSFERS, MAX_SFTP_PACKET_BYTES,
-        MAX_SFTP_PIPELINE_DEPTH, MAX_SFTP_TIMEOUT_SECONDS, MIN_SFTP_GLOBAL_TRANSFERS,
-        MIN_SFTP_HOST_TRANSFERS, MIN_SFTP_PACKET_BYTES, MIN_SFTP_PIPELINE_DEPTH,
-        MIN_SFTP_TIMEOUT_SECONDS,
+        TerminalInlineSuggestionProductionHostPolicy, TerminalRendererType,
+        TerminalRightClickBehavior, ThemeMode, MAX_SFTP_GLOBAL_TRANSFERS, MAX_SFTP_HOST_TRANSFERS,
+        MAX_SFTP_PACKET_BYTES, MAX_SFTP_PIPELINE_DEPTH, MAX_SFTP_TIMEOUT_SECONDS,
+        MIN_SFTP_GLOBAL_TRANSFERS, MIN_SFTP_HOST_TRANSFERS, MIN_SFTP_PACKET_BYTES,
+        MIN_SFTP_PIPELINE_DEPTH, MIN_SFTP_TIMEOUT_SECONDS,
     },
     paths::KerminalPaths,
     state::AppState,
@@ -60,6 +60,7 @@ fn settings_service_persists_settings_in_toml() {
         settings.terminal.light_color_scheme = TerminalColorScheme::Github;
         settings.terminal.line_height = 1.5;
         settings.terminal.mac_option_is_meta = true;
+        settings.terminal.renderer_type = TerminalRendererType::Gpu;
         settings.terminal.right_click_behavior = TerminalRightClickBehavior::Paste;
         settings.terminal.selection_copy = true;
         settings.terminal.show_tab_numbers = true;
@@ -153,6 +154,7 @@ fn settings_service_persists_settings_in_toml() {
     assert_eq!(settings.terminal.font_weight, TerminalFontWeight::Medium);
     assert_eq!(settings.terminal.line_height, 1.5);
     assert!(settings.terminal.mac_option_is_meta);
+    assert_eq!(settings.terminal.renderer_type, TerminalRendererType::Gpu);
     assert_eq!(
         settings.terminal.right_click_behavior,
         TerminalRightClickBehavior::Paste
@@ -194,6 +196,7 @@ fn settings_service_persists_settings_in_toml() {
         std::fs::read_to_string(paths.root.join("settings.toml")).expect("settings toml");
     assert!(settings_source.contains("schema_version = 1"));
     assert!(settings_source.contains("themeMode = \"light\""));
+    assert!(settings_source.contains("rendererType = \"gpu\""));
     assert!(settings_source.contains("[desktopNotifications]"));
     assert!(settings_source.contains("enabled = true"));
 }

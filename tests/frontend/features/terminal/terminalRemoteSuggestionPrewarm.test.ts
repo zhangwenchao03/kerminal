@@ -5,6 +5,7 @@ import type { CommandSuggestionAuditRecordRequest } from "../../../../src/lib/te
 import { defaultTerminalAppearance } from "../../../../src/features/settings/settingsDefaults";
 import type { TerminalAppearance } from "../../../../src/features/settings/settingsModel";
 import { createTerminalRemoteSuggestionPrewarm } from "../../../../src/features/terminal/terminalRemoteSuggestionPrewarm";
+import type { TerminalSuggestionProbeDisabledReason } from "../../../../src/features/terminal/terminalSuggestionProbePolicy";
 import type {
   GitProbeRequest,
   RemoteCommandProbeRequest,
@@ -16,6 +17,10 @@ type ScheduleGit = (request: GitProbeRequest) => boolean;
 type ScheduleRemoteCommand = (request: RemoteCommandProbeRequest) => boolean;
 type ScheduleRemoteHistory = (request: RemoteHistoryProbeRequest) => boolean;
 type ScheduleRemotePath = (request: RemotePathProbeRequest) => boolean;
+type SetOwnerDisabled = (
+  ownerId: string,
+  reason: TerminalSuggestionProbeDisabledReason | null,
+) => void;
 type RecordAuditEvent = (
   request: CommandSuggestionAuditRecordRequest,
 ) => Promise<unknown>;
@@ -26,6 +31,7 @@ function createScheduler() {
     scheduleRemoteCommand: vi.fn<ScheduleRemoteCommand>(() => true),
     scheduleRemoteHistory: vi.fn<ScheduleRemoteHistory>(() => true),
     scheduleRemotePath: vi.fn<ScheduleRemotePath>(() => true),
+    setOwnerDisabled: vi.fn<SetOwnerDisabled>(),
   };
 }
 
@@ -94,6 +100,7 @@ describe("createTerminalRemoteSuggestionPrewarm", () => {
       path: "/srv/app/bin",
       ttlSeconds: 30,
     });
+    expect(scheduler.setOwnerDisabled).toHaveBeenCalledWith("pane-a", null);
   });
 
   it("does not schedule remote probes for non-ssh terminal targets", () => {
@@ -125,6 +132,38 @@ describe("createTerminalRemoteSuggestionPrewarm", () => {
     expect(scheduler.scheduleRemotePath).not.toHaveBeenCalled();
     expect(scheduler.scheduleGit).not.toHaveBeenCalled();
     expect(recordAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it("does not schedule or audit probes when lifecycle gate is closed", () => {
+    const scheduler = createScheduler();
+    const recordAuditEvent = vi.fn<RecordAuditEvent>().mockResolvedValue({
+      recorded: true,
+    });
+    const prewarm = createTerminalRemoteSuggestionPrewarm({
+      canScheduleProbe: () => false,
+      paneId: "pane-a",
+      recordAuditEvent,
+      remoteHostId: "prod",
+      remoteHostProduction: false,
+      scheduler,
+      target: { hostId: "prod", kind: "ssh" },
+      terminalAppearanceRef: createAppearanceRef(),
+    });
+
+    prewarm.scheduleGit("/srv/app");
+    prewarm.scheduleRemoteCommand();
+    prewarm.scheduleRemoteHistory();
+    prewarm.scheduleRemotePath("/srv/app");
+
+    expect(scheduler.scheduleGit).not.toHaveBeenCalled();
+    expect(scheduler.scheduleRemoteCommand).not.toHaveBeenCalled();
+    expect(scheduler.scheduleRemoteHistory).not.toHaveBeenCalled();
+    expect(scheduler.scheduleRemotePath).not.toHaveBeenCalled();
+    expect(recordAuditEvent).not.toHaveBeenCalled();
+    expect(scheduler.setOwnerDisabled).toHaveBeenCalledWith(
+      "pane-a",
+      "lifecycle-gate",
+    );
   });
 
   it("records skipped audit events when production hosts block remote probes", () => {

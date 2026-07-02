@@ -3,7 +3,9 @@
 //! @author kongweiguang
 
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, io::ErrorKind, path::PathBuf};
+
+use crate::error::AppError;
 
 /// 创建本地终端会话的请求参数。
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -266,6 +268,9 @@ pub struct TerminalOutputEvent {
     /// Agent 状态事件；只有 `kind == AgentSignal` 时有值。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_signal: Option<TerminalAgentSignalSummary>,
+    /// 错误事件的可分类摘要；只有 `kind == Error` 时有值。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<TerminalCommandError>,
 }
 
 impl TerminalOutputEvent {
@@ -276,6 +281,7 @@ impl TerminalOutputEvent {
             kind: TerminalOutputKind::Data,
             data,
             agent_signal: None,
+            error: None,
         }
     }
 
@@ -286,6 +292,7 @@ impl TerminalOutputEvent {
             kind: TerminalOutputKind::AgentSignal,
             data: String::new(),
             agent_signal: Some(summary),
+            error: None,
         }
     }
 
@@ -296,16 +303,22 @@ impl TerminalOutputEvent {
             kind: TerminalOutputKind::Closed,
             data: String::new(),
             agent_signal: None,
+            error: None,
         }
     }
 
     /// 创建错误事件。
     pub fn error(session_id: &str, message: String) -> Self {
+        let terminal_error = TerminalCommandError::from_app_error(
+            TerminalErrorOperation::ReadOutput,
+            &AppError::Terminal(message.clone()),
+        );
         Self {
             session_id: session_id.to_owned(),
             kind: TerminalOutputKind::Error,
             data: message,
             agent_signal: None,
+            error: Some(terminal_error),
         }
     }
 }
@@ -398,6 +411,281 @@ pub struct TerminalSessionReapDiagnostics {
     pub session_ids: Vec<String>,
     /// 同步移除、清理临时路径并调度后台 kill 所花费的毫秒数。
     pub elapsed_ms: u64,
+}
+
+/// PTY output pump 最近一次 flush 的原因。
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalPtyOutputPumpFlushReason {
+    /// 累积输出达到字节阈值后刷新。
+    Threshold,
+    /// coalescing 空闲窗口到期后刷新。
+    Idle,
+    /// 会话关闭前刷新最后输出尾部。
+    Closed,
+    /// 会话错误前刷新最后输出尾部。
+    Error,
+    /// pump 输入通道断开前刷新剩余输出。
+    Disconnected,
+}
+
+/// 本地 PTY output pump 的非敏感运行态指标。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalPtyOutputPumpStats {
+    /// 产生指标的本地终端 session id。
+    pub session_id: String,
+    /// 当前尚未发送给前端的 pending 输出字节数。
+    pub pending_bytes: usize,
+    /// 当前 pending 输出中合并的输入 chunk 数。
+    pub buffered_chunks: u64,
+    /// 已接收的输入 chunk 数。
+    pub input_chunks: u64,
+    /// 已接收的输入字节数。
+    pub input_bytes: u64,
+    /// 已发送给前端的 data 事件数量。
+    pub data_events: u64,
+    /// 已发送的 closed 事件数量。
+    pub closed_events: u64,
+    /// 已发送的 error 事件数量。
+    pub error_events: u64,
+    /// 已发送给前端的 data 字节数。
+    pub output_bytes: u64,
+    /// 已执行的非空 data flush 次数。
+    pub flush_count: u64,
+    /// 已通过 flush 发出的输入 chunk 累计数。
+    pub coalesced_chunks: u64,
+    /// 本会话历史最高 pending 字节数。
+    pub max_pending_bytes: usize,
+    /// pending 达到或超过上限的次数。
+    pub max_pending_hit_count: u64,
+    /// 被 backpressure 丢弃的字节数。
+    pub dropped_bytes: u64,
+    /// output backlog overflow 发生次数。
+    pub overflow_count: u64,
+    /// close/error 前刷新最终输出尾部的次数。
+    pub final_tail_flush_count: u64,
+    /// 最近一次非空 flush 距离首个 pending chunk 的毫秒数。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_flush_interval_ms: Option<u64>,
+    /// 最近一次非空 flush 的触发原因。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_flush_reason: Option<TerminalPtyOutputPumpFlushReason>,
+    /// pump 所在 flusher 是否已经结束。
+    pub finished: bool,
+}
+
+/// 终端操作失败的可分类错误类型。
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalErrorClass {
+    /// 子进程或终端客户端启动失败。
+    SpawnFailed,
+    /// PTY 输出读取失败。
+    PtyReadFailed,
+    /// PTY 输入写入失败。
+    PtyWriteFailed,
+    /// 终端尺寸调整失败。
+    ResizeFailed,
+    /// 会话已关闭或底层管道断开。
+    SessionClosed,
+    /// 会话 id 不存在。
+    SessionNotFound,
+    /// 权限不足。
+    PermissionDenied,
+    /// 用户输入或配置不合法。
+    InvalidInput,
+    /// 输出编码或解码失败。
+    EncodingFailure,
+    /// 会话日志读写失败。
+    LoggingFailure,
+    /// 运行态共享状态不可用。
+    StateUnavailable,
+    /// 终端依赖或客户端缺失。
+    DependencyMissing,
+    /// 暂未归类的终端错误。
+    Unknown,
+}
+
+/// 终端错误恢复建议。
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalErrorRecovery {
+    /// 可以自动或手动重试。
+    Retryable,
+    /// 需要用户修正配置、安装依赖或检查权限。
+    UserActionRequired,
+    /// 当前操作不应直接重试。
+    NotRetryable,
+    /// 内部状态异常，需要重启或提交诊断。
+    Internal,
+}
+
+/// 发生错误的终端操作。
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalErrorOperation {
+    CreateSession,
+    ReadOutput,
+    Write,
+    Resize,
+    Close,
+    ListSessions,
+    SessionSummary,
+    OutputSnapshot,
+    StartLog,
+    StopLog,
+    LogState,
+    ReapOrphanSessions,
+    Diagnostics,
+}
+
+/// Tauri command 可序列化返回的终端错误摘要。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalCommandError {
+    pub class: TerminalErrorClass,
+    pub recovery: TerminalErrorRecovery,
+    pub operation: TerminalErrorOperation,
+    pub message: String,
+    pub retryable: bool,
+}
+
+impl TerminalCommandError {
+    pub fn from_app_error(operation: TerminalErrorOperation, error: &AppError) -> Self {
+        let message = error.to_string();
+        let class = classify_terminal_app_error(operation, error, &message);
+        let recovery = recovery_for_terminal_error_class(class);
+        Self {
+            class,
+            recovery,
+            operation,
+            message,
+            retryable: recovery == TerminalErrorRecovery::Retryable,
+        }
+    }
+}
+
+fn classify_terminal_app_error(
+    operation: TerminalErrorOperation,
+    error: &AppError,
+    message: &str,
+) -> TerminalErrorClass {
+    let lower_message = message.to_ascii_lowercase();
+    match error {
+        AppError::InvalidInput(_) => TerminalErrorClass::InvalidInput,
+        AppError::NotFound(_) => TerminalErrorClass::SessionNotFound,
+        AppError::StateLockPoisoned(_) => TerminalErrorClass::StateUnavailable,
+        AppError::Io(error) => classify_terminal_io_error(operation, error.kind()),
+        AppError::Terminal(_) => classify_terminal_message(operation, &lower_message),
+        AppError::Credential(_) => TerminalErrorClass::PermissionDenied,
+        _ => TerminalErrorClass::Unknown,
+    }
+}
+
+fn classify_terminal_io_error(
+    operation: TerminalErrorOperation,
+    kind: ErrorKind,
+) -> TerminalErrorClass {
+    match kind {
+        ErrorKind::PermissionDenied => TerminalErrorClass::PermissionDenied,
+        ErrorKind::BrokenPipe | ErrorKind::ConnectionAborted | ErrorKind::NotConnected => {
+            TerminalErrorClass::SessionClosed
+        }
+        ErrorKind::NotFound if operation == TerminalErrorOperation::CreateSession => {
+            TerminalErrorClass::SpawnFailed
+        }
+        _ if matches!(
+            operation,
+            TerminalErrorOperation::StartLog
+                | TerminalErrorOperation::StopLog
+                | TerminalErrorOperation::LogState
+        ) =>
+        {
+            TerminalErrorClass::LoggingFailure
+        }
+        _ if operation == TerminalErrorOperation::ReadOutput => TerminalErrorClass::PtyReadFailed,
+        _ if operation == TerminalErrorOperation::Write => TerminalErrorClass::PtyWriteFailed,
+        _ if operation == TerminalErrorOperation::Resize => TerminalErrorClass::ResizeFailed,
+        _ if operation == TerminalErrorOperation::CreateSession => TerminalErrorClass::SpawnFailed,
+        _ => TerminalErrorClass::Unknown,
+    }
+}
+
+fn classify_terminal_message(
+    operation: TerminalErrorOperation,
+    lower_message: &str,
+) -> TerminalErrorClass {
+    if lower_message.contains("终端会话不存在") {
+        return TerminalErrorClass::SessionNotFound;
+    }
+    if lower_message.contains("permission") || lower_message.contains("denied") {
+        return TerminalErrorClass::PermissionDenied;
+    }
+    if lower_message.contains("未找到")
+        || lower_message.contains("not found")
+        || lower_message.contains("cannot find")
+    {
+        return TerminalErrorClass::DependencyMissing;
+    }
+    if lower_message.contains("encoding") || lower_message.contains("utf") {
+        return TerminalErrorClass::EncodingFailure;
+    }
+    match operation {
+        TerminalErrorOperation::CreateSession => TerminalErrorClass::SpawnFailed,
+        TerminalErrorOperation::ReadOutput => TerminalErrorClass::PtyReadFailed,
+        TerminalErrorOperation::Write => TerminalErrorClass::PtyWriteFailed,
+        TerminalErrorOperation::Resize => TerminalErrorClass::ResizeFailed,
+        TerminalErrorOperation::StartLog
+        | TerminalErrorOperation::StopLog
+        | TerminalErrorOperation::LogState => TerminalErrorClass::LoggingFailure,
+        _ => TerminalErrorClass::Unknown,
+    }
+}
+
+fn recovery_for_terminal_error_class(class: TerminalErrorClass) -> TerminalErrorRecovery {
+    match class {
+        TerminalErrorClass::PtyReadFailed
+        | TerminalErrorClass::PtyWriteFailed
+        | TerminalErrorClass::ResizeFailed => TerminalErrorRecovery::Retryable,
+        TerminalErrorClass::InvalidInput
+        | TerminalErrorClass::PermissionDenied
+        | TerminalErrorClass::DependencyMissing
+        | TerminalErrorClass::SpawnFailed
+        | TerminalErrorClass::EncodingFailure
+        | TerminalErrorClass::LoggingFailure => TerminalErrorRecovery::UserActionRequired,
+        TerminalErrorClass::StateUnavailable => TerminalErrorRecovery::Internal,
+        TerminalErrorClass::SessionClosed | TerminalErrorClass::SessionNotFound => {
+            TerminalErrorRecovery::NotRetryable
+        }
+        TerminalErrorClass::Unknown => TerminalErrorRecovery::Internal,
+    }
+}
+
+impl TerminalPtyOutputPumpStats {
+    pub fn new(session_id: impl Into<String>) -> Self {
+        Self {
+            session_id: session_id.into(),
+            pending_bytes: 0,
+            buffered_chunks: 0,
+            input_chunks: 0,
+            input_bytes: 0,
+            data_events: 0,
+            closed_events: 0,
+            error_events: 0,
+            output_bytes: 0,
+            flush_count: 0,
+            coalesced_chunks: 0,
+            max_pending_bytes: 0,
+            max_pending_hit_count: 0,
+            dropped_bytes: 0,
+            overflow_count: 0,
+            final_tail_flush_count: 0,
+            last_flush_interval_ms: None,
+            last_flush_reason: None,
+            finished: false,
+        }
+    }
 }
 
 /// 当前终端会话日志记录状态。

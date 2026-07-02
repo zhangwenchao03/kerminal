@@ -5,6 +5,7 @@ import type {
   TerminalColorScheme,
   TerminalCursorStyle,
   TerminalFontWeight,
+  TerminalRendererType,
   TerminalRightClickBehavior,
 } from "./settingsModel";
 
@@ -197,6 +198,28 @@ export const terminalFontWeightOptions: Array<{
   { label: "常规", value: "normal" },
   { label: "中等", value: "medium" },
   { label: "加粗", value: "bold" },
+];
+
+export const terminalRendererTypeOptions: Array<{
+  description: string;
+  label: string;
+  value: TerminalRendererType;
+}> = [
+  {
+    description: "优先使用 WebGL，失败时自动回退到 CPU。",
+    label: "自动",
+    value: "auto",
+  },
+  {
+    description: "保持默认渲染路径，兼容性最高。",
+    label: "CPU",
+    value: "cpu",
+  },
+  {
+    description: "强制尝试 WebGL，异常时仍会回退。",
+    label: "GPU",
+    value: "gpu",
+  },
 ];
 
 export const terminalRightClickBehaviorOptions: Array<{

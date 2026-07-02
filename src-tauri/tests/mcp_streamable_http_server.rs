@@ -574,6 +574,14 @@ updated_at = "1"
                     .pointer("/message")
                     .and_then(Value::as_str)
                     .is_some_and(|message| message.contains("production must be a boolean"))
+                && diagnostic.pointer("/path").and_then(Value::as_str)
+                    == Some("hosts/agent-added.toml")
+                && diagnostic.pointer("/line").and_then(Value::as_u64) == Some(8)
+                && diagnostic.pointer("/key").and_then(Value::as_str) == Some("production")
+                && diagnostic
+                    .pointer("/recovery")
+                    .and_then(Value::as_str)
+                    .is_some_and(|recovery| recovery.contains("production = true"))
         }),
         "expected invalid production diagnostic, got {diagnostics:?}"
     );

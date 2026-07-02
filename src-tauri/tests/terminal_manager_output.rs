@@ -3,7 +3,10 @@
 mod support;
 
 use kerminal_lib::{
-    models::terminal::{TerminalAgentKind, TerminalAgentStatus, TerminalOutputKind},
+    models::terminal::{
+        TerminalAgentKind, TerminalAgentStatus, TerminalOutputKind,
+        TerminalPtyOutputPumpFlushReason,
+    },
     services::terminal_manager::TerminalManager,
 };
 use std::{
@@ -214,6 +217,42 @@ fn pty_session_emits_final_tail_before_closed_for_short_lived_command() {
     manager.close(&summary.id).unwrap();
 
     assert_data_event_before_closed(&events, "kerminal-final-tail");
+}
+
+#[test]
+fn pty_session_exposes_non_sensitive_output_pump_stats() {
+    let manager = TerminalManager::new();
+    let (sender, receiver) = mpsc::channel();
+
+    let summary = manager
+        .create_session(short_lived_tail_request(), move |event| {
+            sender.send(event).is_ok()
+        })
+        .unwrap();
+
+    let events = collect_until_closed_events(&manager, &summary.id, &receiver);
+    let stats = manager.pty_output_pump_stats(&summary.id).unwrap();
+    let serialized = serde_json::to_string(&stats).unwrap();
+
+    manager.close(&summary.id).unwrap();
+
+    assert_data_event_before_closed(&events, "kerminal-final-tail");
+    assert_eq!(stats.session_id, summary.id);
+    assert_eq!(stats.pending_bytes, 0);
+    assert!(stats.input_chunks > 0);
+    assert!(stats.input_bytes > 0);
+    assert!(stats.data_events > 0);
+    assert!(stats.output_bytes > 0);
+    assert!(stats.flush_count > 0);
+    assert!(stats.coalesced_chunks > 0);
+    assert_eq!(stats.closed_events, 1);
+    assert!(matches!(
+        stats.last_flush_reason,
+        Some(TerminalPtyOutputPumpFlushReason::Closed)
+            | Some(TerminalPtyOutputPumpFlushReason::Idle)
+    ));
+    assert!(stats.finished);
+    assert!(!serialized.contains("kerminal-final-tail"));
 }
 
 #[test]

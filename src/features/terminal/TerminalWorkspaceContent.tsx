@@ -637,6 +637,7 @@ function TerminalRuntimePortal({
         target={pane.target}
         terminalAppearance={terminalAppearance}
         title={pane.title}
+        visible={slot.active}
       />
     </TerminalPaneErrorBoundary>,
     host,

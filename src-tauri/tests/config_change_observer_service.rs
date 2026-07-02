@@ -40,6 +40,10 @@ fn config_change_event_contract_uses_frontend_strings() {
             domain: Some(ConfigDomain::Hosts),
             message: "watcher fallback unavailable".to_owned(),
             path: None,
+            line: None,
+            column: None,
+            key: None,
+            recovery: None,
         }],
         source_hint: ConfigChangeSourceHint::External,
     };
@@ -233,7 +237,18 @@ fn watcher_smoke_external_writes_emit_ready_invalid_and_recovery_batches() {
     })
     .expect("invalid host batch");
     assert_eq!(invalid.diagnostics[0].domain, Some(ConfigDomain::Hosts));
-    assert!(invalid.diagnostics[0].path.is_none());
+    assert_eq!(
+        invalid.diagnostics[0].path.as_deref(),
+        Some("hosts/smoke-host.toml")
+    );
+    assert_eq!(invalid.diagnostics[0].line, Some(2));
+    assert_eq!(invalid.diagnostics[0].key.as_deref(), Some("id"));
+    assert!(invalid.diagnostics[0].column.is_some());
+    assert!(invalid.diagnostics[0]
+        .recovery
+        .as_deref()
+        .is_some_and(|recovery| recovery.contains("last-known-good")
+            || recovery.contains("kerminal.config.validate")));
     assert!(target_store.list_remote_host_tree().is_err());
 
     copy_external_config_file(source.path(), target.path(), "hosts/smoke-host.toml");

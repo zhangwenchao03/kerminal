@@ -37,7 +37,7 @@ function itemByAction(
 }
 
 describe("sftpContextMenuModel", () => {
-  it("builds current-directory actions and advanced upload choices", () => {
+  it("builds current-directory actions without zip upload choices", () => {
     const groups = buildSftpContextMenuGroups({
       entry: null,
       showHiddenFiles: true,
@@ -50,8 +50,6 @@ describe("sftpContextMenuModel", () => {
         "uploadFile",
         "uploadDirectory",
         "pasteClipboard",
-        "uploadFileArchive",
-        "uploadDirectoryArchive",
         "newDirectory",
       ],
       ["refresh", "toggleHidden", "copyPath"],
@@ -104,7 +102,7 @@ describe("sftpContextMenuModel", () => {
     });
   });
 
-  it("builds directory actions with paste, archive, copy, and delete affordances", () => {
+  it("builds directory actions with paste, copy, and delete affordances", () => {
     const groups = buildSftpContextMenuGroups({
       entry: entry({ kind: "directory", name: "conf", path: "/srv/conf" }),
       showHiddenFiles: true,
@@ -116,7 +114,6 @@ describe("sftpContextMenuModel", () => {
         "open",
         "workspace",
         "download",
-        "downloadArchive",
         "downloadClipboard",
         "uploadFileInto",
         "uploadDirectoryInto",
@@ -203,9 +200,7 @@ describe("sftpContextMenuModel", () => {
 
     expect(itemByAction(groups, "preview")).toMatchObject({ disabled: true });
     expect(itemByAction(groups, "download")).toMatchObject({ disabled: true });
-    expect(itemByAction(groups, "downloadArchive")).toMatchObject({
-      disabled: true,
-    });
+    expect(itemByAction(groups, "downloadArchive")).toBeUndefined();
     expect(itemByAction(groups, "downloadClipboard")).toMatchObject({
       disabled: true,
     });

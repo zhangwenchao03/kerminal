@@ -7,6 +7,7 @@ import {
   resolveFocusedPaneSplitTarget,
   selectTerminalTabState,
   splitFocusedPaneState,
+  updatePaneOutputHistoryState,
   updatePaneStatusState,
   updateTerminalSplitLayoutSizesState,
   type TerminalWorkspaceStateSlice,
@@ -684,5 +685,69 @@ describe("workspaceTerminalState pane status", () => {
 
     expect(updatePaneStatusState(state, "pane-ssh-1", "online")).toBe(state);
     expect(updatePaneStatusState(state, "pane-missing", "offline")).toBe(state);
+  });
+});
+
+describe("workspaceTerminalState pane output history", () => {
+  it("updates only the matching pane output history snapshot", () => {
+    const firstPane = terminalPane({
+      id: "pane-ssh-1",
+      outputHistory: "old tail",
+      title: "first",
+    });
+    const secondPane = terminalPane({
+      id: "pane-ssh-2",
+      outputHistory: "other tail",
+      title: "second",
+    });
+    const thirdPane = terminalPane({
+      id: "pane-ssh-3",
+      outputHistory: undefined,
+      title: "third",
+    });
+    const state = terminalState({
+      terminalPanes: [firstPane, secondPane, thirdPane],
+    });
+
+    const patch = updatePaneOutputHistoryState(
+      state,
+      secondPane.id,
+      "new cold tail",
+    );
+
+    expect(patch).not.toBe(state);
+    expect(patch.terminalPanes).toHaveLength(3);
+    expect(patch.terminalPanes?.[0]).toBe(firstPane);
+    expect(patch.terminalPanes?.[1]).toEqual({
+      ...secondPane,
+      outputHistory: "new cold tail",
+    });
+    expect(patch.terminalPanes?.[1]).not.toBe(secondPane);
+    expect(patch.terminalPanes?.[2]).toBe(thirdPane);
+  });
+
+  it("returns the same state for repeated or missing output snapshots", () => {
+    const state = terminalState({
+      terminalPanes: [
+        terminalPane({
+          id: "pane-ssh-1",
+          outputHistory: "stable cold tail",
+        }),
+        terminalPane({
+          id: "pane-ssh-2",
+          outputHistory: undefined,
+        }),
+      ],
+    });
+
+    expect(
+      updatePaneOutputHistoryState(state, "pane-ssh-1", "stable cold tail"),
+    ).toBe(state);
+    expect(updatePaneOutputHistoryState(state, "pane-ssh-2", undefined)).toBe(
+      state,
+    );
+    expect(
+      updatePaneOutputHistoryState(state, "pane-missing", "new tail"),
+    ).toBe(state);
   });
 });

@@ -59,6 +59,7 @@ export {
   terminalCursorStyleOptions,
   terminalFontOptions,
   terminalFontWeightOptions,
+  terminalRendererTypeOptions,
   terminalRightClickBehaviorOptions,
 } from "./settingsOptions";
 
@@ -76,6 +77,7 @@ export type TerminalColorScheme =
   | "github";
 export type TerminalCursorStyle = "block" | "bar" | "underline";
 export type TerminalFontWeight = "normal" | "medium" | "bold";
+export type TerminalRendererType = "auto" | "cpu" | "gpu";
 export type TerminalRightClickBehavior = "none" | "paste" | "menu";
 export type TerminalInlineSuggestionAcceptKey = "disabled" | "rightArrow";
 export type TerminalInlineSuggestionProductionHostPolicy =
@@ -113,6 +115,7 @@ export interface TerminalAppearance {
   lightColorScheme: TerminalColorScheme;
   lineHeight: number;
   macOptionIsMeta: boolean;
+  rendererType: TerminalRendererType;
   rightClickBehavior: TerminalRightClickBehavior;
   selectionCopy: boolean;
   showTabNumbers: boolean;
@@ -303,6 +306,7 @@ export function normalizeAppSettings(
       ),
       macOptionIsMeta:
         terminal.macOptionIsMeta ?? defaultTerminalAppearance.macOptionIsMeta,
+      rendererType: normalizeTerminalRendererType(terminal.rendererType),
       rightClickBehavior: normalizeTerminalRightClickBehavior(
         terminal.rightClickBehavior,
       ),
@@ -556,6 +560,15 @@ function normalizeTerminalFontWeight(
     return value;
   }
   return defaultTerminalAppearance.fontWeight;
+}
+
+function normalizeTerminalRendererType(
+  value: TerminalRendererType | undefined,
+): TerminalRendererType {
+  if (value === "auto" || value === "cpu" || value === "gpu") {
+    return value;
+  }
+  return defaultTerminalAppearance.rendererType;
 }
 
 function normalizeTerminalRightClickBehavior(

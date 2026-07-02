@@ -61,8 +61,6 @@ describe("SftpContextMenu", () => {
       "uploadFile",
       "uploadDirectory",
       "pasteClipboard",
-      "uploadFileArchive",
-      "uploadDirectoryArchive",
       "newDirectory",
       "refresh",
       "toggleHidden",

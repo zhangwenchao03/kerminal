@@ -78,10 +78,28 @@ export const settingsSections: Array<{
   label: string;
 }> = [
   {
-    description: "界面、终端与工作台",
+    description: "主题、语言和背景",
     icon: MonitorCog,
     id: "settings-appearance",
-    label: "主题外观",
+    label: "界面外观",
+  },
+  {
+    description: "字体、渲染和交互",
+    icon: Terminal,
+    id: "settings-terminal",
+    label: "终端",
+  },
+  {
+    description: "历史、远端和诊断",
+    icon: Clipboard,
+    id: "settings-suggestions",
+    label: "命令提示",
+  },
+  {
+    description: "并发、流水线与超时",
+    icon: Network,
+    id: "settings-sftp",
+    label: "SFTP",
   },
   {
     description: "状态和 endpoint",
@@ -102,12 +120,6 @@ export const settingsSections: Array<{
     label: "桌面",
   },
   {
-    description: "并发、流水线与超时",
-    icon: Network,
-    id: "settings-sftp",
-    label: "SFTP",
-  },
-  {
     description: "Win / macOS",
     icon: Keyboard,
     id: "settings-keybindings",
@@ -118,6 +130,134 @@ export const settingsSections: Array<{
     icon: Info,
     id: "settings-about",
     label: "关于",
+  },
+];
+
+export const settingsSearchEntries: Array<{
+  description: string;
+  keywords: string[];
+  sectionId: VisibleSettingsSectionId;
+  targetId: string;
+  title: string;
+}> = [
+  {
+    description: "切换深色、浅色或跟随系统。",
+    keywords: ["dark", "light", "system", "theme", "主题", "深色", "浅色"],
+    sectionId: "settings-appearance",
+    targetId: "settings-interface-appearance-panel",
+    title: "应用外观",
+  },
+  {
+    description: "界面语言、密度和窗口透明度。",
+    keywords: ["language", "density", "opacity", "语言", "密度", "透明度"],
+    sectionId: "settings-appearance",
+    targetId: "settings-interface-appearance-panel",
+    title: "界面基础设置",
+  },
+  {
+    description: "选择工作台背景图、透明度和铺放方式。",
+    keywords: ["background", "image", "壁纸", "背景", "图片"],
+    sectionId: "settings-appearance",
+    targetId: "settings-background-panel",
+    title: "主页面背景",
+  },
+  {
+    description: "分别设置浅色和深色终端配色。",
+    keywords: ["terminal", "color", "scheme", "终端", "主题", "配色"],
+    sectionId: "settings-terminal",
+    targetId: "settings-terminal-theme-panel",
+    title: "终端主题",
+  },
+  {
+    description: "终端字体、字号、行高和字重。",
+    keywords: ["font", "size", "line height", "字体", "字号", "行高", "字重"],
+    sectionId: "settings-terminal",
+    targetId: "settings-terminal-font-panel",
+    title: "字体配置",
+  },
+  {
+    description: "切换 CPU、GPU 或自动 WebGL 渲染策略。",
+    keywords: ["renderer", "webgl", "gpu", "cpu", "渲染", "显卡", "加速"],
+    sectionId: "settings-terminal",
+    targetId: "settings-terminal-renderer-panel",
+    title: "终端渲染",
+  },
+  {
+    description: "选中复制、右键行为、自动重连和滚屏缓冲。",
+    keywords: ["copy", "right click", "reconnect", "scrollback", "右键", "复制", "重连", "缓冲"],
+    sectionId: "settings-terminal",
+    targetId: "settings-terminal-interaction-panel",
+    title: "终端交互",
+  },
+  {
+    description: "光标样式和闪烁行为。",
+    keywords: ["cursor", "blink", "光标", "闪烁"],
+    sectionId: "settings-terminal",
+    targetId: "settings-terminal-cursor-panel",
+    title: "光标形态",
+  },
+  {
+    description: "灰色命令提示开关、接受按键和生产主机策略。",
+    keywords: ["suggestion", "ghost", "inline", "提示", "灰色提示", "接受按键"],
+    sectionId: "settings-suggestions",
+    targetId: "settings-command-suggestions-policy-panel",
+    title: "命令灰色提示",
+  },
+  {
+    description: "历史、远端路径、远端命令、Git 和 CLI Spec provider。",
+    keywords: ["provider", "history", "git", "remote", "历史", "远端", "spec"],
+    sectionId: "settings-suggestions",
+    targetId: "settings-command-suggestions-providers-panel",
+    title: "提示 Provider",
+  },
+  {
+    description: "查看灰色提示遥测并清理过期诊断数据。",
+    keywords: ["telemetry", "diagnostics", "cleanup", "遥测", "诊断", "清理"],
+    sectionId: "settings-suggestions",
+    targetId: "settings-command-suggestions-telemetry-panel",
+    title: "提示诊断",
+  },
+  {
+    description: "SFTP 传输并发、pipeline 和超时。",
+    keywords: ["sftp", "transfer", "pipeline", "timeout", "传输", "并发", "超时"],
+    sectionId: "settings-sftp",
+    targetId: "settings-sftp-panel",
+    title: "SFTP 传输",
+  },
+  {
+    description: "Kerminal MCP Server 状态、endpoint 和工具导航。",
+    keywords: ["mcp", "server", "endpoint", "agent", "工具"],
+    sectionId: "settings-mcp",
+    targetId: "settings-mcp-panel",
+    title: "MCP Server",
+  },
+  {
+    description: "Git、密钥和配置同步。",
+    keywords: ["sync", "git", "key", "同步", "密钥"],
+    sectionId: "settings-sync",
+    targetId: "settings-sync-panel",
+    title: "同步",
+  },
+  {
+    description: "系统通知、后台事件和节流。",
+    keywords: ["notification", "desktop", "background", "通知", "后台", "节流"],
+    sectionId: "settings-desktop",
+    targetId: "settings-desktop-panel",
+    title: "桌面通知",
+  },
+  {
+    description: "Windows 和 macOS 快捷键列表。",
+    keywords: ["keyboard", "shortcut", "keybinding", "快捷键", "键盘"],
+    sectionId: "settings-keybindings",
+    targetId: "settings-keybindings-panel",
+    title: "快捷键",
+  },
+  {
+    description: "版本、更新和项目链接。",
+    keywords: ["about", "version", "update", "关于", "版本", "更新"],
+    sectionId: "settings-about",
+    targetId: "settings-about-panel",
+    title: "关于",
   },
 ];
 

@@ -210,6 +210,7 @@ export interface SftpTransferSummary {
   localPath: string;
   direction: SftpTransferDirection;
   kind: SftpTransferKind;
+  conflictPolicy?: SftpTransferConflictPolicy | null;
   status: SftpTransferStatus;
   bytesTransferred: number;
   totalBytes?: number | null;

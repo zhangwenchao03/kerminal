@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { TerminalTab } from "../../../../src/features/workspace/types";
 import {
@@ -43,6 +43,8 @@ describe("TerminalTabButton", () => {
     expect(tabFrame).toHaveClass("ring-sky-400/30");
     expect(tabFrame).not.toHaveClass("border-b-transparent");
     expect(tabFrame).not.toHaveClass("-mb-px");
+    expect(tabButton).toHaveClass("absolute");
+    expect(tabButton).toHaveClass("inset-0");
   });
 
   it("keeps inactive top tabs visibly framed for scanning", () => {
@@ -65,6 +67,37 @@ describe("TerminalTabButton", () => {
     expect(tabFrame).toHaveClass("border-[var(--border-subtle)]");
     expect(tabFrame).toHaveClass("bg-[var(--surface-solid)]");
     expect(tabFrame).toHaveClass("rounded-xl");
+  });
+
+  it("selects from the full tab frame while keeping close independent", () => {
+    const onCloseTab = vi.fn();
+    const onSelectTab = vi.fn();
+
+    render(
+      <TerminalTabButton
+        active={false}
+        onCloseTab={onCloseTab}
+        onContextMenu={vi.fn()}
+        onSelectTab={onSelectTab}
+        showClose
+        tab={localTab}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "本地 PowerShell",
+      }),
+    );
+    expect(onSelectTab).toHaveBeenCalledWith("tab-local");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "关闭 本地 PowerShell tab",
+      }),
+    );
+    expect(onCloseTab).toHaveBeenCalledWith("tab-local");
+    expect(onSelectTab).toHaveBeenCalledTimes(1);
   });
 });
 

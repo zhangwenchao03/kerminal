@@ -659,7 +659,7 @@ export function MachineSidebar({
   return (
     <aside
       aria-label="主机侧边栏"
-      className="kerminal-material-nav relative flex h-full w-full min-w-[220px] flex-col border-r"
+      className="kerminal-material-nav kerminal-shell-sidebar relative flex h-full w-full min-w-[220px] flex-col border-r"
       onContextMenu={(event) => openContextMenu(event, { type: "root" })}
     >
       <div className="kerminal-sidebar-header flex flex-col">

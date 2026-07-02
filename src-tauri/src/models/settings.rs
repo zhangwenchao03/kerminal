@@ -130,6 +130,19 @@ pub enum TerminalFontWeight {
     Bold,
 }
 
+/// 终端渲染器选择策略。
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalRendererType {
+    /// 自动优先使用 WebGL，失败时回退 xterm 默认渲染器。
+    #[default]
+    Auto,
+    /// 强制使用 xterm 默认渲染器。
+    Cpu,
+    /// 强制尝试 WebGL，失败时仍回退 xterm 默认渲染器。
+    Gpu,
+}
+
 /// 终端右键行为。
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -265,6 +278,9 @@ pub struct TerminalAppearance {
     /// macOS Option 键是否作为 Meta 键处理。
     #[serde(default)]
     pub mac_option_is_meta: bool,
+    /// 终端渲染器选择策略。
+    #[serde(default)]
+    pub renderer_type: TerminalRendererType,
     /// 行高倍率。
     pub line_height: f64,
     /// xterm 光标形态。
@@ -303,6 +319,7 @@ impl Default for TerminalAppearance {
             font_size: 15,
             font_weight: TerminalFontWeight::Normal,
             mac_option_is_meta: false,
+            renderer_type: TerminalRendererType::Auto,
             line_height: 1.35,
             cursor_style: TerminalCursorStyle::Block,
             cursor_blink: true,

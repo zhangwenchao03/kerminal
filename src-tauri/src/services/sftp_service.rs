@@ -3,7 +3,7 @@
 //! @author kongweiguang
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -589,6 +589,28 @@ pub mod rules {
                     | SftpTransferStatus::Failed
                     | SftpTransferStatus::Canceled
             )
+    }
+
+    /// 返回内存中保留的最近完成传输数量上限。
+    pub fn completed_transfer_retention_limit() -> usize {
+        super::transfer_registry::RECENT_COMPLETED_TRANSFER_LIMIT
+    }
+
+    /// 返回完成传输按时间保留的秒数。
+    pub fn completed_transfer_retention_seconds() -> u64 {
+        super::transfer_registry::RECENT_COMPLETED_TRANSFER_SECONDS
+    }
+
+    /// 返回会被 retention policy 裁剪的完成传输 id，供策略测试复用。
+    pub fn pruned_completed_transfer_ids(
+        summaries: &[SftpTransferSummary],
+        now: u64,
+    ) -> Vec<String> {
+        let mut ids = super::transfer_registry::completed_transfer_prune_ids(summaries.iter(), now)
+            .into_iter()
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids
     }
 
     /// 生成取消标记，供归档规则测试和运行时调用者复用。

@@ -30,7 +30,8 @@ use crate::{
         workflow::{CommandWorkflow, CommandWorkflowStep},
     },
     storage::file_store::{
-        FileStore, FileStoreChange, FileStoreError, FileStoreResult, TomlDocument, TomlParseError,
+        FileStore, FileStoreChange, FileStoreError, FileStoreResult, ParseDiagnostic, TomlDocument,
+        TomlParseError,
     },
 };
 
@@ -69,7 +70,7 @@ impl ConfigFileStore {
         let document = self
             .files
             .read_toml::<SettingsTomlDocument>(SETTINGS_RELATIVE_PATH)?;
-        document.into_settings()
+        with_error_path(document.into_settings(), Path::new(SETTINGS_RELATIVE_PATH))
     }
 
     /// Read `settings.toml`, returning defaults when the file is not initialized yet.
@@ -92,17 +93,24 @@ impl ConfigFileStore {
     /// Read a profile from `profiles/<profile-id>.toml`.
     pub fn read_profile(&self, profile_id: &str) -> FileStoreResult<TerminalProfile> {
         let relative_path = profile_relative_path(profile_id)?;
-        let document = self.files.read_toml::<ProfileTomlDocument>(relative_path)?;
-        let profile = document.into_profile()?;
+        let document = self
+            .files
+            .read_toml::<ProfileTomlDocument>(&relative_path)?;
+        let profile = with_error_path(document.into_profile(), &relative_path)?;
         if profile.id != profile_id {
-            return Err(FileStoreError::TomlParse(TomlParseError::single(
-                1,
-                1,
-                format!(
-                    "profile file id mismatch: expected {profile_id}, found {}",
-                    profile.id
-                ),
-            )));
+            return Err(FileStoreError::TomlParse(
+                TomlParseError::single(
+                    1,
+                    1,
+                    format!(
+                        "profile file id mismatch: expected {profile_id}, found {}",
+                        profile.id
+                    ),
+                )
+                .with_path(relative_path)
+                .with_key("id")
+                .with_recovery("Make the profile id match the profiles/<id>.toml file name."),
+            ));
         }
         Ok(profile)
     }
@@ -350,7 +358,9 @@ impl ConfigFileStore {
             .files
             .read_toml::<RemoteHostGroupsTomlDocument>(HOST_GROUPS_RELATIVE_PATH)
         {
-            Ok(document) => document.into_groups(),
+            Ok(document) => {
+                with_error_path(document.into_groups(), Path::new(HOST_GROUPS_RELATIVE_PATH))
+            }
             Err(FileStoreError::Io(error)) if error.kind() == ErrorKind::NotFound => Ok(Vec::new()),
             Err(error) => Err(error),
         }
@@ -532,33 +542,45 @@ impl ConfigFileStore {
         let document = self
             .files
             .read_toml::<RemoteHostTomlDocument>(&relative_path)?;
-        let host = document.into_host()?;
+        let host = with_error_path(document.into_host(), &relative_path)?;
         if host.id != host_id {
-            return Err(FileStoreError::TomlParse(TomlParseError::single(
-                1,
-                1,
-                format!(
-                    "remote host file id mismatch: expected {host_id}, found {}",
-                    host.id
-                ),
-            )));
+            return Err(FileStoreError::TomlParse(
+                TomlParseError::single(
+                    1,
+                    1,
+                    format!(
+                        "remote host file id mismatch: expected {host_id}, found {}",
+                        host.id
+                    ),
+                )
+                .with_path(relative_path)
+                .with_key("id")
+                .with_recovery("Make the host id match the hosts/<id>.toml file name."),
+            ));
         }
         Ok(host)
     }
 
     fn read_snippet(&self, snippet_id: &str) -> FileStoreResult<CommandSnippet> {
         let relative_path = snippet_relative_path(snippet_id)?;
-        let document = self.files.read_toml::<SnippetTomlDocument>(relative_path)?;
-        let snippet = document.into_snippet()?;
+        let document = self
+            .files
+            .read_toml::<SnippetTomlDocument>(&relative_path)?;
+        let snippet = with_error_path(document.into_snippet(), &relative_path)?;
         if snippet.id != snippet_id {
-            return Err(FileStoreError::TomlParse(TomlParseError::single(
-                1,
-                1,
-                format!(
-                    "snippet file id mismatch: expected {snippet_id}, found {}",
-                    snippet.id
-                ),
-            )));
+            return Err(FileStoreError::TomlParse(
+                TomlParseError::single(
+                    1,
+                    1,
+                    format!(
+                        "snippet file id mismatch: expected {snippet_id}, found {}",
+                        snippet.id
+                    ),
+                )
+                .with_path(relative_path)
+                .with_key("id")
+                .with_recovery("Make the snippet id match the snippets/<id>.toml file name."),
+            ));
         }
         Ok(snippet)
     }
@@ -567,17 +589,22 @@ impl ConfigFileStore {
         let relative_path = workflow_relative_path(workflow_id)?;
         let document = self
             .files
-            .read_toml::<WorkflowTomlDocument>(relative_path)?;
-        let workflow = document.into_workflow()?;
+            .read_toml::<WorkflowTomlDocument>(&relative_path)?;
+        let workflow = with_error_path(document.into_workflow(), &relative_path)?;
         if workflow.id != workflow_id {
-            return Err(FileStoreError::TomlParse(TomlParseError::single(
-                1,
-                1,
-                format!(
-                    "workflow file id mismatch: expected {workflow_id}, found {}",
-                    workflow.id
-                ),
-            )));
+            return Err(FileStoreError::TomlParse(
+                TomlParseError::single(
+                    1,
+                    1,
+                    format!(
+                        "workflow file id mismatch: expected {workflow_id}, found {}",
+                        workflow.id
+                    ),
+                )
+                .with_path(relative_path)
+                .with_key("id")
+                .with_recovery("Make the workflow id match the workflows/<id>.toml file name."),
+            ));
         }
         Ok(workflow)
     }
@@ -588,13 +615,19 @@ fn validate_schema_version(schema_version: u32) -> FileStoreResult<()> {
         return Ok(());
     }
 
-    Err(FileStoreError::TomlParse(TomlParseError::single(
-        1,
-        1,
-        format!(
-            "unsupported config schema_version: {schema_version}, expected {CONFIG_FILE_SCHEMA_VERSION}"
-        ),
-    )))
+    Err(FileStoreError::TomlParse(
+        TomlParseError::single(
+            1,
+            1,
+            format!(
+                "unsupported config schema_version: {schema_version}, expected {CONFIG_FILE_SCHEMA_VERSION}"
+            ),
+        )
+        .with_key("schema_version")
+        .with_recovery(format!(
+            "Set schema_version = {CONFIG_FILE_SCHEMA_VERSION} for this Kerminal config file."
+        )),
+    ))
 }
 
 fn profile_relative_path(profile_id: &str) -> FileStoreResult<PathBuf> {
@@ -718,11 +751,18 @@ fn encode_toml<T: Serialize>(value: &T) -> FileStoreResult<String> {
 }
 
 fn decode_toml<T: DeserializeOwned>(source: &str) -> Result<T, TomlParseError> {
-    toml::from_str(source).map_err(|error| TomlParseError::single(1, 1, error.to_string()))
+    toml::from_str(source).map_err(|error| toml_parse_error(source, error))
 }
 
 fn toml_validation_error(error: crate::error::AppError) -> FileStoreError {
-    FileStoreError::TomlParse(TomlParseError::single(1, 1, error.to_string()))
+    let message = error.to_string();
+    let mut diagnostic = ParseDiagnostic::new(1, 1, message.clone()).with_recovery(
+        "Fix the value according to the Kerminal config guide; the app keeps last-known-good until validation passes.",
+    );
+    if let Some(key) = infer_validation_key(&message) {
+        diagnostic = diagnostic.with_key(key);
+    }
+    FileStoreError::TomlParse(TomlParseError::new(vec![diagnostic]))
 }
 
 fn reject_secret_keys_in_host_toml(source: &str) -> Result<(), TomlParseError> {
@@ -736,12 +776,180 @@ fn reject_secret_keys_in_host_toml(source: &str) -> Result<(), TomlParseError> {
             || trimmed.contains(".credential_secret")
             || trimmed.contains(".credentialSecret")
         {
-            return Err(TomlParseError::single(
+            let key = if trimmed.contains("credentialSecret") {
+                "credentialSecret"
+            } else {
+                "credential_secret"
+            };
+            let column = line.find("credential").map(|index| index + 1).unwrap_or(1);
+            let diagnostic = ParseDiagnostic::new(
                 line_index + 1,
-                1,
+                column,
                 "ordinary host config must not contain credential secret fields; save credentials through encrypted vault",
-            ));
+            )
+            .with_key(key)
+            .with_recovery(
+                "Remove the plaintext secret field and save credentials through the encrypted vault; host TOML may only keep secret_ref/key_passphrase_ref references.",
+            );
+            return Err(TomlParseError::new(vec![diagnostic]));
         }
     }
     Ok(())
+}
+
+fn with_error_path<T>(result: FileStoreResult<T>, relative_path: &Path) -> FileStoreResult<T> {
+    result.map_err(|error| match error {
+        FileStoreError::TomlParse(parse_error) => {
+            FileStoreError::TomlParse(parse_error.with_path(relative_path.to_path_buf()))
+        }
+        other => other,
+    })
+}
+
+fn toml_parse_error(source: &str, error: toml::de::Error) -> TomlParseError {
+    let message = error.message().to_owned();
+    let (line, column) = error
+        .span()
+        .map(|span| line_column_for_byte_index(source, span.start))
+        .unwrap_or((1, 1));
+    let key = infer_toml_error_key(source, line, &message);
+    let recovery = recovery_for_toml_diagnostic(key.as_deref(), &message);
+    let mut diagnostic = ParseDiagnostic::new(line, column, message);
+    if let Some(key) = key {
+        diagnostic = diagnostic.with_key(key);
+    }
+    if let Some(recovery) = recovery {
+        diagnostic = diagnostic.with_recovery(recovery);
+    }
+    TomlParseError::new(vec![diagnostic])
+}
+
+fn line_column_for_byte_index(source: &str, index: usize) -> (usize, usize) {
+    if source.is_empty() {
+        return (1, 1);
+    }
+
+    let bytes = source.as_bytes();
+    let safe_index = index.min(bytes.len().saturating_sub(1));
+    let column_offset = index.saturating_sub(safe_index);
+    let line_start = bytes[..safe_index]
+        .iter()
+        .rposition(|byte| *byte == b'\n')
+        .map(|position| position + 1)
+        .unwrap_or(0);
+    let line = bytes[..line_start]
+        .iter()
+        .filter(|byte| **byte == b'\n')
+        .count()
+        + 1;
+    let column = std::str::from_utf8(&bytes[line_start..=safe_index])
+        .map(|text| text.chars().count())
+        .unwrap_or_else(|_| safe_index.saturating_sub(line_start) + 1)
+        + column_offset;
+    (line, column.max(1))
+}
+
+fn infer_toml_error_key(source: &str, line: usize, message: &str) -> Option<String> {
+    key_from_missing_field_message(message).or_else(|| key_from_toml_line(source, line))
+}
+
+fn key_from_missing_field_message(message: &str) -> Option<String> {
+    let marker = "missing field `";
+    let start = message.find(marker)? + marker.len();
+    let rest = &message[start..];
+    let end = rest.find('`')?;
+    let key = rest[..end].trim();
+    if key.is_empty() {
+        None
+    } else {
+        Some(key.to_owned())
+    }
+}
+
+fn key_from_toml_line(source: &str, line: usize) -> Option<String> {
+    let line_text = source.lines().nth(line.saturating_sub(1))?;
+    let (raw_key, _) = line_text.split_once('=')?;
+    let local_key = normalize_toml_key(raw_key)?;
+    let table = table_for_toml_line(source, line);
+    Some(match table {
+        Some(table) if !table.is_empty() => format!("{table}.{local_key}"),
+        _ => local_key,
+    })
+}
+
+fn table_for_toml_line(source: &str, line: usize) -> Option<String> {
+    let mut table = None;
+    for line_text in source.lines().take(line.saturating_sub(1)) {
+        let trimmed = line_text.trim();
+        if trimmed.starts_with("[[") && trimmed.ends_with("]]") {
+            table = Some(
+                trimmed[2..trimmed.len().saturating_sub(2)]
+                    .trim()
+                    .to_owned(),
+            );
+        } else if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            table = Some(
+                trimmed[1..trimmed.len().saturating_sub(1)]
+                    .trim()
+                    .to_owned(),
+            );
+        }
+    }
+    table.filter(|value| !value.is_empty())
+}
+
+fn normalize_toml_key(raw_key: &str) -> Option<String> {
+    let key = raw_key
+        .split('#')
+        .next()
+        .unwrap_or(raw_key)
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'');
+    if key.is_empty() {
+        None
+    } else {
+        Some(key.to_owned())
+    }
+}
+
+fn infer_validation_key(message: &str) -> Option<&'static str> {
+    if message.contains("背景图路径") {
+        Some("appearance.backgroundImagePath")
+    } else if message.contains("终端字体") {
+        Some("terminal.fontFamily")
+    } else if message.contains("终端字号") {
+        Some("terminal.fontSize")
+    } else if message.contains("终端行高") {
+        Some("terminal.lineHeight")
+    } else if message.contains("滚屏缓冲") {
+        Some("terminal.scrollback")
+    } else {
+        None
+    }
+}
+
+fn recovery_for_toml_diagnostic(key: Option<&str>, message: &str) -> Option<String> {
+    if key == Some("schema_version") {
+        return Some(format!(
+            "Set schema_version = {CONFIG_FILE_SCHEMA_VERSION} for this Kerminal config file."
+        ));
+    }
+    if message.contains("missing field") {
+        return Some(match key {
+            Some(key) => {
+                format!("Add the required `{key}` key or restore the last-known-good file.")
+            }
+            None => "Add the missing required key or restore the last-known-good file.".to_owned(),
+        });
+    }
+    if message.contains("invalid type") {
+        return Some(match key {
+            Some(key) => format!(
+                "Use the documented value type for `{key}` and rerun kerminal.config.validate."
+            ),
+            None => "Use the documented value type and rerun kerminal.config.validate.".to_owned(),
+        });
+    }
+    Some("Fix this TOML entry; Kerminal keeps last-known-good until validation passes.".to_owned())
 }

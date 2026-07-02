@@ -112,6 +112,7 @@ type SftpBrowserViewProps = {
   remoteDownloadDragActive: boolean;
   remoteDownloadDropActive: boolean;
   remoteDragEntriesRef: MutableRefObject<SftpEntry[]>;
+  retryTransfer: (transfer: SftpTransferSummary) => Promise<void>;
   selectEntry: (entry: SftpEntry, event?: SftpSelectionEvent) => void;
   selectedEntries: SftpEntry[];
   selectedEntryPaths: Set<string>;
@@ -198,6 +199,7 @@ export function SftpBrowserView({
   remoteDownloadDragActive,
   remoteDownloadDropActive,
   remoteDragEntriesRef,
+  retryTransfer,
   selectEntry,
   selectedEntries,
   selectedEntryPaths,
@@ -738,6 +740,7 @@ export function SftpBrowserView({
         <SftpTransferStatusBar
           onCancel={(transferId) => void cancelTransfer(transferId)}
           onClearCompleted={() => void clearFinishedTransfers()}
+          onRetry={(transfer) => void retryTransfer(transfer)}
           transfers={visibleTransfers}
         />
       ) : null}

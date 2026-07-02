@@ -19,7 +19,6 @@ export const SFTP_FILE_PANEL_MENU_ACTIONS = [
   "preview",
   "download",
   "transferToTarget",
-  "downloadArchive",
   "downloadClipboard",
   "copyItem",
   "pasteClipboard",
@@ -29,8 +28,6 @@ export const SFTP_FILE_PANEL_MENU_ACTIONS = [
   "delete",
   "uploadFile",
   "uploadDirectory",
-  "uploadFileArchive",
-  "uploadDirectoryArchive",
   "uploadFileInto",
   "uploadDirectoryInto",
   "newDirectory",
@@ -39,7 +36,6 @@ export const SFTP_FILE_PANEL_MENU_ACTIONS = [
 ] satisfies readonly SftpMenuAction[];
 
 export type SftpContextMenuIcon =
-  | "archive"
   | "clipboardPaste"
   | "copy"
   | "download"
@@ -105,16 +101,6 @@ export function buildSftpContextMenuGroups({
                 icon: "clipboardPaste" as const,
                 label: "粘贴 SFTP 剪贴板",
               },
-              {
-                action: "uploadFileArchive" as const,
-                icon: "archive" as const,
-                label: "上传文件为 ZIP",
-              },
-              {
-                action: "uploadDirectoryArchive" as const,
-                icon: "archive" as const,
-                label: "上传文件夹为 ZIP",
-              },
             ]
           : []),
         {
@@ -168,11 +154,6 @@ export function buildSftpContextMenuGroups({
         },
         ...(supportsAdvancedActions
           ? [
-              {
-                action: "downloadArchive" as const,
-                icon: "archive" as const,
-                label: "下载为 ZIP",
-              },
               {
                 action: "downloadClipboard" as const,
                 icon: "download" as const,
@@ -258,12 +239,6 @@ export function buildSftpContextMenuGroups({
       },
       ...(supportsAdvancedActions
         ? [
-            {
-              action: "downloadArchive" as const,
-              disabled: !transferKindFromEntry(entry),
-              icon: "archive" as const,
-              label: "下载为 ZIP",
-            },
             {
               action: "downloadClipboard" as const,
               disabled: !transferKindFromEntry(entry),

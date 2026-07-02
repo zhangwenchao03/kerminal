@@ -26,7 +26,10 @@ use crate::{
         ConfigDomain, ConfigWatchBackend, ConfigWatchStatus, ConfigWatchStatusSnapshot,
         CONFIG_CHANGE_EVENT_NAME, CONFIG_CHANGE_EVENT_VERSION,
     },
-    storage::config_file_store::ConfigFileStore,
+    storage::{
+        config_file_store::ConfigFileStore,
+        file_store::{FileStoreError, ParseDiagnostic},
+    },
 };
 
 const QUIET_WINDOW: Duration = Duration::from_millis(700);
@@ -523,14 +526,87 @@ fn validate_domains_once(
             ConfigDomain::Workflows => store.list_workflows().map(|_| ()),
         };
         if result.is_err() {
-            diagnostics.push(ConfigChangeDiagnostic {
-                domain: Some(*domain),
-                message: format!("{} config invalid", domain_label(*domain)),
-                path: None,
-            });
+            diagnostics.extend(config_diagnostics_from_error(
+                *domain,
+                result.expect_err("checked result error"),
+            ));
         }
     }
     diagnostics
+}
+
+fn config_diagnostics_from_error(
+    domain: ConfigDomain,
+    error: FileStoreError,
+) -> Vec<ConfigChangeDiagnostic> {
+    match error {
+        FileStoreError::TomlParse(parse_error) => {
+            let diagnostics = parse_error
+                .diagnostics()
+                .iter()
+                .map(|diagnostic| config_diagnostic_from_parse(domain, diagnostic))
+                .collect::<Vec<_>>();
+            if diagnostics.is_empty() {
+                vec![generic_config_diagnostic(domain, "TOML parse failed")]
+            } else {
+                diagnostics
+            }
+        }
+        other => vec![generic_config_diagnostic(
+            domain,
+            format!("{} config invalid: {other}", domain_label(domain)),
+        )],
+    }
+}
+
+fn config_diagnostic_from_parse(
+    domain: ConfigDomain,
+    diagnostic: &ParseDiagnostic,
+) -> ConfigChangeDiagnostic {
+    ConfigChangeDiagnostic {
+        domain: Some(domain),
+        message: diagnostic.message.clone(),
+        path: diagnostic.path.as_deref().and_then(safe_config_path_label),
+        line: Some(diagnostic.line),
+        column: Some(diagnostic.column),
+        key: diagnostic.key.clone(),
+        recovery: diagnostic.recovery.clone(),
+    }
+}
+
+fn generic_config_diagnostic(
+    domain: ConfigDomain,
+    message: impl Into<String>,
+) -> ConfigChangeDiagnostic {
+    ConfigChangeDiagnostic {
+        domain: Some(domain),
+        message: message.into(),
+        path: None,
+        line: None,
+        column: None,
+        key: None,
+        recovery: Some(
+            "Fix the invalid config file; Kerminal keeps last-known-good until validation passes."
+                .to_owned(),
+        ),
+    }
+}
+
+fn safe_config_path_label(path: &Path) -> Option<String> {
+    if path.is_absolute() {
+        return None;
+    }
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    if normalized.is_empty()
+        || normalized.starts_with('/')
+        || normalized.contains("..")
+        || normalized.starts_with("secrets/")
+        || normalized.contains("/secrets/")
+    {
+        None
+    } else {
+        Some(normalized)
+    }
 }
 
 fn record_domain_batch(
@@ -586,6 +662,10 @@ fn watcher_unavailable_batch(sequence: u64, message: String) -> ConfigChangeBatc
             domain: None,
             message,
             path: None,
+            line: None,
+            column: None,
+            key: None,
+            recovery: None,
         }],
         domains: Vec::new(),
         observed_at: observed_at_now(),

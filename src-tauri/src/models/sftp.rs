@@ -524,6 +524,8 @@ pub struct SftpTransferSummary {
     pub direction: SftpTransferDirection,
     /// 传输对象类型。
     pub kind: SftpTransferKind,
+    /// 原始目标冲突处理策略；没有安全复用策略的任务为空。
+    pub conflict_policy: Option<SftpTransferConflictPolicy>,
     /// 当前状态。
     pub status: SftpTransferStatus,
     /// 已传输字节数；无法实时统计时在完成后更新。

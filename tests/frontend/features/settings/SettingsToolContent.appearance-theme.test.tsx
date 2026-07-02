@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsToolContent } from "../../../../src/features/settings/SettingsToolContent";
 import { defaultAppSettings, type AppSettings } from "../../../../src/features/settings/settingsModel";
@@ -17,6 +18,10 @@ const terminalSuggestionApiMock = vi.hoisted(() => ({
   cleanupTerminalSuggestionDiagnostics: vi.fn(),
   getTerminalSuggestionTelemetryExport: vi.fn(),
   getTerminalSuggestionTelemetrySummary: vi.fn(),
+  refreshTerminalGitSuggestions: vi.fn(),
+  refreshTerminalRemoteCommandSuggestions: vi.fn(),
+  refreshTerminalRemoteHistorySuggestions: vi.fn(),
+  refreshTerminalRemotePathSuggestions: vi.fn(),
 }));
 const updaterApiMock = vi.hoisted(() => ({
   checkForAppUpdate: vi.fn(),
@@ -102,6 +107,14 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
         totalQueryCount: 0,
       },
     );
+    terminalSuggestionApiMock.refreshTerminalGitSuggestions.mockReset();
+    terminalSuggestionApiMock.refreshTerminalGitSuggestions.mockResolvedValue([]);
+    terminalSuggestionApiMock.refreshTerminalRemoteCommandSuggestions.mockReset();
+    terminalSuggestionApiMock.refreshTerminalRemoteCommandSuggestions.mockResolvedValue([]);
+    terminalSuggestionApiMock.refreshTerminalRemoteHistorySuggestions.mockReset();
+    terminalSuggestionApiMock.refreshTerminalRemoteHistorySuggestions.mockResolvedValue([]);
+    terminalSuggestionApiMock.refreshTerminalRemotePathSuggestions.mockReset();
+    terminalSuggestionApiMock.refreshTerminalRemotePathSuggestions.mockResolvedValue([]);
     updaterApiMock.checkForAppUpdate.mockReset();
     updaterApiMock.checkForAppUpdate.mockResolvedValue({ kind: "up-to-date" });
     updaterApiMock.installPendingAppUpdate.mockReset();
@@ -122,6 +135,7 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
 
     render(
       <SettingsToolContent
+        initialSectionId="settings-terminal"
         onSettingsChange={vi.fn()}
         settings={systemThemeSettings()}
       />,
@@ -139,6 +153,7 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
 
     render(
       <SettingsToolContent
+        initialSectionId="settings-terminal"
         onSettingsChange={vi.fn()}
         settings={systemThemeSettings()}
       />,
@@ -155,6 +170,7 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
 
     render(
       <SettingsToolContent
+        initialSectionId="settings-terminal"
         onSettingsChange={vi.fn()}
         settings={systemThemeSettings()}
       />,
@@ -171,6 +187,7 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
 
     render(
       <SettingsToolContent
+        initialSectionId="settings-terminal"
         onSettingsChange={vi.fn()}
         resolvedTheme="light"
         settings={systemThemeSettings()}
@@ -181,6 +198,61 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
       backgroundColor: expectedTheme.background,
       color: expectedTheme.foreground,
     });
+  });
+
+  it("saves terminal renderer mode changes", async () => {
+    const user = userEvent.setup();
+    const onSettingsChange = vi.fn();
+
+    render(
+      <SettingsToolContent
+        initialSectionId="settings-terminal"
+        onSettingsChange={onSettingsChange}
+        settings={systemThemeSettings()}
+      />,
+    );
+
+    expect(screen.getByText("终端渲染")).toBeInTheDocument();
+    expect(screen.getByText("GPU 分屏")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /保持默认渲染路径/ }));
+    expect(onSettingsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        terminal: expect.objectContaining({ rendererType: "cpu" }),
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: /强制尝试 WebGL/ }));
+    expect(onSettingsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        terminal: expect.objectContaining({ rendererType: "gpu" }),
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: /失败时自动回退/ }));
+    expect(onSettingsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        terminal: expect.objectContaining({ rendererType: "auto" }),
+      }),
+    );
+  });
+
+  it("searches settings and opens the matching section", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <SettingsToolContent
+        onSettingsChange={vi.fn()}
+        settings={systemThemeSettings()}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("搜索设置"), "WebGL");
+    await user.click(screen.getByRole("button", { name: "打开设置项：终端渲染" }));
+
+    expect(screen.getByText("终端渲染")).toBeInTheDocument();
+    expect(screen.getByText("GPU 分屏")).toBeInTheDocument();
+    expect(screen.getByLabelText("搜索设置")).toHaveValue("");
   });
 });
 

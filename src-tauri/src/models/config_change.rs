@@ -61,6 +61,18 @@ pub struct ConfigChangeDiagnostic {
     pub message: String,
     /// 可安全展示的相对路径；secret 相关变化必须为 `None`。
     pub path: Option<String>,
+    /// TOML 或 schema 诊断行号，1-based。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<usize>,
+    /// TOML 或 schema 诊断列号，1-based。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub column: Option<usize>,
+    /// 尽量定位到的 TOML key 或业务字段。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    /// 可安全展示的恢复建议。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<String>,
 }
 
 /// 发送给前端的配置变更批次。

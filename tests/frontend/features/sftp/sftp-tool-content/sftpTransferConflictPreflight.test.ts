@@ -8,7 +8,10 @@ import type {
   SftpRemoteCopyRequest,
 } from "../../../../../src/lib/sftpApi";
 import type { SftpTransferActionBatchPlan } from "../../../../../src/features/sftp/sftp-tool-content/sftpTransferActionPlan";
-import { countSftpTransferConflicts } from "../../../../../src/features/sftp/sftp-tool-content/sftpTransferConflictPreflight";
+import {
+  countSftpTransferConflicts,
+  isSftpTransferConflictPreflightCanceledError,
+} from "../../../../../src/features/sftp/sftp-tool-content/sftpTransferConflictPreflight";
 
 function transferRequest(
   direction: SftpManagedTransferRequest["direction"],
@@ -80,6 +83,10 @@ function localStat(exists: boolean, path = "/Users/me/release.tgz"): LocalPathSt
     path,
     readonly: false,
   };
+}
+
+function nextMicrotask() {
+  return new Promise<void>((resolve) => queueMicrotask(resolve));
 }
 
 describe("sftpTransferConflictPreflight", () => {
@@ -197,6 +204,84 @@ describe("sftpTransferConflictPreflight", () => {
         stats: { statLocalPath, statSftpPath },
       }),
     ).resolves.toBe(2);
+  });
+
+  it("limits concurrent stat checks and reports progress", async () => {
+    let active = 0;
+    let maxActive = 0;
+    const pending: Array<() => void> = [];
+    const progress: Array<{ checked: number; conflicts: number; total: number }> = [];
+    const statSftpPath = vi.fn(
+      () =>
+        new Promise<SftpPathStat>((resolve) => {
+          active += 1;
+          maxActive = Math.max(maxActive, active);
+          pending.push(() => {
+            active -= 1;
+            resolve(remoteStat());
+          });
+        }),
+    );
+    const requests = Array.from({ length: 5 }, (_, index) =>
+      transferRequest("upload", { remotePath: `/var/www/${index}.tgz` }),
+    );
+
+    const conflicts = countSftpTransferConflicts(requests, {
+      concurrency: 2,
+      onProgress: ({ checked, conflicts, total }) => {
+        progress.push({ checked, conflicts, total });
+      },
+      stats: { statSftpPath },
+    });
+
+    expect(statSftpPath).toHaveBeenCalledTimes(2);
+    while (pending.length > 0) {
+      pending.shift()?.();
+      await nextMicrotask();
+    }
+
+    await expect(conflicts).resolves.toBe(5);
+    expect(maxActive).toBe(2);
+    expect(progress[progress.length - 1]).toEqual({
+      checked: 5,
+      conflicts: 5,
+      total: 5,
+    });
+  });
+
+  it("stops queued stat checks after preflight cancellation", async () => {
+    const abortController = new AbortController();
+    let releaseFirstStat: (() => void) | undefined;
+    const statSftpPath = vi.fn(
+      () =>
+        new Promise<SftpPathStat>((resolve) => {
+          releaseFirstStat = () => resolve(remoteStat());
+        }),
+    );
+    const requests = Array.from({ length: 4 }, (_, index) =>
+      transferRequest("upload", { remotePath: `/var/www/${index}.tgz` }),
+    );
+
+    const conflicts = countSftpTransferConflicts(requests, {
+      concurrency: 1,
+      signal: abortController.signal,
+      stats: { statSftpPath },
+    });
+
+    expect(statSftpPath).toHaveBeenCalledTimes(1);
+    abortController.abort();
+    releaseFirstStat?.();
+
+    let caughtError: unknown;
+    try {
+      await conflicts;
+    } catch (error) {
+      caughtError = error;
+    }
+    expect(isSftpTransferConflictPreflightCanceledError(caughtError)).toBe(
+      true,
+    );
+    expect(statSftpPath).toHaveBeenCalledTimes(1);
   });
 
   it("counts remote copy conflicts against target host and path", async () => {

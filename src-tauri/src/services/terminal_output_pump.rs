@@ -58,13 +58,18 @@ impl PtyOutputPumpConfig {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PtyOutputPumpStats {
+    pub buffered_chunks: u64,
+    pub coalesced_chunks: u64,
     pub input_chunks: u64,
     pub input_bytes: u64,
     pub data_events: u64,
     pub closed_events: u64,
     pub error_events: u64,
     pub output_bytes: u64,
+    pub flush_count: u64,
+    pub final_tail_flush_count: u64,
     pub max_pending_bytes: usize,
+    pub max_pending_hit_count: u64,
     pub dropped_bytes: u64,
     pub overflow_count: u64,
 }
@@ -100,6 +105,7 @@ impl PtyOutputPump {
         self.stats.input_chunks = self.stats.input_chunks.saturating_add(1);
         self.stats.input_bytes = self.stats.input_bytes.saturating_add(data.len() as u64);
         self.push_pending(data);
+        self.stats.buffered_chunks = self.stats.buffered_chunks.saturating_add(1);
         if self.pending.len() >= self.config.flush_bytes {
             return self.flush(sink);
         }
@@ -107,6 +113,10 @@ impl PtyOutputPump {
     }
 
     pub fn flush(&mut self, sink: &mut impl PtyOutputSink) -> bool {
+        self.flush_pending(sink, false)
+    }
+
+    fn flush_pending(&mut self, sink: &mut impl PtyOutputSink, final_tail: bool) -> bool {
         if self.finished {
             return false;
         }
@@ -115,7 +125,14 @@ impl PtyOutputPump {
         }
 
         let data = std::mem::take(&mut self.pending);
+        let flushed_chunks = self.stats.buffered_chunks;
+        self.stats.buffered_chunks = 0;
         self.stats.data_events = self.stats.data_events.saturating_add(1);
+        self.stats.flush_count = self.stats.flush_count.saturating_add(1);
+        self.stats.coalesced_chunks = self.stats.coalesced_chunks.saturating_add(flushed_chunks);
+        if final_tail {
+            self.stats.final_tail_flush_count = self.stats.final_tail_flush_count.saturating_add(1);
+        }
         self.stats.output_bytes = self.stats.output_bytes.saturating_add(data.len() as u64);
         let accepted = sink.on_terminal_output(TerminalOutputEvent::data(&self.session_id, data));
         if !accepted {
@@ -128,7 +145,7 @@ impl PtyOutputPump {
         if self.finished {
             return false;
         }
-        if !self.flush(sink) {
+        if !self.flush_pending(sink, true) {
             return false;
         }
         self.finished = true;
@@ -144,7 +161,7 @@ impl PtyOutputPump {
         if self.finished {
             return false;
         }
-        if !self.flush(sink) {
+        if !self.flush_pending(sink, true) {
             return false;
         }
         self.finished = true;
@@ -167,11 +184,13 @@ impl PtyOutputPump {
     fn push_pending(&mut self, data: &str) {
         if self.pending.len().saturating_add(data.len()) > self.config.max_pending_bytes {
             self.stats.overflow_count = self.stats.overflow_count.saturating_add(1);
+            self.stats.max_pending_hit_count = self.stats.max_pending_hit_count.saturating_add(1);
             self.stats.dropped_bytes = self
                 .stats
                 .dropped_bytes
                 .saturating_add(self.pending.len() as u64);
             self.pending.clear();
+            self.stats.buffered_chunks = 0;
             self.pending.push_str(&self.config.overflow_notice);
         }
 
@@ -186,7 +205,15 @@ impl PtyOutputPump {
         } else {
             self.pending.push_str(data);
         }
-        self.stats.max_pending_bytes = self.stats.max_pending_bytes.max(self.pending.len());
+        self.record_pending_high_water();
+    }
+
+    fn record_pending_high_water(&mut self) {
+        let pending_bytes = self.pending.len();
+        self.stats.max_pending_bytes = self.stats.max_pending_bytes.max(pending_bytes);
+        if pending_bytes >= self.config.max_pending_bytes {
+            self.stats.max_pending_hit_count = self.stats.max_pending_hit_count.saturating_add(1);
+        }
     }
 }
 

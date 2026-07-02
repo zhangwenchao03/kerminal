@@ -30,7 +30,7 @@ describe("resolveShellLayout", () => {
     expect(layout.effectiveLeftPanelCollapsed).toBe(false);
     expect(layout.leftPanelColumnWidth).toBe(280);
     expect(layout.gridTemplateColumns).toBe(
-      "280px 8px minmax(0, 1fr) 8px 320px",
+      "280px 0px minmax(0, 1fr) 0px 320px",
     );
   });
 });

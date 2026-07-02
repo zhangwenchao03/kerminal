@@ -386,6 +386,22 @@ impl TomlParseError {
         }
         self
     }
+
+    pub fn with_key(mut self, key: impl Into<String>) -> Self {
+        let key = key.into();
+        for diagnostic in &mut self.diagnostics {
+            diagnostic.key = Some(key.clone());
+        }
+        self
+    }
+
+    pub fn with_recovery(mut self, recovery: impl Into<String>) -> Self {
+        let recovery = recovery.into();
+        for diagnostic in &mut self.diagnostics {
+            diagnostic.recovery = Some(recovery.clone());
+        }
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -393,7 +409,9 @@ pub struct ParseDiagnostic {
     pub path: Option<PathBuf>,
     pub line: usize,
     pub column: usize,
+    pub key: Option<String>,
     pub message: String,
+    pub recovery: Option<String>,
 }
 
 impl ParseDiagnostic {
@@ -402,8 +420,20 @@ impl ParseDiagnostic {
             path: None,
             line,
             column,
+            key: None,
             message: message.into(),
+            recovery: None,
         }
+    }
+
+    pub fn with_key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+    pub fn with_recovery(mut self, recovery: impl Into<String>) -> Self {
+        self.recovery = Some(recovery.into());
+        self
     }
 }
 

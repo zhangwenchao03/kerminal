@@ -2,10 +2,11 @@
 //!
 //! @author kongweiguang
 
+use crate::commands::terminal::{map_terminal_command_error, TerminalCommandResult};
 use crate::{
     models::terminal::{
-        host_terminal_target_ref, SshTerminalCreateRequest, TerminalOutputEvent,
-        TerminalSessionSummary,
+        host_terminal_target_ref, SshTerminalCreateRequest, TerminalErrorOperation,
+        TerminalOutputEvent, TerminalSessionSummary,
     },
     state::AppState,
 };
@@ -17,7 +18,7 @@ pub fn ssh_create_session(
     state: State<'_, AppState>,
     output: Channel<TerminalOutputEvent>,
     request: SshTerminalCreateRequest,
-) -> Result<TerminalSessionSummary, String> {
+) -> TerminalCommandResult<TerminalSessionSummary> {
     let target_ref = host_terminal_target_ref("ssh", &request.host_id);
     state
         .ssh_terminals()
@@ -29,5 +30,7 @@ pub fn ssh_create_session(
             move |event| output.send(event).is_ok(),
         )
         .and_then(|summary| state.terminals().set_target_ref(&summary.id, target_ref))
-        .map_err(|error| error.to_string())
+        .map_err(map_terminal_command_error(
+            TerminalErrorOperation::CreateSession,
+        ))
 }

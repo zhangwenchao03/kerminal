@@ -12,37 +12,44 @@ import {
 } from "../../support/settings/SettingsToolContent.testHarness";
 
 describe("SettingsToolContent", () => {
-  it("renders Chinese appearance, terminal appearance and keybinding settings", () => {
+  it("renders Chinese appearance, terminal and keybinding settings", async () => {
+    const user = userEvent.setup();
+
     renderSettingsToolContent();
 
     expect(
       screen.getByRole("navigation", { name: "设置分类" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("外观")).toBeInTheDocument();
+    expect(screen.getByLabelText("搜索设置")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /界面外观/ }),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("界面语言")).toBeInTheDocument();
     expect(screen.getByText("界面密度")).toBeInTheDocument();
     expect(screen.getByText("主页面背景")).toBeInTheDocument();
-    expect(screen.getByText("终端外观")).toBeInTheDocument();
-    expect(screen.getByText("光标形态")).toBeInTheDocument();
-    expect(screen.getByText("主机安装")).toBeInTheDocument();
-    expect(screen.getByText("不需要插件")).toBeInTheDocument();
-    expect(screen.getByText("灰色提示诊断")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /块状光标/ }),
-    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /舒适/ })).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /MCP/ }),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /桌面/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /SFTP/ })).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /^终端$/ }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /终端/ })).toBeInTheDocument();
     expect(screen.queryByText("MCP Resources")).not.toBeInTheDocument();
     expect(screen.queryByText("新建本地终端")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /关于/ })).toBeInTheDocument();
     expect(screen.queryByText("关于 Kerminal")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /终端/ }));
+    expect(screen.getByText("终端渲染")).toBeInTheDocument();
+    expect(screen.getByText("光标形态")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /块状光标/ }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /命令提示/ }));
+    expect(screen.getByText("命令灰色提示")).toBeInTheDocument();
+    expect(screen.getByText("Provider 开关")).toBeInTheDocument();
+    expect(screen.getByText("灰色提示诊断")).toBeInTheDocument();
   });
 
   it("shows minimal MCP server status, endpoint and controls", async () => {
@@ -118,8 +125,10 @@ describe("SettingsToolContent", () => {
 
     renderSettingsToolContent();
 
-    expect(screen.getByText("终端外观")).toBeInTheDocument();
-    expect(screen.getByText("外观")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /界面外观/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("基础外观")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /快捷键列表/ }));
     expect(screen.getByText("快捷键")).toBeInTheDocument();
@@ -137,7 +146,7 @@ describe("SettingsToolContent", () => {
     expect(screen.getByText("IntelliJ IDEA")).toBeInTheDocument();
     expect(screen.getByText("默认沿用 IntelliJ IDEA。")).toBeInTheDocument();
     expect(screen.getByText("可编辑")).toBeInTheDocument();
-    expect(screen.queryByText("终端外观")).not.toBeInTheDocument();
+    expect(screen.queryByText("基础外观")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /MCP/ }));
     expect(await screen.findByRole("heading", { name: "MCP" })).toBeInTheDocument();
@@ -152,8 +161,8 @@ describe("SettingsToolContent", () => {
     expect(screen.getByText("SFTP 传输")).toBeInTheDocument();
     expect(screen.getByLabelText("全局传输并发")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /主题外观/ }));
-    expect(screen.getByText("终端外观")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /终端/ }));
+    expect(screen.getByText("终端渲染")).toBeInTheDocument();
     expect(screen.getByText("光标形态")).toBeInTheDocument();
   });
 
@@ -204,7 +213,7 @@ describe("SettingsToolContent", () => {
   it("shows inline suggestion telemetry in terminal settings", async () => {
     const user = userEvent.setup();
     installClipboardMock();
-    renderSettingsToolContent();
+    renderSettingsToolContent({ initialSectionId: "settings-suggestions" });
 
     expect(screen.getByText("灰色提示诊断")).toBeInTheDocument();
     expect(await screen.findByText("4 次")).toBeInTheDocument();

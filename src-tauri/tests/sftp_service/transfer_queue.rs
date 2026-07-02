@@ -52,6 +52,10 @@ async fn enqueue_transfer_tracks_public_progress_and_success() {
 
     assert_eq!(summary.host_id, host_id);
     assert_eq!(summary.status, SftpTransferStatus::Queued);
+    assert_eq!(
+        summary.conflict_policy,
+        Some(SftpTransferConflictPolicy::Overwrite)
+    );
     assert_eq!(summary.phase.as_deref(), Some("queued"));
 
     let completed = wait_for_transfer_success(&state, &summary.id).await;
@@ -114,6 +118,10 @@ async fn remote_copy_task_uses_source_and_target_hosts() {
         format!("sftp://{source_host_id}/var/log/app.log")
     );
     assert_eq!(summary.operation, SftpTransferOperation::RemoteCopy);
+    assert_eq!(
+        summary.conflict_policy,
+        Some(SftpTransferConflictPolicy::Overwrite)
+    );
     assert_eq!(
         summary.transport_mode,
         SftpTransferTransportMode::ClientBridge
@@ -267,6 +275,58 @@ fn transfer_registry_scope_rules_keep_view_histories_isolated() {
     );
 }
 
+#[test]
+fn transfer_registry_retention_prunes_oldest_completed_but_keeps_active_tasks() {
+    let now = rules::completed_transfer_retention_seconds() + 10_000;
+    let limit = rules::completed_transfer_retention_limit();
+    let mut summaries = vec![
+        transfer_summary(
+            "queued-expired",
+            SftpTransferStatus::Queued,
+            now - rules::completed_transfer_retention_seconds() - 100,
+            None,
+        ),
+        transfer_summary(
+            "running-expired",
+            SftpTransferStatus::Running,
+            now - rules::completed_transfer_retention_seconds() - 90,
+            None,
+        ),
+        transfer_summary(
+            "failed-expired",
+            SftpTransferStatus::Failed,
+            now - rules::completed_transfer_retention_seconds() - 80,
+            None,
+        ),
+        transfer_summary(
+            "canceled-expired",
+            SftpTransferStatus::Canceled,
+            now - rules::completed_transfer_retention_seconds() - 70,
+            None,
+        ),
+    ];
+    for index in 0..(limit + 3) {
+        let id = format!("done-{index:03}");
+        summaries.push(transfer_summary(
+            &id,
+            SftpTransferStatus::Succeeded,
+            now - (limit as u64) + index as u64,
+            None,
+        ));
+    }
+
+    assert_eq!(
+        rules::pruned_completed_transfer_ids(&summaries, now),
+        vec![
+            "canceled-expired",
+            "done-000",
+            "done-001",
+            "done-002",
+            "failed-expired",
+        ]
+    );
+}
+
 async fn trust_loopback_host(state: &AppState, host_id: &str) {
     state
         .sftp()
@@ -314,6 +374,7 @@ fn transfer_summary(
         local_path: "C:/tmp/app.log".to_owned(),
         direction: SftpTransferDirection::Download,
         kind: SftpTransferKind::File,
+        conflict_policy: Some(SftpTransferConflictPolicy::Overwrite),
         status,
         bytes_transferred: 0,
         total_bytes: None,

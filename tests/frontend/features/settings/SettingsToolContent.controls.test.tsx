@@ -90,6 +90,8 @@ describe("SettingsToolContent controls", () => {
       );
     });
 
+    await user.click(screen.getByRole("button", { name: /终端/ }));
+
     await user.click(screen.getAllByRole("button", { name: /Tokyo Night/ })[1]);
     expect(onSettingsChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -157,7 +159,7 @@ describe("SettingsToolContent controls", () => {
       }),
     );
 
-    await user.click(screen.getByRole("button", { name: /^粘贴/ }));
+    await chooseSelectOption(user, "终端右键行为", "粘贴");
     expect(onSettingsChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
         terminal: expect.objectContaining({ rightClickBehavior: "paste" }),
@@ -198,6 +200,8 @@ describe("SettingsToolContent controls", () => {
         terminal: expect.objectContaining({ autoReconnect: false }),
       }),
     );
+
+    await user.click(screen.getByRole("button", { name: /命令提示/ }));
 
     await user.click(screen.getByLabelText("启用灰色提示"));
     expect(onSettingsChange).toHaveBeenLastCalledWith(

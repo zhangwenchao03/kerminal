@@ -17,6 +17,7 @@ interface TerminalRemoteSuggestionProbeScheduler {
   scheduleRemoteCommand: typeof terminalSuggestionProbeScheduler.scheduleRemoteCommand;
   scheduleRemoteHistory: typeof terminalSuggestionProbeScheduler.scheduleRemoteHistory;
   scheduleRemotePath: typeof terminalSuggestionProbeScheduler.scheduleRemotePath;
+  setOwnerDisabled?: typeof terminalSuggestionProbeScheduler.setOwnerDisabled;
 }
 
 interface TerminalAppearanceRef {
@@ -24,6 +25,7 @@ interface TerminalAppearanceRef {
 }
 
 interface TerminalRemoteSuggestionPrewarmOptions {
+  canScheduleProbe?: () => boolean;
   paneId: string;
   remoteHostId: string | undefined;
   remoteHostProduction: boolean;
@@ -41,6 +43,7 @@ interface RemoteProbeScheduleSkippedInput {
 }
 
 export function createTerminalRemoteSuggestionPrewarm({
+  canScheduleProbe = () => true,
   paneId,
   recordAuditEvent = recordTerminalSuggestionAuditEvent,
   remoteHostId,
@@ -72,12 +75,21 @@ export function createTerminalRemoteSuggestionPrewarm({
       target: "ssh",
     }).catch(() => undefined);
   };
+  const canUseSchedulerProbe = () => {
+    const canSchedule = canScheduleProbe();
+    scheduler.setOwnerDisabled?.(
+      paneId,
+      canSchedule ? null : "lifecycle-gate",
+    );
+    return canSchedule;
+  };
 
   const scheduleGit = (path: string | undefined) => {
     const inlineSuggestion = terminalAppearanceRef.current.inlineSuggestion;
     const hostId = remoteSuggestionHostId(target, remoteHostId);
     const cwd = path?.trim();
     if (
+      !canUseSchedulerProbe() ||
       !inlineSuggestion.enabled ||
       !inlineSuggestion.providers.git ||
       !hostId ||
@@ -111,6 +123,7 @@ export function createTerminalRemoteSuggestionPrewarm({
     const inlineSuggestion = terminalAppearanceRef.current.inlineSuggestion;
     const hostId = remoteSuggestionHostId(target, remoteHostId);
     if (
+      !canUseSchedulerProbe() ||
       !inlineSuggestion.enabled ||
       !inlineSuggestion.providers.remoteCommand ||
       !hostId
@@ -141,6 +154,7 @@ export function createTerminalRemoteSuggestionPrewarm({
     const inlineSuggestion = terminalAppearanceRef.current.inlineSuggestion;
     const hostId = remoteSuggestionHostId(target, remoteHostId);
     if (
+      !canUseSchedulerProbe() ||
       !inlineSuggestion.enabled ||
       !inlineSuggestion.providers.history ||
       !hostId
@@ -172,6 +186,7 @@ export function createTerminalRemoteSuggestionPrewarm({
     const hostId = remoteSuggestionHostId(target, remoteHostId);
     const normalizedPath = path?.trim();
     if (
+      !canUseSchedulerProbe() ||
       !inlineSuggestion.enabled ||
       !inlineSuggestion.providers.remotePath ||
       !hostId ||

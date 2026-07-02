@@ -17,6 +17,8 @@ export interface SettingsToolContentProps {
 
 export type SettingsSectionId =
   | "settings-appearance"
+  | "settings-terminal"
+  | "settings-suggestions"
   | "settings-desktop"
   | "settings-mcp"
   | "settings-sync"

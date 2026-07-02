@@ -241,6 +241,14 @@ export function KerminalShell() {
     viewportWidth,
     workspaceFrameRef,
   });
+  const rightToolRailTitleBarFillWidth =
+    activeTool === null || compactShell
+      ? 44
+      : settings.interfaceDensity === "spacious"
+        ? 56
+        : settings.interfaceDensity === "compact"
+          ? 44
+          : 48;
   const workspaceBackgroundStyle = useKerminalShellBackgroundStyle({
     resolvedTheme,
     settings,
@@ -689,6 +697,14 @@ export function KerminalShell() {
         className="kerminal-material-nav col-[2/6] row-[1/2] border-b"
         data-tauri-drag-region
       />
+      <div
+        className="pointer-events-none relative z-10 col-[2/6] row-[1/2] justify-self-end kerminal-material-nav"
+        data-right-tool-rail-titlebar-fill
+        style={{
+          height: "calc(100% + 1px)",
+          width: rightToolRailTitleBarFillWidth,
+        }}
+      />
       <AppTitleBar
         className="pointer-events-none col-[1/-1] row-[1/2] z-50 border-b-0 bg-transparent"
         leftPanelCollapsed={leftPanelCollapsed}
@@ -777,7 +793,7 @@ export function KerminalShell() {
         />
       </div>
       <ShellResizeSeparator
-        className="relative z-20"
+        className="kerminal-shell-separator relative z-20"
         hidden={!effectiveRightPanelOpen}
         label="调整工具面板宽度"
         onKeyDown={(event) => resizeWithKeyboard("tools", event)}

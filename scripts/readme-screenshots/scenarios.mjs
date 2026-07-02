@@ -2,7 +2,7 @@ import {
   clickSelector,
   clickTextButtonContaining,
   contextClickExpression,
-  evaluate,
+  delay,
   pressKey,
   waitForBrowserExpression,
 } from "./helpers.mjs";
@@ -10,12 +10,12 @@ import {
 export const captures = [
   { name: "kerminal-hero.png", setup: captureHero },
   { name: "kerminal-connect.png", setup: captureConnectDialog },
+  { name: "kerminal-settings.png", setup: captureSettings },
   { name: "kerminal-docker.png", setup: captureDockerDialog },
   { name: "kerminal-gpu.png", setup: captureServerInfo },
   { name: "kerminal-agent.png", setup: captureAgentLauncher },
   { name: "kerminal-tmux.png", setup: captureTmux },
   { name: "kerminal-sftp.png", setup: captureSftp },
-  { name: "kerminal-settings.png", setup: captureSettings },
 ];
 
 async function captureHero(client) {
@@ -99,17 +99,17 @@ async function captureTmux(client) {
 }
 
 async function captureSftp(client) {
-  const session = sftpWorkspaceSession();
-  await evaluate(
+  await pressKey(client, "Escape");
+  await contextClickExpression(
     client,
-    `(() => {
-      localStorage.setItem(
-        "kerminal.readme.capture.session.override",
-        ${JSON.stringify(JSON.stringify(session))},
-      );
-    })()`,
+    `Array.from(document.querySelectorAll('[aria-label="主机侧边栏"] button')).find((button) => button.textContent?.includes("prod-api"))`,
   );
-  await client.send("Page.reload", { ignoreCache: false });
+  await waitForBrowserExpression(
+    client,
+    `document.querySelector('[aria-label="主机操作菜单"]') !== null && document.body.innerText.includes("新建传输 Tab")`,
+    10_000,
+  );
+  await clickTextButtonContaining(client, "新建传输 Tab");
   await waitForBrowserExpression(
     client,
     `document.querySelector('[aria-label="SFTP 传输工作台"]') !== null && document.body.innerText.includes("release-2026-06-23.tar.gz")`,
@@ -118,55 +118,9 @@ async function captureSftp(client) {
 }
 
 async function captureSettings(client) {
+  await pressKey(client, "Escape");
   await clickSelector(client, `[aria-label="打开设置"]`);
-  await waitForBrowserExpression(
-    client,
-    `document.body.innerText.includes("主题") && document.body.innerText.includes("终端外观")`,
-    30_000,
-  );
-}
-
-
-function sftpWorkspaceSession() {
-  return {
-    activeTabId: "tab-sftp-transfer-1",
-    focusedPaneId: "pane-prod-api",
-    removedSidebarMachineIds: [],
-    selectedMachineId: "prod-api",
-    sidebarMachines: [],
-    terminalPanes: [
-      {
-        currentCwd: "/srv/kerminal",
-        cwd: "/srv/kerminal",
-        id: "pane-prod-api",
-        lines: [],
-        machineId: "prod-api",
-        mode: "ssh",
-        outputHistory:
-          "deploy@prod-api:/srv/kerminal$ docker ps --format 'table {{.Names}}\\t{{.Status}}'\r\nNAMES        STATUS\r\napi          Up 12 minutes\r\nworker       Up 8 minutes\r\n",
-        prompt: "deploy@prod-api:/srv/kerminal$",
-        remoteHostId: "prod-api",
-        remoteHostProduction: false,
-        status: "online",
-        target: { hostId: "prod-api", kind: "ssh" },
-        title: "prod-api",
-      },
-    ],
-    terminalTabs: [
-      {
-        id: "tab-prod-api",
-        layout: { paneId: "pane-prod-api", type: "pane" },
-        machineId: "prod-api",
-        title: "prod-api",
-      },
-      {
-        id: "tab-sftp-transfer-1",
-        kind: "sftpTransfer",
-        machineId: "prod-api",
-        rightHostId: "prod-api",
-        title: "SFTP 传输",
-      },
-    ],
-    version: 1,
-  };
+  await delay(2_000);
+  await clickSelector(client, `[aria-controls="settings-terminal-panel"]`);
+  await delay(1_000);
 }

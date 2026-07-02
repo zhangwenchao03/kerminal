@@ -53,6 +53,7 @@ describe("SftpTransferStatusBar", () => {
       <SftpTransferStatusBar
         onCancel={onCancel}
         onClearCompleted={vi.fn()}
+        onRetry={vi.fn()}
         transfers={[transfer({ cancelRequested: true })]}
       />,
     );
@@ -75,6 +76,7 @@ describe("SftpTransferStatusBar", () => {
       <SftpTransferStatusBar
         onCancel={vi.fn()}
         onClearCompleted={onClearCompleted}
+        onRetry={vi.fn()}
         transfers={[
           transfer({ id: "running", status: "running" }),
           transfer({
@@ -98,6 +100,7 @@ describe("SftpTransferStatusBar", () => {
       <SftpTransferStatusBar
         onCancel={vi.fn()}
         onClearCompleted={vi.fn()}
+        onRetry={vi.fn()}
         transfers={Array.from({ length: 6 }, (_, index) =>
           transfer({
             id: `transfer-${index}`,
@@ -127,5 +130,51 @@ describe("SftpTransferStatusBar", () => {
     expect(
       screen.getByRole("button", { name: "收起传输历史" }),
     ).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("offers manual retry for failed managed transfers", async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    const failedTransfer = transfer({
+      conflictPolicy: "overwrite",
+      id: "failed-download",
+      status: "failed",
+    });
+
+    render(
+      <SftpTransferStatusBar
+        onCancel={vi.fn()}
+        onClearCompleted={vi.fn()}
+        onRetry={onRetry}
+        transfers={[failedTransfer]}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "重试传输 app.log" }));
+
+    expect(onRetry).toHaveBeenCalledWith(failedTransfer);
+  });
+
+  it("explains why failed transfers without retry metadata cannot be retried", () => {
+    render(
+      <SftpTransferStatusBar
+        onCancel={vi.fn()}
+        onClearCompleted={vi.fn()}
+        onRetry={vi.fn()}
+        transfers={[
+          transfer({
+            operation: "remoteCopy",
+            status: "failed",
+          }),
+        ]}
+      />,
+    );
+
+    expect(
+      screen.getByText("不能安全重试：该传输类型暂不支持安全重试。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "重试传输 app.log" }),
+    ).not.toBeInTheDocument();
   });
 });

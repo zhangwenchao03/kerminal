@@ -10,7 +10,8 @@ use kerminal_lib::{
 };
 use std::{
     fs,
-    sync::mpsc,
+    sync::{mpsc, Arc, Barrier},
+    thread,
     time::{Duration, Instant},
 };
 use support::terminal_manager::{interactive_shell_request, short_lived_echo_request};
@@ -39,6 +40,9 @@ fn missing_session_operations_return_errors() {
     assert!(manager
         .resize("missing", TerminalResizeRequest { rows: 24, cols: 80 })
         .is_err());
+    assert!(manager.session_summary("missing").is_err());
+    assert!(manager.output_snapshot("missing", 4096).is_err());
+    assert!(manager.pty_output_pump_stats("missing").is_err());
     assert!(manager.close("missing").is_err());
     assert!(manager
         .start_log("missing", tempdir().unwrap().path())
@@ -85,6 +89,63 @@ fn close_interactive_session_returns_quickly_and_removes_session() {
         "interactive PTY close should not synchronously wait on child teardown: {elapsed:?}",
     );
     assert!(manager.session_summary(&summary.id).is_err());
+}
+
+#[test]
+fn concurrent_write_resize_list_snapshot_and_close_do_not_deadlock() {
+    let manager = Arc::new(TerminalManager::new());
+    let summary = manager
+        .create_session(interactive_shell_request(), |_| true)
+        .unwrap();
+    let session_id = summary.id.clone();
+    let barrier = Arc::new(Barrier::new(5));
+    let (done_sender, done_receiver) = mpsc::channel();
+
+    for worker_index in 0..4 {
+        let manager = Arc::clone(&manager);
+        let session_id = session_id.clone();
+        let barrier = Arc::clone(&barrier);
+        let done_sender = done_sender.clone();
+        thread::spawn(move || {
+            barrier.wait();
+            for iteration in 0_u16..24 {
+                match worker_index {
+                    0 => {
+                        let _ = manager.write(&session_id, "\r");
+                    }
+                    1 => {
+                        let _ = manager.resize(
+                            &session_id,
+                            TerminalResizeRequest {
+                                rows: 24 + iteration % 3,
+                                cols: 80 + iteration % 5,
+                            },
+                        );
+                    }
+                    2 => {
+                        let _ = manager.list_sessions();
+                    }
+                    _ => {
+                        let _ = manager.output_snapshot(&session_id, 4096);
+                    }
+                }
+            }
+            let _ = done_sender.send(worker_index);
+        });
+    }
+    drop(done_sender);
+
+    barrier.wait();
+    thread::sleep(Duration::from_millis(10));
+    let _ = manager.close(&session_id);
+
+    let deadline = Duration::from_secs(5);
+    for _ in 0..4 {
+        done_receiver
+            .recv_timeout(deadline)
+            .expect("concurrent terminal operations should not deadlock");
+    }
+    assert!(manager.list_sessions().unwrap().is_empty());
 }
 
 #[test]

@@ -149,15 +149,10 @@ export function resolveShellLayout({
     compactShell,
     effectiveLeftPanelCollapsed,
     effectiveRightPanelOpen,
-    gridTemplateColumns: `${leftPanelColumnWidth}px ${
-      effectiveLeftPanelCollapsed ? 0 : 8
-    }px minmax(0, 1fr) ${
-      effectiveRightPanelOpen ? 8 : 0
-    }px ${rightPanelColumnWidth}px`,
+    gridTemplateColumns: `${leftPanelColumnWidth}px 0px minmax(0, 1fr) 0px ${rightPanelColumnWidth}px`,
     leftPanelColumnWidth,
     rightPanelColumnWidth,
-    rightWorkspaceInset:
-      rightPanelColumnWidth + (effectiveRightPanelOpen ? 8 : 0),
+    rightWorkspaceInset: rightPanelColumnWidth,
   };
 }
 

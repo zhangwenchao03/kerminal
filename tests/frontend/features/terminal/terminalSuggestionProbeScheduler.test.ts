@@ -204,6 +204,52 @@ describe("TerminalSuggestionProbeScheduler", () => {
     expect(scheduler.snapshot()).toEqual([]);
   });
 
+  it("tracks owner disabled reasons and blocks scheduling while disabled", async () => {
+    scheduler.scheduleRemotePath({
+      delayMs: 100,
+      hostId: "prod",
+      maxEntries: 250,
+      ownerId: "pane-a",
+      path: "/srv/app",
+      ttlSeconds: 30,
+    });
+
+    scheduler.setOwnerDisabled("pane-a", "hidden-pane");
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(refreshRemotePath).not.toHaveBeenCalled();
+    expect(scheduler.snapshot()).toEqual([]);
+    expect(scheduler.diagnosticsSnapshot()).toMatchObject({
+      activeTasks: 0,
+      disabledReasons: {
+        "hidden-pane": 1,
+      },
+      inFlight: 0,
+      maxConcurrent: 2,
+      queued: 0,
+    });
+    expect(
+      scheduler.scheduleRemoteCommand({
+        delayMs: 0,
+        hostId: "prod",
+        maxEntries: 1500,
+        ownerId: "pane-a",
+        ttlSeconds: 300,
+      }),
+    ).toBe(false);
+
+    scheduler.setOwnerDisabled("pane-a", null);
+    expect(
+      scheduler.scheduleRemoteCommand({
+        delayMs: 0,
+        hostId: "prod",
+        maxEntries: 1500,
+        ownerId: "pane-a",
+        ttlSeconds: 300,
+      }),
+    ).toBe(true);
+  });
+
   it("backs off failed probes before allowing the same key to run again", async () => {
     refreshRemoteCommand
       .mockRejectedValueOnce(new Error("ssh offline"))
@@ -260,6 +306,90 @@ describe("TerminalSuggestionProbeScheduler", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(refreshRemoteCommand).toHaveBeenCalledTimes(2);
+    expect(scheduler.diagnosticsSnapshot()).toMatchObject({
+      disabledReasons: {},
+    });
+  });
+
+  it("reports failure backoff in diagnostics snapshots", async () => {
+    refreshRemoteCommand.mockRejectedValueOnce(new Error("ssh timeout"));
+
+    scheduler.scheduleRemoteCommand({
+      delayMs: 0,
+      hostId: "prod",
+      maxEntries: 1500,
+      ownerId: "pane-a",
+      ttlSeconds: 300,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(scheduler.diagnosticsSnapshot()).toMatchObject({
+      activeTasks: 1,
+      disabledReasons: {
+        "failure-backoff": 1,
+      },
+      inFlight: 0,
+      queued: 1,
+      tasks: [
+        {
+          failureCount: 1,
+          inFlight: false,
+          kind: "remoteCommand",
+          nextAllowedInMs: 1000,
+          ownerCount: 1,
+          timerPending: false,
+        },
+      ],
+    });
+  });
+
+  it("tracks slow probe durations for diagnostics", async () => {
+    let finishProbe: (() => void) | undefined;
+    refreshRemoteCommand.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishProbe = () =>
+            resolve({
+              cachedAtUnixMs: 0,
+              commandCount: 0,
+              hostId: "prod",
+              ttlSeconds: 300,
+            });
+        }),
+    );
+    scheduler = new TerminalSuggestionProbeScheduler({
+      api: {
+        refreshGit,
+        refreshRemoteCommand,
+        refreshRemoteHistory,
+        refreshRemotePath,
+      },
+      slowProbeMs: 10,
+    });
+
+    scheduler.scheduleRemoteCommand({
+      delayMs: 0,
+      hostId: "prod",
+      maxEntries: 1500,
+      ownerId: "pane-a",
+      ttlSeconds: 300,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(12);
+    finishProbe?.();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(scheduler.snapshot()).toMatchObject([
+      {
+        lastDurationMs: 12,
+        slowCount: 1,
+      },
+    ]);
+    expect(scheduler.diagnosticsSnapshot()).toMatchObject({
+      disabledReasons: {
+        "slow-probe": 1,
+      },
+    });
   });
 
   it("limits concurrent probe refreshes", async () => {

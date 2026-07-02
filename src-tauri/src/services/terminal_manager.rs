@@ -6,7 +6,8 @@ use crate::{
     error::{AppError, AppResult},
     models::terminal::{
         TerminalAgentSignal, TerminalAgentSignalSummary, TerminalCreateRequest,
-        TerminalOutputEvent, TerminalOutputKind, TerminalOutputSnapshot, TerminalResizeRequest,
+        TerminalOutputEvent, TerminalOutputKind, TerminalOutputSnapshot,
+        TerminalPtyOutputPumpFlushReason, TerminalPtyOutputPumpStats, TerminalResizeRequest,
         TerminalSecretInputPlan, TerminalSessionLogState, TerminalSessionReapDiagnostics,
         TerminalSessionStatus, TerminalSessionSummary,
     },
@@ -21,18 +22,22 @@ use crate::{
     },
 };
 mod output_state;
+mod pump_metrics;
 mod secret_input;
+mod session_handle;
 #[path = "terminal_target_token.rs"]
 mod terminal_target_token;
 mod text;
 
 use output_state::{ActiveTerminalLog, TerminalOutputBuffer};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use pump_metrics::{flush_metadata_since, publish_pump_stats, SharedPtyOutputPumpStats};
 pub use secret_input::rules;
 use secret_input::TerminalSecretInputResponder;
+use session_handle::TerminalSessionHandle;
 use std::{
     collections::HashMap,
-    fs::{self, OpenOptions},
+    fs,
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::{mpsc, Arc, Mutex, MutexGuard},
@@ -55,6 +60,7 @@ const KERMINAL_AGENT_SESSION_ID_ENV: &str = "KERMINAL_AGENT_SESSION_ID";
 
 type WriterHandle = Box<dyn Write + Send>;
 type SharedWriterHandle = Arc<Mutex<WriterHandle>>;
+type SharedPtyMasterHandle = Arc<Mutex<PtyMasterGuard>>;
 type OutputEmitter = Box<dyn Fn(TerminalOutputEvent) -> bool + Send + 'static>;
 
 /// 管理进程内所有本地终端会话。
@@ -161,6 +167,7 @@ impl TerminalManager {
         let master = PtyMasterGuard::new(pair.master);
         let reader = master.try_clone_reader().map_err(AppError::Terminal)?;
         let writer = master.take_writer().map_err(AppError::Terminal)?;
+        let master = Arc::new(Mutex::new(master));
         let writer = Arc::new(Mutex::new(writer));
 
         let session_id = Uuid::new_v4().to_string();
@@ -169,13 +176,20 @@ impl TerminalManager {
         let latest_agent_signal = Arc::new(Mutex::new(None));
         let agent_detector = Arc::new(Mutex::new(TerminalAgentSignalDetector::new()));
         let (pump_sender, pump_receiver) = mpsc::channel();
+        let pump_stats = Arc::new(Mutex::new(TerminalPtyOutputPumpStats::new(
+            session_id.clone(),
+        )));
+        let flusher_state = OutputFlusherState {
+            output_buffer: output_buffer.clone(),
+            log_sink: log_sink.clone(),
+            latest_agent_signal: latest_agent_signal.clone(),
+            pump_stats: pump_stats.clone(),
+        };
         spawn_output_flusher_thread(
             session_id.clone(),
             agent_session_id.clone(),
             pump_receiver,
-            output_buffer.clone(),
-            log_sink.clone(),
-            latest_agent_signal.clone(),
+            flusher_state,
             Box::new(output),
         );
         let reader_done = spawn_reader_thread(
@@ -225,6 +239,7 @@ impl TerminalManager {
             output_buffer,
             log_sink,
             latest_agent_signal,
+            pump_stats,
             agent_session_id,
             cleanup_paths,
             writer,
@@ -241,11 +256,8 @@ impl TerminalManager {
             return Ok(());
         }
 
-        let mut sessions = self.lock_sessions()?;
-        let session = sessions
-            .get_mut(session_id)
-            .ok_or_else(|| AppError::Terminal(format!("终端会话不存在: {session_id}")))?;
-        let mut writer = session
+        let handle = self.session_handle(session_id)?;
+        let mut writer = handle
             .writer
             .lock()
             .map_err(|_| AppError::StateLockPoisoned("terminal_writer"))?;
@@ -257,17 +269,18 @@ impl TerminalManager {
     /// 调整指定终端会话大小。
     pub fn resize(&self, session_id: &str, request: TerminalResizeRequest) -> AppResult<()> {
         let size = normalize_size(request.rows, request.cols)?;
-        let mut sessions = self.lock_sessions()?;
-        let session = sessions
-            .get_mut(session_id)
-            .ok_or_else(|| AppError::Terminal(format!("终端会话不存在: {session_id}")))?;
-
-        session
+        let handle = self.session_handle(session_id)?;
+        let master = handle
             .master
+            .lock()
+            .map_err(|_| AppError::StateLockPoisoned("terminal_master"))?;
+        master
             .resize(size)
             .map_err(|error| AppError::Terminal(error.to_string()))?;
-        session.rows = size.rows;
-        session.cols = size.cols;
+        if let Some(session) = self.lock_sessions()?.get_mut(session_id) {
+            session.rows = size.rows;
+            session.cols = size.cols;
+        }
         Ok(())
     }
 
@@ -305,19 +318,14 @@ impl TerminalManager {
 
     /// 返回当前管理器中的终端会话摘要。
     pub fn list_sessions(&self) -> AppResult<Vec<TerminalSessionSummary>> {
-        let sessions = self.lock_sessions()?;
-        sessions
-            .values()
-            .map(TerminalSession::summary)
-            .collect::<AppResult<Vec<_>>>()
+        self.session_handles()?
+            .into_iter()
+            .map(|session| session.summary())
+            .collect()
     }
 
     pub fn session_summary(&self, session_id: &str) -> AppResult<TerminalSessionSummary> {
-        let sessions = self.lock_sessions()?;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| AppError::Terminal(format!("终端会话不存在: {session_id}")))?;
-        session.summary()
+        self.session_handle(session_id)?.summary()
     }
 
     pub fn set_target_ref(
@@ -338,7 +346,9 @@ impl TerminalManager {
             )
         });
         session.target_ref = target_ref;
-        session.summary()
+        let handle = session.handle();
+        drop(sessions);
+        handle.summary()
     }
 
     pub fn verify_target_token(
@@ -346,17 +356,14 @@ impl TerminalManager {
         session_id: &str,
         target_token: &str,
     ) -> AppResult<Option<TerminalTargetTokenClaims>> {
-        let sessions = self.lock_sessions()?;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| AppError::Terminal(format!("终端会话不存在: {session_id}")))?;
-        let Some(target_ref) = session.target_ref.as_deref() else {
+        let handle = self.session_handle(session_id)?;
+        let Some(target_ref) = handle.target_ref.as_deref() else {
             return Ok(None);
         };
-        let Some(expected_token) = session.target_token.as_ref() else {
+        let Some(expected_token) = handle.target_token.as_ref() else {
             return Ok(None);
         };
-        if !TerminalTargetTokenSigner::matches(&expected_token.token, target_token) {
+        if !TerminalTargetTokenSigner::matches(expected_token, target_token) {
             return Ok(None);
         }
         Ok(self.target_token_signer.verify_binding_register_now(
@@ -372,12 +379,8 @@ impl TerminalManager {
         session_id: &str,
         max_bytes: usize,
     ) -> AppResult<(TerminalSessionSummary, TerminalOutputSnapshot)> {
-        let sessions = self.lock_sessions()?;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| AppError::Terminal(format!("终端会话不存在: {session_id}")))?;
-
-        Ok((session.summary()?, session.output_snapshot(max_bytes)?))
+        let handle = self.session_handle(session_id)?;
+        Ok((handle.summary()?, handle.output_snapshot(max_bytes)?))
     }
 
     /// 开始把指定会话的新输出写入日志文件。
@@ -386,38 +389,44 @@ impl TerminalManager {
         session_id: &str,
         logs_root: impl AsRef<Path>,
     ) -> AppResult<TerminalSessionLogState> {
-        let sessions = self.lock_sessions()?;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| AppError::Terminal(format!("终端会话不存在: {session_id}")))?;
-
-        session.start_log(logs_root.as_ref())
+        self.session_handle(session_id)?
+            .start_log(logs_root.as_ref())
     }
 
     /// 停止指定会话的日志记录。
     pub fn stop_log(&self, session_id: &str) -> AppResult<TerminalSessionLogState> {
-        let sessions = self.lock_sessions()?;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| AppError::Terminal(format!("终端会话不存在: {session_id}")))?;
-
-        session.stop_log()
+        self.session_handle(session_id)?.stop_log()
     }
 
     /// 查询指定会话的日志记录状态。
     pub fn log_state(&self, session_id: &str) -> AppResult<TerminalSessionLogState> {
-        let sessions = self.lock_sessions()?;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| AppError::Terminal(format!("终端会话不存在: {session_id}")))?;
+        self.session_handle(session_id)?.log_state()
+    }
 
-        session.log_state()
+    /// 返回指定本地 PTY 会话的 output pump 非敏感指标。
+    pub fn pty_output_pump_stats(&self, session_id: &str) -> AppResult<TerminalPtyOutputPumpStats> {
+        self.session_handle(session_id)?.pty_output_pump_stats()
     }
 
     fn lock_sessions(&self) -> AppResult<MutexGuard<'_, HashMap<String, TerminalSession>>> {
         self.sessions
             .lock()
             .map_err(|_| AppError::StateLockPoisoned("terminal_sessions"))
+    }
+
+    fn session_handle(&self, session_id: &str) -> AppResult<TerminalSessionHandle> {
+        self.lock_sessions()?
+            .get(session_id)
+            .map(TerminalSession::handle)
+            .ok_or_else(|| AppError::Terminal(format!("终端会话不存在: {session_id}")))
+    }
+
+    fn session_handles(&self) -> AppResult<Vec<TerminalSessionHandle>> {
+        Ok(self
+            .lock_sessions()?
+            .values()
+            .map(TerminalSession::handle)
+            .collect())
     }
 }
 
@@ -426,7 +435,7 @@ struct TerminalSession {
     cols: u16,
     cwd: Option<PathBuf>,
     id: String,
-    master: PtyMasterGuard,
+    master: SharedPtyMasterHandle,
     pid: Option<u32>,
     rows: u16,
     shell: String,
@@ -436,43 +445,36 @@ struct TerminalSession {
     output_buffer: Arc<Mutex<TerminalOutputBuffer>>,
     log_sink: Arc<Mutex<Option<ActiveTerminalLog>>>,
     latest_agent_signal: Arc<Mutex<Option<TerminalAgentSignalSummary>>>,
+    pump_stats: SharedPtyOutputPumpStats,
     agent_session_id: Option<String>,
     cleanup_paths: Vec<PathBuf>,
     writer: SharedWriterHandle,
 }
 
 impl TerminalSession {
-    fn summary(&self) -> AppResult<TerminalSessionSummary> {
-        let status = if self.process_guard.try_wait_status()?.is_some() {
-            TerminalSessionStatus::Exited
-        } else {
-            TerminalSessionStatus::Running
-        };
-
-        Ok(TerminalSessionSummary {
-            id: self.id.clone(),
-            shell: self.shell.clone(),
-            cwd: self
-                .cwd
-                .as_ref()
-                .map(|path| path.to_string_lossy().into_owned()),
+    fn handle(&self) -> TerminalSessionHandle {
+        TerminalSessionHandle {
+            process_child: self.process_guard.shared_child(),
             cols: self.cols,
-            rows: self.rows,
+            cwd: self.cwd.clone(),
+            id: self.id.clone(),
+            master: self.master.clone(),
             pid: self.pid,
-            status,
+            rows: self.rows,
+            shell: self.shell.clone(),
+            shell_integration: self.shell_integration.clone(),
             target_ref: self.target_ref.clone(),
             target_token: self
                 .target_token
                 .as_ref()
                 .map(TerminalTargetCapability::token),
-            shell_integration: self.shell_integration.clone(),
+            output_buffer: self.output_buffer.clone(),
+            log_sink: self.log_sink.clone(),
+            latest_agent_signal: self.latest_agent_signal.clone(),
+            pump_stats: self.pump_stats.clone(),
             agent_session_id: self.agent_session_id.clone(),
-            agent_signal: self
-                .latest_agent_signal
-                .lock()
-                .ok()
-                .and_then(|signal| signal.clone()),
-        })
+            writer: self.writer.clone(),
+        }
     }
 
     fn close_detached(mut self) {
@@ -481,84 +483,6 @@ impl TerminalSession {
         thread::spawn(move || {
             let _ = self.process_guard.best_effort_kill();
         });
-    }
-
-    fn output_snapshot(&self, max_bytes: usize) -> AppResult<TerminalOutputSnapshot> {
-        let output_buffer = self
-            .output_buffer
-            .lock()
-            .map_err(|_| AppError::StateLockPoisoned("terminal_output_buffer"))?;
-        Ok(output_buffer.snapshot(max_bytes))
-    }
-
-    fn start_log(&self, logs_root: &Path) -> AppResult<TerminalSessionLogState> {
-        let mut log_sink = self
-            .log_sink
-            .lock()
-            .map_err(|_| AppError::StateLockPoisoned("terminal_log_sink"))?;
-        if let Some(active_log) = log_sink.as_ref() {
-            return Ok(active_log.state(true));
-        }
-
-        let started_at = unix_timestamp_string();
-        let session_log_dir = logs_root.join("sessions");
-        fs::create_dir_all(&session_log_dir)?;
-        let path = session_log_dir.join(format!(
-            "session-{}-{}.log",
-            started_at,
-            safe_session_suffix(&self.id)
-        ));
-        let mut file = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&path)?;
-
-        let header = format!(
-            "Kerminal session log\nsession_id: {}\nshell: {}\ncwd: {}\nstarted_at: {}\n\n",
-            self.id,
-            self.shell,
-            self.cwd
-                .as_ref()
-                .map(|path| path.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "-".to_owned()),
-            started_at
-        );
-        file.write_all(header.as_bytes())?;
-        file.flush()?;
-
-        let active_log = ActiveTerminalLog {
-            bytes_written: header.len() as u64,
-            file,
-            pending_text: String::new(),
-            path,
-            started_at,
-        };
-        let state = active_log.state(true);
-        *log_sink = Some(active_log);
-        Ok(state)
-    }
-
-    fn stop_log(&self) -> AppResult<TerminalSessionLogState> {
-        let mut log_sink = self
-            .log_sink
-            .lock()
-            .map_err(|_| AppError::StateLockPoisoned("terminal_log_sink"))?;
-        let Some(mut active_log) = log_sink.take() else {
-            return Ok(TerminalSessionLogState::inactive());
-        };
-        active_log.flush_pending()?;
-        Ok(active_log.state(false))
-    }
-
-    fn log_state(&self) -> AppResult<TerminalSessionLogState> {
-        let log_sink = self
-            .log_sink
-            .lock()
-            .map_err(|_| AppError::StateLockPoisoned("terminal_log_sink"))?;
-        Ok(log_sink
-            .as_ref()
-            .map(|active_log| active_log.state(true))
-            .unwrap_or_else(TerminalSessionLogState::inactive))
     }
 }
 
@@ -665,16 +589,27 @@ enum PtyOutputPumpMessage {
     Error(String),
 }
 
+struct OutputFlusherState {
+    output_buffer: Arc<Mutex<TerminalOutputBuffer>>,
+    log_sink: Arc<Mutex<Option<ActiveTerminalLog>>>,
+    latest_agent_signal: Arc<Mutex<Option<TerminalAgentSignalSummary>>>,
+    pump_stats: SharedPtyOutputPumpStats,
+}
+
 fn spawn_output_flusher_thread(
     session_id: String,
     agent_session_id: Option<String>,
     receiver: mpsc::Receiver<PtyOutputPumpMessage>,
-    output_buffer: Arc<Mutex<TerminalOutputBuffer>>,
-    log_sink: Arc<Mutex<Option<ActiveTerminalLog>>>,
-    latest_agent_signal: Arc<Mutex<Option<TerminalAgentSignalSummary>>>,
+    state: OutputFlusherState,
     output: OutputEmitter,
 ) {
     thread::spawn(move || {
+        let OutputFlusherState {
+            output_buffer,
+            log_sink,
+            latest_agent_signal,
+            pump_stats,
+        } = state;
         let mut pump = PtyOutputPump::new(session_id.clone(), terminal_output_pump_config());
         let mut sink = TerminalOutputDeliverySink {
             output_buffer,
@@ -688,15 +623,26 @@ fn spawn_output_flusher_thread(
             match receive_pump_message(&receiver, first_pending_at, last_input_at) {
                 PumpReceiveResult::Message(PtyOutputPumpMessage::Data(data)) => {
                     let now = Instant::now();
-                    if !pump.push_data(&data, &mut sink) {
-                        break;
-                    }
+                    let first_pending_started_at = first_pending_at.unwrap_or(now);
+                    let flush_count_before = pump.stats().flush_count;
+                    let accepted = pump.push_data(&data, &mut sink);
+                    let flush_metadata = flush_metadata_since(
+                        flush_count_before,
+                        &pump,
+                        first_pending_started_at,
+                        now,
+                    )
+                    .map(|interval_ms| (interval_ms, TerminalPtyOutputPumpFlushReason::Threshold));
                     if pump.pending_bytes() == 0 {
                         first_pending_at = None;
                         last_input_at = None;
                     } else {
                         first_pending_at.get_or_insert(now);
                         last_input_at = Some(now);
+                    }
+                    publish_pump_stats(&pump_stats, &session_id, &pump, flush_metadata, false);
+                    if !accepted {
+                        break;
                     }
                 }
                 PumpReceiveResult::Message(PtyOutputPumpMessage::AgentSignal(signal)) => {
@@ -713,22 +659,69 @@ fn spawn_output_flusher_thread(
                     }
                 }
                 PumpReceiveResult::Message(PtyOutputPumpMessage::Closed) => {
+                    let now = Instant::now();
+                    let first_pending_started_at = first_pending_at.unwrap_or(now);
+                    let flush_count_before = pump.stats().flush_count;
                     let _ = pump.finish_closed(&mut sink);
+                    let flush_metadata = flush_metadata_since(
+                        flush_count_before,
+                        &pump,
+                        first_pending_started_at,
+                        now,
+                    )
+                    .map(|interval_ms| (interval_ms, TerminalPtyOutputPumpFlushReason::Closed));
+                    publish_pump_stats(&pump_stats, &session_id, &pump, flush_metadata, true);
                     break;
                 }
                 PumpReceiveResult::Message(PtyOutputPumpMessage::Error(message)) => {
+                    let now = Instant::now();
+                    let first_pending_started_at = first_pending_at.unwrap_or(now);
+                    let flush_count_before = pump.stats().flush_count;
                     let _ = pump.finish_error(message, &mut sink);
+                    let flush_metadata = flush_metadata_since(
+                        flush_count_before,
+                        &pump,
+                        first_pending_started_at,
+                        now,
+                    )
+                    .map(|interval_ms| (interval_ms, TerminalPtyOutputPumpFlushReason::Error));
+                    publish_pump_stats(&pump_stats, &session_id, &pump, flush_metadata, true);
                     break;
                 }
                 PumpReceiveResult::Timeout => {
-                    if !pump.flush(&mut sink) {
+                    let now = Instant::now();
+                    let first_pending_started_at = first_pending_at.unwrap_or(now);
+                    let flush_count_before = pump.stats().flush_count;
+                    let accepted = pump.flush(&mut sink);
+                    let flush_metadata = flush_metadata_since(
+                        flush_count_before,
+                        &pump,
+                        first_pending_started_at,
+                        now,
+                    )
+                    .map(|interval_ms| (interval_ms, TerminalPtyOutputPumpFlushReason::Idle));
+                    publish_pump_stats(&pump_stats, &session_id, &pump, flush_metadata, false);
+                    if !accepted {
                         break;
                     }
                     first_pending_at = None;
                     last_input_at = None;
                 }
                 PumpReceiveResult::Disconnected => {
+                    let now = Instant::now();
+                    let first_pending_started_at = first_pending_at.unwrap_or(now);
+                    let flush_count_before = pump.stats().flush_count;
                     let _ = pump.flush(&mut sink);
+                    let flush_metadata = flush_metadata_since(
+                        flush_count_before,
+                        &pump,
+                        first_pending_started_at,
+                        now,
+                    )
+                    .map(|interval_ms| {
+                        (interval_ms, TerminalPtyOutputPumpFlushReason::Disconnected)
+                    });
+                    publish_pump_stats(&pump_stats, &session_id, &pump, flush_metadata, true);
                     break;
                 }
             }

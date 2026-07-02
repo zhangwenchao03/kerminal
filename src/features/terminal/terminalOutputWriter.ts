@@ -9,25 +9,49 @@ export interface TerminalOutputScheduler {
 
 interface TerminalOutputWriterOptions {
   maxCharsPerFlush?: number;
+  now?: () => number;
   scheduler?: TerminalOutputScheduler;
+  slowFlushMs?: number;
+}
+
+export interface TerminalOutputWriterStats {
+  flushCount: number;
+  lastFlushChars: number;
+  lastFlushMs?: number;
+  lastSlowFlushAt?: number;
+  maxFlushMs: number;
+  pendingBytes: number;
+  pendingChars: number;
+  pendingChunks: number;
+  slowFlushCount: number;
+  splitFrameCount: number;
+  totalFlushChars: number;
+  writeNowCount: number;
 }
 
 export interface TerminalOutputWriter {
   dispose(): void;
   flush(): void;
   pendingLength(): number;
+  stats(): TerminalOutputWriterStats;
   write(data: string): void;
   writeNow(data: string): void;
 }
 
 const DEFAULT_MAX_CHARS_PER_FLUSH = 64 * 1024;
 const FRAME_FALLBACK_MS = 16;
+const DEFAULT_SLOW_FLUSH_MS = 16;
 
 export function createTerminalOutputWriter(
   terminal: TerminalOutputSink,
   options: TerminalOutputWriterOptions = {},
 ): TerminalOutputWriter {
   const scheduler = options.scheduler ?? browserFrameScheduler;
+  const now = options.now ?? nowMs;
+  const slowFlushMs = Math.max(
+    0,
+    options.slowFlushMs ?? DEFAULT_SLOW_FLUSH_MS,
+  );
   const maxCharsPerFlush = Math.max(
     1,
     options.maxCharsPerFlush ?? DEFAULT_MAX_CHARS_PER_FLUSH,
@@ -37,6 +61,17 @@ export function createTerminalOutputWriter(
   let disposed = false;
   let pendingChars = 0;
   let scheduledHandle: number | null = null;
+  const flushStats = {
+    flushCount: 0,
+    lastFlushChars: 0,
+    lastFlushMs: undefined as number | undefined,
+    lastSlowFlushAt: undefined as number | undefined,
+    maxFlushMs: 0,
+    slowFlushCount: 0,
+    splitFrameCount: 0,
+    totalFlushChars: 0,
+    writeNowCount: 0,
+  };
 
   const cancelScheduledFlush = () => {
     if (scheduledHandle === null) {
@@ -73,6 +108,9 @@ export function createTerminalOutputWriter(
       chunks[chunkHead] = current.slice(splitAt);
       pendingChars -= splitAt;
       remaining -= splitAt;
+      if (splitAt < current.length) {
+        flushStats.splitFrameCount += 1;
+      }
       if (splitAt < splitRemaining) {
         break;
       }
@@ -103,6 +141,23 @@ export function createTerminalOutputWriter(
     pendingChars = 0;
   };
 
+  const pendingChunkCount = () => Math.max(0, chunks.length - chunkHead);
+
+  const recordTerminalWrite = (batch: string) => {
+    const start = now();
+    terminal.write(batch);
+    const durationMs = Math.max(0, now() - start);
+    flushStats.flushCount += 1;
+    flushStats.lastFlushChars = batch.length;
+    flushStats.lastFlushMs = durationMs;
+    flushStats.maxFlushMs = Math.max(flushStats.maxFlushMs, durationMs);
+    flushStats.totalFlushChars += batch.length;
+    if (durationMs >= slowFlushMs) {
+      flushStats.slowFlushCount += 1;
+      flushStats.lastSlowFlushAt = start + durationMs;
+    }
+  };
+
   function flushFrame() {
     scheduledHandle = null;
     if (disposed) {
@@ -111,7 +166,7 @@ export function createTerminalOutputWriter(
 
     const batch = takeBatch(maxCharsPerFlush);
     if (batch) {
-      terminal.write(batch);
+      recordTerminalWrite(batch);
     }
     scheduleFlush();
   }
@@ -125,7 +180,7 @@ export function createTerminalOutputWriter(
     cancelScheduledFlush();
     const batch = chunks.slice(chunkHead).join("");
     clearQueue();
-    terminal.write(batch);
+    recordTerminalWrite(batch);
   };
 
   return {
@@ -137,6 +192,27 @@ export function createTerminalOutputWriter(
     flush,
     pendingLength() {
       return pendingChars;
+    },
+    stats() {
+      const snapshot: TerminalOutputWriterStats = {
+        flushCount: flushStats.flushCount,
+        lastFlushChars: flushStats.lastFlushChars,
+        maxFlushMs: flushStats.maxFlushMs,
+        pendingBytes: pendingChars,
+        pendingChars,
+        pendingChunks: pendingChunkCount(),
+        slowFlushCount: flushStats.slowFlushCount,
+        splitFrameCount: flushStats.splitFrameCount,
+        totalFlushChars: flushStats.totalFlushChars,
+        writeNowCount: flushStats.writeNowCount,
+      };
+      if (flushStats.lastFlushMs !== undefined) {
+        snapshot.lastFlushMs = flushStats.lastFlushMs;
+      }
+      if (flushStats.lastSlowFlushAt !== undefined) {
+        snapshot.lastSlowFlushAt = flushStats.lastSlowFlushAt;
+      }
+      return snapshot;
     },
     write(data: string) {
       if (disposed || !data) {
@@ -152,10 +228,21 @@ export function createTerminalOutputWriter(
       }
       flush();
       if (data) {
-        terminal.write(data);
+        flushStats.writeNowCount += 1;
+        recordTerminalWrite(data);
       }
     },
   };
+}
+
+function nowMs() {
+  if (
+    typeof globalThis.performance !== "undefined" &&
+    typeof globalThis.performance.now === "function"
+  ) {
+    return globalThis.performance.now();
+  }
+  return Date.now();
 }
 
 function safeSplitIndex(text: string, maxChars: number) {

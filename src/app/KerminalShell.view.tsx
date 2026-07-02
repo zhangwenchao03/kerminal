@@ -38,11 +38,11 @@ export function ShellToolRail({
     <aside
       aria-expanded={false}
       aria-label="工具面板"
-      className="kerminal-material-nav flex h-full w-full min-w-0 justify-center border-l"
+      className="kerminal-material-nav flex h-full w-full min-w-0 justify-center overflow-hidden border-l"
     >
       <nav
         aria-label="工具栏"
-        className="flex w-11 shrink-0 flex-col items-center gap-1.5 py-2.5"
+        className="flex w-full min-w-0 flex-col items-center gap-1.5 py-2.5"
       >
         {tools
           .filter((tool) => tool.id !== "settings")

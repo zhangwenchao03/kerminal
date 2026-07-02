@@ -22,6 +22,7 @@ import {
   terminalSuggestionProviders,
   type TerminalGhostSuggestion,
 } from "./XtermPane.helpers";
+import { resolveTerminalSuggestionProbePolicy } from "./terminalSuggestionProbePolicy";
 
 function resolveSuggestionTarget({
   remoteHostId,
@@ -55,6 +56,7 @@ function resolveSuggestionTarget({
 
 export function createXtermPaneGhostSuggestions({
   assistEnabled,
+  canScheduleSuggestion = () => true,
   container,
   currentCwdRef,
   cwd,
@@ -75,6 +77,7 @@ export function createXtermPaneGhostSuggestions({
   terminalAppearanceRef,
 }: {
   assistEnabled: boolean;
+  canScheduleSuggestion?: () => boolean;
   container: HTMLDivElement;
   currentCwdRef: MutableRefObject<string | null>;
   cwd?: string;
@@ -96,6 +99,11 @@ export function createXtermPaneGhostSuggestions({
 }) {
   let suggestionRequestRun = 0;
   let suggestionTimer: number | null = null;
+  let consecutiveSuggestionFailures = 0;
+  let inputBurstCount = 0;
+  let lastInputAt: number | undefined;
+  let lastSuggestionDurationMs: number | undefined;
+  let lastSuggestionFailureAt: number | undefined;
 
   const clearSuggestionTimer = () => {
     if (suggestionTimer !== null) {
@@ -145,6 +153,26 @@ export function createXtermPaneGhostSuggestions({
       clearGhostSuggestion();
       return;
     }
+    const now = Date.now();
+    inputBurstCount =
+      typeof lastInputAt === "number" && now - lastInputAt <= 220
+        ? inputBurstCount + 1
+        : 1;
+    lastInputAt = now;
+    const policy = resolveTerminalSuggestionProbePolicy({
+      consecutiveFailures: consecutiveSuggestionFailures,
+      inputBurstCount,
+      lastFailureAt: lastSuggestionFailureAt,
+      lastInputAt,
+      lastProbeDurationMs: lastSuggestionDurationMs,
+      lifecycleEnabled: canScheduleSuggestion(),
+      lifecycleReason: "lifecycle-gate",
+      now,
+    });
+    if (!policy.shouldSchedule) {
+      clearGhostSuggestion();
+      return;
+    }
     clearSuggestionTimer();
     const inlineSuggestion = terminalAppearanceRef.current.inlineSuggestion;
     if (!inlineSuggestion.enabled) {
@@ -162,7 +190,12 @@ export function createXtermPaneGhostSuggestions({
     }
     suggestionTimer = window.setTimeout(() => {
       suggestionTimer = null;
+      if (!canScheduleSuggestion()) {
+        clearGhostSuggestion();
+        return;
+      }
       const requestRun = ++suggestionRequestRun;
+      const requestStartedAt = Date.now();
       const model = inputModelRef.current;
       const layout = resolveGhostSuggestionLayout(
         container,
@@ -201,6 +234,8 @@ export function createXtermPaneGhostSuggestions({
         target: suggestionTarget.target,
       })
         .then((suggestions) => {
+          lastSuggestionDurationMs = Date.now() - requestStartedAt;
+          consecutiveSuggestionFailures = 0;
           if (isDisposed() || requestRun !== suggestionRequestRun) {
             return;
           }
@@ -216,11 +251,14 @@ export function createXtermPaneGhostSuggestions({
           });
         })
         .catch(() => {
+          lastSuggestionDurationMs = Date.now() - requestStartedAt;
+          lastSuggestionFailureAt = Date.now();
+          consecutiveSuggestionFailures += 1;
           if (!isDisposed() && requestRun === suggestionRequestRun) {
             hideGhostSuggestion();
           }
         });
-    }, 60);
+    }, policy.delayMs);
   };
 
   const recordGhostSuggestionFeedback = (

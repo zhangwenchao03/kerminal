@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { runTerminalPaneVisibleRecovery } from "../../../../src/features/terminal/terminalPaneVisibleRecovery";
 
 describe("real xterm compatibility", () => {
   afterEach(() => {
@@ -112,6 +113,55 @@ describe("real xterm compatibility", () => {
       );
     } finally {
       disposable.dispose();
+      harness.dispose();
+    }
+  });
+
+  it("keeps cursor, selection, search, and input usable after visible recovery", async () => {
+    const harness = await createRealXtermHarness();
+    const { SearchAddon } = await import("@xterm/addon-search");
+    const searchAddon = new SearchAddon();
+    harness.terminal.loadAddon(searchAddon);
+    const resizeTerminal = vi.fn().mockResolvedValue(undefined);
+    const markVisibleRecoveryComplete = vi.fn(() => undefined);
+
+    try {
+      await harness.write("prompt> alpha\r\nnext beta\r\n");
+      const cursorBeforeRecovery = harness.terminal.buffer.active.cursorY;
+      harness.terminal.select(0, 0, 6);
+
+      expect(harness.terminal.getSelection()).toContain("prompt");
+      expect(searchAddon.findNext("beta")).toBe(true);
+
+      const result = runTerminalPaneVisibleRecovery({
+        fitAddon: () => ({
+          fit: () => harness.terminal.resize(100, 30),
+        }),
+        markVisibleRecoveryComplete,
+        resizeTerminal,
+        sessionId: () => "session-1",
+        terminal: () => harness.terminal,
+      });
+
+      expect(result).toEqual({ dimensionsChanged: true, recovered: true });
+      expect(resizeTerminal).toHaveBeenCalledWith("session-1", {
+        cols: 100,
+        rows: 30,
+      });
+      expect(markVisibleRecoveryComplete).toHaveBeenCalled();
+      expect(harness.terminal.cols).toBe(100);
+      expect(harness.terminal.rows).toBe(30);
+      expect(harness.terminal.buffer.active.cursorY).toBeGreaterThanOrEqual(
+        cursorBeforeRecovery,
+      );
+      expect(
+        harness.terminal.buffer.active.getLine(0)?.translateToString(true),
+      ).toContain("prompt> alpha");
+      expect(searchAddon.findNext("alpha")).toBe(true);
+
+      harness.terminal.paste("restored-input");
+      expect(harness.data.join("")).toContain("restored-input");
+    } finally {
       harness.dispose();
     }
   });

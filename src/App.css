@@ -49,9 +49,7 @@
     0 1px 1px rgb(255 255 255 / 0.55) inset, 0 18px 60px rgb(0 0 0 / 0.14);
   --shadow-dialog:
     0 1px 1px rgb(255 255 255 / 0.55) inset, 0 28px 90px rgb(0 0 0 / 0.2);
-  --shadow-terminal:
-    0 1px 1px rgb(255 255 255 / 0.34) inset,
-    0 6px 20px rgb(0 0 0 / 0.05);
+  --shadow-terminal: none;
   --app-scrollbar-thumb: 113 113 122;
   --app-scrollbar-thumb-hover: 82 82 91;
   --app-scrollbar-thumb-opacity: 0.32;
@@ -381,10 +379,21 @@ button {
 }
 
 .kerminal-shell-separator {
-  background: var(--surface-nav-glass);
-  border-color: var(--border-subtle);
-  backdrop-filter: blur(28px) saturate(170%);
-  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  width: 8px;
+  transform: translateX(-4px);
+}
+
+.kerminal-shell-sidebar {
+  border-right-color: color-mix(
+    in srgb,
+    rgb(var(--surface-nav-rgb)) 92%,
+    rgb(var(--app-border)) 8%
+  );
 }
 
 .kerminal-context-menu {

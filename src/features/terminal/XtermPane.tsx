@@ -79,6 +79,14 @@ export {
   collectSubmittedCommands,
 } from "./XtermPane.helpers";
 import { installXtermPaneRuntime } from "./XtermPane.runtime";
+import { createTerminalPaneRuntimeLifecycleRuntime, type TerminalPaneRuntimeLifecycleRuntime } from "./terminalPaneRuntimeLifecycleRuntime";
+import {
+  createWindowVisibleRecoveryScheduler,
+  scheduleTerminalPaneVisibleRecovery,
+} from "./terminalPaneVisibleRecovery";
+import type { TerminalRendererController } from "./terminalRenderer";
+import { terminalRendererRegistry } from "./terminalRendererRegistry";
+import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeScheduler";
 import type { TerminalInputCompatibilityMode } from "./terminalKeyboardPolicy";
 
 const TERMINAL_CLEAR_SCREEN_INPUT = "\x0c";
@@ -107,6 +115,7 @@ interface XtermPaneProps {
   target?: RemoteTargetRef;
   title: string;
   transientStartupMessage?: boolean;
+  visible?: boolean;
   onAgentSignal?: (signal: TerminalAgentSignal) => void;
   onCurrentCwdChange?: (cwd: string) => void;
   onConnectionStateChange?: (state: ConnectionState) => void;
@@ -159,6 +168,7 @@ export function XtermPane({
   target,
   title,
   transientStartupMessage = false,
+  visible = true,
   onAgentSignal,
   onCurrentCwdChange,
   onConnectionStateChange,
@@ -202,6 +212,11 @@ export function XtermPane({
   const lastInputRequestIdRef = useRef<string | null>(null);
   const terminalAppearanceRef = useRef(terminalAppearance);
   const terminalRef = useRef<XtermTerminal | null>(null);
+  const terminalRendererControllerRef = useRef<TerminalRendererController | null>(null);
+  const terminalRuntimeLifecycleControllerRef = useRef<TerminalPaneRuntimeLifecycleRuntime | null>(null);
+  const visibleRef = useRef(visible);
+  terminalRuntimeLifecycleControllerRef.current ??= createTerminalPaneRuntimeLifecycleRuntime({ activeTab: visible, focused, rendererType: terminalAppearance.rendererType, visible });
+  const terminalRuntimeLifecycleRef = terminalRuntimeLifecycleControllerRef.current.decisionRef;
   const searchInputId = useId();
   const [commandBlockNotice, setCommandBlockNotice] = useState<string | null>(
     null,
@@ -452,8 +467,12 @@ export function XtermPane({
       terminalAppearanceRef,
       terminalFontWeight,
       terminalRef,
+      terminalRendererControllerRef,
+      terminalRuntimeLifecycleControllerRef,
+      terminalRuntimeLifecycleRef,
       terminalTheme,
       transientStartupMessage,
+      visibleRef,
     }),
   [
     argsDependencyKey,
@@ -475,10 +494,39 @@ export function XtermPane({
 
   useEffect(() => {
     focusedRef.current = focused;
+    terminalRuntimeLifecycleControllerRef.current?.markFocused(focused);
+    terminalRendererRegistry.updatePaneFocus(paneId, focused);
     if (focused) {
       terminalRef.current?.focus();
     }
-  }, [focused]);
+  }, [focused, paneId]);
+
+	  useEffect(() => {
+	    visibleRef.current = visible;
+	    terminalRuntimeLifecycleControllerRef.current?.markVisible(visible);
+	    terminalSuggestionProbeScheduler.setOwnerDisabled(
+	      paneId,
+	      visible ? null : "hidden-pane",
+	    );
+	    if (!visible) {
+	      terminalRendererRegistry.updatePaneVisibility(paneId, false);
+	      return undefined;
+	    }
+
+    return scheduleTerminalPaneVisibleRecovery({
+      cancelHiddenResourceReaper: () =>
+        terminalRendererRegistry.updatePaneVisibility(paneId, true),
+      fitAddon: () => fitAddonRef.current,
+      markVisibleRecoveryComplete: () =>
+        terminalRuntimeLifecycleControllerRef.current?.markVisibleRecoveryComplete(),
+      onDimensionsChange: (dimensions) =>
+        onTerminalDimensionsChangeRef.current?.(dimensions),
+      resizeTerminal,
+      scheduler: createWindowVisibleRecoveryScheduler(window),
+      sessionId: () => sessionIdRef.current,
+      terminal: () => terminalRef.current,
+    });
+  }, [paneId, visible]);
 
   useEffect(() => {
     if (typeof focusRequestToken === "number") {
@@ -522,6 +570,8 @@ export function XtermPane({
     terminal.options.macOptionIsMeta = terminalAppearance.macOptionIsMeta;
     terminal.options.scrollback = terminalAppearance.scrollback;
     terminal.options.theme = terminalTheme;
+    terminalRuntimeLifecycleControllerRef.current?.markRendererType(terminalAppearance.rendererType);
+    terminalRendererRegistry.updateMode(terminalAppearance.rendererType);
     (terminal.options as { modifyOtherKeys?: number }).modifyOtherKeys =
       inputCompatibilityMode === "agentTui" ? 2 : 0;
     if (containerRef.current) {

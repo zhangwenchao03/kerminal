@@ -3,6 +3,7 @@ import {
   ChevronUp,
   Download,
   ListChecks,
+  RefreshCw,
   Trash2,
   Upload,
   X,
@@ -25,16 +26,19 @@ import {
   transferStatusSummary,
   transferTitle,
 } from "../sftpTransferModel";
+import { resolveSftpTransferRetry } from "../sftpTransferRetryPolicy";
 
 const COLLAPSED_TRANSFER_LIMIT = 3;
 
 export function SftpTransferStatusBar({
   onCancel,
   onClearCompleted,
+  onRetry,
   transfers,
 }: {
   onCancel: (transferId: string) => void;
   onClearCompleted: () => void;
+  onRetry: (transfer: SftpTransferSummary) => void;
   transfers: SftpTransferSummary[];
 }) {
   const historyListId = useId();
@@ -142,6 +146,7 @@ export function SftpTransferStatusBar({
             <SftpTransferRow
               key={transfer.id}
               onCancel={onCancel}
+              onRetry={onRetry}
               transfer={transfer}
             />
           ))}
@@ -174,14 +179,18 @@ export function SftpTransferStatusBar({
 
 function SftpTransferRow({
   onCancel,
+  onRetry,
   transfer,
 }: {
   onCancel: (transferId: string) => void;
+  onRetry: (transfer: SftpTransferSummary) => void;
   transfer: SftpTransferSummary;
 }) {
   const percent = transferProgressPercent(transfer);
   const percentLabel = transferPercentLabel(transfer);
   const canCancel = canCancelTransfer(transfer);
+  const retryDecision =
+    transfer.status === "failed" ? resolveSftpTransferRetry(transfer) : null;
   const Icon = transfer.direction === "upload" ? Upload : Download;
   const title = transferTitle(transfer);
 
@@ -216,6 +225,19 @@ function SftpTransferRow({
         <span className="w-12 shrink-0 text-right font-mono text-[11px] text-zinc-600 dark:text-zinc-300">
           {percentLabel}
         </span>
+        {retryDecision?.canRetry ? (
+          <Button
+            aria-label={`重试传输 ${title}`}
+            className="kerminal-muted-surface h-6 w-6 shrink-0 rounded-md border px-0 text-zinc-600 hover:bg-[var(--surface-hover)] dark:text-zinc-300"
+            onClick={() => onRetry(transfer)}
+            size="sm"
+            title="重新加入传输队列；不默认启用断点续传"
+            type="button"
+            variant="ghost"
+          >
+            <RefreshCw className="h-3 w-3" />
+          </Button>
+        ) : null}
         {canCancel ? (
           <Button
             aria-label={`取消传输 ${title}`}
@@ -263,6 +285,11 @@ function SftpTransferRow({
       {transfer.error ? (
         <div className="mt-1 truncate text-[11px] text-rose-600 dark:text-rose-300">
           {transfer.error}
+        </div>
+      ) : null}
+      {retryDecision && !retryDecision.canRetry ? (
+        <div className="mt-1 truncate text-[11px] text-amber-700 dark:text-amber-200">
+          不能安全重试：{retryDecision.statusMessage}
         </div>
       ) : null}
     </div>

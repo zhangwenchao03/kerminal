@@ -50,6 +50,7 @@ const localFilesApiMock = vi.hoisted(() => ({ statLocalPath: vi.fn() }));
 const managedTransferQueueMock = vi.hoisted(() => ({
   cancelTransfer: vi.fn(),
   clearFinishedTransfers: vi.fn(),
+  retryTransfer: vi.fn(),
 }));
 
 const remoteCopyTaskRunnerMock = vi.hoisted(() => ({
@@ -89,6 +90,7 @@ vi.mock("../../../../../src/features/sftp/useSftpManagedTransferQueue", () => ({
   useSftpManagedTransferQueue: () => ({
     cancelTransfer: managedTransferQueueMock.cancelTransfer,
     clearFinishedTransfers: managedTransferQueueMock.clearFinishedTransfers,
+    retryTransfer: managedTransferQueueMock.retryTransfer,
   }),
 }));
 
@@ -780,6 +782,22 @@ describe("useSftpTransferActions", () => {
     expect(transferTaskRunnerMock.runTransferTask).not.toHaveBeenCalled();
     expect(remoteCopyTaskRunnerMock.runRemoteCopyTask).not.toHaveBeenCalled();
     expectNoPickerOrArchiveSideEffects();
+  });
+
+  it("exposes transfer retry through the queue facade", async () => {
+    const failedTransfer = transferSummary({
+      conflictPolicy: "overwrite",
+      status: "failed",
+    });
+    const { result } = renderTransferActionsHook();
+
+    await act(async () => {
+      await result.current.retryTransfer(failedTransfer);
+    });
+
+    expect(managedTransferQueueMock.retryTransfer).toHaveBeenCalledWith(
+      failedTransfer,
+    );
   });
 });
 

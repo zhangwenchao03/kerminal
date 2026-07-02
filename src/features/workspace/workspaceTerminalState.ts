@@ -437,15 +437,19 @@ export function updatePaneOutputHistoryState(
   paneId: string,
   outputHistory: string | undefined,
 ): TerminalWorkspaceStatePatch | TerminalWorkspaceStateSlice {
-  const targetPane = state.terminalPanes.find((pane) => pane.id === paneId);
+  const targetPaneIndex = state.terminalPanes.findIndex(
+    (pane) => pane.id === paneId,
+  );
+  const targetPane = state.terminalPanes[targetPaneIndex];
   if (!targetPane || targetPane.outputHistory === outputHistory) {
     return state;
   }
 
+  const terminalPanes = [...state.terminalPanes];
+  terminalPanes[targetPaneIndex] = { ...targetPane, outputHistory };
+
   return {
-    terminalPanes: state.terminalPanes.map((pane) =>
-      pane.id === paneId ? { ...pane, outputHistory } : pane,
-    ),
+    terminalPanes,
   };
 }
 

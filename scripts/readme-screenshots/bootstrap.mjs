@@ -247,6 +247,10 @@ export function browserBootstrapScript() {
             case "terminal_log_state":
             case "terminal_stop_log":
               return { active: false, bytesWritten: 0 };
+            case "terminal_pty_output_pump_stats":
+              return terminalPtyOutputPumpStats(args.sessionId);
+            case "terminal_reap_orphan_sessions":
+              return { elapsedMs: 0, reapedCount: 0, sessionIds: [] };
             case "terminal_start_log":
               return {
                 active: true,
@@ -707,9 +711,53 @@ export function browserBootstrapScript() {
       function sftpTransfers(request = {}) {
         const now = Date.now();
         const viewScope = request?.viewScope ?? "sidebar:prod-api:tab-prod-api";
+        const releaseRemotePath = "/srv/kerminal/release-2026-06-23.tar.gz";
+        const releaseLocalPath = "C:/Users/kong/Downloads/release-2026-06-23.tar.gz";
+        const deployLogRemotePath = "/srv/kerminal/deploy.log";
+        const deployLogLocalPath = "C:/Users/kong/Downloads/deploy.log";
         return [
-          { bytesTransferred: 9581363, cancelRequested: false, createdAt: now - 120000, direction: "download", hostId: "prod-api", id: "transfer-running", kind: "file", localPath: "C:/Users/kong/Downloads/release-2026-06-23.tar.gz", operation: "download", phase: "streaming", remotePath: "/srv/kerminal/release-2026-06-23.tar.gz", status: "running", totalBytes: 14821376, updatedAt: now - 1000, viewScope },
-          { bytesTransferred: 73421, cancelRequested: false, createdAt: now - 240000, direction: "download", hostId: "prod-api", id: "transfer-done", kind: "file", localPath: "C:/Users/kong/Downloads/deploy.log", operation: "download", phase: "complete", remotePath: "/srv/kerminal/deploy.log", status: "succeeded", totalBytes: 73421, updatedAt: now - 120000, viewScope },
+          {
+            bytesTransferred: 9581363,
+            cancelRequested: false,
+            conflictPolicy: "rename",
+            createdAt: now - 120000,
+            direction: "download",
+            hostId: "prod-api",
+            id: "transfer-running",
+            kind: "file",
+            localPath: releaseLocalPath,
+            operation: "download",
+            phase: "streaming",
+            remotePath: releaseRemotePath,
+            source: { kind: "remote", hostId: "prod-api", hostLabel: "prod-api", path: releaseRemotePath },
+            status: "running",
+            target: { kind: "local", path: releaseLocalPath },
+            totalBytes: 14821376,
+            transportMode: "singleHostSftp",
+            updatedAt: now - 1000,
+            viewScope,
+          },
+          {
+            bytesTransferred: 73421,
+            cancelRequested: false,
+            conflictPolicy: "rename",
+            createdAt: now - 240000,
+            direction: "download",
+            hostId: "prod-api",
+            id: "transfer-done",
+            kind: "file",
+            localPath: deployLogLocalPath,
+            operation: "download",
+            phase: "complete",
+            remotePath: deployLogRemotePath,
+            source: { kind: "remote", hostId: "prod-api", hostLabel: "prod-api", path: deployLogRemotePath },
+            status: "succeeded",
+            target: { kind: "local", path: deployLogLocalPath },
+            totalBytes: 73421,
+            transportMode: "singleHostSftp",
+            updatedAt: now - 120000,
+            viewScope,
+          },
         ];
       }
 
@@ -961,6 +1009,28 @@ export function browserBootstrapScript() {
             showTabNumbers: false,
           },
           themeMode: "dark",
+        };
+      }
+
+      function terminalPtyOutputPumpStats(sessionId) {
+        return {
+          bufferedChunks: 0,
+          closedEvents: 0,
+          coalescedChunks: 0,
+          dataEvents: 0,
+          droppedBytes: 0,
+          errorEvents: 0,
+          finalTailFlushCount: 0,
+          finished: false,
+          flushCount: 0,
+          inputBytes: 0,
+          inputChunks: 0,
+          maxPendingBytes: 0,
+          maxPendingHitCount: 0,
+          outputBytes: 0,
+          overflowCount: 0,
+          pendingBytes: 0,
+          sessionId: sessionId ?? "readme-session",
         };
       }
 

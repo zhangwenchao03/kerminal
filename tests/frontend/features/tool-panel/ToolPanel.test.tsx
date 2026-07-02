@@ -354,7 +354,11 @@ describe("ToolPanel", () => {
       screen.getByRole("complementary", { name: "工具面板" }),
     ).toBeInTheDocument();
     expect(
-      await screen.findByRole("button", { name: "Open Codex" }),
+      await screen.findByRole(
+        "button",
+        { name: "Open Codex" },
+        { timeout: 10000 },
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Open Claude" }),

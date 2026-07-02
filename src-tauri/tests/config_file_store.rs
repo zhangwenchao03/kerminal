@@ -2,7 +2,7 @@
 //!
 //! @author kongweiguang
 
-use std::{collections::HashMap, fs};
+use std::{collections::HashMap, fs, path::Path};
 
 use kerminal_lib::{
     models::{
@@ -11,7 +11,7 @@ use kerminal_lib::{
             RemoteHost, RemoteHostAuthType, RemoteHostCredentialStatus, SshJumpHostOptions,
             SshOptions,
         },
-        settings::{AppSettings, ThemeMode},
+        settings::{AppSettings, TerminalRendererType, ThemeMode},
     },
     storage::{config_file_store::ConfigFileStore, file_store::FileStoreError},
 };
@@ -21,10 +21,11 @@ use tempfile::tempdir;
 fn settings_toml_roundtrip_keeps_runtime_model() {
     let temp = tempdir().expect("temp dir");
     let store = ConfigFileStore::new(temp.path());
-    let settings = AppSettings {
+    let mut settings = AppSettings {
         theme_mode: ThemeMode::Light,
         ..AppSettings::default()
     };
+    settings.terminal.renderer_type = TerminalRendererType::Gpu;
 
     store.write_settings(&settings).expect("write settings");
     let loaded = store.read_settings().expect("read settings");
@@ -33,6 +34,24 @@ fn settings_toml_roundtrip_keeps_runtime_model() {
     assert_eq!(loaded, settings);
     assert!(source.contains("schema_version = 1"));
     assert!(source.contains("themeMode = \"light\""));
+    assert!(source.contains("rendererType = \"gpu\""));
+}
+
+#[test]
+fn settings_toml_defaults_missing_terminal_renderer_type_to_auto() {
+    let temp = tempdir().expect("temp dir");
+    let store = ConfigFileStore::new(temp.path());
+    let settings = AppSettings::default();
+
+    store.write_settings(&settings).expect("write settings");
+    let source = fs::read_to_string(temp.path().join("settings.toml")).expect("settings source");
+    let source_without_renderer = source.replace("rendererType = \"auto\"\n", "");
+    fs::write(temp.path().join("settings.toml"), source_without_renderer)
+        .expect("write legacy settings");
+
+    let loaded = store.read_settings().expect("read legacy settings");
+
+    assert_eq!(loaded.terminal.renderer_type, TerminalRendererType::Auto);
 }
 
 #[test]
@@ -93,7 +112,47 @@ fn settings_toml_rejects_wrong_schema_version() {
 
     let error = store.read_settings().expect_err("wrong schema should fail");
 
-    assert!(matches!(error, FileStoreError::TomlParse(_)));
+    let diagnostics = parse_diagnostics(&error);
+    assert_eq!(
+        diagnostics[0].path.as_deref(),
+        Some(Path::new("settings.toml"))
+    );
+    assert_eq!(diagnostics[0].line, 1);
+    assert_eq!(diagnostics[0].column, 1);
+    assert_eq!(diagnostics[0].key.as_deref(), Some("schema_version"));
+    assert!(diagnostics[0]
+        .recovery
+        .as_deref()
+        .is_some_and(|recovery| recovery.contains("schema_version = 1")));
+}
+
+#[test]
+fn malformed_toml_reports_safe_path_line_column_and_key() {
+    let temp = tempdir().expect("temp dir");
+    let store = ConfigFileStore::new(temp.path());
+    fs::write(
+        temp.path().join("settings.toml"),
+        "schema_version = 1\nthemeMode = \"dark\"\nterminal = [\n",
+    )
+    .expect("write malformed settings");
+
+    let error = store
+        .read_settings()
+        .expect_err("malformed TOML should fail");
+    let diagnostics = parse_diagnostics(&error);
+
+    assert_eq!(
+        diagnostics[0].path.as_deref(),
+        Some(Path::new("settings.toml"))
+    );
+    assert_eq!(diagnostics[0].line, 3);
+    assert!(diagnostics[0].column >= 1);
+    assert_eq!(diagnostics[0].key.as_deref(), Some("terminal"));
+    assert!(diagnostics[0]
+        .recovery
+        .as_deref()
+        .is_some_and(|recovery| recovery.contains("last-known-good")
+            || recovery.contains("kerminal.config.validate")));
 }
 
 #[test]
@@ -240,5 +299,27 @@ fn remote_host_toml_rejects_secret_fields_in_public_host_file() {
         .remote_host_by_id("host-3")
         .expect_err("secret in public host must fail");
 
-    assert!(matches!(error, FileStoreError::TomlParse(_)));
+    let diagnostics = parse_diagnostics(&error);
+    assert_eq!(
+        diagnostics[0].path.as_deref(),
+        Some(Path::new("hosts/host-3.toml"))
+    );
+    assert_eq!(diagnostics[0].line, 3);
+    assert_eq!(diagnostics[0].column, 1);
+    assert_eq!(diagnostics[0].key.as_deref(), Some("credential_secret"));
+    assert!(diagnostics[0]
+        .recovery
+        .as_deref()
+        .is_some_and(
+            |recovery| recovery.contains("encrypted vault") && recovery.contains("secret_ref")
+        ));
+}
+
+fn parse_diagnostics(
+    error: &FileStoreError,
+) -> &[kerminal_lib::storage::file_store::ParseDiagnostic] {
+    let FileStoreError::TomlParse(parse_error) = error else {
+        panic!("expected TOML parse error, got {error:?}");
+    };
+    parse_error.diagnostics()
 }

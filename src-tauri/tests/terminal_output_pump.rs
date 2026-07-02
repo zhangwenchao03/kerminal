@@ -49,6 +49,28 @@ fn terminal_output_pump_coalesces_small_chunks_without_reordering() {
 }
 
 #[test]
+fn terminal_output_pump_tracks_pending_and_coalesced_chunk_metrics() {
+    let mut pump = PtyOutputPump::new(SESSION_ID, test_config(16, 1024));
+    let mut sink = RecordingSink::default();
+
+    assert!(pump.push_data("ab", &mut sink));
+    assert!(pump.push_data("cd", &mut sink));
+    assert_eq!(pump.pending_bytes(), 4);
+    assert_eq!(pump.stats().buffered_chunks, 2);
+    assert_eq!(pump.stats().coalesced_chunks, 0);
+    assert_eq!(pump.stats().flush_count, 0);
+
+    assert!(pump.flush(&mut sink));
+
+    assert_eq!(data_events(&sink.events), vec!["abcd"]);
+    assert_eq!(pump.pending_bytes(), 0);
+    assert_eq!(pump.stats().buffered_chunks, 0);
+    assert_eq!(pump.stats().coalesced_chunks, 2);
+    assert_eq!(pump.stats().flush_count, 1);
+    assert_eq!(pump.stats().data_events, 1);
+}
+
+#[test]
 fn terminal_output_pump_bounds_pending_on_overflow_and_keeps_recent_tail() {
     let mut pump = PtyOutputPump::new(
         SESSION_ID,
@@ -65,6 +87,7 @@ fn terminal_output_pump_bounds_pending_on_overflow_and_keeps_recent_tail() {
 
     assert!(pump.pending_bytes() <= 64);
     assert_eq!(pump.stats().overflow_count, 1);
+    assert!(pump.stats().max_pending_hit_count >= 1);
     assert!(pump.stats().dropped_bytes > 0);
 
     assert!(pump.finish_closed(&mut sink));
@@ -100,6 +123,8 @@ fn terminal_output_pump_flushes_final_tail_before_closed_once() {
     assert_eq!(sink.events[0].data, "last line without newline");
     assert_eq!(sink.events[1].kind, TerminalOutputKind::Closed);
     assert_eq!(pump.stats().closed_events, 1);
+    assert_eq!(pump.stats().final_tail_flush_count, 1);
+    assert_eq!(pump.stats().flush_count, 1);
 }
 
 #[test]
@@ -118,6 +143,24 @@ fn terminal_output_pump_flushes_final_tail_before_error_once() {
     assert_eq!(sink.events[1].data, "read failed");
     assert_eq!(pump.stats().error_events, 1);
     assert_eq!(pump.stats().closed_events, 0);
+    assert_eq!(pump.stats().final_tail_flush_count, 1);
+}
+
+#[test]
+fn terminal_output_pump_counts_max_pending_hits_without_storing_raw_output_in_stats() {
+    let mut pump = PtyOutputPump::new(SESSION_ID, test_config(1024, 8));
+    let mut sink = RecordingSink::default();
+
+    assert!(pump.push_data("12345678", &mut sink));
+    assert_eq!(pump.pending_bytes(), 8);
+    assert_eq!(pump.stats().max_pending_bytes, 8);
+    assert_eq!(pump.stats().max_pending_hit_count, 1);
+    assert!(pump.push_data("raw-output-text-that-must-not-appear", &mut sink));
+
+    let stats_debug = format!("{:?}", pump.stats());
+    assert!(!stats_debug.contains("raw-output-text-that-must-not-appear"));
+    assert!(pump.stats().max_pending_hit_count >= 2);
+    assert!(pump.stats().dropped_bytes > 0);
 }
 
 #[test]

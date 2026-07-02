@@ -1,6 +1,5 @@
 import {
   ArrowLeftRight,
-  Archive,
   ClipboardPaste,
   Copy,
   Download,
@@ -30,7 +29,6 @@ import {
 import type { SftpMenuAction } from "./types";
 
 const CONTEXT_MENU_ICONS: Record<SftpContextMenuIcon, typeof FileText> = {
-  archive: Archive,
   clipboardPaste: ClipboardPaste,
   copy: Copy,
   download: Download,

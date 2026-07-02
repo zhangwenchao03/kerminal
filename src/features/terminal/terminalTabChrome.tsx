@@ -242,27 +242,33 @@ export function TerminalTabButton({
       )}
       onContextMenu={onContextMenu}
     >
+      <button
+        aria-label={title}
+        aria-pressed={active}
+        className="kerminal-focus-ring absolute inset-0 appearance-none rounded-[inherit] border-0 bg-transparent p-0"
+        onClick={() => onSelectTab(tab.id)}
+        type="button"
+      />
       <span
+        aria-hidden="true"
         className={cn(
-          "h-2 w-2 shrink-0 rounded-full",
+          "pointer-events-none relative z-10 h-2 w-2 shrink-0 rounded-full",
           terminalTabStatusDotClassName(tab, status),
         )}
       />
-      <button
-        aria-pressed={active}
+      <span
+        aria-hidden="true"
         className={cn(
-          "kerminal-focus-ring min-w-0 truncate rounded-md text-left",
+          "pointer-events-none relative z-10 min-w-0 truncate rounded-md text-left",
           compact ? "max-w-[104px]" : "max-w-[160px]",
         )}
-        onClick={() => onSelectTab(tab.id)}
-        type="button"
       >
         {title}
-      </button>
+      </span>
       {showClose ? (
         <button
           aria-label={`关闭 ${tab.title} tab`}
-          className="kerminal-focus-ring kerminal-pressable rounded-md p-0.5 text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-900 dark:hover:text-zinc-100"
+          className="kerminal-focus-ring kerminal-pressable relative z-20 rounded-md p-0.5 text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-900 dark:hover:text-zinc-100"
           onClick={(event) => {
             event.stopPropagation();
             onCloseTab(tab.id);

@@ -196,7 +196,9 @@ describe("TerminalWorkspace", () => {
     render(<TerminalWorkspace {...workspaceProps({ panes: [offlinePane] })} />);
 
     const tabButton = screen.getByRole("button", { name: "本地 PowerShell" });
-    expect(tabButton.previousElementSibling).toHaveClass("bg-zinc-400");
+    expect(
+      tabButton.parentElement?.querySelector("span[aria-hidden='true']"),
+    ).toHaveClass("bg-zinc-400");
   });
 
   it("forwards pane connection state changes from xterm panes", () => {

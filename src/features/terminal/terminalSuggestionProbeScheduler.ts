@@ -12,6 +12,11 @@ import {
   type CommandSuggestionRemotePathRefreshRequest,
   type CommandSuggestionRemotePathRefreshResult,
 } from "../../lib/terminalSuggestionApi";
+import type { RuntimeSuggestionSchedulerSnapshot } from "./terminalRuntimeDiagnostics";
+import {
+  TERMINAL_SUGGESTION_PROBE_POLICY_DEFAULT_CONFIG,
+  type TerminalSuggestionProbeDisabledReason,
+} from "./terminalSuggestionProbePolicy";
 
 type ProbeKind = "git" | "remoteCommand" | "remoteHistory" | "remotePath";
 type TimerId = ReturnType<typeof globalThis.setTimeout>;
@@ -41,6 +46,7 @@ interface SchedulerOptions {
   api?: Partial<SchedulerApi>;
   clock?: Partial<SchedulerClock>;
   maxConcurrent?: number;
+  slowProbeMs?: number;
 }
 
 interface BaseProbeRequest {
@@ -70,6 +76,7 @@ interface ProbeTask {
   inFlight: boolean;
   key: string;
   kind: ProbeKind;
+  lastDurationMs?: number;
   nextAllowedAt: number;
   owners: Set<string>;
   request:
@@ -77,6 +84,7 @@ interface ProbeTask {
     | RemoteCommandProbeRequest
     | RemoteHistoryProbeRequest
     | RemotePathProbeRequest;
+  slowCount: number;
   timerId: TimerId | null;
 }
 
@@ -99,6 +107,11 @@ export class TerminalSuggestionProbeScheduler {
   private readonly api: SchedulerApi;
   private readonly clock: SchedulerClock;
   private readonly maxConcurrent: number;
+  private readonly ownerDisabledReasons = new Map<
+    string,
+    TerminalSuggestionProbeDisabledReason
+  >();
+  private readonly slowProbeMs: number;
   private inFlightCount = 0;
   private readonly tasks = new Map<string, ProbeTask>();
 
@@ -118,6 +131,11 @@ export class TerminalSuggestionProbeScheduler {
       ...options.clock,
     };
     this.maxConcurrent = Math.max(1, options.maxConcurrent ?? 2);
+    this.slowProbeMs = Math.max(
+      0,
+      options.slowProbeMs ??
+        TERMINAL_SUGGESTION_PROBE_POLICY_DEFAULT_CONFIG.slowProbeMs,
+    );
   }
 
   scheduleRemoteCommand(request: RemoteCommandProbeRequest) {
@@ -145,6 +163,18 @@ export class TerminalSuggestionProbeScheduler {
     }
   }
 
+  setOwnerDisabled(
+    ownerId: string,
+    reason: TerminalSuggestionProbeDisabledReason | null,
+  ) {
+    if (!reason) {
+      this.ownerDisabledReasons.delete(ownerId);
+      return;
+    }
+    this.ownerDisabledReasons.set(ownerId, reason);
+    this.cancelOwner(ownerId);
+  }
+
   reset() {
     for (const task of this.tasks.values()) {
       if (task.timerId !== null) {
@@ -152,6 +182,7 @@ export class TerminalSuggestionProbeScheduler {
       }
     }
     this.tasks.clear();
+    this.ownerDisabledReasons.clear();
     this.inFlightCount = 0;
   }
 
@@ -161,10 +192,53 @@ export class TerminalSuggestionProbeScheduler {
       inFlight: task.inFlight,
       key: task.key,
       kind: task.kind,
+      lastDurationMs: task.lastDurationMs,
       nextAllowedAt: task.nextAllowedAt,
       ownerCount: task.owners.size,
+      slowCount: task.slowCount,
       timerPending: task.timerId !== null,
     }));
+  }
+
+  diagnosticsSnapshot(
+    now = this.clock.now(),
+  ): RuntimeSuggestionSchedulerSnapshot {
+    const disabledReasons: Record<string, number> = {};
+    for (const reason of this.ownerDisabledReasons.values()) {
+      incrementRecord(disabledReasons, reason);
+    }
+    const tasks = Array.from(this.tasks.values());
+    for (const task of tasks) {
+      if (task.failureCount > 0 && task.nextAllowedAt > now) {
+        incrementRecord(disabledReasons, "failure-backoff");
+      }
+      if (
+        task.lastDurationMs !== undefined &&
+        task.lastDurationMs >= this.slowProbeMs
+      ) {
+        incrementRecord(disabledReasons, "slow-probe");
+      }
+    }
+
+    return {
+      activeTasks: tasks.length,
+      disabledReasons,
+      inFlight: this.inFlightCount,
+      maxConcurrent: this.maxConcurrent,
+      queued: tasks.filter(
+        (task) =>
+          task.timerId !== null || (!task.inFlight && task.nextAllowedAt > now),
+      ).length,
+      tasks: tasks.map((task) => ({
+        failureCount: task.failureCount,
+        inFlight: task.inFlight,
+        kind: task.kind,
+        nextAllowedInMs:
+          task.nextAllowedAt > now ? task.nextAllowedAt - now : undefined,
+        ownerCount: task.owners.size,
+        timerPending: task.timerId !== null,
+      })),
+    };
   }
 
   private schedule(
@@ -175,6 +249,9 @@ export class TerminalSuggestionProbeScheduler {
       | RemoteHistoryProbeRequest
       | RemotePathProbeRequest,
   ) {
+    if (this.ownerDisabledReasons.has(request.ownerId)) {
+      return false;
+    }
     const key = probeTaskKey(kind, request);
     this.removeOwnerFromOtherTasks(request.ownerId, kind, key);
     const now = this.clock.now();
@@ -183,9 +260,11 @@ export class TerminalSuggestionProbeScheduler {
       inFlight: false,
       key,
       kind,
+      lastDurationMs: undefined,
       nextAllowedAt: 0,
       owners: new Set<string>(),
       request,
+      slowCount: 0,
       timerId: null,
     };
     task.owners.add(request.ownerId);
@@ -223,6 +302,7 @@ export class TerminalSuggestionProbeScheduler {
 
     task.inFlight = true;
     this.inFlightCount += 1;
+    const startedAt = this.clock.now();
     this.performTask(task)
       .then(() => {
         task.failureCount = 0;
@@ -234,6 +314,10 @@ export class TerminalSuggestionProbeScheduler {
           this.clock.now() + failureBackoffMs(task.failureCount);
       })
       .finally(() => {
+        task.lastDurationMs = Math.max(0, this.clock.now() - startedAt);
+        if (task.lastDurationMs >= this.slowProbeMs) {
+          task.slowCount += 1;
+        }
         task.inFlight = false;
         this.inFlightCount = Math.max(0, this.inFlightCount - 1);
         this.pruneTaskIfIdle(task);
@@ -317,4 +401,8 @@ function taskTtlMs(task: ProbeTask) {
 
 function failureBackoffMs(failureCount: number) {
   return Math.min(MAX_BACKOFF_MS, 1000 * 2 ** Math.max(0, failureCount - 1));
+}
+
+function incrementRecord(record: Record<string, number>, key: string) {
+  record[key] = (record[key] ?? 0) + 1;
 }

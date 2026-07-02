@@ -80,11 +80,8 @@ describe("SftpToolContent transfers and containers", () => {
     expect(screen.queryByText(/已加入文件夹下载队列/)).not.toBeInTheDocument();
   });
 
-  it("downloads a selected remote file as a ZIP archive", async () => {
+  it("does not offer ZIP archive download for remote files in the context menu", async () => {
     const user = userEvent.setup();
-    fileDialogMocks.selectSaveFile.mockResolvedValue(
-      "/Users/me/Downloads/app.log.zip",
-    );
 
     render(<SftpToolContent selectedMachine={sshMachine} />);
 
@@ -98,29 +95,16 @@ describe("SftpToolContent transfers and containers", () => {
         clientY: 24,
       },
     );
-    await user.click(screen.getByRole("menuitem", { name: "下载为 ZIP" }));
-
-    await waitFor(() =>
-      expect(fileDialogMocks.selectSaveFile).toHaveBeenCalledWith(
-        "app.log.zip",
-      ),
-    );
-    expect(sftpApiMocks.enqueueSftpArchiveDownload).toHaveBeenCalledWith({
-      conflictPolicy: "overwrite",
-      hostId: "prod-api",
-      kind: "file",
-      sourceRemotePath: "/var/log/app.log",
-      targetLocalPath: "/Users/me/Downloads/app.log.zip",
-    });
-    expect(screen.queryByText(/已加入 ZIP 下载队列/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "下载为 ZIP" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "下载到剪贴板" }),
+    ).toBeInTheDocument();
+    expect(sftpApiMocks.enqueueSftpArchiveDownload).not.toHaveBeenCalled();
   });
 
-  it("downloads a remote directory as a ZIP archive from the context menu", async () => {
-    const user = userEvent.setup();
-    fileDialogMocks.selectSaveFile.mockResolvedValue(
-      "/Users/me/Downloads/var.zip",
-    );
-
+  it("does not offer ZIP archive download for remote directories in the context menu", async () => {
     render(<SftpToolContent selectedMachine={sshMachine} />);
 
     expect(await screen.findByText("var")).toBeInTheDocument();
@@ -131,18 +115,33 @@ describe("SftpToolContent transfers and containers", () => {
         clientY: 24,
       },
     );
-    await user.click(screen.getByRole("menuitem", { name: "下载为 ZIP" }));
 
-    await waitFor(() =>
-      expect(fileDialogMocks.selectSaveFile).toHaveBeenCalledWith("var.zip"),
-    );
-    expect(sftpApiMocks.enqueueSftpArchiveDownload).toHaveBeenCalledWith({
-      conflictPolicy: "overwrite",
-      hostId: "prod-api",
-      kind: "directory",
-      sourceRemotePath: "/var",
-      targetLocalPath: "/Users/me/Downloads/var.zip",
-    });
+    expect(
+      screen.queryByRole("menuitem", { name: "下载为 ZIP" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "下载到剪贴板" }),
+    ).toBeInTheDocument();
+    expect(sftpApiMocks.enqueueSftpArchiveDownload).not.toHaveBeenCalled();
+  });
+
+  it("does not offer ZIP archive uploads from the current-directory context menu", async () => {
+    render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    await screen.findByText("var");
+    openCurrentDirectoryContextMenu();
+
+    expect(
+      screen.queryByRole("menuitem", { name: "上传文件为 ZIP" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "上传文件夹为 ZIP" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "粘贴 SFTP 剪贴板" }),
+    ).toBeInTheDocument();
+    expect(fileDialogMocks.selectLocalDirectory).not.toHaveBeenCalled();
+    expect(sftpApiMocks.enqueueSftpArchiveUpload).not.toHaveBeenCalled();
   });
 
   it("downloads a selected remote file to the local file clipboard", async () => {
@@ -420,31 +419,6 @@ describe("SftpToolContent transfers and containers", () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it("uploads a local directory as a ZIP archive from the context menu", async () => {
-    const user = userEvent.setup();
-    fileDialogMocks.selectLocalDirectory.mockResolvedValue("/Users/me/dist");
-
-    render(<SftpToolContent selectedMachine={sshMachine} />);
-
-    await screen.findByText("var");
-    openCurrentDirectoryContextMenu();
-    await user.click(
-      screen.getByRole("menuitem", { name: "上传文件夹为 ZIP" }),
-    );
-
-    await waitFor(() =>
-      expect(fileDialogMocks.selectLocalDirectory).toHaveBeenCalled(),
-    );
-    expect(sftpApiMocks.enqueueSftpArchiveUpload).toHaveBeenCalledWith({
-      conflictPolicy: "overwrite",
-      hostId: "prod-api",
-      kind: "directory",
-      sourceLocalPath: "/Users/me/dist",
-      targetRemotePath: "/dist.zip",
-    });
-    expect(screen.queryByText(/已加入 ZIP 上传队列/)).not.toBeInTheDocument();
   });
 
   it("uploads dropped local paths into the current SFTP directory", async () => {

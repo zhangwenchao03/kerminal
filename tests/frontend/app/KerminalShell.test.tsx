@@ -698,9 +698,14 @@ describe("KerminalShell", () => {
     ).toHaveAttribute("aria-expanded", "true");
     expect(workspace.parentElement).toHaveStyle({ gridColumn: "3 / 6" });
     expect(screen.getByLabelText("终端标签栏").parentElement).not.toHaveStyle({
-      marginRight: "348px",
+      marginRight: "340px",
     });
-    expect(content).toHaveStyle({ marginRight: "348px" });
+    await waitFor(() => {
+      const expandedContent = container.querySelector(
+        "[data-terminal-workspace-content]",
+      ) as HTMLElement;
+      expect(expandedContent).toHaveStyle({ marginRight: "340px" });
+    });
   });
 
   it("allows the right tool panel to expand to the wider resize limit", async () => {
@@ -885,7 +890,7 @@ describe("KerminalShell", () => {
 
     await waitFor(() => {
       expect(shell).toHaveStyle({
-        gridTemplateColumns: "312px 8px minmax(0, 1fr) 0px 44px",
+        gridTemplateColumns: "312px 0px minmax(0, 1fr) 0px 44px",
       });
     });
     const groupButton = await screen.findByRole("button", { name: /bwy/ });

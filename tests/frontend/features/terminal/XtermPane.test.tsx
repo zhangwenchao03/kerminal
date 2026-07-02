@@ -12,6 +12,7 @@ import {
   buildTerminalCreateRequest,
   normalizeTerminalSessionSize,
 } from "../../../../src/features/terminal/XtermPane.helpers.ts";
+import { terminalSuggestionProbeScheduler } from "../../../../src/features/terminal/terminalSuggestionProbeScheduler";
 import { TerminalPaneLayout } from "../../../../src/features/terminal/TerminalPaneLayout";
 import type { TerminalLayoutNode, TerminalPane } from "../../../../src/features/workspace/types";
 
@@ -160,6 +161,74 @@ describe("XtermPane sessions and command blocks", () => {
     ).toBe(true);
   });
 
+  it("stops SSH auto reconnect when OpenSSH reports an authentication failure", async () => {
+    const terminalAppearance = {
+      ...defaultAppSettings.terminal,
+      autoReconnect: true,
+    };
+    mocks.api.createSshTerminalSession.mockImplementation(
+      async (_request, onOutput) => {
+        mocks.setLatestOutputHandler(
+          onOutput as Parameters<typeof mocks.setLatestOutputHandler>[0],
+        );
+        mocks.getLatestOutputHandler()?.({
+          data: "Permission denied (publickey,password).\r\n",
+          kind: "data",
+          sessionId: "ssh-auth-failed",
+        });
+        return {
+          cols: 80,
+          id: "ssh-auth-failed",
+          rows: 24,
+          shell: "ssh",
+          shellIntegration: { reason: "auth failed", status: "disabled" },
+          status: "running",
+        };
+      },
+    );
+
+    render(
+      <XtermPane
+        focused
+        paneId="pane-ssh-auth-failed"
+        remoteHostId="host-prod"
+        resolvedTheme="dark"
+        terminalAppearance={terminalAppearance}
+        title="生产 SSH"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mocks.api.createSshTerminalSession).toHaveBeenCalledTimes(1);
+    });
+    vi.useFakeTimers();
+    act(() => {
+      mocks.getLatestOutputHandler()?.({
+        data: "",
+        kind: "closed",
+        sessionId: "ssh-auth-failed",
+      });
+    });
+
+    expect(screen.getByText("已结束")).toBeInTheDocument();
+    expect(
+      mocks.terminalInstances[0].write.mock.calls.some(([data]) =>
+        String(data).includes("认证失败"),
+      ),
+    ).toBe(true);
+    expect(
+      mocks.terminalInstances[0].write.mock.calls.some(([data]) =>
+        String(data).includes("已停止自动重连"),
+      ),
+    ).toBe(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+
+    expect(mocks.api.createSshTerminalSession).toHaveBeenCalledTimes(1);
+  });
+
   it("clears a transient agent startup message when real output arrives", async () => {
     render(
       <XtermPane
@@ -217,6 +286,126 @@ describe("XtermPane sessions and command blocks", () => {
         "previous output\r\nhello from pty",
       );
     });
+  });
+
+  it("cancels suggestion probes without closing the session when hidden", async () => {
+    const cancelOwner = vi.spyOn(terminalSuggestionProbeScheduler, "cancelOwner");
+    const setOwnerDisabled = vi.spyOn(
+      terminalSuggestionProbeScheduler,
+      "setOwnerDisabled",
+    );
+    const { rerender } = render(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+        visible
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mocks.api.createTerminalSession).toHaveBeenCalled();
+    });
+    cancelOwner.mockClear();
+
+    rerender(
+      <XtermPane
+        focused={false}
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+        visible={false}
+      />,
+    );
+
+    expect(cancelOwner).toHaveBeenCalledWith("pane-local");
+    expect(setOwnerDisabled).toHaveBeenCalledWith("pane-local", "hidden-pane");
+    expect(mocks.api.closeTerminal).not.toHaveBeenCalled();
+  });
+
+  it("runs the standard visible recovery flow after a hidden pane returns", async () => {
+    const frameCallbacks = new Map<number, FrameRequestCallback>();
+    let nextFrameId = 1;
+    const requestAnimationFrameSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        const frameId = nextFrameId;
+        nextFrameId += 1;
+        frameCallbacks.set(frameId, callback);
+        return frameId;
+      });
+    const cancelAnimationFrameSpy = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation((frameId) => {
+        frameCallbacks.delete(frameId);
+      });
+
+    try {
+      const { rerender } = render(
+        <XtermPane
+          focused={false}
+          paneId="pane-local"
+          resolvedTheme="dark"
+          terminalAppearance={defaultAppSettings.terminal}
+          title="本地 PowerShell"
+          visible={false}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(mocks.api.createTerminalSession).toHaveBeenCalled();
+      });
+
+      const terminal = mocks.terminalInstances[0];
+      const fitAddon = mocks.fitInstances[0];
+      mocks.api.closeTerminal.mockClear();
+      mocks.api.resizeTerminal.mockClear();
+      mocks.api.writeTerminal.mockClear();
+      fitAddon.fit.mockClear();
+      terminal.refresh.mockClear();
+      terminal.cols = 80;
+      terminal.rows = 24;
+      frameCallbacks.clear();
+      nextFrameId = 1;
+
+      rerender(
+        <XtermPane
+          focused
+          paneId="pane-local"
+          resolvedTheme="dark"
+          terminalAppearance={defaultAppSettings.terminal}
+          title="本地 PowerShell"
+          visible
+        />,
+      );
+
+      expect(frameCallbacks.has(1)).toBe(true);
+      runFrame(frameCallbacks, 1);
+      expect(frameCallbacks.has(2)).toBe(true);
+      expect(fitAddon.fit).not.toHaveBeenCalled();
+
+      runFrame(frameCallbacks, 2);
+
+      expect(fitAddon.fit).toHaveBeenCalledTimes(1);
+      expect(mocks.api.resizeTerminal).toHaveBeenCalledWith("session-1", {
+        cols: 100,
+        rows: 30,
+      });
+      expect(terminal.refresh).toHaveBeenCalledWith(0, 29);
+      expect(mocks.api.closeTerminal).not.toHaveBeenCalled();
+
+      act(() => {
+        terminal.onDataCallback?.("r");
+      });
+
+      expect(mocks.api.writeTerminal).toHaveBeenCalledWith("session-1", "r");
+    } finally {
+      requestAnimationFrameSpy.mockRestore();
+      cancelAnimationFrameSpy.mockRestore();
+    }
   });
 
   it("replays saved terminal output from a stable snapshot resolver", async () => {
@@ -1049,4 +1238,16 @@ function commandRailHeight(rail: HTMLElement) {
   const height = Number.parseFloat(rail.parentElement?.style.height ?? "");
   expect(Number.isFinite(height)).toBe(true);
   return height;
+}
+
+function runFrame(
+  callbacks: Map<number, FrameRequestCallback>,
+  frameId: number,
+) {
+  const callback = callbacks.get(frameId);
+  expect(callback).toBeTypeOf("function");
+  callbacks.delete(frameId);
+  act(() => {
+    callback?.(performance.now());
+  });
 }
