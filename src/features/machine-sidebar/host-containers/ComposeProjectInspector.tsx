@@ -16,6 +16,7 @@ import {
   readRemoteWorkspaceTextFile,
   type RemoteWorkspaceReadTextFileResponse,
 } from "../../sftp/remoteWorkspaceEditorTransport";
+import type { OpenWorkspaceFileTabOptions } from "../../workspace/workspaceStore";
 import type { ComposeProjectView } from "./composeProjectModel";
 import {
   canEnterHostContainer,
@@ -74,6 +75,7 @@ export function ComposeProjectInspector({
   hostId,
   onEnterContainer,
   onOpenContainerLogs,
+  onOpenWorkspaceFileTab,
   onRefresh,
   onSelectContainer,
   onTabChange,
@@ -83,6 +85,7 @@ export function ComposeProjectInspector({
   hostId: string;
   onEnterContainer: (container: HostContainerMetadata) => void;
   onOpenContainerLogs: (container: HostContainerMetadata) => void;
+  onOpenWorkspaceFileTab?: (options: OpenWorkspaceFileTabOptions) => void;
   onRefresh: () => void;
   onSelectContainer: (container: HostContainerMetadata) => void;
   onTabChange: (tab: ComposeProjectInspectorTab) => void;
@@ -162,11 +165,35 @@ export function ComposeProjectInspector({
     }
   }, [hostId, project, selectedPath]);
 
-  useEffect(() => {
-    if (tab === "yaml" && selectedPath) {
-      void loadYaml();
+  const openSelectedYamlInWorkspaceTab = useCallback(() => {
+    if (!project || !selectedPath || !onOpenWorkspaceFileTab) {
+      return;
     }
-  }, [loadYaml, selectedPath, tab]);
+    onOpenWorkspaceFileTab({
+      access: "readonly",
+      path: selectedPath,
+      rootPath: composeYamlRootPath(project, selectedPath),
+      source: "composeYaml",
+      target: { hostId, kind: "ssh" },
+    });
+  }, [hostId, onOpenWorkspaceFileTab, project, selectedPath]);
+
+  useEffect(() => {
+    if (tab !== "yaml" || !selectedPath) {
+      return;
+    }
+    if (onOpenWorkspaceFileTab) {
+      openSelectedYamlInWorkspaceTab();
+      return;
+    }
+    void loadYaml();
+  }, [
+    loadYaml,
+    onOpenWorkspaceFileTab,
+    openSelectedYamlInWorkspaceTab,
+    selectedPath,
+    tab,
+  ]);
 
   const primaryPath = project?.configPaths[0] ?? project?.configFiles[0] ?? "";
   const warningText = useMemo(
@@ -254,6 +281,9 @@ export function ComposeProjectInspector({
             loading={yamlState.loading}
             onCopyPath={(path) => void writeDesktopClipboardText(path)}
             onLoadYaml={() => void loadYaml()}
+            onOpenWorkspaceFileTab={
+              onOpenWorkspaceFileTab ? openSelectedYamlInWorkspaceTab : undefined
+            }
             onSelectPath={setSelectedPath}
             project={project}
             selectedPath={selectedPath}
@@ -377,6 +407,7 @@ function ProjectYaml({
   loading,
   onCopyPath,
   onLoadYaml,
+  onOpenWorkspaceFileTab,
   onSelectPath,
   project,
   selectedPath,
@@ -389,6 +420,7 @@ function ProjectYaml({
   loading: boolean;
   onCopyPath: (path: string) => void;
   onLoadYaml: () => void;
+  onOpenWorkspaceFileTab?: () => void;
   onSelectPath: (path: string) => void;
   project: ComposeProjectView;
   selectedPath?: string;
@@ -452,6 +484,20 @@ function ProjectYaml({
               variant="ghost"
             >
               <Copy className="h-4 w-4" />
+            </Button>
+          ) : null}
+          {onOpenWorkspaceFileTab ? (
+            <Button
+              aria-label="在中间工作区打开 Compose YAML"
+              className={inspectorIconButtonClassName}
+              disabled={!selectedPath}
+              onClick={onOpenWorkspaceFileTab}
+              size="icon"
+              title="在中间工作区打开"
+              type="button"
+              variant="ghost"
+            >
+              <FileCode2 className="h-4 w-4" />
             </Button>
           ) : null}
         </div>
@@ -635,6 +681,18 @@ function formatModifiedTime(value?: string | null) {
   const hour = String(date.getHours()).padStart(2, "0");
   const minute = String(date.getMinutes()).padStart(2, "0");
   return `${month}-${day} ${hour}:${minute}`;
+}
+
+function composeYamlRootPath(project: ComposeProjectView, path: string) {
+  if (project.workingDir) {
+    return project.workingDir;
+  }
+  const normalizedPath = path.replace(/\\/g, "/");
+  const slashIndex = normalizedPath.lastIndexOf("/");
+  if (slashIndex <= 0) {
+    return "/";
+  }
+  return normalizedPath.slice(0, slashIndex);
 }
 
 function useMonacoThemeName() {

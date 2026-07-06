@@ -20,6 +20,10 @@ const remoteHostApiMock = vi.hoisted(() => ({
   updateRemoteHostGroup: vi.fn(),
 }));
 
+const externalLaunchApiMock = vi.hoisted(() => ({
+  closeExternalSshLaunch: vi.fn(),
+}));
+
 vi.mock("../../../src/lib/connectionApi", () => ({
   openSavedRdpConnection: vi.fn(),
 }));
@@ -41,6 +45,12 @@ vi.mock("../../../src/lib/profileApi", () => ({
   createProfile: (...args: unknown[]) => profileApiMock.createProfile(...args),
   listProfiles: (...args: unknown[]) => profileApiMock.listProfiles(...args),
   updateProfile: (...args: unknown[]) => profileApiMock.updateProfile(...args),
+}));
+
+vi.mock("../../../src/lib/externalLaunchApi", () => ({
+  closeExternalSshLaunch: (...args: unknown[]) =>
+    externalLaunchApiMock.closeExternalSshLaunch(...args),
+  EXTERNAL_TARGET_PREFIX: "external:",
 }));
 
 vi.mock("../../../src/lib/remoteHostApi", () => ({
@@ -66,6 +76,8 @@ describe("useKerminalShellRemoteActions local profiles", () => {
     vi.clearAllMocks();
     profileApiMock.createProfile.mockResolvedValue(createdProfile);
     profileApiMock.listProfiles.mockResolvedValue([baseProfile, savedProfile]);
+    remoteHostApiMock.listRemoteHostTree.mockResolvedValue([]);
+    externalLaunchApiMock.closeExternalSshLaunch.mockResolvedValue(1);
   });
 
   it("adds a created local profile as a persistent sidebar machine in the target group", async () => {
@@ -219,6 +231,41 @@ describe("useKerminalShellRemoteActions local profiles", () => {
     expect(setProfiles).toHaveBeenCalledWith([baseProfile, detachedProfile]);
     expect(removeSidebarMachine).toHaveBeenCalledWith("profile:profile-created");
   });
+
+  it("closes an external SSH launch instead of deleting a persisted remote host", async () => {
+    const removeSidebarMachine = vi.fn();
+    const { result } = renderHook(() =>
+      useKerminalShellRemoteActions({
+        activeProfileId: baseProfile.id,
+        addLocalProfileMachine: vi.fn(),
+        addTerminalTab: vi.fn(),
+        defaultRemoteGroupId: "group-local",
+        machineGroups: externalMachineGroups,
+        moveSidebarMachine: vi.fn(),
+        pinMachineGroup: vi.fn(),
+        profiles: [baseProfile],
+        removeSidebarMachine,
+        renameMachineGroup: vi.fn(),
+        selectMachine: vi.fn(),
+        setProfiles: vi.fn(),
+        setRemoteHostTree: vi.fn(),
+        updateLocalMachine: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.requestDeleteMachine("external:launch-123");
+    });
+    await act(async () => {
+      await result.current.confirmDelete();
+    });
+
+    expect(externalLaunchApiMock.closeExternalSshLaunch).toHaveBeenCalledWith(
+      "launch-123",
+    );
+    expect(remoteHostApiMock.deleteRemoteHost).not.toHaveBeenCalled();
+    expect(removeSidebarMachine).toHaveBeenCalledWith("external:launch-123");
+  });
 });
 
 const baseProfile: TerminalProfile = {
@@ -283,5 +330,26 @@ const localMachineGroups: MachineGroup[] = [
     machines: [],
     sortOrder: 10,
     title: "tools",
+  },
+];
+
+const externalMachineGroups: MachineGroup[] = [
+  {
+    ...machineGroups[0],
+    machines: [
+      {
+        authType: "password",
+        description: "external.example:22",
+        host: "external.example",
+        id: "external:launch-123",
+        kind: "ssh",
+        name: "External Launch",
+        port: 22,
+        remoteGroupId: "group-local",
+        status: "offline",
+        tags: ["external"],
+        username: "ops",
+      },
+    ],
   },
 ];

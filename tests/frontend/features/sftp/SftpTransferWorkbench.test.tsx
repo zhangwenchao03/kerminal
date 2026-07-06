@@ -342,6 +342,31 @@ describe("SftpTransferWorkbench", () => {
     expect(screen.getAllByRole("button", { name: "right" })).toHaveLength(2);
   });
 
+  it("filters the transfer host dropdown before adding an SSH host", async () => {
+    const user = userEvent.setup();
+    render(
+      <SftpTransferWorkbench
+        groups={groups}
+        initialRightHostId="host-right"
+      />,
+    );
+
+    const hostSearch = screen.getByRole("combobox", {
+      name: "添加右侧服务器",
+    });
+    await user.click(hostSearch);
+    await user.type(hostSearch, "backup.internal");
+
+    expect(screen.getByRole("option", { name: "backup" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "right" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("option", { name: "backup" }));
+
+    expect(screen.getByLabelText("SFTP 面板 backup")).toBeInTheDocument();
+  });
+
   it("scopes transfer history to its workspace tab", async () => {
     const user = userEvent.setup();
     render(

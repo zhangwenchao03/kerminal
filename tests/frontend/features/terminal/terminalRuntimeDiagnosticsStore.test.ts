@@ -93,11 +93,58 @@ describe("terminalRuntimeDiagnosticsStore", () => {
 
     const snapshot = await collectTerminalRuntimePerformanceSnapshot({
       generatedAt: "2026-07-02T03:40:00.000Z",
+      readManagedSshSnapshot: async () => ({
+        activeChannels: 2,
+        activeSessions: 1,
+        generatedAt: "1760000000",
+        sessions: [
+          {
+            activeChannels: 2,
+            channelCounts: {
+              exec: 2,
+              sftp: 1,
+            },
+            createdAt: "1760000000",
+            key: {
+              jumps: [],
+              knownHostsProfile: "default",
+              proxyProfile: null,
+              runtimeFlags: [],
+              target: "deploy@example.internal:22",
+            },
+            lastError: "managed SSH runtime backend does not support exec channels yet",
+            lastUsedAt: "1760000001",
+            maxConcurrentExecChannels: 4,
+            openedChannels: 3,
+            pendingExecRequests: 1,
+            refCount: 1,
+            sessionId: "managed-session-1",
+            state: "ready",
+          },
+        ],
+      }),
       readPtyPumpStats: async (sessionId) => ptyStats(sessionId),
     });
 
     expect(snapshot).toMatchObject({
       generatedAt: "2026-07-02T03:40:00.000Z",
+      managedSsh: {
+        activeChannels: 2,
+        activeSessions: 1,
+        sessions: [
+          {
+            channelCounts: {
+              exec: 2,
+              sftp: 1,
+            },
+            key: {
+              target: "deploy@example.internal:22",
+            },
+            pendingExecRequests: 1,
+            sessionId: "managed-session-1",
+          },
+        ],
+      },
       ptyPump: {
         sessions: [
           {

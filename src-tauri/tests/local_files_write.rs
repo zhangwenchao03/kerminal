@@ -7,8 +7,9 @@ use std::{fs, path::Path};
 use kerminal_lib::{
     commands::local_files::{
         local_files_copy_path, local_files_create_directory, local_files_delete_path,
-        local_files_rename_path, LocalCopyPathRequest, LocalCreateDirectoryRequest,
-        LocalDeletePathRequest, LocalRenamePathRequest,
+        local_files_read_text_file, local_files_rename_path, local_files_write_text_file,
+        LocalCopyPathRequest, LocalCreateDirectoryRequest, LocalDeletePathRequest,
+        LocalReadTextFileRequest, LocalRenamePathRequest, LocalWriteTextFileRequest,
     },
     paths::KerminalPaths,
     state::AppState,
@@ -45,6 +46,106 @@ async fn local_files_create_directory_rejects_nested_name() {
     .expect_err("reject nested name");
 
     assert!(error.contains("文件名不能包含路径分隔符"));
+}
+
+#[tokio::test]
+async fn local_files_read_text_file_returns_content_and_revision() {
+    let temp = tempdir().expect("temp dir");
+    let file = temp.path().join("notes.txt");
+    fs::write(&file, "hello\r\nworld\r\n").expect("write source");
+
+    let response = local_files_read_text_file(LocalReadTextFileRequest {
+        max_bytes: Some(1024),
+        path: path_string(&file),
+    })
+    .await
+    .expect("read text file");
+
+    assert_eq!(response.content, "hello\r\nworld\r\n");
+    assert_eq!(response.bytes_read, "hello\r\nworld\r\n".len());
+    assert_eq!(response.line_ending, "crlf");
+    assert_eq!(response.revision.size, "hello\r\nworld\r\n".len() as u64);
+    assert!(response.revision.content_sha256.is_some());
+    assert!(!response.binary);
+}
+
+#[tokio::test]
+async fn local_files_write_text_file_updates_existing_file_with_expected_revision() {
+    let temp = tempdir().expect("temp dir");
+    let file = temp.path().join("notes.txt");
+    fs::write(&file, "before\n").expect("write source");
+    let read_response = local_files_read_text_file(LocalReadTextFileRequest {
+        max_bytes: None,
+        path: path_string(&file),
+    })
+    .await
+    .expect("read text file");
+
+    let write_response = local_files_write_text_file(LocalWriteTextFileRequest {
+        content: "after\n".to_owned(),
+        create: false,
+        encoding: "utf-8".to_owned(),
+        expected_revision: Some(read_response.revision),
+        overwrite_on_conflict: false,
+        path: path_string(&file),
+    })
+    .await
+    .expect("write text file");
+
+    assert_eq!(
+        fs::read_to_string(&file).expect("read updated file"),
+        "after\n"
+    );
+    assert_eq!(write_response.bytes_written, "after\n".len());
+    assert_eq!(write_response.line_ending, "lf");
+    assert!(write_response.revision.content_sha256.is_some());
+}
+
+#[tokio::test]
+async fn local_files_write_text_file_rejects_revision_conflict() {
+    let temp = tempdir().expect("temp dir");
+    let file = temp.path().join("notes.txt");
+    fs::write(&file, "before\n").expect("write source");
+    let read_response = local_files_read_text_file(LocalReadTextFileRequest {
+        max_bytes: None,
+        path: path_string(&file),
+    })
+    .await
+    .expect("read text file");
+    fs::write(&file, "changed elsewhere\n").expect("modify source");
+
+    let error = local_files_write_text_file(LocalWriteTextFileRequest {
+        content: "after\n".to_owned(),
+        create: false,
+        encoding: "utf-8".to_owned(),
+        expected_revision: Some(read_response.revision),
+        overwrite_on_conflict: false,
+        path: path_string(&file),
+    })
+    .await
+    .expect_err("reject conflict");
+
+    assert!(error.contains("本机文件已变更"));
+    assert_eq!(
+        fs::read_to_string(&file).expect("read unchanged file"),
+        "changed elsewhere\n"
+    );
+}
+
+#[tokio::test]
+async fn local_files_read_text_file_rejects_binary_content() {
+    let temp = tempdir().expect("temp dir");
+    let file = temp.path().join("archive.bin");
+    fs::write(&file, b"hello\0world").expect("write source");
+
+    let error = local_files_read_text_file(LocalReadTextFileRequest {
+        max_bytes: Some(1024),
+        path: path_string(&file),
+    })
+    .await
+    .expect_err("reject binary");
+
+    assert!(error.contains("二进制内容"));
 }
 
 #[tokio::test]

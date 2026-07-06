@@ -20,6 +20,7 @@ fn remote_host(host: &str, tags: Vec<String>) -> RemoteHost {
         credential_ref: None,
         secret_ref: None,
         key_passphrase_ref: None,
+        key_passphrase_secret: None,
         credential_secret: None,
         credential_status: Default::default(),
         tags,

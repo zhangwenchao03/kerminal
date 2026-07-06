@@ -2,6 +2,7 @@ import type { TerminalSplitDirection } from "../workspace/types";
 
 export type TerminalContextMenuAction =
   | "copy"
+  | "copySessionId"
   | "paste"
   | "selectAll"
   | "search"
@@ -44,6 +45,7 @@ export interface TerminalContextMenuItemModel {
 
 export interface TerminalContextMenuGroupOptions {
   canCopy: boolean;
+  canCopySessionId?: boolean;
   canDisconnect?: boolean;
   canReconnect?: boolean;
   canSplit?: boolean;
@@ -53,12 +55,18 @@ const TERMINAL_CONTEXT_MENU_VIEWPORT_INSET = 8;
 
 export function terminalContextMenuGroups({
   canCopy,
+  canCopySessionId = true,
   canDisconnect = true,
   canReconnect = true,
   canSplit = true,
 }: TerminalContextMenuGroupOptions): TerminalContextMenuItemModel[][] {
   const groups: TerminalContextMenuItemModel[][] = [
     [
+      {
+        action: "copySessionId",
+        disabled: !canCopySessionId,
+        label: "复制会话 ID",
+      },
       {
         action: "copy",
         disabled: !canCopy,

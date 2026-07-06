@@ -390,6 +390,7 @@ impl RemoteHostTomlDocument {
         let mut ssh_options = host.ssh_options;
         for jump_host in &mut ssh_options.jump_hosts {
             jump_host.credential_secret = None;
+            jump_host.key_passphrase_secret = None;
         }
         Self {
             schema_version: CONFIG_FILE_SCHEMA_VERSION,
@@ -430,6 +431,7 @@ impl RemoteHostTomlDocument {
             credential_ref: self.credential_ref,
             secret_ref,
             key_passphrase_ref,
+            key_passphrase_secret: None,
             credential_secret: None,
             credential_status,
             tags: self.tags,

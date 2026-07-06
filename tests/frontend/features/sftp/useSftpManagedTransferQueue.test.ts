@@ -247,6 +247,52 @@ describe("useSftpManagedTransferQueue", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it("re-enqueues a safely retryable canceled transfer without adding resume request fields", async () => {
+    const canceledTransfer = transferSummary({
+      conflictPolicy: "overwrite",
+      id: "canceled-upload",
+      status: "canceled",
+    });
+    const queuedRetry = transferSummary({
+      conflictPolicy: "overwrite",
+      id: "retry-upload",
+      status: "queued",
+    });
+    sftpApiMock.enqueueSftpTransfer.mockResolvedValue(queuedRetry);
+    const transfersRef = { current: [canceledTransfer] };
+    const setTransfers = createTransferSetter(transfersRef);
+
+    const { result } = renderHook(() =>
+      useSftpManagedTransferQueue({
+        setTransfers,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.retryTransfer(canceledTransfer);
+    });
+
+    expect(sftpApiMock.enqueueSftpTransfer).toHaveBeenCalledWith({
+      conflictPolicy: "overwrite",
+      direction: "upload",
+      hostId: "host-right",
+      kind: "file",
+      localPath: "/tmp/source.log",
+      remotePath: "/srv/source.log",
+      viewScope: null,
+    });
+    expect(sftpApiMock.enqueueSftpTransfer.mock.calls[0][0]).not.toHaveProperty(
+      "resume",
+    );
+    expect(sftpApiMock.enqueueSftpTransfer.mock.calls[0][0]).not.toHaveProperty(
+      "partialPath",
+    );
+    expect(transfersRef.current.map((transfer) => transfer.id)).toEqual([
+      "retry-upload",
+      "canceled-upload",
+    ]);
+  });
+
   it("reports non-retryable failed transfers without enqueueing", async () => {
     const failedRemoteCopy = transferSummary({
       conflictPolicy: "overwrite",

@@ -135,7 +135,7 @@ export function useSftpTransferActions({
     onCancelSuccess: () => setOperationStatus({ kind: "info", message: "已请求取消传输。" }),
     onClearSuccess: () => setOperationStatus({ kind: "info", message: "已清理完成的传输任务。" }),
     onError: (nextError) => setOperationStatus({ kind: "error", message: errorMessage(nextError) }),
-    onRetrySuccess: () => setOperationStatus({ kind: "info", message: "已重新加入传输队列；断点续传未默认启用，将按完整任务重试。" }),
+    onRetrySuccess: () => setOperationStatus({ kind: "info", message: "已重新加入传输队列；将优先尝试断点续传。" }),
     onRetryUnavailable: (message) => setOperationStatus({ kind: "error", message }),
     refreshTransfers,
     setTransfers,
@@ -777,6 +777,15 @@ export function useSftpTransferActions({
     setOperationStatus(plan.status);
   };
 
+  const copySelectedRemoteItemToLocalClipboard = () => {
+    if (transferableSelectedEntries.length !== 1) {
+      copySelectedRemoteItem();
+      return;
+    }
+    setSftpClipboard(null);
+    void downloadEntryToLocalClipboard(transferableSelectedEntries[0]);
+  };
+
   const pasteSftpClipboard = async (destinationRemotePath = currentPath) => {
     if (!fileTarget || fileTarget.kind !== "ssh") {
       return;
@@ -948,7 +957,7 @@ export function useSftpTransferActions({
     const key = event.key.toLowerCase();
     if (key === "c") {
       event.preventDefault();
-      copySelectedRemoteItem();
+      copySelectedRemoteItemToLocalClipboard();
       return;
     }
     if (key === "v") {

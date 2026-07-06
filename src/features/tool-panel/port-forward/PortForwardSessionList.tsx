@@ -1,4 +1,13 @@
-import { Copy, Network, Play, Square, Terminal, Trash2, Wifi } from "lucide-react";
+import {
+  Copy,
+  Network,
+  Pencil,
+  Play,
+  Square,
+  Terminal,
+  Trash2,
+  Wifi,
+} from "lucide-react";
 import { useMemo } from "react";
 import { Button } from "../../../components/ui/button";
 import { cn } from "../../../lib/cn";
@@ -22,6 +31,7 @@ export function PortForwardSessionList({
   loading,
   onCopy,
   onDelete,
+  onEdit,
   onInject,
   onStart,
   onStop,
@@ -34,6 +44,7 @@ export function PortForwardSessionList({
   loading: boolean;
   onCopy: (value: string) => Promise<void>;
   onDelete: (forwardId: string) => Promise<void>;
+  onEdit: (session: PortForwardSummary) => void;
   onInject: (session: PortForwardSummary) => Promise<void>;
   onStart: (forwardId: string) => Promise<void>;
   onStop: (forwardId: string) => Promise<void>;
@@ -71,6 +82,7 @@ export function PortForwardSessionList({
               key={session.id}
               onCopy={onCopy}
               onDelete={onDelete}
+              onEdit={onEdit}
               onInject={onInject}
               onStart={onStart}
               onStop={onStop}
@@ -90,6 +102,7 @@ function PortForwardSessionRow({
   injectDisabledReason,
   onCopy,
   onDelete,
+  onEdit,
   onInject,
   onStart,
   onStop,
@@ -101,6 +114,7 @@ function PortForwardSessionRow({
   injectDisabledReason: string;
   onCopy: (value: string) => Promise<void>;
   onDelete: (forwardId: string) => Promise<void>;
+  onEdit: (session: PortForwardSummary) => void;
   onInject: (session: PortForwardSummary) => Promise<void>;
   onStart: (forwardId: string) => Promise<void>;
   onStop: (forwardId: string) => Promise<void>;
@@ -164,22 +178,34 @@ function PortForwardSessionRow({
               脚本只写当前用户 home，不需要 root；提供备份和撤销脚本。
             </div>
           ) : null}
+          {session.runtime ? <SessionRuntime runtime={session.runtime} /> : null}
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <Button
+          aria-label="复制地址"
           onClick={() => void onCopy(copyAddressForSession(session))}
-          size="sm"
+          size="icon"
+          title="复制地址"
           variant="secondary"
         >
           <Copy className="h-4 w-4" />
-          复制地址
+        </Button>
+        <Button
+          aria-label="编辑隧道"
+          onClick={() => onEdit(session)}
+          size="icon"
+          title="编辑隧道"
+          variant="secondary"
+        >
+          <Pencil className="h-4 w-4" />
         </Button>
         {isNetworkAssist ? (
           <Button
+            aria-label="注入代理环境"
             disabled={!canInject || !activeProxyUrl}
             onClick={() => void onInject(session)}
-            size="sm"
+            size="icon"
             title={
               activeProxyUrl
                 ? canInject
@@ -190,14 +216,14 @@ function PortForwardSessionRow({
             variant="secondary"
           >
             <Terminal className="h-4 w-4" />
-            注入代理环境
           </Button>
         ) : null}
         {isNetworkAssist ? (
           <Button
+            aria-label={autoUseEnabled ? "关闭新终端自动使用" : "新终端自动使用"}
             disabled={!activeProxyUrl}
             onClick={() => onToggleAutoUse(session)}
-            size="sm"
+            size="icon"
             title={
               activeProxyUrl
                 ? "控制新 SSH 终端自动使用代理"
@@ -206,57 +232,60 @@ function PortForwardSessionRow({
             variant={autoUseEnabled ? "primary" : "secondary"}
           >
             <Terminal className="h-4 w-4" />
-            {autoUseEnabled ? "关闭新终端自动使用" : "新终端自动使用"}
           </Button>
         ) : null}
         {isNetworkAssist && userSetupScript ? (
           <Button
+            aria-label="复制配置脚本"
             onClick={() => void onCopy(userSetupScript)}
-            size="sm"
+            size="icon"
             title="复制用户级配置脚本，需在远端终端手动执行"
             variant="secondary"
           >
             <Copy className="h-4 w-4" />
-            复制配置脚本
           </Button>
         ) : null}
         {isNetworkAssist && userUndoScript ? (
           <Button
+            aria-label="复制撤销脚本"
             onClick={() => void onCopy(userUndoScript)}
-            size="sm"
+            size="icon"
             title="复制撤销脚本，需在远端终端手动执行"
             variant="secondary"
           >
             <Copy className="h-4 w-4" />
-            复制撤销脚本
           </Button>
         ) : null}
         {session.status === "running" ? (
           <Button
+            aria-label="停止隧道"
             onClick={() => void onStop(session.id)}
-            size="sm"
+            size="icon"
+            title="停止隧道"
             variant="secondary"
           >
             <Square className="h-4 w-4" />
-            停止
           </Button>
         ) : (
           <Button
+            aria-label="启动隧道"
             onClick={() => void onStart(session.id)}
-            size="sm"
+            size="icon"
+            title="启动隧道"
             variant="secondary"
           >
             <Play className="h-4 w-4" />
-            启动
           </Button>
         )}
         <Button
+          aria-label="删除隧道"
+          className="border-rose-300/30 text-rose-700 hover:bg-rose-500/10 dark:text-rose-300"
           onClick={() => void onDelete(session.id)}
-          size="sm"
+          size="icon"
+          title="删除隧道"
           variant="secondary"
         >
           <Trash2 className="h-4 w-4" />
-          删除
         </Button>
       </div>
     </article>
@@ -276,6 +305,36 @@ function SessionFact({ label, value }: { label: string; value: string }) {
   );
 }
 
+function SessionRuntime({
+  runtime,
+}: {
+  runtime: NonNullable<PortForwardSummary["runtime"]>;
+}) {
+  const details = [
+    runtimeLabel(runtime.mode),
+    runtime.backend,
+    runtime.tunnelKind,
+    cleanupLabel(runtime.cleanupStatus),
+  ].filter(Boolean);
+  return (
+    <div className="mt-2 rounded-lg border border-zinc-200/70 bg-[var(--surface-field)] px-2 py-1.5 text-[11px] leading-4 text-zinc-600 dark:border-zinc-700/70 dark:text-zinc-300">
+      <div className="font-medium text-zinc-700 dark:text-zinc-200">
+        Runtime: {details.join(" / ")}
+      </div>
+      {runtime.fallbackReason ? (
+        <div className="mt-1 text-amber-700 dark:text-amber-200">
+          Fallback: {runtime.fallbackReason}
+        </div>
+      ) : null}
+      {runtime.recentFailure ? (
+        <div className="mt-1 text-rose-700 dark:text-rose-200">
+          最近失败: {runtime.recentFailure}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function StatusBadge({ status }: { status: PortForwardSummary["status"] }) {
   return (
     <span
@@ -289,6 +348,32 @@ function StatusBadge({ status }: { status: PortForwardSummary["status"] }) {
       {status === "running" ? "运行中" : "已退出"}
     </span>
   );
+}
+
+function runtimeLabel(mode: string) {
+  if (mode === "managedSshRuntime") {
+    return "Managed SSH";
+  }
+  if (mode === "openSshProcess") {
+    return "OpenSSH process";
+  }
+  if (mode === "openSshPty") {
+    return "OpenSSH PTY";
+  }
+  if (mode === "restored") {
+    return "Restored";
+  }
+  return "Unknown";
+}
+
+function cleanupLabel(cleanupStatus: string) {
+  if (!cleanupStatus) {
+    return "";
+  }
+  if (cleanupStatus === "cleanedUp") {
+    return "cleaned up";
+  }
+  return cleanupStatus;
 }
 
 function originLabel(origin: ReturnType<typeof sessionOrigin>) {

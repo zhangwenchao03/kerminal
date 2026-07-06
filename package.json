@@ -1,7 +1,7 @@
 {
   "name": "kerminal",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "license": "AGPL-3.0-only",
   "scripts": {
@@ -26,6 +26,8 @@
     "verify:terminal-ghost-visual": "node scripts/verify-terminal-ghost-visual.mjs",
     "verify:terminal-ghost-xterm": "node scripts/verify-terminal-ghost-real-xterm.mjs",
     "verify:terminal-ghost-app": "node scripts/verify-terminal-ghost-app.mjs",
+    "verify:managed-ssh-auto": "node scripts/verify-managed-ssh-auto.mjs",
+    "verify:managed-ssh-hitl": "node scripts/verify-managed-ssh-hitl.mjs",
     "verify:command-suggestion-latency": "cd src-tauri && cargo test --test command_suggestion_performance command_suggestion_mixed_provider_latency_gate -- --exact --nocapture",
     "perf:frontend-bundle": "npm run build && node scripts/report-frontend-bundle.mjs",
     "perf:rust-timings": "cd src-tauri && cargo build --timings",
@@ -40,10 +42,13 @@
     "check:rust": "cd src-tauri && cargo fmt --check && cargo clippy --all-targets --all-features -- -D warnings && cargo test -j 1",
     "check": "npm run check:source-size && npm run test:frontend && npm run check:rust && npm run build",
     "build": "tsc && vite build",
+    "prepare:launch-shim-sidecar": "node scripts/prepare-launch-shim-sidecar.mjs",
+    "verify:launch-shim-sidecar": "node scripts/prepare-launch-shim-sidecar.mjs --verify --no-build",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "tauri:build:unsigned": "tauri build --no-sign --config scripts/tauri.unsigned.conf.json"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

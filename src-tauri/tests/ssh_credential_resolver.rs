@@ -108,6 +108,7 @@ fn resolver_decrypts_jump_password_and_target_agent() {
         credential_ref: None,
         secret_ref: Some(jump_ref),
         key_passphrase_ref: None,
+        key_passphrase_secret: None,
         credential_secret: None,
         credential_status: RemoteHostCredentialStatus::Vault,
     });
@@ -164,6 +165,114 @@ fn resolver_supports_private_key_path_with_vault_passphrase() {
     );
     assert!(resolved.summary.target.has_key_passphrase);
     assert_redacted(&resolved, "key-passphrase-secret");
+}
+
+#[test]
+fn resolver_materializes_key_passphrases_for_target_and_jump_runtime_hosts() {
+    let fixture = Fixture::new();
+    let target_passphrase_ref = fixture.store_secret(
+        "ssh-host",
+        "host-1",
+        "target",
+        "key-passphrase",
+        "ssh-key-passphrase",
+        "target-passphrase-secret",
+    );
+    let jump_passphrase_ref = fixture.store_secret(
+        "jump-host",
+        "host-1",
+        "jump-0",
+        "key-passphrase",
+        "ssh-key-passphrase",
+        "jump-passphrase-secret",
+    );
+    let mut host = key_path_host("host-1", "/home/deploy/.ssh/id_ed25519");
+    host.key_passphrase_ref = Some(target_passphrase_ref);
+    host.ssh_options.jump_hosts.push(SshJumpHostOptions {
+        name: "bastion".to_owned(),
+        host: "bastion.internal".to_owned(),
+        port: 2222,
+        username: "ops".to_owned(),
+        auth_type: RemoteHostAuthType::Key,
+        credential_ref: Some("/home/ops/.ssh/id_ed25519".to_owned()),
+        secret_ref: None,
+        key_passphrase_ref: Some(jump_passphrase_ref),
+        key_passphrase_secret: None,
+        credential_secret: None,
+        credential_status: RemoteHostCredentialStatus::Vault,
+    });
+
+    let resolved = fixture.resolver().resolve_host(&host).expect("resolve");
+    let runtime_host = SshCredentialResolver::materialize_runtime_host_from_auth(&host, &resolved);
+
+    assert_eq!(
+        runtime_host.key_passphrase_secret.as_deref(),
+        Some("target-passphrase-secret")
+    );
+    assert_eq!(
+        runtime_host.ssh_options.jump_hosts[0]
+            .key_passphrase_secret
+            .as_deref(),
+        Some("jump-passphrase-secret")
+    );
+}
+
+#[test]
+fn resolver_materializes_password_and_inline_key_for_runtime_hosts() {
+    let fixture = Fixture::new();
+    let target_key_ref = fixture.store_secret(
+        "ssh-host",
+        "host-1",
+        "target",
+        "private-key",
+        "ssh-private-key",
+        "-----BEGIN OPENSSH PRIVATE KEY-----\ntarget-key\n",
+    );
+    let jump_password_ref = fixture.store_secret(
+        "jump-host",
+        "host-1",
+        "jump-0",
+        "password",
+        "ssh-password",
+        "jump-password-secret",
+    );
+    let mut host = key_path_host("host-1", "");
+    host.secret_ref = Some(target_key_ref);
+    host.ssh_options.jump_hosts.push(SshJumpHostOptions {
+        name: "bastion".to_owned(),
+        host: "bastion.internal".to_owned(),
+        port: 2222,
+        username: "ops".to_owned(),
+        auth_type: RemoteHostAuthType::Password,
+        credential_ref: None,
+        secret_ref: Some(jump_password_ref),
+        key_passphrase_ref: None,
+        key_passphrase_secret: None,
+        credential_secret: None,
+        credential_status: RemoteHostCredentialStatus::Vault,
+    });
+
+    let resolved = fixture.resolver().resolve_host(&host).expect("resolve");
+    let runtime_host = SshCredentialResolver::materialize_runtime_host_from_auth(&host, &resolved);
+
+    assert_eq!(runtime_host.credential_ref, None);
+    assert_eq!(
+        runtime_host.credential_secret.as_deref(),
+        Some("-----BEGIN OPENSSH PRIVATE KEY-----\ntarget-key\n")
+    );
+    assert_eq!(runtime_host.ssh_options.jump_hosts[0].credential_ref, None);
+    assert_eq!(
+        runtime_host.ssh_options.jump_hosts[0]
+            .credential_secret
+            .as_deref(),
+        Some("jump-password-secret")
+    );
+    assert_eq!(
+        runtime_host.ssh_options.jump_hosts[0]
+            .key_passphrase_secret
+            .as_deref(),
+        None
+    );
 }
 
 #[test]
@@ -380,6 +489,7 @@ fn base_host(id: &str, auth_type: RemoteHostAuthType) -> RemoteHost {
         credential_ref: None,
         secret_ref: None,
         key_passphrase_ref: None,
+        key_passphrase_secret: None,
         credential_secret: None,
         credential_status: RemoteHostCredentialStatus::Missing,
         tags: Vec::new(),

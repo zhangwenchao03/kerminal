@@ -3,6 +3,8 @@ import type {
   MachineGroup,
   TerminalPane,
   TerminalTab,
+  WorkspaceFileDirtyState,
+  WorkspaceFileRevealRequest,
 } from "../features/workspace/types";
 import { isTerminalSessionTab } from "../features/workspace/types";
 import type { WorkspaceState } from "../features/workspace/workspaceStore";
@@ -19,6 +21,7 @@ export interface ToolPanelWorkspaceContext {
   activeTab?: TerminalTab;
   focusedPane?: TerminalPane;
   selectedMachine?: Machine;
+  sftpRevealRequest: WorkspaceFileRevealRequest | null;
   terminalPanes: TerminalPane[];
   terminalTabs: TerminalTab[];
 }
@@ -30,6 +33,7 @@ export interface TerminalWorkspaceSnapshot {
   terminalPanes: TerminalPane[];
   terminalTabs: TerminalTab[];
   terminalTabGroupPreferences: WorkspaceState["terminalTabGroupPreferences"];
+  workspaceFileDirtyState: WorkspaceFileDirtyState;
 }
 
 interface ParsedTerminalWorkspaceSnapshotCache {
@@ -41,8 +45,7 @@ interface ParsedTerminalWorkspaceSnapshotCache {
 }
 
 let parsedTerminalWorkspaceSnapshotCache:
-  | ParsedTerminalWorkspaceSnapshotCache
-  | undefined;
+  ParsedTerminalWorkspaceSnapshotCache | undefined;
 
 export function collectOpenMachineIds({
   terminalPanes,
@@ -83,7 +86,10 @@ export function buildToolPanelWorkspaceSnapshot(state: WorkspaceState): string {
       : null,
     focusedPaneId: state.focusedPaneId,
     selectedMachineId: state.selectedMachineId,
-    terminalPanes: state.terminalPanes.map(terminalPaneWithoutHighFrequencyOutput),
+    sftpRevealRequest: state.workspaceFileRevealRequest,
+    terminalPanes: state.terminalPanes.map(
+      terminalPaneWithoutHighFrequencyOutput,
+    ),
     terminalTabs: state.terminalTabs,
   });
 }
@@ -98,6 +104,7 @@ export function buildTerminalWorkspaceSnapshot(state: WorkspaceState): string {
     ),
     terminalTabs: state.terminalTabs,
     terminalTabGroupPreferences: state.terminalTabGroupPreferences,
+    workspaceFileDirtyState: state.workspaceFileDirtyState,
   } satisfies TerminalWorkspaceSnapshot);
 }
 
@@ -159,7 +166,10 @@ export function buildToolPanelWorkspaceContext(
     activeTab,
     focusedPane,
     selectedMachine,
-    terminalPanes: state.terminalPanes.map(terminalPaneWithoutHighFrequencyOutput),
+    sftpRevealRequest: state.workspaceFileRevealRequest,
+    terminalPanes: state.terminalPanes.map(
+      terminalPaneWithoutHighFrequencyOutput,
+    ),
     terminalTabs: state.terminalTabs,
   };
 }
@@ -190,7 +200,8 @@ function machineFromContainerPane(
   pane: TerminalPane | undefined,
   machineGroups: MachineGroup[],
 ): Machine | undefined {
-  const target = pane?.target?.kind === "dockerContainer" ? pane.target : undefined;
+  const target =
+    pane?.target?.kind === "dockerContainer" ? pane.target : undefined;
   if (!pane || !target) {
     return undefined;
   }

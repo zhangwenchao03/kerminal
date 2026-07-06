@@ -5,13 +5,7 @@ import type { TmuxPaneBinding } from "../../lib/tmuxApi";
 export type MachineStatus = "online" | "offline" | "warning";
 
 export type MachineKind =
-  | "local"
-  | "ssh"
-  | "telnet"
-  | "serial"
-  | "rdp"
-  | "dockerContainer"
-  | "group";
+  "local" | "ssh" | "telnet" | "serial" | "rdp" | "dockerContainer" | "group";
 
 export interface Machine {
   id: string;
@@ -75,7 +69,33 @@ export interface SftpTransferWorkspaceTab {
   rightHostId?: string;
 }
 
-export type TerminalTab = TerminalSessionTab | SftpTransferWorkspaceTab;
+export type WorkspaceFileAccess = "readonly" | "editable";
+export type WorkspaceFileSource =
+  "sftp" | "container" | "composeYaml" | "workspace" | "local";
+
+export interface WorkspaceFileTab {
+  kind: "workspaceFile";
+  id: string;
+  title: string;
+  machineId: string;
+  target: RemoteTargetRef;
+  path: string;
+  rootPath?: string;
+  access: WorkspaceFileAccess;
+  source: WorkspaceFileSource;
+}
+
+export interface WorkspaceFileRevealRequest {
+  id: number;
+  directoryPath: string;
+  filePath: string;
+  target: RemoteTargetRef;
+}
+
+export type TerminalTab =
+  TerminalSessionTab | SftpTransferWorkspaceTab | WorkspaceFileTab;
+
+export type WorkspaceFileDirtyState = Record<string, boolean>;
 
 export const terminalTabGroupColorIds = [
   "blue",
@@ -119,6 +139,12 @@ export function isSftpTransferWorkspaceTab(
   tab: TerminalTab | undefined | null,
 ): tab is SftpTransferWorkspaceTab {
   return tab?.kind === "sftpTransfer";
+}
+
+export function isWorkspaceFileTab(
+  tab: TerminalTab | undefined | null,
+): tab is WorkspaceFileTab {
+  return tab?.kind === "workspaceFile";
 }
 
 export type TerminalSplitDirection = "horizontal" | "vertical";
@@ -165,6 +191,7 @@ export interface TerminalPane {
 export const toolIds = [
   "agentLauncher",
   "system",
+  "containers",
   "sftp",
   "ports",
   "tmux",

@@ -66,7 +66,9 @@ describe("nativeMenuApi", () => {
 
   it("validates the public native menu action set", () => {
     expect(nativeMenuActions).toContain("openSettings");
+    expect(nativeMenuActions).toContain("editCopy");
     expect(isNativeMenuAction("splitVertical")).toBe(true);
+    expect(isNativeMenuAction("editPaste")).toBe(true);
     expect(isNativeMenuAction("copy")).toBe(false);
     expect(isNativeMenuAction(null)).toBe(false);
   });

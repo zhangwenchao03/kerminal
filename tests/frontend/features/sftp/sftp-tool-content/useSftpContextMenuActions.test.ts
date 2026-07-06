@@ -120,6 +120,12 @@ describe("useSftpContextMenuActions", () => {
       ),
     );
     expect(
+      workspaceCurrentDirectory.actions.setOperationStatus,
+    ).toHaveBeenCalledWith(null);
+    expect(workspaceCurrentDirectory.actions.loadDirectory).toHaveBeenCalledWith(
+      "/srv/uploads",
+    );
+    expect(
       workspaceCurrentDirectory.actions.openWorkspaceDirectory,
     ).toHaveBeenCalledWith("/srv/uploads");
   });
@@ -143,6 +149,8 @@ describe("useSftpContextMenuActions", () => {
       contextMenu: contextMenu(directoryEntry),
     });
     act(() => workspace.result.current.executeContextMenuAction("workspace"));
+    expect(workspace.actions.setOperationStatus).toHaveBeenCalledWith(null);
+    expect(workspace.actions.loadDirectory).toHaveBeenCalledWith("/srv/conf");
     expect(workspace.actions.openWorkspaceDirectory).toHaveBeenCalledWith(
       "/srv/conf",
     );

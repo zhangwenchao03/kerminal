@@ -1,5 +1,11 @@
 import { useState, type ReactNode } from "react";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultAppSettings } from "../../../../src/features/settings/settingsModel";
@@ -9,6 +15,10 @@ import type {
   TerminalTabGroupPreferences,
 } from "../../../../src/features/workspace/types";
 import { TerminalWorkspace } from "../../../../src/features/terminal/TerminalWorkspace";
+import {
+  WORKSPACE_FILE_TAB_COMMAND_EVENT,
+  type WorkspaceFileTabCommandEventDetail,
+} from "../../../../src/features/workspace/workspaceFileTabActions";
 import {
   alternateLocalTabs,
   baseTerminalPane,
@@ -42,6 +52,10 @@ const resizableMockState = vi.hoisted(() => ({
   }>,
 }));
 
+const desktopClipboardMocks = vi.hoisted(() => ({
+  writeDesktopClipboardText: vi.fn(),
+}));
+
 function mockTabListMetrics({
   clientWidth,
   scrollWidth,
@@ -52,16 +66,12 @@ function mockTabListMetrics({
   const clientWidthSpy = vi
     .spyOn(HTMLElement.prototype, "clientWidth", "get")
     .mockImplementation(function (this: HTMLElement) {
-      return this.getAttribute("aria-label") === "终端标签栏"
-        ? clientWidth
-        : 0;
+      return this.getAttribute("aria-label") === "终端标签栏" ? clientWidth : 0;
     });
   const scrollWidthSpy = vi
     .spyOn(HTMLElement.prototype, "scrollWidth", "get")
     .mockImplementation(function (this: HTMLElement) {
-      return this.getAttribute("aria-label") === "终端标签栏"
-        ? scrollWidth
-        : 0;
+      return this.getAttribute("aria-label") === "终端标签栏" ? scrollWidth : 0;
     });
 
   return () => {
@@ -139,11 +149,19 @@ vi.mock("../../../../src/components/ui/resizable", () => ({
   }) => (
     resizableMockState.groups.push({ defaultLayout, id, onLayoutChanged }),
     (
-      <div data-default-layout={JSON.stringify(defaultLayout ?? null)} data-panel-group-id={id}>
+      <div
+        data-default-layout={JSON.stringify(defaultLayout ?? null)}
+        data-panel-group-id={id}
+      >
         {children}
       </div>
     )
   ),
+}));
+
+vi.mock("../../../../src/lib/desktopClipboardApi", () => ({
+  writeDesktopClipboardText: (...args: unknown[]) =>
+    desktopClipboardMocks.writeDesktopClipboardText(...args),
 }));
 
 describe("TerminalWorkspace", () => {
@@ -157,6 +175,10 @@ describe("TerminalWorkspace", () => {
     xtermPaneMockState.shouldThrow = false;
     xtermPaneMockState.unmountedPaneIds = [];
     resizableMockState.groups = [];
+    desktopClipboardMocks.writeDesktopClipboardText.mockReset();
+    desktopClipboardMocks.writeDesktopClipboardText.mockResolvedValue({
+      ok: true,
+    });
   });
 
   it("renders the active local tab and terminal pane", () => {
@@ -398,7 +420,9 @@ describe("TerminalWorkspace", () => {
       />,
     );
 
-    expect(screen.getByLabelText("本地 PowerShell xterm 终端")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("本地 PowerShell xterm 终端"),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("右侧分屏 xterm 终端")).toBeInTheDocument();
     expect(screen.getByLabelText("下方分屏 xterm 终端")).toBeInTheDocument();
   });
@@ -504,9 +528,7 @@ describe("TerminalWorkspace", () => {
 
   it("reserves left titlebar control space when window chrome overlaps the tab bar", () => {
     render(
-      <TerminalWorkspace
-        {...workspaceProps({ leftTitleBarInset: 112 })}
-      />,
+      <TerminalWorkspace {...workspaceProps({ leftTitleBarInset: 112 })} />,
     );
 
     const tabBar = screen.getByLabelText("终端标签栏").parentElement;
@@ -628,6 +650,48 @@ describe("TerminalWorkspace", () => {
     await user.click(screen.getByRole("button", { name: "关闭标签" }));
 
     expect(onCloseTab).toHaveBeenCalledWith("tab-local");
+  });
+
+  it("confirms before closing a dirty workspace file tab", async () => {
+    const user = userEvent.setup();
+    const onCloseTab = vi.fn();
+    const fileTab: TerminalTab = {
+      access: "editable",
+      id: "tab-file-dirty",
+      kind: "workspaceFile",
+      machineId: "host-prod",
+      path: "/etc/app.conf",
+      source: "sftp",
+      target: { hostId: "host-prod", kind: "ssh" },
+      title: "app.conf",
+    };
+
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          activeTabId: fileTab.id,
+          focusedPaneId: "",
+          onCloseTab,
+          panes: [],
+          renderCustomTab: () => <div>file surface</div>,
+          tabs: [fileTab],
+          workspaceFileDirtyState: { [fileTab.id]: true },
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "关闭 app.conf tab" }));
+
+    expect(
+      screen.getByRole("dialog", { name: "关闭未保存文件" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(onCloseTab).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "关闭 app.conf tab" }));
+    await user.click(screen.getByRole("button", { name: "放弃修改并关闭" }));
+
+    expect(onCloseTab).toHaveBeenCalledWith(fileTab.id);
   });
 
   it("shows tab numbers when enabled in terminal appearance", () => {
@@ -927,6 +991,67 @@ describe("TerminalWorkspace", () => {
     await user.click(screen.getByRole("button", { name: "关闭标签" }));
 
     expect(onCloseTab).toHaveBeenCalledWith("tab-lab");
+  });
+
+  it("adds workspace file actions to the tab right-click menu", async () => {
+    const user = userEvent.setup();
+    const onRevealWorkspaceFileInSftp = vi.fn();
+    const fileTab: TerminalTab = {
+      access: "editable",
+      id: "tab-file-actions",
+      kind: "workspaceFile",
+      machineId: "host-prod",
+      path: "/etc/app.conf",
+      source: "sftp",
+      target: { hostId: "host-prod", kind: "ssh" },
+      title: "app.conf",
+    };
+    const commandEvents: WorkspaceFileTabCommandEventDetail[] = [];
+    const handleCommand = (event: Event) => {
+      commandEvents.push(
+        (event as CustomEvent<WorkspaceFileTabCommandEventDetail>).detail,
+      );
+    };
+    window.addEventListener(WORKSPACE_FILE_TAB_COMMAND_EVENT, handleCommand);
+
+    try {
+      render(
+        <TerminalWorkspace
+          {...workspaceProps({
+            activeTabId: fileTab.id,
+            focusedPaneId: "",
+            onRevealWorkspaceFileInSftp,
+            panes: [],
+            renderCustomTab: () => <div>file surface</div>,
+            tabs: [fileTab],
+          })}
+        />,
+      );
+
+      fireEvent.contextMenu(screen.getByRole("button", { name: "app.conf" }));
+      await user.click(screen.getByRole("menuitem", { name: "复制完整路径" }));
+      expect(
+        desktopClipboardMocks.writeDesktopClipboardText,
+      ).toHaveBeenCalledWith("/etc/app.conf");
+
+      fireEvent.contextMenu(screen.getByRole("button", { name: "app.conf" }));
+      await user.click(
+        screen.getByRole("menuitem", { name: "在 SFTP 中显示" }),
+      );
+      expect(onRevealWorkspaceFileInSftp).toHaveBeenCalledWith(fileTab.id);
+
+      fireEvent.contextMenu(screen.getByRole("button", { name: "app.conf" }));
+      await user.click(screen.getByRole("menuitem", { name: "重新加载" }));
+      expect(commandEvents).toContainEqual({
+        command: "reload",
+        tabId: fileTab.id,
+      });
+    } finally {
+      window.removeEventListener(
+        WORKSPACE_FILE_TAB_COMMAND_EVENT,
+        handleCommand,
+      );
+    }
   });
 
   it("closes tabs immediately when close confirmation is disabled", async () => {
@@ -1318,7 +1443,9 @@ describe("TerminalWorkspace", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "关闭 本地批量 分屏" }));
+    await user.click(
+      screen.getByRole("button", { name: "关闭 本地批量 分屏" }),
+    );
 
     expect(onClosePane).toHaveBeenCalledWith("pane-batch-local");
   });

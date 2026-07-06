@@ -2,29 +2,49 @@
 //!
 //! @author kongweiguang
 
+use std::sync::Arc;
+
 use crate::{
     error::AppResult,
+    models::settings::AppSettings,
     paths::KerminalPaths,
     services::{
-        agent_context_service::AgentContextService, agent_session_service::AgentSessionService,
+        agent_context_service::AgentContextService,
+        agent_session_service::AgentSessionService,
         command_history_service::CommandHistoryService,
         command_suggestion_service::CommandSuggestionService,
         config_change_observer_service::ConfigChangeObserverService,
-        credential_service::CredentialService, diagnostics_service::DiagnosticsService,
+        credential_service::CredentialService,
+        diagnostics_service::DiagnosticsService,
         docker_host_service::DockerHostService,
         external_agent_workspace::ExternalAgentWorkspaceService,
+        external_launch::{
+            ExternalLaunchIntake, ExternalLaunchPolicy, ExternalSessionMaterializer,
+        },
         local_network_proxy_service::LocalNetworkProxyService,
         mcp_streamable_http_server::McpStreamableHttpServerService,
         mcp_tool_catalog_service::McpToolCatalogService,
         mcp_tool_executor_service::McpToolExecutorService,
-        port_forward_service::PortForwardService, profile_service::ProfileService,
-        remote_host_service::RemoteHostService, serial_terminal_service::SerialTerminalService,
-        server_info_service::ServerInfoService, settings_service::SettingsService,
-        sftp_service::SftpService, snippet_service::SnippetService,
-        ssh_command_service::SshCommandService, ssh_terminal_service::SshTerminalService,
-        telnet_terminal_service::TelnetTerminalService, terminal_manager::TerminalManager,
-        terminal_session_binding_service::TerminalSessionBindingService, tmux_service::TmuxService,
-        workflow_service::WorkflowService, workspace_sync_service::WorkspaceSyncService,
+        port_forward_service::PortForwardService,
+        profile_service::ProfileService,
+        remote_host_service::RemoteHostService,
+        serial_terminal_service::SerialTerminalService,
+        server_info_service::ServerInfoService,
+        settings_service::SettingsService,
+        sftp_service::SftpService,
+        snippet_service::SnippetService,
+        ssh_command_service::SshCommandService,
+        ssh_runtime::{
+            auth_broker::SshAuthBroker, native_backend::NativeSshRuntimeBackend,
+            ManagedSshSessionManager,
+        },
+        ssh_terminal_service::SshTerminalService,
+        telnet_terminal_service::TelnetTerminalService,
+        terminal_manager::TerminalManager,
+        terminal_session_binding_service::TerminalSessionBindingService,
+        tmux_service::TmuxService,
+        workflow_service::WorkflowService,
+        workspace_sync_service::WorkspaceSyncService,
     },
     storage::{config_file_store::ConfigFileStore, CommandSqliteStore, RuntimeFileStore},
 };
@@ -42,6 +62,8 @@ pub struct AppState {
     credentials: CredentialService,
     diagnostics: DiagnosticsService,
     docker_hosts: DockerHostService,
+    external_launch_intake: ExternalLaunchIntake,
+    external_session_materializer: ExternalSessionMaterializer,
     local_network_proxy: LocalNetworkProxyService,
     mcp_http_server: McpStreamableHttpServerService,
     paths: KerminalPaths,
@@ -53,7 +75,9 @@ pub struct AppState {
     settings: SettingsService,
     sftp: SftpService,
     snippets: SnippetService,
+    ssh_auth_broker: SshAuthBroker,
     ssh_commands: SshCommandService,
+    ssh_runtime: ManagedSshSessionManager,
     ssh_terminals: SshTerminalService,
     telnet_terminals: TelnetTerminalService,
     storage: RuntimeFileStore,
@@ -86,22 +110,50 @@ impl AppState {
         let mcp_http_server = McpStreamableHttpServerService::new();
         let diagnostics = DiagnosticsService::new();
         let docker_hosts = DockerHostService::new();
+        let external_launch_intake = ExternalLaunchIntake::new();
         let local_network_proxy = LocalNetworkProxyService::new();
         let config_files = ConfigFileStore::new(paths.root.clone());
         let workspace_sync = WorkspaceSyncService::new(paths.clone());
         workspace_sync.ensure_bootstrap()?;
         let settings = SettingsService::new(config_files.clone());
         settings.ensure_seed_settings()?;
-        let port_forwards = PortForwardService::new();
+        let persisted_settings = settings.load_settings()?;
+        external_launch_intake.configure_policy(ExternalLaunchPolicy::from(
+            &persisted_settings.external_launch,
+        ))?;
         let profiles = ProfileService::new(config_files.clone());
         profiles.ensure_seed_profiles()?;
         let remote_hosts = RemoteHostService::new(config_files.clone());
         let serial_terminals = SerialTerminalService::new();
+        let ssh_auth_broker = SshAuthBroker::new();
+        let ssh_runtime =
+            ManagedSshSessionManager::with_backend(Arc::new(NativeSshRuntimeBackend::new()));
+        let external_session_materializer = ExternalSessionMaterializer::new(
+            external_launch_intake.clone(),
+            ssh_auth_broker.clone(),
+        );
+        let port_forwards = PortForwardService::with_ssh_runtime(
+            ssh_runtime.clone(),
+            ssh_auth_broker.clone(),
+            external_session_materializer.clone(),
+        );
         let server_info = ServerInfoService::new();
-        let sftp = SftpService::new();
+        let sftp = SftpService::with_ssh_runtime(
+            ssh_runtime.clone(),
+            ssh_auth_broker.clone(),
+            external_session_materializer.clone(),
+        );
         let snippets = SnippetService::new(config_files.clone());
-        let ssh_commands = SshCommandService::new();
-        let ssh_terminals = SshTerminalService::new();
+        let ssh_commands = SshCommandService::with_ssh_runtime(
+            ssh_runtime.clone(),
+            ssh_auth_broker.clone(),
+            external_session_materializer.clone(),
+        );
+        let ssh_terminals = SshTerminalService::with_ssh_runtime(
+            ssh_runtime.clone(),
+            ssh_auth_broker.clone(),
+            external_session_materializer.clone(),
+        );
         ssh_terminals.cleanup_temporary_identity_files(&paths)?;
         let telnet_terminals = TelnetTerminalService::new();
         let mcp_tool_catalog = McpToolCatalogService::new();
@@ -121,6 +173,8 @@ impl AppState {
             credentials,
             diagnostics,
             docker_hosts,
+            external_launch_intake,
+            external_session_materializer,
             local_network_proxy,
             mcp_http_server,
             paths,
@@ -132,7 +186,9 @@ impl AppState {
             settings,
             sftp,
             snippets,
+            ssh_auth_broker,
             ssh_commands,
+            ssh_runtime,
             ssh_terminals,
             telnet_terminals,
             storage,
@@ -200,6 +256,16 @@ impl AppState {
         &self.docker_hosts
     }
 
+    /// 返回外部 SSH 启动 intake 服务。
+    pub fn external_launch_intake(&self) -> &ExternalLaunchIntake {
+        &self.external_launch_intake
+    }
+
+    /// 返回外部 SSH 启动临时 target materializer。
+    pub fn external_session_materializer(&self) -> &ExternalSessionMaterializer {
+        &self.external_session_materializer
+    }
+
     /// 返回本机共享网络代理服务。
     pub fn local_network_proxy(&self) -> &LocalNetworkProxyService {
         &self.local_network_proxy
@@ -245,6 +311,14 @@ impl AppState {
         &self.settings
     }
 
+    /// 更新应用设置并同步需要立即生效的运行态策略。
+    pub fn update_settings(&self, request: AppSettings) -> AppResult<AppSettings> {
+        let settings = self.settings.update_settings(request)?;
+        self.external_launch_intake
+            .configure_policy(ExternalLaunchPolicy::from(&settings.external_launch))?;
+        Ok(settings)
+    }
+
     /// 返回 SFTP 文件工具服务。
     pub fn sftp(&self) -> &SftpService {
         &self.sftp
@@ -255,9 +329,19 @@ impl AppState {
         &self.snippets
     }
 
+    /// 返回 SSH 认证 broker。
+    pub fn ssh_auth_broker(&self) -> &SshAuthBroker {
+        &self.ssh_auth_broker
+    }
+
     /// 返回 SSH 非交互命令服务。
     pub fn ssh_commands(&self) -> &SshCommandService {
         &self.ssh_commands
+    }
+
+    /// 返回受管 SSH 会话运行时。
+    pub fn ssh_runtime(&self) -> &ManagedSshSessionManager {
+        &self.ssh_runtime
     }
 
     /// 返回 SSH 远程终端服务。

@@ -1,14 +1,12 @@
 import type {
-  DockerContainerReadTextFileResponse,
-  DockerContainerWriteTextFileResponse,
-} from "../../lib/containerFilesApi";
-import type {
   SftpEntry,
   SftpFileRevision,
-  SftpReadTextFileResponse,
-  SftpWriteTextFileResponse,
 } from "../../lib/sftpApiTypes";
 import type { RemoteTargetRef } from "../../lib/targetModel";
+import type {
+  RemoteWorkspaceReadTextFileResponse,
+  RemoteWorkspaceWriteTextFileResponse,
+} from "./remoteWorkspaceEditorTransport";
 
 export type RemoteWorkspaceStatus = {
   kind: "info" | "success" | "error";
@@ -45,13 +43,9 @@ export type OpenFileTab = {
   truncated: boolean;
 };
 
-export type RemoteWorkspaceReadResponse =
-  | DockerContainerReadTextFileResponse
-  | SftpReadTextFileResponse;
+export type RemoteWorkspaceReadResponse = RemoteWorkspaceReadTextFileResponse;
 
-export type RemoteWorkspaceWriteResponse =
-  | DockerContainerWriteTextFileResponse
-  | SftpWriteTextFileResponse;
+export type RemoteWorkspaceWriteResponse = RemoteWorkspaceWriteTextFileResponse;
 
 export function activeTabStatus(
   tab: OpenFileTab | null,
@@ -294,14 +288,19 @@ const languageByExtension: Record<string, string> = {
   bicep: "bicep",
   c: "cpp",
   cc: "cpp",
+  cfg: "ini",
   cjs: "javascript",
   clj: "clojure",
+  cnf: "ini",
   cmd: "bat",
   coffee: "coffee",
+  conf: "ini",
+  config: "ini",
   cpp: "cpp",
   cs: "csharp",
   css: "css",
   dart: "dart",
+  desktop: "ini",
   dockerfile: "dockerfile",
   env: "ini",
   fish: "shell",
@@ -327,27 +326,42 @@ const languageByExtension: Record<string, string> = {
   mjs: "javascript",
   md: "markdown",
   mdx: "mdx",
+  mount: "ini",
   mysql: "mysql",
+  netdev: "ini",
+  network: "ini",
+  path: "ini",
   php: "php",
   pl: "perl",
+  prefs: "ini",
   proto: "protobuf",
+  properties: "ini",
+  props: "ini",
   ps1: "powershell",
   psql: "pgsql",
   py: "python",
   r: "r",
   rb: "ruby",
   redis: "redis",
+  repo: "ini",
   rs: "rust",
   sass: "scss",
   scala: "scala",
   scss: "scss",
+  scope: "ini",
+  service: "ini",
   sh: "shell",
+  slice: "ini",
+  socket: "ini",
   sol: "solidity",
   sql: "sql",
   svg: "xml",
+  swap: "ini",
   swift: "swift",
+  target: "ini",
   tcl: "tcl",
   tf: "hcl",
+  timer: "ini",
   toml: "ini",
   ts: "typescript",
   tsx: "typescript",
@@ -364,8 +378,11 @@ const languageByFilename: Record<string, string> = {
   ".dockerignore": "plaintext",
   ".editorconfig": "ini",
   ".env": "ini",
+  ".envrc": "shell",
   ".eslintrc": "json",
+  ".gitattributes": "plaintext",
   ".gitconfig": "ini",
+  ".gitignore": "plaintext",
   ".npmrc": "ini",
   ".prettierrc": "json",
   ".profile": "shell",
@@ -375,11 +392,16 @@ const languageByFilename: Record<string, string> = {
   "cargo.lock": "ini",
   "dockerfile": "dockerfile",
   "containerfile": "dockerfile",
+  "crontab": "shell",
+  "fstab": "shell",
   "gemfile": "ruby",
+  "kubeconfig": "yaml",
   "license": "plaintext",
   "pipfile": "ini",
   "procfile": "shell",
   "readme": "markdown",
+  "ssh_config": "ini",
+  "sshd_config": "ini",
 };
 
 export function languageForPath(path: string) {

@@ -2,30 +2,39 @@
 //!
 //! @author kongweiguang
 
+mod support;
+
 use kerminal_lib::{
     error::AppError,
     models::{
-        remote_host::{RemoteHost, RemoteHostAuthType},
+        remote_host::{RemoteHost, RemoteHostAuthType, RemoteHostCreateRequest},
         server_info::ServerInfoRequest,
         target::{ContainerRuntime, RemoteTargetRef},
     },
     paths::KerminalPaths,
-    services::server_info_service::{
-        build_server_info_command_request, build_server_info_plan_for_target_with_executable,
-        build_server_info_plan_with_executable, parse_server_info_output,
+    services::{
+        server_info_service::{
+            build_server_info_command_request, build_server_info_plan_for_target_with_executable,
+            build_server_info_plan_with_executable, parse_server_info_output,
+        },
+        ssh_runtime::{SshAuthIdentity, SshAuthSecretKind},
     },
     state::AppState,
 };
+use std::sync::Arc;
+use support::managed_ssh_runtime::{ssh_command_service_with_fake_runtime, FakeManagedSshRuntime};
 use tempfile::{tempdir, TempDir};
 
-#[test]
-fn snapshot_rejects_unknown_remote_host_before_spawning_ssh() {
+#[tokio::test]
+async fn native_snapshot_rejects_unknown_remote_host_before_opening_managed_exec() {
     let (_home, state) = test_state();
 
     let error = state
         .server_info()
-        .snapshot(
+        .snapshot_native(
             state.remote_hosts(),
+            state.paths(),
+            state.ssh_commands(),
             ServerInfoRequest {
                 host_id: "missing-host".to_owned(),
                 target: RemoteTargetRef::Ssh {
@@ -33,9 +42,37 @@ fn snapshot_rejects_unknown_remote_host_before_spawning_ssh() {
                 },
             },
         )
+        .await
         .expect_err("reject unknown host");
 
     assert!(matches!(error, AppError::NotFound(_)));
+}
+
+#[tokio::test]
+async fn native_snapshot_missing_external_target_does_not_read_host_toml_path() {
+    let (_home, state) = test_state();
+
+    let error = state
+        .server_info()
+        .snapshot_native(
+            state.remote_hosts(),
+            state.paths(),
+            state.ssh_commands(),
+            ServerInfoRequest {
+                host_id: "external:missing-launch".to_owned(),
+                target: RemoteTargetRef::Ssh {
+                    host_id: "external:missing-launch".to_owned(),
+                },
+            },
+        )
+        .await
+        .expect_err("missing external target should fail before file store");
+
+    let message = error.to_string();
+    assert!(matches!(error, AppError::NotFound(_)));
+    assert!(message.contains("外部 SSH 临时目标不存在或已关闭"));
+    assert!(!message.contains("invalid remote host id"));
+    assert!(!message.contains("invalid file store path"));
 }
 
 #[test]
@@ -304,6 +341,57 @@ gpu_0_vendor=NVIDIA
     assert!(snapshot.gpus.is_empty());
 }
 
+#[tokio::test]
+async fn native_snapshot_uses_managed_exec_runtime_for_ssh_target() {
+    let (_home, state) = test_state();
+    let host_id = create_saved_password_host(&state);
+    let backend = Arc::new(FakeManagedSshRuntime::with_stdout(
+        r#"
+hostname=managed-api
+os=Linux
+architecture=x86_64
+cpu_count=2
+memory_total_bytes=4096
+"#,
+    ));
+    let ssh_commands = ssh_command_service_with_fake_runtime(&state, Arc::clone(&backend));
+
+    let snapshot = state
+        .server_info()
+        .snapshot_native(
+            state.remote_hosts(),
+            state.paths(),
+            &ssh_commands,
+            ServerInfoRequest {
+                host_id: host_id.clone(),
+                target: RemoteTargetRef::Ssh {
+                    host_id: host_id.clone(),
+                },
+            },
+        )
+        .await
+        .expect("collect server info through managed exec");
+
+    assert_eq!(snapshot.hostname.as_deref(), Some("managed-api"));
+    assert_eq!(snapshot.cpu_count, Some(2));
+    assert_eq!(backend.connect_count(), 1);
+    assert_eq!(backend.exec_count(), 1);
+    assert_eq!(backend.channel_count(), 0);
+    let script = backend.last_exec_script().expect("managed exec script");
+    assert!(script.contains("/proc/meminfo"));
+    assert!(script.contains("__KERMINAL_CPU_AFTER__"));
+    let key = backend.last_key().expect("managed session key");
+    assert_eq!(key.target.host, "dev.internal");
+    assert!(matches!(
+        key.target.auth,
+        SshAuthIdentity::VaultRef {
+            secret_kind: SshAuthSecretKind::Password,
+            ..
+        }
+    ));
+    assert!(!format!("{key:?}").contains("correct horse"));
+}
+
 fn remote_host(auth_type: RemoteHostAuthType) -> RemoteHost {
     let (credential_ref, credential_secret) = match auth_type {
         RemoteHostAuthType::Agent => (None, None),
@@ -322,6 +410,7 @@ fn remote_host(auth_type: RemoteHostAuthType) -> RemoteHost {
         credential_ref,
         secret_ref: None,
         key_passphrase_ref: None,
+        key_passphrase_secret: None,
         credential_secret,
         credential_status: Default::default(),
         tags: vec!["dev".to_owned()],
@@ -338,4 +427,24 @@ fn test_state() -> (TempDir, AppState) {
     let paths = KerminalPaths::from_home_dir(home.path());
     let state = AppState::initialize_with_paths(paths).expect("initialize app state");
     (home, state)
+}
+
+fn create_saved_password_host(state: &AppState) -> String {
+    state
+        .remote_hosts()
+        .create_host(RemoteHostCreateRequest {
+            auth_type: RemoteHostAuthType::Password,
+            credential_ref: None,
+            credential_secret: Some("correct horse battery staple".to_owned()),
+            group_id: None,
+            host: "dev.internal".to_owned(),
+            name: "dev".to_owned(),
+            port: 2222,
+            production: false,
+            ssh_options: Default::default(),
+            tags: vec!["dev".to_owned()],
+            username: "deploy".to_owned(),
+        })
+        .expect("create saved password host")
+        .id
 }

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { AgentSessionRecord } from "../../../../../src/lib/agentLauncherApi";
 import {
+  UNBOUND_AGENT_SESSION_SCOPE_ID,
   agentSessionRecordIds,
   agentSessionRecordTabId,
+  agentSessionScopeId,
   agentSessionTabId,
   findRunningSessionForTabAgent,
   restorableSessionsForTab,
@@ -43,6 +45,7 @@ function record(
   agentSessionId: string,
   tabId: string | undefined,
   status: AgentSessionRecord["session"]["status"] = "active",
+  targetOverride?: AgentSessionRecord["session"]["target"],
 ): AgentSessionRecord {
   return {
     session: {
@@ -54,7 +57,9 @@ function record(
         shell: "codex",
       },
       status,
-      target: tabId ? { paneId: `pane-${tabId}`, tabId } : undefined,
+      target:
+        targetOverride ??
+        (tabId ? { paneId: `pane-${tabId}`, tabId } : undefined),
       title: "Codex",
     },
   };
@@ -73,6 +78,10 @@ describe("agentTabSessionModel", () => {
     expect(agentSessionTabId(sidebarSession({ target: undefined }))).toBe(
       "tab-a",
     );
+    expect(
+      agentSessionTabId(sidebarSession({ target: { liveStatus: "unbound" } })),
+    ).toBe("tab-a");
+    expect(agentSessionScopeId(undefined)).toBe(UNBOUND_AGENT_SESSION_SCOPE_ID);
   });
 
   it("returns only the visible session for the active tab mapping", () => {
@@ -130,6 +139,22 @@ describe("agentTabSessionModel", () => {
     expect(
       findRunningSessionForTabAgent(model, "tab-a", "codex", "skipPermissions"),
     ).toBeUndefined();
+  });
+
+  it("keeps unbound sessions in the sidebar fallback scope", () => {
+    const unbound = sidebarSession({
+      agentSessionId: "ags-unbound-codex",
+      tabId: UNBOUND_AGENT_SESSION_SCOPE_ID,
+      target: { liveStatus: "unbound" },
+    });
+    const model = state([unbound], {
+      [UNBOUND_AGENT_SESSION_SCOPE_ID]: unbound.agentSessionId,
+    });
+
+    expect(visibleAgentSessionForTab(model, undefined)).toBe(unbound);
+    expect(
+      findRunningSessionForTabAgent(model, undefined, "codex", "default"),
+    ).toBe(unbound);
   });
 
   it("matches custom commands without crossing tabs", () => {
@@ -195,6 +220,25 @@ describe("agentTabSessionModel", () => {
 
     expect(agentSessionRecordIds(restorable)).toEqual(["ags-a-active"]);
     expect(agentSessionRecordTabId(tabAActive)).toBe("tab-a");
+    expect(agentSessionRecordTabId(legacyActive)).toBeUndefined();
+  });
+
+  it("restores active unbound records only for the fallback scope", () => {
+    const unboundActive = record("ags-unbound", undefined, "active", {
+      liveStatus: "unbound",
+    });
+    const legacyActive = record("ags-legacy", undefined, "active");
+    const tabAActive = record("ags-a-active", "tab-a", "active");
+
+    const restorable = restorableSessionsForTab(
+      [unboundActive, legacyActive, tabAActive],
+      undefined,
+    );
+
+    expect(agentSessionRecordIds(restorable)).toEqual(["ags-unbound"]);
+    expect(agentSessionRecordTabId(unboundActive)).toBe(
+      UNBOUND_AGENT_SESSION_SCOPE_ID,
+    );
     expect(agentSessionRecordTabId(legacyActive)).toBeUndefined();
   });
 });

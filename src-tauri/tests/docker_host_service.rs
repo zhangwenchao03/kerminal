@@ -2,61 +2,38 @@
 //!
 //! @author kongweiguang
 
+mod support;
+
 use kerminal_lib::{
     error::AppError,
     models::{
         docker::{
-            DockerComposeRuntimeFamily, DockerContainerLifecycleAction, DockerContainerStatus,
-            DockerContainerSummary, DockerContainerTerminalCreateRequest,
+            DockerComposeRuntimeFamily, DockerContainerLifecycleAction, DockerContainerListRequest,
+            DockerContainerStatus, DockerContainerSummary, DockerContainerTerminalCreateRequest,
         },
-        remote_host::{RemoteHost, RemoteHostAuthType},
+        remote_host::{RemoteHostAuthType, RemoteHostCreateRequest},
         sftp::{SftpEntryKind, SftpFileRevision, SftpTransferKind},
         target::ContainerRuntime,
     },
+    paths::KerminalPaths,
     services::docker_host_service::{
         rules::{
             build_container_exec_script, build_container_inspect_script,
             build_container_label_inspect_script, build_container_lifecycle_script,
-            build_container_logs_script, build_container_stats_script,
-            build_container_terminal_request, detect_line_ending, extract_first_file,
-            merge_container_summary_labels, parse_compose_metadata,
+            build_container_logs_script, build_container_stats_script, detect_line_ending,
+            extract_first_file, merge_container_summary_labels, parse_compose_metadata,
             parse_container_inspect_summary, parse_container_label_inspect_output,
             parse_container_list_output, parse_container_stats_output, parse_ls_entries,
             same_revision, split_preview_output, split_text_output, write_tar_stream,
         },
         DockerHostService,
     },
+    services::ssh_runtime::{SshAuthIdentity, SshAuthSecretKind},
+    state::AppState,
 };
-use std::collections::BTreeMap;
-
-fn remote_host(auth_type: RemoteHostAuthType) -> RemoteHost {
-    let (credential_ref, credential_secret) = match auth_type {
-        RemoteHostAuthType::Agent => (None, None),
-        RemoteHostAuthType::Password => (None, Some("correct horse battery staple".to_owned())),
-        RemoteHostAuthType::Key => (Some("C:/keys/dev.key".to_owned()), None),
-    };
-
-    RemoteHost {
-        id: "host-1".to_owned(),
-        group_id: Some("group-1".to_owned()),
-        name: "dev".to_owned(),
-        host: "dev.internal".to_owned(),
-        port: 2222,
-        username: "deploy".to_owned(),
-        auth_type,
-        credential_ref,
-        secret_ref: None,
-        key_passphrase_ref: None,
-        credential_secret,
-        credential_status: Default::default(),
-        tags: vec!["dev".to_owned()],
-        production: false,
-        ssh_options: Default::default(),
-        sort_order: 10,
-        created_at: "now".to_owned(),
-        updated_at: "now".to_owned(),
-    }
-}
+use std::{collections::BTreeMap, io::Read, path::Path, sync::Arc};
+use support::managed_ssh_runtime::{ssh_command_service_with_fake_runtime, FakeManagedSshRuntime};
+use tempfile::{tempdir, TempDir};
 
 #[test]
 fn parses_docker_ps_json_lines_into_container_targets() {
@@ -198,36 +175,6 @@ fn merges_batch_inspect_labels_into_container_summaries() {
 }
 
 #[test]
-fn build_container_terminal_request_uses_quoted_docker_exec() {
-    let request = build_container_terminal_request(
-        &remote_host(RemoteHostAuthType::Key),
-        "ssh".to_owned(),
-        DockerContainerTerminalCreateRequest {
-            host_id: "host-1".to_owned(),
-            container_id: "container 1".to_owned(),
-            runtime: ContainerRuntime::Docker,
-            shell: Some("exec /bin/bash -l".to_owned()),
-            user: Some("app".to_owned()),
-            workdir: Some("/srv/app".to_owned()),
-            cols: 100,
-            rows: 30,
-        },
-    )
-    .expect("build request");
-
-    assert_eq!(request.shell.as_deref(), Some("ssh"));
-    assert_eq!(request.rows, 30);
-    assert_eq!(request.cols, 100);
-    assert!(request.args.contains(&"-tt".to_owned()));
-    assert!(request.args.windows(2).any(|pair| pair == ["-p", "2222"]));
-    let remote_command = request.args.last().expect("remote command");
-    assert!(remote_command.contains("docker exec -it"));
-    assert!(remote_command.contains("--user 'app'"));
-    assert!(remote_command.contains("--workdir '/srv/app'"));
-    assert!(remote_command.contains("'container 1' sh -lc 'exec /bin/bash -l'"));
-}
-
-#[test]
 fn resolve_container_ssh_terminal_request_delegates_docker_exec_to_ssh_terminal_service() {
     let request = DockerHostService::new()
         .resolve_container_ssh_terminal_request(DockerContainerTerminalCreateRequest {
@@ -254,11 +201,9 @@ fn resolve_container_ssh_terminal_request_delegates_docker_exec_to_ssh_terminal_
 }
 
 #[test]
-fn build_container_terminal_request_rejects_empty_container_id() {
-    let error = build_container_terminal_request(
-        &remote_host(RemoteHostAuthType::Agent),
-        "ssh".to_owned(),
-        DockerContainerTerminalCreateRequest {
+fn resolve_container_ssh_terminal_request_rejects_empty_container_id() {
+    let error = DockerHostService::new()
+        .resolve_container_ssh_terminal_request(DockerContainerTerminalCreateRequest {
             host_id: "host-1".to_owned(),
             container_id: " ".to_owned(),
             runtime: ContainerRuntime::Docker,
@@ -267,11 +212,41 @@ fn build_container_terminal_request_rejects_empty_container_id() {
             workdir: None,
             cols: 80,
             rows: 24,
-        },
-    )
-    .expect_err("reject empty container id");
+        })
+        .expect_err("reject empty container id");
 
     assert!(matches!(error, AppError::InvalidInput(_)));
+}
+
+#[tokio::test]
+async fn upload_missing_external_target_does_not_read_host_toml_path() {
+    let temp = tempdir().expect("tempdir");
+    let (_home, state) = test_state();
+    let source = temp.path().join("source.txt");
+    std::fs::write(&source, "hello external").expect("write source");
+
+    let error = DockerHostService::new()
+        .upload(
+            state.remote_hosts(),
+            state.paths(),
+            state.ssh_commands(),
+            kerminal_lib::models::docker::DockerContainerTransferRequest {
+                host_id: "external:missing-launch".to_owned(),
+                container_id: "container-1".to_owned(),
+                runtime: ContainerRuntime::Docker,
+                remote_path: "/tmp/source.txt".to_owned(),
+                local_path: source.to_string_lossy().into_owned(),
+                kind: SftpTransferKind::File,
+            },
+        )
+        .await
+        .expect_err("missing external target should fail before file store");
+
+    let message = error.to_string();
+    assert!(matches!(error, AppError::NotFound(_)));
+    assert!(message.contains("外部 SSH 临时目标不存在或已关闭"));
+    assert!(!message.contains("invalid remote host id"));
+    assert!(!message.contains("invalid file store path"));
 }
 
 #[test]
@@ -497,4 +472,191 @@ fn tar_stream_round_trip_for_uploaded_file() {
         std::fs::read_to_string(target).expect("read target"),
         "hello container"
     );
+}
+
+#[tokio::test]
+async fn list_containers_uses_managed_exec_runtime() {
+    let (_home, state) = test_state();
+    let host_id = create_saved_password_host(&state);
+    let backend = Arc::new(FakeManagedSshRuntime::with_stdout(
+        r#"{"ID":"abcdef1234567890","Image":"repo/api:latest","Names":"api","Status":"Up 2 minutes","State":"running","Labels":"com.docker.compose.project=stack,com.docker.compose.service=api,com.docker.compose.project.working_dir=/srv/stack,com.docker.compose.project.config_files=compose.yaml"}"#,
+    ));
+    let ssh_commands = ssh_command_service_with_fake_runtime(&state, Arc::clone(&backend));
+
+    let containers = DockerHostService::new()
+        .list_containers(
+            state.paths(),
+            &ssh_commands,
+            DockerContainerListRequest {
+                host_id: host_id.clone(),
+                include_stopped: false,
+                runtime: ContainerRuntime::Docker,
+            },
+        )
+        .await
+        .expect("list containers through managed exec");
+
+    assert_eq!(containers.len(), 1);
+    assert_eq!(containers[0].name, "api");
+    assert_eq!(containers[0].status, DockerContainerStatus::Running);
+    assert_eq!(
+        containers[0]
+            .compose
+            .as_ref()
+            .map(|compose| compose.project.as_str()),
+        Some("stack")
+    );
+    assert_eq!(backend.connect_count(), 1);
+    assert_eq!(backend.exec_count(), 1);
+    assert_eq!(backend.channel_count(), 0);
+    let script = backend.last_exec_script().expect("managed exec script");
+    assert!(script.contains("docker"));
+    assert!(script.contains("ps"));
+    let key = backend.last_key().expect("managed session key");
+    assert_eq!(key.target.host, "dev.internal");
+    assert!(matches!(
+        key.target.auth,
+        SshAuthIdentity::VaultRef {
+            secret_kind: SshAuthSecretKind::Password,
+            ..
+        }
+    ));
+    assert!(!format!("{key:?}").contains("correct horse"));
+}
+
+#[tokio::test]
+async fn upload_to_container_uses_managed_streaming_exec_runtime() {
+    let (_home, state) = test_state();
+    let host_id = create_saved_password_host(&state);
+    let backend = Arc::new(FakeManagedSshRuntime::default());
+    backend.set_streaming_output(Vec::new(), Vec::new(), Some(0));
+    let ssh_commands = ssh_command_service_with_fake_runtime(&state, Arc::clone(&backend));
+    let temp = tempdir().expect("tempdir");
+    let source = temp.path().join("source.txt");
+    std::fs::write(&source, "hello managed container").expect("write source");
+
+    let uploaded = DockerHostService::new()
+        .upload(
+            state.remote_hosts(),
+            state.paths(),
+            &ssh_commands,
+            kerminal_lib::models::docker::DockerContainerTransferRequest {
+                host_id: host_id.clone(),
+                container_id: "container-1".to_owned(),
+                runtime: ContainerRuntime::Docker,
+                remote_path: "/var/lib/app/target.txt".to_owned(),
+                local_path: source.to_string_lossy().into_owned(),
+                kind: SftpTransferKind::File,
+            },
+        )
+        .await
+        .expect("upload through managed streaming exec");
+
+    assert!(uploaded);
+    assert_eq!(backend.connect_count(), 1);
+    assert_eq!(backend.exec_count(), 0);
+    assert_eq!(backend.streaming_exec_count(), 1);
+    let command = backend
+        .last_streaming_exec_command()
+        .expect("streaming exec command");
+    assert!(command.contains("docker"));
+    assert!(command.contains("cp -"));
+    assert!(command.contains("container-1:/var/lib/app"));
+
+    let mut archive = tar::Archive::new(std::io::Cursor::new(backend.last_streaming_stdin()));
+    let mut entries = archive.entries().expect("tar entries");
+    let mut entry = entries
+        .next()
+        .expect("first tar entry")
+        .expect("read tar entry");
+    assert_eq!(
+        entry.path().expect("entry path").as_ref(),
+        Path::new("target.txt")
+    );
+    let mut content = String::new();
+    entry
+        .read_to_string(&mut content)
+        .expect("read uploaded tar");
+    assert_eq!(content, "hello managed container");
+}
+
+#[tokio::test]
+async fn download_from_container_uses_managed_streaming_exec_runtime() {
+    let (_home, state) = test_state();
+    let host_id = create_saved_password_host(&state);
+    let backend = Arc::new(FakeManagedSshRuntime::default());
+    let ssh_commands = ssh_command_service_with_fake_runtime(&state, Arc::clone(&backend));
+    let temp = tempdir().expect("tempdir");
+    let remote_source = temp.path().join("remote.txt");
+    let local_target = temp.path().join("downloaded.txt");
+    std::fs::write(&remote_source, "downloaded from managed runtime").expect("write remote");
+    let mut tar_bytes = Vec::new();
+    write_tar_stream(
+        &mut tar_bytes,
+        &remote_source,
+        "remote.txt",
+        SftpTransferKind::File,
+    )
+    .expect("build remote tar");
+    backend.set_streaming_output(tar_bytes, Vec::new(), Some(0));
+
+    let downloaded = DockerHostService::new()
+        .download(
+            state.remote_hosts(),
+            state.paths(),
+            &ssh_commands,
+            kerminal_lib::models::docker::DockerContainerTransferRequest {
+                host_id: host_id.clone(),
+                container_id: "container-1".to_owned(),
+                runtime: ContainerRuntime::Docker,
+                remote_path: "/var/lib/app/remote.txt".to_owned(),
+                local_path: local_target.to_string_lossy().into_owned(),
+                kind: SftpTransferKind::File,
+            },
+        )
+        .await
+        .expect("download through managed streaming exec");
+
+    assert!(downloaded);
+    assert_eq!(backend.connect_count(), 1);
+    assert_eq!(backend.exec_count(), 0);
+    assert_eq!(backend.streaming_exec_count(), 1);
+    let command = backend
+        .last_streaming_exec_command()
+        .expect("streaming exec command");
+    assert!(command.contains("docker"));
+    assert!(command.contains("cp"));
+    assert!(command.contains("container-1:/var/lib/app/remote.txt"));
+    assert!(command.ends_with(" -"));
+    assert_eq!(
+        std::fs::read_to_string(local_target).expect("read downloaded"),
+        "downloaded from managed runtime"
+    );
+}
+
+fn test_state() -> (TempDir, AppState) {
+    let home = tempdir().expect("create temp home");
+    let paths = KerminalPaths::from_home_dir(home.path());
+    let state = AppState::initialize_with_paths(paths).expect("initialize app state");
+    (home, state)
+}
+
+fn create_saved_password_host(state: &AppState) -> String {
+    state
+        .remote_hosts()
+        .create_host(RemoteHostCreateRequest {
+            auth_type: RemoteHostAuthType::Password,
+            credential_ref: None,
+            credential_secret: Some("correct horse battery staple".to_owned()),
+            group_id: None,
+            host: "dev.internal".to_owned(),
+            name: "dev".to_owned(),
+            port: 2222,
+            production: false,
+            ssh_options: Default::default(),
+            tags: vec!["dev".to_owned()],
+            username: "deploy".to_owned(),
+        })
+        .expect("create saved password host")
+        .id
 }

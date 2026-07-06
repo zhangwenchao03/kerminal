@@ -27,6 +27,7 @@ const terminalMenuItemClassName =
 
 interface TerminalContextMenuProps {
   canCopy: boolean;
+  canCopySessionId?: boolean;
   canDisconnect?: boolean;
   canReconnect?: boolean;
   canSplit?: boolean;
@@ -37,6 +38,7 @@ interface TerminalContextMenuProps {
 
 export function TerminalContextMenu({
   canCopy,
+  canCopySessionId = true,
   canDisconnect = true,
   canReconnect = true,
   canSplit = true,
@@ -48,6 +50,7 @@ export function TerminalContextMenu({
   const [resolvedPosition, setResolvedPosition] = useState(position);
   const groups = terminalContextMenuGroups({
     canCopy,
+    canCopySessionId,
     canDisconnect,
     canReconnect,
     canSplit,
@@ -76,7 +79,15 @@ export function TerminalContextMenu({
         ? current
         : nextPosition,
     );
-  }, [canCopy, canDisconnect, canReconnect, canSplit, position.x, position.y]);
+  }, [
+    canCopy,
+    canCopySessionId,
+    canDisconnect,
+    canReconnect,
+    canSplit,
+    position.x,
+    position.y,
+  ]);
 
   useEffect(() => {
     const close = () => onClose();

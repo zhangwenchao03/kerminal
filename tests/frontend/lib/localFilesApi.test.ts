@@ -138,14 +138,94 @@ describe("localFilesApi", () => {
     });
   });
 
+  it("reads and writes local text files through local file commands", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock
+      .mockResolvedValueOnce({
+        binary: false,
+        bytesRead: 5,
+        content: "hello",
+        encoding: "utf-8-lossy",
+        lineEnding: "lf",
+        maxBytes: 1024,
+        path: "C:\\\\repo\\\\notes.md",
+        readonly: false,
+        revision: { contentSha256: "sha-a", size: 5 },
+        truncated: false,
+      })
+      .mockResolvedValueOnce({
+        bytesWritten: 6,
+        encoding: "utf-8",
+        lineEnding: "lf",
+        path: "C:\\\\repo\\\\notes.md",
+        revision: { contentSha256: "sha-b", size: 6 },
+      });
+    const { readLocalTextFile, writeLocalTextFile } = await import(
+      "../../../src/lib/localFilesApi"
+    );
+
+    const opened = await readLocalTextFile({
+      maxBytes: 1024,
+      path: "C:\\\\repo\\\\notes.md",
+    });
+    await writeLocalTextFile({
+      content: "hello!",
+      create: false,
+      encoding: "utf-8",
+      expectedRevision: opened.revision,
+      overwriteOnConflict: false,
+      path: "C:\\\\repo\\\\notes.md",
+    });
+
+    expect(invokeMock).toHaveBeenNthCalledWith(1, "local_files_read_text_file", {
+      request: {
+        maxBytes: 1024,
+        path: "C:\\\\repo\\\\notes.md",
+      },
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(2, "local_files_write_text_file", {
+      request: {
+        content: "hello!",
+        create: false,
+        encoding: "utf-8",
+        expectedRevision: { contentSha256: "sha-a", size: 5 },
+        overwriteOnConflict: false,
+        path: "C:\\\\repo\\\\notes.md",
+      },
+    });
+  });
+
+  it("supports browser preview read and write for local text files", async () => {
+    isTauriMock.mockReturnValue(false);
+    const { readLocalTextFile, writeLocalTextFile } = await import(
+      "../../../src/lib/localFilesApi"
+    );
+
+    await writeLocalTextFile({
+      content: "local preview",
+      create: false,
+      encoding: "utf-8",
+      expectedRevision: null,
+      overwriteOnConflict: false,
+      path: "/tmp/local.md",
+    });
+    const opened = await readLocalTextFile({ path: "/tmp/local.md" });
+
+    expect(opened.content).toBe("local preview");
+    expect(opened.readonly).toBe(false);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
   it("rejects local write operations outside Tauri", async () => {
     isTauriMock.mockReturnValue(false);
     const {
       copyLocalPath,
       createLocalDirectory,
       deleteLocalPath,
+      readLocalTextFile,
       renameLocalPath,
       statLocalPath,
+      writeLocalTextFile,
     } = await import("../../../src/lib/localFilesApi");
 
     await expect(
@@ -187,6 +267,21 @@ describe("localFilesApi", () => {
         rootPath: "C:\\\\Source",
       }),
     ).rejects.toThrow("本机文件操作仅支持桌面应用。");
+    await expect(readLocalTextFile({ path: "C:\\\\Source\\\\notes.md" })).resolves.toMatchObject({
+      path: "C:\\\\Source\\\\notes.md",
+    });
+    await expect(
+      writeLocalTextFile({
+        content: "ok",
+        create: false,
+        encoding: "utf-8",
+        expectedRevision: null,
+        overwriteOnConflict: false,
+        path: "C:\\\\Source\\\\notes.md",
+      }),
+    ).resolves.toMatchObject({
+      path: "C:\\\\Source\\\\notes.md",
+    });
     expect(invokeMock).not.toHaveBeenCalled();
   });
 });

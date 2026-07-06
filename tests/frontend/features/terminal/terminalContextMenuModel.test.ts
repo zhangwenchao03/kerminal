@@ -17,6 +17,11 @@ describe("terminalContextMenuModel", () => {
     expect(terminalContextMenuGroups({ canCopy: true })).toEqual([
       [
         {
+          action: "copySessionId",
+          disabled: false,
+          label: "复制会话 ID",
+        },
+        {
           action: "copy",
           disabled: false,
           label: "复制",
@@ -77,6 +82,7 @@ describe("terminalContextMenuModel", () => {
   it("derives disabled menu items from terminal state", () => {
     const groups = terminalContextMenuGroups({
       canCopy: false,
+      canCopySessionId: false,
       canDisconnect: false,
       canReconnect: false,
     });
@@ -84,6 +90,7 @@ describe("terminalContextMenuModel", () => {
     expect(groups.flat()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ action: "copy", disabled: true }),
+        expect.objectContaining({ action: "copySessionId", disabled: true }),
         expect.objectContaining({ action: "disconnect", disabled: true }),
         expect.objectContaining({ action: "reconnect", disabled: true }),
       ]),
@@ -134,6 +141,7 @@ describe("terminalContextMenuModel", () => {
   it("maps only split actions to workspace split directions", () => {
     const nonSplitActions: TerminalContextMenuAction[] = [
       "copy",
+      "copySessionId",
       "paste",
       "selectAll",
       "search",

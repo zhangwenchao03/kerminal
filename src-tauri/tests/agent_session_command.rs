@@ -7,7 +7,9 @@ use kerminal_lib::{
         agent_session_create, agent_session_rebind_target, AgentSessionCreateCommandRequest,
         AgentSessionTargetCommandRequest,
     },
-    models::agent_session::{AgentId, AgentSessionCreateRequest},
+    models::agent_session::{
+        AgentId, AgentSessionCreateRequest, AgentTargetBindingStatus, AgentTargetLiveStatus,
+    },
     paths::KerminalPaths,
     state::AppState,
 };
@@ -39,6 +41,81 @@ fn create_rejects_non_live_agent_target_without_partial_session() {
     assert!(
         format!("{result:?}").contains("终端会话不存在: missing-terminal"),
         "expected missing terminal rejection, got {result:?}"
+    );
+    assert!(
+        app.state::<AppState>()
+            .agent_sessions()
+            .list_sessions()
+            .expect("list sessions")
+            .sessions
+            .is_empty(),
+        "failed create must not leave a partial Agent session on disk"
+    );
+}
+
+#[test]
+fn create_accepts_unbound_agent_target_without_live_terminal() {
+    let home = tempfile::tempdir().expect("temp home");
+    let state = AppState::initialize_with_paths(KerminalPaths::from_home_dir(home.path()))
+        .expect("initialize app state");
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .expect("build mock app");
+    let state = app.state::<AppState>();
+
+    let record = agent_session_create(
+        state,
+        AgentSessionCreateCommandRequest {
+            agent_id: AgentId::Codex,
+            title: Some("Codex".to_owned()),
+            launch: None,
+            target: Some(unbound_target_request()),
+            provider: None,
+            mcp_endpoint: None,
+        },
+    )
+    .expect("create unbound agent session");
+
+    let target = record.session.target.expect("session target");
+    assert_eq!(target.live_status, AgentTargetLiveStatus::Unbound);
+    assert_eq!(target.target_terminal_session_id, None);
+    assert_eq!(target.pane_id, None);
+
+    let binding = record.target_binding.expect("target binding").binding;
+    assert_eq!(binding.status, AgentTargetBindingStatus::Unbound);
+    assert_eq!(binding.target_terminal_session_id, None);
+    assert_eq!(binding.pane_id, None);
+}
+
+#[test]
+fn create_rejects_incomplete_bound_agent_target_without_partial_session() {
+    let home = tempfile::tempdir().expect("temp home");
+    let state = AppState::initialize_with_paths(KerminalPaths::from_home_dir(home.path()))
+        .expect("initialize app state");
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .expect("build mock app");
+    let state = app.state::<AppState>();
+
+    let mut target = unbound_target_request();
+    target.live_status = Some(AgentTargetLiveStatus::Ready);
+    let result = agent_session_create(
+        state,
+        AgentSessionCreateCommandRequest {
+            agent_id: AgentId::Codex,
+            title: Some("Codex".to_owned()),
+            launch: None,
+            target: Some(target),
+            provider: None,
+            mcp_endpoint: None,
+        },
+    );
+
+    assert!(
+        format!("{result:?}").contains("Agent target requires a live terminal session id"),
+        "expected missing terminal id rejection, got {result:?}"
     );
     assert!(
         app.state::<AppState>()
@@ -93,6 +170,22 @@ fn rebind_rejects_missing_target_terminal_and_agent_terminal_panes() {
         format!("{agent_pane:?}").contains("right-panel Agent terminal"),
         "expected Agent terminal pane rejection, got {agent_pane:?}"
     );
+}
+
+fn unbound_target_request() -> AgentSessionTargetCommandRequest {
+    AgentSessionTargetCommandRequest {
+        binding_id: None,
+        binding_generation: 0,
+        pane_id: None,
+        tab_id: None,
+        target_terminal_session_id: None,
+        target_ref: None,
+        target_kind: None,
+        cwd: None,
+        shell: None,
+        live_status: Some(AgentTargetLiveStatus::Unbound),
+        last_seen_at: None,
+    }
 }
 
 fn target_request(

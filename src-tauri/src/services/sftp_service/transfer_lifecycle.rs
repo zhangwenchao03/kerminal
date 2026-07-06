@@ -2,6 +2,7 @@
 //!
 //! @author kongweiguang
 
+use super::transfer::TransferSpeedTracker;
 use super::*;
 
 impl SftpService {
@@ -31,8 +32,9 @@ impl SftpService {
         event_emitter: Option<TransferEventEmitter>,
     ) -> AppResult<SftpTransferSummary> {
         let settings = load_sftp_runtime_settings(paths)?;
-        let endpoint = resolve_endpoint(paths, &request.host_id)?;
+        let endpoint = self.resolve_endpoint(paths, &request.host_id)?;
         let request = normalize_managed_transfer_request(request)?;
+        let settings = settings.for_bulk_transfer_target(&endpoint);
         let id = Uuid::new_v4().to_string();
         let now = unix_timestamp();
         let cancel_requested = Arc::new(AtomicBool::new(false));
@@ -47,6 +49,7 @@ impl SftpService {
             conflict_policy: Some(request.conflict_policy),
             status: SftpTransferStatus::Queued,
             bytes_transferred: 0,
+            speed_bytes_per_second: 0,
             total_bytes: initial_total_bytes(&request),
             error: None,
             cancel_requested: false,
@@ -65,6 +68,7 @@ impl SftpService {
             TransferTask {
                 summary: summary.clone(),
                 cancel_requested: cancel_requested.clone(),
+                speed: TransferSpeedTracker::new(unix_timestamp_millis()),
             },
         );
         if let Some(emitter) = &event_emitter {
@@ -111,9 +115,12 @@ impl SftpService {
         event_emitter: Option<TransferEventEmitter>,
     ) -> AppResult<SftpTransferSummary> {
         let settings = load_sftp_runtime_settings(paths)?;
-        let source_endpoint = resolve_endpoint(paths, &request.source_host_id)?;
-        let target_endpoint = resolve_endpoint(paths, &request.target_host_id)?;
+        let source_endpoint = self.resolve_endpoint(paths, &request.source_host_id)?;
+        let target_endpoint = self.resolve_endpoint(paths, &request.target_host_id)?;
         let request = normalize_remote_copy_request(request)?;
+        let settings = settings
+            .for_bulk_transfer_target(&source_endpoint)
+            .for_bulk_transfer_target(&target_endpoint);
         let id = Uuid::new_v4().to_string();
         let now = unix_timestamp();
         let cancel_requested = Arc::new(AtomicBool::new(false));
@@ -133,6 +140,7 @@ impl SftpService {
             conflict_policy: Some(request.conflict_policy),
             status: SftpTransferStatus::Queued,
             bytes_transferred: 0,
+            speed_bytes_per_second: 0,
             total_bytes: None,
             error: None,
             cancel_requested: false,
@@ -157,6 +165,7 @@ impl SftpService {
             TransferTask {
                 summary: summary.clone(),
                 cancel_requested: cancel_requested.clone(),
+                speed: TransferSpeedTracker::new(unix_timestamp_millis()),
             },
         );
         if let Some(emitter) = &event_emitter {
@@ -205,8 +214,9 @@ impl SftpService {
         event_emitter: Option<TransferEventEmitter>,
     ) -> AppResult<SftpTransferSummary> {
         let settings = load_sftp_runtime_settings(paths)?;
-        let endpoint = resolve_endpoint(paths, &request.host_id)?;
+        let endpoint = self.resolve_endpoint(paths, &request.host_id)?;
         let request = normalize_archive_download_request(request)?;
+        let settings = settings.for_bulk_transfer_target(&endpoint);
         let id = Uuid::new_v4().to_string();
         let now = unix_timestamp();
         let cancel_requested = Arc::new(AtomicBool::new(false));
@@ -221,6 +231,7 @@ impl SftpService {
             conflict_policy: Some(request.conflict_policy),
             status: SftpTransferStatus::Queued,
             bytes_transferred: 0,
+            speed_bytes_per_second: 0,
             total_bytes: None,
             error: None,
             cancel_requested: false,
@@ -239,6 +250,7 @@ impl SftpService {
             TransferTask {
                 summary: summary.clone(),
                 cancel_requested: cancel_requested.clone(),
+                speed: TransferSpeedTracker::new(unix_timestamp_millis()),
             },
         );
         if let Some(emitter) = &event_emitter {
@@ -286,8 +298,9 @@ impl SftpService {
         event_emitter: Option<TransferEventEmitter>,
     ) -> AppResult<SftpTransferSummary> {
         let settings = load_sftp_runtime_settings(paths)?;
-        let endpoint = resolve_endpoint(paths, &request.host_id)?;
+        let endpoint = self.resolve_endpoint(paths, &request.host_id)?;
         let request = normalize_archive_upload_request(request)?;
+        let settings = settings.for_bulk_transfer_target(&endpoint);
         let id = Uuid::new_v4().to_string();
         let now = unix_timestamp();
         let cancel_requested = Arc::new(AtomicBool::new(false));
@@ -302,6 +315,7 @@ impl SftpService {
             conflict_policy: Some(request.conflict_policy),
             status: SftpTransferStatus::Queued,
             bytes_transferred: 0,
+            speed_bytes_per_second: 0,
             total_bytes: None,
             error: None,
             cancel_requested: false,
@@ -320,6 +334,7 @@ impl SftpService {
             TransferTask {
                 summary: summary.clone(),
                 cancel_requested: cancel_requested.clone(),
+                speed: TransferSpeedTracker::new(unix_timestamp_millis()),
             },
         );
         if let Some(emitter) = &event_emitter {
@@ -368,8 +383,9 @@ impl SftpService {
     ) -> AppResult<SftpTransferSummary> {
         ensure_local_file_clipboard_supported()?;
         let settings = load_sftp_runtime_settings(paths)?;
-        let endpoint = resolve_endpoint(paths, &request.host_id)?;
+        let endpoint = self.resolve_endpoint(paths, &request.host_id)?;
         let request = normalize_clipboard_download_request(request)?;
+        let settings = settings.for_bulk_transfer_target(&endpoint);
         let target_local_path = reserve_clipboard_download_target_path(&request)?;
         let target_local_path_string = target_local_path.to_string_lossy().into_owned();
         let id = Uuid::new_v4().to_string();
@@ -386,6 +402,7 @@ impl SftpService {
             conflict_policy: None,
             status: SftpTransferStatus::Queued,
             bytes_transferred: 0,
+            speed_bytes_per_second: 0,
             total_bytes: None,
             error: None,
             cancel_requested: false,
@@ -404,6 +421,7 @@ impl SftpService {
             TransferTask {
                 summary: summary.clone(),
                 cancel_requested: cancel_requested.clone(),
+                speed: TransferSpeedTracker::new(unix_timestamp_millis()),
             },
         );
         if let Some(emitter) = &event_emitter {

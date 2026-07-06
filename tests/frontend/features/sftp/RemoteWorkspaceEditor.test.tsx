@@ -1,6 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  KERMINAL_TEXT_EDIT_COMMAND_EVENT,
+  type KerminalTextEditCommandEventDetail,
+} from "../../../../src/app/appKeybindingPolicy";
 import { RemoteWorkspaceEditor } from "../../../../src/features/sftp/RemoteWorkspaceEditor";
 
 const sftpApiMocks = vi.hoisted(() => ({
@@ -15,6 +19,92 @@ const containerFilesApiMocks = vi.hoisted(() => ({
   writeDockerContainerTextFile: vi.fn(),
 }));
 
+const desktopClipboardApiMocks = vi.hoisted(() => ({
+  readDesktopClipboardText: vi.fn(),
+  writeDesktopClipboardText: vi.fn(),
+}));
+
+const monacoEditorMocks = vi.hoisted(() => {
+  const actionRuns = new Map<string, ReturnType<typeof vi.fn>>();
+  const disabledActions = new Set<string>();
+  const selection = {
+    endColumn: 5,
+    endLineNumber: 1,
+    isEmpty: vi.fn(() => false),
+    positionColumn: 5,
+    positionLineNumber: 1,
+    selectionStartColumn: 1,
+    selectionStartLineNumber: 1,
+    startColumn: 1,
+    startLineNumber: 1,
+  };
+  const model = {
+    getValueInRange: vi.fn(() => "port"),
+  };
+  const ensureActionRun = (id: string) => {
+    let run = actionRuns.get(id);
+    if (!run) {
+      run = vi.fn();
+      actionRuns.set(id, run);
+    }
+    return run;
+  };
+  const editor = {
+    addCommand: vi.fn(),
+    executeEdits: vi.fn(),
+    focus: vi.fn(),
+    getAction: vi.fn((id: string) =>
+      disabledActions.has(id) ? null : { run: ensureActionRun(id) },
+    ),
+    getModel: vi.fn(() => model),
+    getSelection: vi.fn(() => selection),
+    hasTextFocus: vi.fn(() => true),
+    pushUndoStop: vi.fn(),
+    trigger: vi.fn(),
+  };
+
+  return {
+    actionRun: ensureActionRun,
+    disabledActions,
+    editor,
+    keyCode: {
+      Insert: 52,
+      KeyA: 31,
+      KeyC: 33,
+      KeyF: 36,
+      KeyH: 38,
+      KeyS: 49,
+      KeyV: 55,
+      KeyX: 56,
+      KeyY: 57,
+      KeyZ: 58,
+    },
+    keyMod: {
+      CtrlCmd: 2048,
+      Shift: 1024,
+    },
+    model,
+    reset: () => {
+      actionRuns.clear();
+      disabledActions.clear();
+      Object.values(editor).forEach((value) => {
+        if (typeof value === "function" && "mockClear" in value) {
+          value.mockClear();
+        }
+      });
+      editor.getAction.mockImplementation((id: string) =>
+        disabledActions.has(id) ? null : { run: ensureActionRun(id) },
+      );
+      editor.getModel.mockReturnValue(model);
+      editor.getSelection.mockReturnValue(selection);
+      editor.hasTextFocus.mockReturnValue(true);
+      model.getValueInRange.mockReturnValue("port");
+      selection.isEmpty.mockReturnValue(false);
+    },
+    selection,
+  };
+});
+
 vi.mock("../../../../src/features/sftp/MonacoTextEditor", () => ({
   MonacoTextEditor: ({
     beforeMount,
@@ -28,19 +118,12 @@ vi.mock("../../../../src/features/sftp/MonacoTextEditor", () => ({
     value?: string;
   }) => {
     const monaco = {
-      KeyCode: { KeyS: 49 },
-      KeyMod: { CtrlCmd: 2048 },
+      KeyCode: monacoEditorMocks.keyCode,
+      KeyMod: monacoEditorMocks.keyMod,
       editor: { defineTheme: vi.fn() },
     };
     beforeMount?.(monaco);
-    onMount?.(
-      {
-        addCommand: vi.fn(),
-        focus: vi.fn(),
-        getAction: () => ({ run: vi.fn() }),
-      },
-      monaco,
-    );
+    onMount?.(monacoEditorMocks.editor, monaco);
     return (
       <textarea
         aria-label="Monaco 编辑器"
@@ -49,6 +132,13 @@ vi.mock("../../../../src/features/sftp/MonacoTextEditor", () => ({
       />
     );
   },
+}));
+
+vi.mock("../../../../src/lib/desktopClipboardApi", () => ({
+  readDesktopClipboardText: (...args: unknown[]) =>
+    desktopClipboardApiMocks.readDesktopClipboardText(...args),
+  writeDesktopClipboardText: (...args: unknown[]) =>
+    desktopClipboardApiMocks.writeDesktopClipboardText(...args),
 }));
 
 vi.mock("../../../../src/lib/sftpApi", () => ({
@@ -77,6 +167,9 @@ describe("RemoteWorkspaceEditor", () => {
     containerFilesApiMocks.listDockerContainerDirectory.mockReset();
     containerFilesApiMocks.readDockerContainerTextFile.mockReset();
     containerFilesApiMocks.writeDockerContainerTextFile.mockReset();
+    desktopClipboardApiMocks.readDesktopClipboardText.mockReset();
+    desktopClipboardApiMocks.writeDesktopClipboardText.mockReset();
+    monacoEditorMocks.reset();
 
     sftpApiMocks.listSftpDirectory.mockImplementation(
       async ({ hostId, path }: { hostId: string; path: string }) => {
@@ -208,6 +301,47 @@ describe("RemoteWorkspaceEditor", () => {
         size: 19,
       },
     });
+    desktopClipboardApiMocks.readDesktopClipboardText.mockResolvedValue(
+      "pasted=true",
+    );
+    desktopClipboardApiMocks.writeDesktopClipboardText.mockResolvedValue(
+      undefined,
+    );
+  });
+
+  it("registers common editor shortcuts with Monaco", async () => {
+    const user = userEvent.setup();
+
+    render(<RemoteWorkspaceEditor hostId="prod-api" rootPath="/" />);
+
+    await user.click(await screen.findByRole("treeitem", { name: "etc" }));
+    await user.click(
+      await screen.findByRole("treeitem", { name: "app.conf" }),
+    );
+    await screen.findByLabelText("Monaco 编辑器");
+
+    expect(monacoEditorMocks.editor.addCommand).toHaveBeenCalledWith(
+      monacoEditorMocks.keyMod.CtrlCmd | monacoEditorMocks.keyCode.KeyS,
+      expect.any(Function),
+    );
+    expect(monacoEditorMocks.editor.addCommand).toHaveBeenCalledWith(
+      monacoEditorMocks.keyMod.CtrlCmd | monacoEditorMocks.keyCode.KeyC,
+      expect.any(Function),
+    );
+    expect(monacoEditorMocks.editor.addCommand).toHaveBeenCalledWith(
+      monacoEditorMocks.keyMod.CtrlCmd | monacoEditorMocks.keyCode.KeyV,
+      expect.any(Function),
+    );
+    expect(monacoEditorMocks.editor.addCommand).toHaveBeenCalledWith(
+      monacoEditorMocks.keyMod.CtrlCmd | monacoEditorMocks.keyCode.KeyZ,
+      expect.any(Function),
+    );
+    expect(monacoEditorMocks.editor.addCommand).toHaveBeenCalledWith(
+      monacoEditorMocks.keyMod.CtrlCmd |
+        monacoEditorMocks.keyMod.Shift |
+        monacoEditorMocks.keyCode.KeyZ,
+      expect.any(Function),
+    );
   });
 
   it("loads a remote tree, opens a text file, and saves edits", async () => {
@@ -252,6 +386,99 @@ describe("RemoteWorkspaceEditor", () => {
       kind: "success",
       message: "已保存：/etc/app.conf",
     });
+  });
+
+  it("opens an editor context menu and runs Monaco copy", async () => {
+    const user = userEvent.setup();
+
+    render(<RemoteWorkspaceEditor hostId="prod-api" rootPath="/" />);
+
+    await user.click(await screen.findByRole("treeitem", { name: "etc" }));
+    await user.click(
+      await screen.findByRole("treeitem", { name: "app.conf" }),
+    );
+    const editor = await screen.findByLabelText("Monaco 编辑器");
+
+    fireEvent.contextMenu(editor, { clientX: 88, clientY: 96 });
+    await user.click(await screen.findByRole("menuitem", { name: /复制/ }));
+
+    await waitFor(() =>
+      expect(
+        monacoEditorMocks.actionRun("editor.action.clipboardCopyAction"),
+      ).toHaveBeenCalled(),
+    );
+    expect(
+      screen.queryByRole("menu", { name: "app.conf 编辑菜单" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("routes native text edit commands to the focused editor", async () => {
+    const user = userEvent.setup();
+
+    render(<RemoteWorkspaceEditor hostId="prod-api" rootPath="/" />);
+
+    await user.click(await screen.findByRole("treeitem", { name: "etc" }));
+    await user.click(
+      await screen.findByRole("treeitem", { name: "app.conf" }),
+    );
+    await screen.findByLabelText("Monaco 编辑器");
+
+    const detail: KerminalTextEditCommandEventDetail = {
+      command: "selectAll",
+      handled: false,
+    };
+    window.dispatchEvent(
+      new CustomEvent<KerminalTextEditCommandEventDetail>(
+        KERMINAL_TEXT_EDIT_COMMAND_EVENT,
+        { detail },
+      ),
+    );
+
+    expect(detail.handled).toBe(true);
+    await waitFor(() =>
+      expect(
+        monacoEditorMocks.actionRun("editor.action.selectAll"),
+      ).toHaveBeenCalled(),
+    );
+  });
+
+  it("falls back to desktop clipboard paste when Monaco paste is unavailable", async () => {
+    const user = userEvent.setup();
+    monacoEditorMocks.disabledActions.add("editor.action.clipboardPasteAction");
+
+    render(<RemoteWorkspaceEditor hostId="prod-api" rootPath="/" />);
+
+    await user.click(await screen.findByRole("treeitem", { name: "etc" }));
+    await user.click(
+      await screen.findByRole("treeitem", { name: "app.conf" }),
+    );
+    await screen.findByLabelText("Monaco 编辑器");
+
+    const detail: KerminalTextEditCommandEventDetail = {
+      command: "paste",
+      handled: false,
+    };
+    window.dispatchEvent(
+      new CustomEvent<KerminalTextEditCommandEventDetail>(
+        KERMINAL_TEXT_EDIT_COMMAND_EVENT,
+        { detail },
+      ),
+    );
+
+    expect(detail.handled).toBe(true);
+    await waitFor(() =>
+      expect(monacoEditorMocks.editor.executeEdits).toHaveBeenCalledWith(
+        "kerminal-paste",
+        [
+          {
+            forceMoveMarkers: true,
+            range: monacoEditorMocks.selection,
+            text: "pasted=true",
+          },
+        ],
+      ),
+    );
+    expect(monacoEditorMocks.editor.pushUndoStop).toHaveBeenCalledTimes(2);
   });
 
   it("uses container file APIs when editing a container workspace", async () => {

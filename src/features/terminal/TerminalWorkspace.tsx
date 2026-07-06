@@ -13,6 +13,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
+import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 import type {
   InterfaceDensity,
   ResolvedTheme,
@@ -34,7 +35,10 @@ import {
   type TerminalTab,
   type TerminalTabGroupPreference,
   type TerminalTabGroupPreferences,
+  type WorkspaceFileDirtyState,
 } from "../workspace/types";
+import { dispatchWorkspaceFileTabCommand } from "../workspace/workspaceFileTabActions";
+import { resolveWorkspaceTabCloseDecision } from "../workspace/workspaceTabCloseGuardModel";
 import { TerminalBroadcastBar } from "./TerminalBroadcastBar";
 import { TerminalTabOverviewMenu } from "./TerminalTabOverviewMenu";
 import { TerminalWorkspaceContent } from "./TerminalWorkspaceContent";
@@ -50,6 +54,7 @@ import {
   buildTerminalTabGroups,
   clampContextMenuPosition,
   CloseTabsConfirmationDialog,
+  CloseWorkspaceFileTabsConfirmationDialog,
   TerminalTabButton,
   TerminalTabContextMenuItems,
   TerminalTabGroupContextMenuItems,
@@ -98,6 +103,7 @@ interface TerminalWorkspaceProps {
   onFocusPane: (paneId: string) => void;
   onOpenAgentTool?: () => void;
   onOpenConnection?: () => void;
+  onRevealWorkspaceFileInSftp?: (tabId: string) => void;
   onMovePane?: (
     sourcePaneId: string,
     targetPaneId: string,
@@ -134,6 +140,7 @@ interface TerminalWorkspaceProps {
     options?: TerminalSplitPaneOptions,
   ) => void;
   splitDropIndicator?: TerminalSplitDropIndicator | null;
+  workspaceFileDirtyState?: WorkspaceFileDirtyState;
 }
 
 export function TerminalWorkspace({
@@ -158,6 +165,7 @@ export function TerminalWorkspace({
   onPaneOutputHistoryChange,
   onSplitLayoutSizesChange,
   onOpenLogs,
+  onRevealWorkspaceFileInSftp,
   onRenameTab,
   onUpdateTabGroupPreference,
   reserveRightTitleBarControls = true,
@@ -172,6 +180,7 @@ export function TerminalWorkspace({
   tabs,
   tabGroupPreferences = {},
   terminalAppearance,
+  workspaceFileDirtyState = {},
 }: TerminalWorkspaceProps) {
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
   const tabGroups = useMemo(
@@ -238,6 +247,9 @@ export function TerminalWorkspace({
   const [pendingCloseTabIds, setPendingCloseTabIds] = useState<string[] | null>(
     null,
   );
+  const [pendingDirtyCloseTabIds, setPendingDirtyCloseTabIds] = useState<
+    string[] | null
+  >(null);
   const [sendingBroadcast, setSendingBroadcast] = useState(false);
   const contextTab =
     contextMenu?.type === "tab"
@@ -616,16 +628,32 @@ export function TerminalWorkspace({
     [onSelectTab],
   );
   const requestCloseTabs = useCallback(
-    (tabIds: string[]) => {
-      if (terminalAppearance.confirmCloseTab && tabIds.length > 0) {
-        setPendingCloseTabIds(tabIds);
+    (tabIds: string[], confirmedDirtyFiles = false) => {
+      const decision = resolveWorkspaceTabCloseDecision({
+        confirmTerminalClose: terminalAppearance.confirmCloseTab,
+        confirmedDirtyFiles,
+        tabIds,
+        tabs,
+        workspaceFileDirtyState,
+      });
+      if (decision.kind === "confirmDirtyFiles") {
+        setPendingDirtyCloseTabIds(decision.tabIds);
         return;
       }
-      for (const tabId of tabIds) {
+      if (decision.kind === "confirmTerminalTabs") {
+        setPendingCloseTabIds(decision.tabIds);
+        return;
+      }
+      for (const tabId of decision.tabIds) {
         onCloseTab(tabId);
       }
     },
-    [onCloseTab, terminalAppearance.confirmCloseTab],
+    [
+      onCloseTab,
+      tabs,
+      terminalAppearance.confirmCloseTab,
+      workspaceFileDirtyState,
+    ],
   );
   const confirmCloseTabs = useCallback(() => {
     if (!pendingCloseTabIds) {
@@ -636,6 +664,13 @@ export function TerminalWorkspace({
     }
     setPendingCloseTabIds(null);
   }, [onCloseTab, pendingCloseTabIds]);
+  const confirmDirtyFileCloseTabs = useCallback(() => {
+    if (!pendingDirtyCloseTabIds) {
+      return;
+    }
+    requestCloseTabs(pendingDirtyCloseTabIds, true);
+    setPendingDirtyCloseTabIds(null);
+  }, [pendingDirtyCloseTabIds, requestCloseTabs]);
   const contextMenuElement =
     contextMenu && typeof document !== "undefined"
       ? createPortal(
@@ -656,7 +691,17 @@ export function TerminalWorkspace({
                 activeTabId={activeTabId}
                 group={contextTabGroup}
                 onCloseTabs={requestCloseTabs}
+                onCopyWorkspaceFilePath={(tab) => {
+                  void writeDesktopClipboardText(tab.path);
+                }}
+                onReloadWorkspaceFile={(tabId) =>
+                  dispatchWorkspaceFileTabCommand({
+                    command: "reload",
+                    tabId,
+                  })
+                }
                 onRequestRename={setRenamingTab}
+                onRevealWorkspaceFileInSftp={onRevealWorkspaceFileInSftp}
                 onSelectTab={onSelectTab}
                 runMenuAction={runMenuAction}
                 tab={contextTab}
@@ -740,6 +785,7 @@ export function TerminalWorkspace({
                   }
                   status={tabStatusById.get(tab.id)}
                   tab={tab}
+                  workspaceFileDirty={workspaceFileDirtyState[tab.id]}
                 />
               ));
             }
@@ -793,6 +839,7 @@ export function TerminalWorkspace({
                         }
                         status={tabStatusById.get(tab.id)}
                         tab={tab}
+                        workspaceFileDirty={workspaceFileDirtyState[tab.id]}
                       />
                     ))
                   : null}
@@ -837,6 +884,16 @@ export function TerminalWorkspace({
         onClose={() => setPendingCloseTabIds(null)}
         onConfirm={confirmCloseTabs}
         tabCount={pendingCloseTabIds?.length ?? 0}
+      />
+      <CloseWorkspaceFileTabsConfirmationDialog
+        dirtyTabCount={
+          pendingDirtyCloseTabIds?.filter(
+            (tabId) => workspaceFileDirtyState[tabId],
+          ).length ?? 0
+        }
+        onClose={() => setPendingDirtyCloseTabIds(null)}
+        onConfirm={confirmDirtyFileCloseTabs}
+        tabCount={pendingDirtyCloseTabIds?.length ?? 0}
       />
 
       {hasActiveSplit ? (

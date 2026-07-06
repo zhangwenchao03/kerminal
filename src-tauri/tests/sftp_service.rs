@@ -4,6 +4,8 @@
 
 #[path = "sftp_service/archive_clipboard.rs"]
 mod archive_clipboard;
+#[path = "sftp_service/managed_runtime.rs"]
+mod managed_runtime;
 #[path = "sftp_service/native_backend.rs"]
 mod native_backend;
 #[path = "sftp_service/native_jump_backend.rs"]
@@ -19,6 +21,7 @@ use kerminal_lib::{
     error::AppError,
     models::{
         remote_host::{RemoteHostAuthType, RemoteHostCreateRequest, RemoteHostGroupCreateRequest},
+        settings::SftpPerformanceSettings,
         sftp::{
             SftpClassifyLocalPathsRequest, SftpClipboardDownloadRequest, SftpListDirectoryRequest,
             SftpLocalPathKind, SftpPreviewRequest, SftpTransferConflictPolicy,
@@ -29,6 +32,7 @@ use kerminal_lib::{
     services::sftp_service::rules,
     state::AppState,
 };
+use russh_sftp::protocol::StatusCode;
 use std::fs;
 use tempfile::{tempdir, TempDir};
 use tokio::{fs as async_fs, io::AsyncWriteExt};
@@ -50,6 +54,29 @@ async fn list_directory_rejects_unknown_remote_host_before_connecting_sftp() {
         .expect_err("reject unknown host");
 
     assert!(matches!(error, AppError::NotFound(_)));
+}
+
+#[tokio::test]
+async fn list_directory_missing_external_target_does_not_read_host_toml_path() {
+    let (_home, state) = test_state();
+
+    let error = state
+        .sftp()
+        .list_directory(
+            state.paths(),
+            SftpListDirectoryRequest {
+                host_id: "external:missing-launch".to_owned(),
+                path: "/var/log".to_owned(),
+            },
+        )
+        .await
+        .expect_err("missing external target should fail before file store");
+
+    let message = error.to_string();
+    assert!(matches!(error, AppError::NotFound(_)));
+    assert!(message.contains("外部 SSH 临时目标不存在或已关闭"));
+    assert!(!message.contains("invalid remote host id"));
+    assert!(!message.contains("invalid file store path"));
 }
 
 #[tokio::test]
@@ -260,6 +287,38 @@ fn clipboard_download_target_sanitizes_remote_file_name() {
 }
 
 #[test]
+fn normalized_sftp_runtime_settings_preserve_user_performance_profile() {
+    let settings = SftpPerformanceSettings {
+        global_transfers: 4,
+        host_transfers: 2,
+        packet_bytes: 256 * 1024,
+        pipeline_depth: 64,
+        timeout_seconds: 30,
+    };
+
+    assert_eq!(
+        rules::normalized_sftp_runtime_settings(settings),
+        (2, 64, 256 * 1024, 30)
+    );
+}
+
+#[test]
+fn external_bulk_transfer_runtime_settings_use_bastion_safe_profile() {
+    let settings = SftpPerformanceSettings {
+        global_transfers: 4,
+        host_transfers: 2,
+        packet_bytes: 256 * 1024,
+        pipeline_depth: 64,
+        timeout_seconds: 30,
+    };
+
+    assert_eq!(
+        rules::external_bulk_transfer_runtime_settings(settings),
+        (1, 8, 64 * 1024, 180)
+    );
+}
+
+#[test]
 fn numbered_candidate_name_preserves_file_extension() {
     assert_eq!(
         rules::numbered_candidate_name("report.txt", 1),
@@ -267,6 +326,242 @@ fn numbered_candidate_name_preserves_file_extension() {
     );
     assert_eq!(rules::numbered_candidate_name("archive", 2), "archive (2)");
     assert_eq!(rules::numbered_candidate_name(".env", 3), ".env (3)");
+}
+
+#[test]
+fn reliable_partial_target_paths_append_kerminal_part_suffix() {
+    let root = tempdir().expect("tempdir");
+    let local_target = root.path().join("release.tar.gz");
+
+    assert_eq!(
+        rules::reliable_partial_file_name("release.tar.gz"),
+        "release.tar.gz.kerminal-part"
+    );
+    assert_eq!(
+        rules::reliable_local_partial_path(&local_target),
+        root.path().join("release.tar.gz.kerminal-part")
+    );
+    assert_eq!(
+        rules::reliable_remote_partial_path("/opt/releases/release.tar.gz"),
+        "/opt/releases/release.tar.gz.kerminal-part"
+    );
+    assert_eq!(
+        rules::reliable_remote_partial_path("/release.tar.gz"),
+        "/release.tar.gz.kerminal-part"
+    );
+}
+
+#[test]
+fn reliable_write_decision_uses_partial_size_for_resume_boundaries() {
+    assert_eq!(
+        rules::reliable_write_decision(SftpTransferConflictPolicy::Overwrite, false, 100, None),
+        ("fresh", None)
+    );
+    assert_eq!(
+        rules::reliable_write_decision(SftpTransferConflictPolicy::Overwrite, false, 100, Some(40)),
+        ("resume", Some(40))
+    );
+    assert_eq!(
+        rules::reliable_write_decision(
+            SftpTransferConflictPolicy::Overwrite,
+            false,
+            100,
+            Some(100),
+        ),
+        ("commit-existing-partial", None)
+    );
+    assert_eq!(
+        rules::reliable_write_decision(
+            SftpTransferConflictPolicy::Overwrite,
+            false,
+            100,
+            Some(120),
+        ),
+        ("restart-partial", None)
+    );
+}
+
+#[test]
+fn reliable_write_decision_preserves_conflict_policy_before_partial_resume() {
+    assert_eq!(
+        rules::reliable_write_decision(SftpTransferConflictPolicy::Skip, true, 100, Some(40)),
+        ("skip-existing-final", None)
+    );
+    assert_eq!(
+        rules::reliable_write_decision(SftpTransferConflictPolicy::Rename, true, 100, Some(40)),
+        ("choose-renamed-final", None)
+    );
+    assert_eq!(
+        rules::reliable_write_decision(SftpTransferConflictPolicy::Overwrite, true, 100, Some(40)),
+        ("resume", Some(40))
+    );
+}
+
+#[test]
+fn reliable_write_size_confirmation_requires_exact_size_match() {
+    assert!(rules::reliable_size_confirmed(4096, 4096));
+    assert!(!rules::reliable_size_confirmed(4096, 2048));
+    assert!(!rules::reliable_size_confirmed(4096, 8192));
+}
+
+#[test]
+fn sftp_already_exists_classification_requires_clear_exists_status_message() {
+    assert!(!rules::sftp_status_error_is_already_exists(
+        StatusCode::Failure,
+        "Failure"
+    ));
+    assert!(!rules::sftp_status_error_is_already_exists(
+        StatusCode::Failure,
+        "quota exceeded"
+    ));
+    assert!(!rules::sftp_status_error_is_already_exists(
+        StatusCode::PermissionDenied,
+        "Permission denied"
+    ));
+    assert!(rules::sftp_status_error_is_already_exists(
+        StatusCode::Failure,
+        "File exists"
+    ));
+    assert!(rules::sftp_status_error_is_already_exists(
+        StatusCode::Failure,
+        "already exists"
+    ));
+}
+
+#[tokio::test]
+async fn local_reliable_write_target_keeps_final_until_size_verified_commit() {
+    let root = tempdir().expect("tempdir");
+    let target = root.path().join("download.txt");
+    async_fs::write(&target, b"original")
+        .await
+        .expect("seed final target");
+
+    let (final_path, partial_path, offset, mut file) = rules::prepare_local_reliable_write_target(
+        &target,
+        SftpTransferConflictPolicy::Overwrite,
+        10,
+    )
+    .await
+    .expect("prepare reliable target")
+    .expect("prepared target");
+    assert_eq!(offset, 0);
+    file.write_all(b"downloaded").await.expect("write partial");
+    file.flush().await.expect("flush partial");
+    drop(file);
+
+    assert_eq!(
+        async_fs::read_to_string(&target)
+            .await
+            .expect("read final before commit"),
+        "original"
+    );
+    assert_eq!(
+        async_fs::read_to_string(&partial_path)
+            .await
+            .expect("read partial before commit"),
+        "downloaded"
+    );
+
+    rules::commit_local_reliable_write_target(&final_path, &partial_path, 10)
+        .await
+        .expect("commit reliable target");
+
+    assert_eq!(
+        async_fs::read_to_string(&target)
+            .await
+            .expect("read final after commit"),
+        "downloaded"
+    );
+    assert!(
+        !partial_path.exists(),
+        "successful commit should remove the partial path by renaming it"
+    );
+}
+
+#[tokio::test]
+async fn local_reliable_write_target_size_mismatch_preserves_final_and_partial() {
+    let root = tempdir().expect("tempdir");
+    let target = root.path().join("download.txt");
+    async_fs::write(&target, b"original")
+        .await
+        .expect("seed final target");
+
+    let (final_path, partial_path, offset, mut file) = rules::prepare_local_reliable_write_target(
+        &target,
+        SftpTransferConflictPolicy::Overwrite,
+        10,
+    )
+    .await
+    .expect("prepare reliable target")
+    .expect("prepared target");
+    assert_eq!(offset, 0);
+    file.write_all(b"short").await.expect("write partial");
+    file.flush().await.expect("flush partial");
+    drop(file);
+
+    let error = rules::commit_local_reliable_write_target(&final_path, &partial_path, 10)
+        .await
+        .expect_err("reject mismatched size");
+
+    assert!(
+        error.to_string().contains("size"),
+        "error should explain size confirmation failure: {error}"
+    );
+    assert_eq!(
+        async_fs::read_to_string(&target)
+            .await
+            .expect("read final after failed commit"),
+        "original"
+    );
+    assert_eq!(
+        async_fs::read_to_string(&partial_path)
+            .await
+            .expect("read partial after failed commit"),
+        "short"
+    );
+}
+
+#[tokio::test]
+async fn local_reliable_write_target_resumes_existing_partial() {
+    let root = tempdir().expect("tempdir");
+    let target = root.path().join("download.txt");
+    let partial = root.path().join("download.txt.kerminal-part");
+    async_fs::write(&target, b"original")
+        .await
+        .expect("seed final target");
+    async_fs::write(&partial, b"down")
+        .await
+        .expect("seed partial target");
+
+    let (final_path, partial_path, offset, mut file) = rules::prepare_local_reliable_write_target(
+        &target,
+        SftpTransferConflictPolicy::Overwrite,
+        10,
+    )
+    .await
+    .expect("prepare reliable target")
+    .expect("prepared target");
+
+    assert_eq!(partial_path, partial);
+    assert_eq!(offset, 4);
+    file.write_all(b"loaded").await.expect("append partial");
+    file.flush().await.expect("flush partial");
+    drop(file);
+
+    rules::commit_local_reliable_write_target(&final_path, &partial_path, 10)
+        .await
+        .expect("commit resumed target");
+
+    assert_eq!(
+        async_fs::read_to_string(&target)
+            .await
+            .expect("read final after resumed commit"),
+        "downloaded"
+    );
+    assert!(
+        !partial_path.exists(),
+        "successful resumed commit should remove partial"
+    );
 }
 
 #[tokio::test]

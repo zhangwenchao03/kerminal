@@ -6,6 +6,9 @@ use super::diagnostics_common::{
     exposed_tool_definitions, runtime_snapshot_diagnostic, serialized_name,
 };
 use super::*;
+use crate::services::external_launch::{
+    ExternalLaunchIntakeSnapshot, ExternalLaunchRejected, ExternalLaunchSecretBrokerSnapshot,
+};
 
 pub(super) fn execute_kerminal_runtime_snapshot(
     context: &McpToolExecutionContext<'_>,
@@ -164,6 +167,58 @@ pub(super) fn execute_kerminal_runtime_snapshot(
         }
     };
 
+    let external_launch_intake = match context.external_launch_intake.snapshot() {
+        Ok(snapshot) => Some(snapshot),
+        Err(error) => {
+            diagnostics.push(runtime_snapshot_diagnostic(
+                "external_launch.intake",
+                error.to_string(),
+            ));
+            None
+        }
+    };
+    let external_launch_secrets = match context.external_launch_intake.secret_broker().snapshot() {
+        Ok(snapshot) => Some(snapshot),
+        Err(error) => {
+            diagnostics.push(runtime_snapshot_diagnostic(
+                "external_launch.secrets",
+                error.to_string(),
+            ));
+            None
+        }
+    };
+    let external_launch_pending_count = external_launch_intake
+        .as_ref()
+        .map(|snapshot| snapshot.pending_count)
+        .unwrap_or(0);
+    let external_launch_secret_count = external_launch_secrets
+        .as_ref()
+        .map(|snapshot| snapshot.active_secret_count)
+        .unwrap_or(0);
+    let external_launch_runtime = external_launch_snapshot_json(
+        external_launch_intake.as_ref(),
+        external_launch_secrets.as_ref(),
+    );
+
+    let managed_ssh_runtime = match context.ssh_runtime.snapshot() {
+        Ok(snapshot) => Some(snapshot),
+        Err(error) => {
+            diagnostics.push(runtime_snapshot_diagnostic(
+                "ssh_runtime.snapshot",
+                error.to_string(),
+            ));
+            None
+        }
+    };
+    let managed_ssh_active_session_count = managed_ssh_runtime
+        .as_ref()
+        .map(|snapshot| snapshot.active_sessions)
+        .unwrap_or(0);
+    let managed_ssh_active_channel_count = managed_ssh_runtime
+        .as_ref()
+        .map(|snapshot| snapshot.active_channels)
+        .unwrap_or(0);
+
     let tool_count = exposed_tools.len();
     let write_tool_count = exposed_tools
         .iter()
@@ -215,12 +270,15 @@ pub(super) fn execute_kerminal_runtime_snapshot(
     ToolExecutionResult {
         status: McpToolExecutionStatus::Succeeded,
         result_summary: Some(format!(
-            "Kerminal 运行态快照已读取：{} 个终端，{} 个 Agent session，{} 个端口转发（{} 个运行中），{} 个本机代理入口，{} 个 MCP tools{}。",
+            "Kerminal 运行态快照已读取：{} 个终端，{} 个 Agent session，{} 个端口转发（{} 个运行中），{} 个本机代理入口，{} 个外部 SSH 启动待处理，{} 个受管 SSH session（{} 个 active channel），{} 个 MCP tools{}。",
             terminals.len(),
             agent_sessions.len(),
             port_forwards.len(),
             running_port_forwards,
             local_proxy_entry_count,
+            external_launch_pending_count,
+            managed_ssh_active_session_count,
+            managed_ssh_active_channel_count,
             tool_count,
             diagnostic_suffix
         )),
@@ -253,11 +311,17 @@ pub(super) fn execute_kerminal_runtime_snapshot(
                 "staleAgentSessionCount": stale_agent_sessions,
                 "portForwardCount": port_forwards.len(),
                 "runningPortForwardCount": running_port_forwards,
-                "localProxyEntryCount": local_proxy_entry_count
+                "localProxyEntryCount": local_proxy_entry_count,
+                "externalLaunchPendingCount": external_launch_pending_count,
+                "externalLaunchActiveSecretCount": external_launch_secret_count,
+                "managedSshActiveSessionCount": managed_ssh_active_session_count,
+                "managedSshActiveChannelCount": managed_ssh_active_channel_count
             },
             "terminalSessions": terminal_summaries,
             "agentSessions": agent_session_summaries,
             "portForwards": port_forward_summaries,
+            "externalLaunch": external_launch_runtime,
+            "managedSsh": managed_ssh_runtime,
             "fileFirstConfiguration": {
                 "guide": "kerminal-config.md",
                 "guideTool": "kerminal.config_guide",
@@ -282,15 +346,61 @@ pub(super) fn execute_kerminal_runtime_snapshot(
                 "Call kerminal.operation_guide with intent when you need a concrete tool sequence for a task.",
                 "Call terminal.list or terminal.snapshot for terminal details before terminal.write.",
                 "In a session workspace, call kerminal.agent.target_context before writing to the bound terminal.",
+                "Inspect managedSsh in this snapshot when debugging SSH terminal/SFTP/exec/tmux/container/port-forward session reuse; it is redacted and does not expose passwords, private keys, or vault refs.",
+                "Inspect externalLaunch in this snapshot before debugging bastion/jump-host launch compatibility; edit settings.toml externalLaunch and validate instead of looking for external_launch.* MCP control tools.",
                 "For config edits, read kerminal-config.md or call kerminal.config_guide, edit files directly, then call kerminal.config.validate."
             ]
         })),
         entities,
         next_hints: vec![
             "For live terminal work, inspect terminalSessions and resolve the target before terminal.write.".to_owned(),
+            "For SSH reuse diagnostics, inspect managedSsh session/channel counts before assuming SFTP or exec opened a separate connection.".to_owned(),
             "For host ids, read file-backed hosts/*.toml or use the bound target context; remote_host.* MCP tools are intentionally absent.".to_owned(),
             "For config edits, validate with kerminal.config.validate after direct file edits.".to_owned(),
         ],
         ..ToolExecutionResult::default()
     }
+}
+
+fn external_launch_snapshot_json(
+    intake: Option<&ExternalLaunchIntakeSnapshot>,
+    secrets: Option<&ExternalLaunchSecretBrokerSnapshot>,
+) -> Value {
+    json!({
+        "intake": intake.map(|snapshot| {
+            json!({
+                "pendingCount": snapshot.pending_count,
+                "pendingLaunchIds": &snapshot.pending_launch_ids,
+                "acceptedCount": snapshot.accepted_count,
+                "rejectedCount": snapshot.rejected_count,
+                "noopCount": snapshot.noop_count,
+                "lastRejection": snapshot.last_rejection.as_ref().map(external_launch_rejection_json),
+                "policy": &snapshot.policy
+            })
+        }),
+        "secrets": secrets.map(|snapshot| {
+            json!({
+                "activeSecretCount": snapshot.active_secret_count,
+                "launchIds": &snapshot.launch_ids
+            })
+        }),
+        "configuration": {
+            "file": "settings.toml",
+            "section": "externalLaunch",
+            "validator": "kerminal.config.validate",
+            "mcpCrudBoundary": "external_launch.* control/configuration tools are intentionally absent; edit settings.toml and validate."
+        },
+        "secretBoundary": "External launch passwords, URL passwords, password file contents, private keys, and key passphrases are never included in runtime snapshots; only counts and launch ids are exposed."
+    })
+}
+
+fn external_launch_rejection_json(rejection: &ExternalLaunchRejected) -> Value {
+    json!({
+        "entrypoint": rejection.entrypoint,
+        "sourceTool": rejection.source_tool,
+        "message": rejection.message,
+        "argCount": rejection.arg_count,
+        "rawHash": rejection.raw_hash,
+        "cwdPresent": rejection.cwd_present
+    })
 }

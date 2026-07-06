@@ -3,6 +3,7 @@ import {
   ExternalLink,
   FileText,
   FolderPlus,
+  PanelRight,
   RefreshCw,
   Send,
   Trash2,
@@ -30,6 +31,7 @@ export function LocalTransferPaneContextMenu({
   onCreateDirectory,
   onDeleteEntry,
   onOpenEntryInFileManager,
+  onOpenFile,
   onRefresh,
   onRenameEntry,
   onTransfer,
@@ -43,6 +45,7 @@ export function LocalTransferPaneContextMenu({
   onCreateDirectory: () => void;
   onDeleteEntry: (entry: LocalDirectoryEntry) => void;
   onOpenEntryInFileManager: (entry: LocalDirectoryEntry) => void;
+  onOpenFile?: (entry: LocalDirectoryEntry) => void;
   onRefresh: () => void;
   onRenameEntry: (entry: LocalDirectoryEntry) => void;
   onTransfer: () => void;
@@ -86,6 +89,17 @@ export function LocalTransferPaneContextMenu({
               }
             }}
           />
+          {contextMenu.entry.kind === "file" && onOpenFile ? (
+            <LocalContextMenuItem
+              icon={<PanelRight className="h-4 w-4" />}
+              label="在中间打开"
+              onClick={() => {
+                if (contextMenu.entry) {
+                  onOpenFile(contextMenu.entry);
+                }
+              }}
+            />
+          ) : null}
           <LocalContextMenuItem
             icon={<FileText className="h-4 w-4" />}
             label="复制路径"

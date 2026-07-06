@@ -443,6 +443,17 @@ export function validateSshOptions(options: SshOptions | undefined) {
   if (sshOptions.terminal.keepaliveSeconds > 3600) {
     return "心跳间隔不能超过 3600 秒。";
   }
+  if (sshOptions.terminal.startupCommand) {
+    if (!sshOptions.terminal.startupCommand.startsWith("/")) {
+      return "默认目录必须是以 / 开头的远端绝对路径。";
+    }
+    if (/[\0\r\n]/u.test(sshOptions.terminal.startupCommand)) {
+      return "默认目录不能包含换行或非法控制字符。";
+    }
+    if (sshOptions.terminal.startupCommand.length > 4096) {
+      return "默认目录不能超过 4096 个字符。";
+    }
+  }
   if (
     sshOptions.transfer.maxConcurrentTransfers < 1 ||
     sshOptions.transfer.maxConcurrentTransfers > 16

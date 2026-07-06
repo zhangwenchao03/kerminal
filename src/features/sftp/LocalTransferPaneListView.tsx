@@ -29,6 +29,7 @@ export function LocalTransferPaneListView({
   loading,
   onLoadDirectory,
   onOpenContextMenu,
+  onOpenFile,
   onSelectEntry,
   paneHeaderPaddingClass,
   selectedEntries,
@@ -51,6 +52,7 @@ export function LocalTransferPaneListView({
     event: ReactMouseEvent,
     entry: LocalDirectoryEntry | null,
   ) => void;
+  onOpenFile?: (entry: LocalDirectoryEntry) => void;
   onSelectEntry: (
     entry: LocalDirectoryEntry,
     event: ReactMouseEvent,
@@ -144,6 +146,7 @@ export function LocalTransferPaneListView({
                     selected={selectedEntryPaths.has(entry.path)}
                     onOpenDirectory={onLoadDirectory}
                     onOpenContextMenu={onOpenContextMenu}
+                    onOpenFile={onOpenFile}
                     onSelect={onSelectEntry}
                   />
                 )}

@@ -18,6 +18,11 @@ const containerFilesApiMocks = vi.hoisted(() => ({
   writeDockerContainerTextFile: vi.fn(),
 }));
 
+const localFilesApiMocks = vi.hoisted(() => ({
+  readLocalTextFile: vi.fn(),
+  writeLocalTextFile: vi.fn(),
+}));
+
 vi.mock("../../../../src/lib/sftpApi", () => ({
   listSftpDirectory: (...args: unknown[]) =>
     sftpApiMocks.listSftpDirectory(...args),
@@ -36,6 +41,13 @@ vi.mock("../../../../src/lib/containerFilesApi", () => ({
     containerFilesApiMocks.writeDockerContainerTextFile(...args),
 }));
 
+vi.mock("../../../../src/lib/localFilesApi", () => ({
+  readLocalTextFile: (...args: unknown[]) =>
+    localFilesApiMocks.readLocalTextFile(...args),
+  writeLocalTextFile: (...args: unknown[]) =>
+    localFilesApiMocks.writeLocalTextFile(...args),
+}));
+
 describe("remoteWorkspaceEditorTransport", () => {
   beforeEach(() => {
     sftpApiMocks.listSftpDirectory.mockReset();
@@ -44,6 +56,8 @@ describe("remoteWorkspaceEditorTransport", () => {
     containerFilesApiMocks.listDockerContainerDirectory.mockReset();
     containerFilesApiMocks.readDockerContainerTextFile.mockReset();
     containerFilesApiMocks.writeDockerContainerTextFile.mockReset();
+    localFilesApiMocks.readLocalTextFile.mockReset();
+    localFilesApiMocks.writeLocalTextFile.mockReset();
   });
 
   it("routes SSH workspace operations to SFTP APIs", async () => {
@@ -147,6 +161,39 @@ describe("remoteWorkspaceEditorTransport", () => {
       runtime: "podman",
     });
     expect(sftpApiMocks.listSftpDirectory).not.toHaveBeenCalled();
+  });
+
+  it("routes local workspace file read and write operations to local file APIs", async () => {
+    localFilesApiMocks.readLocalTextFile.mockResolvedValue({ content: "local" });
+    localFilesApiMocks.writeLocalTextFile.mockResolvedValue({ bytesWritten: 5 });
+    const target = { kind: "local" as const };
+    const revision = { contentSha256: "sha-a", size: 5 };
+
+    await readRemoteWorkspaceTextFile({
+      maxBytes: 4096,
+      path: "C:/repo/notes.md",
+      target,
+    });
+    await writeRemoteWorkspaceTextFile({
+      content: "local",
+      expectedRevision: revision,
+      overwriteOnConflict: false,
+      path: "C:/repo/notes.md",
+      target,
+    });
+
+    expect(localFilesApiMocks.readLocalTextFile).toHaveBeenCalledWith({
+      maxBytes: 4096,
+      path: "C:/repo/notes.md",
+    });
+    expect(localFilesApiMocks.writeLocalTextFile).toHaveBeenCalledWith({
+      content: "local",
+      create: false,
+      encoding: "utf-8",
+      expectedRevision: revision,
+      overwriteOnConflict: false,
+      path: "C:/repo/notes.md",
+    });
   });
 
   it("rejects unsupported workspace targets with the editor message", async () => {

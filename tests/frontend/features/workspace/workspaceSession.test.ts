@@ -408,6 +408,46 @@ describe("workspaceSession", () => {
     });
   });
 
+  it("restores workspace file tabs without terminal panes or file content", () => {
+    const session = normalizeWorkspaceSessionSnapshot({
+      activeTabId: "tab-file-1",
+      focusedPaneId: "pane-stale",
+      selectedMachineId: "",
+      terminalPanes: [],
+      terminalTabs: [
+        {
+          access: "readonly",
+          content: "must not be persisted",
+          id: "tab-file-1",
+          kind: "workspaceFile",
+          machineId: "host-prod",
+          path: " /etc//app.yaml ",
+          rootPath: " /etc ",
+          savedContent: "must not be persisted",
+          source: "sftp",
+          target: { hostId: "host-prod", kind: "ssh" },
+          title: "stale title",
+        },
+      ],
+    });
+
+    expect(session.activeTabId).toBe("tab-file-1");
+    expect(session.focusedPaneId).toBe("");
+    expect(session.selectedMachineId).toBe("host-prod");
+    expect(session.terminalPanes).toEqual([]);
+    expect(session.terminalTabs[0]).toEqual({
+      access: "readonly",
+      id: "tab-file-1",
+      kind: "workspaceFile",
+      machineId: "host-prod",
+      path: "/etc/app.yaml",
+      rootPath: "/etc",
+      source: "sftp",
+      target: { hostId: "host-prod", kind: "ssh" },
+      title: "app.yaml",
+    });
+  });
+
   it("trims restored output history without keeping a dangling surrogate", () => {
     const outputHistory = `\uD83D\uDE00${"b".repeat(
       TERMINAL_OUTPUT_HISTORY_MAX_CHARS - 1,

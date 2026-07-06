@@ -8,6 +8,13 @@ export type PortForwardPurpose = "generic" | "hostNetworkAssist";
 
 export type PortForwardProxyProtocol = "http" | "socks5";
 
+export type PortForwardRuntimeMode =
+  | "unknown"
+  | "managedSshRuntime"
+  | "openSshProcess"
+  | "openSshPty"
+  | "restored";
+
 export type PortForwardOrigin =
   | "user"
   | "mcpTool"
@@ -26,6 +33,19 @@ export interface PortForwardEndpoint {
   port?: number;
   protocol?: "tcp" | "http" | "socks5";
   side?: "host" | "local";
+}
+
+export interface PortForwardRuntimeDiagnostics {
+  backend: string;
+  cleanupStatus: string;
+  fallbackReason?: string;
+  managedChannelId?: string;
+  managedChannelKind?: string;
+  managedSessionId?: string;
+  managedTunnelId?: string;
+  mode: PortForwardRuntimeMode;
+  recentFailure?: string;
+  tunnelKind: string;
 }
 
 export interface PortForwardCreateRequest {
@@ -71,6 +91,7 @@ export interface PortForwardSummary {
   remoteAccessScope?: PortForwardAccessScope;
   remoteBindHost?: string;
   remoteEndpoint?: PortForwardEndpoint;
+  runtime?: PortForwardRuntimeDiagnostics;
 }
 
 const browserPreviewForwards = new Map<string, PortForwardSummary>();

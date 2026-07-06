@@ -344,6 +344,7 @@ fn create_host_persists_ssh_options() {
         credential_ref: Some("/home/ops/.ssh/bastion".to_owned()),
         secret_ref: None,
         key_passphrase_ref: None,
+        key_passphrase_secret: None,
         credential_secret: None,
         credential_status: Default::default(),
     });

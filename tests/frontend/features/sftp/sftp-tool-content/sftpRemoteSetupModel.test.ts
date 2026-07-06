@@ -18,6 +18,12 @@ const sshTarget: SftpFileTarget = {
   summary: "deploy@prod.internal:22",
 };
 
+const externalSshTarget: SftpFileTarget = {
+  ...sshTarget,
+  hostId: "external:launch-123",
+  summary: "ops@external.example:22",
+};
+
 const dockerTarget: SftpFileTarget = {
   containerId: "container-api",
   hostId: "prod-api",
@@ -54,6 +60,9 @@ describe("sftpRemoteSetupModel", () => {
     expect(buildSftpHostKeyTrustPlan(sshTarget)).toEqual({
       kind: "trust",
       request: { hostId: "prod-api" },
+    });
+    expect(buildSftpHostKeyTrustPlan(externalSshTarget)).toEqual({
+      kind: "skip",
     });
     expect(buildSftpHostKeyTrustPlan(dockerTarget)).toEqual({ kind: "skip" });
     expect(buildSftpHostKeyTrustPlan(null)).toEqual({ kind: "skip" });

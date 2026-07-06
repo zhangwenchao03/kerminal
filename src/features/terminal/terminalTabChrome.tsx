@@ -17,11 +17,13 @@ import { ModalShell } from "../../components/ui/modal-shell";
 import { cn } from "../../lib/cn";
 import {
   terminalTabGroupColorIds,
+  isWorkspaceFileTab,
   type MachineStatus,
   type TerminalTab,
   type TerminalTabGroupColor,
   type TerminalTabGroupPreference,
   type TerminalTabGroupPreferences,
+  type WorkspaceFileTab,
 } from "../workspace/types";
 
 export interface TerminalTabGroup {
@@ -182,17 +184,19 @@ const terminalTabCompactIdleClassName =
   "border-transparent bg-transparent text-zinc-600 hover:bg-white/55 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-white/8 dark:hover:text-zinc-50";
 const terminalTabCompactActiveClassName =
   "border-white/70 bg-white/72 text-zinc-950 shadow-sm shadow-black/8 ring-1 ring-white/70 dark:border-white/14 dark:bg-white/14 dark:text-zinc-50 dark:shadow-black/20 dark:ring-white/12";
-const terminalTabMenuItemClassName =
-  "kerminal-context-menu-item";
-const terminalTabMenuIdleClassName =
-  "";
+const terminalTabMenuItemClassName = "kerminal-context-menu-item";
+const terminalTabMenuIdleClassName = "";
 
 export function terminalTabStatusDotClassName(
   tab: TerminalTab,
   status: MachineStatus = "online",
+  dirty = false,
 ) {
   if (tab.kind === "sftpTransfer") {
     return "bg-sky-400";
+  }
+  if (tab.kind === "workspaceFile") {
+    return dirty ? "bg-amber-400" : "bg-emerald-400";
   }
   if (status === "offline") {
     return "bg-zinc-400 dark:bg-zinc-500";
@@ -213,6 +217,7 @@ export function TerminalTabButton({
   status = "online",
   tab,
   tabNumber,
+  workspaceFileDirty,
 }: {
   active: boolean;
   compact?: boolean;
@@ -223,6 +228,7 @@ export function TerminalTabButton({
   status?: MachineStatus;
   tab: TerminalTab;
   tabNumber?: number;
+  workspaceFileDirty?: boolean;
 }) {
   const title = tabNumber ? `${tabNumber} · ${tab.title}` : tab.title;
 
@@ -253,7 +259,7 @@ export function TerminalTabButton({
         aria-hidden="true"
         className={cn(
           "pointer-events-none relative z-10 h-2 w-2 shrink-0 rounded-full",
-          terminalTabStatusDotClassName(tab, status),
+          terminalTabStatusDotClassName(tab, status, workspaceFileDirty),
         )}
       />
       <span
@@ -296,7 +302,9 @@ export function TerminalTabGroupHeader({
   return (
     <button
       aria-expanded={!collapsed}
-      aria-label={collapsed ? `展开 ${group.title} 标签组` : `折叠 ${group.title} 标签组`}
+      aria-label={
+        collapsed ? `展开 ${group.title} 标签组` : `折叠 ${group.title} 标签组`
+      }
       className={cn(
         "kerminal-focus-ring kerminal-pressable flex h-9 max-w-[220px] items-center gap-1.5 rounded-xl border border-white/35 px-2.5 text-sm font-semibold ring-1 shadow-sm shadow-black/5 hover:brightness-105 dark:border-white/10 dark:shadow-black/20",
         group.colorClassName,
@@ -324,7 +332,10 @@ export function TerminalTabContextMenuItems({
   activeTabId,
   group,
   onCloseTabs,
+  onCopyWorkspaceFilePath,
+  onReloadWorkspaceFile,
   onRequestRename,
+  onRevealWorkspaceFileInSftp,
   onSelectTab,
   runMenuAction,
   tab,
@@ -333,7 +344,10 @@ export function TerminalTabContextMenuItems({
   activeTabId: string;
   group: TerminalTabGroup | undefined;
   onCloseTabs: (tabIds: string[]) => void;
+  onCopyWorkspaceFilePath?: (tab: WorkspaceFileTab) => void;
+  onReloadWorkspaceFile?: (tabId: string) => void;
   onRequestRename: (tab: TerminalTab) => void;
+  onRevealWorkspaceFileInSftp?: (tabId: string) => void;
   onSelectTab: (tabId: string) => void;
   runMenuAction: (action?: () => void) => void;
   tab: TerminalTab;
@@ -341,7 +355,9 @@ export function TerminalTabContextMenuItems({
 }) {
   const tabIndex = tabs.findIndex((candidate) => candidate.id === tab.id);
   const rightTabIds =
-    tabIndex >= 0 ? tabs.slice(tabIndex + 1).map((candidate) => candidate.id) : [];
+    tabIndex >= 0
+      ? tabs.slice(tabIndex + 1).map((candidate) => candidate.id)
+      : [];
   const otherTabIds = tabs
     .filter((candidate) => candidate.id !== tab.id)
     .map((candidate) => candidate.id);
@@ -351,6 +367,10 @@ export function TerminalTabContextMenuItems({
           .filter((candidate) => candidate.id !== tab.id)
           .map((candidate) => candidate.id)
       : [];
+  const workspaceFileTab = isWorkspaceFileTab(tab) ? tab : null;
+  const canRevealWorkspaceFileInSftp =
+    workspaceFileTab?.target.kind === "ssh" &&
+    Boolean(onRevealWorkspaceFileInSftp);
 
   return (
     <>
@@ -358,6 +378,33 @@ export function TerminalTabContextMenuItems({
         label={tab.id === activeTabId ? "当前标签" : "切换到此标签"}
         onClick={() => runMenuAction(() => onSelectTab(tab.id))}
       />
+      {workspaceFileTab ? (
+        <>
+          <TerminalTabMenuItem
+            disabled={!onCopyWorkspaceFilePath}
+            label="复制完整路径"
+            onClick={() =>
+              runMenuAction(() => onCopyWorkspaceFilePath?.(workspaceFileTab))
+            }
+          />
+          <TerminalTabMenuItem
+            disabled={!canRevealWorkspaceFileInSftp}
+            label="在 SFTP 中显示"
+            onClick={() =>
+              runMenuAction(() =>
+                onRevealWorkspaceFileInSftp?.(workspaceFileTab.id),
+              )
+            }
+          />
+          <TerminalTabMenuItem
+            disabled={!onReloadWorkspaceFile}
+            label="重新加载"
+            onClick={() =>
+              runMenuAction(() => onReloadWorkspaceFile?.(workspaceFileTab.id))
+            }
+          />
+        </>
+      ) : null}
       <TerminalTabMenuItem
         label="重命名标签"
         onClick={() => runMenuAction(() => onRequestRename(tab))}
@@ -465,6 +512,42 @@ export function CloseTabsConfirmationDialog({
     >
       <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-100">
         当前标签内的会话会结束。
+      </div>
+    </ModalShell>
+  );
+}
+
+export function CloseWorkspaceFileTabsConfirmationDialog({
+  dirtyTabCount,
+  onClose,
+  onConfirm,
+  tabCount,
+}: {
+  dirtyTabCount: number;
+  onClose: () => void;
+  onConfirm: () => void;
+  tabCount: number;
+}) {
+  return (
+    <ModalShell
+      footer={
+        <>
+          <Button onClick={onClose} type="button" variant="ghost">
+            取消
+          </Button>
+          <Button onClick={onConfirm} type="button" variant="danger">
+            放弃修改并关闭
+          </Button>
+        </>
+      }
+      description={`将关闭 ${tabCount} 个标签，其中 ${dirtyTabCount} 个文件有未保存修改。`}
+      onClose={onClose}
+      open={tabCount > 0}
+      size="compact"
+      title="关闭未保存文件"
+    >
+      <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-100">
+        未保存的文件修改会丢失。
       </div>
     </ModalShell>
   );
@@ -705,7 +788,9 @@ function TerminalTabMenuItem({
     <button
       className={cn(
         terminalTabMenuItemClassName,
-        danger ? "kerminal-context-menu-item--danger" : terminalTabMenuIdleClassName,
+        danger
+          ? "kerminal-context-menu-item--danger"
+          : terminalTabMenuIdleClassName,
       )}
       disabled={disabled}
       onClick={onClick}

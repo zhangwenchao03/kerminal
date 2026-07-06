@@ -28,10 +28,12 @@ import {
   canEnterHostContainer,
   canRunHostContainerLifecycleAction,
   hostContainerLifecycleDialogCopy,
+  resolveHostContainerSelection,
   type HostContainerGroupMode,
   type HostContainerInspectorTab,
   type HostContainerLifecycleAction,
   type HostContainerMetadata,
+  type HostContainerSelection,
 } from "./host-containers/hostContainerDialogModel";
 
 interface HostContainersDialogProps {
@@ -57,11 +59,6 @@ interface HostContainersDialogProps {
   onPinContainer: (container: DockerContainerSummary) => void | Promise<void>;
   open: boolean;
 }
-
-type HostContainerSelection =
-  | { kind: "container"; containerId: string }
-  | { kind: "project"; projectId: string }
-  | null;
 
 const runtimeOptions = [
   { label: "Docker", value: "docker" },
@@ -602,7 +599,6 @@ export function HostContainersDialog({
                 onOpenLogs={openContainerLogs}
                 onOpenProjectYaml={openProjectYaml}
                 onPinContainer={(container) => void pinContainer(container)}
-                onRefreshProject={refreshProject}
                 onSelectContainer={selectContainer}
                 onSelectProject={selectProject}
                 pinningContainerId={pinningContainerId}
@@ -852,40 +848,6 @@ function StateMessage({
       {children}
     </div>
   );
-}
-
-function resolveHostContainerSelection(
-  containers: DockerContainerSummary[],
-  groupMode: HostContainerGroupMode,
-  current: HostContainerSelection,
-  initialContainerId?: string,
-): HostContainerSelection {
-  const hasContainer = (containerId: string) =>
-    containers.some((container) => container.id === containerId);
-
-  if (initialContainerId && hasContainer(initialContainerId)) {
-    return { kind: "container", containerId: initialContainerId };
-  }
-  if (current?.kind === "container" && hasContainer(current.containerId)) {
-    return current;
-  }
-
-  if (groupMode === "compose") {
-    const composeView = buildComposeProjectViews(containers);
-    if (
-      current?.kind === "project" &&
-      composeView.projects.some((project) => project.id === current.projectId)
-    ) {
-      return current;
-    }
-    if (composeView.projects[0]) {
-      return { kind: "project", projectId: composeView.projects[0].id };
-    }
-  }
-
-  return containers[0]
-    ? { kind: "container", containerId: containers[0].id }
-    : null;
 }
 
 function formatHostIdentity(host: Machine) {

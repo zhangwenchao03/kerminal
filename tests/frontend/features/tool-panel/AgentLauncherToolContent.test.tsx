@@ -247,7 +247,9 @@ describe("AgentLauncherToolContent", () => {
     await waitFor(() => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "codex",
-        target: undefined,
+        target: {
+          liveStatus: "unbound",
+        },
         title: "Codex",
       });
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
@@ -283,6 +285,36 @@ describe("AgentLauncherToolContent", () => {
         transientStartupMessage: true,
       }),
     );
+  });
+
+  it("opens Codex without an active terminal tab as an unbound agent session", async () => {
+    const user = userEvent.setup();
+
+    renderAgentLauncher({ activeTab: undefined });
+
+    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
+
+    await waitFor(() => {
+      expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
+        agentId: "codex",
+        target: {
+          liveStatus: "unbound",
+        },
+        title: "Codex",
+      });
+      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
+        agentId: "codex",
+        agentSessionId: "ags-codex",
+        resumeProviderSession: false,
+      });
+    });
+    expect(await screen.findByTestId("agent-xterm")).toHaveAttribute(
+      "data-shell",
+      "pwsh.exe",
+    );
+    expect(
+      screen.queryByText("Open a terminal tab before launching an agent."),
+    ).not.toBeInTheDocument();
   });
 
   it("shows typed agent signal status without restoring the composer UI", async () => {
@@ -326,9 +358,10 @@ describe("AgentLauncherToolContent", () => {
 
     const menu = await screen.findByRole("menu");
     expect(menu).toHaveClass("kerminal-agent-launch-menu");
-    expect(menu).toHaveClass("w-[136px]");
+    expect(menu).toHaveClass("w-[164px]");
     expect(menu).toHaveTextContent("跳过权限打开");
-    expect(screen.getAllByRole("menuitem")).toHaveLength(1);
+    expect(menu).toHaveTextContent("不绑定主机打开");
+    expect(screen.getAllByRole("menuitem")).toHaveLength(2);
 
     await user.click(
       screen.getByRole("menuitem", {
@@ -428,6 +461,52 @@ describe("AgentLauncherToolContent", () => {
     expect(
       screen.queryByRole("button", { name: "Rebind agent target" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("opens Codex without binding the focused host from the launcher context menu", async () => {
+    const user = userEvent.setup();
+    registerTerminalPaneSession("pane-prod", "term-prod", {
+      cwd: "/srv/app",
+      remoteHostId: "prod-web",
+      shell: "bash",
+      tabId: "tab-main",
+      target: "ssh",
+      targetRef: "ssh:prod-web",
+    });
+
+    render(
+      <AgentLauncherToolContent
+        activeTab={{ id: "tab-main" } as never}
+        focusedPane={{
+          currentCwd: "/srv/app",
+          cwd: "/srv/fallback",
+          id: "pane-prod",
+          mode: "ssh",
+          shell: "bash",
+        } as never}
+      />,
+    );
+
+    const codexButton = await screen.findByRole("button", {
+      name: "Open Codex",
+    });
+    fireEvent.contextMenu(codexButton, { clientX: 120, clientY: 160 });
+    await user.click(
+      await screen.findByRole("menuitem", {
+        name: "Launch Codex without binding a host",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
+        agentId: "codex",
+        target: {
+          liveStatus: "unbound",
+        },
+        title: "Codex",
+      });
+    });
+    expect(await screen.findByTestId("agent-xterm")).toHaveTextContent("Codex");
   });
 
   it("continues a persisted Codex agent session without creating a new one", async () => {
@@ -561,7 +640,9 @@ describe("AgentLauncherToolContent", () => {
     await waitFor(() => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "codex",
-        target: undefined,
+        target: {
+          liveStatus: "unbound",
+        },
         title: "Codex",
       });
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
@@ -1018,7 +1099,9 @@ describe("AgentLauncherToolContent", () => {
     await waitFor(() => {
       expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
         agentId: "custom",
-        target: undefined,
+        target: {
+          liveStatus: "unbound",
+        },
         title: "Custom",
       });
       expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({

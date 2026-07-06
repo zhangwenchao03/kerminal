@@ -63,6 +63,7 @@ async fn native_sftp_service_uses_password_jump_for_list_preview_and_shell_delet
                 credential_ref: None,
                 secret_ref: None,
                 key_passphrase_ref: None,
+                key_passphrase_secret: None,
                 credential_secret: Some("jump-secret".to_owned()),
                 credential_status: Default::default(),
             }],
@@ -70,6 +71,7 @@ async fn native_sftp_service_uses_password_jump_for_list_preview_and_shell_delet
         },
     );
     trust_loopback_host(&state, &target_host_id).await;
+    let direct_tcpip_after_trust = jump_server.direct_tcpip_requests.load(Ordering::SeqCst);
 
     let listing = state
         .sftp()
@@ -86,6 +88,11 @@ async fn native_sftp_service_uses_password_jump_for_list_preview_and_shell_delet
         .entries
         .iter()
         .any(|entry| entry.name == "hello.txt" && entry.kind == SftpEntryKind::File));
+    let direct_tcpip_after_list = jump_server.direct_tcpip_requests.load(Ordering::SeqCst);
+    assert!(
+        direct_tcpip_after_list > direct_tcpip_after_trust,
+        "first SFTP operation should open the target SSH transport through the jump host"
+    );
 
     let preview = state
         .sftp()
@@ -101,6 +108,11 @@ async fn native_sftp_service_uses_password_jump_for_list_preview_and_shell_delet
         .expect("preview file through jump");
     assert_eq!(preview.content, "hello through jump");
     assert!(!preview.truncated);
+    assert_eq!(
+        jump_server.direct_tcpip_requests.load(Ordering::SeqCst),
+        direct_tcpip_after_list,
+        "preview should reuse the managed SFTP jump connection instead of opening a second transport"
+    );
 
     state
         .sftp()
@@ -115,9 +127,10 @@ async fn native_sftp_service_uses_password_jump_for_list_preview_and_shell_delet
         .await
         .expect("delete directory through jump shell");
     assert!(!server_root.path().join("managed").exists());
-    assert!(
-        jump_server.direct_tcpip_requests.load(Ordering::SeqCst) >= 3,
-        "list, preview, and shell delete should each open direct-tcpip through the jump host"
+    assert_eq!(
+        jump_server.direct_tcpip_requests.load(Ordering::SeqCst),
+        direct_tcpip_after_list,
+        "directory delete should reuse the managed jump target transport instead of opening a second direct-tcpip"
     );
 }
 

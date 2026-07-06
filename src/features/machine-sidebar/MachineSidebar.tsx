@@ -1,11 +1,13 @@
 import {
   ArrowLeftRight,
+  Box,
   ChevronDown,
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
   Plus,
   Search,
+  Server,
   Settings,
 } from "lucide-react";
 import {
@@ -28,10 +30,12 @@ import {
   statusClasses,
   type MachineDragPreview,
   type MachineSidebarProps,
+  type MachineSidebarViewMode,
   type PointerMachineDrag,
   type SidebarContextMenu,
   type SidebarContextMenuPayload,
 } from "./MachineSidebar.shared";
+import { MachineSidebarContainersView } from "./MachineSidebarContainersView";
 import { MachineSidebarContextMenuPortal } from "./MachineSidebarContextMenuPortal";
 import {
   CollapsedHostPopover,
@@ -93,26 +97,38 @@ function stringSetsEqual(left: Set<string>, right: Set<string>) {
 }
 
 export function MachineSidebar({
+  activeView = "hosts",
   collapsed = false,
   collapsedGroupIds: controlledCollapsedGroupIds,
+  containerHostId,
+  containerInitialContainerId,
   groups,
   openMachineIds = [],
+  onActiveViewChange,
   onAddConnection,
   onAddGroup,
   onAddMachine,
+  onContainerHostChange,
   onCollapsedGroupIdsChange,
   onDeleteGroup,
   onDeleteMachine,
   onDuplicateMachine,
+  onEnterContainer,
   onEditGroup,
   onEditMachine,
   onExternalMachineDrag,
   onExternalMachineDragEnd,
   onExternalMachineDrop,
+  onFetchContainerStats,
+  onInspectContainer,
+  onLifecycleContainer,
+  onListDockerContainers,
   onMoveMachine,
   onSearchChange,
   onOpenContainerDetails,
   onOpenHostContainers,
+  onOpenContainerLogs,
+  onOpenWorkspaceFileTab,
   onOpenLocalTerminal,
   onOpenContainerTerminal,
   onOpenRdpConnection,
@@ -124,6 +140,7 @@ export function MachineSidebar({
   onOpenTelnetTerminal,
   onOpenSerialTerminal,
   onPinGroup,
+  onPinContainer,
   onSelectMachine,
   search,
   selectedMachineId,
@@ -211,6 +228,11 @@ export function MachineSidebar({
   const dragTargetGroup = dragOverGroupId
     ? groups.find((group) => group.id === dragOverGroupId)
     : undefined;
+  const sidebarTitle = activeView === "containers" ? "容器" : "主机";
+  const sidebarDescription =
+    activeView === "containers"
+      ? "按主机浏览 Docker / Compose"
+      : `${groups.length} 个分组 / ${machineCount} 台主机`;
 
   useLayoutEffect(() => {
     if (groups.length === 0) {
@@ -374,6 +396,18 @@ export function MachineSidebar({
     });
   };
 
+  const switchSidebarView = (view: MachineSidebarViewMode) => {
+    if (view === "containers") {
+      const selectedMachine = groups
+        .flatMap((group) => group.machines)
+        .find((machine) => machine.id === selectedMachineId);
+      if (selectedMachine?.kind === "ssh") {
+        onContainerHostChange?.(selectedMachine.id);
+      }
+    }
+    onActiveViewChange?.(view);
+  };
+
   const openMachineSession = (machine: Machine) => {
     onSelectMachine(machine.id);
     if (machine.kind === "ssh") {
@@ -407,6 +441,25 @@ export function MachineSidebar({
       return;
     }
     onSelectMachine(machine.id);
+  };
+
+  const openHostContainersInSidebar = (machineId: string) => {
+    onSelectMachine(machineId);
+    onContainerHostChange?.(machineId);
+    onActiveViewChange?.("containers");
+    onOpenHostContainers?.(machineId);
+  };
+
+  const openContainerDetailsInSidebar = (machineId: string) => {
+    const machine = groups
+      .flatMap((group) => group.machines)
+      .find((candidate) => candidate.id === machineId);
+    if (machine?.kind === "dockerContainer" && machine.parentMachineId) {
+      onSelectMachine(machine.parentMachineId);
+      onContainerHostChange?.(machine.parentMachineId);
+      onActiveViewChange?.("containers");
+    }
+    onOpenContainerDetails?.(machineId);
   };
 
   const cleanupPointerDrag = (notifyExternal = false) => {
@@ -581,8 +634,8 @@ export function MachineSidebar({
       onDuplicateMachine={onDuplicateMachine}
       onEditGroup={onEditGroup}
       onEditMachine={onEditMachine}
-      onOpenContainerDetails={onOpenContainerDetails}
-      onOpenHostContainers={onOpenHostContainers}
+      onOpenContainerDetails={openContainerDetailsInSidebar}
+      onOpenHostContainers={openHostContainersInSidebar}
       onOpenLocalTerminal={onOpenLocalTerminal}
       onOpenContainerTerminal={onOpenContainerTerminal}
       onOpenRdpConnection={onOpenRdpConnection}
@@ -666,56 +719,111 @@ export function MachineSidebar({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1" data-tauri-drag-region>
             <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-              主机
+              {sidebarTitle}
             </h2>
             <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              {groups.length} 个分组 / {machineCount} 台主机
+              {sidebarDescription}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <Button
-              aria-label="打开 SFTP 传输工作台"
-              className={sidebarAccentIconButtonClassName}
-              disabled={!onOpenTransferWorkbench}
-              onClick={onOpenTransferWorkbench}
-              size="icon"
-              title="SFTP 传输"
-              type="button"
-              variant="ghost"
-            >
-              <ArrowLeftRight className="h-4 w-4" />
-            </Button>
-            <Button
-              aria-label={groupToggleLabel}
-              aria-pressed={allGroupsCollapsed}
-              className={sidebarIconButtonClassName}
-              disabled={groups.length === 0}
-              onClick={toggleAllGroups}
-              size="icon"
-              title={groupToggleLabel}
-              type="button"
-              variant="ghost"
-            >
-              <GroupToggleIcon className="h-4 w-4" />
-            </Button>
+            {activeView === "hosts" ? (
+              <>
+                <Button
+                  aria-label="打开 SFTP 传输工作台"
+                  className={sidebarAccentIconButtonClassName}
+                  disabled={!onOpenTransferWorkbench}
+                  onClick={onOpenTransferWorkbench}
+                  size="icon"
+                  title="SFTP 传输"
+                  type="button"
+                  variant="ghost"
+                >
+                  <ArrowLeftRight className="h-4 w-4" />
+                </Button>
+                <Button
+                  aria-label={groupToggleLabel}
+                  aria-pressed={allGroupsCollapsed}
+                  className={sidebarIconButtonClassName}
+                  disabled={groups.length === 0}
+                  onClick={toggleAllGroups}
+                  size="icon"
+                  title={groupToggleLabel}
+                  type="button"
+                  variant="ghost"
+                >
+                  <GroupToggleIcon className="h-4 w-4" />
+                </Button>
+              </>
+            ) : null}
           </div>
         </div>
-        <label className="relative block">
-          <span className="sr-only">搜索主机</span>
-          <Search
-            aria-hidden="true"
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500"
-          />
-          <input
-            className={sidebarSearchInputClassName}
-            onChange={(event) => onSearchChange(event.currentTarget.value)}
-            placeholder="搜索主机、分组或标签..."
-            value={search}
-          />
-        </label>
+        <div
+          aria-label="左栏视图"
+          className="grid grid-cols-2 gap-1 rounded-xl border border-[var(--border-subtle)] bg-black/[0.025] p-1 dark:bg-white/[0.045]"
+          role="group"
+        >
+          <button
+            aria-pressed={activeView === "hosts"}
+            className={cn(
+              "kerminal-focus-ring kerminal-pressable flex h-8 items-center justify-center gap-1.5 rounded-lg text-xs font-medium text-zinc-500 transition hover:bg-[var(--surface-hover)] dark:text-zinc-400",
+              activeView === "hosts" &&
+                "bg-[var(--surface-selected)] text-zinc-950 shadow-sm dark:text-zinc-50",
+            )}
+            onClick={() => switchSidebarView("hosts")}
+            type="button"
+          >
+            <Server className="h-3.5 w-3.5" />
+            主机
+          </button>
+          <button
+            aria-pressed={activeView === "containers"}
+            className={cn(
+              "kerminal-focus-ring kerminal-pressable flex h-8 items-center justify-center gap-1.5 rounded-lg text-xs font-medium text-zinc-500 transition hover:bg-[var(--surface-hover)] dark:text-zinc-400",
+              activeView === "containers" &&
+                "bg-[var(--surface-selected)] text-zinc-950 shadow-sm dark:text-zinc-50",
+            )}
+            onClick={() => switchSidebarView("containers")}
+            type="button"
+          >
+            <Box className="h-3.5 w-3.5" />
+            容器
+          </button>
+        </div>
+        {activeView === "hosts" ? (
+          <label className="relative block">
+            <span className="sr-only">搜索主机</span>
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500"
+            />
+            <input
+              className={sidebarSearchInputClassName}
+              onChange={(event) => onSearchChange(event.currentTarget.value)}
+              placeholder="搜索主机、分组或标签..."
+              value={search}
+            />
+          </label>
+        ) : null}
       </div>
 
-      <div className="kerminal-sidebar-list scrollbar-none flex min-h-0 flex-1 flex-col overflow-y-auto">
+      {activeView === "containers" ? (
+        <MachineSidebarContainersView
+          groups={groups}
+          hostId={containerHostId}
+          initialContainerId={containerInitialContainerId}
+          onEnterContainer={onEnterContainer}
+          onFetchContainerStats={onFetchContainerStats}
+          onHostChange={onContainerHostChange}
+          onInspectContainer={onInspectContainer}
+          onLifecycleContainer={onLifecycleContainer}
+          onListDockerContainers={onListDockerContainers}
+          onOpenContainerLogs={onOpenContainerLogs}
+          onOpenWorkspaceFileTab={onOpenWorkspaceFileTab}
+          onPinContainer={onPinContainer}
+          selectedMachineId={selectedMachineId}
+        />
+      ) : (
+        <div className="kerminal-sidebar-list scrollbar-none flex min-h-0 flex-1 flex-col overflow-y-auto">
         {visibleGroups.map((group) => {
           const collapsed = !hasSearch && collapsedGroupIds.has(group.id);
 
@@ -861,7 +969,8 @@ export function MachineSidebar({
             没有匹配的主机。
           </div>
         ) : null}
-      </div>
+        </div>
+      )}
 
       <div className={sidebarFooterClassName}>
         <Button

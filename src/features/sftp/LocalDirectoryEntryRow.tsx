@@ -20,6 +20,7 @@ export function LocalDirectoryEntryRow({
   entry,
   onOpenDirectory,
   onOpenContextMenu,
+  onOpenFile,
   onSelect,
   selected,
 }: {
@@ -30,6 +31,7 @@ export function LocalDirectoryEntryRow({
     event: ReactMouseEvent,
     entry: LocalDirectoryEntry | null,
   ) => void;
+  onOpenFile?: (entry: LocalDirectoryEntry) => void;
   onSelect: (entry: LocalDirectoryEntry, event: ReactMouseEvent) => void;
   selected: boolean;
 }) {
@@ -54,6 +56,10 @@ export function LocalDirectoryEntryRow({
       onDoubleClick={() => {
         if (isDirectory) {
           void onOpenDirectory(entry.path);
+          return;
+        }
+        if (entry.kind === "file") {
+          onOpenFile?.(entry);
         }
       }}
       onDragStart={(event) => {
@@ -90,6 +96,10 @@ export function LocalDirectoryEntryRow({
           event.stopPropagation();
           if (isDirectory) {
             void onOpenDirectory(entry.path);
+            return;
+          }
+          if (entry.kind === "file") {
+            onOpenFile?.(entry);
           }
         }}
         type="button"

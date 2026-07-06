@@ -477,9 +477,7 @@ describe("RemoteHostCreateDialog", () => {
     expect(
       screen.queryByRole("button", { name: "隧道" }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "终端" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "终端" })).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "传输" }),
     ).not.toBeInTheDocument();

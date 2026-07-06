@@ -27,6 +27,10 @@ export function nextSelectedEntryPaths(
     return nextSelection;
   }
 
+  if (currentSelection.size === 1 && currentSelection.has(clickedPath)) {
+    return new Set<string>();
+  }
+
   return new Set([clickedPath]);
 }
 

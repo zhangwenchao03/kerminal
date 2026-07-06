@@ -338,6 +338,7 @@ fn remote_host_from_create_request(
         credential_ref,
         secret_ref: None,
         key_passphrase_ref: None,
+        key_passphrase_secret: None,
         credential_secret,
         credential_status: Default::default(),
         tags,

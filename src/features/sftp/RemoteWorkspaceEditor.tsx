@@ -1,8 +1,6 @@
 import {
   AlertTriangle,
-  Check,
   FileText,
-  Folder,
   FolderOpen,
   RefreshCw,
   RotateCcw,
@@ -17,17 +15,32 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
+  type MouseEvent,
 } from "react";
+import {
+  KERMINAL_TEXT_EDIT_COMMAND_EVENT,
+  type KerminalTextEditCommandEventDetail,
+} from "../../app/appKeybindingPolicy";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
 import { cn } from "../../lib/cn";
 import { configureKerminalMonaco } from "../../lib/monacoTheme";
 import { targetStableId, type RemoteTargetRef } from "../../lib/targetModel";
+import { defaultTerminalAppearance } from "../settings/settingsDefaults";
+import {
+  terminalFontWeightValue,
+  type TerminalAppearance,
+} from "../settings/settingsModel";
 import {
   MonacoTextEditor,
   type MonacoTextEditorMountHandler,
 } from "./MonacoTextEditor";
+import { RemoteWorkspaceEditorContextMenu } from "./RemoteWorkspaceEditorContextMenu";
+import {
+  EditorToolbarButton,
+  WorkspaceInlineStatus,
+  WorkspaceTreeRow,
+} from "./RemoteWorkspaceEditorParts";
 import {
   activeTabStatus,
   applyOpenTabError,
@@ -55,6 +68,18 @@ import {
   type WorkspaceTreeNode,
 } from "./remoteWorkspaceEditorModel";
 import {
+  buildRemoteWorkspaceEditorCommandGroups,
+  isRemoteWorkspaceEditorCommandEnabled,
+  resolveRemoteWorkspaceEditorContextMenuPosition,
+  type RemoteWorkspaceEditorCommandId,
+  type RemoteWorkspaceEditorCommandState,
+} from "./remoteWorkspaceEditorCommandModel";
+import {
+  editorShouldHandleNativeTextEdit,
+  registerRemoteWorkspaceEditorKeybindings,
+  runRemoteWorkspaceEditorMonacoCommand,
+} from "./remoteWorkspaceEditorCommandRuntime";
+import {
   listRemoteWorkspaceDirectory,
   readRemoteWorkspaceTextFile,
   writeRemoteWorkspaceTextFile,
@@ -77,6 +102,7 @@ export function RemoteWorkspaceEditor({
   openCommand,
   rootPath,
   target,
+  terminalAppearance = defaultTerminalAppearance,
   variant = "embedded",
 }: {
   hostId?: string;
@@ -86,6 +112,7 @@ export function RemoteWorkspaceEditor({
   openCommand?: RemoteWorkspaceOpenCommand | null;
   rootPath: string;
   target?: RemoteTargetRef;
+  terminalAppearance?: TerminalAppearance;
   variant?: "embedded" | "fullscreen" | "workspace";
 }) {
   const expanded = variant !== "embedded";
@@ -152,8 +179,13 @@ export function RemoteWorkspaceEditor({
   );
   const editorRef =
     useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
-  const saveActiveRef = useRef<() => void>(() => undefined);
+  const runEditorCommandRef =
+    useRef<(command: RemoteWorkspaceEditorCommandId) => void>(() => undefined);
   const tabsRef = useRef<OpenFileTab[]>([]);
+  const [editorContextMenu, setEditorContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.path === activePath) ?? null,
@@ -167,6 +199,33 @@ export function RemoteWorkspaceEditor({
   const hasConflict =
     activeTab?.error?.includes("远端文件已变更") ||
     activeTab?.error?.includes("conflict");
+  const editorCommandState = useMemo<RemoteWorkspaceEditorCommandState>(
+    () => ({
+      dirty: activeTab ? isDirtyTab(activeTab) : false,
+      hasConflict: Boolean(hasConflict),
+      hasEditor: Boolean(activeTab && !activeTab.loading),
+      loading: Boolean(activeTab?.loading),
+      readOnly: Boolean(activeTab?.readonly),
+      saving: Boolean(activeTab?.saving),
+    }),
+    [activeTab, hasConflict],
+  );
+  const editorCommandGroups = useMemo(
+    () => buildRemoteWorkspaceEditorCommandGroups(editorCommandState),
+    [editorCommandState],
+  );
+  const editorFontOptions = useMemo(
+    () => ({
+      fontFamily: terminalAppearance.fontFamily,
+      fontSize: terminalAppearance.fontSize,
+      fontWeight: String(terminalFontWeightValue(terminalAppearance.fontWeight)),
+    }),
+    [
+      terminalAppearance.fontFamily,
+      terminalAppearance.fontSize,
+      terminalAppearance.fontWeight,
+    ],
+  );
 
   const setTab = useCallback(
     (path: string, updater: (tab: OpenFileTab) => OpenFileTab) => {
@@ -445,23 +504,97 @@ export function RemoteWorkspaceEditor({
     editorRef.current?.focus();
   }, []);
 
-  useEffect(() => {
-    saveActiveRef.current = () => {
-      if (activePath) {
-        void saveFile(activePath);
+  const runWorkspaceEditorCommand = useCallback(
+    async (command: RemoteWorkspaceEditorCommandId) => {
+      setEditorContextMenu(null);
+      if (
+        !isRemoteWorkspaceEditorCommandEnabled(command, editorCommandState)
+      ) {
+        return;
       }
+
+      if (command === "save") {
+        if (activePath) {
+          await saveFile(activePath, Boolean(hasConflict));
+        }
+        return;
+      }
+      if (command === "reload") {
+        if (activePath) {
+          await reloadFile(activePath);
+        }
+        return;
+      }
+
+      await runRemoteWorkspaceEditorMonacoCommand(editorRef.current, command);
+    },
+    [
+      activePath,
+      editorCommandState,
+      hasConflict,
+      reloadFile,
+      saveFile,
+    ],
+  );
+
+  useEffect(() => {
+    runEditorCommandRef.current = (command) => {
+      void runWorkspaceEditorCommand(command);
     };
-  }, [activePath, saveFile]);
+  }, [runWorkspaceEditorCommand]);
 
   const handleEditorMount = useCallback<MonacoTextEditorMountHandler>(
     (editor, monaco) => {
       editorRef.current = editor;
-      editor.addCommand(
-        monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
-        () => saveActiveRef.current(),
-      );
+      registerRemoteWorkspaceEditorKeybindings({
+        editor,
+        monaco,
+        runCommand: (command) => runEditorCommandRef.current(command),
+      });
     },
     [],
+  );
+
+  useEffect(() => {
+    const handleTextEditCommand = (event: Event) => {
+      const detail = (event as CustomEvent<KerminalTextEditCommandEventDetail>)
+        .detail;
+      if (!detail || !editorShouldHandleNativeTextEdit(editorRef.current)) {
+        return;
+      }
+
+      detail.handled = true;
+      runEditorCommandRef.current(detail.command);
+    };
+
+    window.addEventListener(
+      KERMINAL_TEXT_EDIT_COMMAND_EVENT,
+      handleTextEditCommand,
+    );
+    return () => {
+      window.removeEventListener(
+        KERMINAL_TEXT_EDIT_COMMAND_EVENT,
+        handleTextEditCommand,
+      );
+    };
+  }, []);
+
+  const openEditorContextMenu = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      if (!activeTab || activeTab.loading) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const position = resolveRemoteWorkspaceEditorContextMenuPosition({
+        viewportHeight: window.innerHeight,
+        viewportWidth: window.innerWidth,
+        x: event.clientX,
+        y: event.clientY,
+      });
+      setEditorContextMenu(position);
+    },
+    [activeTab],
   );
 
   return (
@@ -656,7 +789,11 @@ export function RemoteWorkspaceEditor({
             </Button>
           </div>
 
-          <div className="min-h-0 flex-1 bg-zinc-950">
+          <div
+            className="min-h-0 flex-1 bg-zinc-950"
+            data-kerminal-text-editor
+            onContextMenu={openEditorContextMenu}
+          >
             {activeTab ? (
               activeTab.loading ? (
                 <div
@@ -685,9 +822,10 @@ export function RemoteWorkspaceEditor({
                   onMount={handleEditorMount}
                   options={{
                     automaticLayout: true,
-                    fontFamily:
-                      "JetBrains Mono, SFMono-Regular, Consolas, monospace",
-                    fontSize: 13,
+                    contextmenu: false,
+                    fontFamily: editorFontOptions.fontFamily,
+                    fontSize: editorFontOptions.fontSize,
+                    fontWeight: editorFontOptions.fontWeight,
                     minimap: { enabled: true },
                     padding: { bottom: 12, top: 12 },
                     readOnly: activeTab.readonly,
@@ -735,6 +873,18 @@ export function RemoteWorkspaceEditor({
         </div>
       </div>
     </section>
+
+    {editorContextMenu && activeTab ? (
+      <RemoteWorkspaceEditorContextMenu
+        groups={editorCommandGroups}
+        onAction={(command) => {
+          void runWorkspaceEditorCommand(command);
+        }}
+        onClose={() => setEditorContextMenu(null)}
+        position={editorContextMenu}
+        title={activeTab.name}
+      />
+    ) : null}
 
     <ModalShell
       description={pendingCloseTab?.path}
@@ -819,117 +969,4 @@ function flattenWorkspaceTreeRows(
       ...flattenWorkspaceTreeRows(node.children, openPaths, depth + 1),
     ];
   });
-}
-
-function WorkspaceTreeRow({
-  activePath,
-  depth,
-  isOpen,
-  node,
-  onOpenFile,
-  onToggleDirectory,
-}: {
-  activePath: string | null;
-  depth: number;
-  isOpen: boolean;
-  node: WorkspaceTreeNode;
-  onOpenFile: (path: string) => void;
-  onToggleDirectory: (item: WorkspaceTreeNode) => void;
-}) {
-  const isDirectory = node.kind === "directory";
-  const selected = activePath === node.path;
-  const Icon = isDirectory ? (isOpen ? FolderOpen : Folder) : FileText;
-
-  return (
-    <button
-      aria-expanded={isDirectory ? isOpen : undefined}
-      className={cn(
-        "kerminal-focus-ring kerminal-pressable flex h-8 w-full items-center gap-2 px-2 text-left text-xs transition",
-        selected
-          ? "bg-[var(--surface-selected)] text-sky-800 dark:text-sky-100"
-          : "text-zinc-700 hover:bg-[var(--surface-hover)] dark:text-zinc-300",
-      )}
-      onClick={() => {
-        if (isDirectory) {
-          onToggleDirectory(node);
-          return;
-        }
-        onOpenFile(node.path);
-      }}
-      role="treeitem"
-      style={{ paddingLeft: 8 + depth * 18 }}
-      title={node.path}
-      type="button"
-    >
-      <Icon
-        className={cn(
-          "h-3.5 w-3.5 shrink-0",
-          isDirectory
-            ? "text-sky-600 dark:text-sky-300"
-            : "text-zinc-400 dark:text-zinc-500",
-          node.loading && "animate-pulse",
-        )}
-      />
-      <span className="min-w-0 flex-1 truncate">{node.name}</span>
-      {node.error ? (
-        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-rose-500" />
-      ) : null}
-    </button>
-  );
-}
-
-function EditorToolbarButton({
-  disabled,
-  icon,
-  label,
-  onClick,
-}: {
-  disabled?: boolean;
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <Button
-      className="h-8 rounded-md px-2 text-xs"
-      disabled={disabled}
-      onClick={onClick}
-      size="sm"
-      title={label}
-      type="button"
-      variant="ghost"
-    >
-      {icon}
-      {label}
-    </Button>
-  );
-}
-
-function WorkspaceInlineStatus({
-  status,
-}: {
-  status: RemoteWorkspaceStatus | null;
-}) {
-  if (!status) {
-    return null;
-  }
-
-  return (
-    <span
-      className={cn(
-        "inline-flex min-w-0 items-center gap-1 truncate rounded-md border px-2 py-0.5",
-        status.kind === "success" &&
-          "border-emerald-300/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-100",
-        status.kind === "error" &&
-          "border-rose-300/35 bg-rose-500/10 text-rose-700 dark:text-rose-100",
-        status.kind === "info" &&
-          "border-sky-300/35 bg-sky-500/10 text-sky-700 dark:text-sky-100",
-      )}
-      role={status.kind === "error" ? "alert" : "status"}
-    >
-      {status.kind === "success" ? <Check className="h-3 w-3" /> : null}
-      {status.kind === "error" ? <AlertTriangle className="h-3 w-3" /> : null}
-      <span className="truncate">{status.message}</span>
-    </span>
-  );
 }

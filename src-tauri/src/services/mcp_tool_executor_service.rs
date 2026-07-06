@@ -73,6 +73,7 @@ use crate::{
         diagnostics_service::DiagnosticsService,
         docker_host_service::DockerHostService,
         encrypted_vault_service::EncryptedVaultService,
+        external_launch::ExternalLaunchIntake,
         local_network_proxy_service::{LocalNetworkProxyService, LocalProxyEntryRequest},
         port_forward_service::PortForwardService,
         remote_host_service::RemoteHostService,
@@ -80,6 +81,7 @@ use crate::{
         settings_service::SettingsService,
         sftp_service::SftpService,
         ssh_command_service::SshCommandService,
+        ssh_runtime::ManagedSshSessionManager,
         terminal_manager::TerminalManager,
         terminal_session_binding_service::{
             AgentTargetBindingSnapshot, TerminalSessionBindingService,
@@ -248,6 +250,8 @@ pub struct McpToolExecutionContext<'a> {
     pub sftp: &'a SftpService,
     /// Docker/Podman 容器服务。
     pub docker_hosts: &'a DockerHostService,
+    /// 外部 SSH 启动 intake 服务。
+    pub external_launch_intake: &'a ExternalLaunchIntake,
     /// tmux 会话管理服务。
     pub tmux: &'a TmuxService,
     /// SSH 端口转发服务。
@@ -256,6 +260,8 @@ pub struct McpToolExecutionContext<'a> {
     pub local_network_proxy: &'a LocalNetworkProxyService,
     /// SSH 非交互命令服务。
     pub ssh_commands: &'a SshCommandService,
+    /// 受管 SSH 会话运行时。
+    pub ssh_runtime: &'a ManagedSshSessionManager,
     /// 本地数据目录集合。
     pub paths: &'a KerminalPaths,
     /// Runtime file store entry for port-forward and local file audit state.
@@ -313,9 +319,65 @@ fn append_agent_mcp_call_log(
         status: status.to_owned(),
         summary: mcp_call_log_field(result.result_summary.as_deref()),
         error: mcp_call_log_field(result.error.as_deref()),
+        runtime_audit: mcp_call_log_field(Some(&mcp_runtime_audit(context, tool_id, arguments))),
         generated_at: current_unix_timestamp(),
     };
     let _ = context.agent_sessions.append_mcp_call_log(&entry);
+}
+
+fn mcp_runtime_audit(
+    context: &McpToolExecutionContext<'_>,
+    tool_id: &str,
+    arguments: &serde_json::Map<String, Value>,
+) -> String {
+    let host_id = arguments
+        .get("hostId")
+        .and_then(Value::as_str)
+        .or_else(|| arguments.get("targetHostId").and_then(Value::as_str));
+    match context.ssh_runtime.snapshot() {
+        Ok(snapshot) => {
+            let sessions = snapshot
+                .sessions
+                .iter()
+                .map(|session| {
+                    format!(
+                        "{}|state={:?}|channels={}|flags={}",
+                        session.key.target,
+                        session.state,
+                        session.active_channels,
+                        session.key.runtime_flags.join("+")
+                    )
+                })
+                .take(8)
+                .collect::<Vec<_>>();
+            let fallbacks = snapshot
+                .recent_legacy_fallbacks
+                .iter()
+                .map(|fallback| {
+                    format!(
+                        "{}|count={}|target={}|reason={}",
+                        fallback.capability,
+                        fallback.count,
+                        fallback.target.as_deref().unwrap_or("unknown"),
+                        fallback.reason
+                    )
+                })
+                .take(8)
+                .collect::<Vec<_>>();
+            format!(
+                "tool={tool_id}; hostId={}; backend=managed-ssh-runtime; activeSessions={}; activeChannels={}; sessions=[{}]; fallbacks=[{}]",
+                host_id.unwrap_or("none"),
+                snapshot.active_sessions,
+                snapshot.active_channels,
+                sessions.join(", "),
+                fallbacks.join(", ")
+            )
+        }
+        Err(error) => format!(
+            "tool={tool_id}; hostId={}; backend=managed-ssh-runtime; snapshotError={error}",
+            host_id.unwrap_or("none")
+        ),
+    }
 }
 
 fn mcp_call_log_field(value: Option<&str>) -> Option<String> {

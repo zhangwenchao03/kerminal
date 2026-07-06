@@ -7,7 +7,10 @@ import {
   useState,
 } from "react";
 import { AppTitleBar } from "./AppTitleBar";
-import type { MachineSidebarMachineDragEvent } from "../features/machine-sidebar/MachineSidebar.shared";
+import type {
+  MachineSidebarMachineDragEvent,
+  MachineSidebarViewMode,
+} from "../features/machine-sidebar/MachineSidebar.shared";
 import type {
   SettingsSaveState,
   SettingsSectionId,
@@ -18,6 +21,10 @@ import {
   type AppSettings,
 } from "../features/settings/settingsModel";
 import type { TerminalSplitDropIndicator } from "../features/terminal/TerminalSplitDropOverlay";
+import {
+  CloseTabsConfirmationDialog,
+  CloseWorkspaceFileTabsConfirmationDialog,
+} from "../features/terminal/terminalTabChrome";
 import {
   resolveTerminalSplitDropZone,
   terminalSplitDropZoneToDirection,
@@ -52,9 +59,8 @@ import type {
   SftpTransferCreatedHostTarget,
   SftpTransferCreateHostRequest,
 } from "../features/sftp/SftpTransferWorkbench";
-import {
-  isTerminalSessionTab,
-} from "../features/workspace/types";
+import { isTerminalSessionTab, type ToolId } from "../features/workspace/types";
+import { resolveWorkspaceTabCloseDecision } from "../features/workspace/workspaceTabCloseGuardModel";
 import {
   DeleteConfirmationDialog,
   DialogLazyFallback,
@@ -64,10 +70,7 @@ import {
   useSystemThemePreference,
   useViewportWidth,
 } from "./KerminalShell.helpers";
-import {
-  KerminalShellNotices,
-  ShellToolRail,
-} from "./KerminalShell.view";
+import { KerminalShellNotices, ShellToolRail } from "./KerminalShell.view";
 import { useKerminalShellRemoteActions } from "./useKerminalShellRemoteActions";
 import { useKerminalShellBackgroundStyle } from "./useKerminalShellBackgroundStyle";
 import { useKerminalShellCommands } from "./useKerminalShellCommands";
@@ -77,9 +80,10 @@ import { useKerminalShellSettings } from "./useKerminalShellSettings";
 import {
   DEFAULT_REMOTE_GROUP_NAME,
   DEFAULT_SETTINGS_SECTION_ID,
-  LazyHostContainersDialog,
+  LazyExternalLaunchHost,
   LazyRemoteHostCreateDialog,
   LazyRemoteHostGroupCreateDialog,
+  LazySshAuthPromptHost,
   LazySettingsDialog,
 } from "./KerminalShell.static";
 import { useWorkspaceSessionPersistence } from "./useWorkspaceSessionPersistence";
@@ -152,6 +156,9 @@ export function KerminalShell() {
   const openSftpTransferTab = useWorkspaceStore(
     (state) => state.openSftpTransferTab,
   );
+  const openWorkspaceFileTab = useWorkspaceStore(
+    (state) => state.openWorkspaceFileTab,
+  );
   const removeSidebarMachine = useWorkspaceStore(
     (state) => state.removeSidebarMachine,
   );
@@ -175,6 +182,9 @@ export function KerminalShell() {
   );
   const pinMachineGroup = useWorkspaceStore((state) => state.pinMachineGroup);
   const terminalTabs = useWorkspaceStore((state) => state.terminalTabs);
+  const workspaceFileDirtyState = useWorkspaceStore(
+    (state) => state.workspaceFileDirtyState,
+  );
   const profiles = useWorkspaceStore((state) => state.profiles);
   const activeProfileId = useWorkspaceStore((state) => state.activeProfileId);
   const settings = useWorkspaceStore((state) => state.settings);
@@ -188,6 +198,8 @@ export function KerminalShell() {
     useState<SftpTransferCreateHostRequest | null>(null);
   const [createdSftpHostTarget, setCreatedSftpHostTarget] =
     useState<SftpTransferCreatedHostTarget>();
+  const [machineSidebarView, setMachineSidebarView] =
+    useState<MachineSidebarViewMode>("hosts");
   const [hostContainersHostId, setHostContainersHostId] = useState<
     string | null
   >(null);
@@ -197,6 +209,11 @@ export function KerminalShell() {
   ] = useState<string>();
   const [terminalSplitDropIndicator, setTerminalSplitDropIndicator] =
     useState<TerminalSplitDropIndicator | null>(null);
+  const [pendingShellCloseTabIds, setPendingShellCloseTabIds] = useState<
+    string[] | null
+  >(null);
+  const [pendingShellDirtyCloseTabIds, setPendingShellDirtyCloseTabIds] =
+    useState<string[] | null>(null);
   const workspaceFrameRef = useRef<HTMLDivElement>(null);
   const terminalSplitDropZoneRef = useRef<TerminalSplitDropZone | null>(null);
   const createdSftpHostSequenceRef = useRef(0);
@@ -262,18 +279,6 @@ export function KerminalShell() {
   const defaultRemoteHostId = machineGroups
     .find((group) => group.id !== "local")
     ?.machines.find((machine) => machine.kind === "ssh")?.id;
-  const hostContainersHost = useMemo(
-    () =>
-      hostContainersHostId
-        ? machineGroups
-            .flatMap((group) => group.machines)
-            .find(
-              (machine) =>
-                machine.id === hostContainersHostId && machine.kind === "ssh",
-            )
-        : undefined,
-    [hostContainersHostId, machineGroups],
-  );
   const leftTitleBarInset = effectiveLeftPanelCollapsed
     ? windowControlPlatform === "mac"
       ? 112
@@ -353,12 +358,60 @@ export function KerminalShell() {
     },
     [],
   );
+  const requestCloseTerminalTabs = useCallback(
+    (tabIds: string[], confirmedDirtyFiles = false) => {
+      const decision = resolveWorkspaceTabCloseDecision({
+        confirmTerminalClose: settings.terminal.confirmCloseTab,
+        confirmedDirtyFiles,
+        tabIds,
+        tabs: terminalTabs,
+        workspaceFileDirtyState,
+      });
+      if (decision.kind === "confirmDirtyFiles") {
+        setPendingShellDirtyCloseTabIds(decision.tabIds);
+        return;
+      }
+      if (decision.kind === "confirmTerminalTabs") {
+        setPendingShellCloseTabIds(decision.tabIds);
+        return;
+      }
+      for (const tabId of decision.tabIds) {
+        closeTerminalTab(tabId);
+      }
+    },
+    [
+      closeTerminalTab,
+      settings.terminal.confirmCloseTab,
+      terminalTabs,
+      workspaceFileDirtyState,
+    ],
+  );
+  const requestCloseTerminalTab = useCallback(
+    (tabId: string) => requestCloseTerminalTabs([tabId]),
+    [requestCloseTerminalTabs],
+  );
+  const confirmShellCloseTabs = useCallback(() => {
+    if (!pendingShellCloseTabIds) {
+      return;
+    }
+    for (const tabId of pendingShellCloseTabIds) {
+      closeTerminalTab(tabId);
+    }
+    setPendingShellCloseTabIds(null);
+  }, [closeTerminalTab, pendingShellCloseTabIds]);
+  const confirmShellDirtyCloseTabs = useCallback(() => {
+    if (!pendingShellDirtyCloseTabIds) {
+      return;
+    }
+    requestCloseTerminalTabs(pendingShellDirtyCloseTabIds, true);
+    setPendingShellDirtyCloseTabIds(null);
+  }, [pendingShellDirtyCloseTabIds, requestCloseTerminalTabs]);
   const { activateTool, openLogsTool } = useKerminalShellCommands({
     activeTabId,
     activeTool,
     addTerminalTab,
     closePane,
-    closeTerminalTab,
+    closeTerminalTab: requestCloseTerminalTab,
     focusPane,
     focusedPaneId,
     keybindings: settings.keybindings,
@@ -368,6 +421,20 @@ export function KerminalShell() {
     splitFocusedPane,
     terminalTabs,
   });
+  const activateShellTool = useCallback(
+    (toolId: ToolId) => {
+      activateTool(toolId);
+    },
+    [activateTool],
+  );
+  const selectHostContainersHost = useCallback(
+    (machineId: string) => {
+      selectMachine(machineId);
+      setHostContainersHostId(machineId);
+      setHostContainersInitialContainerId(undefined);
+    },
+    [selectMachine],
+  );
   const openSftpForMachine = useCallback(
     (machineId: string) => {
       selectMachine(machineId);
@@ -388,13 +455,17 @@ export function KerminalShell() {
     },
     [openSftpTransferTab, setActiveTool],
   );
-  const openHostContainersDialog = useCallback(
+  const openHostContainersSidebar = useCallback(
     (machineId: string, initialContainerId?: string) => {
       selectMachine(machineId);
       setHostContainersHostId(machineId);
       setHostContainersInitialContainerId(initialContainerId);
+      setMachineSidebarView("containers");
+      if (activeTool === "containers") {
+        setActiveTool(null);
+      }
     },
-    [selectMachine],
+    [activeTool, selectMachine, setActiveTool],
   );
   const openContainerDetails = useCallback(
     (machineId: string) => {
@@ -410,11 +481,15 @@ export function KerminalShell() {
         return;
       }
 
-      selectMachine(machine.id);
+      selectMachine(machine.parentMachineId);
       setHostContainersHostId(machine.parentMachineId);
       setHostContainersInitialContainerId(machine.containerId);
+      setMachineSidebarView("containers");
+      if (activeTool === "containers") {
+        setActiveTool(null);
+      }
     },
-    [machineGroups, selectMachine],
+    [activeTool, machineGroups, selectMachine, setActiveTool],
   );
   const enterHostContainer = useCallback(
     (container: DockerContainerSummary) => {
@@ -535,15 +610,18 @@ export function KerminalShell() {
   );
   const pinHostContainer = useCallback(
     async (container: DockerContainerSummary) => {
+      const hostMachine = machineGroups
+        .flatMap((group) => group.machines)
+        .find((machine) => machine.id === container.hostId);
       const groupId = await resolveTargetGroupId(
-        hostContainersHost?.remoteGroupId ?? defaultRemoteGroupId,
+        hostMachine?.remoteGroupId ?? defaultRemoteGroupId,
       );
       addDockerContainer(container, { groupId });
     },
     [
       addDockerContainer,
       defaultRemoteGroupId,
-      hostContainersHost?.remoteGroupId,
+      machineGroups,
       resolveTargetGroupId,
     ],
   );
@@ -716,25 +794,35 @@ export function KerminalShell() {
       {effectiveLeftPanelCollapsed ? null : (
         <div className="col-[1/2] row-[2/3] h-full overflow-hidden">
           <MachineSidebarStoreBridge
+            activeView={machineSidebarView}
             collapsed={false}
             collapsedGroupIds={collapsedMachineGroupIds}
+            containerHostId={hostContainersHostId}
+            containerInitialContainerId={hostContainersInitialContainerId}
             groups={machineGroups}
+            onActiveViewChange={setMachineSidebarView}
             onAddConnection={openConnectionDialog}
             onAddGroup={() => openRemoteGroupDialog()}
             onAddMachine={(groupId) =>
               openConnectionDialog({ groupId, mode: "ssh" })
             }
+            onContainerHostChange={selectHostContainersHost}
             onDeleteGroup={requestDeleteGroup}
             onDeleteMachine={requestDeleteMachine}
             onCollapsedGroupIdsChange={handleCollapsedMachineGroupIdsChange}
             onDuplicateMachine={(machineId) =>
               void handleDuplicateMachine(machineId)
             }
+            onEnterContainer={enterHostContainer}
             onEditGroup={openRemoteGroupDialog}
             onEditMachine={(hostId) => openConnectionDialog({ hostId })}
             onExternalMachineDrag={handleExternalMachineDrag}
             onExternalMachineDragEnd={handleExternalMachineDragEnd}
             onExternalMachineDrop={handleExternalMachineDrop}
+            onFetchContainerStats={fetchDockerContainerStats}
+            onInspectContainer={inspectDockerContainer}
+            onLifecycleContainer={runHostContainerLifecycleAction}
+            onListDockerContainers={listDockerContainers}
             onMoveMachine={(machineId, groupId) =>
               void handleMoveMachineToGroup(machineId, groupId)
             }
@@ -742,7 +830,9 @@ export function KerminalShell() {
             onOpenLocalTerminal={openLocalTerminal}
             onOpenContainerTerminal={openContainerTerminal}
             onOpenContainerDetails={openContainerDetails}
-            onOpenHostContainers={openHostContainersDialog}
+            onOpenHostContainers={openHostContainersSidebar}
+            onOpenContainerLogs={openHostContainerLogs}
+            onOpenWorkspaceFileTab={openWorkspaceFileTab}
             onOpenRdpConnection={(machineId) =>
               void openSavedRdpMachine(machineId)
             }
@@ -755,6 +845,7 @@ export function KerminalShell() {
             onPinGroup={(groupId, pinned) =>
               void handlePinMachineGroup(groupId, pinned)
             }
+            onPinContainer={pinHostContainer}
             onSearchChange={setMachineSearch}
             onSelectMachine={selectMachine}
             search={machineSearch}
@@ -805,14 +896,14 @@ export function KerminalShell() {
         style={{ gridColumn: "5 / 6", gridRow: "2 / 3" }}
       >
         {activeTool === null || compactShell ? (
-          <ShellToolRail onActiveToolChange={activateTool} />
+          <ShellToolRail onActiveToolChange={activateShellTool} />
         ) : (
           <ToolPanelStoreBridge
             activeTool={activeTool}
             defaultRemoteGroupId={defaultRemoteGroupId}
             defaultRemoteHostId={defaultRemoteHostId}
             machineGroups={machineGroups}
-            onActiveToolChange={activateTool}
+            onActiveToolChange={activateShellTool}
             onCreateTerminal={addTerminalTab}
             onFocusTab={selectTab}
             onOpenSettingsSection={openSettingsTool}
@@ -862,26 +953,6 @@ export function KerminalShell() {
           />
         </Suspense>
       ) : null}
-      {hostContainersHost ? (
-        <Suspense fallback={<DialogLazyFallback />}>
-          <LazyHostContainersDialog
-            host={hostContainersHost}
-            initialContainerId={hostContainersInitialContainerId}
-            onClose={() => {
-              setHostContainersHostId(null);
-              setHostContainersInitialContainerId(undefined);
-            }}
-            onEnterContainer={enterHostContainer}
-            onFetchContainerStats={fetchDockerContainerStats}
-            onInspectContainer={inspectDockerContainer}
-            onLifecycleContainer={runHostContainerLifecycleAction}
-            onListDockerContainers={listDockerContainers}
-            onOpenContainerLogs={openHostContainerLogs}
-            onPinContainer={pinHostContainer}
-            open={Boolean(hostContainersHost)}
-          />
-        </Suspense>
-      ) : null}
       {remoteGroupDialogOpen ? (
         <Suspense fallback={<DialogLazyFallback />}>
           <LazyRemoteHostGroupCreateDialog
@@ -907,6 +978,21 @@ export function KerminalShell() {
         onConfirm={() => void confirmDelete()}
         pendingDelete={pendingDelete}
       />
+      <CloseTabsConfirmationDialog
+        onClose={() => setPendingShellCloseTabIds(null)}
+        onConfirm={confirmShellCloseTabs}
+        tabCount={pendingShellCloseTabIds?.length ?? 0}
+      />
+      <CloseWorkspaceFileTabsConfirmationDialog
+        dirtyTabCount={
+          pendingShellDirtyCloseTabIds?.filter(
+            (tabId) => workspaceFileDirtyState[tabId],
+          ).length ?? 0
+        }
+        onClose={() => setPendingShellDirtyCloseTabIds(null)}
+        onConfirm={confirmShellDirtyCloseTabs}
+        tabCount={pendingShellDirtyCloseTabIds?.length ?? 0}
+      />
       <KerminalShellNotices
         configNotice={configNotice}
         onConfigNoticeDismiss={() => setConfigNotice(null)}
@@ -914,6 +1000,10 @@ export function KerminalShell() {
         shellNoticeMessage={shellNoticeMessage}
         shellNoticeVisible={shellNoticeVisible}
       />
+      <Suspense fallback={null}>
+        <LazySshAuthPromptHost />
+        <LazyExternalLaunchHost />
+      </Suspense>
     </div>
   );
 }

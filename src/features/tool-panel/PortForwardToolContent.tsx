@@ -66,6 +66,7 @@ export function PortForwardToolContent({
     selectedMachine?.kind === "ssh" ? selectedMachine.id : undefined;
   const [error, setError] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -278,6 +279,9 @@ export function PortForwardToolContent({
     setError(null);
     setNotice(null);
     try {
+      if (editingSessionId) {
+        await deletePortForward(editingSessionId);
+      }
       const created = await createPortForward(request.value);
       const metadata = metadataFromCreateRequest(request.value);
       setSessionMetadata((current) => ({
@@ -291,10 +295,13 @@ export function PortForwardToolContent({
           : [...listed, created],
       );
       setNotice(
-        scenario === "hostNetwork"
+        editingSessionId
+          ? "隧道配置已更新。"
+          : scenario === "hostNetwork"
           ? "网络助手已创建，可复制或注入。"
           : "隧道会话已创建。",
       );
+      setEditingSessionId(null);
       setCreateDialogOpen(false);
     } catch (nextError) {
       setError(errorMessage(nextError));
@@ -306,12 +313,22 @@ export function PortForwardToolContent({
   function handleOpenCreateDialog() {
     setError(null);
     setNotice(null);
+    setEditingSessionId(null);
     setCreateDialogOpen(true);
   }
 
   function handleCloseCreateDialog() {
     setCreateDialogOpen(false);
+    setEditingSessionId(null);
     setError(null);
+  }
+
+  function handleEdit(session: PortForwardSummary) {
+    applySessionToForm(session);
+    setError(null);
+    setNotice(null);
+    setEditingSessionId(session.id);
+    setCreateDialogOpen(true);
   }
 
   async function handleStart(forwardId: string) {
@@ -490,22 +507,24 @@ export function PortForwardToolContent({
 
         <div className="mt-4 flex flex-wrap gap-2">
           <Button
+            aria-label="添加隧道"
             disabled={loading}
             onClick={handleOpenCreateDialog}
-            size="sm"
+            size="icon"
+            title="添加隧道"
             variant="primary"
           >
             <Plus className="h-4 w-4" />
-            添加隧道
           </Button>
           <Button
+            aria-label="刷新隧道"
             disabled={loading}
             onClick={() => void refresh()}
-            size="sm"
+            size="icon"
+            title="刷新隧道"
             variant="secondary"
           >
             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-            刷新
           </Button>
         </div>
       </div>
@@ -517,6 +536,7 @@ export function PortForwardToolContent({
         loading={loading}
         onCopy={handleCopy}
         onDelete={handleDelete}
+        onEdit={handleEdit}
         onInject={handleInject}
         onStart={handleStart}
         onStop={handleStop}
@@ -536,14 +556,18 @@ export function PortForwardToolContent({
             </Button>
             <Button disabled={loading} onClick={() => void handleCreate()}>
               <Plus className="h-4 w-4" />
-              {scenario === "hostNetwork" ? "开启网络助手" : "开启隧道"}
+              {editingSessionId
+                ? "保存修改"
+                : scenario === "hostNetwork"
+                  ? "开启网络助手"
+                  : "开启隧道"}
             </Button>
           </>
         }
         onClose={handleCloseCreateDialog}
         open={createDialogOpen}
         size="large"
-        title="添加 SSH 隧道"
+        title={editingSessionId ? "编辑 SSH 隧道" : "添加 SSH 隧道"}
       >
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
@@ -718,6 +742,48 @@ export function PortForwardToolContent({
     );
   }
 
+  function applySessionToForm(session: PortForwardSummary) {
+    setName(session.name);
+    if (session.kind === "local") {
+      setScenario("hostService");
+      setLocalCustomBindHost(session.localBindHost ?? session.bindHost);
+      setLocalBindMode(bindModeFromHost(session.localBindHost ?? session.bindHost));
+      setLocalListenPort(String(session.sourcePort));
+      setHostTargetHost(session.targetHost ?? session.remoteEndpoint?.host ?? "127.0.0.1");
+      setHostTargetPort(String(session.targetPort ?? session.remoteEndpoint?.port ?? 80));
+      return;
+    }
+    if (session.kind === "dynamic") {
+      setScenario("socksAdvanced");
+      setSocksMode("localDynamic");
+      setLocalCustomBindHost(session.localBindHost ?? session.bindHost);
+      setLocalBindMode(bindModeFromHost(session.localBindHost ?? session.bindHost));
+      setLocalSocksPort(String(session.sourcePort));
+      return;
+    }
+    if (session.purpose === "hostNetworkAssist") {
+      if (session.proxyProtocol === "socks5" && !session.targetHost) {
+        setScenario("socksAdvanced");
+        setSocksMode("remoteDynamic");
+      } else {
+        setScenario("hostNetwork");
+      }
+      setProxyProtocol(session.proxyProtocol ?? "http");
+      setRemoteCustomBindHost(session.remoteBindHost ?? session.bindHost);
+      setRemoteBindMode(bindModeFromHost(session.remoteBindHost ?? session.bindHost));
+      setRemoteListenPort(String(session.sourcePort));
+      setLocalProxyHost(session.localEndpoint?.host ?? session.targetHost ?? "127.0.0.1");
+      setLocalProxyPort(String(session.localEndpoint?.port ?? session.targetPort ?? 18081));
+      return;
+    }
+    setScenario("localService");
+    setRemoteCustomBindHost(session.remoteBindHost ?? session.bindHost);
+    setRemoteBindMode(bindModeFromHost(session.remoteBindHost ?? session.bindHost));
+    setRemoteListenPort(String(session.sourcePort));
+    setLocalTargetHost(session.targetHost ?? session.localEndpoint?.host ?? "127.0.0.1");
+    setLocalTargetPort(String(session.targetPort ?? session.localEndpoint?.port ?? 3000));
+  }
+
   function renderLocalEndpointFields() {
     if (scenario === "hostService") {
       return (
@@ -834,4 +900,15 @@ export function PortForwardToolContent({
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function bindModeFromHost(host: string | undefined): BindAddressMode {
+  const value = host?.trim();
+  if (!value || value === "127.0.0.1" || value === "localhost" || value === "::1") {
+    return "loopback";
+  }
+  if (value === "0.0.0.0" || value === "::") {
+    return "all";
+  }
+  return "custom";
 }

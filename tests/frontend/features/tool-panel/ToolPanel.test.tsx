@@ -18,6 +18,7 @@ const serverInfoApiMocks = vi.hoisted(() => ({
 }));
 const diagnosticsApiMocks = vi.hoisted(() => ({
   createDiagnosticsBundle: vi.fn(),
+  getManagedSshRuntimeSnapshot: vi.fn(),
   getRuntimeHealthSnapshot: vi.fn(),
 }));
 const tmuxApiMocks = vi.hoisted(() => ({
@@ -51,6 +52,8 @@ vi.mock("../../../../src/lib/serverInfoApi", () => ({
 vi.mock("../../../../src/lib/diagnosticsApi", () => ({
   createDiagnosticsBundle: (...args: unknown[]) =>
     diagnosticsApiMocks.createDiagnosticsBundle(...args),
+  getManagedSshRuntimeSnapshot: (...args: unknown[]) =>
+    diagnosticsApiMocks.getManagedSshRuntimeSnapshot(...args),
   getRuntimeHealthSnapshot: (...args: unknown[]) =>
     diagnosticsApiMocks.getRuntimeHealthSnapshot(...args),
 }));
@@ -100,6 +103,57 @@ const sshTerminalTab: TerminalTab = {
   title: sshMachine.name,
 };
 
+const focusedSshPane = {
+  id: "pane-prod-api",
+  lines: [],
+  machineId: sshMachine.id,
+  mode: "ssh" as const,
+  prompt: "$",
+  remoteHostId: sshMachine.id,
+  status: "online" as const,
+  title: sshMachine.name,
+};
+
+const emptyManagedSshSnapshot = {
+  activeChannels: 0,
+  activeSessions: 0,
+  generatedAt: "1",
+  recentLegacyFallbacks: [],
+  sessions: [],
+};
+
+const readyManagedSshSnapshot = {
+  activeChannels: 2,
+  activeSessions: 1,
+  generatedAt: "1",
+  recentLegacyFallbacks: [],
+  sessions: [
+    {
+      activeChannels: 2,
+      channelCounts: {
+        exec: 1,
+        sftp: 1,
+      },
+      createdAt: "1",
+      key: {
+        jumps: [],
+        knownHostsProfile: "default",
+        proxyProfile: null,
+        runtimeFlags: ["native"],
+        target: "deploy@prod.internal:22",
+      },
+      lastError: null,
+      lastUsedAt: "1",
+      maxConcurrentExecChannels: 4,
+      openedChannels: 3,
+      pendingExecRequests: 0,
+      refCount: 1,
+      sessionId: "managed-prod-api",
+      state: "ready" as const,
+    },
+  ],
+};
+
 const localMachine: Machine = {
   description: "默认本地配置",
   id: "local-powershell",
@@ -130,6 +184,15 @@ const containerMachine: Machine = {
     workdir: "/app",
   },
 };
+
+function assertNoManagedSshAvailabilityNotice() {
+  expect(screen.queryByLabelText("Managed SSH runtime 状态")).not.toBeInTheDocument();
+  expect(screen.queryByText("Managed reusable")).not.toBeInTheDocument();
+  expect(screen.queryByText("Legacy terminal only")).not.toBeInTheDocument();
+  expect(screen.queryByText("Auth required")).not.toBeInTheDocument();
+  expect(screen.queryByText("Host key required")).not.toBeInTheDocument();
+  expect(screen.queryByText(/右侧工具不能把 PTY 连接当作可复用 runtime/)).not.toBeInTheDocument();
+}
 
 describe("ToolPanel", () => {
   beforeEach(() => {
@@ -224,6 +287,10 @@ describe("ToolPanel", () => {
       username: "deploy",
     });
     diagnosticsApiMocks.getRuntimeHealthSnapshot.mockReset();
+    diagnosticsApiMocks.getManagedSshRuntimeSnapshot.mockReset();
+    diagnosticsApiMocks.getManagedSshRuntimeSnapshot.mockResolvedValue(
+      emptyManagedSshSnapshot,
+    );
     diagnosticsApiMocks.createDiagnosticsBundle.mockReset();
     diagnosticsApiMocks.createDiagnosticsBundle.mockResolvedValue({
       bytesWritten: 2048,
@@ -458,11 +525,13 @@ describe("ToolPanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("does not render settings content inside the right tool panel", async () => {
+  it("keeps settings out of the rail without rendering settings content inside the right tool panel", async () => {
+    const onActiveToolChange = vi.fn();
+
     render(
       <ToolPanel
         activeTool="settings"
-        onActiveToolChange={vi.fn()}
+        onActiveToolChange={onActiveToolChange}
         tools={tools}
       />,
     );
@@ -476,8 +545,12 @@ describe("ToolPanel", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("终端外观")).not.toBeInTheDocument();
     expect(
+      screen.queryByRole("button", { name: "收起 设置" }),
+    ).not.toBeInTheDocument();
+    expect(
       screen.queryByRole("button", { name: "打开 设置" }),
     ).not.toBeInTheDocument();
+    expect(onActiveToolChange).not.toHaveBeenCalled();
   });
 
   it("shows local runtime system metrics for local machines", async () => {
@@ -567,6 +640,86 @@ describe("ToolPanel", () => {
     await user.click(screen.getByRole("button", { name: "刷新服务器信息" }));
 
     expect(serverInfoApiMocks.getServerInfoSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not show managed SSH availability notices for SSH right-side tools", async () => {
+    diagnosticsApiMocks.getManagedSshRuntimeSnapshot.mockResolvedValue(
+      readyManagedSshSnapshot,
+    );
+
+    let view = render(
+      <ToolPanel
+        activeTool="system"
+        activeMachine={sshMachine}
+        onActiveToolChange={vi.fn()}
+        tools={tools}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(serverInfoApiMocks.getServerInfoSnapshot).toHaveBeenCalled(),
+    );
+
+    expect(screen.queryByLabelText("Managed SSH runtime 状态")).not.toBeInTheDocument();
+    expect(screen.queryByText("Managed reusable")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/当前 SSH 目标已有 ready managed session/),
+    ).not.toBeInTheDocument();
+    expect(diagnosticsApiMocks.getManagedSshRuntimeSnapshot).not.toHaveBeenCalled();
+
+    view.unmount();
+    view = render(
+      <ToolPanel
+        activeTool="sftp"
+        activeMachine={sshMachine}
+        focusedPane={focusedSshPane}
+        onActiveToolChange={vi.fn()}
+        tools={tools}
+      />,
+    );
+
+    expect(
+      await screen.findByLabelText("当前远程路径", {}, { timeout: 10000 }),
+    ).toBeInTheDocument();
+    assertNoManagedSshAvailabilityNotice();
+    expect(diagnosticsApiMocks.getManagedSshRuntimeSnapshot).not.toHaveBeenCalled();
+
+    view.unmount();
+    view = render(
+      <ToolPanel
+        activeTool="ports"
+        activeMachine={sshMachine}
+        focusedPane={focusedSshPane}
+        onActiveToolChange={vi.fn()}
+        tools={tools}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(portForwardApiMocks.listPortForwards).toHaveBeenCalled(),
+    );
+
+    expect(screen.queryByLabelText("Managed SSH runtime 状态")).not.toBeInTheDocument();
+    expect(screen.queryByText("Legacy terminal only")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/右侧工具不能把 PTY 连接当作可复用 runtime/),
+    ).not.toBeInTheDocument();
+    expect(diagnosticsApiMocks.getManagedSshRuntimeSnapshot).not.toHaveBeenCalled();
+
+    view.unmount();
+    view = render(
+      <ToolPanel
+        activeTool="tmux"
+        activeMachine={sshMachine}
+        focusedPane={focusedSshPane}
+        onActiveToolChange={vi.fn()}
+        tools={tools}
+      />,
+    );
+
+    expect(await screen.findByText("tmux 3.4")).toBeInTheDocument();
+    assertNoManagedSshAvailabilityNotice();
+    expect(diagnosticsApiMocks.getManagedSshRuntimeSnapshot).not.toHaveBeenCalled();
   });
 
   it("shows primary network rates and expands all network interfaces", async () => {
@@ -895,7 +1048,7 @@ describe("ToolPanel", () => {
     expect(screen.queryByText(/未返回可用 NVIDIA GPU/)).not.toBeInTheDocument();
   });
 
-  it("shows an empty SFTP state for non SSH machines", async () => {
+  it("shows the local file browser for local machines", async () => {
     render(
       <ToolPanel
         activeTool="sftp"
@@ -906,11 +1059,10 @@ describe("ToolPanel", () => {
     );
 
     expect(
-      await screen.findByText("远程文件浏览", undefined, { timeout: 5000 }),
+      await screen.findByText("本地文件", undefined, { timeout: 5000 }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/连接 SSH 主机或容器后显示文件/),
-    ).toBeInTheDocument();
+    expect(screen.getByText("本机文件系统")).toBeInTheDocument();
+    expect(screen.getByLabelText("当前本地路径")).toBeInTheDocument();
   });
 
   it("renders the shared remote file panel for an active container machine", async () => {
@@ -1014,7 +1166,7 @@ describe("ToolPanel", () => {
     );
     expect(await screen.findByText("PostgreSQL 隧道")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "停止" }));
+    await user.click(screen.getByRole("button", { name: "停止隧道" }));
 
     expect(portForwardApiMocks.stopPortForward).toHaveBeenCalledWith(
       "forward-1",

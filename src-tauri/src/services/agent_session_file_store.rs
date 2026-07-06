@@ -704,6 +704,7 @@ fn bounded_mcp_call_log_entry(entry: &AgentMcpCallLogEntry) -> AgentMcpCallLogEn
         status: entry.status.clone(),
         summary: truncate_optional_log_field(entry.summary.as_deref()),
         error: truncate_optional_log_field(entry.error.as_deref()),
+        runtime_audit: truncate_optional_log_field(entry.runtime_audit.as_deref()),
         generated_at: entry.generated_at.clone(),
     }
 }

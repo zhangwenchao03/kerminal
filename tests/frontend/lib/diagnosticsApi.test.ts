@@ -140,6 +140,64 @@ describe("diagnosticsApi", () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
+  it("loads managed SSH runtime diagnostics through Tauri", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue({
+      activeChannels: 2,
+      activeSessions: 1,
+      generatedAt: "1760000000",
+      sessions: [
+        {
+          activeChannels: 2,
+          channelCounts: {
+            exec: 2,
+            shell: 1,
+          },
+          createdAt: "1760000000",
+          key: {
+            jumps: [],
+            knownHostsProfile: "default",
+            proxyProfile: null,
+            runtimeFlags: [],
+            target: "deploy@example.internal:22",
+          },
+          lastError: null,
+          lastUsedAt: "1760000001",
+          maxConcurrentExecChannels: 4,
+          openedChannels: 3,
+          pendingExecRequests: 0,
+          refCount: 1,
+          sessionId: "session-1",
+          state: "ready",
+        },
+      ],
+    });
+    const { getManagedSshRuntimeSnapshot } = await import("../../../src/lib/diagnosticsApi");
+
+    const snapshot = await getManagedSshRuntimeSnapshot();
+
+    expect(snapshot.activeSessions).toBe(1);
+    expect(snapshot.sessions[0]?.channelCounts.exec).toBe(2);
+    expect(JSON.stringify(snapshot)).not.toContain("vault://");
+    expect(JSON.stringify(snapshot)).not.toContain("password");
+    expect(invokeMock).toHaveBeenCalledWith("diagnostics_managed_ssh_runtime");
+  });
+
+  it("returns redacted managed SSH browser preview outside Tauri", async () => {
+    isTauriMock.mockReturnValue(false);
+    const { getManagedSshRuntimeSnapshot } = await import("../../../src/lib/diagnosticsApi");
+
+    const snapshot = await getManagedSshRuntimeSnapshot();
+
+    expect(snapshot.activeSessions).toBe(1);
+    expect(snapshot.sessions[0]?.key.target).toBe("preview@managed-ssh.local:22");
+    expect(snapshot.sessions[0]?.channelCounts.sftp).toBe(2);
+    expect(JSON.stringify(snapshot)).not.toContain("password");
+    expect(JSON.stringify(snapshot)).not.toContain("privateKey");
+    expect(JSON.stringify(snapshot)).not.toContain("vault");
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
   it("loads config watcher status through Tauri", async () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockResolvedValue({

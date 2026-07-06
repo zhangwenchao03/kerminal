@@ -1,3 +1,7 @@
+import {
+  getManagedSshRuntimeSnapshot,
+  type ManagedSshRuntimeSnapshot,
+} from "../../lib/diagnosticsApi";
 import type { TerminalPtyOutputPumpStats } from "../../lib/terminalApi";
 import { getTerminalPtyOutputPumpStats } from "../../lib/terminalApi";
 import { getSftpRuntimeDiagnosticsSnapshot } from "../sftp/sftpRuntimeDiagnostics";
@@ -33,6 +37,9 @@ export interface TerminalRuntimeDiagnosticsPaneProvider {
 type PtyPumpStatsReader = (
   sessionId: string,
 ) => Promise<TerminalPtyOutputPumpStats>;
+type ManagedSshSnapshotReader = () => Promise<
+  ManagedSshRuntimeSnapshot | undefined
+>;
 type SuggestionSnapshotReader = () => Promise<RuntimeSuggestionSchedulerSnapshot>;
 
 const paneProviders = new Set<TerminalRuntimeDiagnosticsPaneProvider>();
@@ -62,10 +69,12 @@ export function getTerminalRuntimeDiagnosticsProviderCount() {
 
 export async function collectTerminalRuntimePerformanceSnapshot({
   generatedAt,
+  readManagedSshSnapshot = readManagedSshRuntimeDiagnosticsSnapshot,
   readPtyPumpStats = getTerminalPtyOutputPumpStats,
   readSuggestionSnapshot = readTerminalSuggestionDiagnosticsSnapshot,
 }: {
   generatedAt?: string;
+  readManagedSshSnapshot?: ManagedSshSnapshotReader;
   readPtyPumpStats?: PtyPumpStatsReader;
   readSuggestionSnapshot?: SuggestionSnapshotReader;
 } = {}): Promise<RuntimePerformanceSnapshot> {
@@ -75,6 +84,7 @@ export async function collectTerminalRuntimePerformanceSnapshot({
   const terminalOutputPanes = paneSnapshots.map((snapshot) =>
     createRuntimeTerminalOutputPaneSnapshot(snapshot),
   );
+  const managedSsh = await readManagedSshSnapshot();
   const ptyPumpSessions = await collectPtyPumpSessions(
     paneSnapshots,
     readPtyPumpStats,
@@ -85,6 +95,7 @@ export async function collectTerminalRuntimePerformanceSnapshot({
   return createRuntimePerformanceSnapshot({
     degraded,
     generatedAt,
+    managedSsh,
     ptyPump: {
       sessions: ptyPumpSessions,
       totalPendingBytes: ptyPumpSessions.reduce(
@@ -223,6 +234,14 @@ async function readTerminalSuggestionDiagnosticsSnapshot() {
       queued: 0,
       tasks: [],
     };
+  }
+}
+
+async function readManagedSshRuntimeDiagnosticsSnapshot() {
+  try {
+    return await getManagedSshRuntimeSnapshot();
+  } catch {
+    return undefined;
   }
 }
 

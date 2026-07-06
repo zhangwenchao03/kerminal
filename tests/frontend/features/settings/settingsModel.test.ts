@@ -26,6 +26,15 @@ describe("settingsModel", () => {
         minDurationMs: -1,
         throttleMs: 999_999,
       },
+      externalLaunch: {
+        acceptVendorArgs: false,
+        autoOpenSftp: true,
+        disabledTools: ["putty", "unknown", "putty", "kerminal-native"],
+        enabled: false,
+        shimBridge: {
+          enabled: false,
+        },
+      },
       interfaceDensity: "tiny",
       terminal: {
         autoReconnect: false,
@@ -87,6 +96,15 @@ describe("settingsModel", () => {
       importantOnly: true,
       minDurationMs: 1_000,
       throttleMs: 600_000,
+    });
+    expect(settings.externalLaunch).toEqual({
+      acceptVendorArgs: false,
+      autoOpenSftp: true,
+      disabledTools: ["putty", "kerminal-native"],
+      enabled: false,
+      shimBridge: {
+        enabled: false,
+      },
     });
     expect(settings.terminal).toMatchObject({
       autoReconnect: false,

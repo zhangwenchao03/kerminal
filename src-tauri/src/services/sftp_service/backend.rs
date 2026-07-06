@@ -3,7 +3,7 @@
 //! @author kongweiguang
 
 use std::{
-    io,
+    fmt, io,
     path::{Path, PathBuf},
 };
 
@@ -29,8 +29,16 @@ use crate::{
     paths::KerminalPaths,
     services::{
         encrypted_vault_service::EncryptedVaultService,
-        ssh_credential_resolver::SshCredentialResolver,
+        external_launch::{is_external_target_id, ExternalSessionMaterializer},
+        ssh_credential_resolver::{ResolvedSshRouteAuth, SshCredentialResolver},
         ssh_identity_file::resolve_identity_file_path,
+        ssh_runtime::{
+            auth_broker::{SshAuthBroker, SshAuthBrokerResolution, SshAuthPromptPlan},
+            session_key::{redacted_fingerprint_text, ssh_session_key_for_route},
+            ManagedSshSessionManager, ManagedSshSftpChannel, SshRuntimeConnectRequest,
+            SshRuntimeExecOutput, SshRuntimeExecRequest, SshRuntimeHostKeyPolicy,
+            MANAGED_SSH_EXEC_UNSUPPORTED, MANAGED_SSH_SFTP_UNSUPPORTED,
+        },
     },
     storage::{config_file_store::ConfigFileStore, file_store::FileStoreError},
 };
@@ -48,6 +56,19 @@ use super::transfer_paths::parent_remote_path;
 use super::TransferProgress;
 
 const DIRECTORY_DELETE_ERROR_BYTES: usize = 8 * 1024;
+const LEGACY_FALLBACK_SFTP_UNWIRED: &str = "managed-sftp-unwired";
+const LEGACY_FALLBACK_SFTP_UNSUPPORTED: &str = "managed-sftp-unsupported";
+const LEGACY_FALLBACK_SFTP_EXEC_UNWIRED: &str = "managed-sftp-directory-exec-unwired";
+const LEGACY_FALLBACK_SFTP_EXEC_UNSUPPORTED: &str = "managed-sftp-directory-exec-unsupported";
+const EXTERNAL_BULK_TRANSFER_PIPELINE_DEPTH: usize = 8;
+const EXTERNAL_BULK_TRANSFER_PACKET_BYTES: u32 = 64 * 1024;
+const EXTERNAL_BULK_TRANSFER_TIMEOUT_SECONDS: u64 = 180;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SftpManagedSessionLane {
+    Interactive,
+    BulkTransfer,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct SftpRuntimeSettings {
@@ -77,27 +98,103 @@ impl From<SftpPerformanceSettings> for SftpRuntimeSettings {
     }
 }
 
-#[derive(Debug, Clone)]
+impl SftpRuntimeSettings {
+    pub(super) fn for_bulk_transfer_target(self, endpoint: &SftpEndpoint) -> Self {
+        if is_external_target_id(&endpoint.host.id) {
+            return self.for_external_bulk_transfer();
+        }
+        self
+    }
+
+    pub(super) fn for_external_bulk_transfer(mut self) -> Self {
+        self.host_transfers = 1;
+        self.pipeline_depth = self
+            .pipeline_depth
+            .min(EXTERNAL_BULK_TRANSFER_PIPELINE_DEPTH);
+        self.packet_bytes = self.packet_bytes.min(EXTERNAL_BULK_TRANSFER_PACKET_BYTES);
+        self.timeout_seconds = self
+            .timeout_seconds
+            .max(EXTERNAL_BULK_TRANSFER_TIMEOUT_SECONDS);
+        self
+    }
+}
+
+#[derive(Clone)]
 pub(super) struct SftpEndpoint {
     pub(super) host: RemoteHost,
     pub(super) auth: SftpAuthMaterial,
     pub(super) known_hosts_path: PathBuf,
+    pub(super) route_auth: ResolvedSshRouteAuth,
 }
 
-#[derive(Debug, Clone)]
+impl fmt::Debug for SftpEndpoint {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SftpEndpoint")
+            .field("host_id", &self.host.id)
+            .field("host", &self.host.host)
+            .field("port", &self.host.port)
+            .field("username", &self.host.username)
+            .field("auth", &self.auth)
+            .field("known_hosts_path", &"<workspace-known-hosts>")
+            .field("route_auth", &self.route_auth.summary)
+            .finish()
+    }
+}
+
+#[derive(Clone)]
 pub(super) enum SftpAuthMaterial {
     Agent,
     Password(String),
     PrivateKey(SftpPrivateKey),
 }
 
-#[derive(Debug, Clone)]
+impl fmt::Debug for SftpAuthMaterial {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Agent => formatter.write_str("Agent"),
+            Self::Password(_) => formatter
+                .debug_tuple("Password")
+                .field(&"<redacted>")
+                .finish(),
+            Self::PrivateKey(private_key) => formatter
+                .debug_tuple("PrivateKey")
+                .field(private_key)
+                .finish(),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub(super) enum SftpPrivateKey {
-    Path(PathBuf),
+    Path {
+        path: PathBuf,
+        passphrase: Option<String>,
+    },
     Pem {
         content: String,
         passphrase: Option<String>,
     },
+}
+
+impl fmt::Debug for SftpPrivateKey {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Path { path, passphrase } => formatter
+                .debug_struct("Path")
+                .field(
+                    "fingerprint",
+                    &redacted_fingerprint_text(path.to_string_lossy().as_ref()),
+                )
+                .field("passphrase", &passphrase.as_ref().map(|_| "<redacted>"))
+                .finish(),
+            Self::Pem { passphrase, .. } => formatter
+                .debug_struct("Pem")
+                .field("content", &"<redacted>")
+                .field("passphrase", &passphrase.as_ref().map(|_| "<redacted>"))
+                .finish(),
+        }
+    }
 }
 
 #[async_trait]
@@ -190,7 +287,21 @@ pub(super) trait SftpBackend: Send + Sync + 'static {
 }
 
 #[derive(Debug, Default)]
-pub(super) struct RusshSftpBackend;
+pub(super) struct RusshSftpBackend {
+    managed_runtime: Option<ManagedSshSessionManager>,
+}
+
+impl RusshSftpBackend {
+    pub(super) fn with_managed_runtime(managed_runtime: ManagedSshSessionManager) -> Self {
+        Self {
+            managed_runtime: Some(managed_runtime),
+        }
+    }
+
+    fn managed_runtime(&self) -> Option<&ManagedSshSessionManager> {
+        self.managed_runtime.as_ref()
+    }
+}
 
 #[async_trait]
 impl SftpBackend for RusshSftpBackend {
@@ -200,7 +311,13 @@ impl SftpBackend for RusshSftpBackend {
         path: String,
         settings: SftpRuntimeSettings,
     ) -> AppResult<SftpDirectoryListing> {
-        let session = connect_native_sftp(&endpoint, settings).await?;
+        let session = connect_native_sftp(
+            &endpoint,
+            settings,
+            self.managed_runtime(),
+            SftpManagedSessionLane::Interactive,
+        )
+        .await?;
         let entries = session
             .sftp
             .read_dir(path.clone())
@@ -229,7 +346,13 @@ impl SftpBackend for RusshSftpBackend {
         path: String,
         settings: SftpRuntimeSettings,
     ) -> AppResult<()> {
-        let session = connect_native_sftp(&endpoint, settings).await?;
+        let session = connect_native_sftp(
+            &endpoint,
+            settings,
+            self.managed_runtime(),
+            SftpManagedSessionLane::Interactive,
+        )
+        .await?;
         session
             .sftp
             .create_dir(path)
@@ -244,7 +367,13 @@ impl SftpBackend for RusshSftpBackend {
         max_bytes: usize,
         settings: SftpRuntimeSettings,
     ) -> AppResult<SftpFilePreview> {
-        let session = connect_native_sftp(&endpoint, settings).await?;
+        let session = connect_native_sftp(
+            &endpoint,
+            settings,
+            self.managed_runtime(),
+            SftpManagedSessionLane::Interactive,
+        )
+        .await?;
         let file = session
             .sftp
             .open(path.clone())
@@ -282,7 +411,13 @@ impl SftpBackend for RusshSftpBackend {
         max_bytes: usize,
         settings: SftpRuntimeSettings,
     ) -> AppResult<SftpReadTextFileResponse> {
-        let session = connect_native_sftp(&endpoint, settings).await?;
+        let session = connect_native_sftp(
+            &endpoint,
+            settings,
+            self.managed_runtime(),
+            SftpManagedSessionLane::Interactive,
+        )
+        .await?;
         read_remote_text_file(&session.sftp, endpoint.host.id, path, max_bytes).await
     }
 
@@ -293,7 +428,13 @@ impl SftpBackend for RusshSftpBackend {
         request: SftpWriteTextFileRequest,
         settings: SftpRuntimeSettings,
     ) -> AppResult<SftpWriteTextFileResponse> {
-        let session = connect_native_sftp(&endpoint, settings).await?;
+        let session = connect_native_sftp(
+            &endpoint,
+            settings,
+            self.managed_runtime(),
+            SftpManagedSessionLane::Interactive,
+        )
+        .await?;
         write_remote_text_file(&session.sftp, endpoint.host.id, path, request).await
     }
 
@@ -303,7 +444,13 @@ impl SftpBackend for RusshSftpBackend {
         path: String,
         settings: SftpRuntimeSettings,
     ) -> AppResult<SftpPathStat> {
-        let session = connect_native_sftp(&endpoint, settings).await?;
+        let session = connect_native_sftp(
+            &endpoint,
+            settings,
+            self.managed_runtime(),
+            SftpManagedSessionLane::Interactive,
+        )
+        .await?;
         stat_remote_path(&session.sftp, endpoint.host.id, path).await
     }
 
@@ -315,10 +462,22 @@ impl SftpBackend for RusshSftpBackend {
         settings: SftpRuntimeSettings,
     ) -> AppResult<()> {
         if directory {
-            return remove_remote_directory_with_shell(&endpoint, &path, settings).await;
+            return remove_remote_directory_with_shell(
+                &endpoint,
+                &path,
+                settings,
+                self.managed_runtime(),
+            )
+            .await;
         }
 
-        let session = connect_native_sftp(&endpoint, settings).await?;
+        let session = connect_native_sftp(
+            &endpoint,
+            settings,
+            self.managed_runtime(),
+            SftpManagedSessionLane::Interactive,
+        )
+        .await?;
         session
             .sftp
             .remove_file(path)
@@ -333,7 +492,13 @@ impl SftpBackend for RusshSftpBackend {
         to_path: String,
         settings: SftpRuntimeSettings,
     ) -> AppResult<()> {
-        let session = connect_native_sftp(&endpoint, settings).await?;
+        let session = connect_native_sftp(
+            &endpoint,
+            settings,
+            self.managed_runtime(),
+            SftpManagedSessionLane::Interactive,
+        )
+        .await?;
         session
             .sftp
             .rename(from_path, to_path)
@@ -348,7 +513,13 @@ impl SftpBackend for RusshSftpBackend {
         mode: u32,
         settings: SftpRuntimeSettings,
     ) -> AppResult<()> {
-        let session = connect_native_sftp(&endpoint, settings).await?;
+        let session = connect_native_sftp(
+            &endpoint,
+            settings,
+            self.managed_runtime(),
+            SftpManagedSessionLane::Interactive,
+        )
+        .await?;
         let mut attrs = FileAttributes::empty();
         attrs.permissions = Some(mode);
         session
@@ -366,7 +537,14 @@ impl SftpBackend for RusshSftpBackend {
         settings: SftpRuntimeSettings,
     ) -> AppResult<()> {
         progress.ensure_not_cancelled()?;
-        let session = connect_native_sftp(&endpoint, settings).await?;
+        let settings = settings.for_bulk_transfer_target(&endpoint);
+        let session = connect_native_sftp(
+            &endpoint,
+            settings,
+            self.managed_runtime(),
+            SftpManagedSessionLane::BulkTransfer,
+        )
+        .await?;
         match (request.direction, request.kind) {
             (SftpTransferDirection::Upload, SftpTransferKind::File) => {
                 upload_file(
@@ -426,7 +604,16 @@ impl SftpBackend for RusshSftpBackend {
         settings: SftpRuntimeSettings,
     ) -> AppResult<()> {
         progress.ensure_not_cancelled()?;
-        let source_session = connect_native_sftp(&source_endpoint, settings).await?;
+        let settings = settings
+            .for_bulk_transfer_target(&source_endpoint)
+            .for_bulk_transfer_target(&target_endpoint);
+        let source_session = connect_native_sftp(
+            &source_endpoint,
+            settings,
+            self.managed_runtime(),
+            SftpManagedSessionLane::BulkTransfer,
+        )
+        .await?;
         if request.source_host_id == request.target_host_id {
             return match request.kind {
                 SftpTransferKind::File => {
@@ -457,7 +644,13 @@ impl SftpBackend for RusshSftpBackend {
             };
         }
 
-        let target_session = connect_native_sftp(&target_endpoint, settings).await?;
+        let target_session = connect_native_sftp(
+            &target_endpoint,
+            settings,
+            self.managed_runtime(),
+            SftpManagedSessionLane::BulkTransfer,
+        )
+        .await?;
         match request.kind {
             SftpTransferKind::File => {
                 copy_remote_file_between_sessions(
@@ -489,14 +682,23 @@ impl SftpBackend for RusshSftpBackend {
 }
 
 struct NativeSftpConnection {
-    _ssh: NativeSftpSshConnection,
     sftp: SftpSession,
+    _ssh: Option<NativeSftpSshConnection>,
+    _managed_sftp: Option<ManagedSshSftpChannel>,
 }
 
 async fn connect_native_sftp(
     endpoint: &SftpEndpoint,
     settings: SftpRuntimeSettings,
+    managed_runtime: Option<&ManagedSshSessionManager>,
+    managed_lane: SftpManagedSessionLane,
 ) -> AppResult<NativeSftpConnection> {
+    if let Some(connection) =
+        connect_managed_sftp(endpoint, settings, managed_runtime, managed_lane).await?
+    {
+        return Ok(connection);
+    }
+
     let connection = connect_native_ssh_chain(endpoint, settings).await?;
 
     let channel = connection
@@ -519,18 +721,135 @@ async fn connect_native_sftp(
     .await
     .map_err(native_sftp_error)?;
     Ok(NativeSftpConnection {
-        _ssh: connection,
         sftp,
+        _ssh: Some(connection),
+        _managed_sftp: None,
     })
+}
+
+async fn connect_managed_sftp(
+    endpoint: &SftpEndpoint,
+    settings: SftpRuntimeSettings,
+    managed_runtime: Option<&ManagedSshSessionManager>,
+    managed_lane: SftpManagedSessionLane,
+) -> AppResult<Option<NativeSftpConnection>> {
+    let Some(managed_runtime) = managed_runtime else {
+        return Ok(None);
+    };
+    let key = ssh_session_key_for_route(
+        &endpoint.host,
+        &endpoint.route_auth,
+        &endpoint.known_hosts_path,
+    )
+    .map_err(managed_sftp_error)?;
+    let target = Some(key.summary().target);
+    let request = SshRuntimeConnectRequest::native(
+        key,
+        endpoint.host.clone(),
+        endpoint.known_hosts_path.clone(),
+        settings.timeout_seconds,
+    )
+    .with_host_key_policy(host_key_policy_for_host(&endpoint.host));
+    let session = match managed_lane {
+        SftpManagedSessionLane::Interactive if is_external_target_id(&endpoint.host.id) => {
+            managed_runtime.acquire_capability_session_with_request(request)
+        }
+        SftpManagedSessionLane::Interactive => {
+            managed_runtime.acquire_session_with_request(request)
+        }
+        SftpManagedSessionLane::BulkTransfer => {
+            managed_runtime.acquire_bulk_transfer_session_with_request(request)
+        }
+    };
+    let session = match session {
+        Ok(session) => session,
+        Err(error) if is_managed_runtime_unwired(&error) => {
+            managed_runtime.record_legacy_fallback("sftp", LEGACY_FALLBACK_SFTP_UNWIRED, target);
+            return Ok(None);
+        }
+        Err(error) if is_managed_sftp_unsupported(&error) => {
+            managed_runtime.record_legacy_fallback(
+                "sftp",
+                LEGACY_FALLBACK_SFTP_UNSUPPORTED,
+                target,
+            );
+            return Ok(None);
+        }
+        Err(error) => return Err(managed_sftp_error(error)),
+    };
+    let mut channel = match session.open_sftp().await {
+        Ok(channel) => channel,
+        Err(error) if is_managed_runtime_unwired(&error) => {
+            managed_runtime.record_legacy_fallback(
+                "sftp",
+                LEGACY_FALLBACK_SFTP_UNWIRED,
+                Some(sftp_host_label(&endpoint.host)),
+            );
+            return Ok(None);
+        }
+        Err(error) if is_managed_sftp_unsupported(&error) => {
+            managed_runtime.record_legacy_fallback(
+                "sftp",
+                LEGACY_FALLBACK_SFTP_UNSUPPORTED,
+                Some(sftp_host_label(&endpoint.host)),
+            );
+            return Ok(None);
+        }
+        Err(error) => return Err(managed_sftp_error(error)),
+    };
+    let stream = channel.take_stream()?;
+    let sftp = SftpSession::new_with_config(
+        stream,
+        NativeSftpConfig {
+            max_packet_len: settings.packet_bytes,
+            max_concurrent_writes: settings.pipeline_depth,
+            request_timeout_secs: settings.timeout_seconds,
+        },
+    )
+    .await
+    .map_err(native_sftp_error)?;
+    Ok(Some(NativeSftpConnection {
+        sftp,
+        _ssh: None,
+        _managed_sftp: Some(channel),
+    }))
+}
+
+fn is_managed_sftp_unsupported(error: &AppError) -> bool {
+    let message = error.to_string();
+    message.contains(MANAGED_SSH_SFTP_UNSUPPORTED)
+}
+
+fn managed_sftp_error(error: AppError) -> AppError {
+    AppError::Sftp(format!("受管 SSH SFTP channel 失败: {error}"))
+}
+
+fn is_managed_runtime_unwired(error: &AppError) -> bool {
+    matches!(error, AppError::SshCommand(message) if message.contains("managed SSH runtime backend is not wired yet"))
+}
+
+fn is_managed_exec_unsupported(error: &AppError) -> bool {
+    matches!(error, AppError::SshCommand(message) if message == MANAGED_SSH_EXEC_UNSUPPORTED)
+}
+
+fn managed_exec_error(error: AppError) -> AppError {
+    AppError::Sftp(format!("受管 SSH exec channel 失败: {error}"))
 }
 
 async fn remove_remote_directory_with_shell(
     endpoint: &SftpEndpoint,
     path: &str,
     settings: SftpRuntimeSettings,
+    managed_runtime: Option<&ManagedSshSessionManager>,
 ) -> AppResult<()> {
     validate_remote_directory_shell_delete_path(path)?;
     let script = format!("rm -rf -- {}\n", shell_single_quote(path));
+    if let Some(output) =
+        execute_managed_directory_delete(endpoint, &script, settings, managed_runtime).await?
+    {
+        return finish_remote_directory_delete(output.exit_code, &output.stderr);
+    }
+
     let connection = connect_native_ssh_chain(endpoint, settings).await?;
 
     let mut channel = connection
@@ -611,6 +930,97 @@ async fn remove_remote_directory_with_shell(
     }
 }
 
+async fn execute_managed_directory_delete(
+    endpoint: &SftpEndpoint,
+    script: &str,
+    settings: SftpRuntimeSettings,
+    managed_runtime: Option<&ManagedSshSessionManager>,
+) -> AppResult<Option<SshRuntimeExecOutput>> {
+    let Some(managed_runtime) = managed_runtime else {
+        return Ok(None);
+    };
+    let key = ssh_session_key_for_route(
+        &endpoint.host,
+        &endpoint.route_auth,
+        &endpoint.known_hosts_path,
+    )
+    .map_err(managed_exec_error)?;
+    let target = Some(key.summary().target);
+    let request = SshRuntimeConnectRequest::native(
+        key,
+        endpoint.host.clone(),
+        endpoint.known_hosts_path.clone(),
+        settings.timeout_seconds,
+    )
+    .with_host_key_policy(host_key_policy_for_host(&endpoint.host));
+    let session = if is_external_target_id(&endpoint.host.id) {
+        managed_runtime.acquire_capability_session_with_request(request)
+    } else {
+        managed_runtime.acquire_session_with_request(request)
+    };
+    let session = match session {
+        Ok(session) => session,
+        Err(error) if is_managed_runtime_unwired(&error) => {
+            managed_runtime.record_legacy_fallback(
+                "sftp.exec",
+                LEGACY_FALLBACK_SFTP_EXEC_UNWIRED,
+                target,
+            );
+            return Ok(None);
+        }
+        Err(error) => return Err(managed_exec_error(error)),
+    };
+    let request = SshRuntimeExecRequest::new(
+        script.to_owned(),
+        settings.timeout_seconds,
+        DIRECTORY_DELETE_ERROR_BYTES,
+    );
+    match session.execute_exec(request).await {
+        Ok(output) => Ok(Some(output)),
+        Err(error) if is_managed_exec_unsupported(&error) => {
+            managed_runtime.record_legacy_fallback(
+                "sftp.exec",
+                LEGACY_FALLBACK_SFTP_EXEC_UNSUPPORTED,
+                Some(sftp_host_label(&endpoint.host)),
+            );
+            Ok(None)
+        }
+        Err(error) => Err(managed_exec_error(error)),
+    }
+}
+
+fn sftp_host_label(host: &RemoteHost) -> String {
+    format!("{}@{}:{}", host.username, host.host, host.port)
+}
+
+fn host_key_policy_for_host(host: &RemoteHost) -> SshRuntimeHostKeyPolicy {
+    if is_external_target_id(&host.id) {
+        SshRuntimeHostKeyPolicy::TrustUnknown
+    } else {
+        SshRuntimeHostKeyPolicy::RequireKnown
+    }
+}
+
+fn finish_remote_directory_delete(exit_code: Option<i32>, stderr: &str) -> AppResult<()> {
+    if exit_code == Some(0) {
+        return Ok(());
+    }
+
+    let detail = stderr.trim();
+    let exit_detail = exit_code
+        .map(|code| format!("退出码 {code}"))
+        .unwrap_or_else(|| "退出码未知".to_owned());
+    if detail.is_empty() {
+        Err(AppError::Sftp(format!(
+            "远程目录递归删除失败: {exit_detail}"
+        )))
+    } else {
+        Err(AppError::Sftp(format!(
+            "远程目录递归删除失败: {exit_detail}: {detail}"
+        )))
+    }
+}
+
 pub(super) fn validate_remote_directory_shell_delete_path(path: &str) -> AppResult<()> {
     if !path.starts_with('/') {
         return Err(AppError::InvalidInput(
@@ -645,17 +1055,66 @@ fn push_limited_bytes(buffer: &mut Vec<u8>, bytes: &[u8], max_bytes: usize) {
     buffer.extend_from_slice(&bytes[..bytes.len().min(remaining)]);
 }
 
-pub(super) fn resolve_endpoint(paths: &KerminalPaths, host_id: &str) -> AppResult<SftpEndpoint> {
+pub(super) fn resolve_endpoint_with_auth_broker(
+    paths: &KerminalPaths,
+    host_id: &str,
+    auth_broker: Option<&SshAuthBroker>,
+    external_targets: Option<&ExternalSessionMaterializer>,
+) -> AppResult<SftpEndpoint> {
+    if let Some(external_targets) = external_targets {
+        if let Some(target) = external_targets.resolve_target(host_id)? {
+            let auth = resolve_auth_material(&target.host)?;
+            return Ok(SftpEndpoint {
+                host: target.host,
+                auth,
+                known_hosts_path: paths.root.join("known_hosts"),
+                route_auth: target.route_auth,
+            });
+        }
+    }
+    if is_external_target_id(host_id) {
+        return Err(external_target_not_available_error(host_id));
+    }
     let host = resolve_host(paths, host_id)?;
-    let host = SshCredentialResolver::new(EncryptedVaultService::new(paths.clone()))
-        .resolve_runtime_host(&host)?
-        .host;
+    let resolver = SshCredentialResolver::new(EncryptedVaultService::new(paths.clone()));
+    let resolved_auth = resolver.resolve_host(&host)?;
+    let resolved_auth = match auth_broker {
+        Some(auth_broker) => match auth_broker.resolve_route_auth(&resolved_auth)? {
+            SshAuthBrokerResolution::Ready { auth } => auth,
+            SshAuthBrokerResolution::PromptRequired { prompt_plan, .. } => {
+                return Err(prompt_required_sftp_error(prompt_plan));
+            }
+        },
+        None => resolved_auth,
+    };
+    let host = SshCredentialResolver::materialize_runtime_host_from_auth(&host, &resolved_auth);
     let auth = resolve_auth_material(&host)?;
     Ok(SftpEndpoint {
         host,
         auth,
         known_hosts_path: paths.root.join("known_hosts"),
+        route_auth: resolved_auth,
     })
+}
+
+fn prompt_required_sftp_error(prompt_plan: SshAuthPromptPlan) -> AppError {
+    let prompts = prompt_plan
+        .prompts
+        .iter()
+        .map(|prompt| {
+            format!(
+                "{}@{}:{} {}",
+                prompt.username,
+                prompt.host,
+                prompt.port,
+                prompt.secret_kind.as_str()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    AppError::Credential(format!(
+        "SSH authentication is required before SFTP can connect: {prompts}"
+    ))
 }
 
 pub(super) fn load_sftp_runtime_settings(paths: &KerminalPaths) -> AppResult<SftpRuntimeSettings> {
@@ -673,10 +1132,17 @@ fn config_file_error(error: FileStoreError) -> AppError {
 }
 
 pub(super) fn resolve_host(paths: &KerminalPaths, host_id: &str) -> AppResult<RemoteHost> {
+    if is_external_target_id(host_id) {
+        return Err(external_target_not_available_error(host_id));
+    }
     ConfigFileStore::new(paths.root.clone())
         .remote_host_by_id(host_id)
         .map_err(config_file_error)?
         .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {host_id}")))
+}
+
+fn external_target_not_available_error(host_id: &str) -> AppError {
+    AppError::NotFound(format!("外部 SSH 临时目标不存在或已关闭: {host_id}"))
 }
 
 fn resolve_auth_material(host: &RemoteHost) -> AppResult<SftpAuthMaterial> {
@@ -690,7 +1156,7 @@ fn resolve_auth_material(host: &RemoteHost) -> AppResult<SftpAuthMaterial> {
             if let Some(secret) = normalized_credential_secret(host) {
                 return Ok(SftpAuthMaterial::PrivateKey(SftpPrivateKey::Pem {
                     content: secret.to_owned(),
-                    passphrase: None,
+                    passphrase: normalized_key_passphrase_secret(host).map(ToOwned::to_owned),
                 }));
             }
             let credential_ref = required_credential_ref(host)?;
@@ -700,9 +1166,10 @@ fn resolve_auth_material(host: &RemoteHost) -> AppResult<SftpAuthMaterial> {
                         .to_owned(),
                 ));
             }
-            Ok(SftpAuthMaterial::PrivateKey(SftpPrivateKey::Path(
-                resolve_identity_file_path(credential_ref)?,
-            )))
+            Ok(SftpAuthMaterial::PrivateKey(SftpPrivateKey::Path {
+                path: resolve_identity_file_path(credential_ref)?,
+                passphrase: normalized_key_passphrase_secret(host).map(ToOwned::to_owned),
+            }))
         }
     }
 }
@@ -722,6 +1189,12 @@ fn required_credential_secret(host: &RemoteHost, message: &str) -> AppResult<Str
 
 fn normalized_credential_secret(host: &RemoteHost) -> Option<&str> {
     host.credential_secret
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+}
+
+fn normalized_key_passphrase_secret(host: &RemoteHost) -> Option<&str> {
+    host.key_passphrase_secret
         .as_deref()
         .filter(|value| !value.trim().is_empty())
 }

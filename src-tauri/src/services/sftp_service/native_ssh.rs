@@ -162,7 +162,7 @@ async fn connect_native_ssh(
     settings: SftpRuntimeSettings,
 ) -> AppResult<client::Handle<NativeClientHandler>> {
     let config = client::Config {
-        inactivity_timeout: Some(Duration::from_secs(settings.timeout_seconds)),
+        inactivity_timeout: None,
         ..Default::default()
     };
     let handler = NativeClientHandler {
@@ -171,9 +171,22 @@ async fn connect_native_ssh(
         known_hosts_path,
         host_key_policy,
     };
-    client::connect(Arc::new(config), (host.host.as_str(), host.port), handler)
-        .await
-        .map_err(native_ssh_error)
+    let timeout = Duration::from_secs(settings.timeout_seconds.max(1));
+    match tokio::time::timeout(
+        timeout,
+        client::connect(Arc::new(config), (host.host.as_str(), host.port), handler),
+    )
+    .await
+    {
+        Ok(result) => result.map_err(native_ssh_error),
+        Err(_) => Err(AppError::Sftp(format!(
+            "SSH 连接超时（{} 秒）: {}@{}:{}",
+            timeout.as_secs(),
+            host.username,
+            host.host,
+            host.port
+        ))),
+    }
 }
 
 async fn connect_native_ssh_hop(
@@ -182,7 +195,7 @@ async fn connect_native_ssh_hop(
     settings: SftpRuntimeSettings,
 ) -> AppResult<client::Handle<NativeClientHandler>> {
     let config = client::Config {
-        inactivity_timeout: Some(Duration::from_secs(settings.timeout_seconds)),
+        inactivity_timeout: None,
         ..Default::default()
     };
     let handler = NativeClientHandler {
@@ -191,9 +204,20 @@ async fn connect_native_ssh_hop(
         known_hosts_path: hop.known_hosts_path.clone(),
         host_key_policy,
     };
-    client::connect(Arc::new(config), (hop.host.as_str(), hop.port), handler)
-        .await
-        .map_err(|error| native_ssh_hop_error("连接", hop, error))
+    let timeout = Duration::from_secs(settings.timeout_seconds.max(1));
+    match tokio::time::timeout(
+        timeout,
+        client::connect(Arc::new(config), (hop.host.as_str(), hop.port), handler),
+    )
+    .await
+    {
+        Ok(result) => result.map_err(|error| native_ssh_hop_error("连接", hop, error)),
+        Err(_) => Err(AppError::Sftp(format!(
+            "SSH 连接超时（{} 秒）: {}",
+            timeout.as_secs(),
+            hop_connection_label(hop)
+        ))),
+    }
 }
 
 async fn connect_native_ssh_through_direct_tcpip(
@@ -201,17 +225,29 @@ async fn connect_native_ssh_through_direct_tcpip(
     hop: &NativeSftpHopExecution,
     settings: SftpRuntimeSettings,
 ) -> AppResult<client::Handle<NativeClientHandler>> {
-    let channel = upstream
-        .channel_open_direct_tcpip(hop.host.clone(), u32::from(hop.port), "127.0.0.1", 0)
-        .await
-        .map_err(|error| {
+    let timeout = Duration::from_secs(settings.timeout_seconds.max(1));
+    let channel = match tokio::time::timeout(
+        timeout,
+        upstream.channel_open_direct_tcpip(hop.host.clone(), u32::from(hop.port), "127.0.0.1", 0),
+    )
+    .await
+    {
+        Ok(result) => result.map_err(|error| {
             AppError::Sftp(format!(
                 "无法通过跳板打开 direct-tcpip 到 {}: {error}",
                 hop_connection_label(hop)
             ))
-        })?;
+        })?,
+        Err(_) => {
+            return Err(AppError::Sftp(format!(
+                "通过跳板打开 direct-tcpip 超时（{} 秒）: {}",
+                timeout.as_secs(),
+                hop_connection_label(hop)
+            )));
+        }
+    };
     let config = client::Config {
-        inactivity_timeout: Some(Duration::from_secs(settings.timeout_seconds)),
+        inactivity_timeout: None,
         ..Default::default()
     };
     let handler = NativeClientHandler {
@@ -220,9 +256,19 @@ async fn connect_native_ssh_through_direct_tcpip(
         known_hosts_path: hop.known_hosts_path.clone(),
         host_key_policy: HostKeyPolicy::RequireKnown,
     };
-    client::connect_stream(Arc::new(config), channel.into_stream(), handler)
-        .await
-        .map_err(|error| native_ssh_hop_error("连接", hop, error))
+    match tokio::time::timeout(
+        timeout,
+        client::connect_stream(Arc::new(config), channel.into_stream(), handler),
+    )
+    .await
+    {
+        Ok(result) => result.map_err(|error| native_ssh_hop_error("连接", hop, error)),
+        Err(_) => Err(AppError::Sftp(format!(
+            "SSH 跳板链路连接超时（{} 秒）: {}",
+            timeout.as_secs(),
+            hop_connection_label(hop)
+        ))),
+    }
 }
 
 fn build_native_target_execution(endpoint: &SftpEndpoint) -> AppResult<NativeSftpHopExecution> {
@@ -282,7 +328,7 @@ fn resolve_native_jump_auth_material(
             if let Some(secret) = normalized_jump_credential_secret(jump) {
                 return Ok(SftpAuthMaterial::PrivateKey(SftpPrivateKey::Pem {
                     content: secret.to_owned(),
-                    passphrase: None,
+                    passphrase: normalized_jump_key_passphrase_secret(jump).map(ToOwned::to_owned),
                 }));
             }
             let credential_ref = required_jump_credential_ref(jump, label)?;
@@ -291,9 +337,10 @@ fn resolve_native_jump_auth_material(
                     "{label} 不再支持 credential: 私钥引用，请保存私钥路径或明文私钥内容"
                 )));
             }
-            Ok(SftpAuthMaterial::PrivateKey(SftpPrivateKey::Path(
-                resolve_identity_file_path(credential_ref)?,
-            )))
+            Ok(SftpAuthMaterial::PrivateKey(SftpPrivateKey::Path {
+                path: resolve_identity_file_path(credential_ref)?,
+                passphrase: normalized_jump_key_passphrase_secret(jump).map(ToOwned::to_owned),
+            }))
         }
     }
 }
@@ -401,7 +448,9 @@ async fn connect_agent() -> AppResult<
 
 fn load_private_key(private_key: &SftpPrivateKey) -> AppResult<PrivateKey> {
     match private_key {
-        SftpPrivateKey::Path(path) => load_secret_key(path, None).map_err(key_error),
+        SftpPrivateKey::Path { path, passphrase } => {
+            load_secret_key(path, passphrase.as_deref()).map_err(key_error)
+        }
         SftpPrivateKey::Pem {
             content,
             passphrase,
@@ -447,6 +496,12 @@ fn required_jump_credential_secret(jump: &SshJumpHostOptions, message: &str) -> 
 
 fn normalized_jump_credential_secret(jump: &SshJumpHostOptions) -> Option<&str> {
     jump.credential_secret
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+}
+
+fn normalized_jump_key_passphrase_secret(jump: &SshJumpHostOptions) -> Option<&str> {
+    jump.key_passphrase_secret
         .as_deref()
         .filter(|value| !value.trim().is_empty())
 }

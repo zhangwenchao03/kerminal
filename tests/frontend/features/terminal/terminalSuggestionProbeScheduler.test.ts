@@ -343,6 +343,33 @@ describe("TerminalSuggestionProbeScheduler", () => {
     });
   });
 
+  it("reports recent failure details in diagnostics snapshots", async () => {
+    refreshRemoteCommand.mockRejectedValueOnce(
+      new Error("ssh timeout\nwith noisy whitespace"),
+    );
+
+    scheduler.scheduleRemoteCommand({
+      delayMs: 0,
+      hostId: "prod",
+      maxEntries: 1500,
+      ownerId: "pane-a",
+      ttlSeconds: 300,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(scheduler.diagnosticsSnapshot()).toMatchObject({
+      tasks: [
+        {
+          failureCount: 1,
+          kind: "remoteCommand",
+          lastFailureAt: Date.parse("2026-06-19T00:00:00.000Z"),
+          lastFailureReason: "ssh timeout with noisy whitespace",
+          nextAllowedInMs: 1000,
+        },
+      ],
+    });
+  });
+
   it("tracks slow probe durations for diagnostics", async () => {
     let finishProbe: (() => void) | undefined;
     refreshRemoteCommand.mockImplementationOnce(

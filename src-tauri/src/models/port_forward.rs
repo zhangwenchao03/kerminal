@@ -109,6 +109,58 @@ pub enum PortForwardStatus {
     Exited,
 }
 
+/// 端口转发运行时模式。
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum PortForwardRuntimeMode {
+    /// 旧记录或未知运行时。
+    #[default]
+    Unknown,
+    /// Kerminal 受管 SSH runtime。
+    ManagedSshRuntime,
+    /// OpenSSH 普通子进程 fallback。
+    OpenSshProcess,
+    /// OpenSSH PTY 子进程 fallback，通常用于一次性安全输入。
+    OpenSshPty,
+    /// 应用重启后从持久化摘要恢复出的非运行态记录。
+    Restored,
+}
+
+/// 端口转发运行时脱敏诊断。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PortForwardRuntimeDiagnostics {
+    /// 当前实际承载隧道的运行时模式。
+    pub mode: PortForwardRuntimeMode,
+    /// 脱敏 backend 名称，例如 native-russh 或 openssh。
+    #[serde(default)]
+    pub backend: String,
+    /// 逻辑隧道类型，例如 local、remote、dynamic 或 remoteDynamic。
+    #[serde(default)]
+    pub tunnel_kind: String,
+    /// 受管 SSH session id；不包含凭据。
+    #[serde(default)]
+    pub managed_session_id: Option<String>,
+    /// 受管 channel id；不包含凭据。
+    #[serde(default)]
+    pub managed_channel_id: Option<String>,
+    /// 受管 channel 类型。
+    #[serde(default)]
+    pub managed_channel_kind: Option<String>,
+    /// runtime-owned tunnel task id。
+    #[serde(default)]
+    pub managed_tunnel_id: Option<String>,
+    /// legacy fallback 原因；不包含敏感值。
+    #[serde(default)]
+    pub fallback_reason: Option<String>,
+    /// 最近一次运行失败；不包含密码、私钥或 token。
+    #[serde(default)]
+    pub recent_failure: Option<String>,
+    /// cleanup 生命周期状态，例如 active、cleanedUp、stopped。
+    #[serde(default)]
+    pub cleanup_status: String,
+}
+
 /// 创建端口转发请求。
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -251,6 +303,9 @@ pub struct PortForwardSummary {
     /// 最近一次错误；不包含密码、私钥或 token。
     #[serde(default)]
     pub last_error: Option<String>,
+    /// 端口转发运行时脱敏诊断。
+    #[serde(default)]
+    pub runtime: Option<PortForwardRuntimeDiagnostics>,
     /// OpenSSH 子进程 pid。
     pub pid: Option<u32>,
     /// 运行状态。

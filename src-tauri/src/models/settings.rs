@@ -414,6 +414,86 @@ impl DesktopNotificationSettings {
     }
 }
 
+/// External SSH launch compatibility tool selector.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExternalLaunchToolSetting {
+    /// PuTTY-compatible command line.
+    Putty,
+    /// MobaXterm-compatible command line.
+    Mobaxterm,
+    /// Xshell-compatible command line or URL.
+    Xshell,
+    /// SecureCRT-compatible command line.
+    Securecrt,
+    /// OpenSSH-compatible command line.
+    Openssh,
+    /// Kerminal native flags, JSON envelope, or protocol URL.
+    KerminalNative,
+}
+
+/// External launch shim bridge settings.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalLaunchShimBridgeSettings {
+    /// Whether local compatibility shims may deliver launch envelopes to the app.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+impl Default for ExternalLaunchShimBridgeSettings {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+/// External SSH launch compatibility settings.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalLaunchSettings {
+    /// Whether any external SSH launch request is accepted.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Whether third-party terminal argument formats are accepted.
+    #[serde(default = "default_true")]
+    pub accept_vendor_args: bool,
+    /// Local compatibility shim bridge settings.
+    #[serde(default)]
+    pub shim_bridge: ExternalLaunchShimBridgeSettings,
+    /// Whether accepted external launches should open SFTP automatically.
+    #[serde(default)]
+    pub auto_open_sftp: bool,
+    /// Per-tool deny list for parser/persona rollback.
+    #[serde(default)]
+    pub disabled_tools: Vec<ExternalLaunchToolSetting>,
+}
+
+impl Default for ExternalLaunchSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            accept_vendor_args: true,
+            shim_bridge: ExternalLaunchShimBridgeSettings::default(),
+            auto_open_sftp: false,
+            disabled_tools: Vec::new(),
+        }
+    }
+}
+
+impl ExternalLaunchSettings {
+    fn normalized(mut self) -> Self {
+        let disabled_tools = std::mem::take(&mut self.disabled_tools);
+        let mut deduped = Vec::with_capacity(disabled_tools.len());
+        for tool in disabled_tools {
+            if !deduped.contains(&tool) {
+                deduped.push(tool);
+            }
+        }
+        self.disabled_tools = deduped;
+        self
+    }
+}
+
 /// 快捷键生效范围。
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -477,6 +557,9 @@ pub struct AppSettings {
     /// 桌面系统通知设置。
     #[serde(default)]
     pub desktop_notifications: DesktopNotificationSettings,
+    /// 外部跳板机 / 堡垒机 SSH 启动兼容设置。
+    #[serde(default)]
+    pub external_launch: ExternalLaunchSettings,
 }
 
 impl Default for AppSettings {
@@ -489,6 +572,7 @@ impl Default for AppSettings {
             keybindings: default_keybindings(),
             sftp: SftpPerformanceSettings::default(),
             desktop_notifications: DesktopNotificationSettings::default(),
+            external_launch: ExternalLaunchSettings::default(),
         }
     }
 }
@@ -547,6 +631,7 @@ impl AppSettings {
         }
         self.sftp = self.sftp.normalized();
         self.desktop_notifications = self.desktop_notifications.normalized();
+        self.external_launch = self.external_launch.normalized();
 
         Ok(self)
     }

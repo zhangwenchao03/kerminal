@@ -19,19 +19,46 @@ describe("resolveSftpTransferRetry", () => {
       }),
     );
 
-    expect(decision).toMatchObject({
-      canRetry: true,
-      request: {
-        conflictPolicy: "rename",
-        direction: "upload",
-        hostId: "host-left",
-        kind: "file",
-        localPath: "C:/downloads/app.log",
-        remotePath: "/srv/app.log",
-        viewScope: "sftp-workbench:tab-a",
-      },
-      statusMessage:
-        "已重新加入传输队列；断点续传未默认启用，将按完整任务重试。",
+    expect(decision.canRetry).toBe(true);
+    if (!decision.canRetry) {
+      throw new Error("expected retryable transfer");
+    }
+    expect(decision.request).toEqual({
+      conflictPolicy: "rename",
+      direction: "upload",
+      hostId: "host-left",
+      kind: "file",
+      localPath: "C:/downloads/app.log",
+      remotePath: "/srv/app.log",
+      viewScope: "sftp-workbench:tab-a",
+    });
+    expect(decision.request).not.toHaveProperty("resume");
+    expect(decision.request).not.toHaveProperty("partialPath");
+    expect(decision.statusMessage).toBe(
+      "已重新加入传输队列；将优先尝试断点续传。",
+    );
+  });
+
+  it("allows canceled transfers to be retried through the same request shape", () => {
+    const decision = resolveSftpTransferRetry(
+      transferSummary({
+        conflictPolicy: "overwrite",
+        status: "canceled",
+      }),
+    );
+
+    expect(decision.canRetry).toBe(true);
+    if (!decision.canRetry) {
+      throw new Error("expected retryable canceled transfer");
+    }
+    expect(decision.request).toEqual({
+      conflictPolicy: "overwrite",
+      direction: "download",
+      hostId: "host-left",
+      kind: "file",
+      localPath: "C:/downloads/app.log",
+      remotePath: "/srv/app.log",
+      viewScope: null,
     });
   });
 

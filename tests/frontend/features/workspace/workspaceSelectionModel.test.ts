@@ -119,4 +119,22 @@ describe("workspaceSelectionModel", () => {
       ),
     ).toBe("host-prod");
   });
+
+  it("selects the target host from a workspace file tab", () => {
+    expect(
+      selectedMachineIdFromWorkspaceTab(
+        {
+          access: "readonly",
+          id: "tab-file",
+          kind: "workspaceFile",
+          machineId: "host-prod",
+          path: "/etc/app.yaml",
+          source: "sftp",
+          target: { hostId: "host-prod", kind: "ssh" },
+          title: "app.yaml",
+        },
+        machineGroups,
+      ),
+    ).toBe("host-prod");
+  });
 });

@@ -9,10 +9,27 @@ import {
   type TerminalProfile,
 } from "../../lib/profileApi";
 import type { DockerContainerSummary } from "../../lib/dockerApi";
-import { localTarget } from "../../lib/targetModel";
+import {
+  localTarget,
+  sshTarget,
+  type RemoteTargetRef,
+} from "../../lib/targetModel";
 import type { TmuxAttachLaunch, TmuxPaneBinding } from "../../lib/tmuxApi";
 import type { RemoteHostGroupWithHosts } from "../../lib/remoteHostApi";
-import { machineGroups, terminalPanes, terminalTabs, tools } from "./workspaceData";
+import type { ExternalSshLaunchResolvedRequest } from "../external-launch/externalSshLaunchModel";
+import {
+  externalSshLaunchAuthType,
+  externalSshLaunchDescription,
+  externalSshLaunchDisplayName,
+  externalSshLaunchMachineId,
+  externalSshLaunchTags,
+} from "../external-launch/externalSshLaunchModel";
+import {
+  machineGroups,
+  terminalPanes,
+  terminalTabs,
+  tools,
+} from "./workspaceData";
 import type { TerminalPaneMovePlacement } from "./workspaceLayout";
 import type { TerminalPaneMoveScope } from "../terminal/terminalPaneMoveDropZones";
 import {
@@ -33,8 +50,13 @@ import type {
   TerminalTabGroupPreference,
   TerminalTabGroupPreferences,
   ToolId,
+  WorkspaceFileAccess,
+  WorkspaceFileDirtyState,
+  WorkspaceFileRevealRequest,
+  WorkspaceFileSource,
+  WorkspaceFileTab,
 } from "./types";
-import { isToolId } from "./types";
+import { isToolId, isWorkspaceFileTab } from "./types";
 import {
   addDockerContainerMachineToGroup,
   addMachineToGroup,
@@ -91,6 +113,14 @@ import {
   selectedMachineIdForUpdatedGroups,
   selectedMachineIdFromWorkspaceTab,
 } from "./workspaceSelectionModel";
+import {
+  buildWorkspaceFileTabKey,
+  directoryForWorkspaceFilePath,
+  normalizeWorkspaceFilePath,
+  titleForWorkspaceFilePath,
+  workspaceFileMachineId,
+  workspaceFileTargetHostId,
+} from "./workspaceFileTabModel";
 
 export interface AddTerminalTabOptions {
   title?: string;
@@ -114,6 +144,15 @@ export interface OpenSftpTransferTabOptions {
   leftHostId?: string;
   lockedLeftHostId?: string;
   rightHostId?: string;
+}
+
+export interface OpenWorkspaceFileTabOptions {
+  access: WorkspaceFileAccess;
+  path: string;
+  rootPath?: string;
+  source: WorkspaceFileSource;
+  target: RemoteTargetRef;
+  title?: string;
 }
 
 export interface SplitFocusedPaneOptions {
@@ -145,6 +184,8 @@ export interface WorkspaceState {
   machineSearch: string;
   broadcastDraft: string;
   settings: AppSettings;
+  workspaceFileDirtyState: WorkspaceFileDirtyState;
+  workspaceFileRevealRequest: WorkspaceFileRevealRequest | null;
   setProfiles: (profiles: TerminalProfile[]) => void;
   setSettings: (settings: AppSettings) => void;
   selectProfile: (profileId: string) => void;
@@ -162,17 +203,24 @@ export interface WorkspaceState {
   pinMachineGroup: (groupId: string, pinned?: boolean) => void;
   removeSidebarMachine: (machineId: string) => void;
   renameMachineGroup: (groupId: string, title: string) => void;
-  updateLocalMachine: (machineId: string, options: AddTerminalTabOptions) => void;
+  updateLocalMachine: (
+    machineId: string,
+    options: AddTerminalTabOptions,
+  ) => void;
   selectMachine: (machineId: string) => void;
   selectTab: (tabId: string) => void;
   addTerminalTab: (options?: AddTerminalTabOptions) => void;
   openSftpTransferTab: (options?: OpenSftpTransferTabOptions) => void;
+  openWorkspaceFileTab: (options: OpenWorkspaceFileTabOptions) => void;
+  revealWorkspaceFileInSftp: (tabId: string) => void;
+  setWorkspaceFileTabDirty: (tabId: string, dirty: boolean) => void;
   openLocalTerminal: (machineId: string) => void;
   openSshTerminal: (hostId: string) => void;
   openSshCommandTerminal: (
     hostId: string,
     options: OpenSshCommandTerminalOptions,
   ) => void;
+  openExternalSshLaunch: (launch: ExternalSshLaunchResolvedRequest) => void;
   openTmuxAttachTerminal: (
     launch: TmuxAttachLaunch,
     placement?: TmuxAttachPlacement,
@@ -235,6 +283,8 @@ const initialState = {
   machineSearch: "",
   broadcastDraft: "",
   settings: defaultAppSettings,
+  workspaceFileDirtyState: {},
+  workspaceFileRevealRequest: null,
 };
 
 let generatedPaneCount = terminalPanes.length;
@@ -245,7 +295,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
   ...initialState,
   setProfiles: (profiles) =>
     set((state) => {
-      const nextProfiles = profiles.length > 0 ? profiles : browserPreviewProfiles;
+      const nextProfiles =
+        profiles.length > 0 ? profiles : browserPreviewProfiles;
       const activeProfile =
         nextProfiles.find((profile) => profile.id === state.activeProfileId) ??
         nextProfiles.find((profile) => profile.isDefault) ??
@@ -284,7 +335,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
   selectProfile: (activeProfileId) => set({ activeProfileId }),
   setRemoteHostTree: (remoteGroups) =>
     set((state) => {
-      const sidebarMachines = collectPersistentSidebarMachines(state.machineGroups);
+      const sidebarMachines = collectPersistentSidebarMachines(
+        state.machineGroups,
+      );
       const machineGroups = withUngroupedGroupTitle(
         addPersistentSidebarMachines(
           buildMachineGroups(remoteGroups),
@@ -367,11 +420,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
       };
 
       return {
-        machineGroups: addMachineToGroup(
-          state.machineGroups,
-          machine,
-          groupId,
-        ),
+        machineGroups: addMachineToGroup(state.machineGroups, machine, groupId),
         removedSidebarMachineIds: removeRemovedSidebarMachineId(
           state.removedSidebarMachineIds,
           machine.id,
@@ -403,7 +452,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
     }),
   pinMachineGroup: (groupId, pinned = true) =>
     set((state) => {
-      const targetGroup = state.machineGroups.find((group) => group.id === groupId);
+      const targetGroup = state.machineGroups.find(
+        (group) => group.id === groupId,
+      );
       if (!targetGroup) {
         return {};
       }
@@ -434,7 +485,10 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
         return {};
       }
 
-      const machineGroups = removeMachineFromGroups(state.machineGroups, machineId);
+      const machineGroups = removeMachineFromGroups(
+        state.machineGroups,
+        machineId,
+      );
       const selectedMachineExists = Boolean(
         findMachine(machineGroups, state.selectedMachineId),
       );
@@ -446,7 +500,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
         ),
         selectedMachineId: selectedMachineExists
           ? state.selectedMachineId
-          : machineGroups[0]?.machines[0]?.id ?? "",
+          : (machineGroups[0]?.machines[0]?.id ?? ""),
       };
     }),
   renameMachineGroup: (groupId, title) =>
@@ -510,7 +564,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
             : pane,
         ),
         terminalTabs: state.terminalTabs.map((tab) =>
-          tab.machineId === machineId ? { ...tab, title: nextMachine.name } : tab,
+          tab.machineId === machineId
+            ? { ...tab, title: nextMachine.name }
+            : tab,
         ),
       };
     }),
@@ -540,16 +596,17 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
         ? state.profiles.find((profile) => profile.id === options.profileId)
         : undefined;
       const profile =
-        requestedProfile ?? (usesDirectRuntimeConfig ? undefined : activeProfile(state));
+        requestedProfile ??
+        (usesDirectRuntimeConfig ? undefined : activeProfile(state));
       const persistedProfile =
         profile && isPersistedLocalProfile(profile) ? profile : undefined;
       const tabId = `tab-local-${generatedTabCount}`;
       const paneId = `pane-local-${generatedPaneCount}`;
-      const title = options?.title ?? profile?.name ?? `本地终端 ${generatedTabCount}`;
-      const machineId =
-        persistedProfile
-          ? localMachineIdForProfile(persistedProfile.id)
-          : `machine-local-${generatedTabCount}`;
+      const title =
+        options?.title ?? profile?.name ?? `本地终端 ${generatedTabCount}`;
+      const machineId = persistedProfile
+        ? localMachineIdForProfile(persistedProfile.id)
+        : `machine-local-${generatedTabCount}`;
       const nextState = createLocalTerminalOpenState(state, {
         args: options?.args ?? profile?.args,
         cwd: options?.cwd ?? profile?.cwd,
@@ -607,9 +664,112 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
       return {
         activeTabId: tabId,
         focusedPaneId: "",
-        selectedMachineId:
-          primaryHostId ?? state.selectedMachineId,
+        selectedMachineId: primaryHostId ?? state.selectedMachineId,
         terminalTabs: [...state.terminalTabs, tab],
+      };
+    }),
+  openWorkspaceFileTab: (options) =>
+    set((state) => {
+      const path = normalizeWorkspaceFilePath(options.path);
+      const rootPath = options.rootPath
+        ? normalizeWorkspaceFilePath(options.rootPath)
+        : undefined;
+      const tabKey = buildWorkspaceFileTabKey({
+        access: options.access,
+        path,
+        source: options.source,
+        target: options.target,
+      });
+      const existingTab = state.terminalTabs.find(
+        (tab) =>
+          isWorkspaceFileTab(tab) &&
+          buildWorkspaceFileTabKey({
+            access: tab.access,
+            path: tab.path,
+            source: tab.source,
+            target: tab.target,
+          }) === tabKey,
+      );
+      const selectedMachineId =
+        workspaceFileTargetHostId(options.target) ??
+        workspaceFileMachineId(options.target);
+
+      if (existingTab) {
+        return {
+          activeTabId: existingTab.id,
+          focusedPaneId: "",
+          selectedMachineId,
+        };
+      }
+
+      generatedTabCount += 1;
+      const tabId = `tab-workspace-file-${generatedTabCount}`;
+      const title = options.title?.trim() || titleForWorkspaceFilePath(path);
+      const tab: WorkspaceFileTab = {
+        access: options.access,
+        id: tabId,
+        kind: "workspaceFile",
+        machineId: workspaceFileMachineId(options.target),
+        path,
+        ...(rootPath ? { rootPath } : {}),
+        source: options.source,
+        target: options.target,
+        title,
+      };
+
+      return {
+        activeTabId: tabId,
+        focusedPaneId: "",
+        selectedMachineId,
+        terminalTabs: [...state.terminalTabs, tab],
+      };
+    }),
+  setWorkspaceFileTabDirty: (tabId, dirty) =>
+    set((state) => {
+      const tab = state.terminalTabs.find((item) => item.id === tabId);
+      if (!isWorkspaceFileTab(tab)) {
+        if (!(tabId in state.workspaceFileDirtyState)) {
+          return {};
+        }
+        const { [tabId]: _removed, ...workspaceFileDirtyState } =
+          state.workspaceFileDirtyState;
+        return { workspaceFileDirtyState };
+      }
+      if (dirty) {
+        if (state.workspaceFileDirtyState[tabId]) {
+          return {};
+        }
+        return {
+          workspaceFileDirtyState: {
+            ...state.workspaceFileDirtyState,
+            [tabId]: true,
+          },
+        };
+      }
+      if (!state.workspaceFileDirtyState[tabId]) {
+        return {};
+      }
+      const { [tabId]: _removed, ...workspaceFileDirtyState } =
+        state.workspaceFileDirtyState;
+      return { workspaceFileDirtyState };
+    }),
+  revealWorkspaceFileInSftp: (tabId) =>
+    set((state) => {
+      const tab = state.terminalTabs.find((item) => item.id === tabId);
+      if (!isWorkspaceFileTab(tab)) {
+        return {};
+      }
+      return {
+        activeTabId: tab.id,
+        activeTool: "sftp",
+        focusedPaneId: "",
+        selectedMachineId: tab.machineId,
+        workspaceFileRevealRequest: {
+          directoryPath: directoryForWorkspaceFilePath(tab.path),
+          filePath: normalizeWorkspaceFilePath(tab.path),
+          id: Date.now(),
+          target: tab.target,
+        },
       };
     }),
   openLocalTerminal: (machineId) =>
@@ -667,6 +827,41 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
         tabId: `tab-ssh-${generatedTabCount}`,
         title: options.title,
       });
+    }),
+  openExternalSshLaunch: (launch) =>
+    set((state) => {
+      const machineId = externalSshLaunchMachineId(launch);
+      const machine: Machine = {
+        authType: externalSshLaunchAuthType(launch),
+        description: externalSshLaunchDescription(launch),
+        host: launch.target.host,
+        id: machineId,
+        kind: "ssh",
+        name: externalSshLaunchDisplayName(launch),
+        port: launch.target.port,
+        status: "online",
+        tags: externalSshLaunchTags(launch),
+        target: sshTarget(machineId),
+        username: launch.target.username,
+      };
+      const machineGroups = addMachineToGroup(
+        state.machineGroups,
+        machine,
+        undefined,
+      );
+
+      generatedTabCount += 1;
+      generatedPaneCount += 1;
+      return {
+        ...createSshTerminalOpenState({ ...state, machineGroups }, machine, {
+          paneId: `pane-ssh-${generatedPaneCount}`,
+          remoteCommand: launch.options.remoteCommand,
+          tabId: `tab-ssh-${generatedTabCount}`,
+          title: machine.name,
+        }),
+        ...(launch.options.openSftp ? { activeTool: "sftp" as const } : {}),
+        machineGroups,
+      };
     }),
   openTmuxAttachTerminal: (launch, placement = "pane") =>
     set((state) => {
@@ -737,7 +932,15 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
       });
     }),
   closeTerminalTab: (tabId) =>
-    set((state) => closeTerminalTabState(state, tabId)),
+    set((state) => {
+      const patch = closeTerminalTabState(state, tabId);
+      if (!(tabId in state.workspaceFileDirtyState)) {
+        return patch;
+      }
+      const { [tabId]: _removed, ...workspaceFileDirtyState } =
+        state.workspaceFileDirtyState;
+      return { ...patch, workspaceFileDirtyState };
+    }),
   renameTerminalTab: (tabId, title) =>
     set((state) => {
       const trimmedTitle = title.trim();
@@ -833,8 +1036,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
         targetPaneId,
       });
     }),
-  closePane: (paneId) =>
-    set((state) => closeTerminalPaneState(state, paneId)),
+  closePane: (paneId) => set((state) => closeTerminalPaneState(state, paneId)),
   focusPane: (focusedPaneId) =>
     set((state) => focusTerminalPaneState(state, focusedPaneId)),
   updatePaneCurrentCwd: (paneId, currentCwd) =>
@@ -849,7 +1051,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
     set((state) => {
       const normalized = normalizeWorkspaceSessionSnapshot(session);
       updateGeneratedCounters(normalized);
-      const removedSidebarMachineIds = normalized.removedSidebarMachineIds ?? [];
+      const removedSidebarMachineIds =
+        normalized.removedSidebarMachineIds ?? [];
       const removedMachineIds = new Set(removedSidebarMachineIds);
       const machineGroups = addPersistentSidebarMachines(
         state.machineGroups,
@@ -915,10 +1118,15 @@ function activeProfile(state: WorkspaceState) {
 }
 
 function addRemovedSidebarMachineId(machineIds: string[], machineId: string) {
-  return machineIds.includes(machineId) ? machineIds : [...machineIds, machineId];
+  return machineIds.includes(machineId)
+    ? machineIds
+    : [...machineIds, machineId];
 }
 
-function removeRemovedSidebarMachineId(machineIds: string[], machineId: string) {
+function removeRemovedSidebarMachineId(
+  machineIds: string[],
+  machineId: string,
+) {
   return machineIds.includes(machineId)
     ? machineIds.filter((candidate) => candidate !== machineId)
     : machineIds;

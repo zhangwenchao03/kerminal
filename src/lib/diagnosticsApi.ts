@@ -19,6 +19,45 @@ export interface RuntimeHealthSnapshot {
   redacted: boolean;
 }
 
+export interface ManagedSshRuntimeSnapshot {
+  activeChannels: number;
+  activeSessions: number;
+  generatedAt: string;
+  recentLegacyFallbacks: ManagedSshLegacyFallbackSnapshot[];
+  sessions: ManagedSshSessionSnapshot[];
+}
+
+export interface ManagedSshLegacyFallbackSnapshot {
+  capability: string;
+  count: number;
+  lastAt: string;
+  reason: string;
+  target?: string | null;
+}
+
+export interface ManagedSshSessionSnapshot {
+  activeChannels: number;
+  channelCounts: Record<string, number>;
+  createdAt: string;
+  key: ManagedSshSessionKeySummary;
+  lastError?: string | null;
+  lastUsedAt: string;
+  maxConcurrentExecChannels: number;
+  openedChannels: number;
+  pendingExecRequests: number;
+  refCount: number;
+  sessionId: string;
+  state: "ready" | "closing" | "failed";
+}
+
+export interface ManagedSshSessionKeySummary {
+  jumps: string[];
+  knownHostsProfile: string;
+  proxyProfile?: string | null;
+  runtimeFlags: string[];
+  target: string;
+}
+
 export type ConfigWatchBackend = "native" | "polling" | "unavailable";
 
 export type ConfigWatchDomain =
@@ -119,6 +158,14 @@ export async function getRuntimeHealthSnapshot(): Promise<RuntimeHealthSnapshot>
   return invoke<RuntimeHealthSnapshot>("diagnostics_runtime_health");
 }
 
+export async function getManagedSshRuntimeSnapshot(): Promise<ManagedSshRuntimeSnapshot> {
+  if (!isTauri()) {
+    return createBrowserPreviewManagedSshRuntime();
+  }
+
+  return invoke<ManagedSshRuntimeSnapshot>("diagnostics_managed_ssh_runtime");
+}
+
 export async function getConfigWatchStatus(): Promise<ConfigWatchStatusSnapshot> {
   if (!isTauri()) {
     return createBrowserPreviewConfigWatchStatus();
@@ -214,6 +261,43 @@ function createBrowserPreviewRuntimeHealth(): RuntimeHealthSnapshot {
       usedMemoryBytes: 7 * 1024 * 1024 * 1024,
       usedSwapBytes: 256 * 1024 * 1024,
     },
+  };
+}
+
+function createBrowserPreviewManagedSshRuntime(): ManagedSshRuntimeSnapshot {
+  const generatedAt = Math.floor(Date.now() / 1000).toString();
+
+  return {
+    activeChannels: 2,
+    activeSessions: 1,
+    generatedAt,
+    recentLegacyFallbacks: [],
+    sessions: [
+      {
+        activeChannels: 2,
+        channelCounts: {
+          exec: 3,
+          shell: 1,
+          sftp: 2,
+        },
+        createdAt: generatedAt,
+        key: {
+          jumps: [],
+          knownHostsProfile: "default",
+          proxyProfile: null,
+          runtimeFlags: ["browser-preview"],
+          target: "preview@managed-ssh.local:22",
+        },
+        lastError: null,
+        lastUsedAt: generatedAt,
+        maxConcurrentExecChannels: 4,
+        openedChannels: 6,
+        pendingExecRequests: 0,
+        refCount: 1,
+        sessionId: "managed-ssh-preview",
+        state: "ready",
+      },
+    ],
   };
 }
 

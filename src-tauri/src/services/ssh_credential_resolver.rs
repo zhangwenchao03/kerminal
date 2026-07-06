@@ -54,8 +54,15 @@ impl SshCredentialResolver {
 
     pub fn resolve_runtime_host(&self, host: &RemoteHost) -> AppResult<ResolvedSshRuntimeHost> {
         let auth = self.resolve_host(host)?;
-        let host = materialize_runtime_host(host, &auth);
+        let host = Self::materialize_runtime_host_from_auth(host, &auth);
         Ok(ResolvedSshRuntimeHost { host, auth })
+    }
+
+    pub fn materialize_runtime_host_from_auth(
+        host: &RemoteHost,
+        resolved_auth: &ResolvedSshRouteAuth,
+    ) -> RemoteHost {
+        materialize_runtime_host(host, resolved_auth)
     }
 
     fn resolve_target(&self, host: &RemoteHost) -> AppResult<ResolvedSshHopAuth> {
@@ -65,6 +72,7 @@ impl SshCredentialResolver {
             host.credential_ref.as_deref(),
             host.secret_ref.as_deref(),
             host.key_passphrase_ref.as_deref(),
+            host.key_passphrase_secret.as_deref(),
         )?;
         Ok(ResolvedSshHopAuth::new(
             ResolvedSshHopRole::Target,
@@ -87,6 +95,7 @@ impl SshCredentialResolver {
             jump.credential_ref.as_deref(),
             jump.secret_ref.as_deref(),
             jump.key_passphrase_ref.as_deref(),
+            jump.key_passphrase_secret.as_deref(),
         )?;
         Ok(ResolvedSshHopAuth::new(
             role,
@@ -104,15 +113,19 @@ impl SshCredentialResolver {
         credential_ref: Option<&str>,
         secret_ref: Option<&str>,
         key_passphrase_ref: Option<&str>,
+        key_passphrase_secret: Option<&str>,
     ) -> AppResult<ResolvedSshAuthMaterial> {
         match auth_type {
             RemoteHostAuthType::Agent => Ok(ResolvedSshAuthMaterial::Agent {
                 source: ResolvedSshCredentialSource::Agent,
             }),
             RemoteHostAuthType::Password => self.resolve_password(role, secret_ref),
-            RemoteHostAuthType::Key => {
-                self.resolve_private_key(credential_ref, secret_ref, key_passphrase_ref)
-            }
+            RemoteHostAuthType::Key => self.resolve_private_key(
+                credential_ref,
+                secret_ref,
+                key_passphrase_ref,
+                key_passphrase_secret,
+            ),
         }
     }
 
@@ -138,8 +151,9 @@ impl SshCredentialResolver {
         credential_ref: Option<&str>,
         secret_ref: Option<&str>,
         key_passphrase_ref: Option<&str>,
+        key_passphrase_secret: Option<&str>,
     ) -> AppResult<ResolvedSshAuthMaterial> {
-        let passphrase = self.resolve_key_passphrase(key_passphrase_ref)?;
+        let passphrase = self.resolve_key_passphrase(key_passphrase_ref, key_passphrase_secret)?;
         if let Some(path) = normalized(credential_ref) {
             return Ok(ResolvedSshAuthMaterial::PrivateKeyPath {
                 path: PathBuf::from(path),
@@ -163,7 +177,16 @@ impl SshCredentialResolver {
     fn resolve_key_passphrase(
         &self,
         key_passphrase_ref: Option<&str>,
+        key_passphrase_secret: Option<&str>,
     ) -> AppResult<Option<ResolvedSshSecretValue>> {
+        if let Some(value) = normalized(key_passphrase_secret) {
+            return Ok(Some(ResolvedSshSecretValue {
+                value: value.to_owned(),
+                source: ResolvedSshCredentialSource::SessionOnly {
+                    prompt_id: "<runtime-key-passphrase>".to_owned(),
+                },
+            }));
+        }
         let Some(secret_ref) = normalized(key_passphrase_ref) else {
             return Ok(None);
         };
@@ -226,6 +249,16 @@ pub struct ResolvedSshHopAuth {
 }
 
 impl ResolvedSshHopAuth {
+    pub fn from_material(
+        role: ResolvedSshHopRole,
+        host: String,
+        port: u16,
+        username: String,
+        material: ResolvedSshAuthMaterial,
+    ) -> Self {
+        Self::new(role, host, port, username, material)
+    }
+
     fn new(
         role: ResolvedSshHopRole,
         host: String,
@@ -350,6 +383,7 @@ pub enum ResolvedSshCredentialSource {
     Agent,
     ConfigPath,
     PromptOnly,
+    SessionOnly { prompt_id: String },
     Vault(VaultResolvedSource),
 }
 
@@ -522,21 +556,32 @@ fn apply_material_to_host(host: &mut RemoteHost, material: &ResolvedSshAuthMater
         ResolvedSshAuthMaterial::Agent { .. } => {
             host.credential_ref = None;
             host.credential_secret = None;
+            host.key_passphrase_secret = None;
         }
         ResolvedSshAuthMaterial::Password { value, .. } => {
             host.credential_ref = None;
             host.credential_secret = Some(value.clone());
+            host.key_passphrase_secret = None;
         }
-        ResolvedSshAuthMaterial::PrivateKeyPath { path, .. } => {
+        ResolvedSshAuthMaterial::PrivateKeyPath {
+            path, passphrase, ..
+        } => {
             host.credential_ref = Some(display_path_arg(path));
             host.credential_secret = None;
+            host.key_passphrase_secret = passphrase_value(passphrase);
         }
-        ResolvedSshAuthMaterial::PrivateKeyPem { content, .. } => {
+        ResolvedSshAuthMaterial::PrivateKeyPem {
+            content,
+            passphrase,
+            ..
+        } => {
             host.credential_ref = None;
             host.credential_secret = Some(content.clone());
+            host.key_passphrase_secret = passphrase_value(passphrase);
         }
         ResolvedSshAuthMaterial::PromptOnly { .. } => {
             host.credential_secret = None;
+            host.key_passphrase_secret = None;
         }
     }
 }
@@ -546,23 +591,38 @@ fn apply_material_to_jump(jump: &mut SshJumpHostOptions, material: &ResolvedSshA
         ResolvedSshAuthMaterial::Agent { .. } => {
             jump.credential_ref = None;
             jump.credential_secret = None;
+            jump.key_passphrase_secret = None;
         }
         ResolvedSshAuthMaterial::Password { value, .. } => {
             jump.credential_ref = None;
             jump.credential_secret = Some(value.clone());
+            jump.key_passphrase_secret = None;
         }
-        ResolvedSshAuthMaterial::PrivateKeyPath { path, .. } => {
+        ResolvedSshAuthMaterial::PrivateKeyPath {
+            path, passphrase, ..
+        } => {
             jump.credential_ref = Some(display_path_arg(path));
             jump.credential_secret = None;
+            jump.key_passphrase_secret = passphrase_value(passphrase);
         }
-        ResolvedSshAuthMaterial::PrivateKeyPem { content, .. } => {
+        ResolvedSshAuthMaterial::PrivateKeyPem {
+            content,
+            passphrase,
+            ..
+        } => {
             jump.credential_ref = None;
             jump.credential_secret = Some(content.clone());
+            jump.key_passphrase_secret = passphrase_value(passphrase);
         }
         ResolvedSshAuthMaterial::PromptOnly { .. } => {
             jump.credential_secret = None;
+            jump.key_passphrase_secret = None;
         }
     }
+}
+
+fn passphrase_value(passphrase: &Option<ResolvedSshSecretValue>) -> Option<String> {
+    passphrase.as_ref().map(|value| value.value.clone())
 }
 
 fn display_path_arg(path: &std::path::Path) -> String {

@@ -15,15 +15,11 @@ export const LazySettingsDialog = lazy(() =>
 );
 
 export const LazyRemoteHostCreateDialog = lazy(() =>
-  import("../features/machine-sidebar/RemoteHostCreateDialog").then((module) => ({
-    default: module.RemoteHostCreateDialog,
-  })),
-);
-
-export const LazyHostContainersDialog = lazy(() =>
-  import("../features/machine-sidebar/HostContainersDialog").then((module) => ({
-    default: module.HostContainersDialog,
-  })),
+  import("../features/machine-sidebar/RemoteHostCreateDialog").then(
+    (module) => ({
+      default: module.RemoteHostCreateDialog,
+    }),
+  ),
 );
 
 export const LazyRemoteHostGroupCreateDialog = lazy(() =>
@@ -32,4 +28,16 @@ export const LazyRemoteHostGroupCreateDialog = lazy(() =>
       default: module.RemoteHostGroupCreateDialog,
     }),
   ),
+);
+
+export const LazySshAuthPromptHost = lazy(() =>
+  import("../features/ssh-auth/SshAuthPromptHost").then((module) => ({
+    default: module.SshAuthPromptHost,
+  })),
+);
+
+export const LazyExternalLaunchHost = lazy(() =>
+  import("../features/external-launch/ExternalLaunchHost").then((module) => ({
+    default: module.ExternalLaunchHost,
+  })),
 );

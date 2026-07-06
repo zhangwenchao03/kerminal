@@ -411,6 +411,7 @@ fn remote_host(
         credential_ref: credential_ref.map(str::to_owned),
         secret_ref: None,
         key_passphrase_ref: None,
+        key_passphrase_secret: None,
         credential_secret: credential_secret.map(str::to_owned),
         credential_status: Default::default(),
         tags: Vec::new(),
@@ -439,6 +440,7 @@ fn jump_host(
         credential_ref: credential_ref.map(str::to_owned),
         secret_ref: None,
         key_passphrase_ref: None,
+        key_passphrase_secret: None,
         credential_secret: credential_secret.map(str::to_owned),
         credential_status: Default::default(),
     }

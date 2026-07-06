@@ -7,6 +7,12 @@ import {
   type DockerContainerWriteTextFileResponse,
 } from "../../lib/containerFilesApi";
 import {
+  readLocalTextFile,
+  writeLocalTextFile,
+  type LocalReadTextFileResponse,
+  type LocalWriteTextFileResponse,
+} from "../../lib/localFilesApi";
+import {
   listSftpDirectory,
   readSftpTextFile,
   writeSftpTextFile,
@@ -28,11 +34,13 @@ export type RemoteWorkspaceDirectoryListing =
 
 export type RemoteWorkspaceReadTextFileResponse =
   | DockerContainerReadTextFileResponse
-  | SftpReadTextFileResponse;
+  | SftpReadTextFileResponse
+  | LocalReadTextFileResponse;
 
 export type RemoteWorkspaceWriteTextFileResponse =
   | DockerContainerWriteTextFileResponse
-  | SftpWriteTextFileResponse;
+  | SftpWriteTextFileResponse
+  | LocalWriteTextFileResponse;
 
 export async function listRemoteWorkspaceDirectory(
   target: RemoteTargetRef | null | undefined,
@@ -80,6 +88,12 @@ export async function readRemoteWorkspaceTextFile({
       path,
     });
   }
+  if (target?.kind === "local") {
+    return readLocalTextFile({
+      maxBytes,
+      path,
+    });
+  }
   throw new Error(MISSING_REMOTE_WORKSPACE_TARGET_MESSAGE);
 }
 
@@ -116,6 +130,16 @@ export async function writeRemoteWorkspaceTextFile({
       encoding: "utf-8",
       expectedRevision,
       hostId: target.hostId,
+      overwriteOnConflict,
+      path,
+    });
+  }
+  if (target?.kind === "local") {
+    return writeLocalTextFile({
+      content,
+      create: false,
+      encoding: "utf-8",
+      expectedRevision,
       overwriteOnConflict,
       path,
     });

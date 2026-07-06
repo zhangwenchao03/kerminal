@@ -2,14 +2,9 @@
 //!
 //! @author kongweiguang
 
-use std::{
-    io::{Read, Write},
-    process::{ExitStatus, Stdio},
-    thread,
-    time::{Duration, Instant},
-};
+use std::{io::Read, time::Duration};
 
-mod native;
+pub(crate) mod native;
 
 use crate::{
     error::{AppError, AppResult},
@@ -19,12 +14,22 @@ use crate::{
     },
     paths::KerminalPaths,
     services::{
-        encrypted_vault_service::EncryptedVaultService, process_command::silent_command,
-        remote_host_service::RemoteHostService, ssh_credential_resolver::SshCredentialResolver,
+        encrypted_vault_service::EncryptedVaultService,
+        external_launch::{is_external_target_id, ExternalSessionMaterializer},
+        ssh_credential_resolver::{ResolvedSshRouteAuth, SshCredentialResolver},
         ssh_identity_file::resolve_identity_file_path,
+        ssh_runtime::{
+            auth_broker::{SshAuthBroker, SshAuthBrokerResolution, SshAuthPromptPlan},
+            session_key::ssh_session_key_for_route,
+            ManagedSshSessionManager, ManagedSshStreamingExecSession, SshRuntimeConnectRequest,
+            SshRuntimeExecOutput, SshRuntimeExecRequest, SshRuntimeHostKeyPolicy,
+            SshRuntimeStreamingExecRequest, MANAGED_SSH_EXEC_UNSUPPORTED,
+            MANAGED_SSH_STREAMING_EXEC_UNSUPPORTED,
+        },
     },
     storage::{config_file_store::ConfigFileStore, file_store::FileStoreError},
 };
+use tokio_util::sync::CancellationToken;
 
 use native::{
     build_native_command_execution, build_native_connection_execution,
@@ -39,26 +44,40 @@ const DEFAULT_OUTPUT_BYTES: usize = 16 * 1024;
 const MIN_OUTPUT_BYTES: usize = 256;
 const MAX_OUTPUT_BYTES: usize = 128 * 1024;
 const MAX_COMMAND_CHARS: usize = 16 * 1024;
+const LEGACY_FALLBACK_EXEC_UNWIRED: &str = "managed-exec-backend-unwired";
+const LEGACY_FALLBACK_EXEC_UNSUPPORTED: &str = "managed-exec-unsupported";
+const LEGACY_FALLBACK_STREAMING_EXEC_UNWIRED: &str = "managed-streaming-exec-backend-unwired";
+const LEGACY_FALLBACK_STREAMING_EXEC_UNSUPPORTED: &str = "managed-streaming-exec-unsupported";
 
 /// SSH 非交互命令业务入口。
-#[derive(Debug, Default)]
-pub struct SshCommandService;
+#[derive(Clone, Debug, Default)]
+pub struct SshCommandService {
+    managed_runtime: Option<ManagedSshSessionManager>,
+    auth_broker: Option<SshAuthBroker>,
+    external_targets: Option<ExternalSessionMaterializer>,
+}
 
 impl SshCommandService {
     /// 创建 SSH 非交互命令服务。
     pub fn new() -> Self {
-        Self
+        Self {
+            managed_runtime: None,
+            auth_broker: None,
+            external_targets: None,
+        }
     }
 
-    /// 在已保存 SSH 主机上执行非交互命令。
-    pub fn execute(
-        &self,
-        remote_hosts: &RemoteHostService,
-        request: SshCommandRequest,
-    ) -> AppResult<SshCommandOutput> {
-        let host = remote_hosts.require_host(&request.host_id)?;
-        let plan = build_ssh_command_plan(&host, request)?;
-        execute_ssh_command_plan(&host, &plan)
+    /// 创建接入受管 SSH 运行时的非交互命令服务。
+    pub fn with_ssh_runtime(
+        managed_runtime: ManagedSshSessionManager,
+        auth_broker: SshAuthBroker,
+        external_targets: ExternalSessionMaterializer,
+    ) -> Self {
+        Self {
+            managed_runtime: Some(managed_runtime),
+            auth_broker: Some(auth_broker),
+            external_targets: Some(external_targets),
+        }
     }
 
     /// 在已保存 SSH 主机上通过 native russh 执行非交互命令。
@@ -70,12 +89,29 @@ impl SshCommandService {
         paths: &KerminalPaths,
         request: SshCommandRequest,
     ) -> AppResult<SshCommandOutput> {
-        let host = resolve_remote_host_from_files(paths, &request.host_id)?;
-        let host = SshCredentialResolver::new(EncryptedVaultService::new(paths.clone()))
-            .resolve_runtime_host(&host)?
-            .host;
+        self.execute_native_with_cancel_token(paths, request, CancellationToken::new())
+            .await
+    }
+
+    /// Execute a native command with an explicit cancellation hook for managed runtime callers.
+    pub async fn execute_native_with_cancel_token(
+        &self,
+        paths: &KerminalPaths,
+        request: SshCommandRequest,
+        cancel_token: CancellationToken,
+    ) -> AppResult<SshCommandOutput> {
+        if cancel_token.is_cancelled() {
+            return Err(command_cancelled_error());
+        }
+        let (host, route_auth) = self.resolve_native_runtime_host(paths, &request.host_id)?;
+        if let Some(output) = self
+            .try_execute_managed_exec(paths, &host, &route_auth, &request, cancel_token.clone())
+            .await?
+        {
+            return Ok(output);
+        }
         let execution = build_native_command_execution(&host, paths, request)?;
-        execute_native_ssh_command(&host, execution).await
+        execute_native_ssh_command(&host, execution, cancel_token).await
     }
 
     /// 测试未保存或已保存 SSH 主机配置能否完成 native 连接与认证。
@@ -101,6 +137,266 @@ impl SshCommandService {
             ))),
         }
     }
+
+    /// Resolve host metadata through the same native runtime path used by managed exec.
+    ///
+    /// External launch targets do not have a host TOML record, so callers that only
+    /// need host metadata should use this instead of `RemoteHostService::require_host`.
+    /// The returned value is scrubbed of runtime-only secret material.
+    pub fn resolve_native_runtime_host_metadata(
+        &self,
+        paths: &KerminalPaths,
+        host_id: &str,
+    ) -> AppResult<RemoteHost> {
+        let (mut host, _) = self.resolve_native_runtime_host(paths, host_id)?;
+        clear_runtime_secret_material(&mut host);
+        Ok(host)
+    }
+
+    /// Open a streaming exec channel through the managed SSH runtime.
+    ///
+    /// Returns `Ok(None)` only for explicit migration fallback cases: runtime
+    /// unwired or backend streaming exec unsupported.
+    pub async fn open_managed_streaming_exec(
+        &self,
+        paths: &KerminalPaths,
+        host_id: &str,
+        command: String,
+        timeout_seconds: u64,
+        cancel_token: CancellationToken,
+    ) -> AppResult<Option<ManagedSshStreamingExecSession>> {
+        let (host, route_auth) = self.resolve_native_runtime_host(paths, host_id)?;
+        self.try_open_managed_streaming_exec(
+            paths,
+            &host,
+            &route_auth,
+            command,
+            timeout_seconds,
+            cancel_token,
+        )
+        .await
+    }
+
+    fn resolve_native_runtime_host(
+        &self,
+        paths: &KerminalPaths,
+        host_id: &str,
+    ) -> AppResult<(RemoteHost, ResolvedSshRouteAuth)> {
+        if let Some(external_targets) = &self.external_targets {
+            if let Some(target) = external_targets.resolve_target(host_id)? {
+                return Ok((target.host, target.route_auth));
+            }
+        }
+        if is_external_target_id(host_id) {
+            return Err(external_target_not_available_error(host_id));
+        }
+        let host = resolve_remote_host_from_files(paths, host_id)?;
+        let resolver = SshCredentialResolver::new(EncryptedVaultService::new(paths.clone()));
+        let resolved_auth = resolver.resolve_host(&host)?;
+        let resolved_auth = match &self.auth_broker {
+            Some(auth_broker) => match auth_broker.resolve_route_auth(&resolved_auth)? {
+                SshAuthBrokerResolution::Ready { auth } => auth,
+                SshAuthBrokerResolution::PromptRequired { prompt_plan, .. } => {
+                    return Err(prompt_required_command_error(prompt_plan));
+                }
+            },
+            None => resolved_auth,
+        };
+        let host = SshCredentialResolver::materialize_runtime_host_from_auth(&host, &resolved_auth);
+        Ok((host, resolved_auth))
+    }
+
+    async fn try_execute_managed_exec(
+        &self,
+        paths: &KerminalPaths,
+        host: &RemoteHost,
+        route_auth: &ResolvedSshRouteAuth,
+        request: &SshCommandRequest,
+        cancel_token: CancellationToken,
+    ) -> AppResult<Option<SshCommandOutput>> {
+        let Some(managed_runtime) = self.managed_runtime.as_ref() else {
+            return Ok(None);
+        };
+        let known_hosts_path = paths.root.join("known_hosts");
+        let key = ssh_session_key_for_route(host, route_auth, &known_hosts_path)?;
+        let target = Some(key.summary().target);
+        let connect_request = SshRuntimeConnectRequest::native(
+            key,
+            host.clone(),
+            known_hosts_path,
+            normalize_timeout_seconds(request.timeout_seconds),
+        )
+        .with_host_key_policy(host_key_policy_for_host(host));
+        let session = match acquire_command_session(managed_runtime, host, connect_request) {
+            Ok(session) => session,
+            Err(error) if is_managed_runtime_unwired(&error) => {
+                managed_runtime.record_legacy_fallback(
+                    "exec",
+                    LEGACY_FALLBACK_EXEC_UNWIRED,
+                    target,
+                );
+                return Ok(None);
+            }
+            Err(error) => return Err(error),
+        };
+        let runtime_request = SshRuntimeExecRequest::new(
+            normalize_command_script(&request.command)?,
+            normalize_timeout_seconds(request.timeout_seconds),
+            normalize_output_bytes(request.max_output_bytes),
+        )
+        .with_cancel_token(cancel_token);
+        match session.execute_exec(runtime_request).await {
+            Ok(output) => Ok(Some(ssh_command_output_from_runtime(host, output))),
+            Err(error) if is_managed_exec_unsupported(&error) => {
+                managed_runtime.record_legacy_fallback(
+                    "exec",
+                    LEGACY_FALLBACK_EXEC_UNSUPPORTED,
+                    Some(host_label(host)),
+                );
+                Ok(None)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn try_open_managed_streaming_exec(
+        &self,
+        paths: &KerminalPaths,
+        host: &RemoteHost,
+        route_auth: &ResolvedSshRouteAuth,
+        command: String,
+        timeout_seconds: u64,
+        cancel_token: CancellationToken,
+    ) -> AppResult<Option<ManagedSshStreamingExecSession>> {
+        let Some(managed_runtime) = self.managed_runtime.as_ref() else {
+            return Ok(None);
+        };
+        let known_hosts_path = paths.root.join("known_hosts");
+        let key = ssh_session_key_for_route(host, route_auth, &known_hosts_path)?;
+        let target = Some(key.summary().target);
+        let connect_request =
+            SshRuntimeConnectRequest::native(key, host.clone(), known_hosts_path, timeout_seconds)
+                .with_host_key_policy(host_key_policy_for_host(host));
+        let session = match acquire_command_session(managed_runtime, host, connect_request) {
+            Ok(session) => session,
+            Err(error) if is_managed_runtime_unwired(&error) => {
+                managed_runtime.record_legacy_fallback(
+                    "streaming-exec",
+                    LEGACY_FALLBACK_STREAMING_EXEC_UNWIRED,
+                    target,
+                );
+                return Ok(None);
+            }
+            Err(error) => return Err(error),
+        };
+        let runtime_request = SshRuntimeStreamingExecRequest::new(command, timeout_seconds)
+            .with_cancel_token(cancel_token);
+        match session.open_streaming_exec(runtime_request).await {
+            Ok(session) => Ok(Some(session)),
+            Err(error) if is_managed_streaming_exec_unsupported(&error) => {
+                managed_runtime.record_legacy_fallback(
+                    "streaming-exec",
+                    LEGACY_FALLBACK_STREAMING_EXEC_UNSUPPORTED,
+                    Some(host_label(host)),
+                );
+                Ok(None)
+            }
+            Err(error) => Err(error),
+        }
+    }
+}
+
+fn host_label(host: &RemoteHost) -> String {
+    format!("{}@{}:{}", host.username, host.host, host.port)
+}
+
+fn acquire_command_session(
+    managed_runtime: &ManagedSshSessionManager,
+    host: &RemoteHost,
+    connect_request: SshRuntimeConnectRequest,
+) -> AppResult<crate::services::ssh_runtime::ManagedSshSessionHandle> {
+    if is_external_target_id(&host.id) {
+        return managed_runtime.acquire_capability_session_with_request(connect_request);
+    }
+    managed_runtime.acquire_session_with_request(connect_request)
+}
+
+fn external_target_not_available_error(host_id: &str) -> AppError {
+    AppError::NotFound(format!("外部 SSH 临时目标不存在或已关闭: {host_id}"))
+}
+
+fn host_key_policy_for_host(host: &RemoteHost) -> SshRuntimeHostKeyPolicy {
+    if is_external_target_id(&host.id) {
+        SshRuntimeHostKeyPolicy::TrustUnknown
+    } else {
+        SshRuntimeHostKeyPolicy::RequireKnown
+    }
+}
+
+fn clear_runtime_secret_material(host: &mut RemoteHost) {
+    host.credential_secret = None;
+    for jump in &mut host.ssh_options.jump_hosts {
+        jump.credential_secret = None;
+    }
+}
+
+fn ssh_command_output_from_runtime(
+    host: &RemoteHost,
+    output: SshRuntimeExecOutput,
+) -> SshCommandOutput {
+    SshCommandOutput {
+        host_id: host.id.clone(),
+        host_name: host.name.clone(),
+        host: host.host.clone(),
+        port: host.port,
+        username: host.username.clone(),
+        exit_code: output.exit_code,
+        success: output.exit_code == Some(0),
+        stdout: output.stdout,
+        stderr: output.stderr,
+        stdout_bytes: output.stdout_bytes,
+        stderr_bytes: output.stderr_bytes,
+        stdout_truncated: output.stdout_truncated,
+        stderr_truncated: output.stderr_truncated,
+        max_output_bytes: output.max_output_bytes,
+        duration_ms: output.duration_ms,
+    }
+}
+
+fn is_managed_runtime_unwired(error: &AppError) -> bool {
+    matches!(error, AppError::SshCommand(message) if message.contains("managed SSH runtime backend is not wired yet"))
+}
+
+fn is_managed_exec_unsupported(error: &AppError) -> bool {
+    matches!(error, AppError::SshCommand(message) if message == MANAGED_SSH_EXEC_UNSUPPORTED)
+}
+
+fn is_managed_streaming_exec_unsupported(error: &AppError) -> bool {
+    matches!(error, AppError::SshCommand(message) if message == MANAGED_SSH_STREAMING_EXEC_UNSUPPORTED)
+}
+
+fn prompt_required_command_error(prompt_plan: SshAuthPromptPlan) -> AppError {
+    let prompts = prompt_plan
+        .prompts
+        .iter()
+        .map(|prompt| {
+            format!(
+                "{}@{}:{} {}",
+                prompt.username,
+                prompt.host,
+                prompt.port,
+                prompt.secret_kind.as_str()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    AppError::Credential(format!(
+        "SSH authentication is required before executing remote command: {prompts}"
+    ))
+}
+
+fn command_cancelled_error() -> AppError {
+    AppError::SshCommand("远程命令已取消".to_owned())
 }
 
 #[doc(hidden)]
@@ -113,7 +409,10 @@ pub mod rules {
     pub enum NativeAuthMaterialSummary {
         Agent,
         Password(String),
-        PrivateKeyPath(PathBuf),
+        PrivateKeyPath {
+            path: PathBuf,
+            passphrase: Option<String>,
+        },
         PrivateKeyPem {
             content: String,
             passphrase: Option<String>,
@@ -145,8 +444,8 @@ pub mod rules {
             NativeSshAuthMaterial::Password(password) => {
                 Ok(NativeAuthMaterialSummary::Password(password))
             }
-            NativeSshAuthMaterial::PrivateKey(NativeSshPrivateKey::Path(path)) => {
-                Ok(NativeAuthMaterialSummary::PrivateKeyPath(path))
+            NativeSshAuthMaterial::PrivateKey(NativeSshPrivateKey::Path { path, passphrase }) => {
+                Ok(NativeAuthMaterialSummary::PrivateKeyPath { path, passphrase })
             }
             NativeSshAuthMaterial::PrivateKey(NativeSshPrivateKey::Pem {
                 content,
@@ -244,91 +543,6 @@ pub fn build_ssh_command_plan_with_executable(
     })
 }
 
-fn build_ssh_command_plan(
-    host: &RemoteHost,
-    request: SshCommandRequest,
-) -> AppResult<SshCommandPlan> {
-    build_ssh_command_plan_with_executable(host, resolve_ssh_executable()?, request)
-}
-
-fn execute_ssh_command_plan(
-    host: &RemoteHost,
-    plan: &SshCommandPlan,
-) -> AppResult<SshCommandOutput> {
-    let started = Instant::now();
-    let mut child = silent_command(&plan.executable)
-        .args(&plan.args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| AppError::SshCommand(format!("无法启动 SSH 客户端: {error}")))?;
-
-    let stdout = child
-        .stdout
-        .take()
-        .map(|reader| spawn_output_reader(reader, plan.max_output_bytes));
-    let stderr = child
-        .stderr
-        .take()
-        .map(|reader| spawn_output_reader(reader, plan.max_output_bytes));
-
-    if let Some(mut stdin) = child.stdin.take() {
-        if let Err(error) = stdin.write_all(plan.script.as_bytes()) {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(AppError::SshCommand(format!(
-                "无法写入远程命令脚本: {error}"
-            )));
-        }
-    }
-
-    let status = wait_for_child(&mut child, Duration::from_secs(plan.timeout_seconds))?;
-    let stdout = join_output_reader(stdout)?;
-    let stderr = join_output_reader(stderr)?;
-
-    Ok(SshCommandOutput {
-        host_id: host.id.clone(),
-        host_name: host.name.clone(),
-        host: host.host.clone(),
-        port: host.port,
-        username: host.username.clone(),
-        exit_code: status.code(),
-        success: status.success(),
-        stdout: stdout.text,
-        stderr: stderr.text,
-        stdout_bytes: stdout.captured_bytes,
-        stderr_bytes: stderr.captured_bytes,
-        stdout_truncated: stdout.truncated,
-        stderr_truncated: stderr.truncated,
-        max_output_bytes: plan.max_output_bytes,
-        duration_ms: started.elapsed().as_millis(),
-    })
-}
-
-fn wait_for_child(child: &mut std::process::Child, timeout: Duration) -> AppResult<ExitStatus> {
-    let started = Instant::now();
-    loop {
-        if let Some(status) = child
-            .try_wait()
-            .map_err(|error| AppError::SshCommand(format!("无法读取远程命令状态: {error}")))?
-        {
-            return Ok(status);
-        }
-
-        if started.elapsed() >= timeout {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(AppError::SshCommand(format!(
-                "远程命令执行超时（{} 秒）",
-                timeout.as_secs()
-            )));
-        }
-
-        thread::sleep(Duration::from_millis(25));
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LimitedOutput {
     text: String,
@@ -367,32 +581,6 @@ impl LimitedOutputBuffer {
             captured_bytes: self.captured.len(),
             truncated: self.total_bytes > self.captured.len(),
         }
-    }
-}
-
-fn spawn_output_reader<R>(
-    reader: R,
-    max_bytes: usize,
-) -> thread::JoinHandle<std::io::Result<LimitedOutput>>
-where
-    R: Read + Send + 'static,
-{
-    thread::spawn(move || read_limited_output(reader, max_bytes))
-}
-
-fn join_output_reader(
-    handle: Option<thread::JoinHandle<std::io::Result<LimitedOutput>>>,
-) -> AppResult<LimitedOutput> {
-    match handle {
-        Some(handle) => handle
-            .join()
-            .map_err(|_| AppError::SshCommand("读取远程命令输出线程异常退出".to_owned()))?
-            .map_err(|error| AppError::SshCommand(format!("无法读取远程命令输出: {error}"))),
-        None => Ok(LimitedOutput {
-            text: String::new(),
-            captured_bytes: 0,
-            truncated: false,
-        }),
     }
 }
 
@@ -467,17 +655,6 @@ fn normalized_credential_secret(host: &RemoteHost) -> Option<&str> {
     host.credential_secret
         .as_deref()
         .filter(|value| !value.trim().is_empty())
-}
-
-fn resolve_ssh_executable() -> AppResult<String> {
-    which::which("ssh")
-        .or_else(|_| which::which("ssh.exe"))
-        .map(|path| path.to_string_lossy().into_owned())
-        .map_err(|_| {
-            AppError::SshCommand(
-                "未找到 OpenSSH 客户端，请安装 ssh 或确认 ssh 已加入 PATH".to_owned(),
-            )
-        })
 }
 
 fn normalize_command_script(command: &str) -> AppResult<String> {

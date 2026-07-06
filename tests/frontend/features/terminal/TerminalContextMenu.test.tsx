@@ -19,8 +19,9 @@ describe("TerminalContextMenu", () => {
 
     const menu = screen.getByRole("menu", { name: "终端右键菜单" });
     expect(menu).toHaveStyle({ left: "120px", top: "80px" });
-    expect(screen.getByRole("menuitem", { name: /复制/ })).toBeEnabled();
-    expect(screen.getByRole("menuitem", { name: /粘贴/ })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "复制Ctrl+C" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "复制会话 ID" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "粘贴Ctrl+V" })).toBeEnabled();
     expect(screen.getByRole("menuitem", { name: "重新连接" })).toBeEnabled();
     expect(screen.getByRole("menuitem", { name: "断开连接" })).toBeEnabled();
     expect(screen.getByRole("menuitem", { name: "左右分屏" })).toBeEnabled();
@@ -65,7 +66,23 @@ describe("TerminalContextMenu", () => {
       />,
     );
 
-    expect(screen.getByRole("menuitem", { name: /复制/ })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "复制Ctrl+C" })).toBeDisabled();
+  });
+
+  it("disables copying the session id before the pane has a session", () => {
+    render(
+      <TerminalContextMenu
+        canCopy
+        canCopySessionId={false}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+        position={{ x: 0, y: 0 }}
+      />,
+    );
+
+    expect(
+      screen.getByRole("menuitem", { name: "复制会话 ID" }),
+    ).toBeDisabled();
   });
 
   it("can disable connection lifecycle actions", () => {
@@ -167,5 +184,6 @@ describe("TerminalContextMenu", () => {
     expect(splitDirectionForMenuAction("splitHorizontal")).toBe("horizontal");
     expect(splitDirectionForMenuAction("splitVertical")).toBe("vertical");
     expect(splitDirectionForMenuAction("copy")).toBeNull();
+    expect(splitDirectionForMenuAction("copySessionId")).toBeNull();
   });
 });

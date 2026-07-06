@@ -122,11 +122,41 @@ impl ForwardCommandPlan {
             local_proxy_entry_id: request.local_proxy_entry_id.clone(),
             command_preview: self.command_preview.clone(),
             last_error: None,
+            runtime: None,
             pid,
             status: PortForwardStatus::Running,
             created_at,
         }
     }
+}
+
+/// 构建受管 SSH runtime 使用的端口转发元数据计划。
+pub(super) fn build_managed_forward_plan(
+    request: &PortForwardCreateRequest,
+) -> AppResult<ForwardCommandPlan> {
+    if request.source_port == 0 {
+        return Err(AppError::InvalidInput("监听端口必须大于 0".to_owned()));
+    }
+
+    let route = resolve_forward_route(request)?;
+    let command_preview = format!("managed-ssh-runtime {}", route.forward_arg);
+    Ok(ForwardCommandPlan {
+        executable: "managed-ssh-runtime".to_owned(),
+        args: Vec::new(),
+        cleanup_paths: Vec::new(),
+        secret_input_plan: None,
+        bind_host: route.bind_host,
+        target_host: route.target_host,
+        target_port: route.target_port,
+        local_bind_host: route.local_bind_host,
+        remote_bind_host: route.remote_bind_host,
+        local_endpoint: route.local_endpoint,
+        remote_endpoint: route.remote_endpoint,
+        proxy_protocol: route.proxy_protocol,
+        remote_access_scope: route.remote_access_scope,
+        proxy_url: route.proxy_url,
+        command_preview,
+    })
 }
 
 /// 构建 OpenSSH 端口转发启动计划。

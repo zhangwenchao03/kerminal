@@ -1,6 +1,7 @@
 import { findMachine } from "./workspaceMachineModel";
 import type { MachineGroup, TerminalTab } from "./types";
-import { isSftpTransferWorkspaceTab } from "./types";
+import { isSftpTransferWorkspaceTab, isWorkspaceFileTab } from "./types";
+import { workspaceFileTargetHostId } from "./workspaceFileTabModel";
 
 interface RestoredSelectedMachineIdOptions {
   activeTabId: string;
@@ -112,6 +113,9 @@ function selectedMachineIdCandidateFromTab(
       tab.leftHostId ||
       (tab.machineId === "sftp-transfer" ? "" : tab.machineId)
     );
+  }
+  if (isWorkspaceFileTab(tab)) {
+    return workspaceFileTargetHostId(tab.target) ?? tab.machineId;
   }
   return tab.machineId;
 }

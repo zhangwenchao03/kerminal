@@ -1,58 +1,46 @@
-import { useCallback, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, type Dispatch, type SetStateAction } from "react";
 import type { SftpEntry } from "../../../lib/sftpApi";
+import type { RemoteTargetRef } from "../../../lib/targetModel";
+import type { OpenWorkspaceFileTabOptions } from "../../workspace/workspaceStore";
 import {
-  buildOpenWorkspaceDirectoryDialog,
   buildOpenWorkspaceEditorDialog,
-  resolveWorkspaceDialogCloseDecision,
 } from "./sftpWorkspaceDialogModel";
+import type {
+  SftpBrowserMode,
+} from "./sftpBrowserModeModel";
 import type {
   SftpContextMenuState,
   SftpDialogAction,
   SftpFileTarget,
   SftpStatus,
-  SftpWorkspaceDialog,
 } from "./types";
 
 type UseSftpWorkspaceDialogActionsArgs = {
   fileTarget: SftpFileTarget | null;
+  onOpenWorkspaceFileTab?: (options: OpenWorkspaceFileTabOptions) => void;
   setContextMenu: Dispatch<SetStateAction<SftpContextMenuState | null>>;
   setDialogAction: Dispatch<SetStateAction<SftpDialogAction | null>>;
   setDialogStatus: Dispatch<SetStateAction<SftpStatus | null>>;
+  setBrowserMode: Dispatch<SetStateAction<SftpBrowserMode>>;
   setOperationStatus: Dispatch<SetStateAction<SftpStatus | null>>;
+  workspaceTarget: RemoteTargetRef | null;
 };
 
 export function useSftpWorkspaceDialogActions({
   fileTarget,
+  onOpenWorkspaceFileTab,
   setContextMenu,
   setDialogAction,
   setDialogStatus,
+  setBrowserMode,
   setOperationStatus,
+  workspaceTarget,
 }: UseSftpWorkspaceDialogActionsArgs) {
-  const [workspaceDialog, setWorkspaceDialog] =
-    useState<SftpWorkspaceDialog | null>(null);
-  const [workspaceDirty, setWorkspaceDirty] = useState(false);
-  const [workspaceCloseBlocked, setWorkspaceCloseBlocked] = useState(false);
-  const [workspaceCloseConfirmationOpen, setWorkspaceCloseConfirmationOpen] =
-    useState(false);
-  const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
-
-  const resetWorkspaceState = useCallback(() => {
-    setWorkspaceDialog(null);
-    setWorkspaceDirty(false);
-    setWorkspaceCloseBlocked(false);
-    setWorkspaceCloseConfirmationOpen(false);
-    setWorkspaceExpanded(false);
-  }, []);
-
   const clearWorkspaceActionState = useCallback(() => {
     setContextMenu(null);
     setDialogAction(null);
     setDialogStatus(null);
     setOperationStatus(null);
-    setWorkspaceDirty(false);
-    setWorkspaceCloseBlocked(false);
-    setWorkspaceCloseConfirmationOpen(false);
-    setWorkspaceExpanded(false);
   }, [setContextMenu, setDialogAction, setDialogStatus, setOperationStatus]);
 
   const openWorkspaceDirectory = useCallback(
@@ -62,9 +50,13 @@ export function useSftpWorkspaceDialogActions({
       }
 
       clearWorkspaceActionState();
-      setWorkspaceDialog(buildOpenWorkspaceDirectoryDialog(path));
+      setBrowserMode("workspace");
+      setOperationStatus({
+        kind: "info",
+        message: `已切到文件工作区：${path}`,
+      });
     },
-    [clearWorkspaceActionState, fileTarget],
+    [clearWorkspaceActionState, fileTarget, setBrowserMode, setOperationStatus],
   );
 
   const openEditorEntry = useCallback(
@@ -78,52 +70,40 @@ export function useSftpWorkspaceDialogActions({
         return;
       }
 
-      if (!fileTarget) {
+      if (!workspaceTarget && !fileTarget) {
         return;
       }
 
       clearWorkspaceActionState();
-      setWorkspaceDialog(plan.dialog);
+      if (workspaceTarget && onOpenWorkspaceFileTab) {
+        onOpenWorkspaceFileTab({
+          access: "editable",
+          path: entry.path,
+          rootPath: plan.dialog.rootPath,
+          source:
+            workspaceTarget.kind === "dockerContainer" ? "container" : "sftp",
+          target: workspaceTarget,
+        });
+        return;
+      }
+
+      setOperationStatus({
+        kind: "error",
+        message: "中间文件 Tab 尚未接入，无法打开文件。",
+      });
     },
-    [clearWorkspaceActionState, fileTarget, setOperationStatus],
+    [
+      clearWorkspaceActionState,
+      fileTarget,
+      onOpenWorkspaceFileTab,
+      setOperationStatus,
+      workspaceTarget,
+    ],
   );
 
-  const closeWorkspaceDialog = useCallback(() => {
-    const decision = resolveWorkspaceDialogCloseDecision({
-      confirmed: !workspaceDirty,
-      dirty: workspaceDirty,
-    });
-    if (decision.kind === "blocked") {
-      setWorkspaceCloseBlocked(true);
-      setWorkspaceCloseConfirmationOpen(true);
-      return;
-    }
-    resetWorkspaceState();
-  }, [resetWorkspaceState, workspaceDirty]);
-
-  const cancelWorkspaceCloseConfirmation = useCallback(() => {
-    setWorkspaceCloseConfirmationOpen(false);
-    setWorkspaceCloseBlocked(true);
-  }, []);
-
-  const confirmWorkspaceDialogClose = useCallback(() => {
-    resetWorkspaceState();
-  }, [resetWorkspaceState]);
-
   return {
-    cancelWorkspaceCloseConfirmation,
-    closeWorkspaceDialog,
-    confirmWorkspaceDialogClose,
     openEditorEntry,
     openWorkspaceDirectory,
-    resetWorkspaceDialog: resetWorkspaceState,
-    setWorkspaceCloseBlocked,
-    setWorkspaceDirty,
-    setWorkspaceExpanded,
-    workspaceCloseConfirmationOpen,
-    workspaceCloseBlocked,
-    workspaceDialog,
-    workspaceDirty,
-    workspaceExpanded,
+    resetWorkspaceDialog: clearWorkspaceActionState,
   };
 }

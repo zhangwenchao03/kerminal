@@ -59,15 +59,24 @@ pub(super) fn execute_kerminal_capabilities(tools: &[ToolDefinition]) -> ToolExe
                 ],
                 "terminalWriteRule": "Before terminal.write, resolve the target with kerminal.agent.target_context or terminal.resolve_agent_target. For session-bound writes pass agentSessionId, bindingGeneration, and data; stale or mismatched targets require user rebind."
             },
+            "managedSshRuntime": {
+                "inspectTool": "kerminal.runtime_snapshot",
+                "snapshotPath": "managedSsh",
+                "appliesToFamilies": ["ssh", "sftp", "tmux", "container", "portForward", "serverInfo"],
+                "sharedSessionRule": "SSH terminal, SFTP, exec/tmux/system/container, port-forward, and MCP SSH tools should reuse the same authenticated ManagedSshSession for a host route when available.",
+                "channelRule": "Reuse does not mean a single blocking stream: shell, SFTP, exec, and forwarding use separate managed channels with counts, queue depth, timeout, cancel, cleanup, and recent-failure diagnostics.",
+                "fallbackRule": "Only unsupported or unwired managed backends may fall back to legacy paths; auth, host-key, connect, subsystem, exec, or channel-open failures must remain managed runtime errors.",
+                "secretBoundary": "managedSsh diagnostics are redacted and must not expose passwords, private keys, key passphrases, raw env, or vault refs."
+            },
             "runtimeToolFamilies": [
                 capability_family("agentSession", "Use the current Kerminal Agent session and bound target safely.", &exposed_tools, &["kerminal.agent.", "terminal.resolve_agent_target"]),
                 capability_family("terminal", "Read and write existing terminal sessions; creation and UI focus stay in the app/UI host.", &exposed_tools, &["terminal."]),
-                capability_family("ssh", "Run non-interactive SSH commands through saved Kerminal host credentials.", &exposed_tools, &["ssh."]),
-                capability_family("sftp", "Browse, preview, transfer, and manage remote files through Kerminal SFTP runtime.", &exposed_tools, &["sftp."]),
-                capability_family("tmux", "Probe, list, create, rename, kill, inspect, capture, and attach-plan tmux sessions on local or SSH targets.", &exposed_tools, &["tmux."]),
-                capability_family("container", "List, inspect, tail logs, read stats, manage lifecycle, and browse, edit, transfer, or manage files for SSH-host Docker/Podman containers.", &exposed_tools, &["container."]),
-                capability_family("portForward", "Create, list, and close managed SSH port forwards and local proxy entries.", &exposed_tools, &["port_forward."]),
-                capability_family("serverInfo", "Read machine health and system snapshots for SSH hosts.", &exposed_tools, &["server_info."]),
+                capability_family("ssh", "Run non-interactive SSH commands through the managed SSH exec facade; inspect kerminal.runtime_snapshot.managedSsh when debugging session reuse.", &exposed_tools, &["ssh."]),
+                capability_family("sftp", "Browse, preview, transfer, and manage remote files through the managed SSH SFTP subsystem/runtime.", &exposed_tools, &["sftp."]),
+                capability_family("tmux", "Probe, list, create, rename, kill, inspect, capture, and attach-plan tmux sessions through managed exec on SSH targets.", &exposed_tools, &["tmux."]),
+                capability_family("container", "List, inspect, tail logs, read stats, manage lifecycle, and browse, edit, transfer, or manage files for SSH-host Docker/Podman containers through managed SSH exec/SFTP capabilities.", &exposed_tools, &["container."]),
+                capability_family("portForward", "Create, list, and close managed SSH port forwards and local proxy entries; runtime diagnostics show session/channel/tunnel ownership.", &exposed_tools, &["port_forward."]),
+                capability_family("serverInfo", "Read machine health and system snapshots for SSH hosts through managed SSH exec.", &exposed_tools, &["server_info."]),
                 capability_family("history", "Search command history; history writes, deletes, and clears are intentionally absent.", &exposed_tools, &["history."]),
                 capability_family("diagnostics", "Read app guide, generated config guide, tool help, runtime health, operation guide, runtime snapshot, create redacted diagnostic bundles, and validate file-backed config.", &exposed_tools, &["diagnostics.", "kerminal.config.validate", "kerminal.app_guide", "kerminal.config_guide", "kerminal.capabilities", "kerminal.tool_help", "kerminal.operation_guide", "kerminal.runtime_snapshot"]),
                 capability_family("credentials", "Save authorized SSH credentials into the encrypted vault without writing plaintext into ordinary config files.", &exposed_tools, &["kerminal.host.", "kerminal.vault."])
@@ -117,6 +126,7 @@ pub(super) fn execute_kerminal_capabilities(tools: &[ToolDefinition]) -> ToolExe
         next_hints: vec![
             "When you know the task type, call kerminal.operation_guide with an intent such as terminal, config, sftp, tmux, or credentials.".to_owned(),
             "For session work, call kerminal.agent.target_context before terminal.write.".to_owned(),
+            "For SSH-bound tools, inspect kerminal.runtime_snapshot.managedSsh to confirm managed session/channel reuse before assuming a separate SSH connection is needed.".to_owned(),
             "For config edits, read kerminal-config.md, edit files directly, then call kerminal.config.validate.".to_owned(),
             "Use kerminal.tool_help for exact schemas, examples, and safety annotations before calling a specific runtime tool.".to_owned(),
         ],
@@ -282,7 +292,7 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                     "aiCanDo": [
                         "Use runtime tools matching the right-panel domain.",
                         "Use file-first config for snippets, workflows, settings, hosts, and profiles.",
-                        "Use diagnostics and runtime snapshot for app health and current state."
+                        "Use diagnostics and runtime snapshot for app health, current state, and managed SSH session/channel reuse."
                     ],
                     "runtimeTools": {
                         "sftp": sftp_tools.clone(),
@@ -299,6 +309,7 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                     "boundaries": [
                         "Do not expect settings.*, snippet.*, workflow.*, or workspace.* MCP CRUD tools.",
                         "Edit configuration files directly and validate.",
+                        "Inspect kerminal.runtime_snapshot.managedSsh before treating SFTP, tmux, container, server-info, or port-forward failures as independent SSH login failures.",
                         "MCP host owns confirmation, approval, permissions, hooks, and audit."
                     ]
                 },
@@ -360,11 +371,11 @@ pub(super) fn execute_kerminal_app_guide(tools: &[ToolDefinition]) -> ToolExecut
                 app_task_route("understand-current-state", "Call kerminal.runtime_snapshot, then terminal.list or kerminal.agent.target_context if terminal context matters.", &discovery_tools),
                 app_task_route("discover-mcp-capabilities", "Call kerminal.capabilities to read the current tool map, recommended first calls, file-first configuration boundary, and deliberately absent tool families.", &discovery_tools),
                 app_task_route("operate-terminal", "Use terminal.list/snapshot/write on an explicit live terminal; in Agent sessions use kerminal.agent.target_context first.", &terminal_tools),
-                app_task_route("run-ssh-command", "Identify host id from target context or hosts/*.toml, then use ssh.command_on_resolved_host or ssh.command.", &remote_tools),
-                app_task_route("manage-remote-files", "Use sftp.list/preview before transfer or path changes; use transfer queue for long work.", &sftp_tools),
-                app_task_route("manage-containers", "Use container.list/inspect/logs/stats first; use container.files.* for container filesystem work.", &container_tools),
-                app_task_route("manage-tmux", "Probe and list sessions before capture/create/rename/kill/attach planning.", &tmux_tools),
-                app_task_route("manage-port-forwarding", "Use port_forward.list before create or close; keep risky remote exposure behind user approval.", &port_forward_tools),
+                app_task_route("run-ssh-command", "Identify host id from target context or hosts/*.toml, inspect managedSsh runtime reuse, then use ssh.command_on_resolved_host or ssh.command.", &remote_tools),
+                app_task_route("manage-remote-files", "Inspect managedSsh runtime reuse, then use sftp.list/preview before transfer or path changes; use transfer queue for long work.", &sftp_tools),
+                app_task_route("manage-containers", "Inspect managedSsh runtime reuse, then use container.list/inspect/logs/stats first; use container.files.* for container filesystem work.", &container_tools),
+                app_task_route("manage-tmux", "Inspect managedSsh runtime reuse, then probe and list sessions before capture/create/rename/kill/attach planning.", &tmux_tools),
+                app_task_route("manage-port-forwarding", "Inspect managedSsh runtime reuse, then use port_forward.list before create or close; keep risky remote exposure behind user approval.", &port_forward_tools),
                 app_task_route("edit-kerminal-config", "Read kerminal-config.md or call kerminal.config_guide, edit files directly, then call kerminal.config.validate.", &config_tools),
                 app_task_route("save-credentials", "Use kerminal.host.upsert_with_credential or kerminal.vault.encrypt_secret only when the user explicitly provides/authorizes credential material.", &credential_tools),
                 app_task_route("diagnose-app", "Use diagnostics.runtime_health, diagnostics.create_bundle, and runtime_snapshot; outputs are redacted where applicable.", &diagnostics_tools)

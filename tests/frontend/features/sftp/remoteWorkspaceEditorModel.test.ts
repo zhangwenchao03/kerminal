@@ -313,6 +313,17 @@ describe("remoteWorkspaceEditorModel", () => {
     expect(languageForPath("/tmp/Dockerfile")).toBe("dockerfile");
     expect(languageForPath("/tmp/Dockerfile.dev")).toBe("dockerfile");
     expect(languageForPath("/tmp/.env.production")).toBe("ini");
+    expect(languageForPath("/etc/nginx/nginx.conf")).toBe("ini");
+    expect(languageForPath("/etc/my.cnf")).toBe("ini");
+    expect(languageForPath("/etc/app/config.cfg")).toBe("ini");
+    expect(languageForPath("/etc/app/server.config")).toBe("ini");
+    expect(languageForPath("/workspace/application.properties")).toBe("ini");
+    expect(languageForPath("/etc/systemd/system/kerminal.service")).toBe(
+      "ini",
+    );
+    expect(languageForPath("/home/user/.config/kubeconfig")).toBe("yaml");
+    expect(languageForPath("/home/user/.envrc")).toBe("shell");
+    expect(languageForPath("/etc/ssh/sshd_config")).toBe("ini");
     expect(languageForPath("/tmp/README")).toBe("markdown");
     expect(errorMessage(new Error("boom"))).toBe("boom");
     expect(errorMessage("plain")).toBe("plain");

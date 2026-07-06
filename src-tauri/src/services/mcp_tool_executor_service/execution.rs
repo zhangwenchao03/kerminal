@@ -223,12 +223,24 @@ pub(super) async fn execute_tool(
             .await
         }
         "container.files.upload" => {
-            execute_container_files_upload(context.docker_hosts, context.remote_hosts, arguments)
-                .await
+            execute_container_files_upload(
+                context.docker_hosts,
+                context.remote_hosts,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
         }
         "container.files.download" => {
-            execute_container_files_download(context.docker_hosts, context.remote_hosts, arguments)
-                .await
+            execute_container_files_download(
+                context.docker_hosts,
+                context.remote_hosts,
+                context.paths,
+                context.ssh_commands,
+                arguments,
+            )
+            .await
         }
         "tmux.probe" => {
             execute_tmux_probe(context.tmux, context.paths, context.ssh_commands, arguments).await

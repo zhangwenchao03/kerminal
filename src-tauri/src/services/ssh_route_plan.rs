@@ -98,6 +98,16 @@ pub fn materialize_openssh_route_plan(
     paths: &KerminalPaths,
     known_hosts_path: impl AsRef<Path>,
 ) -> AppResult<OpenSshRoutePlan> {
+    materialize_openssh_route_plan_with_keepalive(route, paths, known_hosts_path, 30)
+}
+
+/// 物化 OpenSSH 跳板路由，并使用调用方提供的 ServerAliveInterval。
+pub fn materialize_openssh_route_plan_with_keepalive(
+    route: &SshRoutePlan,
+    paths: &KerminalPaths,
+    known_hosts_path: impl AsRef<Path>,
+    keepalive_seconds: u64,
+) -> AppResult<OpenSshRoutePlan> {
     if route.jumps.is_empty() {
         return Err(AppError::InvalidInput(
             "OpenSSH 跳板路由必须至少包含一个 jump host".to_owned(),
@@ -118,6 +128,7 @@ pub fn materialize_openssh_route_plan(
             &config_path,
             known_hosts_path.as_ref(),
             &mut cleanup_paths,
+            keepalive_seconds,
         )?;
         write_restricted_file(&config_path, &config)?;
 
@@ -752,8 +763,15 @@ fn render_openssh_route_config(
     config_path: &Path,
     known_hosts_path: &Path,
     cleanup_paths: &mut Vec<PathBuf>,
+    keepalive_seconds: u64,
 ) -> AppResult<String> {
     let mut sections = Vec::new();
+    let context = OpenSshHostSectionContext {
+        paths,
+        config_path,
+        known_hosts_path,
+        keepalive_seconds,
+    };
     for (index, hop) in route.jumps.iter().enumerate() {
         let alias = openssh_hop_alias(index);
         let proxy_alias = (index > 0).then(|| openssh_hop_alias(index - 1));
@@ -761,10 +779,8 @@ fn render_openssh_route_config(
             &alias,
             hop,
             proxy_alias.as_deref(),
-            paths,
-            config_path,
-            known_hosts_path,
             cleanup_paths,
+            &context,
         )?);
     }
 
@@ -773,23 +789,26 @@ fn render_openssh_route_config(
         OPENSSH_TARGET_ALIAS,
         &route.target,
         target_proxy_alias.as_deref(),
-        paths,
-        config_path,
-        known_hosts_path,
         cleanup_paths,
+        &context,
     )?);
 
     Ok(sections.join("\n"))
+}
+
+struct OpenSshHostSectionContext<'a> {
+    paths: &'a KerminalPaths,
+    config_path: &'a Path,
+    known_hosts_path: &'a Path,
+    keepalive_seconds: u64,
 }
 
 fn render_openssh_host_section(
     alias: &str,
     hop: &SshHopPlan,
     proxy_alias: Option<&str>,
-    paths: &KerminalPaths,
-    config_path: &Path,
-    known_hosts_path: &Path,
     cleanup_paths: &mut Vec<PathBuf>,
+    context: &OpenSshHostSectionContext<'_>,
 ) -> AppResult<String> {
     let mut lines = vec![
         format!("Host {alias}"),
@@ -798,19 +817,19 @@ fn render_openssh_host_section(
         format!("  User {}", quote_ssh_config_value(&hop.username)),
         format!(
             "  UserKnownHostsFile {}",
-            quote_ssh_config_path(known_hosts_path)
+            quote_ssh_config_path(context.known_hosts_path)
         ),
         "  GlobalKnownHostsFile none".to_owned(),
         format!(
             "  PreferredAuthentications {}",
             preferred_authentications(hop.auth.method())
         ),
-        "  ServerAliveInterval 30".to_owned(),
+        format!("  ServerAliveInterval {}", context.keepalive_seconds),
         "  ServerAliveCountMax 3".to_owned(),
     ];
 
     if let SshRouteAuthPlan::Key { material } = &hop.auth {
-        let identity_path = materialize_identity_file(paths, material, cleanup_paths)?;
+        let identity_path = materialize_identity_file(context.paths, material, cleanup_paths)?;
         lines.push(format!(
             "  IdentityFile {}",
             quote_ssh_config_path(&identity_path)
@@ -821,7 +840,7 @@ fn render_openssh_host_section(
     if let Some(proxy_alias) = proxy_alias {
         lines.push(format!(
             "  ProxyCommand ssh -F {} -W %h:%p {}",
-            quote_ssh_config_path(config_path),
+            quote_ssh_config_path(context.config_path),
             proxy_alias
         ));
     }

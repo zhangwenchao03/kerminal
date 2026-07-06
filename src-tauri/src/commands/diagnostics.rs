@@ -6,6 +6,7 @@ use crate::{
     models::config_change::ConfigWatchStatusSnapshot,
     models::diagnostics::{DiagnosticBundle, RuntimeHealthSnapshot},
     services::diagnostics_service::{DiagnosticBundleSnapshot, DiagnosticsService},
+    services::ssh_runtime::ManagedSshRuntimeSnapshot,
     state::AppState,
 };
 use tauri::State;
@@ -63,4 +64,15 @@ pub async fn config_watch_status(
     state: State<'_, AppState>,
 ) -> Result<ConfigWatchStatusSnapshot, String> {
     Ok(state.config_change_observer().status())
+}
+
+/// 查询受管 SSH session/channel 运行态诊断。
+#[tauri::command]
+pub async fn diagnostics_managed_ssh_runtime(
+    state: State<'_, AppState>,
+) -> Result<ManagedSshRuntimeSnapshot, String> {
+    state
+        .ssh_runtime()
+        .snapshot()
+        .map_err(|error| error.to_string())
 }

@@ -70,6 +70,15 @@ pub enum AppError {
     #[error("SSH 远程命令执行失败: {0}")]
     SshCommand(String),
 
+    /// SSH 认证需要前端继续输入一次性或可保存凭据。
+    #[error("SSH 认证需要用户输入: {message}")]
+    SshAuthPromptRequired {
+        /// 面向用户的脱敏提示。
+        message: String,
+        /// 脱敏 prompt plan；只包含主机、用户、端口、角色和 secret kind。
+        prompt_plan: serde_json::Value,
+    },
+
     /// Docker/Podman 容器操作失败。
     #[error("容器操作失败: {0}")]
     Docker(String),

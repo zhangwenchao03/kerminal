@@ -1,5 +1,4 @@
 use super::*;
-use crate::models::remote_host::RemoteHostAuthType;
 
 pub fn build_container_terminal_remote_command(
     request: DockerContainerTerminalCreateRequest,
@@ -32,38 +31,6 @@ pub fn build_container_terminal_remote_command(
     Ok(remote_command.join(" "))
 }
 
-pub fn build_container_terminal_request(
-    host: &RemoteHost,
-    ssh_executable: String,
-    request: DockerContainerTerminalCreateRequest,
-) -> AppResult<TerminalCreateRequest> {
-    let rows = request.rows;
-    let cols = request.cols;
-    let remote_command = build_container_terminal_remote_command(request)?;
-    let mut args = vec![
-        "-tt".to_owned(),
-        "-p".to_owned(),
-        host.port.to_string(),
-        "-o".to_owned(),
-        "ServerAliveInterval=30".to_owned(),
-        "-o".to_owned(),
-        "ServerAliveCountMax=3".to_owned(),
-    ];
-    args.extend(auth_args(host.auth_type));
-    args.push(format!("{}@{}", host.username, host.host));
-    args.push(remote_command);
-
-    Ok(TerminalCreateRequest {
-        shell: Some(ssh_executable),
-        args,
-        cwd: None,
-        cols,
-        rows,
-        env: Default::default(),
-        cleanup_paths: Vec::new(),
-    })
-}
-
 pub(super) fn normalize_container_shell(shell: Option<&str>) -> AppResult<String> {
     let fallback = "if command -v bash >/dev/null 2>&1; then exec bash -l; else exec sh; fi";
     let shell = shell.map(str::trim).filter(|value| !value.is_empty());
@@ -76,33 +43,14 @@ pub(super) fn normalize_container_shell(shell: Option<&str>) -> AppResult<String
     Ok(value.to_owned())
 }
 
-pub(super) fn auth_args(auth_type: RemoteHostAuthType) -> Vec<String> {
-    let preferred = match auth_type {
-        RemoteHostAuthType::Password => "password,keyboard-interactive",
-        RemoteHostAuthType::Key => "publickey",
-        RemoteHostAuthType::Agent => "publickey,keyboard-interactive,password",
-    };
-
-    vec![
-        "-o".to_owned(),
-        format!("PreferredAuthentications={preferred}"),
-    ]
-}
-
 pub(super) fn resolve_host(
     remote_hosts: &RemoteHostService,
+    paths: &KerminalPaths,
+    ssh_commands: &SshCommandService,
     host_id: &str,
 ) -> AppResult<RemoteHost> {
+    if is_external_target_id(host_id) {
+        return ssh_commands.resolve_native_runtime_host_metadata(paths, host_id);
+    }
     remote_hosts.require_host(host_id)
-}
-
-pub(super) fn resolve_ssh_executable() -> AppResult<String> {
-    which::which("ssh")
-        .or_else(|_| which::which("ssh.exe"))
-        .map(|path| path.to_string_lossy().into_owned())
-        .map_err(|_| {
-            AppError::Terminal(
-                "未找到 OpenSSH 客户端，请安装 ssh 或确认 ssh 已加入 PATH".to_owned(),
-            )
-        })
 }

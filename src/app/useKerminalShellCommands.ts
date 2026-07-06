@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect } from "react";
 import {
+  dispatchKerminalTextEditCommand,
+  shouldAppHandleKeybinding,
+  type KerminalTextEditCommand,
+} from "./appKeybindingPolicy";
+import {
   keybindingMatchesEvent,
   shortcutPlatform,
 } from "../features/settings/keybindingUtils";
@@ -15,6 +20,17 @@ import {
 } from "../lib/nativeMenuApi";
 
 type WorkspaceState = ReturnType<typeof useWorkspaceStore.getState>;
+
+const nativeTextEditCommandByAction: Partial<
+  Record<NativeMenuAction, KerminalTextEditCommand>
+> = {
+  editCopy: "copy",
+  editCut: "cut",
+  editPaste: "paste",
+  editRedo: "redo",
+  editSelectAll: "selectAll",
+  editUndo: "undo",
+};
 
 export function useKerminalShellCommands({
   activeTabId,
@@ -170,7 +186,10 @@ export function useKerminalShellCommands({
 
   const handleNativeMenuAction = useCallback(
     (action: NativeMenuAction) => {
-      if (action === "newTerminal") {
+      const textEditCommand = nativeTextEditCommandByAction[action];
+      if (textEditCommand) {
+        dispatchKerminalTextEditCommand(textEditCommand);
+      } else if (action === "newTerminal") {
         addTerminalTab();
       } else if (action === "closeTab") {
         if (activeTabId) {
@@ -237,7 +256,7 @@ export function useKerminalShellCommands({
   useEffect(() => {
     const platform = shortcutPlatform();
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.defaultPrevented) {
+      if (!shouldAppHandleKeybinding(event)) {
         return;
       }
 

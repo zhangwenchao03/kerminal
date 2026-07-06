@@ -32,12 +32,42 @@ describe("XtermPane context menu search and logging", () => {
       clientX: 120,
       clientY: 80,
     });
-    await user.click(screen.getByRole("menuitem", { name: /复制/ }));
+    await user.click(screen.getByRole("menuitem", { name: "复制Ctrl+C" }));
 
     expect(mocks.api.writeDesktopClipboardText).toHaveBeenCalledWith(
       "selected output",
     );
     expect(clipboard.writeText).not.toHaveBeenCalled();
+    expect(mocks.terminalInstances[0].focus).toHaveBeenCalled();
+  });
+
+  it("copies the current pane session id from the context menu", async () => {
+    const user = userEvent.setup();
+    installClipboardMock();
+
+    render(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"), {
+      clientX: 120,
+      clientY: 80,
+    });
+    await user.click(screen.getByRole("menuitem", { name: "复制会话 ID" }));
+
+    expect(mocks.api.writeDesktopClipboardText).toHaveBeenCalledWith(
+      "session-1",
+    );
     expect(mocks.terminalInstances[0].focus).toHaveBeenCalled();
   });
 
@@ -634,7 +664,7 @@ describe("XtermPane context menu search and logging", () => {
 
     fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"));
 
-    expect(screen.getByRole("menuitem", { name: /复制/ })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "复制Ctrl+C" })).toBeDisabled();
   });
 });
 

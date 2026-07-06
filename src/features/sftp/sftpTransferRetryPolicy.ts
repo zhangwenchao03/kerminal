@@ -29,11 +29,11 @@ export type SftpTransferRetryDecision =
 export function resolveSftpTransferRetry(
   transfer: SftpTransferSummary,
 ): SftpTransferRetryDecision {
-  if (transfer.status !== "failed") {
+  if (transfer.status !== "failed" && transfer.status !== "canceled") {
     return {
       canRetry: false,
       reason: "notFailed",
-      statusMessage: "只有失败的传输任务可以重试。",
+      statusMessage: "只有失败或已取消的传输任务可以重试。",
     };
   }
 
@@ -81,7 +81,7 @@ export function resolveSftpTransferRetry(
       viewScope: transfer.viewScope ?? null,
     },
     statusMessage:
-      "已重新加入传输队列；断点续传未默认启用，将按完整任务重试。",
+      "已重新加入传输队列；将优先尝试断点续传。",
   };
 }
 

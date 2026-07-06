@@ -4,9 +4,7 @@
 
 use std::{
     collections::HashMap,
-    io::Write,
-    process::Stdio,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use crate::{
@@ -22,8 +20,8 @@ use crate::{
     },
     paths::KerminalPaths,
     services::{
-        docker_host_service::build_container_exec_script, process_command::silent_command,
-        remote_host_service::RemoteHostService, ssh_command_service::SshCommandService,
+        docker_host_service::build_container_exec_script, remote_host_service::RemoteHostService,
+        ssh_command_service::SshCommandService,
     },
 };
 
@@ -40,32 +38,10 @@ impl ServerInfoService {
         Self
     }
 
-    /// 采集当前 SSH 主机的系统信息快照。
-    pub fn snapshot(
-        &self,
-        remote_hosts: &RemoteHostService,
-        request: ServerInfoRequest,
-    ) -> AppResult<ServerInfoSnapshot> {
-        let target = Self::target_from_request(request)?;
-        let host_id = target.host_id().ok_or_else(|| {
-            AppError::InvalidInput("服务器信息目标必须是 SSH 主机或容器".to_owned())
-        })?;
-        let host = remote_hosts.require_host(host_id)?;
-        self.snapshot_target(host, target)
-    }
-
-    /// 采集指定 SSH 主机的系统信息快照。
-    pub fn snapshot_host(&self, host: RemoteHost) -> AppResult<ServerInfoSnapshot> {
-        let target = RemoteTargetRef::Ssh {
-            host_id: host.id.clone(),
-        };
-        self.snapshot_target(host, target)
-    }
-
     /// 使用远程主机记录里的 SSH 认证信息采集 SSH 主机或容器目标的系统信息快照。
     pub async fn snapshot_native(
         &self,
-        remote_hosts: &RemoteHostService,
+        _remote_hosts: &RemoteHostService,
         paths: &KerminalPaths,
         ssh_commands: &SshCommandService,
         request: ServerInfoRequest,
@@ -74,7 +50,9 @@ impl ServerInfoService {
         let host_id = target.host_id().ok_or_else(|| {
             AppError::InvalidInput("服务器信息目标必须是 SSH 主机或容器".to_owned())
         })?;
-        let host = remote_hosts.require_host(host_id)?;
+        let host = ssh_commands
+            .resolve_native_runtime_host_metadata(paths, host_id)
+            .map_err(server_info_transport_error)?;
         let command_request = build_server_info_command_request(&host, &target)?;
         let output = ssh_commands
             .execute_native(paths, command_request)
@@ -86,20 +64,6 @@ impl ServerInfoService {
         }
 
         let mut snapshot = parse_server_info_output(&host, &output.stdout, unix_timestamp());
-        apply_target_metadata(&mut snapshot, &target);
-
-        Ok(snapshot)
-    }
-
-    /// 采集指定统一目标的系统信息快照。
-    pub fn snapshot_target(
-        &self,
-        host: RemoteHost,
-        target: RemoteTargetRef,
-    ) -> AppResult<ServerInfoSnapshot> {
-        let plan = build_server_info_plan_for_target(&host, &target)?;
-        let stdout = execute_server_info_plan(&plan)?;
-        let mut snapshot = parse_server_info_output(&host, &stdout, unix_timestamp());
         apply_target_metadata(&mut snapshot, &target);
 
         Ok(snapshot)
@@ -220,13 +184,6 @@ fn build_server_info_script_for_target(
     }
 }
 
-fn build_server_info_plan_for_target(
-    host: &RemoteHost,
-    target: &RemoteTargetRef,
-) -> AppResult<ServerInfoCommandPlan> {
-    build_server_info_plan_for_target_with_executable(host, target, resolve_ssh_executable()?)
-}
-
 fn ensure_target_matches_host(host: &RemoteHost, target: &RemoteTargetRef) -> AppResult<()> {
     target.validate()?;
     let target_host_id = target
@@ -277,56 +234,6 @@ fn normalize_plain_text(field: &str, value: &str) -> AppResult<String> {
     Ok(value.to_owned())
 }
 
-fn execute_server_info_plan(plan: &ServerInfoCommandPlan) -> AppResult<String> {
-    let mut child = silent_command(&plan.executable)
-        .args(&plan.args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| AppError::ServerInfo(format!("无法启动 SSH 客户端: {error}")))?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(plan.script.as_bytes())
-            .map_err(|error| AppError::ServerInfo(format!("无法写入远程采集脚本: {error}")))?;
-    }
-
-    let started_at = Instant::now();
-    loop {
-        match child
-            .try_wait()
-            .map_err(|error| AppError::ServerInfo(format!("无法读取服务器信息状态: {error}")))?
-        {
-            Some(_) => break,
-            None if started_at.elapsed() >= SERVER_INFO_TIMEOUT => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(AppError::ServerInfo(
-                    "服务器信息采集超时，请稍后重试或检查 SSH 连接状态".to_owned(),
-                ));
-            }
-            None => std::thread::sleep(Duration::from_millis(50)),
-        }
-    }
-
-    let output = child
-        .wait_with_output()
-        .map_err(|error| AppError::ServerInfo(format!("无法读取服务器信息输出: {error}")))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-        let detail = if stderr.is_empty() { stdout } else { stderr };
-        return Err(AppError::ServerInfo(if detail.is_empty() {
-            "服务器信息采集失败".to_owned()
-        } else {
-            detail
-        }));
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-}
-
 fn server_info_transport_error(error: AppError) -> AppError {
     match error {
         AppError::Credential(message) | AppError::SshCommand(message) => {
@@ -358,17 +265,6 @@ fn auth_args(auth_type: RemoteHostAuthType) -> Vec<String> {
         "-o".to_owned(),
         format!("PreferredAuthentications={preferred}"),
     ]
-}
-
-fn resolve_ssh_executable() -> AppResult<String> {
-    which::which("ssh")
-        .or_else(|_| which::which("ssh.exe"))
-        .map(|path| path.to_string_lossy().into_owned())
-        .map_err(|_| {
-            AppError::ServerInfo(
-                "未找到 OpenSSH 客户端，请安装 ssh 或确认 ssh 已加入 PATH".to_owned(),
-            )
-        })
 }
 
 /// 解析远端 key=value 输出为服务器信息快照。

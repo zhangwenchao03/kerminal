@@ -2,6 +2,7 @@ import {
   defaultAppearanceSettings,
   defaultAppSettings,
   defaultDesktopNotificationSettings,
+  defaultExternalLaunchSettings,
   defaultKeybindings,
   defaultSftpPerformanceSettings,
   defaultTerminalAppearance,
@@ -25,6 +26,7 @@ export {
   defaultAppearanceSettings,
   defaultAppSettings,
   defaultDesktopNotificationSettings,
+  defaultExternalLaunchSettings,
   defaultKeybindings,
   defaultSftpPerformanceSettings,
   defaultTerminalAppearance,
@@ -85,6 +87,22 @@ export type TerminalInlineSuggestionProductionHostPolicy =
   | "restricted";
 export type KeybindingScope = "global" | "terminal" | "workspace";
 export type KeybindingPlatform = "windows" | "mac";
+export type ExternalLaunchSourceTool =
+  | "putty"
+  | "mobaxterm"
+  | "xshell"
+  | "securecrt"
+  | "openssh"
+  | "kerminal-native";
+
+export const externalLaunchSourceTools: ExternalLaunchSourceTool[] = [
+  "putty",
+  "mobaxterm",
+  "xshell",
+  "securecrt",
+  "openssh",
+  "kerminal-native",
+];
 
 export interface TerminalInlineSuggestionProviderSettings {
   history: boolean;
@@ -142,6 +160,18 @@ export interface DesktopNotificationSettings {
   throttleMs: number;
 }
 
+export interface ExternalLaunchShimBridgeSettings {
+  enabled: boolean;
+}
+
+export interface ExternalLaunchSettings {
+  enabled: boolean;
+  acceptVendorArgs: boolean;
+  shimBridge: ExternalLaunchShimBridgeSettings;
+  autoOpenSftp: boolean;
+  disabledTools: ExternalLaunchSourceTool[];
+}
+
 export interface KeybindingSetting {
   action: string;
   label: string;
@@ -164,6 +194,7 @@ export interface SftpPerformanceSettings {
 export interface AppSettings {
   appearance: AppearanceSettings;
   desktopNotifications: DesktopNotificationSettings;
+  externalLaunch: ExternalLaunchSettings;
   interfaceDensity: InterfaceDensity;
   themeMode: ThemeMode;
   terminal: TerminalAppearance;
@@ -177,6 +208,7 @@ export function normalizeAppSettings(
   const appearance = settings?.appearance ?? defaultAppearanceSettings;
   const desktopNotifications =
     settings?.desktopNotifications ?? defaultDesktopNotificationSettings;
+  const externalLaunch = normalizeExternalLaunch(settings?.externalLaunch);
   const terminal = settings?.terminal ?? defaultTerminalAppearance;
   const keybindings = normalizeKeybindings(settings?.keybindings);
   const sftp = settings?.sftp ?? defaultSftpPerformanceSettings;
@@ -248,6 +280,7 @@ export function normalizeAppSettings(
         600_000,
       ),
     },
+    externalLaunch,
     interfaceDensity: normalizeInterfaceDensity(settings?.interfaceDensity),
     keybindings,
     sftp: {
@@ -379,6 +412,68 @@ function normalizeKeybindings(
       (keybinding) => !defaultsByAction.has(keybinding.action),
     ),
   ];
+}
+
+type ExternalLaunchSettingsInput = Partial<ExternalLaunchSettings> & {
+  shimBridgeEnabled?: unknown;
+};
+
+function normalizeExternalLaunch(
+  settings: ExternalLaunchSettingsInput | undefined,
+): ExternalLaunchSettings {
+  const shimBridge: Partial<ExternalLaunchShimBridgeSettings> =
+    settings?.shimBridge ?? {};
+  return {
+    acceptVendorArgs: readBoolean(
+      settings?.acceptVendorArgs,
+      defaultExternalLaunchSettings.acceptVendorArgs,
+    ),
+    autoOpenSftp: readBoolean(
+      settings?.autoOpenSftp,
+      defaultExternalLaunchSettings.autoOpenSftp,
+    ),
+    disabledTools: normalizeExternalLaunchDisabledTools(
+      settings?.disabledTools,
+    ),
+    enabled: readBoolean(
+      settings?.enabled,
+      defaultExternalLaunchSettings.enabled,
+    ),
+    shimBridge: {
+      enabled: readBoolean(
+        shimBridge.enabled,
+        readBoolean(
+          settings?.shimBridgeEnabled,
+          defaultExternalLaunchSettings.shimBridge.enabled,
+        ),
+      ),
+    },
+  };
+}
+
+function normalizeExternalLaunchDisabledTools(
+  value: unknown,
+): ExternalLaunchSourceTool[] {
+  if (!Array.isArray(value)) {
+    return defaultExternalLaunchSettings.disabledTools;
+  }
+  const normalized: ExternalLaunchSourceTool[] = [];
+  for (const item of value) {
+    const tool = normalizeExternalLaunchSourceTool(item);
+    if (tool && !normalized.includes(tool)) {
+      normalized.push(tool);
+    }
+  }
+  return normalized;
+}
+
+function normalizeExternalLaunchSourceTool(
+  value: unknown,
+): ExternalLaunchSourceTool | null {
+  return typeof value === "string" &&
+    externalLaunchSourceTools.includes(value as ExternalLaunchSourceTool)
+    ? (value as ExternalLaunchSourceTool)
+    : null;
 }
 
 function readString(value: unknown) {

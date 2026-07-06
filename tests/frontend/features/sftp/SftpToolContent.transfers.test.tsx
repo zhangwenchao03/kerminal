@@ -4,7 +4,6 @@ import {
   screen,
   waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { act } from "react";
 import { describe,
   expect,
   it,
@@ -236,6 +235,22 @@ describe("SftpToolContent transfers and containers", () => {
     expect(screen.queryByText(/已加入上传队列/)).not.toBeInTheDocument();
   });
 
+  it("keeps the toolbar upload menu above the remote directory list", async () => {
+    const user = userEvent.setup();
+
+    render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    await screen.findByText("var");
+    await user.click(screen.getByRole("button", { name: "上传" }));
+
+    const uploadMenu = screen.getByRole("menu", { name: "上传菜单" });
+    expect(uploadMenu).toHaveAttribute("data-sftp-upload-menu", "true");
+    expect(uploadMenu).toHaveClass("fixed");
+    expect(uploadMenu).toHaveClass("z-[1000]");
+    expect(uploadMenu).toHaveClass("bg-[var(--surface-overlay)]");
+    expect(document.body).toContainElement(uploadMenu);
+  });
+
   it("asks for a conflict policy before uploading over an existing remote file", async () => {
     const user = userEvent.setup();
     sftpApiMocks.statSftpPath.mockResolvedValue({
@@ -375,50 +390,55 @@ describe("SftpToolContent transfers and containers", () => {
     expect(await screen.findByText(/已下载：\/app\/package.json/)).toBeInTheDocument();
   });
 
-  it("opens a container file in the same remote workspace editor", async () => {
+  it("opens a container file in the central workspace tab", async () => {
     const user = userEvent.setup();
+    const onOpenWorkspaceFileTab = vi.fn();
 
-    render(<SftpToolContent selectedMachine={containerMachine} />);
+    render(
+      <SftpToolContent
+        onOpenWorkspaceFileTab={onOpenWorkspaceFileTab}
+        selectedMachine={containerMachine}
+      />,
+    );
 
     expect(await screen.findByText("package.json")).toBeInTheDocument();
     await user.dblClick(
       screen.getByRole("button", { name: "文件 package.json" }),
     );
 
-    expect(
-      await screen.findByTestId("remote-workspace-editor"),
-    ).toHaveTextContent("/app/package.json");
-    expect(screen.getByTestId("remote-workspace-target")).toHaveTextContent(
-      "dockerContainer",
+    await waitFor(() =>
+      expect(onOpenWorkspaceFileTab).toHaveBeenCalledWith({
+        access: "editable",
+        path: "/app/package.json",
+        rootPath: "/app",
+        source: "container",
+        target: {
+          containerId: "container-api",
+          containerName: "api",
+          hostId: "prod-api",
+          kind: "dockerContainer",
+          runtime: "docker",
+          workdir: "/app",
+        },
+      }),
     );
   });
 
-  it("dismisses workspace error status after a short hint", async () => {
+  it("shows a missing workspace tab bridge error", async () => {
     render(<SftpToolContent selectedMachine={containerMachine} />);
 
     expect(await screen.findByText("package.json")).toBeInTheDocument();
     fireEvent.doubleClick(
       screen.getByRole("button", { name: "文件 package.json" }),
     );
-    expect(
-      await screen.findByTestId("remote-workspace-editor"),
-    ).toBeInTheDocument();
 
-    vi.useFakeTimers();
-    try {
-      fireEvent.click(screen.getByRole("button", { name: "触发工作区错误" }));
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        "容器文件包含二进制内容",
-      );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "中间文件 Tab 尚未接入",
+    );
 
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(4_000);
-      });
-
-      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "中间文件 Tab 尚未接入",
+    );
   });
 
   it("uploads dropped local paths into the current SFTP directory", async () => {

@@ -379,12 +379,14 @@ fn store_writes_terminal_snapshot_and_rotates_mcp_call_log() {
             status: "succeeded".to_owned(),
             summary: Some("ok".to_owned()),
             error: None,
+            runtime_audit: Some("backend=managed-ssh-runtime".to_owned()),
             generated_at: "200".to_owned(),
         })
         .expect("append mcp log");
 
     let current_log = fs::read_to_string(log_dir.join("mcp-calls.jsonl")).expect("current log");
     assert!(current_log.contains("\"toolId\":\"kerminal.agent.current_session\""));
+    assert!(current_log.contains("\"runtimeAudit\":\"backend=managed-ssh-runtime\""));
     let rotated_logs = fs::read_dir(&log_dir)
         .expect("read logs")
         .filter_map(Result::ok)
@@ -440,6 +442,7 @@ fn mcp_call_log_bounds_large_summary_and_error_fields() {
     let store = AgentSessionFileStore::new(temp.path());
     let large_summary = "s".repeat(10 * 1024);
     let large_error = "e".repeat(10 * 1024);
+    let large_audit = "a".repeat(10 * 1024);
 
     store
         .append_mcp_call_log(&AgentMcpCallLogEntry {
@@ -449,6 +452,7 @@ fn mcp_call_log_bounds_large_summary_and_error_fields() {
             status: "failed".to_owned(),
             summary: Some(large_summary),
             error: Some(large_error),
+            runtime_audit: Some(large_audit),
             generated_at: "300".to_owned(),
         })
         .expect("append bounded mcp log");
@@ -467,11 +471,17 @@ fn mcp_call_log_bounds_large_summary_and_error_fields() {
         .pointer("/error")
         .and_then(serde_json::Value::as_str)
         .expect("error");
+    let runtime_audit = line
+        .pointer("/runtimeAudit")
+        .and_then(serde_json::Value::as_str)
+        .expect("runtime audit");
 
     assert!(summary.ends_with("..."));
     assert!(error.ends_with("..."));
+    assert!(runtime_audit.ends_with("..."));
     assert!(summary.len() < 4_200);
     assert!(error.len() < 4_200);
+    assert!(runtime_audit.len() < 4_200);
 }
 
 fn service_with_ids(root: &Path, ids: &[&str]) -> AgentSessionService {

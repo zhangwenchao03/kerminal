@@ -213,6 +213,7 @@ export interface SftpTransferSummary {
   conflictPolicy?: SftpTransferConflictPolicy | null;
   status: SftpTransferStatus;
   bytesTransferred: number;
+  speedBytesPerSecond?: number;
   totalBytes?: number | null;
   error?: string | null;
   cancelRequested: boolean;

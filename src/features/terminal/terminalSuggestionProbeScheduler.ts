@@ -77,6 +77,8 @@ interface ProbeTask {
   key: string;
   kind: ProbeKind;
   lastDurationMs?: number;
+  lastFailureAt?: number;
+  lastFailureReason?: string;
   nextAllowedAt: number;
   owners: Set<string>;
   request:
@@ -233,6 +235,8 @@ export class TerminalSuggestionProbeScheduler {
         failureCount: task.failureCount,
         inFlight: task.inFlight,
         kind: task.kind,
+        lastFailureAt: task.lastFailureAt,
+        lastFailureReason: task.lastFailureReason,
         nextAllowedInMs:
           task.nextAllowedAt > now ? task.nextAllowedAt - now : undefined,
         ownerCount: task.owners.size,
@@ -261,6 +265,8 @@ export class TerminalSuggestionProbeScheduler {
       key,
       kind,
       lastDurationMs: undefined,
+      lastFailureAt: undefined,
+      lastFailureReason: undefined,
       nextAllowedAt: 0,
       owners: new Set<string>(),
       request,
@@ -306,10 +312,14 @@ export class TerminalSuggestionProbeScheduler {
     this.performTask(task)
       .then(() => {
         task.failureCount = 0;
+        task.lastFailureAt = undefined;
+        task.lastFailureReason = undefined;
         task.nextAllowedAt = this.clock.now() + taskTtlMs(task);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         task.failureCount = task.failureCount + 1;
+        task.lastFailureAt = this.clock.now();
+        task.lastFailureReason = sanitizeFailureReason(error);
         task.nextAllowedAt =
           this.clock.now() + failureBackoffMs(task.failureCount);
       })
@@ -401,6 +411,16 @@ function taskTtlMs(task: ProbeTask) {
 
 function failureBackoffMs(failureCount: number) {
   return Math.min(MAX_BACKOFF_MS, 1000 * 2 ** Math.max(0, failureCount - 1));
+}
+
+function sanitizeFailureReason(error: unknown) {
+  const value =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "probe failed";
+  return value.replace(/\s+/g, " ").trim().slice(0, 160) || "probe failed";
 }
 
 function incrementRecord(record: Record<string, number>, key: string) {

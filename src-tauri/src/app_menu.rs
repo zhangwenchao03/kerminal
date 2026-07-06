@@ -31,6 +31,12 @@ pub enum NativeMenuAction {
     OpenSftp,
     OpenPorts,
     OpenSnippets,
+    EditUndo,
+    EditRedo,
+    EditCut,
+    EditCopy,
+    EditPaste,
+    EditSelectAll,
 }
 
 impl NativeMenuAction {
@@ -49,6 +55,12 @@ impl NativeMenuAction {
             Self::OpenSftp => "openSftp",
             Self::OpenPorts => "openPorts",
             Self::OpenSnippets => "openSnippets",
+            Self::EditUndo => "editUndo",
+            Self::EditRedo => "editRedo",
+            Self::EditCut => "editCut",
+            Self::EditCopy => "editCopy",
+            Self::EditPaste => "editPaste",
+            Self::EditSelectAll => "editSelectAll",
         }
     }
 
@@ -67,6 +79,12 @@ impl NativeMenuAction {
             Self::OpenSftp => "kerminal:openSftp",
             Self::OpenPorts => "kerminal:openPorts",
             Self::OpenSnippets => "kerminal:openSnippets",
+            Self::EditUndo => "kerminal:editUndo",
+            Self::EditRedo => "kerminal:editRedo",
+            Self::EditCut => "kerminal:editCut",
+            Self::EditCopy => "kerminal:editCopy",
+            Self::EditPaste => "kerminal:editPaste",
+            Self::EditSelectAll => "kerminal:editSelectAll",
         }
     }
 
@@ -110,6 +128,12 @@ pub const fn native_menu_actions() -> &'static [NativeMenuAction] {
         NativeMenuAction::OpenSftp,
         NativeMenuAction::OpenPorts,
         NativeMenuAction::OpenSnippets,
+        NativeMenuAction::EditUndo,
+        NativeMenuAction::EditRedo,
+        NativeMenuAction::EditCut,
+        NativeMenuAction::EditCopy,
+        NativeMenuAction::EditPaste,
+        NativeMenuAction::EditSelectAll,
     ]
 }
 
@@ -202,6 +226,12 @@ fn build_app_menu<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<
         "脚本片段",
         Some(platform_accelerator("Alt+6", "Cmd+6")),
     )?;
+    let edit_undo = menu_item(manager, NativeMenuAction::EditUndo, "撤销", None)?;
+    let edit_redo = menu_item(manager, NativeMenuAction::EditRedo, "重做", None)?;
+    let edit_cut = menu_item(manager, NativeMenuAction::EditCut, "剪切", None)?;
+    let edit_copy = menu_item(manager, NativeMenuAction::EditCopy, "复制", None)?;
+    let edit_paste = menu_item(manager, NativeMenuAction::EditPaste, "粘贴", None)?;
+    let edit_select_all = menu_item(manager, NativeMenuAction::EditSelectAll, "全选", None)?;
 
     let app_menu = SubmenuBuilder::new(manager, "Kerminal")
         .about_with_text(
@@ -222,6 +252,18 @@ fn build_app_menu<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<
         .item(&close_pane)
         .item(&open_settings)
         .build()?;
+    // Keep edit chords owned by the WebView so terminal Ctrl+C/V and Monaco
+    // shortcuts are not stolen by native menu accelerators.
+    let edit_menu = SubmenuBuilder::new(manager, "编辑")
+        .item(&edit_undo)
+        .item(&edit_redo)
+        .separator()
+        .item(&edit_cut)
+        .item(&edit_copy)
+        .item(&edit_paste)
+        .separator()
+        .item(&edit_select_all)
+        .build()?;
     let terminal_menu = SubmenuBuilder::new(manager, "终端")
         .item(&split_horizontal)
         .item(&split_vertical)
@@ -239,6 +281,7 @@ fn build_app_menu<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<
     MenuBuilder::new(manager)
         .item(&app_menu)
         .item(&file_menu)
+        .item(&edit_menu)
         .item(&terminal_menu)
         .item(&view_menu)
         .build()

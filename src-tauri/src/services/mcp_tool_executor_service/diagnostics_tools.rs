@@ -106,16 +106,36 @@ pub(super) fn execute_kerminal_tool_help(
             "fallbacks": [
                 "Call kerminal.operation_guide when you need a task sequence rather than a single tool schema.",
                 "Use tools/list for the raw MCP protocol list when your host needs the unprocessed catalog.",
-                "For file-backed configuration, read kerminal-config.md or call kerminal.config_guide, edit files directly, then call kerminal.config.validate."
+                "For file-backed configuration, read kerminal-config.md or call kerminal.config_guide, edit files directly, then call kerminal.config.validate.",
+                "For SSH terminal/SFTP/exec/tmux/container/port-forward reuse, inspect kerminal.runtime_snapshot.managedSsh before assuming each tool opens a separate SSH connection.",
+                "For external SSH launch compatibility, inspect kerminal.runtime_snapshot.externalLaunch; edit settings.toml externalLaunch and validate instead of looking for external_launch.* MCP control tools."
             ],
+            "managedSshRuntime": {
+                "inspectTool": "kerminal.runtime_snapshot",
+                "snapshotPath": "managedSsh",
+                "diagnosticFields": [
+                    "runtime.managedSshActiveSessionCount",
+                    "runtime.managedSshActiveChannelCount",
+                    "managedSsh.sessions[].channelCounts",
+                    "managedSsh.sessions[].pendingExecRequests",
+                    "managedSsh.sessions[].lastError"
+                ],
+                "appliesToFamilies": ["ssh", "sftp", "tmux", "container", "portForward", "serverInfo"],
+                "sharedSessionRule": "Kerminal owns the authenticated ManagedSshSession and opens separate shell, SFTP, exec, and forwarding channels for host-bound tools.",
+                "fallbackRule": "Only unsupported or unwired managed backends may fall back to legacy paths; auth, host-key, connect, subsystem, exec, or channel-open failures should not silently create a new legacy SSH connection.",
+                "secretBoundary": "managedSsh output is redacted and must not include passwords, private keys, key passphrases, raw env, or vault refs."
+            },
             "safetyBoundaries": {
                 "readOnly": "kerminal.tool_help is read-only and never invokes the referenced tool.",
                 "hostPolicy": "The MCP host owns confirmation, approval, permissions, hooks, and audit before write or destructive tools.",
                 "fileFirstConfiguration": "settings/profile/host/snippet/workflow CRUD tools are deliberately absent; use direct file edits plus validation.",
+                "managedSsh": "SSH-bound tool families reuse a managed runtime where possible; diagnostics prove session/channel ownership without exposing credential material.",
+                "externalLaunch": "External launch passwords and passphrases are session-only; MCP diagnostics expose policy, counts, launch ids, and redacted rejection metadata only.",
                 "secrets": "Do not extract or print stored secrets. Authorized credential writes use kerminal.host.upsert_with_credential or kerminal.vault.encrypt_secret."
             },
             "nextActions": [
                 "Call the selected read-only discovery or runtime tool only after checking required arguments.",
+                "For SSH-bound operations, call kerminal.runtime_snapshot and inspect managedSsh before and after the operation when debugging session reuse.",
                 "For terminal.write, resolve and inspect the target first; session-bound writes require agentSessionId, bindingGeneration, and data.",
                 "For destructive tools, require clear user intent and host-side approval/audit."
             ]
@@ -193,6 +213,18 @@ fn tool_ids_for_help_family<'a>(
                 "kerminal.config.validate",
             ],
         ),
+        "external-launch" | "external-ssh-launch" | "bastion-launch" | "jump-host-launch" => {
+            tool_ids_matching_prefixes(
+                tools,
+                &[
+                    "kerminal.runtime_snapshot",
+                    "kerminal.config_guide",
+                    "kerminal.operation_guide",
+                    "kerminal.tool_help",
+                    "kerminal.config.validate",
+                ],
+            )
+        }
         "config" | "configuration" => tool_ids_matching_prefixes(
             tools,
             &["kerminal.config_guide", "kerminal.config.validate"],
@@ -228,7 +260,7 @@ fn tool_ids_for_help_query<'a>(
         return Vec::new();
     }
 
-    tools
+    let mut matches = tools
         .iter()
         .filter(|tool| {
             tool.id.to_ascii_lowercase().contains(&normalized_query)
@@ -244,7 +276,58 @@ fn tool_ids_for_help_query<'a>(
                     .contains(&normalized_query)
         })
         .map(|tool| tool.id.as_str())
-        .collect()
+        .collect::<Vec<_>>();
+
+    if normalized_query.contains("managed ssh")
+        || normalized_query.contains("ssh reuse")
+        || normalized_query.contains("session reuse")
+        || normalized_query.contains("shared ssh")
+        || normalized_query.contains("sftp reconnect")
+        || normalized_query.contains("sftp reuse")
+    {
+        for tool_id in tool_ids_matching_prefixes(
+            tools,
+            &[
+                "kerminal.runtime_snapshot",
+                "ssh.",
+                "sftp.",
+                "tmux.",
+                "container.",
+                "port_forward.",
+                "server_info.",
+            ],
+        ) {
+            if !matches.contains(&tool_id) {
+                matches.push(tool_id);
+            }
+        }
+    }
+
+    if normalized_query.contains("external launch")
+        || normalized_query.contains("external ssh")
+        || normalized_query.contains("bastion")
+        || normalized_query.contains("jump host")
+        || normalized_query.contains("jump-host")
+        || normalized_query.contains("mobaxterm")
+        || normalized_query.contains("putty")
+    {
+        for tool_id in tool_ids_matching_prefixes(
+            tools,
+            &[
+                "kerminal.runtime_snapshot",
+                "kerminal.config_guide",
+                "kerminal.operation_guide",
+                "kerminal.tool_help",
+                "kerminal.config.validate",
+            ],
+        ) {
+            if !matches.contains(&tool_id) {
+                matches.push(tool_id);
+            }
+        }
+    }
+
+    matches
 }
 
 fn matching_absent_tool_families(filter: Option<&str>) -> Vec<&'static str> {

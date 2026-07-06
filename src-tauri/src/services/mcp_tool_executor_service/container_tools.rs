@@ -423,6 +423,8 @@ pub(super) async fn execute_container_files_chmod(
 pub(super) async fn execute_container_files_upload(
     docker_hosts: &DockerHostService,
     remote_hosts: &RemoteHostService,
+    paths: &KerminalPaths,
+    ssh_commands: &SshCommandService,
     arguments: &serde_json::Map<String, Value>,
 ) -> ToolExecutionResult {
     let request = match request_from_arguments::<DockerContainerTransferRequest>(
@@ -434,7 +436,10 @@ pub(super) async fn execute_container_files_upload(
     };
     let summary = summarize_container_upload_for_agent(&request);
 
-    match docker_hosts.upload(remote_hosts, request) {
+    match docker_hosts
+        .upload(remote_hosts, paths, ssh_commands, request)
+        .await
+    {
         Ok(true) => ToolExecutionResult {
             status: McpToolExecutionStatus::Succeeded,
             result_summary: Some(summary),
@@ -449,6 +454,8 @@ pub(super) async fn execute_container_files_upload(
 pub(super) async fn execute_container_files_download(
     docker_hosts: &DockerHostService,
     remote_hosts: &RemoteHostService,
+    paths: &KerminalPaths,
+    ssh_commands: &SshCommandService,
     arguments: &serde_json::Map<String, Value>,
 ) -> ToolExecutionResult {
     let request = match request_from_arguments::<DockerContainerTransferRequest>(
@@ -460,7 +467,10 @@ pub(super) async fn execute_container_files_download(
     };
     let summary = summarize_container_download_for_agent(&request);
 
-    match docker_hosts.download(remote_hosts, request) {
+    match docker_hosts
+        .download(remote_hosts, paths, ssh_commands, request)
+        .await
+    {
         Ok(true) => ToolExecutionResult {
             status: McpToolExecutionStatus::Succeeded,
             result_summary: Some(summary),

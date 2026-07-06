@@ -16,12 +16,19 @@ import {
   isTerminalTabGroupColor,
   isSftpTransferWorkspaceTab,
   isTerminalSessionTab,
+  isWorkspaceFileTab,
 } from "./types";
 import {
   dockerContainerTarget,
   localTarget,
   normalizeRemoteTargetRef,
 } from "../../lib/targetModel";
+import {
+  normalizeWorkspaceFilePath,
+  titleForWorkspaceFilePath,
+  workspaceFileMachineId,
+  workspaceFileTargetHostId,
+} from "./workspaceFileTabModel";
 
 export const WORKSPACE_SESSION_VERSION = 2;
 export const TERMINAL_OUTPUT_HISTORY_MAX_CHARS = 128 * 1024;
@@ -363,6 +370,30 @@ function normalizeTerminalTab(
     };
   }
 
+  if (value.kind === "workspaceFile") {
+    const target = normalizeRemoteTargetRef(value.target);
+    const access = normalizeWorkspaceFileAccess(value.access);
+    const source = normalizeWorkspaceFileSource(value.source);
+    if (!id || !target || !access || !source) {
+      return undefined;
+    }
+    const path = normalizeWorkspaceFilePath(readString(value.path));
+    const rootPath = readOptionalString(value.rootPath);
+    return {
+      access,
+      id,
+      kind: "workspaceFile",
+      machineId: workspaceFileMachineId(target),
+      path,
+      ...(rootPath
+        ? { rootPath: normalizeWorkspaceFilePath(rootPath) }
+        : {}),
+      source,
+      target,
+      title: titleForWorkspaceFilePath(path),
+    };
+  }
+
   const layout = normalizeLayoutNode(value.layout, paneIds);
 
   if (!id || !title || !machineId || !layout) {
@@ -546,7 +577,24 @@ function selectedMachineIdFromTab(tab: TerminalTab | undefined) {
       (tab.machineId !== "sftp-transfer" ? tab.machineId : "")
     );
   }
+  if (isWorkspaceFileTab(tab)) {
+    return workspaceFileTargetHostId(tab.target) ?? tab.machineId;
+  }
   return tab.machineId;
+}
+
+function normalizeWorkspaceFileAccess(value: unknown) {
+  return value === "readonly" || value === "editable" ? value : undefined;
+}
+
+function normalizeWorkspaceFileSource(value: unknown) {
+  return value === "sftp" ||
+    value === "container" ||
+    value === "composeYaml" ||
+    value === "workspace" ||
+    value === "local"
+    ? value
+    : undefined;
 }
 
 function numericSuffix(value: string) {

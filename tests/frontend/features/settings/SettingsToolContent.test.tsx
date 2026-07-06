@@ -201,7 +201,7 @@ describe("SettingsToolContent", () => {
         keybindings: expect.arrayContaining([
           expect.objectContaining({
             action: "settings.open",
-            binding: "Ctrl+Shift+T",
+            binding: "Ctrl+Alt+S",
             windowsBinding: "Ctrl+Alt+S",
             macBinding: "Cmd+,",
           }),

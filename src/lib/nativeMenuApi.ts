@@ -16,6 +16,12 @@ export const nativeMenuActions = [
   "openSftp",
   "openPorts",
   "openSnippets",
+  "editUndo",
+  "editRedo",
+  "editCut",
+  "editCopy",
+  "editPaste",
+  "editSelectAll",
 ] as const;
 
 export type NativeMenuAction = (typeof nativeMenuActions)[number];

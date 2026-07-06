@@ -131,6 +131,7 @@ export const sectionTabsByMode: Partial<Record<ConnectionMode, SectionTab[]>> =
       { Icon: Settings, id: "properties", label: "属性" },
       { Icon: Waypoints, id: "proxy", label: "代理" },
       { Icon: Network, id: "jump", label: "跳板机" },
+      { Icon: Terminal, id: "terminal", label: "终端" },
     ],
     local: [
       { Icon: Monitor, id: "properties", label: "属性" },
@@ -209,13 +210,6 @@ export const tunnelKindOptions: Array<{ label: string; value: SshTunnelKind }> =
     { label: "Dynamic", value: "dynamic" },
   ];
 
-export const terminalEncodingOptions = [
-  "UTF-8",
-  "GB18030",
-  "Big5",
-  "Shift_JIS",
-  "ISO-8859-1",
-];
 export const terminalTypeOptions = [
   "xterm-256color",
   "xterm",

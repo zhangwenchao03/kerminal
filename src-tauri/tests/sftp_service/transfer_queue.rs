@@ -84,6 +84,12 @@ async fn remote_copy_task_uses_source_and_target_hosts() {
     fs::create_dir_all(target_root.path().join("srv/app"))
         .await
         .expect("seed target parent directory");
+    fs::write(
+        target_root.path().join("srv/app/app.log.kerminal-part"),
+        b"remote ",
+    )
+    .await
+    .expect("seed target partial for remote copy resume");
     let source_server = start_loopback_sftp_server(source_root.path().to_path_buf()).await;
     let target_server = start_loopback_sftp_server(target_root.path().to_path_buf()).await;
     let (_home, state) = test_state();
@@ -377,6 +383,7 @@ fn transfer_summary(
         conflict_policy: Some(SftpTransferConflictPolicy::Overwrite),
         status,
         bytes_transferred: 0,
+        speed_bytes_per_second: 0,
         total_bytes: None,
         error: (status == SftpTransferStatus::Failed)
             .then(|| "failed for registry test".to_owned()),

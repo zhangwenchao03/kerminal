@@ -1,12 +1,18 @@
 // @author kongweiguang
 
 import type { MouseEvent as ReactMouseEvent } from "react";
-import { Loader2, ShieldOff, Sparkles, Terminal, Wrench } from "lucide-react";
+import {
+  Loader2,
+  ShieldOff,
+  Sparkles,
+  Terminal,
+  Unlink,
+  Wrench,
+} from "lucide-react";
 import { cn } from "../../../lib/cn";
 import type { ExternalAgentId } from "../../../lib/agentLauncherApi";
 import {
   agentPermissionSkipFlag,
-  agentSupportsPermissionSkip,
   type AgentActionViewModel,
   type AgentLaunchPermissionMode,
 } from "./agentLauncherModel";
@@ -17,7 +23,9 @@ const agentIcons = {
   custom: Wrench,
 };
 const agentLaunchContextMenuClassName =
-  "kerminal-context-menu kerminal-agent-launch-menu kerminal-floating-enter absolute z-[1000] w-[136px]";
+  "kerminal-context-menu kerminal-agent-launch-menu kerminal-floating-enter absolute z-[1000] w-[164px]";
+
+export type AgentLaunchTargetMode = "current" | "unbound";
 
 export function AgentIconButton({
   actionState,
@@ -30,6 +38,7 @@ export function AgentIconButton({
   onLaunch: (
     agentId: ExternalAgentId,
     permissionMode?: AgentLaunchPermissionMode,
+    targetMode?: AgentLaunchTargetMode,
   ) => void;
   onOpenMenu: (agent: AgentActionViewModel, event: ReactMouseEvent) => void;
 }) {
@@ -50,7 +59,7 @@ export function AgentIconButton({
       disabled={disabled}
       onClick={() => onLaunch(agent.agentId)}
       onContextMenu={(event) => {
-        if (disabled || !agentSupportsPermissionSkip(agent.agentId)) {
+        if (disabled) {
           return;
         }
         onOpenMenu(agent, event);
@@ -76,16 +85,16 @@ export function AgentLaunchContextMenu({
   position,
 }: {
   agent: AgentActionViewModel;
-  onLaunch: (permissionMode: AgentLaunchPermissionMode) => void;
+  onLaunch: (
+    permissionMode: AgentLaunchPermissionMode,
+    targetMode?: AgentLaunchTargetMode,
+  ) => void;
   position: {
     x: number;
     y: number;
   };
 }) {
   const skipFlag = agentPermissionSkipFlag(agent.agentId);
-  if (!skipFlag) {
-    return null;
-  }
 
   return (
     <div
@@ -100,18 +109,33 @@ export function AgentLaunchContextMenu({
       }}
     >
       <div className="kerminal-context-menu-group">
+        {skipFlag ? (
+          <button
+            aria-label={`Launch ${agent.title} with skipped permissions`}
+            className="kerminal-context-menu-item kerminal-agent-launch-menu-item"
+            onClick={() => onLaunch("skipPermissions")}
+            role="menuitem"
+            title={skipFlag}
+            type="button"
+          >
+            <span className="kerminal-context-menu-icon">
+              <ShieldOff />
+            </span>
+            <span className="kerminal-context-menu-label">跳过权限打开</span>
+          </button>
+        ) : null}
         <button
-          aria-label={`Launch ${agent.title} with skipped permissions`}
+          aria-label={`Launch ${agent.title} without binding a host`}
           className="kerminal-context-menu-item kerminal-agent-launch-menu-item"
-          onClick={() => onLaunch("skipPermissions")}
+          onClick={() => onLaunch("default", "unbound")}
           role="menuitem"
-          title={skipFlag}
+          title="不绑定当前主机或终端"
           type="button"
         >
           <span className="kerminal-context-menu-icon">
-            <ShieldOff />
+            <Unlink />
           </span>
-          <span className="kerminal-context-menu-label">跳过权限打开</span>
+          <span className="kerminal-context-menu-label">不绑定主机打开</span>
         </button>
       </div>
     </div>

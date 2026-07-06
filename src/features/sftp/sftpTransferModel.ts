@@ -302,8 +302,18 @@ export function transferStatusClassName(status: SftpTransferSummary["status"]) {
  */
 export function formatTransferBytes(transfer: SftpTransferSummary) {
   const totalBytes = transfer.totalBytes ?? 0;
-  if (totalBytes <= 0) {
-    return `${formatFileSize(transfer.bytesTransferred)} / -`;
+  const bytesLabel =
+    totalBytes <= 0
+      ? `${formatFileSize(transfer.bytesTransferred)} / -`
+      : `${formatFileSize(transfer.bytesTransferred)} / ${formatFileSize(totalBytes)}`;
+  const speedLabel = transferSpeedLabel(transfer);
+  return speedLabel ? `${bytesLabel} · ${speedLabel}` : bytesLabel;
+}
+
+function transferSpeedLabel(transfer: SftpTransferSummary) {
+  const speedBytesPerSecond = transfer.speedBytesPerSecond ?? 0;
+  if (transfer.status !== "running" || speedBytesPerSecond <= 0) {
+    return null;
   }
-  return `${formatFileSize(transfer.bytesTransferred)} / ${formatFileSize(totalBytes)}`;
+  return `${formatFileSize(speedBytesPerSecond)}/s`;
 }

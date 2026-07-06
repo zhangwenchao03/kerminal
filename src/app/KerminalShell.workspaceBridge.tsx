@@ -12,6 +12,7 @@ import type {
   AppSettings,
 } from "../features/settings/settingsModel";
 import { LazySftpTransferWorkbench as SftpTransferWorkbench } from "../features/sftp/LazySftpTransferWorkbench";
+import { LazyWorkspaceFileTabSurface as WorkspaceFileTabSurface } from "../features/workspace/LazyWorkspaceFileTabSurface";
 import {
   type BroadcastCommandRequest,
   type BroadcastCommandResult,
@@ -26,11 +27,15 @@ import type {
   TerminalSplitDirection,
   ToolId,
 } from "../features/workspace/types";
-import { isSftpTransferWorkspaceTab } from "../features/workspace/types";
+import {
+  isSftpTransferWorkspaceTab,
+  isWorkspaceFileTab,
+} from "../features/workspace/types";
 import {
   tools,
   useWorkspaceStore,
   type AddTerminalTabOptions,
+  type OpenWorkspaceFileTabOptions,
   type TmuxAttachPlacement,
 } from "../features/workspace/workspaceStore";
 import type { SettingsSectionId } from "../features/settings/SettingsToolContent";
@@ -79,6 +84,7 @@ interface ToolPanelStoreBridgeProps {
   onFocusTab?: (tabId: string) => void;
   onOpenSettingsSection?: (sectionId: SettingsSectionId) => void;
   onOpenSshTerminal?: (hostId: string) => void;
+  onOpenWorkspaceFileTab?: (options: OpenWorkspaceFileTabOptions) => void;
   onOpenTmuxTerminal?: (
     launch: TmuxAttachLaunch,
     placement?: TmuxAttachPlacement,
@@ -143,6 +149,12 @@ export function WorkspaceTerminalSurface({
   );
   const closePane = useWorkspaceStore((state) => state.closePane);
   const closeTerminalTab = useWorkspaceStore((state) => state.closeTerminalTab);
+  const setWorkspaceFileTabDirty = useWorkspaceStore(
+    (state) => state.setWorkspaceFileTabDirty,
+  );
+  const revealWorkspaceFileInSftp = useWorkspaceStore(
+    (state) => state.revealWorkspaceFileInSftp,
+  );
   const addTerminalTab = useWorkspaceStore((state) => state.addTerminalTab);
   const focusPane = useWorkspaceStore((state) => state.focusPane);
   const moveTerminalPane = useWorkspaceStore((state) => state.moveTerminalPane);
@@ -204,6 +216,7 @@ export function WorkspaceTerminalSurface({
       onPaneOutputHistoryChange={updatePaneOutputHistory}
       onSplitLayoutSizesChange={updateTerminalSplitLayoutSizes}
       onOpenLogs={onOpenLogs}
+      onRevealWorkspaceFileInSftp={revealWorkspaceFileInSftp}
       onRenameTab={renameTerminalTab}
       onUpdateTabGroupPreference={updateTerminalTabGroupPreference}
       leftTitleBarInset={leftTitleBarInset}
@@ -223,6 +236,13 @@ export function WorkspaceTerminalSurface({
             onCreateSshHost={onCreateSftpHost}
             workspaceTabId={tab.id}
           />
+        ) : isWorkspaceFileTab(tab) ? (
+          <WorkspaceFileTabSurface
+            active={active}
+            onDirtyChange={(dirty) => setWorkspaceFileTabDirty(tab.id, dirty)}
+            tab={tab}
+            terminalAppearance={terminalAppearance}
+          />
         ) : null
       }
       onSelectTab={selectTab}
@@ -233,6 +253,7 @@ export function WorkspaceTerminalSurface({
       tabs={terminalWorkspace.terminalTabs}
       tabGroupPreferences={terminalWorkspace.terminalTabGroupPreferences}
       terminalAppearance={terminalAppearance}
+      workspaceFileDirtyState={terminalWorkspace.workspaceFileDirtyState}
     />
   );
 }
@@ -274,17 +295,28 @@ export function ToolPanelStoreBridge({
   const openTmuxAttachTerminal = useWorkspaceStore(
     (state) => state.openTmuxAttachTerminal,
   );
+  const openWorkspaceFileTab = useWorkspaceStore(
+    (state) => state.openWorkspaceFileTab,
+  );
+  const workspaceFileDirtyState = useWorkspaceStore(
+    (state) => state.workspaceFileDirtyState,
+  );
 
   return (
     <ToolPanel
       {...props}
-      activeMachine={workspaceContext.activeMachine}
+      activeMachine={
+        workspaceContext.activeMachine ?? workspaceContext.selectedMachine
+      }
       activeTab={workspaceContext.activeTab}
       focusedPane={workspaceContext.focusedPane}
       onClosePane={closePane}
+      onOpenWorkspaceFileTab={openWorkspaceFileTab}
       onOpenTmuxTerminal={openTmuxAttachTerminal}
       terminalPanes={workspaceContext.terminalPanes}
       terminalTabs={workspaceContext.terminalTabs}
+      sftpRevealRequest={workspaceContext.sftpRevealRequest}
+      workspaceFileDirtyState={workspaceFileDirtyState}
       tools={tools}
     />
   );

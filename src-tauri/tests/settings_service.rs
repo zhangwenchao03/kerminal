@@ -5,13 +5,13 @@
 use kerminal_lib::{
     error::AppError,
     models::settings::{
-        AppSettings, BackgroundImageFit, InterfaceDensity, InterfaceLanguage, TerminalColorScheme,
-        TerminalCursorStyle, TerminalFontWeight, TerminalInlineSuggestionAcceptKey,
-        TerminalInlineSuggestionProductionHostPolicy, TerminalRendererType,
-        TerminalRightClickBehavior, ThemeMode, MAX_SFTP_GLOBAL_TRANSFERS, MAX_SFTP_HOST_TRANSFERS,
-        MAX_SFTP_PACKET_BYTES, MAX_SFTP_PIPELINE_DEPTH, MAX_SFTP_TIMEOUT_SECONDS,
-        MIN_SFTP_GLOBAL_TRANSFERS, MIN_SFTP_HOST_TRANSFERS, MIN_SFTP_PACKET_BYTES,
-        MIN_SFTP_PIPELINE_DEPTH, MIN_SFTP_TIMEOUT_SECONDS,
+        AppSettings, BackgroundImageFit, ExternalLaunchToolSetting, InterfaceDensity,
+        InterfaceLanguage, TerminalColorScheme, TerminalCursorStyle, TerminalFontWeight,
+        TerminalInlineSuggestionAcceptKey, TerminalInlineSuggestionProductionHostPolicy,
+        TerminalRendererType, TerminalRightClickBehavior, ThemeMode, MAX_SFTP_GLOBAL_TRANSFERS,
+        MAX_SFTP_HOST_TRANSFERS, MAX_SFTP_PACKET_BYTES, MAX_SFTP_PIPELINE_DEPTH,
+        MAX_SFTP_TIMEOUT_SECONDS, MIN_SFTP_GLOBAL_TRANSFERS, MIN_SFTP_HOST_TRANSFERS,
+        MIN_SFTP_PACKET_BYTES, MIN_SFTP_PIPELINE_DEPTH, MIN_SFTP_TIMEOUT_SECONDS,
     },
     paths::KerminalPaths,
     state::AppState,
@@ -88,6 +88,14 @@ fn settings_service_persists_settings_in_toml() {
         settings.desktop_notifications.important_only = true;
         settings.desktop_notifications.min_duration_ms = 25_000;
         settings.desktop_notifications.throttle_ms = 60_000;
+        settings.external_launch.accept_vendor_args = false;
+        settings.external_launch.shim_bridge.enabled = false;
+        settings.external_launch.auto_open_sftp = true;
+        settings.external_launch.disabled_tools = vec![
+            ExternalLaunchToolSetting::Putty,
+            ExternalLaunchToolSetting::Putty,
+            ExternalLaunchToolSetting::KerminalNative,
+        ];
 
         let stored = state
             .settings()
@@ -117,6 +125,16 @@ fn settings_service_persists_settings_in_toml() {
         assert!(stored.desktop_notifications.important_only);
         assert_eq!(stored.desktop_notifications.min_duration_ms, 25_000);
         assert_eq!(stored.desktop_notifications.throttle_ms, 60_000);
+        assert!(!stored.external_launch.accept_vendor_args);
+        assert!(!stored.external_launch.shim_bridge.enabled);
+        assert!(stored.external_launch.auto_open_sftp);
+        assert_eq!(
+            stored.external_launch.disabled_tools,
+            vec![
+                ExternalLaunchToolSetting::Putty,
+                ExternalLaunchToolSetting::KerminalNative,
+            ]
+        );
     }
 
     let state = AppState::initialize_with_paths(paths.clone()).expect("reopen app state");
@@ -192,6 +210,16 @@ fn settings_service_persists_settings_in_toml() {
     assert!(settings.desktop_notifications.important_only);
     assert_eq!(settings.desktop_notifications.min_duration_ms, 25_000);
     assert_eq!(settings.desktop_notifications.throttle_ms, 60_000);
+    assert!(!settings.external_launch.accept_vendor_args);
+    assert!(!settings.external_launch.shim_bridge.enabled);
+    assert!(settings.external_launch.auto_open_sftp);
+    assert_eq!(
+        settings.external_launch.disabled_tools,
+        vec![
+            ExternalLaunchToolSetting::Putty,
+            ExternalLaunchToolSetting::KerminalNative,
+        ]
+    );
     let settings_source =
         std::fs::read_to_string(paths.root.join("settings.toml")).expect("settings toml");
     assert!(settings_source.contains("schema_version = 1"));
@@ -199,6 +227,70 @@ fn settings_service_persists_settings_in_toml() {
     assert!(settings_source.contains("rendererType = \"gpu\""));
     assert!(settings_source.contains("[desktopNotifications]"));
     assert!(settings_source.contains("enabled = true"));
+    assert!(settings_source.contains("[externalLaunch]"));
+    assert!(settings_source.contains("acceptVendorArgs = false"));
+    assert!(settings_source.contains("autoOpenSftp = true"));
+    let settings_toml: toml::Value = toml::from_str(&settings_source).expect("settings toml value");
+    let disabled_tools = settings_toml
+        .get("externalLaunch")
+        .and_then(|section| section.get("disabledTools"))
+        .and_then(|tools| tools.as_array())
+        .expect("external launch disabled tools");
+    assert_eq!(
+        disabled_tools
+            .iter()
+            .filter_map(|tool| tool.as_str())
+            .collect::<Vec<_>>(),
+        vec!["putty", "kerminal-native"]
+    );
+    assert!(settings_source.contains("[externalLaunch.shimBridge]"));
+}
+
+#[test]
+fn app_state_syncs_external_launch_policy_from_settings() {
+    let home = tempdir().expect("create temp home");
+    let paths = KerminalPaths::from_home_dir(home.path());
+
+    {
+        let state = AppState::initialize_with_paths(paths.clone()).expect("initialize app state");
+        let mut settings = AppSettings::default();
+        settings.external_launch.enabled = false;
+        settings.external_launch.accept_vendor_args = false;
+        settings.external_launch.shim_bridge.enabled = false;
+        settings.external_launch.auto_open_sftp = true;
+        settings.external_launch.disabled_tools = vec![ExternalLaunchToolSetting::Putty];
+
+        state
+            .update_settings(settings)
+            .expect("update app settings and runtime policy");
+
+        let policy = state
+            .external_launch_intake()
+            .policy_snapshot()
+            .expect("external launch policy");
+        assert!(!policy.enabled);
+        assert!(!policy.accept_vendor_args);
+        assert!(!policy.shim_bridge_enabled);
+        assert!(policy.auto_open_sftp);
+        assert_eq!(
+            serde_json::to_value(&policy.disabled_tools).expect("disabled tools"),
+            serde_json::json!(["putty"])
+        );
+    }
+
+    let state = AppState::initialize_with_paths(paths).expect("reopen app state");
+    let policy = state
+        .external_launch_intake()
+        .policy_snapshot()
+        .expect("reloaded external launch policy");
+    assert!(!policy.enabled);
+    assert!(!policy.accept_vendor_args);
+    assert!(!policy.shim_bridge_enabled);
+    assert!(policy.auto_open_sftp);
+    assert_eq!(
+        serde_json::to_value(&policy.disabled_tools).expect("disabled tools"),
+        serde_json::json!(["putty"])
+    );
 }
 
 #[test]

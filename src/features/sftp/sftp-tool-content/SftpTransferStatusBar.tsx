@@ -190,7 +190,9 @@ function SftpTransferRow({
   const percentLabel = transferPercentLabel(transfer);
   const canCancel = canCancelTransfer(transfer);
   const retryDecision =
-    transfer.status === "failed" ? resolveSftpTransferRetry(transfer) : null;
+    transfer.status === "failed" || transfer.status === "canceled"
+      ? resolveSftpTransferRetry(transfer)
+      : null;
   const Icon = transfer.direction === "upload" ? Upload : Download;
   const title = transferTitle(transfer);
 
@@ -231,7 +233,7 @@ function SftpTransferRow({
             className="kerminal-muted-surface h-6 w-6 shrink-0 rounded-md border px-0 text-zinc-600 hover:bg-[var(--surface-hover)] dark:text-zinc-300"
             onClick={() => onRetry(transfer)}
             size="sm"
-            title="重新加入传输队列；不默认启用断点续传"
+            title="重新加入传输队列；将优先尝试断点续传"
             type="button"
             variant="ghost"
           >

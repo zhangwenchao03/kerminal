@@ -21,7 +21,6 @@ pub fn settings_update(
     request: AppSettings,
 ) -> Result<AppSettings, String> {
     state
-        .settings()
         .update_settings(request)
         .map_err(|error| error.to_string())
 }

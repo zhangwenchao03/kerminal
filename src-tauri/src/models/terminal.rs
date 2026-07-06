@@ -479,6 +479,8 @@ pub struct TerminalPtyOutputPumpStats {
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum TerminalErrorClass {
+    /// SSH 认证需要用户输入一次性或可保存凭据。
+    SshAuthRequired,
     /// 子进程或终端客户端启动失败。
     SpawnFailed,
     /// PTY 输出读取失败。
@@ -549,6 +551,8 @@ pub struct TerminalCommandError {
     pub operation: TerminalErrorOperation,
     pub message: String,
     pub retryable: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh_auth_prompt_plan: Option<serde_json::Value>,
 }
 
 impl TerminalCommandError {
@@ -562,7 +566,15 @@ impl TerminalCommandError {
             operation,
             message,
             retryable: recovery == TerminalErrorRecovery::Retryable,
+            ssh_auth_prompt_plan: terminal_ssh_auth_prompt_plan(error),
         }
+    }
+}
+
+fn terminal_ssh_auth_prompt_plan(error: &AppError) -> Option<serde_json::Value> {
+    match error {
+        AppError::SshAuthPromptRequired { prompt_plan, .. } => Some(prompt_plan.clone()),
+        _ => None,
     }
 }
 
@@ -573,6 +585,7 @@ fn classify_terminal_app_error(
 ) -> TerminalErrorClass {
     let lower_message = message.to_ascii_lowercase();
     match error {
+        AppError::SshAuthPromptRequired { .. } => TerminalErrorClass::SshAuthRequired,
         AppError::InvalidInput(_) => TerminalErrorClass::InvalidInput,
         AppError::NotFound(_) => TerminalErrorClass::SessionNotFound,
         AppError::StateLockPoisoned(_) => TerminalErrorClass::StateUnavailable,
@@ -645,6 +658,7 @@ fn classify_terminal_message(
 
 fn recovery_for_terminal_error_class(class: TerminalErrorClass) -> TerminalErrorRecovery {
     match class {
+        TerminalErrorClass::SshAuthRequired => TerminalErrorRecovery::UserActionRequired,
         TerminalErrorClass::PtyReadFailed
         | TerminalErrorClass::PtyWriteFailed
         | TerminalErrorClass::ResizeFailed => TerminalErrorRecovery::Retryable,

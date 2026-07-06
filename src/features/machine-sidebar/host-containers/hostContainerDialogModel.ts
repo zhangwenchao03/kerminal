@@ -9,6 +9,7 @@ import type {
   DockerContainerSummary,
 } from "../../../lib/dockerApi";
 import {
+  buildComposeProjectViews,
   readContainerComposeConfigPaths,
   readContainerComposeProject,
   readContainerComposeService,
@@ -22,6 +23,10 @@ export type HostContainerLifecycleAction =
   | "restart"
   | "remove";
 export type HostContainerInspectorTab = "details" | "stats";
+export type HostContainerSelection =
+  | { kind: "container"; containerId: string }
+  | { kind: "project"; projectId: string }
+  | null;
 
 export type HostContainerMetadata = ComposeProjectContainerSummary;
 
@@ -110,6 +115,40 @@ export function buildHostContainerDialogViewModel(
       .length,
     totalCount: source.length,
   };
+}
+
+export function resolveHostContainerSelection(
+  containers: DockerContainerSummary[],
+  groupMode: HostContainerGroupMode,
+  current: HostContainerSelection,
+  initialContainerId?: string,
+): HostContainerSelection {
+  const hasContainer = (containerId: string) =>
+    containers.some((container) => container.id === containerId);
+
+  if (initialContainerId && hasContainer(initialContainerId)) {
+    return { kind: "container", containerId: initialContainerId };
+  }
+  if (current?.kind === "container" && hasContainer(current.containerId)) {
+    return current;
+  }
+
+  if (groupMode === "compose") {
+    const composeView = buildComposeProjectViews(containers);
+    if (
+      current?.kind === "project" &&
+      composeView.projects.some((project) => project.id === current.projectId)
+    ) {
+      return current;
+    }
+    if (composeView.projects[0]) {
+      return { kind: "project", projectId: composeView.projects[0].id };
+    }
+  }
+
+  return containers[0]
+    ? { kind: "container", containerId: containers[0].id }
+    : null;
 }
 
 export function containerProjectName(container: HostContainerMetadata) {

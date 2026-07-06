@@ -262,24 +262,36 @@ pub async fn docker_chmod_path(
 
 /// 上传本地文件或目录到容器。
 #[tauri::command]
-pub fn docker_upload(
+pub async fn docker_upload(
     state: State<'_, AppState>,
     request: DockerContainerTransferRequest,
 ) -> Result<bool, String> {
     state
         .docker_hosts()
-        .upload(state.remote_hosts(), request)
+        .upload(
+            state.remote_hosts(),
+            state.paths(),
+            state.ssh_commands(),
+            request,
+        )
+        .await
         .map_err(|error| error.to_string())
 }
 
 /// 下载容器内文件或目录到本地。
 #[tauri::command]
-pub fn docker_download(
+pub async fn docker_download(
     state: State<'_, AppState>,
     request: DockerContainerTransferRequest,
 ) -> Result<bool, String> {
     state
         .docker_hosts()
-        .download(state.remote_hosts(), request)
+        .download(
+            state.remote_hosts(),
+            state.paths(),
+            state.ssh_commands(),
+            request,
+        )
+        .await
         .map_err(|error| error.to_string())
 }

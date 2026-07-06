@@ -172,6 +172,46 @@ export function browserBootstrapScript() {
                 path: args.request?.path ?? "/srv/kerminal/.env",
                 truncated: false,
               };
+            case "sftp_read_text_file": {
+              const content =
+                args.request?.path?.endsWith("compose.yaml")
+                  ? "services:\\n  api:\\n    image: kerminal/api:latest\\n    ports:\\n      - \\"8080:80\\"\\n  worker:\\n    image: kerminal/worker:latest\\n"
+                  : "PORT=1425\\nRUST_LOG=info\\nKERMINAL_MODE=production\\n";
+              return {
+                binary: false,
+                bytesRead: content.length,
+                content,
+                encoding: "utf-8",
+                hostId: args.request?.hostId ?? "prod-api",
+                lineEnding: "\\n",
+                maxBytes: args.request?.maxBytes ?? 10485760,
+                path: args.request?.path ?? "/srv/kerminal/.env",
+                readonly: false,
+                revision: {
+                  contentSha256: "readme-capture",
+                  modified: "1782197600",
+                  permissions: "-rw-r--r--",
+                  permissionsMode: 0o644,
+                  size: content.length,
+                },
+                truncated: false,
+              };
+            }
+            case "sftp_write_text_file":
+              return {
+                bytesWritten: args.request?.content?.length ?? 0,
+                encoding: args.request?.encoding ?? "utf-8",
+                hostId: args.request?.hostId ?? "prod-api",
+                lineEnding: "\\n",
+                path: args.request?.path ?? "/srv/kerminal/.env",
+                revision: {
+                  contentSha256: "readme-capture-updated",
+                  modified: String(Math.floor(Date.now() / 1000)),
+                  permissions: "-rw-r--r--",
+                  permissionsMode: 0o644,
+                  size: args.request?.content?.length ?? 0,
+                },
+              };
             case "sftp_stat_path":
               return {
                 hostId: args.request?.hostId ?? "prod-api",
@@ -244,6 +284,36 @@ export function browserBootstrapScript() {
                 targetRef: "ssh:prod-api",
                 targetToken: "readme-target-token",
               }));
+            case "external_launch_take_pending":
+              return [];
+            case "external_launch_alias_status":
+              return externalLaunchAliasStatus();
+            case "external_launch_alias_generate":
+              return externalLaunchAliasStatus().aliases
+                .filter((alias) =>
+                  (args.request?.tools ?? ["putty", "mobaxterm", "xshell", "securecrt", "openssh"]).includes(alias.tool),
+                )
+                .map((alias) => ({
+                  aliasPath: alias.aliasPath,
+                  installMode: "copy",
+                  markerPath: alias.markerPath,
+                  state: "managed",
+                  tool: alias.tool,
+                }));
+            case "external_launch_alias_delete":
+              return externalLaunchAliasStatus().aliases
+                .filter((alias) =>
+                  (args.request?.tools ?? ["putty", "mobaxterm", "xshell", "securecrt", "openssh"]).includes(alias.tool),
+                )
+                .map((alias) => ({
+                  aliasPath: alias.aliasPath,
+                  markerPath: alias.markerPath,
+                  removedAlias: alias.state === "managed",
+                  removedMarker: alias.markerPresent,
+                  tool: alias.tool,
+                }));
+            case "external_launch_alias_open_directory":
+              return args.aliasDirectory ?? externalLaunchAliasStatus().aliasDirectory;
             case "terminal_log_state":
             case "terminal_stop_log":
               return { active: false, bytesWritten: 0 };
@@ -782,8 +852,50 @@ export function browserBootstrapScript() {
 
       function portForwards() {
         return [
-          { bindHost: "127.0.0.1", bindPort: 18080, hostId: "prod-api", id: "port-api", kind: "local", name: "API tunnel", running: true, targetHost: "127.0.0.1", targetPort: 8080 },
+          {
+            bindHost: "127.0.0.1",
+            createdAt: "1782197600",
+            hostId: "prod-api",
+            hostName: "prod-api",
+            id: "port-api",
+            kind: "local",
+            localEndpoint: { host: "127.0.0.1", port: 18080, protocol: "tcp", side: "local" },
+            name: "API tunnel",
+            origin: "user",
+            sourcePort: 18080,
+            status: "running",
+            targetHost: "127.0.0.1",
+            targetPort: 8080,
+          },
         ];
+      }
+
+      function externalLaunchAliasStatus() {
+        const aliasDirectory = "C:/Users/kong/AppData/Local/Kerminal/ExternalLaunch";
+        const tools = ["putty", "mobaxterm", "xshell", "securecrt", "openssh"];
+        return {
+          aliasDirectory,
+          aliases: tools.map((tool) => ({
+            aliasPath: aliasDirectory + "/" + externalLaunchAliasFileName(tool),
+            markerPath: aliasDirectory + "/" + externalLaunchAliasFileName(tool) + ".kerminal.json",
+            markerPresent: true,
+            state: tool === "securecrt" ? "missing" : "managed",
+            tool,
+          })),
+          kerminalExecutable: "C:/Program Files/Kerminal/kerminal.exe",
+          shimAvailable: true,
+          shimExecutable: "C:/Program Files/Kerminal/kerminal-launch-shim.exe",
+        };
+      }
+
+      function externalLaunchAliasFileName(tool) {
+        return {
+          mobaxterm: "MobaXterm.exe",
+          openssh: "ssh.exe",
+          putty: "putty.exe",
+          securecrt: "SecureCRT.exe",
+          xshell: "Xshell.exe",
+        }[tool] ?? tool + ".exe";
       }
 
       function externalAgentWorkspaceStatus() {
@@ -964,6 +1076,8 @@ export function browserBootstrapScript() {
       }
 
       function readmeSettings() {
+        const themeMode =
+          localStorage.getItem("kerminal.readme.capture.themeMode") ?? "dark";
         return {
           appearance: {
             backgroundEnabled: false,
@@ -1008,7 +1122,7 @@ export function browserBootstrapScript() {
             selectionCopy: false,
             showTabNumbers: false,
           },
-          themeMode: "dark",
+          themeMode,
         };
       }
 

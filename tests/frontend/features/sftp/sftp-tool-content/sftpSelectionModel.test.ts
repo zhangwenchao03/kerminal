@@ -59,6 +59,18 @@ describe("sftpSelectionModel", () => {
     ).toEqual(new Set(["/var/log"]));
   });
 
+  it("clears the only selected entry when it is clicked again", () => {
+    expect(
+      nextSelectedEntryPaths(
+        entries,
+        new Set(["/var/log"]),
+        "/var/log",
+        "/var/log",
+        { ctrlKey: false, metaKey: false, shiftKey: false },
+      ),
+    ).toEqual(new Set());
+  });
+
   it("keeps multi-selection when opening a context menu on a selected entry", () => {
     const currentSelection = {
       selectedEntryPath: "/var/log",

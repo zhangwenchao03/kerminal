@@ -416,6 +416,7 @@ export function browserEnqueueTransfer(
     createdAt: now,
     id: `browser-transfer-${++browserTransferSeq}`,
     status: "running",
+    speedBytesPerSecond: 0,
     totalBytes,
     updatedAt: now,
     operation: managedBrowserTransferOperation(request.direction),
@@ -534,6 +535,7 @@ export function browserCancelTransfer(
   transfer.cancelRequested = true;
   transfer.status = "canceled";
   transfer.phase = "canceled";
+  transfer.speedBytesPerSecond = 0;
   transfer.updatedAt = nowSeconds();
   stopBrowserTransferSimulation(transfer.id);
   return { ...transfer };
@@ -589,14 +591,22 @@ function startBrowserTransferSimulation(transferId: string) {
     }
     const totalBytes = transfer.totalBytes ?? 512 * 1024;
     const chunk = Math.max(32 * 1024, Math.ceil(totalBytes / 6));
-    transfer.bytesTransferred = Math.min(
+    const nextBytesTransferred = Math.min(
       totalBytes,
       transfer.bytesTransferred + chunk,
+    );
+    transfer.speedBytesPerSecond = Math.round(
+      ((nextBytesTransferred - transfer.bytesTransferred) * 1000) / 220,
+    );
+    transfer.bytesTransferred = Math.min(
+      totalBytes,
+      nextBytesTransferred,
     );
     transfer.updatedAt = nowSeconds();
     if (transfer.bytesTransferred >= totalBytes) {
       transfer.status = "succeeded";
       transfer.phase = "done";
+      transfer.speedBytesPerSecond = 0;
       stopBrowserTransferSimulation(transferId);
     }
   }, 220);

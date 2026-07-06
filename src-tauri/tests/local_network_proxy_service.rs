@@ -57,12 +57,7 @@ async fn connect_tunnel_forwards_to_local_http_service() {
     assert!(response_text.contains("HTTP/1.1 200 OK"));
     assert!(response_text.contains("path=/via-connect"));
 
-    let snapshot = service.snapshot().expect("snapshot");
-    let entry_snapshot = snapshot
-        .entries
-        .iter()
-        .find(|snapshot| snapshot.entry_id == entry.entry_id)
-        .expect("entry stats");
+    let entry_snapshot = wait_for_entry_stats(&service, &entry.entry_id).await;
     assert_eq!(entry_snapshot.stats.accepted_connections, 1);
     assert!(entry_snapshot.stats.bytes_from_client > 0);
     assert!(entry_snapshot.stats.bytes_from_target > 0);
@@ -99,7 +94,7 @@ async fn absolute_form_http_request_is_forwarded() {
     assert!(response_text.contains("HTTP/1.1 200 OK"));
     assert!(response_text.contains("path=/absolute-form?source=proxy"));
 
-    let snapshot = service.snapshot().expect("snapshot");
+    let snapshot = wait_for_service_stats(&service).await;
     assert_eq!(snapshot.stats.accepted_connections, 1);
     assert!(snapshot.stats.bytes_from_client > 0);
     assert!(snapshot.stats.bytes_from_target > 0);
@@ -255,6 +250,50 @@ async fn read_to_end(stream: &mut TcpStream) -> Vec<u8> {
         .expect("timed out reading response")
         .expect("read response");
     response
+}
+
+async fn wait_for_entry_stats(
+    service: &LocalNetworkProxyService,
+    entry_id: &str,
+) -> LocalProxyEntrySummary {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        let snapshot = service.snapshot().expect("snapshot");
+        let entry_snapshot = snapshot
+            .entries
+            .iter()
+            .find(|snapshot| snapshot.entry_id == entry_id)
+            .expect("entry stats")
+            .clone();
+        if entry_snapshot.stats.bytes_from_client > 0 && entry_snapshot.stats.bytes_from_target > 0
+        {
+            return entry_snapshot;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for proxy entry byte stats: {:?}",
+            entry_snapshot.stats
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
+async fn wait_for_service_stats(
+    service: &LocalNetworkProxyService,
+) -> kerminal_lib::services::local_network_proxy_service::LocalNetworkProxySnapshot {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        let snapshot = service.snapshot().expect("snapshot");
+        if snapshot.stats.bytes_from_client > 0 && snapshot.stats.bytes_from_target > 0 {
+            return snapshot;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for proxy service byte stats: {:?}",
+            snapshot.stats
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
 }
 
 struct TestHttpServer {

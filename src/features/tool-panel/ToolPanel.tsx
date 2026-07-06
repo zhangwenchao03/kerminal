@@ -7,7 +7,6 @@ import {
   History,
   Network,
   PanelsTopLeft,
-  Settings,
 } from "lucide-react";
 import { RenderErrorBoundary } from "../../components/RenderErrorBoundary";
 import { Button } from "../../components/ui/button";
@@ -30,9 +29,13 @@ import type {
   TerminalTab,
   ToolId,
   ToolSummary,
+  WorkspaceFileDirtyState,
+  WorkspaceFileRevealRequest,
 } from "../workspace/types";
+import { isWorkspaceFileTab } from "../workspace/types";
 import type {
   AddTerminalTabOptions,
+  OpenWorkspaceFileTabOptions,
   TmuxAttachPlacement,
 } from "../workspace/workspaceStore";
 import type { TmuxAttachLaunch } from "../../lib/tmuxApi";
@@ -47,9 +50,11 @@ interface ToolPanelProps {
   focusedPane?: TerminalPane;
   terminalPanes?: TerminalPane[];
   terminalTabs?: TerminalTab[];
+  workspaceFileDirtyState?: WorkspaceFileDirtyState;
   tools: ToolSummary[];
   settings?: AppSettings;
   snippetConfigRevision?: number;
+  sftpRevealRequest?: WorkspaceFileRevealRequest | null;
   resolvedTheme?: ResolvedTheme;
   terminalAppearance?: TerminalAppearance;
   workflowConfigRevision?: number;
@@ -59,6 +64,7 @@ interface ToolPanelProps {
   onClosePane?: (paneId: string) => void;
   onOpenSettingsSection?: (sectionId: SettingsSectionId) => void;
   onOpenSshTerminal?: (hostId: string) => void;
+  onOpenWorkspaceFileTab?: (options: OpenWorkspaceFileTabOptions) => void;
   onOpenTmuxTerminal?: (
     launch: TmuxAttachLaunch,
     placement?: TmuxAttachPlacement,
@@ -68,7 +74,7 @@ interface ToolPanelProps {
   onSplitPane?: (direction: "horizontal" | "vertical") => void;
 }
 
-const toolIcons = {
+const toolIcons: Partial<Record<ToolId, typeof Bot>> = {
   agentLauncher: Bot,
   system: Cpu,
   sftp: FolderOpen,
@@ -76,7 +82,6 @@ const toolIcons = {
   tmux: PanelsTopLeft,
   snippets: FileText,
   logs: History,
-  settings: Settings,
 };
 
 const SftpToolContent = lazy(async () => ({
@@ -110,21 +115,26 @@ export function ToolPanel({
   onClosePane,
   onActiveToolChange,
   onFocusTab,
+  onOpenWorkspaceFileTab,
   onOpenTmuxTerminal,
   resolvedTheme = "dark",
   settings,
   snippetConfigRevision,
+  sftpRevealRequest,
   terminalPanes,
   terminalTabs,
   terminalAppearance,
+  workspaceFileDirtyState,
   tools,
 }: ToolPanelProps) {
-  const railTools = tools.filter((tool) => tool.id !== "settings");
+  const railTools = tools;
+  const defaultContentToolId =
+    tools.find((tool) => tool.id !== "settings")?.id ?? null;
   const contentTool =
     activeTool === null
       ? null
       : activeTool === "settings"
-        ? (railTools[0]?.id ?? null)
+        ? defaultContentToolId
         : activeTool;
   const [mountedToolIds, setMountedToolIds] = useState<ToolId[]>(() =>
     contentTool ? [contentTool] : [],
@@ -190,7 +200,8 @@ export function ToolPanel({
           {renderedTools.map((tool) => {
             const toolId = tool.id;
             const selected = toolId === contentTool;
-            const fullHeightTool = toolId === "agentLauncher" || toolId === "sftp";
+            const fullHeightTool =
+              toolId === "agentLauncher" || toolId === "sftp";
             return (
               <div
                 aria-hidden={!selected}
@@ -213,7 +224,9 @@ export function ToolPanel({
                         {tool.title}
                       </h2>
                       {toolId === "logs" ? (
-                        <DiagnosticsBundleButton controller={diagnosticsBundle} />
+                        <DiagnosticsBundleButton
+                          controller={diagnosticsBundle}
+                        />
                       ) : null}
                     </div>
                     <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
@@ -224,7 +237,10 @@ export function ToolPanel({
 
                 <RenderErrorBoundary
                   fallback={(error) => (
-                    <ToolContentCrashFallback error={error} title={tool.title} />
+                    <ToolContentCrashFallback
+                      error={error}
+                      title={tool.title}
+                    />
                   )}
                 >
                   <Suspense
@@ -249,6 +265,12 @@ export function ToolPanel({
                     ) : null}
                     {toolId === "sftp" ? (
                       <SftpToolContent
+                        followedLocalPath={
+                          focusedPane?.mode === "local" &&
+                          focusedPane.machineId === activeMachine?.id
+                            ? (focusedPane.currentCwd ?? focusedPane.cwd)
+                            : undefined
+                        }
                         followedRemotePath={
                           focusedPane?.mode === "ssh" &&
                           focusedPane.remoteHostId === activeMachine?.id
@@ -259,11 +281,17 @@ export function ToolPanel({
                               : undefined
                         }
                         interfaceDensity={interfaceDensity}
+                        onOpenWorkspaceFileTab={onOpenWorkspaceFileTab}
                         selectedMachine={activeMachine}
+                        sftpRevealRequest={sftpRevealRequest}
                         transferViewScope={sftpSidebarTransferViewScope({
                           hostId: activeMachine?.id,
                           tabId: activeTab?.id,
                         })}
+                        workspaceFileDirtyState={workspaceFileDirtyState}
+                        workspaceFileTabs={terminalTabs?.filter(
+                          isWorkspaceFileTab,
+                        )}
                       />
                     ) : null}
                     {toolId === "ports" ? (
@@ -294,7 +322,9 @@ export function ToolPanel({
                     {toolId === "logs" ? (
                       <LogToolContent
                         diagnosticsBundleNotice={
-                          <DiagnosticsBundleNotice controller={diagnosticsBundle} />
+                          <DiagnosticsBundleNotice
+                            controller={diagnosticsBundle}
+                          />
                         }
                         focusedPane={focusedPane}
                       />
@@ -316,6 +346,9 @@ export function ToolPanel({
         {railTools.map((tool) => {
           const Icon = toolIcons[tool.id];
           const selected = tool.id === activeTool;
+          if (!Icon) {
+            return null;
+          }
 
           return (
             <Button

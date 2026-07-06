@@ -339,7 +339,8 @@ describe("useSftpRemoteDownloadDragActions", () => {
 
   it("clears drag state when the remote drag session finishes", () => {
     const entry = remoteEntry();
-    const { remoteDragEntriesRef, result, setters } = renderDragHook({
+    const { downloadEntriesToLocalTarget, remoteDragEntriesRef, result, setters } =
+      renderDragHook({
       remoteDragEntries: [entry],
     });
 
@@ -350,6 +351,7 @@ describe("useSftpRemoteDownloadDragActions", () => {
     expect(remoteDragEntriesRef.current).toEqual([]);
     expect(setters.setRemoteDownloadDragActive).toHaveBeenCalledWith(false);
     expect(setters.setRemoteDownloadDropActive).toHaveBeenCalledWith(false);
+    expect(downloadEntriesToLocalTarget).not.toHaveBeenCalled();
   });
 });
 

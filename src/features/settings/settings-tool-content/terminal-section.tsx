@@ -1,19 +1,17 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
+  Activity,
+  AlertTriangle,
   Check,
   MousePointerClick,
   RotateCcw,
+  ShieldCheck,
   Terminal,
   Type,
 } from "lucide-react";
 import { Select } from "../../../components/ui/select";
 import { cn } from "../../../lib/cn";
 import { terminalRendererRegistry } from "../../terminal/terminalRendererRegistry";
-import {
-  collectTerminalRuntimePerformanceSnapshot,
-  subscribeTerminalRuntimeDiagnostics,
-} from "../../terminal/terminalRuntimeDiagnosticsStore";
-import type { RuntimePerformanceSnapshot } from "../../terminal/terminalRuntimeDiagnostics";
 import {
   terminalCursorStyleOptions,
   terminalFontOptions,
@@ -30,6 +28,14 @@ import {
   TerminalAppearancePreview,
   TerminalSchemePicker,
 } from "./terminal-preview";
+import {
+  collectTerminalRuntimePerformanceSnapshot,
+  subscribeTerminalRuntimeDiagnostics,
+} from "../../terminal/terminalRuntimeDiagnosticsStore";
+import {
+  evaluateRuntimeProductionReadinessGate,
+  type RuntimePerformanceSnapshot,
+} from "../../terminal/terminalRuntimeDiagnostics";
 
 interface TerminalSettingsSectionProps {
   normalizedSettings: AppSettings;
@@ -37,11 +43,10 @@ interface TerminalSettingsSectionProps {
   updateTerminal: (terminal: Partial<TerminalAppearance>) => void;
 }
 
-const terminalPanelClassName = "kerminal-solid-surface rounded-2xl border p-5";
+const terminalPanelClassName =
+  "kerminal-solid-surface min-w-0 overflow-hidden rounded-2xl border p-5";
 const terminalSubpanelClassName =
-  "kerminal-muted-surface rounded-xl border p-4";
-const terminalInsetPanelClassName =
-  "kerminal-muted-surface rounded-xl border p-3";
+  "kerminal-muted-surface min-w-0 rounded-xl border p-4";
 const terminalBadgeClassName =
   "kerminal-muted-surface rounded-full border px-3 py-1 text-xs text-zinc-500 dark:text-zinc-400";
 
@@ -65,27 +70,75 @@ export function TerminalSettingsSection({
     terminalRendererRegistry.getSnapshot,
     terminalRendererRegistry.getSnapshot,
   );
-  const [runtimeSnapshot, setRuntimeSnapshot] =
+  const [runtimeDiagnostics, setRuntimeDiagnostics] =
     useState<RuntimePerformanceSnapshot | null>(null);
+  const [runtimeDiagnosticsError, setRuntimeDiagnosticsError] = useState<
+    string | null
+  >(null);
+  const [runtimeDiagnosticsLoading, setRuntimeDiagnosticsLoading] =
+    useState(false);
+  const runtimeGate = useMemo(
+    () =>
+      runtimeDiagnostics
+        ? evaluateRuntimeProductionReadinessGate(runtimeDiagnostics)
+        : null,
+    [runtimeDiagnostics],
+  );
+
+  const refreshRuntimeDiagnostics = useCallback(async () => {
+    setRuntimeDiagnosticsLoading(true);
+    setRuntimeDiagnosticsError(null);
+    try {
+      setRuntimeDiagnostics(await collectTerminalRuntimePerformanceSnapshot());
+    } catch (error) {
+      setRuntimeDiagnostics(null);
+      setRuntimeDiagnosticsError(
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      setRuntimeDiagnosticsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let disposed = false;
-    const refresh = () => {
-      void collectTerminalRuntimePerformanceSnapshot().then((snapshot) => {
-        if (!disposed) {
-          setRuntimeSnapshot(snapshot);
+    let mounted = true;
+    const load = async () => {
+      try {
+        const snapshot = await collectTerminalRuntimePerformanceSnapshot();
+        if (!mounted) {
+          return;
         }
-      });
+        setRuntimeDiagnostics(snapshot);
+        setRuntimeDiagnosticsError(null);
+      } catch (error) {
+        if (!mounted) {
+          return;
+        }
+        setRuntimeDiagnostics(null);
+        setRuntimeDiagnosticsError(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
     };
-    refresh();
-    const unsubscribe = subscribeTerminalRuntimeDiagnostics(refresh);
-    const timerId = window.setInterval(refresh, 1500);
+
+    void load();
+    const unsubscribe = subscribeTerminalRuntimeDiagnostics(() => {
+      void load();
+    });
     return () => {
-      disposed = true;
+      mounted = false;
       unsubscribe();
-      window.clearInterval(timerId);
     };
   }, []);
+
+  const runtimeQueueDepth = useMemo(
+    () => runtimeDiagnosticsQueueDepth(runtimeDiagnostics),
+    [runtimeDiagnostics],
+  );
+  const runtimeCleanupState = useMemo(
+    () => runtimeDiagnosticsCleanupState(runtimeDiagnostics),
+    [runtimeDiagnostics],
+  );
 
   return (
     <section className={terminalPanelClassName} id="settings-terminal-panel">
@@ -238,64 +291,131 @@ export function TerminalSettingsSection({
               );
             })}
           </div>
+        </section>
 
-          <div className={cn(terminalInsetPanelClassName, "mt-3")}>
-            <dl className="grid gap-2 text-xs text-zinc-500 dark:text-zinc-400 sm:grid-cols-4">
-              <div className="flex items-center justify-between gap-2 sm:block">
-                <dt>GPU 分屏</dt>
-                <dd className="font-semibold text-zinc-700 dark:text-zinc-200">
-                  {rendererSnapshot.effectiveGpuPanes}/
-                  {rendererSnapshot.activeControllers}
-                </dd>
+        <section
+          className={terminalSubpanelClassName}
+          data-testid="managed-ssh-runtime-diagnostics"
+          id="settings-terminal-runtime-diagnostics-panel"
+          tabIndex={-1}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                <Activity className="h-4 w-4 text-zinc-400" />
+                运行诊断
               </div>
-              <div className="flex items-center justify-between gap-2 sm:block">
-                <dt>隐藏分屏</dt>
-                <dd className="font-semibold text-zinc-700 dark:text-zinc-200">
-                  {rendererSnapshot.hiddenControllers}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-2 sm:block">
-                <dt>WebGL Canvas</dt>
-                <dd className="font-semibold text-zinc-700 dark:text-zinc-200">
-                  {rendererSnapshot.webglCanvasCount}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-2 sm:block">
-                <dt>回退</dt>
-                <dd className="font-semibold text-zinc-700 dark:text-zinc-200">
-                  {rendererSnapshot.suggestedFallback ?? "无"}
-                </dd>
-              </div>
-            </dl>
+              <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+                Managed SSH、fallback、队列和重连状态。
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={cn(
+                  terminalBadgeClassName,
+                  runtimeGate?.ready
+                    ? "border-emerald-500/30 text-emerald-700 dark:text-emerald-200"
+                    : "border-amber-500/30 text-amber-700 dark:text-amber-200",
+                )}
+              >
+                {runtimeGate?.statusLabel ?? "诊断加载中"}
+              </span>
+              <button
+                aria-label="刷新运行诊断"
+                className="kerminal-focus-ring kerminal-pressable flex h-8 w-8 items-center justify-center rounded-lg border text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50"
+                disabled={runtimeDiagnosticsLoading}
+                onClick={() => void refreshRuntimeDiagnostics()}
+                type="button"
+              >
+                <RotateCcw
+                  className={cn(
+                    "h-4 w-4",
+                    runtimeDiagnosticsLoading ? "animate-spin" : "",
+                  )}
+                />
+              </button>
+            </div>
           </div>
-          <div className={cn(terminalInsetPanelClassName, "mt-3")}>
-            <dl className="grid gap-2 text-xs text-zinc-500 dark:text-zinc-400 sm:grid-cols-4">
-              <div className="flex items-center justify-between gap-2 sm:block">
-                <dt>输出待写入</dt>
-                <dd className="font-semibold text-zinc-700 dark:text-zinc-200">
-                  {runtimeSnapshot?.terminalOutput?.totalPendingBytes ?? 0} B
-                </dd>
+
+          {runtimeDiagnosticsError ? (
+            <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-800 dark:text-amber-100">
+              {runtimeDiagnosticsError}
+            </div>
+          ) : null}
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
+            <RuntimeMetric label="Managed sessions" value={runtimeDiagnostics?.managedSsh?.activeSessions ?? 0} />
+            <RuntimeMetric label="Active channels" value={runtimeDiagnostics?.managedSsh?.activeChannels ?? 0} />
+            <RuntimeMetric label="Queue depth" value={runtimeQueueDepth} />
+            <RuntimeMetric label="Reconnecting" value={runtimeDiagnostics?.ssh?.reconnecting ?? 0} />
+          </div>
+
+          <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+            <div className="kerminal-solid-surface min-w-0 rounded-xl border p-3">
+              <div className="flex items-center gap-2 text-xs font-semibold text-zinc-700 dark:text-zinc-200">
+                {runtimeGate?.ready ? (
+                  <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                )}
+                默认启用门禁
               </div>
-              <div className="flex items-center justify-between gap-2 sm:block">
-                <dt>PTY 待 flush</dt>
-                <dd className="font-semibold text-zinc-700 dark:text-zinc-200">
-                  {runtimeSnapshot?.ptyPump?.totalPendingBytes ?? 0} B
-                </dd>
+              <div className="mt-3 grid gap-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+                <div className="flex justify-between gap-3">
+                  <span>Fallback rate</span>
+                  <span className="font-mono text-zinc-800 dark:text-zinc-100">
+                    {formatPercent(runtimeGate?.fallbackRate ?? 0)}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Unknown errors</span>
+                  <span className="font-mono text-zinc-800 dark:text-zinc-100">
+                    {runtimeGate?.unknownErrorClassCount ?? 0}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Missing diagnostics</span>
+                  <span className="font-mono text-zinc-800 dark:text-zinc-100">
+                    {runtimeGate?.missingDiagnostics.length ?? 0}
+                  </span>
+                </div>
+                {runtimeGate?.issues.length ? (
+                  <ul className="space-y-1 pt-1">
+                    {runtimeGate.issues.map((issue) => (
+                      <li
+                        className="rounded-lg bg-amber-500/10 px-2 py-1 text-amber-800 dark:text-amber-100"
+                        key={`${issue.kind}:${issue.message}`}
+                      >
+                        {issue.message}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </div>
-              <div className="flex items-center justify-between gap-2 sm:block">
-                <dt>建议队列</dt>
-                <dd className="font-semibold text-zinc-700 dark:text-zinc-200">
-                  {runtimeSnapshot?.suggestions?.queued ?? 0}/
-                  {runtimeSnapshot?.suggestions?.activeTasks ?? 0}
-                </dd>
+            </div>
+
+            <div className="kerminal-solid-surface min-w-0 rounded-xl border p-3">
+              <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">
+                错误分类与清理
               </div>
-              <div className="flex items-center justify-between gap-2 sm:block">
-                <dt>SFTP 传输</dt>
-                <dd className="font-semibold text-zinc-700 dark:text-zinc-200">
-                  {runtimeSnapshot?.sftp?.transfers.activeTransfers ?? 0} active
-                </dd>
+              <div className="mt-3 space-y-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+                <RuntimeKeyValueRows
+                  emptyLabel="无 SSH 错误分类"
+                  rows={Object.entries(runtimeDiagnostics?.ssh?.errorClasses ?? {})}
+                />
+                <div className="flex justify-between gap-3 border-t border-zinc-200/70 pt-2 dark:border-zinc-800">
+                  <span>Session cleanup</span>
+                  <span className="font-mono text-zinc-800 dark:text-zinc-100">
+                    {runtimeCleanupState}
+                  </span>
+                </div>
               </div>
-            </dl>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 xl:grid-cols-2">
+            <RuntimeSessionList snapshot={runtimeDiagnostics} />
+            <RuntimeFallbackList snapshot={runtimeDiagnostics} />
           </div>
         </section>
 
@@ -422,4 +542,160 @@ export function TerminalSettingsSection({
       </div>
     </section>
   );
+}
+
+function RuntimeMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="kerminal-solid-surface min-w-0 rounded-xl border px-3 py-2">
+      <div className="text-xs text-zinc-500 dark:text-zinc-400">{label}</div>
+      <div className="mt-1 font-mono text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function RuntimeKeyValueRows({
+  emptyLabel,
+  rows,
+}: {
+  emptyLabel: string;
+  rows: Array<[string, number]>;
+}) {
+  if (rows.length === 0) {
+    return <div>{emptyLabel}</div>;
+  }
+
+  return (
+    <div className="space-y-1">
+      {rows.map(([label, value]) => (
+        <div className="flex justify-between gap-3" key={label}>
+          <span className="min-w-0 truncate">{label}</span>
+          <span className="font-mono text-zinc-800 dark:text-zinc-100">
+            {value}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RuntimeSessionList({
+  snapshot,
+}: {
+  snapshot: RuntimePerformanceSnapshot | null;
+}) {
+  const sessions = snapshot?.managedSsh?.sessions ?? [];
+  return (
+    <div className="kerminal-solid-surface min-w-0 rounded-xl border p-3">
+      <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">
+        Managed sessions
+      </div>
+      <div className="mt-3 space-y-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+        {sessions.length === 0 ? (
+          <div>无活动 managed SSH session</div>
+        ) : (
+          sessions.map((session) => (
+            <div
+              className="rounded-lg border border-zinc-200/70 px-2 py-2 dark:border-zinc-800"
+              key={session.sessionId}
+            >
+              <div className="flex justify-between gap-3">
+                <span className="min-w-0 truncate">{session.key.target}</span>
+                <span className="font-mono text-zinc-800 dark:text-zinc-100">
+                  {session.state}
+                </span>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono">
+                <span>channels={session.activeChannels}</span>
+                <span>opened={session.openedChannels}</span>
+                <span>pendingExec={session.pendingExecRequests}</span>
+                <span>maxExec={session.maxConcurrentExecChannels}</span>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                {Object.entries(session.channelCounts).map(([channel, count]) => (
+                  <span key={channel}>
+                    {channel}:{count}
+                  </span>
+                ))}
+              </div>
+              {session.key.runtimeFlags.length > 0 ? (
+                <div className="mt-1 truncate">
+                  flags={session.key.runtimeFlags.join(",")}
+                </div>
+              ) : null}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RuntimeFallbackList({
+  snapshot,
+}: {
+  snapshot: RuntimePerformanceSnapshot | null;
+}) {
+  const fallbacks = snapshot?.managedSsh?.recentLegacyFallbacks ?? [];
+  return (
+    <div className="kerminal-solid-surface min-w-0 rounded-xl border p-3">
+      <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">
+        Fallback reasons
+      </div>
+      <div className="mt-3 space-y-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+        {fallbacks.length === 0 ? (
+          <div>无 recent legacy fallback</div>
+        ) : (
+          fallbacks.map((fallback) => (
+            <div
+              className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-2 py-2 text-amber-800 dark:text-amber-100"
+              key={`${fallback.capability}:${fallback.reason}:${fallback.lastAt}`}
+            >
+              <div className="flex justify-between gap-3">
+                <span className="min-w-0 truncate">{fallback.capability}</span>
+                <span className="font-mono">{fallback.count}</span>
+              </div>
+              <div className="mt-1 break-words font-mono">{fallback.reason}</div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function runtimeDiagnosticsQueueDepth(
+  snapshot: RuntimePerformanceSnapshot | null,
+) {
+  if (!snapshot) {
+    return 0;
+  }
+
+  const pendingExec =
+    snapshot.managedSsh?.sessions.reduce(
+      (sum, session) => sum + session.pendingExecRequests,
+      0,
+    ) ?? 0;
+  return (
+    pendingExec +
+    (snapshot.sftp?.preflight?.queued ?? 0) +
+    (snapshot.suggestions?.queued ?? 0)
+  );
+}
+
+function runtimeDiagnosticsCleanupState(
+  snapshot: RuntimePerformanceSnapshot | null,
+) {
+  const sessions = snapshot?.managedSsh?.sessions ?? [];
+  const closing = sessions.filter((session) => session.state === "closing").length;
+  const failed = sessions.filter((session) => session.state === "failed").length;
+  if (closing > 0 || failed > 0) {
+    return `closing=${closing} failed=${failed}`;
+  }
+  return "idle";
+}
+
+function formatPercent(rate: number) {
+  return `${Math.round(rate * 100)}%`;
 }

@@ -18,7 +18,7 @@ import {  createDragDataTransfer,
 import { SftpToolContent } from "../../../../src/features/sftp/SftpToolContent";
 
 describe("SftpToolContent clipboard and selection", () => {
-  it("copies and pastes a selected remote item with keyboard shortcuts", async () => {
+  it("copies a selected remote item to the local file clipboard with Ctrl+C", async () => {
     const user = userEvent.setup();
 
     render(<SftpToolContent selectedMachine={sshMachine} />);
@@ -31,20 +31,14 @@ describe("SftpToolContent clipboard and selection", () => {
     await user.click(fileButton);
 
     fireEvent.keyDown(fileButton, { ctrlKey: true, key: "c" });
-    expect(await screen.findByText(/已复制到 SFTP 剪贴板/)).toBeInTheDocument();
-
-    fireEvent.keyDown(fileButton, { ctrlKey: true, key: "v" });
     await waitFor(() =>
-      expect(sftpApiMocks.enqueueSftpRemoteCopy).toHaveBeenCalledWith({
-        conflictPolicy: "overwrite",
+      expect(sftpApiMocks.enqueueSftpClipboardDownload).toHaveBeenCalledWith({
+        hostId: "prod-api",
         kind: "file",
-        sourceHostId: "prod-api",
         sourceRemotePath: "/var/log/app.log",
-        targetHostId: "prod-api",
-        targetRemotePath: "/var/log/app.copy.log",
       }),
     );
-    expect(screen.queryByText(/已加入远程复制队列/)).not.toBeInTheDocument();
+    expect(sftpApiMocks.enqueueSftpRemoteCopy).not.toHaveBeenCalled();
   });
 
   it("copies and pastes multiple selected remote items with keyboard shortcuts", async () => {
@@ -175,7 +169,7 @@ describe("SftpToolContent clipboard and selection", () => {
     const dataTransfer = createDragDataTransfer();
     fireEvent.dragStart(fileRow as HTMLElement, { dataTransfer });
 
-    expect(await screen.findByText("释放下载 2 项")).toBeInTheDocument();
+    expect(await screen.findByText("拖到下方列表复制 2 项")).toBeInTheDocument();
     fireEvent.dragOver(screen.getByTestId("sftp-drop-zone"), { dataTransfer });
     fireEvent.drop(screen.getByTestId("sftp-drop-zone"), { dataTransfer });
 
@@ -266,7 +260,11 @@ describe("SftpToolContent clipboard and selection", () => {
       name: "文件 app.log",
     });
     await user.click(fileButton);
-    fireEvent.keyDown(fileButton, { ctrlKey: true, key: "c" });
+    fireEvent.contextMenu(fileButton, {
+      clientX: 24,
+      clientY: 24,
+    });
+    await user.click(screen.getByRole("menuitem", { name: "复制项目" }));
     expect(await screen.findByText(/已复制到 SFTP 剪贴板/)).toBeInTheDocument();
 
     rerender(<SftpToolContent selectedMachine={stageSshMachine} />);

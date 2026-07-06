@@ -19,6 +19,7 @@ export type SettingsSectionId =
   | "settings-appearance"
   | "settings-terminal"
   | "settings-suggestions"
+  | "settings-external-launch"
   | "settings-desktop"
   | "settings-mcp"
   | "settings-sync"

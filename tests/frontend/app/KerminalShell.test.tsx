@@ -11,6 +11,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TerminalOutputEvent } from "../../../src/lib/terminalApi";
 import { defaultAppSettings } from "../../../src/features/settings/settingsModel";
 import {
+  dockerContainerTarget,
+  dockerContainerTargetCapabilities,
+} from "../../../src/lib/targetModel";
+import {
   resetWorkspaceStore,
   useWorkspaceStore,
 } from "../../../src/features/workspace/workspaceStore";
@@ -101,7 +105,62 @@ describe("KerminalShell", () => {
       updatedAt: "updated",
     }));
     mocks.dockerApi.listDockerContainers.mockResolvedValue([]);
+    mocks.dockerApi.fetchDockerContainerStats.mockResolvedValue({
+      blockIo: "0B / 0B",
+      containerId: "c0ffee1234567890",
+      cpuPercent: "0.42%",
+      hostId: "db980b17-2ed0-44e5-b72a-6ecadf788439",
+      memoryPercent: "4.1%",
+      memoryUsage: "42MiB / 1GiB",
+      networkIo: "1kB / 2kB",
+      pids: "7",
+      raw: '{"CPUPerc":"0.42%"}',
+      runtime: "docker",
+    });
+    mocks.dockerApi.inspectDockerContainer.mockResolvedValue({
+      command: ["serve"],
+      containerId: "c0ffee1234567890",
+      entrypoint: ["/entrypoint.sh"],
+      hostId: "db980b17-2ed0-44e5-b72a-6ecadf788439",
+      id: "c0ffee1234567890",
+      image: "kerminal/api:latest",
+      labels: {},
+      name: "api",
+      networks: ["bridge"],
+      ports: ["0.0.0.0:8080->80/tcp"],
+      rawJson: "{}",
+      running: true,
+      runtime: "docker",
+      status: "running",
+    });
     mocks.remoteHostApi.listRemoteHostTree.mockResolvedValue(remoteHostTree);
+    mocks.remoteWorkspaceEditorTransport.readRemoteWorkspaceTextFile.mockReset();
+    mocks.remoteWorkspaceEditorTransport.writeRemoteWorkspaceTextFile.mockReset();
+    mocks.remoteWorkspaceEditorTransport.readRemoteWorkspaceTextFile.mockResolvedValue(
+      {
+        binary: false,
+        bytesRead: 16,
+        content: "name: kerminal\n",
+        encoding: "utf-8",
+        hostId: "db980b17-2ed0-44e5-b72a-6ecadf788439",
+        lineEnding: "lf",
+        maxBytes: 10 * 1024 * 1024,
+        path: "/opt/app/docker-compose.yml",
+        readonly: true,
+        revision: { size: 16 },
+        truncated: false,
+      },
+    );
+    mocks.remoteWorkspaceEditorTransport.writeRemoteWorkspaceTextFile.mockResolvedValue(
+      {
+        bytesWritten: 18,
+        encoding: "utf-8",
+        hostId: "db980b17-2ed0-44e5-b72a-6ecadf788439",
+        lineEnding: "lf",
+        path: "/opt/app/docker-compose.yml",
+        revision: { size: 18 },
+      },
+    );
     mocks.remoteHostApi.createRemoteHost.mockResolvedValue({
       authType: "agent",
       createdAt: "test",
@@ -180,17 +239,33 @@ describe("KerminalShell", () => {
         };
       },
     );
-	    mocks.terminalApi.getTerminalLogState.mockResolvedValue({
-	      active: false,
-	      bytesWritten: 0,
-	    });
-	    mocks.terminalApi.closeTerminal.mockResolvedValue(undefined);
-	    mocks.terminalApi.reapOrphanTerminalSessions.mockResolvedValue({
-	      elapsedMs: 0,
-	      reapedCount: 0,
-	      sessionIds: [],
-	    });
-	    mocks.terminalApi.resizeTerminal.mockResolvedValue(undefined);
+    mocks.terminalApi.getTerminalLogState.mockResolvedValue({
+      active: false,
+      bytesWritten: 0,
+    });
+    mocks.terminalApi.closeTerminal.mockResolvedValue(undefined);
+    mocks.terminalApi.reapOrphanTerminalSessions.mockResolvedValue({
+      elapsedMs: 0,
+      reapedCount: 0,
+      sessionIds: [],
+    });
+    mocks.terminalApi.resizeTerminal.mockResolvedValue(undefined);
+    mocks.diagnosticsApi.createDiagnosticsBundle.mockResolvedValue({
+      bytesWritten: 2048,
+      createdAt: "1710000000",
+      fileName: "diagnostics-1710000000.json",
+      id: "diagnostics-1",
+      path: "C:/Users/me/.kerminal/diagnostics/diagnostics-1710000000.json",
+      redacted: true,
+      sections: ["app", "paths"],
+    });
+    mocks.diagnosticsApi.getManagedSshRuntimeSnapshot.mockResolvedValue({
+      activeChannels: 0,
+      activeSessions: 0,
+      generatedAt: "1",
+      recentLegacyFallbacks: [],
+      sessions: [],
+    });
     mocks.serverInfoApi.getServerInfoSnapshot.mockResolvedValue({
       architecture: "x86_64",
       capturedAt: "1781763088",
@@ -220,146 +295,146 @@ describe("KerminalShell", () => {
     });
   });
 
-	  it("starts without creating a local terminal when no workspace session is saved", async () => {
-	    render(<KerminalShell />);
+  it("starts without creating a local terminal when no workspace session is saved", async () => {
+    render(<KerminalShell />);
 
-	    expect(
-	      await screen.findByText("光标还没闪，AI 已经开始脑补命令了。"),
-	    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("光标还没闪，AI 已经开始脑补命令了。"),
+    ).toBeInTheDocument();
     expect(
       await findExpandedSidebarMachine(/172\.16\.41\.60/),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "打开 Agent Launcher" }),
     ).toBeInTheDocument();
-	    expect(mocks.terminalApi.createTerminalSession).not.toHaveBeenCalled();
-	  });
+    expect(mocks.terminalApi.createTerminalSession).not.toHaveBeenCalled();
+  });
 
-	  it("reaps local orphan PTY sessions before restoring saved terminal tabs", async () => {
-	    const callOrder: string[] = [];
-	    let resolveReap: (() => void) | undefined;
-	    mocks.terminalApi.reapOrphanTerminalSessions.mockImplementation(
-	      () =>
-	        new Promise((resolve) => {
-	          callOrder.push("reap:start");
-	          resolveReap = () => {
-	            callOrder.push("reap:done");
-	            resolve({
-	              elapsedMs: 3,
-	              reapedCount: 1,
-	              sessionIds: ["old-local-session"],
-	            });
-	          };
-	        }),
-	    );
-	    mocks.terminalApi.createTerminalSession.mockImplementation(
-	      async (_request, onOutput: (event: TerminalOutputEvent) => void) => {
-	        callOrder.push("create:local");
-	        onOutput({
-	          data: "local ready",
-	          kind: "data",
-	          sessionId: "session-local",
-	        });
-	        return {
-	          cols: 80,
-	          id: "session-local",
-	          rows: 24,
-	          shell: "test-shell",
-	          status: "running",
-	        };
-	      },
-	    );
-	    mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockResolvedValue({
-	      activeTabId: "tab-local-restore",
-	      focusedPaneId: "pane-local-restore",
-	      selectedMachineId: "machine-local-restore",
-	      terminalPanes: [
-	        {
-	          id: "pane-local-restore",
-	          lines: [],
-	          machineId: "machine-local-restore",
-	          mode: "local",
-	          prompt: "PS>",
-	          shell: "test-shell",
-	          status: "online",
-	          title: "恢复本地会话",
-	        },
-	      ],
-	      terminalTabs: [
-	        {
-	          id: "tab-local-restore",
-	          layout: { type: "pane", paneId: "pane-local-restore" },
-	          machineId: "machine-local-restore",
-	          title: "恢复本地会话",
-	        },
-	      ],
-	    });
+  it("reaps local orphan PTY sessions before restoring saved terminal tabs", async () => {
+    const callOrder: string[] = [];
+    let resolveReap: (() => void) | undefined;
+    mocks.terminalApi.reapOrphanTerminalSessions.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          callOrder.push("reap:start");
+          resolveReap = () => {
+            callOrder.push("reap:done");
+            resolve({
+              elapsedMs: 3,
+              reapedCount: 1,
+              sessionIds: ["old-local-session"],
+            });
+          };
+        }),
+    );
+    mocks.terminalApi.createTerminalSession.mockImplementation(
+      async (_request, onOutput: (event: TerminalOutputEvent) => void) => {
+        callOrder.push("create:local");
+        onOutput({
+          data: "local ready",
+          kind: "data",
+          sessionId: "session-local",
+        });
+        return {
+          cols: 80,
+          id: "session-local",
+          rows: 24,
+          shell: "test-shell",
+          status: "running",
+        };
+      },
+    );
+    mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockResolvedValue({
+      activeTabId: "tab-local-restore",
+      focusedPaneId: "pane-local-restore",
+      selectedMachineId: "machine-local-restore",
+      terminalPanes: [
+        {
+          id: "pane-local-restore",
+          lines: [],
+          machineId: "machine-local-restore",
+          mode: "local",
+          prompt: "PS>",
+          shell: "test-shell",
+          status: "online",
+          title: "恢复本地会话",
+        },
+      ],
+      terminalTabs: [
+        {
+          id: "tab-local-restore",
+          layout: { type: "pane", paneId: "pane-local-restore" },
+          machineId: "machine-local-restore",
+          title: "恢复本地会话",
+        },
+      ],
+    });
 
-	    render(<KerminalShell />);
+    render(<KerminalShell />);
 
-	    await waitFor(() => {
-	      expect(mocks.terminalApi.reapOrphanTerminalSessions).toHaveBeenCalledTimes(
-	        1,
-	      );
-	    });
-	    expect(mocks.terminalApi.createTerminalSession).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(
+        mocks.terminalApi.reapOrphanTerminalSessions,
+      ).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.terminalApi.createTerminalSession).not.toHaveBeenCalled();
 
-	    await act(async () => {
-	      resolveReap?.();
-	      await Promise.resolve();
-	    });
+    await act(async () => {
+      resolveReap?.();
+      await Promise.resolve();
+    });
 
-	    await waitFor(() => {
-	      expect(mocks.terminalApi.createTerminalSession).toHaveBeenCalledTimes(1);
-	    });
-	    expect(callOrder).toEqual(["reap:start", "reap:done", "create:local"]);
-	  });
+    await waitFor(() => {
+      expect(mocks.terminalApi.createTerminalSession).toHaveBeenCalledTimes(1);
+    });
+    expect(callOrder).toEqual(["reap:start", "reap:done", "create:local"]);
+  });
 
-	  it("continues workspace restore when local orphan PTY reaping fails", async () => {
-	    mocks.terminalApi.reapOrphanTerminalSessions.mockRejectedValue(
-	      new Error("reaper unavailable"),
-	    );
-	    mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockResolvedValue({
-	      activeTabId: "tab-local-reap-failed",
-	      focusedPaneId: "pane-local-reap-failed",
-	      selectedMachineId: "machine-local-reap-failed",
-	      terminalPanes: [
-	        {
-	          id: "pane-local-reap-failed",
-	          lines: [],
-	          machineId: "machine-local-reap-failed",
-	          mode: "local",
-	          prompt: "PS>",
-	          shell: "test-shell",
-	          status: "online",
-	          title: "reaper 失败后恢复",
-	        },
-	      ],
-	      terminalTabs: [
-	        {
-	          id: "tab-local-reap-failed",
-	          layout: { type: "pane", paneId: "pane-local-reap-failed" },
-	          machineId: "machine-local-reap-failed",
-	          title: "reaper 失败后恢复",
-	        },
-	      ],
-	    });
+  it("continues workspace restore when local orphan PTY reaping fails", async () => {
+    mocks.terminalApi.reapOrphanTerminalSessions.mockRejectedValue(
+      new Error("reaper unavailable"),
+    );
+    mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockResolvedValue({
+      activeTabId: "tab-local-reap-failed",
+      focusedPaneId: "pane-local-reap-failed",
+      selectedMachineId: "machine-local-reap-failed",
+      terminalPanes: [
+        {
+          id: "pane-local-reap-failed",
+          lines: [],
+          machineId: "machine-local-reap-failed",
+          mode: "local",
+          prompt: "PS>",
+          shell: "test-shell",
+          status: "online",
+          title: "reaper 失败后恢复",
+        },
+      ],
+      terminalTabs: [
+        {
+          id: "tab-local-reap-failed",
+          layout: { type: "pane", paneId: "pane-local-reap-failed" },
+          machineId: "machine-local-reap-failed",
+          title: "reaper 失败后恢复",
+        },
+      ],
+    });
 
-	    render(<KerminalShell />);
+    render(<KerminalShell />);
 
-	    await waitFor(() => {
-	      expect(mocks.terminalApi.createTerminalSession).toHaveBeenCalledWith(
-	        expect.objectContaining({
-	          cols: 80,
-	          rows: 24,
-	          shell: "test-shell",
-	        }),
-	        expect.any(Function),
-	      );
-	    });
-	  });
+    await waitFor(() => {
+      expect(mocks.terminalApi.createTerminalSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cols: 80,
+          rows: 24,
+          shell: "test-shell",
+        }),
+        expect.any(Function),
+      );
+    });
+  });
 
-	  it("keeps host SFTP and cross-host transfer entries on separate surfaces", async () => {
+  it("keeps host SFTP and cross-host transfer entries on separate surfaces", async () => {
     const user = userEvent.setup();
     render(<KerminalShell />);
 
@@ -466,7 +541,9 @@ describe("KerminalShell", () => {
     fireEvent(window, new Event("pagehide"));
 
     await waitFor(() => {
-      expect(mocks.workspaceSessionApi.saveWorkspaceSessionFile).toHaveBeenCalledWith(
+      expect(
+        mocks.workspaceSessionApi.saveWorkspaceSessionFile,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           terminalPanes: [],
           terminalTabs: [],
@@ -522,7 +599,8 @@ describe("KerminalShell", () => {
 
     fireEvent(window, new Event("pagehide"));
     await waitFor(() => {
-      const calls = mocks.workspaceSessionApi.saveWorkspaceSessionFile.mock.calls;
+      const calls =
+        mocks.workspaceSessionApi.saveWorkspaceSessionFile.mock.calls;
       const savedSession = calls[calls.length - 1]?.[0];
       expect(savedSession.terminalPanes).toEqual(
         expect.arrayContaining([
@@ -544,6 +622,81 @@ describe("KerminalShell", () => {
     await user.click(hostButton);
 
     expect(mocks.dockerApi.listDockerContainers).not.toHaveBeenCalled();
+  });
+
+  it("opens SSH host container management in the left sidebar from the context menu", async () => {
+    const user = userEvent.setup();
+    const hostId = "db980b17-2ed0-44e5-b72a-6ecadf788439";
+    const runtime = "docker" as const;
+    const api = {
+      capabilities: dockerContainerTargetCapabilities,
+      hostId,
+      id: "c0ffee1234567890",
+      image: "kerminal/api:latest",
+      name: "api",
+      ports: [],
+      runtime,
+      shortId: "c0ffee123456",
+      state: "running" as const,
+      status: "running" as const,
+      statusText: "Up 12 minutes",
+      target: dockerContainerTarget({
+        containerId: "c0ffee1234567890",
+        containerName: "api",
+        hostId,
+        runtime,
+      }),
+    };
+    mocks.dockerApi.listDockerContainers.mockResolvedValue([api]);
+
+    render(<KerminalShell />);
+
+    const hostButton = await findExpandedSidebarMachine(/172\.16\.41\.60/);
+    fireEvent.contextMenu(hostButton);
+    await user.click(screen.getByRole("menuitem", { name: "容器" }));
+
+    const sidebar = screen.getByRole("complementary", { name: "主机侧边栏" });
+    expect(
+      await within(sidebar).findByRole("heading", { name: "容器" }),
+    ).toBeInTheDocument();
+    expect(
+      within(sidebar).getByRole("button", { name: "容器" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    const hostSearch = within(sidebar).getByRole("combobox", {
+      name: "搜索容器主机",
+    });
+    expect(hostSearch).toHaveValue("172.16.41.60");
+    expect(
+      within(sidebar).queryByRole("listbox", { name: "容器主机列表" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(hostSearch);
+    expect(
+      within(sidebar).getByRole("option", { name: /172\.16\.41\.60/ }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(sidebar).toHaveTextContent("172.16.41.60");
+    expect(
+      await within(sidebar).findByTestId(
+        "host-containers-tool-content",
+        {},
+        { timeout: 5000 },
+      ),
+    ).toHaveTextContent("容器概览");
+    expect(
+      await within(sidebar).findByRole(
+        "button",
+        { name: "进入容器 api" },
+        { timeout: 5000 },
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: /容器/ }),
+    ).not.toBeInTheDocument();
+    expect(mocks.dockerApi.listDockerContainers).toHaveBeenCalledWith({
+      hostId,
+      includeStopped: true,
+      runtime,
+    });
   });
 
   it("runs IDEA-style settings and terminal shortcuts", async () => {
@@ -571,6 +724,37 @@ describe("KerminalShell", () => {
     await waitFor(() => {
       expect(mocks.terminalApi.createTerminalSession).toHaveBeenCalled();
     });
+  });
+
+  it("does not show settings in the compact right tool rail", async () => {
+    const originalInnerWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    fireEvent(window, new Event("resize"));
+
+    try {
+      render(<KerminalShell />);
+
+      const toolPanel = await screen.findByRole("complementary", {
+        name: "工具面板",
+      });
+      expect(
+        screen.queryByRole("complementary", { name: "主机侧边栏" }),
+      ).not.toBeInTheDocument();
+
+      expect(
+        within(toolPanel).queryByRole("button", { name: "打开 设置" }),
+      ).not.toBeInTheDocument();
+      expect(toolPanel).toHaveAttribute("aria-expanded", "false");
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: originalInnerWidth,
+      });
+      fireEvent(window, new Event("resize"));
+    }
   });
 
   it("uses saved custom keybindings at runtime", async () => {
@@ -749,9 +933,7 @@ describe("KerminalShell", () => {
       await screen.findByRole("complementary", { name: "主机侧边栏" }),
     ).toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole("button", { name: "折叠主机侧边栏" }),
-    );
+    await user.click(screen.getByRole("button", { name: "折叠主机侧边栏" }));
 
     const shell = container.firstElementChild as HTMLElement;
     expect(
@@ -801,9 +983,9 @@ describe("KerminalShell", () => {
     expect(frame.style.getPropertyValue("--app-nav-surface-opacity")).toBe(
       "0.7336",
     );
-    expect(frame.style.getPropertyValue("--app-workspace-surface-opacity")).toBe(
-      "0.7336",
-    );
+    expect(
+      frame.style.getPropertyValue("--app-workspace-surface-opacity"),
+    ).toBe("0.7336");
     expect(frame.style.getPropertyValue("--app-terminal-header-opacity")).toBe(
       "0.7452",
     );
@@ -867,6 +1049,196 @@ describe("KerminalShell", () => {
     });
   });
 
+  it("restores saved workspace file tabs into the central tab surface", async () => {
+    mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockResolvedValue({
+      activeTabId: "tab-file-1",
+      focusedPaneId: "",
+      selectedMachineId: "",
+      terminalPanes: [],
+      terminalTabs: [
+        {
+          access: "readonly",
+          id: "tab-file-1",
+          kind: "workspaceFile",
+          machineId: "db980b17-2ed0-44e5-b72a-6ecadf788439",
+          path: "/opt/app/docker-compose.yml",
+          source: "composeYaml",
+          target: {
+            hostId: "db980b17-2ed0-44e5-b72a-6ecadf788439",
+            kind: "ssh",
+          },
+          title: "docker-compose.yml",
+        },
+      ],
+    });
+
+    render(<KerminalShell />);
+
+    expect(
+      await screen.findByRole("button", { name: "docker-compose.yml" }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByLabelText("Compose YAML Monaco editor"),
+    ).toHaveValue("name: kerminal\n");
+    expect(
+      mocks.remoteWorkspaceEditorTransport.readRemoteWorkspaceTextFile,
+    ).toHaveBeenCalledWith({
+      maxBytes: 10 * 1024 * 1024,
+      path: "/opt/app/docker-compose.yml",
+      target: {
+        hostId: "db980b17-2ed0-44e5-b72a-6ecadf788439",
+        kind: "ssh",
+      },
+    });
+    expect(mocks.terminalApi.createTerminalSession).not.toHaveBeenCalled();
+    expect(mocks.terminalApi.createSshTerminalSession).not.toHaveBeenCalled();
+  });
+
+  it("saves edits from a restored central workspace file tab", async () => {
+    const user = userEvent.setup();
+    mocks.remoteWorkspaceEditorTransport.readRemoteWorkspaceTextFile.mockResolvedValue(
+      {
+        binary: false,
+        bytesRead: 10,
+        content: "port=8080\n",
+        encoding: "utf-8",
+        hostId: "db980b17-2ed0-44e5-b72a-6ecadf788439",
+        lineEnding: "lf",
+        maxBytes: 10 * 1024 * 1024,
+        path: "/etc/app.conf",
+        readonly: false,
+        revision: { contentSha256: "sha-a", size: 10 },
+        truncated: false,
+      },
+    );
+    mocks.remoteWorkspaceEditorTransport.writeRemoteWorkspaceTextFile.mockResolvedValue(
+      {
+        bytesWritten: 11,
+        encoding: "utf-8",
+        hostId: "db980b17-2ed0-44e5-b72a-6ecadf788439",
+        lineEnding: "lf",
+        path: "/etc/app.conf",
+        revision: { contentSha256: "sha-b", size: 11 },
+      },
+    );
+    mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockResolvedValue({
+      activeTabId: "tab-file-editable",
+      focusedPaneId: "",
+      selectedMachineId: "",
+      terminalPanes: [],
+      terminalTabs: [
+        {
+          access: "editable",
+          id: "tab-file-editable",
+          kind: "workspaceFile",
+          machineId: "db980b17-2ed0-44e5-b72a-6ecadf788439",
+          path: "/etc/app.conf",
+          source: "sftp",
+          target: {
+            hostId: "db980b17-2ed0-44e5-b72a-6ecadf788439",
+            kind: "ssh",
+          },
+          title: "app.conf",
+        },
+      ],
+    });
+
+    render(<KerminalShell />);
+
+    const editor = await screen.findByLabelText("Compose YAML Monaco editor");
+    expect(editor).toHaveValue("port=8080\n");
+
+    await user.clear(editor);
+    await user.type(editor, "port=9090\n");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(
+        mocks.remoteWorkspaceEditorTransport.writeRemoteWorkspaceTextFile,
+      ).toHaveBeenCalledWith({
+        content: "port=9090\n",
+        expectedRevision: { contentSha256: "sha-a", size: 10 },
+        overwriteOnConflict: false,
+        path: "/etc/app.conf",
+        target: {
+          hostId: "db980b17-2ed0-44e5-b72a-6ecadf788439",
+          kind: "ssh",
+        },
+      });
+    });
+  });
+
+  it("guards dirty workspace file tabs when the native close tab command runs", async () => {
+    const user = userEvent.setup();
+    let nativeMenuHandler: ((action: "closeTab") => void) | undefined;
+    mocks.nativeMenuApi.listenNativeMenuActions.mockImplementation(
+      async (handler: (action: "closeTab") => void) => {
+        nativeMenuHandler = handler;
+        return () => undefined;
+      },
+    );
+    mocks.remoteWorkspaceEditorTransport.readRemoteWorkspaceTextFile.mockResolvedValue(
+      {
+        binary: false,
+        bytesRead: 10,
+        content: "port=8080\n",
+        encoding: "utf-8",
+        hostId: "db980b17-2ed0-44e5-b72a-6ecadf788439",
+        lineEnding: "lf",
+        maxBytes: 10 * 1024 * 1024,
+        path: "/etc/app.conf",
+        readonly: false,
+        revision: { contentSha256: "sha-a", size: 10 },
+        truncated: false,
+      },
+    );
+    mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockResolvedValue({
+      activeTabId: "tab-file-editable",
+      focusedPaneId: "",
+      selectedMachineId: "",
+      terminalPanes: [],
+      terminalTabs: [
+        {
+          access: "editable",
+          id: "tab-file-editable",
+          kind: "workspaceFile",
+          machineId: "db980b17-2ed0-44e5-b72a-6ecadf788439",
+          path: "/etc/app.conf",
+          source: "sftp",
+          target: {
+            hostId: "db980b17-2ed0-44e5-b72a-6ecadf788439",
+            kind: "ssh",
+          },
+          title: "app.conf",
+        },
+      ],
+    });
+
+    render(<KerminalShell />);
+
+    const editor = await screen.findByLabelText("Compose YAML Monaco editor");
+    await user.clear(editor);
+    await user.type(editor, "port=9090\n");
+    await act(async () => {
+      nativeMenuHandler?.("closeTab");
+    });
+
+    expect(
+      screen.getByRole("dialog", { name: "关闭未保存文件" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "app.conf" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "放弃修改并关闭" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "app.conf" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("restores saved left sidebar layout from the previous workspace session", async () => {
     mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockResolvedValue({
       activeTabId: "",
@@ -907,9 +1279,7 @@ describe("KerminalShell", () => {
       ).toHaveBeenCalledWith(
         expect.objectContaining({
           shellLayout: {
-            collapsedMachineGroupIds: [
-              "30fbc381-2884-4b75-9f88-0e28f31ca8b0",
-            ],
+            collapsedMachineGroupIds: ["30fbc381-2884-4b75-9f88-0e28f31ca8b0"],
             leftPanelCollapsed: false,
             leftPanelWidth: 312,
             toolPanelWidth: 444,

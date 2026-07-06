@@ -461,10 +461,12 @@ fn execution_context<'a>(state: &'a AppState) -> McpToolExecutionContext<'a> {
         diagnostics: state.diagnostics(),
         sftp: state.sftp(),
         docker_hosts: state.docker_hosts(),
+        external_launch_intake: state.external_launch_intake(),
         tmux: state.tmux(),
         port_forwards: state.port_forwards(),
         local_network_proxy: state.local_network_proxy(),
         ssh_commands: state.ssh_commands(),
+        ssh_runtime: state.ssh_runtime(),
         paths: state.paths(),
         storage: state.storage(),
     }

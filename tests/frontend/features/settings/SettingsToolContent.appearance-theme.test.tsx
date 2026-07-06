@@ -9,6 +9,19 @@ const fileDialogMock = vi.hoisted(() => ({
   openLocalDirectory: vi.fn(),
   selectLocalFile: vi.fn(),
 }));
+const externalLaunchApiMock = vi.hoisted(() => ({
+  deleteExternalLaunchAliases: vi.fn(),
+  generateExternalLaunchAliases: vi.fn(),
+  getExternalLaunchAliasStatus: vi.fn(),
+  openExternalLaunchAliasDirectory: vi.fn(),
+}));
+const diagnosticsApiMock = vi.hoisted(() => ({
+  getManagedSshRuntimeSnapshot: vi.fn(),
+}));
+const terminalRuntimeDiagnosticsStoreMock = vi.hoisted(() => ({
+  collectTerminalRuntimePerformanceSnapshot: vi.fn(),
+  subscribeTerminalRuntimeDiagnostics: vi.fn(),
+}));
 const mcpServerApiMock = vi.hoisted(() => ({
   getMcpHttpServerStatus: vi.fn(),
   startMcpHttpServer: vi.fn(),
@@ -32,6 +45,30 @@ vi.mock("../../../../src/lib/fileDialogApi", () => ({
   openLocalDirectory: fileDialogMock.openLocalDirectory,
   selectLocalFile: fileDialogMock.selectLocalFile,
 }));
+vi.mock("../../../../src/lib/externalLaunchApi", async () => {
+  const actual = await vi.importActual("../../../../src/lib/externalLaunchApi");
+  return {
+    ...actual,
+    deleteExternalLaunchAliases: externalLaunchApiMock.deleteExternalLaunchAliases,
+    generateExternalLaunchAliases:
+      externalLaunchApiMock.generateExternalLaunchAliases,
+    getExternalLaunchAliasStatus:
+      externalLaunchApiMock.getExternalLaunchAliasStatus,
+    openExternalLaunchAliasDirectory:
+      externalLaunchApiMock.openExternalLaunchAliasDirectory,
+  };
+});
+vi.mock("../../../../src/lib/diagnosticsApi", async () => {
+  const actual = await vi.importActual("../../../../src/lib/diagnosticsApi");
+  return {
+    ...actual,
+    getManagedSshRuntimeSnapshot: diagnosticsApiMock.getManagedSshRuntimeSnapshot,
+  };
+});
+vi.mock(
+  "../../../../src/features/terminal/terminalRuntimeDiagnosticsStore",
+  () => terminalRuntimeDiagnosticsStoreMock,
+);
 vi.mock("../../../../src/lib/mcpServerApi", () => mcpServerApiMock);
 vi.mock("../../../../src/lib/terminalSuggestionApi", () => terminalSuggestionApiMock);
 vi.mock("../../../../src/lib/updaterApi", () => updaterApiMock);
@@ -42,6 +79,34 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     fileDialogMock.openLocalDirectory.mockResolvedValue(undefined);
     fileDialogMock.selectLocalFile.mockReset();
     fileDialogMock.selectLocalFile.mockResolvedValue(null);
+    externalLaunchApiMock.deleteExternalLaunchAliases.mockReset();
+    externalLaunchApiMock.deleteExternalLaunchAliases.mockResolvedValue([
+      { removedAlias: true, tool: "putty" },
+    ]);
+    externalLaunchApiMock.generateExternalLaunchAliases.mockReset();
+    externalLaunchApiMock.generateExternalLaunchAliases.mockResolvedValue([
+      { installMode: "copy", state: "managed", tool: "putty" },
+    ]);
+    externalLaunchApiMock.getExternalLaunchAliasStatus.mockReset();
+    externalLaunchApiMock.getExternalLaunchAliasStatus.mockResolvedValue(
+      externalLaunchAliasStatus(),
+    );
+    externalLaunchApiMock.openExternalLaunchAliasDirectory.mockReset();
+    externalLaunchApiMock.openExternalLaunchAliasDirectory.mockResolvedValue(
+      "C:\\Kerminal\\compat",
+    );
+    diagnosticsApiMock.getManagedSshRuntimeSnapshot.mockReset();
+    diagnosticsApiMock.getManagedSshRuntimeSnapshot.mockResolvedValue(
+      managedSshRuntimeSnapshot(),
+    );
+    terminalRuntimeDiagnosticsStoreMock.collectTerminalRuntimePerformanceSnapshot.mockReset();
+    terminalRuntimeDiagnosticsStoreMock.collectTerminalRuntimePerformanceSnapshot.mockResolvedValue(
+      runtimePerformanceSnapshot(),
+    );
+    terminalRuntimeDiagnosticsStoreMock.subscribeTerminalRuntimeDiagnostics.mockReset();
+    terminalRuntimeDiagnosticsStoreMock.subscribeTerminalRuntimeDiagnostics.mockReturnValue(
+      vi.fn(),
+    );
     mcpServerApiMock.getMcpHttpServerStatus.mockReset();
     mcpServerApiMock.getMcpHttpServerStatus.mockResolvedValue({
       bindAddress: "127.0.0.1",
@@ -213,7 +278,15 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     );
 
     expect(screen.getByText("终端渲染")).toBeInTheDocument();
-    expect(screen.getByText("GPU 分屏")).toBeInTheDocument();
+    expect(screen.queryByText("GPU 分屏")).not.toBeInTheDocument();
+    expect(screen.queryByText("输出待写入")).not.toBeInTheDocument();
+    expect(
+      await screen.findByTestId("managed-ssh-runtime-diagnostics"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("默认启用门禁阻断")).toBeInTheDocument();
+    expect(screen.getAllByText("Managed sessions").length).toBeGreaterThan(0);
+    expect(screen.getByText("Fallback reasons")).toBeInTheDocument();
+    expect(screen.getByText("runtime-unwired")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /保持默认渲染路径/ }));
     expect(onSettingsChange).toHaveBeenLastCalledWith(
@@ -251,8 +324,151 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     await user.click(screen.getByRole("button", { name: "打开设置项：终端渲染" }));
 
     expect(screen.getByText("终端渲染")).toBeInTheDocument();
-    expect(screen.getByText("GPU 分屏")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /强制尝试 WebGL/ })).toBeInTheDocument();
+    expect(screen.queryByText("GPU 分屏")).not.toBeInTheDocument();
     expect(screen.getByLabelText("搜索设置")).toHaveValue("");
+  });
+
+  it("searches runtime diagnostics and opens the terminal diagnostics panel", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <SettingsToolContent
+        onSettingsChange={vi.fn()}
+        settings={systemThemeSettings()}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("搜索设置"), "默认启用");
+    await user.click(screen.getByRole("button", { name: "打开设置项：运行诊断" }));
+
+    expect(
+      await screen.findByTestId("managed-ssh-runtime-diagnostics"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Queue depth")).toBeInTheDocument();
+    expect(screen.getByText("authentication")).toBeInTheDocument();
+    expect(screen.getByLabelText("搜索设置")).toHaveValue("");
+  });
+
+	  it("searches external launch setup and shows redacted command templates", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <SettingsToolContent
+        onSettingsChange={vi.fn()}
+        settings={systemThemeSettings()}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("搜索设置"), "跳板机");
+    await user.click(
+      screen.getByRole("button", { name: "打开设置项：外部 SSH 启动" }),
+    );
+
+    expect(screen.getByText("外部 SSH 启动")).toBeInTheDocument();
+    expect(screen.getByText("Kerminal URL")).toBeInTheDocument();
+    expect(screen.getByText(/kerminal:\/\/ssh\?host=/)).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/<PASSWORD_FROM_PLATFORM>/).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText(/putty\.exe -ssh/)).toHaveClass(
+      "whitespace-pre-wrap",
+      "break-all",
+    );
+	    expect(
+	      screen.queryByText(/KERM_FIXTURE_PASSWORD_DO_NOT_USE/),
+	    ).not.toBeInTheDocument();
+	  });
+
+  it("generates and deletes external launch compatibility aliases", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <SettingsToolContent
+        initialSectionId="settings-external-launch"
+        onSettingsChange={vi.fn()}
+        settings={systemThemeSettings()}
+      />,
+    );
+
+    expect(await screen.findByText("兼容启动器")).toBeInTheDocument();
+    expect(screen.getByText("C:\\Kerminal\\compat")).toBeInTheDocument();
+    expect(screen.getByText("C:\\Kerminal\\kerminal.exe")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "生成全部" }));
+    expect(externalLaunchApiMock.generateExternalLaunchAliases).toHaveBeenCalledWith(
+      { tools: ["putty", "mobaxterm", "xshell", "securecrt", "openssh"] },
+    );
+
+    await user.click(screen.getByRole("button", { name: "删除已管理" }));
+    expect(externalLaunchApiMock.deleteExternalLaunchAliases).toHaveBeenCalledWith(
+      { tools: ["putty"] },
+    );
+
+    await user.click(screen.getByRole("button", { name: "打开目录" }));
+    expect(externalLaunchApiMock.openExternalLaunchAliasDirectory).toHaveBeenCalledWith(
+      "C:\\Kerminal\\compat",
+    );
+  });
+
+  it("updates external launch policy controls", async () => {
+    const user = userEvent.setup();
+    const onSettingsChange = vi.fn();
+
+    render(
+      <SettingsToolContent
+        initialSectionId="settings-external-launch"
+        onSettingsChange={onSettingsChange}
+        settings={systemThemeSettings()}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("switch", { name: "启用外部 SSH 启动" }),
+    );
+    expect(onSettingsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        externalLaunch: expect.objectContaining({
+          enabled: false,
+        }),
+      }),
+    );
+
+    await user.click(
+      screen.getByRole("switch", { name: "启用本地 shim bridge" }),
+    );
+    expect(onSettingsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        externalLaunch: expect.objectContaining({
+          shimBridge: { enabled: false },
+        }),
+      }),
+    );
+
+    await user.click(
+      screen.getByRole("switch", { name: "连接后自动打开 SFTP" }),
+    );
+    expect(onSettingsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        externalLaunch: expect.objectContaining({
+          autoOpenSftp: true,
+        }),
+      }),
+    );
+
+    const puttyPersonaSwitch = screen.getByRole("switch", {
+      name: "允许 PuTTY",
+    });
+    expect(puttyPersonaSwitch).toHaveAttribute("data-state", "checked");
+
+    await user.click(puttyPersonaSwitch);
+    expect(onSettingsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        externalLaunch: expect.objectContaining({
+          disabledTools: ["putty"],
+        }),
+      }),
+    );
   });
 });
 
@@ -279,5 +495,134 @@ function mockPrefersDark(matches: boolean) {
     onchange: null,
     removeEventListener: vi.fn(),
     removeListener: vi.fn(),
-  }));
+	  }));
+	}
+
+function externalLaunchAliasStatus() {
+  return {
+    aliasDirectory: "C:\\Kerminal\\compat",
+    aliases: [
+      {
+        aliasPath: "C:\\Kerminal\\compat\\putty.exe",
+        markerPath: "C:\\Kerminal\\compat\\putty.exe.kerminal-alias.json",
+        markerPresent: true,
+        state: "managed",
+        tool: "putty",
+      },
+      {
+        aliasPath: "C:\\Kerminal\\compat\\MobaXterm.exe",
+        markerPath: "C:\\Kerminal\\compat\\MobaXterm.exe.kerminal-alias.json",
+        markerPresent: false,
+        state: "missing",
+        tool: "mobaxterm",
+      },
+      {
+        aliasPath: "C:\\Kerminal\\compat\\Xshell.exe",
+        markerPath: "C:\\Kerminal\\compat\\Xshell.exe.kerminal-alias.json",
+        markerPresent: false,
+        state: "missing",
+        tool: "xshell",
+      },
+      {
+        aliasPath: "C:\\Kerminal\\compat\\SecureCRT.exe",
+        markerPath: "C:\\Kerminal\\compat\\SecureCRT.exe.kerminal-alias.json",
+        markerPresent: false,
+        state: "missing",
+        tool: "securecrt",
+      },
+      {
+        aliasPath: "C:\\Kerminal\\compat\\ssh.exe",
+        markerPath: "C:\\Kerminal\\compat\\ssh.exe.kerminal-alias.json",
+        markerPresent: false,
+        state: "missing",
+        tool: "openssh",
+      },
+    ],
+    installDirectory: "C:\\Kerminal",
+    kerminalExecutable: "C:\\Kerminal\\kerminal.exe",
+    shimAvailable: true,
+    shimExecutable: "C:\\Kerminal\\kerminal-launch-shim.exe",
+  };
+}
+
+function runtimePerformanceSnapshot() {
+  return {
+    generatedAt: "2026-07-06T00:40:00.000Z",
+    managedSsh: managedSshRuntimeSnapshot(),
+    schemaVersion: 1,
+    sftp: {
+      preflight: {
+        active: 0,
+        cancelRequested: false,
+        completed: 0,
+        concurrencyLimit: 4,
+        failed: 0,
+        queued: 1,
+      },
+      transfers: {
+        activeTransfers: 0,
+        failedRecent: 0,
+        prunedCompleted: 0,
+        recentCompleted: 0,
+      },
+    },
+    ssh: {
+      activeConnections: 1,
+      errorClasses: {
+        authentication: 1,
+      },
+      failedRecent: 1,
+      reconnecting: 1,
+    },
+    suggestions: {
+      activeTasks: 0,
+      disabledReasons: {},
+      inFlight: 0,
+      maxConcurrent: 2,
+      queued: 1,
+    },
+  };
+}
+
+function managedSshRuntimeSnapshot() {
+  return {
+    activeChannels: 3,
+    activeSessions: 1,
+    generatedAt: "1760000000",
+    recentLegacyFallbacks: [
+      {
+        capability: "sftp",
+        count: 1,
+        lastAt: "1760000001",
+        reason: "runtime-unwired",
+        target: "deploy@example.internal:22",
+      },
+    ],
+    sessions: [
+      {
+        activeChannels: 3,
+        channelCounts: {
+          exec: 1,
+          shell: 1,
+          sftp: 1,
+        },
+        createdAt: "1760000000",
+        key: {
+          jumps: [],
+          knownHostsProfile: "default",
+          proxyProfile: null,
+          runtimeFlags: ["test"],
+          target: "deploy@example.internal:22",
+        },
+        lastError: null,
+        lastUsedAt: "1760000001",
+        maxConcurrentExecChannels: 4,
+        openedChannels: 3,
+        pendingExecRequests: 2,
+        refCount: 1,
+        sessionId: "managed-session-1",
+        state: "ready",
+      },
+    ],
+  };
 }

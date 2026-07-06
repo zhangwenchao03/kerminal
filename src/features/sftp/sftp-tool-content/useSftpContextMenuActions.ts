@@ -117,6 +117,8 @@ export function useSftpContextMenuActions({
         return;
       }
       if (decision.kind === "workspaceDirectory") {
+        setOperationStatus(null);
+        void loadDirectory(decision.path);
         openWorkspaceDirectory(decision.path);
         return;
       }

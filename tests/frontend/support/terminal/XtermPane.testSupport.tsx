@@ -28,6 +28,8 @@ const mocks = vi.hoisted(() => {
     markTerminalSessionBindingReady: vi.fn(),
     closeTerminalSessionBinding: vi.fn(),
     readTerminalClipboardText: vi.fn(),
+    requestSshAuthPrompt: vi.fn(),
+    submitSshAuthPromptResponse: vi.fn(),
     writeDesktopClipboardText: vi.fn(),
     resizeTerminal: vi.fn(),
     startTerminalLog: vi.fn(),
@@ -385,6 +387,14 @@ vi.mock("../../../../src/lib/terminalApi", () => ({
     mocks.api.createTelnetTerminalSession(...args),
   createTerminalSession: (...args: unknown[]) =>
     mocks.api.createTerminalSession(...args),
+  getTerminalCommandError: (error: unknown) => {
+    if (typeof error !== "object" || error === null) {
+      return undefined;
+    }
+    return "terminalError" in error
+      ? (error as { terminalError?: unknown }).terminalError
+      : undefined;
+  },
   getTerminalLogState: (...args: unknown[]) =>
     mocks.api.getTerminalLogState(...args),
   listTerminalSessions: (...args: unknown[]) =>
@@ -395,6 +405,16 @@ vi.mock("../../../../src/lib/terminalApi", () => ({
   startTerminalLog: (...args: unknown[]) => mocks.api.startTerminalLog(...args),
   stopTerminalLog: (...args: unknown[]) => mocks.api.stopTerminalLog(...args),
   writeTerminal: (...args: unknown[]) => mocks.api.writeTerminal(...args),
+}));
+
+vi.mock("../../../../src/features/ssh-auth/sshAuthPromptStore", () => ({
+  requestSshAuthPrompt: (...args: unknown[]) =>
+    mocks.api.requestSshAuthPrompt(...args),
+}));
+
+vi.mock("../../../../src/lib/sshAuthApi", () => ({
+  submitSshAuthPromptResponse: (...args: unknown[]) =>
+    mocks.api.submitSshAuthPromptResponse(...args),
 }));
 
 vi.mock("../../../../src/lib/commandHistoryApi", () => ({
@@ -572,6 +592,8 @@ beforeEach(() => {
   mocks.api.markTerminalSessionBindingReady.mockReset();
   mocks.api.closeTerminalSessionBinding.mockReset();
   mocks.api.readTerminalClipboardText.mockReset();
+  mocks.api.requestSshAuthPrompt.mockReset();
+  mocks.api.submitSshAuthPromptResponse.mockReset();
   mocks.api.writeDesktopClipboardText.mockReset();
   mocks.api.writeTerminal.mockReset();
   mocks.terminalInstances.forEach((terminal) => terminal.write.mockReset());
@@ -687,6 +709,14 @@ beforeEach(() => {
     },
   );
   mocks.api.readTerminalClipboardText.mockResolvedValue("echo pasted\r");
+  mocks.api.requestSshAuthPrompt.mockImplementation(async (options) => ({
+    promptId: options.prompt.promptId,
+    secretKind: options.prompt.secretKind,
+  }));
+  mocks.api.submitSshAuthPromptResponse.mockImplementation(async (request) => ({
+    promptId: request.promptId,
+    secretKind: request.secretKind,
+  }));
   mocks.api.writeDesktopClipboardText.mockResolvedValue({ ok: true });
   mocks.api.writeTerminal.mockResolvedValue(undefined);
   mocks.api.resizeTerminal.mockResolvedValue(undefined);

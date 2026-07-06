@@ -1,3 +1,4 @@
+import type { ManagedSshRuntimeSnapshot } from "../../lib/diagnosticsApi";
 import type { TerminalRendererRegistrySnapshot } from "./terminalRendererRegistry";
 import type { TerminalOutputHistoryBufferStats } from "./terminalOutputHistoryBuffer";
 import type { TerminalOutputWriterStats } from "./terminalOutputWriter";
@@ -18,6 +19,7 @@ export type RuntimeDiagnosticsSystem =
   | "suggestions"
   | "sftp"
   | "ssh"
+  | "managed-ssh"
   | "config-watcher";
 
 export type RuntimeDiagnosticsSeverity = "info" | "warning" | "error";
@@ -93,6 +95,8 @@ export interface RuntimeSuggestionProbeSnapshot {
   failureCount: number;
   inFlight: boolean;
   kind: RuntimeSuggestionProbeKind;
+  lastFailureAt?: number;
+  lastFailureReason?: string;
   nextAllowedInMs?: number;
   ownerCount: number;
   timerPending: boolean;
@@ -163,6 +167,7 @@ export interface RuntimePerformanceSnapshot {
   configWatcher?: RuntimeConfigWatcherSnapshot;
   degraded?: RuntimeDiagnosticsDegradeState[];
   generatedAt: string;
+  managedSsh?: ManagedSshRuntimeSnapshot;
   ptyPump?: RuntimePtyPumpSnapshot;
   schemaVersion: typeof RUNTIME_PERFORMANCE_SNAPSHOT_SCHEMA_VERSION;
   sftp?: RuntimeSftpSnapshot;
@@ -170,6 +175,33 @@ export interface RuntimePerformanceSnapshot {
   suggestions?: RuntimeSuggestionSchedulerSnapshot;
   terminalOutput?: RuntimeTerminalOutputSnapshot;
   terminalRenderer?: TerminalRendererRegistrySnapshot;
+}
+
+export type RuntimeProductionReadinessGateIssueKind =
+  | "legacy-fallback"
+  | "missing-diagnostics"
+  | "unknown-error-class";
+
+export interface RuntimeProductionReadinessGateIssue {
+  count: number;
+  kind: RuntimeProductionReadinessGateIssueKind;
+  message: string;
+}
+
+export interface RuntimeProductionReadinessGate {
+  fallbackCount: number;
+  fallbackRate: number;
+  missingDiagnostics: string[];
+  ready: boolean;
+  statusLabel: string;
+  unknownErrorClassCount: number;
+  issues: RuntimeProductionReadinessGateIssue[];
+}
+
+export interface RuntimeProductionReadinessGateOptions {
+  fallbackRateThreshold?: number;
+  requiredDiagnostics?: Array<"managedSsh" | "sftp" | "ssh" | "suggestions">;
+  unknownErrorClassThreshold?: number;
 }
 
 export type RuntimePerformanceSnapshotInput = Partial<
@@ -207,6 +239,16 @@ const SENSITIVE_RUNTIME_DIAGNOSTICS_KEYS = new Set([
   "stdout",
   "terminaltext",
   "token",
+]);
+
+const KNOWN_SSH_ERROR_CLASSES = new Set([
+  "authentication",
+  "disconnect",
+  "knownHosts",
+  "networkUnreachable",
+  "permission",
+  "proxyJump",
+  "remoteShellStartup",
 ]);
 
 export function createRuntimePerformanceSnapshot(
@@ -331,8 +373,76 @@ export function findRuntimePerformanceSnapshotSensitiveKeys(
   return [...hits].sort();
 }
 
+export function evaluateRuntimeProductionReadinessGate(
+  snapshot: RuntimePerformanceSnapshot,
+  {
+    fallbackRateThreshold = 0,
+    requiredDiagnostics = ["managedSsh", "sftp", "ssh", "suggestions"],
+    unknownErrorClassThreshold = 0,
+  }: RuntimeProductionReadinessGateOptions = {},
+): RuntimeProductionReadinessGate {
+  const fallbackCount =
+    snapshot.managedSsh?.recentLegacyFallbacks.reduce(
+      (sum, fallback) => sum + fallback.count,
+      0,
+    ) ?? 0;
+  const sessionEvidence =
+    (snapshot.managedSsh?.activeSessions ?? 0) +
+    (snapshot.ssh?.activeConnections ?? 0);
+  const fallbackRate =
+    fallbackCount <= 0 ? 0 : fallbackCount / (fallbackCount + sessionEvidence);
+  const missingDiagnostics = requiredDiagnostics.filter(
+    (section) => snapshot[section] === undefined,
+  );
+  const unknownErrorClassCount = Object.entries(
+    snapshot.ssh?.errorClasses ?? {},
+  ).reduce((sum, [errorClass, count]) => {
+    if (errorClass === "unknown" || !KNOWN_SSH_ERROR_CLASSES.has(errorClass)) {
+      return sum + count;
+    }
+    return sum;
+  }, 0);
+
+  const issues: RuntimeProductionReadinessGateIssue[] = [];
+  if (missingDiagnostics.length > 0) {
+    issues.push({
+      count: missingDiagnostics.length,
+      kind: "missing-diagnostics",
+      message: `缺少 ${missingDiagnostics.join(", ")} diagnostics`,
+    });
+  }
+  if (fallbackRate > fallbackRateThreshold) {
+    issues.push({
+      count: fallbackCount,
+      kind: "legacy-fallback",
+      message: `legacy fallback rate ${formatGatePercent(fallbackRate)} 超过阈值 ${formatGatePercent(fallbackRateThreshold)}`,
+    });
+  }
+  if (unknownErrorClassCount > unknownErrorClassThreshold) {
+    issues.push({
+      count: unknownErrorClassCount,
+      kind: "unknown-error-class",
+      message: `unknown SSH error class count ${unknownErrorClassCount} 超过阈值 ${unknownErrorClassThreshold}`,
+    });
+  }
+
+  return {
+    fallbackCount,
+    fallbackRate,
+    missingDiagnostics,
+    ready: issues.length === 0,
+    statusLabel: issues.length === 0 ? "默认启用门禁通过" : "默认启用门禁阻断",
+    unknownErrorClassCount,
+    issues,
+  };
+}
+
 function normalizeDiagnosticKey(key: string): string {
   return key.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+}
+
+function formatGatePercent(rate: number) {
+  return `${Math.round(rate * 100)}%`;
 }
 
 function maxDefinedNumber(

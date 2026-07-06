@@ -173,6 +173,9 @@ pub struct SshJumpHostOptions {
     /// 跳板私钥 passphrase encrypted vault 引用。
     #[serde(default)]
     pub key_passphrase_ref: Option<String>,
+    /// 跳板私钥 passphrase，仅作为运行态瞬时材料。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_passphrase_secret: Option<String>,
     /// 跳板密码或内联私钥内容，仅作为保存请求的瞬时输入。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub credential_secret: Option<String>,
@@ -379,6 +382,9 @@ pub struct RemoteHost {
     /// SSH 私钥 passphrase encrypted vault 引用。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key_passphrase_ref: Option<String>,
+    /// SSH 私钥 passphrase，仅作为保存请求或运行态材料的瞬时值。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_passphrase_secret: Option<String>,
     /// SSH 密码或内联私钥内容，仅作为保存请求或运行态材料的瞬时值。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub credential_secret: Option<String>,

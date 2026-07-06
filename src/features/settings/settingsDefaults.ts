@@ -2,6 +2,7 @@ import type {
   AppearanceSettings,
   AppSettings,
   DesktopNotificationSettings,
+  ExternalLaunchSettings,
   KeybindingSetting,
   SftpPerformanceSettings,
   TerminalAppearance,
@@ -70,11 +71,21 @@ export const defaultDesktopNotificationSettings: DesktopNotificationSettings = {
   throttleMs: 30_000,
 };
 
+export const defaultExternalLaunchSettings: ExternalLaunchSettings = {
+  acceptVendorArgs: true,
+  autoOpenSftp: false,
+  disabledTools: [],
+  enabled: true,
+  shimBridge: {
+    enabled: true,
+  },
+};
+
 export const defaultKeybindings: KeybindingSetting[] = [
   {
     action: "settings.open",
-    binding: "Ctrl+Shift+T",
-    description: "打开设置。",
+    binding: "Ctrl+Alt+S",
+    description: "参考 IntelliJ IDEA 的设置入口打开设置。",
     editable: true,
     label: "打开设置",
     macBinding: "Cmd+,",
@@ -244,6 +255,7 @@ export const defaultSftpPerformanceSettings: SftpPerformanceSettings = {
 export const defaultAppSettings: AppSettings = {
   appearance: defaultAppearanceSettings,
   desktopNotifications: defaultDesktopNotificationSettings,
+  externalLaunch: defaultExternalLaunchSettings,
   interfaceDensity: "comfortable",
   keybindings: defaultKeybindings,
   sftp: defaultSftpPerformanceSettings,

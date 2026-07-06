@@ -8,6 +8,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type {
   Dispatch,
   DragEvent as ReactDragEvent,
+  KeyboardEvent as ReactKeyboardEvent,
   MutableRefObject,
   SetStateAction,
 } from "react";
@@ -531,6 +532,78 @@ describe("useSftpTransferActions", () => {
     });
   });
 
+  it("copies one selected remote item to the local file clipboard with Ctrl+C", async () => {
+    sftpApiMock.enqueueSftpClipboardDownload.mockResolvedValue(
+      transferSummary({ id: "clipboard-download" }),
+    );
+    const appLog = remoteEntry({ name: "app.log", path: "/srv/app.log" });
+    const { result, setters } = renderTransferActionsHook({
+      fileTarget: sshFileTarget({ hostId: "host-left" }),
+      transferableSelectedEntries: [appLog],
+      viewScope: "sftp-sidebar:prod-api",
+    });
+    const event = createKeyboardEvent({ key: "c" });
+
+    act(() => {
+      result.current.handleSftpKeyDown(event);
+    });
+
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(setters.setSftpClipboard).toHaveBeenCalledWith(null);
+    await waitFor(() =>
+      expect(sftpApiMock.enqueueSftpClipboardDownload).toHaveBeenCalledWith({
+        hostId: "host-left",
+        kind: "file",
+        sourceRemotePath: "/srv/app.log",
+        viewScope: "sftp-sidebar:prod-api",
+      }),
+    );
+    expect(setters.setContextMenu).toHaveBeenCalledWith(null);
+    expect(remoteCopyTaskRunnerMock.runRemoteCopyTask).not.toHaveBeenCalled();
+    expectNoPickerOrArchiveSideEffects({
+      allowClipboardDownload: true,
+    });
+  });
+
+  it("keeps multi-select Ctrl+C on the internal SFTP clipboard", () => {
+    const appLog = remoteEntry({ name: "app.log", path: "/srv/app.log" });
+    const confDirectory = remoteEntry({
+      kind: "directory",
+      name: "conf",
+      path: "/srv/conf",
+    });
+    const { result, setters } = renderTransferActionsHook({
+      fileTarget: sshFileTarget({
+        hostId: "host-left",
+        summary: "Left Host",
+      }),
+      selectedEntries: [appLog, confDirectory],
+      selectedEntryPaths: new Set(["/srv/app.log", "/srv/conf"]),
+      transferableSelectedEntries: [appLog, confDirectory],
+    });
+    const event = createKeyboardEvent({ key: "c" });
+
+    act(() => {
+      result.current.handleSftpKeyDown(event);
+    });
+
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(setters.setSftpClipboard).toHaveBeenCalledWith({
+      copiedAt: expect.any(Number),
+      entries: [
+        { kind: "file", name: "app.log", path: "/srv/app.log" },
+        { kind: "directory", name: "conf", path: "/srv/conf" },
+      ],
+      sourceHostId: "host-left",
+      sourceHostLabel: "Left Host",
+    });
+    expect(setters.setOperationStatus).toHaveBeenCalledWith({
+      kind: "success",
+      message: "已复制到 SFTP 剪贴板：2 个远程项目",
+    });
+    expect(sftpApiMock.enqueueSftpClipboardDownload).not.toHaveBeenCalled();
+  });
+
   it("pastes an SFTP clipboard with the remote copy runner", async () => {
     const calls: string[] = [];
     remoteCopyTaskRunnerMock.runRemoteCopyTask.mockImplementation(async () => {
@@ -908,14 +981,18 @@ function createSetter<T>(
   }) as unknown as SetterMock<T>;
 }
 
-function expectNoPickerOrArchiveSideEffects() {
+function expectNoPickerOrArchiveSideEffects({
+  allowClipboardDownload = false,
+}: { allowClipboardDownload?: boolean } = {}) {
   expect(fileDialogApiMock.selectLocalDirectory).not.toHaveBeenCalled();
   expect(fileDialogApiMock.selectLocalFile).not.toHaveBeenCalled();
   expect(fileDialogApiMock.selectSaveFile).not.toHaveBeenCalled();
   expect(sftpApiMock.classifySftpLocalPaths).not.toHaveBeenCalled();
   expect(sftpApiMock.enqueueSftpArchiveDownload).not.toHaveBeenCalled();
   expect(sftpApiMock.enqueueSftpArchiveUpload).not.toHaveBeenCalled();
-  expect(sftpApiMock.enqueueSftpClipboardDownload).not.toHaveBeenCalled();
+  if (!allowClipboardDownload) {
+    expect(sftpApiMock.enqueueSftpClipboardDownload).not.toHaveBeenCalled();
+  }
   expect(sftpApiMock.readSftpLocalFileClipboard).not.toHaveBeenCalled();
 }
 
@@ -1042,4 +1119,24 @@ function createLocalPayloadDragEvent(payload: unknown) {
     preventDefault: vi.fn(),
     stopPropagation: vi.fn(),
   } as unknown as ReactDragEvent<HTMLElement>;
+}
+
+function createKeyboardEvent({
+  key,
+  target = document.createElement("div"),
+}: {
+  key: string;
+  target?: EventTarget | null;
+}) {
+  return {
+    altKey: false,
+    ctrlKey: true,
+    key,
+    metaKey: false,
+    preventDefault: vi.fn(),
+    shiftKey: false,
+    target,
+  } as unknown as ReactKeyboardEvent<HTMLElement> & {
+    preventDefault: ReturnType<typeof vi.fn>;
+  };
 }

@@ -26,8 +26,9 @@ describe("SftpToolContent basic behavior", () => {
   it("shows an empty state for non SSH machines", () => {
     render(<SftpToolContent selectedMachine={localMachine} />);
 
-    expect(screen.getByText("远程文件浏览")).toBeInTheDocument();
-    expect(screen.getByText(/连接 SSH 主机或容器后显示文件/)).toBeInTheDocument();
+    expect(screen.getByText("本地文件")).toBeInTheDocument();
+    expect(screen.getByText("本机文件系统")).toBeInTheDocument();
+    expect(screen.getByLabelText("当前本地路径")).toBeInTheDocument();
     expect(sftpApiMocks.listSftpDirectory).not.toHaveBeenCalled();
   });
 
@@ -436,25 +437,36 @@ describe("SftpToolContent basic behavior", () => {
     );
   });
 
-  it("opens a file in the remote workspace editor by double clicking a file", async () => {
-    const user = userEvent.setup();
-
-    render(<SftpToolContent selectedMachine={sshMachine} />);
-
-    await screen.findByText("var");
+  it("opens a remote file in the central workspace tab by double clicking a file", async () => {
+    const user = userEvent.setup();
+    const onOpenWorkspaceFileTab = vi.fn();
+
+    render(
+      <SftpToolContent
+        onOpenWorkspaceFileTab={onOpenWorkspaceFileTab}
+        selectedMachine={sshMachine}
+      />,
+    );
+
+    await screen.findByText("var");
     await user.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
-    expect(await screen.findByText("app.log")).toBeInTheDocument();
-    await user.dblClick(screen.getByRole("button", { name: "文件 app.log" }));
-
-    expect(
-      await screen.findByTestId("remote-workspace-editor"),
-    ).toHaveTextContent("/var/log/app.log");
-    expect(
-      screen.getByRole("dialog", { name: "远程工作区" }),
-    ).toBeInTheDocument();
-    expect(sftpApiMocks.previewSftpFile).not.toHaveBeenCalled();
-  });
-
+    expect(await screen.findByText("app.log")).toBeInTheDocument();
+
+    await user.dblClick(screen.getByRole("button", { name: "文件 app.log" }));
+
+    await waitFor(() =>
+      expect(onOpenWorkspaceFileTab).toHaveBeenCalledWith({
+        access: "editable",
+        path: "/var/log/app.log",
+        rootPath: "/var/log",
+        source: "sftp",
+        target: { hostId: "prod-api", kind: "ssh" },
+      }),
+    );
+    expect(sftpApiMocks.previewSftpFile).not.toHaveBeenCalled();
+  });
+
+
   it("navigates into a directory without opening the workspace dialog on double click", async () => {
     const user = userEvent.setup();
 
@@ -472,39 +484,11 @@ describe("SftpToolContent basic behavior", () => {
       path: "/var/log",
     });
   });
-
-  it("closes the remote workspace dialog from the header close button", async () => {
-    const user = userEvent.setup();
-
-    render(<SftpToolContent selectedMachine={sshMachine} />);
 
-    await screen.findByText("var");
-    fireEvent.contextMenu(screen.getByRole("button", { name: "打开目录 var" }), {
-      clientX: 80,
-      clientY: 160,
-    });
-    await user.click(screen.getByRole("menuitem", { name: "工作区打开" }));
-    expect(
-      await screen.findByRole("dialog", { name: "远程工作区" }),
-    ).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "关闭弹窗" }));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "远程工作区" }),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("expands and restores the remote workspace dialog in the current app", async () => {
+
+  it("opens the selected directory in workspace mode from the context menu", async () => {
     const user = userEvent.setup();
-    const openSpy = vi
-      .spyOn(window, "open")
-      .mockImplementation(() => {
-        throw new Error("window.open should not be called");
-      });
-
+
     render(<SftpToolContent selectedMachine={sshMachine} />);
 
     await screen.findByText("var");
@@ -513,20 +497,38 @@ describe("SftpToolContent basic behavior", () => {
       clientY: 160,
     });
     await user.click(screen.getByRole("menuitem", { name: "工作区打开" }));
+
+    expect(await screen.findByText("文件工作区")).toBeInTheDocument();
+    expect(screen.getByText("当前根目录")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("/var")).toBeInTheDocument();
     expect(
-      await screen.findByRole("dialog", { name: "远程工作区" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("dialog", { name: "远程工作区" }),
+    ).not.toBeInTheDocument();
+  });
 
-    await user.click(screen.getByRole("button", { name: "放大工作区" }));
 
+  it("keeps workspace mode in the current app without opening a new window", async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
+      throw new Error("window.open should not be called");
+    });
+
+    render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    await screen.findByText("var");
+    fireEvent.contextMenu(screen.getByRole("button", { name: "打开目录 var" }), {
+      clientX: 80,
+      clientY: 160,
+    });
+    await user.click(screen.getByRole("menuitem", { name: "工作区打开" }));
+
+    expect(await screen.findByText("文件工作区")).toBeInTheDocument();
     expect(openSpy).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "还原工作区" })).toBeInTheDocument();
-    expect(screen.getByRole("dialog", { name: "远程工作区" })).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "还原工作区" }));
-    expect(screen.getByRole("button", { name: "放大工作区" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: "远程工作区" }),
+    ).not.toBeInTheDocument();
 
     openSpy.mockRestore();
   });
-
+
 });

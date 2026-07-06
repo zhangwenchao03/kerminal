@@ -301,6 +301,7 @@ fn seed_rendered_config_files(root: &Path) {
                 credential_ref: None,
                 secret_ref: None,
                 key_passphrase_ref: None,
+                key_passphrase_secret: None,
                 credential_secret: None,
                 credential_status: Default::default(),
                 tags: vec!["smoke".to_owned()],

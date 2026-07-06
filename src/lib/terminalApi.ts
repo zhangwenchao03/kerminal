@@ -1,5 +1,6 @@
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import { readDesktopClipboardText } from "./desktopClipboardApi";
+import type { SshAuthPromptPlan } from "./sshAuthApi";
 import type { ContainerRuntime } from "./targetModel";
 
 export type TerminalOutputKind = "data" | "agentSignal" | "closed" | "error";
@@ -131,6 +132,7 @@ export interface TerminalPtyOutputPumpStats {
 }
 
 export type TerminalErrorClass =
+  | "sshAuthRequired"
   | "spawnFailed"
   | "ptyReadFailed"
   | "ptyWriteFailed"
@@ -172,6 +174,7 @@ export interface TerminalCommandError {
   operation: TerminalErrorOperation;
   message: string;
   retryable: boolean;
+  sshAuthPromptPlan?: SshAuthPromptPlan;
 }
 
 export class TerminalApiError extends Error {

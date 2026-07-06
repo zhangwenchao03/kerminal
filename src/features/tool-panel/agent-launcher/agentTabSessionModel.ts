@@ -9,6 +9,8 @@ import {
 } from "../../../lib/agentLauncherApi";
 import type { AgentLaunchPermissionMode } from "./agentLauncherModel";
 
+export const UNBOUND_AGENT_SESSION_SCOPE_ID = "__kerminal_agent_unbound__";
+
 export interface AgentSidebarTabSession {
   agentId: ExternalAgentId;
   agentSessionId: string;
@@ -33,17 +35,21 @@ export interface TabRemovedCleanupPlan {
 export function agentSessionTabId(
   session: Pick<AgentSidebarTabSession, "tabId" | "target">,
 ): string | undefined {
+  if (session.target?.liveStatus === "unbound") {
+    return normalizedText(session.tabId) ?? UNBOUND_AGENT_SESSION_SCOPE_ID;
+  }
   return normalizedText(session.target?.tabId) ?? normalizedText(session.tabId);
+}
+
+export function agentSessionScopeId(tabId: string | undefined): string {
+  return normalizedText(tabId) ?? UNBOUND_AGENT_SESSION_SCOPE_ID;
 }
 
 export function visibleAgentSessionForTab(
   state: AgentSidebarSessionState,
   tabId: string | undefined,
 ): AgentSidebarTabSession | undefined {
-  const normalizedTabId = normalizedText(tabId);
-  if (!normalizedTabId) {
-    return undefined;
-  }
+  const normalizedTabId = agentSessionScopeId(tabId);
   const sessionId = state.activeSessionIdByTabId[normalizedTabId];
   if (!sessionId) {
     return undefined;
@@ -62,10 +68,7 @@ export function findRunningSessionForTabAgent(
   permissionMode: AgentLaunchPermissionMode,
   customCommand?: string,
 ): AgentSidebarTabSession | undefined {
-  const normalizedTabId = normalizedText(tabId);
-  if (!normalizedTabId) {
-    return undefined;
-  }
+  const normalizedTabId = agentSessionScopeId(tabId);
   const normalizedCommand = normalizeCustomCommand(customCommand);
   return Object.values(state.sessionsById).find((session) => {
     if (agentSessionTabId(session) !== normalizedTabId) {
@@ -107,22 +110,23 @@ export function restorableSessionsForTab(
   records: readonly AgentSessionRecord[],
   tabId: string | undefined,
 ): AgentSessionRecord[] {
-  const normalizedTabId = normalizedText(tabId);
-  if (!normalizedTabId) {
-    return [];
-  }
+  const normalizedTabId = agentSessionScopeId(tabId);
   return records.filter((record) => {
     if (agentSessionRecordStatus(record) !== "active") {
       return false;
     }
-    return agentSessionRecordTarget(record)?.tabId === normalizedTabId;
+    return agentSessionRecordTabId(record) === normalizedTabId;
   });
 }
 
 export function agentSessionRecordTabId(
   record: AgentSessionRecord,
 ): string | undefined {
-  return normalizedText(agentSessionRecordTarget(record)?.tabId);
+  const target = agentSessionRecordTarget(record);
+  if (target?.liveStatus === "unbound") {
+    return UNBOUND_AGENT_SESSION_SCOPE_ID;
+  }
+  return normalizedText(target?.tabId);
 }
 
 export function agentSessionRecordIds(

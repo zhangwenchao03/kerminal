@@ -2,13 +2,19 @@
 //!
 //! @author kongweiguang
 
-use std::path::{Path, PathBuf};
+use std::{
+    io::SeekFrom,
+    path::{Path, PathBuf},
+};
 
 use russh_sftp::{
     client::{fs::File as SftpFile, SftpSession},
     protocol::{FileType, OpenFlags},
 };
-use tokio::{fs, io::AsyncWriteExt};
+use tokio::{
+    fs,
+    io::{AsyncSeekExt, AsyncWriteExt},
+};
 
 use crate::{
     error::{AppError, AppResult},
@@ -17,7 +23,7 @@ use crate::{
 
 use super::{
     backend::{io_sftp_error, native_sftp_error, SftpRuntimeSettings},
-    is_already_exists_error,
+    is_already_exists_error, is_ambiguous_sftp_failure, is_no_such_file_error,
     transfer_paths::join_remote_path,
     ProgressReader, ProgressWriter, TransferProgress,
 };
@@ -25,6 +31,102 @@ use super::{
 enum RemoteReadFallback {
     File(String),
     Directory(String),
+}
+
+const RELIABLE_PARTIAL_SUFFIX: &str = ".kerminal-part";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ReliableWriteDecision {
+    SkipExistingFinal,
+    ChooseRenamedFinal,
+    Fresh,
+    Resume { offset: u64 },
+    CommitExistingPartial,
+    RestartPartial,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ReliableSizeConfirmation {
+    Verified,
+    Mismatch { expected: u64, actual: u64 },
+}
+
+pub(super) struct PreparedLocalReliableWriteTarget {
+    pub(super) final_path: PathBuf,
+    pub(super) partial_path: PathBuf,
+    pub(super) offset: u64,
+    pub(super) file: fs::File,
+}
+
+pub(super) struct PreparedRemoteReliableWriteTarget {
+    final_path: String,
+    partial_path: String,
+    offset: u64,
+    file: SftpFile,
+}
+
+pub(super) fn reliable_partial_file_name(name: &str) -> String {
+    let trimmed = name.trim();
+    let name = if trimmed.is_empty() { "file" } else { trimmed };
+    format!("{name}{RELIABLE_PARTIAL_SUFFIX}")
+}
+
+pub(super) fn reliable_remote_partial_path(final_path: &str) -> String {
+    let trimmed = final_path.trim().trim_end_matches('/');
+    let name = trimmed.rsplit('/').next().unwrap_or("file");
+    join_remote_path(
+        &remote_parent_path(final_path),
+        &reliable_partial_file_name(name),
+    )
+}
+
+pub(super) fn reliable_local_partial_path(final_path: &Path) -> PathBuf {
+    let name = final_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("file");
+    let partial_name = reliable_partial_file_name(name);
+    final_path
+        .parent()
+        .map(|parent| parent.join(&partial_name))
+        .unwrap_or_else(|| PathBuf::from(partial_name))
+}
+
+pub(super) fn plan_reliable_write(
+    conflict_policy: SftpTransferConflictPolicy,
+    final_exists: bool,
+    source_bytes: u64,
+    partial_bytes: Option<u64>,
+) -> ReliableWriteDecision {
+    if final_exists {
+        match conflict_policy {
+            SftpTransferConflictPolicy::Skip => return ReliableWriteDecision::SkipExistingFinal,
+            SftpTransferConflictPolicy::Rename => {
+                return ReliableWriteDecision::ChooseRenamedFinal;
+            }
+            SftpTransferConflictPolicy::Overwrite => {}
+        }
+    }
+
+    match partial_bytes {
+        None | Some(0) if source_bytes > 0 => ReliableWriteDecision::Fresh,
+        None => ReliableWriteDecision::Fresh,
+        Some(partial_bytes) if partial_bytes < source_bytes => ReliableWriteDecision::Resume {
+            offset: partial_bytes,
+        },
+        Some(partial_bytes) if partial_bytes == source_bytes => {
+            ReliableWriteDecision::CommitExistingPartial
+        }
+        Some(_) => ReliableWriteDecision::RestartPartial,
+    }
+}
+
+pub(super) fn confirm_reliable_write_size(expected: u64, actual: u64) -> ReliableSizeConfirmation {
+    if expected == actual {
+        ReliableSizeConfirmation::Verified
+    } else {
+        ReliableSizeConfirmation::Mismatch { expected, actual }
+    }
 }
 
 pub(super) async fn upload_directory(
@@ -47,7 +149,7 @@ pub(super) async fn upload_directory(
     while let Some((local_dir, remote_dir)) = stack.pop() {
         progress.ensure_not_cancelled()?;
         if let Err(error) = sftp.create_dir(remote_dir.clone()).await {
-            if !is_already_exists_error(&error) {
+            if !remote_create_conflict_confirmed(sftp, &remote_dir, &error, true).await {
                 return Err(native_sftp_error(error));
             }
         }
@@ -91,18 +193,34 @@ pub(super) async fn upload_file(
         progress.set_total_bytes(metadata.len());
     }
     let mut local_file = fs::File::open(local_path).await?;
-    let mut reader = ProgressReader::new(&mut local_file, progress.clone());
-    let Some(mut remote_file) =
-        open_remote_write_target(sftp, remote_path, conflict_policy, metadata.len()).await?
+    let Some(mut remote_target) =
+        prepare_remote_reliable_write_target(sftp, remote_path, conflict_policy, metadata.len())
+            .await?
     else {
         progress.add_bytes(metadata.len());
         return Ok(());
     };
-    remote_file
+    if remote_target.offset > 0 {
+        local_file
+            .seek(SeekFrom::Start(remote_target.offset))
+            .await
+            .map_err(io_sftp_error)?;
+        progress.add_bytes(remote_target.offset);
+    }
+    let mut reader = ProgressReader::new(&mut local_file, progress.clone());
+    remote_target
+        .file
         .write_all_pipelined(&mut reader, settings.pipeline_depth)
         .await
         .map_err(native_sftp_error)?;
-    remote_file.shutdown().await.map_err(io_sftp_error)
+    remote_target.file.shutdown().await.map_err(io_sftp_error)?;
+    commit_remote_reliable_write_target(
+        sftp,
+        &remote_target.final_path,
+        &remote_target.partial_path,
+        metadata.len(),
+    )
+    .await
 }
 
 pub(super) async fn download_directory(
@@ -201,19 +319,34 @@ pub(super) async fn download_file(
         .ok()
         .and_then(|metadata| metadata.size)
         .unwrap_or(0);
-    let Some(mut local_file) =
-        open_local_write_target(local_path, conflict_policy, remote_size).await?
+    let Some(mut local_target) =
+        prepare_local_reliable_write_target(local_path, conflict_policy, remote_size).await?
     else {
         progress.add_bytes(remote_size);
         return Ok(());
     };
-    let mut writer = ProgressWriter::new(&mut local_file, progress.clone());
-    remote_file
-        .read_to_writer_pipelined(&mut writer, settings.pipeline_depth)
-        .await
-        .map_err(native_sftp_error)?;
-    writer.flush().await.map_err(io_sftp_error)?;
-    remote_file.shutdown().await.map_err(io_sftp_error)
+    if local_target.offset > 0 {
+        remote_file
+            .seek(SeekFrom::Start(local_target.offset))
+            .await
+            .map_err(io_sftp_error)?;
+        progress.add_bytes(local_target.offset);
+    }
+    {
+        let mut writer = ProgressWriter::new(&mut local_target.file, progress.clone());
+        remote_file
+            .read_to_writer_pipelined(&mut writer, settings.pipeline_depth)
+            .await
+            .map_err(native_sftp_error)?;
+        writer.flush().await.map_err(io_sftp_error)?;
+    }
+    local_target.file.flush().await.map_err(io_sftp_error)?;
+    local_target.file.shutdown().await.map_err(io_sftp_error)?;
+    let final_path = local_target.final_path.clone();
+    let partial_path = local_target.partial_path.clone();
+    drop(local_target.file);
+    remote_file.shutdown().await.map_err(io_sftp_error)?;
+    commit_local_reliable_write_target(&final_path, &partial_path, remote_size).await
 }
 
 async fn resolve_remote_read_fallback(
@@ -394,7 +527,7 @@ pub(super) async fn copy_remote_file_between_sessions(
         .ok()
         .and_then(|metadata| metadata.size)
         .unwrap_or(0);
-    let Some(mut target_file) = open_remote_write_target(
+    let Some(mut target) = prepare_remote_reliable_write_target(
         target_sftp,
         target_remote_path,
         conflict_policy,
@@ -405,21 +538,35 @@ pub(super) async fn copy_remote_file_between_sessions(
         progress.add_bytes(source_size);
         return Ok(());
     };
+    if target.offset > 0 {
+        source_file
+            .seek(SeekFrom::Start(target.offset))
+            .await
+            .map_err(io_sftp_error)?;
+        progress.add_bytes(target.offset);
+    }
     {
-        let mut writer = ProgressWriter::new(&mut target_file, progress.clone());
+        let mut writer = ProgressWriter::new(&mut target.file, progress.clone());
         source_file
             .read_to_writer_pipelined(&mut writer, settings.pipeline_depth)
             .await
             .map_err(native_sftp_error)?;
         writer.flush().await.map_err(io_sftp_error)?;
     }
-    target_file.shutdown().await.map_err(io_sftp_error)?;
-    source_file.shutdown().await.map_err(io_sftp_error)
+    target.file.shutdown().await.map_err(io_sftp_error)?;
+    source_file.shutdown().await.map_err(io_sftp_error)?;
+    commit_remote_reliable_write_target(
+        target_sftp,
+        &target.final_path,
+        &target.partial_path,
+        source_size,
+    )
+    .await
 }
 
 async fn ensure_remote_directory(sftp: &SftpSession, remote_path: &str) -> AppResult<()> {
     if let Err(error) = sftp.create_dir(remote_path.to_owned()).await {
-        if !is_already_exists_error(&error) {
+        if !remote_create_conflict_confirmed(sftp, remote_path, &error, true).await {
             return Err(native_sftp_error(error));
         }
     }
@@ -438,15 +585,24 @@ async fn prepare_remote_directory_root(
         }
         SftpTransferConflictPolicy::Skip => match sftp.create_dir(remote_path.to_owned()).await {
             Ok(()) => Ok(Some(remote_path.to_owned())),
-            Err(error) if is_already_exists_error(&error) => Ok(None),
-            Err(error) => Err(native_sftp_error(error)),
+            Err(error) => {
+                if remote_create_conflict_confirmed(sftp, remote_path, &error, true).await {
+                    Ok(None)
+                } else {
+                    Err(native_sftp_error(error))
+                }
+            }
         },
         SftpTransferConflictPolicy::Rename => {
             for candidate in remote_conflict_candidates(remote_path).take(1000) {
                 match sftp.create_dir(candidate.clone()).await {
                     Ok(()) => return Ok(Some(candidate)),
-                    Err(error) if is_already_exists_error(&error) => continue,
-                    Err(error) => return Err(native_sftp_error(error)),
+                    Err(error) => {
+                        if remote_create_conflict_confirmed(sftp, &candidate, &error, true).await {
+                            continue;
+                        }
+                        return Err(native_sftp_error(error));
+                    }
                 }
             }
             Err(AppError::Sftp(format!(
@@ -486,55 +642,328 @@ pub(super) async fn prepare_local_directory_root(
     }
 }
 
-async fn open_remote_write_target(
+async fn remote_create_conflict_confirmed(
+    sftp: &SftpSession,
+    remote_path: &str,
+    error: &russh_sftp::client::error::Error,
+    require_directory: bool,
+) -> bool {
+    if is_already_exists_error(error) {
+        return true;
+    }
+    if !is_ambiguous_sftp_failure(error) {
+        return false;
+    }
+    match sftp.metadata(remote_path.to_owned()).await {
+        Ok(metadata) => !require_directory || metadata.is_dir(),
+        Err(_) => false,
+    }
+}
+
+async fn remote_path_exists(sftp: &SftpSession, remote_path: &str) -> AppResult<bool> {
+    match sftp.metadata(remote_path.to_owned()).await {
+        Ok(_) => Ok(true),
+        Err(error) if is_no_such_file_error(&error) => Ok(false),
+        Err(error) => Err(native_sftp_error(error)),
+    }
+}
+
+async fn prepare_remote_reliable_write_target(
     sftp: &SftpSession,
     remote_path: &str,
     conflict_policy: SftpTransferConflictPolicy,
-    skipped_bytes: u64,
-) -> AppResult<Option<SftpFile>> {
+    source_bytes: u64,
+) -> AppResult<Option<PreparedRemoteReliableWriteTarget>> {
     match conflict_policy {
-        SftpTransferConflictPolicy::Overwrite => sftp
-            .open_with_flags(
+        SftpTransferConflictPolicy::Overwrite => {
+            prepare_selected_remote_reliable_write_target(
+                sftp,
                 remote_path,
-                OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE,
+                conflict_policy,
+                remote_path_exists(sftp, remote_path).await?,
+                source_bytes,
             )
             .await
-            .map(Some)
-            .map_err(native_sftp_error),
+        }
+        SftpTransferConflictPolicy::Skip if remote_path_exists(sftp, remote_path).await? => {
+            Ok(None)
+        }
         SftpTransferConflictPolicy::Skip => {
-            match sftp
-                .open_with_flags(
-                    remote_path,
-                    OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
-                )
-                .await
-            {
-                Ok(file) => Ok(Some(file)),
-                Err(error) if is_already_exists_error(&error) => {
-                    let _ = skipped_bytes;
-                    Ok(None)
-                }
-                Err(error) => Err(native_sftp_error(error)),
-            }
+            prepare_selected_remote_reliable_write_target(
+                sftp,
+                remote_path,
+                conflict_policy,
+                false,
+                source_bytes,
+            )
+            .await
         }
         SftpTransferConflictPolicy::Rename => {
             for candidate in remote_conflict_candidates(remote_path).take(1000) {
-                match sftp
-                    .open_with_flags(
-                        candidate,
-                        OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
-                    )
-                    .await
-                {
-                    Ok(file) => return Ok(Some(file)),
-                    Err(error) if is_already_exists_error(&error) => continue,
-                    Err(error) => return Err(native_sftp_error(error)),
+                if remote_path_exists(sftp, &candidate).await? {
+                    continue;
                 }
+                return prepare_selected_remote_reliable_write_target(
+                    sftp,
+                    &candidate,
+                    conflict_policy,
+                    false,
+                    source_bytes,
+                )
+                .await;
             }
             Err(AppError::Sftp(format!(
                 "无法为远程目标生成不冲突的文件名: {remote_path}"
             )))
         }
+    }
+}
+
+async fn prepare_selected_remote_reliable_write_target(
+    sftp: &SftpSession,
+    final_path: &str,
+    conflict_policy: SftpTransferConflictPolicy,
+    final_exists: bool,
+    source_bytes: u64,
+) -> AppResult<Option<PreparedRemoteReliableWriteTarget>> {
+    let partial_path = reliable_remote_partial_path(final_path);
+    let partial_bytes = remote_partial_bytes(sftp, &partial_path).await?;
+    match plan_reliable_write(conflict_policy, final_exists, source_bytes, partial_bytes) {
+        ReliableWriteDecision::SkipExistingFinal => Ok(None),
+        ReliableWriteDecision::ChooseRenamedFinal => Err(AppError::Sftp(format!(
+            "无法为远程目标生成不冲突的文件名: {final_path}"
+        ))),
+        ReliableWriteDecision::Fresh | ReliableWriteDecision::RestartPartial => {
+            open_remote_reliable_partial_target(sftp, final_path, partial_path, 0, true)
+                .await
+                .map(Some)
+        }
+        ReliableWriteDecision::Resume { offset } => {
+            open_remote_reliable_partial_target(sftp, final_path, partial_path, offset, false)
+                .await
+                .map(Some)
+        }
+        ReliableWriteDecision::CommitExistingPartial => {
+            open_remote_reliable_partial_target(sftp, final_path, partial_path, source_bytes, false)
+                .await
+                .map(Some)
+        }
+    }
+}
+
+async fn remote_partial_bytes(sftp: &SftpSession, partial_path: &str) -> AppResult<Option<u64>> {
+    match sftp.metadata(partial_path.to_owned()).await {
+        Ok(metadata) => Ok(metadata.size),
+        Err(error) if is_no_such_file_error(&error) => Ok(None),
+        Err(error) => Err(native_sftp_error(error)),
+    }
+}
+
+async fn open_remote_reliable_partial_target(
+    sftp: &SftpSession,
+    final_path: &str,
+    partial_path: String,
+    offset: u64,
+    truncate: bool,
+) -> AppResult<PreparedRemoteReliableWriteTarget> {
+    let flags = if truncate {
+        OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE
+    } else {
+        OpenFlags::CREATE | OpenFlags::WRITE
+    };
+    let mut file = sftp
+        .open_with_flags(partial_path.clone(), flags)
+        .await
+        .map_err(native_sftp_error)?;
+    if offset > 0 {
+        file.seek(SeekFrom::Start(offset))
+            .await
+            .map_err(io_sftp_error)?;
+    }
+    Ok(PreparedRemoteReliableWriteTarget {
+        final_path: final_path.to_owned(),
+        partial_path,
+        offset,
+        file,
+    })
+}
+
+async fn commit_remote_reliable_write_target(
+    sftp: &SftpSession,
+    final_path: &str,
+    partial_path: &str,
+    expected_bytes: u64,
+) -> AppResult<()> {
+    let actual_bytes = sftp
+        .metadata(partial_path.to_owned())
+        .await
+        .map_err(native_sftp_error)?
+        .size
+        .unwrap_or(0);
+    match confirm_reliable_write_size(expected_bytes, actual_bytes) {
+        ReliableSizeConfirmation::Verified => {}
+        ReliableSizeConfirmation::Mismatch { expected, actual } => {
+            return Err(AppError::Sftp(format!(
+                "可靠上传 size 确认失败: expected {expected} bytes, got {actual} bytes"
+            )));
+        }
+    }
+
+    match sftp
+        .rename(partial_path.to_owned(), final_path.to_owned())
+        .await
+    {
+        Ok(()) => Ok(()),
+        Err(error) if remote_create_conflict_confirmed(sftp, final_path, &error, false).await => {
+            sftp.remove_file(final_path.to_owned())
+                .await
+                .map_err(native_sftp_error)?;
+            sftp.rename(partial_path.to_owned(), final_path.to_owned())
+                .await
+                .map_err(native_sftp_error)
+        }
+        Err(error) => Err(native_sftp_error(error)),
+    }
+}
+
+pub(super) async fn prepare_local_reliable_write_target(
+    local_path: &Path,
+    conflict_policy: SftpTransferConflictPolicy,
+    source_bytes: u64,
+) -> AppResult<Option<PreparedLocalReliableWriteTarget>> {
+    if let Some(parent) = local_path.parent() {
+        fs::create_dir_all(parent).await?;
+    }
+    match conflict_policy {
+        SftpTransferConflictPolicy::Overwrite => {
+            prepare_selected_local_reliable_write_target(
+                local_path,
+                conflict_policy,
+                fs::try_exists(local_path).await?,
+                source_bytes,
+            )
+            .await
+        }
+        SftpTransferConflictPolicy::Skip if fs::try_exists(local_path).await? => Ok(None),
+        SftpTransferConflictPolicy::Skip => {
+            prepare_selected_local_reliable_write_target(
+                local_path,
+                conflict_policy,
+                false,
+                source_bytes,
+            )
+            .await
+        }
+        SftpTransferConflictPolicy::Rename => {
+            for candidate in local_conflict_candidates(local_path).take(1000) {
+                if fs::try_exists(&candidate).await? {
+                    continue;
+                }
+                return prepare_selected_local_reliable_write_target(
+                    &candidate,
+                    conflict_policy,
+                    false,
+                    source_bytes,
+                )
+                .await;
+            }
+            Err(AppError::Sftp(format!(
+                "无法为本地目标生成不冲突的文件名: {}",
+                local_path.display()
+            )))
+        }
+    }
+}
+
+async fn prepare_selected_local_reliable_write_target(
+    final_path: &Path,
+    conflict_policy: SftpTransferConflictPolicy,
+    final_exists: bool,
+    source_bytes: u64,
+) -> AppResult<Option<PreparedLocalReliableWriteTarget>> {
+    let partial_path = reliable_local_partial_path(final_path);
+    let partial_bytes = local_partial_bytes(&partial_path).await?;
+    match plan_reliable_write(conflict_policy, final_exists, source_bytes, partial_bytes) {
+        ReliableWriteDecision::SkipExistingFinal => Ok(None),
+        ReliableWriteDecision::ChooseRenamedFinal => Err(AppError::Sftp(format!(
+            "无法为本地目标生成不冲突的文件名: {}",
+            final_path.display()
+        ))),
+        ReliableWriteDecision::Fresh | ReliableWriteDecision::RestartPartial => {
+            open_local_reliable_partial_target(final_path, partial_path, 0, true)
+                .await
+                .map(Some)
+        }
+        ReliableWriteDecision::Resume { offset } => {
+            open_local_reliable_partial_target(final_path, partial_path, offset, false)
+                .await
+                .map(Some)
+        }
+        ReliableWriteDecision::CommitExistingPartial => {
+            open_local_reliable_partial_target(final_path, partial_path, source_bytes, false)
+                .await
+                .map(Some)
+        }
+    }
+}
+
+async fn local_partial_bytes(partial_path: &Path) -> AppResult<Option<u64>> {
+    match fs::metadata(partial_path).await {
+        Ok(metadata) => Ok(Some(metadata.len())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+async fn open_local_reliable_partial_target(
+    final_path: &Path,
+    partial_path: PathBuf,
+    offset: u64,
+    truncate: bool,
+) -> AppResult<PreparedLocalReliableWriteTarget> {
+    if let Some(parent) = partial_path.parent() {
+        fs::create_dir_all(parent).await?;
+    }
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(truncate)
+        .open(&partial_path)
+        .await?;
+    if offset > 0 {
+        file.seek(SeekFrom::Start(offset)).await?;
+    }
+    Ok(PreparedLocalReliableWriteTarget {
+        final_path: final_path.to_path_buf(),
+        partial_path,
+        offset,
+        file,
+    })
+}
+
+pub(super) async fn commit_local_reliable_write_target(
+    final_path: &Path,
+    partial_path: &Path,
+    expected_bytes: u64,
+) -> AppResult<()> {
+    let actual_bytes = fs::metadata(partial_path).await?.len();
+    match confirm_reliable_write_size(expected_bytes, actual_bytes) {
+        ReliableSizeConfirmation::Verified => {}
+        ReliableSizeConfirmation::Mismatch { expected, actual } => {
+            return Err(AppError::Sftp(format!(
+                "可靠下载 size 确认失败: expected {expected} bytes, got {actual} bytes"
+            )));
+        }
+    }
+
+    match fs::rename(partial_path, final_path).await {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            fs::remove_file(final_path).await?;
+            fs::rename(partial_path, final_path).await?;
+            Ok(())
+        }
+        Err(error) => Err(error.into()),
     }
 }
 

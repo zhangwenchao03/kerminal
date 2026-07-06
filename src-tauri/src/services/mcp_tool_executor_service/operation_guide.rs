@@ -101,7 +101,17 @@ pub(super) fn execute_kerminal_operation_guide(
                 "hostPolicy": "The MCP host owns confirmation, approval, permissions, hooks, and audit.",
                 "terminalWrite": "Before terminal.write, resolve and inspect the target; session-bound writes require agentSessionId, bindingGeneration, and data.",
                 "remoteWrite": "For remote file deletes, tmux kills, port-forward closes, credential writes, and production hosts, rely on host approval and user intent before calling write/destructive tools.",
+                "managedSsh": "For SSH-bound tool families, inspect kerminal.runtime_snapshot.managedSsh to verify whether terminal, SFTP, exec/tmux/system/container, port-forward, and MCP SSH tools are sharing a managed session; the snapshot is redacted and never returns credential material.",
+                "externalLaunch": "External SSH launch compatibility is configured in settings.toml externalLaunch; runtime diagnostics expose only policy, counts, launch ids, and redacted rejection metadata.",
                 "secrets": "Never copy passwords, tokens, private keys, vault keys, or decrypted secret material into chat, docs, logs, ordinary config files, or diagnostics."
+            },
+            "managedSshRuntime": {
+                "inspectTool": "kerminal.runtime_snapshot",
+                "snapshotPath": "managedSsh",
+                "appliesToIntents": ["ssh-command", "sftp", "tmux", "container", "port-forward", "server-info", "diagnostics"],
+                "sharedSessionRule": "Kerminal owns the authenticated ManagedSshSession and opens independent shell, SFTP, exec, and forwarding channels under the same session key when available.",
+                "fallbackRule": "Only unsupported or unwired managed backends may fall back to legacy paths; auth, host-key, connect, subsystem, exec, or channel-open failures should not be hidden by opening a separate legacy SSH connection.",
+                "secretBoundary": "managedSsh diagnostics include only redacted session/channel/runtime state, never passwords, private keys, passphrases, raw env, or vault refs."
             },
             "deliberatelyAbsentToolFamilies": absent_tool_families(),
             "availableReferencedToolIds": available_referenced_tool_ids.clone(),
@@ -111,6 +121,7 @@ pub(super) fn execute_kerminal_operation_guide(
                 "The requested target terminal is stale, closed, missing, or generation-mismatched.",
                 "The task requires config CRUD tools that are intentionally absent; switch to direct file edits plus validation.",
                 "The task asks for secret extraction, vault file editing, or plaintext credential disclosure.",
+                "managedSsh diagnostics show a managed SSH failure that requires user action, host-key trust, missing credentials, or backend implementation rather than a second hidden SSH login.",
                 "A destructive remote action, production write, or external side effect lacks clear user intent or host approval."
             ]
         })),
@@ -227,10 +238,11 @@ fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
                     &["host id or target context"],
                     "Do not add remote_host.* expectations; host metadata is file-backed.",
                 ),
+                managed_ssh_runtime_step(),
                 guide_step(
                     "execute",
                     Some("ssh.command_on_resolved_host"),
-                    "Run a non-interactive command on a saved host through Kerminal credentials.",
+                    "Run a non-interactive command on a saved host through the managed SSH exec facade.",
                     &["hostId", "command"],
                     "Avoid interactive commands; use terminal tools for interactive shells.",
                 ),
@@ -247,12 +259,16 @@ fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
                 "If host metadata is missing, edit hosts/*.toml directly and validate before running commands.",
                 "If credentials are missing, ask for authorization and use credential tools; do not read secrets/.",
             ],
-            vec!["For repeated interactive work, ask the user to open or bind a terminal."],
+            vec![
+                "For repeated interactive work, ask the user to open or bind a terminal.",
+                "After an SSH-bound operation, inspect managedSsh again when you need proof of session/channel reuse.",
+            ],
         ),
         "sftp" => guide_plan(
             "sftp",
-            vec!["sftp.list"],
+            vec!["kerminal.runtime_snapshot", "sftp.list"],
             vec![
+                managed_ssh_runtime_step(),
                 guide_step(
                     "browse",
                     Some("sftp.list"),
@@ -293,14 +309,16 @@ fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
             ],
             vec![
                 "If the host id is unknown, read hosts/*.toml directly or use the bound target context.",
+                "If managedSsh reports backend unsupported/unwired, legacy fallback may be expected; auth, host-key, connect, subsystem, or channel errors should not be retried through a hidden legacy SSH login.",
                 "If a destructive remote file operation is requested, rely on host approval and clear user intent.",
             ],
             vec!["Use sftp.transfer.list after enqueueing long-running transfers."],
         ),
         "tmux" => guide_plan(
             "tmux",
-            vec!["tmux.probe", "tmux.list_sessions"],
+            vec!["kerminal.runtime_snapshot", "tmux.probe", "tmux.list_sessions"],
             vec![
+                managed_ssh_runtime_step(),
                 guide_step(
                     "probe",
                     Some("tmux.probe"),
@@ -334,14 +352,16 @@ fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
             ],
             vec![
                 "If tmux is unavailable, use ordinary terminal or SSH command tools.",
+                "For SSH targets, tmux tools should flow through managed exec; inspect managedSsh if tmux appears to ask for a second login.",
                 "Treat tmux.kill_session as destructive and require clear user intent.",
             ],
             vec!["Use tmux.attach_plan to explain how the user can attach from the UI/terminal."],
         ),
         "container" | "docker" | "podman" => guide_plan(
             "container",
-            vec!["container.list"],
+            vec!["kerminal.runtime_snapshot", "container.list"],
             vec![
+                managed_ssh_runtime_step(),
                 guide_step(
                     "discover",
                     Some("container.list"),
@@ -433,6 +453,7 @@ fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
             ],
             vec![
                 "If the host id is unknown, read hosts/*.toml directly or use the bound target context.",
+                "For SSH-host containers, list/logs/stats/lifecycle should flow through managed exec and container files through managed SSH/SFTP capability paths.",
                 "Use SSH command tools only for container actions that are not exposed as dedicated MCP tools.",
             ],
             vec![
@@ -441,8 +462,9 @@ fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
         ),
         "port-forward" | "port" | "forward" => guide_plan(
             "port-forward",
-            vec!["port_forward.list"],
+            vec!["kerminal.runtime_snapshot", "port_forward.list"],
             vec![
+                managed_ssh_runtime_step(),
                 guide_step(
                     "discover",
                     Some("port_forward.list"),
@@ -468,20 +490,24 @@ fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
             vec!["port_forward.create", "port_forward.close"],
             vec![
                 "If the local port is busy, choose another port or ask the user.",
+                "Managed port-forward diagnostics should show backend, tunnel kind, session/channel/tunnel id, cleanup/reconnect state, and fallback reason.",
                 "If the host id is missing, edit/read hosts/*.toml directly before creating a forward.",
             ],
             vec!["Call kerminal.runtime_snapshot to see running forward counts in a broader runtime view."],
         ),
         "server-info" | "server" | "info" => guide_plan(
             "server-info",
-            vec!["server_info.snapshot"],
-            vec![guide_step(
-                "snapshot",
-                Some("server_info.snapshot"),
-                "Read machine health and system summary for a saved SSH host.",
-                &["hostId"],
-                "This is read-only but still uses saved host access; do not expose secrets from diagnostics.",
-            )],
+            vec!["kerminal.runtime_snapshot", "server_info.snapshot"],
+            vec![
+                managed_ssh_runtime_step(),
+                guide_step(
+                    "snapshot",
+                    Some("server_info.snapshot"),
+                    "Read machine health and system summary for a saved SSH host through managed SSH exec.",
+                    &["hostId"],
+                    "This is read-only but still uses saved host access; do not expose secrets from diagnostics.",
+                ),
+            ],
             vec![],
             vec!["If host id is unknown, read hosts/*.toml directly or use the bound target context."],
             vec!["Use diagnostics.runtime_health for local Kerminal process health instead."],
@@ -500,6 +526,54 @@ fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
             vec!["Do not edit data/command.sqlite directly."],
             vec!["Use terminal snapshots or SSH logs for live output, not history search."],
         ),
+        "external-launch" | "external-ssh-launch" | "bastion-launch" | "jump-host-launch" => {
+            guide_plan(
+                "external-launch",
+                vec![
+                    "kerminal.runtime_snapshot",
+                    "kerminal.config_guide",
+                    "kerminal.config.validate",
+                ],
+                vec![
+                    guide_step(
+                        "inspect-runtime",
+                        Some("kerminal.runtime_snapshot"),
+                        "Inspect externalLaunch for current policy, pending queue counts, redacted last rejection, and session-only secret counts.",
+                        &[],
+                        "Snapshot never returns plaintext password, key passphrase, private key content, or password file contents.",
+                    ),
+                    guide_step(
+                        "read-config-rules",
+                        Some("kerminal.config_guide"),
+                        "Read the settings.toml configuration rules before changing externalLaunch policy.",
+                        &["settings.toml"],
+                        "Do not look for external_launch.* MCP config/control tools; they are intentionally absent.",
+                    ),
+                    guide_step(
+                        "edit-policy",
+                        None,
+                        "Edit settings.toml externalLaunch to enable/disable external launch, vendor argument parsing, shim bridge, autoOpenSftp, or disabledTools.",
+                        &["direct file edit"],
+                        "Never write plaintext credentials, private keys, password file contents, or key passphrases into settings.toml.",
+                    ),
+                    guide_step(
+                        "validate",
+                        Some("kerminal.config.validate"),
+                        "Validate settings after the file edit, then re-read kerminal.runtime_snapshot to confirm the runtime policy.",
+                        &["scope=settings"],
+                        "Validation success is required before claiming the policy is production-ready.",
+                    ),
+                ],
+                vec![],
+                vec![
+                    "If a jump platform only supports fixed terminal names, use the compatibility shim distribution path rather than MCP.",
+                    "If external launches are rejected, use rawHash and redacted metadata only; do not ask for or print plaintext secrets.",
+                ],
+                vec![
+                    "Use kerminal.runtime_snapshot after validation to confirm policy and queue status.",
+                ],
+            )
+        },
         "config" | "configuration" => guide_plan(
             "config",
             vec!["kerminal.config_guide", "kerminal.config.validate"],
@@ -584,7 +658,7 @@ fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
                 guide_step(
                     "runtime",
                     Some("kerminal.runtime_snapshot"),
-                    "Read current terminal, Agent session, port-forward, and MCP tool counts.",
+                    "Read current terminal, Agent session, managed SSH session/channel, port-forward, and MCP tool counts.",
                     &[],
                     "Snapshot is summarized and does not read secrets.",
                 ),
@@ -624,14 +698,14 @@ fn operation_guide_plan(requested_intent: &str) -> OperationGuidePlan {
                 guide_step(
                     "snapshot",
                     Some("kerminal.runtime_snapshot"),
-                    "Read the current running terminals, Agent sessions, port forwards, local proxy entries, and next actions.",
+                    "Read the current running terminals, Agent sessions, managed SSH sessions/channels, port forwards, local proxy entries, and next actions.",
                     &[],
                     "The snapshot is a summary; use specialized tools for details.",
                 ),
                 guide_step(
                     "narrow",
                     Some("kerminal.operation_guide"),
-                    "Call this tool again with a narrower intent such as terminal, session-terminal, config, sftp, tmux, credentials, or diagnostics.",
+                    "Call this tool again with a narrower intent such as terminal, session-terminal, external-launch, config, sftp, tmux, credentials, or diagnostics.",
                     &["intent"],
                     "Choose the intent from the user's requested action, not from guessed files.",
                 ),
@@ -689,6 +763,16 @@ fn guide_step(
         "safety": safety,
         "exampleArguments": tool_id.and_then(example_arguments_for)
     })
+}
+
+fn managed_ssh_runtime_step() -> Value {
+    guide_step(
+        "inspect-runtime",
+        Some("kerminal.runtime_snapshot"),
+        "Inspect managedSsh session/channel diagnostics for the target before treating SSH-bound tool failures as independent logins.",
+        &[],
+        "Snapshot output is redacted; use it for backend/session/channel/fallback evidence, not for credential extraction.",
+    )
 }
 
 fn unique_tool_ids(ids: Vec<&'static str>) -> Vec<&'static str> {

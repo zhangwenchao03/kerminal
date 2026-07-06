@@ -35,6 +35,42 @@ const SFTP_TRANSFER_PROGRESS_EMIT_INTERVAL_MS: u64 = 200;
 pub(super) struct TransferTask {
     pub(super) summary: SftpTransferSummary,
     pub(super) cancel_requested: Arc<AtomicBool>,
+    pub(super) speed: TransferSpeedTracker,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct TransferSpeedTracker {
+    last_sample_at_ms: u64,
+    last_sample_bytes: u64,
+    speed_bytes_per_second: u64,
+}
+
+impl TransferSpeedTracker {
+    pub(super) fn new(started_at_ms: u64) -> Self {
+        Self {
+            last_sample_at_ms: started_at_ms,
+            last_sample_bytes: 0,
+            speed_bytes_per_second: 0,
+        }
+    }
+
+    fn update(&mut self, transferred_bytes: u64, now_ms: u64) -> u64 {
+        let elapsed_ms = now_ms.saturating_sub(self.last_sample_at_ms);
+        if elapsed_ms < SFTP_TRANSFER_PROGRESS_EMIT_INTERVAL_MS {
+            return self.speed_bytes_per_second;
+        }
+        let delta_bytes = transferred_bytes.saturating_sub(self.last_sample_bytes);
+        self.speed_bytes_per_second = delta_bytes.saturating_mul(1000) / elapsed_ms.max(1);
+        self.last_sample_at_ms = now_ms;
+        self.last_sample_bytes = transferred_bytes;
+        self.speed_bytes_per_second
+    }
+
+    fn reset(&mut self, transferred_bytes: u64, now_ms: u64) {
+        self.last_sample_at_ms = now_ms;
+        self.last_sample_bytes = transferred_bytes;
+        self.speed_bytes_per_second = 0;
+    }
 }
 
 #[derive(Clone)]
@@ -321,9 +357,12 @@ impl TransferProgress {
     }
 
     pub(super) fn add_bytes(&self, bytes: u64) {
-        self.update_summary(false, |summary| {
-            summary.bytes_transferred = summary.bytes_transferred.saturating_add(bytes);
-            summary.updated_at = unix_timestamp();
+        let now_ms = unix_timestamp_millis();
+        self.update_task(false, |task| {
+            task.summary.bytes_transferred = task.summary.bytes_transferred.saturating_add(bytes);
+            task.summary.speed_bytes_per_second =
+                task.speed.update(task.summary.bytes_transferred, now_ms);
+            task.summary.updated_at = unix_timestamp();
         });
     }
 
@@ -333,6 +372,7 @@ impl TransferProgress {
             summary.error = None;
             summary.phase = Some("done".to_owned());
             summary.current_item = None;
+            summary.speed_bytes_per_second = 0;
             summary.updated_at = unix_timestamp();
         });
     }
@@ -343,6 +383,7 @@ impl TransferProgress {
             summary.cancel_requested = true;
             summary.phase = Some("canceled".to_owned());
             summary.current_item = None;
+            summary.speed_bytes_per_second = 0;
             summary.updated_at = unix_timestamp();
         });
     }
@@ -354,6 +395,7 @@ impl TransferProgress {
             summary.error = Some(error.to_string());
             summary.phase = Some("canceled".to_owned());
             summary.current_item = None;
+            summary.speed_bytes_per_second = 0;
             summary.updated_at = unix_timestamp();
         });
     }
@@ -363,17 +405,27 @@ impl TransferProgress {
             summary.status = SftpTransferStatus::Failed;
             summary.error = Some(error.into());
             summary.phase = Some("failed".to_owned());
+            summary.speed_bytes_per_second = 0;
             summary.updated_at = unix_timestamp();
         });
     }
 
     fn update_summary(&self, force_event: bool, update: impl FnOnce(&mut SftpTransferSummary)) {
+        self.update_task(force_event, |task| update(&mut task.summary));
+    }
+
+    fn update_task(&self, force_event: bool, update: impl FnOnce(&mut TransferTask)) {
         let (Some(transfer_id), Some(transfers)) = (&self.transfer_id, &self.transfers) else {
             return;
         };
         let next_summary = if let Ok(mut transfers) = transfers.lock() {
             let next_summary = if let Some(task) = transfers.get_mut(transfer_id) {
-                update(&mut task.summary);
+                update(task);
+                if super::transfer_registry::is_completed_transfer_status(task.summary.status) {
+                    task.summary.speed_bytes_per_second = 0;
+                    task.speed
+                        .reset(task.summary.bytes_transferred, unix_timestamp_millis());
+                }
                 Some(task.summary.clone())
             } else {
                 None
@@ -469,5 +521,23 @@ impl<W: AsyncWrite + Unpin> AsyncWrite for ProgressWriter<W> {
 
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transfer_speed_tracker_samples_bytes_per_second() {
+        let mut tracker = TransferSpeedTracker::new(1_000);
+
+        assert_eq!(tracker.update(10_000, 1_100), 0);
+        assert_eq!(tracker.update(20_000, 1_250), 80_000);
+        assert_eq!(tracker.update(30_000, 1_300), 80_000);
+        assert_eq!(tracker.update(50_000, 1_500), 120_000);
+
+        tracker.reset(50_000, 1_500);
+        assert_eq!(tracker.update(60_000, 1_750), 40_000);
     }
 }

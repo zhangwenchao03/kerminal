@@ -2,13 +2,31 @@
 //!
 //! @author kongweiguang
 
+mod support;
+
 use kerminal_lib::{
-    models::{target::RemoteTargetRef, tmux::TmuxTargetRef},
-    services::tmux_service::rules::{
-        build_remote_command, command_args_with_socket, parse_panes, parse_sessions, parse_windows,
-        stable_tmux_target_ref, validate_target, FIELD_SEPARATOR, SESSION_FORMAT,
+    models::{
+        remote_host::{RemoteHostAuthType, RemoteHostCreateRequest},
+        target::RemoteTargetRef,
+        tmux::{TmuxListSessionsRequest, TmuxTargetRef},
     },
+    paths::KerminalPaths,
+    services::{
+        ssh_runtime::{SshAuthIdentity, SshAuthSecretKind},
+        tmux_service::{
+            rules::{
+                build_remote_command, command_args_with_socket, parse_panes, parse_sessions,
+                parse_windows, stable_tmux_target_ref, validate_target, FIELD_SEPARATOR,
+                SESSION_FORMAT,
+            },
+            TmuxService,
+        },
+    },
+    state::AppState,
 };
+use std::sync::Arc;
+use support::managed_ssh_runtime::{ssh_command_service_with_fake_runtime, FakeManagedSshRuntime};
+use tempfile::{tempdir, TempDir};
 
 fn local_target() -> TmuxTargetRef {
     TmuxTargetRef {
@@ -142,4 +160,80 @@ fn quotes_remote_tmux_command_arguments() {
         command,
         "'tmux' 'attach-session' '-t' 'dev api'\\''s session'"
     );
+}
+
+#[tokio::test]
+async fn ssh_tmux_list_sessions_uses_managed_exec_runtime() {
+    let (_home, state) = test_state();
+    let host_id = create_saved_password_host(&state);
+    let sep = FIELD_SEPARATOR;
+    let backend = Arc::new(FakeManagedSshRuntime::with_stdout(format!(
+        "$0{sep}'managed'{sep}0{sep}0{sep}1710000000{sep}1710000100{sep}'/srv/app'{sep}1\n"
+    )));
+    let ssh_commands = ssh_command_service_with_fake_runtime(&state, Arc::clone(&backend));
+
+    let sessions = TmuxService::new()
+        .list_sessions(
+            state.paths(),
+            &ssh_commands,
+            TmuxListSessionsRequest {
+                target: TmuxTargetRef {
+                    socket_name: None,
+                    socket_path: None,
+                    target: RemoteTargetRef::Ssh {
+                        host_id: host_id.clone(),
+                    },
+                    tmux_path: None,
+                },
+            },
+        )
+        .await
+        .expect("list SSH tmux sessions through managed exec");
+
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].name, "managed");
+    assert_eq!(backend.connect_count(), 1);
+    assert_eq!(backend.exec_count(), 1);
+    assert_eq!(backend.channel_count(), 0);
+    let script = backend.last_exec_script().expect("managed exec script");
+    assert!(script.contains("'tmux' 'list-sessions'"));
+    let key = backend.last_key().expect("managed session key");
+    assert_eq!(key.target.host, "dev.internal");
+    assert!(matches!(
+        key.target.auth,
+        SshAuthIdentity::VaultRef {
+            secret_kind: SshAuthSecretKind::Password,
+            ..
+        }
+    ));
+    let key_debug = format!("{key:?}");
+    assert!(!key_debug.contains("correct horse battery staple"));
+    assert!(!key_debug.contains("credential:ssh"));
+}
+
+fn test_state() -> (TempDir, AppState) {
+    let home = tempdir().expect("create temp home");
+    let paths = KerminalPaths::from_home_dir(home.path());
+    let state = AppState::initialize_with_paths(paths).expect("initialize app state");
+    (home, state)
+}
+
+fn create_saved_password_host(state: &AppState) -> String {
+    state
+        .remote_hosts()
+        .create_host(RemoteHostCreateRequest {
+            auth_type: RemoteHostAuthType::Password,
+            credential_ref: None,
+            credential_secret: Some("correct horse battery staple".to_owned()),
+            group_id: None,
+            host: "dev.internal".to_owned(),
+            name: "dev".to_owned(),
+            port: 2222,
+            production: false,
+            ssh_options: Default::default(),
+            tags: vec!["dev".to_owned()],
+            username: "deploy".to_owned(),
+        })
+        .expect("create saved password host")
+        .id
 }

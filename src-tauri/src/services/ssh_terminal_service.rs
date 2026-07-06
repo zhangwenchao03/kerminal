@@ -14,14 +14,25 @@ use crate::{
     paths::KerminalPaths,
     services::{
         encrypted_vault_service::EncryptedVaultService,
+        external_launch::{is_external_target_id, ExternalSessionMaterializer},
         remote_host_service::RemoteHostService,
         ssh_credential_resolver::{
             ResolvedSshAuthMaterial, ResolvedSshHopAuth, ResolvedSshRouteAuth,
             SshCredentialResolver,
         },
         ssh_identity_file::resolve_identity_file_path,
-        ssh_route_plan::{build_ssh_route_plan_from_resolved, materialize_openssh_route_plan},
-        terminal_manager::TerminalManager,
+        ssh_route_plan::{
+            build_ssh_route_plan_from_resolved, materialize_openssh_route_plan_with_keepalive,
+        },
+        ssh_runtime::{
+            auth_broker::{SshAuthBroker, SshAuthBrokerResolution, SshAuthPromptPlan},
+            session_key::ssh_session_key_for_route,
+            ManagedSshSessionManager, SshRuntimeConnectRequest, SshRuntimeHostKeyPolicy,
+            SshRuntimeShellRequest, MANAGED_SSH_SHELL_UNSUPPORTED,
+        },
+        terminal_manager::{
+            TerminalManagedShellCreateRequest, TerminalManagedShellRuntime, TerminalManager,
+        },
     },
 };
 #[cfg(unix)]
@@ -39,15 +50,47 @@ const SSH_TERMINAL_KEY_DIR_NAME: &str = "ssh-terminal-keys";
 const SSH_TERMINAL_IDENTITY_PREFIX: &str = "identity-";
 const SSH_TERMINAL_IDENTITY_SUFFIX: &str = ".key";
 const SSH_TERMINAL_STALE_IDENTITY_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+const LEGACY_FALLBACK_SHELL_UNWIRED: &str = "managed-shell-backend-unwired";
+const LEGACY_FALLBACK_SHELL_UNSUPPORTED: &str = "managed-shell-unsupported";
 
 /// SSH 远程终端业务入口。
 #[derive(Debug, Default)]
-pub struct SshTerminalService;
+pub struct SshTerminalService {
+    managed_runtime: Option<ManagedSshSessionManager>,
+    auth_broker: Option<SshAuthBroker>,
+    external_targets: Option<ExternalSessionMaterializer>,
+}
 
 impl SshTerminalService {
     /// 创建 SSH 远程终端服务。
     pub fn new() -> Self {
-        Self
+        Self {
+            managed_runtime: None,
+            auth_broker: None,
+            external_targets: None,
+        }
+    }
+
+    /// 创建可解析外部启动临时 target 的 SSH 远程终端服务。
+    pub fn with_external_targets(external_targets: ExternalSessionMaterializer) -> Self {
+        Self {
+            managed_runtime: None,
+            auth_broker: None,
+            external_targets: Some(external_targets),
+        }
+    }
+
+    /// 创建接入受管 SSH 运行时的 SSH 远程终端服务。
+    pub fn with_ssh_runtime(
+        managed_runtime: ManagedSshSessionManager,
+        auth_broker: SshAuthBroker,
+        external_targets: ExternalSessionMaterializer,
+    ) -> Self {
+        Self {
+            managed_runtime: Some(managed_runtime),
+            auth_broker: Some(auth_broker),
+            external_targets: Some(external_targets),
+        }
     }
 
     /// 清理上次异常退出遗留的 SSH 交互终端临时私钥文件。
@@ -67,6 +110,14 @@ impl SshTerminalService {
     where
         F: Fn(TerminalOutputEvent) -> bool + Send + 'static,
     {
+        if let Some(managed_launch) = self.try_open_managed_shell(remote_hosts, paths, &request)? {
+            return terminals.create_managed_shell_session(
+                managed_launch.request,
+                managed_launch.shell,
+                output,
+            );
+        }
+
         let launch = self.resolve_terminal_launch(remote_hosts, paths, request)?;
         if let Some(secret_input_plan) = launch.secret_input_plan {
             terminals.create_session_with_secret_input_plan(
@@ -98,8 +149,8 @@ impl SshTerminalService {
         request: SshTerminalCreateRequest,
     ) -> AppResult<ResolvedTerminalLaunch> {
         validate_terminal_size(request.rows, request.cols)?;
-        let host = remote_hosts.require_host(&request.host_id)?;
-        let resolved_auth = resolve_route_auth(paths, &host)?;
+        let (host, resolved_auth) =
+            self.resolve_host_and_auth(remote_hosts, paths, &request.host_id)?;
         let secret_input_plan =
             terminal_secret_input_plan_from_resolved_route(&host, &resolved_auth);
         let ssh = resolve_ssh_executable()?;
@@ -111,7 +162,7 @@ impl SshTerminalService {
                 ssh,
                 paths,
                 paths.root.join("known_hosts"),
-                TerminalLaunchShape::from_request(&request),
+                TerminalLaunchShape::from_request_and_host(&request, &host),
             );
         }
 
@@ -122,12 +173,141 @@ impl SshTerminalService {
             ssh,
             paths.root.join("known_hosts"),
             identity,
-            TerminalLaunchShape::from_request(&request),
+            TerminalLaunchShape::from_request_and_host(&request, &host),
         )?;
         Ok(ResolvedTerminalLaunch {
             request: terminal_request,
             secret_input_plan,
         })
+    }
+
+    fn resolve_host_and_auth(
+        &self,
+        remote_hosts: &RemoteHostService,
+        paths: &KerminalPaths,
+        host_id: &str,
+    ) -> AppResult<(RemoteHost, ResolvedSshRouteAuth)> {
+        if let Some(external_targets) = &self.external_targets {
+            if let Some(target) = external_targets.resolve_target(host_id)? {
+                return Ok((target.host, target.route_auth));
+            }
+        }
+        if is_external_target_id(host_id) {
+            return Err(external_target_not_available_error(host_id));
+        }
+        let host = remote_hosts.require_host(host_id)?;
+        let resolved_auth = resolve_route_auth(paths, &host)?;
+        Ok((host, resolved_auth))
+    }
+
+    fn try_open_managed_shell(
+        &self,
+        remote_hosts: &RemoteHostService,
+        paths: &KerminalPaths,
+        request: &SshTerminalCreateRequest,
+    ) -> AppResult<Option<ManagedTerminalLaunch>> {
+        let Some(managed_runtime) = self.managed_runtime.as_ref() else {
+            return Ok(None);
+        };
+
+        validate_terminal_size(request.rows, request.cols)?;
+        let (host, route_auth) =
+            self.resolve_host_and_auth(remote_hosts, paths, &request.host_id)?;
+        let route_auth = match &self.auth_broker {
+            Some(auth_broker) => match auth_broker.resolve_route_auth(&route_auth)? {
+                SshAuthBrokerResolution::Ready { auth } => auth,
+                SshAuthBrokerResolution::PromptRequired { prompt_plan, .. } => {
+                    return Err(ssh_auth_prompt_required_error(&host, prompt_plan));
+                }
+            },
+            None => route_auth,
+        };
+        let runtime_host =
+            SshCredentialResolver::materialize_runtime_host_from_auth(&host, &route_auth);
+        let initial_cwd = terminal_initial_cwd(request.cwd.as_deref(), &runtime_host);
+        let startup_input = remote_startup_input(initial_cwd, request.remote_command.as_deref())?;
+        let known_hosts_path = paths.root.join("known_hosts");
+        let key = ssh_session_key_for_route(&runtime_host, &route_auth, &known_hosts_path)?;
+        let connect_request = SshRuntimeConnectRequest::native(
+            key,
+            runtime_host.clone(),
+            known_hosts_path,
+            terminal_connect_timeout_seconds(&runtime_host),
+        )
+        .with_keepalive_seconds(terminal_keepalive_seconds(&runtime_host))
+        .with_host_key_policy(host_key_policy_for_host(&runtime_host));
+        let session = match managed_runtime.acquire_session_with_request(connect_request) {
+            Ok(session) => session,
+            Err(error) if is_managed_runtime_unwired(&error) => {
+                managed_runtime.record_legacy_fallback(
+                    "shell",
+                    LEGACY_FALLBACK_SHELL_UNWIRED,
+                    Some(terminal_host_label(&runtime_host)),
+                );
+                return Ok(None);
+            }
+            Err(error) => return Err(error),
+        };
+        let shell_request =
+            SshRuntimeShellRequest::new(terminal_type(&runtime_host), request.cols, request.rows);
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| AppError::Terminal(error.to_string()))?;
+        let shell = match runtime.block_on(session.open_shell(shell_request)) {
+            Ok(shell) => shell,
+            Err(error) if is_managed_shell_unsupported(&error) => {
+                managed_runtime.record_legacy_fallback(
+                    "shell",
+                    LEGACY_FALLBACK_SHELL_UNSUPPORTED,
+                    Some(terminal_host_label(&runtime_host)),
+                );
+                return Ok(None);
+            }
+            Err(error) => return Err(error),
+        };
+
+        Ok(Some(ManagedTerminalLaunch {
+            request: TerminalManagedShellCreateRequest {
+                shell: managed_shell_label(&runtime_host),
+                cwd: normalized_remote_cwd(initial_cwd).map(ToOwned::to_owned),
+                startup_input,
+                cols: request.cols,
+                rows: request.rows,
+                target_ref: Some(request.host_id.clone()),
+            },
+            shell: TerminalManagedShellRuntime { shell, runtime },
+        }))
+    }
+}
+
+fn terminal_host_label(host: &RemoteHost) -> String {
+    format!("{}@{}:{}", host.username, host.host, host.port)
+}
+
+fn external_target_not_available_error(host_id: &str) -> AppError {
+    AppError::NotFound(format!("外部 SSH 临时目标不存在或已关闭: {host_id}"))
+}
+
+fn host_key_policy_for_host(host: &RemoteHost) -> SshRuntimeHostKeyPolicy {
+    if is_external_target_id(&host.id) {
+        SshRuntimeHostKeyPolicy::TrustUnknown
+    } else {
+        SshRuntimeHostKeyPolicy::RequireKnown
+    }
+}
+
+fn ssh_auth_prompt_required_error(host: &RemoteHost, prompt_plan: SshAuthPromptPlan) -> AppError {
+    let prompt_count = prompt_plan.prompts.len();
+    let prompt_plan =
+        serde_json::to_value(prompt_plan).unwrap_or_else(|_| serde_json::json!({ "prompts": [] }));
+    AppError::SshAuthPromptRequired {
+        message: format!(
+            "{} 需要 SSH 认证输入（{} 个 prompt）",
+            terminal_host_label(host),
+            prompt_count
+        ),
+        prompt_plan,
     }
 }
 
@@ -140,6 +320,11 @@ fn resolve_route_auth(paths: &KerminalPaths, host: &RemoteHost) -> AppResult<Res
 struct ResolvedTerminalLaunch {
     request: TerminalCreateRequest,
     secret_input_plan: Option<TerminalSecretInputPlan>,
+}
+
+struct ManagedTerminalLaunch {
+    request: TerminalManagedShellCreateRequest,
+    shell: TerminalManagedShellRuntime,
 }
 
 #[derive(Debug, Default)]
@@ -157,9 +342,9 @@ struct TerminalLaunchShape<'a> {
 }
 
 impl<'a> TerminalLaunchShape<'a> {
-    fn from_request(request: &'a SshTerminalCreateRequest) -> Self {
+    fn from_request_and_host(request: &'a SshTerminalCreateRequest, host: &'a RemoteHost) -> Self {
         Self {
-            initial_cwd: request.cwd.as_deref(),
+            initial_cwd: terminal_initial_cwd(request.cwd.as_deref(), host),
             remote_command: request.remote_command.as_deref(),
             rows: request.rows,
             cols: request.cols,
@@ -200,6 +385,17 @@ pub mod rules {
         })
     }
 
+    pub fn try_open_managed_shell(
+        service: &SshTerminalService,
+        remote_hosts: &RemoteHostService,
+        paths: &KerminalPaths,
+        request: SshTerminalCreateRequest,
+    ) -> AppResult<bool> {
+        Ok(service
+            .try_open_managed_shell(remote_hosts, paths, &request)?
+            .is_some())
+    }
+
     pub fn cleanup_temporary_identity_files(
         paths: &KerminalPaths,
         max_age: Option<Duration>,
@@ -228,7 +424,12 @@ fn build_jump_terminal_launch(
     } = shape;
     validate_terminal_size(rows, cols)?;
     let route = build_ssh_route_plan_from_resolved(resolved_auth)?;
-    let open_ssh = materialize_openssh_route_plan(&route, paths, known_hosts_path)?;
+    let open_ssh = materialize_openssh_route_plan_with_keepalive(
+        &route,
+        paths,
+        known_hosts_path,
+        terminal_keepalive_seconds(host),
+    )?;
     let mut args = vec!["-tt".to_owned(), "-a".to_owned()];
     args.extend(open_ssh.args);
     append_remote_startup_command(&mut args, initial_cwd, remote_command)?;
@@ -331,7 +532,7 @@ fn build_ssh_terminal_request(
         "-p".to_owned(),
         host.port.to_string(),
         "-o".to_owned(),
-        "ServerAliveInterval=30".to_owned(),
+        format!("ServerAliveInterval={}", terminal_keepalive_seconds(host)),
         "-o".to_owned(),
         "ServerAliveCountMax=3".to_owned(),
         "-o".to_owned(),
@@ -363,26 +564,57 @@ fn append_remote_startup_command(
     initial_cwd: Option<&str>,
     remote_command: Option<&str>,
 ) -> AppResult<()> {
-    let remote_command = normalized_remote_command(remote_command)?;
-    let cwd = normalized_remote_cwd(initial_cwd);
-    match (cwd, remote_command.as_deref()) {
-        (Some(cwd), Some(command)) => {
-            args.push(format!("cd -- {} && exec {command}", shell_quote(cwd)))
-        }
-        (Some(cwd), None) => args.push(format!(
-            "cd -- {} && exec \"${{SHELL:-/bin/sh}}\" -l",
-            shell_quote(cwd)
-        )),
-        (None, Some(command)) => args.push(format!("exec {command}")),
-        (None, None) => {}
+    if let Some(command) = remote_startup_command(initial_cwd, remote_command)? {
+        args.push(command);
     }
     Ok(())
 }
 
+fn remote_startup_input(
+    initial_cwd: Option<&str>,
+    remote_command: Option<&str>,
+) -> AppResult<Option<String>> {
+    Ok(remote_startup_command(initial_cwd, remote_command)?.map(|command| format!("{command}\r")))
+}
+
+fn remote_startup_command(
+    initial_cwd: Option<&str>,
+    remote_command: Option<&str>,
+) -> AppResult<Option<String>> {
+    let remote_command = normalized_remote_command(remote_command)?;
+    let cwd = normalized_remote_cwd(initial_cwd);
+    Ok(match (cwd, remote_command.as_deref()) {
+        (Some(cwd), Some(command)) => Some(format!("cd -- {} && exec {command}", shell_quote(cwd))),
+        (Some(cwd), None) => Some(format!(
+            "cd -- {} && exec \"${{SHELL:-/bin/sh}}\" -l",
+            shell_quote(cwd)
+        )),
+        (None, Some(command)) => Some(format!("exec {command}")),
+        (None, None) => None,
+    })
+}
+
+fn terminal_initial_cwd<'a>(request_cwd: Option<&'a str>, host: &'a RemoteHost) -> Option<&'a str> {
+    let request_cwd = request_cwd.map(str::trim).filter(|cwd| !cwd.is_empty());
+    match request_cwd {
+        Some(cwd) => normalized_remote_cwd(Some(cwd)),
+        None => terminal_startup_directory(host),
+    }
+}
+
+fn terminal_startup_directory(host: &RemoteHost) -> Option<&str> {
+    normalized_remote_cwd(Some(host.ssh_options.terminal.startup_command.as_str()))
+}
+
 fn normalized_remote_cwd(initial_cwd: Option<&str>) -> Option<&str> {
-    initial_cwd
-        .map(str::trim)
-        .filter(|cwd| !cwd.is_empty() && cwd.starts_with('/'))
+    initial_cwd.map(str::trim).filter(|cwd| {
+        !cwd.is_empty()
+            && cwd.starts_with('/')
+            && cwd.len() <= 4096
+            && !cwd.contains('\0')
+            && !cwd.contains('\r')
+            && !cwd.contains('\n')
+    })
 }
 
 fn normalized_remote_command(remote_command: Option<&str>) -> AppResult<Option<String>> {
@@ -410,14 +642,40 @@ fn shell_quote(value: &str) -> String {
 }
 
 fn terminal_environment(host: &RemoteHost) -> HashMap<String, String> {
-    let terminal_type = host.ssh_options.terminal.terminal_type.trim();
-    let terminal_type = if terminal_type.is_empty() {
-        "xterm-256color"
-    } else {
-        terminal_type
-    };
+    HashMap::from([("TERM".to_owned(), terminal_type(host))])
+}
 
-    HashMap::from([("TERM".to_owned(), terminal_type.to_owned())])
+fn terminal_type(host: &RemoteHost) -> String {
+    let terminal_type = host.ssh_options.terminal.terminal_type.trim();
+    if terminal_type.is_empty() {
+        "xterm-256color".to_owned()
+    } else {
+        terminal_type.to_owned()
+    }
+}
+
+fn terminal_connect_timeout_seconds(host: &RemoteHost) -> u64 {
+    u64::from(host.ssh_options.terminal.connect_timeout_seconds).max(1)
+}
+
+fn terminal_keepalive_seconds(host: &RemoteHost) -> u64 {
+    u64::from(host.ssh_options.terminal.keepalive_seconds)
+}
+
+fn managed_shell_label(host: &RemoteHost) -> String {
+    if host.name.trim().is_empty() {
+        format!("ssh:{}@{}:{}", host.username, host.host, host.port)
+    } else {
+        format!("ssh:{}", host.name)
+    }
+}
+
+fn is_managed_runtime_unwired(error: &AppError) -> bool {
+    matches!(error, AppError::SshCommand(message) if message.contains("managed SSH runtime backend is not wired yet"))
+}
+
+fn is_managed_shell_unsupported(error: &AppError) -> bool {
+    matches!(error, AppError::SshCommand(message) if message == MANAGED_SSH_SHELL_UNSUPPORTED)
 }
 
 fn validate_terminal_size(rows: u16, cols: u16) -> AppResult<()> {

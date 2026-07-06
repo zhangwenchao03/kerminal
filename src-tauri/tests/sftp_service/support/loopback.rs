@@ -1,7 +1,7 @@
 use russh::{
     keys::{self, PrivateKey},
     server::{Auth, Msg, Server as _, Session},
-    Channel, ChannelId,
+    Channel, ChannelId, Pty,
 };
 use russh_sftp::protocol::{
     Attrs, Data, File as ProtocolFile, FileAttributes, Handle, Name, OpenFlags, Status, StatusCode,
@@ -11,7 +11,10 @@ use std::{
     io::{self, SeekFrom},
     net::SocketAddr,
     path::{Path, PathBuf},
-    sync::{atomic::AtomicUsize, Arc},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 use tokio::{
@@ -23,6 +26,7 @@ use tokio::{
 #[derive(Debug)]
 pub(crate) struct LoopbackSftpServer {
     pub(crate) addr: SocketAddr,
+    pub(crate) auth_successes: Arc<AtomicUsize>,
     task: tokio::task::JoinHandle<()>,
 }
 
@@ -38,6 +42,8 @@ pub(crate) struct LoopbackSftpJumpServer {
     pub(crate) direct_tcpip_requests: Arc<AtomicUsize>,
     task: tokio::task::JoinHandle<()>,
 }
+
+pub(crate) const LOOPBACK_SFTP_SHELL_READY_MARKER: &str = "kerminal-loopback-sftp-shell-ready";
 
 impl Drop for LoopbackSftpJumpServer {
     fn drop(&mut self) {
@@ -109,11 +115,13 @@ impl russh::server::Handler for LoopbackSftpJumpSession {
 
 #[derive(Clone)]
 struct LoopbackSshServer {
+    auth_successes: Arc<AtomicUsize>,
     root: PathBuf,
     symlinks: Arc<HashMap<String, String>>,
 }
 
 struct LoopbackSshSession {
+    auth_successes: Arc<AtomicUsize>,
     root: PathBuf,
     symlinks: Arc<HashMap<String, String>>,
     channels: tokio::sync::Mutex<HashMap<ChannelId, Channel<Msg>>>,
@@ -125,6 +133,7 @@ impl russh::server::Server for LoopbackSshServer {
 
     fn new_client(&mut self, _peer_addr: Option<SocketAddr>) -> Self::Handler {
         LoopbackSshSession {
+            auth_successes: Arc::clone(&self.auth_successes),
             root: self.root.clone(),
             symlinks: self.symlinks.clone(),
             channels: tokio::sync::Mutex::new(HashMap::new()),
@@ -138,6 +147,7 @@ impl russh::server::Handler for LoopbackSshSession {
 
     async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
         if user == "deploy" && password == "secret" {
+            self.auth_successes.fetch_add(1, Ordering::SeqCst);
             Ok(Auth::Accept)
         } else {
             Ok(Auth::reject())
@@ -151,6 +161,35 @@ impl russh::server::Handler for LoopbackSshSession {
     ) -> Result<bool, Self::Error> {
         self.channels.lock().await.insert(channel.id(), channel);
         Ok(true)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn pty_request(
+        &mut self,
+        channel: ChannelId,
+        _term: &str,
+        _col_width: u32,
+        _row_height: u32,
+        _pix_width: u32,
+        _pix_height: u32,
+        _modes: &[(Pty, u32)],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        session.channel_success(channel)?;
+        Ok(())
+    }
+
+    async fn shell_request(
+        &mut self,
+        channel: ChannelId,
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        session.channel_success(channel)?;
+        session.data(
+            channel,
+            format!("{LOOPBACK_SFTP_SHELL_READY_MARKER}\r\n$ ").into_bytes(),
+        )?;
+        Ok(())
     }
 
     async fn channel_eof(
@@ -632,13 +671,23 @@ pub(crate) async fn start_loopback_sftp_server_with_symlinks(
             })
             .collect(),
     );
+    let auth_successes = Arc::new(AtomicUsize::new(0));
+    let server_auth_successes = Arc::clone(&auth_successes);
     let task = tokio::spawn(async move {
-        let mut server = LoopbackSshServer { root, symlinks };
+        let mut server = LoopbackSshServer {
+            auth_successes: server_auth_successes,
+            root,
+            symlinks,
+        };
         let running = server.run_on_socket(Arc::new(config), &listener);
         let _ = running.await;
     });
 
-    LoopbackSftpServer { addr, task }
+    LoopbackSftpServer {
+        addr,
+        auth_successes,
+        task,
+    }
 }
 
 pub(crate) async fn start_loopback_sftp_jump_server(

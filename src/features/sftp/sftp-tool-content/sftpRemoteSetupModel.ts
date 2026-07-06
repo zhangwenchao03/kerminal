@@ -13,6 +13,8 @@ import { buildSftpCwdTrackingSetupScript } from "./sftpCwdTrackingScript";
 import { errorMessage } from "./sftpPathModel";
 import type { SftpFileTarget, SftpStatus } from "./types";
 
+const EXTERNAL_TARGET_PREFIX = "external:";
+
 export type SftpHostKeyTrustPlan =
   | { kind: "skip" }
   | { kind: "trust"; request: SftpTrustHostKeyRequest };
@@ -33,6 +35,9 @@ export function buildSftpHostKeyTrustPlan(
   fileTarget: SftpFileTarget | null,
 ): SftpHostKeyTrustPlan {
   if (!fileTarget || fileTarget.kind !== "ssh") {
+    return { kind: "skip" };
+  }
+  if (fileTarget.hostId.startsWith(EXTERNAL_TARGET_PREFIX)) {
     return { kind: "skip" };
   }
 

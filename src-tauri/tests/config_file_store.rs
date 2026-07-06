@@ -170,6 +170,7 @@ fn remote_host_toml_does_not_persist_transient_secrets() {
         credential_ref: None,
         secret_ref: None,
         key_passphrase_ref: None,
+        key_passphrase_secret: None,
         credential_secret: Some("target-secret".to_owned()),
         credential_status: Default::default(),
         tags: vec!["prod".to_owned()],
@@ -188,6 +189,7 @@ fn remote_host_toml_does_not_persist_transient_secrets() {
         credential_ref: None,
         secret_ref: None,
         key_passphrase_ref: None,
+        key_passphrase_secret: None,
         credential_secret: Some("jump-secret".to_owned()),
         credential_status: Default::default(),
     });
@@ -233,6 +235,7 @@ fn remote_host_toml_tree_uses_runtime_ungrouped_group() {
         credential_ref: None,
         secret_ref: None,
         key_passphrase_ref: None,
+        key_passphrase_secret: None,
         credential_secret: None,
         credential_status: RemoteHostCredentialStatus::Agent,
         tags: Vec::new(),

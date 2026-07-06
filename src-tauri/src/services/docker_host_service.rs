@@ -22,15 +22,13 @@ use crate::{
         sftp::{SftpEntry, SftpEntryKind, SftpFileRevision, SftpTransferKind},
         ssh_command::SshCommandRequest,
         target::{ContainerRuntime, RemoteTargetRef, TargetCapabilities},
-        terminal::{
-            SshTerminalCreateRequest, TerminalCreateRequest, TerminalOutputEvent,
-            TerminalSessionSummary,
-        },
+        terminal::{SshTerminalCreateRequest, TerminalOutputEvent, TerminalSessionSummary},
     },
     paths::KerminalPaths,
     services::{
-        remote_host_service::RemoteHostService, ssh_command_service::SshCommandService,
-        ssh_terminal_service::SshTerminalService, terminal_manager::TerminalManager,
+        external_launch::is_external_target_id, remote_host_service::RemoteHostService,
+        ssh_command_service::SshCommandService, ssh_terminal_service::SshTerminalService,
+        terminal_manager::TerminalManager,
     },
 };
 use serde_json::Value;
@@ -46,11 +44,11 @@ use std::{
 use tar::{Archive, Builder};
 use uuid::Uuid;
 
-const CONTAINER_LIST_TIMEOUT_SECONDS: u64 = 20;
+const CONTAINER_LIST_TIMEOUT_SECONDS: u64 = 60;
 const CONTAINER_LIST_OUTPUT_BYTES: usize = 128 * 1024;
 const CONTAINER_LIFECYCLE_TIMEOUT_SECONDS: u64 = 30;
 const CONTAINER_LIFECYCLE_OUTPUT_BYTES: usize = 64 * 1024;
-const CONTAINER_INSPECT_TIMEOUT_SECONDS: u64 = 20;
+const CONTAINER_INSPECT_TIMEOUT_SECONDS: u64 = 60;
 const CONTAINER_INSPECT_OUTPUT_BYTES: usize = 512 * 1024;
 const CONTAINER_LOGS_TIMEOUT_SECONDS: u64 = 20;
 const CONTAINER_LOGS_OUTPUT_BYTES: usize = 256 * 1024;
@@ -64,6 +62,7 @@ const DEFAULT_PREVIEW_BYTES: usize = 64 * 1024;
 const MAX_PREVIEW_BYTES: usize = 1024 * 1024;
 const DEFAULT_TEXT_FILE_BYTES: usize = 10 * 1024 * 1024;
 const MAX_TEXT_FILE_BYTES: usize = 10 * 1024 * 1024;
+const CONTAINER_TRANSFER_TIMEOUT_SECONDS: u64 = 30 * 60;
 
 mod helpers;
 mod normalization;
@@ -85,9 +84,7 @@ pub mod rules {
         build_container_label_inspect_script, build_container_lifecycle_script,
         build_container_logs_script, build_container_stats_script,
     };
-    pub use super::terminal_request::{
-        build_container_terminal_remote_command, build_container_terminal_request,
-    };
+    pub use super::terminal_request::build_container_terminal_remote_command;
     pub use super::text_file::{detect_line_ending, same_revision, split_text_output};
     pub use super::transfer::{extract_first_file, write_tar_stream};
     pub use super::{parse_container_inspect_summary, parse_container_stats_output};
@@ -114,9 +111,7 @@ use self::{
         build_container_lifecycle_script, build_container_list_script, build_container_logs_script,
         build_container_stats_script, execute_container_script, ContainerScriptRequest,
     },
-    terminal_request::{
-        auth_args, build_container_terminal_remote_command, resolve_host, resolve_ssh_executable,
-    },
+    terminal_request::{build_container_terminal_remote_command, resolve_host},
     text_file::{
         container_file_revision, detect_line_ending, read_container_text_file, same_revision,
         validate_text_encoding, write_temp_container_text_file,
@@ -591,7 +586,7 @@ dd if="$target" bs=1 count="$max_bytes" 2>/dev/null
             }
         }
 
-        let host = resolve_host(remote_hosts, &request.host_id)?;
+        let host = resolve_host(remote_hosts, paths, ssh_commands, &request.host_id)?;
         let temp_path = write_temp_container_text_file(&request.content)?;
         let upload_request = DockerContainerTransferRequest {
             host_id: request.host_id.clone(),
@@ -601,7 +596,7 @@ dd if="$target" bs=1 count="$max_bytes" 2>/dev/null
             local_path: temp_path.to_string_lossy().into_owned(),
             kind: SftpTransferKind::File,
         };
-        let upload_result = upload_to_container(&host, upload_request);
+        let upload_result = upload_to_container(paths, ssh_commands, &host, upload_request).await;
         let _ = fs::remove_file(&temp_path);
         upload_result?;
 
@@ -742,27 +737,31 @@ chmod "$mode" "$target"
     }
 
     /// 上传本地文件或目录到容器。
-    pub fn upload(
+    pub async fn upload(
         &self,
         remote_hosts: &RemoteHostService,
+        paths: &KerminalPaths,
+        ssh_commands: &SshCommandService,
         request: DockerContainerTransferRequest,
     ) -> AppResult<bool> {
         let request = normalize_transfer_request(request)?;
         ensure_not_root_for_write(&request.remote_path)?;
-        let host = resolve_host(remote_hosts, &request.host_id)?;
-        upload_to_container(&host, request)?;
+        let host = resolve_host(remote_hosts, paths, ssh_commands, &request.host_id)?;
+        upload_to_container(paths, ssh_commands, &host, request).await?;
         Ok(true)
     }
 
     /// 下载容器内文件或目录到本地。
-    pub fn download(
+    pub async fn download(
         &self,
         remote_hosts: &RemoteHostService,
+        paths: &KerminalPaths,
+        ssh_commands: &SshCommandService,
         request: DockerContainerTransferRequest,
     ) -> AppResult<bool> {
         let request = normalize_transfer_request(request)?;
-        let host = resolve_host(remote_hosts, &request.host_id)?;
-        download_from_container(&host, request)?;
+        let host = resolve_host(remote_hosts, paths, ssh_commands, &request.host_id)?;
+        download_from_container(paths, ssh_commands, &host, request).await?;
         Ok(true)
     }
 

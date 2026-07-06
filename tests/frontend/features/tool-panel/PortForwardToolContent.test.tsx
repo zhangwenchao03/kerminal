@@ -393,15 +393,15 @@ describe("PortForwardToolContent", () => {
 
     render(<PortForwardToolContent selectedMachine={sshMachine} />);
 
-    await user.click(await screen.findByRole("button", { name: "停止" }));
+    await user.click(await screen.findByRole("button", { name: "停止隧道" }));
 
     expect(portForwardApiMocks.stopPortForward).toHaveBeenCalledWith(
       "forward-network",
     );
     expect(portForwardApiMocks.deletePortForward).not.toHaveBeenCalled();
     expect(await screen.findByText("隧道已停止，配置仍保留。")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "启动" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "删除" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "启动隧道" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "删除隧道" })).toBeInTheDocument();
   });
 
   it("starts an exited saved tunnel for the same host", async () => {
@@ -412,13 +412,13 @@ describe("PortForwardToolContent", () => {
 
     render(<PortForwardToolContent selectedMachine={sshMachine} />);
 
-    await user.click(await screen.findByRole("button", { name: "启动" }));
+    await user.click(await screen.findByRole("button", { name: "启动隧道" }));
 
     expect(portForwardApiMocks.startPortForward).toHaveBeenCalledWith(
       "forward-network",
     );
     expect(await screen.findByText("主机网络助手 已启动。")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "停止隧道" })).toBeInTheDocument();
   });
 
   it("deletes a saved tunnel only when the delete action is used", async () => {
@@ -430,7 +430,7 @@ describe("PortForwardToolContent", () => {
 
     render(<PortForwardToolContent selectedMachine={sshMachine} />);
 
-    await user.click(await screen.findByRole("button", { name: "删除" }));
+    await user.click(await screen.findByRole("button", { name: "删除隧道" }));
 
     expect(portForwardApiMocks.deletePortForward).toHaveBeenCalledWith(
       "forward-network",

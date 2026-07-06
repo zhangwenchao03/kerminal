@@ -2,7 +2,7 @@ import { vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   class MockTerminal {
-	    buffer: {
+    buffer: {
       active: {
         baseY: number;
         getLine: ReturnType<typeof vi.fn>;
@@ -28,9 +28,9 @@ const mocks = vi.hoisted(() => {
         viewportY: number;
       };
       onBufferChange: ReturnType<typeof vi.fn>;
-	    };
-	    attachCustomKeyEventHandler = vi.fn();
-	    cols = 80;
+    };
+    attachCustomKeyEventHandler = vi.fn();
+    cols = 80;
     clear = vi.fn();
     dispose = vi.fn();
     focus = vi.fn();
@@ -121,6 +121,8 @@ const mocks = vi.hoisted(() => {
       openSavedRdpConnection: vi.fn(),
     },
     diagnosticsApi: {
+      createDiagnosticsBundle: vi.fn(),
+      getManagedSshRuntimeSnapshot: vi.fn(),
       getRuntimeHealthSnapshot: vi.fn(),
     },
     dockerApi: {
@@ -154,6 +156,10 @@ const mocks = vi.hoisted(() => {
       updateRemoteHost: vi.fn(),
       updateRemoteHostGroup: vi.fn(),
     },
+    remoteWorkspaceEditorTransport: {
+      readRemoteWorkspaceTextFile: vi.fn(),
+      writeRemoteWorkspaceTextFile: vi.fn(),
+    },
     serverInfoApi: {
       getServerInfoSnapshot: vi.fn(),
     },
@@ -163,11 +169,11 @@ const mocks = vi.hoisted(() => {
     },
     terminalApi: {
       closeTerminal: vi.fn(),
-	      createSshTerminalSession: vi.fn(),
-	      createTerminalSession: vi.fn(),
-	      getTerminalLogState: vi.fn(),
-	      reapOrphanTerminalSessions: vi.fn(),
-	      resizeTerminal: vi.fn(),
+      createSshTerminalSession: vi.fn(),
+      createTerminalSession: vi.fn(),
+      getTerminalLogState: vi.fn(),
+      reapOrphanTerminalSessions: vi.fn(),
+      resizeTerminal: vi.fn(),
       startTerminalLog: vi.fn(),
       stopTerminalLog: vi.fn(),
       writeTerminal: vi.fn(),
@@ -236,6 +242,10 @@ vi.mock("../../../../src/lib/connectionApi", () => ({
 }));
 
 vi.mock("../../../../src/lib/diagnosticsApi", () => ({
+  createDiagnosticsBundle: (...args: unknown[]) =>
+    mocks.diagnosticsApi.createDiagnosticsBundle(...args),
+  getManagedSshRuntimeSnapshot: (...args: unknown[]) =>
+    mocks.diagnosticsApi.getManagedSshRuntimeSnapshot(...args),
   getRuntimeHealthSnapshot: (...args: unknown[]) =>
     mocks.diagnosticsApi.getRuntimeHealthSnapshot(...args),
 }));
@@ -348,12 +358,12 @@ vi.mock("../../../../src/lib/terminalApi", () => ({
     mocks.terminalApi.createSshTerminalSession(...args),
   createTerminalSession: (...args: unknown[]) =>
     mocks.terminalApi.createTerminalSession(...args),
-	  getTerminalLogState: (...args: unknown[]) =>
-	    mocks.terminalApi.getTerminalLogState(...args),
-	  reapOrphanTerminalSessions: (...args: unknown[]) =>
-	    mocks.terminalApi.reapOrphanTerminalSessions(...args),
-	  resizeTerminal: (...args: unknown[]) =>
-	    mocks.terminalApi.resizeTerminal(...args),
+  getTerminalLogState: (...args: unknown[]) =>
+    mocks.terminalApi.getTerminalLogState(...args),
+  reapOrphanTerminalSessions: (...args: unknown[]) =>
+    mocks.terminalApi.reapOrphanTerminalSessions(...args),
+  resizeTerminal: (...args: unknown[]) =>
+    mocks.terminalApi.resizeTerminal(...args),
   startTerminalLog: (...args: unknown[]) =>
     mocks.terminalApi.startTerminalLog(...args),
   stopTerminalLog: (...args: unknown[]) =>
@@ -367,6 +377,62 @@ vi.mock("../../../../src/lib/workspaceSessionApi", () => ({
     mocks.workspaceSessionApi.loadWorkspaceSessionFile(...args),
   saveWorkspaceSessionFile: (...args: unknown[]) =>
     mocks.workspaceSessionApi.saveWorkspaceSessionFile(...args),
+}));
+
+vi.mock("../../../../src/features/sftp/MonacoTextEditor", () => ({
+  MonacoTextEditor: ({
+    beforeMount,
+    onChange,
+    onMount,
+    value,
+  }: {
+    beforeMount?: (monaco: unknown) => void;
+    onChange?: (value: string) => void;
+    onMount?: (editor: unknown, monaco: unknown) => void;
+    value?: string;
+  }) => {
+    const editor = {
+      addCommand: vi.fn(),
+      focus: vi.fn(),
+      getAction: vi.fn(() => ({ run: vi.fn() })),
+      hasTextFocus: vi.fn(() => true),
+    };
+    const monaco = {
+      KeyCode: {
+        Insert: 52,
+        KeyA: 31,
+        KeyC: 33,
+        KeyF: 36,
+        KeyH: 38,
+        KeyS: 49,
+        KeyV: 55,
+        KeyX: 56,
+        KeyY: 57,
+        KeyZ: 58,
+      },
+      KeyMod: {
+        CtrlCmd: 2048,
+        Shift: 1024,
+      },
+      editor: { defineTheme: vi.fn() },
+    };
+    beforeMount?.(monaco);
+    onMount?.(editor, monaco);
+    return (
+      <textarea
+        aria-label="Compose YAML Monaco editor"
+        onChange={(event) => onChange?.(event.target.value)}
+        value={value ?? ""}
+      />
+    );
+  },
+}));
+
+vi.mock("../../../../src/features/sftp/remoteWorkspaceEditorTransport", () => ({
+  readRemoteWorkspaceTextFile: (...args: unknown[]) =>
+    mocks.remoteWorkspaceEditorTransport.readRemoteWorkspaceTextFile(...args),
+  writeRemoteWorkspaceTextFile: (...args: unknown[]) =>
+    mocks.remoteWorkspaceEditorTransport.writeRemoteWorkspaceTextFile(...args),
 }));
 
 vi.mock("../../../../src/features/sftp/SftpToolContent", () => ({
@@ -404,8 +470,7 @@ vi.mock("../../../../src/features/sftp/LazySftpTransferWorkbench", () => ({
     workspaceTabId?: string;
   }) => (
     <div aria-label="SFTP 传输工作台">
-      right:{initialRightHostId ?? "none"}{" "}
-      locked:
+      right:{initialRightHostId ?? "none"} locked:
       {lockedLeftHostId ?? "none"}
       <span>
         created:{createdHostTarget?.workspaceTabId ?? "none"}:

@@ -530,6 +530,9 @@ pub struct SftpTransferSummary {
     pub status: SftpTransferStatus,
     /// 已传输字节数；无法实时统计时在完成后更新。
     pub bytes_transferred: u64,
+    /// 当前传输速度，单位字节/秒；非运行态或暂不可计算时为 0。
+    #[serde(default)]
+    pub speed_bytes_per_second: u64,
     /// 总字节数；未知时为空。
     pub total_bytes: Option<u64>,
     /// 用户可见错误信息。

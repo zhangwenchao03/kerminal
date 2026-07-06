@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  dispatchKerminalTextEditCommand,
+  isEditableTextKeyEventTarget,
   isTerminalKeyEventTarget,
+  KERMINAL_TEXT_EDIT_COMMAND_EVENT,
   shouldAppHandleKeybinding,
 } from "../../../src/app/appKeybindingPolicy";
 
@@ -24,11 +27,26 @@ describe("appKeybindingPolicy", () => {
     expect(shouldAppHandleKeybinding(keydownFor(customInput, "j"))).toBe(false);
   });
 
-  it("keeps non-terminal app surfaces eligible for global keybindings", () => {
+  it("lets text editing surfaces receive keydown before app keybindings", () => {
     const settingsInput = document.createElement("input");
+    const editor = document.createElement("div");
+    editor.className = "monaco-editor";
 
     expect(isTerminalKeyEventTarget(settingsInput)).toBe(false);
-    expect(shouldAppHandleKeybinding(keydownFor(settingsInput, "s"))).toBe(true);
+    expect(isEditableTextKeyEventTarget(settingsInput)).toBe(true);
+    expect(isEditableTextKeyEventTarget(editor)).toBe(true);
+    expect(shouldAppHandleKeybinding(keydownFor(settingsInput, "s"))).toBe(
+      false,
+    );
+    expect(shouldAppHandleKeybinding(keydownFor(editor, "s"))).toBe(false);
+  });
+
+  it("keeps non-editable app surfaces eligible for global keybindings", () => {
+    const button = document.createElement("button");
+
+    expect(isTerminalKeyEventTarget(button)).toBe(false);
+    expect(isEditableTextKeyEventTarget(button)).toBe(false);
+    expect(shouldAppHandleKeybinding(keydownFor(button, "s"))).toBe(true);
   });
 
   it("does not handle events that another layer already consumed", () => {
@@ -37,6 +55,21 @@ describe("appKeybindingPolicy", () => {
     event.preventDefault();
 
     expect(shouldAppHandleKeybinding(event)).toBe(false);
+  });
+
+  it("dispatches text edit commands before falling back to browser editing", () => {
+    const handler = vi.fn((event: Event) => {
+      const detail = (
+        event as CustomEvent<{ command: string; handled: boolean }>
+      ).detail;
+      detail.handled = true;
+    });
+    window.addEventListener(KERMINAL_TEXT_EDIT_COMMAND_EVENT, handler);
+
+    expect(dispatchKerminalTextEditCommand("copy")).toBe(true);
+
+    window.removeEventListener(KERMINAL_TEXT_EDIT_COMMAND_EVENT, handler);
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 });
 

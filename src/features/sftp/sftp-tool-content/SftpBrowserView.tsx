@@ -7,40 +7,59 @@ import {
   Download,
   Eye,
   EyeOff,
+  FolderTree,
   FolderOpen,
   FolderPlus,
-  Maximize2,
-  Minimize2,
+  List,
+  PanelRight,
   RefreshCw,
   Settings2,
   Terminal,
   Upload,
 } from "lucide-react";
 import {
-  lazy,
-  Suspense,
+  useCallback,
+  useEffect,
   useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
   type Dispatch,
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MutableRefObject,
+  type ReactNode,
   type RefObject,
   type SetStateAction,
 } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../../../components/ui/button";
-import { ModalShell } from "../../../components/ui/modal-shell";
 import { cn } from "../../../lib/cn";
 import type { SftpEntry, SftpTransferSummary } from "../../../lib/sftpApi";
-import type { RemoteTargetRef } from "../../../lib/targetModel";
+import { targetStableId, type RemoteTargetRef } from "../../../lib/targetModel";
 import type { InterfaceDensity } from "../../settings/settingsModel";
+import type {
+  WorkspaceFileDirtyState,
+  WorkspaceFileTab,
+} from "../../workspace/types";
 import { FixedRowVirtualList } from "../FixedRowVirtualList";
 import { SftpActionDialog, StatusMessage } from "./SftpActionDialog";
 import { SftpContextMenu } from "./SftpContextMenu";
-import { RemoteWorkspaceEditorFallback } from "./RemoteWorkspaceEditorFallback";
 import { SftpEntryRow } from "./SftpEntryRow";
 import { SftpTransferStatusBar } from "./SftpTransferStatusBar";
 import { ToolbarButton } from "./ToolbarButton";
+import { WorkspaceTreeRow } from "../RemoteWorkspaceEditorParts";
+import { listRemoteWorkspaceDirectory } from "../remoteWorkspaceEditorTransport";
+import {
+  createRootNode,
+  entryToTreeNode,
+  errorMessage,
+  normalizeRemotePath as normalizeWorkspaceRemotePath,
+  updateTreeNode,
+  type WorkspaceTreeNode,
+} from "../remoteWorkspaceEditorModel";
+import type { SftpBrowserMode } from "./sftpBrowserModeModel";
 import type {
   RemoteDirectoryListing,
   SftpContextMenuEvent,
@@ -51,13 +70,7 @@ import type {
   SftpSelectionEvent,
   SftpStatus,
   SftpTransferTarget,
-  SftpWorkspaceDialog,
 } from "./types";
-
-const LazyRemoteWorkspaceEditor = lazy(async () => {
-  const module = await import("../RemoteWorkspaceEditor");
-  return { default: module.RemoteWorkspaceEditor };
-});
 
 const sftpDividerClassName =
   "mx-1 hidden h-5 w-px bg-[var(--border-subtle)] min-[420px]:block";
@@ -65,10 +78,18 @@ const sftpDividerClassName =
 const sftpUploadMenuItemClassName =
   "kerminal-focus-ring kerminal-pressable flex h-8 w-full items-center gap-2 rounded-xl px-2 text-left text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-zinc-50";
 
+const SFTP_UPLOAD_MENU_WIDTH = 176;
+const SFTP_UPLOAD_MENU_VIEWPORT_GAP = 8;
+
+type SftpUploadMenuPosition = {
+  left: number;
+  top: number;
+};
+
 type SftpBrowserViewProps = {
+  browserMode: SftpBrowserMode;
   cancelTransfer: (transferId: string) => Promise<void>;
   clearFinishedTransfers: () => Promise<void>;
-  closeWorkspaceDialog: () => void;
   compactHeader: boolean;
   contextMenu: SftpContextMenuState | null;
   currentPath: string;
@@ -100,7 +121,10 @@ type SftpBrowserViewProps = {
   loadDirectory: (path: string) => Promise<void>;
   loading: boolean;
   normalizedFollowedPath: string | undefined;
-  openContextMenu: (event: SftpContextMenuEvent, entry: SftpEntry | null) => void;
+  openContextMenu: (
+    event: SftpContextMenuEvent,
+    entry: SftpEntry | null,
+  ) => void;
   openContextMenuFromPress: (
     event: SftpContextMenuEvent,
     entry: SftpEntry | null,
@@ -115,7 +139,9 @@ type SftpBrowserViewProps = {
   retryTransfer: (transfer: SftpTransferSummary) => Promise<void>;
   selectEntry: (entry: SftpEntry, event?: SftpSelectionEvent) => void;
   selectedEntries: SftpEntry[];
+  selectedEntryPath: string | null;
   selectedEntryPaths: Set<string>;
+  setBrowserMode: Dispatch<SetStateAction<SftpBrowserMode>>;
   setContextMenu: Dispatch<SetStateAction<SftpContextMenuState | null>>;
   setDialogAction: Dispatch<SetStateAction<SftpDialogAction | null>>;
   setDialogStatus: Dispatch<SetStateAction<SftpStatus | null>>;
@@ -124,9 +150,6 @@ type SftpBrowserViewProps = {
   setPathDraft: Dispatch<SetStateAction<string>>;
   setShowHiddenFiles: Dispatch<SetStateAction<boolean>>;
   setUploadMenuOpen: Dispatch<SetStateAction<boolean>>;
-  setWorkspaceCloseBlocked: Dispatch<SetStateAction<boolean>>;
-  setWorkspaceDirty: Dispatch<SetStateAction<boolean>>;
-  setWorkspaceExpanded: Dispatch<SetStateAction<boolean>>;
   setupRemoteCwdTracking: () => Promise<void>;
   showHiddenFiles: boolean;
   showLocalTransferActions: boolean;
@@ -148,17 +171,15 @@ type SftpBrowserViewProps = {
   uploadMenuRef: RefObject<HTMLDivElement | null>;
   visibleEntries: SftpEntry[];
   visibleTransfers: SftpTransferSummary[];
-  workspaceCloseBlocked: boolean;
-  workspaceDialog: SftpWorkspaceDialog | null;
-  workspaceDirty: boolean;
-  workspaceExpanded: boolean;
+  workspaceFileDirtyState?: WorkspaceFileDirtyState;
+  workspaceFileTabs?: WorkspaceFileTab[];
   workspaceTarget: RemoteTargetRef | null;
 };
 
 export function SftpBrowserView({
+  browserMode,
   cancelTransfer,
   clearFinishedTransfers,
-  closeWorkspaceDialog,
   compactHeader,
   contextMenu,
   currentPath,
@@ -202,7 +223,9 @@ export function SftpBrowserView({
   retryTransfer,
   selectEntry,
   selectedEntries,
+  selectedEntryPath,
   selectedEntryPaths,
+  setBrowserMode,
   setContextMenu,
   setDialogAction,
   setDialogStatus,
@@ -211,9 +234,6 @@ export function SftpBrowserView({
   setPathDraft,
   setShowHiddenFiles,
   setUploadMenuOpen,
-  setWorkspaceCloseBlocked,
-  setWorkspaceDirty,
-  setWorkspaceExpanded,
   setupRemoteCwdTracking,
   showHiddenFiles,
   showLocalTransferActions,
@@ -232,10 +252,8 @@ export function SftpBrowserView({
   uploadMenuRef,
   visibleEntries,
   visibleTransfers,
-  workspaceCloseBlocked,
-  workspaceDialog,
-  workspaceDirty,
-  workspaceExpanded,
+  workspaceFileDirtyState = {},
+  workspaceFileTabs = [],
   workspaceTarget,
 }: SftpBrowserViewProps) {
   const pathInputId = useId();
@@ -267,6 +285,197 @@ export function SftpBrowserView({
     : spaciousDensity
       ? "px-4 py-3"
       : "px-3 py-2.5";
+  const [uploadMenuPosition, setUploadMenuPosition] =
+    useState<SftpUploadMenuPosition | null>(null);
+  const treeRootPath = useMemo(
+    () => normalizeWorkspaceRemotePath(currentPath),
+    [currentPath],
+  );
+  const workspaceTargetKey = workspaceTarget
+    ? targetStableId(workspaceTarget)
+    : "none";
+  const treeScopeKey = `${workspaceTargetKey}|${treeRootPath}`;
+  const treeScopeKeyRef = useRef(treeScopeKey);
+  const [treeNodes, setTreeNodes] = useState<WorkspaceTreeNode[]>(() => [
+    createRootNode(treeRootPath),
+  ]);
+  const [openTreePaths, setOpenTreePaths] = useState<Set<string>>(
+    () => new Set([treeRootPath]),
+  );
+  const [treeStatus, setTreeStatus] = useState<SftpStatus | null>(null);
+  const loadTreeChildren = useCallback(
+    async (path: string, replaceRoot = false) => {
+      const normalizedPath = normalizeWorkspaceRemotePath(path);
+      setTreeStatus(null);
+      setOpenTreePaths((current) => {
+        if (current.has(normalizedPath)) {
+          return current;
+        }
+        const next = new Set(current);
+        next.add(normalizedPath);
+        return next;
+      });
+      setTreeNodes((current) =>
+        replaceRoot
+          ? [{ ...createRootNode(normalizedPath), loading: true }]
+          : updateTreeNode(current, normalizedPath, (node) => ({
+              ...node,
+              error: null,
+              loading: true,
+            })),
+      );
+
+      try {
+        const listing = await listRemoteWorkspaceDirectory(
+          workspaceTarget,
+          normalizedPath,
+        );
+        const children = directTreeChildren(
+          listing.entries,
+          normalizedPath,
+        ).map(entryToTreeNode);
+        setTreeNodes((current) =>
+          replaceRoot
+            ? [
+                {
+                  ...createRootNode(normalizedPath),
+                  children,
+                  loaded: true,
+                  loading: false,
+                },
+              ]
+            : updateTreeNode(current, normalizedPath, (node) => ({
+                ...node,
+                children,
+                error: null,
+                loaded: true,
+                loading: false,
+              })),
+        );
+      } catch (error) {
+        const message = errorMessage(error);
+        setTreeStatus({ kind: "error", message });
+        setTreeNodes((current) =>
+          replaceRoot
+            ? [
+                {
+                  ...createRootNode(normalizedPath),
+                  error: message,
+                  loaded: false,
+                  loading: false,
+                },
+              ]
+            : updateTreeNode(current, normalizedPath, (node) => ({
+                ...node,
+                error: message,
+                loading: false,
+              })),
+        );
+      }
+    },
+    [workspaceTarget],
+  );
+  const toggleTreeDirectory = useCallback(
+    (node: WorkspaceTreeNode) => {
+      const opening = !openTreePaths.has(node.path);
+      setOpenTreePaths((current) => {
+        const next = new Set(current);
+        if (next.has(node.path)) {
+          next.delete(node.path);
+        } else {
+          next.add(node.path);
+        }
+        return next;
+      });
+      if (opening && (!node.loaded || node.error) && !node.loading) {
+        void loadTreeChildren(node.path);
+      }
+    },
+    [loadTreeChildren, openTreePaths],
+  );
+  const visibleTreeRows = useMemo(
+    () => flattenWorkspaceTreeRows(treeNodes, openTreePaths),
+    [openTreePaths, treeNodes],
+  );
+  const openedWorkspaceFileTabs = useMemo(
+    () =>
+      workspaceFileTabs.filter(
+        (tab) => targetStableId(tab.target) === workspaceTargetKey,
+      ),
+    [workspaceFileTabs, workspaceTargetKey],
+  );
+  const dirtyWorkspaceFileTabs = useMemo(
+    () =>
+      openedWorkspaceFileTabs.filter((tab) => workspaceFileDirtyState[tab.id]),
+    [openedWorkspaceFileTabs, workspaceFileDirtyState],
+  );
+  const recentWorkspaceFileTabs = useMemo(
+    () => openedWorkspaceFileTabs.slice(-5).reverse(),
+    [openedWorkspaceFileTabs],
+  );
+  const selectedFileEntry = selectedEntries.find(
+    (entry) => entry.kind === "file",
+  );
+
+  useEffect(() => {
+    if (treeScopeKeyRef.current === treeScopeKey) {
+      return;
+    }
+    treeScopeKeyRef.current = treeScopeKey;
+    setOpenTreePaths(new Set([treeRootPath]));
+    setTreeNodes([createRootNode(treeRootPath)]);
+    setTreeStatus(null);
+  }, [treeRootPath, treeScopeKey]);
+
+  useEffect(() => {
+    if (browserMode !== "tree" || !workspaceTarget) {
+      return;
+    }
+    const rootNode = treeNodes[0];
+    if (!rootNode || rootNode.path !== treeRootPath) {
+      void loadTreeChildren(treeRootPath, true);
+      return;
+    }
+    if (!rootNode.loaded && !rootNode.loading) {
+      void loadTreeChildren(treeRootPath, true);
+    }
+  }, [browserMode, loadTreeChildren, treeNodes, treeRootPath, workspaceTarget]);
+  const updateUploadMenuPosition = useCallback(() => {
+    if (!uploadMenuOpen || typeof window === "undefined") {
+      return;
+    }
+    const anchor = uploadMenuRef.current;
+    if (!anchor) {
+      setUploadMenuPosition(null);
+      return;
+    }
+    const rect = anchor.getBoundingClientRect();
+    const viewportWidth =
+      window.innerWidth || rect.left + SFTP_UPLOAD_MENU_WIDTH;
+    const maxLeft =
+      viewportWidth - SFTP_UPLOAD_MENU_WIDTH - SFTP_UPLOAD_MENU_VIEWPORT_GAP;
+    setUploadMenuPosition({
+      left: Math.max(
+        SFTP_UPLOAD_MENU_VIEWPORT_GAP,
+        Math.min(rect.left, maxLeft),
+      ),
+      top: rect.bottom + 4,
+    });
+  }, [uploadMenuOpen, uploadMenuRef]);
+
+  useLayoutEffect(() => {
+    if (!uploadMenuOpen || typeof window === "undefined") {
+      setUploadMenuPosition(null);
+      return undefined;
+    }
+    updateUploadMenuPosition();
+    window.addEventListener("resize", updateUploadMenuPosition);
+    window.addEventListener("scroll", updateUploadMenuPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateUploadMenuPosition);
+      window.removeEventListener("scroll", updateUploadMenuPosition, true);
+    };
+  }, [updateUploadMenuPosition, uploadMenuOpen]);
 
   if (!fileTarget) {
     return (
@@ -288,9 +497,7 @@ export function SftpBrowserView({
           <h3 className="mt-1 font-semibold text-zinc-950 dark:text-zinc-50">
             远程文件浏览
           </h3>
-          <p className="mt-2 leading-6">
-            连接 SSH 主机或容器后显示文件。
-          </p>
+          <p className="mt-2 leading-6">连接 SSH 主机或容器后显示文件。</p>
         </div>
       </section>
     );
@@ -303,16 +510,11 @@ export function SftpBrowserView({
     >
       <header
         className={cn(
-          "kerminal-material-nav shrink-0 border-b",
+          "kerminal-material-nav relative z-30 shrink-0 border-b",
           headerPaddingClass,
         )}
       >
-        <div
-          className={cn(
-            "kerminal-solid-surface border",
-            pathSurfaceClass,
-          )}
-        >
+        <div className={cn("kerminal-solid-surface border", pathSurfaceClass)}>
           <form
             className="flex min-w-0 items-center gap-2"
             onSubmit={(event) => {
@@ -484,38 +686,6 @@ export function SftpBrowserView({
                   onClick={() => setUploadMenuOpen((current) => !current)}
                   pressed={uploadMenuOpen}
                 />
-                {uploadMenuOpen ? (
-                  <div
-                    aria-label="上传菜单"
-                    className="kerminal-floating-surface kerminal-floating-enter absolute left-0 top-9 z-40 w-44 overflow-hidden rounded-2xl border p-1.5 text-zinc-900 dark:text-zinc-100"
-                    role="menu"
-                  >
-                    <button
-                      className={sftpUploadMenuItemClassName}
-                      onClick={() => {
-                        setUploadMenuOpen(false);
-                        void uploadLocalFile();
-                      }}
-                      role="menuitem"
-                      type="button"
-                    >
-                      <Upload className="h-4 w-4 shrink-0 text-sky-500 dark:text-sky-300" />
-                      <span className="min-w-0 flex-1 truncate">上传文件</span>
-                    </button>
-                    <button
-                      className={sftpUploadMenuItemClassName}
-                      onClick={() => {
-                        setUploadMenuOpen(false);
-                        void uploadLocalDirectory();
-                      }}
-                      role="menuitem"
-                      type="button"
-                    >
-                      <FolderOpen className="h-4 w-4 shrink-0 text-sky-500 dark:text-sky-300" />
-                      <span className="min-w-0 flex-1 truncate">上传文件夹</span>
-                    </button>
-                  </div>
-                ) : null}
               </div>
             ) : null}
             <ToolbarButton
@@ -562,14 +732,20 @@ export function SftpBrowserView({
               </>
             ) : null}
           </div>
-          <div className="shrink-0 font-mono text-xs text-zinc-500 dark:text-zinc-400">
-            {loading
-              ? "刷新中"
-              : `${visibleEntries.length} / ${entries.length} 项${
-                  selectedEntries.length > 0
-                    ? ` / 已选 ${selectedEntries.length}`
-                    : ""
-                }`}
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="max-w-40 truncate font-mono text-xs text-zinc-500 dark:text-zinc-400">
+              {loading
+                ? "刷新中"
+                : `${visibleEntries.length} / ${entries.length} 项${
+                    selectedEntries.length > 0
+                      ? ` / 已选 ${selectedEntries.length}`
+                      : ""
+                  }`}
+            </div>
+            <SftpBrowserModeToggle
+              mode={browserMode}
+              onModeChange={setBrowserMode}
+            />
           </div>
         </div>
       </header>
@@ -579,7 +755,9 @@ export function SftpBrowserView({
           className={cn(
             "relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border transition",
             compactChrome && "rounded-xl",
-            !dragDropActive && !remoteDownloadDropActive && "kerminal-solid-surface",
+            !dragDropActive &&
+              !remoteDownloadDropActive &&
+              "kerminal-solid-surface",
             dragDropActive &&
               "border-sky-400/55 bg-sky-500/10 ring-4 ring-sky-400/15 dark:border-sky-300/45 dark:bg-sky-300/10",
             remoteDownloadDropActive &&
@@ -601,8 +779,8 @@ export function SftpBrowserView({
               <div className="kerminal-floating-surface flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-medium text-emerald-700 dark:text-emerald-100">
                 <Download className="h-4 w-4" />
                 {remoteDragEntriesRef.current.length > 1
-                  ? `释放下载 ${remoteDragEntriesRef.current.length} 项`
-                  : "释放下载远端项目"}
+                  ? `拖到下方列表复制 ${remoteDragEntriesRef.current.length} 项`
+                  : "拖到下方列表复制远端项目"}
               </div>
             </div>
           ) : dragDropActive ? (
@@ -620,7 +798,11 @@ export function SftpBrowserView({
           >
             <div>
               <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                远程目录
+                {browserMode === "tree"
+                  ? "目录树"
+                  : browserMode === "workspace"
+                    ? "文件工作区"
+                    : "远程目录"}
               </div>
               <div className="mt-0.5 text-xs text-zinc-500">
                 {directoryCount} 目录 / {fileCount} 文件
@@ -680,7 +862,10 @@ export function SftpBrowserView({
                   : "当前筛选下没有可见项目。"}
               </div>
             ) : null}
-            {!loading && !error && visibleEntries.length > 0 ? (
+            {!loading &&
+            !error &&
+            browserMode === "list" &&
+            visibleEntries.length > 0 ? (
               <div className="kerminal-sftp-entry-list flex h-full min-h-0 flex-col">
                 <div
                   className={cn(
@@ -692,7 +877,9 @@ export function SftpBrowserView({
                   <span className="kerminal-sftp-permissions-column hidden text-right">
                     权限
                   </span>
-                  <span className="kerminal-sftp-size-column hidden text-right">大小</span>
+                  <span className="kerminal-sftp-size-column hidden text-right">
+                    大小
+                  </span>
                   <span className="text-right" title="修改时间">
                     时间
                   </span>
@@ -714,7 +901,9 @@ export function SftpBrowserView({
                         openContextMenuFromPress(event, entry)
                       }
                       onDragEnd={finishRemoteEntryDrag}
-                      onDragStart={(event) => startRemoteEntryDrag(event, entry)}
+                      onDragStart={(event) =>
+                        startRemoteEntryDrag(event, entry)
+                      }
                       onOpenDirectory={loadDirectory}
                       onPreviewFile={() => openEditorEntry(entry)}
                       onSelect={(event) => selectEntry(entry, event)}
@@ -730,11 +919,195 @@ export function SftpBrowserView({
                 />
               </div>
             ) : null}
+            {!loading && !error && browserMode === "tree" ? (
+              <div
+                aria-label="SFTP 目录树"
+                className="h-full min-h-0 overflow-auto py-1"
+                role="tree"
+              >
+                {treeStatus ? (
+                  <StatusMessage className="m-3" status={treeStatus} />
+                ) : null}
+                {visibleTreeRows.map(({ depth, node }) => (
+                  <WorkspaceTreeRow
+                    activePath={selectedEntryPath}
+                    depth={depth}
+                    isOpen={depth === 0 || openTreePaths.has(node.path)}
+                    key={node.path}
+                    node={node}
+                    onContextMenu={(event, item) =>
+                      openContextMenu(
+                        event,
+                        treeNodeToSftpEntry(item, item.path),
+                      )
+                    }
+                    onContextMenuFromPress={(event, item) =>
+                      openContextMenuFromPress(
+                        event,
+                        treeNodeToSftpEntry(item, item.path),
+                      )
+                    }
+                    onOpenFile={(path) => {
+                      const entry = treeNodeToSftpEntry(node, path);
+                      selectEntry(entry);
+                      openEditorEntry(entry);
+                    }}
+                    onToggleDirectory={(item) => {
+                      selectEntry(treeNodeToSftpEntry(item, item.path));
+                      toggleTreeDirectory(item);
+                    }}
+                  />
+                ))}
+              </div>
+            ) : null}
+            {!loading && !error && browserMode === "workspace" ? (
+              <div className="grid gap-3 overflow-auto p-3 text-sm">
+                <div className="kerminal-muted-surface rounded-xl border px-3 py-3">
+                  <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                    当前根目录
+                  </div>
+                  <div className="mt-1 truncate font-mono text-zinc-900 dark:text-zinc-100">
+                    {currentPath}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <SftpWorkspaceMetric label="目录" value={directoryCount} />
+                  <SftpWorkspaceMetric label="文件" value={fileCount} />
+                  <SftpWorkspaceMetric
+                    label="已打开"
+                    value={openedWorkspaceFileTabs.length}
+                  />
+                  <SftpWorkspaceMetric
+                    label="未保存"
+                    tone={
+                      dirtyWorkspaceFileTabs.length > 0 ? "dirty" : "default"
+                    }
+                    value={dirtyWorkspaceFileTabs.length}
+                  />
+                  <SftpWorkspaceMetric
+                    label="传输"
+                    value={visibleTransfers.length}
+                  />
+                </div>
+                <div className="kerminal-muted-surface rounded-xl border px-3 py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                        最近打开
+                      </div>
+                      <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                        右栏只负责导航和文件操作；文件正文会打开到中间工作区
+                        tab。
+                      </div>
+                    </div>
+                    <span className="rounded-md border border-[var(--border-subtle)] px-1.5 py-0.5 font-mono text-[10px] text-zinc-500 dark:text-zinc-400">
+                      {recentWorkspaceFileTabs.length}
+                    </span>
+                  </div>
+                  {recentWorkspaceFileTabs.length > 0 ? (
+                    <div className="mt-3 grid gap-1.5" role="list">
+                      {recentWorkspaceFileTabs.map((tab) => {
+                        const dirty = Boolean(workspaceFileDirtyState[tab.id]);
+                        const entry = workspaceFileTabToSftpEntry(tab);
+                        return (
+                          <button
+                            className="kerminal-focus-ring kerminal-pressable flex min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left text-xs text-zinc-700 hover:bg-[var(--surface-hover)] dark:text-zinc-200"
+                            key={tab.id}
+                            onClick={() => {
+                              selectEntry(entry);
+                              openEditorEntry(entry);
+                            }}
+                            role="listitem"
+                            title={tab.path}
+                            type="button"
+                          >
+                            <span
+                              className={cn(
+                                "h-2 w-2 shrink-0 rounded-full",
+                                dirty ? "bg-amber-400" : "bg-emerald-400/80",
+                              )}
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-medium text-zinc-900 dark:text-zinc-100">
+                                {tab.title}
+                              </span>
+                              <span className="block truncate font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
+                                {tab.path}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-lg border border-dashed border-[var(--border-subtle)] px-3 py-4 text-center text-xs text-zinc-500 dark:text-zinc-400">
+                      还没有从当前目标打开文件。
+                    </div>
+                  )}
+                </div>
+                <Button
+                  className="h-8 justify-start rounded-lg px-2 text-xs"
+                  disabled={!selectedFileEntry}
+                  onClick={() => {
+                    if (selectedFileEntry) {
+                      openEditorEntry(selectedFileEntry);
+                    }
+                  }}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  <PanelRight className="h-3.5 w-3.5" />
+                  在中间打开选中文件
+                </Button>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
 
       <SftpOperationStatusBar status={operationStatus} />
+
+      {uploadMenuOpen && uploadMenuPosition && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              aria-label="上传菜单"
+              className="kerminal-floating-surface kerminal-floating-enter fixed z-[1000] w-44 overflow-hidden rounded-2xl border bg-[var(--surface-overlay)] p-1.5 text-zinc-900 shadow-2xl shadow-black/20 dark:text-zinc-100"
+              data-sftp-upload-menu="true"
+              role="menu"
+              style={{
+                left: uploadMenuPosition.left,
+                top: uploadMenuPosition.top,
+              }}
+            >
+              <button
+                className={sftpUploadMenuItemClassName}
+                onClick={() => {
+                  setUploadMenuOpen(false);
+                  void uploadLocalFile();
+                }}
+                role="menuitem"
+                type="button"
+              >
+                <Upload className="h-4 w-4 shrink-0 text-sky-500 dark:text-sky-300" />
+                <span className="min-w-0 flex-1 truncate">上传文件</span>
+              </button>
+              <button
+                className={sftpUploadMenuItemClassName}
+                onClick={() => {
+                  setUploadMenuOpen(false);
+                  void uploadLocalDirectory();
+                }}
+                role="menuitem"
+                type="button"
+              >
+                <FolderOpen className="h-4 w-4 shrink-0 text-sky-500 dark:text-sky-300" />
+                <span className="min-w-0 flex-1 truncate">上传文件夹</span>
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {showTransferStatusBar ? (
         <SftpTransferStatusBar
@@ -761,62 +1134,6 @@ export function SftpBrowserView({
         status={dialogStatus}
       />
 
-      <ModalShell
-        description={workspaceDialog?.rootPath}
-        footer={
-          workspaceDirty ? (
-            <div className="mr-auto text-xs text-amber-700 dark:text-amber-200">
-              {workspaceCloseBlocked
-                ? "工作区有未保存修改，确认后可以关闭。"
-                : "有未保存修改。"}
-            </div>
-          ) : null
-        }
-        headerActions={
-          workspaceDialog && supportsSftpAdvancedActions ? (
-            <Button
-              aria-label={workspaceExpanded ? "还原工作区" : "放大工作区"}
-              className="h-8 w-8 rounded-md px-0"
-              onClick={() => setWorkspaceExpanded((current) => !current)}
-              size="sm"
-              title={workspaceExpanded ? "还原工作区" : "放大工作区"}
-              type="button"
-              variant="ghost"
-            >
-              {workspaceExpanded ? (
-                <Minimize2 className="h-3.5 w-3.5" />
-              ) : (
-                <Maximize2 className="h-3.5 w-3.5" />
-              )}
-            </Button>
-          ) : null
-        }
-        bodyClassName="p-2"
-        layout={workspaceExpanded ? "fullscreen" : "workspace"}
-        onClose={closeWorkspaceDialog}
-        open={Boolean(workspaceDialog)}
-        title="远程工作区"
-      >
-        {workspaceDialog && workspaceTarget ? (
-          <Suspense fallback={<RemoteWorkspaceEditorFallback />}>
-            <LazyRemoteWorkspaceEditor
-              onDirtyStateChange={(dirty) => {
-                setWorkspaceDirty(dirty);
-                if (!dirty) {
-                  setWorkspaceCloseBlocked(false);
-                }
-              }}
-              onOpenDirectory={loadDirectory}
-              onStatus={setOperationStatus}
-              openCommand={workspaceDialog.openCommand}
-              rootPath={workspaceDialog.rootPath}
-              target={workspaceTarget}
-              variant="workspace"
-            />
-          </Suspense>
-        ) : null}
-      </ModalShell>
-
       {contextMenu
         ? createPortal(
             <SftpContextMenu
@@ -834,6 +1151,169 @@ export function SftpBrowserView({
         : null}
     </section>
   );
+}
+
+function SftpBrowserModeToggle({
+  mode,
+  onModeChange,
+}: {
+  mode: SftpBrowserMode;
+  onModeChange: Dispatch<SetStateAction<SftpBrowserMode>>;
+}) {
+  const items: Array<{
+    icon: ReactNode;
+    id: SftpBrowserMode;
+    label: string;
+  }> = [
+    { icon: <List className="h-3.5 w-3.5" />, id: "list", label: "列表模式" },
+    {
+      icon: <FolderTree className="h-3.5 w-3.5" />,
+      id: "tree",
+      label: "树形模式",
+    },
+    {
+      icon: <PanelRight className="h-3.5 w-3.5" />,
+      id: "workspace",
+      label: "工作区模式",
+    },
+  ];
+
+  return (
+    <div
+      aria-label="SFTP 浏览模式"
+      className="kerminal-muted-surface flex shrink-0 items-center gap-0.5 rounded-lg border p-0.5"
+      role="group"
+    >
+      {items.map((item) => (
+        <button
+          aria-label={item.label}
+          aria-pressed={mode === item.id}
+          className={cn(
+            "kerminal-focus-ring flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition hover:bg-[var(--surface-hover)] hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50",
+            mode === item.id &&
+              "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100",
+          )}
+          data-testid={`sftp-browser-mode-${item.id}`}
+          key={item.id}
+          onClick={() => onModeChange(item.id)}
+          title={item.label}
+          type="button"
+        >
+          {item.icon}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SftpWorkspaceMetric({
+  label,
+  tone = "default",
+  value,
+}: {
+  label: string;
+  tone?: "default" | "dirty";
+  value: number;
+}) {
+  return (
+    <div className="kerminal-muted-surface rounded-xl border px-3 py-2">
+      <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
+        {label}
+      </div>
+      <div
+        className={cn(
+          "mt-1 font-mono text-lg font-semibold",
+          tone === "dirty"
+            ? "text-amber-700 dark:text-amber-200"
+            : "text-zinc-900 dark:text-zinc-50",
+        )}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+type SftpTreeRenderRow = {
+  depth: number;
+  node: WorkspaceTreeNode;
+};
+
+function flattenWorkspaceTreeRows(
+  nodes: WorkspaceTreeNode[],
+  openPaths: Set<string>,
+  depth = 0,
+): SftpTreeRenderRow[] {
+  return nodes.flatMap((node) => {
+    const row = { depth, node };
+    const isRootRow = depth === 0;
+    if (
+      node.kind !== "directory" ||
+      (!isRootRow && !openPaths.has(node.path)) ||
+      !node.children?.length
+    ) {
+      return [row];
+    }
+    return [
+      row,
+      ...flattenWorkspaceTreeRows(node.children, openPaths, depth + 1),
+    ];
+  });
+}
+
+function directTreeChildren(
+  entries: SftpEntry[],
+  parentPath: string,
+): SftpEntry[] {
+  const normalizedParentPath = normalizeWorkspaceRemotePath(parentPath);
+  const seenPaths = new Set<string>();
+  return entries.filter((entry) => {
+    const normalizedEntryPath = normalizeWorkspaceRemotePath(entry.path);
+    if (seenPaths.has(normalizedEntryPath)) {
+      return false;
+    }
+    seenPaths.add(normalizedEntryPath);
+    return parentPathForTreeEntry(normalizedEntryPath) === normalizedParentPath;
+  });
+}
+
+function parentPathForTreeEntry(path: string): string | null {
+  const normalizedPath = normalizeWorkspaceRemotePath(path);
+  if (normalizedPath === "/") {
+    return null;
+  }
+  const lastSlashIndex = normalizedPath.lastIndexOf("/");
+  if (lastSlashIndex <= 0) {
+    return "/";
+  }
+  return normalizedPath.slice(0, lastSlashIndex);
+}
+
+function treeNodeToSftpEntry(node: WorkspaceTreeNode, path: string): SftpEntry {
+  return {
+    kind: node.kind,
+    modified: node.modified,
+    name: node.name,
+    path,
+    permissions: node.permissions,
+    raw: node.name,
+    size: node.size,
+  };
+}
+
+function workspaceFileTabToSftpEntry(tab: WorkspaceFileTab): SftpEntry {
+  return {
+    kind: "file",
+    name: basenameFromPath(tab.path) || tab.title,
+    path: tab.path,
+    raw: tab.title,
+  };
+}
+
+function basenameFromPath(path: string): string {
+  const normalized = path.replace(/\\/g, "/");
+  const segments = normalized.split("/").filter(Boolean);
+  return segments.length > 0 ? segments[segments.length - 1] : normalized;
 }
 
 function SftpOperationStatusBar({ status }: { status: SftpStatus | null }) {

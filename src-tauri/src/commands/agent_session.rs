@@ -185,7 +185,11 @@ fn create_agent_session(
         provider: request.provider,
         mcp_endpoint: request.mcp_endpoint,
     };
-    if let Some(target) = create_request.target.as_ref() {
+    if let Some(target) = create_request
+        .target
+        .as_ref()
+        .filter(|target| !is_unbound_agent_session_target(target))
+    {
         validate_agent_session_target(state, target)?;
     }
 
@@ -272,6 +276,27 @@ fn save_runtime_agent_target_binding(
             cwd: target.cwd.clone(),
             shell: target.shell.clone(),
         })
+}
+
+fn is_unbound_agent_session_target(target: &AgentSessionTarget) -> bool {
+    target.live_status == AgentTargetLiveStatus::Unbound
+        && is_empty_target_field(target.binding_id.as_deref())
+        && target.binding_generation == 0
+        && is_empty_target_field(target.pane_id.as_deref())
+        && is_empty_target_field(target.tab_id.as_deref())
+        && is_empty_target_field(target.target_terminal_session_id.as_deref())
+        && is_empty_target_field(target.target_ref.as_deref())
+        && is_empty_target_field(target.target_kind.as_deref())
+        && is_empty_target_field(target.cwd.as_deref())
+        && is_empty_target_field(target.shell.as_deref())
+        && is_empty_target_field(target.last_seen_at.as_deref())
+}
+
+fn is_empty_target_field(value: Option<&str>) -> bool {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_none()
 }
 
 fn validate_agent_session_target(

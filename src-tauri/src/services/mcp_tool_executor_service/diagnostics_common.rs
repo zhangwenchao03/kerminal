@@ -81,6 +81,7 @@ pub(super) fn missing_tool_ids<'a>(
 pub(super) fn absent_tool_families() -> Vec<&'static str> {
     vec![
         "settings.*",
+        "external_launch.*",
         "profile.*",
         "remote_host.*",
         "snippet.*",

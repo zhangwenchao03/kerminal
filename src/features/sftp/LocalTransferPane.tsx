@@ -95,18 +95,26 @@ const DEFAULT_TRANSFER_CONFLICT_POLICY: SftpTransferConflictPolicy = "overwrite"
 
 export function LocalTransferPane({
   active,
+  followedPath,
+  initialPath,
   interfaceDensity = "comfortable",
+  mode = "transfer",
   onCurrentPathChange,
   onLocalClipboardChange,
+  onOpenLocalFile,
   onTransferQueued,
   targetMachine,
   targetPath,
   transferViewScope,
 }: {
   active: boolean;
+  followedPath?: string;
+  initialPath?: string;
   interfaceDensity?: InterfaceDensity;
+  mode?: "browser" | "transfer";
   onCurrentPathChange?: (path: string | undefined) => void;
   onLocalClipboardChange?: (clipboard: SftpWorkbenchLocalClipboard) => void;
+  onOpenLocalFile?: (entry: LocalDirectoryEntry) => void;
   onTransferQueued?: () => void;
   targetMachine: Machine | undefined;
   targetPath: string | undefined;
@@ -211,8 +219,8 @@ export function LocalTransferPane({
     if (!active) {
       return;
     }
-    void loadDirectory(null);
-  }, [active, loadDirectory]);
+    void loadDirectory(followedPath ?? initialPath ?? null);
+  }, [active, followedPath, initialPath, loadDirectory]);
 
   useEffect(() => {
     setSelectedEntryPaths(new Set());
@@ -790,6 +798,7 @@ export function LocalTransferPane({
   );
   const canTransferContextEntries =
     Boolean(targetMachine && targetPath) && transferableContextEntries.length > 0;
+  const browserMode = mode === "browser";
 
   return (
     <div
@@ -816,10 +825,14 @@ export function LocalTransferPane({
       >
         <div className="min-w-0">
           <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">
-            左侧本地目录
+            {browserMode ? "本地文件" : "左侧本地目录"}
           </div>
           <div className="truncate text-[11px] text-zinc-500 dark:text-zinc-400">
-            本机文件系统
+            {browserMode
+              ? followedPath
+                ? "跟随当前终端路径"
+                : "本机文件系统"
+              : "本机文件系统"}
           </div>
         </div>
         <Button
@@ -915,14 +928,17 @@ export function LocalTransferPane({
         visibleEntries={visibleEntries}
         onLoadDirectory={loadDirectory}
         onOpenContextMenu={openContextMenu}
+        onOpenFile={onOpenLocalFile}
         onSelectEntry={selectEntry}
       />
 
-      <LocalTransferPaneTargetFooter
-        chromePaddingClass={chromePaddingClass}
-        targetMachine={targetMachine}
-        targetPath={targetPath}
-      />
+      {browserMode ? null : (
+        <LocalTransferPaneTargetFooter
+          chromePaddingClass={chromePaddingClass}
+          targetMachine={targetMachine}
+          targetPath={targetPath}
+        />
+      )}
       <LocalTransferPaneContextMenu
         canTransferContextEntries={canTransferContextEntries}
         contextMenu={contextMenu}
@@ -944,6 +960,14 @@ export function LocalTransferPane({
           setContextMenu(null);
           void openEntryInFileManager(entry);
         }}
+        onOpenFile={
+          onOpenLocalFile
+            ? (entry) => {
+                setContextMenu(null);
+                onOpenLocalFile(entry);
+              }
+            : undefined
+        }
         onRefresh={() => {
           setContextMenu(null);
           void loadDirectory(listing?.path ?? null);

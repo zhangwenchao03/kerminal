@@ -226,6 +226,7 @@ export function XtermPane({
   >([]);
   const [contextMenu, setContextMenu] = useState<{
     canCopy: boolean;
+    canCopySessionId: boolean;
     position: TerminalContextMenuPosition;
   } | null>(null);
   const [connectionState, setConnectionState] =
@@ -676,6 +677,10 @@ export function XtermPane({
         if (selection) {
           void writeDesktopClipboardText(selection);
         }
+      } else if (action === "copySessionId") {
+        if (sessionId) {
+          void writeDesktopClipboardText(sessionId);
+        }
       } else if (action === "paste") {
         void pasteIntoTerminal(terminal, sessionId);
       } else if (action === "selectAll") {
@@ -746,6 +751,7 @@ export function XtermPane({
       const selection = terminal?.getSelection?.() ?? "";
       const menuState = {
         canCopy: selection.length > 0,
+        canCopySessionId: Boolean(sessionId),
         position: {
           x: event.clientX,
           y: event.clientY,
@@ -958,6 +964,7 @@ export function XtermPane({
         <TerminalContextMenu
           canDisconnect={connectionState === "connected"}
           canCopy={contextMenu.canCopy}
+          canCopySessionId={contextMenu.canCopySessionId}
           canReconnect={connectionState !== "connecting"}
           canSplit={Boolean(onSplitPane)}
           onAction={executeContextMenuAction}

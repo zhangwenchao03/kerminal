@@ -15,6 +15,8 @@ use std::{
 use tauri::Window;
 use uuid::Uuid;
 
+use russh_sftp::protocol::{Status, StatusCode};
+
 use crate::{
     error::{AppError, AppResult},
     models::sftp::{
@@ -29,6 +31,10 @@ use crate::{
         SftpTrustHostKeyRequest, SftpWriteTextFileRequest, SftpWriteTextFileResponse,
     },
     paths::KerminalPaths,
+    services::{
+        external_launch::{is_external_target_id, ExternalSessionMaterializer},
+        ssh_runtime::{auth_broker::SshAuthBroker, ManagedSshSessionManager},
+    },
 };
 
 mod archive;
@@ -48,8 +54,8 @@ use self::archive::{
 };
 
 use self::backend::{
-    load_sftp_runtime_settings, resolve_endpoint, resolve_host, RusshSftpBackend, SftpBackend,
-    SftpRuntimeSettings,
+    load_sftp_runtime_settings, resolve_endpoint_with_auth_broker, resolve_host, RusshSftpBackend,
+    SftpBackend, SftpEndpoint, SftpRuntimeSettings,
 };
 use self::native_ssh::trust_native_host_key;
 use self::runtime_tasks::{
@@ -84,7 +90,9 @@ const MAX_TEXT_FILE_BYTES: usize = 10 * 1024 * 1024;
 
 /// SFTP 文件工具业务入口。
 pub struct SftpService {
+    auth_broker: Option<SshAuthBroker>,
     backend: Arc<dyn SftpBackend>,
+    external_targets: Option<ExternalSessionMaterializer>,
     transfers: Arc<Mutex<HashMap<String, TransferTask>>>,
     transfer_limiter: Arc<TransferLimiter>,
 }
@@ -108,12 +116,42 @@ impl Default for SftpService {
 impl SftpService {
     /// 创建 SFTP 服务。
     pub fn new() -> Self {
-        Self::with_backend(Arc::new(RusshSftpBackend))
+        Self::with_backend(Arc::new(RusshSftpBackend::default()))
+    }
+
+    /// 创建接入受管 SSH 运行时的 SFTP 服务。
+    pub fn with_ssh_runtime(
+        managed_runtime: ManagedSshSessionManager,
+        auth_broker: SshAuthBroker,
+        external_targets: ExternalSessionMaterializer,
+    ) -> Self {
+        Self::with_backend_auth_broker_and_external_targets(
+            Arc::new(RusshSftpBackend::with_managed_runtime(managed_runtime)),
+            Some(auth_broker),
+            Some(external_targets),
+        )
     }
 
     fn with_backend(backend: Arc<dyn SftpBackend>) -> Self {
+        Self::with_backend_and_auth_broker(backend, None)
+    }
+
+    fn with_backend_and_auth_broker(
+        backend: Arc<dyn SftpBackend>,
+        auth_broker: Option<SshAuthBroker>,
+    ) -> Self {
+        Self::with_backend_auth_broker_and_external_targets(backend, auth_broker, None)
+    }
+
+    fn with_backend_auth_broker_and_external_targets(
+        backend: Arc<dyn SftpBackend>,
+        auth_broker: Option<SshAuthBroker>,
+        external_targets: Option<ExternalSessionMaterializer>,
+    ) -> Self {
         Self {
+            auth_broker,
             backend,
+            external_targets,
             transfers: Arc::new(Mutex::new(HashMap::new())),
             transfer_limiter: Arc::new(TransferLimiter::default()),
         }
@@ -126,7 +164,7 @@ impl SftpService {
         request: SftpListDirectoryRequest,
     ) -> AppResult<SftpDirectoryListing> {
         let settings = load_sftp_runtime_settings(paths)?;
-        let endpoint = resolve_endpoint(paths, &request.host_id)?;
+        let endpoint = self.resolve_endpoint(paths, &request.host_id)?;
         let path = normalize_remote_path(&request.path)?;
         self.backend.list_directory(endpoint, path, settings).await
     }
@@ -138,7 +176,7 @@ impl SftpService {
         request: SftpPathRequest,
     ) -> AppResult<bool> {
         let settings = load_sftp_runtime_settings(paths)?;
-        let endpoint = resolve_endpoint(paths, &request.host_id)?;
+        let endpoint = self.resolve_endpoint(paths, &request.host_id)?;
         let path = normalize_non_root_remote_path(&request.path)?;
         self.backend
             .create_directory(endpoint, path, settings)
@@ -153,7 +191,7 @@ impl SftpService {
         request: SftpPreviewRequest,
     ) -> AppResult<SftpFilePreview> {
         let settings = load_sftp_runtime_settings(paths)?;
-        let endpoint = resolve_endpoint(paths, &request.host_id)?;
+        let endpoint = self.resolve_endpoint(paths, &request.host_id)?;
         let path = normalize_non_root_remote_path(&request.path)?;
         let max_bytes = normalize_preview_bytes(request.max_bytes);
         self.backend
@@ -168,7 +206,7 @@ impl SftpService {
         request: SftpReadTextFileRequest,
     ) -> AppResult<SftpReadTextFileResponse> {
         let settings = load_sftp_runtime_settings(paths)?;
-        let endpoint = resolve_endpoint(paths, &request.host_id)?;
+        let endpoint = self.resolve_endpoint(paths, &request.host_id)?;
         let path = normalize_non_root_remote_path(&request.path)?;
         let max_bytes = normalize_text_file_bytes(request.max_bytes);
         self.backend
@@ -191,7 +229,7 @@ impl SftpService {
         }
 
         let settings = load_sftp_runtime_settings(paths)?;
-        let endpoint = resolve_endpoint(paths, &request.host_id)?;
+        let endpoint = self.resolve_endpoint(paths, &request.host_id)?;
         let path = normalize_non_root_remote_path(&request.path)?;
         self.backend
             .write_text_file(endpoint, path, request, settings)
@@ -205,7 +243,7 @@ impl SftpService {
         request: SftpPathRequest,
     ) -> AppResult<SftpPathStat> {
         let settings = load_sftp_runtime_settings(paths)?;
-        let endpoint = resolve_endpoint(paths, &request.host_id)?;
+        let endpoint = self.resolve_endpoint(paths, &request.host_id)?;
         let path = normalize_non_root_remote_path(&request.path)?;
         self.backend.stat_path(endpoint, path, settings).await
     }
@@ -217,7 +255,7 @@ impl SftpService {
         request: SftpDeleteRequest,
     ) -> AppResult<bool> {
         let settings = load_sftp_runtime_settings(paths)?;
-        let endpoint = resolve_endpoint(paths, &request.host_id)?;
+        let endpoint = self.resolve_endpoint(paths, &request.host_id)?;
         let path = normalize_non_root_remote_path(&request.path)?;
         self.backend
             .delete(endpoint, path, request.directory, settings)
@@ -232,7 +270,7 @@ impl SftpService {
         request: SftpRenameRequest,
     ) -> AppResult<bool> {
         let settings = load_sftp_runtime_settings(paths)?;
-        let endpoint = resolve_endpoint(paths, &request.host_id)?;
+        let endpoint = self.resolve_endpoint(paths, &request.host_id)?;
         let from_path = normalize_non_root_remote_path(&request.from_path)?;
         let to_path = normalize_non_root_remote_path(&request.to_path)?;
         self.backend
@@ -244,7 +282,7 @@ impl SftpService {
     /// 修改远程路径权限。
     pub async fn chmod(&self, paths: &KerminalPaths, request: SftpChmodRequest) -> AppResult<bool> {
         let settings = load_sftp_runtime_settings(paths)?;
-        let endpoint = resolve_endpoint(paths, &request.host_id)?;
+        let endpoint = self.resolve_endpoint(paths, &request.host_id)?;
         let path = normalize_non_root_remote_path(&request.path)?;
         let mode = validate_chmod_mode(&request.mode)?;
         self.backend.chmod(endpoint, path, mode, settings).await?;
@@ -355,7 +393,21 @@ impl SftpService {
         request: SftpTrustHostKeyRequest,
     ) -> AppResult<SftpHostKeyTrustSummary> {
         let settings = load_sftp_runtime_settings(paths)?;
-        let host = resolve_host(paths, &request.host_id)?;
+        let host = if is_external_target_id(&request.host_id) {
+            let target = self
+                .external_targets
+                .as_ref()
+                .ok_or_else(|| {
+                    AppError::NotFound(format!("外部 SSH 临时目标不存在: {}", request.host_id))
+                })?
+                .resolve_target(&request.host_id)?
+                .ok_or_else(|| {
+                    AppError::NotFound(format!("外部 SSH 临时目标不存在: {}", request.host_id))
+                })?;
+            target.host
+        } else {
+            resolve_host(paths, &request.host_id)?
+        };
         let known_hosts_path = paths.root.join("known_hosts");
         trust_native_host_key(&host, &known_hosts_path, settings).await?;
         Ok(SftpHostKeyTrustSummary {
@@ -371,10 +423,53 @@ impl SftpService {
             .lock()
             .map_err(|_| AppError::StateLockPoisoned("sftp transfers"))
     }
+
+    fn resolve_endpoint(&self, paths: &KerminalPaths, host_id: &str) -> AppResult<SftpEndpoint> {
+        resolve_endpoint_with_auth_broker(
+            paths,
+            host_id,
+            self.auth_broker.as_ref(),
+            self.external_targets.as_ref(),
+        )
+    }
 }
 
 fn is_already_exists_error(error: &russh_sftp::client::error::Error) -> bool {
-    error.to_string().to_lowercase().contains("failure")
+    match error {
+        russh_sftp::client::error::Error::Status(status) => {
+            is_already_exists_status(status.status_code, &status.error_message)
+        }
+        _ => false,
+    }
+}
+
+fn is_ambiguous_sftp_failure(error: &russh_sftp::client::error::Error) -> bool {
+    matches!(
+        error,
+        russh_sftp::client::error::Error::Status(Status {
+            status_code: StatusCode::Failure,
+            ..
+        })
+    ) && !is_already_exists_error(error)
+}
+
+fn is_no_such_file_error(error: &russh_sftp::client::error::Error) -> bool {
+    matches!(
+        error,
+        russh_sftp::client::error::Error::Status(Status {
+            status_code: StatusCode::NoSuchFile,
+            ..
+        })
+    )
+}
+
+fn is_already_exists_status(status_code: StatusCode, error_message: &str) -> bool {
+    matches!(status_code, StatusCode::Failure) && already_exists_message(error_message)
+}
+
+fn already_exists_message(error_message: &str) -> bool {
+    let message = error_message.to_lowercase();
+    message.contains("file exists") || message.contains("already exists")
 }
 
 fn unix_timestamp() -> u64 {
@@ -404,13 +499,17 @@ pub mod rules {
     };
 
     use russh::{client::Handler as _, keys::PublicKey};
+    use russh_sftp::protocol::StatusCode;
     use tokio::fs;
 
     use crate::{
         error::{AppError, AppResult},
-        models::sftp::{
-            SftpLocalPathInfo, SftpRemoteCopyRequest, SftpTransferConflictPolicy, SftpTransferKind,
-            SftpTransferStatus, SftpTransferSummary,
+        models::{
+            settings::SftpPerformanceSettings,
+            sftp::{
+                SftpLocalPathInfo, SftpRemoteCopyRequest, SftpTransferConflictPolicy,
+                SftpTransferKind, SftpTransferStatus, SftpTransferSummary,
+            },
         },
     };
 
@@ -508,6 +607,33 @@ pub mod rules {
         super::runtime_tasks::should_stage_remote_copy(request, settings)
     }
 
+    /// 返回普通 SFTP 性能设置归一化后的运行时参数。
+    pub fn normalized_sftp_runtime_settings(
+        settings: SftpPerformanceSettings,
+    ) -> (usize, usize, u32, u64) {
+        let settings = super::backend::SftpRuntimeSettings::from(settings);
+        (
+            settings.host_transfers,
+            settings.pipeline_depth,
+            settings.packet_bytes,
+            settings.timeout_seconds,
+        )
+    }
+
+    /// 返回外部堡垒机 bulk transfer 使用的稳定运行时参数。
+    pub fn external_bulk_transfer_runtime_settings(
+        settings: SftpPerformanceSettings,
+    ) -> (usize, usize, u32, u64) {
+        let settings =
+            super::backend::SftpRuntimeSettings::from(settings).for_external_bulk_transfer();
+        (
+            settings.host_transfers,
+            settings.pipeline_depth,
+            settings.packet_bytes,
+            settings.timeout_seconds,
+        )
+    }
+
     /// 把本地文件或目录写入 ZIP 文件。
     pub fn zip_local_path_to_file(
         source_path: &Path,
@@ -552,6 +678,111 @@ pub mod rules {
     /// 生成本地冲突重命名候选的文件名。
     pub fn numbered_candidate_name(name: &str, index: usize) -> String {
         super::transfer_io::numbered_candidate_name(name, index)
+    }
+
+    /// 生成可靠传输 partial 文件名。
+    pub fn reliable_partial_file_name(name: &str) -> String {
+        super::transfer_io::reliable_partial_file_name(name)
+    }
+
+    /// 生成可靠传输远端 partial 路径。
+    pub fn reliable_remote_partial_path(final_path: &str) -> String {
+        super::transfer_io::reliable_remote_partial_path(final_path)
+    }
+
+    /// 生成可靠传输本地 partial 路径。
+    pub fn reliable_local_partial_path(final_path: &Path) -> PathBuf {
+        super::transfer_io::reliable_local_partial_path(final_path)
+    }
+
+    /// 计算可靠传输写入计划，返回稳定测试标签和 resume offset。
+    pub fn reliable_write_decision(
+        conflict_policy: SftpTransferConflictPolicy,
+        final_exists: bool,
+        source_bytes: u64,
+        partial_bytes: Option<u64>,
+    ) -> (&'static str, Option<u64>) {
+        match super::transfer_io::plan_reliable_write(
+            conflict_policy,
+            final_exists,
+            source_bytes,
+            partial_bytes,
+        ) {
+            super::transfer_io::ReliableWriteDecision::SkipExistingFinal => {
+                ("skip-existing-final", None)
+            }
+            super::transfer_io::ReliableWriteDecision::ChooseRenamedFinal => {
+                ("choose-renamed-final", None)
+            }
+            super::transfer_io::ReliableWriteDecision::Fresh => ("fresh", None),
+            super::transfer_io::ReliableWriteDecision::Resume { offset } => {
+                ("resume", Some(offset))
+            }
+            super::transfer_io::ReliableWriteDecision::CommitExistingPartial => {
+                ("commit-existing-partial", None)
+            }
+            super::transfer_io::ReliableWriteDecision::RestartPartial => ("restart-partial", None),
+        }
+    }
+
+    /// 判断可靠传输提交前的 size 确认是否通过。
+    pub fn reliable_size_confirmed(expected: u64, actual: u64) -> bool {
+        matches!(
+            super::transfer_io::confirm_reliable_write_size(expected, actual),
+            super::transfer_io::ReliableSizeConfirmation::Verified
+        )
+    }
+
+    /// 构造 SFTP status 错误并判断是否是明确的 already-exists 冲突。
+    pub fn sftp_status_error_is_already_exists(
+        status_code: StatusCode,
+        error_message: &str,
+    ) -> bool {
+        let error = russh_sftp::client::error::Error::Status(super::Status {
+            id: 0,
+            status_code,
+            error_message: error_message.to_owned(),
+            language_tag: String::new(),
+        });
+        super::is_already_exists_error(&error)
+    }
+
+    /// 准备本地可靠写入目标，返回 final/partial 路径和 partial 文件句柄。
+    pub async fn prepare_local_reliable_write_target(
+        local_path: &Path,
+        conflict_policy: SftpTransferConflictPolicy,
+        source_bytes: u64,
+    ) -> AppResult<Option<(PathBuf, PathBuf, u64, fs::File)>> {
+        super::transfer_io::prepare_local_reliable_write_target(
+            local_path,
+            conflict_policy,
+            source_bytes,
+        )
+        .await
+        .map(|target| {
+            target.map(|target| {
+                (
+                    target.final_path,
+                    target.partial_path,
+                    target.offset,
+                    target.file,
+                )
+            })
+        })
+    }
+
+    /// 提交本地可靠写入目标。
+    pub async fn commit_local_reliable_write_target(
+        final_path: &Path,
+        partial_path: &Path,
+        expected_bytes: u64,
+    ) -> AppResult<()> {
+        super::transfer_io::commit_local_reliable_write_target(
+            final_path,
+            partial_path,
+            expected_bytes,
+        )
+        .await
     }
 
     /// 按传输冲突策略准备本地文件写入目标。

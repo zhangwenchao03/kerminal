@@ -13,6 +13,7 @@ import {
   type AppearanceSettings,
   type AppSettings,
   type DesktopNotificationSettings,
+  type ExternalLaunchSettings,
   type KeybindingPlatform,
   type ResolvedTheme,
   type SftpPerformanceSettings,
@@ -26,6 +27,7 @@ import { AboutSettingsSection } from "./settings-tool-content/about-section";
 import { AppearanceSettingsSection } from "./settings-tool-content/appearance-section";
 import { CommandSuggestionSettingsSection } from "./settings-tool-content/command-suggestions-section";
 import { DesktopSettingsSection } from "./settings-tool-content/desktop-section";
+import { ExternalLaunchSettingsSection } from "./settings-tool-content/external-launch-section";
 import { KeybindingsSettingsSection } from "./settings-tool-content/keybindings-section";
 import { McpSkillsSettingsSection } from "./settings-tool-content/mcp-section";
 import {
@@ -264,6 +266,25 @@ export function SettingsToolContent({
     });
   };
 
+  const updateExternalLaunch = (
+    externalLaunch: Partial<ExternalLaunchSettings>,
+  ) => {
+    updateSettings({
+      ...normalizedSettings,
+      externalLaunch: {
+        ...normalizedSettings.externalLaunch,
+        ...externalLaunch,
+        disabledTools:
+          externalLaunch.disabledTools ??
+          normalizedSettings.externalLaunch.disabledTools,
+        shimBridge: {
+          ...normalizedSettings.externalLaunch.shimBridge,
+          ...(externalLaunch.shimBridge ?? {}),
+        },
+      },
+    });
+  };
+
   const navigateToSearchResult = (result: SettingsSearchEntry) => {
     setActiveSectionId(result.sectionId);
     setPendingSearchTargetId(result.targetId);
@@ -438,6 +459,13 @@ export function SettingsToolContent({
           <SftpSettingsSection
             normalizedSettings={normalizedSettings}
             updateSftp={updateSftp}
+          />
+        ) : null}
+
+        {activeSectionId === "settings-external-launch" ? (
+          <ExternalLaunchSettingsSection
+            externalLaunch={normalizedSettings.externalLaunch}
+            updateExternalLaunch={updateExternalLaunch}
           />
         ) : null}
 

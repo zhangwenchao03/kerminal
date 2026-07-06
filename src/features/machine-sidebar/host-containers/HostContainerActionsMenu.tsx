@@ -10,8 +10,10 @@ import {
   Activity,
   Info,
   MoreHorizontal,
+  Pin,
   Play,
   RotateCw,
+  ScrollText,
   Square,
   Trash2,
 } from "lucide-react";
@@ -25,6 +27,7 @@ import {
 } from "./hostContainerDialogModel";
 
 interface HostContainerActionsMenuProps {
+  compact?: boolean;
   container: HostContainerMetadata;
   onAction: (
     action: HostContainerLifecycleAction,
@@ -34,7 +37,11 @@ interface HostContainerActionsMenuProps {
     tab: HostContainerInspectorTab,
     container: HostContainerMetadata,
   ) => void;
+  onOpenLogs?: (container: HostContainerMetadata) => void;
+  onPinContainer?: (container: HostContainerMetadata) => void;
   onSelectContainer: (containerId: string) => void;
+  pinning?: boolean;
+  showInspectorItems?: boolean;
 }
 
 type MenuPosition = {
@@ -64,10 +71,15 @@ const inspectorItems: Array<{
 ];
 
 export function HostContainerActionsMenu({
+  compact = false,
   container,
   onAction,
   onInspectAction,
+  onOpenLogs,
+  onPinContainer,
   onSelectContainer,
+  pinning = false,
+  showInspectorItems = true,
 }: HostContainerActionsMenuProps) {
   const [position, setPosition] = useState<MenuPosition | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -136,13 +148,26 @@ export function HostContainerActionsMenu({
     setPosition(null);
     onInspectAction(tab, container);
   };
+  const selectOpenLogs = () => {
+    onSelectContainer(container.id);
+    setPosition(null);
+    onOpenLogs?.(container);
+  };
+  const selectPinContainer = () => {
+    onSelectContainer(container.id);
+    setPosition(null);
+    onPinContainer?.(container);
+  };
   return (
     <>
       <button
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label={`更多容器操作 ${container.name}`}
-        className="kerminal-pressable kerminal-focus-ring inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
+        className={cn(
+          "kerminal-pressable kerminal-focus-ring inline-flex items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50",
+          compact ? "h-7 w-7" : "h-8 w-8",
+        )}
         onClick={(event) => {
           event.stopPropagation();
           if (open) {
@@ -155,7 +180,7 @@ export function HostContainerActionsMenu({
         title="更多容器操作"
         type="button"
       >
-        <MoreHorizontal className="h-4 w-4" />
+        <MoreHorizontal className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
       </button>
       {position
         ? createPortal(
@@ -169,27 +194,60 @@ export function HostContainerActionsMenu({
                 top: position.top,
               }}
             >
-              <div className="kerminal-context-menu-group">
-                {inspectorItems.map((item) => {
-                  const Icon = item.icon;
-                  return (
+              {showInspectorItems ? (
+                <div className="kerminal-context-menu-group">
+                  {inspectorItems.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        className="kerminal-context-menu-item"
+                        key={item.tab}
+                        onClick={() => selectInspectAction(item.tab)}
+                        role="menuitem"
+                        type="button"
+                      >
+                        <span className="kerminal-context-menu-icon">
+                          <Icon />
+                        </span>
+                        <span className="kerminal-context-menu-label">
+                          {item.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+              {onOpenLogs || onPinContainer ? (
+                <div className="kerminal-context-menu-group">
+                  {onOpenLogs ? (
                     <button
                       className="kerminal-context-menu-item"
-                      key={item.tab}
-                      onClick={() => selectInspectAction(item.tab)}
+                      onClick={selectOpenLogs}
                       role="menuitem"
                       type="button"
                     >
                       <span className="kerminal-context-menu-icon">
-                        <Icon />
+                        <ScrollText />
                       </span>
-                      <span className="kerminal-context-menu-label">
-                        {item.label}
-                      </span>
+                      <span className="kerminal-context-menu-label">日志</span>
                     </button>
-                  );
-                })}
-              </div>
+                  ) : null}
+                  {onPinContainer ? (
+                    <button
+                      className="kerminal-context-menu-item"
+                      disabled={pinning}
+                      onClick={selectPinContainer}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <span className="kerminal-context-menu-icon">
+                        <Pin />
+                      </span>
+                      <span className="kerminal-context-menu-label">固定</span>
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="kerminal-context-menu-group">
                 {lifecycleItems.map((item) => {
                   const Icon = item.icon;

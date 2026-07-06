@@ -15,12 +15,14 @@ fn native_menu_action_ids_are_stable_and_unique() {
     let action_ids: HashSet<_> = actions.iter().map(|action| action.action_id()).collect();
     let menu_ids: HashSet<_> = actions.iter().map(|action| action.menu_id()).collect();
 
-    assert_eq!(actions.len(), 12);
+    assert_eq!(actions.len(), 18);
     assert_eq!(action_ids.len(), actions.len());
     assert_eq!(menu_ids.len(), actions.len());
     assert!(action_ids.contains("newTerminal"));
     assert!(action_ids.contains("closeTab"));
     assert!(action_ids.contains("openSettings"));
+    assert!(action_ids.contains("editCopy"));
+    assert!(action_ids.contains("editPaste"));
     assert!(menu_ids.iter().all(|id| id.starts_with("kerminal:")));
 }
 
@@ -39,9 +41,9 @@ fn native_menu_action_round_trips_from_menu_id() {
 
 #[test]
 fn native_menu_payload_uses_frontend_action_id() {
-    let payload = NativeMenuActionPayload::from(NativeMenuAction::SplitHorizontal);
+    let payload = NativeMenuActionPayload::from(NativeMenuAction::EditPaste);
 
-    assert_eq!(payload.action, "splitHorizontal");
+    assert_eq!(payload.action, "editPaste");
     assert_eq!(NATIVE_MENU_ACTION_EVENT, "kerminal://native-menu-action");
     assert_eq!(MAIN_WINDOW_LABEL, "main");
 }

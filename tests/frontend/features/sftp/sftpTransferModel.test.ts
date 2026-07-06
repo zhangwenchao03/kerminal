@@ -171,6 +171,7 @@ describe("sftpTransferModel", () => {
         kind: "local",
         path: "C:\\logs\\app.log",
       },
+      speedBytesPerSecond: 2048,
       status: "running",
       target: {
         hostId: "host-1",
@@ -187,7 +188,17 @@ describe("sftpTransferModel", () => {
       "C:\\logs\\app.log -> host-1:/var/log/app.log",
     );
     expect(transferStatusLabel("running")).toBe("传输中");
-    expect(formatTransferBytes(running)).toBe("1.5 KB / 3.0 KB");
+    expect(formatTransferBytes(running)).toBe("1.5 KB / 3.0 KB · 2.0 KB/s");
+    expect(
+      formatTransferBytes(
+        transfer({
+          bytesTransferred: 1536,
+          speedBytesPerSecond: 2048,
+          status: "succeeded",
+          totalBytes: 3072,
+        }),
+      ),
+    ).toBe("1.5 KB / 3.0 KB");
   });
 
   it("prefers structured source and target endpoints for cross-host tasks", () => {

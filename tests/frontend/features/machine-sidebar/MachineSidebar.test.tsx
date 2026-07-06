@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MachineSidebar } from "../../../../src/features/machine-sidebar/MachineSidebar";
@@ -36,6 +36,103 @@ describe("MachineSidebar", () => {
       screen.getByRole("button", { name: /PowerShell/i }),
     ).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText("虚拟机")).not.toBeInTheDocument();
+  });
+
+  it("renders the container browser as a left sidebar resource view", async () => {
+    const user = userEvent.setup();
+    const onListDockerContainers = vi.fn().mockResolvedValue([]);
+    const onContainerHostChange = vi.fn();
+
+    render(
+      <MachineSidebar
+        activeView="containers"
+        groups={remoteSidebarGroups}
+        onContainerHostChange={onContainerHostChange}
+        onListDockerContainers={onListDockerContainers}
+        onSearchChange={vi.fn()}
+        onSelectMachine={vi.fn()}
+        search=""
+        selectedMachineId="ubuntu-dev"
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "容器" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "容器" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    const hostSearch = screen.getByRole("combobox", { name: "搜索容器主机" });
+    expect(hostSearch).toHaveValue("ubuntu-dev");
+    expect(screen.queryByRole("listbox", { name: "容器主机列表" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("搜索主机")).not.toBeInTheDocument();
+
+    await user.click(hostSearch);
+    expect(
+      screen.getByRole("option", { name: /ubuntu-dev/ }),
+    ).toHaveAttribute("aria-selected", "true");
+
+    await user.type(hostSearch, "missing");
+    expect(screen.getByText("没有匹配的主机。")).toBeInTheDocument();
+
+    await user.clear(hostSearch);
+    await user.type(hostSearch, "ubuntu");
+    expect(
+      screen.getByRole("option", { name: /ubuntu-dev/ }),
+    ).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(onListDockerContainers).toHaveBeenCalledWith({
+        hostId: "ubuntu-dev",
+        includeStopped: true,
+        runtime: "docker",
+      });
+    });
+  });
+
+  it("switches the container browser to the currently selected SSH host", async () => {
+    const user = userEvent.setup();
+    const onActiveViewChange = vi.fn();
+    const onContainerHostChange = vi.fn();
+
+    render(
+      <MachineSidebar
+        activeView="hosts"
+        containerHostId="ubuntu-dev"
+        groups={[
+          ...remoteSidebarGroups,
+          {
+            id: "external",
+            machines: [
+              {
+                authType: "password" as const,
+                description: "root@172.21.195.223:22",
+                host: "172.21.195.223",
+                id: "external:launch-1",
+                kind: "ssh" as const,
+                name: "bastion target",
+                port: 22,
+                status: "online" as const,
+                tags: ["external", "ssh"],
+                target: { hostId: "external:launch-1", kind: "ssh" as const },
+                username: "root",
+              },
+            ],
+            title: "External",
+          },
+        ]}
+        onActiveViewChange={onActiveViewChange}
+        onContainerHostChange={onContainerHostChange}
+        onSearchChange={vi.fn()}
+        onSelectMachine={vi.fn()}
+        search=""
+        selectedMachineId="external:launch-1"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "容器" }));
+
+    expect(onContainerHostChange).toHaveBeenCalledWith("external:launch-1");
+    expect(onActiveViewChange).toHaveBeenCalledWith("containers");
   });
 
   it("shows local machines as unopened until a terminal session is open", () => {
@@ -108,7 +205,9 @@ describe("MachineSidebar", () => {
     );
 
     expect(
-      screen.getByText("主机").closest("[data-tauri-drag-region]"),
+      screen
+        .getByRole("heading", { name: "主机" })
+        .closest("[data-tauri-drag-region]"),
     ).toHaveAttribute("data-tauri-drag-region");
     expect(
       screen.getByLabelText("搜索主机").closest("label"),

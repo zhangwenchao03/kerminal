@@ -1,5 +1,6 @@
 import {
   clickSelector,
+  clickExpression,
   clickTextButtonContaining,
   contextClickExpression,
   delay,
@@ -10,12 +11,15 @@ import {
 export const captures = [
   { name: "kerminal-hero.png", setup: captureHero },
   { name: "kerminal-connect.png", setup: captureConnectDialog },
+  { name: "kerminal-external-launch.png", setup: captureExternalLaunch },
   { name: "kerminal-settings.png", setup: captureSettings },
   { name: "kerminal-docker.png", setup: captureDockerDialog },
   { name: "kerminal-gpu.png", setup: captureServerInfo },
   { name: "kerminal-agent.png", setup: captureAgentLauncher },
   { name: "kerminal-tmux.png", setup: captureTmux },
+  { name: "kerminal-ports.png", setup: capturePorts },
   { name: "kerminal-sftp.png", setup: captureSftp },
+  { name: "kerminal-file-tab.png", setup: captureWorkspaceFileTab },
 ];
 
 async function captureHero(client) {
@@ -31,6 +35,22 @@ async function captureConnectDialog(client) {
   await waitForBrowserExpression(
     client,
     `document.body.innerText.includes("添加连接") || document.body.innerText.includes("连接")`,
+    20_000,
+  );
+}
+
+async function captureExternalLaunch(client) {
+  await pressKey(client, "Escape");
+  await clickSelector(client, `[aria-label="打开设置"]`);
+  await waitForBrowserExpression(
+    client,
+    `document.querySelector('[aria-controls="settings-external-launch-panel"]') !== null`,
+    20_000,
+  );
+  await clickSelector(client, `[aria-controls="settings-external-launch-panel"]`);
+  await waitForBrowserExpression(
+    client,
+    `document.body.innerText.includes("外部 SSH 启动") && document.body.innerText.includes("PuTTY / MobaXterm / Xshell / SecureCRT")`,
     20_000,
   );
 }
@@ -54,7 +74,7 @@ async function captureDockerDialog(client) {
   await clickTextButtonContaining(client, "容器");
   await waitForBrowserExpression(
     client,
-    `document.body.innerText.includes("kerminal-stack") && document.body.innerText.includes("Compose YAML")`,
+    `document.body.innerText.includes("kerminal-stack") && document.querySelector('[aria-label^="打开 Compose YAML"]') !== null`,
     20_000,
   );
 }
@@ -98,8 +118,26 @@ async function captureTmux(client) {
   );
 }
 
+async function capturePorts(client) {
+  await clickSelector(client, `[aria-label="打开 端口"]`);
+  await waitForBrowserExpression(
+    client,
+    `document.body.innerText.includes("API tunnel") && document.body.innerText.includes("运行中")`,
+    30_000,
+  );
+}
+
 async function captureSftp(client) {
   await pressKey(client, "Escape");
+  await clickExpression(
+    client,
+    `Array.from(document.querySelectorAll('[aria-label="左栏视图"] button')).find((button) => button.textContent?.includes("主机"))`,
+  );
+  await waitForBrowserExpression(
+    client,
+    `Array.from(document.querySelectorAll('[aria-label="主机侧边栏"] button')).some((button) => button.textContent?.includes("prod-api"))`,
+    10_000,
+  );
   await contextClickExpression(
     client,
     `Array.from(document.querySelectorAll('[aria-label="主机侧边栏"] button')).find((button) => button.textContent?.includes("prod-api"))`,
@@ -123,4 +161,61 @@ async function captureSettings(client) {
   await delay(2_000);
   await clickSelector(client, `[aria-controls="settings-terminal-panel"]`);
   await delay(1_000);
+}
+
+async function captureWorkspaceFileTab(client) {
+  const workspaceFileSession = {
+    activeTabId: "tab-env-file",
+    focusedPaneId: "pane-prod-api",
+    removedSidebarMachineIds: [],
+    selectedMachineId: "prod-api",
+    sidebarMachines: [],
+    terminalPanes: [
+      {
+        currentCwd: "/srv/kerminal",
+        cwd: "/srv/kerminal",
+        id: "pane-prod-api",
+        lines: [],
+        machineId: "prod-api",
+        mode: "ssh",
+        outputHistory:
+          "deploy@prod-api:/srv/kerminal$ docker ps --format 'table {{.Names}}\\t{{.Status}}'\\r\\nNAMES        STATUS\\r\\napi          Up 12 minutes\\r\\nworker       Up 8 minutes\\r\\n",
+        prompt: "deploy@prod-api:/srv/kerminal$",
+        remoteHostId: "prod-api",
+        remoteHostProduction: false,
+        status: "online",
+        target: { hostId: "prod-api", kind: "ssh" },
+        title: "prod-api",
+      },
+    ],
+    terminalTabs: [
+      {
+        id: "tab-prod-api",
+        layout: { paneId: "pane-prod-api", type: "pane" },
+        machineId: "prod-api",
+        title: "prod-api",
+      },
+      {
+        access: "editable",
+        id: "tab-env-file",
+        kind: "workspaceFile",
+        machineId: "prod-api",
+        path: "/srv/kerminal/.env",
+        rootPath: "/srv/kerminal",
+        source: "sftp",
+        target: { hostId: "prod-api", kind: "ssh" },
+        title: ".env",
+      },
+    ],
+    version: 1,
+  };
+  await client.send("Runtime.evaluate", {
+    expression: `localStorage.setItem("kerminal.readme.capture.session.override", ${JSON.stringify(JSON.stringify(workspaceFileSession))})`,
+  });
+  await client.send("Page.reload", { ignoreCache: true });
+  await waitForBrowserExpression(
+    client,
+    `document.querySelector('[data-testid="workspace-file-tab-surface"]') !== null && document.body.innerText.includes("KERMINAL_MODE=production")`,
+    60_000,
+  );
 }

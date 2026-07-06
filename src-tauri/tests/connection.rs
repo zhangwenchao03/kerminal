@@ -54,6 +54,7 @@ fn rdp_host(
         credential_ref: credential_ref.map(str::to_owned),
         secret_ref: secret_ref.map(str::to_owned),
         key_passphrase_ref: None,
+        key_passphrase_secret: None,
         credential_secret: credential_secret.map(str::to_owned),
         credential_status: Default::default(),
         tags: vec!["rdp".to_owned()],

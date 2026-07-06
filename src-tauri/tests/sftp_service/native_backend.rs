@@ -1,5 +1,5 @@
 use super::support::{
-    create_password_remote_host,
+    create_password_remote_host, create_password_remote_host_without_credentials,
     loopback::{start_loopback_sftp_server, start_loopback_sftp_server_with_symlinks},
     test_state,
 };
@@ -11,6 +11,7 @@ use kerminal_lib::{
         SftpRemoteCopyRequest, SftpRenameRequest, SftpTransferConflictPolicy, SftpTransferKind,
         SftpTransferRequest, SftpTransferStatus, SftpTrustHostKeyRequest, SftpWriteTextFileRequest,
     },
+    services::ssh_runtime::{auth_broker::SshSessionSecretInput, SshAuthSecretKind},
     state::AppState,
 };
 use std::{fs::File as StdFile, io::Read};
@@ -115,6 +116,18 @@ async fn native_sftp_service_uses_real_ssh_sftp_protocol() {
     fs::write(&upload_source, b"uploaded over native SFTP")
         .await
         .expect("write local upload source");
+    fs::write(
+        server_root.path().join("uploaded.txt"),
+        b"old remote content",
+    )
+    .await
+    .expect("seed existing remote upload target");
+    fs::write(
+        server_root.path().join("uploaded.txt.kerminal-part"),
+        b"uploaded over ",
+    )
+    .await
+    .expect("seed resumable remote upload partial");
     state
         .sftp()
         .upload(
@@ -133,6 +146,13 @@ async fn native_sftp_service_uses_real_ssh_sftp_protocol() {
             .await
             .expect("read uploaded file"),
         "uploaded over native SFTP"
+    );
+    assert!(
+        !server_root
+            .path()
+            .join("uploaded.txt.kerminal-part")
+            .exists(),
+        "successful upload should commit and remove the remote partial file"
     );
 
     state
@@ -161,6 +181,15 @@ async fn native_sftp_service_uses_real_ssh_sftp_protocol() {
         .expect("chmod real SFTP file");
 
     let download_target = client_root.path().join("downloaded.txt");
+    fs::write(&download_target, b"old local content")
+        .await
+        .expect("seed existing local download target");
+    fs::write(
+        client_root.path().join("downloaded.txt.kerminal-part"),
+        b"hello ",
+    )
+    .await
+    .expect("seed resumable local download partial");
     state
         .sftp()
         .download(
@@ -179,6 +208,13 @@ async fn native_sftp_service_uses_real_ssh_sftp_protocol() {
             .await
             .expect("read downloaded file"),
         "hello from native loopback"
+    );
+    assert!(
+        !client_root
+            .path()
+            .join("downloaded.txt.kerminal-part")
+            .exists(),
+        "successful download should commit and remove the local partial file"
     );
 
     state
@@ -207,6 +243,52 @@ async fn native_sftp_service_uses_real_ssh_sftp_protocol() {
         .expect("delete non-empty remote directory with rm -rf");
     assert!(!server_root.path().join("renamed.txt").exists());
     assert!(!server_root.path().join("managed").exists());
+}
+
+#[tokio::test]
+async fn native_sftp_service_uses_session_only_password_from_auth_broker() {
+    let server_root = tempdir().expect("server root");
+    fs::write(
+        server_root.path().join("session-only.txt"),
+        b"session-only credential",
+    )
+    .await
+    .expect("seed remote file");
+    let server = start_loopback_sftp_server(server_root.path().to_path_buf()).await;
+    let (_home, state) = test_state();
+    let host_id =
+        create_password_remote_host_without_credentials(&state, "loopback", server.addr.port());
+    trust_loopback_host(&state, &host_id).await;
+
+    let prompt_id = format!(
+        "ssh-auth:target:deploy@127.0.0.1:{}:password",
+        server.addr.port()
+    );
+    state
+        .ssh_auth_broker()
+        .remember_session_secret(SshSessionSecretInput {
+            prompt_id,
+            secret_kind: SshAuthSecretKind::Password,
+            value: "secret".to_owned(),
+        })
+        .expect("remember session-only password");
+
+    let listing = state
+        .sftp()
+        .list_directory(
+            state.paths(),
+            SftpListDirectoryRequest {
+                host_id,
+                path: "/".to_owned(),
+            },
+        )
+        .await
+        .expect("list with session-only password");
+
+    assert!(listing
+        .entries
+        .iter()
+        .any(|entry| entry.name == "session-only.txt" && entry.kind == SftpEntryKind::File));
 }
 
 #[tokio::test]

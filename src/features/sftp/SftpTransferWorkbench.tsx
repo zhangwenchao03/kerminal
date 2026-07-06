@@ -3,11 +3,19 @@ import {
   HardDrive,
   Plus,
   RefreshCw,
+  Search,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type FocusEvent,
+} from "react";
 import { Button } from "../../components/ui/button";
-import { Select, type SelectOption } from "../../components/ui/select";
 import { cn } from "../../lib/cn";
 import { defaultDesktopNotificationSettings } from "../settings/settingsDefaults";
 import type {
@@ -48,7 +56,28 @@ import { useSftpManagedTransferQueue } from "./useSftpManagedTransferQueue";
 import { useSftpTransferNotifications } from "./useSftpTransferNotifications";
 import { useSftpTransferQueueSync } from "./useSftpTransferQueueSync";
 
-const CREATE_SSH_HOST_OPTION_VALUE = "__create_ssh_host__";
+function hostIdentity(machine: Machine) {
+  if (machine.kind !== "ssh") {
+    return machine.description;
+  }
+  const username = machine.username ?? "ssh";
+  const host = machine.host ?? machine.name;
+  return `${username}@${host}:${machine.port ?? 22}`;
+}
+
+function hostSearchText(machine: Machine) {
+  return [
+    machine.name,
+    machine.description,
+    machine.kind === "ssh" ? machine.host : "",
+    machine.kind === "ssh" ? machine.username : "",
+    hostIdentity(machine),
+    ...machine.tags,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
 
 export interface SftpTransferWorkbenchProps {
   active?: boolean;
@@ -510,25 +539,6 @@ function LeftPane({
   transferTarget?: SftpTransferTarget;
   transferViewScope: string;
 }) {
-  const addHostOptions = useMemo<SelectOption[]>(
-    () => [
-      { disabled: true, label: "添加主机", value: "" },
-      ...machines.map((machine) => ({
-        label: machine.name,
-        value: machine.id,
-      })),
-      ...(onCreateSshHost
-        ? [
-            {
-              description: "创建后加入左侧",
-              label: "新建 SSH 主机...",
-              value: CREATE_SSH_HOST_OPTION_VALUE,
-            },
-          ]
-        : []),
-    ],
-    [machines, onCreateSshHost],
-  );
   const compactDensity = interfaceDensity === "compact";
   const spaciousDensity = interfaceDensity === "spacious";
   const paneGapClass = compactDensity
@@ -546,11 +556,6 @@ function LeftPane({
     : spaciousDensity
       ? "px-3 py-2"
       : "px-2 py-1.5";
-  const selectButtonClass = compactDensity
-    ? "kerminal-field-surface h-7 rounded-lg pl-7 text-xs text-zinc-700 dark:text-zinc-200"
-    : spaciousDensity
-      ? "kerminal-field-surface h-9 rounded-xl pl-8 text-xs text-zinc-700 dark:text-zinc-200"
-      : "kerminal-field-surface h-8 rounded-lg pl-7 text-xs text-zinc-700 dark:text-zinc-200";
   const localTabButtonClass = compactDensity
     ? "h-7 rounded-lg px-2"
     : spaciousDensity
@@ -578,30 +583,16 @@ function LeftPane({
             本机或 SSH 服务器
           </div>
         </div>
-        <div className="relative shrink-0">
-          <span className="sr-only">添加左侧服务器</span>
-          <Plus className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
-          <Select
-            aria-label="添加左侧服务器"
-            align="right"
-            buttonClassName={selectButtonClass}
-            className="w-[168px] max-w-[42vw]"
-            disabled={!onCreateSshHost && machines.length === 0}
-            menuClassName="w-56"
-            onValueChange={(hostId) => {
-              if (hostId === CREATE_SSH_HOST_OPTION_VALUE) {
-                onCreateSshHost?.({ side: "left" });
-                return;
-              }
-              if (hostId) {
-                onAddHost(hostId);
-              }
-            }}
-            options={addHostOptions}
-            size="sm"
-            value=""
-          />
-        </div>
+        <SearchableSftpHostSelect
+          ariaLabel="添加左侧服务器"
+          createDescription="创建后加入左侧"
+          disabled={!onCreateSshHost && machines.length === 0}
+          interfaceDensity={interfaceDensity}
+          machines={machines}
+          onAddHost={onAddHost}
+          onCreateSshHost={onCreateSshHost}
+          side="left"
+        />
       </div>
 
       <div
@@ -714,25 +705,6 @@ function HostPane({
 }) {
   const selectedMachine = activeTab ? machinesById.get(activeTab.hostId) : undefined;
   const availableMachines = machines;
-  const addHostOptions = useMemo<SelectOption[]>(
-    () => [
-      { disabled: true, label: "添加主机", value: "" },
-      ...availableMachines.map((machine) => ({
-        label: machine.name,
-        value: machine.id,
-      })),
-      ...(onCreateSshHost
-        ? [
-            {
-              description: "创建后加入右侧",
-              label: "新建 SSH 主机...",
-              value: CREATE_SSH_HOST_OPTION_VALUE,
-            },
-          ]
-        : []),
-    ],
-    [availableMachines, onCreateSshHost],
-  );
   const compactDensity = interfaceDensity === "compact";
   const spaciousDensity = interfaceDensity === "spacious";
   const paneHeaderPaddingClass = compactDensity
@@ -745,11 +717,6 @@ function HostPane({
     : spaciousDensity
       ? "px-3 py-2"
       : "px-2 py-1.5";
-  const selectButtonClass = compactDensity
-    ? "kerminal-field-surface h-7 rounded-lg pl-7 text-xs text-zinc-700 dark:text-zinc-200"
-    : spaciousDensity
-      ? "kerminal-field-surface h-9 rounded-xl pl-8 text-xs text-zinc-700 dark:text-zinc-200"
-      : "kerminal-field-surface h-8 rounded-lg pl-7 text-xs text-zinc-700 dark:text-zinc-200";
 
   return (
     <div className="kerminal-muted-surface flex min-h-0 flex-col overflow-hidden rounded-xl border">
@@ -767,30 +734,16 @@ function HostPane({
             {selectedMachine?.description ?? "未选择主机"}
           </div>
         </div>
-        <div className="relative shrink-0">
-          <span className="sr-only">添加{title}</span>
-          <Plus className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
-          <Select
-            aria-label={`添加${title}`}
-            align="right"
-            buttonClassName={selectButtonClass}
-            className="w-[168px] max-w-[42vw]"
-            disabled={!onCreateSshHost && availableMachines.length === 0}
-            menuClassName="w-56"
-            onValueChange={(hostId) => {
-              if (hostId === CREATE_SSH_HOST_OPTION_VALUE) {
-                onCreateSshHost?.({ side });
-                return;
-              }
-              if (hostId) {
-                onAddHost(hostId);
-              }
-            }}
-            options={addHostOptions}
-            size="sm"
-            value=""
-          />
-        </div>
+        <SearchableSftpHostSelect
+          ariaLabel={`添加${title}`}
+          createDescription={`创建后加入${side === "right" ? "右侧" : "左侧"}`}
+          disabled={!onCreateSshHost && availableMachines.length === 0}
+          interfaceDensity={interfaceDensity}
+          machines={availableMachines}
+          onAddHost={onAddHost}
+          onCreateSshHost={onCreateSshHost}
+          side={side}
+        />
       </div>
 
       <div
@@ -827,6 +780,170 @@ function HostPane({
           transferViewScope={transferViewScope}
         />
       </div>
+    </div>
+  );
+}
+
+function SearchableSftpHostSelect({
+  ariaLabel,
+  createDescription,
+  disabled,
+  interfaceDensity,
+  machines,
+  onAddHost,
+  onCreateSshHost,
+  side,
+}: {
+  ariaLabel: string;
+  createDescription: string;
+  disabled: boolean;
+  interfaceDensity: InterfaceDensity;
+  machines: Machine[];
+  onAddHost: (hostId: string) => void;
+  onCreateSshHost?: (request: SftpTransferCreateHostRequest) => void;
+  side: SftpTransferHostSide;
+}) {
+  const listboxId = useId();
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const compactDensity = interfaceDensity === "compact";
+  const spaciousDensity = interfaceDensity === "spacious";
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredMachines = useMemo(
+    () =>
+      normalizedSearch
+        ? machines.filter((machine) =>
+            hostSearchText(machine).includes(normalizedSearch),
+          )
+        : machines,
+    [machines, normalizedSearch],
+  );
+  const inputClass = compactDensity
+    ? "h-7 rounded-lg pl-7 pr-3 text-xs"
+    : spaciousDensity
+      ? "h-9 rounded-xl pl-8 pr-3 text-xs"
+      : "h-8 rounded-lg pl-7 pr-3 text-xs";
+
+  const closeDropdown = () => {
+    setOpen(false);
+    setSearch("");
+  };
+  const handleBlur = (event: FocusEvent<HTMLDivElement>) => {
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+      return;
+    }
+    closeDropdown();
+  };
+  const selectHost = (hostId: string) => {
+    onAddHost(hostId);
+    closeDropdown();
+  };
+  const createSshHost = () => {
+    onCreateSshHost?.({ side });
+    closeDropdown();
+  };
+
+  return (
+    <div
+      className="relative w-[168px] max-w-[42vw] shrink-0"
+      onBlur={handleBlur}
+    >
+      <label className="relative block min-w-0">
+        <span className="sr-only">{ariaLabel}</span>
+        <Search
+          aria-hidden="true"
+          className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500"
+          strokeWidth={1.8}
+        />
+        <input
+          aria-controls={open ? listboxId : undefined}
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-label={ariaLabel}
+          className={cn(
+            "kerminal-field-surface kerminal-focus-ring w-full border text-zinc-700 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-200 dark:placeholder:text-zinc-600",
+            inputClass,
+          )}
+          disabled={disabled}
+          onChange={(event) => {
+            setOpen(true);
+            setSearch(event.currentTarget.value);
+          }}
+          onClick={() => {
+            setOpen(true);
+            setSearch("");
+          }}
+          onFocus={() => {
+            setOpen(true);
+            setSearch("");
+          }}
+          placeholder="搜索主机..."
+          role="combobox"
+          value={search}
+        />
+      </label>
+      {open ? (
+        <div
+          className="kerminal-floating-surface kerminal-floating-enter absolute right-0 top-[calc(100%+0.375rem)] z-50 w-56 overflow-hidden rounded-2xl border p-1 text-sm text-zinc-950 dark:text-zinc-100"
+          id={listboxId}
+          role="listbox"
+        >
+          <div className="scrollbar-none grid max-h-64 gap-1 overflow-y-auto">
+            {filteredMachines.length > 0 ? (
+              filteredMachines.map((machine) => (
+                <button
+                  aria-selected={false}
+                  className="kerminal-focus-ring kerminal-pressable grid min-w-0 gap-0.5 rounded-xl px-2.5 py-2 text-left text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50"
+                  key={machine.id}
+                  onClick={() => selectHost(machine.id)}
+                  role="option"
+                  type="button"
+                >
+                  <span className="truncate text-sm font-medium">
+                    {machine.name}
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className="truncate font-mono text-[11px] text-zinc-500 dark:text-zinc-400"
+                  >
+                    {hostIdentity(machine)}
+                  </span>
+                </button>
+              ))
+            ) : (
+              <div className="rounded-lg border border-dashed border-[var(--border-subtle)] px-3 py-4 text-center text-xs text-zinc-500 dark:text-zinc-400">
+                没有匹配的主机。
+              </div>
+            )}
+          </div>
+          {onCreateSshHost ? (
+            <button
+              aria-selected={false}
+              className="kerminal-focus-ring kerminal-pressable mt-1 flex w-full items-start gap-2 rounded-xl border-t border-[var(--border-subtle)] px-2.5 py-2 text-left text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50"
+              onClick={createSshHost}
+              role="option"
+              type="button"
+            >
+              <Plus
+                aria-hidden="true"
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500"
+              />
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium">
+                  新建 SSH 主机...
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="mt-0.5 block text-xs leading-4 text-zinc-500 dark:text-zinc-400"
+                >
+                  {createDescription}
+                </span>
+              </span>
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

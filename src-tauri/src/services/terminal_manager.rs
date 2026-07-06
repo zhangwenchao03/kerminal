@@ -9,12 +9,13 @@ use crate::{
         TerminalOutputEvent, TerminalOutputKind, TerminalOutputSnapshot,
         TerminalPtyOutputPumpFlushReason, TerminalPtyOutputPumpStats, TerminalResizeRequest,
         TerminalSecretInputPlan, TerminalSessionLogState, TerminalSessionReapDiagnostics,
-        TerminalSessionStatus, TerminalSessionSummary,
+        TerminalSessionStatus, TerminalSessionSummary, TerminalShellIntegrationSummary,
     },
     services::{
         pty_process_guard::{
             with_conpty_lifecycle_lock, PtyMasterGuard, PtyProcessGuard, SharedPtyChildHandle,
         },
+        ssh_runtime::{ManagedSshShellSession, SshRuntimeShellEvent},
         terminal_agent_signal_detector::TerminalAgentSignalDetector,
         terminal_escape_responder::TerminalEscapeResponder,
         terminal_output_pump::{PtyOutputPump, PtyOutputPumpConfig, PtyOutputSink},
@@ -38,9 +39,12 @@ use session_handle::TerminalSessionHandle;
 use std::{
     collections::HashMap,
     fs,
-    io::{Read, Write},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
-    sync::{mpsc, Arc, Mutex, MutexGuard},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Arc, Mutex, MutexGuard,
+    },
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -61,6 +65,7 @@ const KERMINAL_AGENT_SESSION_ID_ENV: &str = "KERMINAL_AGENT_SESSION_ID";
 type WriterHandle = Box<dyn Write + Send>;
 type SharedWriterHandle = Arc<Mutex<WriterHandle>>;
 type SharedPtyMasterHandle = Arc<Mutex<PtyMasterGuard>>;
+type SharedTerminalTransportHandle = Arc<Mutex<Box<dyn TerminalSessionTransport>>>;
 type OutputEmitter = Box<dyn Fn(TerminalOutputEvent) -> bool + Send + 'static>;
 
 /// 管理进程内所有本地终端会话。
@@ -68,6 +73,21 @@ pub struct TerminalManager {
     sessions: Mutex<HashMap<String, TerminalSession>>,
     shell_integration_cache: PathBuf,
     target_token_signer: TerminalTargetTokenSigner,
+}
+
+#[derive(Debug)]
+pub struct TerminalManagedShellCreateRequest {
+    pub shell: String,
+    pub cwd: Option<String>,
+    pub startup_input: Option<String>,
+    pub cols: u16,
+    pub rows: u16,
+    pub target_ref: Option<String>,
+}
+
+pub struct TerminalManagedShellRuntime {
+    pub shell: ManagedSshShellSession,
+    pub runtime: tokio::runtime::Runtime,
 }
 
 impl std::fmt::Debug for TerminalManager {
@@ -115,6 +135,99 @@ impl TerminalManager {
         self.create_session_with_secret_input_plan(request, None, output)
     }
 
+    pub fn create_managed_shell_session<F>(
+        &self,
+        request: TerminalManagedShellCreateRequest,
+        shell: TerminalManagedShellRuntime,
+        output: F,
+    ) -> AppResult<TerminalSessionSummary>
+    where
+        F: Fn(TerminalOutputEvent) -> bool + Send + 'static,
+    {
+        let size = normalize_size(request.rows, request.cols)?;
+        let shell_name = normalize_shell(Some(request.shell))?;
+        let cwd = normalize_display_cwd(request.cwd)?;
+        let target_ref = normalize_target_ref(request.target_ref);
+
+        let session_id = Uuid::new_v4().to_string();
+        let target_token = target_ref.as_deref().map(|target_ref| {
+            self.target_token_signer.sign_binding_register_now(
+                &session_id,
+                target_ref,
+                TERMINAL_TARGET_TOKEN_TTL_MS,
+            )
+        });
+        let output_buffer = Arc::new(Mutex::new(TerminalOutputBuffer::default()));
+        let log_sink = Arc::new(Mutex::new(None));
+        let latest_agent_signal = Arc::new(Mutex::new(None));
+        let agent_detector = Arc::new(Mutex::new(TerminalAgentSignalDetector::new()));
+        let (pump_sender, pump_receiver) = mpsc::channel();
+        let pump_stats = Arc::new(Mutex::new(TerminalPtyOutputPumpStats::new(
+            session_id.clone(),
+        )));
+        let flusher_state = OutputFlusherState {
+            output_buffer: output_buffer.clone(),
+            log_sink: log_sink.clone(),
+            latest_agent_signal: latest_agent_signal.clone(),
+            pump_stats: pump_stats.clone(),
+        };
+        spawn_output_flusher_thread(
+            session_id.clone(),
+            None,
+            pump_receiver,
+            flusher_state,
+            Box::new(output),
+        );
+
+        let startup_input = normalize_startup_input(request.startup_input)?;
+        let (reader, writer, transport) = spawn_managed_shell_io(shell, startup_input);
+        let _reader_done = spawn_reader_thread(
+            reader,
+            Vec::new(),
+            writer,
+            None,
+            pump_sender,
+            agent_detector,
+        );
+        let shell_integration =
+            TerminalShellIntegrationSummary::disabled("managed SSH shell channel");
+        let summary = TerminalSessionSummary {
+            id: session_id.clone(),
+            shell: shell_name.clone(),
+            cwd: cwd.clone(),
+            cols: size.cols,
+            rows: size.rows,
+            pid: None,
+            status: TerminalSessionStatus::Running,
+            target_ref: target_ref.clone(),
+            target_token: target_token.as_ref().map(TerminalTargetCapability::token),
+            shell_integration: shell_integration.clone(),
+            agent_session_id: None,
+            agent_signal: None,
+        };
+        let session = TerminalSession {
+            cols: size.cols,
+            cwd,
+            id: session_id.clone(),
+            pid: None,
+            rows: size.rows,
+            shell: shell_name,
+            shell_integration,
+            target_ref,
+            target_token,
+            output_buffer,
+            log_sink,
+            latest_agent_signal,
+            pump_stats,
+            agent_session_id: None,
+            cleanup_paths: Vec::new(),
+            transport,
+        };
+
+        self.lock_sessions()?.insert(session_id, session);
+        Ok(summary)
+    }
+
     /// 创建本地 PTY 会话，并使用后端提供的多敏感输入计划自动响应 prompt。
     pub fn create_session_with_secret_input_plan<F>(
         &self,
@@ -138,6 +251,7 @@ impl TerminalManager {
         let size = normalize_size(rows, cols)?;
         let shell = normalize_shell(shell)?;
         let cwd = normalize_cwd(cwd)?;
+        let cwd_summary = cwd.as_ref().map(|path| path.to_string_lossy().into_owned());
         let agent_session_id = normalize_agent_session_id(env.get(KERMINAL_AGENT_SESSION_ID_ENV));
         let launch_plan =
             build_terminal_shell_launch(&shell, &args, &env, &self.shell_integration_cache);
@@ -164,11 +278,17 @@ impl TerminalManager {
         })?;
         let process_guard = PtyProcessGuard::new(child);
         let pid = process_guard.pid();
+        let process_child = process_guard.shared_child();
         let master = PtyMasterGuard::new(pair.master);
         let reader = master.try_clone_reader().map_err(AppError::Terminal)?;
         let writer = master.take_writer().map_err(AppError::Terminal)?;
         let master = Arc::new(Mutex::new(master));
         let writer = Arc::new(Mutex::new(writer));
+        let transport = Arc::new(Mutex::new(Box::new(PtyTerminalTransport {
+            process_guard: Some(process_guard),
+            master,
+            writer: writer.clone(),
+        }) as Box<dyn TerminalSessionTransport>));
 
         let session_id = Uuid::new_v4().to_string();
         let output_buffer = Arc::new(Mutex::new(TerminalOutputBuffer::default()));
@@ -202,7 +322,7 @@ impl TerminalManager {
         );
         spawn_child_exit_waiter_thread(
             session_id.clone(),
-            process_guard.shared_child(),
+            process_child,
             pump_sender,
             reader_done,
             cleanup_paths.clone(),
@@ -212,7 +332,7 @@ impl TerminalManager {
         let summary = TerminalSessionSummary {
             id: session_id.clone(),
             shell,
-            cwd: cwd.as_ref().map(|path| path.to_string_lossy().into_owned()),
+            cwd: cwd_summary.clone(),
             cols: size.cols,
             rows: size.rows,
             pid,
@@ -225,11 +345,9 @@ impl TerminalManager {
         };
 
         let session = TerminalSession {
-            process_guard,
             cols: size.cols,
-            cwd,
+            cwd: cwd_summary,
             id: session_id.clone(),
-            master,
             pid,
             rows: size.rows,
             shell: summary.shell.clone(),
@@ -242,7 +360,7 @@ impl TerminalManager {
             pump_stats,
             agent_session_id,
             cleanup_paths,
-            writer,
+            transport,
         };
 
         self.lock_sessions()?.insert(session_id, session);
@@ -257,26 +375,23 @@ impl TerminalManager {
         }
 
         let handle = self.session_handle(session_id)?;
-        let mut writer = handle
-            .writer
+        let result = handle
+            .transport
             .lock()
-            .map_err(|_| AppError::StateLockPoisoned("terminal_writer"))?;
-        writer.write_all(data.as_bytes())?;
-        writer.flush()?;
-        Ok(())
+            .map_err(|_| AppError::StateLockPoisoned("terminal_transport"))?
+            .write(data.as_bytes());
+        result
     }
 
     /// 调整指定终端会话大小。
     pub fn resize(&self, session_id: &str, request: TerminalResizeRequest) -> AppResult<()> {
         let size = normalize_size(request.rows, request.cols)?;
         let handle = self.session_handle(session_id)?;
-        let master = handle
-            .master
+        handle
+            .transport
             .lock()
-            .map_err(|_| AppError::StateLockPoisoned("terminal_master"))?;
-        master
-            .resize(size)
-            .map_err(|error| AppError::Terminal(error.to_string()))?;
+            .map_err(|_| AppError::StateLockPoisoned("terminal_transport"))?
+            .resize(size)?;
         if let Some(session) = self.lock_sessions()?.get_mut(session_id) {
             session.rows = size.rows;
             session.cols = size.cols;
@@ -431,11 +546,9 @@ impl TerminalManager {
 }
 
 struct TerminalSession {
-    process_guard: PtyProcessGuard,
     cols: u16,
-    cwd: Option<PathBuf>,
+    cwd: Option<String>,
     id: String,
-    master: SharedPtyMasterHandle,
     pid: Option<u32>,
     rows: u16,
     shell: String,
@@ -448,17 +561,15 @@ struct TerminalSession {
     pump_stats: SharedPtyOutputPumpStats,
     agent_session_id: Option<String>,
     cleanup_paths: Vec<PathBuf>,
-    writer: SharedWriterHandle,
+    transport: SharedTerminalTransportHandle,
 }
 
 impl TerminalSession {
     fn handle(&self) -> TerminalSessionHandle {
         TerminalSessionHandle {
-            process_child: self.process_guard.shared_child(),
             cols: self.cols,
             cwd: self.cwd.clone(),
             id: self.id.clone(),
-            master: self.master.clone(),
             pid: self.pid,
             rows: self.rows,
             shell: self.shell.clone(),
@@ -473,17 +584,324 @@ impl TerminalSession {
             latest_agent_signal: self.latest_agent_signal.clone(),
             pump_stats: self.pump_stats.clone(),
             agent_session_id: self.agent_session_id.clone(),
-            writer: self.writer.clone(),
+            transport: self.transport.clone(),
         }
     }
 
     fn close_detached(mut self) {
         cleanup_session_paths(&self.cleanup_paths);
         self.cleanup_paths.clear();
+        if let Ok(mut transport) = self.transport.lock() {
+            transport.close_detached();
+        }
+    }
+}
+
+trait TerminalSessionTransport: Send {
+    fn status(&mut self) -> AppResult<TerminalSessionStatus>;
+
+    fn write(&mut self, data: &[u8]) -> AppResult<()>;
+
+    fn resize(&mut self, size: PtySize) -> AppResult<()>;
+
+    fn close_detached(&mut self);
+}
+
+struct PtyTerminalTransport {
+    process_guard: Option<PtyProcessGuard>,
+    master: SharedPtyMasterHandle,
+    writer: SharedWriterHandle,
+}
+
+impl TerminalSessionTransport for PtyTerminalTransport {
+    fn status(&mut self) -> AppResult<TerminalSessionStatus> {
+        let Some(process_guard) = self.process_guard.as_ref() else {
+            return Ok(TerminalSessionStatus::Exited);
+        };
+        let status = if process_guard.try_wait_status()?.is_some() {
+            TerminalSessionStatus::Exited
+        } else {
+            TerminalSessionStatus::Running
+        };
+        Ok(status)
+    }
+
+    fn write(&mut self, data: &[u8]) -> AppResult<()> {
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|_| AppError::StateLockPoisoned("terminal_writer"))?;
+        writer.write_all(data)?;
+        writer.flush()?;
+        Ok(())
+    }
+
+    fn resize(&mut self, size: PtySize) -> AppResult<()> {
+        let master = self
+            .master
+            .lock()
+            .map_err(|_| AppError::StateLockPoisoned("terminal_master"))?;
+        master
+            .resize(size)
+            .map_err(|error| AppError::Terminal(error.to_string()))
+    }
+
+    fn close_detached(&mut self) {
+        let Some(process_guard) = self.process_guard.take() else {
+            return;
+        };
         thread::spawn(move || {
-            let _ = self.process_guard.best_effort_kill();
+            let _ = process_guard.best_effort_kill();
         });
     }
+}
+
+enum ManagedSshShellCommand {
+    Write(Vec<u8>),
+    Resize { cols: u16, rows: u16 },
+    Close,
+}
+
+enum ManagedSshShellReaderMessage {
+    Data(Vec<u8>),
+    Error(String),
+    Closed,
+}
+
+struct ManagedSshShellTransport {
+    closed: Arc<AtomicBool>,
+    commands: tokio::sync::mpsc::UnboundedSender<ManagedSshShellCommand>,
+}
+
+impl TerminalSessionTransport for ManagedSshShellTransport {
+    fn status(&mut self) -> AppResult<TerminalSessionStatus> {
+        if self.closed.load(Ordering::SeqCst) {
+            Ok(TerminalSessionStatus::Exited)
+        } else {
+            Ok(TerminalSessionStatus::Running)
+        }
+    }
+
+    fn write(&mut self, data: &[u8]) -> AppResult<()> {
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(AppError::Terminal(
+                "managed SSH shell channel is closed".to_owned(),
+            ));
+        }
+        self.commands
+            .send(ManagedSshShellCommand::Write(data.to_vec()))
+            .map_err(|_| AppError::Terminal("managed SSH shell channel is closed".to_owned()))
+    }
+
+    fn resize(&mut self, size: PtySize) -> AppResult<()> {
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(AppError::Terminal(
+                "managed SSH shell channel is closed".to_owned(),
+            ));
+        }
+        self.commands
+            .send(ManagedSshShellCommand::Resize {
+                cols: size.cols,
+                rows: size.rows,
+            })
+            .map_err(|_| AppError::Terminal("managed SSH shell channel is closed".to_owned()))
+    }
+
+    fn close_detached(&mut self) {
+        if self.closed.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let _ = self.commands.send(ManagedSshShellCommand::Close);
+    }
+}
+
+struct ManagedSshShellWriter {
+    closed: Arc<AtomicBool>,
+    commands: tokio::sync::mpsc::UnboundedSender<ManagedSshShellCommand>,
+}
+
+impl Write for ManagedSshShellWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "managed SSH shell channel is closed",
+            ));
+        }
+        self.commands
+            .send(ManagedSshShellCommand::Write(buf.to_vec()))
+            .map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "managed SSH shell channel is closed",
+                )
+            })?;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+struct ManagedSshShellReader {
+    pending: Vec<u8>,
+    pending_offset: usize,
+    receiver: mpsc::Receiver<ManagedSshShellReaderMessage>,
+}
+
+impl Read for ManagedSshShellReader {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+
+        loop {
+            if self.pending_offset < self.pending.len() {
+                let remaining = &self.pending[self.pending_offset..];
+                let bytes_to_copy = remaining.len().min(buf.len());
+                buf[..bytes_to_copy].copy_from_slice(&remaining[..bytes_to_copy]);
+                self.pending_offset += bytes_to_copy;
+                if self.pending_offset >= self.pending.len() {
+                    self.pending.clear();
+                    self.pending_offset = 0;
+                }
+                return Ok(bytes_to_copy);
+            }
+
+            match self.receiver.recv() {
+                Ok(ManagedSshShellReaderMessage::Data(data)) if data.is_empty() => {}
+                Ok(ManagedSshShellReaderMessage::Data(data)) => {
+                    self.pending = data;
+                    self.pending_offset = 0;
+                }
+                Ok(ManagedSshShellReaderMessage::Error(error)) => {
+                    return Err(io::Error::other(error));
+                }
+                Ok(ManagedSshShellReaderMessage::Closed) | Err(_) => return Ok(0),
+            }
+        }
+    }
+}
+
+fn spawn_managed_shell_io(
+    shell: TerminalManagedShellRuntime,
+    startup_input: Option<String>,
+) -> (
+    Box<dyn Read + Send>,
+    SharedWriterHandle,
+    SharedTerminalTransportHandle,
+) {
+    let (reader_sender, reader_receiver) = mpsc::channel();
+    let (command_sender, command_receiver) = tokio::sync::mpsc::unbounded_channel();
+    let closed = Arc::new(AtomicBool::new(false));
+
+    spawn_managed_shell_bridge(
+        shell,
+        startup_input,
+        reader_sender,
+        command_receiver,
+        Arc::clone(&closed),
+    );
+
+    let reader = Box::new(ManagedSshShellReader {
+        pending: Vec::new(),
+        pending_offset: 0,
+        receiver: reader_receiver,
+    });
+    let writer = Arc::new(Mutex::new(Box::new(ManagedSshShellWriter {
+        closed: Arc::clone(&closed),
+        commands: command_sender.clone(),
+    }) as WriterHandle));
+    let transport = Arc::new(Mutex::new(Box::new(ManagedSshShellTransport {
+        closed,
+        commands: command_sender,
+    }) as Box<dyn TerminalSessionTransport>));
+    (reader, writer, transport)
+}
+
+fn spawn_managed_shell_bridge(
+    shell: TerminalManagedShellRuntime,
+    startup_input: Option<String>,
+    reader_sender: mpsc::Sender<ManagedSshShellReaderMessage>,
+    mut command_receiver: tokio::sync::mpsc::UnboundedReceiver<ManagedSshShellCommand>,
+    closed: Arc<AtomicBool>,
+) {
+    thread::spawn(move || {
+        let TerminalManagedShellRuntime { mut shell, runtime } = shell;
+
+        runtime.block_on(async move {
+            if let Some(startup_input) = startup_input {
+                if let Err(error) = shell.write(startup_input.into_bytes()).await {
+                    let _ = reader_sender.send(ManagedSshShellReaderMessage::Error(error.to_string()));
+                    let _ = shell.close().await;
+                    closed.store(true, Ordering::SeqCst);
+                    let _ = reader_sender.send(ManagedSshShellReaderMessage::Closed);
+                    return;
+                }
+            }
+
+            loop {
+                tokio::select! {
+                    command = command_receiver.recv() => {
+                        match command {
+                            Some(ManagedSshShellCommand::Write(data)) => {
+                                if let Err(error) = shell.write(data).await {
+                                    let _ = reader_sender.send(ManagedSshShellReaderMessage::Error(error.to_string()));
+                                    break;
+                                }
+                            }
+                            Some(ManagedSshShellCommand::Resize { cols, rows }) => {
+                                if let Err(error) = shell.resize(cols, rows).await {
+                                    let _ = reader_sender.send(ManagedSshShellReaderMessage::Error(error.to_string()));
+                                    break;
+                                }
+                            }
+                            Some(ManagedSshShellCommand::Close) | None => break,
+                        }
+                    }
+                    event = shell.read_event() => {
+                        match event {
+                            Ok(SshRuntimeShellEvent::Data(data))
+                            | Ok(SshRuntimeShellEvent::ExtendedData { data, .. }) => {
+                                if reader_sender.send(ManagedSshShellReaderMessage::Data(data)).is_err() {
+                                    break;
+                                }
+                            }
+                            Ok(SshRuntimeShellEvent::Eof) | Ok(SshRuntimeShellEvent::Closed) => {
+                                break;
+                            }
+                            Ok(SshRuntimeShellEvent::ExitSignal { error_message, signal_name }) => {
+                                let message = if error_message.is_empty() {
+                                    format!("SSH shell exited by signal {signal_name}")
+                                } else {
+                                    format!("SSH shell exited by signal {signal_name}: {error_message}")
+                                };
+                                let _ = reader_sender.send(ManagedSshShellReaderMessage::Error(message));
+                                break;
+                            }
+                            Ok(SshRuntimeShellEvent::ExitStatus(status)) => {
+                                if status != 0 {
+                                    let _ = reader_sender.send(ManagedSshShellReaderMessage::Error(
+                                        format!("SSH shell exited with status {status}"),
+                                    ));
+                                }
+                                break;
+                            }
+                            Err(error) => {
+                                let _ = reader_sender.send(ManagedSshShellReaderMessage::Error(error.to_string()));
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            let _ = shell.close().await;
+            closed.store(true, Ordering::SeqCst);
+            let _ = reader_sender.send(ManagedSshShellReaderMessage::Closed);
+        });
+    });
 }
 
 fn spawn_reader_thread(
@@ -926,6 +1344,35 @@ fn normalize_target_ref(value: Option<String>) -> Option<String> {
     value
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
+}
+
+fn normalize_display_cwd(cwd: Option<String>) -> AppResult<Option<String>> {
+    cwd.map(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err(AppError::InvalidInput("工作目录不能为空".to_owned()));
+        }
+        Ok(trimmed.to_owned())
+    })
+    .transpose()
+}
+
+fn normalize_startup_input(input: Option<String>) -> AppResult<Option<String>> {
+    input
+        .map(|value| {
+            if value.is_empty() {
+                return Err(AppError::InvalidInput(
+                    "managed SSH shell startup input cannot be empty".to_owned(),
+                ));
+            }
+            if value.contains('\0') {
+                return Err(AppError::InvalidInput(
+                    "managed SSH shell startup input cannot contain NUL".to_owned(),
+                ));
+            }
+            Ok(value)
+        })
+        .transpose()
 }
 
 fn normalize_agent_session_id(value: Option<&String>) -> Option<String> {

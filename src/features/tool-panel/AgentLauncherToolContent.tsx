@@ -50,6 +50,7 @@ import {
   type AgentActionViewModel,
 } from "./agent-launcher/agentLauncherModel";
 import {
+  agentSessionScopeId,
   findRunningSessionForTabAgent,
   restorableSessionsForTab,
   tabRemovedCleanupPlan,
@@ -67,6 +68,7 @@ import {
 import {
   AgentIconButton,
   AgentLaunchContextMenu,
+  type AgentLaunchTargetMode,
 } from "./agent-launcher/AgentLaunchControls";
 
 interface AgentLauncherToolContentProps {
@@ -102,8 +104,8 @@ interface AgentRestoreChoice {
   session: AgentSessionSelection;
 }
 
-const AGENT_LAUNCH_CONTEXT_MENU_WIDTH = 136;
-const AGENT_LAUNCH_CONTEXT_MENU_HEIGHT = 38;
+const AGENT_LAUNCH_CONTEXT_MENU_WIDTH = 164;
+const AGENT_LAUNCH_CONTEXT_MENU_HEIGHT = 72;
 const AGENT_LAUNCH_CONTEXT_MENU_INSET = 8;
 
 const initialAgentActions: AgentActionViewModel[] = [
@@ -173,6 +175,8 @@ export function AgentLauncherToolContent({
   );
   const [agentContextMenu, setAgentContextMenu] =
     useState<AgentLauncherContextMenuState | null>(null);
+  const [customLaunchTargetMode, setCustomLaunchTargetMode] =
+    useState<AgentLaunchTargetMode>("current");
   const launcherMenuRootRef = useRef<HTMLDivElement | null>(null);
   const [activeSessionIdByTabId, setActiveSessionIdByTabId] = useState<
     Record<string, string | undefined>
@@ -184,9 +188,8 @@ export function AgentLauncherToolContent({
   const activeAgentTabId = isTerminalSessionTab(activeTab)
     ? activeTab.id
     : undefined;
-  const view = activeAgentTabId
-    ? (viewByTabId[activeAgentTabId] ?? "launcher")
-    : "launcher";
+  const activeAgentScopeId = agentSessionScopeId(activeAgentTabId);
+  const view = viewByTabId[activeAgentScopeId] ?? "launcher";
   const loadStatus = useCallback(async (state: LoadState = "loading") => {
     setLoadState(state);
     setLoadError(null);
@@ -271,8 +274,8 @@ export function AgentLauncherToolContent({
   );
 
   const activeAgentSession = useMemo(
-    () => visibleAgentSessionForTab(agentSidebarState, activeAgentTabId),
-    [activeAgentTabId, agentSidebarState],
+    () => visibleAgentSessionForTab(agentSidebarState, activeAgentScopeId),
+    [activeAgentScopeId, agentSidebarState],
   );
   const terminalTabIds = useMemo(
     () =>
@@ -358,13 +361,6 @@ export function AgentLauncherToolContent({
       [tabId]: agentSessionId,
     }));
     setTabView(tabId, "terminal");
-  };
-
-  const requireActiveAgentTabId = () => {
-    if (!activeAgentTabId) {
-      throw new Error("Open a terminal tab before launching an agent.");
-    }
-    return activeAgentTabId;
   };
 
   const findPersistedAgentSession = (
@@ -513,12 +509,13 @@ export function AgentLauncherToolContent({
   const startNewProviderAgentSession = async (
     agentId: ExternalAgentId,
     permissionMode: AgentLaunchPermissionMode = "default",
+    targetMode: AgentLaunchTargetMode = "current",
   ) => {
-    const tabId = requireActiveAgentTabId();
     const agentSession = await createSessionForLaunch(agentId, {
       activeTab,
       focusedPane,
-      tabId,
+      tabId: activeAgentScopeId,
+      targetMode,
     });
     await prepareAndLaunchAgent(agentId, agentSession, {
       permissionMode,
@@ -529,12 +526,10 @@ export function AgentLauncherToolContent({
   const launchAgent = (
     agentId: ExternalAgentId,
     permissionMode: AgentLaunchPermissionMode = "default",
+    targetMode: AgentLaunchTargetMode = "current",
   ) => {
-    if (!activeAgentTabId) {
-      setActionError("Open a terminal tab before launching an agent.");
-      return;
-    }
     if (agentId === "custom") {
+      setCustomLaunchTargetMode(targetMode);
       setRestoreChoice(null);
       setCustomCommandOpen(true);
       setActionError(null);
@@ -542,26 +537,26 @@ export function AgentLauncherToolContent({
     }
 
     const existingSessionId = findAgentSessionId(
-      activeAgentTabId,
+      activeAgentScopeId,
       agentId,
       permissionMode,
     );
     if (existingSessionId) {
       setRestoreChoice(null);
-      activateAgentSessionForTab(activeAgentTabId, existingSessionId);
+      activateAgentSessionForTab(activeAgentScopeId, existingSessionId);
       return;
     }
 
     void runAction(agentId, async () => {
       const persistedSession = await resolvePersistedAgentSession(
-        activeAgentTabId,
+        activeAgentScopeId,
         agentId,
       );
       if (persistedSession) {
         setRestoreChoice({ agentId, permissionMode, session: persistedSession });
         return;
       }
-      await startNewProviderAgentSession(agentId, permissionMode);
+      await startNewProviderAgentSession(agentId, permissionMode, targetMode);
     });
   };
 
@@ -570,7 +565,7 @@ export function AgentLauncherToolContent({
     if (!trimmedCommand) {
       return;
     }
-    const tabId = requireActiveAgentTabId();
+    const tabId = activeAgentScopeId;
 
     const existingSession = agentSessionList.find(
       (session) =>
@@ -589,6 +584,7 @@ export function AgentLauncherToolContent({
         activeTab,
         focusedPane,
         tabId,
+        targetMode: customLaunchTargetMode,
       });
       const launchSpec = await prepareExternalAgentWorkspace({
         agentId: "custom",
@@ -669,9 +665,13 @@ export function AgentLauncherToolContent({
             {agentContextMenu ? (
               <AgentLaunchContextMenu
                 agent={agentContextMenu.agent}
-                onLaunch={(permissionMode) => {
+                onLaunch={(permissionMode, targetMode = "current") => {
                   setAgentContextMenu(null);
-                  launchAgent(agentContextMenu.agent.agentId, permissionMode);
+                  launchAgent(
+                    agentContextMenu.agent.agentId,
+                    permissionMode,
+                    targetMode,
+                  );
                 }}
                 position={agentContextMenu.position}
               />
@@ -751,9 +751,7 @@ export function AgentLauncherToolContent({
             session={session}
             desktopNotifications={desktopNotifications}
             onBack={() => {
-              if (activeAgentTabId) {
-                setTabView(activeAgentTabId, "launcher");
-              }
+              setTabView(activeAgentScopeId, "launcher");
             }}
             onAgentSignal={handleAgentSignal}
             resolvedTheme={resolvedTheme}
@@ -772,21 +770,34 @@ async function createSessionForLaunch(
     activeTab,
     focusedPane,
     tabId,
+    targetMode = "current",
   }: {
     activeTab?: TerminalTab;
     focusedPane?: TerminalPane;
     tabId: string;
+    targetMode?: AgentLaunchTargetMode;
   },
 ): Promise<AgentSessionSelection> {
+  const target =
+    targetMode === "unbound"
+      ? unboundAgentSessionTarget()
+      : buildAgentSessionTarget(focusedPane, activeTab) ??
+        unboundAgentSessionTarget();
   const record = await createAgentSession({
     agentId,
     title: agentTitle(agentId),
-    target: buildAgentSessionTarget(focusedPane, activeTab),
+    target,
   });
   return {
     agentSessionId: agentSessionRecordId(record),
     tabId,
     target: agentSessionRecordTarget(record),
+  };
+}
+
+function unboundAgentSessionTarget(): AgentSessionTargetRequest {
+  return {
+    liveStatus: "unbound",
   };
 }
 

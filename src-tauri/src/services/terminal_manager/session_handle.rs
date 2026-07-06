@@ -6,27 +6,25 @@ use crate::{
     error::{AppError, AppResult},
     models::terminal::{
         TerminalAgentSignalSummary, TerminalOutputSnapshot, TerminalPtyOutputPumpStats,
-        TerminalSessionLogState, TerminalSessionStatus, TerminalSessionSummary,
+        TerminalSessionLogState, TerminalSessionSummary,
     },
 };
 use std::{
     fs::{self, OpenOptions},
     io::Write,
-    path::{Path, PathBuf},
+    path::Path,
     sync::{Arc, Mutex},
 };
 
 use super::{
-    safe_session_suffix, unix_timestamp_string, ActiveTerminalLog, SharedPtyChildHandle,
-    SharedPtyMasterHandle, SharedWriterHandle, TerminalOutputBuffer,
+    safe_session_suffix, unix_timestamp_string, ActiveTerminalLog, SharedTerminalTransportHandle,
+    TerminalOutputBuffer,
 };
 
 pub(super) struct TerminalSessionHandle {
-    pub(super) process_child: SharedPtyChildHandle,
     pub(super) cols: u16,
-    pub(super) cwd: Option<PathBuf>,
+    pub(super) cwd: Option<String>,
     pub(super) id: String,
-    pub(super) master: SharedPtyMasterHandle,
     pub(super) pid: Option<u32>,
     pub(super) rows: u16,
     pub(super) shell: String,
@@ -38,30 +36,21 @@ pub(super) struct TerminalSessionHandle {
     pub(super) latest_agent_signal: Arc<Mutex<Option<TerminalAgentSignalSummary>>>,
     pub(super) pump_stats: Arc<Mutex<TerminalPtyOutputPumpStats>>,
     pub(super) agent_session_id: Option<String>,
-    pub(super) writer: SharedWriterHandle,
+    pub(super) transport: SharedTerminalTransportHandle,
 }
 
 impl TerminalSessionHandle {
     pub(super) fn summary(&self) -> AppResult<TerminalSessionSummary> {
-        let status = if self
-            .process_child
+        let status = self
+            .transport
             .lock()
-            .map_err(|_| AppError::StateLockPoisoned("terminal_child"))?
-            .try_wait()?
-            .is_some()
-        {
-            TerminalSessionStatus::Exited
-        } else {
-            TerminalSessionStatus::Running
-        };
+            .map_err(|_| AppError::StateLockPoisoned("terminal_transport"))?
+            .status()?;
 
         Ok(TerminalSessionSummary {
             id: self.id.clone(),
             shell: self.shell.clone(),
-            cwd: self
-                .cwd
-                .as_ref()
-                .map(|path| path.to_string_lossy().into_owned()),
+            cwd: self.cwd.clone(),
             cols: self.cols,
             rows: self.rows,
             pid: self.pid,
@@ -119,10 +108,7 @@ impl TerminalSessionHandle {
             "Kerminal session log\nsession_id: {}\nshell: {}\ncwd: {}\nstarted_at: {}\n\n",
             self.id,
             self.shell,
-            self.cwd
-                .as_ref()
-                .map(|path| path.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "-".to_owned()),
+            self.cwd.as_ref().cloned().unwrap_or_else(|| "-".to_owned()),
             started_at
         );
         file.write_all(header.as_bytes())?;

@@ -155,6 +155,37 @@ describe("SftpTransferStatusBar", () => {
     expect(onRetry).toHaveBeenCalledWith(failedTransfer);
   });
 
+  it("offers manual retry for canceled managed transfers", async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    const canceledTransfer = transfer({
+      conflictPolicy: "overwrite",
+      id: "canceled-download",
+      status: "canceled",
+    });
+
+    render(
+      <SftpTransferStatusBar
+        onCancel={vi.fn()}
+        onClearCompleted={vi.fn()}
+        onRetry={onRetry}
+        transfers={[canceledTransfer]}
+      />,
+    );
+
+    const retryButton = screen.getByRole("button", {
+      name: "重试传输 app.log",
+    });
+    expect(retryButton).toHaveAttribute(
+      "title",
+      "重新加入传输队列；将优先尝试断点续传",
+    );
+
+    await user.click(retryButton);
+
+    expect(onRetry).toHaveBeenCalledWith(canceledTransfer);
+  });
+
   it("explains why failed transfers without retry metadata cannot be retried", () => {
     render(
       <SftpTransferStatusBar

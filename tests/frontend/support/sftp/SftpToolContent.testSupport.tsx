@@ -39,6 +39,7 @@ const containerFilesApiMocks = vi.hoisted(() => ({
 }));
 
 const fileDialogMocks = vi.hoisted(() => ({
+  listLocalDirectory: vi.fn(),
   selectLocalDirectory: vi.fn(),
   selectLocalFile: vi.fn(),
   selectSaveFile: vi.fn(),
@@ -176,6 +177,8 @@ vi.mock("../../../../src/lib/containerFilesApi", () => ({
 }));
 
 vi.mock("../../../../src/lib/fileDialogApi", () => ({
+  listLocalDirectory: (...args: unknown[]) =>
+    fileDialogMocks.listLocalDirectory(...args),
   selectLocalDirectory: (...args: unknown[]) =>
     fileDialogMocks.selectLocalDirectory(...args),
   selectLocalFile: (...args: unknown[]) =>
@@ -366,6 +369,7 @@ beforeEach(() => {
   containerFilesApiMocks.renameDockerContainerPath.mockReset();
   containerFilesApiMocks.uploadDockerContainerPath.mockReset();
   fileDialogMocks.selectLocalDirectory.mockReset();
+  fileDialogMocks.listLocalDirectory.mockReset();
   fileDialogMocks.selectLocalFile.mockReset();
   fileDialogMocks.selectSaveFile.mockReset();
   localFilesApiMocks.statLocalPath.mockReset();
@@ -599,6 +603,52 @@ beforeEach(() => {
   fileDialogMocks.selectLocalDirectory.mockResolvedValue(
     "/Users/me/Downloads",
   );
+  fileDialogMocks.listLocalDirectory.mockImplementation(
+    async (path?: string | null) => {
+      const currentPath = path?.trim() || "/Users/me";
+      if (currentPath === "/repo") {
+        return {
+          entries: [
+            {
+              hidden: false,
+              kind: "file",
+              modified: "1771351200",
+              name: "package.json",
+              path: "/repo/package.json",
+              raw: "file /repo/package.json",
+              size: 1024,
+            },
+          ],
+          parentPath: "/",
+          path: "/repo",
+        };
+      }
+      return {
+        entries: [
+          {
+            hidden: false,
+            kind: "directory",
+            modified: "1771351200",
+            name: "repo",
+            path: "/repo",
+            raw: "directory /repo",
+            size: null,
+          },
+          {
+            hidden: false,
+            kind: "file",
+            modified: "1771351200",
+            name: "notes.md",
+            path: `${currentPath}/notes.md`,
+            raw: `file ${currentPath}/notes.md`,
+            size: 2048,
+          },
+        ],
+        parentPath: "/",
+        path: currentPath,
+      };
+    },
+  );
   fileDialogMocks.selectLocalFile.mockResolvedValue("/Users/me/release.tgz");
   fileDialogMocks.selectSaveFile.mockResolvedValue(
     "/Users/me/Downloads/app.log",
@@ -632,6 +682,25 @@ beforeEach(() => {
   });
   sftpApiMocks.listSftpDirectory.mockImplementation(
     async ({ path }: { path: string }) => {
+      if (path === "/var") {
+        return {
+          entries: [
+            {
+              kind: "directory",
+              modified: "Jun 18 15:00",
+              name: "log",
+              path: "/var/log",
+              permissions: "drwxr-xr-x",
+              raw: "drwxr-xr-x log",
+              size: 4096,
+            },
+          ],
+          hostId: "prod-api",
+          parentPath: "/",
+          path: "/var",
+        };
+      }
+
       if (path === "/var/log") {
         return {
           entries: [

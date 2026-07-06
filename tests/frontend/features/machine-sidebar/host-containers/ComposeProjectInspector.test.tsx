@@ -102,6 +102,35 @@ describe("ComposeProjectInspector", () => {
     expect(screen.getByLabelText("Compose YAML 预览")).toBeInTheDocument();
   });
 
+  it("opens Compose YAML in the central workspace tab when the action is available", async () => {
+    const onOpenWorkspaceFileTab = vi.fn();
+
+    render(
+      <ComposeProjectInspector
+        hostId="ubuntu-dev"
+        onEnterContainer={vi.fn()}
+        onOpenContainerLogs={vi.fn()}
+        onOpenWorkspaceFileTab={onOpenWorkspaceFileTab}
+        onRefresh={vi.fn()}
+        onSelectContainer={vi.fn()}
+        onTabChange={vi.fn()}
+        project={project}
+        tab="yaml"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onOpenWorkspaceFileTab).toHaveBeenCalledWith({
+        access: "readonly",
+        path: "/srv/kerminal/compose.yaml",
+        rootPath: "/srv/kerminal",
+        source: "composeYaml",
+        target: { hostId: "ubuntu-dev", kind: "ssh" },
+      });
+    });
+    expect(readRemoteWorkspaceTextFile).not.toHaveBeenCalled();
+  });
+
   it("copies Compose YAML paths through the desktop clipboard facade", async () => {
     const user = userEvent.setup();
     render(

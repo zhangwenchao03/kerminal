@@ -634,6 +634,9 @@ pub struct AgentMcpCallLogEntry {
     /// 错误信息。
     #[serde(default)]
     pub error: Option<String>,
+    /// 脱敏运行态审计摘要。
+    #[serde(default)]
+    pub runtime_audit: Option<String>,
     /// 记录时间。
     pub generated_at: String,
 }

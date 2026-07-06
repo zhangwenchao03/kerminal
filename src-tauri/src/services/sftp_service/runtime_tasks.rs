@@ -17,8 +17,9 @@ impl SftpService {
         request: SftpManagedTransferRequest,
     ) -> AppResult<bool> {
         let settings = load_sftp_runtime_settings(paths)?;
-        let endpoint = resolve_endpoint(paths, &request.host_id)?;
+        let endpoint = self.resolve_endpoint(paths, &request.host_id)?;
         let request = normalize_managed_transfer_request(request)?;
+        let settings = settings.for_bulk_transfer_target(&endpoint);
         let progress = TransferProgress::detached();
         let _transfer_permit = self
             .transfer_limiter

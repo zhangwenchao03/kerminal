@@ -1,6 +1,15 @@
 // @author kongweiguang
 
-import { Bot, Cpu, FileText, FolderOpen, History, Network, PanelsTopLeft, X } from "lucide-react";
+import {
+  Bot,
+  Cpu,
+  FileText,
+  FolderOpen,
+  History,
+  Network,
+  PanelsTopLeft,
+  X,
+} from "lucide-react";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/cn";
 import type { ToolId } from "../features/workspace/types";
@@ -45,7 +54,6 @@ export function ShellToolRail({
         className="flex w-full min-w-0 flex-col items-center gap-1.5 py-2.5"
       >
         {tools
-          .filter((tool) => tool.id !== "settings")
           .map((tool) => {
             const Icon = shellToolRailIcons[tool.id];
             if (!Icon) {
