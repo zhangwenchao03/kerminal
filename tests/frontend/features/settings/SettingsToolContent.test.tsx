@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   AGENT_MCP_ENDPOINT,
   clipboardMock,
-  installClipboardMock,
   renderControlledSettings,
   renderSettingsToolContent,
   terminalSuggestionApiMock,
@@ -49,7 +48,7 @@ describe("SettingsToolContent", () => {
     await user.click(screen.getByRole("button", { name: /命令提示/ }));
     expect(screen.getByText("命令灰色提示")).toBeInTheDocument();
     expect(screen.getByText("Provider 开关")).toBeInTheDocument();
-    expect(screen.getByText("灰色提示诊断")).toBeInTheDocument();
+    expect(screen.queryByText("灰色提示诊断")).not.toBeInTheDocument();
   });
 
   it("shows minimal MCP server status, endpoint and controls", async () => {
@@ -210,64 +209,24 @@ describe("SettingsToolContent", () => {
     );
   });
 
-  it("shows inline suggestion telemetry in terminal settings", async () => {
-    const user = userEvent.setup();
-    installClipboardMock();
+  it("does not expose inline suggestion diagnostics in terminal settings", () => {
     renderSettingsToolContent({ initialSectionId: "settings-suggestions" });
 
-    expect(screen.getByText("灰色提示诊断")).toBeInTheDocument();
-    expect(await screen.findByText("4 次")).toBeInTheDocument();
-    expect(screen.getByText("5/1")).toBeInTheDocument();
-    expect(screen.getByText("平均 1.5 ms")).toBeInTheDocument();
+    expect(screen.getByText("命令灰色提示")).toBeInTheDocument();
+    expect(screen.getByText("Provider 开关")).toBeInTheDocument();
+    expect(screen.queryByText("灰色提示诊断")).not.toBeInTheDocument();
+    expect(screen.queryByText("审计保留")).not.toBeInTheDocument();
+    expect(screen.queryByText("重置统计")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无运行期数据")).not.toBeInTheDocument();
     expect(
       terminalSuggestionApiMock.getTerminalSuggestionTelemetrySummary,
-    ).toHaveBeenCalled();
-
-    await user.click(screen.getByRole("button", { name: "复制灰色提示诊断" }));
-    await waitFor(() => {
-      expect(
-        terminalSuggestionApiMock.getTerminalSuggestionTelemetryExport,
-      ).toHaveBeenCalled();
-    });
-    await waitFor(() => {
-      expect(clipboardMock.writeText).toHaveBeenCalledWith(
-        expect.stringContaining('"persisted"'),
-      );
-    });
-    expect(await screen.findByText("已复制")).toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole("button", { name: "清理灰色提示过期诊断" }),
-    );
-    await waitFor(() => {
-      expect(
-        terminalSuggestionApiMock.cleanupTerminalSuggestionDiagnostics,
-      ).toHaveBeenCalledWith({
-        auditRetentionDays: 30,
-        feedbackRetentionDays: 365,
-        pruneAuditEvents: true,
-        pruneExpiredProviderCache: true,
-        pruneFeedback: true,
-        resetPersistedTelemetry: false,
-      });
-    });
-    expect(await screen.findByText(/已清理 审计 2/)).toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole("button", { name: "重置灰色提示聚合统计" }),
-    );
-    await waitFor(() => {
-      expect(
-        terminalSuggestionApiMock.cleanupTerminalSuggestionDiagnostics,
-      ).toHaveBeenLastCalledWith({
-        auditRetentionDays: 30,
-        feedbackRetentionDays: 365,
-        pruneAuditEvents: false,
-        pruneExpiredProviderCache: false,
-        pruneFeedback: false,
-        resetPersistedTelemetry: true,
-      });
-    });
+    ).not.toHaveBeenCalled();
+    expect(
+      terminalSuggestionApiMock.getTerminalSuggestionTelemetryExport,
+    ).not.toHaveBeenCalled();
+    expect(
+      terminalSuggestionApiMock.cleanupTerminalSuggestionDiagnostics,
+    ).not.toHaveBeenCalled();
   });
 
   it("shows save state feedback", () => {

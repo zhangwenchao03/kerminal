@@ -30,7 +30,7 @@ use kerminal_lib::{
         ssh_runtime::{
             ManagedSshSessionManager, SshChannelKind, SshRuntimeDynamicForwardRequest,
             SshRuntimeLocalForwardRequest, SshRuntimeRemoteDynamicForwardRequest,
-            SshRuntimeRemoteForwardRequest, MANAGED_SSH_CAPABILITY_RUNTIME_FLAG,
+            SshRuntimeRemoteForwardRequest,
         },
     },
     state::AppState,
@@ -193,7 +193,7 @@ fn create_local_forward_prefers_managed_runtime_and_releases_channel_on_stop() {
 }
 
 #[test]
-fn create_external_local_forward_uses_capability_runtime_lane() {
+fn create_external_local_forward_uses_interactive_runtime_lane() {
     let (_home, state) = test_state();
     let launch_id = queue_putty_external_password_launch(&state, 2222);
     let pending = state
@@ -252,8 +252,7 @@ fn create_external_local_forward_uses_capability_runtime_lane() {
     let key = backend.last_key().expect("runtime key");
     assert!(key
         .runtime_flags
-        .iter()
-        .any(|flag| flag == MANAGED_SSH_CAPABILITY_RUNTIME_FLAG));
+        .is_empty(), "external port forward should use the same interactive managed runtime lane as the terminal");
     let snapshot = manager.snapshot().expect("managed snapshot");
     assert_eq!(snapshot.active_sessions, 1);
     assert_eq!(snapshot.sessions[0].key.runtime_flags, key.runtime_flags);

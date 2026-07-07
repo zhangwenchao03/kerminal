@@ -14,8 +14,9 @@ use kerminal_lib::{
     services::{
         encrypted_vault_service::{write_toml_atomically, EncryptedVaultService},
         ssh_credential_resolver::{
-            ResolvedSshAuthKind, ResolvedSshAuthMaterial, ResolvedSshCredentialSource,
-            SshCredentialResolver, TerminalSecretInputMode,
+            NativeSshAuthMaterial, NativeSshRouteMaterial, ResolvedSshAuthKind,
+            ResolvedSshAuthMaterial, ResolvedSshCredentialSource, SshCredentialResolver,
+            TerminalSecretInputMode,
         },
     },
 };
@@ -273,6 +274,79 @@ fn resolver_materializes_password_and_inline_key_for_runtime_hosts() {
             .as_deref(),
         None
     );
+}
+
+#[test]
+fn resolver_builds_native_route_material_without_runtime_host_secret_bridge() {
+    let fixture = Fixture::new();
+    let target_key_ref = fixture.store_secret(
+        "ssh-host",
+        "host-1",
+        "target",
+        "private-key",
+        "ssh-private-key",
+        "-----BEGIN OPENSSH PRIVATE KEY-----\ntarget-key\n",
+    );
+    let target_passphrase_ref = fixture.store_secret(
+        "ssh-host",
+        "host-1",
+        "target",
+        "key-passphrase",
+        "ssh-key-passphrase",
+        "target-passphrase-secret",
+    );
+    let jump_password_ref = fixture.store_secret(
+        "jump-host",
+        "host-1",
+        "jump-0",
+        "password",
+        "ssh-password",
+        "jump-password-secret",
+    );
+    let mut host = key_path_host("host-1", "");
+    host.secret_ref = Some(target_key_ref);
+    host.key_passphrase_ref = Some(target_passphrase_ref);
+    host.ssh_options.jump_hosts.push(SshJumpHostOptions {
+        name: "bastion".to_owned(),
+        host: "bastion.internal".to_owned(),
+        port: 2222,
+        username: "ops".to_owned(),
+        auth_type: RemoteHostAuthType::Password,
+        credential_ref: None,
+        secret_ref: Some(jump_password_ref),
+        key_passphrase_ref: None,
+        key_passphrase_secret: None,
+        credential_secret: None,
+        credential_status: RemoteHostCredentialStatus::Vault,
+    });
+
+    let resolved = fixture.resolver().resolve_host(&host).expect("resolve");
+    let native_material =
+        NativeSshRouteMaterial::from_resolved_auth(&resolved).expect("native material");
+
+    match &native_material.target.auth {
+        NativeSshAuthMaterial::PrivateKeyPem {
+            content,
+            passphrase,
+            ..
+        } => {
+            assert!(content.contains("target-key"));
+            assert_eq!(
+                passphrase.as_ref().expect("passphrase").value,
+                "target-passphrase-secret"
+            );
+        }
+        other => panic!("expected native target inline key, got {other:?}"),
+    }
+    match &native_material.jumps[0].auth {
+        NativeSshAuthMaterial::Password { value, .. } => {
+            assert_eq!(value, "jump-password-secret");
+        }
+        other => panic!("expected native jump password, got {other:?}"),
+    }
+    assert_redacted(&native_material, "target-key");
+    assert_redacted(&native_material, "target-passphrase-secret");
+    assert_redacted(&native_material, "jump-password-secret");
 }
 
 #[test]

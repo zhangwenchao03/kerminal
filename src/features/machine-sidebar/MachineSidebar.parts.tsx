@@ -11,6 +11,7 @@ import {
   Pencil,
   Pin,
   Plus,
+  Search,
   Server,
   Settings,
   Terminal,
@@ -22,6 +23,7 @@ import type {
   ReactNode,
   RefObject,
 } from "react";
+import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
@@ -37,6 +39,7 @@ import {
   type MachineSidebarMenuAction,
   type MachineSidebarMenuDomain,
 } from "./machineSidebarMenuModel";
+import { buildVisibleMachineGroups } from "./machineSidebarVisibilityModel";
 
 const collapsedPopoverSurfaceClassName =
   "kerminal-floating-enter fixed bottom-[84px] left-[72px] top-[56px] z-[1000] flex w-80 max-w-[calc(100vw-88px)] flex-col overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] text-zinc-950 shadow-2xl shadow-black/20 backdrop-blur-xl dark:text-zinc-50 dark:shadow-black/50";
@@ -148,6 +151,15 @@ export function CollapsedHostPopover({
   toggleGroup,
   visibleGroups,
 }: CollapsedHostPopoverProps) {
+  const [popoverSearch, setPopoverSearch] = useState("");
+  const normalizedPopoverSearch = popoverSearch.trim().toLowerCase();
+  const popoverVisibleGroups = useMemo(
+    () => buildVisibleMachineGroups(visibleGroups, normalizedPopoverSearch),
+    [normalizedPopoverSearch, visibleGroups],
+  );
+  const forcePopoverGroupsExpanded =
+    forceGroupsExpanded || Boolean(normalizedPopoverSearch);
+
   if (!open || typeof document === "undefined") {
     return null;
   }
@@ -185,10 +197,25 @@ export function CollapsedHostPopover({
           {groupToggleIcon}
         </Button>
       </div>
+      <label className="relative mx-3 mt-3 block min-w-0">
+        <span className="sr-only">搜索主机列表</span>
+        <Search
+          aria-hidden="true"
+          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500"
+          strokeWidth={1.8}
+        />
+        <input
+          aria-label="搜索主机列表"
+          className="kerminal-sidebar-search kerminal-field-surface h-8 w-full rounded-xl border pl-9 pr-3 text-sm text-zinc-950 outline-none placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600"
+          onChange={(event) => setPopoverSearch(event.currentTarget.value)}
+          placeholder="搜索主机、分组或标签..."
+          value={popoverSearch}
+        />
+      </label>
       <div className="kerminal-sidebar-popover-list scrollbar-none flex min-h-0 flex-1 flex-col overflow-y-auto">
-        {visibleGroups.map((group) => {
+        {popoverVisibleGroups.map((group) => {
           const groupCollapsed =
-            !forceGroupsExpanded && collapsedGroupIds.has(group.id);
+            !forcePopoverGroupsExpanded && collapsedGroupIds.has(group.id);
 
           return (
             <section

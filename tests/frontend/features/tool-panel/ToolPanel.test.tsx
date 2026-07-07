@@ -488,7 +488,7 @@ describe("ToolPanel", () => {
     expect(screen.getByText("no sessions")).toBeInTheDocument();
   });
 
-  it("shows the diagnostics bundle action on the logs title row", async () => {
+  it("shows the log export action on the logs title row", async () => {
     const user = userEvent.setup();
 
     render(
@@ -505,18 +505,18 @@ describe("ToolPanel", () => {
     expect(header).toBeInTheDocument();
     const createBundleButton = within(header as HTMLElement).getByRole(
       "button",
-      { name: "生成诊断包" },
+      { name: "导出日志" },
     );
     expect(createBundleButton).toBeInTheDocument();
     await user.hover(createBundleButton);
     expect(
-      await screen.findByRole("tooltip", { name: "生成诊断包" }),
+      await screen.findByRole("tooltip", { name: "导出日志" }),
     ).toBeInTheDocument();
 
     await user.click(createBundleButton);
 
     expect(
-      await screen.findByRole("status", { name: "诊断包生成结果" }),
+      await screen.findByRole("status", { name: "日志导出结果" }),
     ).toBeInTheDocument();
     expect(
       screen.getByText(

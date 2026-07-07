@@ -1,6 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { TerminalTab } from "../../../../src/features/workspace/types";
+import type {
+  MachineGroup,
+  TerminalPane,
+  TerminalTab,
+} from "../../../../src/features/workspace/types";
 import {
   buildTerminalTabGroups,
   TerminalTabButton,
@@ -167,5 +171,125 @@ describe("buildTerminalTabGroups", () => {
     expect(groups[1].color).toBeDefined();
     expect(groups[1].color).not.toBe("pink");
     expect(groups[1].color).not.toBe(groups[2].color);
+  });
+
+  it("groups host container tabs under the parent host tab group", () => {
+    const hostTab: TerminalTab = {
+      id: "tab-host",
+      layout: {
+        paneId: "pane-host",
+        type: "pane",
+      },
+      machineId: "host-prod",
+      title: "172.16.41.60",
+    };
+    const containerTab: TerminalTab = {
+      id: "tab-container",
+      layout: {
+        paneId: "pane-container",
+        type: "pane",
+      },
+      machineId: "docker:host-prod:container-1",
+      title: "geological-disaster-backend",
+    };
+    const panes: TerminalPane[] = [
+      {
+        id: "pane-host",
+        lines: [],
+        machineId: "host-prod",
+        mode: "ssh",
+        prompt: "root@172.16.41.60:~$",
+        remoteHostId: "host-prod",
+        status: "online",
+        title: "172.16.41.60",
+      },
+      {
+        containerId: "container-1",
+        id: "pane-container",
+        lines: [],
+        machineId: "docker:host-prod:container-1",
+        mode: "container",
+        prompt: "geological-disaster-backend:/$",
+        remoteHostId: "host-prod",
+        status: "online",
+        title: "geological-disaster-backend",
+      },
+    ];
+
+    const groups = buildTerminalTabGroups(
+      [hostTab, containerTab],
+      {
+        "host-prod": {
+          color: "purple",
+          title: "生产主机",
+        },
+      },
+      { panes },
+    );
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({
+      color: "purple",
+      grouped: true,
+      id: "host-prod",
+      title: "生产主机",
+    });
+    expect(groups[0].tabs.map((tab) => tab.id)).toEqual([
+      "tab-host",
+      "tab-container",
+    ]);
+  });
+
+  it("uses the parent host name when a container tab opens before the host tab", () => {
+    const containerTab: TerminalTab = {
+      id: "tab-container",
+      layout: {
+        paneId: "pane-container",
+        type: "pane",
+      },
+      machineId: "docker:host-prod:container-1",
+      title: "geological-disaster-backend",
+    };
+    const panes: TerminalPane[] = [
+      {
+        containerId: "container-1",
+        id: "pane-container",
+        lines: [],
+        machineId: "docker:host-prod:container-1",
+        mode: "container",
+        prompt: "geological-disaster-backend:/$",
+        remoteHostId: "host-prod",
+        status: "online",
+        title: "geological-disaster-backend",
+      },
+    ];
+    const machineGroups: MachineGroup[] = [
+      {
+        id: "group-prod",
+        machines: [
+          {
+            description: "生产主机",
+            id: "host-prod",
+            kind: "ssh",
+            name: "172.16.41.60",
+            status: "online",
+            tags: ["ssh"],
+          },
+        ],
+        title: "生产",
+      },
+    ];
+
+    const groups = buildTerminalTabGroups(
+      [containerTab],
+      {},
+      { machineGroups, panes },
+    );
+
+    expect(groups[0]).toMatchObject({
+      grouped: false,
+      id: "host-prod",
+      title: "172.16.41.60",
+    });
   });
 });

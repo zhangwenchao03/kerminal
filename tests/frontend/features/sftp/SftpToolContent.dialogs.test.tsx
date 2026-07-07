@@ -136,11 +136,13 @@ describe("SftpToolContent events and dialogs", () => {
     );
     await user.click(screen.getByRole("menuitem", { name: "重命名" }));
 
-    expect(screen.getByLabelText("目标路径")).toHaveValue(
-      "/var/log/app.log.renamed",
-    );
-    await user.clear(screen.getByLabelText("目标路径"));
-    await user.type(screen.getByLabelText("目标路径"), "/var/log/app.old.log");
+    expect(screen.getByText("所在目录")).toBeInTheDocument();
+    expect(screen.getByText("/var/log")).toBeInTheDocument();
+    expect(screen.getByText("原名称")).toBeInTheDocument();
+    expect(screen.getAllByText("app.log").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText("新名称")).toHaveValue("app.log");
+    await user.clear(screen.getByLabelText("新名称"));
+    await user.type(screen.getByLabelText("新名称"), "app.old.log");
     await user.click(screen.getByRole("button", { name: "重命名" }));
 
     expect(sftpApiMocks.renameSftpPath).toHaveBeenCalledWith({
@@ -149,6 +151,44 @@ describe("SftpToolContent events and dialogs", () => {
       toPath: "/var/log/app.old.log",
     });
     expect(await screen.findByText(/已重命名/)).toBeInTheDocument();
+  });
+
+  it("opens the name-only rename dialog with F2 for a single selection", async () => {
+    const { container } = render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    await screen.findByText("var");
+    fireEvent.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
+    const fileButton = await screen.findByRole("button", { name: "文件 app.log" });
+
+    fireEvent.click(fileButton);
+    fireEvent.keyDown(container.querySelector("section") ?? fileButton, {
+      key: "F2",
+    });
+
+    expect(screen.getByRole("dialog", { name: "重命名" })).toBeInTheDocument();
+    expect(screen.getByLabelText("新名称")).toHaveValue("app.log");
+  });
+
+  it("opens a batch delete confirmation with Delete for multiple selections", async () => {
+    const { container } = render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    await screen.findByText("var");
+    fireEvent.dblClick(screen.getByRole("button", { name: "打开目录 log" }));
+    const fileButton = await screen.findByRole("button", { name: "文件 app.log" });
+    const symlinkButton = await screen.findByRole("button", {
+      name: "链接 current",
+    });
+
+    fireEvent.click(fileButton);
+    fireEvent.click(symlinkButton, { ctrlKey: true });
+    fireEvent.keyDown(container.querySelector("section") ?? symlinkButton, {
+      key: "Delete",
+    });
+
+    expect(screen.getByRole("dialog", { name: "删除 2 项" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "确认删除 2 项" }),
+    ).toBeInTheDocument();
   });
 
   it("changes permissions from the context menu", async () => {

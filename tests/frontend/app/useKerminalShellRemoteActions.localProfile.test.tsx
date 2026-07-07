@@ -234,6 +234,7 @@ describe("useKerminalShellRemoteActions local profiles", () => {
 
   it("closes an external SSH launch instead of deleting a persisted remote host", async () => {
     const removeSidebarMachine = vi.fn();
+    const setRemoteHostTree = vi.fn();
     const { result } = renderHook(() =>
       useKerminalShellRemoteActions({
         activeProfileId: baseProfile.id,
@@ -248,7 +249,7 @@ describe("useKerminalShellRemoteActions local profiles", () => {
         renameMachineGroup: vi.fn(),
         selectMachine: vi.fn(),
         setProfiles: vi.fn(),
-        setRemoteHostTree: vi.fn(),
+        setRemoteHostTree,
         updateLocalMachine: vi.fn(),
       }),
     );
@@ -264,6 +265,8 @@ describe("useKerminalShellRemoteActions local profiles", () => {
       "launch-123",
     );
     expect(remoteHostApiMock.deleteRemoteHost).not.toHaveBeenCalled();
+    expect(remoteHostApiMock.listRemoteHostTree).not.toHaveBeenCalled();
+    expect(setRemoteHostTree).not.toHaveBeenCalled();
     expect(removeSidebarMachine).toHaveBeenCalledWith("external:launch-123");
   });
 });

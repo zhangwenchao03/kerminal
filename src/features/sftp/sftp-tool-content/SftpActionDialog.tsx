@@ -8,7 +8,7 @@ import {
   dialogActionDescription,
   dialogActionTitle,
 } from "./sftpDialogModel";
-import { defaultRenamePath, joinRemotePath } from "./sftpPathModel";
+import { joinRemotePath, parentRemotePath } from "./sftpPathModel";
 import type { SftpDialogAction, SftpStatus } from "./types";
 
 export function SftpActionDialog({
@@ -68,12 +68,13 @@ export function SftpActionDialog({
 
       {action.kind === "rename" ? (
         <div className="space-y-3">
-          <ReadonlyPath label="原路径" value={action.entry.path} />
+          <ReadonlyPath label="所在目录" value={parentRemotePath(action.entry.path)} />
+          <ReadonlyPath label="原名称" value={action.entry.name} />
           <PathInput
-            label="目标路径"
-            onChange={(value) => onActionChange({ ...action, toPath: value })}
-            placeholder={defaultRenamePath(action.entry)}
-            value={action.toPath}
+            label="新名称"
+            onChange={(value) => onActionChange({ ...action, newName: value })}
+            placeholder={action.entry.name}
+            value={action.newName}
           />
         </div>
       ) : null}
@@ -96,11 +97,35 @@ export function SftpActionDialog({
 
       {action.kind === "delete" ? (
         <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-3 text-sm text-red-700 dark:text-red-100">
-          将删除 {entryKindLabel(action.entry.kind)}：
-          <span className="mt-1 block break-all font-mono text-xs">
-            {action.entry.path}
-          </span>
-          {action.entry.kind === "directory" ? (
+          {action.entries.length > 1 ? (
+            <>
+              <div>
+                将删除 {action.entries.length} 项，其中{" "}
+                {action.entries.filter((entry) => entry.kind === "directory").length}{" "}
+                个目录。
+              </div>
+              <div className="mt-2 max-h-32 overflow-auto rounded-xl border border-red-500/15 bg-red-500/5 p-2">
+                {action.entries.slice(0, 8).map((entry) => (
+                  <div className="break-all font-mono text-xs" key={entry.path}>
+                    {entry.name || entry.path}
+                  </div>
+                ))}
+                {action.entries.length > 8 ? (
+                  <div className="mt-1 text-xs text-red-600/80 dark:text-red-100/80">
+                    还有 {action.entries.length - 8} 项未显示。
+                  </div>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <>
+              将删除 {entryKindLabel(action.entries[0].kind)}：
+              <span className="mt-1 block break-all font-mono text-xs">
+                {action.entries[0].path}
+              </span>
+            </>
+          )}
+          {action.entries.some((entry) => entry.kind === "directory") ? (
             <span className="mt-2 block text-xs text-red-600/80 dark:text-red-100/80">
               目录会递归删除，包含其中所有文件和子目录。
             </span>

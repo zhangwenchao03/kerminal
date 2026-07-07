@@ -33,9 +33,12 @@ export interface RegisterTerminalRendererPaneOptions {
 
 export interface TerminalRendererRegistrySnapshot {
   activeControllers: number;
+  atlasEpoch: number;
   effectiveGpuPanes: number;
   hiddenControllers: number;
+  lastRecoveryAt?: number;
   panes: TerminalRendererPaneSnapshot[];
+  recoveryCount: number;
   requestedMode: TerminalRendererType;
   suggestedFallback?: "cpu";
   webglCanvasCount: number;
@@ -49,7 +52,9 @@ export interface TerminalRendererPaneSnapshot {
   focused: boolean;
   lastAttachAt?: number;
   lastContextLossAt?: number;
+  lastRecoveryAt?: number;
   paneId: string;
+  recoveryCount: number;
   visible: boolean;
 }
 
@@ -91,8 +96,10 @@ interface RegisteredRendererPane {
   lastContextLossAt?: number;
   lastFailureAt?: number;
   lastFailureReason?: TerminalRendererFallbackReason;
+  lastRecoveryAt?: number;
   lastUsedAt: number;
   paneId: string;
+  recoveryCount: number;
   reaperTimer?: TimerHandle;
   retryCount: number;
   visible: boolean;
@@ -109,7 +116,10 @@ export function createTerminalRendererRegistry({
   const panes = new Map<string, RegisteredRendererPane>();
   const failureEvents: TerminalRendererFailureEvent[] = [];
   const listeners = new Set<() => void>();
+  let atlasEpoch = 0;
   let cachedSnapshot: TerminalRendererRegistrySnapshot | null = null;
+  let lastRecoveryAt: number | undefined;
+  let recoveryCount = 0;
   let requestedMode = rendererType;
   let suggestedFallback: "cpu" | undefined;
   let disposed = false;
@@ -148,7 +158,9 @@ export function createTerminalRendererRegistry({
   const syncPaneState = (pane: RegisteredRendererPane) => {
     const state = pane.controller.getState();
     pane.currentBackend = state.backend;
-    pane.fallbackReason = state.fallbackReason;
+    if (state.fallbackReason !== undefined || state.backend === "gpu") {
+      pane.fallbackReason = state.fallbackReason;
+    }
     if (state.backend === "gpu") {
       pane.lastAttachAt = now();
       pane.retryCount = 0;
@@ -233,6 +245,7 @@ export function createTerminalRendererRegistry({
       hiddenSince: visible ? undefined : registeredAt,
       lastUsedAt: focused || visible ? registeredAt : 0,
       paneId,
+      recoveryCount: 0,
       retryCount: 0,
       visible,
     };
@@ -277,7 +290,9 @@ export function createTerminalRendererRegistry({
       return;
     }
     pane.currentBackend = state.backend;
-    pane.fallbackReason = state.fallbackReason;
+    if (state.fallbackReason !== undefined || state.backend === "gpu") {
+      pane.fallbackReason = state.fallbackReason;
+    }
     if (state.backend === "gpu") {
       pane.lastAttachAt = now();
       pane.retryCount = 0;
@@ -335,13 +350,61 @@ export function createTerminalRendererRegistry({
     reconcile();
   };
 
+  const recordPaneFailureEvent = (
+    pane: RegisteredRendererPane,
+    reason: TerminalRendererFallbackReason,
+    at: number,
+  ) => {
+    failureEvents.push({ at, reason });
+    pane.failureCount += 1;
+    pane.fallbackReason = reason;
+    pane.lastFailureAt = at;
+    pane.lastFailureReason = reason;
+    if (reason === "context-lost") {
+      pane.lastContextLossAt = at;
+      pane.retryCount += 1;
+    }
+  };
+
   const clearTextureAtlas = (paneId?: string) => {
-    const targets =
+    const requestedTargets =
       typeof paneId === "string"
         ? [...panes.values()].filter((pane) => pane.paneId === paneId)
-        : [...panes.values()];
-    for (const pane of targets) {
-      pane.controller.clearTextureAtlas?.();
+        : [...panes.values()].filter((pane) => pane.currentBackend === "gpu");
+    const relatedGpuPanes =
+      typeof paneId === "string"
+        ? [...panes.values()].filter((pane) => pane.currentBackend === "gpu")
+        : requestedTargets;
+    const targets = new Map<string, RegisteredRendererPane>();
+    for (const pane of [...requestedTargets, ...relatedGpuPanes]) {
+      targets.set(pane.paneId, pane);
+    }
+    if (targets.size === 0) {
+      return;
+    }
+    const recoveredAt = now();
+    let clearedCount = 0;
+    let firstError: unknown;
+    for (const pane of targets.values()) {
+      try {
+        pane.controller.clearTextureAtlas?.();
+      } catch (error) {
+        firstError ??= error;
+        recordPaneFailureEvent(pane, "atlas-clear-failed", recoveredAt);
+        continue;
+      }
+      pane.lastRecoveryAt = recoveredAt;
+      pane.recoveryCount += 1;
+      clearedCount += 1;
+    }
+    if (clearedCount > 0) {
+      atlasEpoch += 1;
+      lastRecoveryAt = recoveredAt;
+      recoveryCount += 1;
+    }
+    if (firstError) {
+      reconcile();
+      throw firstError;
     }
     emitChange();
   };
@@ -360,16 +423,21 @@ export function createTerminalRendererRegistry({
         focused: pane.focused,
         lastAttachAt: pane.lastAttachAt,
         lastContextLossAt: pane.lastContextLossAt,
+        lastRecoveryAt: pane.lastRecoveryAt,
         paneId: pane.paneId,
+        recoveryCount: pane.recoveryCount,
         visible: pane.visible,
       };
     });
     cachedSnapshot = {
       activeControllers: panes.size,
+      atlasEpoch,
       effectiveGpuPanes: paneSnapshots.filter((pane) => pane.backend === "gpu")
         .length,
       hiddenControllers: paneSnapshots.filter((pane) => !pane.visible).length,
+      lastRecoveryAt,
       panes: paneSnapshots,
+      recoveryCount,
       requestedMode,
       suggestedFallback,
       webglCanvasCount: paneSnapshots.reduce(

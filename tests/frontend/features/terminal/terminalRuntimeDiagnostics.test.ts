@@ -15,6 +15,7 @@ describe("terminalRuntimeDiagnostics", () => {
       generatedAt: "2026-07-01T15:20:00.000Z",
       terminalRenderer: {
         activeControllers: 2,
+        atlasEpoch: 0,
         effectiveGpuPanes: 1,
         hiddenControllers: 1,
         panes: [
@@ -24,9 +25,11 @@ describe("terminalRuntimeDiagnostics", () => {
             failureCount: 0,
             focused: true,
             paneId: "pane-1",
+            recoveryCount: 0,
             visible: true,
           },
         ],
+        recoveryCount: 0,
         requestedMode: "auto",
         webglCanvasCount: 1,
       },
@@ -139,6 +142,7 @@ describe("terminalRuntimeDiagnostics", () => {
         activeChannels: 3,
         activeSessions: 1,
         generatedAt: "1760000000",
+        recentLegacyFallbacks: [],
         sessions: [
           {
             activeChannels: 3,

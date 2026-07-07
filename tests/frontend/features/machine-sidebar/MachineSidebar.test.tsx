@@ -363,6 +363,11 @@ describe("MachineSidebar", () => {
     expect(screen.getByRole("dialog", { name: "主机列表" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /PowerShell/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /ubuntu-dev/i })).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("搜索主机列表"), "ubuntu");
+
+    expect(screen.getByRole("button", { name: /ubuntu-dev/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /PowerShell/i })).toBeNull();
   });
 
   it("opens the SFTP transfer workbench from expanded and collapsed sidebar actions", async () => {

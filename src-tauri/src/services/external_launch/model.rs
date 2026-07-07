@@ -69,6 +69,7 @@ pub struct ExternalLaunchParseInput {
     pub entrypoint: ExternalLaunchEntrypoint,
     pub argv: Vec<String>,
     pub persona: Option<String>,
+    pub parent_command_line: Option<String>,
 }
 
 impl ExternalLaunchParseInput {
@@ -78,6 +79,7 @@ impl ExternalLaunchParseInput {
             entrypoint: ExternalLaunchEntrypoint::DirectArgv,
             argv,
             persona: Some(tool.as_str().to_owned()),
+            parent_command_line: None,
         }
     }
 
@@ -87,6 +89,7 @@ impl ExternalLaunchParseInput {
             entrypoint: ExternalLaunchEntrypoint::DirectArgv,
             argv,
             persona: None,
+            parent_command_line: None,
         }
     }
 
@@ -101,6 +104,25 @@ impl ExternalLaunchParseInput {
             entrypoint,
             argv,
             persona,
+            parent_command_line: None,
+        }
+    }
+
+    pub fn from_args_with_parent_command_line(
+        entrypoint: ExternalLaunchEntrypoint,
+        source_tool: Option<ExternalLaunchSourceTool>,
+        persona: Option<String>,
+        argv: Vec<String>,
+        parent_command_line: Option<String>,
+    ) -> Self {
+        Self {
+            source_tool,
+            entrypoint,
+            argv,
+            persona,
+            parent_command_line: parent_command_line
+                .map(|value| value.trim().to_owned())
+                .filter(|value| !value.is_empty()),
         }
     }
 }
@@ -116,7 +138,7 @@ pub struct ExternalLaunchSource {
 }
 
 /// Normalized SSH target.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExternalSshTarget {
     pub host: String,
@@ -152,9 +174,24 @@ impl ExternalSshTarget {
 
     pub fn display_name(&self) -> String {
         match &self.username {
-            Some(username) => format!("{username}@{}", self.host),
+            Some(username) => format!("{}@{}", redacted_external_username(username), self.host),
             None => self.host.clone(),
         }
+    }
+}
+
+impl fmt::Debug for ExternalSshTarget {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ExternalSshTarget")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field(
+                "username",
+                &self.username.as_deref().map(redacted_external_username),
+            )
+            .field("route", &self.route)
+            .finish()
     }
 }
 
@@ -346,7 +383,7 @@ impl fmt::Debug for ExternalSessionSecretRef {
 }
 
 /// Options that influence the initial workspace tab or future materialization.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExternalSshLaunchOptions {
     pub display_name: Option<String>,
@@ -354,6 +391,25 @@ pub struct ExternalSshLaunchOptions {
     pub remote_command_file: Option<String>,
     pub open_sftp: bool,
     pub session_name: Option<String>,
+}
+
+impl fmt::Debug for ExternalSshLaunchOptions {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ExternalSshLaunchOptions")
+            .field(
+                "display_name",
+                &self.display_name.as_deref().map(redact_b64_text),
+            )
+            .field("remote_command", &self.remote_command)
+            .field("remote_command_file", &self.remote_command_file)
+            .field("open_sftp", &self.open_sftp)
+            .field(
+                "session_name",
+                &self.session_name.as_deref().map(redact_b64_text),
+            )
+            .finish()
+    }
 }
 
 /// Redacted parser diagnostics.
@@ -408,6 +464,41 @@ fn normalize_tool_name(value: &str) -> String {
         .to_ascii_lowercase()
         .replace('_', "-")
         .replace(' ', "")
+}
+
+fn redacted_external_username(username: &str) -> String {
+    if username
+        .get(..5)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("b64>>"))
+    {
+        "b64>><redacted>".to_owned()
+    } else if looks_like_opaque_external_username(username) {
+        "<redacted-external-user>".to_owned()
+    } else {
+        username.to_owned()
+    }
+}
+
+fn looks_like_opaque_external_username(username: &str) -> bool {
+    let username = username.trim();
+    if username.len() < 32 || username.contains('@') {
+        return false;
+    }
+    let token_chars = username
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '+' | '/' | '='))
+        .count();
+    token_chars * 100 / username.len() >= 80
+}
+
+fn redact_b64_text(value: &str) -> String {
+    if let Some(index) = value.to_ascii_lowercase().find("b64>>") {
+        let mut redacted = value[..index].to_owned();
+        redacted.push_str("b64>><redacted>");
+        redacted
+    } else {
+        value.to_owned()
+    }
 }
 
 fn unix_timestamp() -> String {

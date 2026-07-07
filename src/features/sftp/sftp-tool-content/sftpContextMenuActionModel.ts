@@ -5,7 +5,7 @@
  */
 
 import type { SftpEntry, SftpTransferKind } from "../../../lib/sftpApi";
-import type { SftpMenuAction } from "./types";
+import type { SftpContextMenuScope, SftpMenuAction } from "./types";
 
 export type SftpContextMenuActionDecision =
   | { kind: "noop" }
@@ -25,6 +25,7 @@ export type SftpContextMenuActionDecision =
   | { kind: "openDirectory"; path: string }
   | { kind: "workspaceDirectory"; path: string }
   | { kind: "transferToTarget" }
+  | { entries: SftpEntry[]; kind: "downloadSelection" }
   | { entry: SftpEntry; kind: "preview" }
   | { entry: SftpEntry; kind: "download" }
   | { entry: SftpEntry; kind: "downloadArchive" }
@@ -33,18 +34,21 @@ export type SftpContextMenuActionDecision =
   | { kind: "uploadDirectoryInto"; targetRemotePath: string }
   | { entry: SftpEntry; kind: "rename" }
   | { entry: SftpEntry; kind: "chmod" }
+  | { entries: SftpEntry[]; kind: "deleteSelection" }
   | { entry: SftpEntry; kind: "delete" };
 
 export type SftpContextMenuActionOptions = {
   action: SftpMenuAction;
   currentPath: string;
   entry: SftpEntry | null;
+  scope?: SftpContextMenuScope;
 };
 
 export function resolveSftpContextMenuAction({
   action,
   currentPath,
   entry,
+  scope,
 }: SftpContextMenuActionOptions): SftpContextMenuActionDecision {
   if (action === "refresh") {
     return { kind: "refresh", path: currentPath };
@@ -84,6 +88,16 @@ export function resolveSftpContextMenuAction({
   }
   if (action === "newDirectory") {
     return { kind: "newDirectory" };
+  }
+  if (action === "downloadSelection") {
+    return scope?.kind === "selection"
+      ? { entries: scope.transferableEntries, kind: "downloadSelection" }
+      : { kind: "noop" };
+  }
+  if (action === "deleteSelection") {
+    return scope?.kind === "selection"
+      ? { entries: scope.entries, kind: "deleteSelection" }
+      : { kind: "noop" };
   }
   if (action === "workspace") {
     if (!entry) {

@@ -20,6 +20,20 @@ const sourceToolLabels: Record<
   xshell: "Xshell",
 };
 
+const EXTERNAL_SSH_MACHINE_ID_PREFIX = "external:";
+
+export function isExternalSshMachineId(machineId: string): boolean {
+  return machineId.startsWith(EXTERNAL_SSH_MACHINE_ID_PREFIX);
+}
+
+export function externalSshLaunchIdFromMachineId(
+  machineId: string,
+): string | null {
+  return isExternalSshMachineId(machineId)
+    ? machineId.slice(EXTERNAL_SSH_MACHINE_ID_PREFIX.length)
+    : null;
+}
+
 export function externalSshLaunchNeedsUsername(
   launch: ExternalSshLaunchRequest,
 ): boolean {
@@ -116,7 +130,10 @@ export function externalSshLaunchAuthType(
 export function externalSshLaunchMachineId(
   launch: ExternalSshLaunchRequest | ExternalSshLaunchResolvedRequest,
 ) {
-  return materializedTarget(launch)?.targetId ?? `external:${launch.id}`;
+  return (
+    materializedTarget(launch)?.targetId ??
+    `${EXTERNAL_SSH_MACHINE_ID_PREFIX}${launch.id}`
+  );
 }
 
 export function externalSshLaunchTags(launch: ExternalSshLaunchRequest) {

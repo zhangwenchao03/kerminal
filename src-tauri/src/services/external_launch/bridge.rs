@@ -42,6 +42,8 @@ pub struct ExternalLaunchBridgeEnvelope {
     pub argv: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_command_line: Option<String>,
 }
 
 impl ExternalLaunchBridgeEnvelope {
@@ -62,15 +64,24 @@ impl ExternalLaunchBridgeEnvelope {
             cwd: cwd
                 .map(|value| value.trim().to_owned())
                 .filter(|value| !value.is_empty()),
+            parent_command_line: None,
         })
     }
 
+    pub fn with_parent_command_line(mut self, parent_command_line: Option<String>) -> Self {
+        self.parent_command_line = parent_command_line
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty());
+        self
+    }
+
     pub fn parse_input(&self) -> ExternalLaunchParseInput {
-        ExternalLaunchParseInput::from_args(
+        ExternalLaunchParseInput::from_args_with_parent_command_line(
             ExternalLaunchEntrypoint::ShimIpc,
             Some(self.persona),
             Some(self.persona.as_str().to_owned()),
             self.argv.clone(),
+            self.parent_command_line.clone(),
         )
     }
 
@@ -101,6 +112,10 @@ impl fmt::Debug for ExternalLaunchBridgeEnvelope {
             .field("argv_redacted", &self.redacted_argv())
             .field("argv_count", &self.argv.len())
             .field("cwd_present", &self.cwd.is_some())
+            .field(
+                "parent_command_line_present",
+                &self.parent_command_line.is_some(),
+            )
             .finish()
     }
 }
@@ -144,6 +159,104 @@ pub fn external_launch_bridge_endpoint(root: &Path) -> ExternalLaunchBridgeEndpo
             .into_owned(),
         scope_id,
     }
+}
+
+pub fn direct_parent_command_line_for_args(argv: &[String]) -> Option<String> {
+    if !should_capture_direct_parent_command_line(argv) {
+        return None;
+    }
+    discover_parent_command_line()
+        .filter(|value| looks_like_bhost_command_line(value))
+        .or_else(|| discover_bhost_parent_command_line_for_args(argv))
+}
+
+fn should_capture_direct_parent_command_line(argv: &[String]) -> bool {
+    argv.iter()
+        .skip(1)
+        .any(|value| value.to_ascii_lowercase().ends_with(".moba"))
+}
+
+#[cfg(windows)]
+fn discover_parent_command_line() -> Option<String> {
+    use std::{os::windows::process::CommandExt, process::Command};
+
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let script = format!(
+        "$p=Get-CimInstance Win32_Process -Filter 'ProcessId = {}'; \
+         if ($p) {{ \
+           $pp=Get-CimInstance Win32_Process -Filter ('ProcessId = ' + $p.ParentProcessId); \
+           if ($pp) {{ [Console]::Out.Write($pp.CommandLine) }} \
+         }}",
+        std::process::id()
+    );
+    let output = Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    (!value.is_empty()).then_some(value)
+}
+
+#[cfg(windows)]
+fn discover_bhost_parent_command_line_for_args(argv: &[String]) -> Option<String> {
+    use std::{os::windows::process::CommandExt, process::Command};
+
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let session_name = argv
+        .iter()
+        .skip(1)
+        .find(|value| value.to_ascii_lowercase().ends_with(".moba"))
+        .and_then(|value| {
+            Path::new(value)
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().into_owned())
+        })
+        .filter(|value| !value.trim().is_empty())?;
+    let session_name = powershell_single_quote(&session_name);
+    let script = format!(
+        "$session={session_name}; \
+         Get-CimInstance Win32_Process -Filter \"Name = 'bhmultauth.exe'\" | \
+           Where-Object {{ $_.CommandLine -and $_.CommandLine -like '*kerminal*' -and $_.CommandLine -like ('*' + $session + '*') }} | \
+           Sort-Object CreationDate -Descending | \
+           Select-Object -First 1 -ExpandProperty CommandLine"
+    );
+    let output = Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    (!value.is_empty()).then_some(value)
+}
+
+#[cfg(not(windows))]
+fn discover_bhost_parent_command_line_for_args(_argv: &[String]) -> Option<String> {
+    None
+}
+
+#[cfg(not(windows))]
+fn discover_parent_command_line() -> Option<String> {
+    None
+}
+
+fn looks_like_bhost_command_line(value: &str) -> bool {
+    value
+        .rsplit(['\\', '/'])
+        .next()
+        .unwrap_or(value)
+        .to_ascii_lowercase()
+        .contains("bhmultauth.exe")
+}
+
+fn powershell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
 }
 
 fn bridge_scope_id(root: &Path) -> String {

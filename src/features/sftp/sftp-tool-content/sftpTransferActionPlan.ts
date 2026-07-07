@@ -566,12 +566,17 @@ export function statusForDockerDirectTransfer(
   request: SftpManagedTransferRequest,
   phase: "running" | "success",
 ): SftpStatus {
+  const transferName =
+    request.direction === "upload"
+      ? fileNameFromPath(request.localPath, "upload")
+      : fileNameFromPath(request.remotePath, "download");
+
   if (phase === "running") {
     return {
       kind: "info",
       message:
         request.direction === "upload"
-          ? `正在上传：${fileNameFromPath(request.localPath, "upload")}`
+          ? `正在上传：${transferName}`
           : `正在下载：${request.remotePath}`,
     };
   }
@@ -580,7 +585,7 @@ export function statusForDockerDirectTransfer(
     kind: "success",
     message:
       request.direction === "upload"
-        ? `已上传：${fileNameFromPath(request.localPath, "upload")}`
+        ? `已上传：${transferName}`
         : `已下载：${request.remotePath}`,
   };
 }

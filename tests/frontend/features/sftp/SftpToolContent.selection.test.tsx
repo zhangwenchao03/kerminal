@@ -24,7 +24,13 @@ describe("SftpToolContent selection behavior", () => {
     fireEvent.contextMenu(varButton, { clientX: 80, clientY: 120 });
 
     expect(
-      screen.getByRole("menu", { name: "SFTP var 右键菜单" }),
+      screen.getByRole("menu", { name: "SFTP 已选 2 项右键菜单" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "下载选中 2 项" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "删除选中 2 项" }),
     ).toBeInTheDocument();
     expect(screen.getByText("3 / 3 项 / 已选 2")).toBeInTheDocument();
     expect(varButton.closest("[aria-selected='true']")).toBeInTheDocument();

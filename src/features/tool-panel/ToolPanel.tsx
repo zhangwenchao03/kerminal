@@ -236,9 +236,8 @@ export function ToolPanel({
                 )}
 
                 <RenderErrorBoundary
-                  fallback={(error) => (
+                  fallback={() => (
                     <ToolContentCrashFallback
-                      error={error}
                       title={tool.title}
                     />
                   )}
@@ -390,22 +389,13 @@ function ToolContentLoadingFallback({ title }: { title?: string }) {
   );
 }
 
-function ToolContentCrashFallback({
-  error,
-  title,
-}: {
-  error: Error | null;
-  title?: string;
-}) {
+function ToolContentCrashFallback({ title }: { title?: string }) {
   return (
     <div className="rounded-2xl border border-rose-300/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-100">
       <div className="font-medium">{title ?? "工具"}加载失败</div>
-      <div className="mt-1 text-xs opacity-80">收起右栏后重新打开可重试。</div>
-      {error?.message ? (
-        <pre className="kerminal-muted-surface mt-3 max-h-32 overflow-auto rounded-xl p-2 text-xs">
-          {error.message}
-        </pre>
-      ) : null}
+      <div className="mt-1 text-xs opacity-80">
+        收起右栏后重新打开可重试，详细信息已写入应用日志。
+      </div>
     </div>
   );
 }

@@ -20,7 +20,7 @@ export const tools: ToolSummary[] = [
   {
     id: "system",
     title: "系统",
-    description: "CPU、内存、网络和磁盘遥测",
+    description: "CPU、内存、网络和磁盘状态",
   },
   {
     id: "sftp",
@@ -45,7 +45,7 @@ export const tools: ToolSummary[] = [
   {
     id: "logs",
     title: "日志",
-    description: "会话和操作审计记录",
+    description: "会话和操作记录",
   },
   {
     id: "settings",

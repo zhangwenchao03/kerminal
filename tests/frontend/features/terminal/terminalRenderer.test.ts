@@ -343,6 +343,32 @@ describe("terminalRenderer", () => {
     expect(terminal.refresh).toHaveBeenLastCalledWith(0, 11);
   });
 
+  it("surfaces texture atlas clear failures to the recovery coordinator", async () => {
+    const logger = { warn: vi.fn() };
+    const terminal = new FakeTerminal();
+    const controller = createTerminalRendererController({
+      loadWebglAddon: vi
+        .fn()
+        .mockResolvedValue({ WebglAddon: FakeWebglAddon }),
+      logger,
+      paneId: "pane-1",
+      rendererType: "auto",
+      terminal,
+    });
+
+    controller.attach();
+    await flushPromises();
+    FakeWebglAddon.instances[0].clearTextureAtlas.mockImplementation(() => {
+      throw new Error("atlas failed");
+    });
+
+    expect(() => controller.clearTextureAtlas()).toThrow("atlas failed");
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("texture atlas clear failed"),
+      expect.any(Error),
+    );
+  });
+
   it("ignores stale async attach after switching to CPU", async () => {
     let resolveLoad:
       | ((value: { WebglAddon: typeof FakeWebglAddon }) => void)

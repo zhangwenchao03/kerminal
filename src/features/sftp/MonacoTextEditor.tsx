@@ -2,6 +2,10 @@ import type * as Monaco from "monaco-editor";
 import * as monaco from "monaco-editor";
 import { useEffect, useRef } from "react";
 import "../../lib/monacoSetup";
+import {
+  installMonacoHoverGuard,
+  installMonacoHoverPlacementGuard,
+} from "./monacoHoverGuard";
 
 export type MonacoTextEditorMountHandler = (
   editor: Monaco.editor.IStandaloneCodeEditor,
@@ -53,12 +57,19 @@ export function MonacoTextEditor({
     }
 
     beforeMount?.(monaco);
+    const hoverPlacementDisposable = installMonacoHoverPlacementGuard(container);
     const model = getOrCreateModel(modelsRef.current, path, language, value);
-    const editor = monaco.editor.create(container, {
-      ...options,
-      model,
-      ...(theme ? { theme } : {}),
-    });
+    let editor: Monaco.editor.IStandaloneCodeEditor;
+    try {
+      editor = monaco.editor.create(container, {
+        ...options,
+        model,
+        ...(theme ? { theme } : {}),
+      });
+    } catch (error) {
+      hoverPlacementDisposable.dispose();
+      throw error;
+    }
     editorRef.current = editor;
     const changeDisposable = editor.onDidChangeModelContent(() => {
       if (suppressChangeRef.current) {
@@ -66,10 +77,13 @@ export function MonacoTextEditor({
       }
       onChangeRef.current?.(editor.getValue());
     });
+    const hoverGuardDisposable = installMonacoHoverGuard({ container, editor });
     onMountRef.current?.(editor, monaco);
 
     return () => {
       changeDisposable.dispose();
+      hoverGuardDisposable.dispose();
+      hoverPlacementDisposable.dispose();
       editor.dispose();
       for (const textModel of modelsRef.current.values()) {
         textModel.dispose();

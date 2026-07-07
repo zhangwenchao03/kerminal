@@ -111,7 +111,8 @@ describe("ExternalLaunchHost", () => {
       prompt: "resolved-user@materialized.internal:~$",
       remoteHostId: "external:launch-1",
     });
-    expect(state.machineGroups.at(-1)?.machines.at(-1)).toMatchObject({
+    const lastGroup = state.machineGroups[state.machineGroups.length - 1];
+    expect(lastGroup?.machines[lastGroup.machines.length - 1]).toMatchObject({
       authType: "agent",
       host: "materialized.internal",
       name: "Materialized SSH target",

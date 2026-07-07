@@ -9,7 +9,7 @@ import {
   isDownloadableFileEntry,
   transferKindFromEntry,
 } from "./sftpEntryModel";
-import type { SftpMenuAction } from "./types";
+import type { SftpContextMenuScope, SftpMenuAction } from "./types";
 
 export const SFTP_FILE_PANEL_MENU_DOMAIN = "sftpFilePanel";
 
@@ -18,6 +18,7 @@ export const SFTP_FILE_PANEL_MENU_ACTIONS = [
   "workspace",
   "preview",
   "download",
+  "downloadSelection",
   "transferToTarget",
   "downloadClipboard",
   "copyItem",
@@ -26,6 +27,7 @@ export const SFTP_FILE_PANEL_MENU_ACTIONS = [
   "rename",
   "chmod",
   "delete",
+  "deleteSelection",
   "uploadFile",
   "uploadDirectory",
   "uploadFileInto",
@@ -64,6 +66,7 @@ type SftpContextMenuItemDraft = Omit<SftpContextMenuItemModel, "domain">;
 export type SftpContextMenuGroupsOptions = {
   entry: SftpEntry | null;
   hasTransferTarget?: boolean;
+  scope?: SftpContextMenuScope;
   showHiddenFiles: boolean;
   supportsAdvancedActions: boolean;
   transferTargetSide?: "left" | "right";
@@ -72,10 +75,18 @@ export type SftpContextMenuGroupsOptions = {
 export function buildSftpContextMenuGroups({
   entry,
   hasTransferTarget = false,
+  scope,
   showHiddenFiles,
   supportsAdvancedActions,
   transferTargetSide,
 }: SftpContextMenuGroupsOptions): SftpContextMenuItemModel[][] {
+  if (scope?.kind === "selection") {
+    return buildSftpSelectionContextMenuGroups({
+      scope,
+      showHiddenFiles,
+    });
+  }
+
   if (!entry) {
     return withSftpFilePanelDomain([
       [
@@ -281,6 +292,50 @@ export function buildSftpContextMenuGroups({
         danger: true,
         icon: "trash",
         label: "删除",
+      },
+    ],
+  ]);
+}
+
+function buildSftpSelectionContextMenuGroups({
+  scope,
+  showHiddenFiles,
+}: {
+  scope: Extract<SftpContextMenuScope, { kind: "selection" }>;
+  showHiddenFiles: boolean;
+}): SftpContextMenuItemModel[][] {
+  const selectedCount = scope.entries.length;
+  const transferableCount = scope.transferableEntries.length;
+  return withSftpFilePanelDomain([
+    [
+      {
+        action: "downloadSelection",
+        disabled: transferableCount === 0,
+        icon: "download",
+        label:
+          transferableCount === selectedCount
+            ? `下载选中 ${selectedCount} 项`
+            : `下载可传输 ${transferableCount} 项`,
+      },
+    ],
+    [
+      {
+        action: "refresh",
+        icon: "refresh",
+        label: "刷新目录",
+      },
+      {
+        action: "toggleHidden",
+        icon: showHiddenFiles ? "eyeOff" : "eye",
+        label: showHiddenFiles ? "隐藏隐藏文件" : "显示隐藏文件",
+      },
+    ],
+    [
+      {
+        action: "deleteSelection",
+        danger: true,
+        icon: "trash",
+        label: `删除选中 ${selectedCount} 项`,
       },
     ],
   ]);

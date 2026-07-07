@@ -31,35 +31,35 @@ describe("DiagnosticsBundleCard", () => {
 
     render(<DiagnosticsBundleCard />);
 
-    const createButton = screen.getByRole("button", { name: "生成诊断包" });
+    const createButton = screen.getByRole("button", { name: "导出日志" });
     expect(createButton.querySelector(".lucide-shield-check")).toBeInTheDocument();
     await user.hover(createButton);
     expect(
-      await screen.findByRole("tooltip", { name: "生成诊断包" }),
+      await screen.findByRole("tooltip", { name: "导出日志" }),
     ).toBeInTheDocument();
     await user.unhover(createButton);
 
     await user.click(createButton);
 
     expect(
-      await screen.findByRole("status", { name: "诊断包生成结果" }),
+      await screen.findByRole("status", { name: "日志导出结果" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("诊断包已生成：diagnostics-1710000000.json")).toBeInTheDocument();
+    expect(screen.getByText("日志已导出：diagnostics-1710000000.json")).toBeInTheDocument();
     expect(
       screen.getByText(
         "C:/Users/me/.kerminal/diagnostics/diagnostics-1710000000.json",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText("大小 2.0 KB · 分区 2 个")).toBeInTheDocument();
+    expect(screen.getByText("大小 2.0 KB · 包含 2 类信息")).toBeInTheDocument();
 
-    const retryButton = screen.getByRole("button", { name: "重新生成诊断包" });
+    const retryButton = screen.getByRole("button", { name: "重新导出日志" });
     expect(retryButton).toBeEnabled();
     expect(retryButton.querySelector(".lucide-shield-check")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "关闭诊断包提示" }));
+    await user.click(screen.getByRole("button", { name: "关闭日志导出提示" }));
 
     expect(
-      screen.queryByRole("status", { name: "诊断包生成结果" }),
+      screen.queryByRole("status", { name: "日志导出结果" }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByText(
@@ -67,7 +67,7 @@ describe("DiagnosticsBundleCard", () => {
       ),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "重新生成诊断包" }),
+      screen.getByRole("button", { name: "重新导出日志" }),
     ).toBeEnabled();
   });
 });

@@ -37,4 +37,33 @@ AGENTS.md
 .updeng/tmp/
 .codegraph/
 tmp/
+
+# Dependency and build outputs
+node_modules/
+dist/
+build/
+out/
+coverage/
+.next/
+.nuxt/
+.vite/
+target/
+src-tauri/target/
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Java/JVM build outputs
+*.class
+*.jar
+*.war
+*.ear
+
+# Logs and local env
+*.log
+.env
+.env.*
+!.env.example
 # END UPDENG

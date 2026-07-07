@@ -17,21 +17,38 @@ use kerminal_lib::{
     error::{AppError, AppResult},
     models::remote_host::{RemoteHost, RemoteHostAuthType},
     paths::KerminalPaths,
-    services::ssh_runtime::{
-        error_classification::{
-            classify_ssh_runtime_app_error, classify_ssh_runtime_failure, SshRuntimeFailureClass,
+    services::{
+        ssh_credential_resolver::{
+            NativeSshAuthMaterial, NativeSshHopMaterial, NativeSshRouteMaterial,
+            ResolvedSshCredentialSource, ResolvedSshHopRole, ResolvedSshSecretValue,
         },
-        native_backend::{
-            should_clear_native_connection_after_channel_error, NativeSshRuntimeBackend,
+        ssh_runtime::{
+            error_classification::{
+                classify_ssh_runtime_app_error, classify_ssh_runtime_failure,
+                SshRuntimeFailureClass,
+            },
+            facade::{SshRuntimeFacade, SshRuntimeSessionLane, SshRuntimeTargetContext},
+            native_backend::{
+                should_clear_native_connection_after_channel_error, NativeSshRuntimeBackend,
+            },
+            policy::{
+                external_target_not_available_error, is_capability_unsupported,
+                is_external_runtime_target_id, is_managed_runtime_unwired,
+                is_retryable_channel_open_error, runtime_host_key_policy_for_host_id,
+                SshRuntimeCapability,
+            },
+            ManagedSshSessionManager, ManagedSshSessionState, ManagedSshShellSession,
+            SshAuthIdentity, SshAuthSecretKind, SshChannelKind, SshRuntimeBackend,
+            SshRuntimeConnectRequest, SshRuntimeConnection, SshRuntimeExecRawOutput,
+            SshRuntimeExecRequest, SshRuntimeHostKeyPolicy, SshRuntimeSftpStream,
+            SshRuntimeShellEvent, SshRuntimeShellRequest, SshRuntimeShellSession,
+            SshRuntimeStreamingExecExit, SshRuntimeStreamingExecReader,
+            SshRuntimeStreamingExecRequest, SshRuntimeStreamingExecSession,
+            SshRuntimeStreamingExecWriter, SshSessionKey, SshSessionPeer,
+            MANAGED_SSH_BULK_TRANSFER_RUNTIME_FLAG, MANAGED_SSH_CAPABILITY_RUNTIME_FLAG,
+            MANAGED_SSH_EXEC_UNSUPPORTED, MANAGED_SSH_SFTP_UNSUPPORTED,
+            MANAGED_SSH_SHELL_UNSUPPORTED,
         },
-        ManagedSshSessionManager, ManagedSshShellSession, SshAuthIdentity, SshAuthSecretKind,
-        SshChannelKind, SshRuntimeBackend, SshRuntimeConnectRequest, SshRuntimeConnection,
-        SshRuntimeExecRawOutput, SshRuntimeExecRequest, SshRuntimeSftpStream, SshRuntimeShellEvent,
-        SshRuntimeShellRequest, SshRuntimeShellSession, SshRuntimeStreamingExecExit,
-        SshRuntimeStreamingExecReader, SshRuntimeStreamingExecRequest,
-        SshRuntimeStreamingExecSession, SshRuntimeStreamingExecWriter, SshSessionKey,
-        SshSessionPeer, MANAGED_SSH_BULK_TRANSFER_RUNTIME_FLAG,
-        MANAGED_SSH_CAPABILITY_RUNTIME_FLAG,
     },
 };
 use tempfile::tempdir;
@@ -89,6 +106,225 @@ fn connect_request_debug_redacts_runtime_host_material() {
 }
 
 #[test]
+fn connect_request_debug_redacts_native_route_material() {
+    let request = SshRuntimeConnectRequest::native(
+        sample_key(),
+        sample_runtime_host(),
+        "C:/Users/example/.kerminal/known_hosts".into(),
+        30,
+    )
+    .with_native_route_material(sample_native_route_material());
+
+    let debug = format!("{request:?}");
+
+    assert!(debug.contains("route_material"));
+    assert!(debug.contains("<runtime-material>"));
+    assert!(!debug.contains("route-secret-password"));
+    assert!(!debug.contains("PRIVATE KEY"));
+    assert!(!debug.contains("passphrase-secret"));
+}
+
+#[test]
+fn runtime_facade_context_captures_native_target_without_exposing_secret_material() {
+    let request = SshRuntimeConnectRequest::native(
+        sample_key(),
+        sample_runtime_host(),
+        "C:/Users/example/.kerminal/known_hosts".into(),
+        45,
+    )
+    .with_host_key_policy(SshRuntimeHostKeyPolicy::TrustUnknown)
+    .with_keepalive_seconds(15);
+
+    let context =
+        SshRuntimeTargetContext::new(request).with_lane(SshRuntimeSessionLane::BulkTransfer);
+    let target = context.target();
+
+    assert_eq!(context.lane(), SshRuntimeSessionLane::BulkTransfer);
+    assert_eq!(target.host_id, "host-1");
+    assert_eq!(target.host, "example.com");
+    assert_eq!(target.port, 22);
+    assert_eq!(target.username, "deploy");
+    assert_eq!(target.target_label, "deploy@example.com:22");
+    assert_eq!(target.auth_type, Some(RemoteHostAuthType::Password));
+    assert_eq!(target.connect_timeout_seconds, Some(45));
+    assert_eq!(target.keepalive_seconds, Some(15));
+    assert_eq!(
+        target.host_key_policy,
+        SshRuntimeHostKeyPolicy::TrustUnknown
+    );
+    assert!(target.known_hosts_path.is_some());
+
+    let debug = format!("{context:?}");
+    assert!(debug.contains("SshRuntimeTargetContext"));
+    assert!(!debug.contains("super-secret-password"));
+    assert!(!debug.contains("C:/Users/example"));
+    assert!(!debug.contains(".kerminal"));
+}
+
+#[test]
+fn runtime_facade_acquire_session_respects_lane_flags_and_fallback_target_label() {
+    let backend = Arc::new(FakeBackend::default());
+    let manager = ManagedSshSessionManager::with_backend(Arc::clone(&backend));
+    let facade = SshRuntimeFacade::new(manager);
+    let interactive =
+        SshRuntimeTargetContext::new(SshRuntimeConnectRequest::key_only(sample_key()));
+    let capability = interactive
+        .clone()
+        .with_lane(SshRuntimeSessionLane::Capability);
+    let bulk_transfer = interactive
+        .clone()
+        .with_lane(SshRuntimeSessionLane::BulkTransfer);
+
+    let _interactive_session = facade
+        .acquire_session(&interactive)
+        .expect("interactive session");
+    let _capability_session = facade
+        .acquire_session(&capability)
+        .expect("capability session");
+    let _bulk_transfer_session = facade
+        .acquire_session(&bulk_transfer)
+        .expect("bulk transfer session");
+    facade.record_legacy_fallback("exec", "backend unsupported", Some(&interactive));
+
+    let snapshot = facade.snapshot().expect("snapshot");
+    let mut runtime_flags = snapshot
+        .sessions
+        .iter()
+        .map(|session| session.key.runtime_flags.clone())
+        .collect::<Vec<_>>();
+    runtime_flags.sort();
+
+    assert_eq!(snapshot.active_sessions, 3);
+    assert_eq!(
+        runtime_flags,
+        vec![
+            Vec::<String>::new(),
+            vec![MANAGED_SSH_BULK_TRANSFER_RUNTIME_FLAG.to_owned()],
+            vec![MANAGED_SSH_CAPABILITY_RUNTIME_FLAG.to_owned()],
+        ]
+    );
+    assert_eq!(snapshot.recent_legacy_fallbacks.len(), 1);
+    assert_eq!(snapshot.recent_legacy_fallbacks[0].capability, "exec");
+    assert_eq!(
+        snapshot.recent_legacy_fallbacks[0].target.as_deref(),
+        Some("deploy@example.com:22")
+    );
+    assert_eq!(backend.connect_count(), 3);
+}
+
+#[test]
+fn runtime_policy_centralizes_host_key_external_target_and_fallback_rules() {
+    assert!(is_external_runtime_target_id("external:launch-1"));
+    assert!(!is_external_runtime_target_id("saved-host-1"));
+    assert_eq!(
+        runtime_host_key_policy_for_host_id("external:launch-1"),
+        SshRuntimeHostKeyPolicy::TrustUnknown
+    );
+    assert_eq!(
+        runtime_host_key_policy_for_host_id("saved-host-1"),
+        SshRuntimeHostKeyPolicy::RequireKnown
+    );
+    assert!(external_target_not_available_error("external:missing")
+        .to_string()
+        .contains("外部 SSH 临时目标不存在或已关闭: external:missing"));
+
+    assert!(is_managed_runtime_unwired(&AppError::SshCommand(
+        "managed SSH runtime backend is not wired yet".to_owned()
+    )));
+    assert!(is_capability_unsupported(
+        &AppError::SshCommand(MANAGED_SSH_SHELL_UNSUPPORTED.to_owned()),
+        SshRuntimeCapability::Shell
+    ));
+    assert!(is_capability_unsupported(
+        &AppError::SshCommand(MANAGED_SSH_EXEC_UNSUPPORTED.to_owned()),
+        SshRuntimeCapability::Exec
+    ));
+    assert!(is_capability_unsupported(
+        &AppError::Sftp(format!(
+            "受管 SSH SFTP channel 失败: {MANAGED_SSH_SFTP_UNSUPPORTED}"
+        )),
+        SshRuntimeCapability::Sftp
+    ));
+}
+
+#[test]
+fn runtime_policy_keeps_channel_open_retry_narrow() {
+    assert!(is_retryable_channel_open_error(&AppError::SshCommand(
+        "Failed to open channel (ConnectFailed)".to_owned()
+    )));
+    assert!(is_retryable_channel_open_error(&AppError::SshCommand(
+        "channel open failed before command".to_owned()
+    )));
+    assert!(!is_retryable_channel_open_error(&AppError::Credential(
+        "bad credentials".to_owned()
+    )));
+    assert!(!is_retryable_channel_open_error(&AppError::SshCommand(
+        "remote command exited with code 127".to_owned()
+    )));
+}
+
+#[tokio::test]
+async fn runtime_facade_wraps_manager_capability_lane_for_shell_exec_and_sftp() {
+    let backend = Arc::new(FakeBackend::default());
+    backend.enable_shell();
+    backend.enable_exec();
+    backend.enable_sftp();
+    let manager = ManagedSshSessionManager::with_backend(Arc::clone(&backend));
+    let facade = SshRuntimeFacade::new(manager.clone());
+    let context = SshRuntimeTargetContext::new(SshRuntimeConnectRequest::key_only(sample_key()))
+        .with_lane(SshRuntimeSessionLane::Capability);
+
+    let shell = facade
+        .open_shell(
+            &context,
+            SshRuntimeShellRequest::new("xterm-256color", 120, 32),
+        )
+        .await
+        .expect("open shell through facade");
+    let shell_request = backend.shell_last_request().expect("shell request");
+    assert_eq!(shell_request.cols, 120);
+    assert_eq!(shell_request.rows, 32);
+
+    let sftp = facade
+        .open_sftp(&context)
+        .await
+        .expect("open sftp through facade");
+    assert_eq!(backend.sftp_open_count(), 1);
+
+    let exec_task = tokio::spawn({
+        let facade = facade.clone();
+        let context = context.clone();
+        async move {
+            facade
+                .execute_exec(
+                    &context,
+                    SshRuntimeExecRequest::new("printf facade\\n".to_owned(), 5, 1024),
+                )
+                .await
+        }
+    });
+    backend.wait_for_exec_start().await;
+    backend.release_one_exec();
+    let output = exec_task
+        .await
+        .expect("exec task")
+        .expect("exec through facade");
+
+    assert_eq!(output.stdout, "printf facade\\n");
+    assert_eq!(backend.connect_count(), 1);
+    assert_eq!(backend.shell_open_count(), 1);
+
+    drop(shell);
+    drop(sftp);
+    let snapshot = facade.snapshot().expect("facade snapshot");
+    assert_eq!(snapshot.active_sessions, 1);
+    assert_eq!(
+        snapshot.sessions[0].key.runtime_flags,
+        vec![MANAGED_SSH_CAPABILITY_RUNTIME_FLAG]
+    );
+}
+
+#[test]
 fn native_channel_error_classification_preserves_shared_shell_for_channel_scoped_failures() {
     for message in [
         "无法打开 direct-tcpip 到 127.0.0.1:80: connection refused by remote host",
@@ -112,6 +348,7 @@ fn native_channel_error_classification_clears_on_transport_breakage() {
         "connection reset by peer",
         "connection lost while opening channel",
         "connection aborted by local socket",
+        "Channel send error",
     ] {
         let error = AppError::SshCommand(message.to_owned());
 
@@ -370,6 +607,89 @@ fn channel_failure_marks_session_failed_but_releases_active_count() {
         snapshot.sessions[0].last_error.as_deref(),
         Some("SSH 远程命令执行失败: sftp subsystem rejected")
     );
+}
+
+#[test]
+fn manager_reconnects_after_failed_channel_session() {
+    let backend = Arc::new(FakeBackend::default());
+    backend.fail_channel("Channel send error");
+    let manager = ManagedSshSessionManager::with_backend(Arc::clone(&backend));
+    let first = manager
+        .acquire_session(sample_key())
+        .expect("first session");
+    let first_id = first.session_id().to_owned();
+
+    let error = first
+        .open_channel(SshChannelKind::Sftp)
+        .expect_err("channel failure");
+    assert!(error.to_string().contains("Channel send error"));
+
+    backend.clear_channel_failure();
+    let second = manager
+        .acquire_session(sample_key())
+        .expect("second session");
+
+    assert_ne!(first_id, second.session_id());
+    assert_eq!(backend.connect_count(), 2);
+    assert_eq!(backend.disconnect_count(), 1);
+    let snapshot = manager.snapshot().expect("snapshot");
+    assert_eq!(snapshot.active_sessions, 1);
+    assert_eq!(snapshot.sessions[0].state, ManagedSshSessionState::Ready);
+}
+
+#[test]
+fn transient_channel_open_failure_retries_without_poisoning_session() {
+    let backend = Arc::new(FakeBackend::default());
+    backend.fail_next_channel_opens(1, "Failed to open channel (ConnectFailed)");
+    let manager = ManagedSshSessionManager::with_backend(Arc::clone(&backend));
+    let session = manager.acquire_session(sample_key()).expect("session");
+
+    let sftp = session.open_channel(SshChannelKind::Sftp).expect("sftp");
+
+    assert!(sftp.channel_id().starts_with("fake-channel-sftp-"));
+    let snapshot = manager.snapshot().expect("snapshot");
+    assert_eq!(snapshot.active_channels, 1);
+    assert_eq!(snapshot.sessions[0].active_channels, 1);
+    assert_eq!(snapshot.sessions[0].opened_channels, 2);
+    assert_eq!(snapshot.sessions[0].state, ManagedSshSessionState::Ready);
+    assert_eq!(snapshot.sessions[0].last_error, None);
+    assert_eq!(backend.connect_count(), 1);
+}
+
+#[tokio::test]
+async fn exec_retries_transient_channel_open_failure_before_running_command() {
+    let backend = Arc::new(FakeBackend::default());
+    backend.enable_exec();
+    backend.fail_next_channel_opens(
+        1,
+        "SSH 远程命令执行失败: Failed to open channel (ConnectFailed)",
+    );
+    let manager = ManagedSshSessionManager::with_backend(Arc::clone(&backend));
+    let session = manager.acquire_session(sample_key()).expect("session");
+
+    let exec_task = tokio::spawn(async move {
+        session
+            .execute_exec(SshRuntimeExecRequest::new(
+                "printf stable\\n".to_owned(),
+                5,
+                1024,
+            ))
+            .await
+    });
+    backend.wait_for_exec_start().await;
+    backend.release_one_exec();
+
+    let output = exec_task
+        .await
+        .expect("exec task")
+        .expect("exec output after retry");
+    assert_eq!(output.stdout, "printf stable\\n");
+    let snapshot = manager.snapshot().expect("snapshot");
+    assert_eq!(snapshot.active_channels, 0);
+    assert_eq!(snapshot.sessions[0].opened_channels, 2);
+    assert_eq!(snapshot.sessions[0].state, ManagedSshSessionState::Ready);
+    assert_eq!(snapshot.sessions[0].last_error, None);
+    assert_eq!(backend.connect_count(), 1);
 }
 
 #[tokio::test]
@@ -996,6 +1316,41 @@ fn sample_runtime_host() -> RemoteHost {
     }
 }
 
+fn sample_native_route_material() -> NativeSshRouteMaterial {
+    NativeSshRouteMaterial {
+        target: NativeSshHopMaterial {
+            role: ResolvedSshHopRole::Target,
+            host: "example.com".to_owned(),
+            port: 22,
+            username: "deploy".to_owned(),
+            auth: NativeSshAuthMaterial::Password {
+                value: "route-secret-password".to_owned(),
+                source: ResolvedSshCredentialSource::SessionOnly {
+                    prompt_id: "target-password".to_owned(),
+                },
+            },
+        },
+        jumps: vec![NativeSshHopMaterial {
+            role: ResolvedSshHopRole::Jump { index: 0 },
+            host: "jump.example.com".to_owned(),
+            port: 2222,
+            username: "jump".to_owned(),
+            auth: NativeSshAuthMaterial::PrivateKeyPem {
+                content: "-----BEGIN OPENSSH PRIVATE KEY-----\nsecret\n".to_owned(),
+                passphrase: Some(ResolvedSshSecretValue {
+                    value: "passphrase-secret".to_owned(),
+                    source: ResolvedSshCredentialSource::SessionOnly {
+                        prompt_id: "jump-passphrase".to_owned(),
+                    },
+                }),
+                source: ResolvedSshCredentialSource::SessionOnly {
+                    prompt_id: "jump-key".to_owned(),
+                },
+            },
+        }],
+    }
+}
+
 fn loopback_runtime_host(port: u16) -> RemoteHost {
     RemoteHost {
         id: "loopback-shell".to_owned(),
@@ -1049,6 +1404,8 @@ struct FakeBackendState {
     streaming_exec_enabled: AtomicUsize,
     streaming_execs: AtomicUsize,
     streaming_stdin: Mutex<Vec<u8>>,
+    transient_channel_open_error: Mutex<Option<String>>,
+    transient_channel_open_failures: AtomicUsize,
 }
 
 impl FakeBackend {
@@ -1062,6 +1419,21 @@ impl FakeBackend {
 
     fn fail_channel(&self, message: &str) {
         *self.state.channel_error.lock().expect("channel error lock") = Some(message.to_owned());
+    }
+
+    fn fail_next_channel_opens(&self, count: usize, message: &str) {
+        *self
+            .state
+            .transient_channel_open_error
+            .lock()
+            .expect("transient channel open error lock") = Some(message.to_owned());
+        self.state
+            .transient_channel_open_failures
+            .store(count, Ordering::SeqCst);
+    }
+
+    fn clear_channel_failure(&self) {
+        *self.state.channel_error.lock().expect("channel error lock") = None;
     }
 
     fn fail_connect(&self, message: &str) {
@@ -1174,6 +1546,9 @@ struct FakeConnection {
 #[async_trait]
 impl SshRuntimeConnection for FakeConnection {
     fn open_channel(&self, kind: SshChannelKind) -> AppResult<String> {
+        if let Some(message) = self.take_transient_channel_open_error() {
+            return Err(AppError::SshCommand(message));
+        }
         if let Some(message) = self
             .state
             .channel_error
@@ -1198,6 +1573,9 @@ impl SshRuntimeConnection for FakeConnection {
         if !self.supports_shell() {
             return Err(AppError::SshCommand("fake shell disabled".to_owned()));
         }
+        if let Some(message) = self.take_transient_channel_open_error() {
+            return Err(AppError::SshCommand(message));
+        }
         self.state.shell_opens.fetch_add(1, Ordering::SeqCst);
         *self
             .state
@@ -1217,6 +1595,9 @@ impl SshRuntimeConnection for FakeConnection {
         &self,
         request: SshRuntimeExecRequest,
     ) -> AppResult<SshRuntimeExecRawOutput> {
+        if let Some(message) = self.take_transient_channel_open_error() {
+            return Err(AppError::SshCommand(message));
+        }
         let active = self.state.exec_active.fetch_add(1, Ordering::SeqCst) + 1;
         update_max(&self.state.exec_max_active, active);
         self.state.exec_started.notify_one();
@@ -1242,6 +1623,9 @@ impl SshRuntimeConnection for FakeConnection {
                 "fake streaming exec disabled".to_owned(),
             ));
         }
+        if let Some(message) = self.take_transient_channel_open_error() {
+            return Err(AppError::SshCommand(message));
+        }
         self.state.streaming_execs.fetch_add(1, Ordering::SeqCst);
         Ok(Box::new(FakeStreamingExecSession {
             state: Arc::clone(&self.state),
@@ -1259,6 +1643,9 @@ impl SshRuntimeConnection for FakeConnection {
         if !self.supports_sftp() {
             return Err(AppError::SshCommand("fake sftp disabled".to_owned()));
         }
+        if let Some(message) = self.take_transient_channel_open_error() {
+            return Err(AppError::SshCommand(message));
+        }
         self.state.sftp_opens.fetch_add(1, Ordering::SeqCst);
         let (client, _server) = tokio::io::duplex(64);
         Ok(Box::new(client))
@@ -1266,6 +1653,34 @@ impl SshRuntimeConnection for FakeConnection {
 
     fn disconnect(&self, _reason: &str) {
         self.state.disconnects.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+impl FakeConnection {
+    fn take_transient_channel_open_error(&self) -> Option<String> {
+        let mut remaining = self
+            .state
+            .transient_channel_open_failures
+            .load(Ordering::SeqCst);
+        while remaining > 0 {
+            match self.state.transient_channel_open_failures.compare_exchange(
+                remaining,
+                remaining - 1,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => {
+                    return self
+                        .state
+                        .transient_channel_open_error
+                        .lock()
+                        .expect("transient channel open error lock")
+                        .clone();
+                }
+                Err(next) => remaining = next,
+            }
+        }
+        None
     }
 }
 

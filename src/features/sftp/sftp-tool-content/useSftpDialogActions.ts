@@ -14,11 +14,11 @@ import {
 } from "../../../lib/sftpApi";
 import {
   buildSftpDialogActionPlan,
+  dedupeDeleteEntries,
   getDialogActionBlocker,
   type SftpDialogOperation,
 } from "./sftpDialogModel";
 import {
-  defaultRenamePath,
   errorMessage,
   joinRemotePath,
   modeFromPermissions,
@@ -86,6 +86,18 @@ export function useSftpDialogActions({
     await deleteDockerContainerPath(operation.request);
   };
 
+  const runDialogOperations = async (operations: SftpDialogOperation[]) => {
+    const failures: string[] = [];
+    for (const operation of operations) {
+      try {
+        await runDialogOperation(operation);
+      } catch (nextError) {
+        failures.push(`${dialogOperationPath(operation)}：${errorMessage(nextError)}`);
+      }
+    }
+    return failures;
+  };
+
   const openNewDirectoryDialog = () => {
     setContextMenu(null);
     setDialogStatus(null);
@@ -101,7 +113,7 @@ export function useSftpDialogActions({
     setDialogAction({
       entry,
       kind: "rename",
-      toPath: defaultRenamePath(entry),
+      newName: entry.name,
     });
   };
 
@@ -115,11 +127,15 @@ export function useSftpDialogActions({
     });
   };
 
-  const openDeleteDialog = (entry: SftpEntry) => {
+  const openDeleteDialog = (entries: SftpEntry[]) => {
     setContextMenu(null);
     setDialogStatus(null);
+    if (entries.length === 0) {
+      setOperationStatus({ kind: "info", message: "请先选择要删除的远程项目。" });
+      return;
+    }
     setDialogAction({
-      entry,
+      entries: dedupeDeleteEntries(entries),
       kind: "delete",
     });
   };
@@ -144,7 +160,21 @@ export function useSftpDialogActions({
         currentPath,
         fileTarget,
       });
-      await runDialogOperation(plan.operation);
+      const failures = await runDialogOperations(plan.operations);
+      if (failures.length > 0) {
+        const successCount = plan.operations.length - failures.length;
+        setDialogStatus({
+          kind: "error",
+          message:
+            successCount > 0
+              ? `已完成 ${successCount} 项，${failures.length} 项失败：${failures[0]}`
+              : `操作失败：${failures[0]}`,
+        });
+        if (successCount > 0) {
+          await loadDirectory(plan.reloadPath);
+        }
+        return;
+      }
       await loadDirectory(plan.reloadPath);
       setOperationStatus(plan.successStatus);
       setDialogAction(null);
@@ -165,4 +195,14 @@ export function useSftpDialogActions({
     openRenameDialog,
     submitDialogAction,
   };
+}
+
+function dialogOperationPath(operation: SftpDialogOperation) {
+  if (operation.kind === "mkdir") {
+    return operation.request.path;
+  }
+  if (operation.kind === "rename") {
+    return operation.request.fromPath;
+  }
+  return operation.request.path;
 }

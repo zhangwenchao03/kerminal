@@ -58,7 +58,7 @@ export type {
 
 type ConnectionTestFeedback = {
   message: string;
-  tone: "error" | "info";
+  tone: "error" | "info" | "warning";
 };
 
 export function RemoteHostCreateDialog({
@@ -661,6 +661,13 @@ export function RemoteHostCreateDialog({
   const showTestButton = (
     ["ssh", "rdp", "telnet", "serial"] as ConnectionMode[]
   ).includes(mode);
+  const footerFeedback: ConnectionTestFeedback | null =
+    connectionTestFeedback ??
+    (error
+      ? { message: error, tone: "error" }
+      : externalConfigConflict
+        ? { message: externalConfigConflict, tone: "warning" }
+        : null);
   const sectionContent = (
     <RemoteHostDialogSectionContent
       activeSection={activeSection}
@@ -744,19 +751,21 @@ export function RemoteHostCreateDialog({
       <ModalShell
         footer={
           <>
-            {connectionTestFeedback ? (
+            {footerFeedback ? (
               <p
                 className={[
                   "mr-auto min-w-0 flex-1 rounded-xl border px-3 py-2 text-left text-xs leading-5",
-                  connectionTestFeedback.tone === "error"
+                  footerFeedback.tone === "error"
                     ? "border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-300"
-                    : "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-200",
+                    : footerFeedback.tone === "warning"
+                      ? "border-amber-300/25 bg-amber-400/10 text-amber-800 dark:border-amber-300/20 dark:text-amber-100"
+                      : "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-200",
                 ].join(" ")}
                 role={
-                  connectionTestFeedback.tone === "error" ? "alert" : "status"
+                  footerFeedback.tone === "info" ? "status" : "alert"
                 }
               >
-                {connectionTestFeedback.message}
+                {footerFeedback.message}
               </p>
             ) : null}
             <Button onClick={onClose} type="button" variant="ghost">
@@ -853,15 +862,6 @@ export function RemoteHostCreateDialog({
             })}
           </div>
 
-          {externalConfigConflict ? (
-            <div
-              className="rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 font-mono text-xs text-amber-800 dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100"
-              role="alert"
-            >
-              {externalConfigConflict}
-            </div>
-          ) : null}
-
           <div className="grid min-h-[424px] gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
             <nav
               aria-label="连接配置分区"
@@ -890,12 +890,6 @@ export function RemoteHostCreateDialog({
 
             <div className="min-w-0">
               {sectionContent}
-
-              {error ? (
-                <p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
-                  {error}
-                </p>
-              ) : null}
             </div>
           </div>
         </div>

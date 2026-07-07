@@ -5,8 +5,10 @@ import {
   externalSshLaunchAuthType,
   externalSshLaunchDescription,
   externalSshLaunchDisplayName,
+  externalSshLaunchIdFromMachineId,
   externalSshLaunchMachineId,
   externalSshLaunchNeedsUsername,
+  isExternalSshMachineId,
   resolveExternalSshLaunchUsername,
 } from "../../../../src/features/external-launch/externalSshLaunchModel";
 
@@ -38,6 +40,15 @@ describe("externalSshLaunchModel", () => {
     );
     expect(externalSshLaunchAuthType(launch)).toBe("key");
     expect(externalSshLaunchMachineId(launch)).toBe("external:launch-1");
+  });
+
+  it("parses temporary external machine ids without matching saved hosts", () => {
+    expect(isExternalSshMachineId("external:launch-1")).toBe(true);
+    expect(externalSshLaunchIdFromMachineId("external:launch-1")).toBe(
+      "launch-1",
+    );
+    expect(isExternalSshMachineId("host-lab")).toBe(false);
+    expect(externalSshLaunchIdFromMachineId("host-lab")).toBeNull();
   });
 
   it("prefers password metadata over key and agent fallbacks", () => {

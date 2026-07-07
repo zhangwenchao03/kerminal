@@ -116,6 +116,29 @@ describe("terminalRendererPolicy", () => {
     );
   });
 
+  it("holds a GPU-mode pane in CPU after an atlas recovery failure", () => {
+    const result = resolveTerminalRendererPolicy({
+      config: { autoFailureCooldownMs: 60_000 },
+      now: NOW,
+      panes: [
+        pane("pane-1", {
+          lastFailureAt: NOW - 10_000,
+          lastFailureReason: "atlas-clear-failed",
+        }),
+      ],
+      requestedMode: "gpu",
+    });
+
+    expect(result.decisions[0]).toEqual(
+      expect.objectContaining({
+        fallbackReason: "cooldown",
+        retryDelayMs: 50_000,
+        shouldAttemptImport: false,
+        targetBackend: "cpu",
+      }),
+    );
+  });
+
   it("prioritizes the focused visible pane when the WebGL budget is full", () => {
     const result = resolveTerminalRendererPolicy({
       config: { maxActiveGpuPanes: 2 },

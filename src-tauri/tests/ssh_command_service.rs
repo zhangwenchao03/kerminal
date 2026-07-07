@@ -28,7 +28,7 @@ use kerminal_lib::{
         SshRuntimeBackend, SshRuntimeConnectRequest, SshRuntimeConnection, SshRuntimeExecRawOutput,
         SshRuntimeExecRequest, SshRuntimeStreamingExecExit, SshRuntimeStreamingExecReader,
         SshRuntimeStreamingExecRequest, SshRuntimeStreamingExecSession,
-        SshRuntimeStreamingExecWriter, SshSessionKey, MANAGED_SSH_CAPABILITY_RUNTIME_FLAG,
+        SshRuntimeStreamingExecWriter, SshSessionKey,
     },
     state::AppState,
     storage::config_file_store::ConfigFileStore,
@@ -911,7 +911,7 @@ async fn open_managed_streaming_exec_passes_timeout_and_cancel_token_to_runtime(
 }
 
 #[tokio::test]
-async fn external_native_command_exec_uses_capability_runtime_lane() {
+async fn external_native_command_exec_uses_interactive_runtime_lane() {
     let (_home, state) = test_state();
     let intake = ExternalLaunchIntake::new();
     let auth_broker = SshAuthBroker::new();
@@ -968,8 +968,7 @@ async fn external_native_command_exec_uses_capability_runtime_lane() {
     let key = backend.last_key().expect("runtime key");
     assert!(key
         .runtime_flags
-        .iter()
-        .any(|flag| flag == MANAGED_SSH_CAPABILITY_RUNTIME_FLAG));
+        .is_empty(), "external command exec should use the same interactive managed runtime lane as the terminal");
     assert!(matches!(
         key.target.auth,
         SshAuthIdentity::SessionOnly { ref prompt_id }

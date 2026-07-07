@@ -23,31 +23,42 @@ use crate::{
             PortForwardPurpose, PortForwardRuntimeDiagnostics, PortForwardRuntimeMode,
             PortForwardStatus, PortForwardSummary,
         },
-        terminal::{TerminalSecretInputEntry, TerminalSecretInputPlan},
+        terminal::TerminalSecretInputPlan,
     },
     paths::KerminalPaths,
     services::{
         encrypted_vault_service::EncryptedVaultService,
-        external_launch::{is_external_target_id, ExternalSessionMaterializer},
+        external_launch::ExternalSessionMaterializer,
         process_command::silent_command,
         remote_host_service::RemoteHostService,
         ssh_command_plan::{cleanup_paths, resolve_openssh_executable},
-        ssh_credential_resolver::{ResolvedSshRouteAuth, SshCredentialResolver},
+        ssh_credential_resolver::{
+            NativeSshRouteMaterial, ResolvedSshRouteAuth, SshCredentialResolver,
+        },
         ssh_runtime::{
             auth_broker::{SshAuthBroker, SshAuthBrokerResolution, SshAuthPromptPlan},
+            facade::{SshRuntimeFacade, SshRuntimeTargetContext},
+            policy::{
+                external_target_not_available_error, is_capability_unsupported,
+                is_external_runtime_target_id, is_managed_runtime_unwired,
+                runtime_host_key_policy_for_host_id, SshRuntimeCapability,
+            },
             session_key::ssh_session_key_for_route,
             ManagedSshForwardTunnel, ManagedSshSessionManager, SshRuntimeConnectRequest,
-            SshRuntimeDynamicForwardRequest, SshRuntimeHostKeyPolicy,
-            SshRuntimeLocalForwardRequest, SshRuntimeRemoteDynamicForwardRequest,
-            SshRuntimeRemoteForwardRequest,
+            SshRuntimeDynamicForwardRequest, SshRuntimeLocalForwardRequest,
+            SshRuntimeRemoteDynamicForwardRequest, SshRuntimeRemoteForwardRequest,
         },
     },
     storage::RuntimeFileStore,
 };
 
-use self::plan::{build_forward_plan, build_managed_forward_plan, ForwardCommandPlan};
+use self::{
+    plan::{build_forward_plan, build_managed_forward_plan, ForwardCommandPlan},
+    secret_input::ForwardSecretInputResponder,
+};
 
 pub mod plan;
+mod secret_input;
 
 type PtyChildHandle = Box<dyn PtyChild + Send + Sync>;
 type PtyMasterHandle = Box<dyn MasterPty + Send>;
@@ -506,7 +517,7 @@ impl PortForwardService {
                 return Ok(target.host);
             }
         }
-        if is_external_target_id(host_id) {
+        if is_external_runtime_target_id(host_id) {
             return Err(external_target_not_available_error(host_id));
         }
         remote_hosts.require_host(host_id)
@@ -526,7 +537,7 @@ impl PortForwardService {
                 return Ok((target.host, Some(target.route_auth)));
             }
         }
-        if is_external_target_id(host_id) {
+        if is_external_runtime_target_id(host_id) {
             return Err(external_target_not_available_error(host_id));
         }
 
@@ -575,12 +586,10 @@ impl PortForwardService {
             known_hosts_path,
             u64::from(host.ssh_options.terminal.connect_timeout_seconds).clamp(1, 300),
         )
-        .with_host_key_policy(host_key_policy_for_host(host));
-        let session = match acquire_forward_session(managed_runtime, host, connect_request) {
-            Ok(session) => session,
-            Err(error) if is_managed_runtime_unwired(&error) => return Ok(None),
-            Err(error) => return Err(error),
-        };
+        .with_host_key_policy(runtime_host_key_policy_for_host_id(&host.id))
+        .with_native_route_material(NativeSshRouteMaterial::from_resolved_auth(route_auth)?);
+        let facade = SshRuntimeFacade::new(managed_runtime.clone());
+        let context = SshRuntimeTargetContext::new(connect_request);
         let tunnel = match request.kind {
             PortForwardKind::Local => {
                 let Some(target_host) = plan.target_host.clone() else {
@@ -589,37 +598,46 @@ impl PortForwardService {
                 let Some(target_port) = plan.target_port else {
                     return Ok(None);
                 };
-                session.start_local_forward(SshRuntimeLocalForwardRequest::new(
-                    plan.bind_host.clone(),
-                    request.source_port,
-                    target_host,
-                    target_port,
-                ))
-            }
-            PortForwardKind::Remote => match (plan.target_host.clone(), plan.target_port) {
-                (Some(target_host), Some(target_port)) => {
-                    session.start_remote_forward(SshRuntimeRemoteForwardRequest::new(
+                facade.start_local_forward(
+                    &context,
+                    SshRuntimeLocalForwardRequest::new(
                         plan.bind_host.clone(),
                         request.source_port,
                         target_host,
                         target_port,
-                    ))
-                }
-                (None, None) if is_remote_dynamic_forward_request(request) => session
-                    .start_remote_dynamic_forward(SshRuntimeRemoteDynamicForwardRequest::new(
+                    ),
+                )
+            }
+            PortForwardKind::Remote => match (plan.target_host.clone(), plan.target_port) {
+                (Some(target_host), Some(target_port)) => facade.start_remote_forward(
+                    &context,
+                    SshRuntimeRemoteForwardRequest::new(
                         plan.bind_host.clone(),
                         request.source_port,
-                    )),
+                        target_host,
+                        target_port,
+                    ),
+                ),
+                (None, None) if is_remote_dynamic_forward_request(request) => facade
+                    .start_remote_dynamic_forward(
+                        &context,
+                        SshRuntimeRemoteDynamicForwardRequest::new(
+                            plan.bind_host.clone(),
+                            request.source_port,
+                        ),
+                    ),
                 _ => return Ok(None),
             },
-            PortForwardKind::Dynamic => session.start_dynamic_forward(
+            PortForwardKind::Dynamic => facade.start_dynamic_forward(
+                &context,
                 SshRuntimeDynamicForwardRequest::new(plan.bind_host.clone(), request.source_port),
             ),
         };
         match tunnel {
             Ok(tunnel) => Ok(Some(ManagedForwardProcess::Managed(Box::new(Some(tunnel))))),
             Err(error)
-                if is_managed_runtime_unwired(&error) || is_managed_forward_unsupported(&error) =>
+                if is_managed_runtime_unwired(&error)
+                    || is_capability_unsupported(&error, SshRuntimeCapability::Forward) =>
             {
                 Ok(None)
             }
@@ -724,27 +742,6 @@ fn runtime_diagnostics_for_process(
     }
 }
 
-fn host_key_policy_for_host(
-    host: &crate::models::remote_host::RemoteHost,
-) -> SshRuntimeHostKeyPolicy {
-    if is_external_target_id(&host.id) {
-        SshRuntimeHostKeyPolicy::TrustUnknown
-    } else {
-        SshRuntimeHostKeyPolicy::RequireKnown
-    }
-}
-
-fn acquire_forward_session(
-    managed_runtime: &ManagedSshSessionManager,
-    host: &crate::models::remote_host::RemoteHost,
-    connect_request: SshRuntimeConnectRequest,
-) -> AppResult<crate::services::ssh_runtime::ManagedSshSessionHandle> {
-    if is_external_target_id(&host.id) {
-        return managed_runtime.acquire_capability_session_with_request(connect_request);
-    }
-    managed_runtime.acquire_session_with_request(connect_request)
-}
-
 fn mark_summary_runtime_cleanup(
     summary: &mut PortForwardSummary,
     cleanup_status: &str,
@@ -838,18 +835,6 @@ fn is_managed_forward_candidate(request: &PortForwardCreateRequest) -> bool {
 fn is_remote_dynamic_forward_request(request: &PortForwardCreateRequest) -> bool {
     request.kind == PortForwardKind::Remote
         && request.proxy_protocol == Some(PortForwardProxyProtocol::Socks5)
-}
-
-fn is_managed_runtime_unwired(error: &AppError) -> bool {
-    matches!(error, AppError::SshCommand(message) if message.contains("managed SSH runtime backend is not wired yet"))
-}
-
-fn is_managed_forward_unsupported(error: &AppError) -> bool {
-    matches!(error, AppError::SshCommand(message) if message.contains("does not support local port forwarding yet") || message.contains("does not support remote port forwarding yet") || message.contains("does not support dynamic port forwarding yet") || message.contains("does not support remote dynamic port forwarding yet"))
-}
-
-fn external_target_not_available_error(host_id: &str) -> AppError {
-    AppError::NotFound(format!("外部 SSH 临时目标不存在或已关闭: {host_id}"))
 }
 
 fn prompt_required_forward_error(prompt_plan: SshAuthPromptPlan) -> AppError {
@@ -956,72 +941,6 @@ fn spawn_secret_input_thread(
             }
         }
     });
-}
-
-struct ForwardSecretInputResponder {
-    entries: Vec<ForwardSecretInputResponderEntry>,
-}
-
-struct ForwardSecretInputResponderEntry {
-    prompt_markers: Vec<String>,
-    response: String,
-    max_responses: usize,
-    responses_sent: usize,
-}
-
-impl ForwardSecretInputResponder {
-    fn new(plan: TerminalSecretInputPlan) -> Self {
-        Self {
-            entries: plan
-                .entries
-                .into_iter()
-                .filter_map(ForwardSecretInputResponderEntry::from_entry)
-                .collect(),
-        }
-    }
-
-    fn can_respond(&self) -> bool {
-        self.entries
-            .iter()
-            .any(ForwardSecretInputResponderEntry::can_respond)
-    }
-
-    fn response_for(&mut self, buffer: &str) -> Option<String> {
-        let lower = buffer.to_ascii_lowercase();
-        let entry = self.entries.iter_mut().find(|entry| {
-            entry.can_respond()
-                && entry
-                    .prompt_markers
-                    .iter()
-                    .any(|marker| lower.contains(marker))
-        })?;
-        entry.responses_sent = entry.responses_sent.saturating_add(1);
-        Some(entry.response.clone())
-    }
-}
-
-impl ForwardSecretInputResponderEntry {
-    fn from_entry(entry: TerminalSecretInputEntry) -> Option<Self> {
-        let prompt_markers = entry
-            .prompt_markers
-            .into_iter()
-            .map(|marker| marker.to_ascii_lowercase())
-            .filter(|marker| !marker.trim().is_empty())
-            .collect::<Vec<_>>();
-        if entry.response.is_empty() || entry.max_responses == 0 || prompt_markers.is_empty() {
-            return None;
-        }
-        Some(Self {
-            prompt_markers,
-            response: entry.response,
-            max_responses: entry.max_responses,
-            responses_sent: 0,
-        })
-    }
-
-    fn can_respond(&self) -> bool {
-        self.responses_sent < self.max_responses
-    }
 }
 
 fn unix_timestamp() -> String {

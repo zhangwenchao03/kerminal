@@ -1,29 +1,27 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { Terminal as XtermTerminal } from "@xterm/xterm";
-import { closeTerminal, createDockerContainerTerminalSession, createSerialTerminalSession, createSshTerminalSession, createTelnetTerminalSession, createTerminalSession, getTerminalCommandError, getTerminalLogState, listTerminalSessions, resizeTerminal, writeTerminal } from "../../lib/terminalApi";
-import type { SshTerminalCreateRequest, TerminalOutputEvent, TerminalSessionSummary } from "../../lib/terminalApi";
+import { closeTerminal, getTerminalLogState, listTerminalSessions, resizeTerminal, writeTerminal } from "../../lib/terminalApi";
+import type { TerminalOutputEvent } from "../../lib/terminalApi";
 import { recordCommandHistory } from "../../lib/commandHistoryApi";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
-import {
-  submitSshAuthPromptResponse,
-  type SshAuthPromptPlan,
-  type SshAuthPromptRequest,
-} from "../../lib/sshAuthApi";
-import { requestSshAuthPrompt } from "../ssh-auth/sshAuthPromptStore";
 import { markTerminalPaneSessionDisconnected, markTerminalPaneSessionReconnected, registerTerminalPaneSession, updateTerminalPaneRuntimeContext, updateTerminalPaneSessionCwd, unregisterTerminalPaneSession } from "./terminalSessionRegistry";
 import { createTerminalOutputWriter } from "./terminalOutputWriter";
 import { createXtermPaneCommandBlockRuntime } from "./XtermPane.commandBlockRuntime";
 import { createXtermPaneGhostSuggestions } from "./XtermPane.ghostSuggestions";
+import { createTerminalInlineSshAuthPrompt } from "./XtermPane.inlineSshAuthPrompt";
+import { createXtermPaneTerminalSession } from "./XtermPane.sessionFactory";
 import { applyTerminalInputData, createTerminalInputModelState, updateTerminalInputBufferKind, updateTerminalInputComposition } from "./terminalInputModel";
 import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeScheduler";
 import { createTerminalRemoteSuggestionPrewarm } from "./terminalRemoteSuggestionPrewarm";
 import { createTerminalOutputHistoryBuffer } from "./terminalOutputHistoryBuffer";
+import { createTerminalGpuRenderRecoveryRuntime, terminalRendererFallbackReasonFromState, type TerminalGpuRenderRecoveryController } from "./terminalGpuRenderRecoveryRuntime";
 import { refreshTerminalRendererDimensions } from "./terminalRendererDimensions";
 import { createTerminalRendererController } from "./terminalRenderer";
 import { terminalRendererRegistry } from "./terminalRendererRegistry";
+import type { TerminalRendererFallbackReason } from "./terminalRendererPolicy";
 import { createTerminalOutputInstrumentation, runTerminalOutputInstrumentationStep } from "./terminalOutputInstrumentation";
-import { buildTerminalCreateRequest, collectCurrentDirOscSequences, errorMessage, isRightArrowInput, normalizeTerminalSessionSize } from "./XtermPane.helpers";
+import { collectCurrentDirOscSequences, errorMessage, isRightArrowInput } from "./XtermPane.helpers";
 import { registerCommandBlockClearHandlers, terminalSessionFailureLabel, terminalSessionTargetKind } from "./XtermPane.runtime.helpers";
 import { installShellIntegrationOscHandlers, isClearScreenCommand } from "./XtermPane.shellIntegration";
 import { KITTY_KEYBOARD_PROTOCOL_ENABLE, resolveTerminalInputCompatibilityOverride, resolveTerminalRuntimeKeydownOverride, shouldEnableKittyKeyboardProtocol } from "./terminalKeyboardPolicy";
@@ -34,16 +32,9 @@ import { registerTerminalRuntimeDiagnosticsPane } from "./terminalRuntimeDiagnos
 const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000;
 const INITIAL_REMOTE_OUTPUT_IMMEDIATE_WRITE_MS = 8_000;
 const TERMINAL_SESSION_STATUS_POLL_MS = 2_000;
-const SSH_AUTH_TERMINAL_PROMPT_MAX_RETRIES = 1;
-
-interface TerminalInlineSshAuthPromptState {
-  prompt: SshAuthPromptRequest;
-  resolve: (value: string | null) => void;
-  value: string;
-}
 
 export function installXtermPaneRuntime(params: any) {
-  const { args, commandBlockCounterRef, commandBlocksRef, containerRef, cwd, cwdTrackingBufferRef, currentCwdRef, disconnectSessionRef, env, fitAddonRef, focusedRef, ghostSuggestionRef, inputBufferRef, inputModelRef, onAgentSignalRef, onCurrentCwdChangeRef, onOutputHistoryChangeRef, onSessionFinishedRef, onTerminalDimensionsChangeRef, outputHistoryRef, paneId, profileId, promptLineRef, reconnectSessionRef, remoteCommand, remoteHostId, remoteHostProduction, searchAddonRef, sessionIdRef, setCommandBlockNotice, setCommandBlockViews, setConnectionState, setGhostSuggestion, setLogNotice, setLogState, setSearchResults, shellIntegrationCommandBlockProtocolRef, shell, shellAssistEnabled = true, startupMessage, syncCommandBlockViews, target, terminalAppearance, terminalAppearanceRef, terminalFontWeight, terminalRef, terminalRendererControllerRef, terminalRuntimeLifecycleControllerRef, terminalRuntimeLifecycleRef, terminalTheme, transientStartupMessage, visibleRef } = params;
+  const { args, commandBlockCounterRef, commandBlocksRef, containerRef, cwd, cwdTrackingBufferRef, currentCwdRef, disconnectSessionRef, env, fitAddonRef, focusedRef, ghostSuggestionRef, inputBufferRef, inputModelRef, onAgentSignalRef, onCurrentCwdChangeRef, onOutputHistoryChangeRef, onSessionFinishedRef, onTerminalDimensionsChangeRef, outputHistoryRef, paneId, profileId, promptLineRef, reconnectSessionRef, remoteCommand, remoteHostId, remoteHostProduction, searchAddonRef, sessionIdRef, setCommandBlockNotice, setCommandBlockViews, setConnectionState, setGhostSuggestion, setLogNotice, setLogState, setSearchResults, shellIntegrationCommandBlockProtocolRef, shell, shellAssistEnabled = true, startupMessage, syncCommandBlockViews, target, terminalAppearance, terminalAppearanceRef, terminalFontWeight, terminalGpuRenderRecoveryControllerRef, terminalRef, terminalRendererControllerRef, terminalRuntimeLifecycleControllerRef, terminalRuntimeLifecycleRef, terminalTheme, transientStartupMessage, visibleRef } = params;
     const container = containerRef.current;
     if (!container) {
       return undefined;
@@ -201,7 +192,7 @@ export function installXtermPaneRuntime(params: any) {
     );
     const inputDisposable = terminal.onData((data) => {
       terminalRuntimeLifecycleControllerRef?.current?.markUserInteraction();
-      if (handleTerminalAuthPromptInput(data)) {
+      if (terminalInlineSshAuthPrompt.handleInput(data)) {
         return;
       }
       const sessionId = sessionIdRef.current;
@@ -317,6 +308,7 @@ export function installXtermPaneRuntime(params: any) {
         void writeDesktopClipboardText(selection);
       }
     });
+    let gpuRenderRecoveryController: TerminalGpuRenderRecoveryController | null = null;
 
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(searchAddon);
@@ -336,6 +328,7 @@ export function installXtermPaneRuntime(params: any) {
       syncCommandBlockViews();
       commandBlockRuntime.syncCommandBlockRuntimeContext();
       ghostSuggestions.refreshGhostSuggestionLayout();
+      gpuRenderRecoveryController?.trigger("write-parsed");
     });
     const bufferChangeDisposable = terminal.buffer.onBufferChange(() => {
       const nextBufferType = terminal.buffer.active.type;
@@ -360,6 +353,7 @@ export function installXtermPaneRuntime(params: any) {
         ghostSuggestions.refreshGhostSuggestionLayout();
       }
       commandBlockRuntime.scheduleCommandBlockViewSync();
+      gpuRenderRecoveryController?.trigger("buffer-changed");
     });
     const xtermElement = container.querySelector(".xterm");
     const compositionTarget = xtermElement ?? container;
@@ -379,49 +373,11 @@ export function installXtermPaneRuntime(params: any) {
       inputBufferRef.current = inputModelRef.current.command;
       ghostSuggestions.scheduleGhostSuggestion();
     };
-    let terminalAuthPrompt: TerminalInlineSshAuthPromptState | null = null;
-    const promptForSshTerminalSecret = (prompt: SshAuthPromptRequest) =>
-      new Promise<string | null>((resolve) => {
-        terminalAuthPrompt?.resolve(null);
-        terminalAuthPrompt = { prompt, resolve, value: "" };
-        terminal.write(formatTerminalSshAuthPrompt(prompt));
-        terminal.focus();
-      });
-    const finishTerminalAuthPrompt = (value: string | null) => {
-      const activePrompt = terminalAuthPrompt;
-      if (!activePrompt) {
-        return;
-      }
-      terminalAuthPrompt = null;
-      activePrompt.resolve(value);
-    };
-    const handleTerminalAuthPromptInput = (data: string) => {
-      const activePrompt = terminalAuthPrompt;
-      if (!activePrompt) {
-        return false;
-      }
-      terminalRuntimeLifecycleControllerRef?.current?.markUserInteraction();
-      for (const character of data) {
-        if (character === "\u0003" || character === "\u001b") {
-          terminal.write("^C\r\n");
-          finishTerminalAuthPrompt(null);
-          return true;
-        }
-        if (character === "\r" || character === "\n") {
-          terminal.write("\r\n");
-          finishTerminalAuthPrompt(activePrompt.value);
-          return true;
-        }
-        if (character === "\u007f" || character === "\b") {
-          activePrompt.value = activePrompt.value.slice(0, -1);
-          continue;
-        }
-        if (character >= " ") {
-          activePrompt.value += character;
-        }
-      }
-      return true;
-    };
+    const terminalInlineSshAuthPrompt = createTerminalInlineSshAuthPrompt({
+      markUserInteraction: () =>
+        terminalRuntimeLifecycleControllerRef?.current?.markUserInteraction(),
+      terminal,
+    });
     compositionTarget.addEventListener(
       "compositionstart",
       handleCompositionStart,
@@ -430,12 +386,21 @@ export function installXtermPaneRuntime(params: any) {
     terminal.open(container);
     terminalRef.current = terminal;
     let rendererBackend = "cpu";
+    let lastRecordedRendererFallbackReason: TerminalRendererFallbackReason | undefined;
     const terminalRendererController = createTerminalRendererController({
       onStateChange: (state) => {
         terminalRendererRegistry.updatePaneState(paneId, state);
+        const fallbackReason = terminalRendererFallbackReasonFromState(state.fallbackReason);
+        if (fallbackReason && fallbackReason !== lastRecordedRendererFallbackReason) {
+          lastRecordedRendererFallbackReason = fallbackReason;
+          terminalRendererRegistry.recordPaneFailure(paneId, fallbackReason);
+        } else if (!fallbackReason) {
+          lastRecordedRendererFallbackReason = undefined;
+        }
         if (state.backend !== rendererBackend) {
           rendererBackend = state.backend;
           refreshTerminalRendererDimensions({ fitAddon, onDimensionsChange: onTerminalDimensionsChangeRef.current, resizeTerminal, sessionId: sessionIdRef.current, terminal });
+          gpuRenderRecoveryController?.trigger(state.backend === "gpu" ? "renderer-attached" : "renderer-disposed");
         }
       },
       paneId,
@@ -450,6 +415,8 @@ export function installXtermPaneRuntime(params: any) {
       paneId,
       visible: visibleRef?.current ?? true,
     });
+    gpuRenderRecoveryController = createTerminalGpuRenderRecoveryRuntime({ paneId, renderer: terminalRendererController, terminal });
+    terminalGpuRenderRecoveryControllerRef.current = gpuRenderRecoveryController;
     if (shouldEnableKittyKeyboardProtocol(inputCompatibilityMode)) {
       terminal.write(KITTY_KEYBOARD_PROTOCOL_ENABLE);
     }
@@ -519,11 +486,15 @@ export function installXtermPaneRuntime(params: any) {
       outputHistoryRef,
     });
     const sshFailureTracker = createSshTerminalFailureTracker();
+    let lastDevicePixelRatio = typeof window.devicePixelRatio === "number" ? window.devicePixelRatio : 1;
     const fitAndResize = () => {
       fitAddon.fit();
       const sessionId = sessionIdRef.current;
       const dimensions = { cols: terminal.cols, rows: terminal.rows };
       onTerminalDimensionsChangeRef.current?.(dimensions);
+      const nextDevicePixelRatio = typeof window.devicePixelRatio === "number" ? window.devicePixelRatio : 1;
+      gpuRenderRecoveryController?.trigger(nextDevicePixelRatio !== lastDevicePixelRatio ? "device-pixel-ratio-changed" : "resize");
+      lastDevicePixelRatio = nextDevicePixelRatio;
       if (!sessionId) {
         return;
       }
@@ -804,68 +775,20 @@ export function installXtermPaneRuntime(params: any) {
       };
 
       try {
-        const sessionSize = normalizeTerminalSessionSize({
+        const session = await createXtermPaneTerminalSession({
+          args,
           cols: terminal.cols,
+          currentCwd: currentCwdRef.current,
+          cwd,
+          env,
+          onOutput: handleOutput,
+          promptForSecret: terminalInlineSshAuthPrompt.promptForSecret,
+          remoteCommand,
+          remoteHostId,
           rows: terminal.rows,
+          shell,
+          target,
         });
-        const session =
-          target?.kind === "dockerContainer"
-            ? await createDockerContainerTerminalSession(
-                {
-                  cols: sessionSize.cols,
-                  containerId: target.containerId,
-                  hostId: target.hostId,
-                  rows: sessionSize.rows,
-                  runtime: target.runtime,
-                  shell,
-                  user: target.user,
-                  workdir: target.workdir,
-                },
-                handleOutput,
-              )
-            : target?.kind === "telnet"
-              ? await createTelnetTerminalSession(
-                  {
-                    cols: sessionSize.cols,
-                    hostId: target.hostId,
-                    rows: sessionSize.rows,
-                  },
-                  handleOutput,
-                )
-              : target?.kind === "serial"
-                ? await createSerialTerminalSession(
-                    {
-                      cols: sessionSize.cols,
-                      hostId: target.hostId,
-                      rows: sessionSize.rows,
-                    },
-                    handleOutput,
-                  )
-            : remoteHostId
-              ? await createSshTerminalSessionWithAuthRecovery(
-                  {
-                    cols: sessionSize.cols,
-                    ...(currentCwdRef.current ?? cwd
-                      ? { cwd: currentCwdRef.current ?? cwd }
-                      : {}),
-                    hostId: remoteHostId,
-                    ...(remoteCommand ? { remoteCommand } : {}),
-                    rows: sessionSize.rows,
-                  },
-                  handleOutput,
-                  promptForSshTerminalSecret,
-                )
-              : await createTerminalSession(
-                  buildTerminalCreateRequest({
-                    args,
-                    cols: sessionSize.cols,
-                    cwd,
-                    env,
-                    rows: sessionSize.rows,
-                    shell,
-                  }),
-                  handleOutput,
-                );
 
         if (disposed || sessionRun !== currentRun) {
           void closeTerminal(session.id);
@@ -1025,7 +948,7 @@ export function installXtermPaneRuntime(params: any) {
         disposable.dispose();
       }
       commandBlockClearHandlersDisposable.dispose();
-      finishTerminalAuthPrompt(null);
+      terminalInlineSshAuthPrompt.finish(null);
       const sessionId = sessionIdRef.current;
       sessionIdRef.current = null;
       shellIntegrationCommandBlockProtocolRef.current = false;
@@ -1036,6 +959,8 @@ export function installXtermPaneRuntime(params: any) {
         unregisterTerminalPaneSession(paneId, sessionId);
         void closeTerminal(sessionId);
       }
+      gpuRenderRecoveryController?.dispose();
+      if (terminalGpuRenderRecoveryControllerRef.current === gpuRenderRecoveryController) terminalGpuRenderRecoveryControllerRef.current = null;
       unregisterTerminalRenderer();
       if (terminalRendererControllerRef.current === terminalRendererController) {
         terminalRendererControllerRef.current = null;
@@ -1051,132 +976,4 @@ export function installXtermPaneRuntime(params: any) {
       setLogState({ active: false, bytesWritten: 0 });
       setLogNotice(null);
   };
-}
-
-async function createSshTerminalSessionWithAuthRecovery(
-  request: SshTerminalCreateRequest,
-  onOutput: (event: TerminalOutputEvent) => void,
-  promptForSecret: (prompt: SshAuthPromptRequest) => Promise<string | null>,
-): Promise<TerminalSessionSummary> {
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      return await createSshTerminalSession(request, onOutput);
-    } catch (error) {
-      const promptPlan = sshAuthPromptPlanFromTerminalError(error);
-      if (!promptPlan || attempt >= SSH_AUTH_TERMINAL_PROMPT_MAX_RETRIES) {
-        throw error;
-      }
-
-      const completed = await runSshTerminalAuthPromptPlan(
-        promptPlan,
-        request.hostId,
-        promptForSecret,
-      );
-      if (!completed) {
-        throw new Error("SSH 认证已取消。");
-      }
-    }
-  }
-}
-
-async function runSshTerminalAuthPromptPlan(
-  promptPlan: SshAuthPromptPlan,
-  hostId: string,
-  promptForSecret: (prompt: SshAuthPromptRequest) => Promise<string | null>,
-) {
-  for (const prompt of promptPlan.prompts) {
-    if (shouldReadSshAuthPromptInTerminal(prompt)) {
-      const value = await promptForSecret(prompt);
-      if (!value) {
-        return false;
-      }
-      await submitSshAuthPromptResponse({
-        promptId: prompt.promptId,
-        secretKind: prompt.secretKind,
-        value,
-      });
-      continue;
-    }
-    const receipt = await requestSshAuthPrompt({
-      ...(prompt.role === "target" ? { persistToHostId: hostId } : {}),
-      prompt,
-    });
-    if (!receipt) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function shouldReadSshAuthPromptInTerminal(prompt: SshAuthPromptRequest) {
-  return prompt.secretKind === "password" || prompt.secretKind === "keyPassphrase";
-}
-
-function formatTerminalSshAuthPrompt(prompt: SshAuthPromptRequest) {
-  const target = `${prompt.username}@${prompt.host}:${prompt.port}`;
-  if (prompt.secretKind === "keyPassphrase") {
-    return `\r\nEnter passphrase for ${target}: `;
-  }
-  return `\r\n${target}'s password: `;
-}
-
-function sshAuthPromptPlanFromTerminalError(
-  error: unknown,
-): SshAuthPromptPlan | null {
-  const terminalError = getTerminalCommandError(error);
-  if (terminalError?.sshAuthPromptPlan) {
-    return isSshAuthPromptPlan(terminalError.sshAuthPromptPlan)
-      ? terminalError.sshAuthPromptPlan
-      : null;
-  }
-
-  const wrappedTerminalError =
-    isRecord(error) && isRecord(error.terminalError)
-      ? error.terminalError
-      : null;
-  const wrappedPromptPlan = wrappedTerminalError?.sshAuthPromptPlan;
-  return isSshAuthPromptPlan(wrappedPromptPlan) ? wrappedPromptPlan : null;
-}
-
-function isSshAuthPromptPlan(value: unknown): value is SshAuthPromptPlan {
-  if (!isRecord(value) || !Array.isArray(value.prompts)) {
-    return false;
-  }
-  return value.prompts.every(isSshAuthPromptRequest);
-}
-
-function isSshAuthPromptRequest(value: unknown): value is SshAuthPromptRequest {
-  if (!isRecord(value)) {
-    return false;
-  }
-  return (
-    typeof value.host === "string" &&
-    typeof value.port === "number" &&
-    typeof value.promptId === "string" &&
-    typeof value.reason === "string" &&
-    isSshAuthPromptRole(value.role) &&
-    isSshAuthSecretKind(value.secretKind) &&
-    typeof value.username === "string"
-  );
-}
-
-function isSshAuthPromptRole(value: unknown) {
-  return (
-    value === "target" ||
-    (isRecord(value) &&
-      isRecord(value.jump) &&
-      typeof value.jump.index === "number")
-  );
-}
-
-function isSshAuthSecretKind(value: unknown) {
-  return (
-    value === "password" ||
-    value === "privateKey" ||
-    value === "keyPassphrase"
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }

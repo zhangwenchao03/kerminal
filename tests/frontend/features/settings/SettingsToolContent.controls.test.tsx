@@ -245,31 +245,8 @@ describe("SettingsToolContent controls", () => {
       }),
     );
 
-    fireEvent.change(screen.getByLabelText("审计保留天数"), {
-      target: { value: "45" },
-    });
-    expect(onSettingsChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        terminal: expect.objectContaining({
-          inlineSuggestion: expect.objectContaining({
-            auditRetentionDays: 45,
-          }),
-        }),
-      }),
-    );
-
-    fireEvent.change(screen.getByLabelText("反馈保留天数"), {
-      target: { value: "730" },
-    });
-    expect(onSettingsChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        terminal: expect.objectContaining({
-          inlineSuggestion: expect.objectContaining({
-            feedbackRetentionDays: 730,
-          }),
-        }),
-      }),
-    );
+    expect(screen.queryByLabelText("审计保留天数")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("反馈保留天数")).not.toBeInTheDocument();
 
     await user.click(screen.getByLabelText("远端路径"));
     expect(onSettingsChange).toHaveBeenLastCalledWith(

@@ -3,10 +3,6 @@ import { Select } from "../../../components/ui/select";
 import { Switch } from "../../../components/ui/switch";
 import { cn } from "../../../lib/cn";
 import type {
-  CommandSuggestionDiagnosticsCleanupResult,
-  CommandSuggestionTelemetrySummary,
-} from "../../../lib/terminalSuggestionApi";
-import type {
   AppSettings,
   TerminalInlineSuggestionAcceptKey,
   TerminalInlineSuggestionProductionHostPolicy,
@@ -21,25 +17,10 @@ import {
 import {
   InlineSuggestionPolicyStatus,
   InlineSuggestionProviderToggle,
-  InlineSuggestionTelemetryPanel,
 } from "./inline-suggestions";
-import type {
-  SuggestionCleanupState,
-  SuggestionTelemetryLoadState,
-} from "./types";
 
 interface CommandSuggestionSettingsSectionProps {
-  cleanupSuggestionDiagnostics: (
-    resetPersistedTelemetry: boolean,
-  ) => Promise<void>;
-  loadSuggestionTelemetry: () => Promise<void>;
   normalizedSettings: AppSettings;
-  suggestionCleanupError: string | null;
-  suggestionCleanupResult: CommandSuggestionDiagnosticsCleanupResult | null;
-  suggestionCleanupState: SuggestionCleanupState;
-  suggestionTelemetry: CommandSuggestionTelemetrySummary | null;
-  suggestionTelemetryError: string | null;
-  suggestionTelemetryState: SuggestionTelemetryLoadState;
   updateTerminalInlineSuggestion: (
     inlineSuggestion: Partial<TerminalInlineSuggestionSettings>,
   ) => void;
@@ -59,15 +40,7 @@ const suggestionsBadgeClassName =
   "kerminal-muted-surface rounded-full border px-3 py-1 text-xs text-zinc-500 dark:text-zinc-400";
 
 export function CommandSuggestionSettingsSection({
-  cleanupSuggestionDiagnostics,
-  loadSuggestionTelemetry,
   normalizedSettings,
-  suggestionCleanupError,
-  suggestionCleanupResult,
-  suggestionCleanupState,
-  suggestionTelemetry,
-  suggestionTelemetryError,
-  suggestionTelemetryState,
   updateTerminalInlineSuggestion,
   updateTerminalInlineSuggestionProvider,
 }: CommandSuggestionSettingsSectionProps) {
@@ -86,7 +59,7 @@ export function CommandSuggestionSettingsSection({
             命令提示
           </div>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-            控制灰色命令提示的来源、接受策略、远端探测和诊断保留。
+            控制灰色命令提示的来源、接受策略和远端探测。
           </p>
         </div>
         <span className={suggestionsBadgeClassName}>主机免安装</span>
@@ -222,34 +195,6 @@ export function CommandSuggestionSettingsSection({
               ))}
             </div>
           </div>
-        </div>
-
-        <div
-          className="mt-3"
-          id="settings-command-suggestions-telemetry-panel"
-          tabIndex={-1}
-        >
-          <InlineSuggestionTelemetryPanel
-            auditRetentionDays={inlineSuggestion.auditRetentionDays}
-            cleanupError={suggestionCleanupError}
-            cleanupResult={suggestionCleanupResult}
-            cleanupState={suggestionCleanupState}
-            error={suggestionTelemetryError}
-            feedbackRetentionDays={inlineSuggestion.feedbackRetentionDays}
-            onAuditRetentionDaysChange={(auditRetentionDays) =>
-              updateTerminalInlineSuggestion({ auditRetentionDays })
-            }
-            onCleanupExpired={() => void cleanupSuggestionDiagnostics(false)}
-            onFeedbackRetentionDaysChange={(feedbackRetentionDays) =>
-              updateTerminalInlineSuggestion({
-                feedbackRetentionDays,
-              })
-            }
-            onRefresh={() => void loadSuggestionTelemetry()}
-            onResetTelemetry={() => void cleanupSuggestionDiagnostics(true)}
-            state={suggestionTelemetryState}
-            telemetry={suggestionTelemetry}
-          />
         </div>
       </section>
     </section>

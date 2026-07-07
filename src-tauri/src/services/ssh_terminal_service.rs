@@ -14,11 +14,11 @@ use crate::{
     paths::KerminalPaths,
     services::{
         encrypted_vault_service::EncryptedVaultService,
-        external_launch::{is_external_target_id, ExternalSessionMaterializer},
+        external_launch::ExternalSessionMaterializer,
         remote_host_service::RemoteHostService,
         ssh_credential_resolver::{
-            ResolvedSshAuthMaterial, ResolvedSshHopAuth, ResolvedSshRouteAuth,
-            SshCredentialResolver,
+            NativeSshRouteMaterial, ResolvedSshAuthMaterial, ResolvedSshHopAuth,
+            ResolvedSshRouteAuth, SshCredentialResolver,
         },
         ssh_identity_file::resolve_identity_file_path,
         ssh_route_plan::{
@@ -26,9 +26,14 @@ use crate::{
         },
         ssh_runtime::{
             auth_broker::{SshAuthBroker, SshAuthBrokerResolution, SshAuthPromptPlan},
+            facade::{SshRuntimeFacade, SshRuntimeTargetContext},
+            policy::{
+                external_target_not_available_error, is_capability_unsupported,
+                is_external_runtime_target_id, is_managed_runtime_unwired,
+                runtime_host_key_policy_for_host_id, SshRuntimeCapability,
+            },
             session_key::ssh_session_key_for_route,
-            ManagedSshSessionManager, SshRuntimeConnectRequest, SshRuntimeHostKeyPolicy,
-            SshRuntimeShellRequest, MANAGED_SSH_SHELL_UNSUPPORTED,
+            ManagedSshSessionManager, SshRuntimeConnectRequest, SshRuntimeShellRequest,
         },
         terminal_manager::{
             TerminalManagedShellCreateRequest, TerminalManagedShellRuntime, TerminalManager,
@@ -192,7 +197,7 @@ impl SshTerminalService {
                 return Ok((target.host, target.route_auth));
             }
         }
-        if is_external_target_id(host_id) {
+        if is_external_runtime_target_id(host_id) {
             return Err(external_target_not_available_error(host_id));
         }
         let host = remote_hosts.require_host(host_id)?;
@@ -235,32 +240,31 @@ impl SshTerminalService {
             terminal_connect_timeout_seconds(&runtime_host),
         )
         .with_keepalive_seconds(terminal_keepalive_seconds(&runtime_host))
-        .with_host_key_policy(host_key_policy_for_host(&runtime_host));
-        let session = match managed_runtime.acquire_session_with_request(connect_request) {
-            Ok(session) => session,
-            Err(error) if is_managed_runtime_unwired(&error) => {
-                managed_runtime.record_legacy_fallback(
-                    "shell",
-                    LEGACY_FALLBACK_SHELL_UNWIRED,
-                    Some(terminal_host_label(&runtime_host)),
-                );
-                return Ok(None);
-            }
-            Err(error) => return Err(error),
-        };
+        .with_host_key_policy(runtime_host_key_policy_for_host_id(&runtime_host.id))
+        .with_native_route_material(NativeSshRouteMaterial::from_resolved_auth(&route_auth)?);
+        let facade = SshRuntimeFacade::new(managed_runtime.clone());
+        let context = SshRuntimeTargetContext::new(connect_request);
         let shell_request =
             SshRuntimeShellRequest::new(terminal_type(&runtime_host), request.cols, request.rows);
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .map_err(|error| AppError::Terminal(error.to_string()))?;
-        let shell = match runtime.block_on(session.open_shell(shell_request)) {
+        let shell = match runtime.block_on(facade.open_shell(&context, shell_request)) {
             Ok(shell) => shell,
-            Err(error) if is_managed_shell_unsupported(&error) => {
-                managed_runtime.record_legacy_fallback(
+            Err(error) if is_managed_runtime_unwired(&error) => {
+                facade.record_legacy_fallback(
+                    "shell",
+                    LEGACY_FALLBACK_SHELL_UNWIRED,
+                    Some(&context),
+                );
+                return Ok(None);
+            }
+            Err(error) if is_capability_unsupported(&error, SshRuntimeCapability::Shell) => {
+                facade.record_legacy_fallback(
                     "shell",
                     LEGACY_FALLBACK_SHELL_UNSUPPORTED,
-                    Some(terminal_host_label(&runtime_host)),
+                    Some(&context),
                 );
                 return Ok(None);
             }
@@ -283,18 +287,6 @@ impl SshTerminalService {
 
 fn terminal_host_label(host: &RemoteHost) -> String {
     format!("{}@{}:{}", host.username, host.host, host.port)
-}
-
-fn external_target_not_available_error(host_id: &str) -> AppError {
-    AppError::NotFound(format!("外部 SSH 临时目标不存在或已关闭: {host_id}"))
-}
-
-fn host_key_policy_for_host(host: &RemoteHost) -> SshRuntimeHostKeyPolicy {
-    if is_external_target_id(&host.id) {
-        SshRuntimeHostKeyPolicy::TrustUnknown
-    } else {
-        SshRuntimeHostKeyPolicy::RequireKnown
-    }
 }
 
 fn ssh_auth_prompt_required_error(host: &RemoteHost, prompt_plan: SshAuthPromptPlan) -> AppError {
@@ -668,14 +660,6 @@ fn managed_shell_label(host: &RemoteHost) -> String {
     } else {
         format!("ssh:{}", host.name)
     }
-}
-
-fn is_managed_runtime_unwired(error: &AppError) -> bool {
-    matches!(error, AppError::SshCommand(message) if message.contains("managed SSH runtime backend is not wired yet"))
-}
-
-fn is_managed_shell_unsupported(error: &AppError) -> bool {
-    matches!(error, AppError::SshCommand(message) if message == MANAGED_SSH_SHELL_UNSUPPORTED)
 }
 
 fn validate_terminal_size(rows: u16, cols: u16) -> AppResult<()> {

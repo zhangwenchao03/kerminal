@@ -60,11 +60,38 @@ describe("workspaceStore external SSH launch", () => {
     expect(state.activeTool).toBe("sftp");
     expect(state.terminalPanes[0]?.title).toBe("Jump host file view");
   });
+
+  it("removes only the requested temporary external SSH machine", () => {
+    useWorkspaceStore.getState().openExternalSshLaunch(
+      createResolvedLaunch({
+        displayName: "Jump host one",
+        id: "launch-1",
+      }),
+    );
+    useWorkspaceStore.getState().openExternalSshLaunch(
+      createResolvedLaunch({
+        displayName: "Jump host two",
+        id: "launch-2",
+      }),
+    );
+
+    useWorkspaceStore.getState().removeSidebarMachine("external:launch-1");
+
+    const state = useWorkspaceStore.getState();
+    const machineIds = state.machineGroups.flatMap((group) =>
+      group.machines.map((machine) => machine.id),
+    );
+    expect(machineIds).not.toContain("external:launch-1");
+    expect(machineIds).toContain("external:launch-2");
+    expect(state.removedSidebarMachineIds).toEqual([]);
+    expect(state.selectedMachineId).toBe("external:launch-2");
+  });
 });
 
 function createResolvedLaunch(
   overrides: {
     displayName?: string;
+    id?: string;
     openSftp?: boolean;
     remoteCommand?: string;
   } = {},
@@ -82,7 +109,7 @@ function createResolvedLaunch(
       rawHash: "abc123",
       warnings: [],
     },
-    id: "launch-1",
+    id: overrides.id ?? "launch-1",
     options: {
       displayName: overrides.displayName,
       openSftp: overrides.openSftp ?? false,

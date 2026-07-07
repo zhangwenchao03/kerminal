@@ -224,7 +224,16 @@ impl TerminalManager {
             transport,
         };
 
-        self.lock_sessions()?.insert(session_id, session);
+        self.lock_sessions()?.insert(session_id.clone(), session);
+        tauri_plugin_log::log::info!(
+            target: "terminal.managed",
+            "event=open.ok session_id={} target_ref={} shell={} rows={} cols={}",
+            session_id,
+            summary.target_ref.as_deref().unwrap_or("<none>"),
+            summary.shell,
+            summary.rows,
+            summary.cols
+        );
         Ok(summary)
     }
 

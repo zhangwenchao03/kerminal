@@ -14,6 +14,7 @@ import {
   type SftpTransferSummary,
 } from "../../../lib/sftpApi";
 import { mergeTransferSnapshot } from "../sftpTransferModel";
+import { buildDockerDirectTransferSummary } from "./sftpDockerDirectTransferModel";
 import type { SftpTransferActionItem } from "./sftpTransferActionPlan";
 import { withSftpTransferViewScope } from "./sftpTransferScopeModel";
 import { buildSftpTransferTaskExecutionPlan } from "./sftpTransferTaskRunnerModel";
@@ -58,18 +59,50 @@ export function useSftpTransferTaskRunner({
         return;
       }
 
-      setOperationStatus(executionPlan.runningStatus);
-      if (executionPlan.direction === "upload") {
-        await uploadDockerContainerPath(executionPlan.containerRequest);
-        if (executionPlan.refreshRemotePath) {
-          await loadDirectory(executionPlan.refreshRemotePath);
-        }
-        setOperationStatus(executionPlan.successStatus);
+      if (!fileTarget || fileTarget.kind !== "dockerContainer") {
         return;
       }
 
-      await downloadDockerContainerPath(executionPlan.containerRequest);
-      setOperationStatus(executionPlan.successStatus);
+      const transferId = createDockerDirectTransferId();
+      const createdAt = Date.now();
+      const updateDockerTransferSnapshot = (
+        status: "running" | "succeeded" | "failed",
+        error?: string,
+      ) => {
+        setTransfers((current) =>
+          mergeTransferSnapshot(
+            current,
+            buildDockerDirectTransferSummary({
+              createdAt,
+              direction: executionPlan.direction,
+              error,
+              fileTarget,
+              id: transferId,
+              request: executionPlan.containerRequest,
+              status,
+              updatedAt: Date.now(),
+              viewScope,
+            }),
+          ),
+        );
+      };
+
+      setOperationStatus(null);
+      updateDockerTransferSnapshot("running");
+      try {
+        if (executionPlan.direction === "upload") {
+          await uploadDockerContainerPath(executionPlan.containerRequest);
+          if (executionPlan.refreshRemotePath) {
+            await loadDirectory(executionPlan.refreshRemotePath);
+          }
+        } else {
+          await downloadDockerContainerPath(executionPlan.containerRequest);
+        }
+        updateDockerTransferSnapshot("succeeded");
+      } catch (nextError) {
+        updateDockerTransferSnapshot("failed", errorMessage(nextError));
+        throw nextError;
+      }
     },
     [
       currentPath,
@@ -83,4 +116,12 @@ export function useSftpTransferTaskRunner({
   );
 
   return { runTransferTask };
+}
+
+function createDockerDirectTransferId() {
+  return `docker-direct-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }

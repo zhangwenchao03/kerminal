@@ -447,15 +447,58 @@ async fn native_sftp_service_transfers_large_files_with_default_settings() {
 }
 
 #[tokio::test]
+async fn native_sftp_service_downloads_directory_file_with_short_read_sized_chunk() {
+    let server_root = tempdir().expect("server root");
+    let client_root = tempdir().expect("client root");
+    let remote_dir = server_root.path().join("jdk-21.0.2/bin");
+    fs::create_dir_all(&remote_dir)
+        .await
+        .expect("seed remote directory");
+    let payload = (0..76_018)
+        .map(|index| (index % 251) as u8)
+        .collect::<Vec<_>>();
+    fs::write(remote_dir.join("java"), &payload)
+        .await
+        .expect("seed remote short-read-sized file");
+
+    let server = start_loopback_sftp_server(server_root.path().to_path_buf()).await;
+    let (_home, state) = test_state();
+    let host_id = create_password_remote_host(&state, "loopback", server.addr.port());
+    trust_loopback_host(&state, &host_id).await;
+
+    let download_root = client_root.path().join("jdk-21.0.2");
+    state
+        .sftp()
+        .download_directory(
+            state.paths(),
+            SftpTransferRequest {
+                host_id,
+                remote_path: "/jdk-21.0.2".to_owned(),
+                local_path: download_root.to_string_lossy().into_owned(),
+                conflict_policy: SftpTransferConflictPolicy::Overwrite,
+            },
+        )
+        .await
+        .expect("download directory containing a 64KiB-short-read-sized file");
+
+    assert_eq!(
+        fs::read(download_root.join("bin/java"))
+            .await
+            .expect("read downloaded short-read-sized file"),
+        payload
+    );
+}
+
+#[tokio::test]
 async fn native_sftp_service_streams_remote_copy_between_hosts() {
     let source_root = tempdir().expect("source server root");
     let target_root = tempdir().expect("target server root");
-    fs::write(
-        source_root.path().join("artifact.txt"),
-        b"streamed remote copy",
-    )
-    .await
-    .expect("seed source remote file");
+    let short_read_payload = (0..76_018)
+        .map(|index| (index % 251) as u8)
+        .collect::<Vec<_>>();
+    fs::write(source_root.path().join("artifact.txt"), &short_read_payload)
+        .await
+        .expect("seed source remote file");
     fs::create_dir_all(source_root.path().join("release/nested"))
         .await
         .expect("seed source nested directory");
@@ -499,10 +542,10 @@ async fn native_sftp_service_streams_remote_copy_between_hosts() {
         .expect("enqueue remote copy over real SFTP");
     wait_for_transfer_success(&state, &summary.id).await;
     assert_eq!(
-        fs::read_to_string(target_root.path().join("copied.txt"))
+        fs::read(target_root.path().join("copied.txt"))
             .await
             .expect("read copied target file"),
-        "streamed remote copy"
+        short_read_payload
     );
 
     fs::write(
@@ -528,10 +571,10 @@ async fn native_sftp_service_streams_remote_copy_between_hosts() {
         .expect("enqueue skip conflicting remote copy target");
     wait_for_transfer_success(&state, &summary.id).await;
     assert_eq!(
-        fs::read_to_string(target_root.path().join("copied.txt"))
+        fs::read(target_root.path().join("copied.txt"))
             .await
             .expect("read skipped target file"),
-        "streamed remote copy"
+        short_read_payload
     );
 
     let summary = state

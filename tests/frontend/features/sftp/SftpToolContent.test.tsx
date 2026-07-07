@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -285,6 +286,13 @@ describe("SftpToolContent basic behavior", () => {
 
   it("shows direct Docker container transfer status at the bottom of the browser", async () => {
     const user = userEvent.setup();
+    let resolveDownload: ((value: boolean) => void) | undefined;
+    containerFilesApiMocks.downloadDockerContainerPath.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveDownload = resolve;
+        }),
+    );
 
     render(<SftpToolContent selectedMachine={containerMachine} />);
 
@@ -303,19 +311,31 @@ describe("SftpToolContent basic behavior", () => {
       remotePath: "/app/package.json",
       runtime: "docker",
     });
+    const progress = await screen.findByRole("progressbar", {
+      name: "传输进度 package.json",
+    });
+    const transferStatusBar = screen.getByRole("status", {
+      name: "SFTP 传输状态",
+    });
+    expect(progress).toHaveAttribute("aria-valuenow", "8");
+    expect(transferStatusBar).toHaveTextContent("SFTP 传输队列");
+    expect(transferStatusBar).toHaveTextContent("下载中");
+    expect(transferStatusBar).toHaveTextContent("package.json");
+    expect(screen.queryByTestId("sftp-operation-progress")).not.toBeInTheDocument();
 
-    const statusText = await screen.findByText("已下载：/app/package.json");
-    const statusBar = screen.getByTestId("sftp-operation-status");
+    await act(async () => {
+      resolveDownload?.(true);
+    });
+
+    expect(await screen.findByText("完成")).toBeInTheDocument();
+    expect(transferStatusBar).toHaveTextContent("100%");
+    expect(screen.queryByTestId("sftp-operation-status")).not.toBeInTheDocument();
     const dropZone = screen.getByTestId("sftp-drop-zone");
 
-    expect(statusBar).toContainElement(statusText);
     expect(
-      dropZone.compareDocumentPosition(statusBar) &
+      dropZone.compareDocumentPosition(transferStatusBar) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(
-      screen.queryByRole("status", { name: "SFTP 传输状态" }),
-    ).not.toBeInTheDocument();
   });
 
   it("follows the focused terminal directory when the switch is enabled", async () => {

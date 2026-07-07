@@ -20,7 +20,7 @@ void import("./bootstrap")
       return;
     }
 
-    showStartupFailure(error);
+    showStartupFailure();
   });
 
 function shouldRetryStartupImport(error: unknown) {
@@ -68,13 +68,12 @@ function clearStartupRetry() {
   }
 }
 
-function showStartupFailure(error: unknown) {
+function showStartupFailure() {
   const root = document.getElementById("root");
   if (!root) {
     return;
   }
 
-  const message = error instanceof Error ? error.message : String(error);
   root.style.minHeight = "100vh";
   root.style.display = "flex";
   root.style.alignItems = "center";
@@ -84,5 +83,5 @@ function showStartupFailure(error: unknown) {
   root.style.color = "#f4f4f5";
   root.style.fontFamily =
     'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-  root.textContent = `应用启动失败，请打开开发者工具查看错误。${message ? ` ${message}` : ""}`;
+  root.textContent = "应用启动失败，请重新打开应用；如果持续失败，请通过应用日志反馈问题。";
 }

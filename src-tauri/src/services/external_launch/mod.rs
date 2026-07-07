@@ -4,12 +4,17 @@
 
 pub mod alias;
 pub mod bridge;
+pub mod classifier;
+pub(crate) mod destination;
 pub mod intake;
 pub mod materializer;
 pub mod model;
 pub mod parser;
+pub(crate) mod parsers;
+pub(crate) mod redaction;
 pub mod secret;
 pub mod shim;
+pub(crate) mod ssh_url;
 
 pub use alias::{
     default_external_launch_alias_directory, delete_external_launch_aliases,
@@ -20,10 +25,11 @@ pub use alias::{
     ExternalLaunchAliasSummary, EXTERNAL_LAUNCH_ALIAS_TOOLS,
 };
 pub use bridge::{
-    external_launch_bridge_endpoint, run_external_launch_bridge_server,
-    send_external_launch_bridge_envelope, ExternalLaunchBridgeDiagnostics,
-    ExternalLaunchBridgeEndpoint, ExternalLaunchBridgeEnvelope, ExternalLaunchBridgeEventSink,
-    ExternalLaunchBridgeResponse, EXTERNAL_LAUNCH_BRIDGE_SCHEMA_VERSION,
+    direct_parent_command_line_for_args, external_launch_bridge_endpoint,
+    run_external_launch_bridge_server, send_external_launch_bridge_envelope,
+    ExternalLaunchBridgeDiagnostics, ExternalLaunchBridgeEndpoint, ExternalLaunchBridgeEnvelope,
+    ExternalLaunchBridgeEventSink, ExternalLaunchBridgeResponse,
+    EXTERNAL_LAUNCH_BRIDGE_SCHEMA_VERSION,
 };
 pub use intake::{
     ExternalLaunchAcceptOutcome, ExternalLaunchEventKind, ExternalLaunchEventPayload,

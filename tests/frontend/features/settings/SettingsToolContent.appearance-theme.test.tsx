@@ -280,13 +280,11 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     expect(screen.getByText("终端渲染")).toBeInTheDocument();
     expect(screen.queryByText("GPU 分屏")).not.toBeInTheDocument();
     expect(screen.queryByText("输出待写入")).not.toBeInTheDocument();
-    expect(
-      await screen.findByTestId("managed-ssh-runtime-diagnostics"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("默认启用门禁阻断")).toBeInTheDocument();
-    expect(screen.getAllByText("Managed sessions").length).toBeGreaterThan(0);
-    expect(screen.getByText("Fallback reasons")).toBeInTheDocument();
-    expect(screen.getByText("runtime-unwired")).toBeInTheDocument();
+    expect(screen.queryByTestId("managed-ssh-runtime-diagnostics")).not.toBeInTheDocument();
+    expect(screen.queryByText("默认启用门禁阻断")).not.toBeInTheDocument();
+    expect(screen.queryByText("Managed sessions")).not.toBeInTheDocument();
+    expect(screen.queryByText("Fallback reasons")).not.toBeInTheDocument();
+    expect(screen.queryByText("runtime-unwired")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /保持默认渲染路径/ }));
     expect(onSettingsChange).toHaveBeenLastCalledWith(
@@ -329,7 +327,7 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     expect(screen.getByLabelText("搜索设置")).toHaveValue("");
   });
 
-  it("searches runtime diagnostics and opens the terminal diagnostics panel", async () => {
+  it("does not expose runtime diagnostics in settings search", async () => {
     const user = userEvent.setup();
 
     render(
@@ -340,17 +338,22 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     );
 
     await user.type(screen.getByLabelText("搜索设置"), "默认启用");
-    await user.click(screen.getByRole("button", { name: "打开设置项：运行诊断" }));
 
-    expect(
-      await screen.findByTestId("managed-ssh-runtime-diagnostics"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Queue depth")).toBeInTheDocument();
-    expect(screen.getByText("authentication")).toBeInTheDocument();
-    expect(screen.getByLabelText("搜索设置")).toHaveValue("");
+    expect(screen.queryByRole("button", { name: "打开设置项：运行诊断" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("managed-ssh-runtime-diagnostics")).not.toBeInTheDocument();
+    expect(screen.queryByText("Queue depth")).not.toBeInTheDocument();
+    expect(screen.queryByText("authentication")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("搜索设置")).toHaveValue("默认启用");
+
+    await user.clear(screen.getByLabelText("搜索设置"));
+    await user.type(screen.getByLabelText("搜索设置"), "遥测");
+
+    expect(screen.queryByRole("button", { name: "打开设置项：提示诊断" })).not.toBeInTheDocument();
+    expect(screen.queryByText("灰色提示诊断")).not.toBeInTheDocument();
+    expect(screen.queryByText("审计保留")).not.toBeInTheDocument();
   });
 
-	  it("searches external launch setup and shows redacted command templates", async () => {
+  it("searches external launch setup while hiding alias generation and shim controls", async () => {
     const user = userEvent.setup();
 
     render(
@@ -375,43 +378,27 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
       "whitespace-pre-wrap",
       "break-all",
     );
-	    expect(
-	      screen.queryByText(/KERM_FIXTURE_PASSWORD_DO_NOT_USE/),
-	    ).not.toBeInTheDocument();
-	  });
-
-  it("generates and deletes external launch compatibility aliases", async () => {
-    const user = userEvent.setup();
-
-    render(
-      <SettingsToolContent
-        initialSectionId="settings-external-launch"
-        onSettingsChange={vi.fn()}
-        settings={systemThemeSettings()}
-      />,
-    );
-
-    expect(await screen.findByText("兼容启动器")).toBeInTheDocument();
-    expect(screen.getByText("C:\\Kerminal\\compat")).toBeInTheDocument();
-    expect(screen.getByText("C:\\Kerminal\\kerminal.exe")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "生成全部" }));
-    expect(externalLaunchApiMock.generateExternalLaunchAliases).toHaveBeenCalledWith(
-      { tools: ["putty", "mobaxterm", "xshell", "securecrt", "openssh"] },
-    );
-
-    await user.click(screen.getByRole("button", { name: "删除已管理" }));
-    expect(externalLaunchApiMock.deleteExternalLaunchAliases).toHaveBeenCalledWith(
-      { tools: ["putty"] },
-    );
-
-    await user.click(screen.getByRole("button", { name: "打开目录" }));
-    expect(externalLaunchApiMock.openExternalLaunchAliasDirectory).toHaveBeenCalledWith(
-      "C:\\Kerminal\\compat",
-    );
+    expect(
+      screen.queryByText(/KERM_FIXTURE_PASSWORD_DO_NOT_USE/),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("兼容启动器")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "生成全部" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "删除已管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开目录" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("switch", { name: "启用本地 shim bridge" }),
+    ).not.toBeInTheDocument();
+    expect(
+      externalLaunchApiMock.getExternalLaunchAliasStatus,
+    ).not.toHaveBeenCalled();
+    expect(
+      externalLaunchApiMock.generateExternalLaunchAliases,
+    ).not.toHaveBeenCalled();
+    expect(externalLaunchApiMock.deleteExternalLaunchAliases).not.toHaveBeenCalled();
+    expect(externalLaunchApiMock.openExternalLaunchAliasDirectory).not.toHaveBeenCalled();
   });
 
-  it("updates external launch policy controls", async () => {
+  it("updates external launch policy controls without exposing shim controls", async () => {
     const user = userEvent.setup();
     const onSettingsChange = vi.fn();
 
@@ -422,6 +409,12 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
         settings={systemThemeSettings()}
       />,
     );
+
+    expect(screen.getByText("外部 SSH 启动")).toBeInTheDocument();
+    expect(screen.queryByText("兼容启动器")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("switch", { name: "启用本地 shim bridge" }),
+    ).not.toBeInTheDocument();
 
     await user.click(
       screen.getByRole("switch", { name: "启用外部 SSH 启动" }),
@@ -435,12 +428,12 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     );
 
     await user.click(
-      screen.getByRole("switch", { name: "启用本地 shim bridge" }),
+      screen.getByRole("switch", { name: "接受常见终端参数" }),
     );
     expect(onSettingsChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
         externalLaunch: expect.objectContaining({
-          shimBridge: { enabled: false },
+          acceptVendorArgs: false,
         }),
       }),
     );
@@ -469,6 +462,7 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
         }),
       }),
     );
+    expect(externalLaunchApiMock.getExternalLaunchAliasStatus).not.toHaveBeenCalled();
   });
 });
 

@@ -187,8 +187,7 @@ export function LogToolContent({
               应用日志
             </div>
             <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-              Tauri 插件日志写入 Kerminal
-              日志目录；诊断包只记录路径、大小和轮转策略。
+              应用运行记录会保存在本机，可用于反馈问题或回溯操作。
             </p>
           </div>
           <Button
@@ -224,7 +223,7 @@ export function LogToolContent({
           <div className="mt-3 grid gap-2 text-xs text-zinc-500 dark:text-zinc-400">
             <div className="grid gap-1 min-[720px]:grid-cols-[5rem_minmax(0,1fr)]">
               <span className="font-medium text-zinc-700 dark:text-zinc-300">
-                活跃文件
+                当前日志
               </span>
               <code
                 className="kerminal-muted-surface min-w-0 truncate rounded-md px-2 py-1 font-mono text-zinc-800 dark:text-zinc-200"

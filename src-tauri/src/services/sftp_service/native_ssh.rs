@@ -63,6 +63,7 @@ pub(super) enum HostKeyPolicy {
 struct NativeSftpHopExecution {
     auth: SftpAuthMaterial,
     host: String,
+    host_key_policy: HostKeyPolicy,
     known_hosts_path: PathBuf,
     label: String,
     port: u16,
@@ -105,8 +106,7 @@ pub(super) async fn connect_native_ssh_chain(
     let target = build_native_target_execution(endpoint)?;
     let jumps = build_native_jump_executions(endpoint)?;
     if jumps.is_empty() {
-        let mut target_ssh =
-            connect_native_ssh_hop(&target, HostKeyPolicy::RequireKnown, settings).await?;
+        let mut target_ssh = connect_native_ssh_hop(&target, settings).await?;
         authenticate_native_sftp(&mut target_ssh, &target).await?;
         return Ok(NativeSftpSshConnection {
             jumps: Vec::new(),
@@ -115,8 +115,7 @@ pub(super) async fn connect_native_ssh_chain(
     }
 
     let mut jump_handles = Vec::with_capacity(jumps.len());
-    let mut upstream =
-        connect_native_ssh_hop(&jumps[0], HostKeyPolicy::RequireKnown, settings).await?;
+    let mut upstream = connect_native_ssh_hop(&jumps[0], settings).await?;
     authenticate_native_sftp(&mut upstream, &jumps[0]).await?;
 
     for jump in jumps.iter().skip(1) {
@@ -191,7 +190,6 @@ async fn connect_native_ssh(
 
 async fn connect_native_ssh_hop(
     hop: &NativeSftpHopExecution,
-    host_key_policy: HostKeyPolicy,
     settings: SftpRuntimeSettings,
 ) -> AppResult<client::Handle<NativeClientHandler>> {
     let config = client::Config {
@@ -202,7 +200,7 @@ async fn connect_native_ssh_hop(
         host: hop.host.clone(),
         port: hop.port,
         known_hosts_path: hop.known_hosts_path.clone(),
-        host_key_policy,
+        host_key_policy: hop.host_key_policy,
     };
     let timeout = Duration::from_secs(settings.timeout_seconds.max(1));
     match tokio::time::timeout(
@@ -254,7 +252,7 @@ async fn connect_native_ssh_through_direct_tcpip(
         host: hop.host.clone(),
         port: hop.port,
         known_hosts_path: hop.known_hosts_path.clone(),
-        host_key_policy: HostKeyPolicy::RequireKnown,
+        host_key_policy: hop.host_key_policy,
     };
     match tokio::time::timeout(
         timeout,
@@ -275,6 +273,7 @@ fn build_native_target_execution(endpoint: &SftpEndpoint) -> AppResult<NativeSft
     Ok(NativeSftpHopExecution {
         auth: endpoint.auth.clone(),
         host: required_native_text(&endpoint.host.host, "目标主机 host")?,
+        host_key_policy: host_key_policy_for_endpoint(endpoint),
         known_hosts_path: endpoint.known_hosts_path.clone(),
         label: "目标主机".to_owned(),
         port: required_native_port(endpoint.host.port, "目标主机 port")?,
@@ -304,11 +303,20 @@ fn build_native_jump_execution(
     Ok(NativeSftpHopExecution {
         auth: resolve_native_jump_auth_material(jump, &label)?,
         host: required_native_text(&jump.host, &format!("{label} host"))?,
+        host_key_policy: HostKeyPolicy::RequireKnown,
         known_hosts_path,
         label: label.clone(),
         port: required_native_port(jump.port, &format!("{label} port"))?,
         username: required_native_text(&jump.username, &format!("{label} username"))?,
     })
+}
+
+fn host_key_policy_for_endpoint(endpoint: &SftpEndpoint) -> HostKeyPolicy {
+    if crate::services::external_launch::is_external_target_id(&endpoint.host.id) {
+        HostKeyPolicy::TrustUnknown
+    } else {
+        HostKeyPolicy::RequireKnown
+    }
 }
 
 fn resolve_native_jump_auth_material(

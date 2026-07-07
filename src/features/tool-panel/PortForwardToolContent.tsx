@@ -508,6 +508,7 @@ export function PortForwardToolContent({
         <div className="mt-4 flex flex-wrap gap-2">
           <Button
             aria-label="添加隧道"
+            className="bg-sky-500 text-white shadow-lg shadow-sky-500/25 hover:bg-sky-400 dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400"
             disabled={loading}
             onClick={handleOpenCreateDialog}
             size="icon"
@@ -554,7 +555,11 @@ export function PortForwardToolContent({
             >
               取消
             </Button>
-            <Button disabled={loading} onClick={() => void handleCreate()}>
+            <Button
+              className="bg-sky-500 text-white shadow-lg shadow-sky-500/25 hover:bg-sky-400 dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400"
+              disabled={loading}
+              onClick={() => void handleCreate()}
+            >
               <Plus className="h-4 w-4" />
               {editingSessionId
                 ? "保存修改"

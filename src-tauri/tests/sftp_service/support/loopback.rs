@@ -21,13 +21,21 @@ use tokio::{
     fs,
     io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
     net::TcpListener,
+    time::sleep,
 };
 
 #[derive(Debug)]
 pub(crate) struct LoopbackSftpServer {
     pub(crate) addr: SocketAddr,
     pub(crate) auth_successes: Arc<AtomicUsize>,
+    private_key: PrivateKey,
     task: tokio::task::JoinHandle<()>,
+}
+
+impl LoopbackSftpServer {
+    pub(crate) fn clone_private_key_for_restart(&self) -> PrivateKey {
+        self.private_key.clone()
+    }
 }
 
 impl Drop for LoopbackSftpServer {
@@ -643,20 +651,71 @@ pub(crate) async fn start_loopback_sftp_server(root: PathBuf) -> LoopbackSftpSer
     start_loopback_sftp_server_with_symlinks(root, Vec::new()).await
 }
 
+pub(crate) async fn start_loopback_sftp_server_on_port_with_private_key(
+    root: PathBuf,
+    port: u16,
+    private_key: PrivateKey,
+) -> LoopbackSftpServer {
+    start_loopback_sftp_server_with_symlinks_on_port_and_private_key(
+        root,
+        Vec::new(),
+        port,
+        private_key,
+    )
+    .await
+}
+
 pub(crate) async fn start_loopback_sftp_server_with_symlinks(
     root: PathBuf,
     symlinks: Vec<(String, String)>,
 ) -> LoopbackSftpServer {
-    let listener = TcpListener::bind(("127.0.0.1", 0))
-        .await
-        .expect("bind loopback SFTP server");
-    let addr = listener.local_addr().expect("loopback SFTP address");
-    let host_key = PrivateKey::random(&mut rand::rng(), keys::Algorithm::Ed25519)
+    start_loopback_sftp_server_with_symlinks_on_port(root, symlinks, 0).await
+}
+
+async fn start_loopback_sftp_server_with_symlinks_on_port(
+    root: PathBuf,
+    symlinks: Vec<(String, String)>,
+    port: u16,
+) -> LoopbackSftpServer {
+    let listener = bind_loopback_sftp_listener(port).await;
+    let private_key = PrivateKey::random(&mut rand::rng(), keys::Algorithm::Ed25519)
         .expect("generate loopback host key");
+    start_loopback_sftp_server_with_listener_symlinks_and_private_key(
+        root,
+        symlinks,
+        listener,
+        private_key,
+    )
+    .await
+}
+
+async fn start_loopback_sftp_server_with_symlinks_on_port_and_private_key(
+    root: PathBuf,
+    symlinks: Vec<(String, String)>,
+    port: u16,
+    private_key: PrivateKey,
+) -> LoopbackSftpServer {
+    let listener = bind_loopback_sftp_listener(port).await;
+    start_loopback_sftp_server_with_listener_symlinks_and_private_key(
+        root,
+        symlinks,
+        listener,
+        private_key,
+    )
+    .await
+}
+
+async fn start_loopback_sftp_server_with_listener_symlinks_and_private_key(
+    root: PathBuf,
+    symlinks: Vec<(String, String)>,
+    listener: TcpListener,
+    private_key: PrivateKey,
+) -> LoopbackSftpServer {
+    let addr = listener.local_addr().expect("loopback SFTP address");
     let config = russh::server::Config {
         auth_rejection_time: Duration::from_millis(0),
         auth_rejection_time_initial: Some(Duration::from_millis(0)),
-        keys: vec![host_key],
+        keys: vec![private_key.clone()],
         maximum_packet_size: 65_535,
         ..Default::default()
     };
@@ -686,8 +745,29 @@ pub(crate) async fn start_loopback_sftp_server_with_symlinks(
     LoopbackSftpServer {
         addr,
         auth_successes,
+        private_key,
         task,
     }
+}
+
+async fn bind_loopback_sftp_listener(port: u16) -> TcpListener {
+    let mut last_error = None;
+    for _ in 0..20 {
+        match TcpListener::bind(("127.0.0.1", port)).await {
+            Ok(listener) => return listener,
+            Err(error) if port != 0 => {
+                last_error = Some(error);
+                sleep(Duration::from_millis(25)).await;
+            }
+            Err(error) => panic!("bind loopback SFTP server: {error}"),
+        }
+    }
+    panic!(
+        "bind loopback SFTP server on port {port}: {}",
+        last_error
+            .map(|error| error.to_string())
+            .unwrap_or_else(|| "unknown bind error".to_owned())
+    );
 }
 
 pub(crate) async fn start_loopback_sftp_jump_server(

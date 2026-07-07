@@ -11,7 +11,9 @@ use tauri_plugin_window_state::StateFlags;
 use crate::{
     app_tray,
     paths::{APP_LOG_FILE_STEM, APP_LOG_MAX_FILE_SIZE_BYTES, APP_LOG_ROTATION_KEEP_FILES},
-    services::external_launch::{ExternalLaunchEntrypoint, EXTERNAL_SSH_LAUNCH_EVENT},
+    services::external_launch::{
+        direct_parent_command_line_for_args, ExternalLaunchEntrypoint, EXTERNAL_SSH_LAUNCH_EVENT,
+    },
     state::AppState,
 };
 
@@ -24,11 +26,15 @@ pub fn apply_desktop_plugins<R: Runtime>(builder: Builder<R>, log_dir: PathBuf) 
                 "single-instance activation requested; focusing main window"
             );
             if let Some(state) = app.try_state::<AppState>() {
-                match state.external_launch_intake().accept_args(
-                    args,
-                    Some(cwd),
-                    ExternalLaunchEntrypoint::SingleInstance,
-                ) {
+                let parent_command_line = direct_parent_command_line_for_args(&args);
+                match state
+                    .external_launch_intake()
+                    .accept_args_with_parent_command_line(
+                        args,
+                        Some(cwd),
+                        ExternalLaunchEntrypoint::SingleInstance,
+                        parent_command_line,
+                    ) {
                     Ok(outcome) => {
                         if let Some(payload) = outcome.event_payload() {
                             if let Err(error) = app.emit(EXTERNAL_SSH_LAUNCH_EVENT, payload) {

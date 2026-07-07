@@ -90,7 +90,7 @@ export const settingsSections: Array<{
     label: "终端",
   },
   {
-    description: "历史、远端和诊断",
+    description: "历史、远端和来源",
     icon: Clipboard,
     id: "settings-suggestions",
     label: "命令提示",
@@ -102,7 +102,7 @@ export const settingsSections: Array<{
     label: "SFTP",
   },
   {
-    description: "跳板机、shim 和协议",
+    description: "堡垒机、第三方 SSH 参数和协议",
     icon: Route,
     id: "settings-external-launch",
     label: "外部启动",
@@ -189,22 +189,6 @@ export const settingsSearchEntries: Array<{
     title: "终端渲染",
   },
   {
-    description: "Managed SSH、fallback、错误分类和默认启用门禁。",
-    keywords: [
-      "diagnostics",
-      "managed ssh",
-      "fallback",
-      "runtime",
-      "gate",
-      "诊断",
-      "默认启用",
-      "错误分类",
-    ],
-    sectionId: "settings-terminal",
-    targetId: "settings-terminal-runtime-diagnostics-panel",
-    title: "运行诊断",
-  },
-  {
     description: "选中复制、右键行为、自动重连和滚屏缓冲。",
     keywords: ["copy", "right click", "reconnect", "scrollback", "右键", "复制", "重连", "缓冲"],
     sectionId: "settings-terminal",
@@ -233,13 +217,6 @@ export const settingsSearchEntries: Array<{
     title: "提示 Provider",
   },
   {
-    description: "查看灰色提示遥测并清理过期诊断数据。",
-    keywords: ["telemetry", "diagnostics", "cleanup", "遥测", "诊断", "清理"],
-    sectionId: "settings-suggestions",
-    targetId: "settings-command-suggestions-telemetry-panel",
-    title: "提示诊断",
-  },
-  {
     description: "SFTP 传输并发、pipeline 和超时。",
     keywords: ["sftp", "transfer", "pipeline", "timeout", "传输", "并发", "超时"],
     sectionId: "settings-sftp",
@@ -247,7 +224,7 @@ export const settingsSearchEntries: Array<{
     title: "SFTP 传输",
   },
   {
-    description: "跳板机、堡垒机、兼容 shim 和 kerminal:// SSH 入口。",
+    description: "堡垒机、第三方 SSH 参数和 kerminal:// SSH 入口。",
     keywords: [
       "external",
       "bastion",

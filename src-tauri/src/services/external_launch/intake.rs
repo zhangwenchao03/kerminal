@@ -3,6 +3,7 @@
 //! @author kongweiguang
 
 use std::{
+    borrow::Cow,
     collections::{HashMap, VecDeque},
     fmt,
     sync::{Arc, Mutex, MutexGuard},
@@ -16,6 +17,7 @@ use crate::models::settings::{ExternalLaunchSettings, ExternalLaunchToolSetting}
 
 use super::{
     bridge::{ExternalLaunchBridgeEnvelope, EXTERNAL_LAUNCH_BRIDGE_SCHEMA_VERSION},
+    classifier::infer_source_tool_from_args,
     model::{
         ExternalLaunchEntrypoint, ExternalLaunchParseInput, ExternalLaunchSourceTool,
         ExternalSshLaunchRequest, ExternalSshTarget,
@@ -106,6 +108,16 @@ impl ExternalLaunchIntake {
         cwd: Option<String>,
         entrypoint: ExternalLaunchEntrypoint,
     ) -> AppResult<ExternalLaunchAcceptOutcome> {
+        self.accept_args_with_parent_command_line(argv, cwd, entrypoint, None)
+    }
+
+    pub fn accept_args_with_parent_command_line(
+        &self,
+        argv: Vec<String>,
+        cwd: Option<String>,
+        entrypoint: ExternalLaunchEntrypoint,
+        parent_command_line: Option<String>,
+    ) -> AppResult<ExternalLaunchAcceptOutcome> {
         let summary = ExternalLaunchArgSummary::new(&argv, cwd.as_deref());
         log_external_launch_args(entrypoint, "direct", None, &summary, &argv);
         let Some(source_tool) = infer_source_tool_from_args(&argv) else {
@@ -137,6 +149,13 @@ impl ExternalLaunchIntake {
             Some(source_tool),
             Some(source_tool.as_str().to_owned()),
             argv,
+        );
+        let input = ExternalLaunchParseInput::from_args_with_parent_command_line(
+            input.entrypoint,
+            input.source_tool,
+            input.persona,
+            input.argv,
+            parent_command_line,
         );
         match self.inner.parser.parse(&input) {
             Ok(mut request) => {
@@ -535,90 +554,6 @@ impl ExternalLaunchArgSummary {
     }
 }
 
-fn infer_source_tool_from_args(argv: &[String]) -> Option<ExternalLaunchSourceTool> {
-    if argv.len() <= 1 {
-        return None;
-    }
-    if has_token(argv, "--external-ssh")
-        || has_token(argv, "--external-ssh-json")
-        || argv.iter().any(|token| token.starts_with("kerminal://ssh"))
-    {
-        return Some(ExternalLaunchSourceTool::KerminalNative);
-    }
-    let argv0_tool = argv
-        .first()
-        .and_then(|argv0| infer_source_tool_from_argv0(argv0));
-    if argv0_tool.is_some_and(|tool| tool != ExternalLaunchSourceTool::KerminalNative) {
-        return argv0_tool;
-    }
-    if has_token(argv, "/SSH2") {
-        Some(ExternalLaunchSourceTool::Securecrt)
-    } else if has_token(argv, "-url") {
-        Some(ExternalLaunchSourceTool::Xshell)
-    } else if has_token(argv, "-newtab") || has_token(argv, "-exec") {
-        Some(ExternalLaunchSourceTool::Mobaxterm)
-    } else if has_token(argv, "-ssh")
-        || has_token(argv, "-pw")
-        || has_token(argv, "-pwfile")
-        || has_token(argv, "-load")
-    {
-        Some(ExternalLaunchSourceTool::Putty)
-    } else if looks_like_openssh_args(argv) {
-        Some(ExternalLaunchSourceTool::Openssh)
-    } else {
-        None
-    }
-}
-
-fn infer_source_tool_from_argv0(argv0: &str) -> Option<ExternalLaunchSourceTool> {
-    let filename = argv0.rsplit(['\\', '/']).next().unwrap_or(argv0);
-    let lower = filename.to_ascii_lowercase();
-    if lower.contains("mobaxterm") {
-        Some(ExternalLaunchSourceTool::Mobaxterm)
-    } else if lower.contains("xshell") {
-        Some(ExternalLaunchSourceTool::Xshell)
-    } else if lower.contains("securecrt") {
-        Some(ExternalLaunchSourceTool::Securecrt)
-    } else if lower.contains("putty") || lower.contains("plink") {
-        Some(ExternalLaunchSourceTool::Putty)
-    } else if lower == "ssh" || lower == "ssh.exe" {
-        Some(ExternalLaunchSourceTool::Openssh)
-    } else if lower.contains("kerminal") {
-        Some(ExternalLaunchSourceTool::KerminalNative)
-    } else {
-        None
-    }
-}
-
-fn has_token(argv: &[String], expected: &str) -> bool {
-    argv.iter()
-        .any(|token| token.eq_ignore_ascii_case(expected))
-}
-
-fn looks_like_openssh_args(argv: &[String]) -> bool {
-    let mut saw_openssh_option = false;
-    let mut i = 1;
-    while i < argv.len() {
-        let token = &argv[i];
-        match token.as_str() {
-            "-p" | "-l" | "-i" | "-J" => {
-                saw_openssh_option = true;
-                i += 2;
-            }
-            "-o" | "-F" => {
-                i += 2;
-            }
-            _ if token.starts_with('-') => {
-                i += 1;
-            }
-            _ => {
-                return saw_openssh_option;
-            }
-        }
-    }
-    false
-}
-
 fn policy_rejection_message(
     policy: &ExternalLaunchPolicy,
     entrypoint: ExternalLaunchEntrypoint,
@@ -672,12 +607,40 @@ fn log_external_launch_queued(
         request.id,
         request.source.tool,
         request.diagnostics.parser,
-        request.target.username.as_deref().unwrap_or("<prompt>"),
+        redacted_log_username(request.target.username.as_deref()),
         request.target.host,
         request.target.port,
         request.diagnostics.raw_hash,
         request.diagnostics.argv_redacted
     );
+}
+
+fn redacted_log_username(username: Option<&str>) -> Cow<'_, str> {
+    let Some(username) = username else {
+        return Cow::Borrowed("<prompt>");
+    };
+    if username
+        .get(..5)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("b64>>"))
+    {
+        Cow::Borrowed("b64>><redacted>")
+    } else if looks_like_opaque_external_username(username) {
+        Cow::Borrowed("<redacted-external-user>")
+    } else {
+        Cow::Borrowed(username)
+    }
+}
+
+fn looks_like_opaque_external_username(username: &str) -> bool {
+    let username = username.trim();
+    if username.len() < 32 || username.contains('@') {
+        return false;
+    }
+    let token_chars = username
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '+' | '/' | '='))
+        .count();
+    token_chars * 100 / username.len() >= 80
 }
 
 fn sanitize_error_message(error: AppError) -> String {

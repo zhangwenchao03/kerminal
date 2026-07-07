@@ -175,7 +175,7 @@ describe("workspaceStore terminal open actions", () => {
     const activeTab = splitState.terminalTabs.find(
       (tab) => tab.id === splitState.activeTabId,
     );
-    if (!tmuxPane || !activeTab || activeTab.kind === "sftpTransfer") {
+    if (!tmuxPane || !activeTab || activeTab.kind === "sftpTransfer" || activeTab.kind === "workspaceFile") {
       throw new Error("expected tmux pane in terminal tab");
     }
 

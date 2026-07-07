@@ -1,4 +1,5 @@
 import {
+  type KeyboardEvent as ReactKeyboardEvent,
   type SetStateAction,
   useCallback,
   useEffect,
@@ -562,8 +563,19 @@ export function SftpToolContent({
         type: "selection-changed",
       });
     }
+    const contextSelectedEntries = visibleEntries.filter((visibleEntry) =>
+      nextSelection.selectedEntryPaths.has(visibleEntry.path),
+    );
+    const contextTransferableEntries = contextSelectedEntries.filter((visibleEntry) =>
+      transferKindFromEntry(visibleEntry),
+    );
     setContextMenu({
       entry,
+      scope: buildSftpContextMenuScope({
+        entry,
+        selectedEntries: contextSelectedEntries,
+        transferableSelectedEntries: contextTransferableEntries,
+      }),
       x: position.x,
       y: position.y,
     });
@@ -629,7 +641,7 @@ export function SftpToolContent({
     handleRemoteDownloadDragLeave,
     handleRemoteDownloadDragOver,
     handleRemoteDownloadDrop,
-    handleSftpKeyDown,
+    handleSftpKeyDown: handleSftpTransferKeyDown,
     pasteSftpClipboard,
     pendingTransferConflict,
     retryTransfer,
@@ -701,6 +713,7 @@ export function SftpToolContent({
     downloadEntry,
     downloadEntryAsArchive,
     downloadEntryToLocalClipboard,
+    downloadSelectedEntries,
     loadDirectory,
     openChmodDialog,
     openDeleteDialog,
@@ -717,6 +730,32 @@ export function SftpToolContent({
     uploadLocalDirectory,
     uploadLocalFile,
   });
+
+  const handleSftpKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLElement>) => {
+      handleSftpTransferKeyDown(event);
+      if (event.defaultPrevented || isSftpEditableKeyboardTarget(event.target)) {
+        return;
+      }
+
+      if (event.key === "Delete" && selectedEntries.length > 0) {
+        event.preventDefault();
+        openDeleteDialog(selectedEntries);
+        return;
+      }
+
+      if (event.key === "F2" && selectedEntries.length === 1) {
+        event.preventDefault();
+        openRenameDialog(selectedEntries[0]);
+      }
+    },
+    [
+      handleSftpTransferKeyDown,
+      openDeleteDialog,
+      openRenameDialog,
+      selectedEntries,
+    ],
+  );
 
   if (selectedMachine?.kind === "local") {
     return (
@@ -835,5 +874,42 @@ export function SftpToolContent({
         open={Boolean(pendingTransferConflict)}
       />
     </>
+  );
+}
+
+function buildSftpContextMenuScope({
+  entry,
+  selectedEntries,
+  transferableSelectedEntries,
+}: {
+  entry: SftpEntry | null;
+  selectedEntries: SftpEntry[];
+  transferableSelectedEntries: SftpEntry[];
+}): SftpContextMenuState["scope"] {
+  if (
+    entry &&
+    selectedEntries.length > 1 &&
+    selectedEntries.some((selectedEntry) => selectedEntry.path === entry.path)
+  ) {
+    return {
+      entries: selectedEntries,
+      kind: "selection",
+      transferableEntries: transferableSelectedEntries,
+    };
+  }
+  if (entry) {
+    return { entry, kind: "entry" };
+  }
+  return { kind: "directory" };
+}
+
+function isSftpEditableKeyboardTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  return Boolean(
+    target.closest(
+      "input, textarea, select, [contenteditable='true'], [contenteditable='']",
+    ),
   );
 }

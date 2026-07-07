@@ -66,6 +66,7 @@ describe("terminalRuntimeDiagnosticsStore", () => {
         sessionId: "session-1",
         sshFailure: {
           class: "networkUnreachable",
+          nextAction: "check network",
           reconnectHint: "network",
           retryable: true,
           userMessage: "network",
@@ -97,6 +98,7 @@ describe("terminalRuntimeDiagnosticsStore", () => {
         activeChannels: 2,
         activeSessions: 1,
         generatedAt: "1760000000",
+        recentLegacyFallbacks: [],
         sessions: [
           {
             activeChannels: 2,

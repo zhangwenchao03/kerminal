@@ -1142,6 +1142,7 @@ export function SftpBrowserView({
               onAction={executeContextMenuAction}
               onClose={() => setContextMenu(null)}
               position={{ x: contextMenu.x, y: contextMenu.y }}
+              scope={contextMenu.scope}
               showHiddenFiles={showHiddenFiles}
               supportsAdvancedActions={supportsSftpAdvancedActions}
               transferTargetSide={transferTarget?.side}

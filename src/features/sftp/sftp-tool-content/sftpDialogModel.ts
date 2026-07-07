@@ -11,7 +11,11 @@ import type {
   SftpRenameRequest,
 } from "../../../lib/sftpApi";
 import type { SftpDialogAction, SftpFileTarget, SftpStatus } from "./types";
-import { resolveRemoteInputPath } from "./sftpPathModel";
+import {
+  joinRemotePath,
+  parentRemotePath,
+  resolveRemoteInputPath,
+} from "./sftpPathModel";
 
 export type SftpDialogOperation =
   | {
@@ -56,7 +60,7 @@ export type SftpDialogOperation =
     };
 
 export type SftpDialogActionPlan = {
-  operation: SftpDialogOperation;
+  operations: SftpDialogOperation[];
   reloadPath: string;
   successStatus: SftpStatus;
 };
@@ -71,7 +75,7 @@ export function dialogActionTitle(action: SftpDialogAction) {
   if (action.kind === "chmod") {
     return "修改权限";
   }
-  return "删除";
+  return action.entries.length > 1 ? `删除 ${action.entries.length} 项` : "删除";
 }
 
 export function dialogActionDescription(
@@ -82,7 +86,9 @@ export function dialogActionDescription(
     return currentPath;
   }
   if (action.kind === "delete") {
-    return "此操作会直接修改远程文件系统。";
+    return action.entries.length > 1
+      ? `此操作会直接修改远程文件系统：${action.entries.length} 项。`
+      : "此操作会直接修改远程文件系统。";
   }
   return action.entry.path;
 }
@@ -97,7 +103,9 @@ export function dialogActionConfirmLabel(action: SftpDialogAction) {
   if (action.kind === "chmod") {
     return "保存权限";
   }
-  return "确认删除";
+  return action.entries.length > 1
+    ? `确认删除 ${action.entries.length} 项`
+    : "确认删除";
 }
 
 export function getDialogActionBlocker(action: SftpDialogAction, currentPath: string) {
@@ -109,8 +117,9 @@ export function getDialogActionBlocker(action: SftpDialogAction, currentPath: st
   }
 
   if (action.kind === "rename") {
-    const toPath = resolveRemoteInputPath(currentPath, action.toPath);
+    const toPath = renameTargetPath(action.entry.path, action.newName);
     return (
+      getRenameNameBlocker(action.newName) ??
       getNonRootRemotePathBlocker(toPath, "目标路径") ??
       (toPath === action.entry.path ? "目标路径不能和原路径相同。" : null)
     );
@@ -123,7 +132,16 @@ export function getDialogActionBlocker(action: SftpDialogAction, currentPath: st
     );
   }
 
-  return getNonRootRemotePathBlocker(action.entry.path, "删除路径");
+  if (action.entries.length === 0) {
+    return "请选择删除项目。";
+  }
+  for (const entry of action.entries) {
+    const blocker = getNonRootRemotePathBlocker(entry.path, "删除路径");
+    if (blocker) {
+      return blocker;
+    }
+  }
+  return null;
 }
 
 export function getNonRootRemotePathBlocker(path: string, label: string) {
@@ -150,6 +168,20 @@ export function getChmodModeBlocker(mode: string) {
   return null;
 }
 
+export function getRenameNameBlocker(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return "请填写新名称。";
+  }
+  if (trimmed === "." || trimmed === "..") {
+    return "新名称不能是 . 或 ..。";
+  }
+  if (/[\\/]/.test(trimmed)) {
+    return "新名称不能包含路径分隔符。";
+  }
+  return null;
+}
+
 export function buildSftpDialogActionPlan({
   action,
   currentPath,
@@ -162,20 +194,20 @@ export function buildSftpDialogActionPlan({
   if (action.kind === "mkdir") {
     const path = resolveRemoteInputPath(currentPath, action.path);
     return {
-      operation: buildMkdirOperation(fileTarget, path),
+      operations: [buildMkdirOperation(fileTarget, path)],
       reloadPath: currentPath,
       successStatus: { kind: "success", message: `目录已创建：${path}` },
     };
   }
 
   if (action.kind === "rename") {
-    const toPath = resolveRemoteInputPath(currentPath, action.toPath);
+    const toPath = renameTargetPath(action.entry.path, action.newName);
     return {
-      operation: buildRenameOperation(fileTarget, action.entry.path, toPath),
+      operations: [buildRenameOperation(fileTarget, action.entry.path, toPath)],
       reloadPath: currentPath,
       successStatus: {
         kind: "success",
-        message: `已重命名：${action.entry.path} -> ${toPath}`,
+        message: `已重命名：${action.entry.name} -> ${action.newName.trim()}`,
       },
     };
   }
@@ -183,7 +215,7 @@ export function buildSftpDialogActionPlan({
   if (action.kind === "chmod") {
     const mode = action.mode.trim();
     return {
-      operation: buildChmodOperation(fileTarget, action.entry.path, mode),
+      operations: [buildChmodOperation(fileTarget, action.entry.path, mode)],
       reloadPath: currentPath,
       successStatus: {
         kind: "success",
@@ -192,18 +224,61 @@ export function buildSftpDialogActionPlan({
     };
   }
 
+  const entries = dedupeDeleteEntries(action.entries);
   return {
-    operation: buildDeleteOperation(
-      fileTarget,
-      action.entry.path,
-      action.entry.kind === "directory",
+    operations: entries.map((entry) =>
+      buildDeleteOperation(fileTarget, entry.path, entry.kind === "directory"),
     ),
     reloadPath: currentPath,
     successStatus: {
       kind: "success",
-      message: `已删除：${action.entry.path}`,
+      message:
+        entries.length > 1
+          ? `已删除 ${entries.length} 项`
+          : `已删除：${entries[0]?.path ?? ""}`,
     },
   };
+}
+
+export function dedupeDeleteEntries(
+  entries: Extract<SftpDialogAction, { kind: "delete" }>["entries"],
+) {
+  const result: typeof entries = [];
+  const seen = new Set<string>();
+  for (const entry of entries) {
+    if (seen.has(entry.path)) {
+      continue;
+    }
+    const coveredByExistingDirectory = result.some(
+      (existing) =>
+        existing.kind === "directory" && isRemotePathDescendant(entry.path, existing.path),
+    );
+    if (coveredByExistingDirectory) {
+      continue;
+    }
+    if (entry.kind === "directory") {
+      for (let index = result.length - 1; index >= 0; index -= 1) {
+        if (isRemotePathDescendant(result[index].path, entry.path)) {
+          seen.delete(result[index].path);
+          result.splice(index, 1);
+        }
+      }
+    }
+    seen.add(entry.path);
+    result.push(entry);
+  }
+  return result;
+}
+
+export function renameTargetPath(entryPath: string, newName: string) {
+  return joinRemotePath(parentRemotePath(entryPath), newName.trim());
+}
+
+function isRemotePathDescendant(path: string, possibleParentPath: string) {
+  if (possibleParentPath === "/") {
+    return path !== "/" && path.startsWith("/");
+  }
+  return path !== possibleParentPath && path.startsWith(`${possibleParentPath}/`);
 }
 
 function buildMkdirOperation(

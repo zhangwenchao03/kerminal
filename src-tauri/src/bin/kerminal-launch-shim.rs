@@ -1,3 +1,5 @@
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 //! Kerminal external SSH launch compatibility shim.
 //!
 //! @author kongweiguang
@@ -41,6 +43,12 @@ async fn run() -> AppResult<()> {
             .map(|path| path.to_string_lossy().into_owned()),
         env::var(KERMINAL_SHIM_PERSONA_ENV).ok(),
     )?;
+    let parent_command_line = if should_capture_parent_command_line(&envelope) {
+        discover_parent_command_line()
+    } else {
+        None
+    };
+    let envelope = envelope.with_parent_command_line(parent_command_line);
     let paths = KerminalPaths::from_environment_or_current_home()?;
     let endpoint = external_launch_bridge_endpoint(&paths.root);
     let log_path = paths.logs.join("external-launch-shim.log");
@@ -157,6 +165,44 @@ fn write_shim_log(path: &Path, message: &str) {
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
         let _ = writeln!(file, "{timestamp} {message}");
     }
+}
+
+fn should_capture_parent_command_line(envelope: &ExternalLaunchBridgeEnvelope) -> bool {
+    envelope.persona.as_str() == "mobaxterm"
+        && envelope
+            .argv
+            .iter()
+            .any(|value| value.to_ascii_lowercase().ends_with(".moba"))
+}
+
+#[cfg(windows)]
+fn discover_parent_command_line() -> Option<String> {
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let script = format!(
+        "$p=Get-CimInstance Win32_Process -Filter 'ProcessId = {}'; \
+         if ($p) {{ \
+           $pp=Get-CimInstance Win32_Process -Filter ('ProcessId = ' + $p.ParentProcessId); \
+           if ($pp) {{ [Console]::Out.Write($pp.CommandLine) }} \
+         }}",
+        std::process::id()
+    );
+    let output = Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    (!value.is_empty()).then_some(value)
+}
+
+#[cfg(not(windows))]
+fn discover_parent_command_line() -> Option<String> {
+    None
 }
 
 fn redacted_error_message(error: AppError) -> String {

@@ -1,52 +1,39 @@
-//! Native russh-backed managed SSH runtime backend.
-//!
-//! @author kongweiguang
-
 use std::{
-    collections::VecDeque,
-    io::{ErrorKind, Read, Write},
+    io::ErrorKind,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, TcpListener as StdTcpListener},
     sync::{
-        atomic::{AtomicUsize, Ordering},
-        mpsc::{self, Receiver, RecvTimeoutError},
+        mpsc::{self, Receiver},
         Arc,
     },
     thread,
     time::Duration,
 };
 
-use async_trait::async_trait;
-use russh::{client, Channel, ChannelMsg, ChannelReadHalf, ChannelWriteHalf};
+use russh::{client, Channel};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
-    sync::{mpsc as tokio_mpsc, oneshot, Mutex},
+    sync::{oneshot, Mutex},
 };
 
+use super::connection::{
+    clear_native_connection_if_current, native_connection_from_state,
+    should_clear_native_connection_after_channel_error,
+    should_clear_native_connection_after_proxy_error,
+};
 use crate::{
     error::{AppError, AppResult},
     services::{
         ssh_command_service::native::{
-            build_native_connection_execution_for_known_hosts,
             cancel_remote_tcpip_forward_on_native_connection,
-            connect_native_command_target_with_remote_forward_registry,
-            disconnect_native_connection_ref, execute_script_on_native_connection,
-            open_direct_tcpip_channel_on_native_connection, open_sftp_on_native_connection,
-            open_shell_on_native_connection, open_streaming_exec_on_native_connection,
-            ping_native_connection_ref, proxy_direct_tcpip_channel_to_stream,
-            start_remote_tcpip_forward_on_native_connection, NativeDirectTcpipProxyRequest,
-            NativeHostKeyPolicy, NativeRemoteForwardRegistry, NativeRemoteForwardTarget,
-            NativeSshCommandExecution, NativeSshConnectionChain,
+            open_direct_tcpip_channel_on_native_connection, ping_native_connection_ref,
+            proxy_direct_tcpip_channel_to_stream, start_remote_tcpip_forward_on_native_connection,
+            NativeDirectTcpipProxyRequest, NativeHostKeyPolicy, NativeRemoteForwardRegistry,
+            NativeRemoteForwardTarget, NativeSshCommandExecution, NativeSshConnectionChain,
         },
         ssh_runtime::{
-            SshChannelKind, SshRuntimeBackend, SshRuntimeConnectRequest, SshRuntimeConnection,
-            SshRuntimeDynamicForwardRequest, SshRuntimeExecRawOutput, SshRuntimeExecRequest,
-            SshRuntimeForwardTask, SshRuntimeHostKeyPolicy, SshRuntimeLocalForwardRequest,
+            SshRuntimeDynamicForwardRequest, SshRuntimeForwardTask, SshRuntimeLocalForwardRequest,
             SshRuntimeRemoteDynamicForwardRequest, SshRuntimeRemoteForwardRequest,
-            SshRuntimeSftpStream, SshRuntimeShellEvent, SshRuntimeShellRequest,
-            SshRuntimeShellSession, SshRuntimeStreamingExecExit, SshRuntimeStreamingExecReader,
-            SshRuntimeStreamingExecRequest, SshRuntimeStreamingExecSession,
-            SshRuntimeStreamingExecWriter,
         },
     },
 };
@@ -72,633 +59,8 @@ struct NativeRemoteForwardRegistration {
     label: &'static str,
 }
 
-#[derive(Debug, Default)]
-pub struct NativeSshRuntimeBackend;
-
-impl NativeSshRuntimeBackend {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl SshRuntimeBackend for NativeSshRuntimeBackend {
-    fn connect(
-        &self,
-        request: SshRuntimeConnectRequest,
-    ) -> AppResult<Arc<dyn SshRuntimeConnection>> {
-        let host = request
-            .native_host()
-            .ok_or_else(|| {
-                AppError::SshCommand(
-                    "managed SSH native backend requires connection material".to_owned(),
-                )
-            })?
-            .clone();
-        let known_hosts_path = request
-            .native_known_hosts_path()
-            .ok_or_else(|| {
-                AppError::SshCommand(
-                    "managed SSH native backend requires known_hosts material".to_owned(),
-                )
-            })?
-            .to_path_buf();
-        let connect_timeout_seconds = request.native_connect_timeout_seconds().unwrap_or(30);
-        let keepalive_interval = request
-            .native_keepalive_seconds()
-            .filter(|seconds| *seconds > 0)
-            .map(Duration::from_secs);
-        let execution = build_native_connection_execution_for_known_hosts(
-            &host,
-            known_hosts_path,
-            connect_timeout_seconds,
-        )?;
-        Ok(Arc::new(NativeSshRuntimeConnection::new(
-            execution,
-            native_host_key_policy(request.native_host_key_policy()),
-            keepalive_interval,
-        )))
-    }
-}
-
-fn native_host_key_policy(policy: Option<SshRuntimeHostKeyPolicy>) -> NativeHostKeyPolicy {
-    match policy {
-        Some(SshRuntimeHostKeyPolicy::TrustUnknown) => NativeHostKeyPolicy::TrustUnknown,
-        Some(SshRuntimeHostKeyPolicy::RequireKnown) | None => NativeHostKeyPolicy::RequireKnown,
-    }
-}
-
-struct NativeSshRuntimeConnection {
-    channel_sequence: AtomicUsize,
-    connection: Arc<Mutex<Option<Arc<NativeSshConnectionChain>>>>,
-    execution: NativeSshCommandExecution,
-    host_key_policy: NativeHostKeyPolicy,
-    keepalive_interval: Option<Duration>,
-    remote_forwards: NativeRemoteForwardRegistry,
-}
-
-impl NativeSshRuntimeConnection {
-    fn new(
-        execution: NativeSshCommandExecution,
-        host_key_policy: NativeHostKeyPolicy,
-        keepalive_interval: Option<Duration>,
-    ) -> Self {
-        Self {
-            channel_sequence: AtomicUsize::new(0),
-            connection: Arc::new(Mutex::new(None)),
-            execution,
-            host_key_policy,
-            keepalive_interval,
-            remote_forwards: NativeRemoteForwardRegistry::default(),
-        }
-    }
-
-    async fn connection(&self) -> AppResult<Arc<NativeSshConnectionChain>> {
-        native_connection_from_state(
-            &self.connection,
-            &self.execution,
-            self.host_key_policy,
-            self.remote_forwards.clone(),
-            self.keepalive_interval,
-        )
-        .await
-    }
-}
-
-#[async_trait]
-impl SshRuntimeConnection for NativeSshRuntimeConnection {
-    fn open_channel(&self, kind: SshChannelKind) -> AppResult<String> {
-        let next = self.channel_sequence.fetch_add(1, Ordering::SeqCst) + 1;
-        Ok(format!("native-russh-{}-{next}", kind.as_str()))
-    }
-
-    fn supports_shell(&self) -> bool {
-        true
-    }
-
-    async fn open_shell(
-        &self,
-        request: SshRuntimeShellRequest,
-    ) -> AppResult<Box<dyn SshRuntimeShellSession>> {
-        let connection = self.connection().await?;
-        let channel = match open_shell_on_native_connection(&connection, request.clone()).await {
-            Ok(channel) => channel,
-            Err(error) => {
-                if !should_clear_native_connection_after_channel_error(&error) {
-                    return Err(error);
-                }
-                let reason = format!("managed SSH shell channel failed: {error}");
-                clear_native_connection_if_current(&self.connection, &connection, &reason).await;
-                let retry_connection = self.connection().await?;
-                open_shell_on_native_connection(&retry_connection, request).await?
-            }
-        };
-        Ok(Box::new(NativeSshShellSession::new(channel)))
-    }
-
-    fn supports_exec(&self) -> bool {
-        true
-    }
-
-    async fn execute_exec(
-        &self,
-        request: SshRuntimeExecRequest,
-    ) -> AppResult<SshRuntimeExecRawOutput> {
-        let connection = self.connection().await?;
-        let result = execute_script_on_native_connection(
-            &connection,
-            request.script,
-            request.max_output_bytes.saturating_add(1),
-        )
-        .await;
-        if let Err(error) = &result {
-            if !should_clear_native_connection_after_channel_error(error) {
-                return result;
-            }
-            clear_native_connection_if_current(
-                &self.connection,
-                &connection,
-                &format!("managed SSH exec channel failed: {error}"),
-            )
-            .await;
-        }
-        result
-    }
-
-    fn supports_streaming_exec(&self) -> bool {
-        true
-    }
-
-    async fn open_streaming_exec(
-        &self,
-        request: SshRuntimeStreamingExecRequest,
-    ) -> AppResult<Box<dyn SshRuntimeStreamingExecSession>> {
-        let command = request.command;
-        let connection = self.connection().await?;
-        let channel = match open_streaming_exec_on_native_connection(&connection, command.clone())
-            .await
-        {
-            Ok(channel) => channel,
-            Err(error) => {
-                if !should_clear_native_connection_after_channel_error(&error) {
-                    return Err(error);
-                }
-                let reason = format!("managed SSH streaming exec channel failed: {error}");
-                clear_native_connection_if_current(&self.connection, &connection, &reason).await;
-                let retry_connection = self.connection().await?;
-                open_streaming_exec_on_native_connection(&retry_connection, command).await?
-            }
-        };
-        Ok(Box::new(NativeStreamingExecSession::new(channel)))
-    }
-
-    fn supports_sftp(&self) -> bool {
-        true
-    }
-
-    async fn open_sftp(&self) -> AppResult<Box<dyn SshRuntimeSftpStream>> {
-        let connection = self.connection().await?;
-        match open_sftp_on_native_connection(&connection).await {
-            Ok(stream) => Ok(stream),
-            Err(error) => {
-                if !should_clear_native_connection_after_channel_error(&error) {
-                    return Err(error);
-                }
-                let reason = format!("managed SSH SFTP channel failed: {error}");
-                clear_native_connection_if_current(&self.connection, &connection, &reason).await;
-                let retry_connection = self.connection().await?;
-                open_sftp_on_native_connection(&retry_connection).await
-            }
-        }
-    }
-
-    fn supports_local_forward(&self) -> bool {
-        true
-    }
-
-    fn start_local_forward(
-        &self,
-        request: SshRuntimeLocalForwardRequest,
-    ) -> AppResult<Box<dyn SshRuntimeForwardTask>> {
-        let next = self.channel_sequence.fetch_add(1, Ordering::SeqCst) + 1;
-        let task = NativeLocalForwardTask::start(
-            format!("native-russh-local-forward-{next}"),
-            Arc::clone(&self.connection),
-            self.execution.clone(),
-            self.host_key_policy,
-            self.remote_forwards.clone(),
-            request,
-        )?;
-        Ok(Box::new(task))
-    }
-
-    fn supports_dynamic_forward(&self) -> bool {
-        true
-    }
-
-    fn start_dynamic_forward(
-        &self,
-        request: SshRuntimeDynamicForwardRequest,
-    ) -> AppResult<Box<dyn SshRuntimeForwardTask>> {
-        let next = self.channel_sequence.fetch_add(1, Ordering::SeqCst) + 1;
-        let task = NativeDynamicForwardTask::start(
-            format!("native-russh-dynamic-forward-{next}"),
-            Arc::clone(&self.connection),
-            self.execution.clone(),
-            self.host_key_policy,
-            self.remote_forwards.clone(),
-            request,
-        )?;
-        Ok(Box::new(task))
-    }
-
-    fn supports_remote_forward(&self) -> bool {
-        true
-    }
-
-    fn start_remote_forward(
-        &self,
-        request: SshRuntimeRemoteForwardRequest,
-    ) -> AppResult<Box<dyn SshRuntimeForwardTask>> {
-        let next = self.channel_sequence.fetch_add(1, Ordering::SeqCst) + 1;
-        let task = NativeRemoteForwardTask::start(
-            format!("native-russh-remote-forward-{next}"),
-            Arc::clone(&self.connection),
-            self.execution.clone(),
-            self.host_key_policy,
-            self.remote_forwards.clone(),
-            request,
-        )?;
-        Ok(Box::new(task))
-    }
-
-    fn supports_remote_dynamic_forward(&self) -> bool {
-        true
-    }
-
-    fn start_remote_dynamic_forward(
-        &self,
-        request: SshRuntimeRemoteDynamicForwardRequest,
-    ) -> AppResult<Box<dyn SshRuntimeForwardTask>> {
-        let next = self.channel_sequence.fetch_add(1, Ordering::SeqCst) + 1;
-        let task = NativeRemoteForwardTask::start_dynamic(
-            format!("native-russh-remote-dynamic-forward-{next}"),
-            Arc::clone(&self.connection),
-            self.execution.clone(),
-            self.host_key_policy,
-            self.remote_forwards.clone(),
-            request,
-        )?;
-        Ok(Box::new(task))
-    }
-
-    fn disconnect(&self, reason: &str) {
-        let reason = reason.to_owned();
-        let connection = Arc::clone(&self.connection);
-        if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            handle.spawn(async move {
-                let mut guard = connection.lock().await;
-                if let Some(connection) = guard.take() {
-                    disconnect_native_connection_ref(&connection, &reason).await;
-                }
-            });
-        }
-    }
-}
-
 #[derive(Debug)]
-struct NativeSshShellSession {
-    reader: Mutex<ChannelReadHalf>,
-    writer: ChannelWriteHalf<client::Msg>,
-}
-
-impl NativeSshShellSession {
-    fn new(channel: Channel<client::Msg>) -> Self {
-        let (reader, writer) = channel.split();
-        Self {
-            reader: Mutex::new(reader),
-            writer,
-        }
-    }
-}
-
-#[async_trait]
-impl SshRuntimeShellSession for NativeSshShellSession {
-    async fn read_event(&self) -> AppResult<SshRuntimeShellEvent> {
-        let mut reader = self.reader.lock().await;
-        loop {
-            let Some(message) = reader.wait().await else {
-                return Ok(SshRuntimeShellEvent::Closed);
-            };
-            match message {
-                ChannelMsg::Data { data } => {
-                    return Ok(SshRuntimeShellEvent::Data(data.to_vec()));
-                }
-                ChannelMsg::ExtendedData { data, ext } => {
-                    return Ok(SshRuntimeShellEvent::ExtendedData {
-                        data: data.to_vec(),
-                        ext,
-                    });
-                }
-                ChannelMsg::Eof => return Ok(SshRuntimeShellEvent::Eof),
-                ChannelMsg::Close => return Ok(SshRuntimeShellEvent::Closed),
-                ChannelMsg::ExitStatus { exit_status } => {
-                    return Ok(SshRuntimeShellEvent::ExitStatus(
-                        i32::try_from(exit_status).unwrap_or(i32::MAX),
-                    ));
-                }
-                ChannelMsg::ExitSignal {
-                    signal_name,
-                    error_message,
-                    ..
-                } => {
-                    return Ok(SshRuntimeShellEvent::ExitSignal {
-                        error_message,
-                        signal_name: format!("{signal_name:?}"),
-                    });
-                }
-                ChannelMsg::Failure => {
-                    return Err(AppError::SshCommand(
-                        "远端拒绝 SSH shell/pty 请求".to_owned(),
-                    ));
-                }
-                ChannelMsg::Success
-                | ChannelMsg::WindowAdjusted { .. }
-                | ChannelMsg::Open { .. } => {
-                    continue;
-                }
-                _ => continue,
-            }
-        }
-    }
-
-    async fn write(&self, data: Vec<u8>) -> AppResult<()> {
-        if data.is_empty() {
-            return Ok(());
-        }
-        self.writer
-            .data_bytes(data)
-            .await
-            .map_err(|error| native_shell_error("SSH shell 写入失败", error))
-    }
-
-    async fn resize(&self, cols: u16, rows: u16) -> AppResult<()> {
-        self.writer
-            .window_change(u32::from(cols.max(1)), u32::from(rows.max(1)), 0, 0)
-            .await
-            .map_err(|error| native_shell_error("SSH shell 调整窗口失败", error))
-    }
-
-    async fn close(&self) -> AppResult<()> {
-        let _ = self.writer.eof().await;
-        self.writer
-            .close()
-            .await
-            .map_err(|error| native_shell_error("SSH shell 关闭失败", error))
-    }
-}
-
-fn native_shell_error(context: &str, error: impl std::fmt::Display) -> AppError {
-    AppError::SshCommand(format!("{context}: {error}"))
-}
-
-#[derive(Debug)]
-struct NativeStreamingExecSession {
-    exit_status: Receiver<AppResult<SshRuntimeStreamingExecExit>>,
-    kill: Option<oneshot::Sender<()>>,
-    stderr: Option<NativeStreamingExecReader>,
-    stdin: Option<NativeStreamingExecWriter>,
-    stdout: Option<NativeStreamingExecReader>,
-}
-
-impl NativeStreamingExecSession {
-    fn new(channel: Channel<client::Msg>) -> Self {
-        let (reader, writer) = channel.split();
-        let (stdin_tx, stdin_rx) = tokio_mpsc::channel::<Vec<u8>>(8);
-        let (stdout_tx, stdout_rx) = tokio_mpsc::channel::<Vec<u8>>(8);
-        let (stderr_tx, stderr_rx) = tokio_mpsc::channel::<Vec<u8>>(8);
-        let (exit_tx, exit_rx) = mpsc::channel();
-        let (kill_tx, kill_rx) = oneshot::channel();
-
-        tokio::spawn(run_streaming_exec_stdin(writer, stdin_rx, kill_rx));
-        tokio::spawn(run_streaming_exec_reader(
-            reader, stdout_tx, stderr_tx, exit_tx,
-        ));
-
-        Self {
-            exit_status: exit_rx,
-            kill: Some(kill_tx),
-            stderr: Some(NativeStreamingExecReader::new(stderr_rx)),
-            stdin: Some(NativeStreamingExecWriter::new(stdin_tx)),
-            stdout: Some(NativeStreamingExecReader::new(stdout_rx)),
-        }
-    }
-}
-
-impl SshRuntimeStreamingExecSession for NativeStreamingExecSession {
-    fn take_stdin(&mut self) -> AppResult<Box<dyn SshRuntimeStreamingExecWriter>> {
-        self.stdin
-            .take()
-            .map(|writer| Box::new(writer) as Box<dyn SshRuntimeStreamingExecWriter>)
-            .ok_or_else(|| AppError::SshCommand("streaming exec stdin is already taken".to_owned()))
-    }
-
-    fn take_stdout(&mut self) -> AppResult<Box<dyn SshRuntimeStreamingExecReader>> {
-        self.stdout
-            .take()
-            .map(|reader| Box::new(reader) as Box<dyn SshRuntimeStreamingExecReader>)
-            .ok_or_else(|| {
-                AppError::SshCommand("streaming exec stdout is already taken".to_owned())
-            })
-    }
-
-    fn take_stderr(&mut self) -> AppResult<Box<dyn SshRuntimeStreamingExecReader>> {
-        self.stderr
-            .take()
-            .map(|reader| Box::new(reader) as Box<dyn SshRuntimeStreamingExecReader>)
-            .ok_or_else(|| {
-                AppError::SshCommand("streaming exec stderr is already taken".to_owned())
-            })
-    }
-
-    fn close_stdin(&mut self) -> AppResult<()> {
-        self.stdin = None;
-        Ok(())
-    }
-
-    fn wait(&mut self, timeout: Duration) -> AppResult<SshRuntimeStreamingExecExit> {
-        match self.exit_status.recv_timeout(timeout) {
-            Ok(result) => result,
-            Err(RecvTimeoutError::Timeout) => {
-                let _ = self.kill();
-                Err(AppError::SshCommand(format!(
-                    "远程流式命令执行超时（{} 秒）",
-                    timeout.as_secs()
-                )))
-            }
-            Err(RecvTimeoutError::Disconnected) => Err(AppError::SshCommand(
-                "远程流式命令状态通道已关闭".to_owned(),
-            )),
-        }
-    }
-
-    fn kill(&mut self) -> AppResult<()> {
-        if let Some(kill) = self.kill.take() {
-            let _ = kill.send(());
-        }
-        self.stdin = None;
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-struct NativeStreamingExecReader {
-    buffer: VecDeque<u8>,
-    receiver: tokio_mpsc::Receiver<Vec<u8>>,
-}
-
-impl NativeStreamingExecReader {
-    fn new(receiver: tokio_mpsc::Receiver<Vec<u8>>) -> Self {
-        Self {
-            buffer: VecDeque::new(),
-            receiver,
-        }
-    }
-}
-
-impl Read for NativeStreamingExecReader {
-    fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
-        if output.is_empty() {
-            return Ok(0);
-        }
-        while self.buffer.is_empty() {
-            match self.receiver.blocking_recv() {
-                Some(chunk) if !chunk.is_empty() => self.buffer.extend(chunk),
-                Some(_) => continue,
-                None => return Ok(0),
-            }
-        }
-        let count = output.len().min(self.buffer.len());
-        for slot in &mut output[..count] {
-            if let Some(byte) = self.buffer.pop_front() {
-                *slot = byte;
-            }
-        }
-        Ok(count)
-    }
-}
-
-#[derive(Debug)]
-struct NativeStreamingExecWriter {
-    sender: tokio_mpsc::Sender<Vec<u8>>,
-}
-
-impl NativeStreamingExecWriter {
-    fn new(sender: tokio_mpsc::Sender<Vec<u8>>) -> Self {
-        Self { sender }
-    }
-}
-
-impl Write for NativeStreamingExecWriter {
-    fn write(&mut self, input: &[u8]) -> std::io::Result<usize> {
-        if input.is_empty() {
-            return Ok(0);
-        }
-        self.sender
-            .blocking_send(input.to_vec())
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "stdin closed"))?;
-        Ok(input.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-async fn run_streaming_exec_stdin(
-    writer: ChannelWriteHalf<client::Msg>,
-    mut stdin: tokio_mpsc::Receiver<Vec<u8>>,
-    mut kill: oneshot::Receiver<()>,
-) {
-    let writer = writer;
-    loop {
-        tokio::select! {
-            _ = &mut kill => {
-                let _ = writer.close().await;
-                return;
-            }
-            chunk = stdin.recv() => {
-                match chunk {
-                    Some(chunk) => {
-                        if writer.data_bytes(chunk).await.is_err() {
-                            return;
-                        }
-                    }
-                    None => {
-                        let _ = writer.eof().await;
-                        return;
-                    }
-                }
-            }
-        }
-    }
-}
-
-async fn run_streaming_exec_reader(
-    mut reader: ChannelReadHalf,
-    stdout: tokio_mpsc::Sender<Vec<u8>>,
-    stderr: tokio_mpsc::Sender<Vec<u8>>,
-    exit_status: mpsc::Sender<AppResult<SshRuntimeStreamingExecExit>>,
-) {
-    let mut exit_code = None;
-    let mut exec_request_failed = false;
-    while let Some(message) = reader.wait().await {
-        match message {
-            ChannelMsg::Data { data } if stdout.send(data.to_vec()).await.is_err() => {
-                break;
-            }
-            ChannelMsg::ExtendedData { data, .. } if stderr.send(data.to_vec()).await.is_err() => {
-                break;
-            }
-            ChannelMsg::ExitStatus { exit_status } => {
-                exit_code = i32::try_from(exit_status).ok();
-            }
-            ChannelMsg::ExitSignal {
-                signal_name,
-                error_message,
-                ..
-            } => {
-                let message = if error_message.trim().is_empty() {
-                    format!("remote process terminated by signal: {signal_name:?}\n")
-                } else {
-                    format!(
-                        "{error_message}\nremote process terminated by signal: {signal_name:?}\n"
-                    )
-                };
-                let _ = stderr.send(message.into_bytes()).await;
-            }
-            ChannelMsg::Failure => {
-                exec_request_failed = true;
-            }
-            ChannelMsg::Close => break,
-            ChannelMsg::Success
-            | ChannelMsg::WindowAdjusted { .. }
-            | ChannelMsg::Open { .. }
-            | ChannelMsg::Eof => {}
-            _ => {}
-        }
-    }
-    drop(stdout);
-    drop(stderr);
-    let result = if exec_request_failed {
-        Err(AppError::SshCommand("远端拒绝执行流式命令请求".to_owned()))
-    } else {
-        Ok(SshRuntimeStreamingExecExit { exit_code })
-    };
-    let _ = exit_status.send(result);
-}
-
-#[derive(Debug)]
-struct NativeLocalForwardTask {
+pub(super) struct NativeLocalForwardTask {
     id: String,
     shutdown: Option<oneshot::Sender<()>>,
     status: Receiver<String>,
@@ -706,7 +68,7 @@ struct NativeLocalForwardTask {
 }
 
 impl NativeLocalForwardTask {
-    fn start(
+    pub(super) fn start(
         id: String,
         connection: Arc<Mutex<Option<Arc<NativeSshConnectionChain>>>>,
         execution: NativeSshCommandExecution,
@@ -902,7 +264,7 @@ async fn proxy_local_forward_connection(
 }
 
 #[derive(Debug)]
-struct NativeDynamicForwardTask {
+pub(super) struct NativeDynamicForwardTask {
     id: String,
     shutdown: Option<oneshot::Sender<()>>,
     status: Receiver<String>,
@@ -910,7 +272,7 @@ struct NativeDynamicForwardTask {
 }
 
 impl NativeDynamicForwardTask {
-    fn start(
+    pub(super) fn start(
         id: String,
         connection: Arc<Mutex<Option<Arc<NativeSshConnectionChain>>>>,
         execution: NativeSshCommandExecution,
@@ -1273,7 +635,7 @@ async fn read_socks5_connect_request(stream: &mut TcpStream) -> AppResult<Socks5
 }
 
 #[derive(Debug)]
-struct NativeRemoteForwardTask {
+pub(super) struct NativeRemoteForwardTask {
     id: String,
     shutdown: Option<oneshot::Sender<()>>,
     status: Receiver<String>,
@@ -1281,7 +643,7 @@ struct NativeRemoteForwardTask {
 }
 
 impl NativeRemoteForwardTask {
-    fn start(
+    pub(super) fn start(
         id: String,
         connection: Arc<Mutex<Option<Arc<NativeSshConnectionChain>>>>,
         execution: NativeSshCommandExecution,
@@ -1306,7 +668,7 @@ impl NativeRemoteForwardTask {
         )
     }
 
-    fn start_dynamic(
+    pub(super) fn start_dynamic(
         id: String,
         connection: Arc<Mutex<Option<Arc<NativeSshConnectionChain>>>>,
         execution: NativeSshCommandExecution,
@@ -1592,95 +954,4 @@ fn remote_forward_reconnect_delay(attempt: usize) -> Duration {
         .saturating_mul(multiplier)
         .min(REMOTE_FORWARD_RECONNECT_MAX_MILLIS);
     Duration::from_millis(millis)
-}
-
-async fn native_connection_from_state(
-    state: &Arc<Mutex<Option<Arc<NativeSshConnectionChain>>>>,
-    execution: &NativeSshCommandExecution,
-    host_key_policy: NativeHostKeyPolicy,
-    remote_forwards: NativeRemoteForwardRegistry,
-    keepalive_interval: Option<Duration>,
-) -> AppResult<Arc<NativeSshConnectionChain>> {
-    let mut guard = state.lock().await;
-    if let Some(connection) = guard.as_ref() {
-        return Ok(Arc::clone(connection));
-    }
-
-    let connection = Arc::new(
-        connect_native_command_target_with_remote_forward_registry(
-            execution,
-            host_key_policy,
-            remote_forwards,
-        )
-        .await?,
-    );
-    *guard = Some(Arc::clone(&connection));
-    if let Some(interval) = keepalive_interval {
-        spawn_native_connection_keepalive(Arc::clone(state), Arc::clone(&connection), interval);
-    }
-    Ok(connection)
-}
-
-fn spawn_native_connection_keepalive(
-    state: Arc<Mutex<Option<Arc<NativeSshConnectionChain>>>>,
-    connection: Arc<NativeSshConnectionChain>,
-    interval: Duration,
-) {
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(interval).await;
-            let is_current = {
-                let guard = state.lock().await;
-                guard
-                    .as_ref()
-                    .is_some_and(|current| Arc::ptr_eq(current, &connection))
-            };
-            if !is_current {
-                break;
-            }
-            if let Err(error) = ping_native_connection_ref(&connection).await {
-                clear_native_connection_if_current(
-                    &state,
-                    &connection,
-                    &format!("managed SSH keepalive failed: {error}"),
-                )
-                .await;
-                break;
-            }
-        }
-    });
-}
-
-async fn clear_native_connection_if_current(
-    state: &Arc<Mutex<Option<Arc<NativeSshConnectionChain>>>>,
-    failed_connection: &Arc<NativeSshConnectionChain>,
-    reason: &str,
-) {
-    let stale_connection = {
-        let mut guard = state.lock().await;
-        match guard.as_ref() {
-            Some(current) if Arc::ptr_eq(current, failed_connection) => guard.take(),
-            _ => None,
-        }
-    };
-    if let Some(connection) = stale_connection {
-        disconnect_native_connection_ref(&connection, reason).await;
-    }
-}
-
-pub(crate) fn should_clear_native_connection_after_proxy_error(error: &AppError) -> bool {
-    should_clear_native_connection_after_channel_error(error)
-}
-
-#[doc(hidden)]
-pub fn should_clear_native_connection_after_channel_error(error: &AppError) -> bool {
-    let message = error.to_string().to_ascii_lowercase();
-    [
-        "broken pipe",
-        "connection reset",
-        "connection lost",
-        "connection aborted",
-    ]
-    .iter()
-    .any(|needle| message.contains(needle))
 }

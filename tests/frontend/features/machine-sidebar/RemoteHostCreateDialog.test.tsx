@@ -180,7 +180,9 @@ describe("RemoteHostCreateDialog", () => {
 
     await user.click(screen.getByRole("button", { name: "确认" }));
 
-    expect(screen.getByText("请输入主机名称。")).toBeInTheDocument();
+    const validationMessage = screen.getByText("请输入主机名称。");
+    expect(validationMessage).toBeInTheDocument();
+    expect(validationMessage.closest("footer")).not.toBeNull();
     expect(onCreateHost).not.toHaveBeenCalled();
   });
 
@@ -411,7 +413,12 @@ describe("RemoteHostCreateDialog", () => {
     await chooseSelectOption(user, "认证方式", "SSH Agent");
 
     await user.click(screen.getByRole("button", { name: "跳板机" }));
-    await chooseSelectOption(user, "已有跳板机主机", "db-prod");
+    const jumpHostSearch = screen.getByRole("combobox", {
+      name: "已有跳板机主机",
+    });
+    await user.type(jumpHostSearch, "10.0.0.8");
+    expect(screen.queryByRole("option", { name: /ubuntu-dev/ })).toBeNull();
+    await user.click(screen.getByRole("option", { name: /db-prod/ }));
 
     expect(screen.getByLabelText("跳板机名称")).toHaveValue("db-prod");
     expect(screen.getByLabelText("跳板机主机")).toHaveValue("10.0.0.8");
@@ -875,7 +882,9 @@ describe("RemoteHostCreateDialog", () => {
     );
 
     expect(screen.getByLabelText("名称")).toHaveValue("draft-name");
-    expect(screen.getByRole("alert")).toHaveTextContent(conflictMessage);
+    const conflictAlert = screen.getByRole("alert");
+    expect(conflictAlert).toHaveTextContent(conflictMessage);
+    expect(conflictAlert.closest("footer")).not.toBeNull();
     expect(screen.getByRole("button", { name: "确认" })).toBeDisabled();
     expect(onUpdateHost).not.toHaveBeenCalled();
   });

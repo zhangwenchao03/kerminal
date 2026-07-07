@@ -38,12 +38,12 @@ export function useDiagnosticsBundleController(): DiagnosticsBundleController {
   const dismissNotice = () => setNoticeVisible(false);
 
   const actionLabel = creating
-    ? "正在生成诊断包"
+    ? "正在导出日志"
     : error
-      ? "重试生成诊断包"
+      ? "重试导出日志"
       : bundle
-        ? "重新生成诊断包"
-        : "生成诊断包";
+        ? "重新导出日志"
+        : "导出日志";
 
   return {
     actionLabel,
@@ -60,7 +60,7 @@ export function DiagnosticsBundleCard() {
   const controller = useDiagnosticsBundleController();
 
   return (
-    <section aria-label="诊断包" className="space-y-2">
+    <section aria-label="日志导出" className="space-y-2">
       <DiagnosticsBundleButton controller={controller} />
       <DiagnosticsBundleNotice controller={controller} />
     </section>
@@ -116,7 +116,7 @@ export function DiagnosticsBundleNotice({
           className="rounded-lg border border-sky-400/20 bg-sky-500/10 px-3 py-2 text-xs text-sky-700 dark:text-sky-100"
           role="status"
         >
-          正在生成诊断包...
+          正在整理日志...
         </div>
       ) : null}
 
@@ -126,7 +126,9 @@ export function DiagnosticsBundleNotice({
           role="alert"
         >
           <div className="flex items-start gap-2">
-            <div className="min-w-0 flex-1">诊断包生成失败：{error}</div>
+            <div className="min-w-0 flex-1">
+              日志导出失败，请稍后重试；详细信息已写入应用日志。
+            </div>
             <DiagnosticsBundleNoticeCloseButton onClick={dismissNotice} />
           </div>
         </div>
@@ -134,20 +136,20 @@ export function DiagnosticsBundleNotice({
 
       {bundle ? (
         <div
-          aria-label="诊断包生成结果"
+          aria-label="日志导出结果"
           className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-xs leading-5 text-emerald-800 dark:text-emerald-100"
           role="status"
         >
           <div className="flex items-start gap-2">
             <div className="min-w-0 flex-1">
-              <div className="font-medium">诊断包已生成：{bundle.fileName}</div>
+              <div className="font-medium">日志已导出：{bundle.fileName}</div>
               <div className="mt-1">
-                路径：
+                保存位置：
                 <span className="break-all font-mono">{bundle.path}</span>
               </div>
               <div className="mt-1 text-emerald-700/80 dark:text-emerald-100/75">
-                大小 {formatBytes(bundle.bytesWritten)} · 分区{" "}
-                {bundle.sections.length} 个
+                大小 {formatBytes(bundle.bytesWritten)} · 包含{" "}
+                {bundle.sections.length} 类信息
               </div>
             </div>
             <DiagnosticsBundleNoticeCloseButton onClick={dismissNotice} />
@@ -165,10 +167,10 @@ function DiagnosticsBundleNoticeCloseButton({
 }) {
   return (
     <button
-      aria-label="关闭诊断包提示"
+      aria-label="关闭日志导出提示"
       className="kerminal-focus-ring kerminal-pressable shrink-0 rounded-md p-1 text-zinc-500 transition hover:bg-black/5 hover:text-zinc-700 dark:text-zinc-300 dark:hover:bg-white/10 dark:hover:text-zinc-50"
       onClick={onClick}
-      title="关闭诊断包提示"
+      title="关闭日志导出提示"
       type="button"
     >
       <X className="h-3.5 w-3.5" />

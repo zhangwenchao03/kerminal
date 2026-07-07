@@ -15,9 +15,10 @@ type UseSftpContextMenuActionsArgs = {
   downloadEntry: (entry: SftpEntry) => void | Promise<void>;
   downloadEntryAsArchive: (entry: SftpEntry) => void | Promise<void>;
   downloadEntryToLocalClipboard: (entry: SftpEntry) => void | Promise<void>;
+  downloadSelectedEntries: () => void | Promise<void>;
   loadDirectory: (path: string) => void | Promise<void>;
   openChmodDialog: (entry: SftpEntry) => void;
-  openDeleteDialog: (entry: SftpEntry) => void;
+  openDeleteDialog: (entries: SftpEntry[]) => void;
   openEditorEntry: (entry: SftpEntry) => void;
   openNewDirectoryDialog: () => void;
   openRenameDialog: (entry: SftpEntry) => void;
@@ -43,6 +44,7 @@ export function useSftpContextMenuActions({
   downloadEntry,
   downloadEntryAsArchive,
   downloadEntryToLocalClipboard,
+  downloadSelectedEntries,
   loadDirectory,
   openChmodDialog,
   openDeleteDialog,
@@ -65,6 +67,7 @@ export function useSftpContextMenuActions({
         action,
         currentPath,
         entry: contextMenu?.entry ?? null,
+        scope: contextMenu?.scope,
       });
       setContextMenu(null);
 
@@ -130,6 +133,10 @@ export function useSftpContextMenuActions({
         void downloadEntry(decision.entry);
         return;
       }
+      if (decision.kind === "downloadSelection") {
+        void downloadSelectedEntries();
+        return;
+      }
       if (decision.kind === "transferToTarget") {
         void transferSelectedEntriesToTarget();
         return;
@@ -158,7 +165,11 @@ export function useSftpContextMenuActions({
         openChmodDialog(decision.entry);
         return;
       }
-      openDeleteDialog(decision.entry);
+      if (decision.kind === "deleteSelection") {
+        openDeleteDialog(decision.entries);
+        return;
+      }
+      openDeleteDialog([decision.entry]);
     },
     [
       contextMenu,
@@ -168,6 +179,7 @@ export function useSftpContextMenuActions({
       downloadEntry,
       downloadEntryAsArchive,
       downloadEntryToLocalClipboard,
+      downloadSelectedEntries,
       loadDirectory,
       openChmodDialog,
       openDeleteDialog,

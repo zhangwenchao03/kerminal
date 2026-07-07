@@ -13,7 +13,7 @@ use russh_sftp::{
 };
 use tokio::{
     fs,
-    io::{AsyncSeekExt, AsyncWriteExt},
+    io::{AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt},
 };
 
 use crate::{
@@ -34,6 +34,7 @@ enum RemoteReadFallback {
 }
 
 const RELIABLE_PARTIAL_SUFFIX: &str = ".kerminal-part";
+const DOWNLOAD_READ_CHUNK_BYTES: usize = 64 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ReliableWriteDecision {
@@ -334,10 +335,7 @@ pub(super) async fn download_file(
     }
     {
         let mut writer = ProgressWriter::new(&mut local_target.file, progress.clone());
-        remote_file
-            .read_to_writer_pipelined(&mut writer, settings.pipeline_depth)
-            .await
-            .map_err(native_sftp_error)?;
+        stream_remote_file_to_writer(&mut remote_file, &mut writer, progress).await?;
         writer.flush().await.map_err(io_sftp_error)?;
     }
     local_target.file.flush().await.map_err(io_sftp_error)?;
@@ -547,10 +545,8 @@ pub(super) async fn copy_remote_file_between_sessions(
     }
     {
         let mut writer = ProgressWriter::new(&mut target.file, progress.clone());
-        source_file
-            .read_to_writer_pipelined(&mut writer, settings.pipeline_depth)
-            .await
-            .map_err(native_sftp_error)?;
+        let _ = settings;
+        stream_remote_file_to_writer(&mut source_file, &mut writer, progress).await?;
         writer.flush().await.map_err(io_sftp_error)?;
     }
     target.file.shutdown().await.map_err(io_sftp_error)?;
@@ -562,6 +558,31 @@ pub(super) async fn copy_remote_file_between_sessions(
         source_size,
     )
     .await
+}
+
+async fn stream_remote_file_to_writer<W>(
+    remote_file: &mut SftpFile,
+    writer: &mut W,
+    progress: &TransferProgress,
+) -> AppResult<u64>
+where
+    W: AsyncWrite + Unpin,
+{
+    let mut total = 0_u64;
+    let mut buffer = vec![0_u8; DOWNLOAD_READ_CHUNK_BYTES];
+    loop {
+        progress.ensure_not_cancelled()?;
+        let read = remote_file.read(&mut buffer).await.map_err(io_sftp_error)?;
+        if read == 0 {
+            break;
+        }
+        writer
+            .write_all(&buffer[..read])
+            .await
+            .map_err(io_sftp_error)?;
+        total = total.saturating_add(read as u64);
+    }
+    Ok(total)
 }
 
 async fn ensure_remote_directory(sftp: &SftpSession, remote_path: &str) -> AppResult<()> {

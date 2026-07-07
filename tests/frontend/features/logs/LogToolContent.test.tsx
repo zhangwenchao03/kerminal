@@ -27,7 +27,7 @@ vi.mock("../../../../src/lib/diagnosticsApi", () => ({
 }));
 
 vi.mock("../../../../src/features/tool-panel/DiagnosticsBundleCard", () => ({
-  DiagnosticsBundleCard: () => <div>诊断包测试替身</div>,
+  DiagnosticsBundleCard: () => <div>日志导出测试替身</div>,
 }));
 
 const sshPane: TerminalPane = {
@@ -83,6 +83,7 @@ describe("LogToolContent", () => {
     render(<LogToolContent focusedPane={sshPane} />);
 
     expect(await screen.findByText("应用日志")).toBeInTheDocument();
+    expect(screen.getByText("当前日志")).toBeInTheDocument();
     expect(await screen.findByText(/kerminal\.log$/)).toBeInTheDocument();
     expect(screen.getByText("当前 2.0 KB")).toBeInTheDocument();
     expect(screen.getByText("单文件上限 976.6 KB")).toBeInTheDocument();

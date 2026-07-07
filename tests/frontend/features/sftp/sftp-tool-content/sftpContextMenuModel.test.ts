@@ -210,4 +210,63 @@ describe("sftpContextMenuModel", () => {
       label: "删除",
     });
   });
+
+  it("builds selection-scoped batch actions without ambiguous entry actions", () => {
+    const file = entry({ name: "app.log", path: "/srv/app.log" });
+    const directory = entry({
+      kind: "directory",
+      name: "conf",
+      path: "/srv/conf",
+    });
+    const groups = buildSftpContextMenuGroups({
+      entry: file,
+      scope: {
+        entries: [file, directory],
+        kind: "selection",
+        transferableEntries: [file, directory],
+      },
+      showHiddenFiles: false,
+      supportsAdvancedActions: true,
+    });
+
+    expect(actions(groups)).toEqual([
+      ["downloadSelection"],
+      ["refresh", "toggleHidden"],
+      ["deleteSelection"],
+    ]);
+    expect(itemByAction(groups, "downloadSelection")).toMatchObject({
+      disabled: false,
+      label: "下载选中 2 项",
+    });
+    expect(itemByAction(groups, "deleteSelection")).toMatchObject({
+      danger: true,
+      label: "删除选中 2 项",
+    });
+    expect(itemByAction(groups, "rename")).toBeUndefined();
+    expect(itemByAction(groups, "chmod")).toBeUndefined();
+    expect(itemByAction(groups, "copyPath")).toBeUndefined();
+  });
+
+  it("disables selection download when no selected item is transferable", () => {
+    const socket = entry({
+      kind: "other",
+      name: "socket",
+      path: "/srv/socket",
+    });
+    const groups = buildSftpContextMenuGroups({
+      entry: socket,
+      scope: {
+        entries: [socket],
+        kind: "selection",
+        transferableEntries: [],
+      },
+      showHiddenFiles: true,
+      supportsAdvancedActions: true,
+    });
+
+    expect(itemByAction(groups, "downloadSelection")).toMatchObject({
+      disabled: true,
+      label: "下载可传输 0 项",
+    });
+  });
 });

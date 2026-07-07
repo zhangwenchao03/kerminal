@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Network, Plus } from "lucide-react";
 import { Button } from "../../../components/ui/button";
-import { Select, type SelectOption } from "../../../components/ui/select";
+import { Select } from "../../../components/ui/select";
 import type {
   RemoteHostAuthType,
   SshJumpHostOptions,
@@ -26,6 +26,7 @@ import {
   inputClassName,
   ListReorderActions,
 } from "./shared-ui";
+import { SearchableHostSelect } from "./searchable-host-select";
 
 export function SshJumpPanel({
   options,
@@ -46,20 +47,7 @@ export function SshJumpPanel({
     username: "",
   });
   const [draftError, setDraftError] = useState<string | null>(null);
-  const [selectedHostId, setSelectedHostId] = useState("");
-  const existingHostOptions = useMemo<SelectOption[]>(
-    () => [
-      { label: "手动填写", value: "" },
-      ...sshMachines.map((machine) => ({
-        description: formatSshMachineDescription(machine),
-        label: machine.name,
-        value: machine.id,
-      })),
-    ],
-    [sshMachines],
-  );
   const selectExistingHost = (hostId: string) => {
-    setSelectedHostId(hostId);
     if (!hostId) {
       return;
     }
@@ -71,7 +59,6 @@ export function SshJumpPanel({
     setDraftError(null);
   };
   const updateDraft = (nextDraft: Partial<SshJumpHostOptions>) => {
-    setSelectedHostId("");
     setDraft((current) => ({ ...current, ...nextDraft }));
   };
   const addJumpHost = () => {
@@ -109,7 +96,6 @@ export function SshJumpPanel({
       port: 22,
       username: "",
     });
-    setSelectedHostId("");
   };
 
   return (
@@ -117,13 +103,11 @@ export function SshJumpPanel({
       <div className="grid gap-3">
         <FieldRow label="已有主机">
           <div className="space-y-1">
-            <Select
-              aria-label="已有跳板机主机"
-              buttonClassName="h-10"
+            <SearchableHostSelect
+              ariaLabel="已有跳板机主机"
               disabled={sshMachines.length === 0}
-              onValueChange={selectExistingHost}
-              options={existingHostOptions}
-              value={selectedHostId}
+              machines={sshMachines}
+              onSelectHost={selectExistingHost}
             />
             <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
               {sshMachines.length > 0

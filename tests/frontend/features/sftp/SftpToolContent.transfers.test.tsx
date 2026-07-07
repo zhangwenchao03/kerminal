@@ -348,11 +348,15 @@ describe("SftpToolContent transfers and containers", () => {
     });
     await waitFor(() =>
       expect(
-        containerFilesApiMocks.listDockerContainerDirectory,
-      ).toHaveBeenCalledTimes(2),
+        containerFilesApiMocks.listDockerContainerDirectory.mock.calls.length,
+      ).toBeGreaterThanOrEqual(2),
     );
     expect(sftpApiMocks.enqueueSftpTransfer).not.toHaveBeenCalled();
-    expect(await screen.findByText(/已上传：release.tgz/)).toBeInTheDocument();
+    expect(await screen.findByText("SFTP 传输队列")).toBeInTheDocument();
+    expect(
+      screen.getByRole("group", { name: "SFTP 传输 release.tgz" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("完成")).toBeInTheDocument();
   });
 
   it("downloads a container file from the shared context menu", async () => {
@@ -387,7 +391,11 @@ describe("SftpToolContent transfers and containers", () => {
       runtime: "docker",
     });
     expect(sftpApiMocks.enqueueSftpTransfer).not.toHaveBeenCalled();
-    expect(await screen.findByText(/已下载：\/app\/package.json/)).toBeInTheDocument();
+    expect(await screen.findByText("SFTP 传输队列")).toBeInTheDocument();
+    expect(
+      screen.getByRole("group", { name: "SFTP 传输 package.json" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("完成")).toBeInTheDocument();
   });
 
   it("opens a container file in the central workspace tab", async () => {

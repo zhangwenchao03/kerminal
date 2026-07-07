@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import type { SftpEntry } from "../../../../../src/lib/sftpApi";
 import {
   buildSftpDialogActionPlan,
+  dedupeDeleteEntries,
   dialogActionConfirmLabel,
   dialogActionDescription,
   dialogActionTitle,
@@ -55,11 +56,13 @@ describe("sftpDialogModel", () => {
     });
 
     expect(plan).toEqual({
-      operation: {
-        kind: "mkdir",
-        request: { hostId: "ssh-host", path: "/srv/logs" },
-        targetKind: "ssh",
-      },
+      operations: [
+        {
+          kind: "mkdir",
+          request: { hostId: "ssh-host", path: "/srv/logs" },
+          targetKind: "ssh",
+        },
+      ],
       reloadPath: "/srv",
       successStatus: { kind: "success", message: "目录已创建：/srv/logs" },
     });
@@ -71,27 +74,29 @@ describe("sftpDialogModel", () => {
       path: "/app/config.json",
     });
     const plan = buildSftpDialogActionPlan({
-      action: { entry: source, kind: "rename", toPath: "config.old.json" },
+      action: { entry: source, kind: "rename", newName: "config.old.json" },
       currentPath: "/app",
       fileTarget: containerTarget,
     });
 
     expect(plan).toEqual({
-      operation: {
-        kind: "rename",
-        request: {
-          containerId: "container-1",
-          fromPath: "/app/config.json",
-          hostId: "docker-host",
-          runtime: "docker",
-          toPath: "/app/config.old.json",
+      operations: [
+        {
+          kind: "rename",
+          request: {
+            containerId: "container-1",
+            fromPath: "/app/config.json",
+            hostId: "docker-host",
+            runtime: "docker",
+            toPath: "/app/config.old.json",
+          },
+          targetKind: "dockerContainer",
         },
-        targetKind: "dockerContainer",
-      },
+      ],
       reloadPath: "/app",
       successStatus: {
         kind: "success",
-        message: "已重命名：/app/config.json -> /app/config.old.json",
+        message: "已重命名：config.json -> config.old.json",
       },
     });
   });
@@ -104,7 +109,7 @@ describe("sftpDialogModel", () => {
       fileTarget: sshTarget,
     });
 
-    expect(plan.operation).toEqual({
+    expect(plan.operations[0]).toEqual({
       kind: "chmod",
       request: { hostId: "ssh-host", mode: "0755", path: "/srv/run.sh" },
       targetKind: "ssh",
@@ -122,12 +127,12 @@ describe("sftpDialogModel", () => {
       path: "/app/logs",
     });
     const plan = buildSftpDialogActionPlan({
-      action: { entry: target, kind: "delete" },
+      action: { entries: [target], kind: "delete" },
       currentPath: "/app",
       fileTarget: containerTarget,
     });
 
-    expect(plan.operation).toEqual({
+    expect(plan.operations[0]).toEqual({
       kind: "delete",
       request: {
         containerId: "container-1",
@@ -151,12 +156,12 @@ describe("sftpDialogModel", () => {
       path: "/app/package.json",
     });
     const plan = buildSftpDialogActionPlan({
-      action: { entry: target, kind: "delete" },
+      action: { entries: [target], kind: "delete" },
       currentPath: "/app",
       fileTarget: containerTarget,
     });
 
-    expect(plan.operation).toEqual({
+    expect(plan.operations[0]).toEqual({
       kind: "delete",
       request: {
         containerId: "container-1",
@@ -169,23 +174,40 @@ describe("sftpDialogModel", () => {
     });
   });
 
-  it("normalizes absolute rename targets without joining the current path", () => {
+  it("computes rename targets from the source parent and the new name", () => {
     const source = entry({ path: "/srv/app.log" });
     const plan = buildSftpDialogActionPlan({
-      action: { entry: source, kind: "rename", toPath: "//tmp//app.log" },
+      action: { entry: source, kind: "rename", newName: "app.old.log" },
       currentPath: "/srv",
       fileTarget: sshTarget,
     });
 
-    expect(plan.operation).toEqual({
+    expect(plan.operations[0]).toEqual({
       kind: "rename",
       request: {
         fromPath: "/srv/app.log",
         hostId: "ssh-host",
-        toPath: "/tmp/app.log",
+        toPath: "/srv/app.old.log",
       },
       targetKind: "ssh",
     });
+  });
+
+  it("deduplicates batch delete entries and removes children covered by directories", () => {
+    const directory = entry({
+      kind: "directory",
+      name: "logs",
+      path: "/srv/logs",
+    });
+    const child = entry({ name: "app.log", path: "/srv/logs/app.log" });
+    const sibling = entry({ name: "config.json", path: "/srv/config.json" });
+
+    const deduped = dedupeDeleteEntries([child, directory, child, sibling]);
+
+    expect(deduped.map((item) => item.path)).toEqual([
+      "/srv/logs",
+      "/srv/config.json",
+    ]);
   });
 
   it("keeps dialog labels and descriptions stable", () => {
@@ -193,11 +215,14 @@ describe("sftpDialogModel", () => {
     expect(dialogActionTitle({ kind: "mkdir", path: "/srv/new" })).toBe(
       "新建目录",
     );
-    expect(dialogActionConfirmLabel({ entry: target, kind: "delete" })).toBe(
+    expect(dialogActionConfirmLabel({ entries: [target], kind: "delete" })).toBe(
       "确认删除",
     );
     expect(
-      dialogActionDescription({ entry: target, kind: "rename", toPath: "" }, "/srv"),
+      dialogActionConfirmLabel({ entries: [target, entry({ path: "/srv/b.log" })], kind: "delete" }),
+    ).toBe("确认删除 2 项");
+    expect(
+      dialogActionDescription({ entry: target, kind: "rename", newName: "" }, "/srv"),
     ).toBe("/srv/app.log");
   });
 
@@ -208,14 +233,20 @@ describe("sftpDialogModel", () => {
       "请填写新目录路径。",
     );
     expect(
-      getDialogActionBlocker({ entry: target, kind: "rename", toPath: target.path }, "/srv"),
+      getDialogActionBlocker({ entry: target, kind: "rename", newName: target.name }, "/srv"),
     ).toBe("目标路径不能和原路径相同。");
     expect(
+      getDialogActionBlocker({ entry: target, kind: "rename", newName: "a/b" }, "/srv"),
+    ).toBe("新名称不能包含路径分隔符。");
+    expect(
       getDialogActionBlocker(
-        { entry: { ...target, path: "/" }, kind: "delete" },
+        { entries: [{ ...target, path: "/" }], kind: "delete" },
         "/srv",
       ),
     ).toBe("删除路径需要包含名称，不能只写根目录。");
+    expect(getDialogActionBlocker({ entries: [], kind: "delete" }, "/srv")).toBe(
+      "请选择删除项目。",
+    );
     expect(
       getDialogActionBlocker({ entry: target, kind: "chmod", mode: "88" }, "/srv"),
     ).toBe("权限模式需要是 3 或 4 位八进制数字，例如 644 或 0755。");

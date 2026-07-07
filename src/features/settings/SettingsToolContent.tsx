@@ -3,12 +3,6 @@ import { Search, X } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { selectLocalFile } from "../../lib/fileDialogApi";
 import {
-  cleanupTerminalSuggestionDiagnostics,
-  getTerminalSuggestionTelemetrySummary,
-  type CommandSuggestionDiagnosticsCleanupResult,
-  type CommandSuggestionTelemetrySummary,
-} from "../../lib/terminalSuggestionApi";
-import {
   normalizeAppSettings,
   type AppearanceSettings,
   type AppSettings,
@@ -40,8 +34,6 @@ import { SyncSettingsSection } from "./settings-tool-content/sync-section";
 import { TerminalSettingsSection } from "./settings-tool-content/terminal-section";
 import {
   type SettingsToolContentProps,
-  type SuggestionCleanupState,
-  type SuggestionTelemetryLoadState,
   type VisibleSettingsSectionId,
 } from "./settings-tool-content/types";
 
@@ -63,20 +55,6 @@ export function SettingsToolContent({
 }: SettingsToolContentProps) {
   const [activeSectionId, setActiveSectionId] =
     useState<VisibleSettingsSectionId>(initialSectionId);
-  const [suggestionTelemetry, setSuggestionTelemetry] =
-    useState<CommandSuggestionTelemetrySummary | null>(null);
-  const [suggestionTelemetryError, setSuggestionTelemetryError] = useState<
-    string | null
-  >(null);
-  const [suggestionTelemetryState, setSuggestionTelemetryState] =
-    useState<SuggestionTelemetryLoadState>("idle");
-  const [suggestionCleanupError, setSuggestionCleanupError] = useState<
-    string | null
-  >(null);
-  const [suggestionCleanupResult, setSuggestionCleanupResult] =
-    useState<CommandSuggestionDiagnosticsCleanupResult | null>(null);
-  const [suggestionCleanupState, setSuggestionCleanupState] =
-    useState<SuggestionCleanupState>("idle");
   const [selectedKeybindingPlatform, setSelectedKeybindingPlatform] =
     useState<KeybindingPlatform>(() => shortcutPlatform());
   const [settingsSearchQuery, setSettingsSearchQuery] = useState("");
@@ -94,61 +72,9 @@ export function SettingsToolContent({
     [trimmedSettingsSearchQuery],
   );
 
-  const loadSuggestionTelemetry = async () => {
-    setSuggestionTelemetryState("loading");
-    setSuggestionTelemetryError(null);
-    try {
-      setSuggestionTelemetry(await getTerminalSuggestionTelemetrySummary());
-      setSuggestionTelemetryState("idle");
-    } catch (nextError) {
-      setSuggestionTelemetry(null);
-      setSuggestionTelemetryError(
-        nextError instanceof Error ? nextError.message : String(nextError),
-      );
-      setSuggestionTelemetryState("error");
-    }
-  };
-
-  const cleanupSuggestionDiagnostics = async (
-    resetPersistedTelemetry: boolean,
-  ) => {
-    setSuggestionCleanupState("running");
-    setSuggestionCleanupError(null);
-    try {
-      const result = await cleanupTerminalSuggestionDiagnostics({
-        auditRetentionDays:
-          normalizedSettings.terminal.inlineSuggestion.auditRetentionDays,
-        feedbackRetentionDays:
-          normalizedSettings.terminal.inlineSuggestion.feedbackRetentionDays,
-        pruneAuditEvents: !resetPersistedTelemetry,
-        pruneExpiredProviderCache: !resetPersistedTelemetry,
-        pruneFeedback: !resetPersistedTelemetry,
-        resetPersistedTelemetry,
-      });
-      setSuggestionCleanupResult(result);
-      setSuggestionCleanupState("done");
-      await loadSuggestionTelemetry();
-    } catch (nextError) {
-      setSuggestionCleanupError(
-        nextError instanceof Error ? nextError.message : String(nextError),
-      );
-      setSuggestionCleanupState("error");
-    }
-  };
-
   useEffect(() => {
     setActiveSectionId(initialSectionId);
   }, [initialSectionId]);
-
-  useEffect(() => {
-    if (
-      activeSectionId === "settings-suggestions" &&
-      !suggestionTelemetry &&
-      suggestionTelemetryState === "idle"
-    ) {
-      void loadSuggestionTelemetry();
-    }
-  }, [activeSectionId, suggestionTelemetry, suggestionTelemetryState]);
 
   useEffect(() => {
     if (!pendingSearchTargetId) {
@@ -422,15 +348,7 @@ export function SettingsToolContent({
 
         {activeSectionId === "settings-suggestions" ? (
           <CommandSuggestionSettingsSection
-            cleanupSuggestionDiagnostics={cleanupSuggestionDiagnostics}
-            loadSuggestionTelemetry={loadSuggestionTelemetry}
             normalizedSettings={normalizedSettings}
-            suggestionCleanupError={suggestionCleanupError}
-            suggestionCleanupResult={suggestionCleanupResult}
-            suggestionCleanupState={suggestionCleanupState}
-            suggestionTelemetry={suggestionTelemetry}
-            suggestionTelemetryError={suggestionTelemetryError}
-            suggestionTelemetryState={suggestionTelemetryState}
             updateTerminalInlineSuggestion={updateTerminalInlineSuggestion}
             updateTerminalInlineSuggestionProvider={
               updateTerminalInlineSuggestionProvider

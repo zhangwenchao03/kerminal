@@ -58,9 +58,6 @@ export function PortForwardSessionList({
           <h4 className="text-sm font-semibold text-zinc-950 dark:text-zinc-100">
             当前主机会话
           </h4>
-          <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-            只显示 selected host 的隧道。
-          </p>
         </div>
         {loading ? (
           <span className="text-xs text-zinc-500 dark:text-zinc-400">
@@ -178,7 +175,6 @@ function PortForwardSessionRow({
               脚本只写当前用户 home，不需要 root；提供备份和撤销脚本。
             </div>
           ) : null}
-          {session.runtime ? <SessionRuntime runtime={session.runtime} /> : null}
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
@@ -305,36 +301,6 @@ function SessionFact({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SessionRuntime({
-  runtime,
-}: {
-  runtime: NonNullable<PortForwardSummary["runtime"]>;
-}) {
-  const details = [
-    runtimeLabel(runtime.mode),
-    runtime.backend,
-    runtime.tunnelKind,
-    cleanupLabel(runtime.cleanupStatus),
-  ].filter(Boolean);
-  return (
-    <div className="mt-2 rounded-lg border border-zinc-200/70 bg-[var(--surface-field)] px-2 py-1.5 text-[11px] leading-4 text-zinc-600 dark:border-zinc-700/70 dark:text-zinc-300">
-      <div className="font-medium text-zinc-700 dark:text-zinc-200">
-        Runtime: {details.join(" / ")}
-      </div>
-      {runtime.fallbackReason ? (
-        <div className="mt-1 text-amber-700 dark:text-amber-200">
-          Fallback: {runtime.fallbackReason}
-        </div>
-      ) : null}
-      {runtime.recentFailure ? (
-        <div className="mt-1 text-rose-700 dark:text-rose-200">
-          最近失败: {runtime.recentFailure}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function StatusBadge({ status }: { status: PortForwardSummary["status"] }) {
   return (
     <span
@@ -348,32 +314,6 @@ function StatusBadge({ status }: { status: PortForwardSummary["status"] }) {
       {status === "running" ? "运行中" : "已退出"}
     </span>
   );
-}
-
-function runtimeLabel(mode: string) {
-  if (mode === "managedSshRuntime") {
-    return "Managed SSH";
-  }
-  if (mode === "openSshProcess") {
-    return "OpenSSH process";
-  }
-  if (mode === "openSshPty") {
-    return "OpenSSH PTY";
-  }
-  if (mode === "restored") {
-    return "Restored";
-  }
-  return "Unknown";
-}
-
-function cleanupLabel(cleanupStatus: string) {
-  if (!cleanupStatus) {
-    return "";
-  }
-  if (cleanupStatus === "cleanedUp") {
-    return "cleaned up";
-  }
-  return cleanupStatus;
 }
 
 function originLabel(origin: ReturnType<typeof sessionOrigin>) {

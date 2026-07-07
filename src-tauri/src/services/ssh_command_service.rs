@@ -15,16 +15,22 @@ use crate::{
     paths::KerminalPaths,
     services::{
         encrypted_vault_service::EncryptedVaultService,
-        external_launch::{is_external_target_id, ExternalSessionMaterializer},
-        ssh_credential_resolver::{ResolvedSshRouteAuth, SshCredentialResolver},
+        external_launch::ExternalSessionMaterializer,
+        ssh_credential_resolver::{
+            NativeSshRouteMaterial, ResolvedSshRouteAuth, SshCredentialResolver,
+        },
         ssh_identity_file::resolve_identity_file_path,
         ssh_runtime::{
             auth_broker::{SshAuthBroker, SshAuthBrokerResolution, SshAuthPromptPlan},
+            facade::{SshRuntimeFacade, SshRuntimeTargetContext},
+            policy::{
+                external_target_not_available_error, is_capability_unsupported,
+                is_external_runtime_target_id, is_managed_runtime_unwired,
+                runtime_host_key_policy_for_host_id, SshRuntimeCapability,
+            },
             session_key::ssh_session_key_for_route,
             ManagedSshSessionManager, ManagedSshStreamingExecSession, SshRuntimeConnectRequest,
-            SshRuntimeExecOutput, SshRuntimeExecRequest, SshRuntimeHostKeyPolicy,
-            SshRuntimeStreamingExecRequest, MANAGED_SSH_EXEC_UNSUPPORTED,
-            MANAGED_SSH_STREAMING_EXEC_UNSUPPORTED,
+            SshRuntimeExecOutput, SshRuntimeExecRequest, SshRuntimeStreamingExecRequest,
         },
     },
     storage::{config_file_store::ConfigFileStore, file_store::FileStoreError},
@@ -187,7 +193,7 @@ impl SshCommandService {
                 return Ok((target.host, target.route_auth));
             }
         }
-        if is_external_target_id(host_id) {
+        if is_external_runtime_target_id(host_id) {
             return Err(external_target_not_available_error(host_id));
         }
         let host = resolve_remote_host_from_files(paths, host_id)?;
@@ -219,39 +225,33 @@ impl SshCommandService {
         };
         let known_hosts_path = paths.root.join("known_hosts");
         let key = ssh_session_key_for_route(host, route_auth, &known_hosts_path)?;
-        let target = Some(key.summary().target);
         let connect_request = SshRuntimeConnectRequest::native(
             key,
             host.clone(),
             known_hosts_path,
             normalize_timeout_seconds(request.timeout_seconds),
         )
-        .with_host_key_policy(host_key_policy_for_host(host));
-        let session = match acquire_command_session(managed_runtime, host, connect_request) {
-            Ok(session) => session,
-            Err(error) if is_managed_runtime_unwired(&error) => {
-                managed_runtime.record_legacy_fallback(
-                    "exec",
-                    LEGACY_FALLBACK_EXEC_UNWIRED,
-                    target,
-                );
-                return Ok(None);
-            }
-            Err(error) => return Err(error),
-        };
+        .with_host_key_policy(runtime_host_key_policy_for_host_id(&host.id))
+        .with_native_route_material(NativeSshRouteMaterial::from_resolved_auth(route_auth)?);
+        let facade = SshRuntimeFacade::new(managed_runtime.clone());
+        let context = SshRuntimeTargetContext::new(connect_request);
         let runtime_request = SshRuntimeExecRequest::new(
             normalize_command_script(&request.command)?,
             normalize_timeout_seconds(request.timeout_seconds),
             normalize_output_bytes(request.max_output_bytes),
         )
         .with_cancel_token(cancel_token);
-        match session.execute_exec(runtime_request).await {
+        match facade.execute_exec(&context, runtime_request).await {
             Ok(output) => Ok(Some(ssh_command_output_from_runtime(host, output))),
-            Err(error) if is_managed_exec_unsupported(&error) => {
-                managed_runtime.record_legacy_fallback(
+            Err(error) if is_managed_runtime_unwired(&error) => {
+                facade.record_legacy_fallback("exec", LEGACY_FALLBACK_EXEC_UNWIRED, Some(&context));
+                Ok(None)
+            }
+            Err(error) if is_capability_unsupported(&error, SshRuntimeCapability::Exec) => {
+                facade.record_legacy_fallback(
                     "exec",
                     LEGACY_FALLBACK_EXEC_UNSUPPORTED,
-                    Some(host_label(host)),
+                    Some(&context),
                 );
                 Ok(None)
             }
@@ -273,63 +273,38 @@ impl SshCommandService {
         };
         let known_hosts_path = paths.root.join("known_hosts");
         let key = ssh_session_key_for_route(host, route_auth, &known_hosts_path)?;
-        let target = Some(key.summary().target);
         let connect_request =
             SshRuntimeConnectRequest::native(key, host.clone(), known_hosts_path, timeout_seconds)
-                .with_host_key_policy(host_key_policy_for_host(host));
-        let session = match acquire_command_session(managed_runtime, host, connect_request) {
-            Ok(session) => session,
-            Err(error) if is_managed_runtime_unwired(&error) => {
-                managed_runtime.record_legacy_fallback(
-                    "streaming-exec",
-                    LEGACY_FALLBACK_STREAMING_EXEC_UNWIRED,
-                    target,
-                );
-                return Ok(None);
-            }
-            Err(error) => return Err(error),
-        };
+                .with_host_key_policy(runtime_host_key_policy_for_host_id(&host.id))
+                .with_native_route_material(NativeSshRouteMaterial::from_resolved_auth(
+                    route_auth,
+                )?);
+        let facade = SshRuntimeFacade::new(managed_runtime.clone());
+        let context = SshRuntimeTargetContext::new(connect_request);
         let runtime_request = SshRuntimeStreamingExecRequest::new(command, timeout_seconds)
             .with_cancel_token(cancel_token);
-        match session.open_streaming_exec(runtime_request).await {
+        match facade.open_streaming_exec(&context, runtime_request).await {
             Ok(session) => Ok(Some(session)),
-            Err(error) if is_managed_streaming_exec_unsupported(&error) => {
-                managed_runtime.record_legacy_fallback(
+            Err(error) if is_managed_runtime_unwired(&error) => {
+                facade.record_legacy_fallback(
+                    "streaming-exec",
+                    LEGACY_FALLBACK_STREAMING_EXEC_UNWIRED,
+                    Some(&context),
+                );
+                Ok(None)
+            }
+            Err(error)
+                if is_capability_unsupported(&error, SshRuntimeCapability::StreamingExec) =>
+            {
+                facade.record_legacy_fallback(
                     "streaming-exec",
                     LEGACY_FALLBACK_STREAMING_EXEC_UNSUPPORTED,
-                    Some(host_label(host)),
+                    Some(&context),
                 );
                 Ok(None)
             }
             Err(error) => Err(error),
         }
-    }
-}
-
-fn host_label(host: &RemoteHost) -> String {
-    format!("{}@{}:{}", host.username, host.host, host.port)
-}
-
-fn acquire_command_session(
-    managed_runtime: &ManagedSshSessionManager,
-    host: &RemoteHost,
-    connect_request: SshRuntimeConnectRequest,
-) -> AppResult<crate::services::ssh_runtime::ManagedSshSessionHandle> {
-    if is_external_target_id(&host.id) {
-        return managed_runtime.acquire_capability_session_with_request(connect_request);
-    }
-    managed_runtime.acquire_session_with_request(connect_request)
-}
-
-fn external_target_not_available_error(host_id: &str) -> AppError {
-    AppError::NotFound(format!("外部 SSH 临时目标不存在或已关闭: {host_id}"))
-}
-
-fn host_key_policy_for_host(host: &RemoteHost) -> SshRuntimeHostKeyPolicy {
-    if is_external_target_id(&host.id) {
-        SshRuntimeHostKeyPolicy::TrustUnknown
-    } else {
-        SshRuntimeHostKeyPolicy::RequireKnown
     }
 }
 
@@ -361,18 +336,6 @@ fn ssh_command_output_from_runtime(
         max_output_bytes: output.max_output_bytes,
         duration_ms: output.duration_ms,
     }
-}
-
-fn is_managed_runtime_unwired(error: &AppError) -> bool {
-    matches!(error, AppError::SshCommand(message) if message.contains("managed SSH runtime backend is not wired yet"))
-}
-
-fn is_managed_exec_unsupported(error: &AppError) -> bool {
-    matches!(error, AppError::SshCommand(message) if message == MANAGED_SSH_EXEC_UNSUPPORTED)
-}
-
-fn is_managed_streaming_exec_unsupported(error: &AppError) -> bool {
-    matches!(error, AppError::SshCommand(message) if message == MANAGED_SSH_STREAMING_EXEC_UNSUPPORTED)
 }
 
 fn prompt_required_command_error(prompt_plan: SshAuthPromptPlan) -> AppError {

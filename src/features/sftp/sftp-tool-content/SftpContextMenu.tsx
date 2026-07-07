@@ -26,7 +26,7 @@ import {
 import {
   entryKindLabel,
 } from "./sftpEntryModel";
-import type { SftpMenuAction } from "./types";
+import type { SftpContextMenuScope, SftpMenuAction } from "./types";
 
 const CONTEXT_MENU_ICONS: Record<SftpContextMenuIcon, typeof FileText> = {
   clipboardPaste: ClipboardPaste,
@@ -50,6 +50,7 @@ export function SftpContextMenu({
   onAction,
   onClose,
   position,
+  scope,
   showHiddenFiles,
   supportsAdvancedActions,
   transferTargetSide,
@@ -59,6 +60,7 @@ export function SftpContextMenu({
   onAction: (action: SftpMenuAction) => void;
   onClose: () => void;
   position: { x: number; y: number };
+  scope?: SftpContextMenuScope;
   showHiddenFiles: boolean;
   supportsAdvancedActions: boolean;
   transferTargetSide?: "left" | "right";
@@ -66,11 +68,29 @@ export function SftpContextMenu({
   const groups = buildSftpContextMenuGroups({
     entry,
     hasTransferTarget: Boolean(transferTargetSide),
+    scope,
     showHiddenFiles,
     supportsAdvancedActions,
     transferTargetSide,
   });
-  const title = entry ? entry.name : currentPath;
+  const title =
+    scope?.kind === "selection"
+      ? `已选 ${scope.entries.length} 项`
+      : entry
+        ? entry.name
+        : currentPath;
+  const description =
+    scope?.kind === "selection"
+      ? `${scope.transferableEntries.length} 项可传输`
+      : entry
+        ? entryKindLabel(entry.kind)
+        : "当前目录";
+  const ariaLabel =
+    scope?.kind === "selection"
+      ? `SFTP 已选 ${scope.entries.length} 项右键菜单`
+      : entry
+        ? `SFTP ${entry.name} 右键菜单`
+        : "SFTP 目录右键菜单";
 
   useEffect(() => {
     const close = () => onClose();
@@ -90,7 +110,7 @@ export function SftpContextMenu({
 
   return (
     <div
-      aria-label={entry ? `SFTP ${entry.name} 右键菜单` : "SFTP 目录右键菜单"}
+      aria-label={ariaLabel}
       className="kerminal-context-menu kerminal-floating-enter fixed z-[1000] w-60"
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
@@ -102,7 +122,7 @@ export function SftpContextMenu({
       <div className="kerminal-context-menu-header">
         <div className="kerminal-context-menu-title">{title}</div>
         <div className="kerminal-context-menu-description font-mono">
-          {entry ? entryKindLabel(entry.kind) : "当前目录"}
+          {description}
         </div>
       </div>
       {groups.map((group) => (

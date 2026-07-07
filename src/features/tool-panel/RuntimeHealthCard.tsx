@@ -299,8 +299,15 @@ export function RuntimeHealthCard() {
                 wide
               />
               <SystemInfoRow label="日志" value={snapshot.storage.logs} wide />
-              <SystemInfoRow label="诊断包" value={snapshot.storage.diagnostics} wide />
-              <SystemInfoRow label="脱敏" value={snapshot.redacted ? "已启用" : "未启用"} />
+              <SystemInfoRow
+                label="问题反馈"
+                value={snapshot.storage.diagnostics}
+                wide
+              />
+              <SystemInfoRow
+                label="敏感信息保护"
+                value={snapshot.redacted ? "已启用" : "未启用"}
+              />
             </SystemInfoRows>
           </SystemMetricCard>
 

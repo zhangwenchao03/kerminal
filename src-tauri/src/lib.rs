@@ -58,12 +58,13 @@ pub fn run() {
         let external_launch_outcome = app
             .state::<AppState>()
             .external_launch_intake()
-            .accept_args(
-                cold_start_args,
+            .accept_args_with_parent_command_line(
+                cold_start_args.clone(),
                 std::env::current_dir()
                     .ok()
                     .map(|path| path.to_string_lossy().into_owned()),
                 services::external_launch::ExternalLaunchEntrypoint::DirectArgv,
+                services::external_launch::direct_parent_command_line_for_args(&cold_start_args),
             )?;
         emit_external_launch_outcome(app, &external_launch_outcome);
         let config_observer = app.state::<AppState>().config_change_observer().clone();

@@ -38,7 +38,7 @@ describe("PortForwardSessionList", () => {
     ).toContain("text-rose-700");
   });
 
-  it("renders runtime diagnostics for restored legacy fallback sessions", () => {
+  it("keeps runtime diagnostics out of restored legacy fallback sessions", () => {
     render(
       <PortForwardSessionList
         canInject={false}
@@ -55,19 +55,11 @@ describe("PortForwardSessionList", () => {
       />,
     );
 
-    expect(
-      screen.getByText(
-        "Runtime: OpenSSH process / openssh / local / cleaned up",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Fallback: managed SSH forward runtime unavailable or unsupported",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("最近失败: SSH 端口转发进程已退出，退出码: exit code: 255"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Legacy fallback")).toBeInTheDocument();
+    expect(screen.queryByText(/Runtime:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Fallback:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/OpenSSH process/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/SSH 端口转发进程已退出/)).not.toBeInTheDocument();
   });
 });
 

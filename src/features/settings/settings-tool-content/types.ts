@@ -2,8 +2,6 @@ import type { AppSettings, ResolvedTheme } from "../settingsModel";
 
 export type SettingsSaveState = "idle" | "saving" | "saved" | "error";
 export type McpHttpServerLoadState = "idle" | "loading" | "error";
-export type SuggestionTelemetryLoadState = "idle" | "loading" | "error";
-export type SuggestionCleanupState = "idle" | "running" | "done" | "error";
 
 export interface SettingsToolContentProps {
   externalChangeNotice?: string | null;

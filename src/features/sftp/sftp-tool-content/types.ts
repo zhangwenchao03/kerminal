@@ -23,7 +23,7 @@ export type SftpDialogAction =
   | {
       entry: SftpEntry;
       kind: "rename";
-      toPath: string;
+      newName: string;
     }
   | {
       entry: SftpEntry;
@@ -31,12 +31,22 @@ export type SftpDialogAction =
       mode: string;
     }
   | {
-      entry: SftpEntry;
+      entries: SftpEntry[];
       kind: "delete";
+    };
+
+export type SftpContextMenuScope =
+  | { kind: "directory" }
+  | { entry: SftpEntry; kind: "entry" }
+  | {
+      entries: SftpEntry[];
+      kind: "selection";
+      transferableEntries: SftpEntry[];
     };
 
 export type SftpContextMenuState = {
   entry: SftpEntry | null;
+  scope?: SftpContextMenuScope;
   x: number;
   y: number;
 };
@@ -46,6 +56,7 @@ export type SftpMenuAction =
   | "workspace"
   | "preview"
   | "download"
+  | "downloadSelection"
   | "transferToTarget"
   | "downloadArchive"
   | "downloadClipboard"
@@ -55,6 +66,7 @@ export type SftpMenuAction =
   | "rename"
   | "chmod"
   | "delete"
+  | "deleteSelection"
   | "uploadFile"
   | "uploadDirectory"
   | "uploadFileArchive"

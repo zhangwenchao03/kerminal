@@ -1,5 +1,5 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Prevents an additional console window when Kerminal is launched by external tools.
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 fn main() {
     kerminal_lib::run()

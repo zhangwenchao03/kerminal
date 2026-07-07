@@ -39,6 +39,8 @@ function TerminalPaneErrorFallback({
   onOpenLogs?: () => void;
   pane: TerminalPane;
 }) {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+
   return (
     <section
       aria-label={`${pane.title} 终端分屏异常`}
@@ -70,9 +72,13 @@ function TerminalPaneErrorFallback({
             </dd>
           </div>
           <div className="grid grid-cols-[4rem_1fr] gap-2">
+            <dt className="text-rose-700/75 dark:text-rose-100/65">说明</dt>
+            <dd>详细信息已写入应用日志。</dd>
+          </div>
+          <div className="grid grid-cols-[4rem_1fr] gap-2">
             <dt className="text-rose-700/75 dark:text-rose-100/65">错误</dt>
             <dd className="break-words font-mono">
-              {error instanceof Error ? error.message : String(error)}
+              {errorMessage || "未知渲染异常"}
             </dd>
           </div>
         </dl>

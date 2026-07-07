@@ -296,6 +296,8 @@ export function createTerminalRendererController({
         `[kerminal-terminal-renderer] WebGL texture atlas clear failed`,
         error,
       );
+      emitStateChange();
+      throw error;
     }
     emitStateChange();
   };

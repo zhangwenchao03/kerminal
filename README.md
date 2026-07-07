@@ -1,34 +1,28 @@
 <div align="center">
   <img src="docs/assets/kerminal-icon.png" width="76" alt="Kerminal logo" />
   <h1>Kerminal</h1>
-  <p><strong>堡垒机、SSH、容器、文件、端口和 Agent，都在一个本地工作台里。</strong></p>
+  <p><strong>SSH、终端、容器、文件、端口和 Agent，都在一个本地工作台里。</strong></p>
   <p>
-    <sub>Bastion SSH · Managed Runtime · GPU Terminal · Docker / Compose · SFTP · tmux · Port Forward · Agent CLI · MCP</sub>
+    <sub>Managed SSH Runtime · GPU Terminal · Docker / Compose · SFTP · tmux · Port Forward · Agent CLI · MCP</sub>
   </p>
 </div>
 
 ![Kerminal live workspace](docs/assets/kerminal-hero.png)
 
-Kerminal 不是“又一个终端”。它把远程机器的上下文留在同一个桌面空间里：左边是目标，中间是工作区，右边是工具。你可以从堡垒机或旧 SSH 工具跳进来，直接打开终端、文件、容器、端口、系统状态和 Agent 会话。
+Kerminal 不是“又一个终端”。它把远程机器的上下文留在同一个桌面空间里：左边是目标，中间是工作区，右边是工具。你可以围绕同一个 SSH 目标打开终端、文件、容器、端口、系统状态和 Agent 会话。
 
 ## 为什么强
 
 | 能力 | 你得到什么 |
 | --- | --- |
-| 堡垒机接管 | PuTTY、MobaXterm、Xshell、SecureCRT、OpenSSH、URL/JSON/flags 都能把 SSH 目标交给 Kerminal，形成临时 `external:*` 目标 |
 | 受管 SSH runtime | 终端、SFTP、exec、tmux、系统信息、容器、端口转发和 MCP tools 复用同一套认证、host key、跳板链与隔离 channel |
 | GPU 终端 | CPU / GPU / Auto renderer，适合高输出日志、构建、训练和远程排障 |
 | 中央工作区 | 多 tab、多分屏、拖动重排、SFTP 传输 Tab、可编辑文件 Tab，不再在窗口之间找上下文 |
 | 运维工具跟随目标 | Docker / Podman / Compose、tmux、系统/GPU 状态、端口转发、SFTP 都围绕当前机器工作 |
 | Agent 可控接入 | Codex、Claude Code / Claude CLI、自定义 CLI 以终端 Tab 为边界启动，Kerminal MCP Server 只暴露运行态工具 |
+| 外部 SSH 兼容入口 | PuTTY、MobaXterm、Xshell、SecureCRT、OpenSSH、URL/JSON/flags 可把 SSH 目标交给 Kerminal，形成临时 `external:*` 目标 |
 
 ## 最新界面
-
-### 外部堡垒机启动
-
-把旧终端工具和跳板平台变成 Kerminal 的入口。会话凭据只在本次会话内使用，不写进主机配置。
-
-![Kerminal external SSH launch](docs/assets/kerminal-external-launch.png)
 
 ### 终端工作区
 
@@ -66,6 +60,12 @@ Codex、Claude Code / Claude CLI 和自定义 CLI 作为一等终端会话启动
 
 ![Kerminal Agent Launcher](docs/assets/kerminal-agent.png)
 
+### 外部 SSH 兼容入口
+
+从旧终端工具或跳板平台把 SSH 目标交给 Kerminal。该入口主要用于临时接入，会话凭据只在本次会话内使用，不写进主机配置。
+
+![Kerminal external SSH launch](docs/assets/kerminal-external-launch.png)
+
 ### 系统与 GPU
 
 CPU、内存、磁盘、网络、进程、运行体检和 GPU 摘要随当前目标刷新，适合开发、推理、训练和线上排障。
@@ -85,7 +85,7 @@ tmux session、设置搜索、外部 SSH 启动、GPU renderer、SFTP 性能、M
 | 模块 | 支持 |
 | --- | --- |
 | 主机 | Local、SSH、RDP、Telnet、Serial、分组、标签、密码/私钥/agent、代理、跳板机、host key |
-| 终端 | 多 tab、多分屏、批量发送、搜索、右键菜单、命令块导航、输出保护、GPU renderer、运行诊断 |
+| 终端 | 多 tab、多分屏、批量发送、搜索、右键菜单、命令块导航、输出保护、GPU renderer |
 | 文件 | SFTP 浏览、传输队列、远端复制、跨主机复制、远程预览、中央文件 Tab、本地文本读写 |
 | 容器 | Docker / Podman / Compose 列表、日志、详情、终端、文件、启动、停止、重启、删除、固定 |
 | 网络 | SSH local / remote / dynamic forwarding、本机 HTTP CONNECT proxy、远端 SOCKS、网络助手 |
@@ -126,7 +126,7 @@ node scripts/capture-readme-screenshots.mjs http://127.0.0.1:<port>/
 
 ## 适合谁
 
-- 同时操作本机、堡垒机、云服务器、GPU 机器、容器、开发板和串口设备的人。
+- 同时操作本机、云服务器、GPU 机器、容器、开发板、串口设备，也需要兼容堡垒机或旧 SSH 工具的人。
 - 想把终端、文件、监控、tmux、端口转发和容器收进一个本地工作台的人。
 - 想让 Codex 或 Claude 参与排障和开发，但不想给它们无限 shell 和凭据权限的人。
 

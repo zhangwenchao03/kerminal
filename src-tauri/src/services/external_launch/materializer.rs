@@ -91,7 +91,7 @@ impl ExternalSessionMaterializer {
             "materialized launch_id={} target_id={} target={}@{}:{} auth_type={:?} route_hops={}",
             target.launch_id,
             target.host_id,
-            target.host.username,
+            redacted_external_username(&target.host.username),
             target.host.host,
             target.host.port,
             target.host.auth_type,
@@ -267,7 +267,7 @@ impl fmt::Debug for ExternalMaterializedTarget {
             .field("launch_id", &self.launch_id)
             .field("host", &self.host.host)
             .field("port", &self.host.port)
-            .field("username", &self.host.username)
+            .field("username", &redacted_external_username(&self.host.username))
             .field("auth_type", &self.host.auth_type)
             .field("route_summary", &self.route_auth.summary)
             .field(
@@ -366,6 +366,17 @@ fn request_ssh_options(request: &ExternalSshLaunchRequest, username: &str) -> Ss
             })
             .collect(),
         ..Default::default()
+    }
+}
+
+fn redacted_external_username(username: &str) -> String {
+    if username
+        .get(..5)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("b64>>"))
+    {
+        "b64>><redacted>".to_owned()
+    } else {
+        username.to_owned()
     }
 }
 

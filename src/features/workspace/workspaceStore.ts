@@ -23,6 +23,7 @@ import {
   externalSshLaunchDisplayName,
   externalSshLaunchMachineId,
   externalSshLaunchTags,
+  isExternalSshMachineId,
 } from "../external-launch/externalSshLaunchModel";
 import {
   machineGroups,
@@ -478,9 +479,16 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
   removeSidebarMachine: (machineId) =>
     set((state) => {
       const machine = findMachine(state.machineGroups, machineId);
+      if (!machine) {
+        return {};
+      }
+      const removeAsPersistentSidebarMachine =
+        machine.kind === "local" || machine.kind === "dockerContainer";
+      const removeAsTemporaryExternalMachine =
+        machine.kind === "ssh" && isExternalSshMachineId(machine.id);
       if (
-        !machine ||
-        (machine.kind !== "local" && machine.kind !== "dockerContainer")
+        !removeAsPersistentSidebarMachine &&
+        !removeAsTemporaryExternalMachine
       ) {
         return {};
       }
@@ -494,10 +502,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
       );
       return {
         machineGroups,
-        removedSidebarMachineIds: addRemovedSidebarMachineId(
-          state.removedSidebarMachineIds,
-          machineId,
-        ),
+        removedSidebarMachineIds: removeAsPersistentSidebarMachine
+          ? addRemovedSidebarMachineId(state.removedSidebarMachineIds, machineId)
+          : state.removedSidebarMachineIds,
         selectedMachineId: selectedMachineExists
           ? state.selectedMachineId
           : (machineGroups[0]?.machines[0]?.id ?? ""),

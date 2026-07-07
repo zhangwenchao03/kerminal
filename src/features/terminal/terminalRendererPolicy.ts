@@ -3,6 +3,7 @@ import type { TerminalRendererType } from "../settings/settingsModel";
 export type TerminalRendererBackend = "cpu" | "gpu";
 
 export type TerminalRendererFallbackReason =
+  | "atlas-clear-failed"
   | "auto-suggested-cpu"
   | "budget-limited"
   | "context-lost"
@@ -12,6 +13,7 @@ export type TerminalRendererFallbackReason =
   | "load-failed"
   | "mode-cpu"
   | "not-visible"
+  | "recovery-storm"
   | "retry-exhausted";
 
 export interface TerminalRendererPolicyConfig {
@@ -271,9 +273,11 @@ function resolveRetryDelayMs({
   requestedMode: TerminalRendererType;
 }): number | null | undefined {
   if (
-    requestedMode === "auto" &&
-    (pane.lastFailureReason === "import-failed" ||
-      pane.lastFailureReason === "load-failed") &&
+    (requestedMode === "auto" || requestedMode === "gpu") &&
+    (pane.lastFailureReason === "atlas-clear-failed" ||
+      pane.lastFailureReason === "import-failed" ||
+      pane.lastFailureReason === "load-failed" ||
+      pane.lastFailureReason === "recovery-storm") &&
     typeof pane.lastFailureAt === "number"
   ) {
     return Math.max(0, pane.lastFailureAt + config.autoFailureCooldownMs - now);

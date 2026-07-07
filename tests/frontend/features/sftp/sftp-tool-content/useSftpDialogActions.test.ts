@@ -82,7 +82,7 @@ describe("useSftpDialogActions", () => {
     expect(setters.setDialogAction).toHaveBeenLastCalledWith({
       entry: fileEntry,
       kind: "rename",
-      toPath: "/srv/app.log.renamed",
+      newName: "app.log",
     });
 
     act(() => result.current.openChmodDialog(executableEntry));
@@ -92,9 +92,9 @@ describe("useSftpDialogActions", () => {
       mode: "755",
     });
 
-    act(() => result.current.openDeleteDialog(directoryEntry));
+    act(() => result.current.openDeleteDialog([directoryEntry]));
     expect(setters.setDialogAction).toHaveBeenLastCalledWith({
-      entry: directoryEntry,
+      entries: [directoryEntry],
       kind: "delete",
     });
   });
@@ -171,7 +171,7 @@ describe("useSftpDialogActions", () => {
 
     const entry = remoteEntry({ path: "/srv/app.log" });
     const rename = renderDialogHook({
-      dialogAction: { entry, kind: "rename", toPath: "app.old.log" },
+      dialogAction: { entry, kind: "rename", newName: "app.old.log" },
     });
 
     await act(async () => {
@@ -200,7 +200,10 @@ describe("useSftpDialogActions", () => {
     });
 
     const remove = renderDialogHook({
-      dialogAction: { entry: remoteEntry({ kind: "directory" }), kind: "delete" },
+      dialogAction: {
+        entries: [remoteEntry({ kind: "directory" })],
+        kind: "delete",
+      },
     });
 
     await act(async () => {
@@ -240,7 +243,7 @@ describe("useSftpDialogActions", () => {
 
     const rename = renderDialogHook({
       currentPath: "/app",
-      dialogAction: { entry, kind: "rename", toPath: "config.old.json" },
+      dialogAction: { entry, kind: "rename", newName: "config.old.json" },
       fileTarget,
     });
 
@@ -276,7 +279,7 @@ describe("useSftpDialogActions", () => {
 
     const remove = renderDialogHook({
       currentPath: "/app",
-      dialogAction: { entry, kind: "delete" },
+      dialogAction: { entries: [entry], kind: "delete" },
       fileTarget,
     });
 
@@ -307,11 +310,47 @@ describe("useSftpDialogActions", () => {
 
     expect(setters.setDialogStatus).toHaveBeenLastCalledWith({
       kind: "error",
-      message: "permission denied",
+      message: "操作失败：/srv/logs：permission denied",
     });
     expect(setters.setDialogAction).not.toHaveBeenCalledWith(null);
     expect(setters.loadDirectory).not.toHaveBeenCalled();
     expect(setters.setDialogBusy).toHaveBeenLastCalledWith(false);
+  });
+
+  it("runs batch delete operations and keeps partial failures open", async () => {
+    const file = remoteEntry({ name: "app.log", path: "/srv/app.log" });
+    const directory = remoteEntry({
+      kind: "directory",
+      name: "logs",
+      path: "/srv/logs",
+    });
+    sftpApiMocks.deleteSftpPath
+      .mockResolvedValueOnce(true)
+      .mockRejectedValueOnce(new Error("permission denied"));
+    const { result, setters } = renderDialogHook({
+      dialogAction: { entries: [file, directory], kind: "delete" },
+    });
+
+    await act(async () => {
+      await result.current.submitDialogAction();
+    });
+
+    expect(sftpApiMocks.deleteSftpPath).toHaveBeenNthCalledWith(1, {
+      directory: false,
+      hostId: "ssh-host",
+      path: "/srv/app.log",
+    });
+    expect(sftpApiMocks.deleteSftpPath).toHaveBeenNthCalledWith(2, {
+      directory: true,
+      hostId: "ssh-host",
+      path: "/srv/logs",
+    });
+    expect(setters.loadDirectory).toHaveBeenCalledWith("/srv");
+    expect(setters.setDialogAction).not.toHaveBeenCalledWith(null);
+    expect(setters.setDialogStatus).toHaveBeenLastCalledWith({
+      kind: "error",
+      message: "已完成 1 项，1 项失败：/srv/logs：permission denied",
+    });
   });
 });
 

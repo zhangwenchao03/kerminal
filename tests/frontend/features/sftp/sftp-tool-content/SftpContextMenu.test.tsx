@@ -87,4 +87,40 @@ describe("SftpContextMenu", () => {
     expect(menuActions()).not.toContain("editMachine");
     expect(menuActions()).not.toContain("deleteMachine");
   });
+
+  it("renders selection-scoped batch actions with selection menu semantics", () => {
+    const file = entry({ name: "app.log", path: "/srv/app.log" });
+    const directory = entry({
+      kind: "directory",
+      name: "conf",
+      path: "/srv/conf",
+    });
+
+    render(
+      <SftpContextMenu
+        currentPath="/srv"
+        entry={file}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+        position={{ x: 12, y: 24 }}
+        scope={{
+          entries: [file, directory],
+          kind: "selection",
+          transferableEntries: [file, directory],
+        }}
+        showHiddenFiles={false}
+        supportsAdvancedActions
+      />,
+    );
+
+    expectFilePanelDomain("SFTP 已选 2 项右键菜单");
+    expect(screen.getByText("已选 2 项")).toBeInTheDocument();
+    expect(screen.getByText("2 项可传输")).toBeInTheDocument();
+    expect(menuActions()).toEqual([
+      "downloadSelection",
+      "refresh",
+      "toggleHidden",
+      "deleteSelection",
+    ]);
+  });
 });

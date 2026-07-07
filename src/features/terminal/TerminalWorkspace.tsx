@@ -184,8 +184,12 @@ export function TerminalWorkspace({
 }: TerminalWorkspaceProps) {
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
   const tabGroups = useMemo(
-    () => buildTerminalTabGroups(tabs, tabGroupPreferences),
-    [tabGroupPreferences, tabs],
+    () =>
+      buildTerminalTabGroups(tabs, tabGroupPreferences, {
+        machineGroups,
+        panes,
+      }),
+    [machineGroups, panes, tabGroupPreferences, tabs],
   );
   const [collapsedTabGroupIds, setCollapsedTabGroupIds] = useState<Set<string>>(
     () => new Set(),
@@ -202,6 +206,7 @@ export function TerminalWorkspace({
   const tabOverviewMenuRef = useRef<HTMLDivElement>(null);
   const [tabOverviewOpen, setTabOverviewOpen] = useState(false);
   const [tabOverviewAvailable, setTabOverviewAvailable] = useState(false);
+  const tabOverviewAvailableRef = useRef(false);
   const [tabOverviewPosition, setTabOverviewPosition] = useState({
     x: 0,
     y: 0,
@@ -290,6 +295,21 @@ export function TerminalWorkspace({
       ? ({ paddingLeft: leftTitleBarInset } satisfies CSSProperties)
       : undefined;
   const shouldShowTabOverview = tabs.length > 1 && tabOverviewAvailable;
+  const tabOverviewMeasurementKey = useMemo(
+    () =>
+      tabGroups
+        .map((group) =>
+          [
+            group.id,
+            group.title,
+            group.grouped ? "grouped" : "single",
+            collapsedTabGroupIds.has(group.id) ? "collapsed" : "expanded",
+            group.tabs.map((tab) => tab.id).join(","),
+          ].join(":"),
+        )
+        .join("|"),
+    [collapsedTabGroupIds, tabGroups],
+  );
 
   const updateTabOverviewAvailability = useCallback(() => {
     const tabList = tabListRef.current;
@@ -297,6 +317,10 @@ export function TerminalWorkspace({
       ? tabList.scrollWidth - tabList.clientWidth >
         TAB_OVERVIEW_OVERFLOW_TOLERANCE
       : false;
+    if (tabOverviewAvailableRef.current === hasHorizontalOverflow) {
+      return;
+    }
+    tabOverviewAvailableRef.current = hasHorizontalOverflow;
     setTabOverviewAvailable(hasHorizontalOverflow);
   }, []);
 
@@ -313,7 +337,7 @@ export function TerminalWorkspace({
     });
   }, [tabGroups]);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     updateTabOverviewAvailability();
     const frameId =
       typeof window.requestAnimationFrame === "function"
@@ -344,7 +368,7 @@ export function TerminalWorkspace({
       window.removeEventListener("resize", updateTabOverviewAvailability);
       resizeObserver.disconnect();
     };
-  }, [tabGroups, updateTabOverviewAvailability]);
+  }, [tabOverviewMeasurementKey, updateTabOverviewAvailability]);
 
   useEffect(() => {
     if (!shouldShowTabOverview && tabOverviewOpen) {
@@ -429,7 +453,7 @@ export function TerminalWorkspace({
       return;
     }
 
-    if (nextGroup !== editingTabGroup) {
+    if (!sameTerminalTabGroupSnapshot(nextGroup, editingTabGroup)) {
       setEditingTabGroup(nextGroup);
     }
   }, [editingTabGroup, tabGroups]);
@@ -969,4 +993,18 @@ function resolveTerminalTabStatus(
     return "offline";
   }
   return "warning";
+}
+
+function sameTerminalTabGroupSnapshot(
+  left: TerminalTabGroup,
+  right: TerminalTabGroup,
+) {
+  return (
+    left.id === right.id &&
+    left.title === right.title &&
+    left.color === right.color &&
+    left.grouped === right.grouped &&
+    left.tabs.length === right.tabs.length &&
+    left.tabs.every((tab, index) => tab.id === right.tabs[index]?.id)
+  );
 }

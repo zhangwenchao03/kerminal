@@ -198,11 +198,17 @@ describe("PortForwardToolContent", () => {
     expect(await screen.findByText("SSH 隧道")).toBeInTheDocument();
     expect(screen.queryByLabelText("主机目标地址")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "添加隧道" }));
+    const addTunnelButton = screen.getByRole("button", { name: "添加隧道" });
+    expect(addTunnelButton).toHaveClass("bg-sky-500");
+
+    await user.click(addTunnelButton);
 
     expect(
       await screen.findByRole("dialog", { name: "添加 SSH 隧道" }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "开启隧道" })).toHaveClass(
+      "bg-sky-500",
+    );
     expect(
       screen.getByLabelText("主机目标地址"),
     ).toBeInTheDocument();

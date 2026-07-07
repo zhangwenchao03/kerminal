@@ -230,6 +230,165 @@ pub struct ResolvedSshRuntimeHost {
     pub auth: ResolvedSshRouteAuth,
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub struct NativeSshRouteMaterial {
+    pub target: NativeSshHopMaterial,
+    pub jumps: Vec<NativeSshHopMaterial>,
+}
+
+impl fmt::Debug for NativeSshRouteMaterial {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("NativeSshRouteMaterial")
+            .field("target", &self.target)
+            .field("jumps", &self.jumps)
+            .finish()
+    }
+}
+
+impl NativeSshRouteMaterial {
+    pub fn from_resolved_auth(resolved_auth: &ResolvedSshRouteAuth) -> AppResult<Self> {
+        Ok(Self {
+            target: NativeSshHopMaterial::from_resolved_hop(&resolved_auth.target)?,
+            jumps: resolved_auth
+                .jumps
+                .iter()
+                .map(NativeSshHopMaterial::from_resolved_hop)
+                .collect::<AppResult<Vec<_>>>()?,
+        })
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct NativeSshHopMaterial {
+    pub role: ResolvedSshHopRole,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub auth: NativeSshAuthMaterial,
+}
+
+impl fmt::Debug for NativeSshHopMaterial {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("NativeSshHopMaterial")
+            .field("role", &self.role)
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("auth", &self.auth)
+            .finish()
+    }
+}
+
+impl NativeSshHopMaterial {
+    fn from_resolved_hop(hop: &ResolvedSshHopAuth) -> AppResult<Self> {
+        Ok(Self {
+            role: hop.role,
+            host: hop.host.clone(),
+            port: hop.port,
+            username: hop.username.clone(),
+            auth: NativeSshAuthMaterial::from_resolved_material(hop.role, &hop.material)?,
+        })
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum NativeSshAuthMaterial {
+    Agent {
+        source: ResolvedSshCredentialSource,
+    },
+    Password {
+        value: String,
+        source: ResolvedSshCredentialSource,
+    },
+    PrivateKeyPath {
+        path: PathBuf,
+        passphrase: Option<ResolvedSshSecretValue>,
+        source: ResolvedSshCredentialSource,
+    },
+    PrivateKeyPem {
+        content: String,
+        passphrase: Option<ResolvedSshSecretValue>,
+        source: ResolvedSshCredentialSource,
+    },
+}
+
+impl fmt::Debug for NativeSshAuthMaterial {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Agent { source } => formatter
+                .debug_struct("Agent")
+                .field("source", source)
+                .finish(),
+            Self::Password { source, .. } => formatter
+                .debug_struct("Password")
+                .field("value", &"<redacted>")
+                .field("source", source)
+                .finish(),
+            Self::PrivateKeyPath {
+                path,
+                passphrase,
+                source,
+            } => formatter
+                .debug_struct("PrivateKeyPath")
+                .field("path", path)
+                .field("passphrase", &passphrase.as_ref().map(|_| "<redacted>"))
+                .field("source", source)
+                .finish(),
+            Self::PrivateKeyPem {
+                passphrase, source, ..
+            } => formatter
+                .debug_struct("PrivateKeyPem")
+                .field("content", &"<redacted>")
+                .field("passphrase", &passphrase.as_ref().map(|_| "<redacted>"))
+                .field("source", source)
+                .finish(),
+        }
+    }
+}
+
+impl NativeSshAuthMaterial {
+    fn from_resolved_material(
+        role: ResolvedSshHopRole,
+        material: &ResolvedSshAuthMaterial,
+    ) -> AppResult<Self> {
+        match material {
+            ResolvedSshAuthMaterial::Agent { source } => Ok(Self::Agent {
+                source: source.clone(),
+            }),
+            ResolvedSshAuthMaterial::Password { value, source } => Ok(Self::Password {
+                value: value.clone(),
+                source: source.clone(),
+            }),
+            ResolvedSshAuthMaterial::PrivateKeyPath {
+                path,
+                passphrase,
+                source,
+            } => Ok(Self::PrivateKeyPath {
+                path: path.clone(),
+                passphrase: passphrase.clone(),
+                source: source.clone(),
+            }),
+            ResolvedSshAuthMaterial::PrivateKeyPem {
+                content,
+                passphrase,
+                source,
+            } => Ok(Self::PrivateKeyPem {
+                content: content.clone(),
+                passphrase: passphrase.clone(),
+                source: source.clone(),
+            }),
+            ResolvedSshAuthMaterial::PromptOnly { reason, .. } => {
+                Err(AppError::InvalidInput(format!(
+                    "{} requires interactive SSH credential prompt: {reason}",
+                    role.label()
+                )))
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedSshRouteAuth {
     pub target: ResolvedSshHopAuth,

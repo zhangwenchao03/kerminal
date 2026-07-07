@@ -163,7 +163,7 @@ describe("terminalRendererRegistry", () => {
     );
   });
 
-  it("clears texture atlases through registered controllers", () => {
+  it("clears texture atlases through the registry atlas epoch", () => {
     const registry = createTerminalRendererRegistry({ rendererType: "auto" });
     const first = new FakeRendererController();
     const second = new FakeRendererController();
@@ -173,8 +173,56 @@ describe("terminalRendererRegistry", () => {
 
     registry.clearTextureAtlas("second");
 
-    expect(first.clearTextureAtlas).not.toHaveBeenCalled();
+    expect(first.clearTextureAtlas).toHaveBeenCalled();
     expect(second.clearTextureAtlas).toHaveBeenCalled();
+    expect(registry.getSnapshot()).toEqual(
+      expect.objectContaining({
+        atlasEpoch: 1,
+        recoveryCount: 1,
+      }),
+    );
+    expect(registry.getSnapshot().panes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ paneId: "first", recoveryCount: 1 }),
+        expect.objectContaining({ paneId: "second", recoveryCount: 1 }),
+      ]),
+    );
+  });
+
+  it("records atlas clear failures and lets the recovery coordinator fall back", () => {
+    let now = 40_000;
+    const registry = createTerminalRendererRegistry({
+      config: { autoFailureCooldownMs: 60_000 },
+      now: () => now,
+      rendererType: "gpu",
+    });
+    const first = new FakeRendererController();
+    const second = new FakeRendererController();
+    second.clearTextureAtlas.mockImplementation(() => {
+      throw new Error("atlas failed");
+    });
+
+    registry.registerPane({ controller: first, paneId: "first" });
+    registry.registerPane({ controller: second, paneId: "second" });
+
+    expect(() => registry.clearTextureAtlas("second")).toThrow("atlas failed");
+    const failedPane = registry
+      .getSnapshot()
+      .panes.find((pane) => pane.paneId === "second");
+
+    expect(failedPane).toEqual(
+      expect.objectContaining({
+        backend: "cpu",
+        failureCount: 1,
+        fallbackReason: "atlas-clear-failed",
+      }),
+    );
+    expect(second.updateMode).toHaveBeenLastCalledWith("cpu");
+
+    now += 30_000;
+    registry.reconcile();
+
+    expect(second.updateMode).toHaveBeenLastCalledWith("cpu");
   });
 
   it("disposes every controller and clears timers on registry dispose", () => {

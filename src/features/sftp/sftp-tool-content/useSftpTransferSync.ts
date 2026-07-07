@@ -4,6 +4,7 @@ import {
   type SftpTransferSummary,
 } from "../../../lib/sftpApi";
 import { replaceTransferQueue } from "../sftpTransferModel";
+import { dockerContainerTransferHostId } from "./sftpDockerDirectTransferModel";
 import { isRunningInTauriWebview } from "./sftpDragDropModel";
 import {
   filterSftpTransfersForHost,
@@ -29,32 +30,44 @@ export function useSftpTransferSync({
 }: UseSftpTransferSyncOptions) {
   const [transfers, setTransfers] = useState<SftpTransferSummary[]>([]);
   const completedTransferIdsRef = useRef(new Set<string>());
-  const hostId = fileTarget?.kind === "ssh" ? fileTarget.hostId : undefined;
+  const syncHostId = fileTarget?.kind === "ssh" ? fileTarget.hostId : undefined;
+  const visibleHostId =
+    fileTarget?.kind === "ssh"
+      ? fileTarget.hostId
+      : fileTarget?.kind === "dockerContainer"
+        ? dockerContainerTransferHostId(fileTarget)
+        : undefined;
 
   const visibleTransfers = useMemo(
-    () => filterSftpTransfersForHost(transfers, hostId, viewScope),
-    [hostId, transfers, viewScope],
+    () => filterSftpTransfersForHost(transfers, visibleHostId, viewScope),
+    [transfers, viewScope, visibleHostId],
   );
 
   const refreshTransfers = useCallback(async () => {
-    if (!active || !hostId) {
+    if (!active) {
       setTransfers([]);
+      return;
+    }
+    if (!syncHostId) {
       return;
     }
     const nextTransfers = await listSftpTransfers(
       viewScope === undefined ? undefined : { viewScope },
     );
     setTransfers(replaceTransferQueue(nextTransfers));
-  }, [active, hostId, viewScope]);
+  }, [active, syncHostId, viewScope]);
 
   useEffect(() => {
     completedTransferIdsRef.current.clear();
     setTransfers([]);
-  }, [hostId, viewScope]);
+  }, [viewScope, visibleHostId]);
 
   useEffect(() => {
-    if (!active || !hostId) {
+    if (!active) {
       setTransfers([]);
+      return undefined;
+    }
+    if (!syncHostId) {
       return undefined;
     }
 
@@ -80,10 +93,10 @@ export function useSftpTransferSync({
       disposed = true;
       window.clearInterval(intervalId);
     };
-  }, [active, hostId, viewScope]);
+  }, [active, syncHostId, viewScope]);
 
   useEffect(() => {
-    if (!active || !hostId || !isRunningInTauriWebview()) {
+    if (!active || !syncHostId || !isRunningInTauriWebview()) {
       return undefined;
     }
 
@@ -97,7 +110,7 @@ export function useSftpTransferSync({
           }
           setTransfers((current) =>
             mergeSftpTransferUpdateForHost({
-              hostId,
+              hostId: syncHostId,
               transfer: event.payload,
               transfers: current,
               viewScope,
@@ -120,7 +133,7 @@ export function useSftpTransferSync({
       disposed = true;
       unlisten?.();
     };
-  }, [active, hostId, viewScope]);
+  }, [active, syncHostId, viewScope]);
 
   useEffect(() => {
     const effects = resolveSftpTransferCompletionEffects({

@@ -193,6 +193,10 @@ function SftpTransferRow({
     transfer.status === "failed" || transfer.status === "canceled"
       ? resolveSftpTransferRetry(transfer)
       : null;
+  const showRetryUnavailable =
+    retryDecision &&
+    !retryDecision.canRetry &&
+    transfer.transportMode === "singleHostSftp";
   const Icon = transfer.direction === "upload" ? Upload : Download;
   const title = transferTitle(transfer);
 
@@ -289,7 +293,7 @@ function SftpTransferRow({
           {transfer.error}
         </div>
       ) : null}
-      {retryDecision && !retryDecision.canRetry ? (
+      {showRetryUnavailable ? (
         <div className="mt-1 truncate text-[11px] text-amber-700 dark:text-amber-200">
           不能安全重试：{retryDecision.statusMessage}
         </div>

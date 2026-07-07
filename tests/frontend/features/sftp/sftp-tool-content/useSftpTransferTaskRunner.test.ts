@@ -152,7 +152,9 @@ describe("useSftpTransferTaskRunner", () => {
     containerFilesApiMock.uploadDockerContainerPath.mockResolvedValue(undefined);
 
     const setOperationStatus = vi.fn();
-    const setTransfers = vi.fn();
+    const transferSnapshots: SftpTransferSummary[][] = [];
+    const transfersRef = { current: [] as SftpTransferSummary[] };
+    const setTransfers = createTransferSetter(transfersRef, transferSnapshots);
     const loadDirectory = vi.fn().mockResolvedValue(undefined);
     const refreshTransfers = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() =>
@@ -181,15 +183,36 @@ describe("useSftpTransferTaskRunner", () => {
     });
     expect(loadDirectory).toHaveBeenCalledWith("/app");
     expect(refreshTransfers).not.toHaveBeenCalled();
-    expect(setTransfers).not.toHaveBeenCalled();
-    expect(setOperationStatus).toHaveBeenNthCalledWith(1, {
-      kind: "info",
-      message: "正在上传：release.tgz",
+    expect(setOperationStatus).toHaveBeenCalledWith(null);
+    expect(setTransfers).toHaveBeenCalledTimes(2);
+    expect(transferSnapshots[0][0]).toMatchObject({
+      currentItem: "release.tgz",
+      direction: "upload",
+      hostId: "container:prod-api:container-api",
+      operation: "upload",
+      phase: "uploading",
+      remotePath: "/app/release.tgz",
+      status: "running",
+      target: {
+        hostId: "container:prod-api:container-api",
+        hostLabel: "api",
+        kind: "remote",
+        path: "/app/release.tgz",
+      },
+      totalBytes: null,
+      transportMode: "clientBridge",
     });
-    expect(setOperationStatus).toHaveBeenNthCalledWith(2, {
-      kind: "success",
-      message: "已上传：release.tgz",
+    expect(transfersRef.current[0]).toMatchObject({
+      currentItem: "release.tgz",
+      direction: "upload",
+      hostId: "container:prod-api:container-api",
+      operation: "upload",
+      phase: null,
+      status: "succeeded",
+      totalBytes: null,
+      transportMode: "clientBridge",
     });
+    expect(transfersRef.current[0].id).toBe(transferSnapshots[0][0].id);
   });
 
   it("keeps Docker upload failures visible to the caller without success cleanup", async () => {
@@ -198,6 +221,9 @@ describe("useSftpTransferTaskRunner", () => {
     );
 
     const setOperationStatus = vi.fn();
+    const transferSnapshots: SftpTransferSummary[][] = [];
+    const transfersRef = { current: [] as SftpTransferSummary[] };
+    const setTransfers = createTransferSetter(transfersRef, transferSnapshots);
     const loadDirectory = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() =>
       useSftpTransferTaskRunner({
@@ -206,7 +232,7 @@ describe("useSftpTransferTaskRunner", () => {
         loadDirectory,
         refreshTransfers: vi.fn().mockResolvedValue(undefined),
         setOperationStatus,
-        setTransfers: vi.fn(),
+        setTransfers,
       }),
     );
 
@@ -217,18 +243,33 @@ describe("useSftpTransferTaskRunner", () => {
     ).rejects.toThrow("copy failed");
 
     expect(loadDirectory).not.toHaveBeenCalled();
-    expect(setOperationStatus).toHaveBeenCalledTimes(1);
-    expect(setOperationStatus).toHaveBeenCalledWith({
-      kind: "info",
-      message: "正在上传：release.tgz",
+    expect(setOperationStatus).toHaveBeenCalledWith(null);
+    expect(setTransfers).toHaveBeenCalledTimes(2);
+    expect(transferSnapshots[0][0]).toMatchObject({
+      currentItem: "release.tgz",
+      direction: "upload",
+      phase: "uploading",
+      status: "running",
     });
+    expect(transfersRef.current[0]).toMatchObject({
+      currentItem: "release.tgz",
+      direction: "upload",
+      error: "copy failed",
+      phase: null,
+      status: "failed",
+    });
+    expect(transfersRef.current[0].id).toBe(transferSnapshots[0][0].id);
   });
 });
 
-function createTransferSetter(transfersRef: { current: SftpTransferSummary[] }) {
+function createTransferSetter(
+  transfersRef: { current: SftpTransferSummary[] },
+  snapshots: SftpTransferSummary[][] = [],
+) {
   return vi.fn((value: SetStateAction<SftpTransferSummary[]>) => {
     transfersRef.current =
       typeof value === "function" ? value(transfersRef.current) : value;
+    snapshots.push(transfersRef.current);
   });
 }
 

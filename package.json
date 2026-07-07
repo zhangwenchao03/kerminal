@@ -1,7 +1,7 @@
 {
   "name": "kerminal",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "license": "AGPL-3.0-only",
   "scripts": {
@@ -26,6 +26,8 @@
     "verify:terminal-ghost-visual": "node scripts/verify-terminal-ghost-visual.mjs",
     "verify:terminal-ghost-xterm": "node scripts/verify-terminal-ghost-real-xterm.mjs",
     "verify:terminal-ghost-app": "node scripts/verify-terminal-ghost-app.mjs",
+    "verify:terminal-gpu-recovery": "node scripts/verify-terminal-gpu-recovery-smoke.mjs",
+    "verify:terminal-renderer-settings": "node scripts/verify-terminal-renderer-settings-smoke.mjs",
     "verify:managed-ssh-auto": "node scripts/verify-managed-ssh-auto.mjs",
     "verify:managed-ssh-hitl": "node scripts/verify-managed-ssh-hitl.mjs",
     "verify:command-suggestion-latency": "cd src-tauri && cargo test --test command_suggestion_performance command_suggestion_mixed_provider_latency_gate -- --exact --nocapture",

@@ -16,8 +16,8 @@ import {
 } from "../lib/profileApi";
 import {
   closeExternalSshLaunch,
-  EXTERNAL_TARGET_PREFIX,
 } from "../lib/externalLaunchApi";
+import { externalSshLaunchIdFromMachineId } from "../features/external-launch/externalSshLaunchModel";
 import {
   createRemoteHost,
   createRemoteHostGroup,
@@ -51,12 +51,6 @@ type ConnectionDialogOptions = ConnectionOpenOptions & {
 };
 
 const DEFAULT_REMOTE_GROUP_NAME = "默认分组";
-
-function externalLaunchIdFromMachineId(machineId: string): string | null {
-  return machineId.startsWith(EXTERNAL_TARGET_PREFIX)
-    ? machineId.slice(EXTERNAL_TARGET_PREFIX.length)
-    : null;
-}
 
 type UseKerminalShellRemoteActionsParams = {
   activeProfileId: string | null;
@@ -733,10 +727,14 @@ export function useKerminalShellRemoteActions({
           await deleteRemoteHostGroup(pendingDelete.id);
         }
       } else {
-        const externalLaunchId = externalLaunchIdFromMachineId(pendingDelete.id);
+        const externalLaunchId = externalSshLaunchIdFromMachineId(
+          pendingDelete.id,
+        );
         if (externalLaunchId) {
           await closeExternalSshLaunch(externalLaunchId);
           removeSidebarMachine(pendingDelete.id);
+          setPendingDelete(null);
+          return;
         } else {
           await deleteRemoteHost(pendingDelete.id);
         }

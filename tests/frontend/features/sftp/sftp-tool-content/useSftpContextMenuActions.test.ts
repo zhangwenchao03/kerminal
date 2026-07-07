@@ -229,7 +229,39 @@ describe("useSftpContextMenuActions", () => {
 
     const remove = renderContextMenuHook({ contextMenu: contextMenu(fileEntry) });
     act(() => remove.result.current.executeContextMenuAction("delete"));
-    expect(remove.actions.openDeleteDialog).toHaveBeenCalledWith(fileEntry);
+    expect(remove.actions.openDeleteDialog).toHaveBeenCalledWith([fileEntry]);
+  });
+
+  it("dispatches selection-scoped actions to batch download and delete callbacks", () => {
+    const fileEntry = remoteEntry({ path: "/srv/app.log" });
+    const directoryEntry = remoteEntry({
+      kind: "directory",
+      name: "conf",
+      path: "/srv/conf",
+    });
+    const contextMenuState: SftpContextMenuState = {
+      entry: fileEntry,
+      scope: {
+        entries: [fileEntry, directoryEntry],
+        kind: "selection",
+        transferableEntries: [fileEntry, directoryEntry],
+      },
+      x: 24,
+      y: 48,
+    };
+
+    const download = renderContextMenuHook({ contextMenu: contextMenuState });
+    act(() =>
+      download.result.current.executeContextMenuAction("downloadSelection"),
+    );
+    expect(download.actions.downloadSelectedEntries).toHaveBeenCalledTimes(1);
+
+    const remove = renderContextMenuHook({ contextMenu: contextMenuState });
+    act(() => remove.result.current.executeContextMenuAction("deleteSelection"));
+    expect(remove.actions.openDeleteDialog).toHaveBeenCalledWith([
+      fileEntry,
+      directoryEntry,
+    ]);
   });
 });
 
@@ -252,6 +284,7 @@ function renderContextMenuHook({
       downloadEntry: actions.downloadEntry,
       downloadEntryAsArchive: actions.downloadEntryAsArchive,
       downloadEntryToLocalClipboard: actions.downloadEntryToLocalClipboard,
+      downloadSelectedEntries: actions.downloadSelectedEntries,
       loadDirectory: actions.loadDirectory,
       openChmodDialog: actions.openChmodDialog,
       openDeleteDialog: actions.openDeleteDialog,
@@ -295,14 +328,19 @@ function createActions(calls: ActionCall[]) {
         calls.push(`downloadEntryToLocalClipboard:${entry.path}`);
       },
     ),
+    downloadSelectedEntries: vi.fn<() => void>(() => {
+      calls.push("downloadSelectedEntries");
+    }),
     loadDirectory: vi.fn<(path: string) => void>((path) => {
       calls.push(`loadDirectory:${path}`);
     }),
     openChmodDialog: vi.fn<(entry: SftpEntry) => void>((entry) => {
       calls.push(`openChmodDialog:${entry.path}`);
     }),
-    openDeleteDialog: vi.fn<(entry: SftpEntry) => void>((entry) => {
-      calls.push(`openDeleteDialog:${entry.path}`);
+    openDeleteDialog: vi.fn<(entries: SftpEntry[]) => void>((entries) => {
+      calls.push(
+        `openDeleteDialog:${entries.map((entry) => entry.path).join(",")}`,
+      );
     }),
     openEditorEntry: vi.fn<(entry: SftpEntry) => void>((entry) => {
       calls.push(`openEditorEntry:${entry.path}`);
@@ -359,6 +397,7 @@ function expectNoSideEffects(actions: ReturnType<typeof createActions>) {
   expect(actions.downloadEntry).not.toHaveBeenCalled();
   expect(actions.downloadEntryAsArchive).not.toHaveBeenCalled();
   expect(actions.downloadEntryToLocalClipboard).not.toHaveBeenCalled();
+  expect(actions.downloadSelectedEntries).not.toHaveBeenCalled();
   expect(actions.loadDirectory).not.toHaveBeenCalled();
   expect(actions.openChmodDialog).not.toHaveBeenCalled();
   expect(actions.openDeleteDialog).not.toHaveBeenCalled();

@@ -273,21 +273,86 @@ fn mobaxterm_accepts_ssh_url_destination() {
 }
 
 #[test]
-fn mobaxterm_session_file_is_not_misparsed_as_host() {
+fn mobaxterm_accepts_moba_session_file() {
     let registry = ExternalLaunchParserRegistry::new();
-    let error = registry
+    let path = write_temp_moba_session_file();
+    let request = registry
         .parse(&ExternalLaunchParseInput::direct_argv(
             ExternalLaunchSourceTool::Mobaxterm,
             vec![
                 "MobaXterm.exe".to_owned(),
-                "C:\\Users\\alice\\Documents\\MobaXterm\\sessions\\prod.moba".to_owned(),
+                path.to_string_lossy().into_owned(),
             ],
         ))
-        .expect_err("unsupported session file should not parse as a host");
+        .expect("parse MobaXterm .moba session file");
 
-    assert!(error
-        .to_string()
-        .contains("unsupported external SSH launch arguments"));
+    let _ = std::fs::remove_file(path);
+    assert_eq!(request.target.host, "172.21.195.223");
+    assert_eq!(request.target.port, 222);
+    assert_eq!(request.target.username.as_deref(), Some("root"));
+    assert_eq!(request.diagnostics.parser, "mobaxterm-moba-file");
+    assert_eq!(request.diagnostics.argv_redacted[1], "<moba-session-file>");
+}
+
+#[test]
+fn mobaxterm_moba_session_file_infers_when_argv0_is_kerminal() {
+    let registry = ExternalLaunchParserRegistry::new();
+    let path = write_temp_moba_session_file();
+    let request = registry
+        .parse(&ExternalLaunchParseInput::from_args(
+            ExternalLaunchEntrypoint::SingleInstance,
+            None,
+            None,
+            vec![
+                "C:\\dev\\rust\\kerminal\\src-tauri\\target\\debug\\kerminal.exe".to_owned(),
+                path.to_string_lossy().into_owned(),
+            ],
+        ))
+        .expect("infer MobaXterm .moba file from Kerminal single-instance argv");
+
+    let _ = std::fs::remove_file(path);
+    assert_eq!(request.source.tool, ExternalLaunchSourceTool::Mobaxterm);
+    assert_eq!(request.target.host, "172.21.195.223");
+    assert_eq!(request.target.port, 222);
+    assert_eq!(request.target.username.as_deref(), Some("root"));
+    assert_eq!(request.diagnostics.parser, "mobaxterm-moba-file");
+}
+
+#[test]
+fn mobaxterm_moba_session_file_uses_bhost_parent_b64_target() {
+    let registry = ExternalLaunchParserRegistry::new();
+    let path = write_temp_moba_session_file();
+    let input = ExternalLaunchParseInput::from_args_with_parent_command_line(
+        ExternalLaunchEntrypoint::DirectArgv,
+        Some(ExternalLaunchSourceTool::Mobaxterm),
+        Some(ExternalLaunchSourceTool::Mobaxterm.as_str().to_owned()),
+        vec![
+            "MobaXterm.exe".to_owned(),
+            "-newtab".to_owned(),
+            path.to_string_lossy().into_owned(),
+        ],
+        Some(
+            "\"C:\\Users\\Public\\Documents\\BHost\\bhmultauth.exe\" 33 \"C:/Program Files/Kerminal/kerminal-launch-shim.exe\" \"172.21.195.223\" \"222\" \"b64>>d2VuOjMwMTI1OTY5NDQ4OTVAcm9vdEAxMC4xMS4wLjc1OjIyOlNTSDI=\" \"en::6d49b3b3fb5721e430d82ae005431d2a\" \"root_10.11.0.75\"".to_owned(),
+        ),
+    );
+    let request = registry
+        .parse(&input)
+        .expect("parse MobaXterm BHost parent command line");
+
+    let _ = std::fs::remove_file(path);
+    assert_eq!(request.target.host, "172.21.195.223");
+    assert_eq!(request.target.port, 222);
+    assert_eq!(
+        request.target.username.as_deref(),
+        Some("b64>>d2VuOjMwMTI1OTY5NDQ4OTVAcm9vdEAxMC4xMS4wLjc1OjIyOlNTSDI=")
+    );
+    assert!(request.auth.has_password());
+    assert_eq!(request.diagnostics.parser, "mobaxterm-bhost-parent");
+    assert_eq!(
+        request.options.display_name.as_deref(),
+        Some("root_10.11.0.75")
+    );
+    assert!(!format!("{request:?}").contains("3012596944895"));
 }
 
 #[test]
@@ -314,6 +379,86 @@ fn xshell_url_decodes_percent_encoded_userinfo_and_b64_payload() {
     let debug = format!("{request:?}");
     assert!(!debug.contains(payload));
     assert!(!debug.contains("KERM_FIXTURE_XSHELL_B64_PASSWORD_DO_NOT_USE"));
+}
+
+#[test]
+fn xshell_b64_url_with_bridge_password_preserves_bastion_endpoint() {
+    let registry = ExternalLaunchParserRegistry::new();
+    let payload =
+        "anVtcDpLRVJNX0ZJWFRVUkVfWFNIRUxMX0I2NF9QQVNTV09SRF9ET19OT1RfVVNFQHJvb3RAMTAuMTEuMC43NToyMjpTU0gy";
+    let raw_url =
+        format!("ssh://b64%3E%3E{payload}:KERMINAL_FIXTURE_BRIDGE_TOKEN@172.21.195.223:222");
+    let request = registry
+        .parse(&ExternalLaunchParseInput::from_args(
+            ExternalLaunchEntrypoint::SingleInstance,
+            None,
+            None,
+            vec![
+                "C:\\dev\\rust\\kerminal\\src-tauri\\target\\debug\\kerminal.exe".to_owned(),
+                "-url".to_owned(),
+                raw_url,
+                "-newtab".to_owned(),
+                "root@10.11.0.75".to_owned(),
+            ],
+        ))
+        .expect("parse Xshell bridge URL without decoding away bastion endpoint");
+
+    assert_eq!(request.source.tool, ExternalLaunchSourceTool::Xshell);
+    assert_eq!(request.target.host, "172.21.195.223");
+    assert_eq!(request.target.port, 222);
+    assert!(request
+        .target
+        .username
+        .as_deref()
+        .is_some_and(|username| username.starts_with("b64>>")));
+    assert!(request.auth.has_password());
+    assert_eq!(request.diagnostics.parser, "xshell-bhost-url");
+    assert_eq!(
+        request.options.display_name.as_deref(),
+        Some("root@10.11.0.75")
+    );
+    let debug = format!("{request:?}");
+    assert!(!debug.contains(payload));
+    assert!(!debug.contains("KERMINAL_FIXTURE_BRIDGE_TOKEN"));
+}
+
+#[test]
+fn xshell_bridge_url_without_b64_preserves_endpoint_and_redacts_token() {
+    let registry = ExternalLaunchParserRegistry::new();
+    let bridge_user = "opaqueBridgeTicket_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let raw_url =
+        format!("ssh://{bridge_user}:KERMINAL_FIXTURE_GENERIC_BRIDGE_TOKEN@172.21.195.223:222");
+    let request = registry
+        .parse(&ExternalLaunchParseInput::from_args(
+            ExternalLaunchEntrypoint::SingleInstance,
+            None,
+            None,
+            vec![
+                "C:\\dev\\rust\\kerminal\\src-tauri\\target\\debug\\kerminal.exe".to_owned(),
+                raw_url,
+                "-newtab".to_owned(),
+                "root@10.11.0.75".to_owned(),
+            ],
+        ))
+        .expect("parse generic third-party bridge URL without b64 prefix");
+
+    assert_eq!(request.source.tool, ExternalLaunchSourceTool::Xshell);
+    assert_eq!(request.target.host, "172.21.195.223");
+    assert_eq!(request.target.port, 222);
+    assert_eq!(request.target.username.as_deref(), Some(bridge_user));
+    assert!(request.auth.has_password());
+    assert_eq!(request.diagnostics.parser, "xshell-bhost-url");
+    assert_eq!(
+        request.options.display_name.as_deref(),
+        Some("root@10.11.0.75")
+    );
+    assert_eq!(
+        request.diagnostics.argv_redacted[1],
+        "ssh://<redacted-external-user>@172.21.195.223:222"
+    );
+    let debug = format!("{request:?}");
+    assert!(!debug.contains(bridge_user));
+    assert!(!debug.contains("KERMINAL_FIXTURE_GENERIC_BRIDGE_TOKEN"));
 }
 
 #[test]
@@ -369,6 +514,48 @@ fn xshell_url_percent_decodes_regular_user_and_password() {
 }
 
 #[test]
+fn registry_accepts_generic_field_args_when_argv0_is_kerminal() {
+    let registry = ExternalLaunchParserRegistry::new();
+    let request = registry
+        .parse(&ExternalLaunchParseInput::inferred_direct_argv(vec![
+            "C:\\Program Files\\Kerminal\\kerminal.exe".to_owned(),
+            "--host".to_owned(),
+            "field-generic.internal".to_owned(),
+            "--port".to_owned(),
+            "2248".to_owned(),
+            "--user".to_owned(),
+            "fieldops".to_owned(),
+        ]))
+        .expect("parse generic host/user/port args without external marker");
+
+    assert_eq!(
+        request.source.tool,
+        ExternalLaunchSourceTool::KerminalNative
+    );
+    assert_eq!(request.target.host, "field-generic.internal");
+    assert_eq!(request.target.port, 2248);
+    assert_eq!(request.target.username.as_deref(), Some("fieldops"));
+    assert_eq!(request.diagnostics.parser, "kerminal-native-flags");
+}
+
+#[test]
+fn registry_accepts_bare_user_at_host_when_argv0_is_kerminal() {
+    let registry = ExternalLaunchParserRegistry::new();
+    let request = registry
+        .parse(&ExternalLaunchParseInput::inferred_direct_argv(vec![
+            "C:\\Program Files\\Kerminal\\kerminal.exe".to_owned(),
+            "deploy@generic-openssh.internal".to_owned(),
+        ]))
+        .expect("parse generic user@host args without ssh.exe argv0");
+
+    assert_eq!(request.source.tool, ExternalLaunchSourceTool::Openssh);
+    assert_eq!(request.target.host, "generic-openssh.internal");
+    assert_eq!(request.target.port, 22);
+    assert_eq!(request.target.username.as_deref(), Some("deploy"));
+    assert_eq!(request.diagnostics.parser, "openssh");
+}
+
+#[test]
 fn kerminal_protocol_url_redacts_secret_query_values() {
     let registry = ExternalLaunchParserRegistry::new();
     let request = registry
@@ -421,6 +608,23 @@ fn parser_rejects_missing_destination() {
         .expect_err("missing destination should fail");
 
     assert!(error.to_string().contains("destination is required"));
+}
+
+fn write_temp_moba_session_file() -> std::path::PathBuf {
+    let path = std::env::temp_dir().join(format!(
+        "kerminal-mobaxterm-{}-{}.moba",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after epoch")
+            .as_nanos()
+    ));
+    std::fs::write(
+        &path,
+        "root_10.11.0.75 =  #109#0%172.21.195.223%222%%%-1%-1%%%%%0%-1%0%%%0%0%0%0%%1080%%0%0%1#MobaFont%10%0%0%-1%15%236,236,236%30,30,30%180,180,192%0%-1%0%%xterm%-1%-1%_Std_Colors_0_%80%24%0%1%-1%<none>%%0%0%-1#0# #-1",
+    )
+    .expect("temp .moba session file should be written");
+    path
 }
 
 fn fixture_parse_input(

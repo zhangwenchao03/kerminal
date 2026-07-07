@@ -17,14 +17,18 @@ import { ModalShell } from "../../components/ui/modal-shell";
 import { cn } from "../../lib/cn";
 import {
   terminalTabGroupColorIds,
+  isTerminalSessionTab,
   isWorkspaceFileTab,
+  type MachineGroup,
   type MachineStatus,
+  type TerminalPane,
   type TerminalTab,
   type TerminalTabGroupColor,
   type TerminalTabGroupPreference,
   type TerminalTabGroupPreferences,
   type WorkspaceFileTab,
 } from "../workspace/types";
+import { collectPaneIds } from "../workspace/workspaceLayout";
 
 export interface TerminalTabGroup {
   activeContainerClassName: string;
@@ -38,6 +42,11 @@ export interface TerminalTabGroup {
   swatchClassName: string;
   tabs: TerminalTab[];
   title: string;
+}
+
+export interface TerminalTabGroupBuildOptions {
+  machineGroups?: MachineGroup[];
+  panes?: TerminalPane[];
 }
 
 export type TerminalTabContextMenu =
@@ -805,23 +814,30 @@ function TerminalTabMenuItem({
 export function buildTerminalTabGroups(
   tabs: TerminalTab[],
   preferences: TerminalTabGroupPreferences = {},
+  options: TerminalTabGroupBuildOptions = {},
 ): TerminalTabGroup[] {
-  const orderedMachineIds: string[] = [];
-  const tabsByMachineId = new Map<string, TerminalTab[]>();
+  const orderedGroupIds: string[] = [];
+  const tabsByGroupId = new Map<string, TerminalTab[]>();
+  const panesById = new Map(
+    (options.panes ?? []).map((pane) => [pane.id, pane]),
+  );
 
   for (const tab of tabs) {
-    if (!tabsByMachineId.has(tab.machineId)) {
-      orderedMachineIds.push(tab.machineId);
-      tabsByMachineId.set(tab.machineId, []);
+    const groupId = resolveTerminalTabGroupId(tab, panesById);
+    if (!tabsByGroupId.has(groupId)) {
+      orderedGroupIds.push(groupId);
+      tabsByGroupId.set(groupId, []);
     }
-    tabsByMachineId.get(tab.machineId)?.push(tab);
+    tabsByGroupId.get(groupId)?.push(tab);
   }
 
   const usedColors = new Set<TerminalTabGroupColor>();
-  return orderedMachineIds.map((machineId) => {
-    const groupTabs = tabsByMachineId.get(machineId) ?? [];
-    const preference = preferences[machineId];
-    const title = preference?.title?.trim() || groupTabs[0]?.title || machineId;
+  return orderedGroupIds.map((groupId) => {
+    const groupTabs = tabsByGroupId.get(groupId) ?? [];
+    const preference = preferences[groupId];
+    const title =
+      preference?.title?.trim() ||
+      defaultTerminalTabGroupTitle(groupId, groupTabs, options.machineGroups);
     const color =
       preference?.color ?? nextDefaultTerminalTabGroupColor(usedColors);
     usedColors.add(color);
@@ -834,12 +850,62 @@ export function buildTerminalTabGroups(
       colorLabel: theme.label,
       containerClassName: theme.containerClassName,
       grouped: groupTabs.length > 1,
-      id: machineId,
+      id: groupId,
       swatchClassName: theme.swatchClassName,
       tabs: groupTabs,
       title,
     };
   });
+}
+
+function resolveTerminalTabGroupId(
+  tab: TerminalTab,
+  panesById: Map<string, TerminalPane>,
+) {
+  if (isWorkspaceFileTab(tab) && tab.target.kind !== "local") {
+    return tab.target.hostId;
+  }
+
+  if (isTerminalSessionTab(tab)) {
+    const firstRemoteHostId = collectPaneIds(tab.layout)
+      .map((paneId) => panesById.get(paneId)?.remoteHostId)
+      .find((remoteHostId): remoteHostId is string => Boolean(remoteHostId));
+    if (firstRemoteHostId) {
+      return firstRemoteHostId;
+    }
+  }
+
+  return tab.machineId;
+}
+
+function defaultTerminalTabGroupTitle(
+  groupId: string,
+  groupTabs: TerminalTab[],
+  machineGroups: MachineGroup[] | undefined,
+) {
+  const firstTab = groupTabs[0];
+  if (!firstTab) {
+    return groupId;
+  }
+  if (firstTab.machineId === groupId) {
+    return firstTab.title;
+  }
+  return findMachineGroupTitle(machineGroups, groupId) ?? firstTab.title;
+}
+
+function findMachineGroupTitle(
+  machineGroups: MachineGroup[] | undefined,
+  machineId: string,
+) {
+  for (const group of machineGroups ?? []) {
+    const machine = group.machines.find(
+      (candidate) => candidate.id === machineId,
+    );
+    if (machine) {
+      return machine.name;
+    }
+  }
+  return undefined;
 }
 
 function nextDefaultTerminalTabGroupColor(
