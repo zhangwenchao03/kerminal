@@ -185,3 +185,16 @@ jobs:
           tagName: ${{ env.RELEASE_TAG }}
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
+
+  publish-release:
+    name: Publish GitHub release
+    needs:
+      - preflight
+      - publish-tauri
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
+    steps:
+      - name: Publish completed draft
+        run: gh release edit "${RELEASE_TAG}" --draft=false --repo "${GITHUB_REPOSITORY}"
