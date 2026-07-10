@@ -100,7 +100,9 @@ impl TerminalEscapeResponder {
                     }
                 },
                 _ => {
-                    let sequence_end = (escape_start + 2).min(input.len());
+                    // 二进制输出经 UTF-8 lossy 解码后，ESC 后面可能是多字节字符；
+                    // 按字节加 2 会落在字符中间并触发 String slice panic。
+                    let sequence_end = next_char_boundary(&input, escape_start + 2);
                     output.push_str(&input[escape_start..sequence_end]);
                     index = sequence_end;
                 }
@@ -183,4 +185,12 @@ fn osc_end(input: &str, escape_start: usize) -> Option<usize> {
         index += 1;
     }
     None
+}
+
+fn next_char_boundary(input: &str, mut index: usize) -> usize {
+    index = index.min(input.len());
+    while index < input.len() && !input.is_char_boundary(index) {
+        index += 1;
+    }
+    index
 }

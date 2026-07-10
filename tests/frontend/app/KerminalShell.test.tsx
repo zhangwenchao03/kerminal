@@ -30,6 +30,18 @@ import {
 import { KerminalShell } from "../../../src/app/KerminalShell";
 
 const mocks = getKerminalShellTestMocks();
+const windowChromeMocks = vi.hoisted(() => ({
+  frameState: "normal" as "fullscreen" | "maximized" | "normal",
+  platform: "browser" as "browser" | "linux" | "macos" | "windows",
+}));
+
+vi.mock("../../../src/lib/desktopPlatform", () => ({
+  resolveDesktopPlatform: () => windowChromeMocks.platform,
+}));
+
+vi.mock("../../../src/lib/useTauriWindowFrameState", () => ({
+  useTauriWindowFrameState: () => windowChromeMocks.frameState,
+}));
 
 async function findExpandedSidebarMachine(name: RegExp) {
   const sidebar = screen.getByRole("complementary", { name: "主机侧边栏" });
@@ -69,6 +81,8 @@ describe("KerminalShell", () => {
     document.documentElement.removeAttribute("lang");
     window.localStorage.clear();
     resetWorkspaceStore();
+    windowChromeMocks.frameState = "normal";
+    windowChromeMocks.platform = "browser";
     mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockReset();
     mocks.workspaceSessionApi.saveWorkspaceSessionFile.mockReset();
     mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockResolvedValue(null);
@@ -844,6 +858,40 @@ describe("KerminalShell", () => {
     expect(leftTitleStrip).not.toHaveClass("border-r");
     expect(rightTitleStrip).toBeInTheDocument();
     expect(rightTitleStrip).not.toHaveClass("border-r");
+  });
+
+  it("publishes the resolved desktop platform and window frame on the shell root", () => {
+    windowChromeMocks.platform = "linux";
+    windowChromeMocks.frameState = "maximized";
+
+    const { container } = render(<KerminalShell />);
+    const shell = container.firstElementChild;
+
+    expect(shell).toHaveAttribute("data-desktop-platform", "linux");
+    expect(shell).toHaveAttribute("data-window-frame", "maximized");
+    expect(shell).not.toHaveAttribute("data-window-controls-platform");
+    expect(document.documentElement).toHaveAttribute(
+      "data-desktop-platform",
+      "linux",
+    );
+    expect(document.documentElement).toHaveAttribute(
+      "data-window-frame",
+      "maximized",
+    );
+  });
+
+  it("leaves shell drag-region double-click handling to the Tauri runtime", () => {
+    windowChromeMocks.platform = "windows";
+    const { container } = render(<KerminalShell />);
+    const dragRegion = [
+      ...container.querySelectorAll("[data-tauri-drag-region]"),
+    ].find((element) =>
+      (element.getAttribute("class") ?? "").includes("col-[1/2]"),
+    );
+
+    expect(dragRegion).toBeInTheDocument();
+    expect(dragRegion).toHaveAttribute("data-tauri-drag-region");
+    fireEvent.doubleClick(dragRegion!);
   });
 
   it("keeps the overlaid title bar transparent so terminal tabs stay framed", () => {

@@ -36,25 +36,37 @@ export function installShellIntegrationOscHandlers(
   }
 
   const osc7Disposable = parser.registerOscHandler(7, (payload) => {
-    const result = applyTerminalShellIntegrationOsc7(
-      callbacks.readState(),
-      payload,
-    );
-    callbacks.writeState(result.state);
-    if (result.cwd) {
-      callbacks.onCurrentCwd(result.cwd);
-      return true;
+    try {
+      const result = applyTerminalShellIntegrationOsc7(
+        callbacks.readState(),
+        payload,
+      );
+      callbacks.writeState(result.state);
+      if (result.cwd) {
+        callbacks.onCurrentCwd(result.cwd);
+        return true;
+      }
+      return result.state.trusted;
+    } catch (error: unknown) {
+      // 二进制输出可能偶然拼出 OSC；解析失败时交回 xterm，不能中断输出链路。
+      console.error("terminal OSC 7 handler failed", error);
+      return false;
     }
-    return result.state.trusted;
   });
   const osc133Disposable = parser.registerOscHandler(133, (payload) => {
-    const previousState = callbacks.readState();
-    const event = parseTerminalShellIntegrationOsc133(payload);
-    callbacks.reduceState({ payload, type: "osc133" });
-    if (previousState.trusted && event) {
-      callbacks.onOsc133?.(event);
+    try {
+      const previousState = callbacks.readState();
+      const event = parseTerminalShellIntegrationOsc133(payload);
+      callbacks.reduceState({ payload, type: "osc133" });
+      if (previousState.trusted && event) {
+        callbacks.onOsc133?.(event);
+      }
+      return previousState.trusted;
+    } catch (error: unknown) {
+      // Shell integration 是增强能力，异常不应影响基础终端会话。
+      console.error("terminal OSC 133 handler failed", error);
+      return false;
     }
-    return previousState.trusted;
   });
 
   return [osc7Disposable, osc133Disposable];

@@ -12,8 +12,11 @@ import {
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/cn";
+import type { DesktopPlatform } from "../lib/desktopPlatform";
+import type { WindowFrameState } from "../lib/useTauriWindowFrameState";
 import type { ToolId } from "../features/workspace/types";
 import { tools } from "../features/workspace/workspaceData";
+import { AppTitleBar } from "./AppTitleBar";
 import type { ConfigChangeNotice } from "./configRefreshCoordinator";
 
 const shellToolRailIcons: Partial<Record<ToolId, typeof Bot>> = {
@@ -75,6 +78,53 @@ export function ShellToolRail({
           })}
       </nav>
     </aside>
+  );
+}
+
+/** 主窗口顶部材质、拖拽区域和平台标题栏。 */
+export function ShellWindowChrome({
+  desktopPlatform,
+  leftPanelCollapsed,
+  onLeftPanelCollapsedChange,
+  resolvedTheme,
+  rightToolRailTitleBarFillWidth,
+  windowFrameState,
+}: {
+  desktopPlatform: DesktopPlatform;
+  leftPanelCollapsed: boolean;
+  onLeftPanelCollapsedChange: (collapsed: boolean) => void;
+  resolvedTheme: "dark" | "light";
+  rightToolRailTitleBarFillWidth: number;
+  windowFrameState: WindowFrameState;
+}) {
+  return (
+    <>
+      <div
+        className="kerminal-material-nav col-[1/2] row-[1/2]"
+        data-tauri-drag-region
+      />
+      <div
+        className="kerminal-material-nav col-[2/6] row-[1/2] border-b"
+        data-tauri-drag-region
+      />
+      <div
+        className="pointer-events-none relative z-10 col-[2/6] row-[1/2] justify-self-end kerminal-material-nav"
+        data-right-tool-rail-titlebar-fill
+        style={{
+          height: "calc(100% + 1px)",
+          width: rightToolRailTitleBarFillWidth,
+        }}
+      />
+      <AppTitleBar
+        className="pointer-events-none col-[1/-1] row-[1/2] z-50 border-b-0 bg-transparent"
+        desktopPlatform={desktopPlatform}
+        leftPanelCollapsed={leftPanelCollapsed}
+        onLeftPanelCollapsedChange={onLeftPanelCollapsedChange}
+        resolvedTheme={resolvedTheme}
+        surface={false}
+        windowFrameState={windowFrameState}
+      />
+    </>
   );
 }
 

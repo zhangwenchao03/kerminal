@@ -49,6 +49,23 @@ function hasHeightConstraintClassName(className?: string) {
   return /(?:^|\s)(?:h-|max-h-)/.test(className ?? "");
 }
 
+/**
+ * 全屏 overlay 共用的顶部窗口拖拽条。
+ *
+ * Tauri 会为 `data-tauri-drag-region` 注入拖拽和双击最大化逻辑；
+ * 这里不再额外监听双击，避免 Windows/Linux 连续切换两次窗口状态。
+ */
+export function WindowDragStrip() {
+  return (
+    <div
+      aria-hidden="true"
+      className="absolute inset-x-0 top-0 z-[1] h-3"
+      data-tauri-drag-region
+      data-window-drag-strip=""
+    />
+  );
+}
+
 export function ModalShell({
   bodyClassName,
   children,
@@ -106,7 +123,7 @@ export function ModalShell({
           ? "items-center justify-center bg-zinc-950/24 p-3 dark:bg-[rgb(9_9_11_/_0.52)] sm:p-6"
           : "bg-zinc-950/30 dark:bg-black/48",
         fullscreen
-          ? "items-stretch justify-center p-1 sm:p-2"
+          ? "items-stretch justify-center px-1 pb-1 pt-3 sm:px-2 sm:pb-2 sm:pt-3"
           : !workspace && "items-center justify-center p-4",
       )}
       onMouseDown={(event) => {
@@ -115,12 +132,13 @@ export function ModalShell({
         }
       }}
     >
+      <WindowDragStrip />
       <section
         aria-describedby={description ? descriptionId : undefined}
         aria-labelledby={titleId}
         aria-modal="true"
         className={cn(
-          "kerminal-floating-enter flex w-full flex-col overflow-hidden text-zinc-950 dark:text-zinc-50",
+          "kerminal-floating-enter relative z-10 flex w-full flex-col overflow-hidden text-zinc-950 dark:text-zinc-50",
           workspace
             ? "kerminal-solid-surface rounded-[1.35rem] border bg-[var(--surface-overlay)]"
             : "kerminal-floating-surface rounded-[1.5rem] border",

@@ -64,6 +64,55 @@ describe("terminalApi", () => {
     });
   });
 
+  it("keeps the Tauri output Channel alive when an output handler throws", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue({
+      cols: 80,
+      id: "session-1",
+      rows: 24,
+      shell: "powershell.exe",
+      status: "running",
+    });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { createTerminalSession } = await import("../../../src/lib/terminalApi");
+    const onOutput = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new Error("xterm rejected binary output");
+      })
+      .mockImplementation(() => undefined);
+
+    try {
+      await createTerminalSession({ cols: 80, rows: 24 }, onOutput);
+
+      expect(() =>
+        channelMessageHandler?.({
+          data: "\u0000\u001bbinary",
+          kind: "data",
+          sessionId: "session-1",
+        }),
+      ).not.toThrow();
+      channelMessageHandler?.({
+        data: "after-binary",
+        kind: "data",
+        sessionId: "session-1",
+      });
+
+      expect(onOutput).toHaveBeenCalledTimes(2);
+      expect(onOutput).toHaveBeenLastCalledWith({
+        data: "after-binary",
+        kind: "data",
+        sessionId: "session-1",
+      });
+      expect(consoleError).toHaveBeenCalledWith(
+        "terminal output handler failed",
+        expect.any(Error),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("passes typed agent signal events through the Tauri Channel", async () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockResolvedValue({

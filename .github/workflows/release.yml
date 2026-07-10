@@ -179,7 +179,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: ${{ matrix.args }}
-          releaseBody: "修复一些已知问题"
+          releaseBody: |
+            - 改进 Windows、Linux 与 macOS 的桌面窗口镶边、圆角、拖拽和最大化兼容性。
+            - 修复终端二进制输出、控制序列与渲染异常的容错问题。
+
+            macOS `.app` / `.dmg` 未使用 Apple Developer ID 签名，也未经过 Apple 公证；首次启动可能出现 Gatekeeper 提示，请按组织或个人环境自行处理。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}

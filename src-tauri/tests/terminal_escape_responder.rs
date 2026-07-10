@@ -78,6 +78,18 @@ fn preserves_non_query_escape_sequences_without_marking_osc_payload_visible() {
 }
 
 #[test]
+fn preserves_escape_followed_by_multibyte_text_without_panicking() {
+    let mut responder = TerminalEscapeResponder::new();
+    let binary_like = "\u{1b}ߚtail";
+
+    let observed = responder.observe(binary_like);
+
+    assert_eq!(observed.data, binary_like);
+    assert!(observed.responses.is_empty());
+    assert_eq!(responder.pending_len(), 0);
+}
+
+#[test]
 fn caps_runaway_incomplete_csi_without_unbounded_pending() {
     let mut responder = TerminalEscapeResponder::new();
     let runaway = format!("\u{1b}[{}", "1".repeat(300));

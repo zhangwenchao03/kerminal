@@ -10,6 +10,7 @@ export interface TerminalOutputScheduler {
 interface TerminalOutputWriterOptions {
   maxCharsPerFlush?: number;
   now?: () => number;
+  onWriteError?: (error: unknown, data: string) => void;
   scheduler?: TerminalOutputScheduler;
   slowFlushMs?: number;
 }
@@ -26,6 +27,7 @@ export interface TerminalOutputWriterStats {
   slowFlushCount: number;
   splitFrameCount: number;
   totalFlushChars: number;
+  writeErrorCount: number;
   writeNowCount: number;
 }
 
@@ -70,6 +72,7 @@ export function createTerminalOutputWriter(
     slowFlushCount: 0,
     splitFrameCount: 0,
     totalFlushChars: 0,
+    writeErrorCount: 0,
     writeNowCount: 0,
   };
 
@@ -145,7 +148,14 @@ export function createTerminalOutputWriter(
 
   const recordTerminalWrite = (batch: string) => {
     const start = now();
-    terminal.write(batch);
+    try {
+      terminal.write(batch);
+    } catch (error: unknown) {
+      // 终端输出可能包含二进制垃圾或坏控制序列；渲染失败不能反向断开会话。
+      flushStats.writeErrorCount += 1;
+      options.onWriteError?.(error, batch);
+      return;
+    }
     const durationMs = Math.max(0, now() - start);
     flushStats.flushCount += 1;
     flushStats.lastFlushChars = batch.length;
@@ -204,6 +214,7 @@ export function createTerminalOutputWriter(
         slowFlushCount: flushStats.slowFlushCount,
         splitFrameCount: flushStats.splitFrameCount,
         totalFlushChars: flushStats.totalFlushChars,
+        writeErrorCount: flushStats.writeErrorCount,
         writeNowCount: flushStats.writeNowCount,
       };
       if (flushStats.lastFlushMs !== undefined) {

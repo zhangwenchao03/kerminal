@@ -202,6 +202,13 @@ body {
   overflow: hidden;
 }
 
+html[data-desktop-platform="windows"] body,
+html[data-desktop-platform="linux"] body {
+  border-radius: var(--app-window-frame-radius);
+  clip-path: inset(0 round var(--app-window-frame-radius));
+  isolation: isolate;
+}
+
 #root > [data-density][data-theme] {
   border-radius: var(--app-window-frame-radius);
   clip-path: inset(0 round var(--app-window-frame-radius));
@@ -209,9 +216,29 @@ body {
   overflow: hidden;
 }
 
-#root > [data-density][data-theme][data-window-frame="fullscreen"],
-#root > [data-density][data-theme][data-window-frame="maximized"] {
+html[data-window-frame-resolved="true"][data-desktop-platform="windows"][data-window-frame="normal"],
+html[data-window-frame-resolved="true"][data-desktop-platform="linux"][data-window-frame="normal"] {
+  --app-window-frame-radius: 18px;
+}
+
+html[data-window-frame-resolved="false"][data-desktop-platform="windows"],
+html[data-window-frame-resolved="false"][data-desktop-platform="linux"],
+html[data-desktop-platform="windows"][data-window-frame="fullscreen"],
+html[data-desktop-platform="windows"][data-window-frame="maximized"],
+html[data-desktop-platform="linux"][data-window-frame="fullscreen"],
+html[data-desktop-platform="linux"][data-window-frame="maximized"] {
   --app-window-frame-radius: 0px;
+}
+
+html[data-desktop-platform="macos"] {
+  --app-window-frame-radius: 0px;
+}
+
+html[data-desktop-platform="macos"] body,
+#root > [data-density][data-theme][data-desktop-platform="macos"] {
+  border-radius: 0;
+  clip-path: none;
+  overflow: visible;
 }
 
 #root > [data-density="compact"] {

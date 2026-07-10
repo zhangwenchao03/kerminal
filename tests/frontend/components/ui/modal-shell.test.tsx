@@ -1,8 +1,26 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ModalShell } from "../../../../src/components/ui/modal-shell";
 
+const windowChromeMocks = vi.hoisted(() => ({
+  frameState: "normal" as "fullscreen" | "maximized" | "normal",
+  platform: "windows" as "browser" | "linux" | "macos" | "windows",
+}));
+
+vi.mock("../../../../src/lib/desktopPlatform", () => ({
+  resolveDesktopPlatform: () => windowChromeMocks.platform,
+}));
+
+vi.mock("../../../../src/lib/useTauriWindowFrameState", () => ({
+  useTauriWindowFrameState: () => windowChromeMocks.frameState,
+}));
+
 describe("ModalShell", () => {
+  beforeEach(() => {
+    windowChromeMocks.frameState = "normal";
+    windowChromeMocks.platform = "windows";
+  });
+
   it("applies adaptive preset constraints to default dialogs", () => {
     render(
       <ModalShell onClose={vi.fn()} open size="small" title="自适应尺寸">
@@ -54,5 +72,28 @@ describe("ModalShell", () => {
 
     expect(dialog).toHaveClass("h-[min(820px,calc(100vh-48px))]");
     expect(dialog).not.toHaveClass("max-h-[min(44rem,calc(100vh-48px))]");
+  });
+
+  it("keeps a Tauri-managed top drag strip outside dialog content", () => {
+    render(
+      <ModalShell
+        layout="fullscreen"
+        onClose={vi.fn()}
+        open
+        title="全屏工作台"
+      >
+        内容
+      </ModalShell>,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "全屏工作台" });
+    const dragStrip = document.querySelector("[data-window-drag-strip]");
+
+    expect(dragStrip).toBeInTheDocument();
+    expect(dialog.contains(dragStrip)).toBe(false);
+    expect(dragStrip?.parentElement).toHaveClass("pt-3");
+    expect(dragStrip).toHaveAttribute("data-tauri-drag-region");
+
+    fireEvent.doubleClick(dragStrip!);
   });
 });

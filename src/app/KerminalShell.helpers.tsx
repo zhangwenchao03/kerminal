@@ -7,7 +7,10 @@ import {
 } from "react";
 import { convertFileSrc, isTauri } from "@tauri-apps/api/core";
 import { Button } from "../components/ui/button";
-import { ModalShell } from "../components/ui/modal-shell";
+import {
+  ModalShell,
+  WindowDragStrip,
+} from "../components/ui/modal-shell";
 import { cn } from "../lib/cn";
 import { TOOL_RAIL_WIDTH } from "./KerminalShell.static";
 import type { LocalTerminalCreateOptions } from "../features/machine-sidebar/RemoteHostCreateDialog";
@@ -78,6 +81,7 @@ export function DialogLazyFallback() {
       className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/30 p-4 text-zinc-950 backdrop-blur-md dark:bg-black/48 dark:text-zinc-50"
       role="status"
     >
+      <WindowDragStrip />
       <div className="kerminal-floating-enter rounded-[1.5rem] border border-[var(--border-subtle)] bg-[var(--surface-overlay)] px-5 py-4 text-sm shadow-2xl shadow-black/20 backdrop-blur-xl dark:shadow-black/50">
         正在加载...
       </div>

@@ -503,12 +503,10 @@ pub fn startup_cpr_query_request() -> TerminalCreateRequest {
 #[cfg(target_os = "windows")]
 pub fn agent_signal_marker_request() -> TerminalCreateRequest {
     let mut request = TerminalCreateRequest {
-        shell: Some("powershell.exe".to_owned()),
+        shell: Some("node".to_owned()),
         args: vec![
-            "-NoProfile".to_owned(),
-            "-Command".to_owned(),
-            "[Console]::Out.Write(\"before$([char]27)]777;notify;Kerminal;codex;working$([char]7)after$([char]27)]777;notify;Kerminal;codex;finished$([char]7)\")"
-                .to_owned(),
+            "-e".to_owned(),
+            "process.stdout.write('before\\x1b]777;notify;Kerminal;codex;working\\x07after\\x1b]777;notify;Kerminal;codex;finished\\x07')".to_owned(),
         ],
         rows: 24,
         cols: 80,
@@ -539,11 +537,10 @@ pub fn short_lived_tail_request() -> TerminalCreateRequest {
 #[cfg(target_os = "windows")]
 pub fn fast_bulk_output_request() -> TerminalCreateRequest {
     TerminalCreateRequest {
-        shell: Some("powershell.exe".to_owned()),
+        shell: Some("node".to_owned()),
         args: vec![
-            "-NoProfile".to_owned(),
-            "-Command".to_owned(),
-            "[Console]::Out.Write(('x' * 131072)); [Console]::Out.Write('kerminal-bulk-tail')"
+            "-e".to_owned(),
+            "process.stdout.write('x'.repeat(131072)); process.stdout.write('kerminal-bulk-tail')"
                 .to_owned(),
         ],
         rows: 24,
@@ -555,11 +552,10 @@ pub fn fast_bulk_output_request() -> TerminalCreateRequest {
 #[cfg(target_os = "windows")]
 pub fn stderr_tail_request() -> TerminalCreateRequest {
     TerminalCreateRequest {
-        shell: Some("powershell.exe".to_owned()),
+        shell: Some("node".to_owned()),
         args: vec![
-            "-NoProfile".to_owned(),
-            "-Command".to_owned(),
-            "[Console]::Error.Write('kerminal-stderr-tail')".to_owned(),
+            "-e".to_owned(),
+            "process.stderr.write('kerminal-stderr-tail')".to_owned(),
         ],
         rows: 24,
         cols: 80,

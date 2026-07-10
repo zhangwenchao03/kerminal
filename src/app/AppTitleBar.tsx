@@ -1,34 +1,57 @@
-import { Minus, PanelLeftClose, PanelLeftOpen, Square, X } from "lucide-react";
-import { isTauri } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import {
+  Copy,
+  Minus,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Square,
+  X,
+} from "lucide-react";
 import {
   useRef,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { shortcutPlatform } from "../features/settings/keybindingUtils";
-import type { KeybindingPlatform } from "../features/settings/settingsModel";
 import { cn } from "../lib/cn";
+import {
+  resolveDesktopPlatform,
+  type DesktopPlatform,
+} from "../lib/desktopPlatform";
+import {
+  resolveWindowChromeModel,
+  type WindowChromeModel,
+} from "../lib/windowChromeModel";
+import {
+  runWindowAction,
+  startWindowDragging,
+} from "../lib/windowActions";
+import type { WindowFrameState } from "../lib/useTauriWindowFrameState";
 
 interface AppTitleBarProps {
   className?: string;
+  desktopPlatform?: DesktopPlatform;
   leftPanelCollapsed?: boolean;
   resolvedTheme: "dark" | "light";
   surface?: boolean;
   onLeftPanelCollapsedChange?: (collapsed: boolean) => void;
-  windowControlPlatform?: KeybindingPlatform;
+  windowFrameState?: WindowFrameState;
 }
+
+const MACOS_TRAFFIC_LIGHT_INSET = 72;
 
 export function AppTitleBar({
   className,
+  desktopPlatform = resolveDesktopPlatform(),
   leftPanelCollapsed = false,
   onLeftPanelCollapsedChange,
   resolvedTheme,
   surface = true,
-  windowControlPlatform = shortcutPlatform(),
+  windowFrameState = "normal",
 }: AppTitleBarProps) {
   const CollapseIcon = leftPanelCollapsed ? PanelLeftOpen : PanelLeftClose;
-  const macWindowControls = windowControlPlatform === "mac";
+  const windowChrome = resolveWindowChromeModel({
+    frameState: windowFrameState,
+    platform: desktopPlatform,
+  });
   const collapseDragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -69,10 +92,6 @@ export function AppTitleBar({
 
     suppressCollapseClickRef.current = true;
     collapseDragRef.current = null;
-    if (!isTauri()) {
-      return;
-    }
-
     event.preventDefault();
     void startWindowDragging();
   };
@@ -103,16 +122,21 @@ export function AppTitleBar({
           : "text-zinc-950",
         className,
       )}
+      data-desktop-platform={desktopPlatform}
+      data-traffic-light-inset={
+        windowChrome.reserveTrafficLightInset ? "true" : undefined
+      }
       data-tauri-drag-region
+      style={
+        windowChrome.reserveTrafficLightInset
+          ? { paddingLeft: MACOS_TRAFFIC_LIGHT_INSET }
+          : undefined
+      }
     >
       <div
-        className={cn(
-          "pointer-events-auto flex min-w-0 items-center gap-2",
-          macWindowControls && "gap-3",
-        )}
+        className="pointer-events-auto flex min-w-0 items-center gap-2"
         data-tauri-drag-region
       >
-        {macWindowControls ? <MacWindowControls /> : null}
         {onLeftPanelCollapsedChange ? (
           <button
             aria-label={leftPanelCollapsed ? "展开主机侧边栏" : "折叠主机侧边栏"}
@@ -138,12 +162,22 @@ export function AppTitleBar({
 
       <div className="min-w-4 flex-1 self-stretch" data-tauri-drag-region />
 
-      {macWindowControls ? null : <WindowsWindowControls />}
+      {windowChrome.controlMode === "custom" ? (
+        <CustomWindowControls windowChrome={windowChrome} />
+      ) : null}
     </header>
   );
 }
 
-function WindowsWindowControls() {
+function CustomWindowControls({
+  windowChrome,
+}: {
+  windowChrome: WindowChromeModel;
+}) {
+  const maximizeLabel = windowChrome.showRestoreIcon
+    ? "还原窗口"
+    : "最大化窗口";
+
   return (
     <div aria-label="窗口控制" className="flex items-center gap-1">
       <WindowControlButton
@@ -151,41 +185,36 @@ function WindowsWindowControls() {
         icon={<Minus className="h-4 w-4" />}
         onClick={() => runWindowAction("minimize")}
       />
-      <WindowControlButton
-        ariaLabel="最大化或还原窗口"
-        icon={<Square className="h-3.5 w-3.5" />}
-        onClick={() => runWindowAction("toggleMaximize")}
-      />
+      {windowChrome.showMaximizeControl ? (
+        <WindowControlButton
+          ariaLabel={maximizeLabel}
+          icon={
+            windowChrome.showRestoreIcon ? (
+              <Copy
+                className="h-3.5 w-3.5"
+                data-window-control-icon="restore"
+              />
+            ) : (
+              <Square
+                className="h-3.5 w-3.5"
+                data-window-control-icon="maximize"
+              />
+            )
+          }
+          onClick={() => runWindowAction("toggleMaximize")}
+        />
+      ) : (
+        <span
+          aria-hidden="true"
+          className="h-7 w-7"
+          data-window-control-placeholder="maximize"
+        />
+      )}
       <WindowControlButton
         ariaLabel="关闭窗口"
         danger
         icon={<X className="h-4 w-4" />}
         onClick={() => runWindowAction("close")}
-      />
-    </div>
-  );
-}
-
-function MacWindowControls() {
-  return (
-    <div aria-label="窗口控制" className="flex items-center gap-2">
-      <MacWindowControlButton
-        ariaLabel="关闭窗口"
-        className="border-red-500/40 bg-red-500 text-red-950/70 hover:bg-red-400"
-        icon={<X className="h-2.5 w-2.5" />}
-        onClick={() => runWindowAction("close")}
-      />
-      <MacWindowControlButton
-        ariaLabel="最小化窗口"
-        className="border-yellow-500/40 bg-yellow-400 text-yellow-950/70 hover:bg-yellow-300"
-        icon={<Minus className="h-2.5 w-2.5" />}
-        onClick={() => runWindowAction("minimize")}
-      />
-      <MacWindowControlButton
-        ariaLabel="最大化或还原窗口"
-        className="border-emerald-500/40 bg-emerald-500 text-emerald-950/70 hover:bg-emerald-400"
-        icon={<Square className="h-2 w-2" />}
-        onClick={() => runWindowAction("toggleMaximize")}
       />
     </div>
   );
@@ -211,59 +240,10 @@ function WindowControlButton({
           "hover:bg-red-500/12 hover:text-red-600 dark:hover:text-red-300",
       )}
       onClick={onClick}
+      title={ariaLabel}
       type="button"
     >
       {icon}
     </button>
   );
-}
-
-function MacWindowControlButton({
-  ariaLabel,
-  className,
-  icon,
-  onClick,
-}: {
-  ariaLabel: string;
-  className: string;
-  icon: ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      aria-label={ariaLabel}
-      className={cn(
-        "group kerminal-focus-ring pointer-events-auto grid h-3.5 w-3.5 place-items-center rounded-full border shadow-sm shadow-black/15 transition-[background-color,box-shadow,filter] duration-150",
-        className,
-      )}
-      onClick={onClick}
-      type="button"
-    >
-      <span className="opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100">
-        {icon}
-      </span>
-    </button>
-  );
-}
-
-async function runWindowAction(
-  action: "close" | "minimize" | "toggleMaximize",
-) {
-  if (!isTauri()) {
-    return;
-  }
-
-  const appWindow = getCurrentWindow();
-  if (action === "minimize") {
-    await appWindow.minimize();
-  } else if (action === "toggleMaximize") {
-    await appWindow.toggleMaximize();
-  } else {
-    await appWindow.close();
-  }
-}
-
-async function startWindowDragging() {
-  const appWindow = getCurrentWindow();
-  await appWindow.startDragging();
 }

@@ -58,6 +58,7 @@ export interface RuntimeTerminalOutputPaneSnapshot {
   writerFlushCount?: number;
   writerLastFlushMs?: number;
   writerSlowFlushCount?: number;
+  writerWriteErrorCount?: number;
 }
 
 export interface RuntimeTerminalOutputSnapshot {
@@ -336,6 +337,11 @@ export function createRuntimeTerminalOutputPaneSnapshot({
     snapshot,
     "writerSlowFlushCount",
     writerSlowFlushCount,
+  );
+  assignOptionalNumber(
+    snapshot,
+    "writerWriteErrorCount",
+    writerStats?.writeErrorCount,
   );
 
   return snapshot;

@@ -17,6 +17,7 @@ fn read_text(path: impl Into<PathBuf>) -> String {
     let path = path.into();
     fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()))
+        .replace("\r\n", "\n")
 }
 
 #[test]
@@ -119,10 +120,52 @@ fn main_window_uses_app_drawn_titlebar_with_file_drop_events_for_sftp() {
         .expect("windows must be an array");
     let main_window = windows.first().expect("main window must be configured");
 
+    assert_eq!(config["version"], "0.3.3");
     assert_eq!(main_window["title"], "Kerminal");
+    assert_eq!(main_window["width"], 1600);
+    assert_eq!(main_window["height"], 960);
+    assert_eq!(main_window["minWidth"], 1180);
+    assert_eq!(main_window["minHeight"], 720);
     assert_eq!(main_window["decorations"], false);
     assert_eq!(main_window["transparent"], true);
     assert_eq!(main_window["dragDropEnabled"], true);
+    assert_eq!(main_window["visible"], false);
+}
+
+#[test]
+fn macos_window_override_is_complete_and_uses_native_titlebar_chrome() {
+    let config = read_json(manifest_dir().join("tauri.macos.conf.json"));
+    let windows = config["app"]["windows"]
+        .as_array()
+        .expect("macOS windows must be an array");
+
+    assert_eq!(
+        windows.len(),
+        1,
+        "macOS must configure exactly one main window"
+    );
+    assert_eq!(
+        windows[0],
+        serde_json::json!({
+            "label": "main",
+            "title": "Kerminal",
+            "width": 1600,
+            "height": 960,
+            "minWidth": 1180,
+            "minHeight": 720,
+            "resizable": true,
+            "decorations": true,
+            "transparent": false,
+            "dragDropEnabled": true,
+            "visible": false,
+            "titleBarStyle": "Overlay",
+            "hiddenTitle": true
+        })
+    );
+    assert!(
+        config.get("bundle").is_none() && config.get("plugins").is_none(),
+        "macOS window override must not introduce signing, notarization, or updater changes"
+    );
 }
 
 #[test]

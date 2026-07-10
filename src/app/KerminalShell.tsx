@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { AppTitleBar } from "./AppTitleBar";
 import type {
   MachineSidebarMachineDragEvent,
   MachineSidebarViewMode,
@@ -15,7 +14,6 @@ import type {
   SettingsSaveState,
   SettingsSectionId,
 } from "../features/settings/SettingsToolContent";
-import { shortcutPlatform } from "../features/settings/keybindingUtils";
 import {
   resolveThemeMode,
   type AppSettings,
@@ -46,6 +44,7 @@ import {
   type DockerContainerLifecycleAction,
   type DockerContainerSummary,
 } from "../lib/dockerApi";
+import { resolveDesktopPlatform } from "../lib/desktopPlatform";
 import {
   createRemoteHostGroup,
   updateRemoteHost,
@@ -55,6 +54,7 @@ import { listProfiles } from "../lib/profileApi";
 import { reapOrphanTerminalSessions } from "../lib/terminalApi";
 import { useDocumentTheme } from "../lib/useDocumentTheme";
 import { useTauriWindowFrameState } from "../lib/useTauriWindowFrameState";
+import { resolveWindowChromeModel } from "../lib/windowChromeModel";
 import type {
   SftpTransferCreatedHostTarget,
   SftpTransferCreateHostRequest,
@@ -70,7 +70,7 @@ import {
   useSystemThemePreference,
   useViewportWidth,
 } from "./KerminalShell.helpers";
-import { KerminalShellNotices, ShellToolRail } from "./KerminalShell.view";
+import { KerminalShellNotices, ShellToolRail, ShellWindowChrome } from "./KerminalShell.view";
 import { useKerminalShellRemoteActions } from "./useKerminalShellRemoteActions";
 import { useKerminalShellBackgroundStyle } from "./useKerminalShellBackgroundStyle";
 import { useKerminalShellCommands } from "./useKerminalShellCommands";
@@ -230,14 +230,20 @@ export function KerminalShell() {
   settingsSaveStateRef.current = settingsSaveState;
   const systemPrefersDark = useSystemThemePreference();
   const resolvedTheme = resolveThemeMode(settings.themeMode, systemPrefersDark);
-  const windowControlPlatform = shortcutPlatform();
+  const desktopPlatform = resolveDesktopPlatform();
   const windowFrameState = useTauriWindowFrameState();
-  const reserveRightTitleBarControls = windowControlPlatform !== "mac";
+  const windowChrome = resolveWindowChromeModel({
+    frameState: windowFrameState,
+    platform: desktopPlatform,
+  });
+  const reserveRightTitleBarControls = windowChrome.controlMode === "custom";
   useDocumentTheme({
     density: settings.interfaceDensity,
+    desktopPlatform,
     language: settings.appearance.interfaceLanguage,
     lang: htmlLanguage(settings.appearance.interfaceLanguage),
     theme: resolvedTheme,
+    windowFrame: windowFrameState,
   });
   const {
     beginPanelResize,
@@ -280,7 +286,7 @@ export function KerminalShell() {
     .find((group) => group.id !== "local")
     ?.machines.find((machine) => machine.kind === "ssh")?.id;
   const leftTitleBarInset = effectiveLeftPanelCollapsed
-    ? windowControlPlatform === "mac"
+    ? windowChrome.reserveTrafficLightInset
       ? 112
       : 48
     : 0;
@@ -755,10 +761,10 @@ export function KerminalShell() {
         "relative grid h-screen overflow-hidden",
         resolvedTheme === "dark" ? "dark text-zinc-100" : "text-zinc-950",
       )}
+      data-desktop-platform={desktopPlatform}
       data-density={settings.interfaceDensity}
       data-language={settings.appearance.interfaceLanguage}
       data-theme={resolvedTheme}
-      data-window-controls-platform={windowControlPlatform}
       data-window-frame={windowFrameState}
       lang={htmlLanguage(settings.appearance.interfaceLanguage)}
       style={{
@@ -767,29 +773,13 @@ export function KerminalShell() {
         gridTemplateRows: "36px minmax(0, 1fr)",
       }}
     >
-      <div
-        className="kerminal-material-nav col-[1/2] row-[1/2]"
-        data-tauri-drag-region
-      />
-      <div
-        className="kerminal-material-nav col-[2/6] row-[1/2] border-b"
-        data-tauri-drag-region
-      />
-      <div
-        className="pointer-events-none relative z-10 col-[2/6] row-[1/2] justify-self-end kerminal-material-nav"
-        data-right-tool-rail-titlebar-fill
-        style={{
-          height: "calc(100% + 1px)",
-          width: rightToolRailTitleBarFillWidth,
-        }}
-      />
-      <AppTitleBar
-        className="pointer-events-none col-[1/-1] row-[1/2] z-50 border-b-0 bg-transparent"
+      <ShellWindowChrome
+        desktopPlatform={desktopPlatform}
         leftPanelCollapsed={leftPanelCollapsed}
         onLeftPanelCollapsedChange={setLeftPanelCollapsed}
         resolvedTheme={resolvedTheme}
-        surface={false}
-        windowControlPlatform={windowControlPlatform}
+        rightToolRailTitleBarFillWidth={rightToolRailTitleBarFillWidth}
+        windowFrameState={windowFrameState}
       />
       {effectiveLeftPanelCollapsed ? null : (
         <div className="col-[1/2] row-[2/3] h-full overflow-hidden">

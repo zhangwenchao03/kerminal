@@ -110,6 +110,7 @@ describe("terminalRuntimeDiagnostics", () => {
         slowFlushCount: 1,
         splitFrameCount: 1,
         totalFlushChars: 512,
+        writeErrorCount: 2,
         writeNowCount: 1,
       },
     });
@@ -130,6 +131,7 @@ describe("terminalRuntimeDiagnostics", () => {
       tailChars: 96,
       truncatedTail: true,
       writerFlushCount: 3,
+      writerWriteErrorCount: 2,
     });
     expect(findRuntimePerformanceSnapshotSensitiveKeys(pane)).toEqual([]);
     expect(JSON.stringify(pane)).not.toContain("visible output");

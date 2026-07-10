@@ -240,4 +240,36 @@ describe("terminalOutputWriter", () => {
     expect(terminal.write).not.toHaveBeenCalled();
     expect(writer.pendingLength()).toBe(0);
   });
+
+  it("keeps the writer alive when terminal.write rejects a batch synchronously", () => {
+    const writeErrors: unknown[] = [];
+    const terminal = {
+      write: vi
+        .fn()
+        .mockImplementationOnce(() => {
+          throw new Error("terminal write rejected");
+        })
+        .mockImplementation(() => undefined),
+    };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      onWriteError: (error) => writeErrors.push(error),
+      scheduler: manual.scheduler,
+    });
+
+    writer.write("\u0000\u001b]bad-binary");
+    manual.runNext();
+    writer.write("after-binary");
+    manual.runNext();
+
+    expect(terminal.write).toHaveBeenCalledTimes(2);
+    expect(terminal.write).toHaveBeenNthCalledWith(2, "after-binary");
+    expect(writer.pendingLength()).toBe(0);
+    expect(writeErrors).toHaveLength(1);
+    expect(writer.stats()).toMatchObject({
+      flushCount: 1,
+      totalFlushChars: "after-binary".length,
+      writeErrorCount: 1,
+    });
+  });
 });
