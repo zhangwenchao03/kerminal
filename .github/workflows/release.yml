@@ -1,4 +1,4 @@
-# @author kongweiguang
+﻿# @author kongweiguang
 name: Release
 
 on:
@@ -93,6 +93,7 @@ jobs:
     env:
       NODE_OPTIONS: --max-old-space-size=4096
       RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
+      HAS_TAURI_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -171,7 +172,8 @@ jobs:
       - name: Install project dependencies
         run: npm ci
 
-      - name: Build and publish Tauri release
+      - name: Build and publish signed Tauri release
+        if: env.HAS_TAURI_SIGNING_KEY == 'true'
         uses: tauri-apps/tauri-action@v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -179,12 +181,25 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: ${{ matrix.args }}
-          releaseBody: "修复一些已知问题"
+          releaseBody: "Kerminal release build."
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
+
+      - name: Build and publish unsigned Tauri release
+        if: env.HAS_TAURI_SIGNING_KEY != 'true'
+        uses: tauri-apps/tauri-action@v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: ${{ matrix.args }} --config scripts/tauri.unsigned.conf.json
+          releaseBody: "Kerminal release build. Updater metadata is omitted because signing secrets are not configured for this repository."
+          releaseDraft: true
+          releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
+          tagName: ${{ env.RELEASE_TAG }}
+          includeUpdaterJson: false
 
   publish-release:
     name: Publish GitHub release
