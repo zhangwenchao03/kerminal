@@ -54,6 +54,7 @@ export function ShellToolRail({
         className="flex w-full min-w-0 flex-col items-center gap-1.5 py-2.5"
       >
         {tools
+          .filter((tool) => tool.id !== "sftp")
           .map((tool) => {
             const Icon = shellToolRailIcons[tool.id];
             if (!Icon) {

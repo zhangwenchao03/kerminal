@@ -837,7 +837,7 @@ describe("KerminalShell", () => {
     });
     const rightTitleStrip = dragRegions.find((element) => {
       const className = element.getAttribute("class") ?? "";
-      return className.includes("col-[2/6]") && className.includes("row-[1/2]");
+      return className.includes("col-[2/8]") && className.includes("row-[1/2]");
     });
 
     expect(leftTitleStrip).toBeInTheDocument();
@@ -868,7 +868,7 @@ describe("KerminalShell", () => {
     expect(shell).toHaveStyle({
       gridTemplateRows: "36px minmax(0, 1fr)",
     });
-    expect(workspace.parentElement).toHaveStyle({ gridColumn: "3 / 6" });
+    expect(workspace.parentElement).toHaveStyle({ gridColumn: "5 / 8" });
 
     const content = container.querySelector(
       "[data-terminal-workspace-content]",
@@ -880,7 +880,7 @@ describe("KerminalShell", () => {
     expect(
       screen.getByRole("complementary", { name: "工具面板" }),
     ).toHaveAttribute("aria-expanded", "true");
-    expect(workspace.parentElement).toHaveStyle({ gridColumn: "3 / 6" });
+    expect(workspace.parentElement).toHaveStyle({ gridColumn: "5 / 8" });
     expect(screen.getByLabelText("终端标签栏").parentElement).not.toHaveStyle({
       marginRight: "340px",
     });
@@ -1262,7 +1262,8 @@ describe("KerminalShell", () => {
 
     await waitFor(() => {
       expect(shell).toHaveStyle({
-        gridTemplateColumns: "312px 0px minmax(0, 1fr) 0px 44px",
+        gridTemplateColumns:
+          "312px 0px 0px 0px minmax(0, 1fr) 0px 44px",
       });
     });
     const groupButton = await screen.findByRole("button", { name: /bwy/ });

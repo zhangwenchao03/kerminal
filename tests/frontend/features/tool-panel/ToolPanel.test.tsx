@@ -440,21 +440,19 @@ describe("ToolPanel", () => {
     ).not.toBeInTheDocument();
   }, 20000);
 
-  it("requests a tool switch from the rail", async () => {
-    const user = userEvent.setup();
-    const onActiveToolChange = vi.fn();
+  it("keeps file management out of the right tool rail", () => {
+    const fileTool = tools.find((tool) => tool.id === "sftp");
 
     render(
       <ToolPanel
         activeTool="agentLauncher"
-        onActiveToolChange={onActiveToolChange}
+        onActiveToolChange={vi.fn()}
         tools={tools}
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "打开 文件" }));
-
-    expect(onActiveToolChange).toHaveBeenCalledWith("sftp");
+    expect(fileTool).toBeDefined();
+    expect(screen.queryByTitle(fileTool?.title ?? "")).not.toBeInTheDocument();
   });
 
   it("opens the tmux tool from the rail", async () => {
@@ -665,23 +663,6 @@ describe("ToolPanel", () => {
     expect(
       screen.queryByText(/当前 SSH 目标已有 ready managed session/),
     ).not.toBeInTheDocument();
-    expect(diagnosticsApiMocks.getManagedSshRuntimeSnapshot).not.toHaveBeenCalled();
-
-    view.unmount();
-    view = render(
-      <ToolPanel
-        activeTool="sftp"
-        activeMachine={sshMachine}
-        focusedPane={focusedSshPane}
-        onActiveToolChange={vi.fn()}
-        tools={tools}
-      />,
-    );
-
-    expect(
-      await screen.findByLabelText("当前远程路径", {}, { timeout: 10000 }),
-    ).toBeInTheDocument();
-    assertNoManagedSshAvailabilityNotice();
     expect(diagnosticsApiMocks.getManagedSshRuntimeSnapshot).not.toHaveBeenCalled();
 
     view.unmount();
@@ -1046,44 +1027,6 @@ describe("ToolPanel", () => {
       screen.getByText("NVIDIA RTX 4500 Ada Generation"),
     ).toBeInTheDocument();
     expect(screen.queryByText(/未返回可用 NVIDIA GPU/)).not.toBeInTheDocument();
-  });
-
-  it("shows the local file browser for local machines", async () => {
-    render(
-      <ToolPanel
-        activeTool="sftp"
-        activeMachine={localMachine}
-        onActiveToolChange={vi.fn()}
-        tools={tools}
-      />,
-    );
-
-    expect(
-      await screen.findByText("本地文件", undefined, { timeout: 5000 }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("本机文件系统")).toBeInTheDocument();
-    expect(screen.getByLabelText("当前本地路径")).toBeInTheDocument();
-  });
-
-  it("renders the shared remote file panel for an active container machine", async () => {
-    render(
-      <ToolPanel
-        activeTool="sftp"
-        activeMachine={containerMachine}
-        onActiveToolChange={vi.fn()}
-        tools={tools}
-      />,
-    );
-
-    expect(
-      await screen.findByText("docker:prod-api:api", undefined, {
-        timeout: 5000,
-      }),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByText("package.json", undefined, { timeout: 5000 }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("SFTP 文件浏览")).not.toBeInTheDocument();
   });
 
   it("shows an empty port forwarding state for non SSH machines", async () => {

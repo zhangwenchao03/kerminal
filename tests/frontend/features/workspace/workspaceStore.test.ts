@@ -27,11 +27,11 @@ describe("workspaceStore", () => {
     useWorkspaceStore.getState().addTerminalTab({ title: "本地 PowerShell" });
     useWorkspaceStore.getState().selectMachine("local-powershell");
     useWorkspaceStore.getState().focusPane("pane-local-1");
-    useWorkspaceStore.getState().setActiveTool("sftp");
+    useWorkspaceStore.getState().setActiveTool("system");
 
     expect(useWorkspaceStore.getState().selectedMachineId).toBe("local-powershell");
     expect(useWorkspaceStore.getState().focusedPaneId).toBe("pane-local-1");
-    expect(useWorkspaceStore.getState().activeTool).toBe("sftp");
+    expect(useWorkspaceStore.getState().activeTool).toBe("system");
   });
 
   it("tracks sidebar search and broadcast drafts", () => {

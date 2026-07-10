@@ -72,6 +72,10 @@ export function useKerminalShellCommands({
         openSettingsTool();
         return;
       }
+      if (toolId === "sftp") {
+        setActiveTool(null);
+        return;
+      }
       setActiveTool(activeTool === toolId ? null : toolId);
     },
     [activeTool, openSettingsTool, setActiveTool],
@@ -212,7 +216,7 @@ export function useKerminalShellCommands({
       } else if (action === "openSystem") {
         setActiveTool("system");
       } else if (action === "openSftp") {
-        setActiveTool("sftp");
+        setActiveTool(null);
       } else if (action === "openPorts") {
         setActiveTool("ports");
       } else if (action === "openSnippets") {

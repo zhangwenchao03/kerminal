@@ -48,7 +48,7 @@ describe("workspaceStore external SSH launch", () => {
     expect(state.selectedMachineId).toBe("external:launch-1");
   });
 
-  it("switches to the SFTP tool when the launch asks for SFTP", () => {
+  it("selects the SSH machine without opening the right tool drawer when the launch asks for SFTP", () => {
     useWorkspaceStore.getState().openExternalSshLaunch(
       createResolvedLaunch({
         displayName: "Jump host file view",
@@ -57,7 +57,8 @@ describe("workspaceStore external SSH launch", () => {
     );
 
     const state = useWorkspaceStore.getState();
-    expect(state.activeTool).toBe("sftp");
+    expect(state.activeTool).toBeNull();
+    expect(state.selectedMachineId).toBe("external:launch-1");
     expect(state.terminalPanes[0]?.title).toBe("Jump host file view");
   });
 

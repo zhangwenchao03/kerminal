@@ -126,12 +126,16 @@ export function useViewportWidth() {
 
 export function resolveShellLayout({
   activeToolOpen,
+  leftFilePanelOpen,
+  leftFilePanelWidth,
   leftPanelCollapsed,
   leftPanelWidth,
   toolPanelWidth,
   viewportWidth,
 }: {
   activeToolOpen: boolean;
+  leftFilePanelOpen: boolean;
+  leftFilePanelWidth: number;
   leftPanelCollapsed: boolean;
   leftPanelWidth: number;
   toolPanelWidth: number;
@@ -139,17 +143,23 @@ export function resolveShellLayout({
 }) {
   const compactShell = viewportWidth < 900;
   const effectiveLeftPanelCollapsed = leftPanelCollapsed || compactShell;
+  const effectiveLeftFilePanelOpen = leftFilePanelOpen && !compactShell;
   const effectiveRightPanelOpen = activeToolOpen && !compactShell;
   const leftPanelColumnWidth = effectiveLeftPanelCollapsed ? 0 : leftPanelWidth;
+  const leftFilePanelColumnWidth = effectiveLeftFilePanelOpen
+    ? leftFilePanelWidth
+    : 0;
   const rightPanelColumnWidth = effectiveRightPanelOpen
     ? toolPanelWidth
     : TOOL_RAIL_WIDTH;
 
   return {
     compactShell,
+    effectiveLeftFilePanelOpen,
     effectiveLeftPanelCollapsed,
     effectiveRightPanelOpen,
-    gridTemplateColumns: `${leftPanelColumnWidth}px 0px minmax(0, 1fr) 0px ${rightPanelColumnWidth}px`,
+    gridTemplateColumns: `${leftPanelColumnWidth}px 0px ${leftFilePanelColumnWidth}px 0px minmax(0, 1fr) 0px ${rightPanelColumnWidth}px`,
+    leftFilePanelColumnWidth,
     leftPanelColumnWidth,
     rightPanelColumnWidth,
     rightWorkspaceInset: rightPanelColumnWidth,

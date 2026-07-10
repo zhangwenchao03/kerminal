@@ -768,7 +768,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
       }
       return {
         activeTabId: tab.id,
-        activeTool: "sftp",
+        activeTool: null,
         focusedPaneId: "",
         selectedMachineId: tab.machineId,
         workspaceFileRevealRequest: {
@@ -866,7 +866,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
           tabId: `tab-ssh-${generatedTabCount}`,
           title: machine.name,
         }),
-        ...(launch.options.openSftp ? { activeTool: "sftp" as const } : {}),
+        ...(launch.options.openSftp ? { activeTool: null } : {}),
         machineGroups,
       };
     }),
@@ -1100,6 +1100,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
     set(() => {
       if (activeTool === null) {
         return { activeTool };
+      }
+      if (activeTool === "sftp") {
+        return { activeTool: null };
       }
       return isToolId(activeTool) ? { activeTool } : {};
     }),

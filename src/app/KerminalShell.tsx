@@ -89,6 +89,7 @@ import {
 import { useWorkspaceSessionPersistence } from "./useWorkspaceSessionPersistence";
 import {
   MachineSidebarStoreBridge,
+  SidebarFilePanelStoreBridge,
   ToolPanelStoreBridge,
   WorkspaceTerminalSurface,
 } from "./KerminalShell.workspaceBridge";
@@ -181,6 +182,14 @@ export function KerminalShell() {
     (state) => state.moveSidebarMachine,
   );
   const pinMachineGroup = useWorkspaceStore((state) => state.pinMachineGroup);
+  const focusedSshHostId = useWorkspaceStore((state) => {
+    const focusedPane = state.terminalPanes.find(
+      (pane) => pane.id === state.focusedPaneId,
+    );
+    return focusedPane?.mode === "ssh"
+      ? (focusedPane.remoteHostId ?? focusedPane.machineId)
+      : undefined;
+  });
   const terminalTabs = useWorkspaceStore((state) => state.terminalTabs);
   const workspaceFileDirtyState = useWorkspaceStore(
     (state) => state.workspaceFileDirtyState,
@@ -239,10 +248,27 @@ export function KerminalShell() {
     lang: htmlLanguage(settings.appearance.interfaceLanguage),
     theme: resolvedTheme,
   });
+  const sidebarFilePanelOpen = useMemo(() => {
+    const selectedMachine = machineGroups
+      .flatMap((group) => group.machines)
+      .find((machine) => machine.id === selectedMachineId);
+    if (selectedMachine?.kind === "ssh") {
+      return true;
+    }
+    if (!focusedSshHostId) {
+      return false;
+    }
+    return machineGroups
+      .flatMap((group) => group.machines)
+      .some(
+        (machine) => machine.id === focusedSshHostId && machine.kind === "ssh",
+      );
+  }, [focusedSshHostId, machineGroups, selectedMachineId]);
   const {
     beginPanelResize,
     collapsedMachineGroupIds,
     compactShell,
+    effectiveLeftFilePanelOpen,
     effectiveLeftPanelCollapsed,
     effectiveRightPanelOpen,
     gridTemplateColumns,
@@ -255,11 +281,12 @@ export function KerminalShell() {
     workspaceShellLayout,
   } = useKerminalShellPanelResize({
     activeTool,
+    leftFilePanelOpen: sidebarFilePanelOpen,
     viewportWidth,
     workspaceFrameRef,
   });
   const rightToolRailTitleBarFillWidth =
-    activeTool === null || compactShell
+    activeTool === null || activeTool === "sftp" || compactShell
       ? 44
       : settings.interfaceDensity === "spacious"
         ? 56
@@ -438,7 +465,7 @@ export function KerminalShell() {
   const openSftpForMachine = useCallback(
     (machineId: string) => {
       selectMachine(machineId);
-      setActiveTool("sftp");
+      setActiveTool(null);
     },
     [selectMachine, setActiveTool],
   );
@@ -772,11 +799,11 @@ export function KerminalShell() {
         data-tauri-drag-region
       />
       <div
-        className="kerminal-material-nav col-[2/6] row-[1/2] border-b"
+        className="kerminal-material-nav col-[2/8] row-[1/2] border-b"
         data-tauri-drag-region
       />
       <div
-        className="pointer-events-none relative z-10 col-[2/6] row-[1/2] justify-self-end kerminal-material-nav"
+        className="pointer-events-none relative z-10 col-[2/8] row-[1/2] justify-self-end kerminal-material-nav"
         data-right-tool-rail-titlebar-fill
         style={{
           height: "calc(100% + 1px)",
@@ -861,9 +888,24 @@ export function KerminalShell() {
         onKeyDown={(event) => resizeWithKeyboard("left", event)}
         onPointerDown={(event) => beginPanelResize("left", event)}
       />
+      {effectiveLeftFilePanelOpen ? (
+        <div className="col-[3/4] row-[2/3] h-full min-w-0 overflow-hidden">
+          <SidebarFilePanelStoreBridge
+            interfaceDensity={settings.interfaceDensity}
+            machineGroups={machineGroups}
+          />
+        </div>
+      ) : null}
+      <ShellResizeSeparator
+        className="kerminal-shell-separator col-[4/5] row-[2/3]"
+        hidden={!effectiveLeftFilePanelOpen}
+        label="璋冩暣鏂囦欢闈㈡澘瀹藉害"
+        onKeyDown={(event) => resizeWithKeyboard("file", event)}
+        onPointerDown={(event) => beginPanelResize("file", event)}
+      />
       <div
         className="relative z-0 h-full min-w-0 flex-1 overflow-hidden"
-        style={{ gridColumn: "3 / 6", gridRow: "1 / 3" }}
+        style={{ gridColumn: "5 / 8", gridRow: "1 / 3" }}
       >
         <WorkspaceTerminalSurface
           contentRightInset={rightWorkspaceInset}
@@ -889,13 +931,13 @@ export function KerminalShell() {
         label="调整工具面板宽度"
         onKeyDown={(event) => resizeWithKeyboard("tools", event)}
         onPointerDown={(event) => beginPanelResize("tools", event)}
-        style={{ gridColumn: "4 / 5", gridRow: "2 / 3" }}
+        style={{ gridColumn: "6 / 7", gridRow: "2 / 3" }}
       />
       <div
         className="relative z-20 h-full overflow-hidden"
-        style={{ gridColumn: "5 / 6", gridRow: "2 / 3" }}
+        style={{ gridColumn: "7 / 8", gridRow: "2 / 3" }}
       >
-        {activeTool === null || compactShell ? (
+        {activeTool === null || activeTool === "sftp" || compactShell ? (
           <ShellToolRail onActiveToolChange={activateShellTool} />
         ) : (
           <ToolPanelStoreBridge

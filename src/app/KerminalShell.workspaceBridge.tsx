@@ -12,6 +12,8 @@ import type {
   AppSettings,
 } from "../features/settings/settingsModel";
 import { LazySftpTransferWorkbench as SftpTransferWorkbench } from "../features/sftp/LazySftpTransferWorkbench";
+import { SftpToolContent } from "../features/sftp/SftpToolContent";
+import { sftpSidebarTransferViewScope } from "../features/sftp/sftp-tool-content/sftpTransferScopeModel";
 import { LazyWorkspaceFileTabSurface as WorkspaceFileTabSurface } from "../features/workspace/LazyWorkspaceFileTabSurface";
 import {
   type BroadcastCommandRequest,
@@ -35,13 +37,13 @@ import {
   tools,
   useWorkspaceStore,
   type AddTerminalTabOptions,
-  type OpenWorkspaceFileTabOptions,
   type TmuxAttachPlacement,
 } from "../features/workspace/workspaceStore";
 import type { SettingsSectionId } from "../features/settings/SettingsToolContent";
 import type { TmuxAttachLaunch } from "../lib/tmuxApi";
 import {
   buildOpenMachineIdsSnapshot,
+  buildSidebarFilePanelWorkspaceContext,
   buildTerminalWorkspaceSnapshot,
   buildToolPanelWorkspaceContext,
   buildToolPanelWorkspaceSnapshot,
@@ -84,7 +86,6 @@ interface ToolPanelStoreBridgeProps {
   onFocusTab?: (tabId: string) => void;
   onOpenSettingsSection?: (sectionId: SettingsSectionId) => void;
   onOpenSshTerminal?: (hostId: string) => void;
-  onOpenWorkspaceFileTab?: (options: OpenWorkspaceFileTabOptions) => void;
   onOpenTmuxTerminal?: (
     launch: TmuxAttachLaunch,
     placement?: TmuxAttachPlacement,
@@ -110,6 +111,8 @@ const getToolPanelWorkspaceSnapshot = () =>
 
 const getTerminalWorkspaceSnapshot = () =>
   buildTerminalWorkspaceSnapshot(useWorkspaceStore.getState());
+
+const rightPanelTools = tools.filter((tool) => tool.id !== "sftp");
 
 function paneStatusForConnectionState(state: ConnectionState): MachineStatus {
   if (state === "connected") {
@@ -295,12 +298,6 @@ export function ToolPanelStoreBridge({
   const openTmuxAttachTerminal = useWorkspaceStore(
     (state) => state.openTmuxAttachTerminal,
   );
-  const openWorkspaceFileTab = useWorkspaceStore(
-    (state) => state.openWorkspaceFileTab,
-  );
-  const workspaceFileDirtyState = useWorkspaceStore(
-    (state) => state.workspaceFileDirtyState,
-  );
 
   return (
     <ToolPanel
@@ -311,13 +308,63 @@ export function ToolPanelStoreBridge({
       activeTab={workspaceContext.activeTab}
       focusedPane={workspaceContext.focusedPane}
       onClosePane={closePane}
-      onOpenWorkspaceFileTab={openWorkspaceFileTab}
       onOpenTmuxTerminal={openTmuxAttachTerminal}
       terminalPanes={workspaceContext.terminalPanes}
       terminalTabs={workspaceContext.terminalTabs}
-      sftpRevealRequest={workspaceContext.sftpRevealRequest}
-      workspaceFileDirtyState={workspaceFileDirtyState}
-      tools={tools}
+      tools={rightPanelTools}
     />
+  );
+}
+
+export function SidebarFilePanelStoreBridge({
+  interfaceDensity,
+  machineGroups,
+}: {
+  interfaceDensity: InterfaceDensity;
+  machineGroups: MachineGroup[];
+}) {
+  const filePanelWorkspaceSnapshot = useSyncExternalStore(
+    subscribeToWorkspaceStore,
+    getToolPanelWorkspaceSnapshot,
+    getToolPanelWorkspaceSnapshot,
+  );
+  const workspaceContext = useMemo(
+    () =>
+      buildSidebarFilePanelWorkspaceContext(
+        useWorkspaceStore.getState(),
+        machineGroups,
+      ),
+    [filePanelWorkspaceSnapshot, machineGroups],
+  );
+  const openWorkspaceFileTab = useWorkspaceStore(
+    (state) => state.openWorkspaceFileTab,
+  );
+  const workspaceFileDirtyState = useWorkspaceStore(
+    (state) => state.workspaceFileDirtyState,
+  );
+
+  if (!workspaceContext.selectedMachine) {
+    return null;
+  }
+
+  return (
+    <div className="kerminal-material-nav flex h-full min-w-0 flex-col overflow-hidden border-r">
+      <SftpToolContent
+        compactHeader
+        followedRemotePath={workspaceContext.focusedPane?.currentCwd}
+        interfaceDensity={interfaceDensity}
+        onOpenWorkspaceFileTab={openWorkspaceFileTab}
+        selectedMachine={workspaceContext.selectedMachine}
+        sftpRevealRequest={workspaceContext.sftpRevealRequest}
+        transferViewScope={sftpSidebarTransferViewScope({
+          hostId: workspaceContext.selectedMachine.id,
+          tabId: workspaceContext.activeTab?.id,
+        })}
+        workspaceFileDirtyState={workspaceFileDirtyState}
+        workspaceFileTabs={workspaceContext.terminalTabs.filter(
+          isWorkspaceFileTab,
+        )}
+      />
+    </div>
   );
 }

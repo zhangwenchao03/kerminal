@@ -26,6 +26,14 @@ export interface ToolPanelWorkspaceContext {
   terminalTabs: TerminalTab[];
 }
 
+export interface SidebarFilePanelWorkspaceContext {
+  activeTab?: TerminalTab;
+  focusedPane?: TerminalPane;
+  selectedMachine?: Machine;
+  sftpRevealRequest: WorkspaceFileRevealRequest | null;
+  terminalTabs: TerminalTab[];
+}
+
 export interface TerminalWorkspaceSnapshot {
   activeTabId: string;
   broadcastDraft: string;
@@ -170,6 +178,46 @@ export function buildToolPanelWorkspaceContext(
     terminalPanes: state.terminalPanes.map(
       terminalPaneWithoutHighFrequencyOutput,
     ),
+    terminalTabs: state.terminalTabs,
+  };
+}
+
+export function buildSidebarFilePanelWorkspaceContext(
+  state: WorkspaceState,
+  machineGroups: MachineGroup[],
+): SidebarFilePanelWorkspaceContext {
+  const activeTab = state.terminalTabs.find(
+    (tab) => tab.id === state.activeTabId,
+  );
+  const focusedPane = state.terminalPanes.find(
+    (pane) => pane.id === state.focusedPaneId,
+  );
+  const focusedHostId =
+    focusedPane?.mode === "ssh"
+      ? (focusedPane.remoteHostId ?? focusedPane.machineId)
+      : undefined;
+  const focusedMachine = focusedHostId
+    ? findMachine(machineGroups, focusedHostId)
+    : undefined;
+  const selectedMachine = findMachine(machineGroups, state.selectedMachineId);
+  const fileMachine =
+    focusedMachine?.kind === "ssh"
+      ? focusedMachine
+      : selectedMachine?.kind === "ssh"
+        ? selectedMachine
+        : undefined;
+  const matchingFocusedPane =
+    focusedPane?.mode === "ssh" &&
+    fileMachine &&
+    (focusedPane.remoteHostId ?? focusedPane.machineId) === fileMachine.id
+      ? focusedPane
+      : undefined;
+
+  return {
+    activeTab,
+    focusedPane: matchingFocusedPane,
+    selectedMachine: fileMachine,
+    sftpRevealRequest: state.workspaceFileRevealRequest,
     terminalTabs: state.terminalTabs,
   };
 }

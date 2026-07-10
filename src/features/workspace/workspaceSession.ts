@@ -47,6 +47,7 @@ export interface WorkspaceSessionSnapshot {
 
 export interface WorkspaceShellLayout {
   collapsedMachineGroupIds?: string[];
+  leftFilePanelWidth?: number;
   leftPanelCollapsed?: boolean;
   leftPanelWidth?: number;
   toolPanelWidth?: number;
@@ -132,6 +133,14 @@ function normalizeWorkspaceShellLayout(
       max: 520,
       min: 220,
     }),
+    ...normalizePanelWidthProperty(
+      value.leftFilePanelWidth,
+      "leftFilePanelWidth",
+      {
+        max: 560,
+        min: 280,
+      },
+    ),
     ...normalizePanelWidthProperty(value.toolPanelWidth, "toolPanelWidth", {
       max: 620,
       min: 300,
@@ -142,7 +151,7 @@ function normalizeWorkspaceShellLayout(
 }
 
 function normalizePanelWidthProperty<
-  Key extends "leftPanelWidth" | "toolPanelWidth",
+  Key extends "leftFilePanelWidth" | "leftPanelWidth" | "toolPanelWidth",
 >(
   value: unknown,
   key: Key,

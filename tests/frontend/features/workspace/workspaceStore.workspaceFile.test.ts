@@ -109,7 +109,7 @@ describe("workspaceStore workspace file tabs", () => {
 
     const state = useWorkspaceStore.getState();
     expect(state.activeTabId).toBe(tabId);
-    expect(state.activeTool).toBe("sftp");
+    expect(state.activeTool).toBeNull();
     expect(state.focusedPaneId).toBe("");
     expect(state.selectedMachineId).toBe("host-prod");
     expect(state.workspaceFileRevealRequest).toMatchObject({

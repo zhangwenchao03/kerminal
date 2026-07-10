@@ -3,7 +3,6 @@ import {
   Bot,
   Cpu,
   FileText,
-  FolderOpen,
   History,
   Network,
   PanelsTopLeft,
@@ -29,17 +28,12 @@ import type {
   TerminalTab,
   ToolId,
   ToolSummary,
-  WorkspaceFileDirtyState,
-  WorkspaceFileRevealRequest,
 } from "../workspace/types";
-import { isWorkspaceFileTab } from "../workspace/types";
 import type {
   AddTerminalTabOptions,
-  OpenWorkspaceFileTabOptions,
   TmuxAttachPlacement,
 } from "../workspace/workspaceStore";
 import type { TmuxAttachLaunch } from "../../lib/tmuxApi";
-import { sftpSidebarTransferViewScope } from "../sftp/sftp-tool-content/sftpTransferScopeModel";
 
 interface ToolPanelProps {
   activeTool: ToolId | null;
@@ -50,11 +44,9 @@ interface ToolPanelProps {
   focusedPane?: TerminalPane;
   terminalPanes?: TerminalPane[];
   terminalTabs?: TerminalTab[];
-  workspaceFileDirtyState?: WorkspaceFileDirtyState;
   tools: ToolSummary[];
   settings?: AppSettings;
   snippetConfigRevision?: number;
-  sftpRevealRequest?: WorkspaceFileRevealRequest | null;
   resolvedTheme?: ResolvedTheme;
   terminalAppearance?: TerminalAppearance;
   workflowConfigRevision?: number;
@@ -64,7 +56,6 @@ interface ToolPanelProps {
   onClosePane?: (paneId: string) => void;
   onOpenSettingsSection?: (sectionId: SettingsSectionId) => void;
   onOpenSshTerminal?: (hostId: string) => void;
-  onOpenWorkspaceFileTab?: (options: OpenWorkspaceFileTabOptions) => void;
   onOpenTmuxTerminal?: (
     launch: TmuxAttachLaunch,
     placement?: TmuxAttachPlacement,
@@ -77,16 +68,12 @@ interface ToolPanelProps {
 const toolIcons: Partial<Record<ToolId, typeof Bot>> = {
   agentLauncher: Bot,
   system: Cpu,
-  sftp: FolderOpen,
   ports: Network,
   tmux: PanelsTopLeft,
   snippets: FileText,
   logs: History,
 };
 
-const SftpToolContent = lazy(async () => ({
-  default: (await import("../sftp/SftpToolContent")).SftpToolContent,
-}));
 const ServerInfoToolContent = lazy(async () => ({
   default: (await import("./ServerInfoToolContent")).ServerInfoToolContent,
 }));
@@ -115,24 +102,26 @@ export function ToolPanel({
   onClosePane,
   onActiveToolChange,
   onFocusTab,
-  onOpenWorkspaceFileTab,
   onOpenTmuxTerminal,
   resolvedTheme = "dark",
   settings,
   snippetConfigRevision,
-  sftpRevealRequest,
   terminalPanes,
   terminalTabs,
   terminalAppearance,
-  workspaceFileDirtyState,
   tools,
 }: ToolPanelProps) {
-  const railTools = tools;
+  const railTools = useMemo(
+    () => tools.filter((tool) => tool.id !== "sftp"),
+    [tools],
+  );
   const defaultContentToolId =
-    tools.find((tool) => tool.id !== "settings")?.id ?? null;
+    railTools.find((tool) => tool.id !== "settings")?.id ?? null;
   const contentTool =
     activeTool === null
       ? null
+      : activeTool === "sftp"
+        ? null
       : activeTool === "settings"
         ? defaultContentToolId
         : activeTool;
@@ -140,7 +129,7 @@ export function ToolPanel({
     contentTool ? [contentTool] : [],
   );
   const renderedToolIds = useMemo(() => {
-    const availableToolIds = new Set(tools.map((tool) => tool.id));
+    const availableToolIds = new Set(railTools.map((tool) => tool.id));
     const nextToolIds = mountedToolIds.filter((toolId) =>
       availableToolIds.has(toolId),
     );
@@ -148,13 +137,13 @@ export function ToolPanel({
       return [...nextToolIds, contentTool];
     }
     return nextToolIds;
-  }, [contentTool, mountedToolIds, tools]);
+  }, [contentTool, mountedToolIds, railTools]);
   const renderedTools = useMemo(
     () =>
       renderedToolIds
-        .map((toolId) => tools.find((tool) => tool.id === toolId))
+        .map((toolId) => railTools.find((tool) => tool.id === toolId))
         .filter((tool): tool is ToolSummary => Boolean(tool)),
-    [renderedToolIds, tools],
+    [renderedToolIds, railTools],
   );
   const diagnosticsBundle = useDiagnosticsBundleController();
   const active = contentTool
@@ -200,8 +189,7 @@ export function ToolPanel({
           {renderedTools.map((tool) => {
             const toolId = tool.id;
             const selected = toolId === contentTool;
-            const fullHeightTool =
-              toolId === "agentLauncher" || toolId === "sftp";
+            const fullHeightTool = toolId === "agentLauncher";
             return (
               <div
                 aria-hidden={!selected}
@@ -261,37 +249,6 @@ export function ToolPanel({
                     ) : null}
                     {toolId === "system" ? (
                       <ServerInfoToolContent selectedMachine={activeMachine} />
-                    ) : null}
-                    {toolId === "sftp" ? (
-                      <SftpToolContent
-                        followedLocalPath={
-                          focusedPane?.mode === "local" &&
-                          focusedPane.machineId === activeMachine?.id
-                            ? (focusedPane.currentCwd ?? focusedPane.cwd)
-                            : undefined
-                        }
-                        followedRemotePath={
-                          focusedPane?.mode === "ssh" &&
-                          focusedPane.remoteHostId === activeMachine?.id
-                            ? focusedPane.currentCwd
-                            : focusedPane?.mode === "container" &&
-                                focusedPane.machineId === activeMachine?.id
-                              ? focusedPane.currentCwd
-                              : undefined
-                        }
-                        interfaceDensity={interfaceDensity}
-                        onOpenWorkspaceFileTab={onOpenWorkspaceFileTab}
-                        selectedMachine={activeMachine}
-                        sftpRevealRequest={sftpRevealRequest}
-                        transferViewScope={sftpSidebarTransferViewScope({
-                          hostId: activeMachine?.id,
-                          tabId: activeTab?.id,
-                        })}
-                        workspaceFileDirtyState={workspaceFileDirtyState}
-                        workspaceFileTabs={terminalTabs?.filter(
-                          isWorkspaceFileTab,
-                        )}
-                      />
                     ) : null}
                     {toolId === "ports" ? (
                       <PortForwardToolContent
