@@ -94,6 +94,7 @@ import type { TerminalRendererController } from "./terminalRenderer";
 import { terminalRendererRegistry } from "./terminalRendererRegistry";
 import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeScheduler";
 import type { TerminalInputCompatibilityMode } from "./terminalKeyboardPolicy";
+import { useTransientTerminalNotice } from "./useTransientTerminalNotice";
 import { useXtermPaneSuggestionMenu } from "./useXtermPaneSuggestionMenu";
 
 const TERMINAL_CLEAR_SCREEN_INPUT = "\x0c";
@@ -223,9 +224,8 @@ export function XtermPane({
   terminalRuntimeLifecycleControllerRef.current ??= createTerminalPaneRuntimeLifecycleRuntime({ activeTab: visible, focused, rendererType: terminalAppearance.rendererType, visible });
   const terminalRuntimeLifecycleRef = terminalRuntimeLifecycleControllerRef.current.decisionRef;
   const searchInputId = useId();
-  const [commandBlockNotice, setCommandBlockNotice] = useState<string | null>(
-    null,
-  );
+  const [commandBlockNotice, setCommandBlockNotice] =
+    useTransientTerminalNotice();
   const [commandBlockViews, setCommandBlockViews] = useState<
     TerminalCommandBlockView[]
   >([]);
