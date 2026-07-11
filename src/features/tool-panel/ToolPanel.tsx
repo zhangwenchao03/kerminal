@@ -7,6 +7,7 @@ import {
   History,
   Network,
   PanelsTopLeft,
+  ScanSearch,
 } from "lucide-react";
 import { RenderErrorBoundary } from "../../components/RenderErrorBoundary";
 import { Button } from "../../components/ui/button";
@@ -38,6 +39,8 @@ import type {
   OpenWorkspaceFileTabOptions,
   TmuxAttachPlacement,
 } from "../workspace/workspaceStore";
+import type { WorkspaceContextProjection } from "../workspace/context";
+import type { TerminalArtifactActionRequest } from "../terminal/artifacts/public";
 import type { TmuxAttachLaunch } from "../../lib/tmuxApi";
 import { sftpSidebarTransferViewScope } from "../sftp/sftp-tool-content/sftpTransferScopeModel";
 
@@ -58,6 +61,8 @@ interface ToolPanelProps {
   resolvedTheme?: ResolvedTheme;
   terminalAppearance?: TerminalAppearance;
   workflowConfigRevision?: number;
+  workspaceContext?: WorkspaceContextProjection;
+  onArtifactActionRequest?: (request: TerminalArtifactActionRequest) => void;
   onActiveToolChange: (toolId: ToolId) => void;
   onCreateTerminal?: (options?: AddTerminalTabOptions) => void;
   onFocusTab?: (tabId: string) => void;
@@ -76,6 +81,7 @@ interface ToolPanelProps {
 
 const toolIcons: Partial<Record<ToolId, typeof Bot>> = {
   agentLauncher: Bot,
+  context: ScanSearch,
   system: Cpu,
   sftp: FolderOpen,
   ports: Network,
@@ -106,6 +112,13 @@ const AgentLauncherToolContent = lazy(async () => ({
 const TmuxToolContent = lazy(async () => ({
   default: (await import("./TmuxToolContent")).TmuxToolContent,
 }));
+const ContextInspectorToolContent = lazy(async () => ({
+  default: (await import("./context-inspector")).ContextInspectorToolContent,
+}));
+const ContextInspectorTerminalArtifacts = lazy(async () => ({
+  default: (await import("./context-inspector"))
+    .ContextInspectorTerminalArtifacts,
+}));
 
 export function ToolPanel({
   activeTool,
@@ -114,6 +127,7 @@ export function ToolPanel({
   focusedPane,
   onClosePane,
   onActiveToolChange,
+  onArtifactActionRequest,
   onFocusTab,
   onOpenWorkspaceFileTab,
   onOpenTmuxTerminal,
@@ -125,6 +139,7 @@ export function ToolPanel({
   terminalTabs,
   terminalAppearance,
   workspaceFileDirtyState,
+  workspaceContext,
   tools,
 }: ToolPanelProps) {
   const railTools = tools;
@@ -229,9 +244,7 @@ export function ToolPanel({
 
                 <RenderErrorBoundary
                   fallback={() => (
-                    <ToolContentCrashFallback
-                      title={tool.title}
-                    />
+                    <ToolContentCrashFallback title={tool.title} />
                   )}
                 >
                   <Suspense
@@ -253,6 +266,25 @@ export function ToolPanel({
                     ) : null}
                     {toolId === "system" ? (
                       <ServerInfoToolContent selectedMachine={activeMachine} />
+                    ) : null}
+                    {toolId === "context" && workspaceContext ? (
+                      <ContextInspectorToolContent
+                        context={workspaceContext}
+                        isNavigationAvailable={(navigationId) =>
+                          Boolean(onFocusTab && navigationId.startsWith("tab:"))
+                        }
+                        onNavigate={(navigationId) => {
+                          if (navigationId.startsWith("tab:")) {
+                            onFocusTab?.(navigationId.slice(4));
+                          }
+                        }}
+                      />
+                    ) : null}
+                    {toolId === "context" && workspaceContext?.focusedPaneId ? (
+                      <ContextInspectorTerminalArtifacts
+                        onActionRequest={onArtifactActionRequest}
+                        paneId={workspaceContext.focusedPaneId}
+                      />
                     ) : null}
                     {toolId === "sftp" ? (
                       <SftpToolContent

@@ -190,6 +190,7 @@ export interface TerminalPane {
 
 export const toolIds = [
   "agentLauncher",
+  "context",
   "system",
   "containers",
   "sftp",

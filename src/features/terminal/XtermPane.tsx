@@ -1,47 +1,16 @@
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type MouseEvent,
-} from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { Terminal as XtermTerminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import {
-  resizeTerminal,
-  startTerminalLog,
-  stopTerminalLog,
-  writeTerminal,
-  type TerminalAgentSignal,
-  type TerminalSessionLogState,
-} from "../../lib/terminalApi";
+import { resizeTerminal, startTerminalLog, stopTerminalLog, writeTerminal, type TerminalSessionLogState } from "../../lib/terminalApi";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
-import type { RemoteTargetRef } from "../../lib/targetModel";
-import type {
-  ResolvedTheme,
-  TerminalColorScheme,
-  TerminalAppearance,
-} from "../settings/settingsModel";
-import {
-  terminalColorSchemeForTheme,
-  terminalFontWeightValue,
-} from "../settings/settingsModel";
+import { terminalColorSchemeForTheme, terminalFontWeightValue } from "../settings/settingsModel";
 import { xtermThemeFor } from "../settings/terminalTheme";
-import {
-  TerminalCommandBlockRail,
-  type TerminalCommandBlockAction,
-} from "./TerminalCommandBlockRail";
+import type { TerminalCommandBlockAction } from "./TerminalCommandBlockRail";
 import {
   splitDirectionForMenuAction,
-  TerminalContextMenu,
   type TerminalContextMenuAction,
-  type TerminalContextMenuPosition,
 } from "./TerminalContextMenu";
 import {
   buildTerminalCommandBlockViews,
@@ -51,6 +20,7 @@ import {
   type TerminalCommandBlock,
   type TerminalCommandBlockView,
 } from "./terminalCommandBlocks";
+import { useXtermPanePromptBridge } from "./XtermPane.promptSourceRegistry";
 import {
   clearTerminalCommandBlocks,
   syncTerminalCommandPromptBlocks,
@@ -59,8 +29,6 @@ import {
   createTerminalInputModelState,
   type TerminalInputModelState,
 } from "./terminalInputModel";
-import { TerminalSearchPanel } from "./TerminalSearchPanel";
-import type { TerminalSplitDirection } from "../workspace/types";
 import {
   applyTerminalCommandBlockFolding,
   errorMessage,
@@ -72,83 +40,48 @@ import {
   stableJsonDependencyKey,
   type ConnectionState,
   type TerminalGhostSuggestion,
-  terminalSearchOptions,
 } from "./XtermPane.helpers";
 
-export { collectCurrentDirOscSequences, collectSubmittedCommands } from "./XtermPane.helpers";
+export {
+  collectCurrentDirOscSequences,
+  collectSubmittedCommands,
+} from "./XtermPane.helpers";
 import { installXtermPaneRuntime } from "./XtermPane.runtime";
-import {
-  type XtermPaneActivityRuntime,
-} from "./XtermPane.activityRuntime";
+import { type XtermPaneActivityRuntime } from "./XtermPane.activityRuntime";
 import {
   EMPTY_TERMINAL_PANE_CHROME_SNAPSHOT,
   terminalChromeRuntimeStore,
 } from "./terminalChromeRuntimeStore";
-import { TerminalNewOutputButton } from "./TerminalNewOutputButton";
-import { XtermPaneChrome } from "./XtermPaneChrome";
 import { resolveTerminalAppearanceRecoveryTrigger } from "./terminalGpuRenderRecoveryAppearance";
 import type { TerminalGpuRenderRecoveryController } from "./terminalGpuRenderRecovery";
-import { createTerminalPaneRuntimeLifecycleRuntime, type TerminalPaneRuntimeLifecycleRuntime } from "./terminalPaneRuntimeLifecycleRuntime";
-import { createWindowVisibleRecoveryScheduler, scheduleTerminalPaneVisibleRecovery } from "./terminalPaneVisibleRecovery";
+import {
+  createTerminalPaneRuntimeLifecycleRuntime,
+  type TerminalPaneRuntimeLifecycleRuntime,
+} from "./terminalPaneRuntimeLifecycleRuntime";
+import {
+  createWindowVisibleRecoveryScheduler,
+  scheduleTerminalPaneVisibleRecovery,
+} from "./terminalPaneVisibleRecovery";
 import type { TerminalRendererController } from "./terminalRenderer";
 import { terminalRendererRegistry } from "./terminalRendererRegistry";
 import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeScheduler";
-import type { TerminalInputCompatibilityMode } from "./terminalKeyboardPolicy";
 import { useTransientTerminalNotice } from "./useTransientTerminalNotice";
 import { useXtermPaneSuggestionMenu } from "./useXtermPaneSuggestionMenu";
+import { useXtermPaneSearch } from "./XtermPane.search";
+import {
+  XtermPaneView,
+  type XtermPaneContextMenuState,
+} from "./XtermPane.view";
+import type { XtermPaneProps } from "./XtermPane.types";
+
+export type {
+  XtermPaneDimensions,
+  XtermPaneInputRequest,
+  XtermPaneSessionFinishedEvent,
+} from "./XtermPane.types";
 
 const TERMINAL_CLEAR_SCREEN_INPUT = "\x0c";
 const TERMINAL_FRONTEND_CLEAR_SCREEN_SEQUENCE = "\x1b[H\x1b[2J\x1b[3J";
-interface XtermPaneProps {
-  args?: string[];
-  currentCwd?: string;
-  cwd?: string;
-  env?: Record<string, string>;
-  focusRequestToken?: number;
-  focused: boolean;
-  inputCompatibilityMode?: TerminalInputCompatibilityMode;
-  inputRequest?: XtermPaneInputRequest | null;
-  paneId: string;
-  profileId?: string;
-  remoteCommand?: string;
-  remoteHostId?: string;
-  remoteHostProduction?: boolean;
-  resolvedTheme: ResolvedTheme;
-  shell?: string;
-  shellAssistEnabled?: boolean;
-  startupMessage?: string;
-  terminalAppearance: TerminalAppearance;
-  terminalColorSchemeOverride?: TerminalColorScheme;
-  target?: RemoteTargetRef;
-  title: string;
-  transientStartupMessage?: boolean;
-  visible?: boolean;
-  onAgentSignal?: (signal: TerminalAgentSignal) => void;
-  onCurrentCwdChange?: (cwd: string) => void;
-  onConnectionStateChange?: (state: ConnectionState) => void;
-  onOpenLogs?: () => void;
-  onOutputHistoryChange?: (outputHistory: string | undefined) => void;
-  onSessionFinished?: (event: XtermPaneSessionFinishedEvent) => void;
-  onSplitPane?: (direction: TerminalSplitDirection) => void;
-  onTerminalDimensionsChange?: (dimensions: XtermPaneDimensions) => void;
-  outputHistory?: string;
-  resolveInitialOutputHistory?: () => string | undefined;
-}
-export interface XtermPaneDimensions {
-  cols: number;
-  rows: number;
-}
-export interface XtermPaneInputRequest {
-  id: string;
-  submit?: boolean;
-  text: string;
-}
-export interface XtermPaneSessionFinishedEvent {
-  durationMs: number;
-  reason: "closed";
-  sessionId: string;
-}
-
 export function XtermPane({
   args,
   currentCwd,
@@ -213,37 +146,34 @@ export function XtermPane({
   const reconnectSessionRef = useRef<(() => Promise<void>) | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const sessionIdRef = useRef<string | null>(null);
-  const lastInputRequestIdRef = useRef<string | null>(null);
   const terminalAppearanceRef = useRef(terminalAppearance);
-  const terminalGpuRenderRecoveryControllerRef = useRef<TerminalGpuRenderRecoveryController | null>(null);
+  const terminalGpuRenderRecoveryControllerRef =
+    useRef<TerminalGpuRenderRecoveryController | null>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
   const activityRuntimeRef = useRef<XtermPaneActivityRuntime | null>(null);
-  const terminalRendererControllerRef = useRef<TerminalRendererController | null>(null);
-  const terminalRuntimeLifecycleControllerRef = useRef<TerminalPaneRuntimeLifecycleRuntime | null>(null);
+  const terminalRendererControllerRef =
+    useRef<TerminalRendererController | null>(null);
+  const terminalRuntimeLifecycleControllerRef =
+    useRef<TerminalPaneRuntimeLifecycleRuntime | null>(null);
   const visibleRef = useRef(visible);
-  terminalRuntimeLifecycleControllerRef.current ??= createTerminalPaneRuntimeLifecycleRuntime({ activeTab: visible, focused, rendererType: terminalAppearance.rendererType, visible });
-  const terminalRuntimeLifecycleRef = terminalRuntimeLifecycleControllerRef.current.decisionRef;
-  const searchInputId = useId();
+  terminalRuntimeLifecycleControllerRef.current ??=
+    createTerminalPaneRuntimeLifecycleRuntime({
+      activeTab: visible,
+      focused,
+      rendererType: terminalAppearance.rendererType,
+      visible,
+    });
+  const terminalRuntimeLifecycleRef =
+    terminalRuntimeLifecycleControllerRef.current.decisionRef;
   const [commandBlockNotice, setCommandBlockNotice] =
     useTransientTerminalNotice();
   const [commandBlockViews, setCommandBlockViews] = useState<
     TerminalCommandBlockView[]
   >([]);
-  const [contextMenu, setContextMenu] = useState<{
-    canCopy: boolean;
-    canCopySessionId: boolean;
-    position: TerminalContextMenuPosition;
-  } | null>(null);
+  const [contextMenu, setContextMenu] =
+    useState<XtermPaneContextMenuState | null>(null);
   const [connectionState, setConnectionState] =
     useState<ConnectionState>("connecting");
-  const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState({
-    hasSearched: false,
-    resultCount: 0,
-    resultIndex: -1,
-  });
   const [logState, setLogState] = useState<TerminalSessionLogState>({
     active: false,
     bytesWritten: 0,
@@ -252,6 +182,7 @@ export function XtermPane({
   const [ghostSuggestion, setGhostSuggestion] =
     useState<TerminalGhostSuggestion | null>(null);
   const suggestionMenuRuntime = useXtermPaneSuggestionMenu();
+  const search = useXtermPaneSearch({ searchAddonRef, terminalRef });
   const subscribePaneActivity = useCallback(
     (listener: () => void) =>
       terminalChromeRuntimeStore.subscribe(paneId, listener),
@@ -285,7 +216,10 @@ export function XtermPane({
     () => terminalFontWeightValue(terminalAppearance.fontWeight),
     [terminalAppearance.fontWeight],
   );
-  const argsDependencyKey = useMemo(() => stableJsonDependencyKey(args), [args]);
+  const argsDependencyKey = useMemo(
+    () => stableJsonDependencyKey(args),
+    [args],
+  );
   const envDependencyKey = useMemo(() => stableJsonDependencyKey(env), [env]);
   const targetDependencyKey = useMemo(
     () => stableJsonDependencyKey(target),
@@ -393,37 +327,14 @@ export function XtermPane({
     }
   }, []);
 
-  useEffect(() => {
-    currentCwdRef.current = currentCwd ?? cwd;
-  }, [currentCwd, cwd]);
-
-  useEffect(() => {
-    onAgentSignalRef.current = onAgentSignal;
-  }, [onAgentSignal]);
-
-  useEffect(() => {
-    onCurrentCwdChangeRef.current = onCurrentCwdChange;
-  }, [onCurrentCwdChange]);
-
-  useEffect(() => {
-    onConnectionStateChangeRef.current = onConnectionStateChange;
-  }, [onConnectionStateChange]);
-
-  useEffect(() => {
-    onConnectionStateChangeRef.current?.(connectionState);
-  }, [connectionState]);
-
-  useEffect(() => {
-    onOutputHistoryChangeRef.current = onOutputHistoryChange;
-  }, [onOutputHistoryChange]);
-
-  useEffect(() => {
-    onSessionFinishedRef.current = onSessionFinished;
-  }, [onSessionFinished]);
-
-  useEffect(() => {
-    onTerminalDimensionsChangeRef.current = onTerminalDimensionsChange;
-  }, [onTerminalDimensionsChange]);
+  useEffect(() => { currentCwdRef.current = currentCwd ?? cwd; }, [currentCwd, cwd]);
+  useEffect(() => { onAgentSignalRef.current = onAgentSignal; }, [onAgentSignal]);
+  useEffect(() => { onCurrentCwdChangeRef.current = onCurrentCwdChange; }, [onCurrentCwdChange]);
+  useEffect(() => { onConnectionStateChangeRef.current = onConnectionStateChange; }, [onConnectionStateChange]);
+  useEffect(() => { onConnectionStateChangeRef.current?.(connectionState); }, [connectionState]);
+  useEffect(() => { onOutputHistoryChangeRef.current = onOutputHistoryChange; }, [onOutputHistoryChange]);
+  useEffect(() => { onSessionFinishedRef.current = onSessionFinished; }, [onSessionFinished]);
+  useEffect(() => { onTerminalDimensionsChangeRef.current = onTerminalDimensionsChange; }, [onTerminalDimensionsChange]);
 
   useEffect(() => {
     if (resolveInitialOutputHistory) {
@@ -432,86 +343,97 @@ export function XtermPane({
     outputHistoryRef.current = outputHistory;
   }, [outputHistory, resolveInitialOutputHistory]);
 
+  useXtermPanePromptBridge({
+    commandBlocksRef,
+    connectionState,
+    inputRequest,
+    paneId,
+    sessionIdRef,
+    terminalRef,
+  });
+
   useEffect(() => {
     ghostSuggestionRef.current = ghostSuggestion;
   }, [ghostSuggestion]);
 
-  useEffect(() =>
-    installXtermPaneRuntime({
-      args,
-      activityRuntimeRef,
-      commandBlockCounterRef,
-      commandBlocksRef,
-      containerRef,
+  useEffect(
+    () =>
+      installXtermPaneRuntime({
+        args,
+        activityRuntimeRef,
+        commandBlockCounterRef,
+        commandBlocksRef,
+        containerRef,
+        cwd,
+        cwdTrackingBufferRef,
+        currentCwdRef,
+        disconnectSessionRef,
+        env,
+        fitAddonRef,
+        focusedRef,
+        ghostSuggestionRef,
+        inputBufferRef,
+        inputModelRef,
+        inputCompatibilityMode,
+        onAgentSignalRef,
+        onCurrentCwdChangeRef,
+        onOutputHistoryChangeRef,
+        onSessionFinishedRef,
+        onTerminalDimensionsChangeRef,
+        outputHistoryRef,
+        paneId,
+        profileId,
+        promptLineRef,
+        reconnectSessionRef,
+        remoteCommand,
+        remoteHostId,
+        remoteHostProduction,
+        searchAddonRef,
+        sessionIdRef,
+        setCommandBlockNotice,
+        setCommandBlockViews,
+        setConnectionState,
+        setGhostSuggestion,
+        shellAssistEnabled,
+        setLogNotice,
+        setLogState,
+        setSearchResults: search.setResults,
+        shellIntegrationCommandBlockProtocolRef,
+        shell,
+        startupMessage,
+        ...suggestionMenuRuntime.runtimeParams,
+        syncCommandBlockViews,
+        target,
+        terminalAppearance,
+        terminalAppearanceRef,
+        terminalFontWeight,
+        terminalGpuRenderRecoveryControllerRef,
+        terminalRef,
+        terminalRendererControllerRef,
+        terminalRuntimeLifecycleControllerRef,
+        terminalRuntimeLifecycleRef,
+        terminalTheme,
+        transientStartupMessage,
+        visibleRef,
+      }),
+    [
+      argsDependencyKey,
       cwd,
-      cwdTrackingBufferRef,
-      currentCwdRef,
-      disconnectSessionRef,
-      env,
-      fitAddonRef,
-      focusedRef,
-      ghostSuggestionRef,
-      inputBufferRef,
-      inputModelRef,
+      envDependencyKey,
       inputCompatibilityMode,
-      onAgentSignalRef,
-      onCurrentCwdChangeRef,
-      onOutputHistoryChangeRef,
-      onSessionFinishedRef,
-      onTerminalDimensionsChangeRef,
-      outputHistoryRef,
       paneId,
       profileId,
-      promptLineRef,
-      reconnectSessionRef,
       remoteCommand,
       remoteHostId,
       remoteHostProduction,
-      searchAddonRef,
-      sessionIdRef,
-      setCommandBlockNotice,
-      setCommandBlockViews,
-      setConnectionState,
-      setGhostSuggestion,
-      shellAssistEnabled,
-      setLogNotice,
-      setLogState,
-      setSearchResults,
-      shellIntegrationCommandBlockProtocolRef,
       shell,
+      shellAssistEnabled,
       startupMessage,
-      ...suggestionMenuRuntime.runtimeParams,
       syncCommandBlockViews,
-      target,
-      terminalAppearance,
-      terminalAppearanceRef,
-      terminalFontWeight,
-      terminalGpuRenderRecoveryControllerRef,
-      terminalRef,
-      terminalRendererControllerRef,
-      terminalRuntimeLifecycleControllerRef,
-      terminalRuntimeLifecycleRef,
-      terminalTheme,
+      targetDependencyKey,
       transientStartupMessage,
-      visibleRef,
-    }),
-  [
-    argsDependencyKey,
-    cwd,
-    envDependencyKey,
-    inputCompatibilityMode,
-    paneId,
-    profileId,
-    remoteCommand,
-    remoteHostId,
-    remoteHostProduction,
-    shell,
-    shellAssistEnabled,
-    startupMessage,
-    syncCommandBlockViews,
-    targetDependencyKey,
-    transientStartupMessage,
-  ]);
+    ],
+  );
 
   useEffect(() => {
     focusedRef.current = focused;
@@ -526,28 +448,33 @@ export function XtermPane({
     activityRuntimeRef.current?.setConnectionState(connectionState);
   }, [connectionState]);
 
-	  useEffect(() => {
-	    visibleRef.current = visible;
-	    activityRuntimeRef.current?.setVisible(visible);
-	    terminalRuntimeLifecycleControllerRef.current?.markVisible(visible);
-	    terminalSuggestionProbeScheduler.setOwnerDisabled(
-	      paneId,
-	      visible ? null : "hidden-pane",
-	    );
-	    if (!visible) {
-	      terminalRendererRegistry.updatePaneVisibility(paneId, false);
-	      return undefined;
-	    }
+  useEffect(() => {
+    visibleRef.current = visible;
+    activityRuntimeRef.current?.setVisible(visible);
+    terminalRuntimeLifecycleControllerRef.current?.markVisible(visible);
+    terminalSuggestionProbeScheduler.setOwnerDisabled(
+      paneId,
+      visible ? null : "hidden-pane",
+    );
+    if (!visible) {
+      terminalRendererRegistry.updatePaneVisibility(paneId, false);
+      return undefined;
+    }
 
     return scheduleTerminalPaneVisibleRecovery({
-      cancelHiddenResourceReaper: () => terminalRendererRegistry.updatePaneVisibility(paneId, true),
+      cancelHiddenResourceReaper: () =>
+        terminalRendererRegistry.updatePaneVisibility(paneId, true),
       fitAddon: () => fitAddonRef.current,
       markVisibleRecoveryComplete: () => {
-        const decision = terminalRuntimeLifecycleControllerRef.current?.markVisibleRecoveryComplete();
-        terminalGpuRenderRecoveryControllerRef.current?.trigger("visible-recovered");
+        const decision =
+          terminalRuntimeLifecycleControllerRef.current?.markVisibleRecoveryComplete();
+        terminalGpuRenderRecoveryControllerRef.current?.trigger(
+          "visible-recovered",
+        );
         return decision;
       },
-      onDimensionsChange: (dimensions) => onTerminalDimensionsChangeRef.current?.(dimensions),
+      onDimensionsChange: (dimensions) =>
+        onTerminalDimensionsChangeRef.current?.(dimensions),
       resizeTerminal,
       scheduler: createWindowVisibleRecoveryScheduler(window),
       sessionId: () => sessionIdRef.current,
@@ -560,26 +487,6 @@ export function XtermPane({
       terminalRef.current?.focus();
     }
   }, [focusRequestToken]);
-
-  useEffect(() => {
-    if (!inputRequest || lastInputRequestIdRef.current === inputRequest.id) {
-      return;
-    }
-    const terminal = terminalRef.current;
-    const sessionId = sessionIdRef.current;
-    if (!terminal || !sessionId) {
-      return;
-    }
-
-    lastInputRequestIdRef.current = inputRequest.id;
-    if (inputRequest.text.length > 0) {
-      terminal.paste(inputRequest.text);
-    }
-    if (inputRequest.submit) {
-      void writeTerminal(sessionId, "\r");
-    }
-    terminal.focus();
-  }, [connectionState, inputRequest]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -601,7 +508,9 @@ export function XtermPane({
     terminal.options.macOptionIsMeta = terminalAppearance.macOptionIsMeta;
     terminal.options.scrollback = terminalAppearance.scrollback;
     terminal.options.theme = terminalTheme;
-    terminalRuntimeLifecycleControllerRef.current?.markRendererType(terminalAppearance.rendererType);
+    terminalRuntimeLifecycleControllerRef.current?.markRendererType(
+      terminalAppearance.rendererType,
+    );
     terminalRendererRegistry.updateMode(terminalAppearance.rendererType);
     (terminal.options as { modifyOtherKeys?: number }).modifyOtherKeys =
       inputCompatibilityMode === "agentTui" ? 2 : 0;
@@ -611,7 +520,10 @@ export function XtermPane({
     fitAddonRef.current?.fit();
     terminal.refresh?.(0, Math.max(0, terminal.rows - 1));
     const recoveryTrigger =
-      resolveTerminalAppearanceRecoveryTrigger(previousAppearance, terminalAppearance) ??
+      resolveTerminalAppearanceRecoveryTrigger(
+        previousAppearance,
+        terminalAppearance,
+      ) ??
       (previousTerminalTheme !== terminalTheme ? "theme-changed" : "resize");
     terminalGpuRenderRecoveryControllerRef.current?.trigger(recoveryTrigger);
     const dimensions = { cols: terminal.cols, rows: terminal.rows };
@@ -620,7 +532,12 @@ export function XtermPane({
     if (sessionId) {
       void resizeTerminal(sessionId, dimensions);
     }
-  }, [inputCompatibilityMode, terminalAppearance, terminalFontWeight, terminalTheme]);
+  }, [
+    inputCompatibilityMode,
+    terminalAppearance,
+    terminalFontWeight,
+    terminalTheme,
+  ]);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -733,7 +650,7 @@ export function XtermPane({
           }
         }
       } else if (action === "search") {
-        setSearchOpen(true);
+        search.openSearch();
       } else if (action === "startLog") {
         void startLogging();
       } else if (action === "stopLog") {
@@ -762,40 +679,38 @@ export function XtermPane({
       stopLogging,
       clearCommandBlocks,
       scheduleCommandBlockViewsSync,
+      search.openSearch,
     ],
   );
 
-  const openContextMenu = useCallback(
-    (event: MouseEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const terminal = terminalRef.current;
-      const sessionId = sessionIdRef.current;
-      const rightClickBehavior = terminalAppearanceRef.current.rightClickBehavior;
-      if (rightClickBehavior === "none") {
-        terminal?.focus();
-        return;
-      }
-      if (rightClickBehavior === "paste") {
-        void pasteIntoTerminal(terminal, sessionId);
-        terminal?.focus();
-        return;
-      }
-
-      const selection = terminal?.getSelection?.() ?? "";
-      const menuState = {
-        canCopy: selection.length > 0,
-        canCopySessionId: Boolean(sessionId),
-        position: {
-          x: event.clientX,
-          y: event.clientY,
-        },
-      };
-      setContextMenu(menuState);
+  const openContextMenu = useCallback((event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const terminal = terminalRef.current;
+    const sessionId = sessionIdRef.current;
+    const rightClickBehavior = terminalAppearanceRef.current.rightClickBehavior;
+    if (rightClickBehavior === "none") {
       terminal?.focus();
-    },
-    [],
-  );
+      return;
+    }
+    if (rightClickBehavior === "paste") {
+      void pasteIntoTerminal(terminal, sessionId);
+      terminal?.focus();
+      return;
+    }
+
+    const selection = terminal?.getSelection?.() ?? "";
+    const menuState = {
+      canCopy: selection.length > 0,
+      canCopySessionId: Boolean(sessionId),
+      position: {
+        x: event.clientX,
+        y: event.clientY,
+      },
+    };
+    setContextMenu(menuState);
+    terminal?.focus();
+  }, []);
 
   const executeCommandBlockAction = useCallback(
     (blockId: string, action: TerminalCommandBlockAction) => {
@@ -850,150 +765,31 @@ export function XtermPane({
     [resolvedTheme, syncCommandBlockViews],
   );
 
-  const runSearch = useCallback(
-    (direction: "next" | "previous") => {
-      const query = searchQuery.trim();
-      const searchAddon = searchAddonRef.current;
-      if (!query || !searchAddon) {
-        searchAddon?.clearDecorations();
-        setSearchResults({
-          hasSearched: false,
-          resultCount: 0,
-          resultIndex: -1,
-        });
-        return;
-      }
-
-      const options = terminalSearchOptions(searchCaseSensitive);
-      const found =
-        direction === "next"
-          ? searchAddon.findNext(query, options)
-          : searchAddon.findPrevious(query, options);
-      setSearchResults((current) => ({
-        ...current,
-        hasSearched: true,
-        ...(found ? {} : { resultCount: 0, resultIndex: -1 }),
-      }));
-    },
-    [searchCaseSensitive, searchQuery],
-  );
-
-  const updateSearchQuery = useCallback((query: string) => {
-    setSearchQuery(query);
-    if (!query.trim()) {
-      searchAddonRef.current?.clearDecorations();
-      setSearchResults({
-        hasSearched: false,
-        resultCount: 0,
-        resultIndex: -1,
-      });
-    }
-  }, []);
-
-  const closeSearch = useCallback(() => {
-    setSearchOpen(false);
-    searchAddonRef.current?.clearDecorations();
-    terminalRef.current?.focus();
-  }, []);
-
-  const toggleSearchCaseSensitive = useCallback(() => {
-    setSearchCaseSensitive((current) => !current);
-    setSearchResults({
-      hasSearched: false,
-      resultCount: 0,
-      resultIndex: -1,
-    });
-  }, []);
-
   return (
-    <div
-      className="relative min-h-0 flex-1 bg-[#f7f7fa] dark:bg-[#1f1f21]"
+    <XtermPaneView
+      activityRuntimeRef={activityRuntimeRef}
+      canSplit={Boolean(onSplitPane)}
+      commandBlockNotice={commandBlockNotice}
+      commandBlockViews={commandBlockViews}
+      connectionState={connectionState}
+      containerRef={containerRef}
+      contextMenu={contextMenu}
+      ghostSuggestion={ghostSuggestion}
+      logActive={logState.active}
+      logNotice={logNotice}
+      logPath={logState.path}
+      onCloseContextMenu={() => setContextMenu(null)}
+      onCommandBlockAction={executeCommandBlockAction}
       onContextMenu={openContextMenu}
-    >
-      {shellAssistEnabled ? (
-        <TerminalCommandBlockRail
-          blocks={commandBlockViews}
-          onAction={executeCommandBlockAction}
-        />
-      ) : null}
-      <div
-        className={`h-full min-h-0 w-full overflow-hidden py-2 pr-3 ${
-          shellAssistEnabled ? "pl-6" : "pl-3"
-        }`}
-        onPointerDown={() => terminalRef.current?.focus()}
-      >
-        <div
-          aria-label={`${title} xterm 终端`}
-          className="h-full min-h-0 w-full overflow-hidden"
-          ref={containerRef}
-        />
-      </div>
-      {shellAssistEnabled && ghostSuggestion ? (
-        <div
-          aria-label="终端命令灰色提示"
-          className="pointer-events-none absolute z-10 select-none overflow-hidden whitespace-pre font-mono text-zinc-400/75 dark:text-zinc-500/85"
-          data-provider={ghostSuggestion.candidate.provider}
-          style={{
-            fontFamily: terminalAppearance.fontFamily,
-            fontSize: terminalAppearance.fontSize,
-            left: ghostSuggestion.left,
-            lineHeight: `${ghostSuggestion.lineHeight}px`,
-            maxWidth: ghostSuggestion.maxWidth,
-            top: ghostSuggestion.top,
-          }}
-          title={ghostSuggestion.candidate.description}
-        >
-          {ghostSuggestion.suffix}
-        </div>
-      ) : null}
-      {shellAssistEnabled ? suggestionMenuRuntime.overlay : null}
-      {paneActivity.paneId === paneId &&
-      paneActivity.bufferType === "normal" &&
-      paneActivity.visible &&
-      paneActivity.applicationActive &&
-      paneActivity.followPaused ? (
-        <TerminalNewOutputButton
-          onClick={() => activityRuntimeRef.current?.jumpToBottom()}
-        />
-      ) : null}
-      <XtermPaneChrome
-        commandBlockNotice={commandBlockNotice}
-        connectionState={connectionState}
-        logActive={logState.active}
-        logNotice={logNotice}
-        logPath={logState.path}
-        shellAssistEnabled={shellAssistEnabled}
-      />
-      {searchOpen ? (
-        <TerminalSearchPanel
-          caseSensitive={searchCaseSensitive}
-          hasSearched={searchResults.hasSearched}
-          inputId={searchInputId}
-          onClose={closeSearch}
-          onQueryChange={updateSearchQuery}
-          onSearchNext={() => runSearch("next")}
-          onSearchPrevious={() => runSearch("previous")}
-          onToggleCaseSensitive={toggleSearchCaseSensitive}
-          query={searchQuery}
-          resultCount={searchResults.resultCount}
-          resultIndex={searchResults.resultIndex}
-        />
-      ) : null}
-      {contextMenu ? (
-        <TerminalContextMenu
-          canDisconnect={connectionState === "connected"}
-          canCopy={contextMenu.canCopy}
-          canCopySessionId={contextMenu.canCopySessionId}
-          canReconnect={
-            connectionState !== "connecting" &&
-            connectionState !== "reconnecting"
-          }
-          canSplit={Boolean(onSplitPane)}
-          onAction={executeContextMenuAction}
-          onClose={() => setContextMenu(null)}
-          position={contextMenu.position}
-        />
-      ) : null}
-    </div>
+      onContextMenuAction={executeContextMenuAction}
+      paneActivity={paneActivity}
+      paneId={paneId}
+      search={search}
+      shellAssistEnabled={shellAssistEnabled}
+      suggestionOverlay={suggestionMenuRuntime.overlay}
+      terminalAppearance={terminalAppearance}
+      terminalRef={terminalRef}
+      title={title}
+    />
   );
 }

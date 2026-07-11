@@ -310,6 +310,7 @@ export function ToolPanelStoreBridge({
       }
       activeTab={workspaceContext.activeTab}
       focusedPane={workspaceContext.focusedPane}
+      workspaceContext={workspaceContext.projection}
       onClosePane={closePane}
       onOpenWorkspaceFileTab={openWorkspaceFileTab}
       onOpenTmuxTerminal={openTmuxAttachTerminal}

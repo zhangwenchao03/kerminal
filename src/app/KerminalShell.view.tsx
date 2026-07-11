@@ -8,6 +8,7 @@ import {
   History,
   Network,
   PanelsTopLeft,
+  ScanSearch,
   X,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -21,6 +22,7 @@ import type { ConfigChangeNotice } from "./configRefreshCoordinator";
 
 const shellToolRailIcons: Partial<Record<ToolId, typeof Bot>> = {
   agentLauncher: Bot,
+  context: ScanSearch,
   logs: History,
   ports: Network,
   sftp: FolderOpen,

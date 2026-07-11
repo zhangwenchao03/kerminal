@@ -3,31 +3,38 @@ const TERMINAL_KEY_EVENT_TARGET_SELECTOR =
 const EDITABLE_TEXT_KEY_EVENT_TARGET_SELECTOR =
   "textarea, input, [contenteditable='true'], [contenteditable='plaintext-only'], [role='textbox'], .monaco-editor, .monaco-editor textarea, [data-kerminal-text-editor]";
 
-export const KERMINAL_TEXT_EDIT_COMMAND_EVENT =
-  "kerminal://text-edit-command";
+export const KERMINAL_TEXT_EDIT_COMMAND_EVENT = "kerminal://text-edit-command";
 
 export type KerminalTextEditCommand =
-  | "undo"
-  | "redo"
-  | "cut"
-  | "copy"
-  | "paste"
-  | "selectAll";
+  "undo" | "redo" | "cut" | "copy" | "paste" | "selectAll";
 
 export interface KerminalTextEditCommandEventDetail {
   command: KerminalTextEditCommand;
   handled: boolean;
 }
 
-export function shouldAppHandleKeybinding(event: KeyboardEvent) {
-  if (event.defaultPrevented) {
+export interface AppKeybindingPolicyOptions {
+  /**
+   * 仅供明确注册的全局动作穿透终端输入层。
+   * 调用方必须先完成具体快捷键匹配，不能用它放宽普通应用快捷键。
+   */
+  allowTerminalTarget?: boolean;
+}
+
+export function shouldAppHandleKeybinding(
+  event: KeyboardEvent,
+  options: AppKeybindingPolicyOptions = {},
+) {
+  if (event.defaultPrevented || event.isComposing) {
     return false;
   }
 
-  return (
-    !isTerminalKeyEventTarget(event.target) &&
-    !isEditableTextKeyEventTarget(event.target)
-  );
+  const terminalTarget = isTerminalKeyEventTarget(event.target);
+  if (terminalTarget) {
+    return options.allowTerminalTarget === true;
+  }
+
+  return !isEditableTextKeyEventTarget(event.target);
 }
 
 export function isTerminalKeyEventTarget(target: EventTarget | null) {

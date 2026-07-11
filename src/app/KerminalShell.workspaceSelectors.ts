@@ -9,6 +9,8 @@ import type {
 import { isTerminalSessionTab } from "../features/workspace/types";
 import type { WorkspaceState } from "../features/workspace/workspaceStore";
 import { findMachine } from "../features/workspace/workspaceMachineModel";
+import { buildWorkspaceContextProjection } from "../features/workspace/context";
+import type { WorkspaceContextProjection } from "../features/workspace/context";
 import { targetStableId } from "../lib/targetModel";
 
 interface OpenMachineState {
@@ -24,6 +26,7 @@ export interface ToolPanelWorkspaceContext {
   sftpRevealRequest: WorkspaceFileRevealRequest | null;
   terminalPanes: TerminalPane[];
   terminalTabs: TerminalTab[];
+  projection: WorkspaceContextProjection;
 }
 
 export interface TerminalWorkspaceSnapshot {
@@ -171,7 +174,29 @@ export function buildToolPanelWorkspaceContext(
       terminalPaneWithoutHighFrequencyOutput,
     ),
     terminalTabs: state.terminalTabs,
+    projection: buildWorkspaceContextProjection({
+      activeTabId: state.activeTabId,
+      focusedPaneId: state.focusedPaneId,
+      generatedAt: new Date().toISOString(),
+      machineGroups,
+      revision: workspaceContextRevision(state),
+      selectedMachineId: state.selectedMachineId,
+      terminalPanes: state.terminalPanes,
+      terminalTabs: state.terminalTabs,
+      workspaceFileDirtyState: state.workspaceFileDirtyState,
+      workspaceFileRevealRequest: state.workspaceFileRevealRequest,
+    }),
   };
+}
+
+function workspaceContextRevision(state: WorkspaceState): number {
+  const snapshot = buildToolPanelWorkspaceSnapshot(state);
+  let hash = 2166136261;
+  for (let index = 0; index < snapshot.length; index += 1) {
+    hash ^= snapshot.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
 
 function resolveActiveToolPanelMachine(
