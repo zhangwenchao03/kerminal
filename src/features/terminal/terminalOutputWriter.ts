@@ -227,7 +227,7 @@ export function createTerminalOutputWriter(
         continue;
       }
 
-      const splitAt = safeSplitIndex(current, remaining);
+      const splitAt = safeSplitIndex(current, remaining, batch.length === 0);
       if (splitAt <= 0) {
         break;
       }
@@ -496,7 +496,11 @@ function nowMs() {
   return Date.now();
 }
 
-function safeSplitIndex(text: string, maxChars: number) {
+function safeSplitIndex(
+  text: string,
+  maxChars: number,
+  allowPairOverflow: boolean,
+) {
   const capped = Math.min(text.length, maxChars);
   if (capped <= 0) {
     return 0;
@@ -509,7 +513,15 @@ function safeSplitIndex(text: string, maxChars: number) {
   const splitBeforeLowSurrogate =
     nextCodeUnit >= 0xdc00 && nextCodeUnit <= 0xdfff;
   if (
-    capped > 1 &&
+    capped === 1 &&
+    capped < text.length &&
+    splitAfterHighSurrogate &&
+    splitBeforeLowSurrogate
+  ) {
+    // 已有批次应等待下一批；空批次允许多取一个 code unit，避免预算为 1 时永久停滞。
+    return allowPairOverflow ? 2 : 0;
+  }
+  if (
     capped < text.length &&
     (splitAfterHighSurrogate || splitBeforeLowSurrogate)
   ) {

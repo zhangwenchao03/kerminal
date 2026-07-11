@@ -80,6 +80,7 @@ interface ActiveWebglRenderer {
   addon: WebglAddonLike;
   canvases: Set<HTMLCanvasElement>;
   disposables: IDisposable[];
+  rendererCanvases: Set<HTMLCanvasElement>;
 }
 
 interface GpuOperation {
@@ -91,9 +92,13 @@ interface GpuOperation {
 
 export interface TerminalRendererController {
   attach(): void;
+  /** 返回当前灰度配置是否允许发起 GPU attach。 */
+  canAttemptGpu(): boolean;
   clearTextureAtlas(): void;
   dispose(): void;
   getDiagnostics(): TerminalRendererDiagnostics;
+  /** 返回主 WebGL renderer canvas，不包含 texture atlas 等辅助 canvas。 */
+  getTrackedRendererCanvases(): readonly HTMLCanvasElement[];
   getState(): TerminalRendererState;
   reportHealth(
     observation: Omit<TerminalRendererHealthObservation, "backend">,
@@ -111,6 +116,8 @@ interface CreateTerminalRendererControllerOptions {
   compatibilityGate?: XtermWebglCompatibilityCapabilityGate;
   contextLossCircuitThreshold?: number;
   contextLossWindowMs?: number;
+  healthWatchdogEnabled?: boolean;
+  lifecycleV2Enabled?: boolean;
   loadWebglAddon?: () => Promise<{ WebglAddon: WebglAddonConstructor }>;
   logger?: TerminalRendererLogger;
   maxRecoveryAttempts?: number;
@@ -148,6 +155,8 @@ export function createTerminalRendererController({
   compatibilityGate,
   contextLossCircuitThreshold = DEFAULT_MAX_RECOVERY_ATTEMPTS,
   contextLossWindowMs = DEFAULT_CONTEXT_LOSS_WINDOW_MS,
+  healthWatchdogEnabled = true,
+  lifecycleV2Enabled = true,
   loadWebglAddon = defaultLoadWebglAddon,
   logger = console,
   maxRecoveryAttempts = DEFAULT_MAX_RECOVERY_ATTEMPTS,
@@ -304,7 +313,7 @@ export function createTerminalRendererController({
     disposables: IDisposable[],
   ) => {
     disposeRendererResources(
-      { addon, canvases, disposables },
+      { addon, canvases, disposables, rendererCanvases: new Set() },
       { clearAtlas: false },
     );
   };
@@ -587,31 +596,35 @@ export function createTerminalRendererController({
         }
 
         const canvases = new Set<HTMLCanvasElement>();
+        const rendererCanvases = new Set<HTMLCanvasElement>();
+        const textureAtlasCanvases = new Set<HTMLCanvasElement>();
         const disposables: IDisposable[] = [];
         const before = new Set(
           element.querySelectorAll<HTMLCanvasElement>("canvas"),
         );
+        const trackTextureAtlasCanvas = (canvas: HTMLCanvasElement) => {
+          textureAtlasCanvases.add(canvas);
+          rendererCanvases.delete(canvas);
+          canvases.add(canvas);
+          emitStateChange();
+        };
         try {
           disposables.push(addon.onContextLoss(() => handleContextLoss(addon)));
           if (addon.onAddTextureAtlasCanvas) {
             disposables.push(
-              addon.onAddTextureAtlasCanvas((canvas) => {
-                canvases.add(canvas);
-                emitStateChange();
-              }),
+              addon.onAddTextureAtlasCanvas(trackTextureAtlasCanvas),
             );
           }
           if (addon.onChangeTextureAtlas) {
             disposables.push(
-              addon.onChangeTextureAtlas((canvas) => {
-                canvases.add(canvas);
-                emitStateChange();
-              }),
+              addon.onChangeTextureAtlas(trackTextureAtlasCanvas),
             );
           }
           if (addon.onRemoveTextureAtlasCanvas) {
             disposables.push(
               addon.onRemoveTextureAtlasCanvas((canvas) => {
+                textureAtlasCanvases.delete(canvas);
+                rendererCanvases.delete(canvas);
                 canvases.delete(canvas);
                 emitStateChange();
               }),
@@ -629,10 +642,13 @@ export function createTerminalRendererController({
         )) {
           if (!before.has(canvas)) {
             canvases.add(canvas);
+            if (!textureAtlasCanvases.has(canvas)) {
+              rendererCanvases.add(canvas);
+            }
           }
         }
         if (addon.textureAtlas) {
-          canvases.add(addon.textureAtlas);
+          trackTextureAtlasCanvas(addon.textureAtlas);
         }
 
         clearAttachTimeout();
@@ -657,7 +673,7 @@ export function createTerminalRendererController({
           return;
         }
 
-        activeWebgl = { addon, canvases, disposables };
+        activeWebgl = { addon, canvases, disposables, rendererCanvases };
         fallbackReason = undefined;
         recoveryStartedAt = undefined;
         retryCount = 0;
@@ -681,6 +697,7 @@ export function createTerminalRendererController({
     if (
       disposed ||
       activeWebgl ||
+      !lifecycleV2Enabled ||
       !shouldAttemptGpuRenderer(mode) ||
       lifecycle.getSnapshot().state === "suspended"
     ) {
@@ -760,7 +777,10 @@ export function createTerminalRendererController({
   ) => {
     const healthDecision = health.observe({
       ...observation,
-      backend: activeWebgl ? "gpu" : "cpu",
+      backend:
+        healthWatchdogEnabled && lifecycleV2Enabled && activeWebgl
+          ? "gpu"
+          : "cpu",
     });
     switch (healthDecision.action) {
       case "refresh":
@@ -850,9 +870,12 @@ export function createTerminalRendererController({
 
   return {
     attach,
+    canAttemptGpu: () => lifecycleV2Enabled,
     clearTextureAtlas,
     dispose,
     getDiagnostics,
+    getTrackedRendererCanvases: () =>
+      activeWebgl ? [...activeWebgl.rendererCanvases] : [],
     getState: state,
     reportHealth,
     resume,

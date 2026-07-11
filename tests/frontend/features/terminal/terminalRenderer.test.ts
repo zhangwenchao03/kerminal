@@ -108,9 +108,40 @@ class FakeWebglAddon implements ITerminalAddon {
   }
 }
 
+class TrackedCanvasWebglAddon implements ITerminalAddon {
+  static instances: TrackedCanvasWebglAddon[] = [];
+
+  rendererCanvas = document.createElement("canvas");
+  textureAtlas = document.createElement("canvas");
+  _renderer = {
+    _atlas: {},
+    _canvas: this.rendererCanvas,
+    _charAtlas: {},
+    _gl: {},
+  };
+
+  constructor() {
+    TrackedCanvasWebglAddon.instances.push(this);
+  }
+
+  activate(terminal: Terminal): void {
+    terminal.element?.append(this.rendererCanvas, this.textureAtlas);
+  }
+
+  dispose(): void {
+    this.rendererCanvas.remove();
+    this.textureAtlas.remove();
+  }
+
+  onContextLoss(): IDisposable {
+    return { dispose: vi.fn() };
+  }
+}
+
 describe("terminalRenderer", () => {
   beforeEach(() => {
     FakeWebglAddon.instances = [];
+    TrackedCanvasWebglAddon.instances = [];
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(
       () => null,
     );
@@ -140,6 +171,29 @@ describe("terminalRenderer", () => {
       fallbackReason: undefined,
       mode: "cpu",
     });
+  });
+
+  it("keeps a stable CPU rollback when lifecycle V2 is disabled", () => {
+    const loadWebglAddon = vi.fn();
+    const controller = createTerminalRendererController({
+      lifecycleV2Enabled: false,
+      loadWebglAddon,
+      paneId: "pane-1",
+      rendererType: "gpu",
+      terminal: new FakeTerminal(),
+    });
+
+    controller.attach();
+    controller.retryGpu();
+
+    expect(loadWebglAddon).not.toHaveBeenCalled();
+    expect(controller.getState()).toEqual({
+      backend: "cpu",
+      canvasCount: 0,
+      fallbackReason: undefined,
+      mode: "gpu",
+    });
+    expect(controller.getDiagnostics().lifecycle.state).toBe("cpu-ready");
   });
 
   it("attaches the WebGL addon in auto mode", async () => {
@@ -308,6 +362,30 @@ describe("terminalRenderer", () => {
     expect(controller.getState().canvasCount).toBe(2);
     expect(onStateChange).toHaveBeenCalledWith(
       expect.objectContaining({ backend: "gpu", canvasCount: 2 }),
+    );
+  });
+
+  it("tracks only the primary WebGL canvas for health checks", async () => {
+    const terminal = new FakeTerminal();
+    const controller = createTerminalRendererController({
+      loadWebglAddon: vi.fn().mockResolvedValue({
+        WebglAddon: TrackedCanvasWebglAddon,
+      }),
+      paneId: "pane-1",
+      rendererType: "auto",
+      terminal,
+    });
+
+    controller.attach();
+    await flushPromises();
+    const addon = TrackedCanvasWebglAddon.instances[0];
+
+    expect(controller.getState().canvasCount).toBe(2);
+    expect(controller.getTrackedRendererCanvases()).toEqual([
+      addon.rendererCanvas,
+    ]);
+    expect(controller.getTrackedRendererCanvases()).not.toContain(
+      addon.textureAtlas,
     );
   });
 

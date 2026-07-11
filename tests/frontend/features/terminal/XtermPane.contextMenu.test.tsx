@@ -578,7 +578,7 @@ describe("XtermPane context menu search and logging", () => {
         sessionId: "session-2",
       }),
     );
-    expect(mocks.api.resizeTerminal).toHaveBeenLastCalledWith("session-2", {
+    expect(mocks.api.resizeTerminal).not.toHaveBeenCalledWith("session-2", {
       cols: 100,
       rows: 30,
     });

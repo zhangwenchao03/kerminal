@@ -1,4 +1,9 @@
+import type { IDisposable, ITerminalAddon, Terminal } from "@xterm/xterm";
 import { describe, expect, it, vi } from "vitest";
+import {
+  createTerminalRendererController,
+  type TerminalRendererTerminal,
+} from "../../../../src/features/terminal/terminalRenderer";
 import {
   createTerminalRendererRegistry,
   type TerminalRendererControllerState,
@@ -13,7 +18,9 @@ class FakeRendererController implements TerminalRendererRegistryController {
     }
   });
   clearTextureAtlas = vi.fn();
+  canAttemptGpu = vi.fn(() => true);
   dispose = vi.fn();
+  retryGpu = vi.fn(() => this.attach());
   updateMode = vi.fn((mode) => {
     const previousMode = this.mode;
     this.mode = mode;
@@ -90,6 +97,26 @@ describe("terminalRendererRegistry", () => {
           paneId: "focused",
         }),
       ]),
+    );
+  });
+
+  it("does not reserve a pending GPU lease when lifecycle is disabled", () => {
+    const registry = createTerminalRendererRegistry({ rendererType: "auto" });
+    const controller = new FakeRendererController();
+    controller.canAttemptGpu.mockReturnValue(false);
+
+    registry.registerPane({
+      controller,
+      paneId: "lifecycle-disabled",
+    });
+
+    expect(controller.attach).not.toHaveBeenCalled();
+    expect(registry.getSnapshot().panes[0]).toEqual(
+      expect.objectContaining({
+        backend: "cpu",
+        gpuAttachPending: false,
+        gpuOwnerSince: undefined,
+      }),
     );
   });
 
@@ -297,6 +324,104 @@ describe("terminalRendererRegistry", () => {
     );
   });
 
+  it("clears cooldown and restores the requested mode for one failed pane", () => {
+    const registry = createTerminalRendererRegistry({ rendererType: "auto" });
+    const first = new FakeRendererController();
+    const second = new FakeRendererController();
+
+    registry.registerPane({ controller: first, paneId: "first" });
+    registry.registerPane({ controller: second, paneId: "second" });
+    registry.recordPaneFailure("second", "load-failed");
+    expect(second.getState().mode).toBe("cpu");
+    first.attach.mockClear();
+    first.updateMode.mockClear();
+    second.attach.mockClear();
+    second.updateMode.mockClear();
+
+    registry.retryGpu("second");
+
+    expect(first.attach).not.toHaveBeenCalled();
+    expect(first.updateMode).not.toHaveBeenCalled();
+    expect(second.updateMode).toHaveBeenCalledWith("auto");
+    expect(second.attach).toHaveBeenCalledTimes(1);
+    expect(second.getState()).toEqual(
+      expect.objectContaining({ backend: "gpu", mode: "auto" }),
+    );
+    expect(
+      registry
+        .getSnapshot()
+        .panes.find((pane) => pane.paneId === "second")?.fallbackReason,
+    ).toBeUndefined();
+  });
+
+  it("falls back to attach when a controller has no dedicated retry API", () => {
+    const registry = createTerminalRendererRegistry({ rendererType: "auto" });
+    let backend: "cpu" | "gpu" = "cpu";
+    const attach = vi.fn(() => {
+      backend = "gpu";
+    });
+    registry.registerPane({
+      controller: {
+        attach,
+        canAttemptGpu: () => true,
+        dispose: vi.fn(),
+        getState: () => ({
+          backend,
+          mode: "auto",
+        }),
+        updateMode: vi.fn(),
+      },
+      paneId: "legacy-retry",
+    });
+    backend = "cpu";
+    attach.mockClear();
+    registry.recordPaneFailure("legacy-retry", "load-failed");
+
+    registry.retryGpu("legacy-retry");
+
+    expect(attach).toHaveBeenCalledTimes(1);
+    expect(registry.getSnapshot().panes[0]).toEqual(
+      expect.objectContaining({
+        backend: "gpu",
+        gpuAttachPending: false,
+      }),
+    );
+  });
+
+  it("retries a real controller after registry fallback changed it to CPU", async () => {
+    const terminal = new RegistryIntegrationTerminal();
+    const registry = createTerminalRendererRegistry({
+      rendererType: "auto",
+    });
+    const controller = createTerminalRendererController({
+      loadWebglAddon: async () => ({
+        WebglAddon: RegistryIntegrationWebglAddon,
+      }),
+      onStateChange: (state) =>
+        registry.updatePaneState("real-retry", state),
+      paneId: "real-retry",
+      rendererType: "auto",
+      terminal,
+    });
+    const unregister = registry.registerPane({
+      controller,
+      paneId: "real-retry",
+    });
+    await flushPromises();
+    expect(controller.getState().backend).toBe("gpu");
+
+    registry.recordPaneFailure("real-retry", "load-failed");
+    expect(controller.getState().mode).toBe("cpu");
+
+    registry.retryGpu("real-retry");
+    await flushPromises();
+
+    expect(controller.getState()).toEqual(
+      expect.objectContaining({ backend: "gpu", mode: "auto" }),
+    );
+    unregister();
+  });
+
   it("clears only the requested pane texture atlas", () => {
     const registry = createTerminalRendererRegistry({ rendererType: "auto" });
     const first = new FakeRendererController();
@@ -415,3 +540,36 @@ describe("terminalRendererRegistry", () => {
     expect(registry.getSnapshot().activeControllers).toBe(0);
   });
 });
+
+class RegistryIntegrationTerminal implements TerminalRendererTerminal {
+  element: HTMLElement | null = document.createElement("div");
+  rows = 24;
+
+  loadAddon(addon: ITerminalAddon): void {
+    addon.activate(this as unknown as Terminal);
+  }
+}
+
+class RegistryIntegrationWebglAddon implements ITerminalAddon {
+  private canvas: HTMLCanvasElement | null = null;
+
+  activate(terminal: Terminal): void {
+    this.canvas = document.createElement("canvas");
+    terminal.element?.append(this.canvas);
+  }
+
+  dispose(): void {
+    this.canvas?.remove();
+    this.canvas = null;
+  }
+
+  onContextLoss(): IDisposable {
+    return { dispose: () => undefined };
+  }
+}
+
+async function flushPromises() {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}

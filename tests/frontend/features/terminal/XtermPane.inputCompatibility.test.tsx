@@ -349,7 +349,7 @@ describe("XtermPane input compatibility", () => {
         rows: 30,
       });
     });
-    expect(mocks.api.resizeTerminal).toHaveBeenCalledWith("session-1", {
+    expect(mocks.api.resizeTerminal).not.toHaveBeenCalledWith("session-1", {
       cols: 100,
       rows: 30,
     });

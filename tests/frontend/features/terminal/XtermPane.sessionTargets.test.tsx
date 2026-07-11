@@ -638,7 +638,8 @@ describe("XtermPane session targets and appearance", () => {
     expect(terminalElement).toHaveStyle({
       fontFamily: "JetBrains Mono, monospace",
     });
-    expect(terminal.refresh).toHaveBeenCalledWith(0, 29);
+    expect(terminal.refresh).not.toHaveBeenCalled();
+    expect(mocks.fitInstances[0].fit).toHaveBeenCalled();
     expect(mocks.terminalInstances).toHaveLength(1);
   });
 

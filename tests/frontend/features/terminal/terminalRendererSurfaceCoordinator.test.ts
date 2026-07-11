@@ -171,6 +171,27 @@ describe("terminalRendererSurfaceCoordinator", () => {
     });
   });
 
+  it("invalidates a stable surface for renderer or font changes", () => {
+    const scheduler = createManualScheduler();
+    const fit = vi.fn(() => ({ cols: 100, rows: 30 }));
+    const coordinator = createTerminalRendererSurfaceCoordinator({
+      fit,
+      measure: defaultMeasurement,
+      scheduler: scheduler.scheduler,
+    });
+
+    coordinator.notify();
+    scheduler.flush();
+    scheduler.flush();
+    expect(coordinator.getSnapshot()?.stable).toBe(true);
+
+    coordinator.invalidate();
+    scheduler.flush();
+
+    expect(fit).toHaveBeenCalledTimes(2);
+    expect(coordinator.getSnapshot()?.stable).toBe(false);
+  });
+
   it("cancels pending work and remains disposed", () => {
     const scheduler = createManualScheduler();
     const fit = vi.fn(() => ({ cols: 80, rows: 24 }));

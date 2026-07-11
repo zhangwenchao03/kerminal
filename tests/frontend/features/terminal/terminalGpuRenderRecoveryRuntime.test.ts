@@ -12,9 +12,11 @@ function registry() {
 function renderer() {
   return {
     attach: vi.fn(),
+    canAttemptGpu: vi.fn(() => true),
     clearTextureAtlas: vi.fn(),
     dispose: vi.fn(),
     getDiagnostics: vi.fn(),
+    getTrackedRendererCanvases: vi.fn(() => []),
     getState: vi.fn(() => ({
       backend: "gpu" as const,
       canvasCount: 1,

@@ -13,6 +13,7 @@ import {
   normalizeTerminalSessionSize,
 } from "../../../../src/features/terminal/XtermPane.helpers.ts";
 import { terminalSuggestionProbeScheduler } from "../../../../src/features/terminal/terminalSuggestionProbeScheduler";
+import { terminalRendererRegistry } from "../../../../src/features/terminal/terminalRendererRegistry";
 import { TerminalPaneLayout } from "../../../../src/features/terminal/TerminalPaneLayout";
 import type { TerminalLayoutNode, TerminalPane } from "../../../../src/features/workspace/types";
 
@@ -68,10 +69,8 @@ describe("XtermPane sessions and command blocks", () => {
       );
     });
     expect(mocks.terminalInstances[0].focus).toHaveBeenCalled();
-    expect(mocks.api.resizeTerminal).toHaveBeenCalledWith("session-1", {
-      cols: 100,
-      rows: 30,
-    });
+    expect(mocks.fitInstances[0].fit).toHaveBeenCalledTimes(1);
+    expect(mocks.api.resizeTerminal).not.toHaveBeenCalled();
     expect(screen.getByLabelText("本地 PowerShell xterm 终端")).toHaveClass(
       "min-h-0",
     );
@@ -84,6 +83,142 @@ describe("XtermPane sessions and command blocks", () => {
     expect(screen.getByLabelText("本地 PowerShell xterm 终端")).not.toHaveClass(
       "min-h-[260px]",
     );
+  });
+
+  it("resizes a session when the surface changes while creation is pending", async () => {
+    let resolveSession:
+      | ((session: {
+          cols: number;
+          id: string;
+          rows: number;
+          shell: string;
+          shellIntegration: { reason: string; status: "disabled" };
+          status: "running";
+        }) => void)
+      | undefined;
+    mocks.api.createTerminalSession.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSession = resolve;
+        }),
+    );
+    const { rerender } = render(
+      <XtermPane
+        focused
+        paneId="pane-pending-resize"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mocks.api.createTerminalSession).toHaveBeenCalledWith(
+        { cols: 100, rows: 30 },
+        expect.any(Function),
+      );
+    });
+    mocks.fitInstances[0].proposeDimensions.mockReturnValue({
+      cols: 120,
+      rows: 40,
+    });
+    vi.spyOn(
+      screen.getByLabelText("本地 PowerShell xterm 终端"),
+      "getBoundingClientRect",
+    ).mockReturnValue({
+      bottom: 600,
+      height: 600,
+      left: 0,
+      right: 800,
+      top: 0,
+      width: 800,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    rerender(
+      <XtermPane
+        focused
+        paneId="pane-pending-resize"
+        resolvedTheme="dark"
+        terminalAppearance={{
+          ...defaultAppSettings.terminal,
+          fontSize: defaultAppSettings.terminal.fontSize + 1,
+        }}
+        title="本地 PowerShell"
+      />,
+    );
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    await waitFor(() => {
+      expect(mocks.fitInstances[0].fit).toHaveBeenCalledTimes(2);
+    });
+
+    await act(async () => {
+      resolveSession?.({
+        cols: 100,
+        id: "session-pending-resize",
+        rows: 30,
+        shell: "powershell.exe",
+        shellIntegration: { reason: "test", status: "disabled" },
+        status: "running",
+      });
+    });
+
+    await waitFor(() => {
+      expect(mocks.api.resizeTerminal).toHaveBeenCalledWith(
+        "session-pending-resize",
+        { cols: 120, rows: 40 },
+      );
+    });
+  });
+
+  it("suspends registry visibility while the document is hidden", async () => {
+    const visibilityDescriptor = Object.getOwnPropertyDescriptor(
+      document,
+      "visibilityState",
+    );
+    const { unmount } = render(
+      <XtermPane
+        focused
+        paneId="pane-document-visibility"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+    await waitFor(() => {
+      expect(mocks.api.createTerminalSession).toHaveBeenCalled();
+    });
+
+    try {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        value: "hidden",
+      });
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      expect(
+        terminalRendererRegistry
+          .getSnapshot()
+          .panes.find((pane) => pane.paneId === "pane-document-visibility")
+          ?.visible,
+      ).toBe(false);
+    } finally {
+      unmount();
+      if (visibilityDescriptor) {
+        Object.defineProperty(
+          document,
+          "visibilityState",
+          visibilityDescriptor,
+        );
+      } else {
+        Reflect.deleteProperty(document, "visibilityState");
+      }
+    }
   });
 
   it("notifies when the active terminal session closes naturally", async () => {
@@ -848,8 +983,25 @@ describe("XtermPane sessions and command blocks", () => {
       terminal.refresh.mockClear();
       terminal.cols = 80;
       terminal.rows = 24;
+      for (const frameId of [...frameCallbacks.keys()]) {
+        runFrame(frameCallbacks, frameId);
+      }
       frameCallbacks.clear();
       nextFrameId = 1;
+      const terminalContainer = screen.getByLabelText(
+        "本地 PowerShell xterm 终端",
+      );
+      vi.spyOn(terminalContainer, "getBoundingClientRect").mockReturnValue({
+        bottom: 600,
+        height: 600,
+        left: 0,
+        right: 800,
+        top: 0,
+        width: 800,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      });
 
       rerender(
         <XtermPane
@@ -865,16 +1017,16 @@ describe("XtermPane sessions and command blocks", () => {
       expect(frameCallbacks.has(1)).toBe(true);
       runFrame(frameCallbacks, 1);
       expect(frameCallbacks.has(2)).toBe(true);
-      expect(fitAddon.fit).not.toHaveBeenCalled();
+      expect(fitAddon.fit).toHaveBeenCalledTimes(1);
 
       runFrame(frameCallbacks, 2);
 
       expect(fitAddon.fit).toHaveBeenCalledTimes(1);
-      expect(mocks.api.resizeTerminal).toHaveBeenCalledWith("session-1", {
+      expect(mocks.api.resizeTerminal).not.toHaveBeenCalledWith("session-1", {
         cols: 100,
         rows: 30,
       });
-      expect(terminal.refresh).toHaveBeenCalledWith(0, 29);
+      expect(terminal.refresh).not.toHaveBeenCalled();
       expect(mocks.api.closeTerminal).not.toHaveBeenCalled();
 
       act(() => {

@@ -114,9 +114,7 @@ const mocks = vi.hoisted(() => {
     refresh = vi.fn();
     private nextMarkerId = 1;
     selectAll = vi.fn();
-    write = vi.fn((_data: string, callback?: () => void) => {
-      callback?.();
-    });
+    write = vi.fn((_data: string) => undefined);
 
     constructor(options: Record<string, unknown>) {
       this.options = options;

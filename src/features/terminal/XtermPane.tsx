@@ -3,7 +3,12 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { Terminal as XtermTerminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { resizeTerminal, startTerminalLog, stopTerminalLog, writeTerminal, type TerminalSessionLogState } from "../../lib/terminalApi";
+import {
+  startTerminalLog,
+  stopTerminalLog,
+  writeTerminal,
+  type TerminalSessionLogState,
+} from "../../lib/terminalApi";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 import { terminalColorSchemeForTheme, terminalFontWeightValue } from "../settings/settingsModel";
 import { xtermThemeFor } from "../settings/terminalTheme";
@@ -52,16 +57,10 @@ import {
   EMPTY_TERMINAL_PANE_CHROME_SNAPSHOT,
   terminalChromeRuntimeStore,
 } from "./terminalChromeRuntimeStore";
-import { resolveTerminalAppearanceRecoveryTrigger } from "./terminalGpuRenderRecoveryAppearance";
-import type { TerminalGpuRenderRecoveryController } from "./terminalGpuRenderRecovery";
 import {
   createTerminalPaneRuntimeLifecycleRuntime,
   type TerminalPaneRuntimeLifecycleRuntime,
 } from "./terminalPaneRuntimeLifecycleRuntime";
-import {
-  createWindowVisibleRecoveryScheduler,
-  scheduleTerminalPaneVisibleRecovery,
-} from "./terminalPaneVisibleRecovery";
 import type { TerminalRendererController } from "./terminalRenderer";
 import { terminalRendererRegistry } from "./terminalRendererRegistry";
 import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeScheduler";
@@ -147,14 +146,14 @@ export function XtermPane({
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const terminalAppearanceRef = useRef(terminalAppearance);
-  const terminalGpuRenderRecoveryControllerRef =
-    useRef<TerminalGpuRenderRecoveryController | null>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
   const activityRuntimeRef = useRef<XtermPaneActivityRuntime | null>(null);
   const terminalRendererControllerRef =
     useRef<TerminalRendererController | null>(null);
   const terminalRuntimeLifecycleControllerRef =
     useRef<TerminalPaneRuntimeLifecycleRuntime | null>(null);
+  const terminalSurfaceCoordinatorRef =
+    useRef<((invalidate?: boolean) => void) | null>(null);
   const visibleRef = useRef(visible);
   terminalRuntimeLifecycleControllerRef.current ??=
     createTerminalPaneRuntimeLifecycleRuntime({
@@ -407,11 +406,11 @@ export function XtermPane({
         terminalAppearance,
         terminalAppearanceRef,
         terminalFontWeight,
-        terminalGpuRenderRecoveryControllerRef,
         terminalRef,
         terminalRendererControllerRef,
         terminalRuntimeLifecycleControllerRef,
         terminalRuntimeLifecycleRef,
+        terminalSurfaceCoordinatorRef,
         terminalTheme,
         transientStartupMessage,
         visibleRef,
@@ -457,29 +456,14 @@ export function XtermPane({
       visible ? null : "hidden-pane",
     );
     if (!visible) {
+      terminalRendererControllerRef.current?.suspend();
       terminalRendererRegistry.updatePaneVisibility(paneId, false);
+      terminalSurfaceCoordinatorRef.current?.();
       return undefined;
     }
 
-    return scheduleTerminalPaneVisibleRecovery({
-      cancelHiddenResourceReaper: () =>
-        terminalRendererRegistry.updatePaneVisibility(paneId, true),
-      fitAddon: () => fitAddonRef.current,
-      markVisibleRecoveryComplete: () => {
-        const decision =
-          terminalRuntimeLifecycleControllerRef.current?.markVisibleRecoveryComplete();
-        terminalGpuRenderRecoveryControllerRef.current?.trigger(
-          "visible-recovered",
-        );
-        return decision;
-      },
-      onDimensionsChange: (dimensions) =>
-        onTerminalDimensionsChangeRef.current?.(dimensions),
-      resizeTerminal,
-      scheduler: createWindowVisibleRecoveryScheduler(window),
-      sessionId: () => sessionIdRef.current,
-      terminal: () => terminalRef.current,
-    });
+    terminalSurfaceCoordinatorRef.current?.(true);
+    return undefined;
   }, [paneId, visible]);
 
   useEffect(() => {
@@ -517,20 +501,11 @@ export function XtermPane({
     if (containerRef.current) {
       containerRef.current.style.fontFamily = terminalAppearance.fontFamily;
     }
-    fitAddonRef.current?.fit();
-    terminal.refresh?.(0, Math.max(0, terminal.rows - 1));
-    const recoveryTrigger =
-      resolveTerminalAppearanceRecoveryTrigger(
-        previousAppearance,
-        terminalAppearance,
-      ) ??
-      (previousTerminalTheme !== terminalTheme ? "theme-changed" : "resize");
-    terminalGpuRenderRecoveryControllerRef.current?.trigger(recoveryTrigger);
-    const dimensions = { cols: terminal.cols, rows: terminal.rows };
-    const sessionId = sessionIdRef.current;
-    onTerminalDimensionsChangeRef.current?.(dimensions);
-    if (sessionId) {
-      void resizeTerminal(sessionId, dimensions);
+    if (
+      previousAppearance !== terminalAppearance ||
+      previousTerminalTheme !== terminalTheme
+    ) {
+      terminalSurfaceCoordinatorRef.current?.(true);
     }
   }, [
     inputCompatibilityMode,

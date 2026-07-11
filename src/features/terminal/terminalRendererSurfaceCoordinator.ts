@@ -26,7 +26,9 @@ export interface TerminalRendererSurfaceScheduler {
 
 export interface TerminalRendererSurfaceCoordinator {
   dispose(): void;
+  flush(): void;
   getSnapshot(): TerminalRendererSurfaceSnapshot | undefined;
+  invalidate(): void;
   notify(): void;
 }
 
@@ -132,6 +134,10 @@ export function createTerminalRendererSurfaceCoordinator({
     if (stable && !wasStable) {
       onStableSurface?.(snapshot);
     }
+    if (!stable && frameHandle === null && !disposed) {
+      // 稳定判定需要连续样本；首帧后主动补采样，不能依赖浏览器再次触发 ResizeObserver。
+      frameHandle = scheduler.request(flush);
+    }
   };
 
   return {
@@ -142,8 +148,28 @@ export function createTerminalRendererSurfaceCoordinator({
       disposed = true;
       cancelFrame();
     },
+    flush() {
+      if (disposed) {
+        return;
+      }
+      cancelFrame();
+      flush();
+    },
     getSnapshot() {
       return snapshot;
+    },
+    invalidate() {
+      if (disposed) {
+        return;
+      }
+      lastMeasurement = undefined;
+      stableSampleCount = 0;
+      if (snapshot) {
+        snapshot = { ...snapshot, stable: false };
+      }
+      if (frameHandle === null) {
+        frameHandle = scheduler.request(flush);
+      }
     },
     notify() {
       if (disposed || frameHandle !== null) {

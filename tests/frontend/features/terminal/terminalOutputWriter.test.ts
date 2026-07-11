@@ -203,6 +203,29 @@ describe("terminalOutputWriter", () => {
     expect(writer.pendingLength()).toBe(0);
   });
 
+  it("keeps a surrogate pair intact when only one code unit remains", () => {
+    const terminal = { write: vi.fn() };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      maxCharsPerFlush: 3,
+      scheduler: manual.scheduler,
+    });
+
+    writer.write("ab");
+    writer.write("\uD83D\uDE00cd");
+
+    manual.runNext();
+    manual.runNext();
+    manual.runNext();
+
+    expect(terminal.write.mock.calls.map(([data]) => data)).toEqual([
+      "ab",
+      "\uD83D\uDE00c",
+      "d",
+    ]);
+    expect(writer.pendingLength()).toBe(0);
+  });
+
   it("flushes queued data before immediate status output", () => {
     const terminal = { write: vi.fn() };
     const manual = createManualScheduler();
