@@ -29,7 +29,10 @@ import {
   TerminalAppearancePreview,
   TerminalSchemePicker,
 } from "./terminal-preview";
-import { buildTerminalRendererStatusView } from "./terminal-renderer-status";
+import {
+  buildTerminalRendererStatusView,
+  isRetryableRendererFallback,
+} from "./terminal-renderer-status";
 
 interface TerminalSettingsSectionProps {
   normalizedSettings: AppSettings;
@@ -64,6 +67,17 @@ export function TerminalSettingsSection({
     terminalRendererRegistry.getSnapshot,
   );
   const rendererStatus = buildTerminalRendererStatusView(rendererSnapshot);
+  const retryableRendererPaneIds = rendererSnapshot.panes
+    .filter(
+      (pane) =>
+        isRetryableRendererFallback(pane.fallbackReason) || pane.circuitOpen,
+    )
+    .map((pane) => pane.paneId);
+  const retryGlobalRendererFallback =
+    rendererSnapshot.suggestedFallback === "cpu";
+  const canRetryGpu =
+    rendererSnapshot.requestedMode !== "cpu" &&
+    (retryGlobalRendererFallback || retryableRendererPaneIds.length > 0);
 
   return (
     <section className={terminalPanelClassName} id="settings-terminal-panel">
@@ -173,6 +187,26 @@ export function TerminalSettingsSection({
         >
           {rendererStatus.detail}
         </div>
+
+        {canRetryGpu ? (
+          <button
+            aria-label="重新尝试 GPU"
+            className="kerminal-focus-ring kerminal-pressable mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-amber-400/35 bg-amber-50 px-3 text-sm font-medium text-amber-800 transition hover:bg-amber-100 dark:border-amber-300/25 dark:bg-amber-400/10 dark:text-amber-100 dark:hover:bg-amber-400/15"
+            onClick={() => {
+              if (retryGlobalRendererFallback) {
+                terminalRendererRegistry.retryGpu();
+                return;
+              }
+              for (const paneId of retryableRendererPaneIds) {
+                terminalRendererRegistry.retryGpu(paneId);
+              }
+            }}
+            type="button"
+          >
+            <RotateCcw className="h-4 w-4" />
+            重新尝试 GPU
+          </button>
+        ) : null}
 
         <div className="mt-4 grid gap-2 md:grid-cols-3">
           {terminalRendererTypeOptions.map((option) => {

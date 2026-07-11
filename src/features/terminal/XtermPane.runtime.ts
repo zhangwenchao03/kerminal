@@ -18,10 +18,20 @@ import { createTerminalInputModelState } from "./terminalInputModel";
 import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeScheduler";
 import { createTerminalRemoteSuggestionPrewarm } from "./terminalRemoteSuggestionPrewarm";
 import { createTerminalOutputHistoryBuffer } from "./terminalOutputHistoryBuffer";
-import { createTerminalGpuRenderRecoveryRuntime, terminalRendererFallbackReasonFromState, type TerminalGpuRenderRecoveryController } from "./terminalGpuRenderRecoveryRuntime";
-import { refreshTerminalRendererDimensions } from "./terminalRendererDimensions";
+import { terminalRendererFallbackReasonFromState } from "./terminalGpuRenderRecoveryRuntime";
 import { createTerminalRendererController } from "./terminalRenderer";
+import { resolveRuntimeTerminalRendererFeatureGates } from "./terminalRendererFeatureGates";
+import {
+  createTerminalRendererHealthWatchdog,
+  type TerminalRendererHealthWatchdog,
+} from "./terminalRendererHealthWatchdog";
+import { createTerminalRendererPerformanceTelemetry } from "./terminalRendererPerformanceTelemetry";
 import { terminalRendererRegistry } from "./terminalRendererRegistry";
+import { createTerminalSessionResizeCoordinator } from "./terminalSessionResizeCoordinator";
+import {
+  createTerminalRendererSurfaceCoordinator,
+  type TerminalRendererSurfaceCoordinator,
+} from "./terminalRendererSurfaceCoordinator";
 import type { TerminalRendererFallbackReason } from "./terminalRendererPolicy";
 import { createTerminalOutputInstrumentation, runTerminalOutputInstrumentationStep } from "./terminalOutputInstrumentation";
 import { collectCurrentDirOscSequences, errorMessage } from "./XtermPane.helpers";
@@ -36,8 +46,13 @@ import { createXtermPaneActivityRuntime } from "./XtermPane.activityRuntime";
 import { registerXtermPaneRuntimeEvents } from "./XtermPane.runtime.events";
 import { createXtermPaneArtifactRuntime } from "./XtermPane.artifacts";
 const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000,
-  INITIAL_REMOTE_OUTPUT_IMMEDIATE_WRITE_MS = 8_000,
+  INITIAL_REMOTE_OUTPUT_FAST_BATCH_LIMIT = 8,
+  INITIAL_REMOTE_OUTPUT_FAST_BYTE_LIMIT = 128 * 1024,
+  INITIAL_REMOTE_OUTPUT_FAST_WINDOW_MS = 2_000,
   TERMINAL_SESSION_STATUS_POLL_MS = 2_000;
+const TERMINAL_OUTPUT_UTF8_ENCODER = new TextEncoder();
+const TERMINAL_RENDERER_FEATURE_GATES =
+  resolveRuntimeTerminalRendererFeatureGates();
 export function installXtermPaneRuntime(params: any) {
   const {
     activityRuntimeRef,
@@ -88,11 +103,11 @@ export function installXtermPaneRuntime(params: any) {
     terminalAppearance,
     terminalAppearanceRef,
     terminalFontWeight,
-    terminalGpuRenderRecoveryControllerRef,
     terminalRef,
     terminalRendererControllerRef,
     terminalRuntimeLifecycleControllerRef,
     terminalRuntimeLifecycleRef,
+    terminalSurfaceCoordinatorRef,
     terminalTheme,
     transientStartupMessage,
     visibleRef,
@@ -103,6 +118,7 @@ export function installXtermPaneRuntime(params: any) {
   }
   let disposed = false,
     sessionStatusPollTimer: number | null = null;
+  let devicePixelRatioMediaQuery: MediaQueryList | null = null;
   let resizeObserver: ResizeObserver | undefined;
   let sessionRun = 0;
   let shellIntegrationState = createTerminalShellIntegrationState();
@@ -234,7 +250,9 @@ export function installXtermPaneRuntime(params: any) {
         prewarmRemoteSuggestions: false,
       }),
   });
-  let gpuRenderRecoveryController: TerminalGpuRenderRecoveryController | null = null;
+  let rendererSurfaceCoordinator: TerminalRendererSurfaceCoordinator | null =
+    null;
+  let rendererHealthWatchdog: TerminalRendererHealthWatchdog | null = null;
 
   terminal.loadAddon(fitAddon);
   terminal.loadAddon(searchAddon);
@@ -244,6 +262,17 @@ export function installXtermPaneRuntime(params: any) {
   });
   const compositionTarget = container.querySelector(".xterm") ?? container;
   terminal.open(container);
+  // 会话创建需要首个 cols/rows；后续所有 surface 变化统一交给 coordinator。
+  fitAddon.fit();
+  let lastReportedSurfaceDimensions = {
+    cols: terminal.cols,
+    rows: terminal.rows,
+  };
+  let reuseInitialSurfaceDimensions = true;
+  onTerminalDimensionsChangeRef.current?.(lastReportedSurfaceDimensions);
+  const sessionResizeCoordinator = createTerminalSessionResizeCoordinator({
+    resize: resizeTerminal,
+  });
   terminalRef.current = terminal;
   const activityRuntime = createXtermPaneActivityRuntime({
     connectionState: "connecting",
@@ -255,7 +284,16 @@ export function installXtermPaneRuntime(params: any) {
   activityRuntimeRef.current = activityRuntime;
   let rendererBackend = "cpu";
   let lastRecordedRendererFallbackReason: TerminalRendererFallbackReason | undefined;
+  const rendererTelemetry = createTerminalRendererPerformanceTelemetry();
   const terminalRendererController = createTerminalRendererController({
+    compatibilityGate: {
+      forceContextLoss:
+        TERMINAL_RENDERER_FEATURE_GATES.privateCleanupCompat,
+      privateRendererCleanup:
+        TERMINAL_RENDERER_FEATURE_GATES.privateCleanupCompat,
+    },
+    healthWatchdogEnabled: TERMINAL_RENDERER_FEATURE_GATES.healthWatchdog,
+    lifecycleV2Enabled: TERMINAL_RENDERER_FEATURE_GATES.lifecycleV2,
     onStateChange: (state) => {
       terminalRendererRegistry.updatePaneState(paneId, state);
       const fallbackReason = terminalRendererFallbackReasonFromState(state.fallbackReason);
@@ -267,18 +305,14 @@ export function installXtermPaneRuntime(params: any) {
       }
       if (state.backend !== rendererBackend) {
         rendererBackend = state.backend;
-        refreshTerminalRendererDimensions({
-          fitAddon,
-          onDimensionsChange: onTerminalDimensionsChangeRef.current,
-          resizeTerminal,
-          sessionId: sessionIdRef.current,
-          terminal,
-        });
-        gpuRenderRecoveryController?.trigger(state.backend === "gpu" ? "renderer-attached" : "renderer-disposed");
+        rendererSurfaceCoordinator?.invalidate();
       }
     },
     paneId,
     rendererType: terminalAppearance.rendererType,
+    telemetry: TERMINAL_RENDERER_FEATURE_GATES.performanceTelemetry
+      ? rendererTelemetry
+      : undefined,
     terminal,
   });
   terminalRendererControllerRef.current = terminalRendererController;
@@ -289,12 +323,6 @@ export function installXtermPaneRuntime(params: any) {
     paneId,
     visible: visibleRef?.current ?? true,
   });
-  gpuRenderRecoveryController = createTerminalGpuRenderRecoveryRuntime({
-    paneId,
-    renderer: terminalRendererController,
-    terminal,
-  });
-  terminalGpuRenderRecoveryControllerRef.current = gpuRenderRecoveryController;
   if (shouldEnableKittyKeyboardProtocol(inputCompatibilityMode)) {
     terminal.write(KITTY_KEYBOARD_PROTOCOL_ENABLE);
   }
@@ -306,7 +334,6 @@ export function installXtermPaneRuntime(params: any) {
     container,
     currentCwdRef,
     cwd,
-    getGpuRenderRecoveryController: () => gpuRenderRecoveryController,
     ghostSuggestions,
     ghostSuggestionRef,
     inputBufferRef,
@@ -343,7 +370,19 @@ export function installXtermPaneRuntime(params: any) {
       shouldPreserveOriginEraseBelow: shouldPreserveCommandBlockForOriginEraseBelow,
     },
   );
-  const outputWriter = createTerminalOutputWriter(terminal);
+  const outputWriter = createTerminalOutputWriter(terminal, {
+    adaptive: TERMINAL_RENDERER_FEATURE_GATES.adaptiveOutputScheduler,
+    callbackMode: "auto",
+    cadence:
+      visibleRef?.current === false
+        ? "hidden"
+        : focusedRef.current
+          ? "focused"
+          : "visible",
+    telemetry: TERMINAL_RENDERER_FEATURE_GATES.performanceTelemetry
+      ? rendererTelemetry
+      : undefined,
+  });
   outputWriter.writeNow(outputHistoryRef.current ?? "");
   const outputHistoryBuffer = createTerminalOutputHistoryBuffer({
     flushDelayMs: () => terminalRuntimeLifecycleRef?.current?.outputHistoryFlushIntervalMs ?? 100,
@@ -351,25 +390,104 @@ export function installXtermPaneRuntime(params: any) {
     outputHistoryRef,
   });
   const sshFailureTracker = createSshTerminalFailureTracker();
-  let lastDevicePixelRatio = typeof window.devicePixelRatio === "number" ? window.devicePixelRatio : 1;
-  const fitAndResize = () => {
-    fitAddon.fit();
-    const sessionId = sessionIdRef.current;
-    const dimensions = { cols: terminal.cols, rows: terminal.rows };
-    onTerminalDimensionsChangeRef.current?.(dimensions);
-    const nextDevicePixelRatio = typeof window.devicePixelRatio === "number" ? window.devicePixelRatio : 1;
-    gpuRenderRecoveryController?.trigger(nextDevicePixelRatio !== lastDevicePixelRatio ? "device-pixel-ratio-changed" : "resize");
-    lastDevicePixelRatio = nextDevicePixelRatio;
-    if (!sessionId) {
+  rendererSurfaceCoordinator = createTerminalRendererSurfaceCoordinator({
+    fit: () => {
+      if (reuseInitialSurfaceDimensions) {
+        return lastReportedSurfaceDimensions;
+      }
+      fitAddon.fit();
+      return { cols: terminal.cols, rows: terminal.rows };
+    },
+    measure: () => {
+      const rect = container.getBoundingClientRect();
+      const visible =
+        visibleRef?.current !== false &&
+        document.visibilityState !== "hidden" &&
+        container.isConnected;
+      return {
+        dpr:
+          typeof window.devicePixelRatio === "number"
+            ? window.devicePixelRatio
+            : 1,
+        height: rect.height,
+        minimized: !visible || rect.width <= 0 || rect.height <= 0,
+        visible,
+        width: rect.width,
+      };
+    },
+    onDimensionsChange: (dimensions) => {
+      if (
+        dimensions.cols === lastReportedSurfaceDimensions.cols &&
+        dimensions.rows === lastReportedSurfaceDimensions.rows
+      ) {
+        return;
+      }
+      lastReportedSurfaceDimensions = dimensions;
+      onTerminalDimensionsChangeRef.current?.(dimensions);
+      sessionResizeCoordinator.request(dimensions);
+      ghostSuggestions.refreshGhostSuggestionLayout();
+    },
+    onStableSurface: () => {
+      terminalRendererRegistry.updatePaneVisibility(paneId, true);
+      terminalRendererController.resume();
+      terminalRendererController.attach();
+      terminalRuntimeLifecycleControllerRef?.current?.markVisibleRecoveryComplete();
+      rendererHealthWatchdog?.check();
+    },
+  });
+  rendererHealthWatchdog = TERMINAL_RENDERER_FEATURE_GATES.healthWatchdog
+    ? createTerminalRendererHealthWatchdog({
+        container,
+        renderer: terminalRendererController,
+        surfaceSnapshot: () => rendererSurfaceCoordinator?.getSnapshot(),
+      })
+    : null;
+  if (terminalSurfaceCoordinatorRef) {
+    terminalSurfaceCoordinatorRef.current = (invalidate = false) => {
+      if (invalidate) {
+        rendererSurfaceCoordinator?.invalidate();
+        return;
+      }
+      rendererSurfaceCoordinator?.notify();
+    };
+  }
+  const fitAndResize = () => rendererSurfaceCoordinator?.notify();
+  const handleDocumentVisibilityChange = () => {
+    if (document.visibilityState === "hidden") {
+      terminalRendererController.suspend();
+      terminalRendererRegistry.updatePaneVisibility(paneId, false);
+      rendererSurfaceCoordinator?.notify();
       return;
     }
-    void resizeTerminal(sessionId, dimensions);
-    ghostSuggestions.refreshGhostSuggestionLayout();
+    rendererSurfaceCoordinator?.invalidate();
   };
+  const handleWindowSurfaceChange = () =>
+    rendererSurfaceCoordinator?.invalidate();
+  const bindDevicePixelRatioListener = () => {
+    devicePixelRatioMediaQuery?.removeEventListener(
+      "change",
+      handleDevicePixelRatioChange,
+    );
+    devicePixelRatioMediaQuery =
+      typeof window.matchMedia === "function"
+        ? window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
+        : null;
+    devicePixelRatioMediaQuery?.addEventListener(
+      "change",
+      handleDevicePixelRatioChange,
+    );
+  };
+  function handleDevicePixelRatioChange() {
+    bindDevicePixelRatioListener();
+    rendererSurfaceCoordinator?.invalidate();
+  }
+  rendererSurfaceCoordinator.flush();
+  reuseInitialSurfaceDimensions = false;
   const clearSessionState = (sessionId: string) => {
     if (sessionIdRef.current === sessionId) {
       sessionIdRef.current = null;
     }
+    sessionResizeCoordinator.clearSession(sessionId);
     unregisterTerminalPaneSession(paneId, sessionId);
     shellIntegrationState = createTerminalShellIntegrationState();
     shellIntegrationCommandBlockProtocolRef.current = false;
@@ -513,6 +631,8 @@ export function installXtermPaneRuntime(params: any) {
     transientStartupNoticeVisible = reason === "initial" && startupNotice.trim().length > 0 && (transientStartupMessage || hasRemoteTerminalTarget());
     outputWriter.writeNow(startupNotice);
     const sessionStartedAtMs = Date.now();
+    let initialRemoteFastBatches = 0;
+    let initialRemoteFastBytes = 0;
 
     const handleOutput = (event: TerminalOutputEvent) => {
       if (disposed || sessionRun !== currentRun) {
@@ -551,11 +671,31 @@ export function installXtermPaneRuntime(params: any) {
           runTerminalOutputInstrumentationStep(terminalOutputInstrumentation, "commandBlock", event.data.length, () => commandBlockRuntime.appendShellIntegrationCommandOutput(event.data));
         }
         runTerminalOutputInstrumentationStep(terminalOutputInstrumentation, "writer", event.data.length, () => {
-          const initialRemoteOutput = hasRemoteTerminalTarget() && Date.now() - sessionStartedAtMs <= INITIAL_REMOTE_OUTPUT_IMMEDIATE_WRITE_MS;
+          const initialRemoteCandidate =
+            hasRemoteTerminalTarget() &&
+            Date.now() - sessionStartedAtMs <=
+              INITIAL_REMOTE_OUTPUT_FAST_WINDOW_MS &&
+            initialRemoteFastBatches < INITIAL_REMOTE_OUTPUT_FAST_BATCH_LIMIT;
+          const eventBytes = initialRemoteCandidate
+            ? TERMINAL_OUTPUT_UTF8_ENCODER.encode(event.data).byteLength
+            : 0;
+          const initialRemoteOutput =
+            initialRemoteCandidate &&
+            initialRemoteFastBytes + eventBytes <=
+              INITIAL_REMOTE_OUTPUT_FAST_BYTE_LIMIT;
           if (initialRemoteOutput) {
+            initialRemoteFastBatches += 1;
+            initialRemoteFastBytes += eventBytes;
             outputWriter.writeNow(event.data);
             return;
           }
+          outputWriter.setCadence(
+            visibleRef?.current === false
+              ? "hidden"
+              : focusedRef.current
+                ? "focused"
+                : "visible",
+          );
           outputWriter.write(event.data);
         });
         runTerminalOutputInstrumentationStep(terminalOutputInstrumentation, "history", event.data.length, () => outputHistoryBuffer.append(event.data));
@@ -574,9 +714,13 @@ export function installXtermPaneRuntime(params: any) {
     };
 
     try {
+      const requestedDimensions = {
+        cols: terminal.cols,
+        rows: terminal.rows,
+      };
       const session = await createXtermPaneTerminalSession({
         args,
-        cols: terminal.cols,
+        cols: requestedDimensions.cols,
         currentCwd: currentCwdRef.current,
         cwd,
         env,
@@ -584,7 +728,7 @@ export function installXtermPaneRuntime(params: any) {
         promptForSecret: terminalInlineSshAuthPrompt.promptForSecret,
         remoteCommand,
         remoteHostId,
-        rows: terminal.rows,
+        rows: requestedDimensions.rows,
         shell,
         target,
       });
@@ -600,6 +744,7 @@ export function installXtermPaneRuntime(params: any) {
       });
       shellIntegrationCommandBlockProtocolRef.current = assistEnabled && shellIntegrationTrusted;
       sessionIdRef.current = session.id;
+      sessionResizeCoordinator.bindSession(session.id, requestedDimensions);
       registerTerminalPaneSession(paneId, session.id, {
         containerId: target?.kind === "dockerContainer" ? target.containerId : undefined,
         containerRuntime: target?.kind === "dockerContainer" ? (target.runtime ?? "docker") : undefined,
@@ -634,6 +779,7 @@ export function installXtermPaneRuntime(params: any) {
             setLogState({ active: false, bytesWritten: 0 });
           }
         });
+      sessionResizeCoordinator.request(lastReportedSurfaceDimensions);
       fitAndResize();
       if (focusedRef.current) {
         terminal.focus();
@@ -688,10 +834,33 @@ export function installXtermPaneRuntime(params: any) {
     resizeObserver = new ResizeObserver(fitAndResize);
     resizeObserver.observe(container);
   }
+  document.addEventListener(
+    "visibilitychange",
+    handleDocumentVisibilityChange,
+  );
+  window.addEventListener("resize", handleWindowSurfaceChange);
+  bindDevicePixelRatioListener();
   return () => {
     disposed = true;
     sessionRun += 1;
     resizeObserver?.disconnect();
+    document.removeEventListener(
+      "visibilitychange",
+      handleDocumentVisibilityChange,
+    );
+    window.removeEventListener("resize", handleWindowSurfaceChange);
+    devicePixelRatioMediaQuery?.removeEventListener(
+      "change",
+      handleDevicePixelRatioChange,
+    );
+    devicePixelRatioMediaQuery = null;
+    rendererHealthWatchdog?.dispose();
+    rendererHealthWatchdog = null;
+    rendererSurfaceCoordinator?.dispose();
+    rendererSurfaceCoordinator = null;
+    if (terminalSurfaceCoordinatorRef?.current) {
+      terminalSurfaceCoordinatorRef.current = null;
+    }
     reconnectRuntime.clearReconnectTimer();
     clearSessionStatusPollTimer();
     terminalSuggestionProbeScheduler.cancelOwner(paneId);
@@ -709,6 +878,7 @@ export function installXtermPaneRuntime(params: any) {
     terminalInlineSshAuthPrompt.finish(null);
     const sessionId = sessionIdRef.current;
     sessionIdRef.current = null;
+    sessionResizeCoordinator.dispose();
     shellIntegrationCommandBlockProtocolRef.current = false;
     commandBlockRuntime.resetProtocolState();
     reconnectSessionRef.current = null;
@@ -717,8 +887,6 @@ export function installXtermPaneRuntime(params: any) {
       unregisterTerminalPaneSession(paneId, sessionId);
       void closeTerminal(sessionId);
     }
-    gpuRenderRecoveryController?.dispose();
-    if (terminalGpuRenderRecoveryControllerRef.current === gpuRenderRecoveryController) terminalGpuRenderRecoveryControllerRef.current = null;
     unregisterTerminalRenderer();
     if (terminalRendererControllerRef.current === terminalRendererController) {
       terminalRendererControllerRef.current = null;

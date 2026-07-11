@@ -43,12 +43,14 @@ function renderer(state: {
 }
 
 describe("terminalGpuRenderRecovery", () => {
-  it("coalesces refreshes into one frame", () => {
+  it("keeps ordinary renderer signals free of recovery side effects", () => {
     const scheduler = new ManualFrameScheduler();
     const fakeRenderer = renderer({});
     const terminal = { refresh: vi.fn(), rows: 10 };
+    const events: unknown[] = [];
     const controller = createTerminalGpuRenderRecoveryController({
       now: () => 1_000,
+      onRecovery: (event) => events.push(event),
       renderer: fakeRenderer,
       scheduler,
       terminal,
@@ -56,14 +58,19 @@ describe("terminalGpuRenderRecovery", () => {
 
     controller.trigger("write-parsed");
     controller.trigger("buffer-changed");
+    controller.trigger("resize");
+    controller.trigger("theme-changed");
+    controller.trigger("font-changed");
+    controller.trigger("renderer-attached");
     scheduler.flush();
 
-    expect(terminal.refresh).toHaveBeenCalledTimes(1);
-    expect(terminal.refresh).toHaveBeenCalledWith(0, 9);
+    expect(scheduler.callbacks.size).toBe(0);
+    expect(terminal.refresh).not.toHaveBeenCalled();
     expect(fakeRenderer.clearTextureAtlas).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
   });
 
-  it("clears the atlas before refreshing for invalidating triggers", () => {
+  it("coalesces manual recovery and advances the atlas epoch once", () => {
     const scheduler = new ManualFrameScheduler();
     const fakeRenderer = renderer({});
     const terminal = { refresh: vi.fn(), rows: 8 };
@@ -76,7 +83,8 @@ describe("terminalGpuRenderRecovery", () => {
       terminal,
     });
 
-    controller.trigger("font-changed");
+    controller.trigger("manual-recover");
+    controller.trigger("manual-recover");
     scheduler.flush();
 
     expect(fakeRenderer.clearTextureAtlas).toHaveBeenCalledTimes(1);
@@ -85,9 +93,121 @@ describe("terminalGpuRenderRecovery", () => {
       {
         action: "clearAtlasAndRefresh",
         atlasEpoch: 1,
-        reason: "renderer-invalidated",
+        reason: "manual-recover",
       },
     ]);
+  });
+
+  it("keeps the atlas epoch stable during cooldown and advances it afterwards", () => {
+    const scheduler = new ManualFrameScheduler();
+    const fakeRenderer = renderer({});
+    let timestamp = 1_000;
+    const clearTextureAtlas = vi.fn();
+    const terminal = { refresh: vi.fn(), rows: 8 };
+    const events: unknown[] = [];
+    const controller = createTerminalGpuRenderRecoveryController({
+      clearTextureAtlas,
+      now: () => timestamp,
+      onRecovery: (event) => events.push(event),
+      renderer: fakeRenderer,
+      scheduler,
+      terminal,
+    });
+
+    controller.trigger("manual-recover");
+    scheduler.flush();
+
+    timestamp = 1_100;
+    controller.trigger("manual-recover");
+    scheduler.flush();
+
+    timestamp = 1_300;
+    controller.trigger("manual-recover");
+    scheduler.flush();
+
+    timestamp = 3_100;
+    controller.trigger("manual-recover");
+    scheduler.flush();
+
+    expect(clearTextureAtlas).toHaveBeenCalledTimes(2);
+    expect(terminal.refresh).toHaveBeenCalledTimes(3);
+    expect(events).toEqual([
+      {
+        action: "clearAtlasAndRefresh",
+        atlasEpoch: 1,
+        reason: "manual-recover",
+      },
+      {
+        action: "refresh",
+        atlasEpoch: 1,
+        reason: "atlas-clear-cooldown",
+      },
+      {
+        action: "clearAtlasAndRefresh",
+        atlasEpoch: 2,
+        reason: "manual-recover",
+      },
+    ]);
+    expect(fakeRenderer.clearTextureAtlas).not.toHaveBeenCalled();
+  });
+
+  it("refreshes visible explicit recovery without clearing the atlas", () => {
+    const scheduler = new ManualFrameScheduler();
+    const fakeRenderer = renderer({});
+    let timestamp = 2_000;
+    const terminal = { refresh: vi.fn(), rows: 8 };
+    const controller = createTerminalGpuRenderRecoveryController({
+      now: () => timestamp,
+      renderer: fakeRenderer,
+      scheduler,
+      terminal,
+    });
+
+    controller.trigger("visible-recovered");
+    scheduler.flush();
+
+    timestamp = 2_100;
+    controller.trigger("visible-recovered");
+    scheduler.flush();
+
+    expect(fakeRenderer.clearTextureAtlas).not.toHaveBeenCalled();
+    expect(terminal.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes an explicit atlas failure without another atlas clear", () => {
+    const scheduler = new ManualFrameScheduler();
+    const fakeRenderer = renderer({});
+    const terminal = { refresh: vi.fn(), rows: 8 };
+    const controller = createTerminalGpuRenderRecoveryController({
+      renderer: fakeRenderer,
+      scheduler,
+      terminal,
+    });
+
+    controller.trigger("atlas-clear-failed", 2_000);
+    scheduler.flush();
+
+    expect(fakeRenderer.clearTextureAtlas).not.toHaveBeenCalled();
+    expect(terminal.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the strongest pending exceptional action and its reason", () => {
+    const scheduler = new ManualFrameScheduler();
+    const fallback = vi.fn();
+    const terminal = { refresh: vi.fn(), rows: 8 };
+    const controller = createTerminalGpuRenderRecoveryController({
+      onFallbackCpu: fallback,
+      renderer: renderer({}),
+      scheduler,
+      terminal,
+    });
+
+    controller.trigger("manual-recover", 2_000);
+    controller.trigger("context-lost", 2_000);
+    scheduler.flush();
+
+    expect(fallback).toHaveBeenCalledWith("context-lost");
+    expect(terminal.refresh).not.toHaveBeenCalled();
   });
 
   it("uses the injected atlas clear operation when provided", () => {
@@ -103,7 +223,7 @@ describe("terminalGpuRenderRecovery", () => {
       terminal,
     });
 
-    controller.trigger("font-changed");
+    controller.trigger("manual-recover");
     scheduler.flush();
 
     expect(clearTextureAtlas).toHaveBeenCalledTimes(1);
@@ -111,27 +231,76 @@ describe("terminalGpuRenderRecovery", () => {
     expect(terminal.refresh).toHaveBeenCalledWith(0, 7);
   });
 
-  it("falls back after repeated atlas clear failures", () => {
+  it("refreshes once on the first atlas clear failure and then falls back", () => {
     const scheduler = new ManualFrameScheduler();
+    let timestamp = 3_000;
     const clearTextureAtlas = vi.fn(() => {
       throw new Error("atlas failed");
     });
     const fallback = vi.fn();
+    const terminal = { refresh: vi.fn(), rows: 8 };
     const controller = createTerminalGpuRenderRecoveryController({
       clearTextureAtlas,
-      config: { maxAtlasClearFailuresBeforeFallback: 1 },
-      now: () => 3_000,
+      config: { maxAtlasClearFailuresBeforeFallback: 2 },
+      now: () => timestamp,
       onFallbackCpu: fallback,
       renderer: renderer({}),
       scheduler,
-      terminal: { refresh: vi.fn(), rows: 8 },
+      terminal,
     });
 
-    controller.trigger("font-changed");
+    controller.trigger("manual-recover");
     scheduler.flush();
     scheduler.flush();
 
+    expect(clearTextureAtlas).toHaveBeenCalledTimes(1);
+    expect(terminal.refresh).toHaveBeenCalledTimes(1);
+    expect(fallback).not.toHaveBeenCalled();
+
+    timestamp = 5_000;
+    controller.trigger("manual-recover");
+    scheduler.flush();
+    scheduler.flush();
+
+    expect(clearTextureAtlas).toHaveBeenCalledTimes(2);
+    expect(terminal.refresh).toHaveBeenCalledTimes(2);
     expect(fallback).toHaveBeenCalledWith("atlas-clear-failed");
+  });
+
+  it("bounds repeated explicit recovery but ignores ordinary traffic", () => {
+    const scheduler = new ManualFrameScheduler();
+    let timestamp = 1_000;
+    const fallback = vi.fn();
+    const terminal = { refresh: vi.fn(), rows: 8 };
+    const controller = createTerminalGpuRenderRecoveryController({
+      config: {
+        maxRecoveriesBeforeFallback: 2,
+        refreshThrottleMs: 0,
+      },
+      now: () => timestamp,
+      onFallbackCpu: fallback,
+      renderer: renderer({}),
+      scheduler,
+      terminal,
+    });
+
+    controller.trigger("visible-recovered");
+    scheduler.flush();
+    timestamp = 1_100;
+    controller.trigger("visible-recovered");
+    scheduler.flush();
+
+    timestamp = 1_200;
+    controller.trigger("write-parsed");
+    scheduler.flush();
+    expect(fallback).not.toHaveBeenCalled();
+
+    controller.trigger("visible-recovered");
+    scheduler.flush();
+
+    expect(terminal.refresh).toHaveBeenCalledTimes(2);
+    expect(fallback).toHaveBeenCalledTimes(1);
+    expect(fallback).toHaveBeenCalledWith("recovery-storm");
   });
 
   it("cancels pending recovery on dispose", () => {
@@ -143,7 +312,7 @@ describe("terminalGpuRenderRecovery", () => {
       terminal,
     });
 
-    controller.trigger("write-parsed", 1_000);
+    controller.trigger("visible-recovered", 1_000);
     controller.dispose();
     scheduler.flush();
 

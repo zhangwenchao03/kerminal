@@ -2,10 +2,7 @@ import type { TerminalRendererType } from "../settings/settingsModel";
 import type { TerminalRendererBackend } from "./terminalRendererPolicy";
 
 export type TerminalGpuRenderRecoveryAction =
-  | "none"
-  | "refresh"
-  | "clearAtlasAndRefresh"
-  | "fallbackCpu";
+  "none" | "refresh" | "clearAtlasAndRefresh" | "fallbackCpu";
 
 export type TerminalGpuRenderRecoveryTrigger =
   | "atlas-clear-failed"
@@ -70,6 +67,11 @@ export const TERMINAL_GPU_RENDER_RECOVERY_DEFAULT_CONFIG: TerminalGpuRenderRecov
     refreshThrottleMs: 250,
   };
 
+/**
+ * 只把明确的 GPU 异常或人工恢复请求升级为恢复动作。
+ * 日常写入、布局和外观变化由 xterm 自身的脏行与 renderer 生命周期处理，
+ * 不能在这里额外触发整屏刷新或 atlas 清理。
+ */
 export function resolveTerminalGpuRenderRecovery({
   atlasClearFailureCount = 0,
   backend,
@@ -91,6 +93,9 @@ export function resolveTerminalGpuRenderRecovery({
   if (backend !== "gpu") {
     return decision("none", "gpu-inactive");
   }
+  if (isOrdinaryRendererSignal(trigger)) {
+    return decision("none");
+  }
   if (trigger === "context-lost") {
     return decision("fallbackCpu", "context-lost");
   }
@@ -108,30 +113,39 @@ export function resolveTerminalGpuRenderRecovery({
     return decision("fallbackCpu", "recovery-storm");
   }
 
-  if (requiresAtlasInvalidation(trigger)) {
-    const retryAfterMs = retryAfter(lastAtlasClearAt, now, resolvedConfig.atlasClearCooldownMs);
+  if (trigger === "manual-recover") {
+    const retryAfterMs = retryAfter(
+      lastAtlasClearAt,
+      now,
+      resolvedConfig.atlasClearCooldownMs,
+    );
     if (retryAfterMs > 0) {
-      return {
-        action: "refresh",
-        advanceAtlasEpoch: false,
+      return resolveThrottledRefresh({
+        lastRefreshAt,
+        now,
         reason: "atlas-clear-cooldown",
-        retryAfterMs,
-      };
+        refreshThrottleMs: resolvedConfig.refreshThrottleMs,
+      });
     }
-    return decision("clearAtlasAndRefresh", reasonForAtlasInvalidation(trigger), true);
+    return decision("clearAtlasAndRefresh", "manual-recover", true);
   }
 
-  if (requiresRefresh(trigger)) {
-    const retryAfterMs = retryAfter(lastRefreshAt, now, resolvedConfig.refreshThrottleMs);
-    if (retryAfterMs > 0) {
-      return {
-        action: "none",
-        advanceAtlasEpoch: false,
-        reason: "refresh-cooldown",
-        retryAfterMs,
-      };
-    }
-    return decision("refresh", reasonForRefresh(trigger));
+  if (trigger === "atlas-clear-failed") {
+    return resolveThrottledRefresh({
+      lastRefreshAt,
+      now,
+      reason: "atlas-clear-failed",
+      refreshThrottleMs: resolvedConfig.refreshThrottleMs,
+    });
+  }
+
+  if (trigger === "visible-recovered") {
+    return resolveThrottledRefresh({
+      lastRefreshAt,
+      now,
+      reason: "renderer-recovered",
+      refreshThrottleMs: resolvedConfig.refreshThrottleMs,
+    });
   }
 
   return decision("none");
@@ -153,41 +167,40 @@ export function resolveTerminalGpuRenderRecoveryConfig(
   };
 }
 
-function requiresAtlasInvalidation(trigger: TerminalGpuRenderRecoveryTrigger) {
-  return (
-    trigger === "device-pixel-ratio-changed" ||
-    trigger === "font-changed" ||
-    trigger === "manual-recover" ||
-    trigger === "renderer-attached" ||
-    trigger === "resize"
-  );
-}
-
-function requiresRefresh(trigger: TerminalGpuRenderRecoveryTrigger) {
+function isOrdinaryRendererSignal(trigger: TerminalGpuRenderRecoveryTrigger) {
   return (
     trigger === "buffer-changed" ||
+    trigger === "device-pixel-ratio-changed" ||
+    trigger === "font-changed" ||
+    trigger === "renderer-attached" ||
     trigger === "renderer-disposed" ||
+    trigger === "resize" ||
     trigger === "theme-changed" ||
-    trigger === "visible-recovered" ||
     trigger === "write-parsed"
   );
 }
 
-function reasonForAtlasInvalidation(
-  trigger: TerminalGpuRenderRecoveryTrigger,
-): TerminalGpuRenderRecoveryReason {
-  if (trigger === "manual-recover") {
-    return "manual-recover";
+function resolveThrottledRefresh({
+  lastRefreshAt,
+  now,
+  reason,
+  refreshThrottleMs,
+}: {
+  lastRefreshAt: number | undefined;
+  now: number;
+  reason: TerminalGpuRenderRecoveryReason;
+  refreshThrottleMs: number;
+}): TerminalGpuRenderRecoveryDecision {
+  const retryAfterMs = retryAfter(lastRefreshAt, now, refreshThrottleMs);
+  if (retryAfterMs > 0) {
+    return {
+      action: "none",
+      advanceAtlasEpoch: false,
+      reason: "refresh-cooldown",
+      retryAfterMs,
+    };
   }
-  return trigger === "renderer-attached"
-    ? "renderer-recovered"
-    : "renderer-invalidated";
-}
-
-function reasonForRefresh(
-  trigger: TerminalGpuRenderRecoveryTrigger,
-): TerminalGpuRenderRecoveryReason {
-  return trigger === "write-parsed" ? "write-parsed" : "renderer-recovered";
+  return decision("refresh", reason);
 }
 
 function retryAfter(
@@ -195,7 +208,9 @@ function retryAfter(
   now: number,
   intervalMs: number,
 ) {
-  return typeof lastAt === "number" ? Math.max(0, lastAt + intervalMs - now) : 0;
+  return typeof lastAt === "number"
+    ? Math.max(0, lastAt + intervalMs - now)
+    : 0;
 }
 
 function decision(

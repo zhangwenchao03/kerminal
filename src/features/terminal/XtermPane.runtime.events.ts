@@ -16,7 +16,6 @@ import type { TerminalPaneRuntimeLifecycleRuntime } from "./terminalPaneRuntimeL
 import type { RemoteTargetRef } from "../../lib/targetModel";
 import type { TerminalAppearance } from "../settings/settingsModel";
 import { updateTerminalPaneRuntimeContext } from "./terminalSessionRegistry";
-import type { TerminalGpuRenderRecoveryController } from "./terminalGpuRenderRecoveryRuntime";
 
 type CommandBlockRuntime = ReturnType<typeof createXtermPaneCommandBlockRuntime>;
 type GhostSuggestionsRuntime = ReturnType<typeof createXtermPaneGhostSuggestions>;
@@ -49,7 +48,6 @@ interface RuntimeEventsParams {
   terminalAppearanceRef: MutableRefObject<TerminalAppearance>;
   terminalInlineSshAuthPrompt: InlineSshAuthPrompt;
   terminalRuntimeLifecycleControllerRef: MutableRefObject<TerminalPaneRuntimeLifecycleRuntime | null>;
-  getGpuRenderRecoveryController: () => TerminalGpuRenderRecoveryController | null;
   readShellIntegrationState: () => TerminalShellIntegrationState;
   writeShellIntegrationState: (state: TerminalShellIntegrationState) => void;
   onArtifactCommandBlock?: (id: string, command: string) => void;
@@ -92,7 +90,6 @@ export function registerXtermPaneRuntimeEvents(params: RuntimeEventsParams): Xte
     terminalAppearanceRef,
     terminalInlineSshAuthPrompt,
     terminalRuntimeLifecycleControllerRef,
-    getGpuRenderRecoveryController,
     readShellIntegrationState,
     writeShellIntegrationState,
     onArtifactCommandBlock,
@@ -214,7 +211,6 @@ export function registerXtermPaneRuntimeEvents(params: RuntimeEventsParams): Xte
     syncCommandBlockViews();
     commandBlockRuntime.syncCommandBlockRuntimeContext();
     ghostSuggestions.refreshGhostSuggestionLayout();
-    getGpuRenderRecoveryController()?.trigger("write-parsed");
   });
   const bufferChangeDisposable = terminal.buffer.onBufferChange(() => {
     activityRuntimeRef.current?.markBufferChanged();
@@ -238,7 +234,6 @@ export function registerXtermPaneRuntimeEvents(params: RuntimeEventsParams): Xte
       ghostSuggestions.refreshGhostSuggestionLayout();
     }
     commandBlockRuntime.scheduleCommandBlockViewSync();
-    getGpuRenderRecoveryController()?.trigger("buffer-changed");
   });
 
   const handleCompositionStart = () => {

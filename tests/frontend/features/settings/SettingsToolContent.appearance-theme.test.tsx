@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsToolContent } from "../../../../src/features/settings/SettingsToolContent";
 import { defaultAppSettings, type AppSettings } from "../../../../src/features/settings/settingsModel";
 import { xtermThemeFor } from "../../../../src/features/settings/terminalTheme";
+import { terminalRendererRegistry } from "../../../../src/features/terminal/terminalRendererRegistry";
 
 const fileDialogMock = vi.hoisted(() => ({
   openLocalDirectory: vi.fn(),
@@ -314,6 +315,106 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
         terminal: expect.objectContaining({ rendererType: "auto" }),
       }),
     );
+  });
+
+  it("retries only renderer panes that entered fallback", async () => {
+    const user = userEvent.setup();
+    const retryGpu = vi.fn();
+    const unregister = terminalRendererRegistry.registerPane({
+      controller: {
+        attach: vi.fn(),
+        dispose: vi.fn(),
+        getState: () => ({
+          backend: "cpu",
+          fallbackReason: "context-lost",
+          mode: "auto",
+        }),
+        retryGpu,
+        updateMode: vi.fn(),
+      },
+      focused: true,
+      paneId: "settings-retry-pane",
+      visible: true,
+    });
+
+    try {
+      terminalRendererRegistry.recordPaneFailure(
+        "settings-retry-pane",
+        "context-lost",
+      );
+      render(
+        <SettingsToolContent
+          initialSectionId="settings-terminal"
+          onSettingsChange={vi.fn()}
+          settings={systemThemeSettings()}
+        />,
+      );
+
+      await user.click(screen.getByText("终端渲染"));
+      await user.click(
+        screen.getByRole("button", { name: "重新尝试 GPU" }),
+      );
+
+      expect(retryGpu).toHaveBeenCalledTimes(1);
+    } finally {
+      unregister();
+    }
+  });
+
+  it("allows a global auto fallback to retry every GPU-capable pane", async () => {
+    const user = userEvent.setup();
+    const retryGpu = [vi.fn(), vi.fn(), vi.fn()];
+    const unregister = retryGpu.map((retry, index) =>
+      terminalRendererRegistry.registerPane({
+        controller: {
+          attach: vi.fn(),
+          canAttemptGpu: () => true,
+          dispose: vi.fn(),
+          getState: () => ({
+            backend: "cpu",
+            mode: "auto",
+          }),
+          retryGpu: retry,
+          updateMode: vi.fn(),
+        },
+        paneId: `settings-global-retry-${index}`,
+      }),
+    );
+
+    try {
+      for (let index = 0; index < retryGpu.length; index += 1) {
+        terminalRendererRegistry.recordPaneFailure(
+          `settings-global-retry-${index}`,
+          "load-failed",
+        );
+      }
+      expect(terminalRendererRegistry.getSnapshot().suggestedFallback).toBe(
+        "cpu",
+      );
+      render(
+        <SettingsToolContent
+          initialSectionId="settings-terminal"
+          onSettingsChange={vi.fn()}
+          settings={systemThemeSettings()}
+        />,
+      );
+
+      await user.click(screen.getByText("终端渲染"));
+      await user.click(
+        screen.getByRole("button", { name: "重新尝试 GPU" }),
+      );
+
+      for (const retry of retryGpu) {
+        expect(retry).toHaveBeenCalledTimes(1);
+      }
+      expect(
+        terminalRendererRegistry.getSnapshot().suggestedFallback,
+      ).toBeUndefined();
+    } finally {
+      unregister.forEach((dispose) => dispose());
+      terminalRendererRegistry.updateMode("gpu");
+      terminalRendererRegistry.updateMode("auto");
+    }
   });
 
   it("searches settings and opens the matching section", async () => {
