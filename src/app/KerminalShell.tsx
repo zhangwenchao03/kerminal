@@ -70,7 +70,11 @@ import {
   useSystemThemePreference,
   useViewportWidth,
 } from "./KerminalShell.helpers";
-import { KerminalShellNotices, ShellToolRail, ShellWindowChrome } from "./KerminalShell.view";
+import {
+  KerminalShellNotices,
+  ShellToolRail,
+  ShellWindowChrome,
+} from "./KerminalShell.view";
 import { useKerminalShellRemoteActions } from "./useKerminalShellRemoteActions";
 import { useKerminalShellBackgroundStyle } from "./useKerminalShellBackgroundStyle";
 import { useKerminalShellCommands } from "./useKerminalShellCommands";
@@ -97,23 +101,12 @@ import {
   resolveRemoteGroupEditConflict,
 } from "./configDirtyGuardModel";
 import { useKerminalConfigEvents } from "./useKerminalConfigEvents";
-
-function isSftpCapableRemoteHost(host: RemoteHost) {
-  return !host.tags.some((tag) =>
-    ["rdp", "telnet", "serial"].includes(tag.trim().toLowerCase()),
-  );
-}
-
-function shellQuote(value: string) {
-  return `'${value.replace(/'/g, "'\\''")}'`;
-}
-
-const terminalSplitDropZoneLabels: Record<TerminalSplitDropZone, string> = {
-  bottom: "下方",
-  left: "左侧",
-  right: "右侧",
-  top: "上方",
-};
+import { KerminalShellContextWorkspaceStoreBridge } from "./KerminalShell.contextWorkspace";
+import {
+  isSftpCapableRemoteHost,
+  shellQuote,
+  terminalSplitDropZoneLabel,
+} from "./KerminalShell.contextWorkspaceShellHelpers";
 
 export function KerminalShell() {
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
@@ -331,7 +324,7 @@ export function KerminalShell() {
           : { machineName: event.machine.name, zone },
       );
       return {
-        hint: `松开分屏到${terminalSplitDropZoneLabels[zone]}`,
+        hint: `松开分屏到${terminalSplitDropZoneLabel(zone)}`,
       };
     },
     [resolveTerminalDropZone],
@@ -989,6 +982,9 @@ export function KerminalShell() {
         onShellNoticeDismiss={() => setShellNoticeVisible(false)}
         shellNoticeMessage={shellNoticeMessage}
         shellNoticeVisible={shellNoticeVisible}
+      />
+      <KerminalShellContextWorkspaceStoreBridge
+        onOpenSettings={openSettingsTool}
       />
       <Suspense fallback={null}>
         <LazySshAuthPromptHost />

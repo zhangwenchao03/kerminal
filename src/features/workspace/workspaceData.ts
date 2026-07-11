@@ -18,6 +18,11 @@ export const tools: ToolSummary[] = [
     description: "Codex、Claude、自定义 Agent",
   },
   {
+    id: "context",
+    title: "当前上下文",
+    description: "当前目标、终端、目录和运行状态",
+  },
+  {
     id: "system",
     title: "系统",
     description: "CPU、内存、网络和磁盘状态",

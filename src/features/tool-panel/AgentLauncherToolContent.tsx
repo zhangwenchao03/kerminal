@@ -1,15 +1,8 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type MouseEvent as ReactMouseEvent,
-} from "react";
-import { Info, Loader2, Terminal } from "lucide-react";
-import { Button } from "../../components/ui/button";
-import { IconAction } from "../../components/ui/icon-action";
-import { UserFacingNotice } from "../../components/ui/user-facing-notice";
+  AgentWorkflowController,
+  useAgentWorkflowController,
+} from "../agent-workflow";
 import { cn } from "../../lib/cn";
 import type { DesktopNotificationSettings } from "../../lib/desktopNotificationPolicy";
 import {
@@ -48,8 +41,8 @@ import {
   applyAgentLaunchPermissionMode,
   buildAgentLauncherViewModel,
   type AgentLaunchPermissionMode,
-  type AgentActionViewModel,
 } from "./agent-launcher/agentLauncherModel";
+import { initialAgentActions } from "./agent-launcher/agentLauncherInitialActions";
 import {
   agentSessionScopeId,
   findRunningSessionForTabAgent,
@@ -61,17 +54,21 @@ import {
 import {
   buildAgentSessionTarget,
   formatCurrentAgentTargetLabel,
-  formatTargetChipLabel,
 } from "./agent-launcher/agentSessionTargetModel";
 import {
   AgentTerminalView,
   type AgentTerminalSession,
 } from "./agent-launcher/AgentTerminalView";
+import type { AgentLaunchTargetMode } from "./agent-launcher/AgentLaunchControls";
 import {
-  AgentIconButton,
-  AgentLaunchContextMenu,
-  type AgentLaunchTargetMode,
-} from "./agent-launcher/AgentLaunchControls";
+  AgentLauncherView,
+  type AgentLauncherActionState,
+  type AgentLauncherLoadState,
+  type AgentRestoreChoice,
+  type AgentSessionSelection,
+} from "./agent-launcher/AgentLauncherView";
+import { createAgentPromptTransport } from "./agent-launcher/agentPromptTransport";
+import { useAgentSendPreview } from "./agent-launcher/useAgentSendPreview";
 
 interface AgentLauncherToolContentProps {
   activeTab?: TerminalTab;
@@ -82,78 +79,7 @@ interface AgentLauncherToolContentProps {
   terminalTabs?: TerminalTab[];
 }
 
-type LoadState = "idle" | "loading" | "refreshing" | "error";
-type ActionState = ExternalAgentId | null;
-type AgentLauncherView = "launcher" | "terminal";
-
-interface AgentLauncherContextMenuState {
-  agent: AgentActionViewModel;
-  position: {
-    x: number;
-    y: number;
-  };
-}
-
-interface AgentSessionSelection {
-  agentSessionId: string;
-  tabId: string;
-  target?: AgentSessionTargetRequest;
-}
-
-interface AgentRestoreChoice {
-  agentId: ExternalAgentId;
-  permissionMode: AgentLaunchPermissionMode;
-  session: AgentSessionSelection;
-}
-
-const AGENT_LAUNCH_CONTEXT_MENU_WIDTH = 164;
-const AGENT_LAUNCH_CONTEXT_MENU_HEIGHT = 72;
-const AGENT_LAUNCH_CONTEXT_MENU_INSET = 8;
-
-const initialAgentActions: AgentActionViewModel[] = [
-  {
-    actionLabel: "Open Codex",
-    agentId: "codex",
-    availabilityDetail: "正在检查 Codex 状态。",
-    availabilityLabel: "需设置",
-    cliCommand: "codex",
-    configLabel: "Workspace",
-    configPath: "~/.kerminal/.codex/config.toml",
-    disabled: false,
-    installLabel: "Launch",
-    statusDetail: "Open Codex in the Kerminal workspace.",
-    title: "Codex",
-    tone: "muted",
-  },
-  {
-    actionLabel: "Open Claude",
-    agentId: "claude",
-    availabilityDetail: "正在检查 Claude 状态。",
-    availabilityLabel: "需设置",
-    cliCommand: "claude",
-    configLabel: "Workspace",
-    configPath: "~/.kerminal/.mcp.json",
-    disabled: false,
-    installLabel: "Launch",
-    statusDetail: "Open Claude in the Kerminal workspace.",
-    title: "Claude",
-    tone: "muted",
-  },
-  {
-    actionLabel: "Open Custom Agent",
-    agentId: "custom",
-    availabilityDetail: "输入自定义命令后打开。",
-    availabilityLabel: "需设置",
-    cliCommand: "User supplied CLI",
-    configLabel: "Explicit command",
-    configPath: "~/.kerminal",
-    disabled: false,
-    installLabel: "Launch",
-    statusDetail: "Enter a custom CLI command to run in the Kerminal workspace.",
-    title: "Custom",
-    tone: "muted",
-  },
-];
+type AgentLauncherScreen = "launcher" | "terminal";
 
 export function AgentLauncherToolContent({
   activeTab,
@@ -163,15 +89,39 @@ export function AgentLauncherToolContent({
   terminalAppearance = defaultTerminalAppearance,
   terminalTabs,
 }: AgentLauncherToolContentProps) {
+  const workflowSignalListenersRef = useRef(
+    new Set<(signal: TerminalAgentSignal) => void>(),
+  );
+  const [workflowController] = useState(
+    () =>
+      new AgentWorkflowController(
+        {
+          listSessions: async () => (await listAgentSessions()).sessions ?? [],
+        },
+        {
+          subscribe: (listener) => {
+            workflowSignalListenersRef.current.add(listener);
+            return () => workflowSignalListenersRef.current.delete(listener);
+          },
+        },
+        {
+          ...createAgentPromptTransport(),
+        },
+      ),
+  );
+  const workflowMountGenerationRef = useRef(0);
+  const workflowSnapshot = useAgentWorkflowController(workflowController);
   const [status, setStatus] = useState<ExternalAgentWorkspaceStatus | null>(
     null,
   );
-  const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [loadState, setLoadState] = useState<AgentLauncherLoadState>("loading");
   const [loadError, setLoadError] = useState<UserFacingMessage | null>(null);
-  const [actionState, setActionState] = useState<ActionState>(null);
-  const [actionError, setActionError] = useState<UserFacingMessage | null>(null);
+  const [actionState, setActionState] =
+    useState<AgentLauncherActionState>(null);
+  const [actionError, setActionError] = useState<UserFacingMessage | null>(
+    null,
+  );
   const [customCommandOpen, setCustomCommandOpen] = useState(false);
-  const [technicalDetailsOpen, setTechnicalDetailsOpen] = useState(false);
   const [customCommand, setCustomCommand] = useState("");
   const [agentSessions, setAgentSessions] = useState<
     Record<string, AgentTerminalSession>
@@ -182,16 +132,13 @@ export function AgentLauncherToolContent({
   const [restoreChoice, setRestoreChoice] = useState<AgentRestoreChoice | null>(
     null,
   );
-  const [agentContextMenu, setAgentContextMenu] =
-    useState<AgentLauncherContextMenuState | null>(null);
   const [customLaunchTargetMode, setCustomLaunchTargetMode] =
     useState<AgentLaunchTargetMode>("current");
-  const launcherMenuRootRef = useRef<HTMLDivElement | null>(null);
   const [activeSessionIdByTabId, setActiveSessionIdByTabId] = useState<
     Record<string, string | undefined>
   >({});
   const [viewByTabId, setViewByTabId] = useState<
-    Record<string, AgentLauncherView | undefined>
+    Record<string, AgentLauncherScreen | undefined>
   >({});
   const previousTerminalTabIdsRef = useRef<string[] | null>(null);
   const activeAgentTabId = isTerminalSessionTab(activeTab)
@@ -199,22 +146,25 @@ export function AgentLauncherToolContent({
     : undefined;
   const activeAgentScopeId = agentSessionScopeId(activeAgentTabId);
   const view = viewByTabId[activeAgentScopeId] ?? "launcher";
-  const loadStatus = useCallback(async (state: LoadState = "loading") => {
-    setLoadState(state);
-    setLoadError(null);
-    try {
-      setStatus(await getExternalAgentWorkspaceStatus());
-      setLoadState("idle");
-    } catch (error) {
-      setLoadError(
-        buildUserFacingError(error, {
-          recoveryAction: "请确认 Kerminal 服务可用后重试。",
-          title: "无法读取 Agent 状态",
-        }),
-      );
-      setLoadState("error");
-    }
-  }, []);
+  const loadStatus = useCallback(
+    async (state: AgentLauncherLoadState = "loading") => {
+      setLoadState(state);
+      setLoadError(null);
+      try {
+        setStatus(await getExternalAgentWorkspaceStatus());
+        setLoadState("idle");
+      } catch (error) {
+        setLoadError(
+          buildUserFacingError(error, {
+            recoveryAction: "请确认 Kerminal 服务可用后重试。",
+            title: "无法读取 Agent 状态",
+          }),
+        );
+        setLoadState("error");
+      }
+    },
+    [],
+  );
 
   const loadPersistedAgentSessions = useCallback(async () => {
     try {
@@ -231,30 +181,19 @@ export function AgentLauncherToolContent({
   }, [loadPersistedAgentSessions, loadStatus]);
 
   useEffect(() => {
-    if (!agentContextMenu) {
-      return undefined;
-    }
-
-    const closeMenu = () => setAgentContextMenu(null);
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        closeMenu();
-      }
-    };
-
-    window.addEventListener("click", closeMenu);
-    window.addEventListener("resize", closeMenu);
-    window.addEventListener("keydown", closeOnEscape);
-
+    const generation = ++workflowMountGenerationRef.current;
+    void workflowController.refresh();
     return () => {
-      window.removeEventListener("click", closeMenu);
-      window.removeEventListener("resize", closeMenu);
-      window.removeEventListener("keydown", closeOnEscape);
+      queueMicrotask(() => {
+        if (workflowMountGenerationRef.current === generation) {
+          workflowController.dispose();
+        }
+      });
     };
-  }, [agentContextMenu]);
-
+  }, [workflowController]);
   const agentActions = useMemo(
-    () => (status ? buildAgentLauncherViewModel(status, true) : initialAgentActions),
+    () =>
+      status ? buildAgentLauncherViewModel(status, true) : initialAgentActions,
     [status],
   );
   const agentTechnicalDetail = useMemo(
@@ -303,12 +242,11 @@ export function AgentLauncherToolContent({
     () => Object.values(agentSessions),
     [agentSessions],
   );
-
   const agentSidebarState: AgentSidebarSessionState = useMemo(
     () => ({
       activeSessionIdByTabId,
       sessionsById: agentSessions,
-      viewByTabId: viewByTabId as Record<string, AgentLauncherView>,
+      viewByTabId: viewByTabId as Record<string, AgentLauncherScreen>,
     }),
     [activeSessionIdByTabId, agentSessions, viewByTabId],
   );
@@ -317,6 +255,16 @@ export function AgentLauncherToolContent({
     () => visibleAgentSessionForTab(agentSidebarState, activeAgentScopeId),
     [activeAgentScopeId, agentSidebarState],
   );
+  const activeAgentTerminalSession = activeAgentSession
+    ? agentSessions[activeAgentSession.agentSessionId]
+    : undefined;
+  const sendPreview = useAgentSendPreview({
+    activeTab,
+    controller: workflowController,
+    focusedPane,
+    session: activeAgentTerminalSession,
+    setActionError,
+  });
   const terminalTabIds = useMemo(
     () =>
       terminalTabs
@@ -325,7 +273,6 @@ export function AgentLauncherToolContent({
     [terminalTabs],
   );
   const terminalTabIdsKey = terminalTabIds.join("\u0000");
-
   useEffect(() => {
     if (!terminalTabs) {
       return;
@@ -377,7 +324,6 @@ export function AgentLauncherToolContent({
       }),
     );
   }, [agentSidebarState, terminalTabIds, terminalTabIdsKey, terminalTabs]);
-
   const findAgentSessionId = (
     tabId: string | undefined,
     agentId: ExternalAgentId,
@@ -389,8 +335,7 @@ export function AgentLauncherToolContent({
       agentId,
       permissionMode,
     )?.agentSessionId ?? null;
-
-  const setTabView = (tabId: string, nextView: AgentLauncherView) => {
+  const setTabView = (tabId: string, nextView: AgentLauncherScreen) => {
     setViewByTabId((current) => ({
       ...current,
       [tabId]: nextView,
@@ -499,10 +444,7 @@ export function AgentLauncherToolContent({
       if (!session) {
         return current;
       }
-      if (
-        session.agentId !== "custom" &&
-        session.agentId !== signal.agent
-      ) {
+      if (session.agentId !== "custom" && session.agentId !== signal.agent) {
         return current;
       }
       if (
@@ -520,6 +462,9 @@ export function AgentLauncherToolContent({
         },
       };
     });
+    for (const listener of workflowSignalListenersRef.current) {
+      listener(signal);
+    }
   }, []);
 
   const prepareAndLaunchAgent = async (
@@ -598,7 +543,11 @@ export function AgentLauncherToolContent({
         agentId,
       );
       if (persistedSession) {
-        setRestoreChoice({ agentId, permissionMode, session: persistedSession });
+        setRestoreChoice({
+          agentId,
+          permissionMode,
+          session: persistedSession,
+        });
         return;
       }
       await startNewProviderAgentSession(agentId, permissionMode, targetMode);
@@ -658,199 +607,117 @@ export function AgentLauncherToolContent({
 
   const createFreshAgentSession = (choice: AgentRestoreChoice) => {
     void runAction(choice.agentId, async () => {
-      await startNewProviderAgentSession(
-        choice.agentId,
-        choice.permissionMode,
-      );
+      await startNewProviderAgentSession(choice.agentId, choice.permissionMode);
     });
   };
 
-  const openAgentContextMenu = (
-    agent: AgentActionViewModel,
-    event: ReactMouseEvent,
-  ) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const bounds = launcherMenuRootRef.current?.getBoundingClientRect();
-    setAgentContextMenu({
-      agent,
-      position: clampAgentLaunchContextMenuPosition(
-        bounds ? event.clientX - bounds.left : event.clientX,
-        bounds ? event.clientY - bounds.top : event.clientY,
-        bounds,
-      ),
+  const continueWorkflowSession = (agentSessionId: string) => {
+    const runningSession = agentSessions[agentSessionId];
+    if (runningSession) {
+      activateAgentSessionForTab(runningSession.tabId, agentSessionId);
+      return;
+    }
+    const record = persistedAgentSessions.find((candidate) => {
+      try {
+        return agentSessionRecordId(candidate) === agentSessionId;
+      } catch {
+        return false;
+      }
+    });
+    const agentId = record ? agentSessionRecordAgentId(record) : undefined;
+    if (!record || !agentId) {
+      return;
+    }
+    void runAction(agentId, async () => {
+      await prepareAndLaunchAgent(
+        agentId,
+        {
+          agentSessionId,
+          tabId: activeAgentScopeId,
+          target: agentSessionRecordTarget(record),
+        },
+        { resumeProviderSession: true },
+      );
+      await workflowController.refresh();
+    });
+  };
+
+  const startNewWorkflowSession = (agentSessionId: string) => {
+    const workflowSession = workflowSnapshot.sessions.find(
+      (session) => session.agentSessionId === agentSessionId,
+    );
+    const agentId = workflowSession?.agentId;
+    if (!agentId) {
+      return;
+    }
+    void runAction(agentId, async () => {
+      await startNewProviderAgentSession(agentId);
+      await workflowController.refresh();
     });
   };
 
   return (
     <section className="relative h-full min-h-0 overflow-hidden bg-[var(--surface-terminal)]">
-      <div
-        aria-hidden={view !== "launcher"}
-        className={cn(
-          "absolute inset-0 flex min-h-0 flex-col px-3 py-4 transition-opacity duration-150",
-          view === "launcher"
-            ? "opacity-100"
-            : "pointer-events-none select-none opacity-0",
-        )}
-      >
-        <div className="flex min-h-0 flex-1 items-center justify-center">
-          <div className="relative w-full max-w-[260px]" ref={launcherMenuRootRef}>
-            <div className="mb-2 flex min-w-0 items-center gap-1 px-1">
-              <div
-                className="flex min-w-0 flex-1 items-center justify-center gap-1.5 px-1 text-[11px]"
-                data-testid="agent-current-target"
-                title={currentAgentTargetLabel}
-              >
-                <span className="shrink-0 text-zinc-500 dark:text-zinc-400">
-                  当前目标
-                </span>
-                <span className="min-w-0 truncate font-medium text-zinc-800 dark:text-zinc-200">
-                  {currentAgentTargetLabel}
-                </span>
-              </div>
-              <IconAction
-                aria-controls="agent-launcher-technical-details"
-                aria-expanded={technicalDetailsOpen}
-                className="h-7 w-7 rounded-lg"
-                icon={Info}
-                label="查看 Agent 技术详情"
-                onClick={() => setTechnicalDetailsOpen((current) => !current)}
-                tooltip="技术详情"
-                variant="ghost"
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-1.5">
-              {agentActions.map((agent) => (
-                <AgentIconButton
-                  actionState={actionState}
-                  agent={agent}
-                  key={agent.agentId}
-                  onLaunch={launchAgent}
-                  onOpenMenu={openAgentContextMenu}
-                />
-              ))}
-            </div>
-            {technicalDetailsOpen ? (
-              <div
-                aria-label="Agent 技术详情"
-                className="kerminal-muted-surface mt-2 rounded-xl border p-2.5"
-                id="agent-launcher-technical-details"
-                role="region"
-              >
-                <pre className="scrollbar-none max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-4 text-zinc-600 dark:text-zinc-300">
-                  {agentTechnicalDetail}
-                </pre>
-              </div>
-            ) : null}
-
-            {agentContextMenu ? (
-              <AgentLaunchContextMenu
-                agent={agentContextMenu.agent}
-                onLaunch={(permissionMode, targetMode = "current") => {
-                  setAgentContextMenu(null);
-                  launchAgent(
-                    agentContextMenu.agent.agentId,
-                    permissionMode,
-                    targetMode,
-                  );
-                }}
-                position={agentContextMenu.position}
-              />
-            ) : null}
-
-            {customCommandOpen ? (
-              <form
-                className="mt-3 flex items-center gap-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-field)] p-1.5 shadow-sm shadow-black/5 dark:shadow-black/20"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  launchCustomAgent();
-                }}
-              >
-                <label className="sr-only">
-                  Custom CLI command
-                </label>
-                <input
-                  aria-label="Custom agent command"
-                  autoFocus
-                  className="h-8 min-w-0 flex-1 rounded-xl border border-transparent bg-transparent px-2 font-mono text-xs text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-sky-400/50 focus:bg-white/70 focus:ring-4 focus:ring-sky-400/15 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:bg-white/10"
-                  onChange={(event) => setCustomCommand(event.target.value)}
-                  placeholder="kimi or qwen --model ..."
-                  value={customCommand}
-                />
-                <Button
-                  aria-label="Open custom agent command"
-                  disabled={actionState !== null || !customCommand.trim()}
-                  size="icon"
-                  type="submit"
-                  variant="primary"
-                >
-                  {actionState === "custom" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Terminal className="h-4 w-4" />
-                  )}
-                </Button>
-              </form>
-            ) : null}
-
-            {restoreChoice ? (
-              <AgentRestoreChoicePanel
-                actionState={actionState}
-                choice={restoreChoice}
-                onCancel={() => setRestoreChoice(null)}
-                onContinue={continuePersistedAgentSession}
-                onNewSession={createFreshAgentSession}
-              />
-            ) : null}
-          </div>
-        </div>
-
-        {loadState === "error" && !status ? (
-          <UserFacingNotice
-            className="mt-3"
-            compact
-            message={
-              loadError ?? {
-                recoveryAction: "请稍后重试。",
-                severity: "error",
-                title: "无法读取 Agent 状态",
-              }
-            }
-          >
-            <Button onClick={() => void loadStatus("loading")} size="sm">
-              重试
-            </Button>
-          </UserFacingNotice>
-        ) : null}
-        {actionError ? (
-          <UserFacingNotice className="mt-3" compact message={actionError} />
-        ) : null}
-      </div>
+      <AgentLauncherView
+        actionError={actionError}
+        actionState={actionState}
+        agentActions={agentActions}
+        agentTechnicalDetail={agentTechnicalDetail}
+        currentAgentTargetLabel={currentAgentTargetLabel}
+        customCommand={customCommand}
+        customCommandOpen={customCommandOpen}
+        loadError={loadError}
+        loadState={loadState}
+        onCancelRestore={() => setRestoreChoice(null)}
+        onContinueRestore={continuePersistedAgentSession}
+        onCustomCommandChange={setCustomCommand}
+        onCustomCommandSubmit={launchCustomAgent}
+        onLaunch={launchAgent}
+        onNewSession={createFreshAgentSession}
+        onRetry={() => void loadStatus("loading")}
+        onWorkflowContinue={continueWorkflowSession}
+        onWorkflowNewSession={startNewWorkflowSession}
+        restoreChoice={restoreChoice}
+        statusAvailable={Boolean(status)}
+        visible={view === "launcher"}
+        workflowSnapshot={workflowSnapshot}
+      />
       {agentSessionList.map((session) => {
-        const active = session.agentSessionId === activeAgentSession?.agentSessionId;
+        const active =
+          session.agentSessionId === activeAgentSession?.agentSessionId;
         return (
-        <div
-          aria-hidden={view !== "terminal" || !active}
-          className={cn(
-            "absolute inset-0 transition-opacity duration-150",
-            view === "terminal" && active
-              ? "opacity-100"
-              : "pointer-events-none select-none opacity-0",
-          )}
-          key={session.agentSessionId}
-        >
-          <AgentTerminalView
-            focused={view === "terminal" && active}
-            session={session}
-            desktopNotifications={desktopNotifications}
-            onBack={() => {
-              setTabView(activeAgentScopeId, "launcher");
-            }}
-            onAgentSignal={handleAgentSignal}
-            resolvedTheme={resolvedTheme}
-            terminalAppearance={terminalAppearance}
-          />
-        </div>
+          <div
+            aria-hidden={view !== "terminal" || !active}
+            className={cn(
+              "absolute inset-0 transition-opacity duration-150",
+              view === "terminal" && active
+                ? "opacity-100"
+                : "pointer-events-none select-none opacity-0",
+            )}
+            key={session.agentSessionId}
+          >
+            <AgentTerminalView
+              focused={view === "terminal" && active}
+              session={session}
+              desktopNotifications={desktopNotifications}
+              onBack={() => {
+                setTabView(activeAgentScopeId, "launcher");
+              }}
+              onAgentSignal={handleAgentSignal}
+              onCancelPreview={sendPreview.cancel}
+              onConfirmPreview={sendPreview.confirm}
+              onCreatePreview={sendPreview.create}
+              preview={
+                active &&
+                sendPreview.preview?.sessionId === session.agentSessionId
+                  ? sendPreview.preview
+                  : null
+              }
+              previewBusy={sendPreview.busy}
+              resolvedTheme={resolvedTheme}
+              terminalAppearance={terminalAppearance}
+            />
+          </div>
         );
       })}
     </section>
@@ -874,8 +741,8 @@ async function createSessionForLaunch(
   const target =
     targetMode === "unbound"
       ? unboundAgentSessionTarget()
-      : buildAgentSessionTarget(focusedPane, activeTab) ??
-        unboundAgentSessionTarget();
+      : (buildAgentSessionTarget(focusedPane, activeTab) ??
+        unboundAgentSessionTarget());
   const record = await createAgentSession({
     agentId,
     title: agentTitle(agentId),
@@ -892,70 +759,6 @@ function unboundAgentSessionTarget(): AgentSessionTargetRequest {
     liveStatus: "unbound",
   };
 }
-function AgentRestoreChoicePanel({
-  actionState,
-  choice,
-  onCancel,
-  onContinue,
-  onNewSession,
-}: {
-  actionState: ActionState;
-  choice: AgentRestoreChoice;
-  onCancel: () => void;
-  onContinue: (choice: AgentRestoreChoice) => void;
-  onNewSession: (choice: AgentRestoreChoice) => void;
-}) {
-  const busy = actionState === choice.agentId;
-  const disabled = actionState !== null;
-  return (
-    <div className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-solid)] p-2 shadow-lg shadow-black/10 dark:shadow-black/35">
-      <div className="flex min-w-0 items-center gap-2 px-1">
-        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-zinc-900 dark:text-zinc-100">
-          {agentTitle(choice.agentId)}
-        </span>
-        <span
-          className={cn(
-            "max-w-[116px] truncate rounded-full border px-2 py-0.5 text-[10px] font-medium",
-            choice.session.target?.liveStatus === "stale" ||
-              choice.session.target?.liveStatus === "closed"
-              ? "border-amber-400/40 bg-amber-500/10 text-amber-700 dark:text-amber-200"
-              : "border-[var(--border-subtle)] bg-[var(--surface-hover)] text-zinc-600 dark:text-zinc-300",
-          )}
-          data-testid="agent-restore-target-chip"
-          title={formatTargetChipLabel(choice.session.target)}
-        >
-          {formatTargetChipLabel(choice.session.target)}
-        </span>
-      </div>
-      <div className="mt-2 grid grid-cols-3 gap-1">
-        <button
-          className="kerminal-pressable kerminal-focus-ring h-8 rounded-xl bg-zinc-900 px-2 text-[11px] font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-45 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white"
-          disabled={disabled}
-          onClick={() => onContinue(choice)}
-          type="button"
-        >
-          {busy ? <Loader2 className="mx-auto h-3.5 w-3.5 animate-spin" /> : "继续上次"}
-        </button>
-        <button
-          className="kerminal-pressable kerminal-focus-ring h-8 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-hover)] px-2 text-[11px] font-semibold text-zinc-700 transition hover:bg-[var(--surface-field)] disabled:cursor-not-allowed disabled:opacity-45 dark:text-zinc-200"
-          disabled={disabled}
-          onClick={() => onNewSession(choice)}
-          type="button"
-        >
-          新会话
-        </button>
-        <button
-          className="kerminal-pressable kerminal-focus-ring h-8 rounded-xl px-2 text-[11px] font-medium text-zinc-500 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-45 dark:text-zinc-400"
-          disabled={disabled}
-          onClick={onCancel}
-          type="button"
-        >
-          取消
-        </button>
-      </div>
-    </div>
-  );
-}
 function agentTitle(agentId: ExternalAgentId): string {
   if (agentId === "claude") {
     return "Claude";
@@ -964,33 +767,6 @@ function agentTitle(agentId: ExternalAgentId): string {
     return "Custom";
   }
   return "Codex";
-}
-function clampAgentLaunchContextMenuPosition(
-  x: number,
-  y: number,
-  bounds?: DOMRect,
-) {
-  const width = bounds?.width ?? window.innerWidth;
-  const height = bounds?.height ?? window.innerHeight;
-  const maxX = Math.max(
-    AGENT_LAUNCH_CONTEXT_MENU_INSET,
-    width - AGENT_LAUNCH_CONTEXT_MENU_WIDTH - AGENT_LAUNCH_CONTEXT_MENU_INSET,
-  );
-  const maxY = Math.max(
-    AGENT_LAUNCH_CONTEXT_MENU_INSET,
-    height - AGENT_LAUNCH_CONTEXT_MENU_HEIGHT - AGENT_LAUNCH_CONTEXT_MENU_INSET,
-  );
-
-  return {
-    x: Math.max(
-      AGENT_LAUNCH_CONTEXT_MENU_INSET,
-      Math.min(x, maxX),
-    ),
-    y: Math.max(
-      AGENT_LAUNCH_CONTEXT_MENU_INSET,
-      Math.min(y, maxY),
-    ),
-  };
 }
 function formatLaunchCommand(spec: ExternalAgentLaunchSpec): string {
   return agentLaunchDisplayCommand(spec) || spec.title;

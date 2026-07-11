@@ -2,9 +2,17 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { tools } from "../../../../src/features/workspace/workspaceData";
-import type { Machine, TerminalTab } from "../../../../src/features/workspace/types";
+import type {
+  Machine,
+  TerminalTab,
+} from "../../../../src/features/workspace/types";
+import type { WorkspaceContextProjection } from "../../../../src/features/workspace/context";
 import { clearServerInfoSnapshotCacheForTest } from "../../../../src/features/tool-panel/ServerInfoToolContent";
 import { ToolPanel } from "../../../../src/features/tool-panel/ToolPanel";
+import {
+  publishXtermPaneArtifactSnapshot,
+  removeXtermPaneArtifactSnapshot,
+} from "../../../../src/features/terminal/XtermPane.artifactsRegistry";
 
 const portForwardApiMocks = vi.hoisted(() => ({
   closePortForward: vi.fn(),
@@ -114,6 +122,75 @@ const focusedSshPane = {
   title: sshMachine.name,
 };
 
+const contextWorkspaceProjection: WorkspaceContextProjection = {
+  schemaVersion: 1,
+  revision: 1,
+  generatedAt: "2026-07-11T08:00:00.000Z",
+  activeTabId: sshTerminalTab.id,
+  focusedPaneId: focusedSshPane.id,
+  machine: {
+    id: sshMachine.id,
+    name: sshMachine.name,
+    kind: "ssh",
+    status: "online",
+    production: true,
+    groupId: "production",
+  },
+  target: {
+    id: sshMachine.id,
+    kind: "ssh",
+    label: sshMachine.host ?? sshMachine.name,
+    production: true,
+  },
+  location: {
+    cwd: "/srv/app",
+    cwdSource: "osc7",
+    pathStyle: "posix",
+    confidence: "high",
+  },
+  subject: {
+    id: focusedSshPane.id,
+    kind: "terminalPane",
+    title: focusedSshPane.title,
+  },
+  resources: {
+    tabs: [
+      {
+        id: sshTerminalTab.id,
+        title: sshTerminalTab.title,
+        kind: "terminal",
+        active: true,
+      },
+    ],
+    panes: [
+      {
+        id: focusedSshPane.id,
+        title: focusedSshPane.title,
+        machineId: sshMachine.id,
+        mode: "ssh",
+        status: "online",
+        focused: true,
+      },
+    ],
+    activeTabPaneIds: [focusedSshPane.id],
+    workspaceFileCount: 0,
+    dirtyWorkspaceFileCount: 0,
+    sftpRevealRequest: null,
+  },
+  runtime: {
+    connectionStatus: "online",
+    paneMode: "ssh",
+    latencyMs: null,
+    tmuxAttached: false,
+  },
+  agent: { sessionId: null, status: "unavailable" },
+  freshness: {
+    state: "fresh",
+    sources: [{ source: "workspace", status: "available", revision: 1 }],
+  },
+  diagnostics: [],
+};
+
 const emptyManagedSshSnapshot = {
   activeChannels: 0,
   activeSessions: 0,
@@ -186,12 +263,16 @@ const containerMachine: Machine = {
 };
 
 function assertNoManagedSshAvailabilityNotice() {
-  expect(screen.queryByLabelText("Managed SSH runtime 状态")).not.toBeInTheDocument();
+  expect(
+    screen.queryByLabelText("Managed SSH runtime 状态"),
+  ).not.toBeInTheDocument();
   expect(screen.queryByText("Managed reusable")).not.toBeInTheDocument();
   expect(screen.queryByText("Legacy terminal only")).not.toBeInTheDocument();
   expect(screen.queryByText("Auth required")).not.toBeInTheDocument();
   expect(screen.queryByText("Host key required")).not.toBeInTheDocument();
-  expect(screen.queryByText(/右侧工具不能把 PTY 连接当作可复用 runtime/)).not.toBeInTheDocument();
+  expect(
+    screen.queryByText(/右侧工具不能把 PTY 连接当作可复用 runtime/),
+  ).not.toBeInTheDocument();
 }
 
 describe("ToolPanel", () => {
@@ -406,6 +487,55 @@ describe("ToolPanel", () => {
     expect(
       screen.queryByRole("heading", { name: "Agent Launcher" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("Context 工具只启用真实导航并以只读模式展示终端产物", async () => {
+    const user = userEvent.setup();
+    const onFocusTab = vi.fn();
+    publishXtermPaneArtifactSnapshot({
+      artifacts: [
+        {
+          actions: [{ enabled: true, id: "copy", requiresConfirmation: false }],
+          createdAt: 1,
+          dedupeKey: "context-artifact",
+          id: "context-artifact",
+          kind: "url",
+          label: "运行报告",
+          paneId: focusedSshPane.id,
+          pathStyle: "uri",
+          revision: 1,
+          sensitivity: "normal",
+          source: "osc8",
+          target: { id: "local", kind: "local" },
+          value: "https://example.test/report",
+        },
+      ],
+      degraded: false,
+      disposed: false,
+      evictions: 0,
+      paneId: focusedSshPane.id,
+      rejected: 0,
+      revision: 1,
+    });
+
+    render(
+      <ToolPanel
+        activeTool="context"
+        onActiveToolChange={vi.fn()}
+        onFocusTab={onFocusTab}
+        tools={tools}
+        workspaceContext={contextWorkspaceProjection}
+      />,
+    );
+
+    await user.click(await screen.findByRole("button", { name: /活动页签/ }));
+    expect(onFocusTab).toHaveBeenCalledWith(sshTerminalTab.id);
+    expect(screen.queryByRole("button", { name: /当前目录/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /焦点窗格/ })).toBeNull();
+    expect(screen.getByText("运行报告")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "复制" })).toBeNull();
+
+    removeXtermPaneArtifactSnapshot(focusedSshPane.id);
   });
 
   it("renders the active Agent Launcher tool", async () => {
@@ -697,12 +827,16 @@ describe("ToolPanel", () => {
       expect(serverInfoApiMocks.getServerInfoSnapshot).toHaveBeenCalled(),
     );
 
-    expect(screen.queryByLabelText("Managed SSH runtime 状态")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Managed SSH runtime 状态"),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("Managed reusable")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/当前 SSH 目标已有 ready managed session/),
     ).not.toBeInTheDocument();
-    expect(diagnosticsApiMocks.getManagedSshRuntimeSnapshot).not.toHaveBeenCalled();
+    expect(
+      diagnosticsApiMocks.getManagedSshRuntimeSnapshot,
+    ).not.toHaveBeenCalled();
 
     view.unmount();
     view = render(
@@ -719,7 +853,9 @@ describe("ToolPanel", () => {
       await screen.findByLabelText("当前远程路径", {}, { timeout: 10000 }),
     ).toBeInTheDocument();
     assertNoManagedSshAvailabilityNotice();
-    expect(diagnosticsApiMocks.getManagedSshRuntimeSnapshot).not.toHaveBeenCalled();
+    expect(
+      diagnosticsApiMocks.getManagedSshRuntimeSnapshot,
+    ).not.toHaveBeenCalled();
 
     view.unmount();
     view = render(
@@ -736,12 +872,16 @@ describe("ToolPanel", () => {
       expect(portForwardApiMocks.listPortForwards).toHaveBeenCalled(),
     );
 
-    expect(screen.queryByLabelText("Managed SSH runtime 状态")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Managed SSH runtime 状态"),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("Legacy terminal only")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/右侧工具不能把 PTY 连接当作可复用 runtime/),
     ).not.toBeInTheDocument();
-    expect(diagnosticsApiMocks.getManagedSshRuntimeSnapshot).not.toHaveBeenCalled();
+    expect(
+      diagnosticsApiMocks.getManagedSshRuntimeSnapshot,
+    ).not.toHaveBeenCalled();
 
     view.unmount();
     view = render(
@@ -756,7 +896,9 @@ describe("ToolPanel", () => {
 
     expect(await screen.findByText("tmux 3.4")).toBeInTheDocument();
     assertNoManagedSshAvailabilityNotice();
-    expect(diagnosticsApiMocks.getManagedSshRuntimeSnapshot).not.toHaveBeenCalled();
+    expect(
+      diagnosticsApiMocks.getManagedSshRuntimeSnapshot,
+    ).not.toHaveBeenCalled();
   });
 
   it("shows primary network rates and expands all network interfaces", async () => {

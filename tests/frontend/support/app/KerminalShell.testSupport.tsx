@@ -114,6 +114,7 @@ const mocks = vi.hoisted(() => {
       renderCount: 0,
     },
     commandHistoryApi: {
+      listCommandHistory: vi.fn(async (_request: unknown) => []),
       recordCommandHistory: vi.fn(),
     },
     connectionApi: {
@@ -230,6 +231,8 @@ vi.mock("@xterm/addon-search", () => ({
 }));
 
 vi.mock("../../../../src/lib/commandHistoryApi", () => ({
+  listCommandHistory: (request: unknown) =>
+    mocks.commandHistoryApi.listCommandHistory(request),
   recordCommandHistory: (...args: unknown[]) =>
     mocks.commandHistoryApi.recordCommandHistory(...args),
 }));

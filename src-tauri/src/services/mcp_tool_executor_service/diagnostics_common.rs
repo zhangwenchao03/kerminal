@@ -13,11 +13,21 @@ pub(super) fn exposed_tool_definitions(tools: &[ToolDefinition]) -> Vec<&ToolDef
         .collect()
 }
 
-pub(super) fn runtime_snapshot_diagnostic(source: &str, message: String) -> Value {
+/// 构造可公开给 MCP host 的运行态诊断。
+///
+/// 底层错误可能包含路径、终端正文、Prompt、凭据或外部进程输出，因此这里只接受
+/// 调用点定义的稳定代码，并返回固定脱敏摘要。
+pub(super) fn runtime_snapshot_diagnostic<E: ?Sized>(
+    source: &str,
+    code: &str,
+    _error: &E,
+) -> Value {
     json!({
         "source": source,
+        "code": code,
+        "status": "degraded",
         "severity": "warning",
-        "message": message
+        "summary": "运行态子系统暂时不可用，详细信息仅保留在本地诊断中。"
     })
 }
 
@@ -94,4 +104,28 @@ pub(super) fn absent_tool_families() -> Vec<&'static str> {
         "history.clear",
         "pending/confirm/approval/audit queues",
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::runtime_snapshot_diagnostic;
+
+    #[test]
+    fn runtime_snapshot_diagnostic_never_serializes_source_error_body() {
+        let canary = "KERM_RUNTIME_ERROR_CANARY C:\\Users\\alice\\secret.txt terminal-output";
+        let diagnostic =
+            runtime_snapshot_diagnostic("terminal.list", "runtimeSourceUnavailable", canary);
+        let serialized = diagnostic.to_string();
+
+        assert_eq!(diagnostic["source"], "terminal.list");
+        assert_eq!(diagnostic["code"], "runtimeSourceUnavailable");
+        assert_eq!(diagnostic["status"], "degraded");
+        assert_eq!(
+            diagnostic["summary"],
+            "运行态子系统暂时不可用，详细信息仅保留在本地诊断中。"
+        );
+        assert!(!serialized.contains(canary));
+        assert!(!serialized.contains("secret.txt"));
+        assert!(!serialized.contains("terminal-output"));
+    }
 }

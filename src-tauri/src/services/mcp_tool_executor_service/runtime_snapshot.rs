@@ -6,6 +6,7 @@ use super::diagnostics_common::{
     exposed_tool_definitions, runtime_snapshot_diagnostic, serialized_name,
 };
 use super::*;
+use crate::models::agent_session::AgentSessionDiagnostic;
 use crate::services::external_launch::{
     ExternalLaunchIntakeSnapshot, ExternalLaunchRejected, ExternalLaunchSecretBrokerSnapshot,
 };
@@ -22,7 +23,8 @@ pub(super) fn execute_kerminal_runtime_snapshot(
         Err(error) => {
             diagnostics.push(runtime_snapshot_diagnostic(
                 "terminal.list",
-                error.to_string(),
+                "terminalSessionsUnavailable",
+                &error,
             ));
             Vec::new()
         }
@@ -57,22 +59,15 @@ pub(super) fn execute_kerminal_runtime_snapshot(
     let agent_sessions = match context.agent_sessions.list_sessions() {
         Ok(list) => {
             for diagnostic in &list.diagnostics {
-                diagnostics.push(json!({
-                    "source": "agent.sessions",
-                    "severity": "warning",
-                    "code": diagnostic.code,
-                    "message": diagnostic.message,
-                    "path": diagnostic.path,
-                    "line": diagnostic.line,
-                    "column": diagnostic.column
-                }));
+                diagnostics.push(agent_session_runtime_diagnostic(diagnostic));
             }
             list.sessions
         }
         Err(error) => {
             diagnostics.push(runtime_snapshot_diagnostic(
                 "agent.sessions",
-                error.to_string(),
+                "agentSessionsUnavailable",
+                &error,
             ));
             Vec::new()
         }
@@ -125,7 +120,8 @@ pub(super) fn execute_kerminal_runtime_snapshot(
         Err(error) => {
             diagnostics.push(runtime_snapshot_diagnostic(
                 "port_forward.list",
-                error.to_string(),
+                "portForwardsUnavailable",
+                &error,
             ));
             Vec::new()
         }
@@ -161,7 +157,8 @@ pub(super) fn execute_kerminal_runtime_snapshot(
         Err(error) => {
             diagnostics.push(runtime_snapshot_diagnostic(
                 "local_network_proxy",
-                error.to_string(),
+                "localProxyUnavailable",
+                &error,
             ));
             0
         }
@@ -172,7 +169,8 @@ pub(super) fn execute_kerminal_runtime_snapshot(
         Err(error) => {
             diagnostics.push(runtime_snapshot_diagnostic(
                 "external_launch.intake",
-                error.to_string(),
+                "externalLaunchIntakeUnavailable",
+                &error,
             ));
             None
         }
@@ -182,7 +180,8 @@ pub(super) fn execute_kerminal_runtime_snapshot(
         Err(error) => {
             diagnostics.push(runtime_snapshot_diagnostic(
                 "external_launch.secrets",
-                error.to_string(),
+                "externalLaunchSecretBrokerUnavailable",
+                &error,
             ));
             None
         }
@@ -205,7 +204,8 @@ pub(super) fn execute_kerminal_runtime_snapshot(
         Err(error) => {
             diagnostics.push(runtime_snapshot_diagnostic(
                 "ssh_runtime.snapshot",
-                error.to_string(),
+                "managedSshRuntimeUnavailable",
+                &error,
             ));
             None
         }
@@ -362,6 +362,32 @@ pub(super) fn execute_kerminal_runtime_snapshot(
     }
 }
 
+/// 将 Agent session 文件诊断投影为不含路径和正文的稳定 MCP 诊断。
+fn agent_session_runtime_diagnostic(diagnostic: &AgentSessionDiagnostic) -> Value {
+    let code = match diagnostic.code.as_str() {
+        "invalidSessionDirectoryName"
+        | "invalidSessionId"
+        | "sessionIdMismatch"
+        | "invalidSession"
+        | "invalidProvider"
+        | "invalidTargetBinding"
+        | "invalidMcpEndpoint"
+        | "fileNotFound"
+        | "fileReadFailed"
+        | "tomlParseFailed"
+        | "jsonParseFailed" => diagnostic.code.as_str(),
+        _ => "agentSessionDiagnostic",
+    };
+
+    json!({
+        "source": "agent.sessions",
+        "code": code,
+        "status": "degraded",
+        "severity": "warning",
+        "summary": "部分 Agent session 元数据不可读取，已跳过异常记录。"
+    })
+}
+
 fn external_launch_snapshot_json(
     intake: Option<&ExternalLaunchIntakeSnapshot>,
     secrets: Option<&ExternalLaunchSecretBrokerSnapshot>,
@@ -403,4 +429,41 @@ fn external_launch_rejection_json(rejection: &ExternalLaunchRejected) -> Value {
         "rawHash": rejection.raw_hash,
         "cwdPresent": rejection.cwd_present
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::agent_session_runtime_diagnostic;
+    use crate::models::agent_session::AgentSessionDiagnostic;
+
+    #[test]
+    fn agent_runtime_diagnostic_never_serializes_message_or_path() {
+        let canary = "KERM_AGENT_DIAGNOSTIC_CANARY";
+        let diagnostic = AgentSessionDiagnostic {
+            path: Some(format!("C:\\Users\\alice\\{canary}\\session.toml")),
+            code: format!("unknown-{canary}"),
+            message: format!("{canary} prompt正文 terminal正文"),
+            line: Some(42),
+            column: Some(7),
+        };
+
+        let public_diagnostic = agent_session_runtime_diagnostic(&diagnostic);
+        let serialized = public_diagnostic.to_string();
+
+        assert_eq!(public_diagnostic["source"], "agent.sessions");
+        assert_eq!(public_diagnostic["code"], "agentSessionDiagnostic");
+        assert_eq!(public_diagnostic["status"], "degraded");
+        assert_eq!(
+            public_diagnostic["summary"],
+            "部分 Agent session 元数据不可读取，已跳过异常记录。"
+        );
+        assert!(!serialized.contains(canary));
+        assert!(!serialized.contains("session.toml"));
+        assert!(!serialized.contains("prompt正文"));
+        assert!(!serialized.contains("terminal正文"));
+        assert!(public_diagnostic.get("path").is_none());
+        assert!(public_diagnostic.get("message").is_none());
+        assert!(public_diagnostic.get("line").is_none());
+        assert!(public_diagnostic.get("column").is_none());
+    }
 }
