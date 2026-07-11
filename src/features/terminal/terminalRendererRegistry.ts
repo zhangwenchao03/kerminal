@@ -59,6 +59,7 @@ export interface TerminalRendererPaneSnapshot {
   focused: boolean;
   /** attach 尚未提交时为 true，用于诊断重复 attach 风险。 */
   gpuAttachPending?: boolean;
+  gpuPlatformClass?: TerminalRendererDiagnostics["gpuPlatformClass"];
   /** 当前 GPU lease 的授予时间；CPU 非 owner 不携带该值。 */
   gpuOwnerSince?: number;
   lastAttachAt?: number;
@@ -206,15 +207,6 @@ export function createTerminalRendererRegistry({
     pane: RegisteredRendererPane,
     decision: TerminalRendererPanePolicyDecision,
   ) => {
-    if (
-      decision.targetBackend === "gpu" &&
-      pane.controller.canAttemptGpu?.() === false
-    ) {
-      releaseGpuOwner(pane);
-      pane.gpuAttachPending = false;
-      syncPaneState(pane);
-      return;
-    }
     if (decision.targetBackend === "cpu") {
       releaseGpuOwner(pane);
       pane.controller.updateMode("cpu");
@@ -228,18 +220,28 @@ export function createTerminalRendererRegistry({
     if (pane.visible) {
       const targetMode = requestedMode === "cpu" ? "cpu" : requestedMode;
       const controllerState = pane.controller.getState();
+      const modeChanged = controllerState.mode !== targetMode;
       const shouldStartAttach =
         pane.currentBackend !== "gpu" &&
         !pane.gpuAttachPending &&
-        (decision.shouldAttemptImport || controllerState.mode !== targetMode);
+        (decision.shouldAttemptImport || modeChanged);
       pane.gpuOwnerSince ??= now();
       if (shouldStartAttach) {
         // 先占用 lease，再启动异步 attach；同步状态回调也不会重复发起。
         pane.gpuAttachPending = true;
       }
-      if (controllerState.mode !== targetMode) {
+      if (modeChanged) {
+        // capability 依赖 controller 的当前模式；先提交显式 GPU 模式，
+        // 避免软件平台仍按旧 Auto 状态拒绝用户主动尝试。
         pane.controller.updateMode(targetMode);
-      } else if (shouldStartAttach) {
+      }
+      if (pane.controller.canAttemptGpu?.() === false) {
+        releaseGpuOwner(pane);
+        pane.gpuAttachPending = false;
+        syncPaneState(pane);
+        return;
+      }
+      if (!modeChanged && shouldStartAttach) {
         pane.controller.attach();
       }
       syncPaneState(pane);
@@ -255,20 +257,24 @@ export function createTerminalRendererRegistry({
       config: resolvedConfig,
       failureEvents,
       now: now(),
-      panes: [...panes.values()].map((pane) => ({
-        currentBackend: pane.currentBackend,
-        failureCount: pane.failureCount,
-        focused: pane.focused,
-        gpuAttachPending: pane.gpuAttachPending,
-        gpuOwnerSince: pane.gpuOwnerSince,
-        hiddenSince: pane.hiddenSince,
-        lastFailureAt: pane.lastFailureAt,
-        lastFailureReason: pane.lastFailureReason,
-        lastUsedAt: pane.lastUsedAt,
-        paneId: pane.paneId,
-        retryCount: pane.retryCount,
-        visible: pane.visible,
-      })),
+      panes: [...panes.values()].map((pane) => {
+        const diagnostics = pane.controller.getDiagnostics?.();
+        return {
+          currentBackend: pane.currentBackend,
+          failureCount: pane.failureCount,
+          focused: pane.focused,
+          gpuAttachPending: pane.gpuAttachPending,
+          gpuPlatformClass: diagnostics?.gpuPlatformClass,
+          gpuOwnerSince: pane.gpuOwnerSince,
+          hiddenSince: pane.hiddenSince,
+          lastFailureAt: pane.lastFailureAt,
+          lastFailureReason: pane.lastFailureReason,
+          lastUsedAt: pane.lastUsedAt,
+          paneId: pane.paneId,
+          retryCount: pane.retryCount,
+          visible: pane.visible,
+        };
+      }),
       requestedMode,
       suggestedFallback,
     });
@@ -335,6 +341,7 @@ export function createTerminalRendererRegistry({
     failureEvents.length = 0;
     for (const pane of panes.values()) {
       pane.failureCount = 0;
+      pane.fallbackReason = undefined;
       pane.lastFailureAt = undefined;
       pane.lastFailureReason = undefined;
       pane.retryCount = 0;
@@ -513,6 +520,7 @@ export function createTerminalRendererRegistry({
         fallbackReason: pane.fallbackReason ?? state.fallbackReason,
         focused: pane.focused,
         gpuAttachPending: pane.gpuAttachPending,
+        gpuPlatformClass: diagnostics?.gpuPlatformClass,
         gpuOwnerSince: pane.gpuOwnerSince,
         lastAttachAt: pane.lastAttachAt,
         lastContextLossAt: pane.lastContextLossAt,

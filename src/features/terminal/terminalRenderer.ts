@@ -27,6 +27,11 @@ import type {
   TerminalRendererBackend,
   TerminalRendererFallbackReason,
 } from "./terminalRendererPolicy";
+import {
+  detectTerminalGpuPlatform,
+  shouldUseAutoGpuRenderer,
+  type TerminalGpuPlatformClass,
+} from "./terminalRendererPlatform";
 
 export interface TerminalRendererState {
   backend: TerminalRendererBackend;
@@ -39,6 +44,7 @@ export interface TerminalRendererDiagnostics {
   activeTimerCount: number;
   circuitOpen: boolean;
   contextLossCount: number;
+  gpuPlatformClass: TerminalGpuPlatformClass;
   health: TerminalRendererHealthSnapshot;
   lifecycle: TerminalRendererLifecycleSnapshot;
   retryCount: number;
@@ -117,6 +123,7 @@ interface CreateTerminalRendererControllerOptions {
   contextLossCircuitThreshold?: number;
   contextLossWindowMs?: number;
   healthWatchdogEnabled?: boolean;
+  gpuPlatformClass?: TerminalGpuPlatformClass;
   lifecycleV2Enabled?: boolean;
   loadWebglAddon?: () => Promise<{ WebglAddon: WebglAddonConstructor }>;
   logger?: TerminalRendererLogger;
@@ -124,6 +131,7 @@ interface CreateTerminalRendererControllerOptions {
   maxRecoveryElapsedMs?: number;
   now?: () => number;
   onStateChange?: (state: TerminalRendererState) => void;
+  shouldUseAutoGpu?: (platformClass: TerminalGpuPlatformClass) => boolean;
   paneId: string;
   random?: () => number;
   recoveryJitterRatio?: number;
@@ -156,6 +164,7 @@ export function createTerminalRendererController({
   contextLossCircuitThreshold = DEFAULT_MAX_RECOVERY_ATTEMPTS,
   contextLossWindowMs = DEFAULT_CONTEXT_LOSS_WINDOW_MS,
   healthWatchdogEnabled = true,
+  gpuPlatformClass,
   lifecycleV2Enabled = true,
   loadWebglAddon = defaultLoadWebglAddon,
   logger = console,
@@ -172,6 +181,7 @@ export function createTerminalRendererController({
     ? DEFAULT_RECOVERY_RETRY_DELAYS_MS
     : [retryDelayMs],
   scheduleRetry = window.setTimeout.bind(window),
+  shouldUseAutoGpu = shouldUseAutoGpuRenderer,
   telemetry = createTerminalRendererPerformanceTelemetry(),
   terminal,
 }: CreateTerminalRendererControllerOptions): TerminalRendererController {
@@ -198,6 +208,9 @@ export function createTerminalRendererController({
       versions: VERIFIED_XTERM_WEBGL_COMPATIBILITY_VERSIONS,
     });
   const resolvedRetryDelays = normalizeRetryDelays(retryDelaysMs);
+  const resolvedGpuPlatformClass =
+    gpuPlatformClass ?? detectTerminalGpuPlatform();
+  const autoGpuAllowed = shouldUseAutoGpu(resolvedGpuPlatformClass);
 
   let activeWebgl: ActiveWebglRenderer | null = null;
   let attachTimeoutHandle: TimerHandle | null = null;
@@ -205,7 +218,8 @@ export function createTerminalRendererController({
   let contextLossCount = 0;
   let contextLossWindowStartedAt: number | undefined;
   let disposed = false;
-  let fallbackReason: TerminalRendererFallbackReason | undefined;
+  let fallbackReason: TerminalRendererFallbackReason | undefined =
+    rendererType === "auto" && !autoGpuAllowed ? "software-gpu" : undefined;
   let mode = rendererType;
   let recoveryStartedAt: number | undefined;
   let retryCount = 0;
@@ -728,6 +742,9 @@ export function createTerminalRendererController({
   };
 
   const attach = () => {
+    if (mode === "auto" && !autoGpuAllowed) {
+      return;
+    }
     beginAttach("request-gpu", "attach", 1);
   };
 
@@ -737,6 +754,17 @@ export function createTerminalRendererController({
     }
     mode = nextMode;
     clearTimers();
+    if (mode === "auto" && !autoGpuAllowed) {
+      fallbackReason = "software-gpu";
+      circuitOpen = false;
+      recoveryStartedAt = undefined;
+      retryCount = 0;
+      transitionToCpuReady("operation-cancelled");
+      disposeActiveWebgl({ clearAtlas: true });
+      refreshTerminal(terminal, telemetry);
+      emitStateChange();
+      return;
+    }
     if (!shouldAttemptGpuRenderer(mode)) {
       fallbackReason = undefined;
       circuitOpen = false;
@@ -748,6 +776,7 @@ export function createTerminalRendererController({
       emitStateChange();
       return;
     }
+    fallbackReason = undefined;
     emitStateChange();
     attach();
   };
@@ -831,7 +860,12 @@ export function createTerminalRendererController({
   };
 
   const retryGpu = () => {
-    if (disposed || activeWebgl || !shouldAttemptGpuRenderer(mode)) {
+    if (
+      disposed ||
+      activeWebgl ||
+      !shouldAttemptGpuRenderer(mode) ||
+      (mode === "auto" && !autoGpuAllowed)
+    ) {
       return;
     }
     clearTimers();
@@ -861,6 +895,7 @@ export function createTerminalRendererController({
       Number(attachTimeoutHandle !== null) + Number(retryHandle !== null),
     circuitOpen,
     contextLossCount,
+    gpuPlatformClass: resolvedGpuPlatformClass,
     health: health.getSnapshot(),
     lifecycle: lifecycle.getSnapshot(),
     retryCount,
@@ -870,7 +905,8 @@ export function createTerminalRendererController({
 
   return {
     attach,
-    canAttemptGpu: () => lifecycleV2Enabled,
+    canAttemptGpu: () =>
+      lifecycleV2Enabled && (mode !== "auto" || autoGpuAllowed),
     clearTextureAtlas,
     dispose,
     getDiagnostics,

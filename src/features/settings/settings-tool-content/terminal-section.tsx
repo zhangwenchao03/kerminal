@@ -29,7 +29,10 @@ import {
   TerminalAppearancePreview,
   TerminalSchemePicker,
 } from "./terminal-preview";
-import { buildTerminalRendererStatusView } from "./terminal-renderer-status";
+import {
+  buildTerminalRendererStatusView,
+  isRetryableRendererFallback,
+} from "./terminal-renderer-status";
 
 interface TerminalSettingsSectionProps {
   normalizedSettings: AppSettings;
@@ -65,7 +68,10 @@ export function TerminalSettingsSection({
   );
   const rendererStatus = buildTerminalRendererStatusView(rendererSnapshot);
   const retryableRendererPaneIds = rendererSnapshot.panes
-    .filter((pane) => pane.fallbackReason || pane.circuitOpen)
+    .filter(
+      (pane) =>
+        isRetryableRendererFallback(pane.fallbackReason) || pane.circuitOpen,
+    )
     .map((pane) => pane.paneId);
   const retryGlobalRendererFallback =
     rendererSnapshot.suggestedFallback === "cpu";

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildTerminalRendererStatusView } from "../../../../../src/features/settings/settings-tool-content/terminal-renderer-status";
+import {
+  buildTerminalRendererStatusView,
+  isRetryableRendererFallback,
+} from "../../../../../src/features/settings/settings-tool-content/terminal-renderer-status";
 import type { TerminalRendererRegistrySnapshot } from "../../../../../src/features/terminal/terminalRendererRegistry";
 
 describe("terminal-renderer-status", () => {
@@ -48,6 +51,34 @@ describe("terminal-renderer-status", () => {
       detail: "atlas 0，最近回退：atlas-clear-failed",
       tone: "warning",
     });
+  });
+
+  it("presents software GPU Auto fallback as an expected platform state", () => {
+    expect(
+      buildTerminalRendererStatusView(
+        snapshot({
+          effectiveGpuPanes: 0,
+          panes: [
+            {
+              backend: "cpu",
+              canvasCount: 0,
+              failureCount: 0,
+              fallbackReason: "software-gpu",
+              focused: true,
+              paneId: "pane-software",
+              recoveryCount: 0,
+              visible: true,
+            },
+          ],
+        }),
+      ),
+    ).toEqual({
+      badgeLabel: "软件渲染",
+      detail: "检测到软件 GPU，Auto 已使用 CPU renderer",
+      tone: "normal",
+    });
+    expect(isRetryableRendererFallback("software-gpu")).toBe(false);
+    expect(isRetryableRendererFallback("context-lost")).toBe(true);
   });
 });
 

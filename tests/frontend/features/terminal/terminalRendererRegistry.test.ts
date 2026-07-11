@@ -394,6 +394,7 @@ describe("terminalRendererRegistry", () => {
       rendererType: "auto",
     });
     const controller = createTerminalRendererController({
+      gpuPlatformClass: "hardware-or-unknown",
       loadWebglAddon: async () => ({
         WebglAddon: RegistryIntegrationWebglAddon,
       }),
@@ -418,6 +419,72 @@ describe("terminalRendererRegistry", () => {
 
     expect(controller.getState()).toEqual(
       expect.objectContaining({ backend: "gpu", mode: "auto" }),
+    );
+    expect(registry.getSnapshot().panes[0]).toEqual(
+      expect.objectContaining({
+        gpuPlatformClass: "hardware-or-unknown",
+      }),
+    );
+    unregister();
+  });
+
+  it("allows explicit GPU after software-platform Auto stayed on CPU", async () => {
+    const terminal = new RegistryIntegrationTerminal();
+    const registry = createTerminalRendererRegistry({
+      rendererType: "auto",
+    });
+    const controller = createTerminalRendererController({
+      gpuPlatformClass: "software",
+      loadWebglAddon: async () => ({
+        WebglAddon: RegistryIntegrationWebglAddon,
+      }),
+      onStateChange: (state) =>
+        registry.updatePaneState("software-explicit-gpu", state),
+      paneId: "software-explicit-gpu",
+      rendererType: "auto",
+      terminal,
+    });
+    const unregister = registry.registerPane({
+      controller,
+      paneId: "software-explicit-gpu",
+    });
+    await flushPromises();
+
+    expect(controller.getState()).toEqual(
+      expect.objectContaining({
+        backend: "cpu",
+        fallbackReason: "software-gpu",
+        mode: "auto",
+      }),
+    );
+
+    registry.updateMode("gpu");
+    await flushPromises();
+
+    expect(controller.getState()).toEqual(
+      expect.objectContaining({
+        backend: "gpu",
+        fallbackReason: undefined,
+        mode: "gpu",
+      }),
+    );
+
+    registry.updateMode("cpu");
+    expect(registry.getSnapshot().panes[0]).toEqual(
+      expect.objectContaining({
+        backend: "cpu",
+        fallbackReason: undefined,
+      }),
+    );
+    registry.updateMode("auto");
+    await flushPromises();
+
+    expect(controller.getState()).toEqual(
+      expect.objectContaining({
+        backend: "cpu",
+        fallbackReason: "software-gpu",
+        mode: "auto",
+      }),
     );
     unregister();
   });

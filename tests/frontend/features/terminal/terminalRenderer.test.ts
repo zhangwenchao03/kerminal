@@ -2,6 +2,7 @@ import type { IDisposable, ITerminalAddon, Terminal } from "@xterm/xterm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createTerminalRendererController,
+  type TerminalRendererState,
   type TerminalRendererTerminal,
 } from "../../../../src/features/terminal/terminalRenderer";
 
@@ -171,6 +172,80 @@ describe("terminalRenderer", () => {
       fallbackReason: undefined,
       mode: "cpu",
     });
+  });
+
+  it("keeps Auto on CPU when the platform is definitively software rendered", () => {
+    const loadWebglAddon = vi.fn();
+    const terminal = new FakeTerminal();
+    const controller = createTerminalRendererController({
+      gpuPlatformClass: "software",
+      loadWebglAddon,
+      paneId: "pane-software-gpu",
+      rendererType: "auto",
+      shouldUseAutoGpu: () => false,
+      terminal,
+    });
+
+    controller.attach();
+    controller.retryGpu();
+
+    expect(loadWebglAddon).not.toHaveBeenCalled();
+    expect(controller.canAttemptGpu()).toBe(false);
+    expect(controller.getState()).toEqual({
+      backend: "cpu",
+      canvasCount: 0,
+      fallbackReason: "software-gpu",
+      mode: "auto",
+    });
+    expect(controller.getDiagnostics().gpuPlatformClass).toBe(
+      "software",
+    );
+  });
+
+  it("still honors explicit GPU mode on a software-rendered platform", async () => {
+    const loadWebglAddon = vi
+      .fn()
+      .mockResolvedValue({ WebglAddon: FakeWebglAddon });
+    const controller = createTerminalRendererController({
+      loadWebglAddon,
+      paneId: "pane-forced-software-gpu",
+      rendererType: "gpu",
+      shouldUseAutoGpu: () => false,
+      terminal: new FakeTerminal(),
+    });
+
+    controller.attach();
+    await vi.waitFor(() => {
+      expect(controller.getState().backend).toBe("gpu");
+    });
+
+    expect(controller.canAttemptGpu()).toBe(true);
+    expect(loadWebglAddon).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears software fallback before switching Auto to explicit GPU", async () => {
+    const states: TerminalRendererState[] = [];
+    const controller = createTerminalRendererController({
+      loadWebglAddon: async () => ({ WebglAddon: FakeWebglAddon }),
+      onStateChange: (state) => states.push(state),
+      paneId: "pane-software-auto-to-gpu",
+      rendererType: "auto",
+      shouldUseAutoGpu: () => false,
+      terminal: new FakeTerminal(),
+    });
+
+    expect(controller.getState().fallbackReason).toBe("software-gpu");
+    controller.updateMode("gpu");
+    await vi.waitFor(() => {
+      expect(controller.getState().backend).toBe("gpu");
+    });
+
+    expect(
+      states.some(
+        (state) =>
+          state.mode === "gpu" && state.fallbackReason === "software-gpu",
+      ),
+    ).toBe(false);
   });
 
   it("keeps a stable CPU rollback when lifecycle V2 is disabled", () => {

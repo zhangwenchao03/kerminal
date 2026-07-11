@@ -14,7 +14,8 @@ export type TerminalRendererFallbackReason =
   | "mode-cpu"
   | "not-visible"
   | "recovery-storm"
-  | "retry-exhausted";
+  | "retry-exhausted"
+  | "software-gpu";
 
 export interface TerminalRendererPolicyConfig {
   autoFailureCooldownMs: number;

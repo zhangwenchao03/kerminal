@@ -25,6 +25,7 @@ const configuredDurationMs =
 const durationMs = readPositiveNumber(configuredDurationMs, 1_000);
 const MAX_HEAP_GROWTH_BYTES = 32 * 1024 * 1024;
 const MAX_HEAP_GROWTH_RATIO = 1.5;
+const PANES_PER_CYCLE = 6;
 
 (configuredDurationMs ? describe : describe.skip)(
   "terminal renderer continuous soak",
@@ -42,75 +43,59 @@ const MAX_HEAP_GROWTH_RATIO = 1.5;
         rendererType: "auto",
       });
       let cycles = 0;
+      let contextLossCount = 0;
       let maxHeapUsed = heapStarted;
+      let modeSwitchCount = 0;
+      let paneCycles = 0;
+      let visibilityCycleCount = 0;
 
       while (Date.now() - startedAt < durationMs) {
-        const paneId = `continuous-soak-${cycles}`;
-        const terminal = new ContinuousSoakTerminal();
-        document.body.append(terminal.element);
-        const controller = createTerminalRendererController({
-          loadWebglAddon: async () => ({
-            WebglAddon: ContinuousSoakWebglAddon,
-          }),
-          onStateChange: (state) => registry.updatePaneState(paneId, state),
-          paneId,
-          rendererType: "auto",
-          terminal,
-        });
-        const unregister = registry.registerPane({
-          controller,
-          paneId,
-        });
-        await flushPromises();
-        expect(controller.getState().backend).toBe("gpu");
+        const panes = await Promise.all(
+          Array.from({ length: PANES_PER_CYCLE }, (_, index) =>
+            createSoakPane(registry, cycles, index),
+          ),
+        );
+        paneCycles += panes.length;
 
-        const surfaceScheduler = new ContinuousSoakSurfaceScheduler();
-        const surfaceCoordinator = createTerminalRendererSurfaceCoordinator({
-          fit: () => ({ cols: 100, rows: 30 }),
-          measure: () => ({
-            dpr: 1,
-            height: 600,
-            minimized: false,
-            visible: true,
-            width: 800,
-          }),
-          scheduler: surfaceScheduler,
-          stableSamples: 1,
-        });
-        surfaceCoordinator.notify();
-        surfaceScheduler.flushAll();
-        const watchdogScheduler = new ContinuousSoakWatchdogScheduler();
-        const watchdog = createTerminalRendererHealthWatchdog({
-          container: terminal.element,
-          renderer: controller,
-          scheduler: watchdogScheduler,
-          surfaceSnapshot: () => surfaceCoordinator.getSnapshot(),
-        });
-        watchdog.check();
-
-        const writer = createTerminalOutputWriter(terminal, {
-          callbackMode: "required",
-        });
-        writer.write(`cycle-${cycles} 中文 emoji 🚀\r\n`);
-        writer.flush();
-        expect(writer.pendingLength()).toBe(0);
-
-        if (cycles % 5 === 0) {
-          controller.updateMode("cpu");
-          controller.updateMode("auto");
-          await flushPromises();
-          expect(controller.getState().backend).toBe("gpu");
+        for (const [index, pane] of panes.entries()) {
+          pane.writer.write(
+            `cycle-${cycles}-pane-${index} 中文 emoji 🚀\r\n`,
+          );
+          pane.writer.flush();
+          expect(pane.writer.pendingLength()).toBe(0);
+          pane.surfaceSize.width = 800 + ((cycles + index) % 3) * 16;
+          pane.surfaceSize.height = 600 + ((cycles + index) % 2) * 12;
+          pane.surfaceCoordinator.notify();
+          pane.surfaceScheduler.flushAll();
+          pane.watchdog.check();
         }
 
-        writer.dispose();
-        surfaceCoordinator.notify();
-        surfaceCoordinator.dispose();
-        watchdog.dispose();
-        unregister();
-        terminal.element.remove();
-        const diagnostics = controller.getDiagnostics();
-        expect(diagnostics.activeTimerCount).toBe(0);
-        expect(diagnostics.lifecycle.state).toBe("disposed");
+        const contextLossPane = panes[cycles % panes.length];
+        contextLossPane.terminal.loadedAddon?.emitContextLoss();
+        contextLossCount += 1;
+        await flushTimers();
+        expect(contextLossPane.controller.getState().backend).toBe("gpu");
+
+        const modePane = panes[(cycles + 1) % panes.length];
+        modePane.controller.updateMode("cpu");
+        modePane.controller.updateMode("auto");
+        modeSwitchCount += 1;
+        await flushTimers();
+        expect(modePane.controller.getState().backend).toBe("gpu");
+
+        const visibilityPane = panes[(cycles + 2) % panes.length];
+        visibilityPane.controller.suspend();
+        registry.updatePaneVisibility(visibilityPane.paneId, false);
+        registry.updatePaneVisibility(visibilityPane.paneId, true);
+        visibilityPane.controller.resume();
+        visibilityCycleCount += 1;
+
+        for (const pane of panes) {
+          pane.dispose();
+          const diagnostics = pane.controller.getDiagnostics();
+          expect(diagnostics.activeTimerCount).toBe(0);
+          expect(diagnostics.lifecycle.state).toBe("disposed");
+        }
         expect(ContinuousSoakWebglAddon.activeCanvases).toBe(0);
         expect(ContinuousSoakWebglAddon.activeListeners).toBe(0);
         expect(ContinuousSoakSurfaceScheduler.activeFrames).toBe(0);
@@ -141,7 +126,10 @@ const MAX_HEAP_GROWTH_RATIO = 1.5;
         schemaVersion: 1,
         generatedAt: new Date().toISOString(),
         actualDurationMs: Date.now() - startedAt,
+        contextLossCount,
         cycles,
+        modeSwitchCount,
+        paneCycles,
         heap: {
           endBytes: heapEnded,
           limitBytes: heapLimit,
@@ -150,6 +138,7 @@ const MAX_HEAP_GROWTH_RATIO = 1.5;
           withinLimit: heapWithinLimit,
         },
         resources,
+        visibilityCycleCount,
         pass: heapWithinLimit && resourcesBounded,
       };
       console.log(
@@ -166,9 +155,11 @@ const MAX_HEAP_GROWTH_RATIO = 1.5;
 
 class ContinuousSoakTerminal implements TerminalRendererTerminal {
   element = document.createElement("div");
+  loadedAddon: ContinuousSoakWebglAddon | null = null;
   rows = 24;
 
   loadAddon(addon: ITerminalAddon): void {
+    this.loadedAddon = addon as ContinuousSoakWebglAddon;
     addon.activate(this as unknown as Terminal);
   }
 
@@ -213,6 +204,12 @@ class ContinuousSoakWebglAddon implements ITerminalAddon {
         }
       },
     };
+  }
+
+  emitContextLoss(): void {
+    for (const listener of [...this.listeners]) {
+      listener();
+    }
   }
 }
 
@@ -273,6 +270,88 @@ async function flushPromises() {
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
+}
+
+async function flushTimers() {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await flushPromises();
+}
+
+async function createSoakPane(
+  registry: ReturnType<typeof createTerminalRendererRegistry>,
+  cycle: number,
+  index: number,
+) {
+  const paneId = `continuous-soak-${cycle}-${index}`;
+  const terminal = new ContinuousSoakTerminal();
+  document.body.append(terminal.element);
+  const controller = createTerminalRendererController({
+    loadWebglAddon: async () => ({
+      WebglAddon: ContinuousSoakWebglAddon,
+    }),
+    logger: { warn() {} },
+    onStateChange: (state) => registry.updatePaneState(paneId, state),
+    paneId,
+    recoveryJitterRatio: 0,
+    rendererType: "auto",
+    retryDelaysMs: [0],
+    shouldUseAutoGpu: () => true,
+    terminal,
+  });
+  const unregister = registry.registerPane({
+    controller,
+    focused: index === 0,
+    paneId,
+    visible: true,
+  });
+  await flushPromises();
+  expect(controller.getState().backend).toBe("gpu");
+
+  const surfaceSize = { height: 600, width: 800 };
+  const surfaceScheduler = new ContinuousSoakSurfaceScheduler();
+  const surfaceCoordinator = createTerminalRendererSurfaceCoordinator({
+    fit: () => ({ cols: 100, rows: 30 }),
+    measure: () => ({
+      dpr: 1 + (index % 4) * 0.25,
+      height: surfaceSize.height,
+      minimized: false,
+      visible: true,
+      width: surfaceSize.width,
+    }),
+    scheduler: surfaceScheduler,
+    stableSamples: 1,
+  });
+  surfaceCoordinator.notify();
+  surfaceScheduler.flushAll();
+  const watchdogScheduler = new ContinuousSoakWatchdogScheduler();
+  const watchdog = createTerminalRendererHealthWatchdog({
+    container: terminal.element,
+    renderer: controller,
+    scheduler: watchdogScheduler,
+    surfaceSnapshot: () => surfaceCoordinator.getSnapshot(),
+  });
+  watchdog.check();
+  const writer = createTerminalOutputWriter(terminal, {
+    callbackMode: "required",
+  });
+
+  return {
+    controller,
+    dispose() {
+      writer.dispose();
+      surfaceCoordinator.dispose();
+      watchdog.dispose();
+      unregister();
+      terminal.element.remove();
+    },
+    paneId,
+    surfaceCoordinator,
+    surfaceScheduler,
+    surfaceSize,
+    terminal,
+    watchdog,
+    writer,
+  };
 }
 
 function readPositiveNumber(value: string | undefined, fallback: number) {

@@ -31,6 +31,8 @@
     "verify:terminal-renderer-settings": "node scripts/verify-terminal-renderer-settings-smoke.mjs",
     "verify:terminal-renderer-faults": "node scripts/verify-terminal-renderer-faults.mjs",
     "verify:terminal-renderer-lifecycle-stress": "node scripts/verify-terminal-renderer-lifecycle-stress.mjs",
+    "verify:terminal-renderer-platform-matrix": "node scripts/verify-terminal-renderer-platform-matrix.mjs",
+    "verify:terminal-renderer-windows-hitl-preflight": "node scripts/verify-terminal-renderer-windows-hitl-preflight.mjs",
     "verify:terminal-renderer-soak": "node scripts/verify-terminal-renderer-soak.mjs",
     "verify:managed-ssh-auto": "node scripts/verify-managed-ssh-auto.mjs",
     "verify:managed-ssh-hitl": "node scripts/verify-managed-ssh-hitl.mjs",

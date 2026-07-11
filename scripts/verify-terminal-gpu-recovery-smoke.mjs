@@ -6,7 +6,6 @@
  *
  * @author kongweiguang
  */
-
 import { spawn } from "node:child_process";
 import {
   createReadStream,
@@ -20,7 +19,7 @@ import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
+import { readGpuMode, readPositiveNumber } from "./terminal-renderer-platform-args.mjs";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = parseArgs(process.argv.slice(2));
 const outputPath = path.resolve(
@@ -31,6 +30,8 @@ const screenshotPath = outputPath.replace(/\.json$/i, ".png");
 const config = {
   backend: readBackend(args.backend ?? "gpu"),
   chunks: readPositiveInteger(args.chunks, 180, "--chunks"),
+  dpr: readPositiveNumber(args.dpr, 1, "--dpr"),
+  gpuMode: readGpuMode(args["gpu-mode"] ?? "hardware"),
   panes: readPositiveInteger(args.panes, 2, "--panes"),
   screenshot: args.screenshot !== "false",
   viewport: readViewport(args.viewport ?? "1440x900"),
@@ -106,6 +107,9 @@ async function main() {
       "--disable-extensions",
       "--disable-sync",
       "--enable-gpu-rasterization",
+      ...(config.gpuMode === "software"
+        ? ["--enable-unsafe-swiftshader", "--use-angle=swiftshader"]
+        : []),
       "--hide-scrollbars",
       "--ignore-gpu-blocklist",
       "--mute-audio",
@@ -135,7 +139,7 @@ async function main() {
     await client.send("Runtime.enable");
     await client.send("Page.enable");
     await client.send("Emulation.setDeviceMetricsOverride", {
-      deviceScaleFactor: 1,
+      deviceScaleFactor: config.dpr,
       height: config.viewport.height,
       mobile: false,
       width: config.viewport.width,
@@ -208,12 +212,20 @@ async function main() {
     client?.close();
     await closeServer(assetServer);
     await terminateChrome(chrome);
-    rmSync(userDataDir, {
-      force: true,
-      maxRetries: 5,
-      recursive: true,
-      retryDelay: 100,
-    });
+    try {
+      rmSync(userDataDir, {
+        force: true,
+        maxRetries: 20,
+        recursive: true,
+        retryDelay: 250,
+      });
+    } catch (error) {
+      console.warn(
+        `Chrome temporary profile cleanup deferred: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
     rmSync(smokeBundlePath, { force: true });
   }
 }
@@ -561,6 +573,9 @@ function terminalGpuRecoveryHtml() {
     window.__terminalGpuRecoverySmokeReady = true;
     window.runTerminalGpuRecoverySmoke = async function runTerminalGpuRecoverySmoke(config) {
       const webgl = probeWebgl();
+      const gpuExpected =
+        config.backend === "gpu" ||
+        (config.backend === "auto" && webgl.gpuClass !== "software");
       const rendererRegistry = createTerminalRendererRegistry({
         rendererType: config.backend,
       });
@@ -578,7 +593,7 @@ function terminalGpuRecoveryHtml() {
         const snapshot = rendererRegistry.getSnapshot();
         return (
           snapshot.panes.every((pane) => !pane.gpuAttachPending) &&
-          (config.backend === "cpu" ||
+          (!gpuExpected ||
             snapshot.effectiveGpuPanes >= Math.min(config.panes, 6))
         );
       });
@@ -624,7 +639,11 @@ function terminalGpuRecoveryHtml() {
 
       const registry = rendererRegistry.getSnapshot();
       for (const pane of registry.panes) {
-        if (pane.fallbackReason) {
+        const expectedSoftwareFallback =
+          !gpuExpected &&
+          config.backend === "auto" &&
+          pane.fallbackReason === "software-gpu";
+        if (pane.fallbackReason && !expectedSoftwareFallback) {
           failures.push(pane.paneId + ":" + pane.fallbackReason);
         }
       }
@@ -633,9 +652,13 @@ function terminalGpuRecoveryHtml() {
       frames.stop();
       longTasks.stop();
       const totalMs = performance.now() - startedAt;
-      const gpuExpected = config.backend !== "cpu";
+      const gpuModeMatches =
+        config.gpuMode === "software"
+          ? webgl.gpuClass === "software"
+          : webgl.gpuClass !== "software";
       const pass =
         (!gpuExpected || webgl.available) &&
+        (!gpuExpected || gpuModeMatches) &&
         (!gpuExpected || registry.atlasEpoch >= 1) &&
         (!gpuExpected || registry.recoveryCount >= 1) &&
         (!gpuExpected ||
@@ -653,6 +676,7 @@ function terminalGpuRecoveryHtml() {
           "terminalRendererSurfaceCoordinator",
         ],
         failures,
+        gpuModeMatches,
         noMouseSelectionUsed,
         panes: paneReports,
         pass,
