@@ -22,49 +22,92 @@ describe("terminalGpuRenderRecoveryPolicy", () => {
     });
   });
 
-  it("throttles high-frequency write refreshes", () => {
-    const throttled = resolveTerminalGpuRenderRecovery({
-      backend: "gpu",
-      lastRefreshAt: NOW - 100,
-      now: NOW,
-      rendererType: "auto",
-      trigger: "write-parsed",
-    });
-
-    expect(throttled).toEqual({
-      action: "none",
-      advanceAtlasEpoch: false,
-      reason: "refresh-cooldown",
-      retryAfterMs: 150,
-    });
-
+  it.each([
+    "buffer-changed",
+    "device-pixel-ratio-changed",
+    "font-changed",
+    "renderer-attached",
+    "renderer-disposed",
+    "resize",
+    "theme-changed",
+    "write-parsed",
+  ] as const)("keeps ordinary signal %s outside recovery", (trigger) => {
     expect(
       resolveTerminalGpuRenderRecovery({
         backend: "gpu",
-        lastRefreshAt: NOW - 300,
         now: NOW,
+        recoveryCount: 12,
+        recoveryWindowStartedAt: NOW - 5_000,
         rendererType: "auto",
-        trigger: "write-parsed",
+        trigger,
       }),
     ).toEqual({
-      action: "refresh",
+      action: "none",
       advanceAtlasEpoch: false,
-      reason: "write-parsed",
     });
   });
 
-  it("invalidates the atlas for renderer and font changes", () => {
+  it("uses atlas recovery only for an explicit manual request", () => {
     expect(
       resolveTerminalGpuRenderRecovery({
         backend: "gpu",
         now: NOW,
         rendererType: "gpu",
-        trigger: "font-changed",
+        trigger: "manual-recover",
       }),
     ).toEqual({
       action: "clearAtlasAndRefresh",
       advanceAtlasEpoch: true,
-      reason: "renderer-invalidated",
+      reason: "manual-recover",
+    });
+  });
+
+  it("downgrades manual recovery during atlas cooldown and throttles refresh", () => {
+    expect(
+      resolveTerminalGpuRenderRecovery({
+        backend: "gpu",
+        lastAtlasClearAt: NOW - 100,
+        lastRefreshAt: NOW - 300,
+        now: NOW,
+        rendererType: "auto",
+        trigger: "manual-recover",
+      }),
+    ).toEqual({
+      action: "refresh",
+      advanceAtlasEpoch: false,
+      reason: "atlas-clear-cooldown",
+    });
+
+    expect(
+      resolveTerminalGpuRenderRecovery({
+        backend: "gpu",
+        lastAtlasClearAt: NOW - 100,
+        lastRefreshAt: NOW - 100,
+        now: NOW,
+        rendererType: "auto",
+        trigger: "manual-recover",
+      }),
+    ).toEqual({
+      action: "none",
+      advanceAtlasEpoch: false,
+      reason: "refresh-cooldown",
+      retryAfterMs: 150,
+    });
+  });
+
+  it("refreshes for an explicit atlas failure before the fallback threshold", () => {
+    expect(
+      resolveTerminalGpuRenderRecovery({
+        atlasClearFailureCount: 1,
+        backend: "gpu",
+        now: NOW,
+        rendererType: "auto",
+        trigger: "atlas-clear-failed",
+      }),
+    ).toEqual({
+      action: "refresh",
+      advanceAtlasEpoch: false,
+      reason: "atlas-clear-failed",
     });
   });
 
@@ -84,7 +127,52 @@ describe("terminalGpuRenderRecoveryPolicy", () => {
     });
   });
 
-  it("falls back during a recovery storm", () => {
+  it("falls back immediately after context loss", () => {
+    expect(
+      resolveTerminalGpuRenderRecovery({
+        backend: "gpu",
+        now: NOW,
+        rendererType: "auto",
+        trigger: "context-lost",
+      }),
+    ).toEqual({
+      action: "fallbackCpu",
+      advanceAtlasEpoch: false,
+      reason: "context-lost",
+    });
+  });
+
+  it("throttles explicit visible recovery", () => {
+    expect(
+      resolveTerminalGpuRenderRecovery({
+        backend: "gpu",
+        now: NOW,
+        rendererType: "auto",
+        trigger: "visible-recovered",
+      }),
+    ).toEqual({
+      action: "refresh",
+      advanceAtlasEpoch: false,
+      reason: "renderer-recovered",
+    });
+
+    expect(
+      resolveTerminalGpuRenderRecovery({
+        backend: "gpu",
+        lastRefreshAt: NOW - 100,
+        now: NOW,
+        rendererType: "auto",
+        trigger: "visible-recovered",
+      }),
+    ).toEqual({
+      action: "none",
+      advanceAtlasEpoch: false,
+      reason: "refresh-cooldown",
+      retryAfterMs: 150,
+    });
+  });
+
+  it("falls back during an explicit recovery storm", () => {
     expect(
       resolveTerminalGpuRenderRecovery({
         backend: "gpu",

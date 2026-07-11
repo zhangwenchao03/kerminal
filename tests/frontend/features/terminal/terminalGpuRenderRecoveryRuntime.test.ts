@@ -14,11 +14,16 @@ function renderer() {
     attach: vi.fn(),
     clearTextureAtlas: vi.fn(),
     dispose: vi.fn(),
+    getDiagnostics: vi.fn(),
     getState: vi.fn(() => ({
       backend: "gpu" as const,
       canvasCount: 1,
       mode: "auto" as const,
     })),
+    resume: vi.fn(),
+    reportHealth: vi.fn(),
+    retryGpu: vi.fn(),
+    suspend: vi.fn(),
     updateMode: vi.fn(),
   };
 }
@@ -42,7 +47,7 @@ describe("terminalGpuRenderRecoveryRuntime", () => {
       terminal,
     });
 
-    controller.trigger("font-changed", 1_000);
+    controller.trigger("manual-recover", 1_000);
     vi.advanceTimersByTime(16);
 
     expect(fakeRegistry.clearTextureAtlas).toHaveBeenCalledWith("pane-1");
@@ -60,9 +65,9 @@ describe("terminalGpuRenderRecoveryRuntime", () => {
       terminal: { refresh: vi.fn(), rows: 10 },
     });
 
-    controller.trigger("font-changed", 1_000);
+    controller.trigger("manual-recover", 1_000);
     vi.advanceTimersByTime(16);
-    controller.trigger("font-changed", 3_000);
+    controller.trigger("manual-recover", 3_000);
     vi.advanceTimersByTime(16);
     vi.advanceTimersByTime(16);
 

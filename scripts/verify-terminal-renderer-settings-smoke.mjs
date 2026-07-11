@@ -15,11 +15,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 const args = parseArgs(process.argv.slice(2));
 const outputPath = path.resolve(
   repoRoot,
-  args.output ?? ".updeng/docs/verification/terminal-renderer-settings-smoke.json",
+  args.output ??
+    ".updeng/docs/verification/terminal-renderer-settings-smoke.json",
 );
 const screenshotBase = outputPath.replace(/\.json$/i, "");
 const chromePath = findChromePath();
@@ -31,7 +35,9 @@ const userDataDir = path.join(
 );
 
 if (!chromePath) {
-  console.error("Chrome executable not found. Set CHROME_PATH to run this smoke.");
+  console.error(
+    "Chrome executable not found. Set CHROME_PATH to run this smoke.",
+  );
   process.exit(1);
 }
 
@@ -77,9 +83,17 @@ async function main() {
 
   let client;
   try {
-    await waitForHttpOk(vitePort, "/__terminal_renderer_settings_smoke", 20_000);
+    await waitForHttpOk(
+      vitePort,
+      "/__terminal_renderer_settings_smoke",
+      20_000,
+    );
     await waitForChrome(chromePort, chrome);
-    const target = await requestJson(chromePort, "/json/new?about:blank", "PUT");
+    const target = await requestJson(
+      chromePort,
+      "/json/new?about:blank",
+      "PUT",
+    );
     client = await CdpClient.connect(target.webSocketDebuggerUrl);
     await client.send("Runtime.enable");
     await client.send("Page.enable");
@@ -97,6 +111,13 @@ async function main() {
       "window.__terminalRendererSettingsSmokeReady === true",
       30_000,
     );
+    const rendererPanelResult = await evaluate(
+      client,
+      "window.__terminalRendererSettingsSmoke.openRendererPanel()",
+    );
+    if (rendererPanelResult.result?.value !== true) {
+      throw new Error("Terminal renderer settings disclosure did not open.");
+    }
 
     const screenshots = {};
     const themeReports = [];
@@ -121,7 +142,9 @@ async function main() {
       const screenshotPath = `${screenshotBase}-${themeMode}.png`;
       mkdirSync(path.dirname(screenshotPath), { recursive: true });
       writeFileSync(screenshotPath, Buffer.from(screenshot.data, "base64"));
-      screenshots[themeMode] = path.relative(repoRoot, screenshotPath).replaceAll("\\", "/");
+      screenshots[themeMode] = path
+        .relative(repoRoot, screenshotPath)
+        .replaceAll("\\", "/");
     }
 
     const transitionResult = await evaluate(
@@ -250,7 +273,10 @@ import { createRoot } from "react-dom/client";
 import "/src/App.css";
 import { useDocumentTheme } from "/src/lib/useDocumentTheme";
 import { SettingsToolContent } from "/src/features/settings/SettingsToolContent";
-import { defaultAppSettings } from "/src/features/settings/settingsModel";
+import {
+  defaultAppSettings,
+  terminalRendererTypeOptions,
+} from "/src/features/settings/settingsModel";
 import { terminalRendererRegistry } from "/src/features/terminal/terminalRendererRegistry";
 
 const rendererControllers = [
@@ -310,20 +336,39 @@ function SmokeApp() {
         }));
         return nextFrame().then(() => snapshot());
       },
+      openRendererPanel: async () => {
+        const disclosure = rendererDisclosure();
+        if (!disclosure) {
+          return false;
+        }
+        if (!disclosure.open) {
+          rendererSummary()?.click();
+          await waitForDomState(() => rendererDisclosure()?.open === true);
+        }
+        await nextFrame();
+        return rendererDisclosure()?.open === true;
+      },
       runRendererTransitions: async () => {
         const sequence = [];
         const failures = [];
-        for (const label of ["CPU", "GPU", "自动"]) {
-          const button = buttonByText(label);
+        for (const rendererType of ["cpu", "gpu", "auto"]) {
+          const label = rendererButtonLabels[rendererType];
+          const button = buttonByRendererType(rendererType);
           if (!button) {
             failures.push("missing-" + label);
             continue;
           }
           button.click();
-          await nextFrame();
+          const selected = await waitForDomState(() => {
+            const currentButton = buttonByRendererType(rendererType);
+            return (
+              window.__terminalRendererSettingsCurrent?.terminal?.rendererType === rendererType &&
+              currentButton?.getAttribute("aria-pressed") === "true"
+            );
+          });
           const current = snapshot();
           sequence.push(current.rendererType);
-          if (!button.getAttribute("aria-pressed") || button.getAttribute("aria-pressed") !== "true") {
+          if (!selected) {
             failures.push("not-selected-" + label);
           }
         }
@@ -331,29 +376,40 @@ function SmokeApp() {
       },
       validate: () => {
         const text = document.body.innerText;
+        const disclosure = rendererDisclosure();
+        const rendererText = disclosure?.innerText ?? "";
         const rendererSnapshot = terminalRendererRegistry.getSnapshot();
-        const pressed = Array.from(document.querySelectorAll("#settings-terminal-renderer-panel button"))
+        const pressed = rendererButtons()
           .map((button) => ({
+            label: rendererButtonLabel(button),
             pressed: button.getAttribute("aria-pressed"),
             text: button.textContent,
           }));
         const failures = [];
-        if (!document.querySelector("#settings-terminal-renderer-panel")) failures.push("missing-renderer-panel");
-        if (!text.includes("终端渲染")) failures.push("missing-title");
-        if (!text.includes("运行正常")) failures.push("missing-normal-badge");
-        if (!text.includes("2 个 GPU pane")) failures.push("missing-gpu-pane-count");
-        if (!text.includes("已恢复 1 次")) failures.push("missing-recovery-count");
-        if (!text.includes("atlas 1")) failures.push("missing-atlas-epoch");
+        if (!disclosure) failures.push("missing-renderer-panel");
+        if (!disclosure?.open) failures.push("renderer-panel-not-open");
+        if (!rendererText.includes("终端渲染")) failures.push("missing-title");
+        if (!rendererText.includes("运行正常")) failures.push("missing-normal-badge");
+        if (!rendererText.includes("2 个 GPU pane")) failures.push("missing-gpu-pane-count");
+        if (!rendererText.includes("已恢复 1 次")) failures.push("missing-recovery-count");
+        if (!rendererText.includes("atlas 1")) failures.push("missing-atlas-epoch");
         if (text.includes("clearTextureAtlas") || text.includes("atlas-clear-failed")) failures.push("internal-debug-leaked");
         if (rendererSnapshot.atlasEpoch !== 1) failures.push("wrong-atlas-epoch");
         if (rendererSnapshot.recoveryCount !== 1) failures.push("wrong-recovery-count");
         if (rendererSnapshot.effectiveGpuPanes !== 2) failures.push("wrong-gpu-pane-count");
-        if (!pressed.some((item) => item.text?.includes("自动") && item.pressed === "true")) failures.push("auto-not-selected-after-transition");
+        if (
+          effectiveSettings.terminal.rendererType !== "auto" ||
+          buttonByRendererType("auto")?.getAttribute("aria-pressed") !== "true"
+        ) {
+          failures.push("auto-not-selected-after-transition");
+        }
         return {
           dataTheme: document.documentElement.dataset.theme,
           failures,
           pressed,
+          rendererPanelOpen: disclosure?.open ?? false,
           rendererSnapshot,
+          rendererText,
           rendererType: effectiveSettings.terminal.rendererType,
           textSample: text.slice(0, 1200),
           themeMode: effectiveSettings.themeMode,
@@ -396,13 +452,32 @@ function createRendererController(backend, canvasCount) {
   };
 }
 
-function buttonByText(label) {
-  return Array.from(document.querySelectorAll("#settings-terminal-renderer-panel button"))
-    .find((button) => buttonLabel(button) === label);
+const rendererButtonLabels = Object.fromEntries(
+  terminalRendererTypeOptions.map((option) => [option.value, option.label]),
+);
+
+function rendererSummary() {
+  return document.querySelector("summary#settings-terminal-renderer-panel");
 }
 
-function buttonLabel(button) {
-  return button.querySelector("span span")?.textContent?.trim() ?? "";
+function rendererDisclosure() {
+  return rendererSummary()?.closest("details") ?? null;
+}
+
+function rendererButtons() {
+  return Array.from(
+    rendererDisclosure()?.querySelectorAll("button[aria-pressed]") ?? [],
+  );
+}
+
+function buttonByRendererType(rendererType) {
+  const label = rendererButtonLabels[rendererType];
+  return rendererButtons().find((button) => rendererButtonLabel(button) === label);
+}
+
+function rendererButtonLabel(button) {
+  const text = button.textContent?.replace(/\\s+/g, " ").trim() ?? "";
+  return Object.values(rendererButtonLabels).find((label) => text.startsWith(label)) ?? "";
 }
 
 function snapshot() {
@@ -418,6 +493,16 @@ function nextFrame() {
   return new Promise((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(resolve));
   });
+}
+
+async function waitForDomState(predicate, maxAttempts = 30) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (predicate()) {
+      return true;
+    }
+    await nextFrame();
+  }
+  return predicate();
 }
 
 createRoot(document.getElementById("root")).render(React.createElement(SmokeApp));
@@ -587,7 +672,9 @@ function findChromePath() {
       "chrome.exe",
     ),
   ].filter(Boolean);
-  return candidates.find((candidate) => Boolean(candidate) && existsSync(candidate));
+  return candidates.find(
+    (candidate) => Boolean(candidate) && existsSync(candidate),
+  );
 }
 
 function parseArgs(rawArgs) {

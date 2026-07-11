@@ -46,6 +46,10 @@ export interface TerminalGpuRenderRecoveryEvent {
   reason?: TerminalGpuRenderRecoveryReason;
 }
 
+/**
+ * 创建 pane 级 GPU 恢复控制器。
+ * 控制器只执行 policy 认可的异常恢复动作，并按动画帧合并同一健康周期内的重复请求。
+ */
 export function createTerminalGpuRenderRecoveryController({
   clearTextureAtlas,
   config,
@@ -88,7 +92,8 @@ export function createTerminalGpuRenderRecoveryController({
   const rememberRecovery = (timestamp: number) => {
     if (
       recoveryWindowStartedAt === undefined ||
-      timestamp - recoveryWindowStartedAt > (config?.fallbackRecoveryWindowMs ?? 60_000)
+      timestamp - recoveryWindowStartedAt >
+        (config?.fallbackRecoveryWindowMs ?? 60_000)
     ) {
       recoveryWindowStartedAt = timestamp;
       recoveryCount = 0;
@@ -119,6 +124,7 @@ export function createTerminalGpuRenderRecoveryController({
       onRecovery?.({ action, atlasEpoch, reason });
       return;
     }
+    let atlasClearFailed = false;
     if (action === "clearAtlasAndRefresh") {
       try {
         (clearTextureAtlas ?? renderer.clearTextureAtlas)?.();
@@ -127,11 +133,15 @@ export function createTerminalGpuRenderRecoveryController({
         lastAtlasClearAt = timestamp;
       } catch {
         atlasClearFailureCount += 1;
-        trigger("atlas-clear-failed", timestamp);
+        atlasClearFailed = true;
       }
     }
     refreshTerminal(timestamp);
     onRecovery?.({ action, atlasEpoch, reason });
+    if (atlasClearFailed) {
+      // 当前动作已经完成一次 refresh，随后再判定失败升级，避免同一故障重复整屏刷新。
+      trigger("atlas-clear-failed", timestamp);
+    }
   };
 
   const trigger = (
@@ -157,11 +167,14 @@ export function createTerminalGpuRenderRecoveryController({
     if (decision.action === "none") {
       return;
     }
-    pendingAction = strongestTerminalGpuRenderRecoveryAction(
+    const nextAction = strongestTerminalGpuRenderRecoveryAction(
       pendingAction,
       decision.action,
     );
-    pendingReason = decision.reason ?? pendingReason;
+    if (nextAction !== pendingAction || pendingReason === undefined) {
+      pendingReason = decision.reason ?? pendingReason;
+    }
+    pendingAction = nextAction;
     scheduleFlush();
   };
 

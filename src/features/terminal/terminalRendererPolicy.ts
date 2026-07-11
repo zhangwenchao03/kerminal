@@ -30,6 +30,10 @@ export interface TerminalRendererPanePolicyInput {
   currentBackend: TerminalRendererBackend;
   failureCount?: number;
   focused: boolean;
+  /** GPU attach 已发起但尚未提交，期间仍占用预算，避免重复 attach。 */
+  gpuAttachPending?: boolean;
+  /** GPU lease 首次授予时间；存在该值即视为稳定 owner。 */
+  gpuOwnerSince?: number;
   hiddenSince?: number;
   lastFailureAt?: number;
   lastFailureReason?: TerminalRendererFallbackReason;
@@ -106,11 +110,27 @@ export function resolveTerminalRendererPolicy({
       suggestedFallback: resolvedFallback,
     }),
   );
-  const gpuCandidates = baseDecisions
-    .filter((decision) => decision.targetBackend === "gpu")
+  const panesById = new Map(panes.map((pane) => [pane.paneId, pane]));
+  const gpuCandidates = baseDecisions.filter(
+    (decision) => decision.targetBackend === "gpu",
+  );
+  const stableGpuOwners = gpuCandidates
+    .filter((decision) => {
+      const pane = panesById.get(decision.paneId);
+      return Boolean(
+        pane &&
+        (pane.currentBackend === "gpu" ||
+          typeof pane.gpuOwnerSince === "number"),
+      );
+    })
+    .sort((left, right) => compareStableGpuOwners(left, right, panesById));
+  const newGpuCandidates = gpuCandidates
+    .filter((decision) => !stableGpuOwners.includes(decision))
     .sort(comparePanePriority);
+
+  // 健康 owner 优先稳定驻留；focus 只用于填充空闲预算，不触发 renderer 抢占。
   const selectedGpuPaneIds = new Set(
-    gpuCandidates
+    [...stableGpuOwners, ...newGpuCandidates]
       .slice(0, resolvedConfig.maxActiveGpuPanes)
       .map((decision) => decision.paneId),
   );
@@ -125,7 +145,7 @@ export function resolveTerminalRendererPolicy({
       ...decision,
       fallbackReason: "budget-limited" as const,
       shouldAttemptImport: false,
-      shouldReapWebgl: true,
+      shouldReapWebgl: panesById.get(decision.paneId)?.currentBackend === "gpu",
       targetBackend: "cpu" as const,
     };
   });
@@ -255,7 +275,8 @@ function resolveBasePaneDecision({
     needsVisibleRefresh,
     paneId: pane.paneId,
     priority,
-    shouldAttemptImport: pane.currentBackend !== "gpu",
+    shouldAttemptImport:
+      pane.currentBackend !== "gpu" && !pane.gpuAttachPending,
     shouldReapWebgl: false,
     targetBackend: "gpu",
   };
@@ -329,4 +350,21 @@ function comparePanePriority(
     return right.priority - left.priority;
   }
   return left.paneId.localeCompare(right.paneId);
+}
+
+/**
+ * 稳定 owner 以 lease 授予顺序为主，避免 focus/last-used 抖动改变 GPU 归属。
+ * 只有预算被主动缩小时才会淘汰较新的 owner。
+ */
+function compareStableGpuOwners(
+  left: TerminalRendererPanePolicyDecision,
+  right: TerminalRendererPanePolicyDecision,
+  panesById: ReadonlyMap<string, TerminalRendererPanePolicyInput>,
+) {
+  const leftOwnerSince = panesById.get(left.paneId)?.gpuOwnerSince ?? 0;
+  const rightOwnerSince = panesById.get(right.paneId)?.gpuOwnerSince ?? 0;
+  if (leftOwnerSince !== rightOwnerSince) {
+    return leftOwnerSince - rightOwnerSince;
+  }
+  return comparePanePriority(left, right);
 }

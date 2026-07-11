@@ -21,6 +21,7 @@ export interface TerminalRendererRegistryController {
   clearTextureAtlas?(): void;
   dispose(): void;
   getState(): TerminalRendererControllerState;
+  /** 从 CPU 切换到 auto/gpu 时负责启动一次 attach。 */
   updateMode(mode: TerminalRendererType): void;
 }
 
@@ -50,6 +51,10 @@ export interface TerminalRendererPaneSnapshot {
   failureCount: number;
   fallbackReason?: string;
   focused: boolean;
+  /** attach 尚未提交时为 true，用于诊断重复 attach 风险。 */
+  gpuAttachPending?: boolean;
+  /** 当前 GPU lease 的授予时间；CPU 非 owner 不携带该值。 */
+  gpuOwnerSince?: number;
   lastAttachAt?: number;
   lastContextLossAt?: number;
   lastRecoveryAt?: number;
@@ -62,16 +67,16 @@ export interface TerminalRendererRegistry {
   clearTextureAtlas(paneId?: string): void;
   dispose(): void;
   getSnapshot(): TerminalRendererRegistrySnapshot;
-  recordPaneFailure(paneId: string, reason: TerminalRendererFallbackReason): void;
+  recordPaneFailure(
+    paneId: string,
+    reason: TerminalRendererFallbackReason,
+  ): void;
   registerPane(options: RegisterTerminalRendererPaneOptions): () => void;
   reconcile(): void;
   subscribe(listener: () => void): () => void;
   updateMode(mode: TerminalRendererType): void;
   updatePaneFocus(paneId: string, focused: boolean): void;
-  updatePaneState(
-    paneId: string,
-    state: TerminalRendererControllerState,
-  ): void;
+  updatePaneState(paneId: string, state: TerminalRendererControllerState): void;
   updatePaneVisibility(paneId: string, visible: boolean): void;
 }
 
@@ -91,6 +96,8 @@ interface RegisteredRendererPane {
   failureCount: number;
   fallbackReason?: string;
   focused: boolean;
+  gpuAttachPending: boolean;
+  gpuOwnerSince?: number;
   hiddenSince?: number;
   lastAttachAt?: number;
   lastContextLossAt?: number;
@@ -139,6 +146,12 @@ export function createTerminalRendererRegistry({
     pane.reaperTimer = undefined;
   };
 
+  /** 释放 pane 的 GPU lease；失败、CPU 决策和隐藏回收可越过驻留稳定性。 */
+  const releaseGpuOwner = (pane: RegisteredRendererPane) => {
+    pane.gpuAttachPending = false;
+    pane.gpuOwnerSince = undefined;
+  };
+
   const scheduleHiddenReaper = (pane: RegisteredRendererPane) => {
     cancelReaper(pane);
     if (pane.visible || pane.currentBackend !== "gpu") {
@@ -155,15 +168,25 @@ export function createTerminalRendererRegistry({
     }, delayMs);
   };
 
-  const syncPaneState = (pane: RegisteredRendererPane) => {
-    const state = pane.controller.getState();
+  const syncPaneState = (
+    pane: RegisteredRendererPane,
+    state = pane.controller.getState(),
+  ) => {
+    const previousBackend = pane.currentBackend;
     pane.currentBackend = state.backend;
     if (state.fallbackReason !== undefined || state.backend === "gpu") {
       pane.fallbackReason = state.fallbackReason;
     }
     if (state.backend === "gpu") {
-      pane.lastAttachAt = now();
+      const attachedAt = now();
+      pane.gpuAttachPending = false;
+      pane.gpuOwnerSince ??= attachedAt;
+      if (previousBackend !== "gpu") {
+        pane.lastAttachAt = attachedAt;
+      }
       pane.retryCount = 0;
+    } else if (state.mode === "cpu" || state.fallbackReason !== undefined) {
+      releaseGpuOwner(pane);
     }
   };
 
@@ -172,6 +195,7 @@ export function createTerminalRendererRegistry({
     decision: TerminalRendererPanePolicyDecision,
   ) => {
     if (decision.targetBackend === "cpu") {
+      releaseGpuOwner(pane);
       pane.controller.updateMode("cpu");
       if (decision.shouldReapWebgl) {
         cancelReaper(pane);
@@ -181,8 +205,20 @@ export function createTerminalRendererRegistry({
     }
 
     if (pane.visible) {
-      pane.controller.updateMode(requestedMode === "cpu" ? "cpu" : requestedMode);
-      if (decision.shouldAttemptImport || pane.currentBackend !== "gpu") {
+      const targetMode = requestedMode === "cpu" ? "cpu" : requestedMode;
+      const controllerState = pane.controller.getState();
+      const shouldStartAttach =
+        pane.currentBackend !== "gpu" &&
+        !pane.gpuAttachPending &&
+        (decision.shouldAttemptImport || controllerState.mode !== targetMode);
+      pane.gpuOwnerSince ??= now();
+      if (shouldStartAttach) {
+        // 先占用 lease，再启动异步 attach；同步状态回调也不会重复发起。
+        pane.gpuAttachPending = true;
+      }
+      if (controllerState.mode !== targetMode) {
+        pane.controller.updateMode(targetMode);
+      } else if (shouldStartAttach) {
         pane.controller.attach();
       }
       syncPaneState(pane);
@@ -202,6 +238,8 @@ export function createTerminalRendererRegistry({
         currentBackend: pane.currentBackend,
         failureCount: pane.failureCount,
         focused: pane.focused,
+        gpuAttachPending: pane.gpuAttachPending,
+        gpuOwnerSince: pane.gpuOwnerSince,
         hiddenSince: pane.hiddenSince,
         lastFailureAt: pane.lastFailureAt,
         lastFailureReason: pane.lastFailureReason,
@@ -242,6 +280,8 @@ export function createTerminalRendererRegistry({
       failureCount: 0,
       fallbackReason: state.fallbackReason,
       focused,
+      gpuAttachPending: false,
+      gpuOwnerSince: state.backend === "gpu" ? registeredAt : undefined,
       hiddenSince: visible ? undefined : registeredAt,
       lastUsedAt: focused || visible ? registeredAt : 0,
       paneId,
@@ -289,14 +329,7 @@ export function createTerminalRendererRegistry({
     if (!pane) {
       return;
     }
-    pane.currentBackend = state.backend;
-    if (state.fallbackReason !== undefined || state.backend === "gpu") {
-      pane.fallbackReason = state.fallbackReason;
-    }
-    if (state.backend === "gpu") {
-      pane.lastAttachAt = now();
-      pane.retryCount = 0;
-    }
+    syncPaneState(pane, state);
     emitChange();
   };
 
@@ -343,6 +376,7 @@ export function createTerminalRendererRegistry({
     pane.fallbackReason = reason;
     pane.lastFailureAt = event.at;
     pane.lastFailureReason = reason;
+    releaseGpuOwner(pane);
     if (reason === "context-lost") {
       pane.lastContextLossAt = event.at;
       pane.retryCount += 1;
@@ -360,6 +394,7 @@ export function createTerminalRendererRegistry({
     pane.fallbackReason = reason;
     pane.lastFailureAt = at;
     pane.lastFailureReason = reason;
+    releaseGpuOwner(pane);
     if (reason === "context-lost") {
       pane.lastContextLossAt = at;
       pane.retryCount += 1;
@@ -367,25 +402,19 @@ export function createTerminalRendererRegistry({
   };
 
   const clearTextureAtlas = (paneId?: string) => {
-    const requestedTargets =
+    const targets =
       typeof paneId === "string"
-        ? [...panes.values()].filter((pane) => pane.paneId === paneId)
+        ? [...panes.values()].filter(
+            (pane) => pane.paneId === paneId && pane.currentBackend === "gpu",
+          )
         : [...panes.values()].filter((pane) => pane.currentBackend === "gpu");
-    const relatedGpuPanes =
-      typeof paneId === "string"
-        ? [...panes.values()].filter((pane) => pane.currentBackend === "gpu")
-        : requestedTargets;
-    const targets = new Map<string, RegisteredRendererPane>();
-    for (const pane of [...requestedTargets, ...relatedGpuPanes]) {
-      targets.set(pane.paneId, pane);
-    }
-    if (targets.size === 0) {
+    if (targets.length === 0) {
       return;
     }
     const recoveredAt = now();
     let clearedCount = 0;
     let firstError: unknown;
-    for (const pane of targets.values()) {
+    for (const pane of targets) {
       try {
         pane.controller.clearTextureAtlas?.();
       } catch (error) {
@@ -421,6 +450,8 @@ export function createTerminalRendererRegistry({
         failureCount: pane.failureCount,
         fallbackReason: pane.fallbackReason ?? state.fallbackReason,
         focused: pane.focused,
+        gpuAttachPending: pane.gpuAttachPending,
+        gpuOwnerSince: pane.gpuOwnerSince,
         lastAttachAt: pane.lastAttachAt,
         lastContextLossAt: pane.lastContextLossAt,
         lastRecoveryAt: pane.lastRecoveryAt,
