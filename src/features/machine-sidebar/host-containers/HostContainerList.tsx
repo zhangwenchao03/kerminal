@@ -20,8 +20,6 @@ import { HostContainerActionsMenu } from "./HostContainerActionsMenu";
 import {
   canEnterHostContainer,
   canRunHostContainerLifecycleAction,
-  containerComposeService,
-  containerProjectName,
   type HostContainerGroupMode,
   hostContainerStatusLabel,
   hostContainerStatusTone,
@@ -199,16 +197,6 @@ export function HostContainerList({
                           pinning={pinningContainerId === item.id}
                           presentation={presentation}
                           selected={item.id === selectedContainerId}
-                          showComposeMetadata={false}
-                          subtitle={`${item.name} · ${item.image}`}
-                          supportingParts={[
-                            item.containerNumber
-                              ? `#${item.containerNumber}`
-                              : item.container.shortId,
-                            item.ports.length
-                              ? item.ports.join(", ")
-                              : "无端口映射",
-                          ]}
                         />
                       ))}
                     </div>
@@ -326,7 +314,7 @@ function SectionHeader({
 }) {
   const Icon = icon === "compose" ? Layers : Box;
   return (
-    <div className="sticky top-0 z-10 flex h-8 items-center justify-between gap-3 rounded-xl bg-[var(--surface-overlay)] px-2 text-xs backdrop-blur-xl">
+    <div className="kerminal-reduced-transparency-surface sticky top-0 z-10 flex h-8 items-center justify-between gap-3 rounded-xl bg-[var(--surface-overlay)] px-2 text-xs backdrop-blur-xl">
       <div className="flex min-w-0 items-center gap-2">
         <Icon
           className="h-3.5 w-3.5 shrink-0 text-zinc-400"
@@ -367,8 +355,6 @@ function ComposeProjectRow({
       : project.runningCount > 0
         ? statusToneClassNames.running.dot
         : statusToneClassNames.muted.dot;
-  const primaryPath =
-    project.workingDir ?? project.configPaths[0] ?? "未发现 Compose YAML 路径";
   const selectProject = () => onSelectProject(project.id);
   const toggleProject = () => onToggleProject(project.id);
 
@@ -434,12 +420,6 @@ function ComposeProjectRow({
             {project.runningCount}/{project.totalCount}
           </span>
         </div>
-        <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-zinc-500 dark:text-zinc-400">
-          <FileCode2 className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
-          <span className="truncate font-mono" title={primaryPath}>
-            {primaryPath}
-          </span>
-        </div>
       </div>
       <div className="grid w-8 shrink-0 grid-cols-1 items-center justify-end gap-1">
         <Button
@@ -474,9 +454,6 @@ function HostContainerRow({
   pinning,
   presentation = "default",
   selected,
-  showComposeMetadata = true,
-  subtitle,
-  supportingParts,
 }: {
   compact?: boolean;
   container: HostContainerMetadata;
@@ -496,27 +473,15 @@ function HostContainerRow({
   pinning: boolean;
   presentation?: HostContainerListProps["presentation"];
   selected: boolean;
-  showComposeMetadata?: boolean;
-  subtitle?: string;
-  supportingParts?: string[];
 }) {
-  const project = containerProjectName(container);
-  const service = containerComposeService(container);
   const tone = hostContainerStatusTone(container.status);
   const toneClassNames = statusToneClassNames[tone];
+  const statusLabel = hostContainerStatusLabel(container.status);
   const canEnter = canEnterHostContainer(container);
   const canStart = canRunHostContainerLifecycleAction(container, "start");
   const sidebar = presentation === "sidebar";
-  const portLabel =
-    container.ports.length > 0 ? container.ports.join(", ") : "无端口映射";
-  const metadataParts =
-    supportingParts ??
-    [
-      container.shortId,
-      portLabel,
-      showComposeMetadata && project ? `project:${project}` : "",
-      showComposeMetadata && service ? `service:${service}` : "",
-    ].filter(Boolean);
+  const portLabel = container.ports.join(", ");
+  const rowName = displayName ?? container.name;
 
   const selectContainer = () => onSelectContainer(container.id);
   const rowActionButtonClassName = cn(
@@ -532,6 +497,7 @@ function HostContainerRow({
 
   return (
     <div
+      aria-label={`容器 ${rowName}`}
       aria-selected={selected}
       className={cn(
         "kerminal-focus-ring group grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-3 text-left outline-none transition",
@@ -563,7 +529,7 @@ function HostContainerRow({
             className={cn("h-2 w-2 shrink-0 rounded-full", toneClassNames.dot)}
           />
           <span className="truncate text-sm font-medium text-zinc-950 dark:text-zinc-50">
-            {displayName ?? container.name}
+            {rowName}
           </span>
           <span
             className={cn(
@@ -571,22 +537,17 @@ function HostContainerRow({
               toneClassNames.chip,
             )}
           >
-            {hostContainerStatusLabel(container.status)}
+            {statusLabel}
           </span>
         </div>
-        <div className="min-w-0 truncate text-xs text-zinc-500 dark:text-zinc-400">
-          {subtitle ?? `${container.image}${container.statusText ? ` · ${container.statusText}` : ""}`}
-        </div>
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-zinc-400 dark:text-zinc-500">
-          {metadataParts.map((part, index) => (
-            <span
-              className={cn(index === 0 && "font-mono", "min-w-0 truncate")}
-              key={`${container.id}:${part}`}
-            >
-              {part}
-            </span>
-          ))}
-        </div>
+        {portLabel ? (
+          <div
+            className="min-w-0 truncate font-mono text-[11px] text-zinc-500 dark:text-zinc-400"
+            title={portLabel}
+          >
+            {portLabel}
+          </div>
+        ) : null}
       </div>
       <div
         className={cn(

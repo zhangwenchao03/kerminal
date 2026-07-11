@@ -792,6 +792,34 @@ button {
     both;
 }
 
+@media (prefers-reduced-transparency: reduce) {
+  [class*="backdrop-blur"] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  [class*="backdrop-blur"][class*="surface-overlay"] {
+    background-color: rgb(var(--surface-nav-rgb)) !important;
+  }
+
+  .kerminal-material-nav,
+  .kerminal-floating-surface,
+  .kerminal-workspace-surface,
+  .kerminal-context-menu,
+  .kerminal-reduced-transparency-surface {
+    background: rgb(var(--surface-nav-rgb));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .kerminal-terminal-surface,
+  .kerminal-terminal-header {
+    background: rgb(var(--surface-terminal-rgb));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 @keyframes kerminal-floating-enter {
   from {
     opacity: 0;

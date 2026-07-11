@@ -1,0 +1,36 @@
+schema_version = 1
+command = "wget"
+aliases = []
+platforms = ["macos", "linux"]
+shells = ["bash", "zsh", "fish"]
+description = "Download files over network protocols"
+tested_version = "GNU Wget 1.25"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "GNU Wget manual"
+url = "https://www.gnu.org/software/wget/manual/wget.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "--output-document"
+aliases = ["-O"]
+description = "Write the response to a file"
+
+[options.argument]
+kind = "file"
+placeholder = "FILE"
+
+[[options]]
+name = "--continue"
+aliases = ["-c"]
+description = "Resume a partially downloaded file"
+
+[[options]]
+name = "--recursive"
+aliases = ["-r"]
+description = "Download recursively"

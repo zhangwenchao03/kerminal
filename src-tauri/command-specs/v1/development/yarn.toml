@@ -1,0 +1,41 @@
+schema_version = 1
+command = "yarn"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "JavaScript package manager"
+tested_version = "Yarn 4"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "Yarn CLI documentation"
+url = "https://yarnpkg.com/cli"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "add"
+description = "Add package dependencies"
+
+[[subcommands]]
+name = "install"
+description = "Install project dependencies"
+
+[[subcommands]]
+name = "run"
+description = "Run a workspace script"
+
+[[subcommands]]
+name = "test"
+description = "Run the test script"
+
+[[options]]
+name = "--immutable"
+description = "Abort if the lockfile would change"
+
+[[options]]
+name = "--version"
+description = "Print the Yarn version"

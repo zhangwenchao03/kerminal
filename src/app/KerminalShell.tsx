@@ -542,6 +542,7 @@ export function KerminalShell() {
     profileLoadError,
     refreshProfiles,
     refreshRemoteHostTree,
+    rdpOpeningMachineIds,
     remoteGroupDialogOpen,
     remoteHostDefaultGroupId,
     remoteHostDefaultMode,
@@ -823,9 +824,7 @@ export function KerminalShell() {
             onOpenHostContainers={openHostContainersSidebar}
             onOpenContainerLogs={openHostContainerLogs}
             onOpenWorkspaceFileTab={openWorkspaceFileTab}
-            onOpenRdpConnection={(machineId) =>
-              void openSavedRdpMachine(machineId)
-            }
+            onOpenRdpConnection={openSavedRdpMachine}
             onOpenSftp={openSftpForMachine}
             onOpenSshTerminal={openSshTerminal}
             onOpenSftpTransferWorkbench={openSftpTransferWorkbench}
@@ -838,6 +837,7 @@ export function KerminalShell() {
             onPinContainer={pinHostContainer}
             onSearchChange={setMachineSearch}
             onSelectMachine={selectMachine}
+            rdpOpeningMachineIds={rdpOpeningMachineIds}
             search={machineSearch}
             selectedMachineId={selectedMachineId}
             settingsSelected={settingsDialogOpen}

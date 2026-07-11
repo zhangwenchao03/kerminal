@@ -6,7 +6,11 @@ import {
   getTerminalPaneSessionRecord,
   type PaneSessionRecord,
 } from "../../terminal/terminalSessionRegistry";
-import type { TerminalPane, TerminalTab } from "../../workspace/types";
+import {
+  isTerminalSessionTab,
+  type TerminalPane,
+  type TerminalTab,
+} from "../../workspace/types";
 
 export function buildAgentSessionTarget(
   focusedPane?: TerminalPane,
@@ -91,6 +95,35 @@ export function formatTargetChipLabel(
   const name = compactTargetName(target.targetRef ?? target.paneId);
   const path = compactTargetPath(target.cwd);
   return path ? `${name} · ${path}` : name;
+}
+
+export function formatCurrentAgentTargetLabel(
+  focusedPane?: TerminalPane,
+  activeTab?: TerminalTab,
+): string {
+  if (!buildAgentSessionTarget(focusedPane, activeTab)) {
+    return "未绑定";
+  }
+  const paneTitle = focusedPane?.title?.trim();
+  if (paneTitle) {
+    return paneTitle;
+  }
+  const tabTitle = isTerminalSessionTab(activeTab)
+    ? activeTab.title?.trim()
+    : undefined;
+  if (tabTitle) {
+    return tabTitle;
+  }
+  if (focusedPane?.mode === "ssh") {
+    return "SSH 终端";
+  }
+  if (focusedPane?.mode === "container") {
+    return "容器终端";
+  }
+  if (focusedPane?.mode === "local") {
+    return "本地终端";
+  }
+  return "当前终端";
 }
 
 function compactTargetName(value?: string): string {

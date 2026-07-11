@@ -1,0 +1,37 @@
+schema_version = 1
+command = "scp"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Copy files over an SSH connection"
+tested_version = "OpenSSH 10.0"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "OpenSSH scp manual"
+url = "https://man.openbsd.org/scp"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "-P"
+description = "Select the remote SSH port"
+
+[options.argument]
+kind = "integer"
+placeholder = "PORT"
+
+[[options]]
+name = "-i"
+description = "Select an identity file"
+
+[options.argument]
+kind = "file"
+placeholder = "IDENTITY"
+
+[[options]]
+name = "-r"
+description = "Copy directories recursively"

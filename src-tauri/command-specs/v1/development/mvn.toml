@@ -1,0 +1,46 @@
+schema_version = 1
+command = "mvn"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Build projects with Apache Maven"
+tested_version = "Maven 3.9"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "Apache Maven CLI reference"
+url = "https://maven.apache.org/ref/current/maven-embedder/cli.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "clean"
+description = "Remove generated build output"
+
+[[subcommands]]
+name = "compile"
+description = "Compile project sources"
+
+[[subcommands]]
+name = "install"
+description = "Install artifacts into the local repository"
+
+[[subcommands]]
+name = "package"
+description = "Package compiled output"
+
+[[subcommands]]
+name = "test"
+description = "Run project tests"
+
+[[options]]
+name = "--file"
+aliases = ["-f"]
+description = "Select an alternate POM file"
+
+[options.argument]
+kind = "file"
+placeholder = "POM"

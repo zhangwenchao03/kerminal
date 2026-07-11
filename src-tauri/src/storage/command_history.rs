@@ -83,6 +83,18 @@ impl CommandSqliteStore {
         })
     }
 
+    /// 为候选菜单返回有界最近历史；调用方在内存中执行词级匹配。
+    pub(crate) fn list_recent_command_history_for_suggestions(
+        &self,
+        target: CommandHistoryTarget,
+        remote_host_id: Option<&str>,
+        limit: usize,
+    ) -> AppResult<Vec<CommandHistoryEntry>> {
+        self.with_connection(|conn| {
+            list_recent_history_for_suggestions(conn, target, remote_host_id, limit)
+        })
+    }
+
     /// 根据 id 读取命令历史。
     pub fn command_history_by_id(&self, entry_id: &str) -> AppResult<Option<CommandHistoryEntry>> {
         self.with_connection(|conn| query_history_by_id_optional(conn, entry_id))
@@ -224,6 +236,51 @@ fn list_history_by_command_prefix(
         }
     }
 
+    Ok(entries)
+}
+
+fn list_recent_history_for_suggestions(
+    conn: &Connection,
+    target: CommandHistoryTarget,
+    remote_host_id: Option<&str>,
+    limit: usize,
+) -> AppResult<Vec<CommandHistoryEntry>> {
+    let limit = i64::try_from(limit.max(1)).unwrap_or(i64::MAX);
+    let entries = if let Some(remote_host_id) = remote_host_id {
+        let mut stmt = conn.prepare(
+            "
+            SELECT id, command, source, target, session_id, pane_id, tab_id,
+                   profile_id, remote_host_id, cwd, shell, created_at
+            FROM command_history NOT INDEXED
+            WHERE target = ?1
+              AND remote_host_id = ?2
+            ORDER BY rowid DESC
+            LIMIT ?3
+            ",
+        )?;
+        let rows = stmt
+            .query_map(
+                params![target.as_str(), remote_host_id, limit],
+                history_from_row,
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    } else {
+        let mut stmt = conn.prepare(
+            "
+            SELECT id, command, source, target, session_id, pane_id, tab_id,
+                   profile_id, remote_host_id, cwd, shell, created_at
+            FROM command_history NOT INDEXED
+            WHERE target = ?1
+            ORDER BY rowid DESC
+            LIMIT ?2
+            ",
+        )?;
+        let rows = stmt
+            .query_map(params![target.as_str(), limit], history_from_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    };
     Ok(entries)
 }
 

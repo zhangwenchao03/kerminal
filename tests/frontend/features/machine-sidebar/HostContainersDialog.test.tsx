@@ -358,7 +358,7 @@ describe("HostContainersDialog", () => {
       await screen.findByRole("button", { name: "进入容器 worker" }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("worker")).toHaveLength(3);
-    expect(screen.getAllByText("f00d12345678")).toHaveLength(3);
+    expect(screen.getAllByText("f00d12345678")).toHaveLength(2);
   });
 
   it("starts a stopped container directly and refreshes the list", async () => {
@@ -781,7 +781,7 @@ describe("HostContainersDialog", () => {
     expect(listPane.className).toBe(initialListPaneClassName);
     expect(inspectorPane.className).toBe(initialInspectorPaneClassName);
 
-    await user.click(screen.getByText("kerminal-api-1 · kerminal/api:latest"));
+    await user.click(screen.getByRole("option", { name: "容器 api" }));
 
     expect(selectionSummary).toHaveTextContent("kerminal-api-1");
     expect(workbench.className).toBe(initialWorkbenchClassName);

@@ -1,0 +1,32 @@
+schema_version = 1
+command = "kill"
+aliases = []
+platforms = ["macos", "linux"]
+shells = ["bash", "zsh", "fish"]
+description = "Send a signal to a process"
+tested_version = "procps-ng 4.0"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "procps kill manual"
+url = "https://man7.org/linux/man-pages/man1/kill.1.html"
+
+[safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "Signals can terminate processes and interrupt active work"
+
+[[options]]
+name = "--signal"
+aliases = ["-s"]
+description = "Select the signal to send"
+
+[options.argument]
+kind = "string"
+placeholder = "SIGNAL"
+
+[[options]]
+name = "--list"
+aliases = ["-l"]
+description = "List signal names"

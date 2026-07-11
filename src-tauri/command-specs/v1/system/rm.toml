@@ -1,0 +1,43 @@
+schema_version = 1
+command = "rm"
+aliases = []
+platforms = ["macos", "linux"]
+shells = ["bash", "zsh", "fish"]
+description = "Remove files or directories"
+tested_version = "GNU coreutils 9.7"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "GNU Coreutils rm manual"
+url = "https://www.gnu.org/software/coreutils/manual/html_node/rm-invocation.html"
+
+[safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "Removing files can cause irreversible data loss"
+
+[[options]]
+name = "--interactive"
+aliases = ["-i"]
+description = "Prompt before every removal"
+
+[[options]]
+name = "--recursive"
+aliases = ["-r", "-R"]
+description = "Remove directories and their contents recursively"
+
+[options.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "Recursive removal can delete an entire directory tree"
+
+[[options]]
+name = "--force"
+aliases = ["-f"]
+description = "Ignore missing files and never prompt"
+
+[options.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "Forced removal bypasses confirmation"

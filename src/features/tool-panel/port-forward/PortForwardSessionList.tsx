@@ -1,4 +1,5 @@
 import {
+  ChevronDown,
   Copy,
   Network,
   Pencil,
@@ -8,7 +9,7 @@ import {
   Trash2,
   Wifi,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useId, useMemo, useState } from "react";
 import { Button } from "../../../components/ui/button";
 import { cn } from "../../../lib/cn";
 import type { PortForwardSummary } from "../../../lib/portForwardApi";
@@ -52,19 +53,15 @@ export function PortForwardSessionList({
   sessions: PortForwardSummary[];
 }) {
   return (
-    <div className="kerminal-solid-surface rounded-2xl border p-2">
-      <div className="flex items-center justify-between gap-2 px-2 py-1.5">
-        <div>
-          <h4 className="text-sm font-semibold text-zinc-950 dark:text-zinc-100">
-            当前主机会话
-          </h4>
+    <section
+      aria-label="隧道会话"
+      className="kerminal-solid-surface rounded-2xl border p-2"
+    >
+      {loading ? (
+        <div className="px-2 py-1.5 text-right text-xs text-zinc-500 dark:text-zinc-400">
+          正在同步
         </div>
-        {loading ? (
-          <span className="text-xs text-zinc-500 dark:text-zinc-400">
-            正在同步
-          </span>
-        ) : null}
-      </div>
+      ) : null}
       {sessions.length === 0 ? (
         <div className="px-2 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
           当前主机暂无隧道会话。
@@ -89,7 +86,7 @@ export function PortForwardSessionList({
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -119,6 +116,8 @@ function PortForwardSessionRow({
   session: PortForwardSummary;
 }) {
   const isNetworkAssist = sessionPurpose(session) === "hostNetworkAssist";
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsId = useId();
   const proxyUrl = proxyUrlForSession(session);
   const activeProxyUrl = session.status === "running" ? proxyUrl : undefined;
   const inactiveNetworkAssistReason =
@@ -136,6 +135,7 @@ function PortForwardSessionRow({
     () => buildUserProxyUndoScript(session),
     [session],
   );
+  const route = sessionRoute(session);
   return (
     <article className="kerminal-muted-surface rounded-xl border p-3">
       <div className="flex items-start gap-3">
@@ -151,18 +151,43 @@ function PortForwardSessionRow({
             </div>
             <StatusBadge status={session.status} />
           </div>
-          <div className="mt-2 grid gap-2 text-xs min-[520px]:grid-cols-2">
-            <SessionFact label="方向" value={sessionDirectionLabel(session)} />
-            <SessionFact
-              label="来源"
-              value={originLabel(sessionOrigin(session))}
-            />
-            <SessionFact label="主机端点" value={sessionHostEndpoint(session)} />
-            <SessionFact label="本机端点" value={sessionLocalEndpoint(session)} />
+          <div className="mt-2 flex min-w-0 items-center gap-2 font-mono text-[11px] text-zinc-700 dark:text-zinc-200">
+            <span className="truncate">{route.from}</span>
+            <span aria-hidden="true" className="shrink-0 text-zinc-400">
+              →
+            </span>
+            <span className="truncate">{route.to}</span>
           </div>
-          {proxyUrl ? (
-            <div className="mt-2 break-all rounded-lg bg-[var(--surface-field)] px-2 py-1.5 font-mono text-[11px] text-zinc-600 dark:text-zinc-300">
-              {proxyUrl}
+          {detailsOpen ? (
+            <div className="mt-3 space-y-2" id={detailsId}>
+              <div className="grid gap-2 text-xs min-[520px]:grid-cols-2">
+                <SessionFact
+                  label="方向"
+                  value={sessionDirectionLabel(session)}
+                />
+                <SessionFact
+                  label="来源"
+                  value={originLabel(sessionOrigin(session))}
+                />
+                <SessionFact
+                  label="主机端点"
+                  value={sessionHostEndpoint(session)}
+                />
+                <SessionFact
+                  label="本机端点"
+                  value={sessionLocalEndpoint(session)}
+                />
+              </div>
+              {proxyUrl ? (
+                <div className="break-all rounded-lg bg-[var(--surface-field)] px-2 py-1.5 font-mono text-[11px] text-zinc-600 dark:text-zinc-300">
+                  {proxyUrl}
+                </div>
+              ) : null}
+              {isNetworkAssist && userSetupScript && userUndoScript ? (
+                <div className="rounded-lg border border-sky-300/15 bg-sky-400/10 px-2 py-2 text-[11px] leading-4 text-sky-800 dark:text-sky-100">
+                  脚本只写当前用户 home，不需要 root；提供备份和撤销脚本。
+                </div>
+              ) : null}
             </div>
           ) : null}
           {isNetworkAssist && (!canInject || inactiveNetworkAssistReason) ? (
@@ -170,14 +195,25 @@ function PortForwardSessionRow({
               {effectiveInjectDisabledReason}
             </div>
           ) : null}
-          {isNetworkAssist && userSetupScript && userUndoScript ? (
-            <div className="mt-2 rounded-lg border border-sky-300/15 bg-sky-400/10 px-2 py-2 text-[11px] leading-4 text-sky-800 dark:text-sky-100">
-              脚本只写当前用户 home，不需要 root；提供备份和撤销脚本。
-            </div>
-          ) : null}
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
+        <Button
+          aria-controls={detailsId}
+          aria-expanded={detailsOpen}
+          aria-label={`${detailsOpen ? "收起" : "展开"} ${session.name} 详情`}
+          onClick={() => setDetailsOpen((current) => !current)}
+          size="icon"
+          title={`${detailsOpen ? "收起" : "展开"}完整信息`}
+          variant="secondary"
+        >
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 transition-transform",
+              detailsOpen && "rotate-180",
+            )}
+          />
+        </Button>
         <Button
           aria-label="复制地址"
           onClick={() => void onCopy(copyAddressForSession(session))}
@@ -327,4 +363,15 @@ function originLabel(origin: ReturnType<typeof sessionOrigin>) {
     return "主机预设";
   }
   return "手动";
+}
+
+function sessionRoute(session: PortForwardSummary) {
+  const localEndpoint = sessionLocalEndpoint(session);
+  const hostEndpoint = sessionHostEndpoint(session);
+  const hostToLocal =
+    session.kind === "remote" ||
+    sessionPurpose(session) === "hostNetworkAssist";
+  return hostToLocal
+    ? { from: hostEndpoint, to: localEndpoint }
+    : { from: localEndpoint, to: hostEndpoint };
 }

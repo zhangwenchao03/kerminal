@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Select } from "../../components/ui/select";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
 import {
   type ServerDiskInfo,
@@ -34,7 +35,6 @@ import {
   formatUptime,
   gpuCardHelper,
   gpuMemoryLabel,
-  joinDefined,
   loadAverageValues,
   networkCardHelper,
   networkTrafficFromSnapshot,
@@ -91,6 +91,14 @@ export function ServerInfoToolContent({
     setRefreshIntervalMs,
     snapshot,
   } = useServerInfoSnapshot(targetContext);
+  const snapshotGpus =
+    snapshot && Array.isArray(snapshot.gpus) ? snapshot.gpus : undefined;
+  const memoryPercent = snapshot
+    ? percentOf(snapshot.memoryUsedBytes, snapshot.memoryTotalBytes)
+    : undefined;
+  const diskPercent = snapshot
+    ? percentOf(snapshot.diskUsedBytes, snapshot.diskTotalBytes)
+    : undefined;
   const toggleMetricCard = useCallback((cardId: ServerMetricCardId) => {
     setExpandedCards((current) => {
       const next = new Set(current);
@@ -126,32 +134,59 @@ export function ServerInfoToolContent({
         }
         footer={
           <>
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0 text-xs text-zinc-500 dark:text-zinc-400">
-                {snapshot
-                  ? `上次采集 ${formatTimestamp(snapshot.capturedAt)}`
-                  : "等待首次采集"}
-              </div>
-              <div className="flex shrink-0 items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-                采集间隔
-                <Select
-                  aria-label="服务器信息采集间隔"
-                  className="w-24"
-                  onValueChange={(value) => setRefreshIntervalMs(Number(value))}
-                  options={serverInfoRefreshOptions.map((option) => ({
-                    label: option.label,
-                    value: String(option.value),
-                  }))}
-                  size="sm"
-                  value={String(refreshIntervalMs)}
-                />
-              </div>
-            </div>
             {error ? (
-              <div className="mt-3 rounded-xl border border-rose-300/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100">
-                {error}
-              </div>
+              <UserFacingNotice compact message={error} />
             ) : null}
+            <details className={cn(error && "mt-3")}>
+              <summary className="kerminal-focus-ring kerminal-pressable cursor-pointer rounded-lg text-xs font-medium text-zinc-600 focus-visible:outline-none dark:text-zinc-300">
+                系统详情
+              </summary>
+              <div className="mt-3 space-y-3">
+                <SystemInfoRows>
+                  <SystemInfoRow
+                    label="主机名"
+                    value={snapshot?.hostname ?? snapshot?.hostName ?? "-"}
+                  />
+                  <SystemInfoRow label="系统" value={snapshot?.os ?? "-"} />
+                  <SystemInfoRow
+                    label="架构"
+                    value={snapshot?.architecture ?? "-"}
+                  />
+                  <SystemInfoRow
+                    label="Kernel"
+                    value={snapshot?.kernel ?? "-"}
+                  />
+                  <SystemInfoRow
+                    label="运行时间"
+                    value={formatUptime(snapshot?.uptimeSeconds) ?? "-"}
+                  />
+                  <SystemInfoRow
+                    label="采样时间"
+                    value={
+                      snapshot
+                        ? formatTimestamp(snapshot.capturedAt)
+                        : "等待首次采集"
+                    }
+                  />
+                </SystemInfoRows>
+                <div className="flex items-center justify-between gap-3 text-xs text-zinc-500 dark:text-zinc-400">
+                  <span>采集间隔</span>
+                  <Select
+                    aria-label="服务器信息采集间隔"
+                    className="w-24"
+                    onValueChange={(value) =>
+                      setRefreshIntervalMs(Number(value))
+                    }
+                    options={serverInfoRefreshOptions.map((option) => ({
+                      label: option.label,
+                      value: String(option.value),
+                    }))}
+                    size="sm"
+                    value={String(refreshIntervalMs)}
+                  />
+                </div>
+              </div>
+            </details>
           </>
         }
         icon={Server}
@@ -162,20 +197,22 @@ export function ServerInfoToolContent({
         title={targetContext.title}
       >
         <SystemOverviewTile
-          label="主机名"
-          value={snapshot?.hostname ?? snapshot?.hostName ?? undefined}
+          label="CPU"
+          value={snapshot ? formatPercent(snapshot.cpuUsagePercent) : undefined}
         />
         <SystemOverviewTile
-          label="系统"
-          value={joinDefined([snapshot?.os, snapshot?.architecture])}
+          label="内存"
+          value={snapshot ? formatPercent(memoryPercent) : undefined}
         />
         <SystemOverviewTile
-          label="Kernel"
-          value={snapshot?.kernel ?? undefined}
+          label="磁盘"
+          value={snapshot ? formatPercent(diskPercent) : undefined}
         />
         <SystemOverviewTile
-          label="运行时间"
-          value={formatUptime(snapshot?.uptimeSeconds)}
+          label="GPU"
+          value={
+            snapshotGpus ? serverGpuSummaryValue(snapshotGpus) : undefined
+          }
         />
       </SystemOverviewCard>
 

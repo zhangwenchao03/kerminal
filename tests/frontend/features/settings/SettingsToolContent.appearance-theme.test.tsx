@@ -285,7 +285,15 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     expect(screen.queryByText("Managed sessions")).not.toBeInTheDocument();
     expect(screen.queryByText("Fallback reasons")).not.toBeInTheDocument();
     expect(screen.queryByText("runtime-unwired")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /保持默认渲染路径/ }),
+    ).not.toBeVisible();
 
+    await user.click(screen.getByText("终端渲染"));
+
+    expect(
+      screen.getByRole("button", { name: /保持默认渲染路径/ }),
+    ).toBeVisible();
     await user.click(screen.getByRole("button", { name: /保持默认渲染路径/ }));
     expect(onSettingsChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -388,6 +396,7 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     expect(
       screen.queryByRole("switch", { name: "启用本地 shim bridge" }),
     ).not.toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "允许 PuTTY" })).toBeVisible();
     expect(
       externalLaunchApiMock.getExternalLaunchAliasStatus,
     ).not.toHaveBeenCalled();
@@ -415,6 +424,7 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     expect(
       screen.queryByRole("switch", { name: "启用本地 shim bridge" }),
     ).not.toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "允许 PuTTY" })).not.toBeVisible();
 
     await user.click(
       screen.getByRole("switch", { name: "启用外部 SSH 启动" }),
@@ -449,9 +459,12 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
       }),
     );
 
+    await user.click(screen.getByText("兼容性详情"));
+
     const puttyPersonaSwitch = screen.getByRole("switch", {
       name: "允许 PuTTY",
     });
+    expect(puttyPersonaSwitch).toBeVisible();
     expect(puttyPersonaSwitch).toHaveAttribute("data-state", "checked");
 
     await user.click(puttyPersonaSwitch);

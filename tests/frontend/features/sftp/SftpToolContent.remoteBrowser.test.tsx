@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { sftpApiMocks, sshMachine } from "../../support/sftp/SftpToolContent.testSupport.tsx";
 import { SftpToolContent } from "../../../../src/features/sftp/SftpToolContent";
@@ -20,6 +21,31 @@ type TestListing = {
 };
 
 describe("SftpToolContent remote browser requests", () => {
+  it("hides raw directory failures behind a recoverable summary", async () => {
+    const user = userEvent.setup();
+    sftpApiMocks.listSftpDirectory.mockRejectedValueOnce(
+      new Error(
+        "permission denied password=browser-secret path=/srv/private/config",
+      ),
+    );
+
+    render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    expect(
+      await screen.findByText("无法读取远程目录"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("检查连接后重试；主机密钥变化时可重新信任。"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/browser-secret/)).not.toBeInTheDocument();
+    expect(screen.getByText(/\/srv\/private\/config/)).not.toBeVisible();
+
+    await user.click(screen.getByText("技术详情"));
+
+    expect(screen.getByText(/password="\[已隐藏\]"/)).toBeVisible();
+    expect(screen.queryByText(/browser-secret/)).not.toBeInTheDocument();
+  });
+
   it("keeps the newest remote directory when an older request resolves last", async () => {
     render(<SftpToolContent selectedMachine={sshMachine} />);
 

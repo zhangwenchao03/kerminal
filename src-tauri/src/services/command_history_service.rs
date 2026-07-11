@@ -18,6 +18,7 @@ use crate::{
 
 const DEFAULT_LIMIT: usize = 100;
 const MAX_LIMIT: usize = 500;
+const MAX_SUGGESTION_SCAN_LIMIT: usize = 2_048;
 const MAX_COMMAND_CHARS: usize = 4_000;
 const MAX_ID_CHARS: usize = 160;
 const MAX_PATH_CHARS: usize = 1_000;
@@ -89,6 +90,23 @@ impl CommandHistoryService {
                 .filter(|value| !value.is_empty()),
             command_prefix,
             limit.clamp(1, MAX_LIMIT),
+        )
+    }
+
+    /// 返回有界最近历史，供候选菜单在内存中做词级匹配。
+    pub fn list_recent_history_for_suggestions(
+        &self,
+        storage: &CommandSqliteStore,
+        target: CommandHistoryTarget,
+        remote_host_id: Option<&str>,
+        limit: usize,
+    ) -> AppResult<Vec<CommandHistoryEntry>> {
+        storage.list_recent_command_history_for_suggestions(
+            target,
+            remote_host_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty()),
+            limit.clamp(1, MAX_SUGGESTION_SCAN_LIMIT),
         )
     }
 

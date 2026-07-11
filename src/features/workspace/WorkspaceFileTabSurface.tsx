@@ -21,9 +21,14 @@ import {
   type KerminalTextEditCommandEventDetail,
 } from "../../app/appKeybindingPolicy";
 import { Button } from "../../components/ui/button";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
 import { configureKerminalMonaco } from "../../lib/monacoTheme";
 import type { RemoteTargetRef } from "../../lib/targetModel";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../lib/userFacingMessage";
 import { defaultTerminalAppearance } from "../settings/settingsDefaults";
 import {
   terminalFontWeightValue,
@@ -90,6 +95,7 @@ export function WorkspaceFileTabSurface({
 }: WorkspaceFileTabSurfaceProps) {
   const [fileTab, setFileTab] = useState<OpenFileTab | null>(null);
   const [status, setStatus] = useState<RemoteWorkspaceStatus | null>(null);
+  const [errorNotice, setErrorNotice] = useState<UserFacingMessage | null>(null);
   const [editorContextMenu, setEditorContextMenu] = useState<{
     x: number;
     y: number;
@@ -141,6 +147,7 @@ export function WorkspaceFileTabSurface({
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     setStatus(null);
+    setErrorNotice(null);
     setFileTab(createLoadingTab(tab.path));
     try {
       const response = await readRemoteWorkspaceTextFile({
@@ -157,13 +164,18 @@ export function WorkspaceFileTabSurface({
         return;
       }
       const message = errorMessage(error);
+      const notice = buildUserFacingError(error, {
+        recoveryAction: "请检查连接和文件权限后重试。",
+        title: "文件读取失败",
+      });
       setFileTab({
         ...createLoadingTab(tab.path),
         error: message,
         loading: false,
         readonly: true,
       });
-      setStatus({ kind: "error", message });
+      setStatus({ kind: "error", message: notice.title });
+      setErrorNotice(notice);
     }
   }, [tab.path, tab.target]);
 
@@ -187,6 +199,7 @@ export function WorkspaceFileTabSurface({
       }
 
       setFileTab(startSavingTab(fileTab));
+      setErrorNotice(null);
       try {
         const response = await writeRemoteWorkspaceTextFile({
           content: fileTab.content,
@@ -198,14 +211,20 @@ export function WorkspaceFileTabSurface({
         setFileTab((current) =>
           current ? applySaveSuccess(current, response) : current,
         );
-        setStatus({ kind: "success", message: `已保存：${tab.path}` });
+        setStatus({ kind: "success", message: `已保存 ${fileTab.name}` });
+        setErrorNotice(null);
         return true;
       } catch (error) {
         const message = errorMessage(error);
+        const notice = buildUserFacingError(error, {
+          recoveryAction: "请检查连接、权限或文件冲突后重试。",
+          title: "文件保存失败",
+        });
         setFileTab((current) =>
           current ? applySaveError(current, message) : current,
         );
-        setStatus({ kind: "error", message });
+        setStatus({ kind: "error", message: notice.title });
+        setErrorNotice(notice);
         return false;
       }
     },
@@ -218,6 +237,7 @@ export function WorkspaceFileTabSurface({
       return;
     }
     setStatus(null);
+    setErrorNotice(null);
     setFileTab(startReloadingTab(fileTab));
     try {
       const response = await readRemoteWorkspaceTextFile({
@@ -230,13 +250,19 @@ export function WorkspaceFileTabSurface({
           ? normalizeLoadedAccess(tab, applyReloadSuccess(current, response))
           : current,
       );
-      setStatus({ kind: "info", message: `已重新加载：${tab.path}` });
+      setStatus({ kind: "info", message: `已重新加载 ${fileTab.name}` });
+      setErrorNotice(null);
     } catch (error) {
       const message = errorMessage(error);
+      const notice = buildUserFacingError(error, {
+        recoveryAction: "请检查连接后重试。",
+        title: "文件重新加载失败",
+      });
       setFileTab((current) =>
         current ? applyReloadError(current, message) : current,
       );
-      setStatus({ kind: "error", message });
+      setStatus({ kind: "error", message: notice.title });
+      setErrorNotice(notice);
     }
   }, [fileTab, loadFile, tab]);
 
@@ -351,7 +377,7 @@ export function WorkspaceFileTabSurface({
     };
   }, [reloadFile, tab.id]);
 
-  const inlineStatus = activeTabStatus(fileTab) ?? status;
+  const inlineStatus = status ?? activeTabStatus(fileTab);
   const openEditorContextMenu = useCallback(
     (event: MouseEvent<HTMLDivElement>) => {
       if (!fileTab || fileTab.loading) {
@@ -379,60 +405,111 @@ export function WorkspaceFileTabSurface({
         className="kerminal-solid-surface flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border text-zinc-900 dark:text-zinc-100"
         data-testid="workspace-file-tab-surface"
       >
-        <header className="flex shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] px-3 py-2.5">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-sky-500/20 bg-sky-500/10 text-sky-700 dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-300">
+        <header className="flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-2">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-sky-500/20 bg-sky-500/10 text-sky-700 dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-300">
             <FileText className="h-4 w-4" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold">{tab.title}</div>
-            <div className="mt-0.5 truncate font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
+            <div className="truncate font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
               {targetLabel} · {tab.path}
             </div>
           </div>
-          <Button
-            aria-label="重新加载文件"
-            className="h-8 rounded-md px-2 text-xs"
-            disabled={fileTab?.loading || fileTab?.saving}
-            onClick={() => void reloadFile()}
-            size="sm"
-            type="button"
-            variant="ghost"
+          {inlineStatus && !errorNotice ? (
+            <span
+              className="sr-only"
+              role={inlineStatus.kind === "error" ? "alert" : "status"}
+            >
+              {inlineStatus.message}
+            </span>
+          ) : null}
+          <div
+            aria-label="文件操作"
+            className="flex shrink-0 items-center gap-0.5"
+            role="group"
           >
-            <RefreshCw
-              className={cn("h-3.5 w-3.5", fileTab?.loading && "animate-spin")}
-            />
-            重新加载
-          </Button>
-          {hasConflict ? (
             <Button
-              className="h-8 rounded-md px-2 text-xs"
-              disabled={!fileTab || fileTab.saving}
-              onClick={() => void saveFile(true)}
-              size="sm"
+              aria-label="查找"
+              className="h-8 w-8 rounded-lg"
+              disabled={!fileTab || fileTab.loading}
+              onClick={() => runEditorCommandRef.current("find")}
+              size="icon"
+              title="查找"
               type="button"
               variant="ghost"
             >
-              <AlertTriangle className="h-3.5 w-3.5" />
-              覆盖保存
+              <Search className="h-3.5 w-3.5" />
             </Button>
-          ) : null}
-          <Button
-            className="h-8 rounded-md px-2 text-xs"
-            disabled={
-              !fileTab || fileTab.loading || fileTab.saving || readonly || !dirty
-            }
-            onClick={() => void saveFile()}
-            size="sm"
-            type="button"
-            variant="primary"
-          >
-            {fileTab?.saving ? (
-              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Save className="h-3.5 w-3.5" />
-            )}
-            保存
-          </Button>
+            <Button
+              aria-label="替换"
+              className="h-8 w-8 rounded-lg"
+              disabled={!fileTab || fileTab.loading || readonly}
+              onClick={() => runEditorCommandRef.current("replace")}
+              size="icon"
+              title="替换"
+              type="button"
+              variant="ghost"
+            >
+              <Replace className="h-3.5 w-3.5" />
+            </Button>
+            <span
+              aria-hidden="true"
+              className="mx-1 h-4 w-px bg-[var(--border-subtle)]"
+            />
+            <Button
+              aria-label="重新加载文件"
+              className="h-8 w-8 rounded-lg"
+              disabled={fileTab?.loading || fileTab?.saving}
+              onClick={() => void reloadFile()}
+              size="icon"
+              title="重新加载"
+              type="button"
+              variant="ghost"
+            >
+              <RefreshCw
+                className={cn(
+                  "h-3.5 w-3.5",
+                  fileTab?.loading && "animate-spin",
+                )}
+              />
+            </Button>
+            {hasConflict ? (
+              <Button
+                aria-label="覆盖保存"
+                className="h-8 w-8 rounded-lg text-amber-600 dark:text-amber-300"
+                disabled={!fileTab || fileTab.saving}
+                onClick={() => void saveFile(true)}
+                size="icon"
+                title="远端文件已变化，覆盖保存"
+                type="button"
+                variant="ghost"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+              </Button>
+            ) : null}
+            <Button
+              aria-label="保存文件"
+              className="h-8 w-8 rounded-lg"
+              disabled={
+                !fileTab ||
+                fileTab.loading ||
+                fileTab.saving ||
+                readonly ||
+                !dirty
+              }
+              onClick={() => void saveFile()}
+              size="icon"
+              title={readonly ? "只读文件" : dirty ? "保存" : "已保存"}
+              type="button"
+              variant="primary"
+            >
+              {fileTab?.saving ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Save className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          </div>
         </header>
         <div className="min-h-0 flex-1 overflow-hidden">
           {!fileTab || fileTab.loading ? (
@@ -441,8 +518,12 @@ export function WorkspaceFileTabSurface({
               message="正在读取文件..."
             />
           ) : fileTab.error && !fileTab.content ? (
-            <WorkspaceFileMessage
-              action={
+            <div className="grid h-full place-items-center p-4">
+              <UserFacingNotice compact message={errorNotice ?? {
+                recoveryAction: "请稍后重试。",
+                severity: "error",
+                title: "文件读取失败",
+              }}>
                 <Button
                   className="h-8 rounded-md px-2 text-xs"
                   onClick={() => void loadFile()}
@@ -452,26 +533,22 @@ export function WorkspaceFileTabSurface({
                 >
                   重试
                 </Button>
-              }
-              icon={<AlertTriangle className="h-4 w-4" />}
-              message={fileTab.error}
-              tone="danger"
-            />
+              </UserFacingNotice>
+            </div>
           ) : (
             <WorkspaceFileEditorContent
               editorFontOptions={editorFontOptions}
-              inlineStatus={inlineStatus}
-              onChange={(value) =>
+              errorNotice={errorNotice}
+              onChange={(value) => {
+                setErrorNotice(null);
                 setFileTab((current) =>
                   current
                     ? { ...current, content: value, error: null }
                     : current,
-                )
-              }
+                );
+              }}
               onContextMenu={openEditorContextMenu}
-              onFind={() => runEditorCommandRef.current("find")}
               onMount={handleEditorMount}
-              onReplace={() => runEditorCommandRef.current("replace")}
               tab={fileTab}
             />
           )}
@@ -492,12 +569,10 @@ export function WorkspaceFileTabSurface({
 
 function WorkspaceFileEditorContent({
   editorFontOptions,
-  inlineStatus,
+  errorNotice,
   onChange,
   onContextMenu,
-  onFind,
   onMount,
-  onReplace,
   tab,
 }: {
   editorFontOptions: {
@@ -505,63 +580,17 @@ function WorkspaceFileEditorContent({
     fontSize: number;
     fontWeight: string;
   };
-  inlineStatus: RemoteWorkspaceStatus | null;
+  errorNotice: UserFacingMessage | null;
   onChange: (value: string) => void;
   onContextMenu: (event: MouseEvent<HTMLDivElement>) => void;
-  onFind: () => void;
   onMount: MonacoTextEditorMountHandler;
-  onReplace: () => void;
   tab: OpenFileTab;
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="kerminal-muted-surface flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-1.5 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
-        <span>{tab.language}</span>
-        <span>{tab.lineEnding}</span>
-        <span>{tab.encoding}</span>
-        {tab.truncated ? <span>已截断</span> : null}
-        {tab.readonly ? <span>只读</span> : null}
-        <span>{isDirtyTab(tab) ? "未保存" : "已保存"}</span>
-        {inlineStatus ? (
-          <span
-            className={cn(
-              "inline-flex min-w-0 items-center gap-1 truncate rounded-md border px-2 py-0.5",
-              inlineStatus.kind === "success" &&
-                "border-emerald-300/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-100",
-              inlineStatus.kind === "error" &&
-                "border-rose-300/35 bg-rose-500/10 text-rose-700 dark:text-rose-100",
-              inlineStatus.kind === "info" &&
-                "border-sky-300/35 bg-sky-500/10 text-sky-700 dark:text-sky-100",
-            )}
-            role={inlineStatus.kind === "error" ? "alert" : "status"}
-          >
-            {inlineStatus.message}
-          </span>
-        ) : null}
-        <span className="ml-auto flex items-center gap-1">
-          <Button
-            className="h-7 rounded-md px-2 text-[11px]"
-            onClick={onFind}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <Search className="h-3 w-3" />
-            查找
-          </Button>
-          <Button
-            className="h-7 rounded-md px-2 text-[11px]"
-            disabled={tab.readonly}
-            onClick={onReplace}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <Replace className="h-3 w-3" />
-            替换
-          </Button>
-        </span>
-      </div>
+      {errorNotice ? (
+        <UserFacingNotice className="m-2 mb-0 shrink-0" compact message={errorNotice} />
+      ) : null}
       <div
         className="min-h-0 flex-1 bg-zinc-950"
         data-kerminal-text-editor

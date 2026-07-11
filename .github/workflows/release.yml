@@ -180,8 +180,9 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 改进 Windows、Linux 与 macOS 的桌面窗口镶边、圆角、拖拽和最大化兼容性。
-            - 修复终端二进制输出、控制序列与渲染异常的容错问题。
+            - 新增面向远程工作流的终端命令建议，支持声明式命令规格、历史匹配、远程刷新与键盘操作。
+            - 改进终端 Tab 的身份、选中和注意状态展示，帮助在多目标、多分屏工作区中识别上下文。
+            - 更新 Agent 优先的远程工作台界面与 README 实机截图，强化 Codex、Claude 与受管目标协作场景。
 
             macOS `.app` / `.dmg` 未使用 Apple Developer ID 签名，也未经过 Apple 公证；首次启动可能出现 Gatekeeper 提示，请按组织或个人环境自行处理。
           releaseDraft: true

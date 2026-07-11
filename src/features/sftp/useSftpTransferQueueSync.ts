@@ -17,6 +17,11 @@ import {
   listSftpTransfers,
   type SftpTransferSummary,
 } from "../../lib/sftpApi";
+import {
+  buildUserFacingError,
+  technicalDetailFromUnknown,
+  type UserFacingMessage,
+} from "../../lib/userFacingMessage";
 import { updateSftpRuntimeDiagnosticsTransfers } from "./sftpRuntimeDiagnostics";
 import { sftpTransferMatchesViewScope } from "./sftp-tool-content/sftpTransferSyncModel";
 import { mergeTransferSnapshot, replaceTransferQueue } from "./sftpTransferModel";
@@ -48,9 +53,9 @@ export interface UseSftpTransferQueueSyncOptions {
 
 export interface SftpTransferQueueSyncState {
   clearQueueError: () => void;
-  queueError: string | null;
+  queueError: UserFacingMessage | null;
   refreshTransfers: () => Promise<void>;
-  setQueueError: Dispatch<SetStateAction<string | null>>;
+  setQueueError: Dispatch<SetStateAction<UserFacingMessage | null>>;
   setTransfers: Dispatch<SetStateAction<SftpTransferSummary[]>>;
   transfers: SftpTransferSummary[];
 }
@@ -88,7 +93,7 @@ export function useSftpTransferQueueSync({
   viewScope,
 }: UseSftpTransferQueueSyncOptions): SftpTransferQueueSyncState {
   const [transfers, setTransfers] = useState<SftpTransferSummary[]>([]);
-  const [queueError, setQueueError] = useState<string | null>(null);
+  const [queueError, setQueueError] = useState<UserFacingMessage | null>(null);
   const lastEventAtRef = useRef<number | null>(null);
   const reschedulePollRef = useRef<(() => void) | null>(null);
 
@@ -106,12 +111,18 @@ export function useSftpTransferQueueSync({
     }
 
     try {
-      setTransfers(replaceTransferQueue(await listSftpTransfers(
-        viewScope === undefined ? undefined : { viewScope },
-      )));
+      setTransfers(
+        replaceTransferQueue(
+          sanitizeSftpTransferSummaries(
+            await listSftpTransfers(
+              viewScope === undefined ? undefined : { viewScope },
+            ),
+          ),
+        ),
+      );
       setQueueError(null);
     } catch (error) {
-      setQueueError(errorMessage(error));
+      setQueueError(buildSftpTransferQueueError(error));
     }
   }, [active, viewScope]);
 
@@ -126,8 +137,10 @@ export function useSftpTransferQueueSync({
     lastEventAtRef.current = null;
     const loadTransfers = async () => {
       try {
-        const nextTransfers = await listSftpTransfers(
-          viewScope === undefined ? undefined : { viewScope },
+        const nextTransfers = sanitizeSftpTransferSummaries(
+          await listSftpTransfers(
+            viewScope === undefined ? undefined : { viewScope },
+          ),
         );
         if (!disposed) {
           setTransfers(replaceTransferQueue(nextTransfers));
@@ -135,7 +148,7 @@ export function useSftpTransferQueueSync({
         }
       } catch (error) {
         if (!disposed) {
-          setQueueError(errorMessage(error));
+          setQueueError(buildSftpTransferQueueError(error));
         }
       }
     };
@@ -231,7 +244,9 @@ export function useSftpTransferQueueSync({
         return;
       }
       lastEventAtRef.current = Date.now();
-      setTransfers((current) => mergeTransferSnapshot(current, transfer));
+      setTransfers((current) =>
+        mergeTransferSnapshot(current, sanitizeSftpTransferSummary(transfer)),
+      );
       reschedulePollRef.current?.();
     })
       .then((nextUnlisten) => {
@@ -261,8 +276,36 @@ export function useSftpTransferQueueSync({
   };
 }
 
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
+/**
+ * 为普通工作台构建稳定摘要，原始异常只保留在脱敏后的技术详情中。
+ */
+export function buildSftpTransferQueueError(error: unknown): UserFacingMessage {
+  return buildUserFacingError(error, {
+    detail: "现有传输记录已保留。",
+    recoveryAction: "检查连接后刷新传输队列。",
+    title: "无法同步传输队列",
+  });
+}
+
+/**
+ * 后端传输失败原因进入可展开详情前必须先脱敏。
+ */
+export function sanitizeSftpTransferSummary(
+  transfer: SftpTransferSummary,
+): SftpTransferSummary {
+  if (!transfer.error) {
+    return transfer;
+  }
+  return {
+    ...transfer,
+    error: technicalDetailFromUnknown(transfer.error),
+  };
+}
+
+function sanitizeSftpTransferSummaries(
+  transfers: SftpTransferSummary[],
+): SftpTransferSummary[] {
+  return transfers.map(sanitizeSftpTransferSummary);
 }
 
 export function sftpTransferEventChannelHealthy({

@@ -6,6 +6,7 @@ import type { TerminalPtyOutputPumpStats } from "../../lib/terminalApi";
 import { getTerminalPtyOutputPumpStats } from "../../lib/terminalApi";
 import { getSftpRuntimeDiagnosticsSnapshot } from "../sftp/sftpRuntimeDiagnostics";
 import { terminalRendererRegistry } from "./terminalRendererRegistry";
+import { terminalChromeRuntimeStore } from "./terminalChromeRuntimeStore";
 import {
   createRuntimePerformanceSnapshot,
   createRuntimeTerminalOutputPaneSnapshot,
@@ -106,6 +107,7 @@ export async function collectTerminalRuntimePerformanceSnapshot({
     sftp: getSftpRuntimeDiagnosticsSnapshot(),
     ssh: createSshRuntimeSnapshot(paneSnapshots),
     suggestions,
+    terminalChromeActivity: terminalChromeRuntimeStore.diagnosticsSnapshot(),
     terminalOutput: {
       panes: terminalOutputPanes,
       storeUpdateCount: terminalOutputPanes.reduce(

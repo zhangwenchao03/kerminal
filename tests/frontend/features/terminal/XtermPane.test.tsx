@@ -16,6 +16,17 @@ import { terminalSuggestionProbeScheduler } from "../../../../src/features/termi
 import { TerminalPaneLayout } from "../../../../src/features/terminal/TerminalPaneLayout";
 import type { TerminalLayoutNode, TerminalPane } from "../../../../src/features/workspace/types";
 
+async function waitForTerminalSessionReady() {
+  await waitFor(() => {
+    const createCallCount =
+      mocks.api.createTerminalSession.mock.calls.length +
+      mocks.api.createSshTerminalSession.mock.calls.length;
+    expect(createCallCount).toBeGreaterThan(0);
+    expect(mocks.getLatestOutputHandler()).toBeTypeOf("function");
+  });
+  expect(screen.getByText("已连接")).not.toBeVisible();
+}
+
 describe("XtermPane sessions and command blocks", () => {
   it("normalizes transient one-row startup dimensions before creating a session", () => {
     expect(normalizeTerminalSessionSize({ cols: 132, rows: 1 })).toEqual({
@@ -46,7 +57,7 @@ describe("XtermPane sessions and command blocks", () => {
       );
     });
 
-    expect(screen.getByText("已连接")).toBeInTheDocument();
+    expect(screen.getByText("已连接")).not.toBeVisible();
     expect(mocks.terminalInstances[0].open).toHaveBeenCalled();
     expect(mocks.terminalInstances[0].write).toHaveBeenCalledWith(
       expect.stringContaining("正在启动本地终端"),
@@ -89,9 +100,7 @@ describe("XtermPane sessions and command blocks", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("已连接")).toBeInTheDocument();
-    });
+    await waitForTerminalSessionReady();
 
     act(() => {
       mocks.getLatestOutputHandler()?.({
@@ -130,7 +139,8 @@ describe("XtermPane sessions and command blocks", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
 
-    expect(screen.getByText("已连接")).toBeInTheDocument();
+    expect(mocks.api.createTerminalSession).toHaveBeenCalled();
+    expect(screen.getByText("已连接")).not.toBeVisible();
 
     mocks.api.listTerminalSessions.mockResolvedValue([
       {
@@ -315,7 +325,7 @@ describe("XtermPane sessions and command blocks", () => {
       expect.any(String),
       expect.stringContaining("terminal-secret"),
     );
-    expect(screen.getByText("已连接")).toBeInTheDocument();
+    expect(screen.getByText("已连接")).not.toBeVisible();
     expect(
       mocks.terminalInstances[0].write.mock.calls.some(([data]) =>
         String(data).includes("managed ssh ready"),
@@ -442,7 +452,7 @@ describe("XtermPane sessions and command blocks", () => {
       expect.any(String),
       expect.stringContaining("target-passphrase"),
     );
-    expect(screen.getByText("已连接")).toBeInTheDocument();
+    expect(screen.getByText("已连接")).not.toBeVisible();
   });
 
   it("cancels terminal SSH auth prompt without submitting or retrying", async () => {
@@ -696,7 +706,7 @@ describe("XtermPane sessions and command blocks", () => {
       expect.any(String),
       expect.stringContaining("terminal-secret"),
     );
-    expect(screen.getByText("已连接")).toBeInTheDocument();
+    expect(screen.getByText("已连接")).not.toBeVisible();
   });
 
   it("clears a transient agent startup message when real output arrives", async () => {
@@ -1029,9 +1039,7 @@ describe("XtermPane sessions and command blocks", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("已连接")).toBeInTheDocument();
-    });
+    await waitForTerminalSessionReady();
 
     mocks.terminalInstances[0].onDataCallback?.("pwd\r");
 
@@ -1059,9 +1067,7 @@ describe("XtermPane sessions and command blocks", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("已连接")).toBeInTheDocument();
-    });
+    await waitForTerminalSessionReady();
 
     mocks.terminalInstances[0].onDataCallback?.("服务器的服务\r");
 
@@ -1094,9 +1100,7 @@ describe("XtermPane sessions and command blocks", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("已连接")).toBeInTheDocument();
-    });
+    await waitForTerminalSessionReady();
 
     mocks.terminalInstances[0].onDataCallback?.("pwd\r");
     expect(await screen.findByLabelText("折叠命令块 pwd")).toBeInTheDocument();
@@ -1185,9 +1189,7 @@ describe("XtermPane sessions and command blocks", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("已连接")).toBeInTheDocument();
-    });
+    await waitForTerminalSessionReady();
 
     const terminal = mocks.terminalInstances[0];
     setTerminalBufferLines(
@@ -1266,9 +1268,7 @@ describe("XtermPane sessions and command blocks", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("已连接")).toBeInTheDocument();
-    });
+    await waitForTerminalSessionReady();
 
     const terminal = mocks.terminalInstances[0];
     setTerminalBufferLines(
@@ -1319,9 +1319,7 @@ describe("XtermPane sessions and command blocks", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("已连接")).toBeInTheDocument();
-    });
+    await waitForTerminalSessionReady();
 
     const terminal = mocks.terminalInstances[0];
     setTerminalBufferLines(
@@ -1378,9 +1376,7 @@ describe("XtermPane sessions and command blocks", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("已连接")).toBeInTheDocument();
-    });
+    await waitForTerminalSessionReady();
 
     const terminal = mocks.terminalInstances[0];
     const registerMarker = vi.spyOn(terminal, "registerMarker");
@@ -1443,9 +1439,7 @@ describe("XtermPane sessions and command blocks", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("已连接")).toBeInTheDocument();
-    });
+    await waitForTerminalSessionReady();
 
     const terminal = mocks.terminalInstances[0];
     setTerminalBufferLines(
@@ -1536,9 +1530,7 @@ describe("XtermPane sessions and command blocks", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("已连接")).toBeInTheDocument();
-    });
+    await waitForTerminalSessionReady();
 
     const terminal = mocks.terminalInstances[0];
     const registerMarker = vi.spyOn(terminal, "registerMarker");
@@ -1568,9 +1560,7 @@ describe("XtermPane sessions and command blocks", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("已连接")).toBeInTheDocument();
-    });
+    await waitForTerminalSessionReady();
 
     const terminal = mocks.terminalInstances[0];
     act(() => {
@@ -1599,9 +1589,7 @@ describe("XtermPane sessions and command blocks", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("已连接")).toBeInTheDocument();
-    });
+    await waitForTerminalSessionReady();
 
     const terminal = mocks.terminalInstances[0];
     act(() => {
@@ -1649,9 +1637,7 @@ describe("XtermPane sessions and command blocks", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("已连接")).toBeInTheDocument();
-    });
+    await waitForTerminalSessionReady();
 
     const terminal = mocks.terminalInstances[0];
     act(() => {

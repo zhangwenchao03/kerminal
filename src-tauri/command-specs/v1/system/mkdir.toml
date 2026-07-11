@@ -1,0 +1,31 @@
+schema_version = 1
+command = "mkdir"
+aliases = []
+platforms = ["macos", "linux"]
+shells = ["bash", "zsh", "fish"]
+description = "Create directories"
+tested_version = "GNU coreutils 9.7"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "GNU Coreutils mkdir manual"
+url = "https://www.gnu.org/software/coreutils/manual/html_node/mkdir-invocation.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "--parents"
+aliases = ["-p"]
+description = "Create missing parent directories"
+
+[[options]]
+name = "--mode"
+aliases = ["-m"]
+description = "Set directory permissions"
+
+[options.argument]
+kind = "string"
+placeholder = "MODE"

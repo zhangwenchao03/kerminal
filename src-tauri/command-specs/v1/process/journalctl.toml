@@ -1,0 +1,39 @@
+schema_version = 1
+command = "journalctl"
+aliases = []
+platforms = ["linux"]
+shells = ["bash", "zsh", "fish"]
+description = "Query the systemd journal"
+tested_version = "systemd 257"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "journalctl manual"
+url = "https://www.freedesktop.org/software/systemd/man/latest/journalctl.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "--unit"
+aliases = ["-u"]
+description = "Show entries for a systemd unit"
+
+[options.argument]
+kind = "string"
+placeholder = "UNIT"
+
+[[options]]
+name = "--follow"
+aliases = ["-f"]
+description = "Follow new journal entries"
+
+[[options]]
+name = "--since"
+description = "Show entries newer than a timestamp"
+
+[options.argument]
+kind = "string"
+placeholder = "TIME"

@@ -1,0 +1,31 @@
+schema_version = 1
+command = "cd"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Change the shell working directory"
+tested_version = "POSIX.1-2024 / PowerShell 7.5"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "POSIX cd and PowerShell Set-Location"
+url = "https://pubs.opengroup.org/onlinepubs/9799919799/utilities/cd.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "-"
+description = "Switch to the previous working directory"
+
+[[options]]
+name = "-P"
+description = "Use the physical directory structure"
+
+[[arguments]]
+name = "directory"
+description = "Target working directory"
+kind = "directory"
+required = false

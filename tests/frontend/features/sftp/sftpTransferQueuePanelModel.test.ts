@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SftpTransferSummary } from "../../../../src/lib/sftpApi";
 import {
   buildSftpTransferQueuePanelModel,
+  formatSftpTransferQueueCounts,
   SFTP_TRANSFER_QUEUE_COLLAPSED_LIMIT,
 } from "../../../../src/features/sftp/sftpTransferQueuePanelModel";
 
@@ -52,7 +53,20 @@ describe("sftpTransferQueuePanelModel", () => {
 
     expect(model.activeCount).toBe(2);
     expect(model.failedCount).toBe(1);
+    expect(model.historyCount).toBe(3);
     expect(model.totalCount).toBe(5);
+    expect(
+      formatSftpTransferQueueCounts({
+        activeCount: model.activeCount,
+        failedCount: model.failedCount,
+        historyCount: model.historyCount,
+      }),
+    ).toBe("2 活动 · 1 失败 · 3 历史");
+    expect(model.visibleTransfers.map((item) => item.id)).toEqual([
+      "running",
+      "queued",
+      "failed",
+    ]);
   });
 
   it("collapses overflowing history to the visible transfer limit", () => {
@@ -93,7 +107,7 @@ describe("sftpTransferQueuePanelModel", () => {
 
     expect(model.hasOverflowHistory).toBe(true);
     expect(model.hiddenTransferCount).toBe(1);
-    expect(model.visibleTransfers).toBe(transfers);
+    expect(model.visibleTransfers).toEqual(transfers);
   });
 
   it("does not report overflow at the collapsed transfer limit", () => {
@@ -109,6 +123,6 @@ describe("sftpTransferQueuePanelModel", () => {
 
     expect(model.hasOverflowHistory).toBe(false);
     expect(model.hiddenTransferCount).toBe(0);
-    expect(model.visibleTransfers).toBe(transfers);
+    expect(model.visibleTransfers).toEqual(transfers);
   });
 });

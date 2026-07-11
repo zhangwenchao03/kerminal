@@ -1,9 +1,13 @@
 import type { SftpEntry } from "../../../lib/sftpApi";
+import { technicalDetailFromUnknown } from "../../../lib/userFacingMessage";
 import { fileNameFromPath } from "../sftpFileUtils";
 import type { SftpClipboardEntry } from "./types";
 
+/**
+ * 把 SFTP 异常转换为可进入技术详情的脱敏文本。
+ */
 export function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
+  return technicalDetailFromUnknown(error) ?? "未知错误";
 }
 
 export function resolveRemoteInputPath(currentPath: string, value: string) {

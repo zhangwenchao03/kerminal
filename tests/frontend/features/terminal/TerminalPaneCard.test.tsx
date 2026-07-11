@@ -100,6 +100,9 @@ describe("TerminalPaneCard", () => {
     );
     expect(screen.getByLabelText("prod-api xterm 终端")).toBeInTheDocument();
     expect(screen.getByText("42ms")).toBeInTheDocument();
+    expect(screen.queryByLabelText("连接正常")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("连接警告")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("连接已断开")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "上报 cwd" }));
     await user.click(screen.getByRole("button", { name: "上报输出" }));
@@ -110,6 +113,29 @@ describe("TerminalPaneCard", () => {
     expect(onSplitPane).toHaveBeenCalledWith("vertical", {
       sourcePaneId: "pane-ssh",
     });
+  });
+
+  it("only shows pane status markers for warning and offline states", () => {
+    const { rerender } = renderPaneCard({
+      ...baseTerminalPane,
+      status: "warning",
+    });
+
+    expect(screen.getByLabelText("连接警告")).toHaveClass("bg-amber-400");
+
+    rerender(
+      <TerminalPaneCard
+        focused={false}
+        onClosePane={vi.fn()}
+        onFocusPane={vi.fn()}
+        pane={{ ...baseTerminalPane, status: "offline" }}
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+      />,
+    );
+
+    expect(screen.getByLabelText("连接已断开")).toHaveClass("bg-red-400");
+    expect(screen.queryByLabelText("连接警告")).not.toBeInTheDocument();
   });
 
   it("keeps split actions beside the pane close control", async () => {

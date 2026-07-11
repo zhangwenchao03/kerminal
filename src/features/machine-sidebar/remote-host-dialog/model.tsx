@@ -174,21 +174,17 @@ export const serialFlowOptions: SelectOption[] = [
 
 export const authOptions: Array<{
   label: string;
-  helper: string;
   value: RemoteHostAuthType;
 }> = [
   {
-    helper: "密码明文保存，编辑时显示。",
     label: "密码",
     value: "password",
   },
   {
-    helper: "使用私钥路径或明文私钥。",
     label: "密钥",
     value: "key",
   },
   {
-    helper: "使用系统 ssh-agent。",
     label: "SSH Agent",
     value: "agent",
   },

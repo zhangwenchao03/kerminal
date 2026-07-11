@@ -151,6 +151,36 @@ describe("WorkspaceFileTabSurface", () => {
     expect(screen.getByRole("menuitem", { name: /复制/ })).not.toBeDisabled();
   });
 
+  it("uses one compact icon toolbar above the document", async () => {
+    render(<WorkspaceFileTabSurface active tab={editableTab} />);
+
+    await screen.findByLabelText("Monaco 编辑器");
+
+    expect(screen.getByRole("group", { name: "文件操作" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "重新加载文件" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存文件" })).toBeDisabled();
+    expect(screen.queryByText("重新加载")).not.toBeInTheDocument();
+    expect(screen.queryByText("保存")).not.toBeInTheDocument();
+    expect(screen.queryByText("查找")).not.toBeInTheDocument();
+    expect(screen.queryByText("替换")).not.toBeInTheDocument();
+    expect(screen.queryByText("utf-8")).not.toBeInTheDocument();
+    expect(screen.queryByText("lf")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "查找" }));
+    fireEvent.click(screen.getByRole("button", { name: "替换" }));
+
+    await waitFor(() => {
+      expect(monacoEditorMocks.editor.getAction).toHaveBeenCalledWith(
+        "actions.find",
+      );
+      expect(monacoEditorMocks.editor.getAction).toHaveBeenCalledWith(
+        "editor.action.startFindReplaceAction",
+      );
+    });
+  });
+
   it("keeps write commands disabled in read-only workspace file tabs", async () => {
     transportMocks.readRemoteWorkspaceTextFile.mockResolvedValueOnce({
       binary: false,
@@ -186,5 +216,24 @@ describe("WorkspaceFileTabSurface", () => {
     );
     expect(screen.getByRole("menuitem", { name: /粘贴/ })).toBeDisabled();
     expect(screen.getByRole("menuitem", { name: /复制/ })).not.toBeDisabled();
+  });
+
+  it("keeps remote file failures in collapsed technical details", async () => {
+    transportMocks.readRemoteWorkspaceTextFile.mockRejectedValueOnce(
+      new Error(
+        'managed sftp failed at /private/runtime.json with "password": "file-secret"',
+      ),
+    );
+
+    render(<WorkspaceFileTabSurface active tab={editableTab} />);
+
+    expect(await screen.findByText("文件读取失败")).toBeVisible();
+    expect(screen.getByText("请检查连接和文件权限后重试。")).toBeVisible();
+    const detail = screen.getByText(/managed sftp failed/);
+    expect(detail.closest("details")).not.toHaveAttribute("open");
+    expect(detail).not.toHaveTextContent("file-secret");
+
+    fireEvent.click(screen.getByText("技术详情"));
+    expect(detail.closest("details")).toHaveAttribute("open");
   });
 });

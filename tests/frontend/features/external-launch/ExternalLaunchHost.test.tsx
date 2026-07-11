@@ -181,7 +181,7 @@ describe("ExternalLaunchHost", () => {
     const user = userEvent.setup();
     const openSpy = spyOnOpenExternalSshLaunch();
     apiMocks.materializeExternalSshLaunch.mockRejectedValue(
-      new Error("Unknown server key"),
+      new Error("Unknown server key token=external-launch-secret"),
     );
     apiMocks.takePendingExternalSshLaunches.mockResolvedValue([
       createLaunch({ username: "deploy" }),
@@ -201,7 +201,10 @@ describe("ExternalLaunchHost", () => {
     expect(
       await screen.findByRole("dialog", { name: "外部 SSH 启动失败" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Unknown server key")).toBeInTheDocument();
+    expect(screen.getByText("可重试或取消该请求。")).toBeVisible();
+    const technicalDetail = screen.getByText(/Unknown server key/);
+    expect(technicalDetail.closest("details")).not.toHaveAttribute("open");
+    expect(screen.queryByText(/external-launch-secret/)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "取消该请求" }));
 
@@ -227,9 +230,11 @@ describe("ExternalLaunchHost", () => {
     expect(
       await screen.findByRole("dialog", { name: "外部 SSH 启动未接收" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("no external SSH launch arguments detected"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("外部 SSH 请求未接收")).toBeVisible();
+    const technicalDetail = screen.getByText(
+      "no external SSH launch arguments detected",
+    );
+    expect(technicalDetail.closest("details")).not.toHaveAttribute("open");
   });
 
   it("shows visible feedback when draining pending launches fails", async () => {
@@ -242,9 +247,11 @@ describe("ExternalLaunchHost", () => {
     expect(
       await screen.findByRole("dialog", { name: "外部 SSH 启动未接收" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("external launch intake unavailable"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("外部 SSH 请求未读取")).toBeVisible();
+    const technicalDetail = screen.getByText(
+      /external launch intake unavailable/,
+    );
+    expect(technicalDetail.closest("details")).not.toHaveAttribute("open");
     expect(useWorkspaceStore.getState().terminalPanes).toHaveLength(0);
   });
 });

@@ -9,6 +9,7 @@ import {
   type RefCallback,
 } from "react";
 import { Button } from "../../components/ui/button";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 import {
   createSnippet,
@@ -17,6 +18,10 @@ import {
   type CommandSnippet,
   type SnippetScope,
 } from "../../lib/snippetApi";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../lib/userFacingMessage";
 import { createWorkflow, type WorkflowScope } from "../../lib/workflowApi";
 import { writeSnippetCommand } from "../terminal/terminalSessionRegistry";
 import type { TerminalPane } from "../workspace/types";
@@ -115,8 +120,10 @@ export function SnippetToolContent({
   const [createOpen, setCreateOpen] = useState(false);
   const [createType, setCreateType] = useState<AddItemType>("snippet");
   const [description, setDescription] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [error, setError] = useState<UserFacingMessage | null>(null);
+  const [formError, setFormError] = useState<UserFacingMessage | string | null>(
+    null,
+  );
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
   const [runState, setRunState] = useState<SnippetRunState | null>(null);
@@ -156,7 +163,6 @@ export function SnippetToolContent({
     [activeTag, visibleSnippets],
   );
   const hasActiveFilters = Boolean(query.trim() || scope || activeTag);
-  const listModeLabel = catalogMode === "preset" ? "preset" : "mine";
 
   const loadSnippets = useCallback(async () => {
     setLoading(true);
@@ -169,7 +175,11 @@ export function SnippetToolContent({
       setSnippets(nextSnippets);
     } catch (nextError) {
       setError(
-        nextError instanceof Error ? nextError.message : String(nextError),
+        buildUserFacingError(nextError, {
+          detail: "命令片段暂时无法加载。",
+          recoveryAction: "请稍后重试。",
+          title: "加载片段失败",
+        }),
       );
     } finally {
       setLoading(false);
@@ -193,7 +203,7 @@ export function SnippetToolContent({
     }
     lastConfigRevisionRef.current = configRevision;
     if (createOpen || runState) {
-      setConfigDraftNotice("cfg: snippets reloaded; draft kept");
+      setConfigDraftNotice("命令片段已更新，当前编辑内容已保留。");
     }
   }, [configRevision, createOpen, runState]);
 
@@ -280,7 +290,14 @@ export function SnippetToolContent({
       resetCreateForm();
     } catch (nextError) {
       setFormError(
-        nextError instanceof Error ? nextError.message : String(nextError),
+        buildUserFacingError(nextError, {
+          detail:
+            createType === "workflow"
+              ? "工作流尚未保存。"
+              : "命令片段尚未保存。",
+          recoveryAction: "请检查内容后重试。",
+          title: createType === "workflow" ? "工作流未保存" : "片段未保存",
+        }),
       );
     } finally {
       setSaving(false);
@@ -299,7 +316,11 @@ export function SnippetToolContent({
       await loadSnippets();
     } catch (nextError) {
       setError(
-        nextError instanceof Error ? nextError.message : String(nextError),
+        buildUserFacingError(nextError, {
+          detail: "命令片段仍保留在列表中。",
+          recoveryAction: "请稍后重试。",
+          title: "片段未删除",
+        }),
       );
     } finally {
       setLoading(false);
@@ -418,8 +439,11 @@ export function SnippetToolContent({
       });
     } catch (nextError) {
       setRunState({
-        error:
-          nextError instanceof Error ? nextError.message : String(nextError),
+        error: buildUserFacingError(nextError, {
+          detail: "命令尚未发送到当前分屏。",
+          recoveryAction: "请确认分屏仍处于连接状态后重试。",
+          title: "片段未发送",
+        }),
         sending: false,
         snippetId: snippet.id,
         status: null,
@@ -440,7 +464,7 @@ export function SnippetToolContent({
           <input
             className={snippetSearchInputClassName}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="grep title tag command"
+            placeholder="搜索名称、标签或命令"
             value={query}
           />
         </label>
@@ -472,7 +496,7 @@ export function SnippetToolContent({
               onClick={() => setScope(option.value as SnippetScope | "")}
               type="button"
             >
-              {option.value || "*"}:{option.label}
+              {option.label}
             </button>
           );
         })}
@@ -521,7 +545,7 @@ export function SnippetToolContent({
             onClick={() => setActiveTag("")}
             type="button"
           >
-            tag:* <span className="opacity-60">{currentSnippets.length}</span>
+            全部 <span className="opacity-60">{currentSnippets.length}</span>
           </button>
           {tagGroups.map((group) => {
             const selected = activeTag === group.tag;
@@ -540,14 +564,7 @@ export function SnippetToolContent({
         </div>
       ) : null}
 
-      {error ? (
-        <div
-          className="rounded-xl border border-rose-300/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100"
-          role="alert"
-        >
-          {error}
-        </div>
-      ) : null}
+      {error ? <UserFacingNotice compact message={error} /> : null}
       {configDraftNotice ? (
         <div
           className="rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 font-mono text-xs text-amber-800 dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100"
@@ -558,18 +575,9 @@ export function SnippetToolContent({
       ) : null}
 
       <div className="kerminal-solid-surface overflow-hidden rounded-2xl border">
-        <div className="kerminal-muted-surface flex items-center justify-between border-b px-3 py-2">
-          <span className="font-mono text-[11px] text-zinc-400">
-            {listModeLabel}[{visibleSnippets.length}/{currentSnippets.length}]
-          </span>
-          <span className="font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
-            {activeTag ? `#${activeTag}` : scope || "all"}
-          </span>
-        </div>
-
         {catalogMode === "mine" && loading && snippets.length === 0 ? (
           <div className="kerminal-muted-surface m-3 rounded-xl border border-dashed px-3 py-8 text-center font-mono text-xs text-zinc-500 dark:text-zinc-400">
-            loading snippets...
+            正在加载...
           </div>
         ) : null}
         {!loading && visibleSnippets.length === 0 ? (

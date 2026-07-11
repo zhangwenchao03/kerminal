@@ -57,25 +57,54 @@ pub(super) fn prune_remote_path_cache(
     cache: &mut HashMap<RemotePathCacheKey, RemotePathCacheEntry>,
     now: SystemTime,
 ) {
-    cache.retain(|_, entry| entry.expires_at > now);
+    cache.retain(|_, entry| provider_cache_is_retained(entry.expires_at, now));
 }
 
 pub(super) fn prune_remote_command_cache(
     cache: &mut HashMap<String, RemoteCommandCacheEntry>,
     now: SystemTime,
 ) {
-    cache.retain(|_, entry| entry.expires_at > now);
+    cache.retain(|_, entry| provider_cache_is_retained(entry.expires_at, now));
 }
 
 pub(super) fn prune_remote_history_cache(
     cache: &mut HashMap<String, RemoteHistoryCacheEntry>,
     now: SystemTime,
 ) {
-    cache.retain(|_, entry| entry.expires_at > now);
+    cache.retain(|_, entry| provider_cache_is_retained(entry.expires_at, now));
 }
 
 pub(super) fn prune_git_cache(cache: &mut HashMap<GitCacheKey, GitCacheEntry>, now: SystemTime) {
-    cache.retain(|_, entry| entry.expires_at > now);
+    cache.retain(|_, entry| provider_cache_is_retained(entry.expires_at, now));
+}
+
+pub(super) fn provider_cache_is_stale(expires_at: SystemTime, now: SystemTime) -> bool {
+    expires_at <= now
+}
+
+pub(super) fn provider_cache_retention_cutoff(now: SystemTime) -> SystemTime {
+    now.checked_sub(Duration::from_secs(REMOTE_PROVIDER_STALE_RETENTION_SECS))
+        .unwrap_or(UNIX_EPOCH)
+}
+
+fn provider_cache_is_retained(expires_at: SystemTime, now: SystemTime) -> bool {
+    expires_at > provider_cache_retention_cutoff(now)
+}
+
+pub(super) fn insert_provider_cache_freshness_metadata(
+    metadata: &mut BTreeMap<String, String>,
+    expires_at: SystemTime,
+    now: SystemTime,
+) {
+    metadata.insert(
+        "cacheState".to_owned(),
+        if provider_cache_is_stale(expires_at, now) {
+            "stale"
+        } else {
+            "fresh"
+        }
+        .to_owned(),
+    );
 }
 
 pub(super) fn remove_oldest_remote_path_cache_entry(

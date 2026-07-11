@@ -1,6 +1,6 @@
 [package]
 name = "kerminal"
-version = "0.3.3"
+version = "0.3.4"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -18,6 +18,8 @@ crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"
 
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }

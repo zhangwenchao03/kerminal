@@ -7,12 +7,18 @@ import {
   MemoryStick,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "../../components/ui/button";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import {
   getRuntimeHealthSnapshot,
   type RuntimeGpuHealth,
   type RuntimeHealthSnapshot,
 } from "../../lib/diagnosticsApi";
 import { Select } from "../../components/ui/select";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../lib/userFacingMessage";
 import {
   SystemOverviewCard,
   SystemOverviewTile,
@@ -33,7 +39,7 @@ const refreshOptions = [
 export function RuntimeHealthCard() {
   const [snapshot, setSnapshot] = useState<RuntimeHealthSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserFacingMessage | null>(null);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(3000);
   const [expandedCards, setExpandedCards] = useState<Set<RuntimeCardId>>(
     () => new Set(),
@@ -51,7 +57,13 @@ export function RuntimeHealthCard() {
     try {
       setSnapshot(await getRuntimeHealthSnapshot());
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
+      setError(
+        buildUserFacingError(nextError, {
+          detail: "当前没有更新本机资源数据。",
+          recoveryAction: "请稍后重试。",
+          title: "无法读取运行状态",
+        }),
+      );
     } finally {
       loadingRef.current = false;
       setLoading(false);
@@ -119,12 +131,11 @@ export function RuntimeHealthCard() {
               </div>
             </div>
             {error ? (
-              <div
-                className="mt-3 rounded-xl border border-rose-300/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100"
-                role="alert"
-              >
-                {error}
-              </div>
+              <UserFacingNotice className="mt-3" compact message={error}>
+                <Button onClick={() => void loadSnapshot()} size="sm">
+                  重试
+                </Button>
+              </UserFacingNotice>
             ) : null}
             {!snapshot && !error ? (
               <div className="kerminal-muted-surface mt-3 rounded-xl px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">

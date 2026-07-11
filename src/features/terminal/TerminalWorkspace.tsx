@@ -1,4 +1,3 @@
-import { ChevronDown } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -6,13 +5,13 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { cn } from "../../lib/cn";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 import type {
   InterfaceDensity,
@@ -41,6 +40,13 @@ import { dispatchWorkspaceFileTabCommand } from "../workspace/workspaceFileTabAc
 import { resolveWorkspaceTabCloseDecision } from "../workspace/workspaceTabCloseGuardModel";
 import { TerminalBroadcastBar } from "./TerminalBroadcastBar";
 import { TerminalTabOverviewMenu } from "./TerminalTabOverviewMenu";
+import { TerminalTabGroupEditDialog } from "./TerminalTabGroupEditDialog";
+import { TerminalTabBar } from "./TerminalTabBar";
+import { terminalChromeRuntimeStore } from "./terminalChromeRuntimeStore";
+import {
+  resolveTerminalTabPresentation,
+  type TerminalTabPresentation,
+} from "./terminalTabPresentationModel";
 import { TerminalWorkspaceContent } from "./TerminalWorkspaceContent";
 import type {
   TerminalPaneMoveDropZone,
@@ -55,11 +61,8 @@ import {
   clampContextMenuPosition,
   CloseTabsConfirmationDialog,
   CloseWorkspaceFileTabsConfirmationDialog,
-  TerminalTabButton,
   TerminalTabContextMenuItems,
   TerminalTabGroupContextMenuItems,
-  TerminalTabGroupEditDialog,
-  TerminalTabGroupHeader,
   TerminalTabRenameDialog,
   type TerminalTabGroup,
   type TerminalTabContextMenu,
@@ -69,6 +72,9 @@ import {
 const terminalContextMenuPanelClassName =
   "kerminal-context-menu kerminal-floating-enter fixed z-[1000] w-56";
 const TAB_OVERVIEW_OVERFLOW_TOLERANCE = 1;
+const EMPTY_PANE_CHROME_SNAPSHOTS: ReturnType<
+  typeof terminalChromeRuntimeStore.getSnapshots
+> = Object.freeze([]);
 
 export interface BroadcastCommandRequest {
   command: string;
@@ -222,6 +228,27 @@ export function TerminalWorkspace({
       ),
     [panesById, tabs],
   );
+  const paneChromeSnapshots = useSyncExternalStore(
+    terminalChromeRuntimeStore.subscribeAll,
+    terminalChromeRuntimeStore.getSnapshots,
+    () => EMPTY_PANE_CHROME_SNAPSHOTS,
+  );
+  const tabPresentationById = useMemo(() => {
+    const snapshotsByPaneId = new Map(
+      paneChromeSnapshots.map((snapshot) => [snapshot.paneId, snapshot]),
+    );
+    return new Map<string, TerminalTabPresentation>(
+      tabs.map((tab) => {
+        if (!isTerminalSessionTab(tab)) {
+          return [tab.id, resolveTerminalTabPresentation([])];
+        }
+        const paneSnapshots = collectPaneIds(tab.layout)
+          .map((paneId) => snapshotsByPaneId.get(paneId))
+          .filter((snapshot) => snapshot !== undefined);
+        return [tab.id, resolveTerminalTabPresentation(paneSnapshots)];
+      }),
+    );
+  }, [paneChromeSnapshots, tabs]);
   const activePaneIds = useMemo(
     () =>
       activeTab && isTerminalSessionTab(activeTab)
@@ -724,6 +751,11 @@ export function TerminalWorkspace({
                     tabId,
                   })
                 }
+                onRequestEditIdentity={
+                  onUpdateTabGroupPreference
+                    ? setEditingTabGroup
+                    : undefined
+                }
                 onRequestRename={setRenamingTab}
                 onRevealWorkspaceFileInSftp={onRevealWorkspaceFileInSftp}
                 onSelectTab={onSelectTab}
@@ -759,6 +791,7 @@ export function TerminalWorkspace({
       tabGroups={tabGroups}
       tabs={tabs}
       tabStatusById={tabStatusById}
+      tabPresentationById={tabPresentationById}
       terminalAppearance={terminalAppearance}
     />
   );
@@ -769,127 +802,29 @@ export function TerminalWorkspace({
       className="kerminal-workspace-surface flex h-full w-full min-w-0 flex-col overflow-hidden"
       data-density={interfaceDensity}
     >
-      <div
-        className={cn(
-          "kerminal-material-nav relative z-20 flex items-center border-b border-[var(--border-subtle)] shadow-[inset_0_-1px_0_var(--border-subtle)]",
-          reserveRightTitleBarControls ? "pr-40" : "pr-2",
-          tabBarHeightClass,
-        )}
-        data-tauri-drag-region
+      <TerminalTabBar
+        activeTabId={activeTabId}
+        collapsedGroupIds={collapsedTabGroupIds}
+        heightClassName={tabBarHeightClass}
+        onOpenContextMenu={openContextMenu}
+        onRequestCloseTab={(tabId) => requestCloseTabs([tabId])}
+        onSelectTab={onSelectTab}
+        onToggleGroup={toggleTabGroup}
+        onToggleOverview={toggleTabOverview}
+        onWheel={handleTabListWheel}
+        overviewButtonRef={tabOverviewButtonRef}
+        overviewOpen={tabOverviewOpen}
+        reserveRightTitleBarControls={reserveRightTitleBarControls}
+        shouldShowOverview={shouldShowTabOverview}
         style={tabBarStyle}
-      >
-        <div
-          aria-label="终端标签栏"
-          className="scrollbar-none flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden overscroll-x-contain"
-          data-tauri-drag-region
-          onWheel={handleTabListWheel}
-          ref={tabListRef}
-        >
-          {tabGroups.map((group) => {
-            const collapsed = collapsedTabGroupIds.has(group.id);
-            const groupActive = group.tabs.some(
-              (tab) => tab.id === activeTabId,
-            );
-            if (!group.grouped) {
-              return group.tabs.map((tab) => (
-                <TerminalTabButton
-                  active={tab.id === activeTabId}
-                  key={tab.id}
-                  onCloseTab={(tabId) => requestCloseTabs([tabId])}
-                  onContextMenu={(event) =>
-                    openContextMenu(event, { tabId: tab.id, type: "tab" })
-                  }
-                  onSelectTab={onSelectTab}
-                  showClose
-                  tabNumber={
-                    terminalAppearance.showTabNumbers
-                      ? tabs.findIndex((candidate) => candidate.id === tab.id) +
-                        1
-                      : undefined
-                  }
-                  status={tabStatusById.get(tab.id)}
-                  tab={tab}
-                  workspaceFileDirty={workspaceFileDirtyState[tab.id]}
-                />
-              ));
-            }
-
-            return (
-              <div
-                className={cn(
-                  "relative flex h-9 shrink-0 items-center gap-1 rounded-xl border px-1.5 transition-[background-color,border-color,box-shadow]",
-                  groupActive
-                    ? group.activeContainerClassName
-                    : group.containerClassName,
-                )}
-                key={group.id}
-              >
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "pointer-events-none absolute left-3 right-3 top-0 h-0.5 rounded-full",
-                    group.accentClassName,
-                  )}
-                />
-                <TerminalTabGroupHeader
-                  collapsed={collapsed}
-                  group={group}
-                  onContextMenu={(event) =>
-                    openContextMenu(event, { groupId: group.id, type: "group" })
-                  }
-                  onToggle={() => toggleTabGroup(group.id)}
-                />
-                {!collapsed
-                  ? group.tabs.map((tab) => (
-                      <TerminalTabButton
-                        active={tab.id === activeTabId}
-                        compact
-                        key={tab.id}
-                        onCloseTab={(tabId) => requestCloseTabs([tabId])}
-                        onContextMenu={(event) =>
-                          openContextMenu(event, {
-                            tabId: tab.id,
-                            type: "tab",
-                          })
-                        }
-                        onSelectTab={onSelectTab}
-                        showClose
-                        tabNumber={
-                          terminalAppearance.showTabNumbers
-                            ? tabs.findIndex(
-                                (candidate) => candidate.id === tab.id,
-                              ) + 1
-                            : undefined
-                        }
-                        status={tabStatusById.get(tab.id)}
-                        tab={tab}
-                        workspaceFileDirty={workspaceFileDirtyState[tab.id]}
-                      />
-                    ))
-                  : null}
-              </div>
-            );
-          })}
-        </div>
-        {shouldShowTabOverview ? (
-          <button
-            aria-expanded={tabOverviewOpen}
-            aria-label="查看所有标签"
-            className={cn(
-              "kerminal-focus-ring kerminal-pressable kerminal-muted-surface absolute bottom-0.5 z-20 flex h-8 w-8 items-center justify-center rounded-xl border text-zinc-500 shadow-sm shadow-black/10 backdrop-blur hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:shadow-black/30 dark:hover:text-zinc-100",
-              reserveRightTitleBarControls ? "right-28" : "right-3",
-              tabOverviewOpen &&
-                "border-sky-500/30 bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100",
-            )}
-            onClick={toggleTabOverview}
-            ref={tabOverviewButtonRef}
-            title="查看所有标签"
-            type="button"
-          >
-            <ChevronDown className="h-4 w-4" />
-          </button>
-        ) : null}
-      </div>
+        tabGroups={tabGroups}
+        tabListRef={tabListRef}
+        tabPresentationById={tabPresentationById}
+        tabs={tabs}
+        tabStatusById={tabStatusById}
+        terminalAppearance={terminalAppearance}
+        workspaceFileDirtyState={workspaceFileDirtyState}
+      />
       {contextMenuElement}
       {tabOverviewElement}
       <TerminalTabRenameDialog

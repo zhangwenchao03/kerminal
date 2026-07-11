@@ -2,8 +2,10 @@ import { Check, Terminal } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import type { ExternalSshLaunchRequest } from "../../lib/externalLaunchApi";
 import { cn } from "../../lib/cn";
+import type { UserFacingMessage } from "../../lib/userFacingMessage";
 import {
   externalSshLaunchSourceLabel,
   resolveExternalSshLaunchUsername,
@@ -11,7 +13,7 @@ import {
 
 interface ExternalLaunchResolutionDialogProps {
   busy?: boolean;
-  error?: string | null;
+  error?: UserFacingMessage | null;
   launch: ExternalSshLaunchRequest | null;
   onCancel: () => void;
   onResolve: (
@@ -106,17 +108,17 @@ export function ExternalLaunchResolutionDialog({
           />
         </label>
 
-        {validationMessage || error ? (
+        {error ? (
+          <UserFacingNotice compact message={error} />
+        ) : validationMessage ? (
           <p
             className={cn(
               "text-xs leading-5",
-              error
-                ? "text-rose-600 dark:text-rose-300"
-                : "text-amber-600 dark:text-amber-300",
+              "text-amber-600 dark:text-amber-300",
             )}
             role="alert"
           >
-            {error ?? validationMessage}
+            {validationMessage}
           </p>
         ) : null}
       </form>

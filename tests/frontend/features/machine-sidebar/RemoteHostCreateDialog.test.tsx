@@ -30,7 +30,8 @@ vi.mock("../../../../src/lib/fileDialogApi", () => ({
 }));
 
 vi.mock("../../../../src/lib/remoteHostApi", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../../src/lib/remoteHostApi")>();
+  const actual =
+    await importOriginal<typeof import("../../../../src/lib/remoteHostApi")>();
   return {
     ...actual,
     revealRemoteHostCredential: vi.fn(),
@@ -138,6 +139,37 @@ describe("RemoteHostCreateDialog", () => {
     expect(screen.getByLabelText("私钥内容")).toHaveValue("");
   });
 
+  it("does not expose private key picker failures", async () => {
+    const user = userEvent.setup();
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    fileDialogApiMock.selectLocalFile.mockRejectedValueOnce(
+      new Error("private_key_dialog_failed token=private-key-picker-secret"),
+    );
+
+    render(
+      <RemoteHostCreateDialog
+        defaultMode="ssh"
+        groups={groups}
+        onClose={vi.fn()}
+        onCreateHost={vi.fn()}
+        open
+      />,
+    );
+
+    await chooseSelectOption(user, "认证方式", "密钥");
+    await user.click(
+      screen.getByRole("button", { name: "Choose private key file" }),
+    );
+
+    expect(await screen.findByText("无法选择私钥文件，请重试。")).toBeVisible();
+    expect(screen.queryByText(/private_key_dialog_failed/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/private-key-picker-secret/),
+    ).not.toBeInTheDocument();
+    expect(warning).toHaveBeenCalled();
+    warning.mockRestore();
+  });
+
   it("shows SSH authentication methods as password, key, then SSH agent", async () => {
     const user = userEvent.setup();
 
@@ -230,6 +262,43 @@ describe("RemoteHostCreateDialog", () => {
     expect(successMessage).toBeInTheDocument();
     expect(successMessage.closest("footer")).not.toBeNull();
     expect(onCreateHost).not.toHaveBeenCalled();
+  });
+
+  it("keeps raw connection failures collapsed behind a recovery message", async () => {
+    const user = userEvent.setup();
+    vi.mocked(testRemoteConnection).mockRejectedValueOnce(
+      new Error(
+        "ssh_channel_open_failed credential_broker token=host-internal-secret",
+      ),
+    );
+
+    render(
+      <RemoteHostCreateDialog
+        defaultMode="ssh"
+        groups={groups}
+        onClose={vi.fn()}
+        onCreateHost={vi.fn()}
+        open
+      />,
+    );
+
+    await user.type(screen.getByLabelText("名称"), "test-dev");
+    await user.type(screen.getByLabelText("主机"), "127.0.0.1");
+    await user.type(screen.getByLabelText("用户名"), "root");
+    await chooseSelectOption(user, "认证方式", "SSH Agent");
+    await user.click(screen.getByRole("button", { name: "测试连接" }));
+
+    expect(await screen.findByText("连接测试失败")).toBeVisible();
+    expect(
+      screen.getByText("请检查地址、网络和认证信息后重试。"),
+    ).toBeVisible();
+    const technicalDetail = screen.getByText(/ssh_channel_open_failed/);
+    expect(technicalDetail.closest("details")).not.toHaveAttribute("open");
+    expect(screen.queryByText(/host-internal-secret/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByText("技术详情"));
+
+    expect(technicalDetail.closest("details")).toHaveAttribute("open");
   });
 
   it("passes plaintext password secrets for SSH authentication", async () => {
@@ -494,6 +563,15 @@ describe("RemoteHostCreateDialog", () => {
     expect(
       screen.queryByText("SSH 密码和内联私钥会保存在主机记录里。"),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("新增本地、SSH、RDP、Telnet 或 Serial 连接。"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("密码明文保存，编辑时显示。"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("密码保存在凭据保险箱中，编辑时可回显。"),
+    ).toBeInTheDocument();
     const protocolBar = screen.getByRole("button", {
       name: "SSH",
     }).parentElement;
@@ -504,8 +582,8 @@ describe("RemoteHostCreateDialog", () => {
     ).toEqual(["SSH", "Local", "RDP", "Telnet", "Serial"]);
     expect(screen.getByLabelText("标签")).toHaveValue("");
     expect(
-      screen.getByText("多个标签可用逗号或空格分隔。"),
-    ).toBeInTheDocument();
+      screen.queryByText("多个标签可用逗号或空格分隔。"),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("保存后显示在左侧。")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("生产保护")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Telnet" })).toBeInTheDocument();
@@ -530,6 +608,9 @@ describe("RemoteHostCreateDialog", () => {
     await user.click(screen.getByRole("button", { name: "RDP" }));
 
     expect(screen.getByRole("button", { name: "显示" })).toBeInTheDocument();
+    expect(
+      screen.getByText("密码保存在凭据保险箱中，编辑时可回显。"),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "网关" }),
     ).not.toBeInTheDocument();
@@ -882,9 +963,11 @@ describe("RemoteHostCreateDialog", () => {
     );
 
     expect(screen.getByLabelText("名称")).toHaveValue("draft-name");
-    const conflictAlert = screen.getByRole("alert");
-    expect(conflictAlert).toHaveTextContent(conflictMessage);
-    expect(conflictAlert.closest("footer")).not.toBeNull();
+    const conflictNotice = screen.getByRole("status");
+    expect(conflictNotice).toHaveTextContent("连接配置已在外部更新");
+    const technicalDetail = screen.getByText(conflictMessage);
+    expect(technicalDetail.closest("details")).not.toHaveAttribute("open");
+    expect(conflictNotice.closest("footer")).not.toBeNull();
     expect(screen.getByRole("button", { name: "确认" })).toBeDisabled();
     expect(onUpdateHost).not.toHaveBeenCalled();
   });
@@ -994,7 +1077,9 @@ describe("RemoteHostCreateDialog", () => {
 
     const passwordInput = screen.getByLabelText("密码");
     expect(passwordInput).toHaveAttribute("type", "text");
-    await waitFor(() => expect(passwordInput).toHaveValue("visible-rdp-secret"));
+    await waitFor(() =>
+      expect(passwordInput).toHaveValue("visible-rdp-secret"),
+    );
 
     await user.clear(passwordInput);
     await user.type(passwordInput, "next-rdp-secret");
@@ -1068,6 +1153,35 @@ describe("RemoteHostCreateDialog", () => {
       tags: ["rdp"],
       username: "administrator",
     });
+  });
+
+  it("does not expose file picker failures in the local connection dialog", async () => {
+    const user = userEvent.setup();
+    const warning = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
+    fileDialogApiMock.selectLocalDirectory.mockRejectedValueOnce(
+      new Error("dialog_backend_failed token=local-picker-secret"),
+    );
+
+    render(
+      <RemoteHostCreateDialog
+        defaultMode="local"
+        groups={groups}
+        onClose={vi.fn()}
+        onCreateHost={vi.fn()}
+        onCreateLocal={vi.fn()}
+        open
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "选择工作目录" }));
+
+    expect(await screen.findByText("无法选择工作目录，请重试。")).toBeVisible();
+    expect(screen.queryByText(/dialog_backend_failed/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/local-picker-secret/)).not.toBeInTheDocument();
+    expect(warning).toHaveBeenCalled();
+    warning.mockRestore();
   });
 
   it("creates a group from the RDP form and keeps the form values", async () => {

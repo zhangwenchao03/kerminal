@@ -485,7 +485,7 @@ describe("ToolPanel", () => {
     );
 
     expect(await screen.findByText("tmux 3.4")).toBeInTheDocument();
-    expect(screen.getByText("no sessions")).toBeInTheDocument();
+    expect(screen.getByText("暂无会话")).toBeInTheDocument();
   });
 
   it("shows the log export action on the logs title row", async () => {
@@ -503,6 +503,12 @@ describe("ToolPanel", () => {
     const logsTitle = screen.getByRole("heading", { name: "日志" });
     const header = logsTitle.closest("header");
     expect(header).toBeInTheDocument();
+    expect(screen.queryByText("当前工具")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        tools.find((tool) => tool.id === "logs")?.description ?? "",
+      ),
+    ).not.toBeInTheDocument();
     const createBundleButton = within(header as HTMLElement).getByRole(
       "button",
       { name: "导出日志" },
@@ -571,6 +577,27 @@ describe("ToolPanel", () => {
     expect(serverInfoApiMocks.getServerInfoSnapshot).not.toHaveBeenCalled();
   });
 
+  it("keeps local runtime failures behind technical details", async () => {
+    diagnosticsApiMocks.getRuntimeHealthSnapshot.mockRejectedValueOnce(
+      new Error("snapshot failed: token=secret"),
+    );
+
+    render(
+      <ToolPanel
+        activeTool="system"
+        activeMachine={localMachine}
+        onActiveToolChange={vi.fn()}
+        tools={tools}
+      />,
+    );
+
+    expect(await screen.findByText("无法读取运行状态")).toBeVisible();
+    const technicalDetail = screen.getByText(/snapshot failed/);
+    expect(technicalDetail).not.toBeVisible();
+    expect(technicalDetail).not.toHaveTextContent("token=secret");
+    expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
+  });
+
   it("loads and refreshes system metrics for the active SSH host", async () => {
     const user = userEvent.setup();
 
@@ -591,8 +618,18 @@ describe("ToolPanel", () => {
     expect(screen.getAllByText("CPU").length).toBeGreaterThan(0);
     expect(screen.getAllByText("GPU").length).toBeGreaterThan(0);
     expect(screen.getAllByText("内存").length).toBeGreaterThan(0);
-    expect(screen.getByText("磁盘")).toBeInTheDocument();
+    expect(screen.getAllByText("磁盘").length).toBeGreaterThan(0);
     expect(screen.getByText("进程")).toBeInTheDocument();
+    const systemDetailsSummary = screen.getByText("系统详情");
+    const systemDetails = systemDetailsSummary.closest("details");
+    expect(systemDetails).not.toBeNull();
+    expect(
+      within(systemDetails as HTMLElement).getByText("6.8.0"),
+    ).not.toBeVisible();
+    await user.click(systemDetailsSummary);
+    expect(
+      within(systemDetails as HTMLElement).getByText("6.8.0"),
+    ).toBeVisible();
     const intervalSelect = screen.getByRole("combobox", {
       name: "服务器信息采集间隔",
     });
@@ -932,7 +969,7 @@ describe("ToolPanel", () => {
       />,
     );
 
-    expect(await screen.findByText("0 张")).toBeInTheDocument();
+    expect((await screen.findAllByText("0 张")).length).toBeGreaterThan(0);
     expect(screen.getByText("0 张显卡")).toBeInTheDocument();
     const gpuToggle = screen.getByRole("button", { name: "展开GPU详情" });
     await userEvent.click(gpuToggle);

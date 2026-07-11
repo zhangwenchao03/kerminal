@@ -1,0 +1,154 @@
+schema_version = 1
+command = "git"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Distributed version control command line"
+tested_version = "2.50"
+owner = "kerminal"
+updated_at = "2026-07-10"
+
+[source]
+name = "Git reference"
+url = "https://git-scm.com/docs"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "add"
+description = "Add file contents to the index"
+
+[[subcommands]]
+name = "branch"
+description = "List or manage branches"
+
+[[subcommands]]
+name = "checkout"
+description = "Switch branches or restore files"
+
+[[subcommands]]
+name = "cherry-pick"
+description = "Apply commits from another branch"
+
+[[subcommands]]
+name = "clone"
+description = "Clone a repository"
+
+[[subcommands]]
+name = "commit"
+description = "Record changes"
+
+[[subcommands]]
+name = "diff"
+description = "Show changes"
+
+[[subcommands]]
+name = "fetch"
+description = "Download refs and objects"
+
+[[subcommands]]
+name = "log"
+description = "Show commit history"
+
+[[subcommands]]
+name = "merge"
+description = "Join development histories"
+
+[[subcommands]]
+name = "pull"
+description = "Fetch and integrate changes"
+
+[[subcommands]]
+name = "push"
+description = "Update remote refs"
+
+[[subcommands]]
+name = "rebase"
+description = "Reapply commits on another base"
+
+[[subcommands]]
+name = "remote"
+description = "Manage tracked repositories"
+
+[[subcommands]]
+name = "restore"
+description = "Restore working tree files"
+
+[[subcommands]]
+name = "show"
+description = "Show Git objects"
+
+[[subcommands]]
+name = "stash"
+description = "Stash working tree changes"
+
+[[subcommands]]
+name = "status"
+description = "Show working tree status"
+
+[[subcommands]]
+name = "switch"
+description = "Switch branches"
+
+[[subcommands]]
+name = "tag"
+description = "Create or list tags"
+
+[[options]]
+name = "--all"
+description = "Include all matching refs or entries"
+
+[[options]]
+name = "--amend"
+description = "Replace the tip commit"
+
+[[options]]
+name = "--cached"
+description = "Operate on staged content"
+
+[[options]]
+name = "--force-with-lease"
+description = "Force push only when the remote ref is expected"
+
+[[options]]
+name = "--global"
+description = "Use global configuration scope"
+
+[[options]]
+name = "--hard"
+description = "Use hard reset or checkout semantics"
+
+[options.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "Hard operations can discard uncommitted working tree changes"
+
+[[options]]
+name = "--message"
+description = "Provide a commit message"
+
+[options.argument]
+kind = "string"
+placeholder = "MESSAGE"
+
+[[options]]
+name = "--oneline"
+description = "Use compact one-line output"
+
+[[options]]
+name = "--patch"
+description = "Select or display changes as patches"
+
+[[options]]
+name = "--quiet"
+description = "Suppress non-error output"
+
+[[options]]
+name = "--rebase"
+description = "Rebase instead of merging when pulling"
+
+[[options]]
+name = "--set-upstream"
+description = "Set upstream tracking information"

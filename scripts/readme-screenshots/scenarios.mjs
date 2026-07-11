@@ -9,6 +9,7 @@ import {
 } from "./helpers.mjs";
 
 export const captures = [
+  { name: "kerminal-agent-session.png", setup: captureAgentSessionRestore },
   { name: "kerminal-hero.png", setup: captureHero },
   { name: "kerminal-connect.png", setup: captureConnectDialog },
   { name: "kerminal-external-launch.png", setup: captureExternalLaunch },
@@ -25,8 +26,34 @@ export const captures = [
 async function captureHero(client) {
   await waitForBrowserExpression(
     client,
+    `document.querySelector('[aria-label="prod-api xterm 终端"]') !== null && document.querySelector('[data-testid="agent-restore-target-chip"]') !== null`,
+    120_000,
+  );
+  await clickTextButtonContaining(client, "继续上次");
+  await waitForBrowserExpression(
+    client,
+    `document.querySelector('[data-testid="agent-terminal-command"]') !== null && document.body.innerText.includes("Codex")`,
+    20_000,
+  );
+}
+
+async function captureAgentSessionRestore(client) {
+  await waitForBrowserExpression(
+    client,
     `document.querySelector('[aria-label="prod-api xterm 终端"]') !== null`,
     120_000,
+  );
+  await clickSelector(client, `[aria-label="打开 Agent Launcher"]`);
+  await waitForBrowserExpression(
+    client,
+    `document.querySelector('[aria-label="Open Codex"]') !== null && document.querySelector('[aria-label="Open Claude"]') !== null`,
+    30_000,
+  );
+  await clickSelector(client, `[aria-label="Open Codex"]`);
+  await waitForBrowserExpression(
+    client,
+    `document.querySelector('[data-testid="agent-restore-target-chip"]') !== null && document.body.innerText.includes("继续上次")`,
+    30_000,
   );
 }
 
@@ -50,7 +77,7 @@ async function captureExternalLaunch(client) {
   await clickSelector(client, `[aria-controls="settings-external-launch-panel"]`);
   await waitForBrowserExpression(
     client,
-    `document.body.innerText.includes("外部 SSH 启动") && document.body.innerText.includes("PuTTY / MobaXterm / Xshell / SecureCRT")`,
+    `document.querySelector("#settings-external-launch-panel") !== null && document.body.innerText.includes("启用外部 SSH 启动")`,
     20_000,
   );
 }
@@ -89,7 +116,7 @@ async function captureServerInfo(client) {
   await clickSelector(client, `[aria-label="打开 系统"]`);
   await waitForBrowserExpression(
     client,
-    `document.body.innerText.includes("GPU") && document.body.innerText.includes("2 张显卡")`,
+    `document.querySelector('[aria-label="展开GPU详情"]') !== null`,
     30_000,
   );
   await clickSelector(client, `[aria-label="展开GPU详情"]`);
@@ -104,8 +131,20 @@ async function captureAgentLauncher(client) {
   await clickSelector(client, `[aria-label="打开 Agent Launcher"]`);
   await waitForBrowserExpression(
     client,
-    `document.querySelector('[aria-label="Open Codex"]') !== null && document.querySelector('[aria-label="Open Claude"]') !== null`,
+    `document.querySelector('[aria-label="Back to agent launcher"]') !== null`,
     30_000,
+  );
+  await clickSelector(client, `[aria-label="Back to agent launcher"]`);
+  await waitForBrowserExpression(
+    client,
+    `document.querySelector('[aria-label="Open Codex"]')?.closest('[aria-hidden]')?.getAttribute('aria-hidden') === 'false' && document.querySelector('[aria-label="Open Claude"]')?.closest('[aria-hidden]')?.getAttribute('aria-hidden') === 'false'`,
+    30_000,
+  );
+  await clickSelector(client, `[aria-label="查看 Agent 技术详情"]`);
+  await waitForBrowserExpression(
+    client,
+    `document.querySelector('[aria-label="Agent 技术详情"]') !== null && document.querySelector('[aria-label="Agent 技术详情"]')?.closest('[aria-hidden]')?.getAttribute('aria-hidden') === 'false' && document.body.innerText.includes("MCP: running")`,
+    20_000,
   );
 }
 
@@ -113,7 +152,7 @@ async function captureTmux(client) {
   await clickSelector(client, `[aria-label="打开 tmux"]`);
   await waitForBrowserExpression(
     client,
-    `document.body.innerText.includes("release-watch") && document.body.innerText.includes("tmux 3.5a")`,
+    `document.body.innerText.includes("release-watch") && document.querySelector('[aria-label="展开快捷命令"]') !== null`,
     30_000,
   );
 }

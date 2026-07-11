@@ -89,13 +89,13 @@ impl CommandSqliteStore {
         })
     }
 
-    /// 读取未过期的命令建议 provider cache；过期记录不会返回。
+    /// 读取晚于调用方保留边界的 provider cache；是否 stale 由业务层判定。
     pub(crate) fn command_suggestion_provider_cache_entry(
         &self,
         provider: SuggestionProviderKind,
         host_id: &str,
         scope_key: &str,
-        now_unix_ms: i64,
+        retention_cutoff_unix_ms: i64,
     ) -> AppResult<Option<CommandSuggestionProviderCacheRow>> {
         self.with_connection(|conn| {
             Ok(conn
@@ -109,7 +109,12 @@ impl CommandSqliteStore {
                       AND scope_key = ?3
                       AND expires_at_unix_ms > ?4
                     ",
-                    params![provider.as_str(), host_id, scope_key, now_unix_ms],
+                    params![
+                        provider.as_str(),
+                        host_id,
+                        scope_key,
+                        retention_cutoff_unix_ms
+                    ],
                     provider_cache_from_row,
                 )
                 .optional()?)

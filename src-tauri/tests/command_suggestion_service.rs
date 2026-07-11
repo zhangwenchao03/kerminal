@@ -27,6 +27,8 @@ use kerminal_lib::{
 use rusqlite::{params, Connection};
 use tempfile::{tempdir, TempDir};
 
+#[path = "command_suggestion_service/contract.rs"]
+mod contract;
 #[path = "command_suggestion_service/diagnostics_cleanup.rs"]
 mod diagnostics_cleanup;
 #[path = "command_suggestion_service/history_feedback.rs"]

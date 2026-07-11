@@ -16,6 +16,7 @@ import {
   type FocusEvent,
 } from "react";
 import { Button } from "../../components/ui/button";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
 import { defaultDesktopNotificationSettings } from "../settings/settingsDefaults";
 import type {
@@ -36,9 +37,7 @@ import {
   type SftpWorkbenchLocalClipboard,
 } from "./sftpTransferClipboardModel";
 import {
-  activeTransferCount,
   canClearFinishedTransfers,
-  isFinishedTransfer,
 } from "./sftpTransferModel";
 import {
   collectSshMachines,
@@ -54,7 +53,10 @@ import {
 } from "./sftpTransferWorkbenchModel";
 import { useSftpManagedTransferQueue } from "./useSftpManagedTransferQueue";
 import { useSftpTransferNotifications } from "./useSftpTransferNotifications";
-import { useSftpTransferQueueSync } from "./useSftpTransferQueueSync";
+import {
+  buildSftpTransferQueueError,
+  useSftpTransferQueueSync,
+} from "./useSftpTransferQueueSync";
 
 function hostIdentity(machine: Machine) {
   if (machine.kind !== "ssh") {
@@ -268,14 +270,18 @@ export function SftpTransferWorkbench({
     addRightHostTab(createdHostTarget.hostId);
   }, [createdHostTarget, machinesById, workspaceTabId]);
 
-  const { cancelTransfer, clearFinishedTransfers } = useSftpManagedTransferQueue({
-    onCancelSuccess: clearQueueError,
-    onClearSuccess: clearQueueError,
-    onError: (error) =>
-      setQueueError(error instanceof Error ? error.message : String(error)),
-    setTransfers,
-    viewScope: transferViewScope,
-  });
+  const { cancelTransfer, clearFinishedTransfers, retryTransfer } =
+    useSftpManagedTransferQueue({
+      onCancelSuccess: clearQueueError,
+      onClearSuccess: clearQueueError,
+      onError: (error) => setQueueError(buildSftpTransferQueueError(error)),
+      onRetrySuccess: clearQueueError,
+      onRetryUnavailable: (message) =>
+        setQueueError(buildSftpTransferQueueError(message)),
+      refreshTransfers,
+      setTransfers,
+      viewScope: transferViewScope,
+    });
 
   const updateRightPath = useCallback((tabId: string, path: string) => {
     setRightCurrentPaths((current) =>
@@ -357,8 +363,6 @@ export function SftpTransferWorkbench({
         : undefined,
     [rightCurrentPath, rightMachine],
   );
-  const activeCount = activeTransferCount(transfers);
-  const finishedCount = transfers.filter(isFinishedTransfer).length;
   const canClearTransfers = canClearFinishedTransfers(transfers);
   const compactDensity = interfaceDensity === "compact";
   const spaciousDensity = interfaceDensity === "spacious";
@@ -377,7 +381,11 @@ export function SftpTransferWorkbench({
     : spaciousDensity
       ? "h-10 w-10 rounded-2xl"
       : "h-9 w-9 rounded-xl";
-  const headerButtonClass = compactDensity ? "h-8 rounded-lg px-2 text-xs" : "";
+  const headerActionClass = compactDensity
+    ? "h-8 w-8 rounded-lg"
+    : spaciousDensity
+      ? "h-10 w-10 rounded-xl"
+      : "h-9 w-9 rounded-lg";
 
   return (
     <section
@@ -399,36 +407,33 @@ export function SftpTransferWorkbench({
           >
             <ArrowLeftRight className="h-4 w-4" />
           </span>
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-              SFTP 传输
-            </h2>
-            <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
-              {activeCount} 项进行中 / {finishedCount} 项已结束
-            </p>
-          </div>
+          <h2 className="truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+            SFTP 传输
+          </h2>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button
-            className={headerButtonClass}
+            aria-label="刷新传输队列"
+            className={headerActionClass}
             onClick={refreshTransfers}
-            size="sm"
+            size="icon"
+            title="刷新传输队列"
             type="button"
             variant="ghost"
           >
             <RefreshCw className="h-4 w-4" />
-            刷新
           </Button>
           <Button
-            className={headerButtonClass}
+            aria-label="清理完成的传输"
+            className={headerActionClass}
             disabled={!canClearTransfers}
             onClick={() => void clearFinishedTransfers()}
-            size="sm"
+            size="icon"
+            title="清理完成的传输"
             type="button"
             variant="ghost"
           >
             <Trash2 className="h-4 w-4" />
-            清理
           </Button>
         </div>
       </header>
@@ -481,9 +486,15 @@ export function SftpTransferWorkbench({
         />
       </div>
 
+      {queueError ? (
+        <div className="shrink-0 border-t border-[var(--border-subtle)] p-3">
+          <UserFacingNotice compact message={queueError} />
+        </div>
+      ) : null}
       <SftpTransferQueuePanel
-        error={queueError}
+        error={null}
         onCancel={(transferId) => void cancelTransfer(transferId)}
+        onRetry={(transfer) => void retryTransfer(transfer)}
         transfers={transfers}
       />
     </section>
@@ -541,21 +552,11 @@ function LeftPane({
 }) {
   const compactDensity = interfaceDensity === "compact";
   const spaciousDensity = interfaceDensity === "spacious";
-  const paneGapClass = compactDensity
-    ? "gap-1.5"
-    : spaciousDensity
-      ? "gap-3"
-      : "gap-2";
-  const paneHeaderPaddingClass = compactDensity
+  const targetBarPaddingClass = compactDensity
     ? "px-2.5 py-1.5"
     : spaciousDensity
-      ? "px-4 py-3"
-      : "px-3 py-2";
-  const tabStripPaddingClass = compactDensity
-    ? "px-1.5 py-1"
-    : spaciousDensity
       ? "px-3 py-2"
-      : "px-2 py-1.5";
+      : "px-3 py-2";
   const localTabButtonClass = compactDensity
     ? "h-7 rounded-lg px-2"
     : spaciousDensity
@@ -563,25 +564,42 @@ function LeftPane({
       : "h-8 rounded-lg px-2";
 
   return (
-    <div
-      className={cn(
-        "flex h-full min-h-0 flex-col overflow-hidden",
-        paneGapClass,
-      )}
-    >
+    <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
       <div
+        aria-label="左侧目标"
         className={cn(
-          "kerminal-muted-surface flex shrink-0 items-center justify-between gap-2 rounded-xl border",
-          paneHeaderPaddingClass,
+          "kerminal-muted-surface flex shrink-0 items-center gap-2 rounded-xl border",
+          targetBarPaddingClass,
         )}
       >
-        <div className="min-w-0">
-          <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">
-            左侧目标
-          </div>
-          <div className="truncate text-[11px] text-zinc-500 dark:text-zinc-400">
-            本机或 SSH 服务器
-          </div>
+        <div className="scrollbar-none flex min-w-0 flex-1 gap-1 overflow-x-auto">
+          <button
+            aria-pressed={localActive}
+            className={cn(
+              "kerminal-focus-ring kerminal-pressable flex max-w-[180px] items-center gap-1.5 text-xs transition",
+              localTabButtonClass,
+              localActive
+                ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
+                : "text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-100",
+            )}
+            onClick={onActivateLocal}
+            title="本机"
+            type="button"
+          >
+            <HardDrive className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">本机</span>
+          </button>
+          {hostTabs.map((tab) => (
+            <HostTabButton
+              active={tab.id === activeTabId}
+              interfaceDensity={interfaceDensity}
+              key={tab.id}
+              machine={machinesById.get(tab.hostId)}
+              onActivate={() => onActiveTabChange(tab.id)}
+              onClose={() => onCloseTab(tab.id)}
+              tab={tab}
+            />
+          ))}
         </div>
         <SearchableSftpHostSelect
           ariaLabel="添加左侧服务器"
@@ -593,41 +611,6 @@ function LeftPane({
           onCreateSshHost={onCreateSshHost}
           side="left"
         />
-      </div>
-
-      <div
-        className={cn(
-          "kerminal-muted-surface scrollbar-none flex shrink-0 gap-1 overflow-x-auto rounded-xl border",
-          tabStripPaddingClass,
-        )}
-      >
-        <button
-          aria-pressed={localActive}
-          className={cn(
-            "kerminal-focus-ring kerminal-pressable flex max-w-[180px] items-center gap-1.5 text-xs transition",
-            localTabButtonClass,
-            localActive
-              ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
-              : "text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-100",
-          )}
-          onClick={onActivateLocal}
-          title="本机"
-          type="button"
-        >
-          <HardDrive className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">本机</span>
-        </button>
-        {hostTabs.map((tab) => (
-          <HostTabButton
-            active={tab.id === activeTabId}
-            interfaceDensity={interfaceDensity}
-            key={tab.id}
-            machine={machinesById.get(tab.hostId)}
-            onActivate={() => onActiveTabChange(tab.id)}
-            onClose={() => onCloseTab(tab.id)}
-            tab={tab}
-          />
-        ))}
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden">
@@ -703,36 +686,36 @@ function HostPane({
   transferTarget?: SftpTransferTarget;
   transferViewScope: string;
 }) {
-  const selectedMachine = activeTab ? machinesById.get(activeTab.hostId) : undefined;
   const availableMachines = machines;
   const compactDensity = interfaceDensity === "compact";
   const spaciousDensity = interfaceDensity === "spacious";
-  const paneHeaderPaddingClass = compactDensity
+  const targetBarPaddingClass = compactDensity
     ? "px-2.5 py-1.5"
     : spaciousDensity
-      ? "px-4 py-3"
-      : "px-3 py-2";
-  const tabStripPaddingClass = compactDensity
-    ? "px-1.5 py-1"
-    : spaciousDensity
       ? "px-3 py-2"
-      : "px-2 py-1.5";
+      : "px-3 py-2";
 
   return (
     <div className="kerminal-muted-surface flex min-h-0 flex-col overflow-hidden rounded-xl border">
       <div
+        aria-label={title}
         className={cn(
-          "flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border-subtle)]",
-          paneHeaderPaddingClass,
+          "flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)]",
+          targetBarPaddingClass,
         )}
       >
-        <div className="min-w-0">
-          <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">
-            {title}
-          </div>
-          <div className="truncate text-[11px] text-zinc-500 dark:text-zinc-400">
-            {selectedMachine?.description ?? "未选择主机"}
-          </div>
+        <div className="scrollbar-none flex min-w-0 flex-1 gap-1 overflow-x-auto">
+          {hostTabs.map((tab) => (
+            <HostTabButton
+              active={tab.id === activeTabId}
+              interfaceDensity={interfaceDensity}
+              key={tab.id}
+              machine={machinesById.get(tab.hostId)}
+              onActivate={() => onActiveTabChange(tab.id)}
+              onClose={() => onCloseTab(tab.id)}
+              tab={tab}
+            />
+          ))}
         </div>
         <SearchableSftpHostSelect
           ariaLabel={`添加${title}`}
@@ -744,25 +727,6 @@ function HostPane({
           onCreateSshHost={onCreateSshHost}
           side={side}
         />
-      </div>
-
-      <div
-        className={cn(
-          "scrollbar-none flex shrink-0 gap-1 overflow-x-auto border-b border-[var(--border-subtle)]",
-          tabStripPaddingClass,
-        )}
-      >
-        {hostTabs.map((tab) => (
-          <HostTabButton
-            active={tab.id === activeTabId}
-            interfaceDensity={interfaceDensity}
-            key={tab.id}
-            machine={machinesById.get(tab.hostId)}
-            onActivate={() => onActiveTabChange(tab.id)}
-            onClose={() => onCloseTab(tab.id)}
-            tab={tab}
-          />
-        ))}
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden">

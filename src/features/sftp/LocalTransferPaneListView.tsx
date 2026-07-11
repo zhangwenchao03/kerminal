@@ -5,25 +5,20 @@
  */
 
 import type { MouseEvent as ReactMouseEvent } from "react";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
 import type { LocalDirectoryEntry, LocalDirectoryListing } from "../../lib/fileDialogApi";
+import { buildUserFacingError } from "../../lib/userFacingMessage";
 import { FixedRowVirtualList } from "./FixedRowVirtualList";
 import { LocalDirectoryEntryRow } from "./LocalDirectoryEntryRow";
 import type { LocalDirectoryEntryFilter } from "./localTransferPaneModel";
 
-interface LocalDirectorySummaryCounts {
-  directoryCount: number;
-  fileCount: number;
-}
-
 export function LocalTransferPaneListView({
   bodyPaddingClass,
   compactDensity,
-  directorySummary,
   entryFilter,
   error,
   fileRowHeight,
-  hiddenEntryCount,
   listHeaderPaddingClass,
   listing,
   loading,
@@ -31,7 +26,6 @@ export function LocalTransferPaneListView({
   onOpenContextMenu,
   onOpenFile,
   onSelectEntry,
-  paneHeaderPaddingClass,
   selectedEntries,
   selectedEntryPaths,
   showHiddenEntries,
@@ -39,11 +33,9 @@ export function LocalTransferPaneListView({
 }: {
   bodyPaddingClass: string;
   compactDensity: boolean;
-  directorySummary: LocalDirectorySummaryCounts;
   entryFilter: LocalDirectoryEntryFilter;
   error: string | null;
   fileRowHeight: number;
-  hiddenEntryCount: number;
   listHeaderPaddingClass: string;
   listing: LocalDirectoryListing | null;
   loading: boolean;
@@ -57,7 +49,6 @@ export function LocalTransferPaneListView({
     entry: LocalDirectoryEntry,
     event: ReactMouseEvent,
   ) => void;
-  paneHeaderPaddingClass: string;
   selectedEntries: LocalDirectoryEntry[];
   selectedEntryPaths: Set<string>;
   showHiddenEntries: boolean;
@@ -71,29 +62,6 @@ export function LocalTransferPaneListView({
           compactDensity ? "rounded-xl" : "rounded-2xl",
         )}
       >
-        <div
-          className={cn(
-            "flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)]",
-            paneHeaderPaddingClass,
-          )}
-        >
-          <div>
-            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-              本地目录
-            </div>
-            <div className="mt-0.5 text-xs text-zinc-500">
-              {directorySummary.directoryCount} 目录 / {directorySummary.fileCount} 文件
-              {!showHiddenEntries && hiddenEntryCount > 0
-                ? ` / 已隐藏 ${hiddenEntryCount}`
-                : ""}
-            </div>
-          </div>
-          {error ? null : (
-            <span className="kerminal-muted-surface rounded-lg border px-2 py-1 text-xs text-zinc-500 dark:text-zinc-400">
-              {listing ? "已就绪" : "等待中"}
-            </span>
-          )}
-        </div>
         <div className="min-h-0 flex-1 overflow-hidden">
           {loading ? (
             <div
@@ -104,12 +72,15 @@ export function LocalTransferPaneListView({
             </div>
           ) : null}
           {error ? (
-            <div
-              className="m-3 rounded-xl border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100"
-              role="alert"
-            >
-              {error}
-            </div>
+            <UserFacingNotice
+              className="m-3"
+              compact
+              message={buildUserFacingError(error, {
+                detail: "本地目录内容可能尚未更新。",
+                recoveryAction: "请检查路径、权限或文件占用后重试。",
+                title: "本地文件操作未完成",
+              })}
+            />
           ) : null}
           {!loading && !error && listing && visibleEntries.length === 0 ? (
             <div className="kerminal-muted-surface m-3 rounded-xl border px-3 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">

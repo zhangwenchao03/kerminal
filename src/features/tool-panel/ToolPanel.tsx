@@ -202,6 +202,8 @@ export function ToolPanel({
             const selected = toolId === contentTool;
             const fullHeightTool =
               toolId === "agentLauncher" || toolId === "sftp";
+            const contentOwnsHeader =
+              toolId === "system" || toolId === "ports" || toolId === "tmux";
             return (
               <div
                 aria-hidden={!selected}
@@ -214,24 +216,14 @@ export function ToolPanel({
                 hidden={!selected}
                 key={toolId}
               >
-                {fullHeightTool ? null : (
-                  <header className="mb-4">
-                    <p className="text-xs font-medium uppercase tracking-normal text-zinc-500">
-                      当前工具
-                    </p>
-                    <div className="mt-1 flex items-center justify-between gap-3">
-                      <h2 className="min-w-0 text-lg font-semibold text-zinc-950 dark:text-zinc-50">
-                        {tool.title}
-                      </h2>
-                      {toolId === "logs" ? (
-                        <DiagnosticsBundleButton
-                          controller={diagnosticsBundle}
-                        />
-                      ) : null}
-                    </div>
-                    <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                      {tool.description}
-                    </p>
+                {fullHeightTool || contentOwnsHeader ? null : (
+                  <header className="mb-3 flex items-center justify-between gap-3">
+                    <h2 className="min-w-0 text-lg font-semibold text-zinc-950 dark:text-zinc-50">
+                      {tool.title}
+                    </h2>
+                    {toolId === "logs" ? (
+                      <DiagnosticsBundleButton controller={diagnosticsBundle} />
+                    ) : null}
                   </header>
                 )}
 

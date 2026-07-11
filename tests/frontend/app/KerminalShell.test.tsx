@@ -119,6 +119,11 @@ describe("KerminalShell", () => {
       updatedAt: "updated",
     }));
     mocks.dockerApi.listDockerContainers.mockResolvedValue([]);
+    mocks.connectionApi.openSavedRdpConnection.mockReset();
+    mocks.connectionApi.openSavedRdpConnection.mockResolvedValue({
+      launched: true,
+      message: "RDP launched",
+    });
     mocks.dockerApi.fetchDockerContainerStats.mockResolvedValue({
       blockIo: "0B / 0B",
       containerId: "c0ffee1234567890",
@@ -312,9 +317,6 @@ describe("KerminalShell", () => {
   it("starts without creating a local terminal when no workspace session is saved", async () => {
     render(<KerminalShell />);
 
-    expect(
-      await screen.findByText("光标还没闪，AI 已经开始脑补命令了。"),
-    ).toBeInTheDocument();
     expect(
       await findExpandedSidebarMachine(/172\.16\.41\.60/),
     ).toBeInTheDocument();
@@ -548,9 +550,12 @@ describe("KerminalShell", () => {
     });
     render(<KerminalShell />);
 
-    expect(
-      await screen.findByText("光标还没闪，AI 已经开始脑补命令了。"),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        mocks.workspaceSessionApi.saveWorkspaceSessionFile,
+      ).toHaveBeenCalled();
+    });
+    mocks.workspaceSessionApi.saveWorkspaceSessionFile.mockClear();
 
     fireEvent(window, new Event("pagehide"));
 
@@ -671,8 +676,8 @@ describe("KerminalShell", () => {
 
     const sidebar = screen.getByRole("complementary", { name: "主机侧边栏" });
     expect(
-      await within(sidebar).findByRole("heading", { name: "容器" }),
-    ).toBeInTheDocument();
+      await within(sidebar).findByRole("button", { name: "容器" }),
+    ).toHaveAttribute("aria-pressed", "true");
     expect(
       within(sidebar).getByRole("button", { name: "容器" }),
     ).toHaveAttribute("aria-pressed", "true");
@@ -695,7 +700,7 @@ describe("KerminalShell", () => {
         {},
         { timeout: 5000 },
       ),
-    ).toHaveTextContent("容器概览");
+    ).toHaveTextContent("Docker");
     expect(
       await within(sidebar).findByRole(
         "button",
@@ -943,10 +948,6 @@ describe("KerminalShell", () => {
   it("allows the right tool panel to expand to the wider resize limit", async () => {
     const user = userEvent.setup();
     const { container } = render(<KerminalShell />);
-
-    expect(
-      await screen.findByText("光标还没闪，AI 已经开始脑补命令了。"),
-    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "打开 日志" }));
 
@@ -1198,7 +1199,7 @@ describe("KerminalShell", () => {
 
     await user.clear(editor);
     await user.type(editor, "port=9090\n");
-    await user.click(screen.getByRole("button", { name: "保存" }));
+    await user.click(screen.getByRole("button", { name: "保存文件" }));
 
     await waitFor(() => {
       expect(
@@ -1436,8 +1437,17 @@ describe("KerminalShell", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("opens a saved RDP host from the sidebar without creating an SSH terminal", async () => {
+  it("shows saved RDP launch progress and ignores repeated double clicks", async () => {
+    let resolveRdpLaunch:
+      | ((result: { launched: boolean; message: string }) => void)
+      | undefined;
     mocks.remoteHostApi.listRemoteHostTree.mockResolvedValue(rdpRemoteHostTree);
+    mocks.connectionApi.openSavedRdpConnection.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRdpLaunch = resolve;
+        }),
+    );
 
     render(<KerminalShell />);
 
@@ -1445,11 +1455,48 @@ describe("KerminalShell", () => {
     fireEvent.doubleClick(hostButton);
 
     await waitFor(() => {
+      expect(hostButton).toHaveAttribute("aria-busy", "true");
+      expect(hostButton).toHaveTextContent("正在打开远程桌面...");
       expect(mocks.connectionApi.openSavedRdpConnection).toHaveBeenCalledWith(
         "rdp-office",
       );
     });
+
+    fireEvent.doubleClick(hostButton);
+    expect(mocks.connectionApi.openSavedRdpConnection).toHaveBeenCalledTimes(1);
     expect(mocks.terminalApi.createSshTerminalSession).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveRdpLaunch?.({ launched: true, message: "RDP launched" });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(hostButton).not.toHaveAttribute("aria-busy");
+      expect(hostButton).not.toHaveTextContent("正在打开远程桌面...");
+    });
+  });
+
+  it("restores the saved RDP row after launch failure", async () => {
+    mocks.remoteHostApi.listRemoteHostTree.mockResolvedValue(rdpRemoteHostTree);
+    mocks.connectionApi.openSavedRdpConnection.mockRejectedValueOnce(
+      new Error("mstsc unavailable"),
+    );
+
+    render(<KerminalShell />);
+
+    const hostButton = await findExpandedSidebarMachine(/office-rdp/);
+    fireEvent.doubleClick(hostButton);
+
+    expect(
+      await screen.findByText(
+        "RDP 连接未打开，请检查主机地址和系统远程桌面设置后重试。",
+      ),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(hostButton).not.toHaveAttribute("aria-busy");
+      expect(hostButton).not.toHaveTextContent("正在打开远程桌面...");
+    });
   });
 
   it("creates a real default group when saving an SSH host without selecting a group", async () => {

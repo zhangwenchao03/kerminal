@@ -207,17 +207,42 @@ describe("AgentLauncherToolContent", () => {
   });
 
   it("starts as three minimal launcher buttons", async () => {
-    renderAgentLauncher();
+    const user = userEvent.setup();
+    const { container } = renderAgentLauncher();
 
     expect(await screen.findByRole("button", { name: "Open Codex" })).toBeInTheDocument();
     expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+      "查看 Agent 技术详情",
       "Open Codex",
       "Open Claude",
       "Open Custom Agent",
     ]);
+    expect(await screen.findByText("可用")).toBeInTheDocument();
+    expect(screen.getAllByText("需设置")).toHaveLength(2);
+    expect(screen.getByTestId("agent-current-target")).toHaveTextContent(
+      "当前目标未绑定",
+    );
     expect(
       screen.queryByRole("textbox", { name: "Custom agent command" }),
     ).not.toBeInTheDocument();
+    expect(container.textContent).not.toMatch(
+      /config\.toml|\.mcp\.json|127\.0\.0\.1:37657|workspaceDir|pane-|session-/i,
+    );
+    for (const button of screen.getAllByRole("button")) {
+      expect(button.getAttribute("title") ?? "").not.toMatch(
+        /CLI detected|MCP config|config\.toml|\.mcp\.json|127\.0\.0\.1:37657/i,
+      );
+    }
+
+    expect(
+      screen.queryByRole("region", { name: "Agent 技术详情" }),
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "查看 Agent 技术详情" }),
+    );
+    expect(
+      screen.getByRole("region", { name: "Agent 技术详情" }),
+    ).toHaveTextContent("config.toml");
   });
 
   it("keeps the same three launchers while workspace status is loading", () => {
@@ -226,6 +251,7 @@ describe("AgentLauncherToolContent", () => {
     renderAgentLauncher();
 
     expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+      "查看 Agent 技术详情",
       "Open Codex",
       "Open Claude",
       "Open Custom Agent",
@@ -435,10 +461,17 @@ describe("AgentLauncherToolContent", () => {
           id: "pane-prod",
           mode: "ssh",
           shell: "bash",
+          title: "prod web",
         } as never}
       />,
     );
 
+    expect(await screen.findByTestId("agent-current-target")).toHaveTextContent(
+      "当前目标prod web",
+    );
+    expect(screen.getByTestId("agent-current-target")).not.toHaveTextContent(
+      /pane-prod|term-prod|tab-main/,
+    );
     await user.click(await screen.findByRole("button", { name: "Open Codex" }));
 
     await waitFor(() => {
@@ -1134,6 +1167,27 @@ describe("AgentLauncherToolContent", () => {
     await user.keyboard("{Enter}");
 
     expect(apiMocks.prepareExternalAgentWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("keeps Agent runtime failures in collapsed technical details", async () => {
+    const user = userEvent.setup();
+    apiMocks.getExternalAgentWorkspaceStatus.mockRejectedValueOnce(
+      new Error(
+        'managed session failed at C:\\private\\agent.json with "token": "agent-secret"',
+      ),
+    );
+
+    renderAgentLauncher();
+
+    expect(await screen.findByText("无法读取 Agent 状态")).toBeVisible();
+    expect(screen.getByText("请确认 Kerminal 服务可用后重试。")).toBeVisible();
+    expect(screen.getByRole("button", { name: "重试" })).toBeVisible();
+    const detail = screen.getByText(/managed session failed/);
+    expect(detail.closest("details")).not.toHaveAttribute("open");
+    expect(detail).not.toHaveTextContent("agent-secret");
+
+    await user.click(screen.getByText("技术详情"));
+    expect(detail.closest("details")).toHaveAttribute("open");
   });
 });
 

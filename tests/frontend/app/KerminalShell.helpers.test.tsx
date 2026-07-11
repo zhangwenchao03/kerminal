@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { resolveShellLayout } from "../../../src/app/KerminalShell.helpers.tsx";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import {
+  DeleteConfirmationDialog,
+  resolveShellLayout,
+} from "../../../src/app/KerminalShell.helpers.tsx";
 
 describe("resolveShellLayout", () => {
   it("fully removes the left sidebar column when collapsed", () => {
@@ -32,5 +36,30 @@ describe("resolveShellLayout", () => {
     expect(layout.gridTemplateColumns).toBe(
       "280px 0px minmax(0, 1fr) 0px 320px",
     );
+  });
+
+  it("keeps delete errors concise while preserving hidden diagnostics", () => {
+    render(
+      <DeleteConfirmationDialog
+        deleteError={{
+          detail: "本地保存的配置没有被删除。",
+          recoveryAction: "请检查配置目录权限后重试。",
+          severity: "error",
+          technicalDetail: 'permission denied password="[已隐藏]"',
+          title: "连接未删除",
+        }}
+        deleting={false}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        pendingDelete={{
+          id: "host-1",
+          title: "生产主机",
+          type: "machine",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("连接未删除")).toBeVisible();
+    expect(screen.getByText(/permission denied/)).not.toBeVisible();
   });
 });

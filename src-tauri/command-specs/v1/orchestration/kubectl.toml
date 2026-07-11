@@ -1,0 +1,174 @@
+schema_version = 1
+command = "kubectl"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Kubernetes cluster command line"
+tested_version = "1.33"
+owner = "kerminal"
+updated_at = "2026-07-10"
+
+[source]
+name = "kubectl reference"
+url = "https://kubernetes.io/docs/reference/kubectl/"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "apply"
+description = "Apply resource configuration"
+
+[[subcommands]]
+name = "config"
+description = "Manage kubeconfig"
+
+[[subcommands]]
+name = "create"
+description = "Create a resource"
+
+[[subcommands]]
+name = "delete"
+description = "Delete resources"
+
+[subcommands.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "Deleting Kubernetes resources can interrupt workloads and remove data"
+
+[[subcommands]]
+name = "describe"
+description = "Show resource details"
+
+[[subcommands]]
+name = "exec"
+description = "Run a command in a container"
+
+[[subcommands]]
+name = "get"
+description = "Display resources"
+
+[[subcommands]]
+name = "logs"
+description = "Print container logs"
+
+[[subcommands]]
+name = "port-forward"
+description = "Forward local ports to a pod"
+
+[[subcommands]]
+name = "rollout"
+description = "Manage resource rollout"
+
+[[subcommands]]
+name = "scale"
+description = "Set a resource replica count"
+
+[[subcommands]]
+name = "top"
+description = "Display resource usage"
+
+[[arguments]]
+name = "resource"
+path = ["delete"]
+description = "Kubernetes resource kind"
+kind = "enum"
+values = ["configmaps", "cronjobs", "deployments", "events", "ingress", "jobs", "namespaces", "nodes", "pods", "replicasets", "secrets", "services", "statefulsets"]
+
+[[arguments]]
+name = "resource"
+path = ["describe"]
+description = "Kubernetes resource kind"
+kind = "enum"
+values = ["configmaps", "cronjobs", "deployments", "events", "ingress", "jobs", "namespaces", "nodes", "pods", "replicasets", "secrets", "services", "statefulsets"]
+
+[[arguments]]
+name = "resource"
+path = ["exec"]
+description = "Kubernetes resource kind"
+kind = "enum"
+values = ["configmaps", "cronjobs", "deployments", "events", "ingress", "jobs", "namespaces", "nodes", "pods", "replicasets", "secrets", "services", "statefulsets"]
+
+[[arguments]]
+name = "resource"
+path = ["get"]
+description = "Kubernetes resource kind"
+kind = "enum"
+values = ["configmaps", "cronjobs", "deployments", "events", "ingress", "jobs", "namespaces", "nodes", "pods", "replicasets", "secrets", "services", "statefulsets"]
+
+[[arguments]]
+name = "resource"
+path = ["logs"]
+description = "Kubernetes resource kind"
+kind = "enum"
+values = ["configmaps", "cronjobs", "deployments", "events", "ingress", "jobs", "namespaces", "nodes", "pods", "replicasets", "secrets", "services", "statefulsets"]
+
+[[options]]
+name = "--all-namespaces"
+description = "Use all namespaces"
+
+[[options]]
+name = "--container"
+description = "Select a container"
+
+[options.argument]
+kind = "string"
+placeholder = "NAME"
+
+[[options]]
+name = "--context"
+description = "Select a kubeconfig context"
+
+[options.argument]
+kind = "string"
+placeholder = "NAME"
+
+[[options]]
+name = "--dry-run"
+description = "Preview the request"
+
+[options.argument]
+kind = "enum"
+placeholder = "MODE"
+values = ["none", "server", "client"]
+
+[[options]]
+name = "--filename"
+description = "Use a manifest file"
+
+[options.argument]
+kind = "file"
+placeholder = "FILE"
+
+[[options]]
+name = "--follow"
+description = "Follow log output"
+
+[[options]]
+name = "--namespace"
+description = "Select a namespace"
+
+[options.argument]
+kind = "string"
+placeholder = "NAME"
+
+[[options]]
+name = "--output"
+description = "Select an output format"
+
+[options.argument]
+kind = "string"
+placeholder = "FORMAT"
+
+[[options]]
+name = "--selector"
+description = "Select resources by label"
+
+[options.argument]
+kind = "string"
+placeholder = "SELECTOR"
+
+[[options]]
+name = "--watch"
+description = "Watch for changes"

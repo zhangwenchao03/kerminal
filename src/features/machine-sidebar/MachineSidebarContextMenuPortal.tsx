@@ -46,6 +46,7 @@ type MachineSidebarContextMenuPortalProps = Pick<
   contextMachine?: Machine;
   contextMenu: SidebarContextMenu | null;
   menuRef: RefObject<HTMLDivElement | null>;
+  rdpOpeningMachineIdSet: ReadonlySet<string>;
   runMenuAction: (action?: () => void) => void;
 };
 
@@ -74,6 +75,7 @@ export function MachineSidebarContextMenuPortal({
   onOpenTelnetTerminal,
   onOpenSerialTerminal,
   onPinGroup,
+  rdpOpeningMachineIdSet,
   runMenuAction,
 }: MachineSidebarContextMenuPortalProps) {
   if (!contextMenu || typeof document === "undefined") {
@@ -184,6 +186,7 @@ export function MachineSidebarContextMenuPortal({
           onOpenSftpTransferWorkbench={onOpenSftpTransferWorkbench}
           onOpenTelnetTerminal={onOpenTelnetTerminal}
           onOpenSerialTerminal={onOpenSerialTerminal}
+          rdpOpening={rdpOpeningMachineIdSet.has(contextMachine.id)}
           runMenuAction={runMenuAction}
         />
       ) : null}

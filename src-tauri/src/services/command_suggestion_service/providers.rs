@@ -184,7 +184,7 @@ impl CommandSuggestionService {
             SuggestionProviderKind::RemotePath,
             &key.host_id,
             &key.directory,
-            unix_time_millis_i64(now),
+            unix_time_millis_i64(provider_cache_retention_cutoff(now)),
         )?
         else {
             self.record_cache_result(Some(storage), SuggestionProviderKind::RemotePath, false);
@@ -232,7 +232,7 @@ impl CommandSuggestionService {
             SuggestionProviderKind::RemoteCommand,
             host_id,
             REMOTE_COMMAND_CACHE_SCOPE_KEY,
-            unix_time_millis_i64(now),
+            unix_time_millis_i64(provider_cache_retention_cutoff(now)),
         )?
         else {
             self.record_cache_result(Some(storage), SuggestionProviderKind::RemoteCommand, false);
@@ -276,7 +276,7 @@ impl CommandSuggestionService {
             SuggestionProviderKind::History,
             host_id,
             REMOTE_HISTORY_CACHE_SCOPE_KEY,
-            unix_time_millis_i64(now),
+            unix_time_millis_i64(provider_cache_retention_cutoff(now)),
         )?
         else {
             self.record_cache_result(Some(storage), SuggestionProviderKind::History, false);
@@ -318,7 +318,7 @@ impl CommandSuggestionService {
             SuggestionProviderKind::Git,
             &key.host_id,
             &key.cwd,
-            unix_time_millis_i64(now),
+            unix_time_millis_i64(provider_cache_retention_cutoff(now)),
         )?
         else {
             self.record_cache_result(Some(storage), SuggestionProviderKind::Git, false);

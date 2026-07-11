@@ -10,6 +10,7 @@ import { Button } from "../../components/ui/button";
 import { PromptDialog } from "../../components/ui/prompt-dialog";
 import { Select } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
 import {
   fetchDockerContainerStats,
@@ -28,6 +29,10 @@ import {
   type DockerContainerSummary,
 } from "../../lib/dockerApi";
 import type { ContainerRuntime } from "../../lib/targetModel";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../lib/userFacingMessage";
 import type { Machine } from "../workspace/types";
 import type { OpenWorkspaceFileTabOptions } from "../workspace/workspaceStore";
 import { buildComposeProjectViews } from "./host-containers/composeProjectModel";
@@ -41,6 +46,7 @@ import {
   buildHostContainerDialogViewModel,
   canEnterHostContainer,
   canRunHostContainerLifecycleAction,
+  hostContainerStatusLabel,
   hostContainerLifecycleDialogCopy,
   resolveHostContainerSelection,
   type HostContainerGroupMode,
@@ -70,6 +76,7 @@ export interface HostContainersToolContentProps {
   onOpenWorkspaceFileTab?: (options: OpenWorkspaceFileTabOptions) => void;
   onPinContainer?: (container: DockerContainerSummary) => void | Promise<void>;
   presentation?: "default" | "sidebar";
+  refreshRequestId?: number;
   selectedMachine?: Machine;
 }
 
@@ -95,6 +102,7 @@ export function HostContainersToolContent({
   onOpenWorkspaceFileTab,
   onPinContainer,
   presentation = "default",
+  refreshRequestId,
   selectedMachine,
 }: HostContainersToolContentProps) {
   const host = selectedMachine?.kind === "ssh" ? selectedMachine : undefined;
@@ -109,8 +117,9 @@ export function HostContainersToolContent({
       : null,
   );
   const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<UserFacingMessage | null>(null);
+  const [actionError, setActionError] =
+    useState<UserFacingMessage | null>(null);
   const [pinningContainerId, setPinningContainerId] = useState<string | null>(
     null,
   );
@@ -128,7 +137,8 @@ export function HostContainersToolContent({
   const [projectInspectorTab, setProjectInspectorTab] =
     useState<ComposeProjectInspectorTab>("overview");
   const [inspectorLoading, setInspectorLoading] = useState(false);
-  const [inspectorError, setInspectorError] = useState<string | null>(null);
+  const [inspectorError, setInspectorError] =
+    useState<UserFacingMessage | null>(null);
   const [inspectSummary, setInspectSummary] =
     useState<DockerContainerInspectSummary | null>(null);
   const [statsResult, setStatsResult] =
@@ -206,7 +216,13 @@ export function HostContainersToolContent({
       }
       setContainers([]);
       setSelection(null);
-      setLoadError(`容器读取失败：${errorMessage(loadError)}`);
+      setLoadError(
+        buildUserFacingError(loadError, {
+          detail: "Kerminal 暂时无法获取这个主机的容器列表。",
+          recoveryAction: "请确认主机连接和容器运行时可用，然后重试。",
+          title: "无法读取容器",
+        }),
+      );
     } finally {
       if (requestSequenceRef.current === requestId) {
         setLoading(false);
@@ -241,7 +257,7 @@ export function HostContainersToolContent({
 
   useEffect(() => {
     void loadContainers();
-  }, [loadContainers]);
+  }, [loadContainers, refreshRequestId]);
 
   useEffect(() => {
     if (selection?.kind !== "project") {
@@ -329,7 +345,13 @@ export function HostContainersToolContent({
       try {
         await onPinContainer?.(container);
       } catch (pinError: unknown) {
-        setActionError(`固定容器失败：${errorMessage(pinError)}`);
+        setActionError(
+          buildUserFacingError(pinError, {
+            detail: `${container.name} 仍可从当前列表打开。`,
+            recoveryAction: "请稍后重试固定操作。",
+            title: "无法固定容器",
+          }),
+        );
       } finally {
         setPinningContainerId(null);
       }
@@ -351,9 +373,11 @@ export function HostContainersToolContent({
         await loadContainers();
       } catch (lifecycleError: unknown) {
         setActionError(
-          `${lifecycleActionText(action)}容器失败：${errorMessage(
-            lifecycleError,
-          )}`,
+          buildUserFacingError(lifecycleError, {
+            detail: `${container.name} 未完成${lifecycleActionText(action)}操作。`,
+            recoveryAction: "请刷新状态，确认容器运行时可用后重试。",
+            title: `${lifecycleActionText(action)}容器失败`,
+          }),
         );
       } finally {
         setActiveLifecycleAction(null);
@@ -405,7 +429,11 @@ export function HostContainersToolContent({
       } catch (inspectorError: unknown) {
         if (inspectorSequenceRef.current === requestId) {
           setInspectorError(
-            `容器信息读取失败：${errorMessage(inspectorError)}`,
+            buildUserFacingError(inspectorError, {
+              detail: "当前详情或监控数据暂时不可用。",
+              recoveryAction: "请确认容器仍存在，然后点击刷新重试。",
+              title: "无法读取容器信息",
+            }),
           );
         }
       } finally {
@@ -463,11 +491,25 @@ export function HostContainersToolContent({
     selectedContainer?.runtime,
   ]);
 
-  const statusText = loading
-    ? "checking"
+  const stoppedCount = Math.max(
+    0,
+    viewModel.totalCount - viewModel.runningCount,
+  );
+  const containerSummary = loading
+    ? "正在检查容器"
     : loadError
-      ? "failed"
-      : `${viewModel.runningCount}/${viewModel.totalCount} running`;
+      ? "容器读取失败"
+      : [
+          `${viewModel.runningCount} 运行`,
+          `${stoppedCount} 停止`,
+          `${composeViewModel.projects.length} Compose`,
+          `${composeViewModel.standaloneContainers.length} 独立`,
+          composeViewModel.errorCount > 0
+            ? `${composeViewModel.errorCount} 异常`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
 
   const lifecycleDialogCopy = pendingLifecycleAction
     ? hostContainerLifecycleDialogCopy(
@@ -530,63 +572,16 @@ export function HostContainersToolContent({
               </Button>
             </div>
           )}
-          <div className={cn("flex items-center justify-between", sidebar ? "mb-2" : "hidden")}>
-            <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-              容器概览
-            </span>
-            <Button
-              aria-label="刷新容器列表"
-              className="h-7 w-7 rounded-lg"
-              disabled={loading}
-              onClick={() => void loadContainers()}
-              size="icon"
-              title="刷新容器列表"
-              type="button"
-              variant="ghost"
-            >
-              <RefreshCw
-                className={cn("h-3.5 w-3.5", loading && "animate-spin")}
-              />
-            </Button>
-          </div>
           <div
             className={cn(
-              "grid overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-black/[0.025] dark:bg-white/[0.045]",
-              sidebar ? "grid-cols-4" : "grid-cols-2",
-              !sidebar && "mt-3",
+              "truncate rounded-lg bg-black/[0.025] text-xs text-zinc-600 dark:bg-white/[0.045] dark:text-zinc-300",
+              sidebar ? "px-2 py-1.5" : "mt-3 px-3 py-2",
             )}
+            data-testid="host-container-summary"
+            role="status"
+            title={containerSummary}
           >
-            <SummaryMetric
-              compact={sidebar}
-              label="Compose"
-              value={composeViewModel.projects.length}
-            />
-            <SummaryMetric
-              compact={sidebar}
-              label="独立"
-              value={composeViewModel.standaloneContainers.length}
-            />
-            <SummaryMetric
-              compact={sidebar}
-              label="运行"
-              value={viewModel.runningCount}
-            />
-            <SummaryMetric
-              compact={sidebar}
-              label="异常"
-              value={composeViewModel.errorCount}
-            />
-          </div>
-          <div
-            className={cn(
-              "mt-2 flex items-center justify-between gap-3 rounded-xl bg-black/[0.025] text-xs text-zinc-500 dark:bg-white/[0.045] dark:text-zinc-400",
-              sidebar ? "px-2 py-1.5" : "px-3 py-2",
-            )}
-          >
-            <span>状态</span>
-            <span className="font-mono text-zinc-700 dark:text-zinc-200">
-              {statusText}
-            </span>
+            {containerSummary}
           </div>
         </section>
 
@@ -646,7 +641,13 @@ export function HostContainersToolContent({
             )}
           >
             {loadError ? (
-              <StateMessage tone="danger">{loadError}</StateMessage>
+              <div className="flex min-h-32 items-center">
+                <UserFacingNotice
+                  className="w-full"
+                  compact
+                  message={loadError}
+                />
+              </div>
             ) : loading && viewModel.totalCount === 0 ? (
               <StateMessage>正在读取容器...</StateMessage>
             ) : viewModel.emptySearch ? (
@@ -685,10 +686,8 @@ export function HostContainersToolContent({
                         {selectedProject.project}
                       </span>
                       <span className="mx-2">/</span>
-                      <span className="font-mono">
-                        {selectedProject.configPaths[0] ??
-                          selectedProject.workingDir ??
-                          "Compose"}
+                      <span>
+                        {selectedProject.runningCount}/{selectedProject.totalCount} 运行
                       </span>
                     </>
                   ) : selectedContainer ? (
@@ -697,9 +696,7 @@ export function HostContainersToolContent({
                         {selectedContainer.name}
                       </span>
                       <span className="mx-2">/</span>
-                      <span className="font-mono">
-                        {selectedContainer.shortId}
-                      </span>
+                      <span>{hostContainerStatusLabel(selectedContainer.status)}</span>
                     </>
                   ) : (
                     "未选择容器"
@@ -807,7 +804,10 @@ export function HostContainersToolContent({
         </section>
 
         {sidebar ? null : (
-          <section className="min-h-[22rem] min-w-0 overflow-hidden">
+          <section className="grid min-h-[22rem] min-w-0 gap-3 overflow-hidden">
+            {!selectedProject && inspectorError ? (
+              <UserFacingNotice compact message={inspectorError} />
+            ) : null}
             {selectedProject ? (
               <ComposeProjectInspector
                 hostId={host.id}
@@ -826,7 +826,7 @@ export function HostContainersToolContent({
             ) : (
               <HostContainerInspector
                 container={selectedContainer}
-                error={inspectorError}
+                error={null}
                 inspectSummary={inspectSummary}
                 loading={inspectorLoading}
                 onRefresh={() => {
@@ -843,7 +843,7 @@ export function HostContainersToolContent({
         )}
 
         {actionError ? (
-          <StateMessage tone="danger">{actionError}</StateMessage>
+          <UserFacingNotice compact message={actionError} />
         ) : null}
       </div>
 
@@ -878,44 +878,6 @@ export function HostContainersToolContent({
         />
       ) : null}
     </>
-  );
-}
-
-function SummaryMetric({
-  compact = false,
-  label,
-  value,
-}: {
-  compact?: boolean;
-  label: string;
-  value: number;
-}) {
-  return (
-    <div
-      className={cn(
-        "border-[var(--border-subtle)]",
-        compact
-          ? "border-r px-1.5 py-1.5 text-center last:border-r-0"
-          : "border-r border-b px-3 py-2 even:border-r-0 [&:nth-last-child(-n+2)]:border-b-0",
-      )}
-    >
-      <div
-        className={cn(
-          "font-mono font-semibold text-zinc-950 dark:text-zinc-50",
-          compact ? "text-sm leading-5" : "text-lg leading-6",
-        )}
-      >
-        {value}
-      </div>
-      <div
-        className={cn(
-          "text-zinc-500 dark:text-zinc-400",
-          compact ? "text-[10px]" : "text-[11px]",
-        )}
-      >
-        {label}
-      </div>
-    </div>
   );
 }
 
@@ -985,13 +947,6 @@ function composeYamlRootPath(workingDir: string | undefined, path: string) {
     return "/";
   }
   return normalizedPath.slice(0, slashIndex);
-}
-
-function errorMessage(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
 }
 
 function lifecycleActionText(action: DockerContainerLifecycleAction) {

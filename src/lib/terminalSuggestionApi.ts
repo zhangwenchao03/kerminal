@@ -14,6 +14,8 @@ export type CommandSuggestionProvider =
 
 export type CommandSuggestionSensitivity = "normal" | "sensitive" | "dangerous";
 export type CommandSuggestionFeedbackAction = "accepted" | "dismissed";
+export type CommandSuggestionQueryMode = "inline" | "menu";
+export type CommandSuggestionPresentation = "inline" | "menu";
 export type CommandSuggestionAuditEventKind =
   | "feedback"
   | "remoteProbeRefresh"
@@ -33,6 +35,9 @@ export interface CommandSuggestionReplacementRange {
 export interface CommandSuggestionRequest {
   input: string;
   cursor: number;
+  mode?: CommandSuggestionQueryMode;
+  generation?: number;
+  contextKey?: string;
   target?: CommandHistoryTarget;
   sessionId?: string;
   paneId?: string;
@@ -47,6 +52,9 @@ export interface CommandSuggestionRequest {
 export interface NormalizedCommandSuggestionRequest {
   input: string;
   cursor: number;
+  mode: CommandSuggestionQueryMode;
+  generation?: number;
+  contextKey?: string;
   target: CommandHistoryTarget;
   sessionId?: string;
   paneId?: string;
@@ -70,7 +78,21 @@ export interface CommandSuggestionCandidate {
   description?: string;
   sourceId?: string;
   metadata?: Record<string, string | number | boolean | null>;
+  allowedPresentations: CommandSuggestionPresentation[];
+  acceptBoundaries: number[];
+  contextKey?: string;
 }
+
+export type CommandSuggestionCandidatePayload = Omit<
+  CommandSuggestionCandidate,
+  "acceptBoundaries" | "allowedPresentations" | "contextKey"
+> &
+  Partial<
+    Pick<
+      CommandSuggestionCandidate,
+      "acceptBoundaries" | "allowedPresentations" | "contextKey"
+    >
+  >;
 
 export interface CommandSuggestionFeedbackRecordRequest {
   action: CommandSuggestionFeedbackAction;
@@ -312,14 +334,20 @@ export async function listTerminalSuggestions(
   request: CommandSuggestionRequest,
 ): Promise<CommandSuggestionCandidate[]> {
   const normalized = normalizeCommandSuggestionRequest(request);
-  if (!normalized.input.slice(0, normalized.cursor).trim()) {
+  if (!unicodePrefix(normalized.input, normalized.cursor).trim()) {
     return [];
   }
 
   if (isTauri()) {
-    return invoke<CommandSuggestionCandidate[]>("command_suggestion_list", {
+    const candidates = await invoke<CommandSuggestionCandidatePayload[]>(
+      "command_suggestion_list",
+      {
       request: normalized,
-    });
+      },
+    );
+    return candidates.map((candidate) =>
+      normalizeCommandSuggestionCandidate(candidate, normalized),
+    );
   }
 
   return listBrowserPreviewSuggestions(normalized);
@@ -506,11 +534,17 @@ export function normalizeCommandSuggestionRequest(
   const input = request.input;
   const cursor = clamp(request.cursor, 0, Array.from(input).length);
   const providers = normalizeProviders(request.providers);
+  const generation = normalizeGeneration(request.generation);
 
   return {
     input,
     cursor,
+    mode: request.mode ?? "inline",
     target: request.target ?? "local",
+    ...(generation !== undefined ? { generation } : {}),
+    ...(request.contextKey?.trim()
+      ? { contextKey: request.contextKey.trim() }
+      : {}),
     ...(request.sessionId?.trim()
       ? { sessionId: request.sessionId.trim() }
       : {}),
@@ -525,6 +559,40 @@ export function normalizeCommandSuggestionRequest(
     ...(request.shell?.trim() ? { shell: request.shell.trim() } : {}),
     ...(providers ? { providers } : {}),
     limit: clampLimit(request.limit),
+  };
+}
+
+/**
+ * 将后端或旧缓存候选归一化为前端稳定合同。
+ *
+ * 所有偏移均按 Unicode code point 计数；非法 range 回退为当前前缀整条替换，
+ * 任一非法 boundary 都会清空全部边界，确保只能整条接受。
+ */
+export function normalizeCommandSuggestionCandidate(
+  candidate: CommandSuggestionCandidatePayload,
+  request: NormalizedCommandSuggestionRequest,
+): CommandSuggestionCandidate {
+  const replacementRange = normalizeReplacementRange(
+    candidate.replacementRange,
+    request,
+  );
+  const allowedPresentations = normalizeAllowedPresentations(candidate);
+  const acceptBoundaries = normalizeAcceptBoundaries(
+    candidate.acceptBoundaries,
+    request.cursor,
+    candidate.replacementText,
+  );
+
+  return {
+    ...candidate,
+    replacementRange,
+    allowedPresentations,
+    acceptBoundaries,
+    ...(candidate.contextKey?.trim()
+      ? { contextKey: candidate.contextKey.trim() }
+      : request.contextKey
+        ? { contextKey: request.contextKey }
+        : {}),
   };
 }
 
@@ -725,6 +793,8 @@ function historyEntryToCandidate(
   const sameCwd = entry.cwd && entry.cwd === request.cwd;
 
   return {
+    acceptBoundaries: [],
+    allowedPresentations: ["inline", "menu"],
     id: `history:${entry.id}`,
     provider: "history",
     displayText: entry.command,
@@ -746,11 +816,85 @@ function historyEntryToCandidate(
       createdAt: entry.createdAt,
       source: entry.source,
     },
+    ...(request.contextKey ? { contextKey: request.contextKey } : {}),
   };
 }
 
 function commandPrefix(request: NormalizedCommandSuggestionRequest) {
-  return Array.from(request.input).slice(0, request.cursor).join("");
+  return unicodePrefix(request.input, request.cursor);
+}
+
+function unicodePrefix(input: string, cursor: number) {
+  return Array.from(input).slice(0, cursor).join("");
+}
+
+function normalizeGeneration(generation: number | undefined) {
+  if (
+    generation === undefined ||
+    !Number.isSafeInteger(generation) ||
+    generation < 0
+  ) {
+    return undefined;
+  }
+  return generation;
+}
+
+function normalizeReplacementRange(
+  range: CommandSuggestionReplacementRange,
+  request: NormalizedCommandSuggestionRequest,
+): CommandSuggestionReplacementRange {
+  const inputLength = Array.from(request.input).length;
+  const valid =
+    Number.isSafeInteger(range.start) &&
+    Number.isSafeInteger(range.end) &&
+    range.start >= 0 &&
+    range.start <= range.end &&
+    range.end <= request.cursor &&
+    range.end <= inputLength;
+
+  return valid ? range : { start: 0, end: request.cursor };
+}
+
+function normalizeAllowedPresentations(
+  candidate: CommandSuggestionCandidatePayload,
+): CommandSuggestionPresentation[] {
+  if (candidate.sensitivity === "dangerous") {
+    return ["menu"];
+  }
+  if (!candidate.allowedPresentations) {
+    return ["inline"];
+  }
+
+  return Array.from(
+    new Set(
+      candidate.allowedPresentations.filter(
+        (presentation): presentation is CommandSuggestionPresentation =>
+          presentation === "inline" || presentation === "menu",
+      ),
+    ),
+  );
+}
+
+function normalizeAcceptBoundaries(
+  boundaries: number[] | undefined,
+  cursor: number,
+  replacementText: string,
+) {
+  if (!boundaries) {
+    return [];
+  }
+  const replacementLength = Array.from(replacementText).length;
+  if (
+    boundaries.some(
+      (boundary) =>
+        !Number.isSafeInteger(boundary) ||
+        boundary <= cursor ||
+        boundary > replacementLength,
+    )
+  ) {
+    return [];
+  }
+  return Array.from(new Set(boundaries)).sort((left, right) => left - right);
 }
 
 function normalizeProviders(

@@ -5,6 +5,7 @@
  */
 
 import type { SetStateAction } from "react";
+import { errorMessage } from "./sftpPathModel";
 import type { RemoteDirectoryListing } from "./types";
 
 export interface SftpRemoteBrowserState {
@@ -144,5 +145,5 @@ export function resolveSftpRemoteBrowserSetState<T>(
 }
 
 export function normalizeSftpRemoteBrowserError(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
+  return errorMessage(error);
 }

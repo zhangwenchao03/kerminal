@@ -76,7 +76,7 @@ export function useSftpLocalUploadDropActions({
           setDragDropActive(false);
           setOperationStatus({
             kind: "error",
-            message: `拖拽上传监听失败：${errorMessage(nextError)}`,
+            message: `拖放上传初始化失败：${errorMessage(nextError)}`,
           });
         }
       });

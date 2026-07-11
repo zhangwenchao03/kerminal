@@ -1,0 +1,47 @@
+schema_version = 1
+command = "pip"
+aliases = ["pip3"]
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Install and manage Python packages"
+tested_version = "pip 25"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "pip command reference"
+url = "https://pip.pypa.io/en/stable/cli/"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "freeze"
+description = "Output installed packages"
+
+[[subcommands]]
+name = "install"
+description = "Install packages"
+
+[[subcommands]]
+name = "list"
+description = "List installed packages"
+
+[[subcommands]]
+name = "uninstall"
+description = "Uninstall packages"
+
+[subcommands.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "Uninstalling packages can break the active environment"
+
+[[options]]
+name = "--requirement"
+aliases = ["-r"]
+description = "Install from a requirements file"
+
+[options.argument]
+kind = "file"
+placeholder = "FILE"

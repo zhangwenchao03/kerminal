@@ -68,6 +68,13 @@ export interface RuntimeTerminalOutputSnapshot {
   totalPendingBytes: number;
 }
 
+/** 终端 Tab chrome activity 的低频转换摘要。 */
+export interface RuntimeTerminalChromeActivitySnapshot {
+  publishedTransitions: number;
+  registeredPanes: number;
+  suppressedTransitions: number;
+}
+
 export interface RuntimePtyPumpSessionSnapshot {
   bufferedChunks: number;
   closed: boolean;
@@ -174,6 +181,7 @@ export interface RuntimePerformanceSnapshot {
   sftp?: RuntimeSftpSnapshot;
   ssh?: RuntimeSshSnapshot;
   suggestions?: RuntimeSuggestionSchedulerSnapshot;
+  terminalChromeActivity?: RuntimeTerminalChromeActivitySnapshot;
   terminalOutput?: RuntimeTerminalOutputSnapshot;
   terminalRenderer?: TerminalRendererRegistrySnapshot;
 }

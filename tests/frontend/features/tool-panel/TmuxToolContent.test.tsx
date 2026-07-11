@@ -159,37 +159,28 @@ describe("TmuxToolContent", () => {
     });
   });
 
-  it("renders tmux sessions without loading details for an SSH target", async () => {
+  it("renders tmux sessions with details and quick commands collapsed by default", async () => {
+    const user = userEvent.setup();
     render(<TmuxToolContent selectedMachine={sshMachine} />);
 
     expect(await screen.findByText("tmux 3.4")).toBeInTheDocument();
     expect(screen.getByText("api")).toBeInTheDocument();
-    expect(screen.getByText("/srv/api")).toBeInTheDocument();
-    expect(screen.getByText("常用")).toBeInTheDocument();
-    expect(screen.getByText("命令")).toBeInTheDocument();
-    expect(screen.getByText("快捷键")).toBeInTheDocument();
-    expect(screen.getByText("tmux ls")).toBeInTheDocument();
-    expect(screen.getByText("列出所有会话")).toBeInTheDocument();
-    expect(screen.getByText("Ctrl-b d")).toBeInTheDocument();
-    expect(screen.getByText("快捷键退出当前 tmux 连接")).toBeInTheDocument();
-    const commandRows = within(
-      screen.getByRole("list", { name: "常用 tmux 命令" }),
-    ).getAllByRole("listitem");
-    const shortcutRows = within(
-      screen.getByRole("list", { name: "常用 tmux 快捷键" }),
-    ).getAllByRole("listitem");
-    expect(commandRows).toHaveLength(10);
-    expect(shortcutRows).toHaveLength(10);
-    expect(within(commandRows[0]).getByText("tmux ls")).toBeInTheDocument();
+    expect(screen.getByText("未连接")).toBeInTheDocument();
+    expect(screen.getByText("1 个窗口 · 0 个客户端")).toBeInTheDocument();
+    expect(screen.queryByText("/srv/api")).not.toBeInTheDocument();
+    expect(screen.queryByText("$0")).not.toBeInTheDocument();
     expect(
-      within(shortcutRows[0]).getByText("Ctrl-b d"),
+      screen.getByRole("button", { name: "展开快捷命令" }),
     ).toBeInTheDocument();
     expect(
-      within(commandRows[0]).getByRole("button", { name: "复制命令" }),
-    ).toBeEnabled();
-    expect(
-      within(commandRows[0]).getByRole("button", { name: "发送到终端" }),
-    ).toBeDisabled();
+      screen.queryByRole("list", { name: "常用 tmux 命令" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("tmux ls")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "展开 api 详情" }));
+    expect(screen.getByText("/srv/api")).toBeInTheDocument();
+    expect(screen.getByText("$0")).toBeInTheDocument();
+    expect(screen.getByText("ssh:prod-api")).toBeInTheDocument();
     expect(tmuxApiMocks.tmuxProbe).toHaveBeenCalledWith({
       target: { target: { hostId: "prod-api", kind: "ssh" } },
     });
@@ -208,6 +199,9 @@ describe("TmuxToolContent", () => {
       />,
     );
 
+    await user.click(
+      await screen.findByRole("button", { name: "展开快捷命令" }),
+    );
     const commandRows = within(
       await screen.findByRole("list", { name: "常用 tmux 命令" }),
     ).getAllByRole("listitem");
@@ -243,6 +237,9 @@ describe("TmuxToolContent", () => {
       />,
     );
 
+    await user.click(
+      await screen.findByRole("button", { name: "展开快捷命令" }),
+    );
     const quickrefRows = within(
       await screen.findByRole("list", { name: "常用 tmux 快捷键" }),
     ).getAllByRole("listitem");
@@ -285,6 +282,9 @@ describe("TmuxToolContent", () => {
       />,
     );
 
+    await user.click(
+      await screen.findByRole("button", { name: "展开快捷命令" }),
+    );
     const commandRows = within(
       await screen.findByRole("list", { name: "常用 tmux 命令" }),
     ).getAllByRole("listitem");
@@ -293,7 +293,7 @@ describe("TmuxToolContent", () => {
     );
 
     expect(
-      await screen.findByText("复制失败：当前环境没有剪贴板权限"),
+      await screen.findByText("复制失败：当前环境没有剪贴板权限。"),
     ).toBeInTheDocument();
   });
 
@@ -308,12 +308,16 @@ describe("TmuxToolContent", () => {
 
     render(<TmuxToolContent selectedMachine={sshMachine} />);
 
-    expect(await screen.findByText("tmux unavailable")).toBeInTheDocument();
-    expect(await screen.findAllByText("tmux not found")).toHaveLength(2);
+    expect(await screen.findByText("tmux 不可用")).toBeInTheDocument();
+    expect(
+      await screen.findAllByText("目标未安装 tmux，或 tmux 不在 PATH 中。"),
+    ).toHaveLength(2);
+    expect(screen.queryByText("tmux not found")).not.toBeInTheDocument();
     expect(tmuxApiMocks.tmuxListSessions).not.toHaveBeenCalled();
   });
 
   it("shows an actionable compatibility hint when tmux session parsing fails", async () => {
+    const user = userEvent.setup();
     tmuxApiMocks.tmuxListSessions.mockRejectedValueOnce(
       new Error("参数不合法: tmux session name 为空"),
     );
@@ -324,6 +328,14 @@ describe("TmuxToolContent", () => {
       await screen.findByText(/tmux 会话列表读取失败：目标 tmux 输出格式不兼容/),
     ).toBeInTheDocument();
     expect(screen.queryByText(/tmux probe failed/)).not.toBeInTheDocument();
+    const technicalDetail = screen.getByText(
+      /参数不合法: tmux session name 为空/,
+    );
+    expect(technicalDetail).not.toBeVisible();
+
+    await user.click(screen.getByText("技术详情"));
+
+    expect(technicalDetail).toBeVisible();
   });
 
   it("creates a session from the dialog", async () => {
@@ -337,10 +349,10 @@ describe("TmuxToolContent", () => {
     render(<TmuxToolContent selectedMachine={sshMachine} />);
 
     await user.click(await screen.findByRole("button", { name: "新建会话" }));
-    const input = screen.getByLabelText("Session name");
+    const input = screen.getByLabelText("会话名称");
     await user.clear(input);
     await user.type(input, "api-dev");
-    await user.click(screen.getByRole("button", { name: "Create" }));
+    await user.click(screen.getByRole("button", { name: "创建" }));
 
     await waitFor(() =>
       expect(tmuxApiMocks.tmuxCreateSession).toHaveBeenCalledWith({
@@ -358,13 +370,18 @@ describe("TmuxToolContent", () => {
     render(<TmuxToolContent selectedMachine={sshMachine} />);
 
     await user.click(await screen.findByRole("button", { name: "新建会话" }));
-    expect(screen.getByRole("button", { name: "Create" })).toHaveClass(
+    expect(screen.getByRole("button", { name: "创建" })).toHaveClass(
       "bg-[#0A84FF]",
     );
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "取消" }));
 
     await user.click(await screen.findByRole("button", { name: "删除" }));
-    const killButtons = screen.getAllByRole("button", { name: "Kill" });
+    expect(
+      screen.getByRole("dialog", { name: "结束 tmux 会话" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("将结束会话“api”。")).toBeInTheDocument();
+    expect(screen.queryByText(/\$0/)).not.toBeInTheDocument();
+    const killButtons = screen.getAllByRole("button", { name: "结束会话" });
     expect(killButtons[killButtons.length - 1]).toHaveClass("text-red-600");
   });
 
@@ -488,7 +505,7 @@ describe("TmuxToolContent", () => {
     await user.click(await screen.findByRole("button", { name: "连接" }));
 
     expect(
-      await screen.findByText("attach failed: terminal session is not ready"),
+      await screen.findByText("连接失败：当前终端还没准备好。"),
     ).toBeInTheDocument();
   });
 });

@@ -120,7 +120,7 @@ export function useKerminalShellConfigRefresh({
         domains: ["settings"],
         id: `settings-editor-draft:${Date.now()}`,
         level: "warning",
-        text: "cfg: settings changed externally; editor draft kept",
+        text: "设置已在外部更新，当前编辑内容已保留。",
         ttlMs: 3500,
       });
       return;

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Headless Chrome smoke for the real React/Vite app terminal ghost overlay.
+ * 真实 React/Vite 应用终端 ghost overlay 的 Headless Chrome smoke。
  *
  * @author kongweiguang
  */
@@ -25,6 +25,10 @@ const chromePath = findChromePath();
 const chromePort = 9480 + Math.floor(Math.random() * 300);
 const vitePort = 9780 + Math.floor(Math.random() * 300);
 const forceOptimizeDeps = process.env.KERMINAL_GHOST_FORCE_OPTIMIZE !== "0";
+const warmSampleCount = parsePositiveInteger(
+  process.env.KERMINAL_GHOST_APP_WARM_SAMPLES,
+  20,
+);
 const userDataDir = path.join(
   tmpdir(),
   `kerminal-terminal-ghost-app-${Date.now()}`,
@@ -87,6 +91,7 @@ async function main() {
     client = await CdpClient.connect(target.webSocketDebuggerUrl);
     await client.send("Runtime.enable");
     await client.send("Page.enable");
+    const browserVersion = await client.send("Browser.getVersion");
     await client.send("Emulation.setDeviceMetricsOverride", {
       deviceScaleFactor: 1,
       height: 900,
@@ -120,6 +125,8 @@ async function main() {
       { returnByValue: true },
     );
 
+    await measureGhostLatencySamples(client, warmSampleCount);
+
     for (const char of "jour") {
       await client.send("Input.dispatchKeyEvent", {
         text: char,
@@ -136,7 +143,7 @@ async function main() {
         if (!ghost) return false;
         const rect = ghost.getBoundingClientRect();
         return ghost.textContent === "nalctl"
-          && ghost.getAttribute("data-provider") === "remoteCommand"
+          && ghost.getAttribute("data-provider") === "spec"
           && rect.width > 0
           && rect.height > 0;
       })()`,
@@ -175,18 +182,51 @@ async function main() {
       { returnByValue: true },
     );
     const smokeState = state.result?.value;
-    const failures = validateSmokeState(visibleGhost, smokeState);
+    const performanceReport = summarizeGhostPerformance(
+      smokeState?.performanceSamples ?? [],
+    );
+    const failures = validateSmokeState(
+      visibleGhost,
+      smokeState,
+      performanceReport,
+      warmSampleCount,
+    );
     const result = {
+      schemaVersion: 1,
+      benchmark: "terminal-ghost-app",
       appUrl: `http://127.0.0.1:${vitePort}/`,
       artifacts: {
         json: outputJson,
         screenshot: outputPng,
       },
+      dataScale: {
+        historyRows: [10_000, 100_000],
+        remoteCommands: 5_000,
+        remotePaths: 1_000,
+        gitRefs: 1_000,
+      },
+      environment: {
+        architecture: process.arch,
+        chrome: browserVersion.product,
+        chromeJavaScriptVersion: browserVersion.jsVersion,
+        node: process.version,
+        platform: process.platform,
+        viewport: {
+          deviceScaleFactor: 1,
+          height: 900,
+          width: 1360,
+        },
+      },
       ghost: visibleGhost,
       invocations: smokeState?.invocations?.map((item) => item.cmd) ?? [],
+      performance: performanceReport,
       pass: failures.length === 0,
       failures,
-      writes: smokeState?.writes ?? [],
+      sampleCount: {
+        cold: performanceReport.cold.sampleCount,
+        warm: performanceReport.warm.sampleCount,
+      },
+      writeSummary: summarizeWrites(smokeState?.writes ?? []),
     };
 
     mkdirSync(outputDir, { recursive: true });
@@ -234,7 +274,6 @@ async function collectFailureDiagnostics(client) {
       ariaLabels: Array.from(document.querySelectorAll("[aria-label]"))
         .slice(0, 40)
         .map((node) => node.getAttribute("aria-label")),
-      bodyText: document.body?.innerText?.slice(0, 2000) ?? "",
       location: window.location.href,
       readyState: document.readyState,
       resourceEntries: performance.getEntriesByType("resource")
@@ -244,14 +283,44 @@ async function collectFailureDiagnostics(client) {
           initiatorType: entry.initiatorType,
           name: entry.name,
         })),
-      rootHtml: document.querySelector("#root")?.innerHTML?.slice(0, 2000) ?? null,
       scripts: Array.from(document.scripts).map((script) => ({
         src: script.src,
         type: script.type,
       })),
-      smokeState: window.__kerminalAppSmokeState ?? null,
+      smokeState: window.__kerminalAppSmokeState
+        ? {
+            auditRequestCount:
+              window.__kerminalAppSmokeState.auditRequests.length,
+            feedbackRequestCount:
+              window.__kerminalAppSmokeState.feedbackRequests.length,
+            invocationCommands:
+              window.__kerminalAppSmokeState.invocations.map((item) => item.cmd),
+            performanceSamples:
+              window.__kerminalAppSmokeState.performanceSamples,
+            refreshRequestCount:
+              window.__kerminalAppSmokeState.refreshRequests.length,
+            sessionCount: window.__kerminalAppSmokeState.sessions.length,
+            suggestionRequestCount:
+              window.__kerminalAppSmokeState.suggestionRequests.length,
+            suggestionRequestSummaries:
+              window.__kerminalAppSmokeState.suggestionRequests.map(
+                (request) => ({
+                  cursor: request.cursor,
+                  inputLength: String(request.input ?? "").length,
+                  providers: request.providers ?? [],
+                  remoteHostIdPresent: Boolean(request.remoteHostId),
+                  target: request.target,
+                }),
+              ),
+            writeCount: window.__kerminalAppSmokeState.writes.length,
+            writeUtf16Units:
+              window.__kerminalAppSmokeState.writes.reduce(
+                (total, item) => total + String(item).length,
+                0,
+              ),
+          }
+        : null,
       smokeErrors: window.__kerminalAppSmokeErrors ?? [],
-      storageSession: window.localStorage.getItem("kerminal.workspace.session.v1"),
       title: document.title,
     }))()`,
     { returnByValue: true },
@@ -259,25 +328,25 @@ async function collectFailureDiagnostics(client) {
   return result.result?.value;
 }
 
-function validateSmokeState(ghost, state) {
+function validateSmokeState(ghost, state, performanceReport, expectedWarmSamples) {
   const failures = [];
   const writes = state?.writes ?? [];
   const accepted = state?.feedbackRequests?.find(
     (request) =>
       request.action === "accepted" &&
-      request.provider === "remoteCommand" &&
+      request.provider === "spec" &&
       request.replacementText === "journalctl",
   );
   const suggestionRequest = state?.suggestionRequests?.find(
     (request) =>
       request.target === "ssh" &&
       request.remoteHostId === "prod-api" &&
-      request.providers?.includes("remoteCommand"),
+      request.providers?.includes("spec"),
   );
   if (ghost?.text !== "nalctl") {
     failures.push("wrong-ghost-text");
   }
-  if (ghost?.provider !== "remoteCommand") {
+  if (ghost?.provider !== "spec") {
     failures.push("wrong-provider");
   }
   if (ghost?.ariaLabel !== "终端命令灰色提示") {
@@ -303,10 +372,120 @@ function validateSmokeState(ghost, state) {
   if (!accepted) {
     failures.push("missing-accepted-feedback");
   }
-  if (writes.join("") !== "journalctl") {
+  if (!writes.join("").endsWith("journalctl")) {
     failures.push("accepted-write-mismatch");
   }
+  if (performanceReport.cold.sampleCount !== 1) {
+    failures.push("missing-cold-performance-sample");
+  }
+  if (performanceReport.warm.sampleCount !== expectedWarmSamples) {
+    failures.push("missing-warm-performance-samples");
+  }
   return failures;
+}
+
+async function measureGhostLatencySamples(client, targetWarmSamples) {
+  const phases = ["cold", ...Array(targetWarmSamples).fill("warm")];
+  for (let index = 0; index < phases.length; index += 1) {
+    await evaluate(
+      client,
+      `window.__beginKerminalGhostLatencySample(${JSON.stringify(phases[index])})`,
+      { returnByValue: true },
+    );
+    for (const char of "jour") {
+      await client.send("Input.dispatchKeyEvent", {
+        text: char,
+        type: "char",
+        unmodifiedText: char,
+      });
+      await delay(10);
+    }
+    await waitForBrowserExpression(
+      client,
+      `window.__kerminalAppSmokeState.performanceSamples.length > ${index}`,
+      10_000,
+    );
+    for (let deleteIndex = 0; deleteIndex < 4; deleteIndex += 1) {
+      await dispatchKey(client, {
+        code: "Backspace",
+        key: "Backspace",
+        nativeVirtualKeyCode: 8,
+        windowsVirtualKeyCode: 8,
+      });
+    }
+    await waitForBrowserExpression(
+      client,
+      "document.querySelector('[aria-label=\"终端命令灰色提示\"]') === null",
+      5_000,
+    );
+  }
+}
+
+async function dispatchKey(client, key) {
+  await client.send("Input.dispatchKeyEvent", {
+    ...key,
+    type: "keyDown",
+  });
+  await client.send("Input.dispatchKeyEvent", {
+    ...key,
+    type: "keyUp",
+  });
+}
+
+function summarizeGhostPerformance(samples) {
+  const byPhase = (phase) =>
+    summarizeDurations(
+      samples
+        .filter((sample) => sample.phase === phase)
+        .map((sample) => Number(sample.durationMs)),
+    );
+  return {
+    cold: byPhase("cold"),
+    warm: byPhase("warm"),
+  };
+}
+
+function summarizeDurations(samples) {
+  if (samples.length === 0) {
+    return {
+      maxMs: 0,
+      p50Ms: 0,
+      p95Ms: 0,
+      p99Ms: 0,
+      sampleCount: 0,
+    };
+  }
+  const sorted = [...samples].sort((left, right) => left - right);
+  const percentile = (ratio) =>
+    sorted[
+      Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)
+    ];
+  return {
+    maxMs: roundMilliseconds(sorted[sorted.length - 1]),
+    p50Ms: roundMilliseconds(percentile(0.5)),
+    p95Ms: roundMilliseconds(percentile(0.95)),
+    p99Ms: roundMilliseconds(percentile(0.99)),
+    sampleCount: sorted.length,
+  };
+}
+
+function summarizeWrites(writes) {
+  return {
+    count: writes.length,
+    utf16Units: writes.reduce(
+      (total, item) => total + String(item).length,
+      0,
+    ),
+  };
+}
+
+function roundMilliseconds(value) {
+  return Number(Number(value).toFixed(3));
+}
+
+function parsePositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 async function getGhostSnapshot(client) {
@@ -417,11 +596,50 @@ function browserBootstrapScript() {
         auditRequests: [],
         feedbackRequests: [],
         invocations: [],
+        performanceSamples: [],
         refreshRequests: [],
         sessions: [],
         suggestionRequests: [],
         writes: [],
       };
+      let activePerformanceSample = null;
+      window.__beginKerminalGhostLatencySample = (phase) => {
+        activePerformanceSample = {
+          phase,
+          startedAt: performance.now(),
+        };
+        return true;
+      };
+      const captureGhostLatency = () => {
+        if (!activePerformanceSample) {
+          return;
+        }
+        const ghost = document.querySelector(
+          '[aria-label="终端命令灰色提示"]',
+        );
+        if (
+          !ghost ||
+          ghost.textContent !== "nalctl" ||
+          ghost.getAttribute("data-provider") !== "spec"
+        ) {
+          return;
+        }
+        const rect = ghost.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) {
+          return;
+        }
+        window.__kerminalAppSmokeState.performanceSamples.push({
+          durationMs: performance.now() - activePerformanceSample.startedAt,
+          phase: activePerformanceSample.phase,
+        });
+        activePerformanceSample = null;
+      };
+      new MutationObserver(captureGhostLatency).observe(document, {
+        attributes: true,
+        characterData: true,
+        childList: true,
+        subtree: true,
+      });
       window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
         unregisterListener() {},
       };
@@ -460,6 +678,16 @@ function browserBootstrapScript() {
               return "event-smoke-1";
             case "plugin:event|unlisten":
               return null;
+            case "plugin:window|is_fullscreen":
+            case "plugin:window|is_maximized":
+              return false;
+            case "workspace_session_load":
+              return ${JSON.stringify(workspaceSession)};
+            case "workspace_session_save":
+              return null;
+            case "snippet_list":
+            case "workflow_list":
+              return [];
             case "profile_list":
               return [
                 {
@@ -500,6 +728,8 @@ function browserBootstrapScript() {
                   updatedAt: "app-smoke",
                 },
               ];
+            case "external_launch_take_pending":
+              return [];
             case "settings_get":
               return appSmokeSettings();
             case "settings_update":
@@ -531,6 +761,8 @@ function browserBootstrapScript() {
             }
             case "terminal_resize":
               return null;
+            case "terminal_reap_orphan_sessions":
+              return { elapsedMs: 0, reapedCount: 0, sessionIds: [] };
             case "terminal_log_state":
               return { active: false, bytesWritten: 0 };
             case "terminal_close":
@@ -623,30 +855,32 @@ function browserBootstrapScript() {
         const input = String(request?.input ?? "");
         const cursor = Number(request?.cursor ?? input.length);
         const prefix = Array.from(input).slice(0, cursor).join("");
-        const trimmed = prefix.trim();
+        const typedToken = "jour";
         const command = "journalctl";
         if (
           request?.target !== "ssh" ||
           request?.remoteHostId !== "prod-api" ||
-          !request?.providers?.includes("remoteCommand") ||
-          !trimmed ||
-          !command.startsWith(trimmed)
+          !request?.providers?.includes("spec") ||
+          !prefix.endsWith(typedToken)
         ) {
           return [];
         }
         return [
           {
-            description: "远端 PATH 命令，来自 app smoke fake IPC",
+            description: "CLI spec 命令，来自 app smoke fake IPC",
             displayText: command,
-            id: "app-smoke-remote-command-journalctl",
+            id: "app-smoke-spec-journalctl",
             metadata: { source: "appSmoke" },
-            provider: "remoteCommand",
-            replacementRange: { end: cursor, start: 0 },
+            provider: "spec",
+            replacementRange: {
+              end: cursor,
+              start: Math.max(0, cursor - typedToken.length),
+            },
             replacementText: command,
             score: 0.98,
             sensitivity: "normal",
-            sourceId: "app-smoke-remote-command",
-            suffix: command.slice(trimmed.length),
+            sourceId: "app-smoke-spec",
+            suffix: command.slice(typedToken.length),
           },
         ];
       }

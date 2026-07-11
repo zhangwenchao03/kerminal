@@ -314,8 +314,11 @@ describe("SftpToolContent clipboard and selection", () => {
     expect(screen.getByText("SFTP 传输队列")).toBeInTheDocument();
     expect(await screen.findByText("app.log")).toBeInTheDocument();
     expect(screen.getByText("传输中")).toBeInTheDocument();
-    expect(screen.getByText("后台传输 1 项")).toBeInTheDocument();
+    expect(screen.getByText("1 活动")).toBeInTheDocument();
     expect(screen.getByText("50%")).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "查看传输详情 app.log" }),
+    );
     expect(screen.getByText("512 B / 1.0 KB")).toBeInTheDocument();
     expect(
       screen.getByRole("progressbar", { name: "传输进度 app.log" }),

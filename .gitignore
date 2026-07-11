@@ -30,11 +30,8 @@ dist-ssr
 
 # BEGIN UPDENG
 AGENTS.md
-.codex/
-.updeng/docs/context/index/
-.updeng/docs/metrics/*.local.jsonl
-.updeng/runtime/
-.updeng/tmp/
+/.codex
+/.updeng
 .codegraph/
 tmp/
 

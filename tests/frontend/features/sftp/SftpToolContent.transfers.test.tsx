@@ -354,7 +354,7 @@ describe("SftpToolContent transfers and containers", () => {
     expect(sftpApiMocks.enqueueSftpTransfer).not.toHaveBeenCalled();
     expect(await screen.findByText("SFTP 传输队列")).toBeInTheDocument();
     expect(
-      screen.getByRole("group", { name: "SFTP 传输 release.tgz" }),
+      screen.getByRole("group", { name: "SFTP 上传 release.tgz" }),
     ).toBeInTheDocument();
     expect(screen.getByText("完成")).toBeInTheDocument();
   });
@@ -393,7 +393,7 @@ describe("SftpToolContent transfers and containers", () => {
     expect(sftpApiMocks.enqueueSftpTransfer).not.toHaveBeenCalled();
     expect(await screen.findByText("SFTP 传输队列")).toBeInTheDocument();
     expect(
-      screen.getByRole("group", { name: "SFTP 传输 package.json" }),
+      screen.getByRole("group", { name: "SFTP 下载 package.json" }),
     ).toBeInTheDocument();
     expect(screen.getByText("完成")).toBeInTheDocument();
   });

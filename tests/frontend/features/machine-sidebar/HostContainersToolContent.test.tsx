@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -224,6 +224,7 @@ describe("HostContainersToolContent", () => {
         name: "刷新 Compose 应用 kerminal",
       }),
     ).not.toBeInTheDocument();
+    expect(screen.queryByText("/srv/kerminal")).not.toBeInTheDocument();
 
     await user.click(
       await screen.findByRole("button", {
@@ -284,6 +285,48 @@ describe("HostContainersToolContent", () => {
     expect(onPinContainer).toHaveBeenCalledWith(api);
   });
 
+  it("uses one container summary and keeps sidebar rows focused on status and ports", async () => {
+    const user = userEvent.setup();
+    const onEnterContainer = vi.fn();
+    const api = container({
+      id: "c0ffee1234567890",
+      name: "api",
+      ports: ["0.0.0.0:8080->80/tcp"],
+    });
+    const db = container({
+      id: "deadbeef98765432",
+      image: "postgres:16",
+      name: "postgres",
+      state: "exited",
+      status: "exited",
+      statusText: "Exited (0) 2 hours ago",
+    });
+
+    render(
+      <HostContainersToolContent
+        {...inspectorProps()}
+        onEnterContainer={onEnterContainer}
+        onListDockerContainers={vi.fn().mockResolvedValue([api, db])}
+        presentation="sidebar"
+        selectedMachine={host}
+      />,
+    );
+
+    expect(await screen.findByTestId("host-container-summary")).toHaveTextContent(
+      "1 运行 · 1 停止 · 0 Compose · 2 独立",
+    );
+    const apiRow = screen.getByRole("option", { name: "容器 api" });
+    expect(within(apiRow).getByText("运行中")).toBeInTheDocument();
+    expect(within(apiRow).getByText("0.0.0.0:8080->80/tcp")).toBeInTheDocument();
+    expect(within(apiRow).queryByText("kerminal/api:latest")).not.toBeInTheDocument();
+    expect(within(apiRow).queryByText("c0ffee123456")).not.toBeInTheDocument();
+    expect(within(apiRow).queryByText("Up 12 minutes")).not.toBeInTheDocument();
+
+    apiRow.focus();
+    await user.keyboard("{Enter}");
+    expect(onEnterContainer).toHaveBeenCalledWith(api);
+  });
+
   it("starts a stopped container directly and refreshes the right panel list", async () => {
     const user = userEvent.setup();
     const db = container({
@@ -314,5 +357,38 @@ describe("HostContainersToolContent", () => {
     await waitFor(() => {
       expect(onListDockerContainers).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it("keeps raw container failures collapsed behind a recovery message", async () => {
+    const user = userEvent.setup();
+    const onListDockerContainers = vi
+      .fn()
+      .mockRejectedValue(
+        new Error(
+          "docker_runtime lease poisoned token=container-internal-secret",
+        ),
+      );
+
+    render(
+      <HostContainersToolContent
+        {...inspectorProps()}
+        onListDockerContainers={onListDockerContainers}
+        selectedMachine={host}
+      />,
+    );
+
+    expect(await screen.findByText("无法读取容器")).toBeVisible();
+    expect(
+      screen.getByText("请确认主机连接和容器运行时可用，然后重试。"),
+    ).toBeVisible();
+    const technicalDetail = screen.getByText(/docker_runtime lease poisoned/);
+    expect(technicalDetail.closest("details")).not.toHaveAttribute("open");
+    expect(
+      screen.queryByText(/container-internal-secret/),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByText("技术详情"));
+
+    expect(technicalDetail.closest("details")).toHaveAttribute("open");
   });
 });

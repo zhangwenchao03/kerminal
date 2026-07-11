@@ -1,0 +1,32 @@
+schema_version = 1
+command = "ls"
+aliases = []
+platforms = ["macos", "linux"]
+shells = ["bash", "zsh", "fish"]
+description = "List directory contents"
+tested_version = "GNU coreutils 9.7"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "GNU Coreutils ls manual"
+url = "https://www.gnu.org/software/coreutils/manual/html_node/ls-invocation.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "--all"
+aliases = ["-a"]
+description = "Include entries whose names begin with a dot"
+
+[[options]]
+name = "--long"
+aliases = ["-l"]
+description = "Use the long listing format"
+
+[[options]]
+name = "--human-readable"
+aliases = ["-h"]
+description = "Print sizes in human-readable units"

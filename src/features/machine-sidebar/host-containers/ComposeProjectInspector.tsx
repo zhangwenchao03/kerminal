@@ -7,9 +7,14 @@
 import { Copy, FileCode2, RefreshCw, ScrollText, Terminal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../../components/ui/button";
+import { UserFacingNotice } from "../../../components/ui/user-facing-notice";
 import { cn } from "../../../lib/cn";
 import { writeDesktopClipboardText } from "../../../lib/desktopClipboardApi";
 import { configureKerminalMonaco } from "../../../lib/monacoTheme";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../../lib/userFacingMessage";
 import { MonacoTextEditor } from "../../sftp/MonacoTextEditor";
 import { languageForPath } from "../../sftp/remoteWorkspaceEditorModel";
 import {
@@ -61,7 +66,7 @@ type YamlPreviewState = {
   bytesRead?: number;
   content: string;
   encoding?: string;
-  error: string | null;
+  error: UserFacingMessage | null;
   lineEnding?: string;
   loading: boolean;
   maxBytes?: number;
@@ -157,7 +162,11 @@ export function ComposeProjectInspector({
       }
       setYamlState({
         content: "",
-        error: error instanceof Error ? error.message : String(error),
+        error: buildUserFacingError(error, {
+          detail: "当前 YAML 文件暂时无法预览。",
+          recoveryAction: "请确认主机连接和文件路径有效，然后重试。",
+          title: "无法读取 Compose YAML",
+        }),
         loading: false,
         path: requestedPath,
         truncated: false,
@@ -425,7 +434,7 @@ function ProjectYaml({
   project: ComposeProjectView;
   selectedPath?: string;
   yamlContent: string;
-  yamlError: string | null;
+  yamlError: UserFacingMessage | null;
   yamlMetadata: {
     bytesRead?: number;
     encoding?: string;
@@ -531,8 +540,12 @@ function ProjectYaml({
           className={yamlPreviewFrameClassName}
           role="region"
         >
-          <div className="flex h-full min-h-0 items-center justify-center px-4 text-center text-sm text-red-700 dark:text-red-200">
-            {yamlError}
+          <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto p-4">
+            <UserFacingNotice
+              className="w-full max-w-lg text-left"
+              compact
+              message={yamlError}
+            />
           </div>
         </div>
       ) : (

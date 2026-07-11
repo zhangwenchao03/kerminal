@@ -78,7 +78,8 @@ export function LocalPropertiesPanel({
       setLocalShellPresetId(CUSTOM_LOCAL_SHELL_PRESET_ID);
       setLocalShell(selected);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      console.warn("Failed to select a local shell file", caught);
+      setError("无法选择启动文件，请重试。");
     }
   };
 
@@ -91,7 +92,8 @@ export function LocalPropertiesPanel({
       setError(null);
       setLocalCwd(selected);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      console.warn("Failed to select a local working directory", caught);
+      setError("无法选择工作目录，请重试。");
     }
   };
 

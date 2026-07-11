@@ -331,7 +331,7 @@ describe("LocalTransferPane", () => {
   it("shows an error when creating a local directory fails", async () => {
     const user = userEvent.setup();
     localFilesApiMock.createLocalDirectory.mockRejectedValue(
-      new Error("目标目录已存在"),
+      new Error("目标目录已存在: token=secret"),
     );
 
     render(<LocalTransferPane active targetMachine={targetMachine} targetPath="/srv/app" />);
@@ -341,9 +341,10 @@ describe("LocalTransferPane", () => {
     await user.type(screen.getByLabelText("文件夹名称"), "exists");
     await user.click(screen.getByRole("button", { name: "创建" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "目标目录已存在",
-    );
+    expect(await screen.findByText("本地文件操作未完成")).toBeVisible();
+    const technicalDetail = screen.getByText(/目标目录已存在/);
+    expect(technicalDetail).not.toBeVisible();
+    expect(technicalDetail).not.toHaveTextContent("token=secret");
     expect(sftpApiMock.enqueueSftpTransfer).not.toHaveBeenCalled();
   });
 

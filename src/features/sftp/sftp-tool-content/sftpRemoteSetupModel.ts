@@ -59,7 +59,7 @@ export function statusForTrustedHostKey(
 export function statusForHostKeyTrustError(error: unknown): SftpStatus {
   return {
     kind: "error",
-    message: `信任主机密钥失败：${errorMessage(error)}`,
+    message: `主机密钥信任失败：${errorMessage(error)}`,
   };
 }
 
@@ -80,7 +80,7 @@ export function buildSftpCwdTrackingSetupPlan(
     },
     startStatus: {
       kind: "info",
-      message: "正在写入远端 shell 配置...",
+      message: "正在配置目录跟随...",
     },
   };
 }
@@ -93,7 +93,7 @@ export function resolveSftpCwdTrackingSetupOutput(
       kind: "success",
       status: {
         kind: "success",
-        message: "已写入远端配置。重新登录或 source 对应 shell 配置后生效。",
+        message: "目录跟随已配置。重新连接后生效。",
       },
     };
   }
@@ -109,7 +109,7 @@ export function resolveSftpCwdTrackingSetupOutput(
 export function statusForSftpCwdTrackingSetupError(error: unknown): SftpStatus {
   return {
     kind: "error",
-    message: `自动设置失败：${errorMessage(error)}`,
+    message: `目录跟随配置失败：${errorMessage(error)}`,
   };
 }
 

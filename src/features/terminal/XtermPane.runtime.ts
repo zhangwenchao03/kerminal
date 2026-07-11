@@ -1,8 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { Terminal as XtermTerminal } from "@xterm/xterm";
-import { closeTerminal, getTerminalLogState, listTerminalSessions, resizeTerminal, writeTerminal } from "../../lib/terminalApi";
-import type { TerminalOutputEvent } from "../../lib/terminalApi";
+import { closeTerminal, getTerminalLogState, listTerminalSessions, resizeTerminal, writeTerminal, type TerminalOutputEvent } from "../../lib/terminalApi";
 import { recordCommandHistory } from "../../lib/commandHistoryApi";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 import { markTerminalPaneSessionDisconnected, markTerminalPaneSessionReconnected, registerTerminalPaneSession, updateTerminalPaneRuntimeContext, updateTerminalPaneSessionCwd, unregisterTerminalPaneSession } from "./terminalSessionRegistry";
@@ -29,18 +28,15 @@ import { createTerminalShellIntegrationState, reduceTerminalShellIntegrationStat
 import { createSshTerminalFailureTracker, formatSshTerminalFailureMessage } from "./terminalSshFailurePolicy";
 import { createTerminalReconnectRuntime } from "./terminalReconnectRuntime";
 import { registerTerminalRuntimeDiagnosticsPane } from "./terminalRuntimeDiagnosticsStore";
-const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000;
-const INITIAL_REMOTE_OUTPUT_IMMEDIATE_WRITE_MS = 8_000;
-const TERMINAL_SESSION_STATUS_POLL_MS = 2_000;
-
+import { createXtermPaneActivityRuntime } from "./XtermPane.activityRuntime";
+const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000, INITIAL_REMOTE_OUTPUT_IMMEDIATE_WRITE_MS = 8_000, TERMINAL_SESSION_STATUS_POLL_MS = 2_000;
 export function installXtermPaneRuntime(params: any) {
-  const { args, commandBlockCounterRef, commandBlocksRef, containerRef, cwd, cwdTrackingBufferRef, currentCwdRef, disconnectSessionRef, env, fitAddonRef, focusedRef, ghostSuggestionRef, inputBufferRef, inputModelRef, onAgentSignalRef, onCurrentCwdChangeRef, onOutputHistoryChangeRef, onSessionFinishedRef, onTerminalDimensionsChangeRef, outputHistoryRef, paneId, profileId, promptLineRef, reconnectSessionRef, remoteCommand, remoteHostId, remoteHostProduction, searchAddonRef, sessionIdRef, setCommandBlockNotice, setCommandBlockViews, setConnectionState, setGhostSuggestion, setLogNotice, setLogState, setSearchResults, shellIntegrationCommandBlockProtocolRef, shell, shellAssistEnabled = true, startupMessage, syncCommandBlockViews, target, terminalAppearance, terminalAppearanceRef, terminalFontWeight, terminalGpuRenderRecoveryControllerRef, terminalRef, terminalRendererControllerRef, terminalRuntimeLifecycleControllerRef, terminalRuntimeLifecycleRef, terminalTheme, transientStartupMessage, visibleRef } = params;
+  const { activityRuntimeRef, args, commandBlockCounterRef, commandBlocksRef, containerRef, cwd, cwdTrackingBufferRef, currentCwdRef, disconnectSessionRef, env, fitAddonRef, focusedRef, ghostSuggestionRef, inputBufferRef, inputModelRef, onAgentSignalRef, onCurrentCwdChangeRef, onOutputHistoryChangeRef, onSessionFinishedRef, onTerminalDimensionsChangeRef, outputHistoryRef, paneId, profileId, promptLineRef, reconnectSessionRef, remoteCommand, remoteHostId, remoteHostProduction, searchAddonRef, sessionIdRef, setCommandBlockNotice, setCommandBlockViews, setConnectionState, setGhostSuggestion, setLogNotice, setLogState, setSearchResults, setSuggestionMenu, shellIntegrationCommandBlockProtocolRef, shell, shellAssistEnabled = true, startupMessage, suggestionMenuIntentRef, syncCommandBlockViews, target, terminalAppearance, terminalAppearanceRef, terminalFontWeight, terminalGpuRenderRecoveryControllerRef, terminalRef, terminalRendererControllerRef, terminalRuntimeLifecycleControllerRef, terminalRuntimeLifecycleRef, terminalTheme, transientStartupMessage, visibleRef } = params;
     const container = containerRef.current;
     if (!container) {
       return undefined;
     }
-    let disposed = false;
-    let sessionStatusPollTimer: number | null = null;
+    let disposed = false, sessionStatusPollTimer: number | null = null;
     let resizeObserver: ResizeObserver | undefined;
     let sessionRun = 0;
     let shellIntegrationState = createTerminalShellIntegrationState();
@@ -50,7 +46,7 @@ export function installXtermPaneRuntime(params: any) {
     inputModelRef.current = createTerminalInputModelState();
     setCommandBlockViews([]);
     setCommandBlockNotice(null);
-    setGhostSuggestion(null);
+    setGhostSuggestion(null); setSuggestionMenu(null);
     const terminal = new XtermTerminal({
       cols: 80,
       cursorBlink: terminalAppearance.cursorBlink,
@@ -106,6 +102,7 @@ export function installXtermPaneRuntime(params: any) {
       ghostSuggestionRef,
       inputBufferRef,
       inputModelRef,
+      inputCompatibilityMode,
       isDisposed: () => disposed,
       paneId,
       profileId,
@@ -114,11 +111,13 @@ export function installXtermPaneRuntime(params: any) {
       scheduleCommandBlockViewSync: commandBlockRuntime.scheduleCommandBlockViewSync,
       sessionIdRef,
       setGhostSuggestion,
+      setSuggestionMenu,
       shell,
       target,
       terminal,
       terminalAppearanceRef,
     });
+    suggestionMenuIntentRef.current = (intent: any) => sessionIdRef.current ? ghostSuggestions.handleMenuIntent(intent, sessionIdRef.current) : false;
     const shouldPreserveCommandBlockForOriginEraseBelow = () => {
       if (!assistEnabled) {
         return false;
@@ -191,6 +190,7 @@ export function installXtermPaneRuntime(params: any) {
       },
     );
     const inputDisposable = terminal.onData((data) => {
+      activityRuntimeRef.current?.markUserInput();
       terminalRuntimeLifecycleControllerRef?.current?.markUserInteraction();
       if (terminalInlineSshAuthPrompt.handleInput(data)) {
         return;
@@ -278,6 +278,10 @@ export function installXtermPaneRuntime(params: any) {
       }
     });
     terminal.attachCustomKeyEventHandler((event) => {
+      const suggestionSessionId = sessionIdRef.current;
+      if (suggestionSessionId && ghostSuggestions.handleRuntimeKeyEvent(event, suggestionSessionId)) {
+        event.preventDefault(); event.stopPropagation(); return false;
+      }
       const compatibilityOverride = resolveTerminalInputCompatibilityOverride(
         event,
         inputCompatibilityMode,
@@ -300,7 +304,7 @@ export function installXtermPaneRuntime(params: any) {
     });
     const selectionDisposable = terminal.onSelectionChange(() => {
       const selection = terminal.getSelection?.() ?? "";
-      updateTerminalPaneRuntimeContext(paneId, { selectedText: selection });
+      ghostSuggestions.setLifecycle({ selectionActive: Boolean(selection) }); updateTerminalPaneRuntimeContext(paneId, { selectedText: selection });
       if (!terminalAppearanceRef.current.selectionCopy) {
         return;
       }
@@ -320,6 +324,7 @@ export function installXtermPaneRuntime(params: any) {
       });
     });
     const scrollDisposable = terminal.onScroll(() => {
+      activityRuntimeRef.current?.markScrollPosition();
       commandBlockRuntime.scheduleCommandBlockViewSync();
       ghostSuggestions.refreshGhostSuggestionLayout();
     });
@@ -331,7 +336,9 @@ export function installXtermPaneRuntime(params: any) {
       gpuRenderRecoveryController?.trigger("write-parsed");
     });
     const bufferChangeDisposable = terminal.buffer.onBufferChange(() => {
+      activityRuntimeRef.current?.markBufferChanged();
       const nextBufferType = terminal.buffer.active.type;
+      ghostSuggestions.setLifecycle({ alternateScreen: nextBufferType === "alternate" });
       shellIntegrationState = reduceTerminalShellIntegrationState(
         shellIntegrationState,
         {
@@ -363,7 +370,7 @@ export function installXtermPaneRuntime(params: any) {
         true,
       );
       inputBufferRef.current = inputModelRef.current.command;
-      ghostSuggestions.clearGhostSuggestion();
+      ghostSuggestions.setLifecycle({ imeComposing: true }); ghostSuggestions.clearGhostSuggestion();
     };
     const handleCompositionEnd = () => {
       inputModelRef.current = updateTerminalInputComposition(
@@ -371,7 +378,7 @@ export function installXtermPaneRuntime(params: any) {
         false,
       );
       inputBufferRef.current = inputModelRef.current.command;
-      ghostSuggestions.scheduleGhostSuggestion();
+      ghostSuggestions.setLifecycle({ imeComposing: false }); ghostSuggestions.scheduleGhostSuggestion();
     };
     const terminalInlineSshAuthPrompt = createTerminalInlineSshAuthPrompt({
       markUserInteraction: () =>
@@ -385,6 +392,14 @@ export function installXtermPaneRuntime(params: any) {
     compositionTarget.addEventListener("compositionend", handleCompositionEnd);
     terminal.open(container);
     terminalRef.current = terminal;
+    const activityRuntime = createXtermPaneActivityRuntime({
+      connectionState: "connecting",
+      container,
+      paneId,
+      terminal,
+      visible: visibleRef?.current ?? true,
+    });
+    activityRuntimeRef.current = activityRuntime;
     let rendererBackend = "cpu";
     let lastRecordedRendererFallbackReason: TerminalRendererFallbackReason | undefined;
     const terminalRendererController = createTerminalRendererController({
@@ -670,7 +685,7 @@ export function installXtermPaneRuntime(params: any) {
         return;
       }
 
-      setConnectionState("connecting");
+      setConnectionState(reason === "reconnect" ? "reconnecting" : "connecting");
       terminalSuggestionProbeScheduler.cancelOwner(paneId);
       setLogNotice(null);
       inputBufferRef.current = "";
@@ -702,6 +717,7 @@ export function installXtermPaneRuntime(params: any) {
         }
 
         if (event.kind === "data") {
+          activityRuntime.markOutput();
           if (isSshTerminalTarget()) {
             sshFailureTracker.append(event.data);
           }
@@ -923,7 +939,7 @@ export function installXtermPaneRuntime(params: any) {
       reconnectRuntime.clearReconnectTimer();
       clearSessionStatusPollTimer();
       terminalSuggestionProbeScheduler.cancelOwner(paneId);
-      ghostSuggestions.dispose();
+      ghostSuggestions.dispose(); suggestionMenuIntentRef.current = null;
       commandBlockRuntime.clearCommandBlockViewSyncFrame();
       outputHistoryBuffer.dispose();
       unregisterRuntimeDiagnostics();
@@ -966,6 +982,10 @@ export function installXtermPaneRuntime(params: any) {
         terminalRendererControllerRef.current = null;
       }
       outputWriter.dispose();
+      activityRuntime.dispose();
+      if (activityRuntimeRef.current === activityRuntime) {
+        activityRuntimeRef.current = null;
+      }
       terminal.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;

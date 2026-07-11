@@ -532,6 +532,36 @@ describe("useSftpTransferActions", () => {
     });
   });
 
+  it("sanitizes clipboard transfer failures before storing them", async () => {
+    sftpApiMock.enqueueSftpClipboardDownload.mockResolvedValue(
+      transferSummary({
+        error: "secret=clipboard-summary-secret",
+        id: "clipboard-failed",
+        status: "failed",
+      }),
+    );
+    const { result, setters } = renderTransferActionsHook({
+      fileTarget: sshFileTarget({ hostId: "host-left" }),
+    });
+
+    await act(async () => {
+      await result.current.downloadEntryToLocalClipboard(
+        remoteEntry({ name: "app.log", path: "/srv/app.log" }),
+      );
+    });
+
+    const update =
+      setters.setTransfers.mock.calls[
+        setters.setTransfers.mock.calls.length - 1
+      ]?.[0] as
+      | SetStateAction<SftpTransferSummary[]>
+      | undefined;
+    const transfers =
+      typeof update === "function" ? update([]) : (update ?? []);
+    expect(transfers[0]?.error).toContain('secret="[已隐藏]"');
+    expect(transfers[0]?.error).not.toContain("clipboard-summary-secret");
+  });
+
   it("copies one selected remote item to the local file clipboard with Ctrl+C", async () => {
     sftpApiMock.enqueueSftpClipboardDownload.mockResolvedValue(
       transferSummary({ id: "clipboard-download" }),

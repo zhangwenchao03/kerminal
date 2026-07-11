@@ -3,12 +3,16 @@ import type {
   CommandWorkflowStep,
 } from "../../lib/workflowApi";
 import type { CommandHistoryTarget } from "../../lib/commandHistoryApi";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../lib/userFacingMessage";
 import { extractSnippetVariables, renderSnippetCommand } from "../snippets/snippetVariables";
 import type { TerminalPane } from "../workspace/types";
 
 export interface WorkflowRunState {
   confirmedStepId: string | null;
-  error: string | null;
+  error: UserFacingMessage | string | null;
   nextStepIndex: number;
   sending: boolean;
   status: string | null;
@@ -240,7 +244,11 @@ export function failWorkflowStepExecution(
 ): WorkflowRunState {
   return {
     ...state,
-    error: error instanceof Error ? error.message : String(error),
+    error: buildUserFacingError(error, {
+      detail: "当前步骤尚未发送。",
+      recoveryAction: "请确认分屏仍处于连接状态后重试。",
+      title: "工作流步骤未发送",
+    }),
     sending: false,
     status: null,
     values,

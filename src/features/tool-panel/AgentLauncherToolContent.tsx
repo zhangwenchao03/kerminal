@@ -5,14 +5,11 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
-  type ReactNode,
 } from "react";
-import {
-  AlertTriangle,
-  Loader2,
-  Terminal,
-} from "lucide-react";
+import { Info, Loader2, Terminal } from "lucide-react";
 import { Button } from "../../components/ui/button";
+import { IconAction } from "../../components/ui/icon-action";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
 import type { DesktopNotificationSettings } from "../../lib/desktopNotificationPolicy";
 import {
@@ -32,6 +29,11 @@ import {
 } from "../../lib/agentLauncherApi";
 import type { TerminalAgentSignal } from "../../lib/terminalApi";
 import {
+  buildUserFacingError,
+  redactSensitiveTechnicalDetail,
+  type UserFacingMessage,
+} from "../../lib/userFacingMessage";
+import {
   defaultTerminalAppearance,
   type ResolvedTheme,
   type TerminalAppearance,
@@ -42,7 +44,6 @@ import {
   type TerminalTab,
 } from "../workspace/types";
 import {
-  agentLauncherErrorMessage,
   agentLaunchDisplayCommand,
   applyAgentLaunchPermissionMode,
   buildAgentLauncherViewModel,
@@ -59,6 +60,7 @@ import {
 } from "./agent-launcher/agentTabSessionModel";
 import {
   buildAgentSessionTarget,
+  formatCurrentAgentTargetLabel,
   formatTargetChipLabel,
 } from "./agent-launcher/agentSessionTargetModel";
 import {
@@ -112,6 +114,8 @@ const initialAgentActions: AgentActionViewModel[] = [
   {
     actionLabel: "Open Codex",
     agentId: "codex",
+    availabilityDetail: "正在检查 Codex 状态。",
+    availabilityLabel: "需设置",
     cliCommand: "codex",
     configLabel: "Workspace",
     configPath: "~/.kerminal/.codex/config.toml",
@@ -124,6 +128,8 @@ const initialAgentActions: AgentActionViewModel[] = [
   {
     actionLabel: "Open Claude",
     agentId: "claude",
+    availabilityDetail: "正在检查 Claude 状态。",
+    availabilityLabel: "需设置",
     cliCommand: "claude",
     configLabel: "Workspace",
     configPath: "~/.kerminal/.mcp.json",
@@ -136,6 +142,8 @@ const initialAgentActions: AgentActionViewModel[] = [
   {
     actionLabel: "Open Custom Agent",
     agentId: "custom",
+    availabilityDetail: "输入自定义命令后打开。",
+    availabilityLabel: "需设置",
     cliCommand: "User supplied CLI",
     configLabel: "Explicit command",
     configPath: "~/.kerminal",
@@ -159,10 +167,11 @@ export function AgentLauncherToolContent({
     null,
   );
   const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<UserFacingMessage | null>(null);
   const [actionState, setActionState] = useState<ActionState>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<UserFacingMessage | null>(null);
   const [customCommandOpen, setCustomCommandOpen] = useState(false);
+  const [technicalDetailsOpen, setTechnicalDetailsOpen] = useState(false);
   const [customCommand, setCustomCommand] = useState("");
   const [agentSessions, setAgentSessions] = useState<
     Record<string, AgentTerminalSession>
@@ -197,7 +206,12 @@ export function AgentLauncherToolContent({
       setStatus(await getExternalAgentWorkspaceStatus());
       setLoadState("idle");
     } catch (error) {
-      setLoadError(agentLauncherErrorMessage(error));
+      setLoadError(
+        buildUserFacingError(error, {
+          recoveryAction: "请确认 Kerminal 服务可用后重试。",
+          title: "无法读取 Agent 状态",
+        }),
+      );
       setLoadState("error");
     }
   }, []);
@@ -243,6 +257,27 @@ export function AgentLauncherToolContent({
     () => (status ? buildAgentLauncherViewModel(status, true) : initialAgentActions),
     [status],
   );
+  const agentTechnicalDetail = useMemo(
+    () =>
+      redactSensitiveTechnicalDetail(
+        [
+          `MCP: ${status?.mcpServerRunning ? "running" : "stopped"}`,
+          `Endpoint: ${status?.mcpEndpoint || "unavailable"}`,
+          ...agentActions.flatMap((agent) => [
+            "",
+            `${agent.title}: ${agent.availabilityLabel}`,
+            `  command: ${agent.cliCommand}`,
+            `  config: ${agent.configPath}`,
+            `  status: ${agent.statusDetail}`,
+          ]),
+        ].join("\n"),
+      ),
+    [agentActions, status],
+  );
+  const currentAgentTargetLabel = formatCurrentAgentTargetLabel(
+    focusedPane,
+    activeTab,
+  );
 
   const runAction = async (
     nextAction: ExternalAgentId,
@@ -253,7 +288,12 @@ export function AgentLauncherToolContent({
     try {
       await action();
     } catch (error) {
-      setActionError(agentLauncherErrorMessage(error));
+      setActionError(
+        buildUserFacingError(error, {
+          recoveryAction: "请检查目标终端和 Agent 配置后重试。",
+          title: "Agent 操作未完成",
+        }),
+      );
     } finally {
       setActionState(null);
     }
@@ -327,7 +367,12 @@ export function AgentLauncherToolContent({
         try {
           await archiveAgentSession(agentSessionId);
         } catch (error) {
-          setActionError(agentLauncherErrorMessage(error));
+          setActionError(
+            buildUserFacingError(error, {
+              recoveryAction: "请稍后重新整理会话。",
+              title: "无法归档 Agent 会话",
+            }),
+          );
         }
       }),
     );
@@ -650,6 +695,30 @@ export function AgentLauncherToolContent({
       >
         <div className="flex min-h-0 flex-1 items-center justify-center">
           <div className="relative w-full max-w-[260px]" ref={launcherMenuRootRef}>
+            <div className="mb-2 flex min-w-0 items-center gap-1 px-1">
+              <div
+                className="flex min-w-0 flex-1 items-center justify-center gap-1.5 px-1 text-[11px]"
+                data-testid="agent-current-target"
+                title={currentAgentTargetLabel}
+              >
+                <span className="shrink-0 text-zinc-500 dark:text-zinc-400">
+                  当前目标
+                </span>
+                <span className="min-w-0 truncate font-medium text-zinc-800 dark:text-zinc-200">
+                  {currentAgentTargetLabel}
+                </span>
+              </div>
+              <IconAction
+                aria-controls="agent-launcher-technical-details"
+                aria-expanded={technicalDetailsOpen}
+                className="h-7 w-7 rounded-lg"
+                icon={Info}
+                label="查看 Agent 技术详情"
+                onClick={() => setTechnicalDetailsOpen((current) => !current)}
+                tooltip="技术详情"
+                variant="ghost"
+              />
+            </div>
             <div className="grid grid-cols-3 gap-1.5">
               {agentActions.map((agent) => (
                 <AgentIconButton
@@ -661,6 +730,18 @@ export function AgentLauncherToolContent({
                 />
               ))}
             </div>
+            {technicalDetailsOpen ? (
+              <div
+                aria-label="Agent 技术详情"
+                className="kerminal-muted-surface mt-2 rounded-xl border p-2.5"
+                id="agent-launcher-technical-details"
+                role="region"
+              >
+                <pre className="scrollbar-none max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-4 text-zinc-600 dark:text-zinc-300">
+                  {agentTechnicalDetail}
+                </pre>
+              </div>
+            ) : null}
 
             {agentContextMenu ? (
               <AgentLaunchContextMenu
@@ -725,13 +806,25 @@ export function AgentLauncherToolContent({
         </div>
 
         {loadState === "error" && !status ? (
-          <InlineError message={loadError ?? "Agent workspace unavailable."}>
+          <UserFacingNotice
+            className="mt-3"
+            compact
+            message={
+              loadError ?? {
+                recoveryAction: "请稍后重试。",
+                severity: "error",
+                title: "无法读取 Agent 状态",
+              }
+            }
+          >
             <Button onClick={() => void loadStatus("loading")} size="sm">
-              Retry
+              重试
             </Button>
-          </InlineError>
+          </UserFacingNotice>
         ) : null}
-        {actionError ? <InlineError message={actionError} /> : null}
+        {actionError ? (
+          <UserFacingNotice className="mt-3" compact message={actionError} />
+        ) : null}
       </div>
       {agentSessionList.map((session) => {
         const active = session.agentSessionId === activeAgentSession?.agentSessionId;
@@ -794,13 +887,11 @@ async function createSessionForLaunch(
     target: agentSessionRecordTarget(record),
   };
 }
-
 function unboundAgentSessionTarget(): AgentSessionTargetRequest {
   return {
     liveStatus: "unbound",
   };
 }
-
 function AgentRestoreChoicePanel({
   actionState,
   choice,
@@ -865,7 +956,6 @@ function AgentRestoreChoicePanel({
     </div>
   );
 }
-
 function agentTitle(agentId: ExternalAgentId): string {
   if (agentId === "claude") {
     return "Claude";
@@ -875,7 +965,6 @@ function agentTitle(agentId: ExternalAgentId): string {
   }
   return "Codex";
 }
-
 function clampAgentLaunchContextMenuPosition(
   x: number,
   y: number,
@@ -903,26 +992,6 @@ function clampAgentLaunchContextMenuPosition(
     ),
   };
 }
-
 function formatLaunchCommand(spec: ExternalAgentLaunchSpec): string {
   return agentLaunchDisplayCommand(spec) || spec.title;
-}
-
-function InlineError({
-  children,
-  message,
-}: {
-  children?: ReactNode;
-  message: string;
-}) {
-  return (
-    <div
-      className="mt-3 flex items-start gap-2 rounded-xl border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-100"
-      role="alert"
-    >
-      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-      <span className="min-w-0 flex-1 break-words">{message}</span>
-      {children}
-    </div>
-  );
 }

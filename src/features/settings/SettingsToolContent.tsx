@@ -61,6 +61,9 @@ export function SettingsToolContent({
   const [pendingSearchTargetId, setPendingSearchTargetId] = useState<
     string | null
   >(null);
+  const [revealedSearchTargetId, setRevealedSearchTargetId] = useState<
+    string | null
+  >(null);
   const normalizedSettings = normalizeAppSettings(settings);
   const selectedKeybindingPlatformLabel =
     selectedKeybindingPlatform === "mac" ? "macOS" : "Windows";
@@ -214,6 +217,7 @@ export function SettingsToolContent({
   const navigateToSearchResult = (result: SettingsSearchEntry) => {
     setActiveSectionId(result.sectionId);
     setPendingSearchTargetId(result.targetId);
+    setRevealedSearchTargetId(result.targetId);
     setSettingsSearchQuery("");
   };
 
@@ -244,11 +248,8 @@ export function SettingsToolContent({
             ) : null}
           </label>
 
-          <div className="px-2 pb-2 pt-3 text-xs font-medium text-zinc-500 dark:text-zinc-400">
-            功能分类
-          </div>
           {trimmedSettingsSearchQuery ? (
-            <div className="space-y-1">
+            <div className="mt-2 space-y-1">
               {settingsSearchResults.length > 0 ? (
                 settingsSearchResults.map((result) => (
                   <button
@@ -274,7 +275,7 @@ export function SettingsToolContent({
               )}
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="mt-2 space-y-1">
               {settingsSections.map((section) => {
                 const Icon = section.icon;
                 const selected = activeSectionId === section.id;
@@ -282,6 +283,7 @@ export function SettingsToolContent({
                 return (
                   <button
                     aria-controls={`${section.id}-panel`}
+                    aria-label={`打开设置分类：${section.label}`}
                     aria-pressed={selected}
                     className={cn(
                       "kerminal-focus-ring kerminal-pressable flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm",
@@ -290,7 +292,10 @@ export function SettingsToolContent({
                         : "text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50",
                     )}
                     key={section.id}
-                    onClick={() => setActiveSectionId(section.id)}
+                    onClick={() => {
+                      setActiveSectionId(section.id);
+                      setRevealedSearchTargetId(null);
+                    }}
                     type="button"
                   >
                     <span
@@ -303,13 +308,8 @@ export function SettingsToolContent({
                     >
                       <Icon className="h-4 w-4" />
                     </span>
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium">
-                        {section.label}
-                      </span>
-                      <span className="block truncate text-xs text-zinc-500 dark:text-zinc-500">
-                        {section.description}
-                      </span>
+                    <span className="min-w-0 truncate font-medium">
+                      {section.label}
                     </span>
                   </button>
                 );
@@ -341,6 +341,9 @@ export function SettingsToolContent({
         {activeSectionId === "settings-terminal" ? (
           <TerminalSettingsSection
             normalizedSettings={normalizedSettings}
+            revealRenderer={
+              revealedSearchTargetId === "settings-terminal-renderer-panel"
+            }
             resolvedTheme={previewResolvedTheme}
             updateTerminal={updateTerminal}
           />
@@ -360,6 +363,9 @@ export function SettingsToolContent({
           <div className="space-y-4" id="settings-mcp-panel">
             <McpSkillsSettingsSection
               desktopNotifications={normalizedSettings.desktopNotifications}
+              revealConnectionInfo={
+                revealedSearchTargetId === "settings-mcp-connection-info"
+              }
             />
           </div>
         ) : null}
@@ -383,6 +389,10 @@ export function SettingsToolContent({
         {activeSectionId === "settings-external-launch" ? (
           <ExternalLaunchSettingsSection
             externalLaunch={normalizedSettings.externalLaunch}
+            revealCompatibility={
+              revealedSearchTargetId ===
+              "settings-external-launch-compatibility"
+            }
             updateExternalLaunch={updateExternalLaunch}
           />
         ) : null}

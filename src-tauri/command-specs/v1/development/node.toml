@@ -1,0 +1,35 @@
+schema_version = 1
+command = "node"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Run JavaScript with Node.js"
+tested_version = "Node.js 24"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "Node.js command line documentation"
+url = "https://nodejs.org/api/cli.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "--eval"
+aliases = ["-e"]
+description = "Evaluate JavaScript source"
+
+[options.argument]
+kind = "string"
+placeholder = "SCRIPT"
+
+[[options]]
+name = "--inspect"
+description = "Activate the inspector"
+
+[[options]]
+name = "--version"
+aliases = ["-v"]
+description = "Print the Node.js version"

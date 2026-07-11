@@ -1,0 +1,36 @@
+schema_version = 1
+command = "sed"
+aliases = []
+platforms = ["macos", "linux"]
+shells = ["bash", "zsh", "fish"]
+description = "Transform text streams"
+tested_version = "GNU sed 4.9"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "GNU sed manual"
+url = "https://www.gnu.org/software/sed/manual/sed.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "--expression"
+aliases = ["-e"]
+description = "Add a script expression"
+
+[options.argument]
+kind = "string"
+placeholder = "SCRIPT"
+
+[[options]]
+name = "--in-place"
+aliases = ["-i"]
+description = "Edit files in place"
+
+[options.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "In-place editing changes files directly"

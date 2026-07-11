@@ -1,0 +1,55 @@
+schema_version = 1
+command = "helm"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell"]
+description = "Manage applications on Kubernetes with Helm"
+tested_version = "Helm 3.18"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "Helm command reference"
+url = "https://helm.sh/docs/helm/"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "install"
+description = "Install a chart"
+
+[[subcommands]]
+name = "list"
+description = "List releases"
+
+[[subcommands]]
+name = "repo"
+description = "Manage chart repositories"
+
+[[subcommands]]
+name = "template"
+description = "Render chart templates locally"
+
+[[subcommands]]
+name = "uninstall"
+description = "Uninstall a release"
+
+[subcommands.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "Uninstalling a release removes managed resources"
+
+[[subcommands]]
+name = "upgrade"
+description = "Upgrade a release"
+
+[[options]]
+name = "--namespace"
+aliases = ["-n"]
+description = "Select a Kubernetes namespace"
+
+[options.argument]
+kind = "string"
+placeholder = "NAMESPACE"

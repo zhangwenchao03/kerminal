@@ -1,0 +1,46 @@
+schema_version = 1
+command = "gradle"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Build projects with Gradle"
+tested_version = "Gradle 9"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "Gradle command line reference"
+url = "https://docs.gradle.org/current/userguide/command_line_interface.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "build"
+description = "Build the project"
+
+[[subcommands]]
+name = "clean"
+description = "Remove build output"
+
+[[subcommands]]
+name = "tasks"
+description = "List available tasks"
+
+[[subcommands]]
+name = "test"
+description = "Run project tests"
+
+[[options]]
+name = "--build-file"
+aliases = ["-b"]
+description = "Select a build file"
+
+[options.argument]
+kind = "file"
+placeholder = "FILE"
+
+[[options]]
+name = "--no-daemon"
+description = "Do not reuse the Gradle daemon"

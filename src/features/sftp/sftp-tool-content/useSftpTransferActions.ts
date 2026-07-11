@@ -27,6 +27,7 @@ import {
 } from "../sftpTransferClipboardModel";
 import { mergeTransferSnapshot } from "../sftpTransferModel";
 import { useSftpManagedTransferQueue } from "../useSftpManagedTransferQueue";
+import { sanitizeSftpTransferSummary } from "../useSftpTransferQueueSync";
 import {
   isEditableKeyboardTarget,
   isFileManagerShortcut,
@@ -684,7 +685,9 @@ export function useSftpTransferActions({
       const summary = await enqueueSftpClipboardDownload(
         withSftpTransferViewScope(plan.request, viewScope),
       );
-      setTransfers((current) => mergeTransferSnapshot(current, summary));
+      setTransfers((current) =>
+        mergeTransferSnapshot(current, sanitizeSftpTransferSummary(summary)),
+      );
       setOperationStatus(null);
       void refreshTransfers();
     } catch (nextError) {

@@ -8,6 +8,7 @@ import type { TerminalPane } from "../../../../src/features/workspace/types";
 import {
   buildWorkflowRunState,
   completeWorkflowStepExecution,
+  failWorkflowStepExecution,
   getWorkflowRunPreview,
   prepareWorkflowStepExecution,
   updateWorkflowRunConfirmation,
@@ -100,7 +101,11 @@ describe("workflowRunModel", () => {
     );
 
     expect(
-      prepareWorkflowStepExecution(workflow, confirmedState, localPaneFixture()),
+      prepareWorkflowStepExecution(
+        workflow,
+        confirmedState,
+        localPaneFixture(),
+      ),
     ).toMatchObject({
       command: "npm run check",
       kind: "ready",
@@ -165,6 +170,27 @@ describe("workflowRunModel", () => {
     expect(final).toMatchObject({
       nextStepIndex: 2,
       status: "工作流已发送完毕，共 2 步。",
+    });
+  });
+
+  it("keeps unexpected execution failures in technical details", () => {
+    const workflow = workflowFixture({
+      steps: [stepFixture({ command: "echo one" })],
+    });
+    const state = buildWorkflowRunState(workflow);
+
+    const failed = failWorkflowStepExecution(
+      state,
+      new Error("workflow_send_failed token=workflow-secret"),
+      state.values,
+    );
+
+    expect(failed.error).toMatchObject({
+      recoveryAction: "请确认分屏仍处于连接状态后重试。",
+      title: "工作流步骤未发送",
+    });
+    expect(failed.error).not.toMatchObject({
+      technicalDetail: expect.stringContaining("workflow-secret"),
     });
   });
 });

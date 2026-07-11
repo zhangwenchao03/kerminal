@@ -19,6 +19,7 @@ import {
 
 export type ConnectionState =
   | "connecting"
+  | "reconnecting"
   | "connected"
   | "disconnected"
   | "closed"
@@ -604,7 +605,29 @@ export function stateLabel(state: ConnectionState) {
   if (state === "error") {
     return "异常";
   }
+  if (state === "reconnecting") {
+    return "重新连接中";
+  }
   return "连接中";
+}
+
+/** 为 effect 的结构化依赖生成键序稳定的 JSON。 */
+export function stableJsonDependencyKey(value: unknown): string {
+  return JSON.stringify(sortJsonValue(value));
+}
+
+function sortJsonValue(value: unknown): unknown {
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(sortJsonValue);
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entryValue]) => [key, sortJsonValue(entryValue)]),
+  );
 }
 
 export function buildTerminalCreateRequest(

@@ -109,18 +109,13 @@ export function SshPropertiesPanel({
           />
         </FieldRow>
         <FieldRow label="标签">
-          <div className="space-y-1">
-            <input
-              aria-label="标签"
-              className={inputClassName}
-              onChange={(event) => setTags(event.currentTarget.value)}
-              placeholder="例如：dev, ubuntu, staging"
-              value={tags}
-            />
-            <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-              多个标签可用逗号或空格分隔。
-            </p>
-          </div>
+          <input
+            aria-label="标签"
+            className={inputClassName}
+            onChange={(event) => setTags(event.currentTarget.value)}
+            placeholder="dev, ubuntu, staging"
+            value={tags}
+          />
         </FieldRow>
       </div>
     </div>
@@ -154,7 +149,8 @@ export function SshAuthFields({
       setCredentialRef(selected);
       setCredentialSecret("");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      console.warn("Failed to select an SSH private key file", caught);
+      setError("无法选择私钥文件，请重试。");
     }
   };
 
@@ -172,14 +168,14 @@ export function SshAuthFields({
           setCredentialRef("");
           setCredentialSecret("");
         }}
-        options={authOptions.map((option) => ({
-          description: option.helper,
-          label: option.label,
-          value: option.value,
-        }))}
+        options={authOptions}
         value={authType}
       />
-      {authType === "agent" ? null : (
+      {authType === "agent" ? (
+        <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+          使用系统 ssh-agent，不保存额外凭据。
+        </p>
+      ) : (
         <>
           {authType === "password" ? (
             <div className="grid gap-2">
@@ -195,7 +191,7 @@ export function SshAuthFields({
                 value={credentialSecret}
               />
               <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-                密码明文保存，编辑时显示。
+                密码保存在凭据保险箱中，编辑时可回显。
               </p>
             </div>
           ) : (
@@ -232,7 +228,7 @@ export function SshAuthFields({
                 value={credentialSecret}
               />
               <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-                私钥路径和内容二选一；内容明文保存。
+                私钥路径和内容二选一；粘贴内容保存在凭据保险箱中。
               </p>
             </div>
           )}

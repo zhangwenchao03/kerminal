@@ -1,4 +1,4 @@
-import { Info, Keyboard, MonitorCog, RotateCcw } from "lucide-react";
+import { Keyboard, RotateCcw } from "lucide-react";
 import { cn } from "../../../lib/cn";
 import { bindingForPlatform } from "../keybindingUtils";
 import {
@@ -11,7 +11,6 @@ import {
 import { keybindingPlatformOptions } from "./options";
 import {
   KeybindingCell,
-  SettingsMetricItem,
   scopeLabel,
 } from "./shared-controls";
 
@@ -94,15 +93,10 @@ export function KeybindingsSettingsSection({
       className={keybindingsPanelClassName}
       id="settings-keybindings-panel"
     >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-            <Keyboard className="h-4 w-4 text-sky-500 dark:text-sky-300" />
-            快捷键
-          </div>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-            按平台查看和编辑快捷键。
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+          <Keyboard className="h-4 w-4 text-sky-500 dark:text-sky-300" />
+          快捷键
         </div>
         <div
           aria-label="快捷键平台"
@@ -127,28 +121,7 @@ export function KeybindingsSettingsSection({
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 md:grid-cols-3">
-        <SettingsMetricItem
-          description="当前平台组合键。"
-          icon={MonitorCog}
-          label="当前平台"
-          value={selectedKeybindingPlatformLabel}
-        />
-        <SettingsMetricItem
-          description="默认沿用 IntelliJ IDEA。"
-          icon={Keyboard}
-          label="默认风格"
-          value="IntelliJ IDEA"
-        />
-        <SettingsMetricItem
-          description="修改后立即保存。"
-          icon={Info}
-          label="编辑状态"
-          value="可编辑"
-        />
-      </div>
-
-      <div className="mt-5 space-y-4">
+      <div className="mt-4 space-y-4">
         {(["global", "terminal", "workspace"] as KeybindingScope[]).map(
           (scope) => {
             const scopedKeybindings = normalizedSettings.keybindings.filter(

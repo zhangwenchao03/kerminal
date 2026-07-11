@@ -1,7 +1,7 @@
-import { AlertTriangle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import {
   ackExternalSshLaunch,
   cancelExternalSshLaunch,
@@ -10,23 +10,26 @@ import {
   takePendingExternalSshLaunches,
   type ExternalSshLaunchRequest,
 } from "../../lib/externalLaunchApi";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../lib/userFacingMessage";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
 import { ExternalLaunchResolutionDialog } from "./ExternalLaunchResolutionDialog";
 import {
   applyExternalSshLaunchMaterializedTarget,
   externalSshLaunchNeedsUsername,
   externalSshLaunchSourceLabel,
-  formatExternalSshLaunchError,
   type ExternalSshLaunchResolvedRequest,
 } from "./externalSshLaunchModel";
 
 interface ExternalLaunchFailure {
   launch: ExternalSshLaunchResolvedRequest;
-  message: string;
+  message: UserFacingMessage;
 }
 
 interface ExternalLaunchNotice {
-  message: string;
+  message: UserFacingMessage;
 }
 
 export function ExternalLaunchHost() {
@@ -41,7 +44,7 @@ export function ExternalLaunchHost() {
   );
   const [notice, setNotice] = useState<ExternalLaunchNotice | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserFacingMessage | null>(null);
   const processingLaunchIdRef = useRef<string | null>(null);
   const enqueueLaunches = useCallback(
     (launches: ExternalSshLaunchRequest[]) => {
@@ -63,7 +66,11 @@ export function ExternalLaunchHost() {
     try {
       enqueueLaunches(await takePendingExternalSshLaunches());
     } catch (nextError) {
-      const message = formatExternalSshLaunchError(nextError);
+      const message = buildUserFacingError(nextError, {
+        detail: "Kerminal 暂时无法读取待处理的外部 SSH 请求。",
+        recoveryAction: "请重新发起连接请求。",
+        title: "外部 SSH 请求未读取",
+      });
       setError(message);
       setNotice({ message });
     }
@@ -86,7 +93,11 @@ export function ExternalLaunchHost() {
         );
         await ackExternalSshLaunch(launch.id);
       } catch (nextError) {
-        const message = formatExternalSshLaunchError(nextError);
+        const message = buildUserFacingError(nextError, {
+          detail: "该请求尚未打开。",
+          recoveryAction: "可重试或取消该请求。",
+          title: "外部 SSH 启动失败",
+        });
         setError(message);
         setFailedLaunch({ launch, message });
       } finally {
@@ -105,8 +116,13 @@ export function ExternalLaunchHost() {
       if (payload.kind === "queued") {
         void drainPendingLaunches();
       } else if (payload.message) {
-        setError(payload.message);
-        setNotice({ message: payload.message });
+        const message = buildUserFacingError(payload.message, {
+          detail: "启动请求未通过接收校验。",
+          recoveryAction: "请检查来源参数后重试。",
+          title: "外部 SSH 请求未接收",
+        });
+        setError(message);
+        setNotice({ message });
       }
     }).then((nextUnlisten) => {
       if (disposed) {
@@ -155,7 +171,13 @@ export function ExternalLaunchHost() {
       await cancelExternalSshLaunch(resolutionLaunch.id);
       setResolutionLaunch(null);
     } catch (nextError) {
-      setError(formatExternalSshLaunchError(nextError));
+      setError(
+        buildUserFacingError(nextError, {
+          detail: "该外部 SSH 请求仍在待处理列表中。",
+          recoveryAction: "请稍后再次取消。",
+          title: "请求未取消",
+        }),
+      );
     } finally {
       setBusy(false);
     }
@@ -192,7 +214,11 @@ export function ExternalLaunchHost() {
     } catch (nextError) {
       setFailedLaunch({
         ...failedLaunch,
-        message: formatExternalSshLaunchError(nextError),
+        message: buildUserFacingError(nextError, {
+          detail: "该外部 SSH 请求仍在待处理列表中。",
+          recoveryAction: "请稍后再次取消。",
+          title: "请求未取消",
+        }),
       });
     } finally {
       setBusy(false);
@@ -247,12 +273,7 @@ function ExternalLaunchNoticeDialog({
       size="small"
       title="外部 SSH 启动未接收"
     >
-      <div className="flex gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-field)] p-3">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500 dark:text-amber-300" />
-        <p className="min-w-0 text-sm leading-5 text-zinc-700 dark:text-zinc-200">
-          {notice.message}
-        </p>
-      </div>
+      <UserFacingNotice message={notice.message} />
     </ModalShell>
   );
 }
@@ -293,12 +314,7 @@ function ExternalLaunchFailureDialog({
       size="small"
       title="外部 SSH 启动失败"
     >
-      <div className="flex gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-field)] p-3">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500 dark:text-amber-300" />
-        <p className="min-w-0 text-sm leading-5 text-zinc-700 dark:text-zinc-200">
-          {message}
-        </p>
-      </div>
+      <UserFacingNotice message={message} />
     </ModalShell>
   );
 }

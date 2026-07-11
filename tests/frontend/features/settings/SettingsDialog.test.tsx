@@ -26,6 +26,9 @@ describe("SettingsDialog", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("基础外观")).toBeInTheDocument();
     expect(screen.getByLabelText("搜索设置")).toBeInTheDocument();
+    expect(
+      screen.queryByText("主题、终端、MCP、SFTP 和快捷键。"),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /终端/ }));
     expect(screen.getByText("终端渲染")).toBeInTheDocument();
@@ -83,7 +86,7 @@ describe("SettingsDialog", () => {
 
     expect(screen.getByLabelText("界面透明度")).toHaveValue("80");
     expect(
-      screen.getByText("cfg: settings changed externally; editor draft kept"),
+      screen.getByText("设置已在外部更新，当前编辑内容已保留。"),
     ).toBeInTheDocument();
     expect(onSettingsChange).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -148,7 +151,7 @@ describe("SettingsDialog", () => {
       expect(screen.getByLabelText("界面透明度")).toHaveValue("45");
     });
     expect(
-      screen.queryByText("cfg: settings changed externally; editor draft kept"),
+      screen.queryByText("设置已在外部更新，当前编辑内容已保留。"),
     ).not.toBeInTheDocument();
   });
 });

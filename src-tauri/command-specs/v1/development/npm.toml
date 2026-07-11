@@ -1,0 +1,107 @@
+schema_version = 1
+command = "npm"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Node.js package manager command line"
+tested_version = "11"
+owner = "kerminal"
+updated_at = "2026-07-10"
+
+[source]
+name = "npm CLI documentation"
+url = "https://docs.npmjs.com/cli/"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "ci"
+description = "Install from a lockfile"
+
+[[subcommands]]
+name = "install"
+description = "Install packages"
+
+[[subcommands]]
+name = "link"
+description = "Link a package"
+
+[[subcommands]]
+name = "login"
+description = "Authenticate to a registry"
+
+[[subcommands]]
+name = "outdated"
+description = "List outdated packages"
+
+[[subcommands]]
+name = "publish"
+description = "Publish a package"
+
+[subcommands.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "Publishing can release a package to a configured registry"
+
+[[subcommands]]
+name = "run"
+description = "Run a package script"
+
+[[subcommands]]
+name = "test"
+description = "Run package tests"
+
+[[subcommands]]
+name = "update"
+description = "Update packages"
+
+[[subcommands]]
+name = "version"
+description = "Change the package version"
+
+[[options]]
+name = "--dry-run"
+description = "Report changes without applying them"
+
+[[options]]
+name = "--global"
+description = "Use the global package location"
+
+[[options]]
+name = "--if-present"
+description = "Do not fail when a script is absent"
+
+[[options]]
+name = "--legacy-peer-deps"
+description = "Use legacy peer dependency resolution"
+
+[[options]]
+name = "--omit"
+description = "Omit a dependency type"
+
+[options.argument]
+kind = "enum"
+placeholder = "TYPE"
+values = ["dev", "optional", "peer"]
+
+[[options]]
+name = "--prefix"
+description = "Use a different working prefix"
+
+[options.argument]
+kind = "directory"
+placeholder = "PATH"
+
+[[options]]
+name = "--save-dev"
+description = "Save as a development dependency"
+
+[[options]]
+name = "--workspace"
+description = "Select a workspace"
+
+[options.argument]
+kind = "string"
+placeholder = "NAME"

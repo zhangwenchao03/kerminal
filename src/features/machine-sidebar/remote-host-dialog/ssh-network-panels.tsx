@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Cable, Plus, Waypoints } from "lucide-react";
+import { Cable, Plus } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Select } from "../../../components/ui/select";
 import type {
@@ -20,7 +20,6 @@ import {
   ConfigListItem,
   EmptyConfigState,
   FieldRow,
-  HelpCard,
   inputClassName,
   ListReorderActions,
 } from "./shared-ui";
@@ -107,10 +106,6 @@ export function SshProxyPanel({
           value={proxy.username ?? ""}
         />
       </FieldRow>
-      <HelpCard
-        icon={<Waypoints className="mt-0.5 h-4 w-4 text-sky-500 dark:text-sky-300" />}
-        text="仅保存协议、地址、端口和用户名。"
-      />
     </div>
   );
 }

@@ -23,6 +23,31 @@ import {
   type TerminalGhostSuggestion,
 } from "./XtermPane.helpers";
 import { resolveTerminalSuggestionProbePolicy } from "./terminalSuggestionProbePolicy";
+import { createTerminalSuggestionController } from "./terminalSuggestionController";
+import { createTerminalSuggestionRuntimeBridge } from "./terminalSuggestionRuntimeBridge";
+import type {
+  TerminalSuggestionLifecycle,
+  TerminalSuggestionQuery,
+} from "./terminalSuggestionModel";
+import type { TerminalSuggestionKeyEvent } from "./terminalSuggestionKeyPolicy";
+import {
+  createTerminalSuggestionMenuState,
+  reduceTerminalSuggestionMenuState,
+  resolveTerminalSuggestionMenuKeyIntent,
+  TERMINAL_SUGGESTION_MENU_REQUEST_LIMIT,
+  type TerminalSuggestionMenuIntent,
+  type TerminalSuggestionMenuState,
+} from "./terminalSuggestionMenuModel";
+import type {
+  TerminalSuggestionMenuAnchor,
+  TerminalSuggestionPaneSize,
+} from "./terminalSuggestionMenuPosition";
+
+export interface XtermPaneSuggestionMenuView {
+  anchor: TerminalSuggestionMenuAnchor;
+  paneSize: TerminalSuggestionPaneSize;
+  state: TerminalSuggestionMenuState;
+}
 
 function resolveSuggestionTarget({
   remoteHostId,
@@ -63,6 +88,7 @@ export function createXtermPaneGhostSuggestions({
   ghostSuggestionRef,
   inputBufferRef,
   inputModelRef,
+  inputCompatibilityMode,
   isDisposed,
   paneId,
   profileId,
@@ -71,6 +97,7 @@ export function createXtermPaneGhostSuggestions({
   scheduleCommandBlockViewSync,
   sessionIdRef,
   setGhostSuggestion,
+  setSuggestionMenu,
   shell,
   target,
   terminal,
@@ -84,6 +111,7 @@ export function createXtermPaneGhostSuggestions({
   ghostSuggestionRef: MutableRefObject<TerminalGhostSuggestion | null>;
   inputBufferRef: MutableRefObject<string>;
   inputModelRef: MutableRefObject<TerminalInputModelState>;
+  inputCompatibilityMode: "agentTui" | "shell";
   isDisposed: () => boolean;
   paneId: string;
   profileId?: string;
@@ -92,6 +120,9 @@ export function createXtermPaneGhostSuggestions({
   scheduleCommandBlockViewSync: () => void;
   sessionIdRef: MutableRefObject<string | null>;
   setGhostSuggestion: Dispatch<SetStateAction<TerminalGhostSuggestion | null>>;
+  setSuggestionMenu: Dispatch<
+    SetStateAction<XtermPaneSuggestionMenuView | null>
+  >;
   shell?: string;
   target: TerminalPane["target"];
   terminal: XtermTerminal;
@@ -104,6 +135,19 @@ export function createXtermPaneGhostSuggestions({
   let lastInputAt: number | undefined;
   let lastSuggestionDurationMs: number | undefined;
   let lastSuggestionFailureAt: number | undefined;
+  let menuRequested = false;
+  let menuState = createTerminalSuggestionMenuState();
+  let latestLifecycle: TerminalSuggestionLifecycle = {
+    alternateScreen: terminal.buffer.active.type === "alternate",
+    enabled: assistEnabled,
+    hidden: !canScheduleSuggestion(),
+    imeComposing: false,
+    inputCompatibilityMode,
+    pasting: false,
+    searchFocused: false,
+    selectionActive: false,
+    sessionOpen: Boolean(sessionIdRef.current),
+  };
 
   const clearSuggestionTimer = () => {
     if (suggestionTimer !== null) {
@@ -124,10 +168,122 @@ export function createXtermPaneGhostSuggestions({
     setGhostSuggestion((current) => (current === null ? current : null));
   };
 
+  const hideSuggestionMenu = () => {
+    menuRequested = false;
+    menuState = reduceTerminalSuggestionMenuState(menuState, { type: "close" });
+    setSuggestionMenu(null);
+  };
+
+  const syncSuggestionMenu = () => {
+    if (!menuRequested && !menuState.open) {
+      return;
+    }
+    const snapshot = controller.getSnapshot();
+    menuState = reduceTerminalSuggestionMenuState(menuState, {
+      candidates: snapshot.candidates,
+      stale: snapshot.stale,
+      type: menuState.open ? "candidates" : "open",
+    });
+    if (!menuState.open) {
+      return;
+    }
+    const layout = resolveGhostSuggestionLayout(
+      container,
+      terminal,
+      terminalAppearanceRef.current,
+      inputModelRef.current,
+    );
+    const frame = container.parentElement;
+    if (!layout || !(frame instanceof HTMLElement)) {
+      hideSuggestionMenu();
+      return;
+    }
+    setSuggestionMenu({
+      anchor: {
+        height: layout.lineHeight,
+        x: layout.left,
+        y: layout.top,
+      },
+      paneSize: {
+        height: frame.clientHeight,
+        width: frame.clientWidth,
+      },
+      state: menuState,
+    });
+  };
+
+  const suggestionTarget = resolveSuggestionTarget({ remoteHostId, target });
+  const requestSuggestions = (
+    query: TerminalSuggestionQuery,
+    signal: AbortSignal,
+  ) => {
+    if (signal.aborted) {
+      return Promise.resolve([]);
+    }
+    return listTerminalSuggestions(query.request).then((candidates) =>
+      candidates.map((candidate) => ({
+        ...candidate,
+        acceptBoundaries: candidate.acceptBoundaries ?? [],
+        allowedPresentations:
+          candidate.allowedPresentations ??
+          (candidate.sensitivity === "normal" ? ["inline", "menu"] : ["menu"]),
+      })),
+    );
+  };
+  const controller = createTerminalSuggestionController({
+    debounceMs: 0,
+    onFeedback: ({ candidate, input, kind }) => {
+      const sessionId = sessionIdRef.current;
+      void recordTerminalSuggestionFeedback({
+        action: kind === "dismissed" ? "dismissed" : "accepted",
+        cwd: currentCwdRef.current ?? cwd,
+        input,
+        paneId,
+        profileId,
+        provider: candidate.provider,
+        remoteHostId: suggestionTarget.remoteHostId,
+        replacementText: candidate.replacementText,
+        sessionId: sessionId ?? undefined,
+        shell,
+        sourceId: candidate.sourceId,
+        target: suggestionTarget.target,
+      }).catch(() => undefined);
+    },
+    paneId,
+    requestSuggestions,
+  });
+  const bridge = createTerminalSuggestionRuntimeBridge(controller);
+
+  const syncGhostFromController = () => {
+    const candidate = controller.getSnapshot().inlineCandidate;
+    if (!candidate?.suffix) {
+      hideGhostSuggestion();
+      return;
+    }
+    const layout = resolveGhostSuggestionLayout(
+      container,
+      terminal,
+      terminalAppearanceRef.current,
+      inputModelRef.current,
+    );
+    if (!layout) {
+      hideGhostSuggestion();
+      return;
+    }
+    updateGhostSuggestion({ ...layout, candidate, suffix: candidate.suffix });
+  };
+  const syncFromController = () => {
+    syncGhostFromController();
+    syncSuggestionMenu();
+  };
+  const unsubscribeController = controller.subscribe(syncFromController);
+
   const clearGhostSuggestion = () => {
     clearSuggestionTimer();
     suggestionRequestRun += 1;
+    controller.clear();
     hideGhostSuggestion();
+    hideSuggestionMenu();
   };
 
   const refreshGhostSuggestionLayout = () => {
@@ -208,7 +364,6 @@ export function createXtermPaneGhostSuggestions({
         return;
       }
       const sessionId = sessionIdRef.current;
-      const suggestionTarget = resolveSuggestionTarget({ remoteHostId, target });
       const suggestionProviders = terminalSuggestionProviders({
         hasSshRemote: Boolean(
           suggestionTarget.target === "ssh" && !target?.kind,
@@ -220,45 +375,108 @@ export function createXtermPaneGhostSuggestions({
         clearGhostSuggestion();
         return;
       }
-      void listTerminalSuggestions({
-        cursor: model.cursor,
-        cwd: currentCwdRef.current ?? cwd,
-        input: model.command,
-        limit: 1,
-        paneId,
-        profileId,
-        providers: suggestionProviders,
-        remoteHostId: suggestionTarget.remoteHostId,
-        sessionId: sessionId ?? undefined,
-        shell,
-        target: suggestionTarget.target,
-      })
-        .then((suggestions) => {
-          lastSuggestionDurationMs = Date.now() - requestStartedAt;
-          consecutiveSuggestionFailures = 0;
-          if (isDisposed() || requestRun !== suggestionRequestRun) {
-            return;
-          }
-          const candidate = suggestions.find((item) => item.suffix.length > 0);
-          if (!candidate) {
-            hideGhostSuggestion();
-            return;
-          }
-          updateGhostSuggestion({
-            ...layout,
-            candidate,
-            suffix: candidate.suffix,
-          });
-        })
-        .catch(() => {
-          lastSuggestionDurationMs = Date.now() - requestStartedAt;
-          lastSuggestionFailureAt = Date.now();
-          consecutiveSuggestionFailures += 1;
-          if (!isDisposed() && requestRun === suggestionRequestRun) {
-            hideGhostSuggestion();
-          }
-        });
+      latestLifecycle = {
+        ...latestLifecycle,
+        alternateScreen: model.bufferKind === "alternate",
+        enabled: eligibility.eligible && inlineSuggestion.enabled,
+        hidden: !canScheduleSuggestion(),
+        imeComposing: model.imeComposing,
+        pasting: model.hideReason === "paste",
+        sessionOpen: Boolean(sessionId),
+      };
+      bridge.sync(
+        {
+          contextKey: [
+            suggestionTarget.target,
+            suggestionTarget.remoteHostId ?? "",
+            currentCwdRef.current ?? cwd ?? "",
+            shell ?? "",
+          ].join("\u0000"),
+          cursor: model.cursor,
+          input: model.command,
+          request: {
+            cwd: currentCwdRef.current ?? cwd,
+            limit: 1,
+            profileId,
+            providers: suggestionProviders,
+            remoteHostId: suggestionTarget.remoteHostId,
+            sessionId: sessionId ?? undefined,
+            shell,
+            target: suggestionTarget.target,
+          },
+        },
+        latestLifecycle,
+      );
+      lastSuggestionDurationMs = Date.now() - requestStartedAt;
+      consecutiveSuggestionFailures = 0;
+      if (!isDisposed() && requestRun === suggestionRequestRun) {
+        syncGhostFromController();
+      }
     }, policy.delayMs);
+  };
+
+  const openSuggestionMenu = () => {
+    const inlineSuggestion = terminalAppearanceRef.current.inlineSuggestion;
+    if (
+      !assistEnabled ||
+      inlineSuggestion.presentation !== "inlineAndMenu" ||
+      !canScheduleSuggestion()
+    ) {
+      return false;
+    }
+    inputModelRef.current = updateTerminalInputBufferKind(
+      inputModelRef.current,
+      terminal.buffer.active.type,
+    );
+    const model = inputModelRef.current;
+    const eligibility = terminalSuggestionEligibility(model);
+    const sessionId = sessionIdRef.current;
+    if (!eligibility.eligible || !sessionId) {
+      return false;
+    }
+    const providers = terminalSuggestionProviders({
+      hasSshRemote: Boolean(
+        suggestionTarget.target === "ssh" && !target?.kind,
+      ),
+      inlineSuggestion,
+      remoteHostProduction,
+    });
+    if (providers.length === 0) {
+      return false;
+    }
+    menuRequested = true;
+    bridge.sync(
+      {
+        contextKey: [
+          suggestionTarget.target,
+          suggestionTarget.remoteHostId ?? "",
+          currentCwdRef.current ?? cwd ?? "",
+          shell ?? "",
+        ].join("\u0000"),
+        cursor: model.cursor,
+        input: model.command,
+        mode: "menu",
+        request: {
+          cwd: currentCwdRef.current ?? cwd,
+          limit: TERMINAL_SUGGESTION_MENU_REQUEST_LIMIT,
+          profileId,
+          providers,
+          remoteHostId: suggestionTarget.remoteHostId,
+          sessionId,
+          shell,
+          target: suggestionTarget.target,
+        },
+      },
+      {
+        ...latestLifecycle,
+        alternateScreen: model.bufferKind === "alternate",
+        enabled: true,
+        imeComposing: model.imeComposing,
+        sessionOpen: true,
+      },
+    );
+    syncSuggestionMenu();
+    return true;
   };
 
   const recordGhostSuggestionFeedback = (
@@ -289,19 +507,14 @@ export function createXtermPaneGhostSuggestions({
     if (terminalAppearanceRef.current.inlineSuggestion.acceptKey !== "rightArrow") {
       return false;
     }
-    const suggestion = ghostSuggestionRef.current;
-    if (!suggestion?.suffix) {
+    const acceptance = controller.accept("all");
+    if (!acceptance) {
       return false;
     }
-    recordGhostSuggestionFeedback(
-      "accepted",
-      suggestion,
-      inputModelRef.current.command,
-    );
-    void writeTerminal(sessionId, suggestion.suffix);
+    void writeTerminal(sessionId, acceptance.insertedText);
     const accepted = applyTerminalInputData(
       inputModelRef.current,
-      suggestion.suffix,
+      acceptance.insertedText,
     );
     inputModelRef.current = accepted.state;
     inputBufferRef.current = accepted.state.command;
@@ -310,12 +523,111 @@ export function createXtermPaneGhostSuggestions({
     return true;
   };
 
+  const handleKeyEvent = (
+    event: TerminalSuggestionKeyEvent,
+    sessionId: string,
+  ) => {
+    if (
+      event.altKey &&
+      !terminalAppearanceRef.current.inlineSuggestion.partialAccept
+    ) {
+      return false;
+    }
+    const result = bridge.handleKey(event);
+    if (!result.handled || !result.acceptance) {
+      return false;
+    }
+    void writeTerminal(sessionId, result.acceptance.insertedText);
+    const accepted = applyTerminalInputData(
+      inputModelRef.current,
+      result.acceptance.insertedText,
+    );
+    inputModelRef.current = accepted.state;
+    inputBufferRef.current = accepted.state.command;
+    hideGhostSuggestion();
+    scheduleCommandBlockViewSync();
+    return true;
+  };
+
+  const handleMenuIntent = (
+    intent: TerminalSuggestionMenuIntent,
+    sessionId: string,
+  ) => {
+    if (intent.type === "open") {
+      return openSuggestionMenu();
+    }
+    if (intent.type === "close") {
+      hideSuggestionMenu();
+      return true;
+    }
+    if (intent.type === "move") {
+      menuState = reduceTerminalSuggestionMenuState(menuState, {
+        index: intent.index,
+        type: "select",
+      });
+      syncSuggestionMenu();
+      return true;
+    }
+    const acceptance = controller.acceptCandidate(intent.candidate, "all");
+    if (!acceptance) {
+      return false;
+    }
+    void writeTerminal(sessionId, acceptance.insertedText);
+    const accepted = applyTerminalInputData(
+      inputModelRef.current,
+      acceptance.insertedText,
+    );
+    inputModelRef.current = accepted.state;
+    inputBufferRef.current = accepted.state.command;
+    hideSuggestionMenu();
+    hideGhostSuggestion();
+    scheduleCommandBlockViewSync();
+    return true;
+  };
+
+  const handleMenuKeyEvent = (
+    event: TerminalSuggestionKeyEvent,
+    sessionId: string,
+  ) => {
+    const inlineSuggestion = terminalAppearanceRef.current.inlineSuggestion;
+    if (
+      event.key === "Tab" &&
+      inlineSuggestion.tabOpensMenu &&
+      !menuState.open
+    ) {
+      return openSuggestionMenu();
+    }
+    const intent = resolveTerminalSuggestionMenuKeyIntent(menuState, event);
+    return intent ? handleMenuIntent(intent, sessionId) : false;
+  };
+
+  const handleRuntimeKeyEvent = (
+    event: TerminalSuggestionKeyEvent,
+    sessionId: string,
+  ) =>
+    handleMenuKeyEvent(event, sessionId) || handleKeyEvent(event, sessionId);
+
+  const setLifecycle = (next: Partial<TerminalSuggestionLifecycle>) => {
+    latestLifecycle = { ...latestLifecycle, ...next };
+    bridge.setLifecycle(latestLifecycle);
+    syncGhostFromController();
+  };
+
   return {
     acceptGhostSuggestion,
     clearGhostSuggestion,
-    dispose: clearSuggestionTimer,
+    dispose: () => {
+      clearSuggestionTimer();
+      hideSuggestionMenu();
+      unsubscribeController();
+      bridge.dispose();
+    },
+    handleMenuIntent,
+    handleRuntimeKeyEvent,
+    handleKeyEvent,
     recordGhostSuggestionFeedback,
     refreshGhostSuggestionLayout,
     scheduleGhostSuggestion,
+    setLifecycle,
   };
 }

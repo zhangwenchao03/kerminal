@@ -1,0 +1,36 @@
+schema_version = 1
+command = "rsync"
+aliases = []
+platforms = ["macos", "linux"]
+shells = ["bash", "zsh", "fish"]
+description = "Synchronize files locally or over a remote shell"
+tested_version = "rsync 3.4"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "rsync manual"
+url = "https://download.samba.org/pub/rsync/rsync.1"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "--archive"
+aliases = ["-a"]
+description = "Preserve common file attributes recursively"
+
+[[options]]
+name = "--verbose"
+aliases = ["-v"]
+description = "Increase transfer detail"
+
+[[options]]
+name = "--delete"
+description = "Delete destination entries missing from the source"
+
+[options.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "This option can delete files at the destination"

@@ -1,0 +1,27 @@
+schema_version = 1
+command = "pwd"
+aliases = []
+platforms = ["macos", "linux"]
+shells = ["bash", "zsh", "fish"]
+description = "Print the current working directory"
+tested_version = "GNU coreutils 9.7"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "GNU Coreutils pwd manual"
+url = "https://www.gnu.org/software/coreutils/manual/html_node/pwd-invocation.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "--logical"
+aliases = ["-L"]
+description = "Use the logical current directory"
+
+[[options]]
+name = "--physical"
+aliases = ["-P"]
+description = "Resolve symbolic links"

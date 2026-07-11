@@ -66,7 +66,7 @@ export function SettingsDialog({
     }
 
     setExternalChangeNotice(
-      "cfg: settings changed externally; editor draft kept",
+      "设置已在外部更新，当前编辑内容已保留。",
     );
   }, [draftDirty, draftSettings, open, settings]);
 
@@ -85,7 +85,6 @@ export function SettingsDialog({
 
   return (
     <ModalShell
-      description="主题、终端、MCP、SFTP 和快捷键。"
       onClose={onClose}
       open={open}
       panelClassName="h-[min(780px,calc(100vh-48px))]"

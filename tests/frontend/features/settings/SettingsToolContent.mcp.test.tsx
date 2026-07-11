@@ -121,21 +121,28 @@ describe("SettingsToolContent Kerminal MCP Server page", () => {
     render(<ControlledMcpSettings />);
 
     expect(await screen.findByRole("heading", { name: "MCP" })).toBeInTheDocument();
-    expect(screen.getByText("状态")).toBeInTheDocument();
-    expect(screen.getByText("endpoint")).toBeInTheDocument();
-    expect(screen.getByText("JSON")).toBeInTheDocument();
     expect(await screen.findByText("运行中")).toBeInTheDocument();
-    expect(screen.getByText("http://127.0.0.1:30456/mcp")).toBeInTheDocument();
+    expect(screen.getByText("endpoint")).not.toBeVisible();
+    expect(screen.getByText("JSON")).not.toBeVisible();
+    expect(screen.getByText("http://127.0.0.1:30456/mcp")).not.toBeVisible();
+    expect(screen.getByLabelText("MCP JSON 配置")).not.toBeVisible();
+    expect(screen.getByRole("button", { name: "停止" })).toBeEnabled();
+    expect(
+      screen.queryByRole("button", { name: "启动" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "复制 JSON" })).not.toBeVisible();
+
+    await userEvent.setup().click(screen.getByText("连接信息"));
+
+    expect(screen.getByText("endpoint")).toBeVisible();
+    expect(screen.getByText("JSON")).toBeVisible();
+    expect(screen.getByText("http://127.0.0.1:30456/mcp")).toBeVisible();
     expect(screen.getByLabelText("MCP JSON 配置")).toHaveTextContent(
       '"mcpServers"',
     );
     expect(screen.getByLabelText("MCP JSON 配置")).toHaveTextContent(
       "http://127.0.0.1:30456/mcp",
     );
-    expect(screen.getByRole("button", { name: "停止" })).toBeEnabled();
-    expect(
-      screen.queryByRole("button", { name: "启动" }),
-    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "复制 JSON" })).toBeEnabled();
     expect(screen.queryByText("外部 Agent 工作目录")).not.toBeInTheDocument();
     expect(screen.queryByText("validator")).not.toBeInTheDocument();
@@ -175,16 +182,16 @@ describe("SettingsToolContent Kerminal MCP Server page", () => {
 
     await user.click(await screen.findByRole("button", { name: "启动" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "address already in use",
-    );
+    expect(await screen.findByText("MCP 服务未启动")).toBeVisible();
+    const technicalDetail = screen.getByText(/address already in use/);
+    expect(technicalDetail).not.toBeVisible();
+    expect(technicalDetail).not.toHaveTextContent("token=secret");
     expect(desktopNotificationApiMock.sendDesktopNotification).toHaveBeenCalledWith(
       expect.objectContaining({
         event: {
           kind: "mcp.server.failed",
           notificationKey: "mcp.server.failed:start",
           port: undefined,
-          reason: "address already in use: token=secret",
         },
         settings: expect.objectContaining({ enabled: true }),
         visibility: "hidden",

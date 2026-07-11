@@ -126,7 +126,7 @@ describe("useSftpLocalUploadDropActions", () => {
 
   it("reports listener setup failures as operation status errors", async () => {
     webviewMock.onDragDropEvent.mockRejectedValueOnce(
-      new Error("permission denied"),
+      new Error("permission denied password=drop-hook-secret"),
     );
     const { setters } = renderLocalDropHook();
 
@@ -134,9 +134,17 @@ describe("useSftpLocalUploadDropActions", () => {
       expect(setters.setDragDropActive).toHaveBeenCalledWith(false);
       expect(setters.setOperationStatus).toHaveBeenCalledWith({
         kind: "error",
-        message: "拖拽上传监听失败：permission denied",
+        message: expect.stringContaining("拖放上传初始化失败："),
       });
     });
+    const status =
+      setters.setOperationStatus.mock.calls[
+        setters.setOperationStatus.mock.calls.length - 1
+      ]?.[0] as
+      | SftpStatus
+      | null;
+    expect(status?.message).toContain('password="[已隐藏]"');
+    expect(status?.message).not.toContain("drop-hook-secret");
   });
 
   it("clears drag state and releases late subscriptions on cleanup", async () => {

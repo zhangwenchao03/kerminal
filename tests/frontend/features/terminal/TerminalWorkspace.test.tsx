@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -15,6 +16,7 @@ import type {
   TerminalTabGroupPreferences,
 } from "../../../../src/features/workspace/types";
 import { TerminalWorkspace } from "../../../../src/features/terminal/TerminalWorkspace";
+import { terminalChromeRuntimeStore } from "../../../../src/features/terminal/terminalChromeRuntimeStore";
 import {
   WORKSPACE_FILE_TAB_COMMAND_EVENT,
   type WorkspaceFileTabCommandEventDetail,
@@ -167,6 +169,7 @@ vi.mock("../../../../src/lib/desktopClipboardApi", () => ({
 describe("TerminalWorkspace", () => {
   afterEach(() => {
     document.documentElement.classList.remove("dark");
+    terminalChromeRuntimeStore.reset();
   });
 
   beforeEach(() => {
@@ -179,6 +182,7 @@ describe("TerminalWorkspace", () => {
     desktopClipboardMocks.writeDesktopClipboardText.mockResolvedValue({
       ok: true,
     });
+    terminalChromeRuntimeStore.reset();
   });
 
   it("renders the active local tab and terminal pane", () => {
@@ -443,12 +447,8 @@ describe("TerminalWorkspace", () => {
     expect(
       screen.getByText("光标还没闪，AI 已经开始脑补命令了。"),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "添加连接" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "本地终端" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加连接" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "本地终端" })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "打开 Agent 面板" }),
     ).not.toBeInTheDocument();
@@ -831,6 +831,11 @@ describe("TerminalWorkspace", () => {
       });
       expect(within(devGroup).getByText("2 个")).toBeInTheDocument();
       expect(
+        devGroup.querySelector(
+          '[data-terminal-identity-source="automatic"][data-terminal-identity-accent]',
+        ),
+      ).not.toBeNull();
+      expect(
         within(menu).getByRole("group", { name: "lab.internal 标签组" }),
       ).toBeInTheDocument();
 
@@ -1209,6 +1214,159 @@ describe("TerminalWorkspace", () => {
     expect(
       screen.getByRole("button", { name: "折叠 生产组 标签组" }),
     ).toBeInTheDocument();
+  });
+
+  it("shows pane attention in the all-tabs overview without online status dots", async () => {
+    const user = userEvent.setup();
+    const restoreTabListMetrics = mockTabListMetrics({
+      clientWidth: 260,
+      scrollWidth: 620,
+    });
+
+    try {
+      render(
+        <TerminalWorkspace
+          {...workspaceProps({
+            activeTabId: "tab-dev-a",
+            focusedPaneId: "pane-dev-a",
+            panes: groupedSshPanes,
+            tabs: groupedSshTabs,
+          })}
+        />,
+      );
+      act(() => {
+        terminalChromeRuntimeStore.register("pane-dev-b", { visible: false });
+        terminalChromeRuntimeStore.update("pane-dev-b", { type: "output" });
+      });
+
+      await user.click(screen.getByRole("button", { name: "查看所有标签" }));
+      const menu = screen.getByRole("menu", { name: "所有终端标签" });
+      const unreadTab = within(menu).getByRole("menuitem", {
+        name: /dev.internal #2/,
+      });
+
+      expect(within(unreadTab).getByLabelText("有未读输出")).toBeInTheDocument();
+      expect(unreadTab.querySelector(".bg-emerald-400")).toBeNull();
+    } finally {
+      restoreTabListMetrics();
+    }
+  });
+
+  it("shows a singleton identity accent only after an explicit color is saved", async () => {
+    const user = userEvent.setup();
+    const onUpdateTabGroupPreference = vi.fn();
+
+    function ControlledWorkspace() {
+      const [tabGroupPreferences, setTabGroupPreferences] =
+        useState<TerminalTabGroupPreferences>({});
+
+      return (
+        <TerminalWorkspace
+          {...workspaceProps({
+            onUpdateTabGroupPreference: (groupId, preference) => {
+              onUpdateTabGroupPreference(groupId, preference);
+              setTabGroupPreferences((current) => ({
+                ...current,
+                [groupId]: preference,
+              }));
+            },
+            tabGroupPreferences,
+          })}
+        />
+      );
+    }
+
+    render(<ControlledWorkspace />);
+
+    const tabButton = screen.getByRole("button", { name: "本地 PowerShell" });
+    expect(
+      tabButton.parentElement?.querySelector("[data-terminal-identity-accent]"),
+    ).toBeNull();
+
+    fireEvent.contextMenu(tabButton);
+    await user.click(screen.getByRole("menuitem", { name: "设置标识颜色" }));
+    expect(
+      screen.getByRole("dialog", { name: "设置标签标识" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "选择粉色分组颜色" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(onUpdateTabGroupPreference).toHaveBeenLastCalledWith(
+      "local-powershell",
+      { color: "pink" },
+    );
+    expect(
+      tabButton.parentElement?.querySelector(
+        '[data-terminal-identity-accent="pink"][data-terminal-identity-source="explicit"]',
+      ),
+    ).not.toBeNull();
+
+    fireEvent.contextMenu(tabButton);
+    await user.click(screen.getByRole("menuitem", { name: "设置标识颜色" }));
+    await user.click(
+      screen.getByRole("button", { name: "选择自动标识颜色" }),
+    );
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(onUpdateTabGroupPreference).toHaveBeenLastCalledWith(
+      "local-powershell",
+      {},
+    );
+    expect(
+      tabButton.parentElement?.querySelector("[data-terminal-identity-accent]"),
+    ).toBeNull();
+  });
+
+  it("subscribes tab chrome to pane activity snapshots", async () => {
+    render(<TerminalWorkspace {...workspaceProps()} />);
+
+    expect(screen.queryByLabelText("有未读输出")).not.toBeInTheDocument();
+
+    act(() => {
+      terminalChromeRuntimeStore.register("pane-local", { visible: false });
+      terminalChromeRuntimeStore.update("pane-local", { type: "output" });
+    });
+
+    expect(await screen.findByLabelText("有未读输出")).toBeInTheDocument();
+  });
+
+  it("aggregates attention on collapsed groups without duplicating it while expanded", async () => {
+    const user = userEvent.setup();
+    render(
+      <TerminalWorkspace
+        {...workspaceProps({
+          activeTabId: "tab-dev-a",
+          focusedPaneId: "pane-dev-a",
+          panes: groupedSshPanes,
+          tabs: groupedSshTabs,
+        })}
+      />,
+    );
+
+    act(() => {
+      terminalChromeRuntimeStore.register("pane-dev-a", { visible: false });
+      terminalChromeRuntimeStore.register("pane-dev-b", { visible: false });
+      terminalChromeRuntimeStore.update("pane-dev-a", { type: "output" });
+      terminalChromeRuntimeStore.update("pane-dev-b", { type: "output" });
+    });
+
+    expect(await screen.findAllByLabelText("有未读输出")).toHaveLength(2);
+    await user.click(
+      screen.getByRole("button", { name: "折叠 dev.internal 标签组" }),
+    );
+
+    expect(
+      screen.getByLabelText("2 个标签页：有未读输出"),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("有未读输出")).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "展开 dev.internal 标签组" }),
+    );
+    expect(screen.getAllByLabelText("有未读输出")).toHaveLength(2);
+    expect(
+      screen.queryByLabelText("2 个标签页：有未读输出"),
+    ).not.toBeInTheDocument();
   });
 
   it("opens a right-click menu for terminal tab groups", async () => {

@@ -10,6 +10,7 @@ import type { SftpTransferSummary } from "../../../../src/lib/sftpApi";
 const sftpApiMock = vi.hoisted(() => ({
   cancelSftpTransfer: vi.fn(),
   clearCompletedSftpTransfers: vi.fn(),
+  enqueueSftpTransfer: vi.fn(),
   listSftpTransfers: vi.fn(),
 }));
 
@@ -22,6 +23,7 @@ const fileDialogApiMock = vi.hoisted(() => ({
 vi.mock("../../../../src/lib/sftpApi", () => ({
   cancelSftpTransfer: sftpApiMock.cancelSftpTransfer,
   clearCompletedSftpTransfers: sftpApiMock.clearCompletedSftpTransfers,
+  enqueueSftpTransfer: sftpApiMock.enqueueSftpTransfer,
   listSftpTransfers: sftpApiMock.listSftpTransfers,
 }));
 
@@ -246,6 +248,28 @@ const succeededTransfer: SftpTransferSummary = {
   updatedAt: 22,
 };
 
+const failedTransfer: SftpTransferSummary = {
+  ...runningTransfer,
+  conflictPolicy: "overwrite",
+  direction: "download",
+  id: "transfer-failed",
+  localPath: "C:\\\\Downloads\\\\failed.log",
+  operation: "download",
+  remotePath: "/var/log/failed.log",
+  source: {
+    hostId: "host-right",
+    hostLabel: "right",
+    kind: "remote",
+    path: "/var/log/failed.log",
+  },
+  status: "failed",
+  target: {
+    kind: "local",
+    path: "C:\\\\Downloads\\\\failed.log",
+  },
+  transportMode: "singleHostSftp",
+};
+
 const localListing = {
   entries: [
     {
@@ -272,6 +296,7 @@ describe("SftpTransferWorkbench", () => {
   beforeEach(() => {
     sftpApiMock.cancelSftpTransfer.mockReset();
     sftpApiMock.clearCompletedSftpTransfers.mockReset();
+    sftpApiMock.enqueueSftpTransfer.mockReset();
     sftpApiMock.listSftpTransfers.mockReset();
     fileDialogApiMock.listLocalDirectory.mockReset();
     fileDialogApiMock.openLocalDirectory.mockReset();
@@ -284,6 +309,11 @@ describe("SftpTransferWorkbench", () => {
       status: "canceled",
     });
     sftpApiMock.clearCompletedSftpTransfers.mockResolvedValue([]);
+    sftpApiMock.enqueueSftpTransfer.mockResolvedValue({
+      ...failedTransfer,
+      id: "transfer-retried",
+      status: "queued",
+    });
   });
 
   it("starts with a local left pane and no selected remote server", () => {
@@ -303,6 +333,22 @@ describe("SftpTransferWorkbench", () => {
     expect(screen.getByText("notes.md")).toBeInTheDocument();
     expect(screen.getByDisplayValue("C:\\Users\\24052")).toBeInTheDocument();
     expect(screen.getByText("2 项 / 1 目录 / 1 文件")).toBeInTheDocument();
+    expect(screen.queryByText("左侧本地目录")).not.toBeInTheDocument();
+    expect(screen.queryByText("本地目录")).not.toBeInTheDocument();
+  });
+
+  it("merges each target selector and tab strip without visible duplicate titles", () => {
+    render(
+      <SftpTransferWorkbench
+        groups={groups}
+        initialRightHostId="host-right"
+      />,
+    );
+
+    expect(screen.getByLabelText("左侧目标")).toBeInTheDocument();
+    expect(screen.getByLabelText("右侧服务器")).toBeInTheDocument();
+    expect(screen.queryByText("左侧目标")).not.toBeInTheDocument();
+    expect(screen.queryByText("右侧服务器")).not.toBeInTheDocument();
   });
 
   it("opens an initial right server and lets the right side add SSH hosts", async () => {
@@ -703,6 +749,36 @@ describe("SftpTransferWorkbench", () => {
     expect(screen.getByText("右侧未选择服务器")).toBeInTheDocument();
   });
 
+  it("shows queue failures as a recoverable summary with collapsed details", async () => {
+    const user = userEvent.setup();
+    sftpApiMock.listSftpTransfers.mockRejectedValueOnce(
+      new Error(
+        "offline password=workbench-secret path=C:\\runtime\\queue.json",
+      ),
+    );
+
+    render(
+      <SftpTransferWorkbench
+        groups={groups}
+        initialRightHostId="host-right"
+      />,
+    );
+
+    expect(
+      await screen.findByText("无法同步传输队列"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("检查连接后刷新传输队列。"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/workbench-secret/)).not.toBeInTheDocument();
+    expect(screen.getByText(/C:\\runtime\\queue\.json/)).not.toBeVisible();
+
+    await user.click(screen.getByText("技术详情"));
+
+    expect(screen.getByText(/password="\[已隐藏\]"/)).toBeVisible();
+    expect(screen.queryByText(/workbench-secret/)).not.toBeInTheDocument();
+  });
+
   it("shows queue progress and delegates cancel and clear actions", async () => {
     const user = userEvent.setup();
     sftpApiMock.listSftpTransfers.mockResolvedValue([
@@ -720,12 +796,23 @@ describe("SftpTransferWorkbench", () => {
 
     expect(await screen.findByText("app.log")).toBeInTheDocument();
     expect(screen.getByText("50%")).toBeInTheDocument();
-    expect(screen.getAllByText("本机桥接")).toHaveLength(2);
+    expect(screen.getByText("1 活动 · 1 历史")).toBeInTheDocument();
+    expect(screen.queryByText("本机桥接")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("left:/tmp/app.log -> right:/var/log/app.log"),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "查看传输详情 app.log" }),
+    );
+    expect(screen.getByText("本机桥接")).toBeInTheDocument();
     expect(
       screen.getByText("left:/tmp/app.log -> right:/var/log/app.log"),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "取消传输" }));
+    await user.click(
+      screen.getByRole("button", { name: "取消传输 app.log" }),
+    );
     expect(sftpApiMock.cancelSftpTransfer).toHaveBeenCalledWith(
       expect.objectContaining({
         transferId: "transfer-running",
@@ -733,9 +820,41 @@ describe("SftpTransferWorkbench", () => {
       }),
     );
 
-    await user.click(screen.getByRole("button", { name: "清理" }));
+    await user.click(
+      screen.getByRole("button", { name: "清理完成的传输" }),
+    );
     await waitFor(() =>
       expect(sftpApiMock.clearCompletedSftpTransfers).toHaveBeenCalledWith({
+        viewScope: expect.stringMatching(/^sftp-workbench:/),
+      }),
+    );
+  });
+
+  it("retries a failed managed transfer from the compact queue row", async () => {
+    const user = userEvent.setup();
+    sftpApiMock.listSftpTransfers.mockResolvedValue([failedTransfer]);
+
+    render(
+      <SftpTransferWorkbench
+        groups={groups}
+        initialRightHostId="host-right"
+      />,
+    );
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "重试传输 failed.log",
+      }),
+    );
+
+    expect(sftpApiMock.enqueueSftpTransfer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conflictPolicy: "overwrite",
+        direction: "download",
+        hostId: "host-right",
+        kind: "file",
+        localPath: "C:\\\\Downloads\\\\failed.log",
+        remotePath: "/var/log/failed.log",
         viewScope: expect.stringMatching(/^sftp-workbench:/),
       }),
     );
@@ -803,7 +922,7 @@ describe("SftpTransferWorkbench", () => {
     expect(await screen.findByText("app.log")).toBeInTheDocument();
     expect(screen.getByText("传输中")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "取消传输" }),
+      screen.queryByRole("button", { name: "取消传输 app.log" }),
     ).not.toBeInTheDocument();
     expect(sftpApiMock.cancelSftpTransfer).not.toHaveBeenCalled();
   });

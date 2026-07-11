@@ -309,12 +309,12 @@ export function RdpPropertiesPanel({
             autoComplete="off"
             className={inputClassName}
             onChange={(event) => setRdpPassword(event.currentTarget.value)}
-            placeholder="可选；确认后随主机配置保存"
+            placeholder="可选"
             type="text"
             value={rdpPassword}
           />
           <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-            密码明文保存，编辑时显示。
+            密码保存在凭据保险箱中，编辑时可回显。
           </p>
         </div>
       </FieldRow>

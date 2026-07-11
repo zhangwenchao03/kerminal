@@ -217,7 +217,7 @@ export function SshJumpPanel({
           {draft.authType !== "agent" ? (
             <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
               {draft.authType === "password"
-                ? "跳板机密码随主机保存。"
+                ? "跳板机密码保存在凭据保险箱中。"
                 : "跳板机密钥认证使用本机可访问的私钥路径。"}
             </p>
           ) : null}

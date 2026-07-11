@@ -1,4 +1,4 @@
-import { Check, Image, Languages, MonitorCog } from "lucide-react";
+import { Check, Image, Languages } from "lucide-react";
 import { Select } from "../../../components/ui/select";
 import { Switch } from "../../../components/ui/switch";
 import { cn } from "../../../lib/cn";
@@ -18,11 +18,8 @@ interface AppearanceSettingsSectionProps {
   updateSettings: (settings: AppSettings) => void;
 }
 
-const appearancePanelClassName = "kerminal-solid-surface rounded-2xl border p-5";
 const appearanceCompactPanelClassName =
   "kerminal-solid-surface rounded-2xl border p-4";
-const appearanceBadgeClassName =
-  "kerminal-muted-surface rounded-full border px-3 py-1 text-xs text-zinc-500 dark:text-zinc-400";
 const appearanceInlineButtonClassName =
   "kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-200";
 const appearanceFieldClassName =
@@ -49,21 +46,6 @@ export function AppearanceSettingsSection({
 }: AppearanceSettingsSectionProps) {
   return (
     <div className="space-y-4" id="settings-appearance-panel">
-      <section className={appearancePanelClassName} tabIndex={-1}>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-              <MonitorCog className="h-4 w-4 text-sky-500 dark:text-sky-300" />
-              界面外观
-            </div>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-              语言、主题、密度和工作台背景会立即保存。
-            </p>
-          </div>
-          <div className={appearanceBadgeClassName}>主题与背景</div>
-        </div>
-      </section>
-
       <div className="grid gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
         <section
           className={appearanceCompactPanelClassName}

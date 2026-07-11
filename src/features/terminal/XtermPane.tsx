@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type MouseEvent,
 } from "react";
 import { FitAddon } from "@xterm/addon-fit";
@@ -68,14 +69,23 @@ import {
   resolveTerminalContentBottomLine,
   resolveTerminalPromptLine,
   resolveTerminalRowHeight,
+  stableJsonDependencyKey,
   type ConnectionState,
   type TerminalGhostSuggestion,
-  stateLabel,
   terminalSearchOptions,
 } from "./XtermPane.helpers";
 
 export { collectCurrentDirOscSequences, collectSubmittedCommands } from "./XtermPane.helpers";
 import { installXtermPaneRuntime } from "./XtermPane.runtime";
+import {
+  type XtermPaneActivityRuntime,
+} from "./XtermPane.activityRuntime";
+import {
+  EMPTY_TERMINAL_PANE_CHROME_SNAPSHOT,
+  terminalChromeRuntimeStore,
+} from "./terminalChromeRuntimeStore";
+import { TerminalNewOutputButton } from "./TerminalNewOutputButton";
+import { XtermPaneChrome } from "./XtermPaneChrome";
 import { resolveTerminalAppearanceRecoveryTrigger } from "./terminalGpuRenderRecoveryAppearance";
 import type { TerminalGpuRenderRecoveryController } from "./terminalGpuRenderRecovery";
 import { createTerminalPaneRuntimeLifecycleRuntime, type TerminalPaneRuntimeLifecycleRuntime } from "./terminalPaneRuntimeLifecycleRuntime";
@@ -84,10 +94,10 @@ import type { TerminalRendererController } from "./terminalRenderer";
 import { terminalRendererRegistry } from "./terminalRendererRegistry";
 import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeScheduler";
 import type { TerminalInputCompatibilityMode } from "./terminalKeyboardPolicy";
+import { useXtermPaneSuggestionMenu } from "./useXtermPaneSuggestionMenu";
 
 const TERMINAL_CLEAR_SCREEN_INPUT = "\x0c";
 const TERMINAL_FRONTEND_CLEAR_SCREEN_SEQUENCE = "\x1b[H\x1b[2J\x1b[3J";
-
 interface XtermPaneProps {
   args?: string[];
   currentCwd?: string;
@@ -123,18 +133,15 @@ interface XtermPaneProps {
   outputHistory?: string;
   resolveInitialOutputHistory?: () => string | undefined;
 }
-
 export interface XtermPaneDimensions {
   cols: number;
   rows: number;
 }
-
 export interface XtermPaneInputRequest {
   id: string;
   submit?: boolean;
   text: string;
 }
-
 export interface XtermPaneSessionFinishedEvent {
   durationMs: number;
   reason: "closed";
@@ -209,6 +216,7 @@ export function XtermPane({
   const terminalAppearanceRef = useRef(terminalAppearance);
   const terminalGpuRenderRecoveryControllerRef = useRef<TerminalGpuRenderRecoveryController | null>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
+  const activityRuntimeRef = useRef<XtermPaneActivityRuntime | null>(null);
   const terminalRendererControllerRef = useRef<TerminalRendererController | null>(null);
   const terminalRuntimeLifecycleControllerRef = useRef<TerminalPaneRuntimeLifecycleRuntime | null>(null);
   const visibleRef = useRef(visible);
@@ -243,6 +251,21 @@ export function XtermPane({
   const [logNotice, setLogNotice] = useState<string | null>(null);
   const [ghostSuggestion, setGhostSuggestion] =
     useState<TerminalGhostSuggestion | null>(null);
+  const suggestionMenuRuntime = useXtermPaneSuggestionMenu();
+  const subscribePaneActivity = useCallback(
+    (listener: () => void) =>
+      terminalChromeRuntimeStore.subscribe(paneId, listener),
+    [paneId],
+  );
+  const readPaneActivity = useCallback(
+    () => terminalChromeRuntimeStore.getSnapshot(paneId),
+    [paneId],
+  );
+  const paneActivity = useSyncExternalStore(
+    subscribePaneActivity,
+    readPaneActivity,
+    () => EMPTY_TERMINAL_PANE_CHROME_SNAPSHOT,
+  );
   const terminalTheme = useMemo(
     () =>
       xtermThemeFor(
@@ -416,6 +439,7 @@ export function XtermPane({
   useEffect(() =>
     installXtermPaneRuntime({
       args,
+      activityRuntimeRef,
       commandBlockCounterRef,
       commandBlocksRef,
       containerRef,
@@ -456,6 +480,7 @@ export function XtermPane({
       shellIntegrationCommandBlockProtocolRef,
       shell,
       startupMessage,
+      ...suggestionMenuRuntime.runtimeParams,
       syncCommandBlockViews,
       target,
       terminalAppearance,
@@ -497,8 +522,13 @@ export function XtermPane({
     }
   }, [focused, paneId]);
 
+  useEffect(() => {
+    activityRuntimeRef.current?.setConnectionState(connectionState);
+  }, [connectionState]);
+
 	  useEffect(() => {
 	    visibleRef.current = visible;
+	    activityRuntimeRef.current?.setVisible(visible);
 	    terminalRuntimeLifecycleControllerRef.current?.markVisible(visible);
 	    terminalSuggestionProbeScheduler.setOwnerDisabled(
 	      paneId,
@@ -916,39 +946,24 @@ export function XtermPane({
           {ghostSuggestion.suffix}
         </div>
       ) : null}
-      <div className="kerminal-muted-surface pointer-events-none absolute right-3 top-2 rounded-md border px-2 py-1 text-[11px] text-zinc-500 backdrop-blur-xl dark:text-zinc-400">
-        {stateLabel(connectionState)}
-      </div>
-      {logState.active ? (
-        <div
-          aria-label="终端日志记录状态"
-          className="pointer-events-none absolute right-3 top-9 rounded-md border border-sky-500/30 bg-sky-100/80 px-2 py-1 text-[11px] text-sky-700 dark:border-sky-300/20 dark:bg-sky-400/15 dark:text-sky-200"
-          title={logState.path}
-        >
-          记录中
-        </div>
+      {shellAssistEnabled ? suggestionMenuRuntime.overlay : null}
+      {paneActivity.paneId === paneId &&
+      paneActivity.bufferType === "normal" &&
+      paneActivity.visible &&
+      paneActivity.applicationActive &&
+      paneActivity.followPaused ? (
+        <TerminalNewOutputButton
+          onClick={() => activityRuntimeRef.current?.jumpToBottom()}
+        />
       ) : null}
-      {logNotice ? (
-        <div
-          aria-label="终端日志提示"
-          className="kerminal-muted-surface pointer-events-none absolute bottom-3 left-3 max-w-[min(560px,calc(100%-1.5rem))] truncate rounded-md border px-2 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-xl dark:text-zinc-300"
-          role="status"
-          title={logNotice}
-        >
-          {logNotice}
-        </div>
-      ) : null}
-      {shellAssistEnabled && commandBlockNotice ? (
-        <div
-          aria-label="命令块操作提示"
-          className="kerminal-muted-surface pointer-events-none absolute left-3 max-w-[min(560px,calc(100%-1.5rem))] truncate rounded-md border px-2 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-xl dark:text-zinc-300"
-          role="status"
-          style={{ bottom: logNotice ? 40 : 12 }}
-          title={commandBlockNotice}
-        >
-          {commandBlockNotice}
-        </div>
-      ) : null}
+      <XtermPaneChrome
+        commandBlockNotice={commandBlockNotice}
+        connectionState={connectionState}
+        logActive={logState.active}
+        logNotice={logNotice}
+        logPath={logState.path}
+        shellAssistEnabled={shellAssistEnabled}
+      />
       {searchOpen ? (
         <TerminalSearchPanel
           caseSensitive={searchCaseSensitive}
@@ -969,7 +984,10 @@ export function XtermPane({
           canDisconnect={connectionState === "connected"}
           canCopy={contextMenu.canCopy}
           canCopySessionId={contextMenu.canCopySessionId}
-          canReconnect={connectionState !== "connecting"}
+          canReconnect={
+            connectionState !== "connecting" &&
+            connectionState !== "reconnecting"
+          }
           canSplit={Boolean(onSplitPane)}
           onAction={executeContextMenuAction}
           onClose={() => setContextMenu(null)}
@@ -977,23 +995,5 @@ export function XtermPane({
         />
       ) : null}
     </div>
-  );
-}
-
-function stableJsonDependencyKey(value: unknown): string {
-  return JSON.stringify(sortJsonValue(value));
-}
-
-function sortJsonValue(value: unknown): unknown {
-  if (!value || typeof value !== "object") {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map(sortJsonValue);
-  }
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entryValue]) => [key, sortJsonValue(entryValue)]),
   );
 }

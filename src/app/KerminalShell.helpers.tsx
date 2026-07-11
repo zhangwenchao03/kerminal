@@ -7,6 +7,7 @@ import {
 } from "react";
 import { convertFileSrc, isTauri } from "@tauri-apps/api/core";
 import { Button } from "../components/ui/button";
+import { UserFacingNotice } from "../components/ui/user-facing-notice";
 import {
   ModalShell,
   WindowDragStrip,
@@ -17,6 +18,7 @@ import type { LocalTerminalCreateOptions } from "../features/machine-sidebar/Rem
 import type { AppSettings } from "../features/settings/settingsModel";
 import type { Machine, MachineGroup } from "../features/workspace/types";
 import type { TerminalProfile } from "../lib/profileApi";
+import type { UserFacingMessage } from "../lib/userFacingMessage";
 import {
   createDefaultSshOptions,
   UNGROUPED_REMOTE_HOST_GROUP_ID,
@@ -82,7 +84,7 @@ export function DialogLazyFallback() {
       role="status"
     >
       <WindowDragStrip />
-      <div className="kerminal-floating-enter rounded-[1.5rem] border border-[var(--border-subtle)] bg-[var(--surface-overlay)] px-5 py-4 text-sm shadow-2xl shadow-black/20 backdrop-blur-xl dark:shadow-black/50">
+      <div className="kerminal-floating-enter rounded-[1.5rem] border border-[var(--border-subtle)] bg-[var(--surface-overlay)] px-5 py-4 text-sm shadow-lg shadow-black/12 backdrop-blur-xl dark:shadow-black/35">
         正在加载...
       </div>
     </div>
@@ -293,7 +295,7 @@ export function DeleteConfirmationDialog({
   onConfirm,
   pendingDelete,
 }: {
-  deleteError: string | null;
+  deleteError: UserFacingMessage | null;
   deleting: boolean;
   onClose: () => void;
   onConfirm: () => void;
@@ -340,9 +342,7 @@ export function DeleteConfirmationDialog({
             <p>包含 {pendingDelete.machineCount} 台主机，将移到默认分组。</p>
           ) : null}
           {deleteError ? (
-            <p className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-red-600 dark:text-red-300">
-              {deleteError}
-            </p>
+            <UserFacingNotice compact message={deleteError} />
           ) : null}
         </div>
       ) : null}

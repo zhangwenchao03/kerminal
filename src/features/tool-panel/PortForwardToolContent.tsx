@@ -2,6 +2,7 @@ import { Plus, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 import {
@@ -13,6 +14,10 @@ import {
   type PortForwardProxyProtocol,
   type PortForwardSummary,
 } from "../../lib/portForwardApi";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../lib/userFacingMessage";
 import { writePaneCommand } from "../terminal/terminalSessionRegistry";
 import {
   clearHostNetworkAssistAutoInjection,
@@ -64,7 +69,7 @@ export function PortForwardToolContent({
 }: PortForwardToolContentProps) {
   const selectedHostId =
     selectedMachine?.kind === "ssh" ? selectedMachine.id : undefined;
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserFacingMessage | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -211,7 +216,13 @@ export function PortForwardToolContent({
       setSessions(await listPortForwards());
       setSessionsLoaded(true);
     } catch (nextError) {
-      setError(errorMessage(nextError));
+      setError(
+        buildUserFacingError(nextError, {
+          detail: "当前主机的端口转发列表暂时不可用。",
+          recoveryAction: "请确认 SSH 连接可用后重试。",
+          title: "无法读取隧道",
+        }),
+      );
     } finally {
       setLoading(false);
     }
@@ -271,7 +282,7 @@ export function PortForwardToolContent({
       socksMode,
     });
     if ("error" in request) {
-      setError(request.error);
+      setError(portForwardUserError(request.error));
       return;
     }
 
@@ -304,7 +315,13 @@ export function PortForwardToolContent({
       setEditingSessionId(null);
       setCreateDialogOpen(false);
     } catch (nextError) {
-      setError(errorMessage(nextError));
+      setError(
+        buildUserFacingError(nextError, {
+          detail: "隧道配置尚未创建。",
+          recoveryAction: "请检查端口、绑定地址和 SSH 连接后重试。",
+          title: "无法创建隧道",
+        }),
+      );
     } finally {
       setLoading(false);
     }
@@ -340,7 +357,13 @@ export function PortForwardToolContent({
       setSessions(await listPortForwards());
       setNotice(`${started.name} 已启动。`);
     } catch (nextError) {
-      setError(errorMessage(nextError));
+      setError(
+        buildUserFacingError(nextError, {
+          detail: "保存的隧道仍然保留。",
+          recoveryAction: "请确认 SSH 连接可用后重试。",
+          title: "无法启动隧道",
+        }),
+      );
     } finally {
       setLoading(false);
     }
@@ -362,7 +385,13 @@ export function PortForwardToolContent({
       setSessions(await listPortForwards());
       setNotice("隧道已停止，配置仍保留。");
     } catch (nextError) {
-      setError(errorMessage(nextError));
+      setError(
+        buildUserFacingError(nextError, {
+          detail: "隧道可能仍在运行。",
+          recoveryAction: "请刷新状态，确认 SSH 连接可用后重试。",
+          title: "无法停止隧道",
+        }),
+      );
     } finally {
       setLoading(false);
     }
@@ -389,7 +418,13 @@ export function PortForwardToolContent({
       setSessions(await listPortForwards());
       setNotice("隧道配置已删除。");
     } catch (nextError) {
-      setError(errorMessage(nextError));
+      setError(
+        buildUserFacingError(nextError, {
+          detail: "隧道配置仍然保留。",
+          recoveryAction: "请刷新状态后重试删除。",
+          title: "无法删除隧道",
+        }),
+      );
     } finally {
       setLoading(false);
     }
@@ -398,7 +433,12 @@ export function PortForwardToolContent({
   async function handleCopy(value: string) {
     const result = await writeDesktopClipboardText(value);
     if (!result.ok) {
-      setError("当前环境不支持复制到剪贴板。");
+      setError(
+        portForwardUserError(
+          "当前环境不支持复制到剪贴板。",
+          "请手动选择并复制地址。",
+        ),
+      );
       return;
     }
     setNotice("已复制地址。");
@@ -406,16 +446,18 @@ export function PortForwardToolContent({
 
   async function handleInject(session: PortForwardSummary) {
     if (!focusedPane || !canInjectIntoFocusedPane) {
-      setError(injectDisabledReason);
+      setError(portForwardUserError(injectDisabledReason));
       return;
     }
     if (session.status !== "running") {
-      setError("该隧道已退出，请重新启动后再注入代理环境。");
+      setError(
+        portForwardUserError("该隧道已退出。", "请重新启动后再注入代理环境。"),
+      );
       return;
     }
     const proxyUrl = proxyUrlForSession(session);
     if (!proxyUrl) {
-      setError("该会话没有可注入的代理地址。");
+      setError(portForwardUserError("该会话没有可注入的代理地址。"));
       return;
     }
     await writePaneCommand({
@@ -434,7 +476,9 @@ export function PortForwardToolContent({
       return;
     }
     if (session.status !== "running") {
-      setError("该隧道已退出，请重新启动后再用于新终端。");
+      setError(
+        portForwardUserError("该隧道已退出。", "请重新启动后再用于新终端。"),
+      );
       return;
     }
     if (
@@ -451,7 +495,7 @@ export function PortForwardToolContent({
 
     const proxyUrl = proxyUrlForSession(session);
     if (!proxyUrl) {
-      setError("该会话没有可用于新终端的代理地址。");
+      setError(portForwardUserError("该会话没有可用于新终端的代理地址。"));
       return;
     }
     const injection: HostNetworkAssistAutoInjection = {
@@ -495,9 +539,7 @@ export function PortForwardToolContent({
         </div>
 
         {error ? (
-          <div className="mt-3 rounded-xl border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100">
-            {error}
-          </div>
+          <UserFacingNotice className="mt-3" compact message={error} />
         ) : null}
         {notice ? (
           <div className="mt-3 rounded-xl border border-emerald-300/20 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-100">
@@ -635,9 +677,7 @@ export function PortForwardToolContent({
           ) : null}
 
           {error ? (
-            <div className="rounded-xl border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100">
-              {error}
-            </div>
+            <UserFacingNotice compact message={error} />
           ) : null}
         </div>
       </ModalShell>
@@ -903,8 +943,15 @@ export function PortForwardToolContent({
   }
 }
 
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
+function portForwardUserError(
+  title: string,
+  recoveryAction?: string,
+): UserFacingMessage {
+  return {
+    recoveryAction,
+    severity: "error",
+    title,
+  };
 }
 
 function bindModeFromHost(host: string | undefined): BindAddressMode {

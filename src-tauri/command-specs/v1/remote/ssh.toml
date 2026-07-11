@@ -1,0 +1,89 @@
+schema_version = 1
+command = "ssh"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "OpenSSH remote login client"
+tested_version = "9.9"
+owner = "kerminal"
+updated_at = "2026-07-10"
+
+[source]
+name = "OpenSSH manual"
+url = "https://man.openbsd.org/ssh"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "-A"
+description = "Enable authentication agent forwarding"
+
+[[options]]
+name = "-F"
+description = "Select a per-user configuration file"
+
+[options.argument]
+kind = "file"
+placeholder = "CONFIG"
+
+[[options]]
+name = "-i"
+description = "Select an identity file"
+
+[options.argument]
+kind = "file"
+placeholder = "IDENTITY"
+
+[[options]]
+name = "-J"
+description = "Connect through a jump host"
+
+[options.argument]
+kind = "host"
+placeholder = "DESTINATION"
+
+[[options]]
+name = "-L"
+description = "Configure local port forwarding"
+
+[options.argument]
+kind = "string"
+placeholder = "FORWARD"
+
+[[options]]
+name = "-N"
+description = "Do not execute a remote command"
+
+[[options]]
+name = "-o"
+description = "Set a configuration option"
+
+[options.argument]
+kind = "string"
+placeholder = "OPTION"
+
+[[options]]
+name = "-p"
+description = "Select the remote port"
+
+[options.argument]
+kind = "integer"
+placeholder = "PORT"
+
+[[options]]
+name = "-R"
+description = "Configure remote port forwarding"
+
+[options.argument]
+kind = "string"
+placeholder = "FORWARD"
+
+[[options]]
+name = "-T"
+description = "Disable pseudo-terminal allocation"
+
+[[options]]
+name = "-v"
+description = "Enable verbose logging"

@@ -29,24 +29,39 @@ impl CommandSuggestionService {
             );
             return Ok(Self::skipped_remote_path_refresh_result(request));
         }
-        let result = match sftp
-            .list_directory(
-                paths,
-                SftpListDirectoryRequest {
-                    host_id: request.host_id.clone(),
-                    path: request.path.clone(),
-                },
-            )
-            .await
-        {
-            Ok(listing) => self.cache_remote_path_listing(
-                Some(storage),
-                listing,
-                request.ttl_seconds,
-                request.max_entries,
-            ),
-            Err(error) => Err(error),
+        let refresh_key = RemotePathCacheKey {
+            directory: request.path.clone(),
+            host_id: request.host_id.clone(),
         };
+        let refresh_host_id = request.host_id.clone();
+        let result = remote_refresh_result(
+            self.remote_path_refresh
+                .refresh_scoped(
+                    refresh_key,
+                    1,
+                    &refresh_host_id,
+                    std::time::Instant::now(),
+                    move |_| async move {
+                        let listing = sftp
+                            .list_directory(
+                                paths,
+                                SftpListDirectoryRequest {
+                                    host_id: request.host_id,
+                                    path: request.path,
+                                },
+                            )
+                            .await?;
+                        self.cache_remote_path_listing(
+                            Some(storage),
+                            listing,
+                            request.ttl_seconds,
+                            request.max_entries,
+                        )
+                    },
+                )
+                .await,
+            "远端路径",
+        );
         if let Err(error) = result.as_ref() {
             self.record_refresh_failure(
                 Some(storage),
@@ -95,34 +110,46 @@ impl CommandSuggestionService {
             );
             return Ok(Self::skipped_remote_command_refresh_result(request));
         }
-        let result = async {
-            let output = ssh_commands
-                .execute_native(
-                    paths,
-                    SshCommandRequest {
-                        command: REMOTE_COMMAND_DISCOVERY_SCRIPT.to_owned(),
-                        host_id: request.host_id.clone(),
-                        max_output_bytes: Some(REMOTE_COMMAND_DISCOVERY_OUTPUT_BYTES),
-                        timeout_seconds: Some(REMOTE_COMMAND_DISCOVERY_TIMEOUT_SECS),
+        let refresh_key = request.host_id.clone();
+        let refresh_host_id = request.host_id.clone();
+        let result = remote_refresh_result(
+            self.remote_command_refresh
+                .refresh_scoped(
+                    refresh_key,
+                    1,
+                    &refresh_host_id,
+                    std::time::Instant::now(),
+                    move |_| async move {
+                        let output = ssh_commands
+                            .execute_native(
+                                paths,
+                                SshCommandRequest {
+                                    command: REMOTE_COMMAND_DISCOVERY_SCRIPT.to_owned(),
+                                    host_id: request.host_id.clone(),
+                                    max_output_bytes: Some(REMOTE_COMMAND_DISCOVERY_OUTPUT_BYTES),
+                                    timeout_seconds: Some(REMOTE_COMMAND_DISCOVERY_TIMEOUT_SECS),
+                                },
+                            )
+                            .await?;
+                        let commands = parse_remote_command_names(&output.stdout);
+                        if commands.is_empty() && !output.success {
+                            return Err(AppError::SshCommand(format!(
+                                "远端命令探测失败: {}",
+                                output.stderr.trim()
+                            )));
+                        }
+                        self.cache_remote_commands(
+                            Some(storage),
+                            request.host_id,
+                            commands,
+                            request.ttl_seconds,
+                            request.max_entries,
+                        )
                     },
                 )
-                .await?;
-            let commands = parse_remote_command_names(&output.stdout);
-            if commands.is_empty() && !output.success {
-                return Err(AppError::SshCommand(format!(
-                    "远端命令探测失败: {}",
-                    output.stderr.trim()
-                )));
-            }
-            self.cache_remote_commands(
-                Some(storage),
-                request.host_id,
-                commands,
-                request.ttl_seconds,
-                request.max_entries,
-            )
-        }
-        .await;
+                .await,
+            "远端命令",
+        );
         if let Err(error) = result.as_ref() {
             self.record_refresh_failure(
                 Some(storage),
@@ -171,34 +198,47 @@ impl CommandSuggestionService {
             );
             return Ok(Self::skipped_remote_history_refresh_result(request));
         }
-        let result = async {
-            let output = ssh_commands
-                .execute_native(
-                    paths,
-                    SshCommandRequest {
-                        command: REMOTE_HISTORY_DISCOVERY_SCRIPT.to_owned(),
-                        host_id: request.host_id.clone(),
-                        max_output_bytes: Some(REMOTE_HISTORY_DISCOVERY_OUTPUT_BYTES),
-                        timeout_seconds: Some(REMOTE_HISTORY_DISCOVERY_TIMEOUT_SECS),
+        let refresh_key = request.host_id.clone();
+        let refresh_host_id = request.host_id.clone();
+        let result = remote_refresh_result(
+            self.remote_history_refresh
+                .refresh_scoped(
+                    refresh_key,
+                    1,
+                    &refresh_host_id,
+                    std::time::Instant::now(),
+                    move |_| async move {
+                        let output = ssh_commands
+                            .execute_native(
+                                paths,
+                                SshCommandRequest {
+                                    command: REMOTE_HISTORY_DISCOVERY_SCRIPT.to_owned(),
+                                    host_id: request.host_id.clone(),
+                                    max_output_bytes: Some(REMOTE_HISTORY_DISCOVERY_OUTPUT_BYTES),
+                                    timeout_seconds: Some(REMOTE_HISTORY_DISCOVERY_TIMEOUT_SECS),
+                                },
+                            )
+                            .await?;
+                        let commands =
+                            parse_remote_history_commands(&output.stdout, request.max_entries);
+                        if commands.is_empty() && !output.success {
+                            return Err(AppError::SshCommand(format!(
+                                "远端 shell history 探测失败: {}",
+                                output.stderr.trim()
+                            )));
+                        }
+                        self.cache_remote_history(
+                            Some(storage),
+                            request.host_id,
+                            commands,
+                            request.ttl_seconds,
+                            request.max_entries,
+                        )
                     },
                 )
-                .await?;
-            let commands = parse_remote_history_commands(&output.stdout, request.max_entries);
-            if commands.is_empty() && !output.success {
-                return Err(AppError::SshCommand(format!(
-                    "远端 shell history 探测失败: {}",
-                    output.stderr.trim()
-                )));
-            }
-            self.cache_remote_history(
-                Some(storage),
-                request.host_id,
-                commands,
-                request.ttl_seconds,
-                request.max_entries,
-            )
-        }
-        .await;
+                .await,
+            "远端历史",
+        );
         if let Err(error) = result.as_ref() {
             self.record_refresh_failure(
                 Some(storage),
@@ -248,36 +288,54 @@ impl CommandSuggestionService {
             );
             return Ok(Self::skipped_git_refresh_result(request));
         }
-        let result = async {
-            let output = ssh_commands
-                .execute_native(
-                    paths,
-                    SshCommandRequest {
-                        command: git_discovery_script(&request.cwd)?,
-                        host_id: request.host_id.clone(),
-                        max_output_bytes: Some(GIT_DISCOVERY_OUTPUT_BYTES),
-                        timeout_seconds: Some(GIT_DISCOVERY_TIMEOUT_SECS),
+        let refresh_key = GitCacheKey {
+            cwd: request.cwd.clone(),
+            host_id: request.host_id.clone(),
+        };
+        let refresh_host_id = request.host_id.clone();
+        let result = remote_refresh_result(
+            self.git_refresh
+                .refresh_scoped(
+                    refresh_key,
+                    1,
+                    &refresh_host_id,
+                    std::time::Instant::now(),
+                    move |_| async move {
+                        let output = ssh_commands
+                            .execute_native(
+                                paths,
+                                SshCommandRequest {
+                                    command: git_discovery_script(&request.cwd)?,
+                                    host_id: request.host_id.clone(),
+                                    max_output_bytes: Some(GIT_DISCOVERY_OUTPUT_BYTES),
+                                    timeout_seconds: Some(GIT_DISCOVERY_TIMEOUT_SECS),
+                                },
+                            )
+                            .await?;
+                        let discovery = parse_git_discovery_output(&output.stdout);
+                        if discovery.entries.is_empty()
+                            && discovery.repo_root.is_none()
+                            && !output.success
+                        {
+                            return Err(AppError::SshCommand(format!(
+                                "Git refs 探测失败: {}",
+                                output.stderr.trim()
+                            )));
+                        }
+                        self.cache_git_refs(
+                            Some(storage),
+                            request.host_id,
+                            request.cwd,
+                            discovery.repo_root,
+                            discovery.entries,
+                            request.ttl_seconds,
+                            request.max_entries,
+                        )
                     },
                 )
-                .await?;
-            let discovery = parse_git_discovery_output(&output.stdout);
-            if discovery.entries.is_empty() && discovery.repo_root.is_none() && !output.success {
-                return Err(AppError::SshCommand(format!(
-                    "Git refs 探测失败: {}",
-                    output.stderr.trim()
-                )));
-            }
-            self.cache_git_refs(
-                Some(storage),
-                request.host_id,
-                request.cwd,
-                discovery.repo_root,
-                discovery.entries,
-                request.ttl_seconds,
-                request.max_entries,
-            )
-        }
-        .await;
+                .await,
+            "Git refs",
+        );
         if let Err(error) = result.as_ref() {
             self.record_refresh_failure(
                 Some(storage),
@@ -576,5 +634,33 @@ impl CommandSuggestionService {
             path,
             ttl_seconds,
         })
+    }
+}
+
+fn remote_refresh_result<V: Clone>(outcome: RemoteRefreshOutcome<V>, label: &str) -> AppResult<V> {
+    match outcome {
+        RemoteRefreshOutcome::Fresh(value)
+        | RemoteRefreshOutcome::Refreshed(value)
+        | RemoteRefreshOutcome::Coalesced(value) => Ok((*value).clone()),
+        RemoteRefreshOutcome::Backoff {
+            stale: Some(value), ..
+        }
+        | RemoteRefreshOutcome::Cancelled { stale: Some(value) }
+        | RemoteRefreshOutcome::Superseded { stale: Some(value) } => Ok((*value).clone()),
+        RemoteRefreshOutcome::Failed { error, .. } => Err(AppError::RemoteSuggestion(format!(
+            "{label}刷新失败: {error}"
+        ))),
+        RemoteRefreshOutcome::Backoff { retry_after, .. } => {
+            Err(AppError::RemoteSuggestion(format!(
+                "{label}刷新处于退避窗口，约 {}ms 后重试",
+                retry_after.as_millis()
+            )))
+        }
+        RemoteRefreshOutcome::Cancelled { .. } => {
+            Err(AppError::RemoteSuggestion(format!("{label}刷新已取消")))
+        }
+        RemoteRefreshOutcome::Superseded { .. } => {
+            Err(AppError::RemoteSuggestion(format!("{label}刷新结果已过期")))
+        }
     }
 }

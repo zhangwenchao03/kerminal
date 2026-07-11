@@ -31,6 +31,11 @@ export const defaultTerminalAppearance: TerminalAppearance = {
   inlineSuggestion: {
     acceptKey: "rightArrow",
     enabled: true,
+    presentation: "inlineAndMenu",
+    menuShortcut: "ctrlSpace",
+    tabOpensMenu: false,
+    partialAccept: true,
+    remoteRefresh: "safe",
     productionHostPolicy: "restricted",
     providers: {
       git: true,

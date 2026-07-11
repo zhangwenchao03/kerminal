@@ -1,0 +1,66 @@
+schema_version = 1
+command = "aws"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Manage Amazon Web Services"
+tested_version = "AWS CLI 2.27"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "AWS CLI command reference"
+url = "https://docs.aws.amazon.com/cli/latest/reference/"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "cloudformation"
+description = "Manage CloudFormation stacks"
+
+[[subcommands]]
+name = "ec2"
+description = "Manage EC2 resources"
+
+[[subcommands]]
+name = "eks"
+description = "Manage EKS clusters"
+
+[[subcommands]]
+name = "iam"
+description = "Manage IAM resources"
+
+[[subcommands]]
+name = "s3"
+description = "Manage S3 objects and buckets"
+
+[[subcommands]]
+name = "sts"
+description = "Use Security Token Service operations"
+
+[[options]]
+name = "--profile"
+description = "Select a named credential profile"
+
+[options.argument]
+kind = "string"
+placeholder = "PROFILE"
+
+[[options]]
+name = "--region"
+description = "Select an AWS region"
+
+[options.argument]
+kind = "string"
+placeholder = "REGION"
+
+[[options]]
+name = "--output"
+description = "Select the output format"
+
+[options.argument]
+kind = "enum"
+placeholder = "FORMAT"
+values = ["json", "text", "table", "yaml"]

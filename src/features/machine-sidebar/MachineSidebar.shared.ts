@@ -16,6 +16,7 @@ export interface MachineSidebarProps {
   containerInitialContainerId?: string;
   groups: MachineGroup[];
   openMachineIds?: readonly string[];
+  rdpOpeningMachineIds?: readonly string[];
   selectedMachineId: string;
   search: string;
   settingsSelected?: boolean;

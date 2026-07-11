@@ -1,10 +1,14 @@
 use super::*;
+use crate::models::command_suggestion::SuggestionQueryMode;
 
 #[derive(Debug, Clone)]
 pub(super) struct NormalizedSuggestionRequest {
+    pub(super) context_key: Option<String>,
     pub(super) cursor: usize,
     pub(super) cwd: Option<String>,
     pub(super) limit: usize,
+    /// 候选展示模式，provider 和排序策略据此区分高精度 inline 与可发现 menu。
+    pub(super) mode: SuggestionQueryMode,
     pub(super) prefix: String,
     pub(super) providers: Option<Vec<SuggestionProviderKind>>,
     pub(super) remote_host_id: Option<String>,
@@ -36,9 +40,15 @@ impl TryFrom<CommandSuggestionRequest> for NormalizedSuggestionRequest {
         });
 
         Ok(Self {
+            context_key: normalize_optional_text(
+                "建议上下文键",
+                request.context_key,
+                MAX_CONTEXT_CHARS,
+            )?,
             cursor,
             cwd: normalize_optional_text("工作目录", request.cwd, MAX_CONTEXT_CHARS)?,
             limit: request.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT),
+            mode: request.mode,
             prefix,
             providers,
             remote_host_id: normalize_optional_text(

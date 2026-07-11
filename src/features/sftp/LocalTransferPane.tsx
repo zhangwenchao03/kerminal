@@ -155,8 +155,6 @@ export function LocalTransferPane({
   const visibleListing = visibleLocalDirectoryListing(listing, showHiddenEntries);
   const directorySummary = localDirectorySummary(visibleListing);
   const visibleEntries = filterLocalDirectoryEntries(visibleListing, entryFilter);
-  const hiddenEntryCount =
-    (listing?.entries.length ?? 0) - (visibleListing?.entries.length ?? 0);
   const selectedEntries =
     visibleListing?.entries.filter((entry) => selectedEntryPaths.has(entry.path)) ??
     [];
@@ -183,12 +181,6 @@ export function LocalTransferPane({
     : spaciousDensity
       ? "px-4 py-2.5"
       : "px-3 py-2";
-  const paneHeaderPaddingClass = compactDensity
-    ? "px-2.5 py-2"
-    : spaciousDensity
-      ? "px-4 py-3"
-      : "px-3 py-2.5";
-
   const loadDirectory = useCallback(
     async (path?: string | null) => {
       if (!active) {
@@ -817,36 +809,34 @@ export function LocalTransferPane({
       onDrop={handleRemoteDrop}
       onKeyDown={handleLocalKeyDown}
     >
-      <div
-        className={cn(
-          "flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border-subtle)]",
-          chromePaddingClass,
-        )}
-      >
-        <div className="min-w-0">
-          <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">
-            {browserMode ? "本地文件" : "左侧本地目录"}
-          </div>
-          <div className="truncate text-[11px] text-zinc-500 dark:text-zinc-400">
-            {browserMode
-              ? followedPath
-                ? "跟随当前终端路径"
-                : "本机文件系统"
-              : "本机文件系统"}
-          </div>
-        </div>
-        <Button
-          aria-label="选择本地目录"
-          className="h-8 w-8 rounded-lg bg-emerald-500/10 px-0 text-emerald-600 hover:bg-emerald-500/15 dark:bg-emerald-400/12 dark:text-emerald-300 dark:hover:bg-emerald-400/18"
-          onClick={() => void chooseDirectory()}
-          size="sm"
-          title="选择本地目录"
-          type="button"
-          variant="ghost"
+      {browserMode ? (
+        <div
+          className={cn(
+            "flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border-subtle)]",
+            chromePaddingClass,
+          )}
         >
-          <FolderOpen className="h-4 w-4" />
-        </Button>
-      </div>
+          <div className="min-w-0">
+            <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">
+              本地文件
+            </div>
+            <div className="truncate text-[11px] text-zinc-500 dark:text-zinc-400">
+              {followedPath ? "跟随当前终端路径" : "本机文件系统"}
+            </div>
+          </div>
+          <Button
+            aria-label="选择本地目录"
+            className="h-8 w-8 rounded-lg bg-emerald-500/10 px-0 text-emerald-600 hover:bg-emerald-500/15 dark:bg-emerald-400/12 dark:text-emerald-300 dark:hover:bg-emerald-400/18"
+            onClick={() => void chooseDirectory()}
+            size="sm"
+            title="选择本地目录"
+            type="button"
+            variant="ghost"
+          >
+            <FolderOpen className="h-4 w-4" />
+          </Button>
+        </div>
+      ) : null}
 
       <div
         className={cn(
@@ -894,6 +884,19 @@ export function LocalTransferPane({
           >
             <CornerDownRight className="h-3.5 w-3.5" />
           </Button>
+          {browserMode ? null : (
+            <Button
+              aria-label="选择本地目录"
+              className="h-8 w-8 rounded-lg bg-emerald-500/10 px-0 text-emerald-600 hover:bg-emerald-500/15 dark:bg-emerald-400/12 dark:text-emerald-300 dark:hover:bg-emerald-400/18"
+              onClick={() => void chooseDirectory()}
+              size="sm"
+              title="选择本地目录"
+              type="button"
+              variant="ghost"
+            >
+              <FolderOpen className="h-4 w-4" />
+            </Button>
+          )}
         </form>
 
         <LocalTransferToolbar
@@ -913,15 +916,12 @@ export function LocalTransferPane({
       <LocalTransferPaneListView
         bodyPaddingClass={bodyPaddingClass}
         compactDensity={compactDensity}
-        directorySummary={directorySummary}
         entryFilter={entryFilter}
         error={error}
         fileRowHeight={fileRowHeight}
-        hiddenEntryCount={hiddenEntryCount}
         listHeaderPaddingClass={listHeaderPaddingClass}
         listing={listing}
         loading={loading}
-        paneHeaderPaddingClass={paneHeaderPaddingClass}
         selectedEntries={selectedEntries}
         selectedEntryPaths={selectedEntryPaths}
         showHiddenEntries={showHiddenEntries}

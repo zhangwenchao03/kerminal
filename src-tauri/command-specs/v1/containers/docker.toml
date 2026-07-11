@@ -1,0 +1,198 @@
+schema_version = 1
+command = "docker"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Docker container command line"
+tested_version = "28"
+owner = "kerminal"
+updated_at = "2026-07-10"
+
+[source]
+name = "Docker CLI reference"
+url = "https://docs.docker.com/reference/cli/docker/"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "build"
+description = "Build an image"
+
+[[subcommands]]
+name = "compose"
+description = "Manage Compose applications"
+
+[[subcommands]]
+name = "exec"
+description = "Run a command in a container"
+
+[[subcommands]]
+name = "images"
+description = "List images"
+
+[[subcommands]]
+name = "inspect"
+description = "Inspect Docker objects"
+
+[[subcommands]]
+name = "logs"
+description = "Fetch container logs"
+
+[[subcommands]]
+name = "network"
+description = "Manage networks"
+
+[[subcommands]]
+name = "ps"
+description = "List containers"
+
+[[subcommands]]
+name = "pull"
+description = "Pull an image"
+
+[[subcommands]]
+name = "push"
+description = "Push an image"
+
+[[subcommands]]
+name = "run"
+description = "Run a command in a new container"
+
+[[subcommands]]
+name = "stop"
+description = "Stop containers"
+
+[subcommands.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "Stopping containers can interrupt running services"
+
+[[subcommands]]
+name = "volume"
+description = "Manage volumes"
+
+[[subcommands]]
+name = "build"
+path = ["compose"]
+description = "Build Compose services"
+
+[[subcommands]]
+name = "config"
+path = ["compose"]
+description = "Render the Compose model"
+
+[[subcommands]]
+name = "down"
+path = ["compose"]
+description = "Stop and remove a Compose application"
+
+[[subcommands]]
+name = "exec"
+path = ["compose"]
+description = "Run a command in a Compose service"
+
+[[subcommands]]
+name = "logs"
+path = ["compose"]
+description = "View Compose service output"
+
+[[subcommands]]
+name = "ps"
+path = ["compose"]
+description = "List Compose containers"
+
+[[subcommands]]
+name = "pull"
+path = ["compose"]
+description = "Pull Compose service images"
+
+[[subcommands]]
+name = "restart"
+path = ["compose"]
+description = "Restart Compose services"
+
+[[subcommands]]
+name = "run"
+path = ["compose"]
+description = "Run a one-off Compose command"
+
+[[subcommands]]
+name = "stop"
+path = ["compose"]
+description = "Stop Compose services"
+
+[[subcommands]]
+name = "up"
+path = ["compose"]
+description = "Create and start a Compose application"
+
+[[options]]
+name = "--build"
+description = "Build images before starting containers"
+
+[[options]]
+name = "--detach"
+description = "Run in the background"
+
+[[options]]
+name = "--file"
+description = "Select a Compose or build file"
+
+[options.argument]
+kind = "file"
+placeholder = "FILE"
+
+[[options]]
+name = "--follow"
+description = "Follow log output"
+
+[[options]]
+name = "--force-recreate"
+description = "Recreate containers"
+
+[[options]]
+name = "--name"
+description = "Assign an object name"
+
+[options.argument]
+kind = "string"
+placeholder = "NAME"
+
+[[options]]
+name = "--no-cache"
+description = "Disable the build cache"
+
+[[options]]
+name = "--platform"
+description = "Select a target platform"
+
+[options.argument]
+kind = "string"
+placeholder = "PLATFORM"
+
+[[options]]
+name = "--pull"
+description = "Pull before running or building"
+
+[[options]]
+name = "--rm"
+description = "Remove the container after it exits"
+
+[[options]]
+name = "--tag"
+description = "Apply an image tag"
+
+[options.argument]
+kind = "string"
+placeholder = "NAME"
+
+[[options]]
+name = "--volumes"
+description = "Remove associated volumes when supported"
+
+[options.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "Removing volumes can permanently delete persisted data"

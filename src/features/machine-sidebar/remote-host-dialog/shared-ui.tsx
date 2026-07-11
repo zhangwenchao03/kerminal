@@ -82,17 +82,6 @@ export function GroupSelectRow({
 export const inputClassName =
   "kerminal-field-surface h-10 w-full rounded-xl border px-3 text-sm text-zinc-950 placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-100 dark:placeholder:text-zinc-600";
 
-export function HelpCard({ icon, text }: { icon: ReactNode; text: string }) {
-  return (
-    <div className="kerminal-solid-surface rounded-2xl border p-4">
-      <div className="flex items-start gap-3 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-        {icon}
-        <p className="min-w-0 flex-1">{text}</p>
-      </div>
-    </div>
-  );
-}
-
 export function ToggleRow({
   checked,
   disabled,
@@ -206,7 +195,7 @@ export function ListReorderActions({
 
 export function protocolButtonClassName(selected: boolean, disabled: boolean) {
   return [
-    "flex h-16 min-w-[72px] flex-col items-center justify-center gap-1 rounded-xl px-3 text-sm font-medium transition",
+    "flex h-14 min-w-[72px] flex-col items-center justify-center gap-1 rounded-xl px-3 text-sm font-medium transition",
     selected
       ? "bg-[var(--surface-selected)] text-sky-700 shadow-sm dark:text-sky-100"
       : "text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50",

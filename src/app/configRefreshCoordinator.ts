@@ -90,7 +90,7 @@ export function createConfigRefreshCoordinator({
         domains: domainsToRefresh,
         id: `${event.batchId}:${event.sequence}:refresh-failed`,
         level: "warning",
-        text: "cfg: refresh failed, kept last-known-good",
+        text: "配置更新失败，Kerminal 已继续使用上次有效数据。",
         ttlMs: 3000,
       });
       return;

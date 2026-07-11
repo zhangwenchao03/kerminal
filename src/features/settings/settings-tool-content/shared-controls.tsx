@@ -1,5 +1,8 @@
-import { Check, type LucideIcon } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Check, ChevronRight, type LucideIcon } from "lucide-react";
+import { UserFacingNotice } from "../../../components/ui/user-facing-notice";
 import { cn } from "../../../lib/cn";
+import { buildUserFacingError } from "../../../lib/userFacingMessage";
 import type { KeybindingScope } from "../settingsModel";
 import type { SettingsSaveState } from "./types";
 
@@ -50,32 +53,54 @@ export function TextAreaSetting({
     </label>
   );
 }
-export function SettingsMetricItem({
-  description,
-  icon: Icon,
-  label,
-  value,
+
+/**
+ * 设置页的本地渐进披露容器；搜索命中时可展开，但不改变配置状态。
+ */
+export function SettingsDisclosure({
+  children,
+  reveal = false,
+  summary,
+  targetId,
+  title,
 }: {
-  description: string;
-  icon: LucideIcon;
-  label: string;
-  value: string;
+  children: ReactNode;
+  reveal?: boolean;
+  summary?: ReactNode;
+  targetId?: string;
+  title: string;
 }) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (reveal) {
+      setOpen(true);
+    }
+  }, [reveal]);
+
   return (
-    <div className="kerminal-muted-surface rounded-xl border p-3">
-      <div className="flex items-center gap-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
-        <Icon className="h-3.5 w-3.5" />
-        {label}
-      </div>
-      <div className="mt-2 text-base font-semibold text-zinc-900 dark:text-zinc-100">
-        {value}
-      </div>
-      <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-        {description}
-      </p>
-    </div>
+    <details
+      className="group kerminal-muted-surface overflow-hidden rounded-xl border"
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+      open={open}
+    >
+      <summary
+        className="kerminal-focus-ring kerminal-pressable flex min-h-12 cursor-pointer list-none items-center gap-3 px-4 py-3 text-left text-sm text-zinc-700 marker:hidden hover:bg-[var(--surface-hover)] dark:text-zinc-200"
+        id={targetId}
+      >
+        <ChevronRight className="h-4 w-4 shrink-0 text-zinc-400 transition-transform duration-150 group-open:rotate-90" />
+        <span className="min-w-0 flex-1 font-medium">{title}</span>
+        {summary ? (
+          <span className="min-w-0 max-w-[55%] truncate text-xs text-zinc-500 dark:text-zinc-400">
+            {summary}
+          </span>
+        ) : null}
+      </summary>
+      <div className="border-t border-[var(--border-subtle)] p-4">{children}</div>
+    </details>
   );
 }
+
 export function PolicyToggle({
   checked,
   icon: Icon,
@@ -225,12 +250,23 @@ export function SettingsSaveNotice({
 
   if (saveState === "error") {
     return (
-      <div
-        className="rounded-xl border border-rose-300/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100"
-        role="alert"
-      >
-        {saveError ?? "设置保存失败，请稍后重试。"}
-      </div>
+      <UserFacingNotice
+        compact
+        message={
+          saveError
+            ? buildUserFacingError(saveError, {
+                detail: "刚才的更改可能尚未写入本地配置。",
+                recoveryAction: "请检查配置目录权限后重试。",
+                title: "设置未保存",
+              })
+            : {
+                detail: "刚才的更改可能尚未写入本地配置。",
+                recoveryAction: "请稍后重试。",
+                severity: "error",
+                title: "设置未保存",
+              }
+        }
+      />
     );
   }
 

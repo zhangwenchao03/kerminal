@@ -10,6 +10,9 @@ fn spec_suggestions_complete_git_subcommands() {
             state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
+                context_key: None,
+                generation: None,
+                mode: Default::default(),
                 input: "git ch".to_owned(),
                 cursor: "git ch".chars().count(),
                 target: CommandHistoryTarget::Ssh,
@@ -46,6 +49,9 @@ fn spec_suggestions_complete_kubectl_options() {
             state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
+                context_key: None,
+                generation: None,
+                mode: Default::default(),
                 input: "kubectl get --".to_owned(),
                 cursor: "kubectl get --".chars().count(),
                 target: CommandHistoryTarget::Ssh,

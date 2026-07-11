@@ -1,0 +1,57 @@
+schema_version = 1
+command = "gcloud"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Manage Google Cloud resources"
+tested_version = "Google Cloud CLI 527"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "Google Cloud CLI reference"
+url = "https://cloud.google.com/sdk/gcloud/reference"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "auth"
+description = "Manage credentials"
+
+[[subcommands]]
+name = "compute"
+description = "Manage Compute Engine resources"
+
+[[subcommands]]
+name = "config"
+description = "Manage CLI properties"
+
+[[subcommands]]
+name = "container"
+description = "Manage Google Kubernetes Engine"
+
+[[subcommands]]
+name = "projects"
+description = "Manage Google Cloud projects"
+
+[[subcommands]]
+name = "storage"
+description = "Manage Cloud Storage resources"
+
+[[options]]
+name = "--project"
+description = "Select a Google Cloud project"
+
+[options.argument]
+kind = "string"
+placeholder = "PROJECT"
+
+[[options]]
+name = "--format"
+description = "Select an output format"
+
+[options.argument]
+kind = "string"
+placeholder = "FORMAT"

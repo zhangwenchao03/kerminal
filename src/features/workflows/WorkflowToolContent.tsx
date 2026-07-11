@@ -11,7 +11,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Select } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../lib/userFacingMessage";
 import {
   createWorkflow,
   deleteWorkflow,
@@ -108,7 +113,7 @@ export function WorkflowToolContent({
   const [draftSteps, setDraftSteps] = useState<DraftWorkflowStep[]>(
     initialDraftSteps,
   );
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserFacingMessage | string | null>(null);
   const [filterScope, setFilterScope] = useState<WorkflowScope | "">("");
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
@@ -133,7 +138,13 @@ export function WorkflowToolContent({
       });
       setWorkflows(nextWorkflows);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
+      setError(
+        buildUserFacingError(nextError, {
+          detail: "命令工作流暂时无法加载。",
+          recoveryAction: "请稍后重试。",
+          title: "加载工作流失败",
+        }),
+      );
     } finally {
       setLoading(false);
     }
@@ -156,7 +167,7 @@ export function WorkflowToolContent({
     }
     lastConfigRevisionRef.current = configRevision;
     if (draftTouched || runState) {
-      setConfigDraftNotice("cfg: workflows reloaded; draft kept");
+      setConfigDraftNotice("工作流已更新，当前编辑内容已保留。");
     }
   }, [configRevision, draftTouched, runState]);
 
@@ -202,7 +213,13 @@ export function WorkflowToolContent({
       await loadWorkflows();
       setDraftTouched(false);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
+      setError(
+        buildUserFacingError(nextError, {
+          detail: "工作流尚未保存。",
+          recoveryAction: "请检查步骤内容后重试。",
+          title: "工作流未保存",
+        }),
+      );
     } finally {
       setLoading(false);
     }
@@ -218,7 +235,13 @@ export function WorkflowToolContent({
       );
       await loadWorkflows();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
+      setError(
+        buildUserFacingError(nextError, {
+          detail: "工作流仍保留在列表中。",
+          recoveryAction: "请稍后重试。",
+          title: "工作流未删除",
+        }),
+      );
     } finally {
       setLoading(false);
     }
@@ -437,12 +460,16 @@ export function WorkflowToolContent({
       </div>
 
       {error ? (
-        <div
-          className={workflowNoticeClassName("error", "rounded-2xl p-4")}
-          role="alert"
-        >
-          {error}
-        </div>
+        typeof error === "string" ? (
+          <div
+            className={workflowNoticeClassName("error", "rounded-2xl p-4")}
+            role="alert"
+          >
+            {error}
+          </div>
+        ) : (
+          <UserFacingNotice message={error} />
+        )
       ) : null}
       {configDraftNotice ? (
         <div
@@ -756,12 +783,20 @@ function WorkflowCard({
             </p>
           ) : null}
           {runState.error ? (
-            <div
-              className={workflowNoticeClassName("error", "mt-3")}
-              role="alert"
-            >
-              {runState.error}
-            </div>
+            typeof runState.error === "string" ? (
+              <div
+                className={workflowNoticeClassName("error", "mt-3")}
+                role="alert"
+              >
+                {runState.error}
+              </div>
+            ) : (
+              <UserFacingNotice
+                className="mt-3"
+                compact
+                message={runState.error}
+              />
+            )
           ) : null}
           {runState.status ? (
             <div

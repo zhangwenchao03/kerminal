@@ -19,6 +19,7 @@ export const EXTERNAL_AGENT_WORKSPACE_FILE_AGENT_IDS: ExternalAgentId[] = [
 
 export type AgentLauncherTone = "ready" | "warning" | "danger" | "muted";
 export type AgentLaunchPermissionMode = "default" | "skipPermissions";
+export type AgentAvailabilityLabel = "可用" | "需安装" | "需设置";
 
 export interface McpStatusViewModel {
   label: string;
@@ -32,6 +33,8 @@ export interface AgentActionViewModel {
   cliCommand: string;
   configPath: string;
   statusDetail: string;
+  availabilityDetail: string;
+  availabilityLabel: AgentAvailabilityLabel;
   installLabel: string;
   configLabel: string;
   actionLabel: string;
@@ -66,6 +69,7 @@ export function buildAgentActionViewModel(
   const commandConfigured = Boolean(agent.cliCommand.trim());
   const configReady = customAgent ? true : agent.configReady;
   const installed = agent.installed;
+  const availability = resolveAgentAvailability(agent, disabledReason);
   const statusDetail =
     !customAgent && !options.mcpServerRunning
       ? "Kerminal MCP Server will be started before launch."
@@ -85,6 +89,8 @@ export function buildAgentActionViewModel(
           ? `Open ${agent.title}`
           : "Prepare & Open",
     agentId: agent.id,
+    availabilityDetail: availability.detail,
+    availabilityLabel: availability.label,
     cliCommand: agent.cliCommand.trim() || "No command configured",
     configLabel: customAgent
       ? commandConfigured
@@ -159,10 +165,6 @@ export function formatAgentLauncherPath(path: string): string {
   return path.trim() || "Not generated";
 }
 
-export function agentLauncherErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 export function agentSupportsPermissionSkip(agentId: ExternalAgentId): boolean {
   return agentId === "codex" || agentId === "claude";
 }
@@ -224,15 +226,51 @@ function resolveAgentDisabledReason(
   options: AgentActionOptions,
 ): string | undefined {
   if (!options.terminalLauncherAvailable) {
-    return "Terminal launcher unavailable.";
+    return "当前无法打开终端。";
   }
   if (agent.id === "custom") {
     return undefined;
   }
   if (!agent.cliCommand.trim()) {
-    return "No launch command configured.";
+    return "尚未配置启动命令。";
   }
   return undefined;
+}
+
+function resolveAgentAvailability(
+  agent: ExternalAgentStatus,
+  disabledReason: string | undefined,
+): {
+  detail: string;
+  label: AgentAvailabilityLabel;
+} {
+  if (disabledReason) {
+    return {
+      detail: disabledReason,
+      label: "需设置",
+    };
+  }
+  if (agent.id === "custom") {
+    return agent.cliCommand.trim()
+      ? { detail: "可直接打开。", label: "可用" }
+      : { detail: "输入自定义命令后打开。", label: "需设置" };
+  }
+  if (!agent.installed) {
+    return {
+      detail: `${agent.title} 尚未安装。`,
+      label: "需安装",
+    };
+  }
+  if (!agent.configReady) {
+    return {
+      detail: "需要先完成必要设置，打开时会自动准备。",
+      label: "需设置",
+    };
+  }
+  return {
+    detail: "可直接打开。",
+    label: "可用",
+  };
 }
 
 function resolveAgentTone(

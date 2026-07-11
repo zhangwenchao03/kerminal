@@ -273,9 +273,7 @@ function buildRawPayload(
       };
     case "mcp.server.failed":
       return {
-        body: `Local MCP server failed${event.port ? ` on port ${event.port}` : ""}${
-          event.reason ? `: ${event.reason}` : "."
-        }`,
+        body: `Local MCP server failed${event.port ? ` on port ${event.port}` : ""}. Open Kerminal to review details.`,
         title: "MCP server failed",
       };
   }

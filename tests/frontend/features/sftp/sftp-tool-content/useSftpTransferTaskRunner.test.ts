@@ -84,7 +84,11 @@ describe("useSftpTransferTaskRunner", () => {
   });
 
   it("queues SSH transfers and refreshes transfer summaries", async () => {
-    const queuedSummary = transferSummary({ id: "queued-upload" });
+    const queuedSummary = transferSummary({
+      error: "api_key=queued-secret",
+      id: "queued-upload",
+      status: "failed",
+    });
     sftpApiMock.enqueueSftpTransfer.mockResolvedValue(queuedSummary);
 
     const transfersRef = { current: [] as SftpTransferSummary[] };
@@ -115,6 +119,10 @@ describe("useSftpTransferTaskRunner", () => {
     expect(transfersRef.current.map((transfer) => transfer.id)).toEqual([
       "queued-upload",
     ]);
+    expect(transfersRef.current[0]?.error).toContain(
+      'api_key="[已隐藏]"',
+    );
+    expect(transfersRef.current[0]?.error).not.toContain("queued-secret");
     expect(setOperationStatus).toHaveBeenLastCalledWith(null);
     expect(refreshTransfers).toHaveBeenCalledTimes(1);
     expect(loadDirectory).not.toHaveBeenCalled();
@@ -217,7 +225,7 @@ describe("useSftpTransferTaskRunner", () => {
 
   it("keeps Docker upload failures visible to the caller without success cleanup", async () => {
     containerFilesApiMock.uploadDockerContainerPath.mockRejectedValue(
-      new Error("copy failed"),
+      new Error("copy failed password=docker-transfer-secret"),
     );
 
     const setOperationStatus = vi.fn();
@@ -254,10 +262,13 @@ describe("useSftpTransferTaskRunner", () => {
     expect(transfersRef.current[0]).toMatchObject({
       currentItem: "release.tgz",
       direction: "upload",
-      error: "copy failed",
+      error: expect.stringContaining('password="[已隐藏]"'),
       phase: null,
       status: "failed",
     });
+    expect(transfersRef.current[0]?.error).not.toContain(
+      "docker-transfer-secret",
+    );
     expect(transfersRef.current[0].id).toBe(transferSnapshots[0][0].id);
   });
 });

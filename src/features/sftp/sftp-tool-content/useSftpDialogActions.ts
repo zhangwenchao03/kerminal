@@ -163,12 +163,16 @@ export function useSftpDialogActions({
       const failures = await runDialogOperations(plan.operations);
       if (failures.length > 0) {
         const successCount = plan.operations.length - failures.length;
+        setOperationStatus({
+          kind: "error",
+          message: failures.join("\n"),
+        });
         setDialogStatus({
           kind: "error",
           message:
             successCount > 0
-              ? `已完成 ${successCount} 项，${failures.length} 项失败：${failures[0]}`
-              : `操作失败：${failures[0]}`,
+              ? `已完成 ${successCount} 项，${failures.length} 项未处理。请检查权限或目标位置后重试。`
+              : "文件操作未完成。请检查名称、权限或目标位置后重试。",
         });
         if (successCount > 0) {
           await loadDirectory(plan.reloadPath);
@@ -179,9 +183,13 @@ export function useSftpDialogActions({
       setOperationStatus(plan.successStatus);
       setDialogAction(null);
     } catch (nextError) {
-      setDialogStatus({
+      setOperationStatus({
         kind: "error",
         message: errorMessage(nextError),
+      });
+      setDialogStatus({
+        kind: "error",
+        message: "文件操作未完成。请检查名称、权限或目标位置后重试。",
       });
     } finally {
       setDialogBusy(false);

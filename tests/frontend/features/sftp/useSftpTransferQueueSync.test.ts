@@ -92,7 +92,11 @@ describe("useSftpTransferQueueSync", () => {
     vi.useFakeTimers();
     sftpApiMock.listSftpTransfers
       .mockResolvedValueOnce([transferSummary({ id: "running" })])
-      .mockRejectedValueOnce(new Error("offline"));
+      .mockRejectedValueOnce(
+        new Error(
+          "offline password=queue-secret path=C:\\runtime\\queue.json",
+        ),
+      );
 
     const { result } = renderHook(() =>
       useSftpTransferQueueSync({ active: true, pollIntervalMs: 1000 }),
@@ -110,10 +114,41 @@ describe("useSftpTransferQueueSync", () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
 
-    expect(result.current.queueError).toBe("offline");
+    expect(result.current.queueError).toMatchObject({
+      detail: "现有传输记录已保留。",
+      recoveryAction: "检查连接后刷新传输队列。",
+      severity: "error",
+      title: "无法同步传输队列",
+    });
+    expect(result.current.queueError?.technicalDetail).toContain(
+      'password="[已隐藏]"',
+    );
+    expect(result.current.queueError?.technicalDetail).not.toContain(
+      "queue-secret",
+    );
     expect(result.current.transfers.map((transfer) => transfer.id)).toEqual([
       "running",
     ]);
+  });
+
+  it("sanitizes transfer failures loaded from polling", async () => {
+    sftpApiMock.listSftpTransfers.mockResolvedValue([
+      transferSummary({
+        error: "token=poll-secret /srv/runtime/transfer.json",
+        id: "failed-transfer",
+        status: "failed",
+      }),
+    ]);
+
+    const { result } = renderHook(() =>
+      useSftpTransferQueueSync({ active: true }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.transfers).toHaveLength(1);
+    });
+    expect(result.current.transfers[0]?.error).toContain('token="[已隐藏]"');
+    expect(result.current.transfers[0]?.error).not.toContain("poll-secret");
   });
 
   it("slows queue polling while transfer events are healthy", async () => {
@@ -275,7 +310,9 @@ describe("useSftpTransferQueueSync", () => {
     act(() => {
       updateHandler?.(
         transferSummary({
+          error: "password=event-secret",
           id: "event-transfer",
+          status: "failed",
           updatedAt: 5,
           viewScope: "sftp-workbench:tab-a",
         }),
@@ -285,6 +322,10 @@ describe("useSftpTransferQueueSync", () => {
     expect(result.current.transfers.map((transfer) => transfer.id)).toEqual([
       "event-transfer",
     ]);
+    expect(result.current.transfers[0]?.error).toContain(
+      'password="[已隐藏]"',
+    );
+    expect(result.current.transfers[0]?.error).not.toContain("event-secret");
 
     unmount();
 

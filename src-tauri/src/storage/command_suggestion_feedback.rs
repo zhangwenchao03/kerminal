@@ -2,7 +2,9 @@
 //!
 //! @author kongweiguang
 
-use rusqlite::params;
+use std::collections::{HashMap, HashSet};
+
+use rusqlite::{params, params_from_iter, types::Value};
 
 use crate::{
     error::AppResult,
@@ -12,6 +14,8 @@ use crate::{
     },
     storage::CommandSqliteStore,
 };
+
+const MAX_FEEDBACK_BATCH_KEYS: usize = 400;
 
 /// 写入 command_suggestion_feedback 表的结构化数据。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,6 +59,15 @@ pub(crate) struct CommandSuggestionFeedbackScore {
     pub dismissed_count: u32,
 }
 
+/// 批量反馈聚合的稳定查询键。
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct CommandSuggestionFeedbackKey {
+    /// provider 类型。
+    pub provider: SuggestionProviderKind,
+    /// 候选完整替换文本。
+    pub replacement_text: String,
+}
+
 impl CommandSqliteStore {
     /// 写入一条命令建议反馈。
     pub(crate) fn insert_command_suggestion_feedback(
@@ -96,42 +109,102 @@ impl CommandSqliteStore {
         })
     }
 
-    /// 读取某候选在相同目标上下文下的反馈聚合。
-    pub(crate) fn command_suggestion_feedback_score(
+    /// 一次性读取一组候选在相同目标上下文下的反馈聚合。
+    ///
+    /// 查询先用有界 `VALUES` CTE 建立候选键，再通过 replacement 索引关联反馈表，
+    /// 因此候选数量变化只增加参数和索引探测，不增加 SQLite round trip。
+    pub(crate) fn command_suggestion_feedback_scores(
         &self,
-        provider: SuggestionProviderKind,
         target: CommandHistoryTarget,
-        replacement_text: &str,
         remote_host_id: Option<&str>,
-    ) -> AppResult<CommandSuggestionFeedbackScore> {
-        self.with_connection(|conn| {
-            let (accepted_count, dismissed_count): (i64, i64) = conn.query_row(
-                "
-                SELECT
-                    COALESCE(SUM(CASE WHEN action = 'accepted' THEN 1 ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN action = 'dismissed' THEN 1 ELSE 0 END), 0)
-                FROM command_suggestion_feedback
-                WHERE provider = ?1
-                  AND target = ?2
-                  AND replacement_text = ?3
-                  AND (
-                    (?4 IS NULL AND remote_host_id IS NULL)
-                    OR (?4 IS NOT NULL AND (remote_host_id IS NULL OR remote_host_id = ?4))
-                  )
-                ",
-                params![
-                    provider.as_str(),
-                    target.as_str(),
-                    replacement_text,
-                    remote_host_id,
-                ],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )?;
+        keys: &[CommandSuggestionFeedbackKey],
+    ) -> AppResult<HashMap<CommandSuggestionFeedbackKey, CommandSuggestionFeedbackScore>> {
+        let mut seen = HashSet::new();
+        let keys = keys
+            .iter()
+            .filter(|key| seen.insert((*key).clone()))
+            .take(MAX_FEEDBACK_BATCH_KEYS)
+            .collect::<Vec<_>>();
+        if keys.is_empty() {
+            return Ok(HashMap::new());
+        }
 
-            Ok(CommandSuggestionFeedbackScore {
-                accepted_count: accepted_count.max(0) as u32,
-                dismissed_count: dismissed_count.max(0) as u32,
-            })
+        self.with_connection(|conn| {
+            let values = std::iter::repeat_n("(?, ?)", keys.len())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let sql = format!(
+                "
+                WITH requested(provider, replacement_text) AS (
+                    VALUES {values}
+                )
+                SELECT
+                    requested.provider,
+                    requested.replacement_text,
+                    COALESCE(SUM(CASE WHEN feedback.action = 'accepted' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN feedback.action = 'dismissed' THEN 1 ELSE 0 END), 0)
+                FROM requested
+                LEFT JOIN command_suggestion_feedback AS feedback
+                    INDEXED BY idx_command_suggestion_feedback_replacement
+                  ON feedback.provider = requested.provider
+                 AND feedback.replacement_text = requested.replacement_text
+                 AND feedback.target = ?
+                 AND (
+                    (? IS NULL AND feedback.remote_host_id IS NULL)
+                    OR (
+                        ? IS NOT NULL
+                        AND (
+                            feedback.remote_host_id IS NULL
+                            OR feedback.remote_host_id = ?
+                        )
+                    )
+                 )
+                GROUP BY requested.provider, requested.replacement_text
+                "
+            );
+            let mut parameters = Vec::with_capacity(keys.len() * 2 + 4);
+            for key in &keys {
+                parameters.push(Value::Text(key.provider.as_str().to_owned()));
+                parameters.push(Value::Text(key.replacement_text.clone()));
+            }
+            parameters.push(Value::Text(target.as_str().to_owned()));
+            for _ in 0..3 {
+                parameters.push(
+                    remote_host_id
+                        .map(|value| Value::Text(value.to_owned()))
+                        .unwrap_or(Value::Null),
+                );
+            }
+
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(params_from_iter(parameters), |row| {
+                let provider: String = row.get(0)?;
+                let provider = SuggestionProviderKind::try_from(provider.as_str())
+                    .map_err(string_to_sqlite_error)?;
+                let accepted_count: i64 = row.get(2)?;
+                let dismissed_count: i64 = row.get(3)?;
+                Ok((
+                    CommandSuggestionFeedbackKey {
+                        provider,
+                        replacement_text: row.get(1)?,
+                    },
+                    CommandSuggestionFeedbackScore {
+                        accepted_count: accepted_count.max(0) as u32,
+                        dismissed_count: dismissed_count.max(0) as u32,
+                    },
+                ))
+            })?;
+
+            rows.collect::<Result<HashMap<_, _>, _>>()
+                .map_err(Into::into)
         })
     }
+}
+
+fn string_to_sqlite_error(error: String) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(
+        0,
+        rusqlite::types::Type::Text,
+        Box::new(crate::error::AppError::InvalidInput(error)),
+    )
 }

@@ -120,7 +120,7 @@ fn main_window_uses_app_drawn_titlebar_with_file_drop_events_for_sftp() {
         .expect("windows must be an array");
     let main_window = windows.first().expect("main window must be configured");
 
-    assert_eq!(config["version"], "0.3.3");
+    assert_eq!(config["version"], "0.3.4");
     assert_eq!(main_window["title"], "Kerminal");
     assert_eq!(main_window["width"], 1600);
     assert_eq!(main_window["height"], 960);

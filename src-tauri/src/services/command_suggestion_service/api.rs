@@ -1,4 +1,5 @@
 use super::*;
+use crate::models::command_suggestion::{SuggestionPresentation, SuggestionQueryMode};
 
 impl CommandSuggestionService {
     pub fn new() -> Self {
@@ -17,42 +18,38 @@ impl CommandSuggestionService {
             return Ok(Vec::new());
         }
 
-        let mut seen_replacements = HashSet::new();
         let mut candidates = Vec::new();
 
         if request.provider_enabled(SuggestionProviderKind::History) {
             let started = Instant::now();
             let before_count = candidates.len();
             let result = (|| -> AppResult<()> {
-                let history = command_history.list_history_by_command_prefix(
-                    storage,
-                    request.target,
-                    request.remote_host_id.as_deref(),
-                    request.prefix.trim(),
-                    HISTORY_SCAN_LIMIT,
-                )?;
-
-                for (index, entry) in history.into_iter().enumerate() {
-                    if candidates.len() >= request.limit {
-                        break;
+                let recall_limit = request.limit.saturating_mul(4).clamp(8, 64);
+                let history = match request.mode {
+                    SuggestionQueryMode::Inline => command_history.list_history_by_command_prefix(
+                        storage,
+                        request.target,
+                        request.remote_host_id.as_deref(),
+                        request.prefix.trim(),
+                        HISTORY_SCAN_LIMIT,
+                    )?,
+                    SuggestionQueryMode::Menu => command_history
+                        .list_recent_history_for_suggestions(
+                            storage,
+                            request.target,
+                            request.remote_host_id.as_deref(),
+                            HISTORY_MENU_SCAN_LIMIT,
+                        )?,
+                };
+                candidates.extend(match request.mode {
+                    SuggestionQueryMode::Inline => {
+                        local_history_candidates(&request, history, recall_limit)
                     }
-                    let Some(candidate) = history_candidate(&request, entry, index) else {
-                        continue;
-                    };
-                    if seen_replacements.insert(candidate.replacement_text.clone()) {
-                        candidates.push(candidate);
+                    SuggestionQueryMode::Menu => {
+                        menu_history_candidates(&request, history, recall_limit)
                     }
-                }
-                if candidates.len() < request.limit {
-                    for candidate in self.remote_history_candidates(storage, &request)? {
-                        if candidates.len() >= request.limit {
-                            break;
-                        }
-                        if seen_replacements.insert(candidate.replacement_text.clone()) {
-                            candidates.push(candidate);
-                        }
-                    }
-                }
+                });
+                candidates.extend(self.remote_history_candidates(storage, &request)?);
                 Ok(())
             })();
             self.record_provider_query(
@@ -68,11 +65,7 @@ impl CommandSuggestionService {
             let started = Instant::now();
             let before_count = candidates.len();
             let result = (|| -> AppResult<()> {
-                for candidate in self.remote_path_candidates(storage, &request)? {
-                    if seen_replacements.insert(candidate.replacement_text.clone()) {
-                        candidates.push(candidate);
-                    }
-                }
+                candidates.extend(self.remote_path_candidates(storage, &request)?);
                 Ok(())
             })();
             self.record_provider_query(
@@ -88,11 +81,7 @@ impl CommandSuggestionService {
             let started = Instant::now();
             let before_count = candidates.len();
             let result = (|| -> AppResult<()> {
-                for candidate in self.remote_command_candidates(storage, &request)? {
-                    if seen_replacements.insert(candidate.replacement_text.clone()) {
-                        candidates.push(candidate);
-                    }
-                }
+                candidates.extend(self.remote_command_candidates(storage, &request)?);
                 Ok(())
             })();
             self.record_provider_query(
@@ -108,11 +97,7 @@ impl CommandSuggestionService {
             let started = Instant::now();
             let before_count = candidates.len();
             let result = (|| -> AppResult<()> {
-                for candidate in self.git_candidates(storage, &request)? {
-                    if seen_replacements.insert(candidate.replacement_text.clone()) {
-                        candidates.push(candidate);
-                    }
-                }
+                candidates.extend(self.git_candidates(storage, &request)?);
                 Ok(())
             })();
             self.record_provider_query(
@@ -127,11 +112,7 @@ impl CommandSuggestionService {
         if request.provider_enabled(SuggestionProviderKind::Spec) {
             let started = Instant::now();
             let before_count = candidates.len();
-            for candidate in spec_candidates(&request) {
-                if seen_replacements.insert(candidate.replacement_text.clone()) {
-                    candidates.push(candidate);
-                }
-            }
+            candidates.extend(spec_candidates(&request));
             self.record_provider_query(
                 Some(storage),
                 SuggestionProviderKind::Spec,
@@ -140,17 +121,19 @@ impl CommandSuggestionService {
             );
         }
 
-        apply_feedback_scores(storage, &request, &mut candidates)?;
-
-        candidates.sort_by(|left, right| {
-            right
-                .score
-                .partial_cmp(&left.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| left.display_text.cmp(&right.display_text))
+        // 展示模式是后端安全边界的一部分：危险候选即使被 provider 召回，
+        // 也不能依赖前端二次过滤后才从 inline 路径移除。
+        candidates.retain(|candidate| {
+            let required_presentation = match request.mode {
+                SuggestionQueryMode::Inline => SuggestionPresentation::Inline,
+                SuggestionQueryMode::Menu => SuggestionPresentation::Menu,
+            };
+            candidate
+                .allowed_presentations
+                .contains(&required_presentation)
         });
-        candidates.truncate(request.limit);
-        Ok(candidates)
+
+        rank_candidates(storage, &request, candidates)
     }
 
     /// 记录用户对命令建议的反馈，用于后续排序调权。

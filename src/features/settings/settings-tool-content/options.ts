@@ -43,6 +43,17 @@ export const inlineSuggestionAcceptKeyOptions: Array<{
   { label: "不绑定", value: "disabled" },
 ];
 
+export const commandSuggestionPresentationOptions = [
+  { label: "灰色提示和候选列表", value: "inlineAndMenu" },
+  { label: "仅灰色提示", value: "inline" },
+  { label: "关闭", value: "off" },
+] as const;
+
+export const commandSuggestionRemoteRefreshOptions = [
+  { label: "安全后台刷新", value: "safe" },
+  { label: "仅使用已有缓存", value: "off" },
+] as const;
+
 export const inlineSuggestionProductionHostPolicyOptions: Array<{
   label: string;
   value: TerminalInlineSuggestionProductionHostPolicy;
@@ -240,14 +251,14 @@ export const settingsSearchEntries: Array<{
       "外部启动",
     ],
     sectionId: "settings-external-launch",
-    targetId: "settings-external-launch-panel",
+    targetId: "settings-external-launch-compatibility",
     title: "外部 SSH 启动",
   },
   {
     description: "Kerminal MCP Server 状态、endpoint 和工具导航。",
     keywords: ["mcp", "server", "endpoint", "agent", "工具"],
     sectionId: "settings-mcp",
-    targetId: "settings-mcp-panel",
+    targetId: "settings-mcp-connection-info",
     title: "MCP Server",
   },
   {

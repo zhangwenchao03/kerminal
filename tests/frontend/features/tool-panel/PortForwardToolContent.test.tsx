@@ -229,6 +229,29 @@ describe("PortForwardToolContent", () => {
     expect(screen.getByText("网络助手注入命令")).toBeInTheDocument();
   });
 
+  it("keeps raw tunnel failures collapsed behind a recovery message", async () => {
+    const user = userEvent.setup();
+    portForwardApiMocks.listPortForwards.mockRejectedValueOnce(
+      new Error(
+        "managed_runtime lease poisoned token=forward-internal-secret",
+      ),
+    );
+
+    render(<PortForwardToolContent selectedMachine={sshMachine} />);
+
+    expect(await screen.findByText("无法读取隧道")).toBeVisible();
+    expect(screen.getByText("请确认 SSH 连接可用后重试。")).toBeVisible();
+    const technicalDetail = screen.getByText(/managed_runtime lease poisoned/);
+    expect(technicalDetail.closest("details")).not.toHaveAttribute("open");
+    expect(
+      screen.queryByText(/forward-internal-secret/),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByText("技术详情"));
+
+    expect(technicalDetail.closest("details")).toHaveAttribute("open");
+  });
+
   it("creates a tunnel from the add dialog and closes the dialog", async () => {
     const user = userEvent.setup();
     portForwardApiMocks.createPortForward.mockResolvedValue({
@@ -283,6 +306,12 @@ describe("PortForwardToolContent", () => {
     render(<PortForwardToolContent selectedMachine={sshMachine} />);
 
     expect(await screen.findByText("Prod proxy")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/脚本只写当前用户 home/),
+    ).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "展开 Prod proxy 详情" }),
+    );
     expect(screen.getByText(/脚本只写当前用户 home/)).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "复制配置脚本" }),

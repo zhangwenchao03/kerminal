@@ -35,15 +35,21 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../../../components/ui/button";
+import { UserFacingNotice } from "../../../components/ui/user-facing-notice";
 import { cn } from "../../../lib/cn";
 import type { SftpEntry, SftpTransferSummary } from "../../../lib/sftpApi";
 import { targetStableId, type RemoteTargetRef } from "../../../lib/targetModel";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../../lib/userFacingMessage";
 import type { InterfaceDensity } from "../../settings/settingsModel";
 import type {
   WorkspaceFileDirtyState,
   WorkspaceFileTab,
 } from "../../workspace/types";
 import { FixedRowVirtualList } from "../FixedRowVirtualList";
+import { sanitizeSftpTransferSummary } from "../useSftpTransferQueueSync";
 import { SftpActionDialog, StatusMessage } from "./SftpActionDialog";
 import { SftpContextMenu } from "./SftpContextMenu";
 import { SftpEntryRow } from "./SftpEntryRow";
@@ -394,8 +400,14 @@ export function SftpBrowserView({
     [loadTreeChildren, openTreePaths],
   );
   const visibleTreeRows = useMemo(
-    () => flattenWorkspaceTreeRows(treeNodes, openTreePaths),
-    [openTreePaths, treeNodes],
+    () =>
+      flattenWorkspaceTreeRows(
+        treeNodes,
+        openTreePaths,
+        0,
+        showHiddenFiles,
+      ),
+    [openTreePaths, showHiddenFiles, treeNodes],
   );
   const openedWorkspaceFileTabs = useMemo(
     () =>
@@ -415,6 +427,26 @@ export function SftpBrowserView({
   );
   const selectedFileEntry = selectedEntries.find(
     (entry) => entry.kind === "file",
+  );
+  const directoryErrorMessage = error
+    ? buildSftpBrowserError(error, {
+        detail: "当前目录内容未更新。",
+        recoveryAction: supportsSftpAdvancedActions
+          ? "检查连接后重试；主机密钥变化时可重新信任。"
+          : "检查连接后重试。",
+        title: "无法读取远程目录",
+      })
+    : null;
+  const safeDialogStatus =
+    dialogStatus?.kind === "error"
+      ? {
+          kind: "error" as const,
+          message: "文件操作未完成。请检查名称、权限或目标位置后重试。",
+        }
+      : dialogStatus;
+  const safeVisibleTransfers = useMemo(
+    () => visibleTransfers.map(sanitizeSftpTransferSummary),
+    [visibleTransfers],
   );
 
   useEffect(() => {
@@ -568,8 +600,8 @@ export function SftpBrowserView({
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <span className="font-mono text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                    CWD SYNC
+                  <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+                    目录跟随
                   </span>
                   <span
                     className={cn(
@@ -580,8 +612,8 @@ export function SftpBrowserView({
                     )}
                   />
                 </div>
-                <div className="mt-0.5 truncate font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
-                  {normalizedFollowedPath ?? "waiting for OSC 1337"}
+                <div className="mt-0.5 truncate text-[11px] text-zinc-500 dark:text-zinc-400">
+                  {normalizedFollowedPath ? "已同步终端目录" : "等待终端目录"}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
@@ -592,7 +624,7 @@ export function SftpBrowserView({
                     disabled={cwdTrackingSetupBusy}
                     onClick={() => void setupRemoteCwdTracking()}
                     size="sm"
-                    title="自动写入远端 shell 配置"
+                    title="自动配置目录跟随"
                     type="button"
                     variant="ghost"
                   >
@@ -775,7 +807,7 @@ export function SftpBrowserView({
           onPointerDown={(event) => openContextMenuFromPress(event, null)}
         >
           {remoteDownloadDragActive ? (
-            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-emerald-500/10 backdrop-blur-[1px]">
+            <div className="kerminal-reduced-transparency-surface pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-emerald-500/10 backdrop-blur-[1px]">
               <div className="kerminal-floating-surface flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-medium text-emerald-700 dark:text-emerald-100">
                 <Download className="h-4 w-4" />
                 {remoteDragEntriesRef.current.length > 1
@@ -784,39 +816,37 @@ export function SftpBrowserView({
               </div>
             </div>
           ) : dragDropActive ? (
-            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-sky-500/10 backdrop-blur-[1px]">
+            <div className="kerminal-reduced-transparency-surface pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-sky-500/10 backdrop-blur-[1px]">
               <div className="kerminal-floating-surface rounded-2xl border px-4 py-3 text-sm font-medium text-sky-700 dark:text-sky-100">
                 释放以上传到 {currentPath}
               </div>
             </div>
           ) : null}
-          <div
-            className={cn(
-              "flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)]",
-              paneHeaderPaddingClass,
-            )}
-          >
-            <div>
-              <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                {browserMode === "tree"
-                  ? "目录树"
-                  : browserMode === "workspace"
-                    ? "文件工作区"
-                    : "远程目录"}
+          {browserMode === "list" ? null : (
+            <div
+              className={cn(
+                "flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)]",
+                paneHeaderPaddingClass,
+              )}
+            >
+              <div>
+                <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                  {browserMode === "tree" ? "目录树" : "文件工作区"}
+                </div>
+                <div className="mt-0.5 text-xs text-zinc-500">
+                  {directoryCount} 目录 / {fileCount} 文件
+                  {!showHiddenFiles && hiddenEntryCount > 0
+                    ? ` / 已隐藏 ${hiddenEntryCount}`
+                    : ""}
+                </div>
               </div>
-              <div className="mt-0.5 text-xs text-zinc-500">
-                {directoryCount} 目录 / {fileCount} 文件
-                {!showHiddenFiles && hiddenEntryCount > 0
-                  ? ` / 已隐藏 ${hiddenEntryCount}`
-                  : ""}
-              </div>
+              {error ? null : (
+                <span className="kerminal-muted-surface rounded-lg border px-2 py-1 text-xs text-zinc-500 dark:text-zinc-400">
+                  {listing ? "已连接" : "等待中"}
+                </span>
+              )}
             </div>
-            {error ? null : (
-              <span className="kerminal-muted-surface rounded-lg border px-2 py-1 text-xs text-zinc-500 dark:text-zinc-400">
-                {listing ? "已连接" : "等待中"}
-              </span>
-            )}
-          </div>
+          )}
 
           <div className="min-h-0 flex-1 overflow-hidden">
             {loading ? (
@@ -827,12 +857,9 @@ export function SftpBrowserView({
                 正在读取远程目录...
               </div>
             ) : null}
-            {error ? (
-              <div
-                className="m-3 rounded-xl border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100"
-                role="alert"
-              >
-                <div>{error}</div>
+            {directoryErrorMessage ? (
+              <div className="m-3">
+                <UserFacingNotice compact message={directoryErrorMessage} />
                 {supportsSftpAdvancedActions ? (
                   <div className="mt-2 flex justify-end">
                     <Button
@@ -926,7 +953,19 @@ export function SftpBrowserView({
                 role="tree"
               >
                 {treeStatus ? (
-                  <StatusMessage className="m-3" status={treeStatus} />
+                  treeStatus.kind === "error" ? (
+                    <UserFacingNotice
+                      className="m-3"
+                      compact
+                      message={buildSftpBrowserError(treeStatus.message, {
+                        detail: "目录树保持在上次成功读取的状态。",
+                        recoveryAction: "检查连接后重新展开该目录。",
+                        title: "无法展开目录",
+                      })}
+                    />
+                  ) : (
+                    <StatusMessage className="m-3" status={treeStatus} />
+                  )
                 ) : null}
                 {visibleTreeRows.map(({ depth, node }) => (
                   <WorkspaceTreeRow
@@ -1072,7 +1111,7 @@ export function SftpBrowserView({
         ? createPortal(
             <div
               aria-label="上传菜单"
-              className="kerminal-floating-surface kerminal-floating-enter fixed z-[1000] w-44 overflow-hidden rounded-2xl border bg-[var(--surface-overlay)] p-1.5 text-zinc-900 shadow-2xl shadow-black/20 dark:text-zinc-100"
+              className="kerminal-floating-surface kerminal-floating-enter fixed z-[1000] w-44 overflow-hidden rounded-2xl border bg-[var(--surface-overlay)] p-1.5 text-zinc-900 shadow-xl shadow-black/15 dark:text-zinc-100 dark:shadow-black/35"
               data-sftp-upload-menu="true"
               role="menu"
               style={{
@@ -1114,7 +1153,7 @@ export function SftpBrowserView({
           onCancel={(transferId) => void cancelTransfer(transferId)}
           onClearCompleted={() => void clearFinishedTransfers()}
           onRetry={(transfer) => void retryTransfer(transfer)}
-          transfers={visibleTransfers}
+          transfers={safeVisibleTransfers}
         />
       ) : null}
 
@@ -1131,7 +1170,7 @@ export function SftpBrowserView({
           setDialogStatus(null);
         }}
         onSubmit={() => void submitDialogAction()}
-        status={dialogStatus}
+        status={safeDialogStatus}
       />
 
       {contextMenu
@@ -1244,8 +1283,13 @@ function flattenWorkspaceTreeRows(
   nodes: WorkspaceTreeNode[],
   openPaths: Set<string>,
   depth = 0,
+  showHiddenFiles = true,
 ): SftpTreeRenderRow[] {
   return nodes.flatMap((node) => {
+    // 根节点代表当前浏览路径，只有其后代参与隐藏文件过滤。
+    if (depth > 0 && !showHiddenFiles && node.name.startsWith(".")) {
+      return [];
+    }
     const row = { depth, node };
     const isRootRow = depth === 0;
     if (
@@ -1257,7 +1301,12 @@ function flattenWorkspaceTreeRows(
     }
     return [
       row,
-      ...flattenWorkspaceTreeRows(node.children, openPaths, depth + 1),
+      ...flattenWorkspaceTreeRows(
+        node.children,
+        openPaths,
+        depth + 1,
+        showHiddenFiles,
+      ),
     ];
   });
 }
@@ -1322,6 +1371,22 @@ function SftpOperationStatusBar({ status }: { status: SftpStatus | null }) {
     return null;
   }
 
+  if (status.kind === "error") {
+    const message = buildSftpOperationError(status.message);
+    return (
+      <div
+        aria-label="SFTP 操作状态"
+        className="kerminal-material-nav shrink-0 border-t px-3 py-2"
+        data-testid="sftp-operation-status"
+      >
+        <UserFacingNotice
+          compact
+          message={message}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       aria-label="SFTP 操作状态"
@@ -1331,4 +1396,47 @@ function SftpOperationStatusBar({ status }: { status: SftpStatus | null }) {
       <StatusMessage className="mt-0" status={status} />
     </div>
   );
+}
+
+/**
+ * 按操作类别提供稳定摘要；原始错误只作为脱敏后的技术详情展示。
+ */
+function buildSftpOperationError(error: string): UserFacingMessage {
+  if (error.startsWith("主机密钥信任失败：")) {
+    return buildSftpBrowserError(error, {
+      detail: "主机密钥没有更新。",
+      recoveryAction: "检查主机密钥文件权限后重试。",
+      title: "无法信任主机密钥",
+    });
+  }
+  if (error.startsWith("目录跟随配置失败：")) {
+    return buildSftpBrowserError(error, {
+      detail: "远端配置没有更新。",
+      recoveryAction: "检查远端文件权限或重新连接后重试。",
+      title: "无法启用目录跟随",
+    });
+  }
+  if (error.startsWith("拖放上传初始化失败：")) {
+    return buildSftpBrowserError(error, {
+      detail: "仍可使用上传按钮选择文件或文件夹。",
+      recoveryAction: "重新打开 SFTP 面板后重试。",
+      title: "暂时无法拖放上传",
+    });
+  }
+  return buildSftpBrowserError(error, {
+    detail: "当前操作没有完成。",
+    recoveryAction: "检查连接、权限和目标位置后重试。",
+    title: "SFTP 操作未完成",
+  });
+}
+
+function buildSftpBrowserError(
+  error: unknown,
+  options: {
+    detail: string;
+    recoveryAction: string;
+    title: string;
+  },
+): UserFacingMessage {
+  return buildUserFacingError(error, options);
 }

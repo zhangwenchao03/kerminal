@@ -10,6 +10,7 @@ import {
   type SftpTransferSummary,
 } from "../../../lib/sftpApi";
 import { mergeTransferSnapshot } from "../sftpTransferModel";
+import { sanitizeSftpTransferSummary } from "../useSftpTransferQueueSync";
 import {
   buildSftpRemoteCopyTaskExecutionPlan,
   statusForSftpRemoteCopyTaskFailure,
@@ -45,7 +46,12 @@ export function useSftpRemoteCopyTaskRunner({
           const summary = await enqueueSftpRemoteCopy(
             withSftpTransferViewScope(request, viewScope),
           );
-          setTransfers((current) => mergeTransferSnapshot(current, summary));
+          setTransfers((current) =>
+            mergeTransferSnapshot(
+              current,
+              sanitizeSftpTransferSummary(summary),
+            ),
+          );
         }
         setOperationStatus(executionPlan.successStatus);
         void refreshTransfers();

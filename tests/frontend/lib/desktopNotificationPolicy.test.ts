@@ -113,6 +113,19 @@ describe("desktopNotificationPolicy", () => {
     expect(payload.body).not.toContain("id_rsa");
   });
 
+  it("does not include MCP failure reasons in desktop notifications", () => {
+    const payload = buildDesktopNotificationPayload({
+      kind: "mcp.server.failed",
+      port: 37657,
+      reason: "address already in use: token=secret",
+    });
+
+    expect(payload.body).toContain("37657");
+    expect(payload.body).toContain("Open Kerminal");
+    expect(payload.body).not.toContain("address already in use");
+    expect(payload.body).not.toContain("secret");
+  });
+
   it("redacts private key blocks from notification text", () => {
     const text = sanitizeNotificationText(
       "failed -----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY----- done",

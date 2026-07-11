@@ -70,6 +70,10 @@ pub enum AppError {
     #[error("SSH 远程命令执行失败: {0}")]
     SshCommand(String),
 
+    /// 远端命令建议后台刷新失败或被生命周期门禁终止。
+    #[error("远端命令建议刷新失败: {0}")]
+    RemoteSuggestion(String),
+
     /// SSH 认证需要前端继续输入一次性或可保存凭据。
     #[error("SSH 认证需要用户输入: {message}")]
     SshAuthPromptRequired {

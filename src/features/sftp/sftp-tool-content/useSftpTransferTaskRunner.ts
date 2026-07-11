@@ -13,7 +13,9 @@ import {
   enqueueSftpTransfer,
   type SftpTransferSummary,
 } from "../../../lib/sftpApi";
+import { technicalDetailFromUnknown } from "../../../lib/userFacingMessage";
 import { mergeTransferSnapshot } from "../sftpTransferModel";
+import { sanitizeSftpTransferSummary } from "../useSftpTransferQueueSync";
 import { buildDockerDirectTransferSummary } from "./sftpDockerDirectTransferModel";
 import type { SftpTransferActionItem } from "./sftpTransferActionPlan";
 import { withSftpTransferViewScope } from "./sftpTransferScopeModel";
@@ -53,7 +55,9 @@ export function useSftpTransferTaskRunner({
         const summary = await enqueueSftpTransfer(
           withSftpTransferViewScope(executionPlan.request, viewScope),
         );
-        setTransfers((current) => mergeTransferSnapshot(current, summary));
+        setTransfers((current) =>
+          mergeTransferSnapshot(current, sanitizeSftpTransferSummary(summary)),
+        );
         setOperationStatus(null);
         void refreshTransfers();
         return;
@@ -100,7 +104,10 @@ export function useSftpTransferTaskRunner({
         }
         updateDockerTransferSnapshot("succeeded");
       } catch (nextError) {
-        updateDockerTransferSnapshot("failed", errorMessage(nextError));
+        updateDockerTransferSnapshot(
+          "failed",
+          technicalDetailFromUnknown(nextError),
+        );
         throw nextError;
       }
     },
@@ -120,8 +127,4 @@ export function useSftpTransferTaskRunner({
 
 function createDockerDirectTransferId() {
   return `docker-direct-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }

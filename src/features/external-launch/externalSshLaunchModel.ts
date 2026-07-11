@@ -140,10 +140,6 @@ export function externalSshLaunchTags(launch: ExternalSshLaunchRequest) {
   return ["external", launch.source.tool];
 }
 
-export function formatExternalSshLaunchError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function materializedTarget(
   launch: ExternalSshLaunchRequest | ExternalSshLaunchResolvedRequest,
 ) {

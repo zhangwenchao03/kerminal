@@ -23,6 +23,7 @@ interface MachineSidebarContainersViewProps {
   onOpenContainerLogs?: HostContainersToolContentProps["onOpenContainerLogs"];
   onOpenWorkspaceFileTab?: HostContainersToolContentProps["onOpenWorkspaceFileTab"];
   onPinContainer?: HostContainersToolContentProps["onPinContainer"];
+  refreshRequestId?: number;
 }
 
 function sshHostsFromGroups(groups: MachineGroup[]): Machine[] {
@@ -67,6 +68,7 @@ export function MachineSidebarContainersView({
   onOpenContainerLogs,
   onOpenWorkspaceFileTab,
   onPinContainer,
+  refreshRequestId,
   selectedMachineId,
 }: MachineSidebarContainersViewProps) {
   const hostListboxId = useId();
@@ -207,6 +209,7 @@ export function MachineSidebarContainersView({
         onOpenWorkspaceFileTab={onOpenWorkspaceFileTab}
         onPinContainer={onPinContainer}
         presentation="sidebar"
+        refreshRequestId={refreshRequestId}
         selectedMachine={selectedHost}
       />
     </div>

@@ -4,6 +4,10 @@ import {
   type ServerInfoSnapshot,
 } from "../../lib/serverInfoApi";
 import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../lib/userFacingMessage";
+import {
   cachedNetworkTraffic,
   clearServerInfoMetricsCacheForTest,
   type NetworkTrafficSnapshot,
@@ -62,7 +66,7 @@ export function useServerInfoSnapshot(
   }: UseServerInfoSnapshotOptions = {},
 ) {
   const selectedTargetKey = targetContext?.cacheKey;
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserFacingMessage | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(
     DEFAULT_REFRESH_INTERVAL_MS,
@@ -132,7 +136,12 @@ export function useServerInfoSnapshot(
         }
       } catch (nextError) {
         if (requestIdRef.current === requestId) {
-          setError(errorMessage(nextError));
+          setError(
+            buildUserFacingError(nextError, {
+              recoveryAction: "请检查连接后重试。",
+              title: "无法读取服务器信息",
+            }),
+          );
         }
       } finally {
         if (requestIdRef.current === requestId) {
@@ -248,10 +257,6 @@ export function useServerInfoSnapshot(
     setRefreshIntervalMs,
     snapshot,
   };
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export function resolveServerInfoRefreshDelay({

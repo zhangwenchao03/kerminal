@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { ConnectionOpenOptions } from "../features/machine-sidebar/MachineSidebar";
 import type { LocalTerminalCreateOptions } from "../features/machine-sidebar/RemoteHostCreateDialog";
 import {
@@ -32,6 +32,10 @@ import {
   type RemoteHostGroup,
   type RemoteHostGroupUpdateRequest,
 } from "../lib/remoteHostApi";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../lib/userFacingMessage";
 import {
   duplicateMachineName,
   hasLocalProfileOverrides,
@@ -95,8 +99,11 @@ export function useKerminalShellRemoteActions({
   const [remoteGroupDialogOpen, setRemoteGroupDialogOpen] = useState(false);
   const [editingRemoteGroup, setEditingRemoteGroup] = useState<MachineGroup | undefined>(undefined);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<UserFacingMessage | null>(null);
   const [deleteSaving, setDeleteSaving] = useState(false);
+  const [rdpOpeningMachineIds, setRdpOpeningMachineIds] = useState<string[]>([]);
+  // ref 在 React 重渲染前同步拦截连点，state 只负责驱动界面反馈。
+  const rdpOpeningMachineIdsRef = useRef(new Set<string>());
 
   const refreshRemoteHostTree = useCallback(async () => {
     try {
@@ -342,9 +349,8 @@ export function useKerminalShellRemoteActions({
               sortOrder: profile?.sortOrder ?? machine.sortOrder ?? 0,
             });
           } catch (caught) {
-            setProfileLoadError(
-              caught instanceof Error ? caught.message : "本地终端分组保存失败。",
-            );
+            console.warn("Kerminal local terminal group save failed", caught);
+            setProfileLoadError("本地终端分组未保存，请稍后重试。");
             return;
           }
           try {
@@ -640,9 +646,8 @@ export function useKerminalShellRemoteActions({
               sortOrder: profile?.sortOrder ?? machine.sortOrder ?? 0,
             });
           } catch (caught) {
-            setProfileLoadError(
-              caught instanceof Error ? caught.message : "本地终端移除失败。",
-            );
+            console.warn("Kerminal local terminal sidebar removal failed", caught);
+            setProfileLoadError("本地终端未从侧栏移除，请稍后重试。");
             return;
           }
           try {
@@ -688,12 +693,27 @@ export function useKerminalShellRemoteActions({
         setRemoteHostLoadError("只能打开已保存的 RDP 连接配置。");
         return;
       }
+      if (rdpOpeningMachineIdsRef.current.has(machine.id)) {
+        return;
+      }
 
+      rdpOpeningMachineIdsRef.current.add(machine.id);
+      setRdpOpeningMachineIds((current) =>
+        current.includes(machine.id) ? current : [...current, machine.id],
+      );
+      setRemoteHostLoadError(null);
       try {
         await openSavedRdpConnection(machine.id);
-        setRemoteHostLoadError(null);
       } catch (caught) {
-        setRemoteHostLoadError(caught instanceof Error ? caught.message : String(caught));
+        console.warn("Kerminal saved RDP launch failed", caught);
+        setRemoteHostLoadError(
+          "RDP 连接未打开，请检查主机地址和系统远程桌面设置后重试。",
+        );
+      } finally {
+        rdpOpeningMachineIdsRef.current.delete(machine.id);
+        setRdpOpeningMachineIds((current) =>
+          current.filter((id) => id !== machine.id),
+        );
       }
     },
     [machineGroups],
@@ -742,7 +762,14 @@ export function useKerminalShellRemoteActions({
       await refreshRemoteHostTree();
       setPendingDelete(null);
     } catch (caught) {
-      setDeleteError(caught instanceof Error ? caught.message : String(caught));
+      setDeleteError(
+        buildUserFacingError(caught, {
+          detail: "本地保存的配置没有被删除。",
+          recoveryAction: "请检查配置目录权限后重试。",
+          title:
+            pendingDelete.type === "group" ? "分组未删除" : "连接未删除",
+        }),
+      );
     } finally {
       setDeleteSaving(false);
     }
@@ -779,6 +806,7 @@ export function useKerminalShellRemoteActions({
     profileLoadError,
     refreshProfiles,
     refreshRemoteHostTree,
+    rdpOpeningMachineIds,
     remoteGroupDialogOpen,
     remoteHostDefaultGroupId,
     remoteHostDefaultMode,

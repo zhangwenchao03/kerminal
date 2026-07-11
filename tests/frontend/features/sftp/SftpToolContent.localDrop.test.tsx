@@ -3,6 +3,7 @@
  */
 
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import {
   sftpApiMocks,
@@ -38,16 +39,33 @@ describe("SftpToolContent local upload drop observer", () => {
     expect(screen.queryByText(/释放以上传到/)).not.toBeInTheDocument();
   });
 
-  it("shows a clear error when local drop listener registration fails", async () => {
+  it("shows a recoverable summary when local drop listener registration fails", async () => {
+    const user = userEvent.setup();
     mockTauriEnvironment();
-    webviewMocks.onDragDropEvent.mockRejectedValue(new Error("blocked"));
+    webviewMocks.onDragDropEvent.mockRejectedValue(
+      new Error(
+        "blocked token=drop-secret path=C:\\runtime\\webview-listener.json",
+      ),
+    );
 
     render(<SftpToolContent selectedMachine={sshMachine} />);
 
     await screen.findByText("var");
     expect(
-      await screen.findByText("拖拽上传监听失败：blocked"),
+      await screen.findByText("暂时无法拖放上传"),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText("仍可使用上传按钮选择文件或文件夹。"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/drop-secret/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/C:\\runtime\\webview-listener\.json/),
+    ).not.toBeVisible();
+
+    await user.click(screen.getByText("技术详情"));
+
+    expect(screen.getByText(/token="\[已隐藏\]"/)).toBeVisible();
+    expect(screen.queryByText(/drop-secret/)).not.toBeInTheDocument();
     expect(screen.queryByText(/释放以上传到/)).not.toBeInTheDocument();
   });
 });

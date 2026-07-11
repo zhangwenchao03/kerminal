@@ -1,4 +1,3 @@
-import { Folder } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Select } from "../../../components/ui/select";
 import { Switch } from "../../../components/ui/switch";
@@ -7,7 +6,7 @@ import type { SshOptions } from "../../../lib/remoteHostApi";
 import { terminalTypeOptions } from "./model";
 import { optionalNumber } from "./request-builders";
 import type { SshOptionsSetter } from "./ssh-network-panels";
-import { FieldRow, HelpCard, inputClassName, ToggleRow } from "./shared-ui";
+import { FieldRow, inputClassName, ToggleRow } from "./shared-ui";
 
 export function SshTerminalPanel({
   options,
@@ -193,10 +192,6 @@ export function SshTransferPanel({
           />
         </div>
       </FieldRow>
-      <HelpCard
-        icon={<Folder className="mt-0.5 h-4 w-4 text-sky-500 dark:text-sky-300" />}
-        text="随主机保存，SFTP 面板可复用。"
-      />
     </div>
   );
 }

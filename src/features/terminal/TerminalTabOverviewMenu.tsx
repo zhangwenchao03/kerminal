@@ -11,6 +11,8 @@ import {
   terminalTabStatusDotClassName,
   type TerminalTabGroup,
 } from "./terminalTabChrome";
+import { TerminalTabAttention } from "./TerminalTabAttention";
+import type { TerminalTabPresentation } from "./terminalTabPresentationModel";
 
 const terminalFloatingPanelClassName =
   "kerminal-floating-enter fixed z-[1000] border border-[var(--border-subtle)] bg-[var(--surface-overlay)] text-sm shadow-2xl shadow-black/20 backdrop-blur-xl dark:shadow-black/50";
@@ -31,6 +33,7 @@ interface TerminalTabOverviewMenuProps {
   tabGroups: TerminalTabGroup[];
   tabs: TerminalTab[];
   tabStatusById: ReadonlyMap<string, MachineStatus>;
+  tabPresentationById: ReadonlyMap<string, TerminalTabPresentation>;
   terminalAppearance: TerminalAppearance;
 }
 
@@ -43,6 +46,7 @@ export function TerminalTabOverviewMenu({
   tabGroups,
   tabs,
   tabStatusById,
+  tabPresentationById,
   terminalAppearance,
 }: TerminalTabOverviewMenuProps) {
   if (!open || typeof document === "undefined") {
@@ -79,6 +83,15 @@ export function TerminalTabOverviewMenu({
               role="group"
             >
               <div className="flex items-center gap-2 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500 dark:text-zinc-400">
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "h-[18px] w-[3px] shrink-0 rounded-full",
+                    group.identityAccent.accentClassName,
+                  )}
+                  data-terminal-identity-accent={group.identityAccent.color}
+                  data-terminal-identity-source={group.identityAccent.source}
+                />
                 <Layers2 className="h-3.5 w-3.5 shrink-0 opacity-80" />
                 <span className="min-w-0 flex-1 truncate normal-case tracking-normal">
                   {group.title}
@@ -97,6 +110,11 @@ export function TerminalTabOverviewMenu({
                     terminalAppearance.showTabNumbers && tabIndex >= 0
                       ? `${tabIndex + 1} · ${tab.title}`
                       : tab.title;
+                  const statusDotClassName = terminalTabStatusDotClassName(
+                    tab,
+                    tabStatusById.get(tab.id),
+                  );
+                  const presentation = tabPresentationById.get(tab.id);
                   return (
                     <button
                       aria-current={active ? "page" : undefined}
@@ -112,16 +130,27 @@ export function TerminalTabOverviewMenu({
                       role="menuitem"
                       type="button"
                     >
-                      <span
-                        className={cn(
-                          "h-2 w-2 shrink-0 rounded-full",
-                          terminalTabStatusDotClassName(
-                            tab,
-                            tabStatusById.get(tab.id),
-                          ),
-                        )}
-                      />
+                      {statusDotClassName ? (
+                        <span
+                          className={cn(
+                            "h-2 w-2 shrink-0 rounded-full",
+                            statusDotClassName,
+                          )}
+                        />
+                      ) : null}
                       <span className="min-w-0 flex-1 truncate">{title}</span>
+                      {presentation ? (
+                        <TerminalTabAttention
+                          attention={presentation.attention}
+                          count={
+                            presentation.attention !== "none"
+                              ? presentation.attentionCount
+                              : presentation.progressCount
+                          }
+                          label={presentation.statusLabel}
+                          progress={presentation.progress}
+                        />
+                      ) : null}
                       {active ? (
                         <Check className="h-3.5 w-3.5 shrink-0" />
                       ) : null}

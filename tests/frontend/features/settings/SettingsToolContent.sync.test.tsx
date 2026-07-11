@@ -137,6 +137,27 @@ describe("SettingsToolContent sync page", () => {
     expect(workspaceSyncApiMock.saveVaultKeyContent).not.toHaveBeenCalled();
     expect(await screen.findByText("密钥内容不能为空。")).toBeInTheDocument();
   });
+
+  it("keeps unknown sync failures in collapsed technical details", async () => {
+    const user = userEvent.setup();
+    workspaceSyncApiMock.runWorkspaceSync.mockRejectedValueOnce(
+      new Error(
+        'git runtime failed at C:\\private\\sync.json with "token": "sync-secret"',
+      ),
+    );
+
+    render(<ControlledSyncSettings />);
+    await user.click(await screen.findByRole("button", { name: /^同步$/ }));
+
+    expect(await screen.findByText("同步失败")).toBeVisible();
+    expect(screen.getByText("请检查同步配置后重试。")).toBeVisible();
+    const detail = screen.getByText(/git runtime failed/);
+    expect(detail.closest("details")).not.toHaveAttribute("open");
+    expect(detail).not.toHaveTextContent("sync-secret");
+
+    await user.click(screen.getByText("技术详情"));
+    expect(detail.closest("details")).toHaveAttribute("open");
+  });
 });
 
 function ControlledSyncSettings() {

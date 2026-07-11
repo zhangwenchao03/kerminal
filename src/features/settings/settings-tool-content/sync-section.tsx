@@ -9,7 +9,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { UserFacingNotice } from "../../../components/ui/user-facing-notice";
 import { cn } from "../../../lib/cn";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+  type UserFacingMessageSeverity,
+} from "../../../lib/userFacingMessage";
 import {
   getWorkspaceSyncStatus,
   readVaultKeyContent,
@@ -21,16 +27,11 @@ import {
 
 type SyncSettingsLoadState = "idle" | "loading" | "syncing" | "saving" | "error";
 
-type SyncNotice = {
-  message: string;
-  tone: "success" | "warning" | "error";
-};
-
 export function SyncSettingsSection() {
   const [status, setStatus] = useState<WorkspaceSyncStatus | null>(null);
   const [keyToml, setKeyToml] = useState("");
   const [loadState, setLoadState] = useState<SyncSettingsLoadState>("idle");
-  const [notice, setNotice] = useState<SyncNotice | null>(null);
+  const [notice, setNotice] = useState<UserFacingMessage | null>(null);
   const [lastSyncResult, setLastSyncResult] =
     useState<WorkspaceSyncRunResult | null>(null);
 
@@ -50,10 +51,7 @@ export function SyncSettingsSection() {
       setLoadState("idle");
     } catch (nextError) {
       setLoadState("error");
-      setNotice({
-        message: formatSyncError(nextError, "读取同步设置失败"),
-        tone: "error",
-      });
+      setNotice(syncFailure(nextError, "读取同步设置失败"));
     }
   };
 
@@ -65,23 +63,24 @@ export function SyncSettingsSection() {
       setLastSyncResult(result);
       setStatus(await getWorkspaceSyncStatus());
       setNotice({
-        message: result.message,
-        tone: noticeToneFromSyncResult(result),
+        severity: noticeSeverityFromSyncResult(result),
+        title: result.message,
       });
       setLoadState("idle");
     } catch (nextError) {
       setLoadState("error");
-      setNotice({
-        message: formatSyncError(nextError, "同步失败"),
-        tone: "error",
-      });
+      setNotice(syncFailure(nextError, "同步失败"));
     }
   };
 
   const saveKey = async () => {
     if (!keyToml.trim()) {
       setLoadState("error");
-      setNotice({ message: "密钥内容不能为空。", tone: "error" });
+      setNotice({
+        recoveryAction: "请输入完整的 vault-key.toml 内容后重试。",
+        severity: "error",
+        title: "密钥内容不能为空。",
+      });
       return;
     }
     setLoadState("saving");
@@ -90,18 +89,15 @@ export function SyncSettingsSection() {
       const result = await saveVaultKeyContent(keyToml);
       setStatus(await getWorkspaceSyncStatus());
       setNotice({
-        message: result.backupCreated
+        severity: "success",
+        title: result.backupCreated
           ? "密钥已保存，并已为旧文件创建备份。"
           : "密钥已保存。",
-        tone: "success",
       });
       setLoadState("idle");
     } catch (nextError) {
       setLoadState("error");
-      setNotice({
-        message: formatSyncError(nextError, "保存密钥失败"),
-        tone: "error",
-      });
+      setNotice(syncFailure(nextError, "保存密钥失败"));
     }
   };
 
@@ -204,7 +200,7 @@ export function SyncSettingsSection() {
         </div>
       </section>
 
-      {notice ? <SyncNoticeMessage notice={notice} /> : null}
+      {notice ? <UserFacingNotice message={notice} /> : null}
     </div>
   );
 }
@@ -275,25 +271,9 @@ function InfoRow({
   );
 }
 
-function SyncNoticeMessage({ notice }: { notice: SyncNotice }) {
-  return (
-    <div
-      className={cn(
-        "rounded-2xl border px-4 py-3 text-sm leading-5",
-        notice.tone === "success"
-          ? "border-emerald-300/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-100"
-          : notice.tone === "warning"
-            ? "border-amber-300/25 bg-amber-500/10 text-amber-700 dark:text-amber-100"
-            : "border-rose-300/25 bg-rose-500/10 text-rose-700 dark:text-rose-100",
-      )}
-      role={notice.tone === "error" ? "alert" : "status"}
-    >
-      {notice.message}
-    </div>
-  );
-}
-
-function noticeToneFromSyncResult(result: WorkspaceSyncRunResult): SyncNotice["tone"] {
+function noticeSeverityFromSyncResult(
+  result: WorkspaceSyncRunResult,
+): UserFacingMessageSeverity {
   if (result.status === "success") {
     return "success";
   }
@@ -303,7 +283,14 @@ function noticeToneFromSyncResult(result: WorkspaceSyncRunResult): SyncNotice["t
   return "error";
 }
 
-function formatSyncError(error: unknown, fallback: string) {
+function syncFailure(error: unknown, fallback: string): UserFacingMessage {
+  return buildUserFacingError(error, {
+    recoveryAction: "请检查同步配置后重试。",
+    title: syncErrorTitle(error, fallback),
+  });
+}
+
+function syncErrorTitle(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("vault key TOML parse failed") || message.includes("vault TOML parse failed")) {
     return "密钥 TOML 格式不正确，请检查后再保存。";
@@ -317,7 +304,7 @@ function formatSyncError(error: unknown, fallback: string) {
   if (message.includes("vault key must be")) {
     return "密钥 master_key 长度不正确。";
   }
-  return `${fallback}：${message}`;
+  return fallback;
 }
 
 function toneClassName(tone: StatusTone, part: "background" | "text") {

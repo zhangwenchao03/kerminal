@@ -130,7 +130,18 @@ export function TerminalPaneCard({
               <GripVertical className="h-4 w-4" />
             </button>
           ) : null}
-          <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+          {pane.status !== "online" ? (
+            <span
+              aria-label={
+                pane.status === "warning" ? "连接警告" : "连接已断开"
+              }
+              className={cn(
+                "h-2.5 w-2.5 rounded-full",
+                pane.status === "warning" ? "bg-amber-400" : "bg-red-400",
+              )}
+              title={pane.status === "warning" ? "连接警告" : "连接已断开"}
+            />
+          ) : null}
           <span className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">
             {model.title}
           </span>

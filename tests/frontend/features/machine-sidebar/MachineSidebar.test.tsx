@@ -56,7 +56,6 @@ describe("MachineSidebar", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "容器" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "容器" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -65,6 +64,14 @@ describe("MachineSidebar", () => {
     expect(hostSearch).toHaveValue("ubuntu-dev");
     expect(screen.queryByRole("listbox", { name: "容器主机列表" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("搜索主机")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "打开 SFTP 传输工作台" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "刷新容器列表" }));
+    await waitFor(() => {
+      expect(onListDockerContainers).toHaveBeenCalledTimes(2);
+    });
 
     await user.click(hostSearch);
     expect(
@@ -205,9 +212,7 @@ describe("MachineSidebar", () => {
     );
 
     expect(
-      screen
-        .getByRole("heading", { name: "主机" })
-        .closest("[data-tauri-drag-region]"),
+      screen.getByLabelText("左栏视图").closest("[data-tauri-drag-region]"),
     ).toHaveAttribute("data-tauri-drag-region");
     expect(
       screen.getByLabelText("搜索主机").closest("label"),
@@ -698,7 +703,7 @@ describe("MachineSidebar", () => {
     expect(onDeleteMachine).toHaveBeenCalledWith("ubuntu-dev");
   });
 
-  it("matches machines by group title and renders tags", () => {
+  it("matches machines by group title and keeps tags in the row tooltip", () => {
     render(
       <MachineSidebar
         groups={remoteSidebarGroups}
@@ -709,11 +714,11 @@ describe("MachineSidebar", () => {
       />,
     );
 
-    expect(
-      screen.getByRole("button", { name: /ubuntu-dev/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("ssh")).toBeInTheDocument();
-    expect(screen.getAllByText("dev").length).toBeGreaterThan(0);
+    const hostButton = screen.getByRole("button", { name: /ubuntu-dev/i });
+    expect(hostButton).toBeInTheDocument();
+    expect(hostButton.getAttribute("title")).toContain("ssh");
+    expect(hostButton.getAttribute("title")).toContain("dev");
+    expect(screen.queryByText("ssh")).not.toBeInTheDocument();
   });
 
   it("opens an SSH session when a saved host is double-clicked", () => {
@@ -840,6 +845,57 @@ describe("MachineSidebar", () => {
     expect(onSelectMachine).toHaveBeenCalledWith("rdp-office");
     expect(onOpenRdpConnection).toHaveBeenCalledWith("rdp-office");
     expect(onOpenSshTerminal).not.toHaveBeenCalled();
+  });
+
+  it("shows RDP opening feedback and disables the repeated context-menu action", () => {
+    const onOpenRdpConnection = vi.fn();
+
+    render(
+      <MachineSidebar
+        groups={rdpSidebarGroups}
+        onOpenRdpConnection={onOpenRdpConnection}
+        onSearchChange={vi.fn()}
+        onSelectMachine={vi.fn()}
+        rdpOpeningMachineIds={["rdp-office"]}
+        search=""
+        selectedMachineId="rdp-office"
+      />,
+    );
+
+    const hostButton = screen.getByRole("button", { name: /office-rdp/i });
+    expect(hostButton).toHaveAttribute("aria-busy", "true");
+    expect(hostButton).toHaveTextContent("正在打开远程桌面...");
+
+    fireEvent.doubleClick(hostButton);
+    expect(onOpenRdpConnection).not.toHaveBeenCalled();
+
+    fireEvent.contextMenu(hostButton);
+    expect(
+      screen.getByRole("menuitem", { name: "正在打开 RDP..." }),
+    ).toBeDisabled();
+  });
+
+  it("shows RDP opening feedback in the collapsed host list", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MachineSidebar
+        collapsed
+        groups={rdpSidebarGroups}
+        onOpenRdpConnection={vi.fn()}
+        onSearchChange={vi.fn()}
+        onSelectMachine={vi.fn()}
+        rdpOpeningMachineIds={["rdp-office"]}
+        search=""
+        selectedMachineId="rdp-office"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "打开主机列表" }));
+
+    const hostButton = screen.getByRole("button", { name: /office-rdp/i });
+    expect(hostButton).toHaveAttribute("aria-busy", "true");
+    expect(hostButton).toHaveTextContent("正在打开远程桌面...");
   });
 
   it("opens RDP machine actions from the right-click menu", async () => {
@@ -1090,7 +1146,7 @@ describe("MachineSidebar", () => {
       />,
     );
 
-    expect(screen.getByText("没有匹配的主机。")).toBeInTheDocument();
+    expect(screen.getByText("没有结果")).toBeInTheDocument();
   });
 
   it("keeps empty remote groups visible before search is applied", () => {
@@ -1114,5 +1170,29 @@ describe("MachineSidebar", () => {
     expect(
       screen.queryByRole("button", { name: "添加 SSH 连接" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("replaces empty search chrome with a single add-connection action", async () => {
+    const user = userEvent.setup();
+    const onAddConnection = vi.fn();
+
+    render(
+      <MachineSidebar
+        groups={[]}
+        onAddConnection={onAddConnection}
+        onSearchChange={vi.fn()}
+        onSelectMachine={vi.fn()}
+        search=""
+        selectedMachineId=""
+      />,
+    );
+
+    expect(screen.queryByLabelText("搜索主机")).not.toBeInTheDocument();
+    expect(screen.getByText("暂无连接")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "添加连接" }));
+
+    expect(onAddConnection).toHaveBeenCalledWith({ mode: "ssh" });
+    expect(screen.getAllByRole("button", { name: "添加连接" })).toHaveLength(1);
   });
 });

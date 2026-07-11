@@ -3,8 +3,10 @@ import { useId, type FormEvent } from "react";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
 import { Select } from "../../components/ui/select";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
 import type { CommandSnippet, SnippetScope } from "../../lib/snippetApi";
+import type { UserFacingMessage } from "../../lib/userFacingMessage";
 import type { TerminalPane } from "../workspace/types";
 import {
   extractSnippetVariables,
@@ -22,7 +24,7 @@ import {
 } from "./snippetCatalogModel";
 
 export interface SnippetRunState {
-  error: string | null;
+  error: UserFacingMessage | string | null;
   sending: boolean;
   snippetId: string;
   status: string | null;
@@ -126,7 +128,7 @@ export function SnippetRow({
           </div>
           <div className="mt-1 flex min-w-0 items-center gap-2">
             <code className="min-w-0 truncate font-mono text-[11px] leading-4 text-zinc-500 dark:text-zinc-400">
-              {firstLine || "empty command"}
+              {firstLine || "空命令"}
             </code>
           </div>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -190,7 +192,7 @@ export function SnippetRow({
               {variables.map((name) => (
                 <label className="block" key={name}>
                   <span className="font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
-                    var.{name}
+                    变量 {name}
                   </span>
                   <input
                     aria-label={`变量 ${name}`}
@@ -209,15 +211,23 @@ export function SnippetRow({
             </div>
           ) : null}
           <pre className="kerminal-solid-surface mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded-lg border p-2 font-mono text-[11px] leading-4 text-zinc-800 dark:text-zinc-200">
-            {renderedCommand || "waiting for vars"}
+            {renderedCommand || "等待变量"}
           </pre>
           {runState.error ? (
-            <div
-              className="mt-2 rounded-lg border border-rose-300/25 bg-rose-500/10 px-2 py-1 text-xs text-rose-700 dark:text-rose-100"
-              role="alert"
-            >
-              {runState.error}
-            </div>
+            typeof runState.error === "string" ? (
+              <div
+                className="mt-2 rounded-lg border border-rose-300/25 bg-rose-500/10 px-2 py-1 text-xs text-rose-700 dark:text-rose-100"
+                role="alert"
+              >
+                {runState.error}
+              </div>
+            ) : (
+              <UserFacingNotice
+                className="mt-2"
+                compact
+                message={runState.error}
+              />
+            )
           ) : null}
           {runState.status ? (
             <div
@@ -246,7 +256,7 @@ export function SnippetRow({
 interface SnippetCreateDialogProps {
   command: string;
   description: string;
-  error: string | null;
+  error: UserFacingMessage | string | null;
   itemType: AddItemType;
   open: boolean;
   saving: boolean;
@@ -286,7 +296,6 @@ export function SnippetCreateDialog({
 
   return (
     <ModalShell
-      description="保存脚本或 workflow。"
       footer={
         <>
           <Button onClick={onClose} type="button" variant="ghost">
@@ -323,7 +332,7 @@ export function SnippetCreateDialog({
               onClick={() => onItemTypeChange(type)}
               type="button"
             >
-              {type === "snippet" ? "command" : "workflow"}
+              {type === "snippet" ? "命令" : "工作流"}
             </button>
           ))}
         </div>
@@ -391,12 +400,16 @@ export function SnippetCreateDialog({
         </div>
 
         {error ? (
-          <div
-            className="rounded-xl border border-rose-300/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100"
-            role="alert"
-          >
-            {error}
-          </div>
+          typeof error === "string" ? (
+            <div
+              className="rounded-xl border border-rose-300/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100"
+              role="alert"
+            >
+              {error}
+            </div>
+          ) : (
+            <UserFacingNotice compact message={error} />
+          )
         ) : null}
       </form>
     </ModalShell>
@@ -416,10 +429,10 @@ export function SnippetEmptyState({
     <div className="kerminal-muted-surface m-3 rounded-xl border border-dashed px-3 py-8 text-center">
       <div className="font-mono text-xs text-zinc-500 dark:text-zinc-400">
         {filtered
-          ? "no matches"
+          ? "没有匹配项"
           : mode === "preset"
-            ? "empty presets"
-            : "empty snippets"}
+            ? "暂无预设命令"
+            : "暂无命令片段"}
       </div>
       {onAdd ? (
         <Button className="mt-3" onClick={onAdd} size="sm" type="button">

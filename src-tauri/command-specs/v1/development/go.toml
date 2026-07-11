@@ -1,0 +1,45 @@
+schema_version = 1
+command = "go"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Build and manage Go programs"
+tested_version = "Go 1.24"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "Go command documentation"
+url = "https://go.dev/cmd/go/"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "build"
+description = "Compile packages and dependencies"
+
+[[subcommands]]
+name = "fmt"
+description = "Format package sources"
+
+[[subcommands]]
+name = "get"
+description = "Resolve and add dependencies"
+
+[[subcommands]]
+name = "run"
+description = "Compile and run a Go program"
+
+[[subcommands]]
+name = "test"
+description = "Test packages"
+
+[[options]]
+name = "-C"
+description = "Change to a directory before running"
+
+[options.argument]
+kind = "directory"
+placeholder = "DIR"

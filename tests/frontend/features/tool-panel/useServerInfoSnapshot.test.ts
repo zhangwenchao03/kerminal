@@ -115,6 +115,24 @@ describe("useServerInfoSnapshot", () => {
     expect(serverInfoApiMock.getServerInfoSnapshot).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps raw server failures behind a user-facing summary", async () => {
+    serverInfoApiMock.getServerInfoSnapshot.mockRejectedValueOnce(
+      new Error("runtime request failed: password=super-secret"),
+    );
+
+    const { result } = renderHook(() => useServerInfoSnapshot(targetContext));
+
+    await waitFor(() => {
+      expect(result.current.error?.title).toBe("无法读取服务器信息");
+    });
+
+    expect(result.current.error?.recoveryAction).toBe("请检查连接后重试。");
+    expect(result.current.error?.technicalDetail).toContain(
+      "runtime request failed",
+    );
+    expect(result.current.error?.technicalDetail).not.toContain("super-secret");
+  });
+
   it("resolves visibility-aware refresh delay", () => {
     expect(
       resolveServerInfoRefreshDelay({

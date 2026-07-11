@@ -1,0 +1,44 @@
+schema_version = 1
+command = "curl"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Transfer data with URL-based protocols"
+tested_version = "curl 8.14"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "curl command line manual"
+url = "https://curl.se/docs/manpage.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "--request"
+aliases = ["-X"]
+description = "Specify the request method"
+
+[options.argument]
+kind = "string"
+placeholder = "METHOD"
+
+[[options]]
+name = "--output"
+aliases = ["-o"]
+description = "Write output to a file"
+
+[options.argument]
+kind = "file"
+placeholder = "FILE"
+
+[[options]]
+name = "--header"
+aliases = ["-H"]
+description = "Add a request header"
+
+[options.argument]
+kind = "string"
+placeholder = "HEADER"

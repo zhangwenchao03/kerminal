@@ -164,6 +164,43 @@ describe("settingsModel", () => {
     expect(settings.sftp.hostTransfers).toBe(2);
   });
 
+  it("migrates legacy command suggestion switches to the governed settings", () => {
+    const disabled = normalizeAppSettings({
+      terminal: {
+        inlineSuggestion: {
+          enabled: false,
+          remoteProbeEnabled: false,
+        },
+      },
+    } as Partial<typeof defaultAppSettings>);
+
+    expect(disabled.terminal.inlineSuggestion).toMatchObject({
+      enabled: false,
+      presentation: "off",
+      menuShortcut: "ctrlSpace",
+      tabOpensMenu: false,
+      partialAccept: true,
+      remoteProbeEnabled: false,
+      remoteRefresh: "off",
+    });
+
+    const legacyDefaults = normalizeAppSettings({
+      terminal: {
+        inlineSuggestion: {
+          enabled: true,
+          remoteProbeEnabled: true,
+        },
+      },
+    } as Partial<typeof defaultAppSettings>);
+
+    expect(legacyDefaults.terminal.inlineSuggestion).toMatchObject({
+      enabled: true,
+      presentation: "inlineAndMenu",
+      remoteProbeEnabled: true,
+      remoteRefresh: "safe",
+    });
+  });
+
   it("maps terminal font weight choices to xterm values", () => {
     expect(terminalFontWeightValue("normal")).toBe(400);
     expect(terminalFontWeightValue("medium")).toBe(500);

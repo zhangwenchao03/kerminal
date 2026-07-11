@@ -124,4 +124,26 @@ describe("SettingsToolContent about section", () => {
       expect(updaterApiMock.relaunchApp).toHaveBeenCalledTimes(1);
     });
   });
+
+  it("keeps updater runtime failures in collapsed technical details", async () => {
+    const user = userEvent.setup();
+    updaterApiMock.checkForAppUpdate.mockRejectedValueOnce(
+      new Error(
+        'updater runtime failed at C:\\private\\updater.json with "password": "secret-value"',
+      ),
+    );
+
+    renderSettingsToolContent();
+    await user.click(screen.getByRole("button", { name: /关于/ }));
+    await user.click(screen.getByRole("button", { name: "检查" }));
+
+    expect(await screen.findByText("检查更新失败")).toBeVisible();
+    expect(screen.getByText("请检查网络连接后重试。")).toBeVisible();
+    const detail = screen.getByText(/updater runtime failed/);
+    expect(detail.closest("details")).not.toHaveAttribute("open");
+    expect(detail).not.toHaveTextContent("secret-value");
+
+    await user.click(screen.getByText("技术详情"));
+    expect(detail.closest("details")).toHaveAttribute("open");
+  });
 });
