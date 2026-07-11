@@ -180,9 +180,10 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 新增面向远程工作流的终端命令建议，支持声明式命令规格、历史匹配、远程刷新与键盘操作。
-            - 改进终端 Tab 的身份、选中和注意状态展示，帮助在多目标、多分屏工作区中识别上下文。
-            - 更新 Agent 优先的远程工作台界面与 README 实机截图，强化 Codex、Claude 与受管目标协作场景。
+            - 加固终端 GPU renderer 生命周期：隔离单 pane 故障、限制重试与恢复范围，并在 GPU 不可用时稳定回退 CPU，避免白屏、恢复风暴和会话中断。
+            - 优化多 pane 输出与渲染调度：基于 write callback 自适应批处理、合并 resize/DPR/visibility 更新，并保持健康 GPU pane 稳定驻留。
+            - 增加软件 GPU 平台策略：Auto 模式识别 SwiftShader、WARP、llvmpipe 和 Microsoft Basic Render 后优先使用 CPU，显式 GPU 模式仍保留受控尝试。
+            - 新增 Context Workspace：提供上下文投影、Inspector、Quick Open、Command Palette、Terminal Artifacts 与 Agent Workflow，增强多目标远程工作流。
 
             macOS `.app` / `.dmg` 未使用 Apple Developer ID 签名，也未经过 Apple 公证；首次启动可能出现 Gatekeeper 提示，请按组织或个人环境自行处理。
           releaseDraft: true
