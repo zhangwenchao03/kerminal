@@ -540,14 +540,12 @@ export function XtermPane({
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [contextMenu]);
-
   useLayoutEffect(() => {
     return applyTerminalCommandBlockFolding(
       containerRef.current,
       shellAssistEnabled ? commandBlockViews : [],
     );
   }, [commandBlockViews, shellAssistEnabled]);
-
   const startLogging = useCallback(async () => {
     const sessionId = sessionIdRef.current;
     if (!sessionId) {
@@ -595,7 +593,6 @@ export function XtermPane({
   const reconnectTerminal = useCallback(async () => {
     await reconnectSessionRef.current?.();
   }, []);
-
   const executeContextMenuAction = useCallback(
     (action: TerminalContextMenuAction) => {
       setContextMenu(null);
@@ -613,8 +610,10 @@ export function XtermPane({
         }
       } else if (action === "sendSelectionToAgent") {
         requestAgentSend({ paneId, source: "selection", tabId });
+        setCommandBlockNotice("已将选中内容交给 Agent，等待发送预览");
       } else if (action === "sendContextToAgent") {
         requestAgentSend({ paneId, source: "context", tabId });
+        setCommandBlockNotice("已将终端上下文交给 Agent，等待发送预览");
       } else if (action === "paste") {
         void pasteIntoTerminal(terminal, sessionId);
       } else if (action === "selectAll") {
@@ -665,6 +664,7 @@ export function XtermPane({
       clearCommandBlocks,
       scheduleCommandBlockViewsSync,
       search.openSearch,
+      setCommandBlockNotice,
     ],
   );
 

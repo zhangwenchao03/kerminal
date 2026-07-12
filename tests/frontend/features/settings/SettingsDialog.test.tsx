@@ -23,7 +23,7 @@ describe("SettingsDialog", () => {
     );
     expect(
       screen.getByRole("button", { name: /界面外观/ }),
-    ).toBeInTheDocument();
+    ).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("基础外观")).toBeInTheDocument();
     expect(screen.getByLabelText("搜索设置")).toBeInTheDocument();
     expect(
@@ -39,6 +39,23 @@ describe("SettingsDialog", () => {
     await user.click(screen.getByRole("button", { name: "关闭弹窗" }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to the first settings category for an invalid initial section", () => {
+    render(
+      <SettingsDialog
+        initialSectionId={"settings-removed" as never}
+        onClose={vi.fn()}
+        onSettingsChange={vi.fn()}
+        open
+        settings={defaultAppSettings}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: /界面外观/ }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("基础外观")).toBeInTheDocument();
   });
 
   it("does not render when closed", () => {

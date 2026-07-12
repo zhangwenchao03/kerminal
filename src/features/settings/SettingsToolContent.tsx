@@ -43,18 +43,22 @@ export type {
 } from "./settings-tool-content/types";
 
 type SettingsSearchEntry = (typeof settingsSearchEntries)[number];
+const defaultVisibleSettingsSectionId =
+  settingsSections[0]?.id ?? "settings-appearance";
 
 export function SettingsToolContent({
   externalChangeNotice,
-  initialSectionId = "settings-appearance",
+  initialSectionId,
   onSettingsChange,
   resolvedTheme,
   saveError,
   saveState = "idle",
   settings,
 }: SettingsToolContentProps) {
+  const resolvedInitialSectionId =
+    resolveVisibleSettingsSectionId(initialSectionId);
   const [activeSectionId, setActiveSectionId] =
-    useState<VisibleSettingsSectionId>(initialSectionId);
+    useState<VisibleSettingsSectionId>(resolvedInitialSectionId);
   const [selectedKeybindingPlatform, setSelectedKeybindingPlatform] =
     useState<KeybindingPlatform>(() => shortcutPlatform());
   const [settingsSearchQuery, setSettingsSearchQuery] = useState("");
@@ -76,8 +80,8 @@ export function SettingsToolContent({
   );
 
   useEffect(() => {
-    setActiveSectionId(initialSectionId);
-  }, [initialSectionId]);
+    setActiveSectionId(resolvedInitialSectionId);
+  }, [resolvedInitialSectionId]);
 
   useEffect(() => {
     if (!pendingSearchTargetId) {
@@ -466,5 +470,18 @@ function sectionLabelFor(sectionId: VisibleSettingsSectionId): string {
   return (
     settingsSections.find((section) => section.id === sectionId)?.label ??
     "设置"
+  );
+}
+
+/**
+ * 设置入口可能来自持久化状态或跨模块消息，运行时值不一定仍属于当前菜单。
+ * 统一回退到菜单第一项，避免没有选中项时右侧内容完全为空。
+ */
+function resolveVisibleSettingsSectionId(
+  sectionId: VisibleSettingsSectionId | null | undefined,
+): VisibleSettingsSectionId {
+  return (
+    settingsSections.find((section) => section.id === sectionId)?.id ??
+    defaultVisibleSettingsSectionId
   );
 }

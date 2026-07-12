@@ -547,9 +547,14 @@ function Section({
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid grid-cols-[minmax(4.25rem,0.7fr)_minmax(0,1.3fr)] gap-3 border-b py-2 text-xs last:border-b-0">
-      <span className="text-zinc-500 dark:text-zinc-400">{label}</span>
-      <span className="min-w-0 break-words text-right">{value}</span>
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-3 border-b py-2 text-xs last:border-b-0">
+      <span
+        className="min-w-0 truncate text-zinc-500 dark:text-zinc-400"
+        title={label}
+      >
+        {label}
+      </span>
+      <span className="shrink-0 whitespace-nowrap text-right">{value}</span>
     </div>
   );
 }

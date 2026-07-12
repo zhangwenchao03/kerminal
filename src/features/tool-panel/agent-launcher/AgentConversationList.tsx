@@ -4,6 +4,7 @@ import {
   ChevronRight,
   MessageSquare,
   Pencil,
+  Trash2,
   X,
 } from "lucide-react";
 import {
@@ -16,14 +17,17 @@ import {
 import type { AgentSessionTargetRequest } from "../../../lib/agentLauncherApi";
 import { cn } from "../../../lib/cn";
 import { formatTargetChipLabel } from "./agentSessionTargetModel";
+import { AgentSessionDeleteConfirmDialog } from "./AgentSessionDeleteConfirmDialog";
 
 type ConversationScope = "current" | "all";
 
 interface AgentConversationListProps {
   actionDisabled: boolean;
   currentTarget?: AgentSessionTargetRequest;
+  deletingSessionId: string | null;
   historyMetadata: readonly AgentWorkflowHistoryMetadata[];
   onContinue: (sessionId: string) => void;
+  onDelete: (sessionId: string) => Promise<boolean>;
   onNewSession: (sessionId: string) => void;
   onRename: (sessionId: string, title: string) => Promise<boolean>;
   renamingSessionId: string | null;
@@ -34,8 +38,10 @@ interface AgentConversationListProps {
 export function AgentConversationList({
   actionDisabled,
   currentTarget,
+  deletingSessionId,
   historyMetadata,
   onContinue,
+  onDelete,
   onNewSession,
   onRename,
   renamingSessionId,
@@ -45,6 +51,8 @@ export function AgentConversationList({
     currentTarget ? "current" : "all",
   );
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [deleteCandidate, setDeleteCandidate] =
+    useState<AgentWorkflowSessionSnapshot | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const currentTargetKey =
     currentTarget?.targetRef ??
@@ -55,13 +63,20 @@ export function AgentConversationList({
   useEffect(() => {
     setScope(currentTargetKey ? "current" : "all");
   }, [currentTargetKey]);
+  const activeSessions = useMemo(
+    () => sessions.filter((session) => session.repositoryStatus !== "archived"),
+    [sessions],
+  );
   const currentSessions = useMemo(
-    () => sessions.filter((session) => matchesCurrentTarget(session, currentTarget)),
-    [currentTarget, sessions],
+    () =>
+      activeSessions.filter((session) =>
+        matchesCurrentTarget(session, currentTarget),
+      ),
+    [activeSessions, currentTarget],
   );
   const visibleSessions = useMemo(
-    () => sortSessions(scope === "current" ? currentSessions : sessions),
-    [currentSessions, scope, sessions],
+    () => sortSessions(scope === "current" ? currentSessions : activeSessions),
+    [activeSessions, currentSessions, scope],
   );
 
   const beginEditing = (session: AgentWorkflowSessionSnapshot) => {
@@ -105,7 +120,7 @@ export function AgentConversationList({
             />
             <ScopeButton
               active={scope === "all"}
-              count={sessions.length}
+              count={activeSessions.length}
               label="全部"
               onClick={() => setScope("all")}
             />
@@ -118,6 +133,7 @@ export function AgentConversationList({
               {visibleSessions.map((session) => {
                 const editing = editingSessionId === session.agentSessionId;
                 const renaming = renamingSessionId === session.agentSessionId;
+                const deleting = deletingSessionId === session.agentSessionId;
                 return (
                   <article
                     className="min-w-0 px-3 py-3"
@@ -181,6 +197,16 @@ export function AgentConversationList({
                             >
                               <Pencil aria-hidden className="h-3.5 w-3.5" />
                             </button>
+                            <button
+                              aria-label={`删除 ${session.title}`}
+                              className="kerminal-focus-ring grid h-7 w-7 shrink-0 place-items-center rounded-md text-zinc-400 hover:bg-red-500/10 hover:text-red-600 disabled:opacity-50 dark:hover:text-red-300"
+                              disabled={actionDisabled || deleting}
+                              onClick={() => setDeleteCandidate(session)}
+                              title="删除记录"
+                              type="button"
+                            >
+                              <Trash2 aria-hidden className="h-3.5 w-3.5" />
+                            </button>
                           </div>
                         )}
                         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] text-zinc-500 dark:text-zinc-400">
@@ -202,7 +228,7 @@ export function AgentConversationList({
                     </div>
                     <div className="mt-2 pl-9">
                       <AgentWorkflowSessionCommands
-                        disabled={actionDisabled || renaming}
+                        disabled={actionDisabled || renaming || deleting}
                         onContinue={onContinue}
                         onNewSession={onNewSession}
                         sessionId={session.agentSessionId}
@@ -237,6 +263,25 @@ export function AgentConversationList({
           </div>
         </details>
       ) : null}
+      <AgentSessionDeleteConfirmDialog
+        busy={deleteCandidate?.agentSessionId === deletingSessionId}
+        onClose={() => {
+          if (!deletingSessionId) {
+            setDeleteCandidate(null);
+          }
+        }}
+        onConfirm={() => {
+          if (!deleteCandidate) {
+            return;
+          }
+          void onDelete(deleteCandidate.agentSessionId).then((deleted) => {
+            if (deleted) {
+              setDeleteCandidate(null);
+            }
+          });
+        }}
+        session={deleteCandidate}
+      />
     </div>
   );
 }

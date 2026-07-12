@@ -103,6 +103,9 @@ describe("XtermPane context menu search and logging", () => {
       paneId: "pane-local",
       source: "selection",
     });
+    expect(
+      screen.getByText("已将选中内容交给 Agent，等待发送预览"),
+    ).toBeInTheDocument();
 
     resetAgentSendRequestStoreForTests();
     rerender(
@@ -124,6 +127,9 @@ describe("XtermPane context menu search and logging", () => {
       paneId: "pane-local",
       source: "context",
     });
+    expect(
+      screen.getByText("已将终端上下文交给 Agent，等待发送预览"),
+    ).toBeInTheDocument();
   });
 
   it("keeps the context menu at the right-click point when the measured menu fits", async () => {

@@ -4,7 +4,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { Info, Loader2, Terminal } from "lucide-react";
+import { Info, Loader2, Send, Terminal } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { IconAction } from "../../../components/ui/icon-action";
 import { UserFacingNotice } from "../../../components/ui/user-facing-notice";
@@ -17,6 +17,7 @@ import type {
   ExternalAgentId,
 } from "../../../lib/agentLauncherApi";
 import type { UserFacingMessage } from "../../../lib/userFacingMessage";
+import type { AgentSendRequest } from "../../agent-workflow/agentSendRequestStore";
 import type {
   AgentActionViewModel,
   AgentLaunchPermissionMode,
@@ -54,8 +55,10 @@ interface AgentLauncherViewProps {
   currentAgentTargetLabel: string;
   customCommand: string;
   customCommandOpen: boolean;
+  deletingSessionId: string | null;
   loadError: UserFacingMessage | null;
   loadState: AgentLauncherLoadState;
+  pendingSendRequest: AgentSendRequest | null;
   restoreChoice: AgentRestoreChoice | null;
   statusAvailable: boolean;
   visible: boolean;
@@ -71,6 +74,7 @@ interface AgentLauncherViewProps {
   onNewSession: (choice: AgentRestoreChoice) => void;
   onRetry: () => void;
   onWorkflowContinue: (sessionId: string) => void;
+  onWorkflowDelete: (sessionId: string) => Promise<boolean>;
   onWorkflowNewSession: (sessionId: string) => void;
   onWorkflowRename: (sessionId: string, title: string) => Promise<boolean>;
   renamingSessionId: string | null;
@@ -104,8 +108,10 @@ export function AgentLauncherView({
   currentAgentTargetLabel,
   customCommand,
   customCommandOpen,
+  deletingSessionId,
   loadError,
   loadState,
+  pendingSendRequest,
   restoreChoice,
   statusAvailable,
   visible,
@@ -117,6 +123,7 @@ export function AgentLauncherView({
   onNewSession,
   onRetry,
   onWorkflowContinue,
+  onWorkflowDelete,
   onWorkflowNewSession,
   onWorkflowRename,
   renamingSessionId,
@@ -175,26 +182,45 @@ export function AgentLauncherView({
         visible ? "opacity-100" : "pointer-events-none select-none opacity-0",
       )}
     >
-      <div className="scrollbar-none min-h-0 flex-1 overflow-y-auto">
+      <div className="scrollbar-none flex min-h-0 flex-1 overflow-y-auto">
         <div
-          className="relative mx-auto w-full max-w-[280px]"
+          className="relative mx-auto my-auto w-full max-w-[280px] py-2"
+          data-testid="agent-launcher-content"
           ref={launcherMenuRootRef}
         >
           <div className="mb-2 flex min-w-0 items-start gap-2 px-1">
             <div
               className="min-w-0 flex-1"
               data-testid="agent-current-target"
-              title={currentAgentTargetLabel}
+              title={
+                pendingSendRequest
+                  ? `${agentSendRequestLabel(pendingSendRequest)}；当前目标：${currentAgentTargetLabel}`
+                  : currentAgentTargetLabel
+              }
             >
               <h1 className="text-sm font-semibold text-zinc-950 dark:text-zinc-100">
-                新建对话
+                {pendingSendRequest ? "发送到 Agent" : "新建对话"}
               </h1>
-              <span className="mt-0.5 block truncate text-[11px] text-zinc-500 dark:text-zinc-400">
-                当前目标 ·{" "}
-                <span className="font-medium text-zinc-700 dark:text-zinc-300">
-                {currentAgentTargetLabel}
+              {pendingSendRequest ? (
+                <span
+                  className="mt-0.5 flex h-4 min-w-0 items-center gap-1 text-[11px] text-sky-700 dark:text-sky-300"
+                  data-testid="agent-launcher-pending-send"
+                  role="status"
+                >
+                  <Send className="h-3 w-3 shrink-0" />
+                  <span className="truncate">
+                    {agentSendRequestLabel(pendingSendRequest)} · 选择 Agent
+                    后预览
+                  </span>
                 </span>
-              </span>
+              ) : (
+                <span className="mt-0.5 block h-4 truncate text-[11px] text-zinc-500 dark:text-zinc-400">
+                  当前目标 ·{" "}
+                  <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                    {currentAgentTargetLabel}
+                  </span>
+                </span>
+              )}
             </div>
             <IconAction
               aria-controls="agent-launcher-technical-details"
@@ -292,8 +318,10 @@ export function AgentLauncherView({
           <AgentConversationList
             actionDisabled={actionState !== null}
             currentTarget={currentAgentTarget}
+            deletingSessionId={deletingSessionId}
             historyMetadata={workflowSnapshot.historyMetadata}
             onContinue={onWorkflowContinue}
+            onDelete={onWorkflowDelete}
             onNewSession={onWorkflowNewSession}
             onRename={onWorkflowRename}
             renamingSessionId={renamingSessionId}
@@ -324,6 +352,16 @@ export function AgentLauncherView({
       ) : null}
     </div>
   );
+}
+
+function agentSendRequestLabel(request: AgentSendRequest): string {
+  if (request.source === "selection") {
+    return "选中内容待发送";
+  }
+  if (request.source === "commandBlock") {
+    return "命令块待发送";
+  }
+  return "终端上下文待发送";
 }
 
 function AgentRestoreChoicePanel({

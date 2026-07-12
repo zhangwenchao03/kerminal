@@ -68,6 +68,7 @@ import {
 } from "./agent-launcher/AgentLauncherView";
 import { createAgentPromptTransport } from "./agent-launcher/agentPromptTransport";
 import { useAgentSendPreview } from "./agent-launcher/useAgentSendPreview";
+import { useAgentSessionDelete } from "./agent-launcher/useAgentSessionDelete";
 import { useAgentSessionTitleRename } from "./agent-launcher/useAgentSessionTitleRename";
 import { useAgentSendRequestCoordinator } from "./agent-launcher/useAgentSendRequestCoordinator";
 import { useAgentSendRequestSnapshot } from "../agent-workflow/agentSendRequestStore";
@@ -288,6 +289,23 @@ export function AgentLauncherToolContent({
     session: activeAgentTerminalSession,
     setActionError,
   });
+  const { deleteSession: deleteWorkflowSession, deletingSessionId } =
+    useAgentSessionDelete({
+      activeSessionIdByTabId,
+      cancelPreview: sendPreview.cancel,
+      controller: workflowController,
+      onDeleted: (agentSessionId) => {
+        setRestoreChoice((current) =>
+          current?.session.agentSessionId === agentSessionId ? null : current,
+        );
+      },
+      preview: sendPreview.preview,
+      setActionError,
+      setActiveSessionIdByTabId,
+      setPersistedSessions: setPersistedAgentSessions,
+      setRuntimeSessions: setAgentSessions,
+      setViewByTabId,
+    });
   const terminalTabIds = useMemo(
     () =>
       terminalTabs
@@ -381,6 +399,7 @@ export function AgentLauncherToolContent({
     agentScopeId: activeAgentScopeId,
     createPreview: sendPreview.create,
     onActivateSession: activateAgentSessionForTab,
+    preferredSessionId: activeAgentSession?.agentSessionId,
     request: pendingAgentSendRequest,
     sessions: agentSessionList,
     setActionError,
@@ -701,8 +720,10 @@ export function AgentLauncherToolContent({
         currentAgentTargetLabel={currentAgentTargetLabel}
         customCommand={customCommand}
         customCommandOpen={customCommandOpen}
+        deletingSessionId={deletingSessionId}
         loadError={loadError}
         loadState={loadState}
+        pendingSendRequest={pendingAgentSendRequest}
         onCancelRestore={() => setRestoreChoice(null)}
         onContinueRestore={continuePersistedAgentSession}
         onCustomCommandChange={setCustomCommand}
@@ -711,6 +732,7 @@ export function AgentLauncherToolContent({
         onNewSession={createFreshAgentSession}
         onRetry={() => void loadStatus("loading")}
         onWorkflowContinue={continueWorkflowSession}
+        onWorkflowDelete={deleteWorkflowSession}
         onWorkflowNewSession={startNewWorkflowSession}
         onWorkflowRename={renameWorkflowSession}
         renamingSessionId={renamingSessionId}

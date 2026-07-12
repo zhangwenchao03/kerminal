@@ -135,7 +135,7 @@ export function AgentTerminalView({
     [desktopNotifications, session.agentSessionId, title],
   );
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--surface-terminal)]">
+    <section className="relative isolate flex h-full min-h-0 flex-col overflow-hidden bg-[var(--surface-terminal)]">
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface-solid)] px-2.5">
         <Button
           aria-label="Back to agent launcher"
@@ -174,22 +174,21 @@ export function AgentTerminalView({
           </span>
         ) : null}
       </header>
-      {preview ? (
-        <AgentWorkflowSendPreviewPanel
-          busy={previewBusy}
-          onCancel={onCancelPreview}
-          onConfirm={(previewId) => void onConfirmPreview(previewId, true)}
-          preview={preview}
-        />
-      ) : null}
-      <div className="min-h-0 flex-1 p-2">
+      <div
+        aria-hidden={Boolean(preview)}
+        className={cn(
+          "min-h-0 flex-1 p-2",
+          preview && "pointer-events-none select-none",
+        )}
+        data-testid="agent-terminal-content"
+      >
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-[var(--border-subtle)] bg-[var(--surface-terminal)] shadow-sm shadow-black/5 dark:shadow-black/25">
           <XtermPane
             args={session.args}
             cwd={session.cwd}
             env={session.env}
             enableAgentSendActions={false}
-            focused={focused}
+            focused={focused && !preview}
             inputCompatibilityMode="agentTui"
             inputRequest={inputRequest}
             key={session.agentSessionId}
@@ -206,6 +205,19 @@ export function AgentTerminalView({
           />
         </div>
       </div>
+      {preview ? (
+        <div
+          className="absolute inset-x-0 bottom-0 top-10 z-10 min-h-0"
+          data-testid="agent-send-preview-mode"
+        >
+          <AgentWorkflowSendPreviewPanel
+            busy={previewBusy}
+            onCancel={onCancelPreview}
+            onConfirm={(previewId) => void onConfirmPreview(previewId, true)}
+            preview={preview}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }

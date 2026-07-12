@@ -84,6 +84,89 @@ describe("useAgentSendRequestCoordinator", () => {
     expect(getAgentSendRequestSnapshot().request).toBeNull();
   });
 
+  it("优先把内容发送到当前正在查看的 Agent 会话", async () => {
+    const historicalSession = {
+      ...session,
+      agentSessionId: "agent-session-history",
+    };
+    const currentSession = {
+      ...session,
+      agentSessionId: "agent-session-current",
+    };
+    const createPreview = vi.fn(() => true);
+    const onActivateSession = vi.fn();
+
+    renderHook(() => {
+      const request = useAgentSendRequestSnapshot().request;
+      useAgentSendRequestCoordinator({
+        activeTab,
+        agentScopeId: "tab-1",
+        createPreview,
+        onActivateSession,
+        preferredSessionId: currentSession.agentSessionId,
+        request,
+        sessions: [historicalSession, currentSession],
+        setActionError: vi.fn(),
+        targetPane,
+      });
+    });
+
+    act(() => {
+      requestAgentSend({
+        paneId: "pane-1",
+        source: "selection",
+        tabId: "tab-1",
+      });
+    });
+
+    await waitFor(() =>
+      expect(createPreview).toHaveBeenCalledWith(
+        "selection",
+        expect.objectContaining({ session: currentSession }),
+      ),
+    );
+    expect(onActivateSession).toHaveBeenCalledWith(
+      "tab-1",
+      currentSession.agentSessionId,
+    );
+  });
+
+  it("存在多个历史会话且没有当前会话时不自动选择", async () => {
+    const createPreview = vi.fn(() => true);
+    const onActivateSession = vi.fn();
+
+    renderHook(() => {
+      const request = useAgentSendRequestSnapshot().request;
+      useAgentSendRequestCoordinator({
+        activeTab,
+        agentScopeId: "tab-1",
+        createPreview,
+        onActivateSession,
+        request,
+        sessions: [
+          session,
+          { ...session, agentSessionId: "agent-session-history" },
+        ],
+        setActionError: vi.fn(),
+        targetPane,
+      });
+    });
+
+    act(() => {
+      requestAgentSend({
+        paneId: "pane-1",
+        source: "context",
+        tabId: "tab-1",
+      });
+    });
+
+    await waitFor(() =>
+      expect(getAgentSendRequestSnapshot().request).not.toBeNull(),
+    );
+    expect(createPreview).not.toHaveBeenCalled();
+    expect(onActivateSession).not.toHaveBeenCalled();
+  });
+
   it("keeps the short-lived request while waiting for a matching conversation", async () => {
     const setActionError = vi.fn();
 
@@ -109,13 +192,7 @@ describe("useAgentSendRequestCoordinator", () => {
       });
     });
 
-    await waitFor(() => {
-      expect(setActionError).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "已选择终端内容，等待 Agent 对话",
-        }),
-      );
-    });
+    await waitFor(() => expect(setActionError).toHaveBeenCalledWith(null));
     expect(getAgentSendRequestSnapshot().request).toMatchObject({
       paneId: "pane-1",
       source: "context",
@@ -155,13 +232,7 @@ describe("useAgentSendRequestCoordinator", () => {
       });
     });
 
-    await waitFor(() => {
-      expect(setActionError).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "已选择终端内容，等待 Agent 对话",
-        }),
-      );
-    });
+    await waitFor(() => expect(setActionError).toHaveBeenCalledWith(null));
     expect(createPreview).not.toHaveBeenCalled();
     expect(onActivateSession).not.toHaveBeenCalled();
     expect(getAgentSendRequestSnapshot().request).not.toBeNull();

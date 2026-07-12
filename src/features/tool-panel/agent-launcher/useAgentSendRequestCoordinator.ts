@@ -20,6 +20,7 @@ interface UseAgentSendRequestCoordinatorInput {
     },
   ) => boolean;
   onActivateSession: (tabId: string, agentSessionId: string) => void;
+  preferredSessionId?: string;
   request: AgentSendRequest | null;
   sessions: readonly AgentTerminalSession[];
   setActionError: (message: UserFacingMessage | null) => void;
@@ -32,6 +33,7 @@ export function useAgentSendRequestCoordinator({
   agentScopeId,
   createPreview,
   onActivateSession,
+  preferredSessionId,
   request,
   sessions,
   setActionError,
@@ -68,16 +70,15 @@ export function useAgentSendRequestCoordinator({
     const scopedSessions = sessions.filter(
       (session) => session.tabId === agentScopeId,
     );
-    const session = scopedSessions.find(
+    const matchingSessions = scopedSessions.filter(
       (candidate) => candidate.target?.paneId === request.paneId,
     );
+    const session =
+      matchingSessions.find(
+        (candidate) => candidate.agentSessionId === preferredSessionId,
+      ) ?? (matchingSessions.length === 1 ? matchingSessions[0] : undefined);
     if (!session) {
-      setActionError({
-        recoveryAction:
-          "请继续当前目标的历史对话，或新建一个绑定当前目标的 Agent 对话；完成后会自动打开发送预览。",
-        severity: "warning",
-        title: "已选择终端内容，等待 Agent 对话",
-      });
+      setActionError(null);
       return () => window.clearTimeout(clearTimer);
     }
 
@@ -98,6 +99,7 @@ export function useAgentSendRequestCoordinator({
     agentScopeId,
     createPreview,
     onActivateSession,
+    preferredSessionId,
     request,
     sessions,
     setActionError,
