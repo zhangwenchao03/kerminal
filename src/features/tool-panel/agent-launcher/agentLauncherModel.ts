@@ -21,6 +21,27 @@ export type AgentLauncherTone = "ready" | "warning" | "danger" | "muted";
 export type AgentLaunchPermissionMode = "default" | "skipPermissions";
 export type AgentAvailabilityLabel = "可用" | "需安装" | "需设置";
 
+export function agentTitle(agentId: ExternalAgentId): string {
+  if (agentId === "claude") {
+    return "Claude";
+  }
+  if (agentId === "custom") {
+    return "Custom";
+  }
+  return "Codex";
+}
+
+export function buildAgentSessionTitle(
+  agentId: ExternalAgentId,
+  targetLabel: string,
+) {
+  const title = agentTitle(agentId);
+  const normalizedTarget = targetLabel.trim();
+  return !normalizedTarget || normalizedTarget === "未绑定"
+    ? title
+    : `${title} · ${normalizedTarget}`;
+}
+
 export interface McpStatusViewModel {
   label: string;
   detail: string;

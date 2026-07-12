@@ -11,7 +11,12 @@ import {
   ScanSearch,
   X,
 } from "lucide-react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Button } from "../components/ui/button";
+import {
+  claimAgentSendRequestAutoOpen,
+  useAgentSendRequestSnapshot,
+} from "../features/agent-workflow/agentSendRequestStore";
 import { cn } from "../lib/cn";
 import type { DesktopPlatform } from "../lib/desktopPlatform";
 import type { WindowFrameState } from "../lib/useTauriWindowFrameState";
@@ -48,6 +53,16 @@ export function ShellToolRail({
 }: {
   onActiveToolChange: (toolId: ToolId) => void;
 }) {
+  const agentSendRequest = useAgentSendRequestSnapshot().request;
+  useEffect(() => {
+    if (
+      agentSendRequest &&
+      claimAgentSendRequestAutoOpen(agentSendRequest.id)
+    ) {
+      onActiveToolChange("agentLauncher");
+    }
+  }, [agentSendRequest, onActiveToolChange]);
+
   return (
     <aside
       aria-expanded={false}
@@ -67,7 +82,11 @@ export function ShellToolRail({
             return (
               <Button
                 aria-label={`打开 ${tool.title}`}
-                className="h-8 w-8 rounded-xl"
+                className={cn(
+                  "h-8 w-8 rounded-lg",
+                  tool.id === "logs" && "mt-auto",
+                )}
+                data-shell-tool-id={tool.id}
                 key={tool.id}
                 onClick={() => onActiveToolChange(tool.id)}
                 size="icon"
@@ -80,6 +99,162 @@ export function ShellToolRail({
           })}
       </nav>
     </aside>
+  );
+}
+
+/**
+ * 紧凑布局使用覆盖式工具抽屉，避免把终端工作区压缩到不可用宽度。
+ * 抽屉保留 ToolPanel 自身工具栏，并提供遮罩与 Escape 两种关闭路径。
+ */
+export function ShellCompactToolPanel({
+  children,
+  onClose,
+}: {
+  children: ReactNode;
+  onClose: () => void;
+}) {
+  const panelRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") {
+        return;
+      }
+
+      const panel = panelRef.current;
+      if (!panel) {
+        return;
+      }
+      const focusableElements = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      const firstFocusable = focusableElements[0];
+      const lastFocusable = focusableElements[focusableElements.length - 1];
+      if (!firstFocusable || !lastFocusable) {
+        return;
+      }
+
+      // 模态抽屉打开时，Tab 只能在抽屉内部循环，避免焦点落到被遮罩的终端。
+      const activeElement = document.activeElement;
+      if (
+        event.shiftKey &&
+        (activeElement === firstFocusable || !panel.contains(activeElement))
+      ) {
+        event.preventDefault();
+        lastFocusable.focus();
+        return;
+      }
+      if (
+        !event.shiftKey &&
+        (activeElement === lastFocusable || !panel.contains(activeElement))
+      ) {
+        event.preventDefault();
+        firstFocusable.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    const focusFrame = window.requestAnimationFrame(() => {
+      panelRef.current
+        ?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')
+        ?.focus();
+    });
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  return (
+    <>
+      <button
+        aria-label="关闭紧凑工具面板"
+        className="absolute inset-x-0 bottom-0 top-9 z-30 bg-zinc-950/18 backdrop-blur-[1px] dark:bg-black/35"
+        onClick={onClose}
+        type="button"
+      />
+      <section
+        aria-modal="true"
+        aria-label="紧凑工具面板"
+        className="kerminal-floating-enter absolute bottom-0 right-0 top-9 z-40 w-[min(440px,calc(100%-12px))] overflow-hidden border-l border-[var(--border-subtle)] bg-[var(--surface-overlay)] shadow-[var(--shadow-floating)]"
+        ref={panelRef}
+        role="dialog"
+      >
+        <header className="flex h-10 items-center justify-end border-b border-[var(--border-subtle)] px-2">
+          <Button
+            aria-label="关闭工具面板"
+            className="h-8 w-8 rounded-lg"
+            onClick={onClose}
+            size="icon"
+            title="关闭"
+            variant="ghost"
+          >
+            <X aria-hidden className="h-4 w-4" />
+          </Button>
+        </header>
+        <div className="h-[calc(100%-2.5rem)] min-h-0">{children}</div>
+      </section>
+    </>
+  );
+}
+
+/** 在桌面固定侧栏与紧凑覆盖抽屉之间复用同一份 ToolPanel。 */
+export function ShellResponsiveToolPanel({
+  activeTool,
+  compact,
+  panel,
+  rail,
+  onClose,
+}: {
+  activeTool: ToolId | null;
+  compact: boolean;
+  panel: ReactNode;
+  rail: ReactNode;
+  onClose: () => void;
+}) {
+  const lastActiveToolRef = useRef<ToolId | null>(activeTool);
+  const open = activeTool !== null;
+
+  useEffect(() => {
+    if (activeTool) {
+      lastActiveToolRef.current = activeTool;
+      return;
+    }
+    const toolId = lastActiveToolRef.current;
+    if (!toolId) {
+      return;
+    }
+    const focusFrame = window.requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLButtonElement>(`[data-shell-tool-id="${toolId}"]`)
+        ?.focus();
+    });
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [activeTool]);
+
+  return (
+    <>
+      <div
+        className="relative z-20 h-full overflow-hidden"
+        style={{ gridColumn: "5 / 6", gridRow: "2 / 3" }}
+      >
+        {open ? (compact ? null : panel) : rail}
+      </div>
+      {compact && open ? (
+        <ShellCompactToolPanel onClose={onClose}>
+          {panel}
+        </ShellCompactToolPanel>
+      ) : null}
+    </>
   );
 }
 

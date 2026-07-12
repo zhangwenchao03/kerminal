@@ -228,12 +228,12 @@ export const terminalRightClickBehaviorOptions: Array<{
   value: TerminalRightClickBehavior;
 }> = [
   {
-    description: "保留系统右键。",
+    description: "不执行动作；按住 Shift 右键可打开终端菜单。",
     label: "不执行",
     value: "none",
   },
   {
-    description: "直接粘贴剪贴板。",
+    description: "直接粘贴剪贴板；按住 Shift 右键可打开终端菜单。",
     label: "粘贴",
     value: "paste",
   },

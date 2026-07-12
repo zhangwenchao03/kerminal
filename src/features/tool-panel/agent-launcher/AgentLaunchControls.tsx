@@ -63,7 +63,7 @@ export function AgentIconButton({
       aria-describedby={disabled && disabledReason ? disabledReasonId : undefined}
       aria-disabled={disabled || undefined}
       className={cn(
-        "kerminal-pressable kerminal-focus-ring flex h-16 min-w-0 flex-col items-center justify-center gap-1.5 rounded-2xl border border-transparent bg-transparent text-zinc-700 transition hover:border-[var(--border-subtle)] hover:bg-[var(--surface-hover)] active:scale-[0.98] dark:text-zinc-200",
+        "kerminal-pressable kerminal-focus-ring flex h-16 min-w-0 flex-col items-center justify-center gap-1.5 rounded-lg border border-transparent bg-transparent text-zinc-700 transition hover:border-[var(--border-subtle)] hover:bg-[var(--surface-hover)] active:scale-[0.98] dark:text-zinc-200",
         disabled && "cursor-not-allowed opacity-45",
       )}
       onClick={() => {

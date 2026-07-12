@@ -1,9 +1,26 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ContextInspectorToolContent } from "../../../../../src/features/tool-panel/context-inspector";
 import type { WorkspaceContextProjection } from "../../../../../src/features/workspace/context";
+
+const agentApiMocks = vi.hoisted(() => ({
+  listAgentSessions: vi.fn(),
+}));
+
+vi.mock("../../../../../src/lib/agentLauncherApi", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../../../src/lib/agentLauncherApi")
+  >()),
+  listAgentSessions: agentApiMocks.listAgentSessions,
+}));
 
 function context(
   overrides: Partial<WorkspaceContextProjection> = {},
@@ -86,8 +103,25 @@ function context(
 }
 
 describe("ContextInspectorToolContent", () => {
-  it("在 partial/error 下仍渲染全部只读分区", () => {
+  beforeEach(() => {
+    agentApiMocks.listAgentSessions.mockReset();
+    agentApiMocks.listAgentSessions.mockResolvedValue({
+      diagnostics: [],
+      sessions: [],
+    });
+  });
+
+  it("优先展示摘要，并在展开后保留全部只读分区", async () => {
+    const user = userEvent.setup();
     render(<ContextInspectorToolContent context={context()} />);
+
+    const summary = screen.getByRole("region", { name: "当前上下文摘要" });
+    expect(within(summary).getByText("当前目标")).toBeVisible();
+    expect(within(summary).getByText("当前目录")).toBeVisible();
+    expect(screen.getByText("需要注意")).toBeVisible();
+
+    await user.click(screen.getByText("工作区详情"));
+    await user.click(screen.getByText("技术状态"));
 
     for (const heading of [
       "机器",
@@ -102,9 +136,10 @@ describe("ContextInspectorToolContent", () => {
     ]) {
       expect(screen.getByRole("heading", { name: heading })).toBeVisible();
     }
-    expect(
-      screen.getByText("运行态暂时不可用，已保留其它上下文。"),
-    ).toBeVisible();
+    const diagnostics = screen.getAllByText(
+      "运行态暂时不可用，已保留其它上下文。",
+    );
+    expect(diagnostics[diagnostics.length - 1]).toBeVisible();
     expect(screen.getAllByText("生产目标")).toHaveLength(2);
   });
 
@@ -133,7 +168,8 @@ describe("ContextInspectorToolContent", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "拆分终端" }));
-    await user.click(screen.getByRole("button", { name: /当前目录/ }));
+    const summary = screen.getByRole("region", { name: "当前上下文摘要" });
+    await user.click(within(summary).getByRole("button", { name: /当前目录/ }));
 
     expect(onAction).toHaveBeenCalledWith("terminal.split");
     expect(onNavigate).toHaveBeenCalledWith(
@@ -141,7 +177,8 @@ describe("ContextInspectorToolContent", () => {
     );
   });
 
-  it("未被集成层支持的 navigationId 只显示为只读文本", () => {
+  it("未被集成层支持的 navigationId 只显示为只读文本", async () => {
+    const user = userEvent.setup();
     render(
       <ContextInspectorToolContent
         context={context()}
@@ -152,12 +189,15 @@ describe("ContextInspectorToolContent", () => {
       />,
     );
 
+    await user.click(screen.getByText("工作区详情"));
     expect(screen.getByRole("button", { name: /活动页签/ })).toBeVisible();
     expect(screen.queryByRole("button", { name: /当前目录/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /焦点窗格/ })).toBeNull();
     expect(
-      screen.getByText("/srv/app/a-very-long-directory-name-that-must-wrap"),
-    ).toBeVisible();
+      screen.getAllByText(
+        "/srv/app/a-very-long-directory-name-that-must-wrap",
+      ),
+    ).toHaveLength(2);
   });
 
   it("disabled action 不触发回调且显示原因", async () => {
@@ -205,10 +245,102 @@ describe("ContextInspectorToolContent", () => {
     );
 
     const first = screen.getByRole("button", { name: "首个动作" });
+    const summary = screen.getByRole("region", { name: "当前上下文摘要" });
+    const currentDirectory = within(summary).getByRole("button", {
+      name: /当前目录/,
+    });
     expect(first).toHaveFocus();
     fireEvent.keyDown(first, { key: "End" });
-    expect(screen.getByRole("button", { name: /当前目录/ })).toHaveFocus();
+    expect(currentDirectory).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: "Home" });
     expect(first).toHaveFocus();
+  });
+
+  it("首屏显示当前 pane 的真实 Agent 会话且不回退到其它会话", async () => {
+    agentApiMocks.listAgentSessions.mockResolvedValue({
+      diagnostics: [],
+      sessions: [
+        {
+          session: {
+            agentSessionId: "agent-other",
+            agentId: "claude",
+            title: "其它目标会话",
+            status: "active",
+            launch: { args: [], cwd: "/tmp", shell: "claude" },
+            target: { paneId: "pane-other", tabId: "tab-other" },
+          },
+        },
+        {
+          session: {
+            agentSessionId: "agent-unbound",
+            agentId: "codex",
+            title: "未绑定会话",
+            status: "active",
+            launch: { args: [], cwd: "/tmp", shell: "codex" },
+          },
+        },
+        {
+          session: {
+            agentSessionId: "agent-current",
+            agentId: "codex",
+            title: "API 故障排查",
+            status: "active",
+            updatedAt: "2026-07-12T01:00:00.000Z",
+            launch: { args: [], cwd: "/srv/app", shell: "codex" },
+            target: { paneId: "pane-1", tabId: "tab-1", liveStatus: "ready" },
+          },
+        },
+      ],
+    });
+
+    render(<ContextInspectorToolContent context={context()} />);
+
+    const summary = screen.getByRole("region", { name: "当前上下文摘要" });
+    await waitFor(() => {
+      expect(within(summary).getByText("API 故障排查 · 进行中")).toBeVisible();
+    });
+    expect(within(summary).queryByText("其它目标会话")).not.toBeInTheDocument();
+    expect(within(summary).queryByText("未绑定会话")).not.toBeInTheDocument();
+  });
+
+  it("提醒按 error、warning、info 排序并使用错误语义样式", () => {
+    render(
+      <ContextInspectorToolContent
+        context={context({
+          diagnostics: [
+            {
+              id: "info-first",
+              code: "source-loading",
+              severity: "info",
+              summary: "正在刷新运行态。",
+              source: "runtime",
+              recoverable: true,
+            },
+            {
+              id: "warning-second",
+              code: "source-stale",
+              severity: "warning",
+              summary: "终端快照较旧。",
+              source: "terminal",
+              recoverable: true,
+            },
+            {
+              id: "error-last",
+              code: "source-error",
+              severity: "error",
+              summary: "当前目标连接失败。",
+              source: "workspace",
+              recoverable: true,
+            },
+          ],
+        })}
+      />,
+    );
+
+    const alert = screen.getByRole("alert", { name: "上下文提醒" });
+    expect(within(alert).getByText("需要处理")).toBeVisible();
+    expect(within(alert).getByText("当前目标连接失败。")).toBeVisible();
+    expect(alert).toHaveAttribute("data-tone", "danger");
+    expect(within(alert).queryByText("正在刷新运行态。")).not.toBeInTheDocument();
   });
 });

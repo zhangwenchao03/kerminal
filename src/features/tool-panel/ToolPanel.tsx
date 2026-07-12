@@ -43,6 +43,10 @@ import type { WorkspaceContextProjection } from "../workspace/context";
 import type { TerminalArtifactActionRequest } from "../terminal/artifacts/public";
 import type { TmuxAttachLaunch } from "../../lib/tmuxApi";
 import { sftpSidebarTransferViewScope } from "../sftp/sftp-tool-content/sftpTransferScopeModel";
+import {
+  claimAgentSendRequestAutoOpen,
+  useAgentSendRequestSnapshot,
+} from "../agent-workflow/agentSendRequestStore";
 
 interface ToolPanelProps {
   activeTool: ToolId | null;
@@ -144,7 +148,9 @@ export function ToolPanel({
 }: ToolPanelProps) {
   const railTools = tools;
   const defaultContentToolId =
-    tools.find((tool) => tool.id !== "settings")?.id ?? null;
+    tools.find((tool) => tool.id === "agentLauncher")?.id ??
+    tools.find((tool) => tool.id !== "settings")?.id ??
+    null;
   const contentTool =
     activeTool === null
       ? null
@@ -172,6 +178,7 @@ export function ToolPanel({
     [renderedToolIds, tools],
   );
   const diagnosticsBundle = useDiagnosticsBundleController();
+  const agentSendRequest = useAgentSendRequestSnapshot().request;
   const active = contentTool
     ? (tools.find((tool) => tool.id === contentTool) ?? railTools[0])
     : undefined;
@@ -192,8 +199,8 @@ export function ToolPanel({
   const railButtonDensityClassName = compactDensity
     ? "h-7 w-7 rounded-lg"
     : spaciousDensity
-      ? "h-9 w-9 rounded-xl"
-      : "h-8 w-8 rounded-xl";
+      ? "h-9 w-9 rounded-lg"
+      : "h-8 w-8 rounded-lg";
 
   useEffect(() => {
     if (!contentTool) {
@@ -203,6 +210,21 @@ export function ToolPanel({
       current.includes(contentTool) ? current : [...current, contentTool],
     );
   }, [contentTool]);
+
+  useEffect(() => {
+    if (
+      !agentSendRequest ||
+      !claimAgentSendRequestAutoOpen(agentSendRequest.id)
+    ) {
+      return;
+    }
+    if (
+      activeTool !== "agentLauncher" &&
+      tools.some((tool) => tool.id === "agentLauncher")
+    ) {
+      onActiveToolChange("agentLauncher");
+    }
+  }, [activeTool, agentSendRequest, onActiveToolChange, tools]);
 
   return (
     <aside
@@ -261,6 +283,7 @@ export function ToolPanel({
                           settings?.terminal ??
                           defaultTerminalAppearance
                         }
+                        terminalPanes={terminalPanes}
                         terminalTabs={terminalTabs}
                       />
                     ) : null}
@@ -269,6 +292,7 @@ export function ToolPanel({
                     ) : null}
                     {toolId === "context" && workspaceContext ? (
                       <ContextInspectorToolContent
+                        active={selected}
                         context={workspaceContext}
                         isNavigationAvailable={(navigationId) =>
                           Boolean(onFocusTab && navigationId.startsWith("tab:"))
@@ -379,6 +403,7 @@ export function ToolPanel({
               aria-pressed={selected}
               className={cn(
                 railButtonDensityClassName,
+                tool.id === "logs" && "mt-auto",
                 selected &&
                   "bg-[var(--surface-selected)] text-sky-700 shadow-sm shadow-sky-500/10 dark:text-sky-100",
               )}
@@ -401,7 +426,7 @@ function ToolContentLoadingFallback({ title }: { title?: string }) {
   return (
     <div
       aria-live="polite"
-      className="kerminal-solid-surface rounded-2xl border px-4 py-3 text-sm text-zinc-600 dark:text-zinc-300"
+      className="kerminal-solid-surface rounded-lg border px-4 py-3 text-sm text-zinc-600 dark:text-zinc-300"
     >
       <div className="font-medium text-zinc-800 dark:text-zinc-100">
         正在加载{title ?? "工具"}
@@ -415,7 +440,7 @@ function ToolContentLoadingFallback({ title }: { title?: string }) {
 
 function ToolContentCrashFallback({ title }: { title?: string }) {
   return (
-    <div className="rounded-2xl border border-rose-300/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-100">
+    <div className="rounded-lg border border-rose-300/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-100">
       <div className="font-medium">{title ?? "工具"}加载失败</div>
       <div className="mt-1 text-xs opacity-80">
         收起右栏后重新打开可重试，详细信息已写入应用日志。

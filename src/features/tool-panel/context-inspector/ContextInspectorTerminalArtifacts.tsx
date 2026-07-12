@@ -1,6 +1,7 @@
 // @author kongweiguang
 
 import { useSyncExternalStore } from "react";
+import { ChevronRight, Sparkles } from "lucide-react";
 import {
   getXtermPaneArtifactSnapshot,
   subscribeXtermPaneArtifactSnapshot,
@@ -25,24 +26,27 @@ export function ContextInspectorTerminalArtifacts({
     () => getXtermPaneArtifactSnapshot(paneId),
     () => undefined,
   );
+  const artifactCount = snapshot?.artifacts.length ?? 0;
 
   return (
-    <section
-      aria-labelledby="context-terminal-artifacts-heading"
-      className="border-t border-[var(--border-subtle)] pt-3"
-    >
-      <h3
-        className="mb-2 text-xs font-semibold text-zinc-600 dark:text-zinc-300"
-        id="context-terminal-artifacts-heading"
-      >
-        终端产物
-      </h3>
+    <details className="group border-t border-[var(--border-subtle)] pt-1">
+      <summary className="kerminal-focus-ring flex min-h-9 cursor-pointer list-none items-center gap-2 rounded-lg px-2 text-xs font-medium text-zinc-700 hover:bg-[var(--surface-hover)] dark:text-zinc-200 [&::-webkit-details-marker]:hidden">
+        <Sparkles aria-hidden className="h-3.5 w-3.5" />
+        终端发现
+        <span className="ml-auto text-[11px] text-zinc-500 dark:text-zinc-400">
+          {artifactCount > 0 ? `${artifactCount} 项` : "暂无"}
+        </span>
+        <ChevronRight
+          aria-hidden
+          className="h-3.5 w-3.5 transition-transform duration-150 group-open:rotate-90 motion-reduce:transition-none"
+        />
+      </summary>
       <TerminalArtifactList
-        className="max-h-72"
+        className="mt-2 max-h-64 overflow-hidden rounded-lg border border-[var(--border-subtle)]"
         onActionRequest={onActionRequest}
         showActions={Boolean(onActionRequest)}
         snapshot={snapshot}
       />
-    </section>
+    </details>
   );
 }

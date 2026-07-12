@@ -1,6 +1,7 @@
 import type {
   AgentSessionRecord,
   AgentSessionRecordStatus,
+  AgentSessionTargetRequest,
   ExternalAgentId,
 } from "../../lib/agentLauncherApi";
 import type {
@@ -20,13 +21,16 @@ export type AgentWorkflowStatusSource =
 export interface AgentWorkflowSessionSnapshot {
   agentId?: ExternalAgentId;
   agentSessionId: string;
+  createdAt?: string;
   repositoryStatus: AgentSessionRecordStatus;
   runtimeStatus: AgentWorkflowRuntimeStatus;
   statusSource: AgentWorkflowStatusSource;
   terminalAgent?: TerminalAgentKind;
   terminalSessionId?: string;
   terminalStatus?: TerminalAgentStatus;
+  target?: AgentSessionTargetRequest;
   title: string;
+  updatedAt?: string;
 }
 
 /** Controller 的只读快照；revision 仅在可观察状态变化时递增。 */

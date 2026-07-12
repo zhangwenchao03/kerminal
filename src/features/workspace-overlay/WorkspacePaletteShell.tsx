@@ -102,6 +102,7 @@ export function WorkspacePaletteShell({
   const statusId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLElement>(null);
+  const optionRefs = useRef(new Map<string, HTMLDivElement>());
   const enabledItems = useMemo(
     () => items.filter((item) => !item.disabled),
     [items],
@@ -135,6 +136,15 @@ export function WorkspacePaletteShell({
     }
     onActiveItemChange?.(activeIndex >= 0 ? items[activeIndex] : undefined);
   }, [activeIndex, items, onActiveItemChange, open]);
+
+  useEffect(() => {
+    if (!open || !resolvedActiveItemId) {
+      return;
+    }
+    optionRefs.current
+      .get(resolvedActiveItemId)
+      ?.scrollIntoView?.({ block: "nearest" });
+  }, [open, resolvedActiveItemId]);
 
   if (!open || typeof document === "undefined") {
     return null;
@@ -219,6 +229,13 @@ export function WorkspacePaletteShell({
                   onSelect(item);
                 }
               }}
+              ref={(node) => {
+                if (node) {
+                  optionRefs.current.set(item.id, node);
+                } else {
+                  optionRefs.current.delete(item.id);
+                }
+              }}
               role="option"
             >
               {item.leading ? (
@@ -259,7 +276,7 @@ export function WorkspacePaletteShell({
         aria-describedby={description ? descriptionId : undefined}
         aria-labelledby={titleId}
         aria-modal="true"
-        className="flex h-[min(31rem,calc(100vh-5rem))] w-[min(42rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-overlay)] text-zinc-950 shadow-2xl motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-reduce:transition-none dark:text-zinc-50"
+        className="flex h-[min(31rem,calc(100vh-5rem))] w-[min(42rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-overlay)] text-zinc-950 shadow-[var(--shadow-floating)] motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-reduce:transition-none dark:text-zinc-50"
         onMouseDown={(event) => event.stopPropagation()}
         ref={panelRef}
         role="dialog"

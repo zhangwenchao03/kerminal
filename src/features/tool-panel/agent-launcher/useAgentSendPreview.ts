@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AgentWorkflowController,
   AgentWorkflowPreviewResolution,
@@ -69,19 +69,30 @@ export function useAgentSendPreview({
     );
     const timer = window.setTimeout(() => {
       controller.cancelSendPreview(preview.id);
+      if (previewRef.current?.id === preview.id) {
+        previewRef.current = null;
+      }
       setPreview((current) => (current?.id === preview.id ? null : current));
     }, delay);
     return () => window.clearTimeout(timer);
   }, [controller, preview]);
 
-  const create = (source: AgentSendPreviewSource) => {
-    if (!session) {
-      return;
+  const create = useCallback((
+    source: AgentSendPreviewSource,
+    override?: {
+      activeTab?: TerminalTab;
+      focusedPane?: TerminalPane;
+      session?: AgentTerminalSession;
+    },
+  ) => {
+    const resolvedSession = override?.session ?? session;
+    if (!resolvedSession) {
+      return false;
     }
     const prompt = buildAgentSendPreviewInput({
-      activeTab,
-      focusedPane,
-      session,
+      activeTab: override?.activeTab ?? activeTab,
+      focusedPane: override?.focusedPane ?? focusedPane,
+      session: resolvedSession,
       source,
     });
     if (!prompt) {
@@ -90,20 +101,28 @@ export function useAgentSendPreview({
         severity: "warning",
         title: "无法读取目标终端内容",
       });
-      return;
+      return false;
     }
+    const current = previewRef.current;
+    if (current) {
+      controller.cancelSendPreview(current.id);
+    }
+    const nextPreview = controller.createSendPreview({
+      kind: prompt.kind,
+      sessionId: resolvedSession.agentSessionId,
+      text: prompt.text,
+    });
+    previewRef.current = nextPreview;
     setActionError(null);
-    setPreview(
-      controller.createSendPreview({
-        kind: prompt.kind,
-        sessionId: session.agentSessionId,
-        text: prompt.text,
-      }),
-    );
-  };
+    setPreview(nextPreview);
+    return true;
+  }, [activeTab, controller, focusedPane, session, setActionError]);
 
   const cancel = (previewId: string): AgentWorkflowPreviewResolution => {
     const resolution = controller.cancelSendPreview(previewId);
+    if (previewRef.current?.id === previewId) {
+      previewRef.current = null;
+    }
     setPreview((current) => (current?.id === previewId ? null : current));
     return resolution;
   };
@@ -115,6 +134,9 @@ export function useAgentSendPreview({
     setBusy(true);
     try {
       const resolution = await controller.confirmSendPreview(previewId, submit);
+      if (previewRef.current?.id === previewId) {
+        previewRef.current = null;
+      }
       setPreview((current) => (current?.id === previewId ? null : current));
       if (resolution.outcome === "failed") {
         setActionError({

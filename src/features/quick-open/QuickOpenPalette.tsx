@@ -88,6 +88,7 @@ export function QuickOpenPalette({
       onSelect={(item) => {
         const result = resultByItemId.get(item.id);
         if (result) {
+          onClose();
           onSelect(result.reference);
         }
       }}

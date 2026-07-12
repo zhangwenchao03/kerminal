@@ -11,6 +11,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TerminalOutputEvent } from "../../../src/lib/terminalApi";
 import { defaultAppSettings } from "../../../src/features/settings/settingsModel";
 import {
+  requestAgentSend,
+  resetAgentSendRequestStoreForTests,
+} from "../../../src/features/agent-workflow/agentSendRequestStore";
+import {
   dockerContainerTarget,
   dockerContainerTargetCapabilities,
 } from "../../../src/lib/targetModel";
@@ -81,6 +85,7 @@ describe("KerminalShell", () => {
     document.documentElement.removeAttribute("lang");
     window.localStorage.clear();
     resetWorkspaceStore();
+    resetAgentSendRequestStoreForTests();
     windowChromeMocks.frameState = "normal";
     windowChromeMocks.platform = "browser";
     mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockReset();
@@ -324,6 +329,44 @@ describe("KerminalShell", () => {
       screen.getByRole("button", { name: "打开 Agent Launcher" }),
     ).toBeInTheDocument();
     expect(mocks.terminalApi.createTerminalSession).not.toHaveBeenCalled();
+  });
+
+  it("opens Agent Launcher for a terminal send request while the tool panel is collapsed", async () => {
+    act(() => {
+      useWorkspaceStore.getState().addTerminalTab({
+        title: "Agent request target",
+      });
+    });
+    const paneId = useWorkspaceStore.getState().terminalPanes[0]?.id;
+    expect(paneId).toBeTruthy();
+    render(<KerminalShell />);
+
+    expect(
+      await screen.findByRole("complementary", { name: "工具面板" }),
+    ).toHaveAttribute("aria-expanded", "false");
+
+    act(() => {
+      requestAgentSend({
+        paneId: paneId!,
+        source: "context",
+      });
+    });
+
+    expect(
+      await screen.findByRole("button", { name: "收起 Agent Launcher" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("complementary", { name: "工具面板" }),
+    ).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "收起 Agent Launcher" }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("complementary", { name: "工具面板" }),
+      ).toHaveAttribute("aria-expanded", "false");
+    });
   });
 
   it("reaps local orphan PTY sessions before restoring saved terminal tabs", async () => {
@@ -767,6 +810,53 @@ describe("KerminalShell", () => {
         within(toolPanel).queryByRole("button", { name: "打开 设置" }),
       ).not.toBeInTheDocument();
       expect(toolPanel).toHaveAttribute("aria-expanded", "false");
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: originalInnerWidth,
+      });
+      fireEvent(window, new Event("resize"));
+    }
+  });
+
+  it("opens and closes the tool drawer at the 899px compact breakpoint", async () => {
+    const originalInnerWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 899,
+    });
+    fireEvent(window, new Event("resize"));
+
+    try {
+      render(<KerminalShell />);
+
+      const collapsedPanel = await screen.findByRole("complementary", {
+        name: "工具面板",
+      });
+      fireEvent.click(
+        within(collapsedPanel).getByRole("button", {
+          name: "打开 当前上下文",
+        }),
+      );
+
+      const drawer = await screen.findByRole("dialog", {
+        name: "紧凑工具面板",
+      });
+      expect(drawer).toBeVisible();
+      expect(
+        within(drawer).getByRole("complementary", { name: "工具面板" }),
+      ).toHaveAttribute("aria-expanded", "true");
+
+      fireEvent.keyDown(window, { key: "Escape" });
+
+      await waitFor(() => {
+        expect(
+          screen.queryByRole("dialog", { name: "紧凑工具面板" }),
+        ).not.toBeInTheDocument();
+      });
+      expect(
+        screen.getByRole("complementary", { name: "工具面板" }),
+      ).toHaveAttribute("aria-expanded", "false");
     } finally {
       Object.defineProperty(window, "innerWidth", {
         configurable: true,

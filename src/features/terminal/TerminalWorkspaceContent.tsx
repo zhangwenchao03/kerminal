@@ -55,6 +55,7 @@ const PANE_MOVE_DRAG_THRESHOLD_PX = 6;
 interface TerminalRuntimePane {
   active: boolean;
   pane: TerminalPane;
+  tabId: string;
 }
 
 interface TerminalPaneRuntimeSlot {
@@ -437,7 +438,7 @@ export function TerminalWorkspaceContent({
         <TerminalPaneMoveOverlay indicator={paneMoveIndicator} />
       ) : null}
       {paneMovePreview}
-      {runtimePanes.map(({ active, pane }) => {
+      {runtimePanes.map(({ active, pane, tabId }) => {
         const slot = resolveRuntimeSlot(runtimeSlots[pane.id], active);
         if (!slot) {
           return null;
@@ -457,6 +458,7 @@ export function TerminalWorkspaceContent({
             resolvePaneOutputHistory={resolvePaneOutputHistory}
             resolvedTheme={resolvedTheme}
             slot={slot}
+            tabId={tabId}
             terminalAppearance={terminalAppearance}
           />
         );
@@ -549,6 +551,7 @@ interface TerminalRuntimePortalProps {
   resolvePaneOutputHistory?: (paneId: string) => string | undefined;
   resolvedTheme: ResolvedTheme;
   slot: TerminalPaneRuntimeSlot;
+  tabId: string;
   terminalAppearance: TerminalAppearance;
 }
 
@@ -564,6 +567,7 @@ function TerminalRuntimePortal({
   resolvePaneOutputHistory,
   resolvedTheme,
   slot,
+  tabId,
   terminalAppearance,
 }: TerminalRuntimePortalProps) {
   const hostRef = useRef<HTMLElement | null>(null);
@@ -635,6 +639,7 @@ function TerminalRuntimePortal({
         resolvedTheme={resolvedTheme}
         shell={pane.shell}
         target={pane.target}
+        tabId={tabId}
         terminalAppearance={terminalAppearance}
         title={pane.title}
         visible={slot.active}
@@ -678,7 +683,7 @@ function resolveTerminalRuntimePanes(
   const activePaneIds = new Set(
     isTerminalSessionTab(activeTab) ? collectPaneIds(activeTab.layout) : [],
   );
-  const paneIds: string[] = [];
+  const runtimePanes: TerminalRuntimePane[] = [];
   const seenPaneIds = new Set<string>();
 
   for (const tab of tabs) {
@@ -690,12 +695,16 @@ function resolveTerminalRuntimePanes(
         continue;
       }
       seenPaneIds.add(paneId);
-      paneIds.push(paneId);
+      const pane = panesById.get(paneId);
+      if (pane) {
+        runtimePanes.push({
+          active: activePaneIds.has(paneId),
+          pane,
+          tabId: tab.id,
+        });
+      }
     }
   }
 
-  return paneIds.flatMap((paneId) => {
-    const pane = panesById.get(paneId);
-    return pane ? [{ active: activePaneIds.has(paneId), pane }] : [];
-  });
+  return runtimePanes;
 }

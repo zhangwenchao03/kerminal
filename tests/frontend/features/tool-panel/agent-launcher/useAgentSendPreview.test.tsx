@@ -110,4 +110,37 @@ describe("useAgentSendPreview", () => {
     );
     controller.dispose();
   });
+
+  it("创建新预览时立即取消并释放上一份正文", () => {
+    let selectedText = "first secret";
+    unregisters.push(
+      registerXtermPanePromptSource("pane-1", {
+        read: () => ({ paneId: "pane-1", selectedText }),
+      }),
+    );
+    const controller = createController();
+    const { result, unmount } = renderHook(() =>
+      useAgentSendPreview({
+        activeTab,
+        controller,
+        focusedPane,
+        session,
+        setActionError: vi.fn(),
+      }),
+    );
+
+    act(() => result.current.create("selection"));
+    const firstPreviewId = result.current.preview!.id;
+    selectedText = "second secret";
+    act(() => result.current.create("selection"));
+
+    expect(result.current.preview?.id).not.toBe(firstPreviewId);
+    expect(result.current.preview?.text).toContain("second secret");
+    expect(controller.getSnapshot().historyMetadata).toHaveLength(1);
+    expect(controller.getSnapshot().historyMetadata[0]?.outcome).toBe(
+      "cancelled",
+    );
+    unmount();
+    controller.dispose();
+  });
 });

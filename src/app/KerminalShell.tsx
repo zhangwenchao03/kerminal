@@ -1,11 +1,4 @@
-import {
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type {
   MachineSidebarMachineDragEvent,
   MachineSidebarViewMode,
@@ -20,10 +13,6 @@ import {
 } from "../features/settings/settingsModel";
 import type { TerminalSplitDropIndicator } from "../features/terminal/TerminalSplitDropOverlay";
 import {
-  CloseTabsConfirmationDialog,
-  CloseWorkspaceFileTabsConfirmationDialog,
-} from "../features/terminal/terminalTabChrome";
-import {
   resolveTerminalSplitDropZone,
   terminalSplitDropZoneToDirection,
   terminalSplitDropZoneToPlacement,
@@ -32,7 +21,6 @@ import {
 import { isTerminalSplitMachineKind } from "../features/terminal/terminalSplitTargets";
 import { writeBroadcastCommand } from "../features/terminal/terminalSessionRegistry";
 import { useWorkspaceStore } from "../features/workspace/workspaceStore";
-import { cn } from "../lib/cn";
 import {
   fetchDockerContainerStats,
   inspectDockerContainer,
@@ -50,8 +38,6 @@ import {
   updateRemoteHost,
   type RemoteHost,
 } from "../lib/remoteHostApi";
-import { listProfiles } from "../lib/profileApi";
-import { reapOrphanTerminalSessions } from "../lib/terminalApi";
 import { useDocumentTheme } from "../lib/useDocumentTheme";
 import { useTauriWindowFrameState } from "../lib/useTauriWindowFrameState";
 import { resolveWindowChromeModel } from "../lib/windowChromeModel";
@@ -62,19 +48,11 @@ import type {
 import { isTerminalSessionTab, type ToolId } from "../features/workspace/types";
 import { resolveWorkspaceTabCloseDecision } from "../features/workspace/workspaceTabCloseGuardModel";
 import {
-  DeleteConfirmationDialog,
-  DialogLazyFallback,
-  ShellResizeSeparator,
   htmlLanguage,
   isRealRemoteGroup,
   useSystemThemePreference,
   useViewportWidth,
 } from "./KerminalShell.helpers";
-import {
-  KerminalShellNotices,
-  ShellToolRail,
-  ShellWindowChrome,
-} from "./KerminalShell.view";
 import { useKerminalShellRemoteActions } from "./useKerminalShellRemoteActions";
 import { useKerminalShellBackgroundStyle } from "./useKerminalShellBackgroundStyle";
 import { useKerminalShellCommands } from "./useKerminalShellCommands";
@@ -84,24 +62,13 @@ import { useKerminalShellSettings } from "./useKerminalShellSettings";
 import {
   DEFAULT_REMOTE_GROUP_NAME,
   DEFAULT_SETTINGS_SECTION_ID,
-  LazyExternalLaunchHost,
-  LazyRemoteHostCreateDialog,
-  LazyRemoteHostGroupCreateDialog,
-  LazySshAuthPromptHost,
-  LazySettingsDialog,
 } from "./KerminalShell.static";
-import { useWorkspaceSessionPersistence } from "./useWorkspaceSessionPersistence";
-import {
-  MachineSidebarStoreBridge,
-  ToolPanelStoreBridge,
-  WorkspaceTerminalSurface,
-} from "./KerminalShell.workspaceBridge";
 import {
   resolveConnectionEditConflict,
   resolveRemoteGroupEditConflict,
 } from "./configDirtyGuardModel";
-import { useKerminalConfigEvents } from "./useKerminalConfigEvents";
-import { KerminalShellContextWorkspaceStoreBridge } from "./KerminalShell.contextWorkspace";
+import { KerminalShellLayout } from "./KerminalShell.layout";
+import { useKerminalShellStartupSync } from "./useKerminalShellStartupSync";
 import {
   isSftpCapableRemoteHost,
   shellQuote,
@@ -685,311 +652,147 @@ export function KerminalShell() {
     },
     [handleRemoteHostCreated, pendingSftpHostTarget],
   );
-  const reapLocalOrphanTerminalSessions = useCallback(async () => {
-    try {
-      const diagnostics = await reapOrphanTerminalSessions();
-      if (diagnostics.reapedCount > 0) {
-        console.info("Kerminal local PTY orphan reaper completed", diagnostics);
-      }
-    } catch (error) {
-      console.warn("Kerminal local PTY orphan reaper failed", error);
-    }
-  }, []);
-  useWorkspaceSessionPersistence({
-    beforeRestore: reapLocalOrphanTerminalSessions,
-    onShellLayoutRestored: handleWorkspaceShellLayoutRestored,
-    shellLayout: workspaceShellLayout,
+  useKerminalShellStartupSync({
+    configRefreshCoordinator, handleWorkspaceShellLayoutRestored,
+    refreshRemoteHostTree, settingsDialogDirtyRef, settingsSaveState,
+    setProfileLoadError, setProfiles, setShellNoticeVisible,
+    shellNoticeMessage, workspaceShellLayout,
   });
-  useKerminalConfigEvents({ coordinator: configRefreshCoordinator });
-
-  useEffect(() => {
-    if (settingsSaveState === "saved") {
-      settingsDialogDirtyRef.current = false;
-    }
-  }, [settingsSaveState]);
-
-  useEffect(() => {
-    if (!shellNoticeMessage) {
-      setShellNoticeVisible(false);
-      return undefined;
-    }
-
-    setShellNoticeVisible(true);
-    const timer = window.setTimeout(() => {
-      setShellNoticeVisible(false);
-    }, 4200);
-    return () => window.clearTimeout(timer);
-  }, [shellNoticeMessage]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    listProfiles()
-      .then((nextProfiles) => {
-        if (cancelled) {
-          return;
-        }
-        setProfiles(nextProfiles);
-        setProfileLoadError(null);
-      })
-      .catch(() => {
-        if (cancelled) {
-          return;
-        }
-        setProfileLoadError("终端配置加载失败，已使用默认本地配置。");
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [setProfiles]);
-
-  useEffect(() => {
-    void refreshRemoteHostTree();
-  }, [refreshRemoteHostTree]);
 
   return (
-    <div
-      ref={workspaceFrameRef}
-      className={cn(
-        "relative grid h-screen overflow-hidden",
-        resolvedTheme === "dark" ? "dark text-zinc-100" : "text-zinc-950",
-      )}
-      data-desktop-platform={desktopPlatform}
-      data-density={settings.interfaceDensity}
-      data-language={settings.appearance.interfaceLanguage}
-      data-theme={resolvedTheme}
-      data-window-frame={windowFrameState}
-      lang={htmlLanguage(settings.appearance.interfaceLanguage)}
-      style={{
-        ...workspaceBackgroundStyle,
-        gridTemplateColumns,
-        gridTemplateRows: "36px minmax(0, 1fr)",
-      }}
-    >
-      <ShellWindowChrome
-        desktopPlatform={desktopPlatform}
-        leftPanelCollapsed={leftPanelCollapsed}
-        onLeftPanelCollapsedChange={setLeftPanelCollapsed}
-        resolvedTheme={resolvedTheme}
-        rightToolRailTitleBarFillWidth={rightToolRailTitleBarFillWidth}
-        windowFrameState={windowFrameState}
-      />
-      {effectiveLeftPanelCollapsed ? null : (
-        <div className="col-[1/2] row-[2/3] h-full overflow-hidden">
-          <MachineSidebarStoreBridge
-            activeView={machineSidebarView}
-            collapsed={false}
-            collapsedGroupIds={collapsedMachineGroupIds}
-            containerHostId={hostContainersHostId}
-            containerInitialContainerId={hostContainersInitialContainerId}
-            groups={machineGroups}
-            onActiveViewChange={setMachineSidebarView}
-            onAddConnection={openConnectionDialog}
-            onAddGroup={() => openRemoteGroupDialog()}
-            onAddMachine={(groupId) =>
-              openConnectionDialog({ groupId, mode: "ssh" })
-            }
-            onContainerHostChange={selectHostContainersHost}
-            onDeleteGroup={requestDeleteGroup}
-            onDeleteMachine={requestDeleteMachine}
-            onCollapsedGroupIdsChange={handleCollapsedMachineGroupIdsChange}
-            onDuplicateMachine={(machineId) =>
-              void handleDuplicateMachine(machineId)
-            }
-            onEnterContainer={enterHostContainer}
-            onEditGroup={openRemoteGroupDialog}
-            onEditMachine={(hostId) => openConnectionDialog({ hostId })}
-            onExternalMachineDrag={handleExternalMachineDrag}
-            onExternalMachineDragEnd={handleExternalMachineDragEnd}
-            onExternalMachineDrop={handleExternalMachineDrop}
-            onFetchContainerStats={fetchDockerContainerStats}
-            onInspectContainer={inspectDockerContainer}
-            onLifecycleContainer={runHostContainerLifecycleAction}
-            onListDockerContainers={listDockerContainers}
-            onMoveMachine={(machineId, groupId) =>
-              void handleMoveMachineToGroup(machineId, groupId)
-            }
-            onOpenSettings={() => openSettingsTool()}
-            onOpenLocalTerminal={openLocalTerminal}
-            onOpenContainerTerminal={openContainerTerminal}
-            onOpenContainerDetails={openContainerDetails}
-            onOpenHostContainers={openHostContainersSidebar}
-            onOpenContainerLogs={openHostContainerLogs}
-            onOpenWorkspaceFileTab={openWorkspaceFileTab}
-            onOpenRdpConnection={openSavedRdpMachine}
-            onOpenSftp={openSftpForMachine}
-            onOpenSshTerminal={openSshTerminal}
-            onOpenSftpTransferWorkbench={openSftpTransferWorkbench}
-            onOpenTransferWorkbench={() => openSftpTransferWorkbench()}
-            onOpenTelnetTerminal={openTelnetTerminal}
-            onOpenSerialTerminal={openSerialTerminal}
-            onPinGroup={(groupId, pinned) =>
-              void handlePinMachineGroup(groupId, pinned)
-            }
-            onPinContainer={pinHostContainer}
-            onSearchChange={setMachineSearch}
-            onSelectMachine={selectMachine}
-            rdpOpeningMachineIds={rdpOpeningMachineIds}
-            search={machineSearch}
-            selectedMachineId={selectedMachineId}
-            settingsSelected={settingsDialogOpen}
-          />
-        </div>
-      )}
-      <ShellResizeSeparator
-        className="kerminal-shell-separator col-[2/3] row-[2/3]"
-        hidden={effectiveLeftPanelCollapsed}
-        label="调整主机侧边栏宽度"
-        onKeyDown={(event) => resizeWithKeyboard("left", event)}
-        onPointerDown={(event) => beginPanelResize("left", event)}
-      />
-      <div
-        className="relative z-0 h-full min-w-0 flex-1 overflow-hidden"
-        style={{ gridColumn: "3 / 6", gridRow: "1 / 3" }}
-      >
-        <WorkspaceTerminalSurface
-          contentRightInset={rightWorkspaceInset}
-          createdSftpHostTarget={createdSftpHostTarget}
-          desktopNotifications={settings.desktopNotifications}
-          interfaceDensity={settings.interfaceDensity}
-          machineGroups={machineGroups}
-          onBroadcastCommand={handleBroadcastCommand}
-          onCreateSftpHost={openSftpTransferHostCreateDialog}
-          onOpenAgentTool={() => setActiveTool("agentLauncher")}
-          onOpenConnection={() => openConnectionDialog({ mode: "ssh" })}
-          onOpenLogs={openLogsTool}
-          leftTitleBarInset={leftTitleBarInset}
-          reserveRightTitleBarControls={reserveRightTitleBarControls}
-          resolvedTheme={resolvedTheme}
-          splitDropIndicator={terminalSplitDropIndicator}
-          terminalAppearance={settings.terminal}
-        />
-      </div>
-      <ShellResizeSeparator
-        className="kerminal-shell-separator relative z-20"
-        hidden={!effectiveRightPanelOpen}
-        label="调整工具面板宽度"
-        onKeyDown={(event) => resizeWithKeyboard("tools", event)}
-        onPointerDown={(event) => beginPanelResize("tools", event)}
-        style={{ gridColumn: "4 / 5", gridRow: "2 / 3" }}
-      />
-      <div
-        className="relative z-20 h-full overflow-hidden"
-        style={{ gridColumn: "5 / 6", gridRow: "2 / 3" }}
-      >
-        {activeTool === null || compactShell ? (
-          <ShellToolRail onActiveToolChange={activateShellTool} />
-        ) : (
-          <ToolPanelStoreBridge
-            activeTool={activeTool}
-            defaultRemoteGroupId={defaultRemoteGroupId}
-            defaultRemoteHostId={defaultRemoteHostId}
-            machineGroups={machineGroups}
-            onActiveToolChange={activateShellTool}
-            onCreateTerminal={addTerminalTab}
-            onFocusTab={selectTab}
-            onOpenSettingsSection={openSettingsTool}
-            onOpenSshTerminal={openSshTerminal}
-            onRemoteHostCreated={refreshRemoteHostTree}
-            onSettingsChange={handleSettingsChange}
-            onSplitPane={splitFocusedPane}
-            resolvedTheme={resolvedTheme}
-            settings={settings}
-            snippetConfigRevision={configCatalogRevisions.snippets}
-            terminalAppearance={settings.terminal}
-            workflowConfigRevision={configCatalogRevisions.workflows}
-          />
-        )}
-      </div>
-      {settingsDialogOpen ? (
-        <Suspense fallback={<DialogLazyFallback />}>
-          <LazySettingsDialog
-            initialSectionId={settingsInitialSectionId}
-            onClose={handleSettingsDialogClose}
-            onSettingsChange={handleSettingsDialogChange}
-            open={settingsDialogOpen}
-            saveError={settingsSaveError}
-            saveState={settingsSaveState}
-            settings={settings}
-          />
-        </Suspense>
-      ) : null}
-      {remoteHostDialogOpen ? (
-        <Suspense fallback={<DialogLazyFallback />}>
-          <LazyRemoteHostCreateDialog
-            defaultGroupId={remoteHostDefaultGroupId ?? defaultRemoteGroupId}
-            defaultMode={remoteHostDefaultMode}
-            editingHost={editingRemoteHost}
-            editingLocalMachine={editingLocalMachine}
-            externalConfigConflict={connectionConfigConflict?.message}
-            groups={machineGroups}
-            onClose={handleConnectionDialogClose}
-            onCreateGroup={createRemoteHostGroup}
-            onCreateLocal={handleCreateLocalProfile}
-            onCreateHost={handleCreateRemoteHost}
-            onUpdateHost={updateRemoteHost}
-            onUpdateLocal={handleUpdateLocalProfile}
-            onCreated={handleConnectionDialogCreated}
-            onGroupCreated={handleRemoteGroupSaved}
-            open={remoteHostDialogOpen}
-          />
-        </Suspense>
-      ) : null}
-      {remoteGroupDialogOpen ? (
-        <Suspense fallback={<DialogLazyFallback />}>
-          <LazyRemoteHostGroupCreateDialog
-            externalConfigConflict={remoteGroupConfigConflict?.message}
-            group={editingRemoteGroup}
-            onClose={closeRemoteGroupDialog}
-            onCreateGroup={createRemoteHostGroup}
-            onUpdateGroup={handleRemoteGroupUpdate}
-            onCreated={handleRemoteGroupSaved}
-            open={remoteGroupDialogOpen}
-          />
-        </Suspense>
-      ) : null}
-      <DeleteConfirmationDialog
-        deleteError={deleteError}
-        deleting={deleteSaving}
-        onClose={() => {
+    <KerminalShellLayout
+      activeTool={activeTool}
+      compactShell={compactShell}
+      contextWorkspaceProps={{ onOpenSettings: openSettingsTool }}
+      deleteDialogProps={{
+        deleteError, deleting: deleteSaving, pendingDelete,
+        onConfirm: () => void confirmDelete(),
+        onClose: () => {
           if (!deleteSaving) {
             setPendingDelete(null);
             setDeleteError(null);
           }
-        }}
-        onConfirm={() => void confirmDelete()}
-        pendingDelete={pendingDelete}
-      />
-      <CloseTabsConfirmationDialog
-        onClose={() => setPendingShellCloseTabIds(null)}
-        onConfirm={confirmShellCloseTabs}
-        tabCount={pendingShellCloseTabIds?.length ?? 0}
-      />
-      <CloseWorkspaceFileTabsConfirmationDialog
-        dirtyTabCount={
-          pendingShellDirtyCloseTabIds?.filter(
-            (tabId) => workspaceFileDirtyState[tabId],
-          ).length ?? 0
-        }
-        onClose={() => setPendingShellDirtyCloseTabIds(null)}
-        onConfirm={confirmShellDirtyCloseTabs}
-        tabCount={pendingShellDirtyCloseTabIds?.length ?? 0}
-      />
-      <KerminalShellNotices
-        configNotice={configNotice}
-        onConfigNoticeDismiss={() => setConfigNotice(null)}
-        onShellNoticeDismiss={() => setShellNoticeVisible(false)}
-        shellNoticeMessage={shellNoticeMessage}
-        shellNoticeVisible={shellNoticeVisible}
-      />
-      <KerminalShellContextWorkspaceStoreBridge
-        onOpenSettings={openSettingsTool}
-      />
-      <Suspense fallback={null}>
-        <LazySshAuthPromptHost />
-        <LazyExternalLaunchHost />
-      </Suspense>
-    </div>
+        },
+      }}
+      frame={{
+        backgroundStyle: workspaceBackgroundStyle, density: settings.interfaceDensity,
+        desktopPlatform, gridTemplateColumns,
+        lang: htmlLanguage(settings.appearance.interfaceLanguage),
+        language: settings.appearance.interfaceLanguage, resolvedTheme,
+        windowFrameState, workspaceFrameRef,
+      }}
+      leftSeparatorProps={{
+        className: "kerminal-shell-separator col-[2/3] row-[2/3]",
+        hidden: effectiveLeftPanelCollapsed, label: "调整主机侧边栏宽度",
+        onKeyDown: (event) => resizeWithKeyboard("left", event),
+        onPointerDown: (event) => beginPanelResize("left", event),
+      }}
+      machineSidebarProps={effectiveLeftPanelCollapsed ? null : {
+        activeView: machineSidebarView, collapsed: false, collapsedGroupIds: collapsedMachineGroupIds,
+        containerHostId: hostContainersHostId, containerInitialContainerId: hostContainersInitialContainerId,
+        groups: machineGroups, onActiveViewChange: setMachineSidebarView,
+        onAddConnection: openConnectionDialog, onAddGroup: openRemoteGroupDialog,
+        onAddMachine: (groupId) => openConnectionDialog({ groupId, mode: "ssh" }),
+        onCollapsedGroupIdsChange: handleCollapsedMachineGroupIdsChange,
+        onContainerHostChange: selectHostContainersHost, onDeleteGroup: requestDeleteGroup,
+        onDeleteMachine: requestDeleteMachine,
+        onDuplicateMachine: (machineId) => void handleDuplicateMachine(machineId),
+        onEditGroup: openRemoteGroupDialog, onEditMachine: (hostId) => openConnectionDialog({ hostId }),
+        onEnterContainer: enterHostContainer, onExternalMachineDrag: handleExternalMachineDrag,
+        onExternalMachineDragEnd: handleExternalMachineDragEnd,
+        onExternalMachineDrop: handleExternalMachineDrop,
+        onFetchContainerStats: fetchDockerContainerStats, onInspectContainer: inspectDockerContainer,
+        onLifecycleContainer: runHostContainerLifecycleAction, onListDockerContainers: listDockerContainers,
+        onMoveMachine: (machineId, groupId) => void handleMoveMachineToGroup(machineId, groupId),
+        onOpenContainerDetails: openContainerDetails,
+        onOpenContainerLogs: openHostContainerLogs, onOpenContainerTerminal: openContainerTerminal,
+        onOpenHostContainers: openHostContainersSidebar, onOpenLocalTerminal: openLocalTerminal,
+        onOpenRdpConnection: openSavedRdpMachine, onOpenSerialTerminal: openSerialTerminal,
+        onOpenSettings: openSettingsTool, onOpenSftp: openSftpForMachine,
+        onOpenSftpTransferWorkbench: openSftpTransferWorkbench,
+        onOpenSshTerminal: openSshTerminal, onOpenTelnetTerminal: openTelnetTerminal,
+        onOpenTransferWorkbench: openSftpTransferWorkbench,
+        onOpenWorkspaceFileTab: openWorkspaceFileTab,
+        onPinContainer: pinHostContainer,
+        onPinGroup: (groupId, pinned) => void handlePinMachineGroup(groupId, pinned),
+        onSearchChange: setMachineSearch, onSelectMachine: selectMachine,
+        rdpOpeningMachineIds, search: machineSearch, selectedMachineId,
+        settingsSelected: settingsDialogOpen,
+      }}
+      noticesProps={{
+        configNotice, shellNoticeMessage, shellNoticeVisible,
+        onConfigNoticeDismiss: () => setConfigNotice(null),
+        onShellNoticeDismiss: () => setShellNoticeVisible(false),
+      }}
+      onActiveToolChange={activateShellTool}
+      onCloseToolPanel={() => setActiveTool(null)}
+      remoteGroupDialogProps={remoteGroupDialogOpen ? {
+        externalConfigConflict: remoteGroupConfigConflict?.message, group: editingRemoteGroup,
+        onClose: closeRemoteGroupDialog, onCreateGroup: createRemoteHostGroup,
+        onCreated: handleRemoteGroupSaved, onUpdateGroup: handleRemoteGroupUpdate,
+        open: remoteGroupDialogOpen,
+      } : null}
+      remoteHostDialogProps={remoteHostDialogOpen ? {
+        defaultGroupId: remoteHostDefaultGroupId ?? defaultRemoteGroupId,
+        defaultMode: remoteHostDefaultMode, editingHost: editingRemoteHost,
+        editingLocalMachine, externalConfigConflict: connectionConfigConflict?.message,
+        groups: machineGroups, onClose: handleConnectionDialogClose,
+        onCreateGroup: createRemoteHostGroup, onCreateHost: handleCreateRemoteHost,
+        onCreateLocal: handleCreateLocalProfile, onCreated: handleConnectionDialogCreated,
+        onGroupCreated: handleRemoteGroupSaved, onUpdateHost: updateRemoteHost,
+        onUpdateLocal: handleUpdateLocalProfile, open: remoteHostDialogOpen,
+      } : null}
+      rightSeparatorProps={{
+        className: "kerminal-shell-separator relative z-20",
+        hidden: !effectiveRightPanelOpen, label: "调整工具面板宽度",
+        onKeyDown: (event) => resizeWithKeyboard("tools", event),
+        onPointerDown: (event) => beginPanelResize("tools", event),
+        style: { gridColumn: "4 / 5", gridRow: "2 / 3" },
+      }}
+      settingsDialogProps={settingsDialogOpen ? {
+        initialSectionId: settingsInitialSectionId, onClose: handleSettingsDialogClose,
+        onSettingsChange: handleSettingsDialogChange, open: settingsDialogOpen,
+        saveError: settingsSaveError, saveState: settingsSaveState, settings,
+      } : null}
+      shellWindowChromeProps={{
+        desktopPlatform, leftPanelCollapsed,
+        onLeftPanelCollapsedChange: setLeftPanelCollapsed, resolvedTheme,
+        rightToolRailTitleBarFillWidth, windowFrameState,
+      }}
+      tabsConfirmationProps={{
+        onClose: () => setPendingShellCloseTabIds(null),
+        onConfirm: confirmShellCloseTabs, tabCount: pendingShellCloseTabIds?.length ?? 0,
+      }}
+      toolPanelProps={{
+        activeTool, defaultRemoteGroupId, defaultRemoteHostId, machineGroups,
+        onActiveToolChange: activateShellTool, onCreateTerminal: addTerminalTab,
+        onFocusTab: selectTab, onOpenSettingsSection: openSettingsTool,
+        onOpenSshTerminal: openSshTerminal, onRemoteHostCreated: refreshRemoteHostTree,
+        onSettingsChange: handleSettingsChange, onSplitPane: splitFocusedPane,
+        resolvedTheme, settings, snippetConfigRevision: configCatalogRevisions.snippets,
+        terminalAppearance: settings.terminal,
+        workflowConfigRevision: configCatalogRevisions.workflows,
+      }}
+      workspaceFileConfirmationProps={{
+        dirtyTabCount: pendingShellDirtyCloseTabIds?.filter(
+          (tabId) => workspaceFileDirtyState[tabId],
+        ).length ?? 0,
+        onClose: () => setPendingShellDirtyCloseTabIds(null),
+        onConfirm: confirmShellDirtyCloseTabs,
+        tabCount: pendingShellDirtyCloseTabIds?.length ?? 0,
+      }}
+      workspaceTerminalProps={{
+        contentRightInset: rightWorkspaceInset, createdSftpHostTarget,
+        desktopNotifications: settings.desktopNotifications,
+        interfaceDensity: settings.interfaceDensity, leftTitleBarInset,
+        machineGroups, onBroadcastCommand: handleBroadcastCommand,
+        onCreateSftpHost: openSftpTransferHostCreateDialog,
+        onOpenAgentTool: () => setActiveTool("agentLauncher"),
+        onOpenConnection: () => openConnectionDialog({ mode: "ssh" }),
+        onOpenLogs: openLogsTool, reserveRightTitleBarControls,
+        resolvedTheme, splitDropIndicator: terminalSplitDropIndicator,
+        terminalAppearance: settings.terminal,
+      }}
+    />
   );
 }

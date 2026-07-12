@@ -9,9 +9,6 @@ import { Button } from "../../../components/ui/button";
 import { IconAction } from "../../../components/ui/icon-action";
 import { UserFacingNotice } from "../../../components/ui/user-facing-notice";
 import {
-  AgentWorkflowHistoryList,
-  AgentWorkflowSessionCommands,
-  AgentWorkflowStatusBadge,
   type AgentWorkflowSnapshot,
 } from "../../agent-workflow";
 import { cn } from "../../../lib/cn";
@@ -30,6 +27,7 @@ import {
   AgentLaunchContextMenu,
   type AgentLaunchTargetMode,
 } from "./AgentLaunchControls";
+import { AgentConversationList } from "./AgentConversationList";
 
 export type AgentLauncherLoadState =
   "idle" | "loading" | "refreshing" | "error";
@@ -52,6 +50,7 @@ interface AgentLauncherViewProps {
   actionState: AgentLauncherActionState;
   agentActions: AgentActionViewModel[];
   agentTechnicalDetail: string;
+  currentAgentTarget?: AgentSessionTargetRequest;
   currentAgentTargetLabel: string;
   customCommand: string;
   customCommandOpen: boolean;
@@ -73,6 +72,8 @@ interface AgentLauncherViewProps {
   onRetry: () => void;
   onWorkflowContinue: (sessionId: string) => void;
   onWorkflowNewSession: (sessionId: string) => void;
+  onWorkflowRename: (sessionId: string, title: string) => Promise<boolean>;
+  renamingSessionId: string | null;
   workflowSnapshot: AgentWorkflowSnapshot;
 }
 
@@ -99,6 +100,7 @@ export function AgentLauncherView({
   actionState,
   agentActions,
   agentTechnicalDetail,
+  currentAgentTarget,
   currentAgentTargetLabel,
   customCommand,
   customCommandOpen,
@@ -116,6 +118,8 @@ export function AgentLauncherView({
   onRetry,
   onWorkflowContinue,
   onWorkflowNewSession,
+  onWorkflowRename,
+  renamingSessionId,
   workflowSnapshot,
 }: AgentLauncherViewProps) {
   const [technicalDetailsOpen, setTechnicalDetailsOpen] = useState(false);
@@ -167,26 +171,29 @@ export function AgentLauncherView({
     <div
       aria-hidden={!visible}
       className={cn(
-        "absolute inset-0 flex min-h-0 flex-col px-3 py-4 transition-opacity duration-150",
+        "absolute inset-0 flex min-h-0 flex-col px-3 py-3 transition-opacity duration-150",
         visible ? "opacity-100" : "pointer-events-none select-none opacity-0",
       )}
     >
-      <div className="flex min-h-0 flex-1 items-center justify-center">
+      <div className="scrollbar-none min-h-0 flex-1 overflow-y-auto">
         <div
-          className="relative w-full max-w-[260px]"
+          className="relative mx-auto w-full max-w-[280px]"
           ref={launcherMenuRootRef}
         >
-          <div className="mb-2 flex min-w-0 items-center gap-1 px-1">
+          <div className="mb-2 flex min-w-0 items-start gap-2 px-1">
             <div
-              className="flex min-w-0 flex-1 items-center justify-center gap-1.5 px-1 text-[11px]"
+              className="min-w-0 flex-1"
               data-testid="agent-current-target"
               title={currentAgentTargetLabel}
             >
-              <span className="shrink-0 text-zinc-500 dark:text-zinc-400">
-                当前目标
-              </span>
-              <span className="min-w-0 truncate font-medium text-zinc-800 dark:text-zinc-200">
+              <h1 className="text-sm font-semibold text-zinc-950 dark:text-zinc-100">
+                新建对话
+              </h1>
+              <span className="mt-0.5 block truncate text-[11px] text-zinc-500 dark:text-zinc-400">
+                当前目标 ·{" "}
+                <span className="font-medium text-zinc-700 dark:text-zinc-300">
                 {currentAgentTargetLabel}
+                </span>
               </span>
             </div>
             <IconAction
@@ -214,7 +221,7 @@ export function AgentLauncherView({
           {technicalDetailsOpen ? (
             <div
               aria-label="Agent 技术详情"
-              className="kerminal-muted-surface mt-2 rounded-xl border p-2.5"
+              className="kerminal-muted-surface mt-2 rounded-lg border p-2.5"
               id="agent-launcher-technical-details"
               role="region"
             >
@@ -241,7 +248,7 @@ export function AgentLauncherView({
 
           {customCommandOpen ? (
             <form
-              className="mt-3 flex items-center gap-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-field)] p-1.5 shadow-sm shadow-black/5 dark:shadow-black/20"
+              className="mt-3 flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-field)] p-1.5 shadow-sm shadow-black/5 dark:shadow-black/20"
               onSubmit={(event) => {
                 event.preventDefault();
                 onCustomCommandSubmit();
@@ -251,7 +258,7 @@ export function AgentLauncherView({
               <input
                 aria-label="Custom agent command"
                 autoFocus
-                className="h-8 min-w-0 flex-1 rounded-xl border border-transparent bg-transparent px-2 font-mono text-xs text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-sky-400/50 focus:bg-white/70 focus:ring-4 focus:ring-sky-400/15 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:bg-white/10"
+                className="h-8 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 font-mono text-xs text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-sky-400/50 focus:bg-white/70 focus:ring-4 focus:ring-sky-400/15 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:bg-white/10"
                 onChange={(event) => onCustomCommandChange(event.target.value)}
                 placeholder="kimi or qwen --model ..."
                 value={customCommand}
@@ -282,46 +289,16 @@ export function AgentLauncherView({
             />
           ) : null}
 
-          {workflowSnapshot.sessions.length > 0 ? (
-            <section
-              aria-label="Agent Workflow 会话"
-              className="mt-3 max-h-48 overflow-auto rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-solid)]"
-            >
-              {workflowSnapshot.sessions.map((session) => (
-                <div
-                  className="border-b border-[var(--border-subtle)] p-2 last:border-b-0"
-                  key={session.agentSessionId}
-                >
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span
-                      className="min-w-0 flex-1 truncate text-xs font-semibold text-zinc-900 dark:text-zinc-100"
-                      title={session.title}
-                    >
-                      {session.title}
-                    </span>
-                    <AgentWorkflowStatusBadge status={session.runtimeStatus} />
-                  </div>
-                  <AgentWorkflowSessionCommands
-                    disabled={actionState !== null}
-                    onContinue={onWorkflowContinue}
-                    onNewSession={onWorkflowNewSession}
-                    sessionId={session.agentSessionId}
-                  />
-                </div>
-              ))}
-            </section>
-          ) : null}
-
-          {workflowSnapshot.historyMetadata.length > 0 ? (
-            <section
-              aria-label="Agent Workflow 历史"
-              className="mt-3 max-h-40 overflow-auto rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-solid)]"
-            >
-              <AgentWorkflowHistoryList
-                items={workflowSnapshot.historyMetadata}
-              />
-            </section>
-          ) : null}
+          <AgentConversationList
+            actionDisabled={actionState !== null}
+            currentTarget={currentAgentTarget}
+            historyMetadata={workflowSnapshot.historyMetadata}
+            onContinue={onWorkflowContinue}
+            onNewSession={onWorkflowNewSession}
+            onRename={onWorkflowRename}
+            renamingSessionId={renamingSessionId}
+            sessions={workflowSnapshot.sessions}
+          />
         </div>
       </div>
 
@@ -365,7 +342,7 @@ function AgentRestoreChoicePanel({
   const busy = actionState === choice.agentId;
   const disabled = actionState !== null;
   return (
-    <div className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-solid)] p-2 shadow-lg shadow-black/10 dark:shadow-black/35">
+    <div className="mt-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-solid)] p-2 shadow-lg shadow-black/10 dark:shadow-black/35">
       <div className="flex min-w-0 items-center gap-2 px-1">
         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-zinc-900 dark:text-zinc-100">
           {agentTitle(choice.agentId)}
@@ -386,7 +363,7 @@ function AgentRestoreChoicePanel({
       </div>
       <div className="mt-2 grid grid-cols-3 gap-1">
         <button
-          className="kerminal-pressable kerminal-focus-ring h-8 rounded-xl bg-zinc-900 px-2 text-[11px] font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-45 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white"
+          className="kerminal-pressable kerminal-focus-ring h-8 rounded-md bg-zinc-900 px-2 text-[11px] font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-45 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white"
           disabled={disabled}
           onClick={() => onContinue(choice)}
           type="button"
@@ -398,7 +375,7 @@ function AgentRestoreChoicePanel({
           )}
         </button>
         <button
-          className="kerminal-pressable kerminal-focus-ring h-8 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-hover)] px-2 text-[11px] font-semibold text-zinc-700 transition hover:bg-[var(--surface-field)] disabled:cursor-not-allowed disabled:opacity-45 dark:text-zinc-200"
+          className="kerminal-pressable kerminal-focus-ring h-8 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-hover)] px-2 text-[11px] font-semibold text-zinc-700 transition hover:bg-[var(--surface-field)] disabled:cursor-not-allowed disabled:opacity-45 dark:text-zinc-200"
           disabled={disabled}
           onClick={() => onNewSession(choice)}
           type="button"
@@ -406,7 +383,7 @@ function AgentRestoreChoicePanel({
           新会话
         </button>
         <button
-          className="kerminal-pressable kerminal-focus-ring h-8 rounded-xl px-2 text-[11px] font-medium text-zinc-500 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-45 dark:text-zinc-400"
+          className="kerminal-pressable kerminal-focus-ring h-8 rounded-md px-2 text-[11px] font-medium text-zinc-500 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-45 dark:text-zinc-400"
           disabled={disabled}
           onClick={onCancel}
           type="button"

@@ -1,5 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
   WorkspaceActionRegistry,
@@ -13,6 +19,14 @@ interface TestCatalog extends WorkspaceActionCatalog {
   open: undefined;
   remove: { targetId: string };
   slow: undefined;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }
 
 function registry() {
@@ -37,6 +51,7 @@ function renderPalette(
 ) {
   const onConfirmationRequired = overrides.onConfirmationRequired ?? vi.fn();
   const onOpenTool = overrides.onOpenTool ?? vi.fn();
+  const onClose = vi.fn();
   render(
     <CommandPalette
       context={overrides.context ?? { revision: "r1" }}
@@ -49,14 +64,14 @@ function renderPalette(
         keybinding: descriptor.id === "open" ? "Ctrl+O" : undefined,
         scope: "当前目标",
       })}
-      onClose={vi.fn()}
+      onClose={onClose}
       onConfirmationRequired={onConfirmationRequired}
       onOpenTool={onOpenTool}
       open
       registry={registry()}
     />,
   );
-  return { onConfirmationRequired, onOpenTool };
+  return { onClose, onConfirmationRequired, onOpenTool };
 }
 
 describe("CommandPalette", () => {
@@ -68,7 +83,7 @@ describe("CommandPalette", () => {
         toolId: "sftp",
       }),
     };
-    const { onOpenTool } = renderPalette(executor);
+    const { onClose, onOpenTool } = renderPalette(executor);
 
     expect(screen.getAllByText("工作区").length).toBeGreaterThan(0);
     expect(screen.getAllByText("当前目标").length).toBeGreaterThan(0);
@@ -79,12 +94,13 @@ describe("CommandPalette", () => {
     await waitFor(() =>
       expect(onOpenTool).toHaveBeenCalledWith("sftp", { path: "/tmp" }),
     );
+    expect(onClose).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("status")).toHaveTextContent("工具已打开");
   });
 
   it("forwards protected actions to confirmation without executor access", async () => {
     const executor: WorkspaceActionExecutor = { execute: vi.fn() };
-    const { onConfirmationRequired } = renderPalette(executor);
+    const { onClose, onConfirmationRequired } = renderPalette(executor);
 
     fireEvent.click(screen.getByText("删除目标"));
 
@@ -96,6 +112,7 @@ describe("CommandPalette", () => {
         title: "删除目标",
       }),
     );
+    expect(onClose).toHaveBeenCalledTimes(1);
     expect(executor.execute).not.toHaveBeenCalled();
   });
 
@@ -135,5 +152,102 @@ describe("CommandPalette", () => {
     unmount();
     expect(invocation?.signal?.aborted).toBe(true);
     finish?.();
+  });
+
+  it("ignores a cancelled invocation after the palette closes and reopens", async () => {
+    const pending = deferred<{ kind: "completed" }>();
+    const executor: WorkspaceActionExecutor = {
+      execute: vi.fn(() => pending.promise),
+    };
+    const onClose = vi.fn();
+    const view = render(
+      <CommandPalette
+        context={{ revision: "r1" }}
+        executor={executor}
+        getPayload={() => undefined}
+        onClose={onClose}
+        onConfirmationRequired={vi.fn()}
+        onOpenTool={vi.fn()}
+        open
+        registry={registry()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("慢速检查"));
+    const invocation = vi.mocked(executor.execute).mock.calls[0]?.[1];
+    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(invocation?.signal?.aborted).toBe(true);
+
+    view.rerender(
+      <CommandPalette
+        context={{ revision: "r1" }}
+        executor={executor}
+        getPayload={() => undefined}
+        onClose={onClose}
+        onConfirmationRequired={vi.fn()}
+        onOpenTool={vi.fn()}
+        open={false}
+        registry={registry()}
+      />,
+    );
+    view.rerender(
+      <CommandPalette
+        context={{ revision: "r1" }}
+        executor={executor}
+        getPayload={() => undefined}
+        onClose={onClose}
+        onConfirmationRequired={vi.fn()}
+        onOpenTool={vi.fn()}
+        open
+        registry={registry()}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("status")).not.toHaveTextContent("动作已取消"),
+    );
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pending.resolve({ kind: "completed" });
+      await pending.promise;
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a newer invocation own feedback and close behavior", async () => {
+    const pending = deferred<{ kind: "completed" }>();
+    const executor: WorkspaceActionExecutor = {
+      execute: vi.fn((descriptor) =>
+        descriptor.id === "slow"
+          ? pending.promise
+          : Promise.resolve({
+              error: {
+                severity: "error" as const,
+                title: "当前调用失败",
+              },
+              kind: "failure" as const,
+            }),
+      ),
+    };
+    const { onClose } = renderPalette(executor);
+
+    fireEvent.click(screen.getByText("慢速检查"));
+    fireEvent.click(screen.getByText("打开文件"));
+
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("当前调用失败"),
+    );
+    expect(onClose).not.toHaveBeenCalled();
+
+    await act(async () => {
+      pending.resolve({ kind: "completed" });
+      await pending.promise;
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent("当前调用失败");
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

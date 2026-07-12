@@ -114,7 +114,7 @@ describe("Agent Workflow production UI", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "继续" }));
+    await user.click(screen.getByRole("button", { name: "继续对话" }));
     await user.click(screen.getByRole("button", { name: "同 Agent 新会话" }));
     expect(onContinue).toHaveBeenCalledWith("session-42");
     expect(onNewSession).toHaveBeenCalledWith("session-42");

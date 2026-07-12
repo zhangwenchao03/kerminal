@@ -28,11 +28,12 @@ export function AgentWorkflowSessionCommands({
         disabled={disabled}
         onClick={() => onContinue(sessionId)}
         size="sm"
+        title="恢复这段对话并打开 Agent 终端"
         type="button"
         variant="secondary"
       >
         <Play aria-hidden="true" className="h-4 w-4" />
-        继续
+        继续对话
       </Button>
       <Button
         disabled={disabled}

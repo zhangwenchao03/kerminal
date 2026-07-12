@@ -47,13 +47,43 @@ export function resolveAgentWorkflowSessionSnapshot({
   return {
     agentId: record.session.agentId ?? record.session.agent_id,
     agentSessionId,
+    createdAt: record.session.createdAt ?? record.session.created_at,
     repositoryStatus,
     runtimeStatus,
     statusSource: terminalMatches ? "terminalSignal" : "repository",
     terminalAgent: terminalMatches ? signal.agent : undefined,
     terminalSessionId: terminalMatches ? signal.terminalSessionId : undefined,
     terminalStatus: terminalMatches ? signal.status : undefined,
+    target: record.session.target
+      ? {
+          bindingId:
+            record.session.target.bindingId ?? record.session.target.binding_id,
+          bindingGeneration:
+            record.session.target.bindingGeneration ??
+            record.session.target.binding_generation,
+          cwd: record.session.target.cwd,
+          lastSeenAt:
+            record.session.target.lastSeenAt ??
+            record.session.target.last_seen_at,
+          liveStatus:
+            record.session.target.liveStatus ??
+            record.session.target.live_status,
+          paneId:
+            record.session.target.paneId ?? record.session.target.pane_id,
+          shell: record.session.target.shell,
+          tabId: record.session.target.tabId ?? record.session.target.tab_id,
+          targetKind:
+            record.session.target.targetKind ??
+            record.session.target.target_kind,
+          targetRef:
+            record.session.target.targetRef ?? record.session.target.target_ref,
+          targetTerminalSessionId:
+            record.session.target.targetTerminalSessionId ??
+            record.session.target.target_terminal_session_id,
+        }
+      : undefined,
     title: record.session.title,
+    updatedAt: record.session.updatedAt ?? record.session.updated_at,
   };
 }
 

@@ -144,7 +144,8 @@ export interface WorkspaceContextRuntime {
 
 export interface WorkspaceContextAgent {
   readonly sessionId: string | null;
-  readonly status: "unavailable";
+  readonly status: "active" | "loading" | "stale" | "unavailable";
+  readonly title?: string;
 }
 
 /**
@@ -178,6 +179,7 @@ export interface WorkspaceContextProjectionInput {
   readonly activeTabId?: string | null;
   readonly focusedPaneId?: string | null;
   readonly selectedMachineId?: string | null;
+  readonly agent?: WorkspaceContextAgent;
   readonly machineGroups: readonly MachineGroup[];
   readonly terminalTabs: readonly TerminalTab[];
   readonly terminalPanes: readonly TerminalPane[];

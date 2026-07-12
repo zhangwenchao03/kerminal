@@ -67,6 +67,8 @@ import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeSched
 import { useTransientTerminalNotice } from "./useTransientTerminalNotice";
 import { useXtermPaneSuggestionMenu } from "./useXtermPaneSuggestionMenu";
 import { useXtermPaneSearch } from "./XtermPane.search";
+import { requestAgentSend } from "../agent-workflow/agentSendRequestStore";
+import { updateTerminalPaneRuntimeContext } from "./terminalSessionRegistry";
 import {
   XtermPaneView,
   type XtermPaneContextMenuState,
@@ -85,6 +87,7 @@ export function XtermPane({
   args,
   currentCwd,
   cwd,
+  enableAgentSendActions = true,
   env,
   focusRequestToken,
   focused,
@@ -99,6 +102,7 @@ export function XtermPane({
   shell,
   shellAssistEnabled = true,
   startupMessage,
+  tabId,
   terminalAppearance,
   terminalColorSchemeOverride,
   target,
@@ -607,6 +611,10 @@ export function XtermPane({
         if (sessionId) {
           void writeDesktopClipboardText(sessionId);
         }
+      } else if (action === "sendSelectionToAgent") {
+        requestAgentSend({ paneId, source: "selection", tabId });
+      } else if (action === "sendContextToAgent") {
+        requestAgentSend({ paneId, source: "context", tabId });
       } else if (action === "paste") {
         void pasteIntoTerminal(terminal, sessionId);
       } else if (action === "selectAll") {
@@ -648,6 +656,8 @@ export function XtermPane({
     [
       onOpenLogs,
       onSplitPane,
+      paneId,
+      tabId,
       disconnectTerminal,
       reconnectTerminal,
       startLogging,
@@ -664,20 +674,28 @@ export function XtermPane({
     const terminal = terminalRef.current;
     const sessionId = sessionIdRef.current;
     const rightClickBehavior = terminalAppearanceRef.current.rightClickBehavior;
-    if (rightClickBehavior === "none") {
+    const openMenuWithModifier = event.shiftKey && enableAgentSendActions;
+    if (rightClickBehavior === "none" && !openMenuWithModifier) {
       terminal?.focus();
       return;
     }
-    if (rightClickBehavior === "paste") {
+    if (rightClickBehavior === "paste" && !openMenuWithModifier) {
       void pasteIntoTerminal(terminal, sessionId);
       terminal?.focus();
       return;
     }
-
     const selection = terminal?.getSelection?.() ?? "";
-    const menuState = {
+    if (enableAgentSendActions && selection) {
+      updateTerminalPaneRuntimeContext(paneId, {
+        selectedText: selection,
+      });
+    }
+    const menuState: XtermPaneContextMenuState = {
       canCopy: selection.length > 0,
       canCopySessionId: Boolean(sessionId),
+      canSendSelectionToAgent:
+        enableAgentSendActions && selection.length > 0,
+      canSendToAgent: enableAgentSendActions,
       position: {
         x: event.clientX,
         y: event.clientY,
@@ -685,7 +703,7 @@ export function XtermPane({
     };
     setContextMenu(menuState);
     terminal?.focus();
-  }, []);
+  }, [enableAgentSendActions]);
 
   const executeCommandBlockAction = useCallback(
     (blockId: string, action: TerminalCommandBlockAction) => {
@@ -718,6 +736,16 @@ export function XtermPane({
         return;
       }
 
+      if (action === "sendToAgent") {
+        updateTerminalPaneRuntimeContext(paneId, {
+          commandBlockText: terminalCommandBlockPlainText(block),
+        });
+        requestAgentSend({ paneId, source: "commandBlock", tabId });
+        setCommandBlockNotice("已准备发送该命令块到 Agent");
+        terminalRef.current?.focus();
+        return;
+      }
+
       void copyTerminalCommandBlockAsImage(block, resolvedTheme)
         .then((result) => {
           setCommandBlockNotice(
@@ -737,12 +765,13 @@ export function XtermPane({
         });
       terminalRef.current?.focus();
     },
-    [resolvedTheme, syncCommandBlockViews],
+    [paneId, resolvedTheme, syncCommandBlockViews, tabId],
   );
 
   return (
     <XtermPaneView
       activityRuntimeRef={activityRuntimeRef}
+      agentSendActionsEnabled={enableAgentSendActions}
       canSplit={Boolean(onSplitPane)}
       commandBlockNotice={commandBlockNotice}
       commandBlockViews={commandBlockViews}

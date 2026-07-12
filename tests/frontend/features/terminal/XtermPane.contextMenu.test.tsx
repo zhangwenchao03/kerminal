@@ -2,14 +2,22 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { defaultAppSettings } from "../../../../src/features/settings/settingsModel";
 import type { TerminalOutputEvent } from "../../../../src/lib/terminalApi";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   installClipboardMock,
   mocks,
 } from "../../support/terminal/XtermPane.testSupport.tsx";
 import { XtermPane } from "../../../../src/features/terminal/XtermPane";
+import {
+  getAgentSendRequestSnapshot,
+  resetAgentSendRequestStoreForTests,
+} from "../../../../src/features/agent-workflow/agentSendRequestStore";
 
 describe("XtermPane context menu search and logging", () => {
+  beforeEach(() => {
+    resetAgentSendRequestStoreForTests();
+  });
+
   it("opens a context menu and copies the current selection", async () => {
     const user = userEvent.setup();
     const clipboard = installClipboardMock();
@@ -69,6 +77,53 @@ describe("XtermPane context menu search and logging", () => {
       "session-1",
     );
     expect(mocks.terminalInstances[0].focus).toHaveBeenCalled();
+  });
+
+  it("routes selection and context actions to the Agent request bridge", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"));
+    await user.click(
+      screen.getByRole("menuitem", { name: "发送选中内容到 Agent" }),
+    );
+    expect(getAgentSendRequestSnapshot().request).toMatchObject({
+      paneId: "pane-local",
+      source: "selection",
+    });
+
+    resetAgentSendRequestStoreForTests();
+    rerender(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+    fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"));
+    await user.click(
+      screen.getByRole("menuitem", {
+        name: "发送当前终端上下文到 Agent",
+      }),
+    );
+    expect(getAgentSendRequestSnapshot().request).toMatchObject({
+      paneId: "pane-local",
+      source: "context",
+    });
   });
 
   it("keeps the context menu at the right-click point when the measured menu fits", async () => {
@@ -203,6 +258,35 @@ describe("XtermPane context menu search and logging", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("opens the terminal menu with Shift+right-click when paste is configured", async () => {
+    render(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={{
+          ...defaultAppSettings.terminal,
+          rightClickBehavior: "paste",
+        }}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+    mocks.api.readTerminalClipboardText.mockClear();
+
+    fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"), {
+      shiftKey: true,
+    });
+
+    expect(
+      screen.getByRole("menu", { name: "终端右键菜单" }),
+    ).toBeInTheDocument();
+    expect(mocks.api.readTerminalClipboardText).not.toHaveBeenCalled();
+  });
+
   it("focuses only on right-click when terminal actions are disabled", async () => {
     const clipboard = installClipboardMock();
 
@@ -231,6 +315,33 @@ describe("XtermPane context menu search and logging", () => {
     expect(
       screen.queryByRole("menu", { name: "终端右键菜单" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("opens the terminal menu with Shift+right-click when no action is configured", async () => {
+    render(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        terminalAppearance={{
+          ...defaultAppSettings.terminal,
+          rightClickBehavior: "none",
+        }}
+        title="本地 PowerShell"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    fireEvent.contextMenu(screen.getByLabelText("本地 PowerShell xterm 终端"), {
+      shiftKey: true,
+    });
+
+    expect(
+      screen.getByRole("menu", { name: "终端右键菜单" }),
+    ).toBeInTheDocument();
   });
 
   it("automatically reconnects after a session closes when enabled", async () => {

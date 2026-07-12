@@ -10,7 +10,6 @@ import {
   agentSessionRecordAgentId,
   agentSessionRecordTarget,
   archiveAgentSession,
-  createAgentSession,
   getExternalAgentWorkspaceStatus,
   listAgentSessions,
   prepareExternalAgentWorkspace,
@@ -69,6 +68,10 @@ import {
 } from "./agent-launcher/AgentLauncherView";
 import { createAgentPromptTransport } from "./agent-launcher/agentPromptTransport";
 import { useAgentSendPreview } from "./agent-launcher/useAgentSendPreview";
+import { useAgentSessionTitleRename } from "./agent-launcher/useAgentSessionTitleRename";
+import { useAgentSendRequestCoordinator } from "./agent-launcher/useAgentSendRequestCoordinator";
+import { useAgentSendRequestSnapshot } from "../agent-workflow/agentSendRequestStore";
+import { createAgentSessionForLaunch } from "./agent-launcher/agentSessionLaunchFactory";
 
 interface AgentLauncherToolContentProps {
   activeTab?: TerminalTab;
@@ -76,6 +79,7 @@ interface AgentLauncherToolContentProps {
   focusedPane?: TerminalPane;
   resolvedTheme?: ResolvedTheme;
   terminalAppearance?: TerminalAppearance;
+  terminalPanes?: TerminalPane[];
   terminalTabs?: TerminalTab[];
 }
 
@@ -87,6 +91,7 @@ export function AgentLauncherToolContent({
   focusedPane,
   resolvedTheme = "dark",
   terminalAppearance = defaultTerminalAppearance,
+  terminalPanes,
   terminalTabs,
 }: AgentLauncherToolContentProps) {
   const workflowSignalListenersRef = useRef(
@@ -141,6 +146,20 @@ export function AgentLauncherToolContent({
     Record<string, AgentLauncherScreen | undefined>
   >({});
   const previousTerminalTabIdsRef = useRef<string[] | null>(null);
+  const pendingAgentSendRequest = useAgentSendRequestSnapshot().request;
+  const requestedPane = pendingAgentSendRequest
+    ? terminalPanes?.find((pane) => pane.id === pendingAgentSendRequest.paneId)
+    : undefined;
+  const effectiveFocusedPane = requestedPane ?? focusedPane;
+  const {
+    renameSession: renameWorkflowSession,
+    renamingSessionId,
+  } = useAgentSessionTitleRename({
+    controller: workflowController,
+    setActionError,
+    setPersistedSessions: setPersistedAgentSessions,
+    setRuntimeSessions: setAgentSessions,
+  });
   const activeAgentTabId = isTerminalSessionTab(activeTab)
     ? activeTab.id
     : undefined;
@@ -214,7 +233,11 @@ export function AgentLauncherToolContent({
     [agentActions, status],
   );
   const currentAgentTargetLabel = formatCurrentAgentTargetLabel(
-    focusedPane,
+    effectiveFocusedPane,
+    activeTab,
+  );
+  const currentAgentTarget = buildAgentSessionTarget(
+    effectiveFocusedPane,
     activeTab,
   );
 
@@ -261,7 +284,7 @@ export function AgentLauncherToolContent({
   const sendPreview = useAgentSendPreview({
     activeTab,
     controller: workflowController,
-    focusedPane,
+    focusedPane: effectiveFocusedPane,
     session: activeAgentTerminalSession,
     setActionError,
   });
@@ -335,14 +358,14 @@ export function AgentLauncherToolContent({
       agentId,
       permissionMode,
     )?.agentSessionId ?? null;
-  const setTabView = (tabId: string, nextView: AgentLauncherScreen) => {
+  const setTabView = useCallback((tabId: string, nextView: AgentLauncherScreen) => {
     setViewByTabId((current) => ({
       ...current,
       [tabId]: nextView,
     }));
-  };
+  }, []);
 
-  const activateAgentSessionForTab = (
+  const activateAgentSessionForTab = useCallback((
     tabId: string,
     agentSessionId: string,
   ) => {
@@ -351,7 +374,18 @@ export function AgentLauncherToolContent({
       [tabId]: agentSessionId,
     }));
     setTabView(tabId, "terminal");
-  };
+  }, [setTabView]);
+
+  useAgentSendRequestCoordinator({
+    activeTab,
+    agentScopeId: activeAgentScopeId,
+    createPreview: sendPreview.create,
+    onActivateSession: activateAgentSessionForTab,
+    request: pendingAgentSendRequest,
+    sessions: agentSessionList,
+    setActionError,
+    targetPane: requestedPane,
+  });
 
   const findPersistedAgentSession = (
     tabId: string,
@@ -501,9 +535,9 @@ export function AgentLauncherToolContent({
     permissionMode: AgentLaunchPermissionMode = "default",
     targetMode: AgentLaunchTargetMode = "current",
   ) => {
-    const agentSession = await createSessionForLaunch(agentId, {
+    const agentSession = await createAgentSessionForLaunch(agentId, {
       activeTab,
-      focusedPane,
+      focusedPane: effectiveFocusedPane,
       tabId: activeAgentScopeId,
       targetMode,
     });
@@ -574,9 +608,9 @@ export function AgentLauncherToolContent({
 
     void runAction("custom", async () => {
       setRestoreChoice(null);
-      const agentSession = await createSessionForLaunch("custom", {
+      const agentSession = await createAgentSessionForLaunch("custom", {
         activeTab,
-        focusedPane,
+        focusedPane: effectiveFocusedPane,
         tabId,
         targetMode: customLaunchTargetMode,
       });
@@ -663,6 +697,7 @@ export function AgentLauncherToolContent({
         actionState={actionState}
         agentActions={agentActions}
         agentTechnicalDetail={agentTechnicalDetail}
+        currentAgentTarget={currentAgentTarget}
         currentAgentTargetLabel={currentAgentTargetLabel}
         customCommand={customCommand}
         customCommandOpen={customCommandOpen}
@@ -677,6 +712,8 @@ export function AgentLauncherToolContent({
         onRetry={() => void loadStatus("loading")}
         onWorkflowContinue={continueWorkflowSession}
         onWorkflowNewSession={startNewWorkflowSession}
+        onWorkflowRename={renameWorkflowSession}
+        renamingSessionId={renamingSessionId}
         restoreChoice={restoreChoice}
         statusAvailable={Boolean(status)}
         visible={view === "launcher"}
@@ -706,7 +743,6 @@ export function AgentLauncherToolContent({
               onAgentSignal={handleAgentSignal}
               onCancelPreview={sendPreview.cancel}
               onConfirmPreview={sendPreview.confirm}
-              onCreatePreview={sendPreview.create}
               preview={
                 active &&
                 sendPreview.preview?.sessionId === session.agentSessionId
@@ -724,50 +760,6 @@ export function AgentLauncherToolContent({
   );
 }
 
-async function createSessionForLaunch(
-  agentId: ExternalAgentId,
-  {
-    activeTab,
-    focusedPane,
-    tabId,
-    targetMode = "current",
-  }: {
-    activeTab?: TerminalTab;
-    focusedPane?: TerminalPane;
-    tabId: string;
-    targetMode?: AgentLaunchTargetMode;
-  },
-): Promise<AgentSessionSelection> {
-  const target =
-    targetMode === "unbound"
-      ? unboundAgentSessionTarget()
-      : (buildAgentSessionTarget(focusedPane, activeTab) ??
-        unboundAgentSessionTarget());
-  const record = await createAgentSession({
-    agentId,
-    title: agentTitle(agentId),
-    target,
-  });
-  return {
-    agentSessionId: agentSessionRecordId(record),
-    tabId,
-    target: agentSessionRecordTarget(record),
-  };
-}
-function unboundAgentSessionTarget(): AgentSessionTargetRequest {
-  return {
-    liveStatus: "unbound",
-  };
-}
-function agentTitle(agentId: ExternalAgentId): string {
-  if (agentId === "claude") {
-    return "Claude";
-  }
-  if (agentId === "custom") {
-    return "Custom";
-  }
-  return "Codex";
-}
 function formatLaunchCommand(spec: ExternalAgentLaunchSpec): string {
   return agentLaunchDisplayCommand(spec) || spec.title;
 }

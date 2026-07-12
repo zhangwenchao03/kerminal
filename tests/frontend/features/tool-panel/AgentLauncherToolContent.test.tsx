@@ -20,6 +20,7 @@ const apiMocks = vi.hoisted(() => ({
   listAgentSessions: vi.fn(),
   prepareExternalAgentWorkspace: vi.fn(),
   rebindAgentSessionTarget: vi.fn(),
+  updateAgentSession: vi.fn(),
 }));
 
 const terminalMocks = vi.hoisted(() => ({
@@ -53,6 +54,8 @@ vi.mock("../../../../src/lib/agentLauncherApi", () => ({
     apiMocks.prepareExternalAgentWorkspace(...args),
   rebindAgentSessionTarget: (...args: unknown[]) =>
     apiMocks.rebindAgentSessionTarget(...args),
+  updateAgentSession: (...args: unknown[]) =>
+    apiMocks.updateAgentSession(...args),
 }));
 
 vi.mock("../../../../src/lib/fileDialogApi", () => ({
@@ -117,6 +120,7 @@ describe("AgentLauncherToolContent", () => {
     apiMocks.listAgentSessions.mockReset();
     apiMocks.prepareExternalAgentWorkspace.mockReset();
     apiMocks.rebindAgentSessionTarget.mockReset();
+    apiMocks.updateAgentSession.mockReset();
     terminalMocks.renderXtermPane.mockClear();
     notificationMocks.currentDesktopNotificationVisibility.mockReset();
     notificationMocks.sendDesktopNotification.mockReset();
@@ -142,6 +146,17 @@ describe("AgentLauncherToolContent", () => {
         title: "Archived",
       },
     });
+    apiMocks.updateAgentSession.mockImplementation(
+      async (agentSessionId: string, request: { title?: string }) => ({
+        session: {
+          agentId: "codex",
+          agentSessionId,
+          launch: { args: [], cwd: "", shell: "codex" },
+          status: "active",
+          title: request.title ?? "Codex",
+        },
+      }),
+    );
     apiMocks.createAgentSession.mockImplementation(
       async ({
         agentId,
@@ -211,7 +226,12 @@ describe("AgentLauncherToolContent", () => {
     const { container } = renderAgentLauncher();
 
     expect(await screen.findByRole("button", { name: "Open Codex" })).toBeInTheDocument();
-    expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label"))
+        .filter(Boolean),
+    ).toEqual([
       "查看 Agent 技术详情",
       "Open Codex",
       "Open Claude",
@@ -220,7 +240,7 @@ describe("AgentLauncherToolContent", () => {
     expect(await screen.findByText("可用")).toBeInTheDocument();
     expect(screen.getAllByText("需设置")).toHaveLength(2);
     expect(screen.getByTestId("agent-current-target")).toHaveTextContent(
-      "当前目标未绑定",
+      "新建对话当前目标 · 未绑定",
     );
     expect(
       screen.queryByRole("textbox", { name: "Custom agent command" }),
@@ -250,7 +270,12 @@ describe("AgentLauncherToolContent", () => {
 
     renderAgentLauncher();
 
-    expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label"))
+        .filter(Boolean),
+    ).toEqual([
       "查看 Agent 技术详情",
       "Open Codex",
       "Open Claude",
@@ -467,7 +492,7 @@ describe("AgentLauncherToolContent", () => {
     );
 
     expect(await screen.findByTestId("agent-current-target")).toHaveTextContent(
-      "当前目标prod web",
+      "新建对话当前目标 · prod web",
     );
     expect(screen.getByTestId("agent-current-target")).not.toHaveTextContent(
       /pane-prod|term-prod|tab-main/,
@@ -487,7 +512,7 @@ describe("AgentLauncherToolContent", () => {
           targetRef: "ssh:prod-web",
           targetTerminalSessionId: "term-prod",
         },
-        title: "Codex",
+        title: "Codex · prod web",
       });
     });
     expect(screen.queryByTestId("agent-target-chip")).not.toBeInTheDocument();
@@ -1167,6 +1192,40 @@ describe("AgentLauncherToolContent", () => {
     await user.keyboard("{Enter}");
 
     expect(apiMocks.prepareExternalAgentWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("persists an edited Kerminal session title", async () => {
+    const user = userEvent.setup();
+    apiMocks.listAgentSessions.mockResolvedValue({
+      diagnostics: [],
+      sessions: [
+        {
+          session: {
+            agentId: "codex",
+            agentSessionId: "ags-title",
+            launch: { args: [], cwd: "", shell: "codex" },
+            status: "active",
+            title: "旧标题",
+          },
+        },
+      ],
+    });
+
+    renderAgentLauncher();
+
+    await user.click(
+      await screen.findByRole("button", { name: "重命名 旧标题" }),
+    );
+    const input = screen.getByRole("textbox", { name: "会话标题" });
+    await user.clear(input);
+    await user.type(input, "发布检查");
+    await user.click(screen.getByRole("button", { name: "保存标题" }));
+
+    await waitFor(() => {
+      expect(apiMocks.updateAgentSession).toHaveBeenCalledWith("ags-title", {
+        title: "发布检查",
+      });
+    });
   });
 
   it("keeps Agent runtime failures in collapsed technical details", async () => {

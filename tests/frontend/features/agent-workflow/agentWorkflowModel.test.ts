@@ -3,6 +3,7 @@ import {
   adaptAgentPromptHistoryMetadata,
   adaptAgentPromptQueueMetadata,
   resolveAgentWorkflowBadge,
+  resolveAgentWorkflowSessionSnapshot,
   truncateAgentWorkflowPreview,
 } from "../../../../src/features/agent-workflow";
 
@@ -50,5 +51,38 @@ describe("agentWorkflowModel", () => {
     expect(
       JSON.stringify(adaptAgentPromptHistoryMetadata("agent-1", history, "sent")),
     ).not.toContain("sensitive body");
+  });
+
+  it("会话快照保留标题、目标和最近活动时间", () => {
+    expect(
+      resolveAgentWorkflowSessionSnapshot({
+        record: {
+          session: {
+            agentId: "codex",
+            agentSessionId: "ags-1",
+            createdAt: "2026-07-11T08:00:00.000Z",
+            launch: { args: [], cwd: "/workspace", shell: "codex" },
+            status: "active",
+            target: {
+              cwd: "/srv/app",
+              liveStatus: "ready",
+              targetRef: "ssh:prod",
+            },
+            title: "生产排障",
+            updatedAt: "2026-07-12T08:00:00.000Z",
+          },
+        },
+      }),
+    ).toMatchObject({
+      agentSessionId: "ags-1",
+      createdAt: "2026-07-11T08:00:00.000Z",
+      target: {
+        cwd: "/srv/app",
+        liveStatus: "ready",
+        targetRef: "ssh:prod",
+      },
+      title: "生产排障",
+      updatedAt: "2026-07-12T08:00:00.000Z",
+    });
   });
 });

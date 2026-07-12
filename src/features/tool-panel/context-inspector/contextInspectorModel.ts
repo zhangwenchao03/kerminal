@@ -11,6 +11,11 @@ import type {
 } from "./contextInspectorTypes";
 
 const EMPTY_VALUE = "未提供";
+const DIAGNOSTIC_SEVERITY_ORDER = {
+  error: 0,
+  warning: 1,
+  info: 2,
+} as const;
 
 function value(value: string | number | null | undefined): string {
   return value === null || value === undefined || value === ""
@@ -31,6 +36,31 @@ function sourceStatusLabel(source: WorkspaceContextSourceState): string {
     error: "错误",
   } as const;
   return `${source.source} · ${labels[source.status]}`;
+}
+
+function connectionStatusLabel(
+  status: WorkspaceContextProjection["runtime"]["connectionStatus"],
+): string {
+  const labels = {
+    online: "在线",
+    offline: "离线",
+    warning: "需要注意",
+    unknown: "未知",
+  } as const;
+  return labels[status];
+}
+
+function agentStatusLabel(context: WorkspaceContextProjection["agent"]): string {
+  if (context.status === "loading") {
+    return "正在读取会话";
+  }
+  if (context.status === "unavailable" || !context.sessionId) {
+    return "未关联会话";
+  }
+  const title = context.title?.trim() || "Agent 会话";
+  return context.status === "stale"
+    ? `${title} · 已过期`
+    : `${title} · 进行中`;
 }
 
 function diagnosticField(
@@ -79,6 +109,57 @@ export function buildContextInspectorViewModel(
       : context.freshness.state === "partial"
         ? "partial"
         : "ready";
+  const targetLabel =
+    context.target?.label ?? context.machine?.name ?? context.subject.title;
+  const connectionLabel = [
+    connectionStatusLabel(context.runtime.connectionStatus),
+    context.runtime.latencyMs === null ? null : `${context.runtime.latencyMs} ms`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const primaryFields: ContextInspectorField[] = [
+    {
+      id: "primary-target",
+      label: "当前目标",
+      value: targetLabel || "未选择目标",
+      navigationId: context.target ? `target:${context.target.id}` : undefined,
+      tone: context.target?.production ?? context.machine?.production ? "warning" : "default",
+    },
+    {
+      id: "primary-location",
+      label: "当前目录",
+      value: value(context.location.cwd),
+      navigationId: context.location.cwd
+        ? `location:${context.location.cwd}`
+        : undefined,
+      tone: context.location.confidence === "low" ? "warning" : "default",
+    },
+    {
+      id: "primary-connection",
+      label: "连接",
+      value: connectionLabel,
+      tone:
+        context.runtime.connectionStatus === "online"
+          ? "success"
+          : context.runtime.connectionStatus === "offline"
+            ? "danger"
+            : "warning",
+    },
+    {
+      id: "primary-agent",
+      label: "Agent",
+      value: agentStatusLabel(context.agent),
+      navigationId: context.agent.sessionId
+        ? `agent:${context.agent.sessionId}`
+        : undefined,
+      tone:
+        context.agent.status === "active"
+          ? "success"
+          : context.agent.status === "stale"
+            ? "warning"
+            : "muted",
+    },
+  ];
   const sections: ContextInspectorSection[] = [
     {
       id: "machine",
@@ -150,8 +231,13 @@ export function buildContextInspectorViewModel(
       id: "agent",
       title: "Agent",
       fields: [
+        {
+          id: "agent-title",
+          label: "标题",
+          value: value(context.agent.title),
+        },
         { id: "agent-session", label: "会话", value: value(context.agent.sessionId), navigationId: context.agent.sessionId ? `agent:${context.agent.sessionId}` : undefined },
-        { id: "agent-status", label: "状态", value: context.agent.status },
+        { id: "agent-status", label: "状态", value: agentStatusLabel(context.agent) },
       ],
       emptyMessage: "当前没有关联 Agent 会话。",
     },
@@ -180,16 +266,29 @@ export function buildContextInspectorViewModel(
         : context.diagnostics.length > 0
           ? "partial"
           : "normal",
-      fields: context.diagnostics.map(diagnosticField),
+      fields: [...context.diagnostics]
+        .sort(
+          (left, right) =>
+            DIAGNOSTIC_SEVERITY_ORDER[left.severity] -
+              DIAGNOSTIC_SEVERITY_ORDER[right.severity] ||
+            left.id.localeCompare(right.id),
+        )
+        .map(diagnosticField),
       emptyMessage: "没有上下文诊断。",
     },
   ];
 
   return {
-    title: context.subject.title || "当前上下文",
-    subtitle: context.target?.label ?? context.machine?.name ?? "未选择工作目标",
+    title: targetLabel || "当前上下文",
+    subtitle:
+      context.subject.title && context.subject.title !== targetLabel
+        ? context.subject.title
+        : context.runtime.paneMode
+          ? `${context.runtime.paneMode.toUpperCase()} 工作区`
+          : "当前工作区",
     production: Boolean(context.target?.production ?? context.machine?.production),
     status,
+    primaryFields,
     sections,
     topActions: selectTopActions(actions),
   };

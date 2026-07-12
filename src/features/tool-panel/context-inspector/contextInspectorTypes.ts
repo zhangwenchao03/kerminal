@@ -46,11 +46,13 @@ export interface ContextInspectorViewModel {
   readonly subtitle: string;
   readonly production: boolean;
   readonly status: "ready" | "partial" | "stale" | "error";
+  readonly primaryFields: readonly ContextInspectorField[];
   readonly sections: readonly ContextInspectorSection[];
   readonly topActions: readonly ContextInspectorActionDescriptor[];
 }
 
 export interface ContextInspectorToolContentProps {
+  readonly active?: boolean;
   readonly context: WorkspaceContextProjection;
   readonly actions?: readonly ContextInspectorActionDescriptor[];
   readonly autoFocus?: boolean;

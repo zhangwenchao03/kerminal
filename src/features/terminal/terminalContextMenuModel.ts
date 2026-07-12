@@ -3,6 +3,8 @@ import type { TerminalSplitDirection } from "../workspace/types";
 export type TerminalContextMenuAction =
   | "copy"
   | "copySessionId"
+  | "sendSelectionToAgent"
+  | "sendContextToAgent"
   | "paste"
   | "selectAll"
   | "search"
@@ -48,6 +50,8 @@ export interface TerminalContextMenuGroupOptions {
   canCopySessionId?: boolean;
   canDisconnect?: boolean;
   canReconnect?: boolean;
+  canSendSelectionToAgent?: boolean;
+  canSendToAgent?: boolean;
   canSplit?: boolean;
 }
 
@@ -58,6 +62,8 @@ export function terminalContextMenuGroups({
   canCopySessionId = true,
   canDisconnect = true,
   canReconnect = true,
+  canSendSelectionToAgent = false,
+  canSendToAgent = true,
   canSplit = true,
 }: TerminalContextMenuGroupOptions): TerminalContextMenuItemModel[][] {
   const groups: TerminalContextMenuItemModel[][] = [
@@ -90,6 +96,18 @@ export function terminalContextMenuGroups({
         action: "search",
         label: "搜索",
         shortcut: "Ctrl+F",
+      },
+    ],
+    [
+      {
+        action: "sendSelectionToAgent",
+        disabled: !canSendSelectionToAgent,
+        label: "发送选中内容到 Agent",
+      },
+      {
+        action: "sendContextToAgent",
+        disabled: !canSendToAgent,
+        label: "发送当前终端上下文到 Agent",
       },
     ],
     [

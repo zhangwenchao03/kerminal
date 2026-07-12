@@ -476,9 +476,10 @@ export function KerminalShellContextWorkspace(
 
   const handleQuickOpenSelect = (reference: QuickOpenReference) => {
     const controller = new AbortController();
+    setOpenOverlay(null);
     void resolveKerminalQuickOpenReference(reference, props, {
       signal: controller.signal,
-    }).finally(() => setOpenOverlay(null));
+    });
   };
 
   return (

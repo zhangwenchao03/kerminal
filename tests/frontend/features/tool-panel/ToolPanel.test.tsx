@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { tools } from "../../../../src/features/workspace/workspaceData";
@@ -13,6 +13,10 @@ import {
   publishXtermPaneArtifactSnapshot,
   removeXtermPaneArtifactSnapshot,
 } from "../../../../src/features/terminal/XtermPane.artifactsRegistry";
+import {
+  requestAgentSend,
+  resetAgentSendRequestStoreForTests,
+} from "../../../../src/features/agent-workflow/agentSendRequestStore";
 
 const portForwardApiMocks = vi.hoisted(() => ({
   closePortForward: vi.fn(),
@@ -278,6 +282,7 @@ function assertNoManagedSshAvailabilityNotice() {
 describe("ToolPanel", () => {
   beforeEach(() => {
     clearServerInfoSnapshotCacheForTest();
+    resetAgentSendRequestStoreForTests();
     portForwardApiMocks.closePortForward.mockReset();
     portForwardApiMocks.createPortForward.mockReset();
     portForwardApiMocks.listPortForwards.mockReset();
@@ -485,8 +490,41 @@ describe("ToolPanel", () => {
       screen.getByRole("button", { name: "打开 Agent Launcher" }),
     ).toBeInTheDocument();
     expect(
+      within(screen.getByRole("navigation", { name: "工具栏" }))
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual([
+      "打开 当前上下文",
+      "打开 Agent Launcher",
+      "打开 文件",
+      "打开 片段",
+      "打开 tmux",
+      "打开 端口",
+      "打开 系统",
+      "打开 日志",
+    ]);
+    expect(
       screen.queryByRole("heading", { name: "Agent Launcher" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("opens Agent Launcher when another tool is active and a send request arrives", async () => {
+    const onActiveToolChange = vi.fn();
+    render(
+      <ToolPanel
+        activeTool="context"
+        onActiveToolChange={onActiveToolChange}
+        tools={tools}
+      />,
+    );
+
+    act(() => {
+      requestAgentSend({ paneId: "pane-local", source: "selection" });
+    });
+
+    await waitFor(() => {
+      expect(onActiveToolChange).toHaveBeenCalledWith("agentLauncher");
+    });
   });
 
   it("Context 工具只启用真实导航并以只读模式展示终端产物", async () => {
@@ -528,10 +566,17 @@ describe("ToolPanel", () => {
       />,
     );
 
-    await user.click(await screen.findByRole("button", { name: /活动页签/ }));
+    await user.click(
+      await screen.findByRole(
+        "button",
+        { name: /活动页签/ },
+        { timeout: 3_000 },
+      ),
+    );
     expect(onFocusTab).toHaveBeenCalledWith(sshTerminalTab.id);
     expect(screen.queryByRole("button", { name: /当前目录/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /焦点窗格/ })).toBeNull();
+    await user.click(screen.getByText("终端发现"));
     expect(screen.getByText("运行报告")).toBeVisible();
     expect(screen.queryByRole("button", { name: "复制" })).toBeNull();
 

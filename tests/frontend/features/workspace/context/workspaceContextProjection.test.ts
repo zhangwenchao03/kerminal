@@ -93,6 +93,24 @@ describe("buildWorkspaceContextProjection", () => {
     expect(result.freshness.state).toBe("fresh");
   });
 
+  it("保留集成层提供的当前目标 Agent 会话状态", () => {
+    const result = buildWorkspaceContextProjection(
+      input({
+        agent: {
+          sessionId: "agent-current",
+          status: "active",
+          title: "API 故障排查",
+        },
+      }),
+    );
+
+    expect(result.agent).toEqual({
+      sessionId: "agent-current",
+      status: "active",
+      title: "API 故障排查",
+    });
+  });
+
   it.each([
     ["local", "local", { kind: "local", profileId: "pwsh" }],
     ["ssh", "ssh", { hostId: "host-1", kind: "ssh" }],

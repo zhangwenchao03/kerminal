@@ -13,6 +13,7 @@ interface XtermPaneProps {
   args?: string[];
   currentCwd?: string;
   cwd?: string;
+  enableAgentSendActions?: boolean;
   env?: Record<string, string>;
   focusRequestToken?: number;
   focused: boolean;
@@ -27,6 +28,7 @@ interface XtermPaneProps {
   shell?: string;
   shellAssistEnabled?: boolean;
   startupMessage?: string;
+  tabId?: string;
   terminalAppearance: TerminalAppearance;
   terminalColorSchemeOverride?: TerminalColorScheme;
   target?: RemoteTargetRef;

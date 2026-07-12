@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AgentLauncherView } from "../../../../src/features/tool-panel/agent-launcher/AgentLauncherView";
 
@@ -19,6 +19,8 @@ const baseProps = {
   onLaunch: vi.fn(),
   onNewSession: vi.fn(),
   onRetry: vi.fn(),
+  onWorkflowRename: vi.fn().mockResolvedValue(true),
+  renamingSessionId: null,
   restoreChoice: null,
   statusAvailable: true,
   visible: true,
@@ -56,7 +58,7 @@ describe("AgentLauncher workflow integration", () => {
     );
 
     expect(screen.getByLabelText("Agent 状态：等待人工")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "继续" }));
+    fireEvent.click(screen.getByRole("button", { name: "继续对话" }));
     fireEvent.click(screen.getByRole("button", { name: "同 Agent 新会话" }));
     expect(onWorkflowContinue).toHaveBeenCalledWith("ags-1");
     expect(onWorkflowNewSession).toHaveBeenCalledWith("ags-1");
@@ -94,5 +96,61 @@ describe("AgentLauncher workflow integration", () => {
       screen.getByRole("list", { name: "Agent 操作历史" }),
     ).toHaveTextContent("128 B");
     expect(screen.queryByText("secret prompt body")).not.toBeInTheDocument();
+  });
+
+  it("按当前目标筛选会话并允许修改 Kerminal 会话标题", async () => {
+    const onWorkflowRename = vi.fn().mockResolvedValue(true);
+    render(
+      <AgentLauncherView
+        {...baseProps}
+        currentAgentTarget={{ targetRef: "ssh:prod" }}
+        onWorkflowContinue={vi.fn()}
+        onWorkflowNewSession={vi.fn()}
+        onWorkflowRename={onWorkflowRename}
+        workflowSnapshot={{
+          disposed: false,
+          historyMetadata: [],
+          loading: false,
+          queueMetadata: [],
+          revision: 1,
+          sessions: [
+            {
+              agentId: "codex",
+              agentSessionId: "ags-current",
+              repositoryStatus: "active",
+              runtimeStatus: "running",
+              statusSource: "repository",
+              target: { targetRef: "ssh:prod" },
+              title: "生产排障",
+            },
+            {
+              agentId: "claude",
+              agentSessionId: "ags-other",
+              repositoryStatus: "active",
+              runtimeStatus: "done",
+              statusSource: "repository",
+              target: { targetRef: "ssh:staging" },
+              title: "测试环境",
+            },
+          ],
+          stale: false,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("生产排障")).toBeInTheDocument();
+    expect(screen.queryByText("测试环境")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重命名 生产排障" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "会话标题" }), {
+      target: { value: "生产发布检查" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存标题" }));
+
+    await waitFor(() =>
+      expect(onWorkflowRename).toHaveBeenCalledWith(
+        "ags-current",
+        "生产发布检查",
+      ),
+    );
   });
 });

@@ -3,6 +3,7 @@ import type { Terminal } from "@xterm/xterm";
 import { writeTerminal } from "../../lib/terminalApi";
 import type { TerminalCommandBlock } from "./terminalCommandBlocks";
 import { terminalCommandBlockPlainText } from "./terminalCommandBlocks";
+import { getTerminalPaneSessionRecord } from "./terminalSessionRegistry";
 import type { XtermPaneInputRequest } from "./XtermPane.types";
 
 /** 终端正文按需读取结果；调用方不得把该对象同步到全局状态或持久化。 */
@@ -68,12 +69,16 @@ export function useXtermPanePromptBridge({
         read: () => {
           const latest =
             commandBlocksRef.current[commandBlocksRef.current.length - 1];
+          const runtimeContext = getTerminalPaneSessionRecord(paneId);
           return {
-            commandBlockText: latest
-              ? terminalCommandBlockPlainText(latest)
-              : undefined,
+            commandBlockText:
+              runtimeContext?.commandBlockText ??
+              (latest ? terminalCommandBlockPlainText(latest) : undefined),
             paneId,
-            selectedText: terminalRef.current?.getSelection?.() || undefined,
+            selectedText:
+              runtimeContext?.selectedText ??
+              terminalRef.current?.getSelection?.() ??
+              undefined,
           };
         },
       }),

@@ -50,6 +50,7 @@ describe("ContextInspectorTerminalArtifacts", () => {
       publishXtermPaneArtifactSnapshot(snapshot(paneId, "部署日志"));
     });
 
+    fireEvent.click(screen.getByText("终端发现"));
     expect(screen.getByText("部署日志")).toBeVisible();
     expect(screen.queryByRole("button", { name: "复制" })).toBeNull();
     fireEvent.keyDown(screen.getByRole("listitem"), { key: "Enter" });
@@ -70,6 +71,7 @@ describe("ContextInspectorTerminalArtifacts", () => {
         paneId={paneId}
       />,
     );
+    fireEvent.click(screen.getByText("终端发现"));
     fireEvent.click(screen.getByRole("button", { name: "复制" }));
 
     expect(onActionRequest).toHaveBeenCalledWith(

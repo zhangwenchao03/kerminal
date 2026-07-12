@@ -19,11 +19,14 @@ import type { XtermPaneSearchController } from "./XtermPane.search";
 export interface XtermPaneContextMenuState {
   canCopy: boolean;
   canCopySessionId: boolean;
+  canSendSelectionToAgent: boolean;
+  canSendToAgent: boolean;
   position: TerminalContextMenuPosition;
 }
 
 interface XtermPaneViewProps {
   activityRuntimeRef: RefObject<XtermPaneActivityRuntime | null>;
+  agentSendActionsEnabled: boolean;
   commandBlockNotice: string | null;
   commandBlockViews: TerminalCommandBlockView[];
   connectionState: ConnectionState;
@@ -53,6 +56,7 @@ interface XtermPaneViewProps {
  */
 export function XtermPaneView({
   activityRuntimeRef,
+  agentSendActionsEnabled,
   canSplit,
   commandBlockNotice,
   commandBlockViews,
@@ -79,7 +83,11 @@ export function XtermPaneView({
   return (
     <div className="relative min-h-0 flex-1 bg-[#f7f7fa] dark:bg-[#1f1f21]" onContextMenu={onContextMenu}>
       {shellAssistEnabled ? (
-        <TerminalCommandBlockRail blocks={commandBlockViews} onAction={onCommandBlockAction} />
+        <TerminalCommandBlockRail
+          blocks={commandBlockViews}
+          canSendToAgent={agentSendActionsEnabled}
+          onAction={onCommandBlockAction}
+        />
       ) : null}
       <div
         className={`h-full min-h-0 w-full overflow-hidden py-2 pr-3 ${shellAssistEnabled ? "pl-6" : "pl-3"}`}
@@ -141,6 +149,8 @@ export function XtermPaneView({
           canDisconnect={connectionState === "connected"}
           canCopy={contextMenu.canCopy}
           canCopySessionId={contextMenu.canCopySessionId}
+          canSendSelectionToAgent={contextMenu.canSendSelectionToAgent}
+          canSendToAgent={contextMenu.canSendToAgent}
           canReconnect={connectionState !== "connecting" && connectionState !== "reconnecting"}
           canSplit={canSplit}
           onAction={onContextMenuAction}

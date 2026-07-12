@@ -2,10 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Blocks,
   ChevronLeft,
-  FileText,
-  MousePointer2,
   Sparkles,
   Terminal,
   Wrench,
@@ -35,7 +32,6 @@ import type {
 } from "../../agent-workflow";
 import { AgentWorkflowSendPreviewPanel } from "../../agent-workflow";
 import type { AgentLaunchPermissionMode } from "./agentLauncherModel";
-import type { AgentSendPreviewSource } from "./agentSendPreviewModel";
 import {
   agentTerminalPaneId,
   registerAgentPromptTerminal,
@@ -71,7 +67,6 @@ export function AgentTerminalView({
   onBack,
   onCancelPreview,
   onConfirmPreview,
-  onCreatePreview,
   preview,
   previewBusy,
   resolvedTheme,
@@ -87,7 +82,6 @@ export function AgentTerminalView({
     previewId: string,
     submit: boolean,
   ) => Promise<AgentWorkflowPreviewResolution>;
-  onCreatePreview: (source: AgentSendPreviewSource) => void;
   preview: AgentWorkflowSendPreview | null;
   previewBusy: boolean;
   resolvedTheme: ResolvedTheme;
@@ -179,35 +173,6 @@ export function AgentTerminalView({
             {agentSignalView.label}
           </span>
         ) : null}
-        <div className="flex shrink-0 items-center gap-0.5">
-          <Button
-            aria-label="发送选中文字给 Agent"
-            onClick={() => onCreatePreview("selection")}
-            size="icon"
-            title="发送选中文字"
-            variant="ghost"
-          >
-            <MousePointer2 className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            aria-label="发送最新命令块给 Agent"
-            onClick={() => onCreatePreview("commandBlock")}
-            size="icon"
-            title="发送最新命令块"
-            variant="ghost"
-          >
-            <Blocks className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            aria-label="发送终端上下文给 Agent"
-            onClick={() => onCreatePreview("context")}
-            size="icon"
-            title="发送终端上下文"
-            variant="ghost"
-          >
-            <FileText className="h-3.5 w-3.5" />
-          </Button>
-        </div>
       </header>
       {preview ? (
         <AgentWorkflowSendPreviewPanel
@@ -223,6 +188,7 @@ export function AgentTerminalView({
             args={session.args}
             cwd={session.cwd}
             env={session.env}
+            enableAgentSendActions={false}
             focused={focused}
             inputCompatibilityMode="agentTui"
             inputRequest={inputRequest}

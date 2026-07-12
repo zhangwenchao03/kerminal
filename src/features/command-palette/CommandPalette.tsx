@@ -42,6 +42,18 @@ export function resolveCommandPaletteFeedback(
   }
 }
 
+/** 成功接管用户意图后关闭临时面板；可恢复错误保留结果供用户修正或重试。 */
+export function shouldCloseCommandPalette(
+  result: WorkspaceActionInvocationResult,
+): boolean {
+  return (
+    result.kind === "completed" ||
+    result.kind === "cancelled" ||
+    result.kind === "confirmation-required" ||
+    result.kind === "open-tool"
+  );
+}
+
 /** 基于 Workspace Action 单一注册表的命令面板。 */
 export function CommandPalette<
   TCatalog extends WorkspaceActionCatalog = WorkspaceActionCatalog,
@@ -62,6 +74,7 @@ export function CommandPalette<
     kind: "idle",
   });
   const abortControllersRef = useRef(new Set<AbortController>());
+  const activeInvocationRef = useRef<symbol | null>(null);
   const invoker = useMemo(
     () => new WorkspaceActionInvoker(registry, executor),
     [executor, registry],
@@ -82,6 +95,7 @@ export function CommandPalette<
     if (open) {
       return;
     }
+    activeInvocationRef.current = null;
     abortControllersRef.current.forEach((controller) => controller.abort());
     abortControllersRef.current.clear();
     setQuery("");
@@ -90,6 +104,7 @@ export function CommandPalette<
 
   useEffect(
     () => () => {
+      activeInvocationRef.current = null;
       abortControllersRef.current.forEach((controller) => controller.abort());
       abortControllersRef.current.clear();
     },
@@ -122,6 +137,8 @@ export function CommandPalette<
   const handleSelect = async (selected: WorkspacePaletteItem) => {
     const descriptor = registry.get(selected.id as keyof TCatalog & string);
     const controller = new AbortController();
+    const invocationToken = Symbol(descriptor.id);
+    activeInvocationRef.current = invocationToken;
     abortControllersRef.current.add(controller);
     setFeedback({ actionId: descriptor.id, kind: "running" });
 
@@ -135,6 +152,10 @@ export function CommandPalette<
     });
     abortControllersRef.current.delete(controller);
 
+    if (activeInvocationRef.current !== invocationToken) {
+      return;
+    }
+
     // 危险动作仅向既有确认流程转发，Palette 永不自行执行。
     if (result.kind === "confirmation-required") {
       onConfirmationRequired(result.confirmation);
@@ -142,6 +163,16 @@ export function CommandPalette<
       onOpenTool(result.toolId, result.payload);
     }
     setFeedback(resolveCommandPaletteFeedback(descriptor.id, result));
+    if (shouldCloseCommandPalette(result)) {
+      onClose();
+    }
+  };
+
+  const handleClose = () => {
+    activeInvocationRef.current = null;
+    abortControllersRef.current.forEach((controller) => controller.abort());
+    abortControllersRef.current.clear();
+    onClose();
   };
 
   const statusMessage =
@@ -158,7 +189,7 @@ export function CommandPalette<
       footer={statusMessage ?? "Enter 执行"}
       items={shellItems}
       loadingMessage="正在执行动作"
-      onClose={onClose}
+      onClose={handleClose}
       onQueryChange={setQuery}
       onSelect={(item) => {
         void handleSelect(item);

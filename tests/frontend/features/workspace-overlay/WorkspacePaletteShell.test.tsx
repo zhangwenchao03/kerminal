@@ -46,6 +46,8 @@ describe("WorkspacePaletteShell", () => {
 
   it("navigates enabled results and selects the active result", async () => {
     const user = userEvent.setup();
+    const scrollIntoView = vi.fn();
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
     const { props } = renderPalette();
     const combobox = screen.getByRole("combobox");
 
@@ -54,6 +56,7 @@ describe("WorkspacePaletteShell", () => {
       "aria-activedescendant",
       screen.getByRole("option", { name: "Charlie" }).id,
     );
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest" });
     await user.keyboard("{Enter}");
 
     expect(props.onSelect).toHaveBeenCalledWith(items[2]);

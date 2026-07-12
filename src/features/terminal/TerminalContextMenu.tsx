@@ -30,6 +30,8 @@ interface TerminalContextMenuProps {
   canCopySessionId?: boolean;
   canDisconnect?: boolean;
   canReconnect?: boolean;
+  canSendSelectionToAgent?: boolean;
+  canSendToAgent?: boolean;
   canSplit?: boolean;
   onAction: (action: TerminalContextMenuAction) => void;
   onClose: () => void;
@@ -41,6 +43,8 @@ export function TerminalContextMenu({
   canCopySessionId = true,
   canDisconnect = true,
   canReconnect = true,
+  canSendSelectionToAgent = false,
+  canSendToAgent = true,
   canSplit = true,
   onAction,
   onClose,
@@ -53,6 +57,8 @@ export function TerminalContextMenu({
     canCopySessionId,
     canDisconnect,
     canReconnect,
+    canSendSelectionToAgent,
+    canSendToAgent,
     canSplit,
   });
 
@@ -84,6 +90,8 @@ export function TerminalContextMenu({
     canCopySessionId,
     canDisconnect,
     canReconnect,
+    canSendSelectionToAgent,
+    canSendToAgent,
     canSplit,
     position.x,
     position.y,

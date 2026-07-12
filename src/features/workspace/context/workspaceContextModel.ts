@@ -60,7 +60,7 @@ export function buildWorkspaceContextProjection(
 
   return {
     activeTabId: resolution.activeTab?.id ?? null,
-    agent: { sessionId: null, status: "unavailable" },
+    agent: input.agent ?? { sessionId: null, status: "unavailable" },
     diagnostics,
     focusedPaneId: resolution.focusedPane?.id ?? null,
     freshness: resolveWorkspaceContextFreshness(sources),
