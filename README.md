@@ -1,136 +1,191 @@
 <div align="center">
   <img src="docs/assets/kerminal-icon.png" width="76" alt="Kerminal logo" />
   <h1>Kerminal</h1>
-  <p><strong>让 Codex、Claude 和你的远程目标在同一个本地工作台里协作。</strong></p>
+  <p><strong>在一个桌面工作台中管理终端、远程服务器、文件、容器和 AI Agent。</strong></p>
   <p>
-    <sub>Agent Workspace · Target Binding · Runtime MCP · Managed SSH · GPU Terminal · Docker / Compose · SFTP · tmux</sub>
+    <a href="https://github.com/kongweiguang/kerminal/releases">下载最新版</a>
+    ·
+    <a href="#快速开始">快速开始</a>
+    ·
+    <a href="#主要功能">主要功能</a>
   </p>
 </div>
 
-![Kerminal remote workspace with a bound Codex session](docs/assets/kerminal-hero.png)
+![在 Kerminal 工作台右侧成功启动 Codex](docs/assets/kerminal-hero.png)
 
-Kerminal 不是内置聊天，也不是把一个 Agent 丢进无边界 shell。它把目标机器、终端工作区、文件、容器、端口、系统状态和外部 Agent CLI 放进一个本地桌面应用。先选定真实目标，再启动 Codex、Claude 或自定义 CLI；Agent 在自己的会话工作区内协作，并通过受控的 Kerminal MCP 读取和操作运行态。
+Kerminal 是一个本地桌面终端与远程管理工具。你可以连接本机或远程服务器，在同一个窗口中使用终端、传输文件、管理容器、查看系统状态，并启动 Codex、Claude Code 或自己的命令行 Agent。
 
-## 为 Agent 保留真实上下文
+当前版本：**v0.3.6**
 
-| 能力 | 你得到什么 |
+## 你可以用 Kerminal 做什么
+
+- 连接本机、SSH、RDP、Telnet 和串口设备。
+- 使用多标签、多分屏终端处理不同机器和任务。
+- 启动 Codex、Claude Code 或自定义 Agent，并继续之前的会话。
+- 浏览、上传、下载和编辑远程文件。
+- 管理 Docker、Podman、Compose 和容器内文件。
+- 创建 SSH 端口转发，管理 tmux 会话。
+- 查看服务器 CPU、内存、磁盘、网络、GPU 和进程状态。
+- 从 PuTTY、MobaXterm、Xshell、SecureCRT 或 OpenSSH 打开连接。
+
+## 安装
+
+前往 [GitHub Releases](https://github.com/kongweiguang/kerminal/releases) 下载适合当前系统的安装包。
+
+| 平台 | 安装包 |
 | --- | --- |
-| Agent 会话 | Codex、Claude 和自定义 CLI 按终端 Tab 隔离；切换 Tab 不混淆会话，关闭 Tab 时归档对应 Agent session |
-| 目标绑定 | Agent 可以绑定当前 SSH、容器或本地终端目标，保留目标类型、终端 Tab、pane、工作目录和 shell 上下文 |
-| 会话工作区 | 每个 Agent session 都有独立工作目录、`AGENTS.md` / `CLAUDE.md`、MCP 配置和目标快照，方便恢复和审计当前任务 |
-| 运行态 MCP | Kerminal MCP Server 只提供 live app、终端 session、SSH/SFTP、容器、端口转发、服务器信息和诊断等运行态能力 |
-| 人在控制环 | 外部 MCP host 负责审批、权限、hook 和审计；凭据保留在 encrypted vault 或 session-only secret，不暴露给 Agent 配置 |
-| 同一个远程运行时 | terminal、SFTP、exec、tmux、容器、端口转发、系统信息和 MCP tools 复用受管 SSH 认证与路由，并保持独立 channel |
+| Windows x64 | NSIS 安装程序 |
+| Linux x64 | AppImage、Deb |
+| macOS Apple Silicon | App、DMG |
+| macOS Intel | App、DMG |
 
-## AI 工作流
+macOS 安装包目前未使用 Apple Developer ID 签名和公证，首次启动时可能需要在系统安全设置中手动允许。
 
-1. 在左侧选择本机、SSH、容器或其它目标，在中间保留真实终端与文件上下文。
-2. 在右侧启动 Codex、Claude 或自定义 CLI。Kerminal 创建对应的 session workspace，并把当前目标绑定给该会话。
-3. Agent 通过 Kerminal MCP 查询或操作运行态；常规 settings、profiles、hosts、snippets 和 workflows 继续以 `~/.kerminal` 文件为事实源。
-4. 继续使用终端、SFTP、容器、tmux、端口转发和诊断工具完成实际工作，不需要在多个窗口和临时上下文之间来回切换。
+### 使用 Agent 前的准备
 
-### Agent Launcher
+Kerminal 不捆绑 Codex 或 Claude 的账号和模型服务。使用对应 Agent 前，需要先在电脑上安装 CLI 并完成登录。
 
-当前目标、Codex、Claude、Custom CLI 与运行态 MCP 信息都放在同一个右侧工具位。技术详情会显示当前 MCP 服务和 Agent 配置状态。
+```powershell
+codex --version
+claude --version
+```
 
-![Kerminal Agent Launcher and target-aware session restore](docs/assets/kerminal-agent.png)
+只使用终端、SSH、SFTP、容器和服务器工具时，不需要安装 Agent CLI。
 
-### 会话恢复与目标绑定
+## 快速开始
 
-已有 Agent session 可以继续或新开，并显示它最后绑定的目标状态。绑定会随目标断开而失效，重新操作时由 Kerminal 重新解析或重绑，不会被宣传为永久授权。
+### 1. 添加连接
 
-![Kerminal Agent session restore with target binding](docs/assets/kerminal-agent-session.png)
+点击左下角的添加按钮，选择连接类型并填写主机地址、端口、用户名和认证方式。
 
-## Agent 之外，仍是完整的远程工作台
+![Kerminal 添加连接](docs/assets/kerminal-connect.png)
 
-### 终端工作区
+SSH 支持密码、私钥、SSH Agent、代理和跳板机。保存的密码与私钥口令会进入本地加密凭据库。
 
-一个目标，一组上下文。多 tab、多分屏、命令输出、文件、智能命令建议和右侧工具都围绕当前机器组织。
+### 2. 打开终端
+
+选择左侧主机即可创建终端。你可以新建多个标签页、拆分终端、搜索输出、复制命令块或同时向多个终端发送命令。
+
+### 3. 启动 Agent
+
+点击右侧的 Agent 图标，然后选择 Codex、Claude 或自定义命令。
+
+Agent 会在独立的本地会话目录中启动，并可以绑定当前终端或远程目标。再次打开时，可以继续之前的会话，也可以新建会话。
+
+![Kerminal Agent 会话列表](docs/assets/kerminal-agent.png)
+
+![Kerminal Agent 会话恢复](docs/assets/kerminal-agent-session.png)
+
+你还可以在普通终端中选择内容或右击命令块，将内容发送到 Agent。发送前会显示预览，不会直接提交。
+
+### 4. 查看当前上下文
+
+“当前上下文”会显示正在操作的机器、目录、连接状态和关联 Agent，帮助你在多服务器、多标签和多会话之间确认当前目标。
+
+![Kerminal 当前上下文](docs/assets/kerminal-context.png)
+
+## 主要功能
+
+### 终端与远程连接
+
+- Local、SSH、RDP、Telnet 和 Serial。
+- 多标签、多分屏、命令搜索、命令块和批量发送。
+- SSH 密码、私钥、Agent、代理、跳板机和 host key 校验。
+- GPU 终端渲染，并在不兼容或异常时自动回退。
+- 命令、参数、路径、历史和 Git 引用建议。
+
+### 文件与传输
+
+SFTP 可以作为右侧文件浏览器使用，也可以打开为双面板传输工作台。
+
+![Kerminal SFTP 传输工作台](docs/assets/kerminal-sftp.png)
+
+- 上传、下载、目录传输、远端复制和跨主机复制。
+- 传输队列、进度、取消、失败重试和完成记录。
+- 预览远程文件，或在中央文件标签页中编辑文本。
+- 支持撤销、重做、查找、替换、重新加载和冲突覆盖保存。
+
+![Kerminal 远程文件编辑](docs/assets/kerminal-file-tab.png)
 
 ### 容器与 Compose
 
-选择 SSH 主机后直接看 Docker / Podman / Compose。日志、详情、终端、文件和生命周期操作都在同一处，并能沿用当前目标的认证和路由。
+连接服务器后，可以直接查看和管理 Docker、Podman 与 Compose。
 
-![Kerminal Docker and Compose management](docs/assets/kerminal-docker.png)
+![Kerminal Docker 与 Compose](docs/assets/kerminal-docker.png)
 
-### 文件、传输与中央编辑
+- 查看容器、镜像、服务、状态和详细信息。
+- 打开日志、终端和容器文件。
+- 启动、停止、重启或删除容器。
+- 上传、下载、创建、重命名和修改容器内文件。
 
-SFTP 可以是右侧轻量浏览，也可以是中间长任务传输工作台。上传、下载、跨主机复制、队列、重试、预览和远端文本编辑都保留在同一流程。
+### 服务器监控
 
-![Kerminal SFTP transfer workbench](docs/assets/kerminal-sftp.png)
+系统工具提供“概览、资源、进程”三个视图，并支持手动或定时刷新。
 
-![Kerminal workspace file tab](docs/assets/kerminal-file-tab.png)
+![Kerminal 服务器监控](docs/assets/kerminal-system.png)
 
-### 端口、系统与 tmux
+- CPU、内存、磁盘、网络和 GPU 使用率。
+- 操作系统、架构、Kernel、运行时间和存储信息。
+- 网络上下行速率、资源趋势和进程列表。
 
-Local、remote、dynamic forwarding 跟随当前 SSH 目标。系统/GPU 摘要、tmux session 和运行体检也在同一个目标上下文中刷新，适合开发、推理、训练和线上排障。
+### 端口转发
 
-![Kerminal port forwarding](docs/assets/kerminal-ports.png)
+支持 SSH 本地转发、远程转发和动态 SOCKS 转发。转发规则跟随当前 SSH 主机显示和管理。
 
-![Kerminal GPU and system monitor](docs/assets/kerminal-gpu.png)
+![Kerminal SSH 端口转发](docs/assets/kerminal-ports.png)
 
-![Kerminal tmux session manager](docs/assets/kerminal-tmux.png)
+### tmux
 
-### 外部 SSH 兼容入口与设置
+可以查看、创建、连接、重命名、分离和关闭远程 tmux 会话。
 
-PuTTY、MobaXterm、Xshell、SecureCRT、OpenSSH、URL、JSON 和 flags 可把 SSH 目标交给 Kerminal，形成 session-only 的临时 `external:*` 目标。设置集中管理外部启动、GPU renderer、SFTP 性能、MCP、快捷键和桌面集成。
+![Kerminal tmux 会话](docs/assets/kerminal-tmux.png)
 
-![Kerminal external SSH launch](docs/assets/kerminal-external-launch.png)
+### 外部 SSH 工具兼容
 
-![Kerminal settings](docs/assets/kerminal-settings.png)
+Kerminal 可以接收来自 PuTTY、MobaXterm、Xshell、SecureCRT、OpenSSH、URL 或命令行参数的连接信息。
 
-## 能力一览
+![Kerminal 外部 SSH 启动设置](docs/assets/kerminal-external-launch.png)
 
-| 模块 | 支持 |
-| --- | --- |
-| 主机 | Local、SSH、RDP、Telnet、Serial、分组、标签、密码/私钥/agent、代理、跳板机、host key |
-| 终端 | 多 tab、多分屏、批量发送、搜索、右键菜单、命令块导航、输出保护、GPU renderer、命令建议 |
-| 文件 | SFTP 浏览、传输队列、远端复制、跨主机复制、远程预览、中央文件 Tab、本地文本读写 |
-| 容器 | Docker / Podman / Compose 列表、日志、详情、终端、文件、启动、停止、重启、删除、固定 |
-| 网络 | SSH local / remote / dynamic forwarding、本机 HTTP CONNECT proxy、远端 SOCKS、网络助手 |
-| Agent | Codex、Claude Code / Claude CLI、自定义 CLI、tab 级 session、目标绑定、session workspace、`AGENTS.md`、`.mcp.json`、运行态 MCP tools |
-| 配置 | `~/.kerminal` TOML 文件优先、encrypted vault、热刷新、validator、last-known-good |
+### 个性化设置
 
-## 本地运行
+设置页可以调整主题、语言、终端外观、GPU 渲染、SFTP、Agent、快捷键、通知、外部启动和自动更新。
 
-```powershell
-npm install
-npm run dev
-```
+![Kerminal 设置](docs/assets/kerminal-settings.png)
 
-桌面壳调试：
+## 数据与安全
 
-```powershell
-npm run tauri:dev
-```
+- 主机、会话、传输记录和设置默认保存在本机。
+- 密码、私钥口令等敏感信息保存在本地加密凭据库中。
+- Agent 会话使用独立目录，不会把不同会话的上下文混在一起。
+- 向 Agent 发送终端内容前需要经过预览。
+- 删除 Kerminal 中的 Agent 会话记录，不会删除 Codex 或 Claude 服务商保存的历史。
+- 远程写入、覆盖、删除、停止等操作会使用对应的确认流程。
 
-生产前端构建：
+## 常见问题
 
-```powershell
-npm run build
-```
+### 点击 Codex 或 Claude 后无法启动
 
-刷新 README 截图：
+先在系统终端中确认对应命令可以运行，并完成 CLI 登录。然后重新打开 Kerminal。
 
 ```powershell
-node scripts/capture-readme-screenshots.mjs http://127.0.0.1:<port>/
+codex
+claude
 ```
 
-## 本地与安全
+### Agent 是否会自动获得所有服务器权限
 
-- 工作区、会话、主机、文件传输和设置默认保存在本机。
-- 密码、内联私钥和 key passphrase 通过 encrypted vault 或 session-only secret 使用；`hosts/*.toml` 只保留引用。
-- Kerminal MCP Server 只提供运行态工具。审批、权限、hook 和审计由外部 MCP host 负责。
-- settings、profiles、hosts、snippets 和 workflows 以 `~/.kerminal` TOML 为事实源；外部 Agent 可以编辑工作区文件并运行 validator，而不是通过 MCP 做常规配置 CRUD。
+不会。Agent 只使用当前会话绑定的目标和 Kerminal 提供的运行能力；目标断开或会话失效后需要重新连接。
 
-## 适合谁
+### 可以只把 Kerminal 当作终端工具使用吗
 
-- 想让 Codex、Claude 或自己的 Agent CLI 参与远程开发、运维和排障，但仍希望目标、权限与凭据边界可见的人。
-- 同时操作本机、云服务器、GPU 机器、容器、开发板和串口设备，也需要兼容堡垒机或旧 SSH 工具的人。
-- 想把终端、文件、监控、tmux、端口转发、容器和 Agent session 收进一个可持续使用的本地工作台的人。
+可以。Agent、容器、SFTP、端口转发和服务器监控都是独立入口，可以按需使用。
+
+### 配置和数据保存在哪里
+
+默认保存在当前用户目录下的 `~/.kerminal`。卸载或迁移前，可以先备份该目录。
 
 ## 开源协议
 
 Kerminal 源代码以 GNU Affero General Public License v3.0 only（AGPL-3.0-only）授权，详见 [LICENSE](LICENSE)。
 
-Kerminal 名称、Logo、图标、截图和其它品牌资产不随 AGPL 授权，未经许可不得用于表示官方版本、官方背书或造成来源混淆；详见 [TRADEMARKS.md](TRADEMARKS.md)。
+Kerminal 名称、Logo、图标、截图和其它品牌资产不随 AGPL 授权，详见 [TRADEMARKS.md](TRADEMARKS.md)。

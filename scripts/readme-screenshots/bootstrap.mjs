@@ -241,21 +241,42 @@ export function browserBootstrapScript() {
             case "docker_create_container_session": {
               const id = "readme-session-" + nextSessionId++;
               const channelId = args.output?.id;
-              sessions.set(id, { channelId });
+              const requestArgs = Array.isArray(args.request?.args)
+                ? args.request.args
+                : [];
+              const launchCommand = [
+                args.request?.shell ?? "",
+                ...requestArgs,
+              ].join(" ");
+              const isCodexSession = launchCommand.toLowerCase().includes("codex");
+              sessions.set(id, { channelId, isCodexSession });
               queueMicrotask(() => {
                 emitTerminal(channelId, {
-                  data:
-                    "deploy@prod-api:/srv/kerminal$ git status --short\\r\\n M src/features/tool-panel/AgentLauncherToolContent.tsx\\r\\n M src/features/machine-sidebar/RemoteHostCreateDialog.tsx\\r\\ndeploy@prod-api:/srv/kerminal$ ",
+                  data: isCodexSession
+                    ? codexLoadingScreen()
+                    : "deploy@prod-api:/srv/kerminal$ git status --short\\r\\n M src/features/tool-panel/AgentLauncherToolContent.tsx\\r\\n M src/features/machine-sidebar/RemoteHostCreateDialog.tsx\\r\\ndeploy@prod-api:/srv/kerminal$ ",
                   kind: "data",
                   sessionId: id,
                 });
               });
+              if (isCodexSession) {
+                setTimeout(() => {
+                  emitTerminal(channelId, {
+                    data: codexReadyScreen(),
+                    kind: "data",
+                    sessionId: id,
+                  });
+                }, 3_500);
+              }
               return {
                 cols: args.request?.cols ?? 120,
-                cwd: "/srv/kerminal",
+                cwd: args.request?.cwd ?? "/srv/kerminal",
                 id,
                 rows: args.request?.rows ?? 32,
-                shell: cmd === "ssh_create_session" ? "ssh" : "pwsh",
+                shell:
+                  cmd === "ssh_create_session"
+                    ? "ssh"
+                    : args.request?.shell ?? "pwsh",
                 status: "running",
                 targetRef: cmd === "ssh_create_session" ? "ssh:prod-api" : "local",
                 targetToken: "readme-target-token",
@@ -449,6 +470,37 @@ export function browserBootstrapScript() {
         const index = channelIndexes.get(channelId) ?? 0;
         channelIndexes.set(channelId, index + 1);
         callbacks.get(channelId)({ index, message });
+      }
+
+      function codexLoadingScreen() {
+        return [
+          "\\x1b[2J\\x1b[H",
+          "\\x1b[1;36m>_ OpenAI Codex\\x1b[0m \\x1b[90m(v0.144.1)\\x1b[0m",
+          "",
+          "\\x1b[90mLoading workspace...\\x1b[0m",
+          "\\x1b[90mStarting MCP servers...\\x1b[0m",
+          "\\x1b[1;33mMCP: kerminal starting\\x1b[0m",
+        ].join("\\r\\n");
+      }
+
+      function codexReadyScreen() {
+        return [
+          "\\x1b[2J\\x1b[H",
+          "\\x1b[1;36m>_ OpenAI Codex\\x1b[0m \\x1b[90m(v0.144.1)\\x1b[0m",
+          "",
+          "\\x1b[90mmodel:\\x1b[0m \\x1b[1m gpt-5.6-sol xhigh\\x1b[0m",
+          "\\x1b[90mdirectory:\\x1b[0m ~\\\\.kerminal\\\\agents\\\\ags",
+          "\\x1b[1;32mMCP: kerminal ready\\x1b[0m",
+          "",
+          "\\x1b[1mTip:\\x1b[0m Use \\x1b[1m/fast\\x1b[0m for faster inference.",
+          "",
+          "\\x1b[90m•\\x1b[0m 1 usage limit reset available.",
+          "  Run \\x1b[1m/usage\\x1b[0m to use one.",
+          "",
+          "\\x1b[1m›\\x1b[0m \\x1b[7m \\x1b[0m",
+          "",
+          "\\x1b[1;33mgpt-5.6-sol xhigh\\x1b[0m · \\x1b[1;32mags_prod_api\\x1b[0m",
+        ].join("\\r\\n") + "\\x1b[12;3H";
       }
 
       function profiles() {
@@ -951,7 +1003,15 @@ export function browserBootstrapScript() {
               agentId: "codex",
               agentSessionId: "agent-codex-prod-api",
               target: agentSessionTarget(),
-              title: "Codex",
+              title: "部署回归检查",
+              updatedAt: "2026-07-12T08:20:00.000Z",
+            }),
+            createAgentSessionRecord({
+              agentId: "claude",
+              agentSessionId: "agent-claude-release-notes",
+              target: { liveStatus: "unbound" },
+              title: "发布说明整理",
+              updatedAt: "2026-07-12T07:20:00.000Z",
             }),
           ],
         };
@@ -969,6 +1029,10 @@ export function browserBootstrapScript() {
           session: {
             agentId,
             agentSessionId: sessionId,
+            createdAt:
+              request.createdAt ??
+              request.updatedAt ??
+              "2026-07-12T06:20:00.000Z",
             launch: {
               args: ["-NoExit", "-Command", agentId === "custom" ? "qwen --model code" : agentId],
               commandLabel: agentId,
@@ -978,6 +1042,7 @@ export function browserBootstrapScript() {
             sessionRoot,
             target: request.target ?? agentSessionTarget(),
             title,
+            updatedAt: request.updatedAt ?? "2026-07-12T08:20:00.000Z",
             workspaceRoot,
           },
         };
@@ -1004,11 +1069,17 @@ export function browserBootstrapScript() {
         const agentId = request.agentId ?? "codex";
         const sessionId = request.agentSessionId ?? "agent-" + agentId + "-readme";
         const sessionRoot = status.workspaceDir + "/agents/sessions/" + sessionId;
-        const command = agentId === "custom" ? (request.customCommand ?? "qwen") : agentId;
+        const command =
+          agentId === "custom"
+            ? request.customCommand ?? "qwen"
+            : agentId === "codex" && request.resumeProviderSession
+              ? "codex resume --last"
+              : agentId;
         return {
           agentId,
           agentSessionId: sessionId,
           args: ["-NoExit", "-Command", command],
+          commandLabel: command,
           cwd: sessionRoot,
           env: {
             KERMINAL_AGENT_SESSION_ID: sessionId,

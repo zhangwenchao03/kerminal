@@ -11,11 +11,12 @@ import {
 export const captures = [
   { name: "kerminal-agent-session.png", setup: captureAgentSessionRestore },
   { name: "kerminal-hero.png", setup: captureHero },
+  { name: "kerminal-context.png", setup: captureContextWorkspace },
   { name: "kerminal-connect.png", setup: captureConnectDialog },
   { name: "kerminal-external-launch.png", setup: captureExternalLaunch },
   { name: "kerminal-settings.png", setup: captureSettings },
   { name: "kerminal-docker.png", setup: captureDockerDialog },
-  { name: "kerminal-gpu.png", setup: captureServerInfo },
+  { name: "kerminal-system.png", setup: captureServerInfo },
   { name: "kerminal-agent.png", setup: captureAgentLauncher },
   { name: "kerminal-tmux.png", setup: captureTmux },
   { name: "kerminal-ports.png", setup: capturePorts },
@@ -32,8 +33,18 @@ async function captureHero(client) {
   await clickTextButtonContaining(client, "继续上次");
   await waitForBrowserExpression(
     client,
-    `document.querySelector('[data-testid="agent-terminal-command"]') !== null && document.body.innerText.includes("Codex")`,
-    20_000,
+    `document.querySelector('[data-testid="agent-terminal-command"]') !== null && document.body.innerText.includes("OpenAI Codex") && document.body.innerText.includes("gpt-5.6-sol xhigh") && document.body.innerText.includes("MCP: kerminal ready") && !document.body.innerText.includes("MCP: kerminal starting")`,
+    30_000,
+  );
+  await delay(2_000);
+}
+
+async function captureContextWorkspace(client) {
+  await clickSelector(client, `[aria-label="打开 当前上下文"]`);
+  await waitForBrowserExpression(
+    client,
+    `document.querySelector('[aria-label="当前上下文摘要"]') !== null && document.body.innerText.includes("当前目录") && document.body.innerText.includes("Agent")`,
+    30_000,
   );
 }
 
@@ -116,14 +127,8 @@ async function captureServerInfo(client) {
   await clickSelector(client, `[aria-label="打开 系统"]`);
   await waitForBrowserExpression(
     client,
-    `document.querySelector('[aria-label="展开GPU详情"]') !== null`,
+    `document.querySelector('[aria-label="系统信息视图"]') !== null && document.body.innerText.includes("概览") && document.body.innerText.includes("资源") && document.body.innerText.includes("进程")`,
     30_000,
-  );
-  await clickSelector(client, `[aria-label="展开GPU详情"]`);
-  await waitForBrowserExpression(
-    client,
-    `document.body.innerText.includes("NVIDIA RTX 4090")`,
-    10_000,
   );
 }
 
@@ -137,13 +142,13 @@ async function captureAgentLauncher(client) {
   await clickSelector(client, `[aria-label="Back to agent launcher"]`);
   await waitForBrowserExpression(
     client,
-    `document.querySelector('[aria-label="Open Codex"]')?.closest('[aria-hidden]')?.getAttribute('aria-hidden') === 'false' && document.querySelector('[aria-label="Open Claude"]')?.closest('[aria-hidden]')?.getAttribute('aria-hidden') === 'false'`,
+    `document.querySelector('[aria-label="对话范围"]') !== null && document.querySelector('[aria-label^="重命名 "]') !== null && document.querySelector('[aria-label^="删除 "]') !== null`,
     30_000,
   );
-  await clickSelector(client, `[aria-label="查看 Agent 技术详情"]`);
+  await clickTextButtonContaining(client, "全部");
   await waitForBrowserExpression(
     client,
-    `document.querySelector('[aria-label="Agent 技术详情"]') !== null && document.querySelector('[aria-label="Agent 技术详情"]')?.closest('[aria-hidden]')?.getAttribute('aria-hidden') === 'false' && document.body.innerText.includes("MCP: running")`,
+    `document.body.innerText.includes("部署回归检查") && document.body.innerText.includes("发布说明整理")`,
     20_000,
   );
 }
