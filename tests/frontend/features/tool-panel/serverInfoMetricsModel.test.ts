@@ -144,4 +144,28 @@ describe("serverInfoMetricsModel", () => {
       "0 张显卡",
     );
   });
+
+  it("keeps all per-core samples for 64-core hosts", () => {
+    const cores = Array.from({ length: 64 }, (_, index) => index + 0.5);
+
+    expect(coreUsages(snapshot({ cpuCoreUsagePercents: cores }))).toEqual(cores);
+  });
+
+  it("marks a network counter reset instead of reporting a negative rate", () => {
+    const traffic = networkTrafficFromSnapshot(
+      snapshot({
+        networkInterfaces: [{ name: "eth0", rxBytes: 100, txBytes: 200 }],
+      }),
+      snapshot({
+        networkInterfaces: [
+          { name: "eth0", rxBytes: 1_000, txBytes: 2_000 },
+        ],
+      }),
+      1_000,
+    );
+
+    expect(traffic.counterReset).toBe(true);
+    expect(traffic.interfaces[0].rxBytesPerSecond).toBeUndefined();
+    expect(traffic.interfaces[0].txBytesPerSecond).toBeUndefined();
+  });
 });

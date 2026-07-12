@@ -14,14 +14,17 @@ use kerminal_lib::{
     paths::KerminalPaths,
     services::{
         server_info_service::{
-            build_server_info_command_request, build_server_info_plan_for_target_with_executable,
-            build_server_info_plan_with_executable, parse_server_info_output,
+            build_server_info_command_request, build_server_info_command_request_for_tier,
+            build_server_info_plan_for_target_with_executable,
+            build_server_info_plan_with_executable, parse_proc_net_dev, parse_server_info_output,
+            select_server_info_collection_tier, ServerInfoCollectionTier,
         },
         ssh_runtime::{SshAuthIdentity, SshAuthSecretKind},
     },
     state::AppState,
 };
 use std::sync::Arc;
+use std::time::Duration;
 use support::managed_ssh_runtime::{ssh_command_service_with_fake_runtime, FakeManagedSshRuntime};
 use tempfile::{tempdir, TempDir};
 
@@ -97,12 +100,9 @@ fn build_plan_uses_parameterized_openssh_args_without_old_credential_refs() {
     assert!(plan.script.contains("core_index=substr(key, 4)"));
     assert!(!plan.script.contains("\n        index=substr(key, 4)"));
     assert!(plan.script.contains("process_count"));
-    assert!(plan.script.contains("network_interface_%d_name"));
-    assert!(plan.script.contains("split($0, parts, \":\")"));
-    assert!(plan.script.contains("sub(/^[[:space:]]+/, \"\", name)"));
-    assert!(plan
-        .script
-        .contains("split(parts[2], fields, /[[:space:]]+/)"));
+    assert!(plan.script.contains("proc_net_dev_line_%d=%s"));
+    assert!(!plan.script.contains("network_interface_%d_name"));
+    assert!(!plan.script.contains("split(parts[2], fields"));
     assert!(!plan.script.contains("awk -F'[: ]+'"));
     assert!(!plan.script.contains("if ($2 == \"lo\") next"));
     assert!(plan.script.contains("disk_%d_mount"));
@@ -123,6 +123,23 @@ fn build_plan_uses_parameterized_openssh_args_without_old_credential_refs() {
 }
 
 #[test]
+fn proc_net_dev_parser_handles_leading_whitespace_and_tx_field() {
+    let fixture = include_str!("fixtures/server-info/proc-net-dev.txt");
+
+    let snapshot = parse_proc_net_dev(fixture);
+
+    assert_eq!(snapshot.interfaces.len(), 3);
+    assert_eq!(snapshot.interfaces[0].name, "lo");
+    assert_eq!(snapshot.interfaces[0].rx_bytes, Some(1_024));
+    assert_eq!(snapshot.interfaces[0].tx_bytes, Some(1_024));
+    assert_eq!(snapshot.interfaces[1].name, "eth0");
+    assert_eq!(snapshot.interfaces[1].rx_bytes, Some(123_456_789_012));
+    assert_eq!(snapshot.interfaces[1].tx_bytes, Some(9_876_543_210));
+    assert_eq!(snapshot.total_rx_bytes, Some(123_456_794_132));
+    assert_eq!(snapshot.total_tx_bytes, Some(9_876_546_282));
+}
+
+#[test]
 fn build_command_request_uses_plaintext_password_execution_path() {
     let host = remote_host(RemoteHostAuthType::Password);
     let target = RemoteTargetRef::Ssh {
@@ -138,6 +155,60 @@ fn build_command_request_uses_plaintext_password_execution_path() {
     assert!(request.command.contains("__KERMINAL_CPU_AFTER__"));
     assert!(!request.command.contains("BatchMode=yes"));
     assert!(!request.command.contains("credential:ssh"));
+}
+
+#[test]
+fn collection_tier_respects_fast_slow_and_static_cache_windows() {
+    assert_eq!(
+        select_server_info_collection_tier(false, None, None),
+        ServerInfoCollectionTier::Full
+    );
+    assert_eq!(
+        select_server_info_collection_tier(
+            true,
+            Some(Duration::from_secs(2)),
+            Some(Duration::from_secs(2))
+        ),
+        ServerInfoCollectionTier::Fast
+    );
+    assert_eq!(
+        select_server_info_collection_tier(
+            true,
+            Some(Duration::from_secs(15)),
+            Some(Duration::from_secs(20))
+        ),
+        ServerInfoCollectionTier::FastAndSlow
+    );
+    assert_eq!(
+        select_server_info_collection_tier(
+            true,
+            Some(Duration::from_secs(1)),
+            Some(Duration::from_secs(300))
+        ),
+        ServerInfoCollectionTier::Full
+    );
+}
+
+#[test]
+fn fast_collection_script_excludes_slow_and_static_commands() {
+    let host = remote_host(RemoteHostAuthType::Password);
+    let target = RemoteTargetRef::Ssh {
+        host_id: host.id.clone(),
+    };
+
+    let request =
+        build_server_info_command_request_for_tier(&host, &target, ServerInfoCollectionTier::Fast)
+            .expect("build fast request");
+
+    assert!(request.command.contains("/proc/stat"));
+    assert!(request.command.contains("/proc/meminfo"));
+    assert!(request.command.contains("/proc/net/dev"));
+    assert!(!request.command.contains("df -Pk"));
+    assert!(!request.command.contains("ps -eo"));
+    assert!(!request.command.contains("nvidia-smi"));
+    assert!(!request.command.contains("lspci"));
+    assert!(!request.command.contains("/etc/os-release"));
+    assert!(!request.command.contains("/proc/cpuinfo"));
 }
 
 #[test]
@@ -390,6 +461,41 @@ memory_total_bytes=4096
         }
     ));
     assert!(!format!("{key:?}").contains("correct horse"));
+}
+
+#[tokio::test]
+async fn native_snapshot_coalesces_same_target_requests_inside_single_flight_window() {
+    let (_home, state) = test_state();
+    let host_id = create_saved_password_host(&state);
+    let backend = Arc::new(FakeManagedSshRuntime::with_stdout(
+        "hostname=managed-api\ncpu_usage_percent=12\n",
+    ));
+    let ssh_commands = ssh_command_service_with_fake_runtime(&state, Arc::clone(&backend));
+    let request = ServerInfoRequest {
+        host_id: host_id.clone(),
+        target: RemoteTargetRef::Ssh {
+            host_id: host_id.clone(),
+        },
+    };
+
+    let first = state
+        .server_info()
+        .snapshot_native(
+            state.remote_hosts(),
+            state.paths(),
+            &ssh_commands,
+            request.clone(),
+        )
+        .await
+        .expect("first snapshot");
+    let second = state
+        .server_info()
+        .snapshot_native(state.remote_hosts(), state.paths(), &ssh_commands, request)
+        .await
+        .expect("coalesced snapshot");
+
+    assert_eq!(first, second);
+    assert_eq!(backend.exec_count(), 1);
 }
 
 fn remote_host(auth_type: RemoteHostAuthType) -> RemoteHost {

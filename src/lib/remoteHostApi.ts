@@ -157,7 +157,35 @@ interface NormalizedRemoteHostUpdateRequest
   sortOrder: number;
 }
 
-export const browserPreviewRemoteHostTree: RemoteHostGroupWithHosts[] = [];
+export const browserPreviewRemoteHostTree: RemoteHostGroupWithHosts[] =
+  browserPreviewMode() === "system-info"
+    ? [
+        {
+          createdAt: "browser-preview",
+          hosts: [
+            {
+              authType: "agent",
+              createdAt: "browser-preview",
+              groupId: "group-preview-infrastructure",
+              host: "preview.internal",
+              id: "prod-api",
+              name: "生产 API",
+              port: 22,
+              production: true,
+              sortOrder: 10,
+              sshOptions: createDefaultSshOptions(),
+              tags: ["production", "preview"],
+              updatedAt: "browser-preview",
+              username: "deploy",
+            },
+          ],
+          id: "group-preview-infrastructure",
+          name: "基础设施",
+          sortOrder: 10,
+          updatedAt: "browser-preview",
+        },
+      ]
+    : [];
 
 export const UNGROUPED_REMOTE_HOST_GROUP_ID = "__ungrouped__";
 
@@ -190,6 +218,13 @@ export function createDefaultSshOptions(): SshOptions {
     },
     tunnels: [],
   };
+}
+
+function browserPreviewMode() {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+  return new URLSearchParams(window.location.search).get("preview") ?? undefined;
 }
 
 let browserPreviewRemoteHostState = cloneRemoteHostTree(

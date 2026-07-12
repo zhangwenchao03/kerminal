@@ -786,6 +786,7 @@ describe("ToolPanel", () => {
     );
 
     expect(await screen.findByText("prod-api-01")).toBeInTheDocument();
+    expect(document.body.innerHTML).not.toContain("--accent-color");
     expect(screen.queryByText("本机运行体验")).not.toBeInTheDocument();
     expect(
       screen.queryByText("NVIDIA GeForce RTX 4060"),
@@ -794,17 +795,8 @@ describe("ToolPanel", () => {
     expect(screen.getAllByText("GPU").length).toBeGreaterThan(0);
     expect(screen.getAllByText("内存").length).toBeGreaterThan(0);
     expect(screen.getAllByText("磁盘").length).toBeGreaterThan(0);
-    expect(screen.getByText("进程")).toBeInTheDocument();
-    const systemDetailsSummary = screen.getByText("系统详情");
-    const systemDetails = systemDetailsSummary.closest("details");
-    expect(systemDetails).not.toBeNull();
-    expect(
-      within(systemDetails as HTMLElement).getByText("6.8.0"),
-    ).not.toBeVisible();
-    await user.click(systemDetailsSummary);
-    expect(
-      within(systemDetails as HTMLElement).getByText("6.8.0"),
-    ).toBeVisible();
+    expect(screen.getByRole("tab", { name: "进程" })).toBeInTheDocument();
+    expect(screen.getByText("6.8.0")).toBeInTheDocument();
     const intervalSelect = screen.getByRole("combobox", {
       name: "服务器信息采集间隔",
     });
@@ -813,13 +805,7 @@ describe("ToolPanel", () => {
     expect(screen.getByRole("option", { name: "手动" })).toBeInTheDocument();
     await user.click(screen.getByRole("option", { name: "手动" }));
     expect(intervalSelect).toHaveAttribute("aria-valuetext", "手动");
-    expect(
-      screen.getByRole("button", { name: "展开CPU详情" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "展开网络详情" }),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("等待采样").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("采样中").length).toBeGreaterThan(0);
     expect(serverInfoApiMocks.getServerInfoSnapshot).toHaveBeenCalledWith({
       hostId: "prod-api",
       target: {
@@ -828,25 +814,13 @@ describe("ToolPanel", () => {
       },
     });
 
-    await user.click(screen.getByRole("button", { name: "展开CPU详情" }));
-    expect(
-      screen.getByRole("button", { name: "收起CPU详情" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("核心数")).toBeInTheDocument();
-    expect(screen.getAllByText("4").length).toBeGreaterThan(0);
-    expect(screen.getByText("17.3%")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "资源" }));
+    expect(screen.getByText("4 核")).toBeInTheDocument();
+    expect(screen.getAllByText(/%/).length).toBeGreaterThan(0);
     expect(screen.getByText("AMD EPYC 7B13")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "展开GPU详情" }));
     expect(screen.getAllByText("NVIDIA RTX 4090").length).toBeGreaterThan(0);
-
-    await user.click(screen.getByRole("button", { name: "展开网络详情" }));
-    expect(screen.getAllByText("上行").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("下行").length).toBeGreaterThan(0);
-    expect(screen.getByText("等待下一次采集")).toBeInTheDocument();
     expect(screen.getAllByText("eth0").length).toBeGreaterThan(0);
-
-    await user.click(screen.getByRole("button", { name: "展开进程详情" }));
+    await user.click(screen.getByRole("tab", { name: "进程" }));
     expect(screen.getByText("kerminal-agent")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "刷新服务器信息" }));
@@ -946,7 +920,7 @@ describe("ToolPanel", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("shows primary network rates and expands all network interfaces", async () => {
+  it("shows primary network rates and all network interfaces", async () => {
     const user = userEvent.setup();
     serverInfoApiMocks.getServerInfoSnapshot
       .mockResolvedValueOnce({
@@ -1039,20 +1013,15 @@ describe("ToolPanel", () => {
       expect(serverInfoApiMocks.getServerInfoSnapshot).toHaveBeenCalledTimes(2);
     });
 
-    expect(
-      screen.getByText("流量排行 eth0 · 3 个接口 · 3.0s采样"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("eth0")).toBeInTheDocument();
-    expect(screen.getAllByText("1.0 KB/s").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("2.0 KB/s").length).toBeGreaterThan(0);
+    expect(screen.getByText("1.0 KB/s")).toBeInTheDocument();
+    expect(screen.getByText("2.0 KB/s")).toBeInTheDocument();
     expect(screen.queryByText("lo")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "展开网络详情" }));
+    await user.click(screen.getByRole("tab", { name: "资源" }));
     expect(screen.getAllByText("eth0").length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("button", { name: "全部" }));
     expect(screen.getByText("lo")).toBeInTheDocument();
     expect(screen.getByText("tailscale0")).toBeInTheDocument();
-    expect(screen.getAllByText("流量排行 #1").length).toBeGreaterThan(0);
-    expect(screen.queryByText("主网卡")).not.toBeInTheDocument();
   });
 
   it("renders nullable SSH system metrics without crashing", async () => {
@@ -1157,12 +1126,9 @@ describe("ToolPanel", () => {
     );
 
     expect((await screen.findAllByText("0 张")).length).toBeGreaterThan(0);
+    await userEvent.click(screen.getByRole("tab", { name: "资源" }));
     expect(screen.getByText("0 张显卡")).toBeInTheDocument();
-    const gpuToggle = screen.getByRole("button", { name: "展开GPU详情" });
-    await userEvent.click(gpuToggle);
-    expect(
-      screen.getByRole("button", { name: "收起GPU详情" }),
-    ).toBeInTheDocument();
+    expect(screen.getByText("未发现可监控 GPU")).toBeInTheDocument();
     expect(screen.queryByText(/NVIDIA-SMI has failed/)).not.toBeInTheDocument();
     expect(screen.queryByText(/未返回可用 NVIDIA GPU/)).not.toBeInTheDocument();
   });
@@ -1211,12 +1177,13 @@ describe("ToolPanel", () => {
       />,
     );
 
-    expect(await screen.findByText("1 张设备，仅静态识别")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "展开GPU详情" }));
+    await screen.findByText("prod-api-01");
+    await user.click(screen.getByRole("tab", { name: "资源" }));
+    expect(screen.getByText("1 张设备，仅静态识别")).toBeInTheDocument();
     expect(
       screen.getByText("Intel Corporation UHD Graphics"),
     ).toBeInTheDocument();
-    expect(screen.getByText("暂无 GPU 使用率或显存。")).toBeInTheDocument();
+    expect(screen.getAllByText(/仅静态识别/).length).toBeGreaterThan(0);
   });
 
   it("renders nvidia-smi list fallback devices without treating them as missing", async () => {
@@ -1264,8 +1231,9 @@ describe("ToolPanel", () => {
       />,
     );
 
-    expect(await screen.findByText("1 张设备，仅静态识别")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "展开GPU详情" }));
+    await screen.findByText("prod-api-01");
+    await user.click(screen.getByRole("tab", { name: "资源" }));
+    expect(screen.getByText("1 张设备，仅静态识别")).toBeInTheDocument();
     expect(
       screen.getByText("NVIDIA RTX 4500 Ada Generation"),
     ).toBeInTheDocument();

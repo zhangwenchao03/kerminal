@@ -18,6 +18,7 @@ export interface NetworkInterfaceTraffic {
 }
 
 export interface NetworkTrafficSnapshot {
+  counterReset?: boolean;
   interfaces: NetworkInterfaceTraffic[];
   sampleDurationMs?: number;
   topInterface?: NetworkInterfaceTraffic;
@@ -135,6 +136,13 @@ export function networkTrafficFromSnapshot(
     sampleDurationMs && sampleDurationMs > 0
       ? sampleDurationMs / 1000
       : undefined;
+  const counterReset = currentInterfaces.some((networkInterface) => {
+    const previous = previousInterfaces.get(networkInterface.name);
+    return (
+      counterDecreased(networkInterface.rxBytes, previous?.rxBytes) ||
+      counterDecreased(networkInterface.txBytes, previous?.txBytes)
+    );
+  });
   const unsortedInterfaces = currentInterfaces.map((networkInterface) => {
     const previous = previousInterfaces.get(networkInterface.name);
     return {
@@ -172,12 +180,17 @@ export function networkTrafficFromSnapshot(
     );
 
   return {
+    counterReset,
     interfaces,
     sampleDurationMs: sampleSeconds ? sampleDurationMs : undefined,
     topInterface: interfaces[0],
     totalRxBytesPerSecond,
     totalTxBytesPerSecond,
   };
+}
+
+function counterDecreased(current?: number | null, previous?: number | null) {
+  return current != null && previous != null && current < previous;
 }
 
 function normalizedNetworkInterfaces(

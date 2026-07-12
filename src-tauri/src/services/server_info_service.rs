@@ -4,8 +4,10 @@
 
 use std::{
     collections::HashMap,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    sync::{Arc, Mutex},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+use tokio::sync::Mutex as AsyncMutex;
 
 use crate::{
     error::{AppError, AppResult},
@@ -27,15 +29,39 @@ use crate::{
 
 const SERVER_INFO_TIMEOUT: Duration = Duration::from_secs(15);
 const SERVER_INFO_OUTPUT_BYTES: usize = 128 * 1024;
+const SERVER_INFO_SINGLE_FLIGHT_WINDOW: Duration = Duration::from_millis(750);
+const SERVER_INFO_SLOW_REFRESH_INTERVAL: Duration = Duration::from_secs(15);
+const SERVER_INFO_STATIC_REFRESH_INTERVAL: Duration = Duration::from_secs(300);
 
 /// 服务器信息采集业务入口。
 #[derive(Debug, Default)]
-pub struct ServerInfoService;
+pub struct ServerInfoService {
+    targets: Mutex<HashMap<String, Arc<AsyncMutex<ServerInfoTargetCache>>>>,
+}
+
+#[derive(Debug, Default)]
+struct ServerInfoTargetCache {
+    snapshot: Option<ServerInfoSnapshot>,
+    collected_at: Option<Instant>,
+    slow_collected_at: Option<Instant>,
+    static_collected_at: Option<Instant>,
+}
+
+/// 系统信息脚本的采集层级。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServerInfoCollectionTier {
+    /// 仅采集高频变化的 CPU、内存、负载与网络计数。
+    Fast,
+    /// 在高频指标之外刷新磁盘、进程与 GPU。
+    FastAndSlow,
+    /// 首次或静态缓存到期时采集完整系统信息。
+    Full,
+}
 
 impl ServerInfoService {
     /// 创建服务器信息服务。
     pub fn new() -> Self {
-        Self
+        Self::default()
     }
 
     /// 使用远程主机记录里的 SSH 认证信息采集 SSH 主机或容器目标的系统信息快照。
@@ -47,13 +73,43 @@ impl ServerInfoService {
         request: ServerInfoRequest,
     ) -> AppResult<ServerInfoSnapshot> {
         let target = Self::target_from_request(request)?;
+        let target_key = server_info_target_key(&target);
+        let target_cache = {
+            let mut targets = self
+                .targets
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            Arc::clone(
+                targets
+                    .entry(target_key)
+                    .or_insert_with(|| Arc::new(AsyncMutex::new(ServerInfoTargetCache::default()))),
+            )
+        };
+        let mut target_cache = target_cache.lock().await;
+        let now = Instant::now();
+        if target_cache.collected_at.is_some_and(|collected_at| {
+            now.duration_since(collected_at) < SERVER_INFO_SINGLE_FLIGHT_WINDOW
+        }) {
+            if let Some(snapshot) = target_cache.snapshot.clone() {
+                return Ok(snapshot);
+            }
+        }
+        let tier = select_server_info_collection_tier(
+            target_cache.snapshot.is_some(),
+            target_cache
+                .slow_collected_at
+                .map(|value| now.duration_since(value)),
+            target_cache
+                .static_collected_at
+                .map(|value| now.duration_since(value)),
+        );
         let host_id = target.host_id().ok_or_else(|| {
             AppError::InvalidInput("服务器信息目标必须是 SSH 主机或容器".to_owned())
         })?;
         let host = ssh_commands
             .resolve_native_runtime_host_metadata(paths, host_id)
             .map_err(server_info_transport_error)?;
-        let command_request = build_server_info_command_request(&host, &target)?;
+        let command_request = build_server_info_command_request_for_tier(&host, &target, tier)?;
         let output = ssh_commands
             .execute_native(paths, command_request)
             .await
@@ -63,8 +119,23 @@ impl ServerInfoService {
             return Err(server_info_command_failure(&output.stdout, &output.stderr));
         }
 
-        let mut snapshot = parse_server_info_output(&host, &output.stdout, unix_timestamp());
+        let partial = parse_server_info_output(&host, &output.stdout, unix_timestamp());
+        let mut snapshot = match target_cache.snapshot.as_ref() {
+            Some(cached) => merge_server_info_snapshot(cached, partial, tier),
+            None => partial,
+        };
         apply_target_metadata(&mut snapshot, &target);
+        target_cache.snapshot = Some(snapshot.clone());
+        target_cache.collected_at = Some(now);
+        if matches!(
+            tier,
+            ServerInfoCollectionTier::FastAndSlow | ServerInfoCollectionTier::Full
+        ) {
+            target_cache.slow_collected_at = Some(now);
+        }
+        if tier == ServerInfoCollectionTier::Full {
+            target_cache.static_collected_at = Some(now);
+        }
 
         Ok(snapshot)
     }
@@ -83,6 +154,26 @@ impl ServerInfoService {
             ));
         }
         Ok(target)
+    }
+}
+
+/// 根据缓存年龄选择下一次采集层级。
+pub fn select_server_info_collection_tier(
+    has_snapshot: bool,
+    slow_age: Option<Duration>,
+    static_age: Option<Duration>,
+) -> ServerInfoCollectionTier {
+    if !has_snapshot
+        || static_age.is_none()
+        || static_age.is_some_and(|age| age >= SERVER_INFO_STATIC_REFRESH_INTERVAL)
+    {
+        ServerInfoCollectionTier::Full
+    } else if slow_age.is_none()
+        || slow_age.is_some_and(|age| age >= SERVER_INFO_SLOW_REFRESH_INTERVAL)
+    {
+        ServerInfoCollectionTier::FastAndSlow
+    } else {
+        ServerInfoCollectionTier::Fast
     }
 }
 
@@ -116,9 +207,18 @@ pub fn build_server_info_command_request(
     host: &RemoteHost,
     target: &RemoteTargetRef,
 ) -> AppResult<SshCommandRequest> {
+    build_server_info_command_request_for_tier(host, target, ServerInfoCollectionTier::Full)
+}
+
+/// 按采集层级构建服务器信息命令请求。
+pub fn build_server_info_command_request_for_tier(
+    host: &RemoteHost,
+    target: &RemoteTargetRef,
+    tier: ServerInfoCollectionTier,
+) -> AppResult<SshCommandRequest> {
     Ok(SshCommandRequest {
         host_id: host.id.clone(),
-        command: build_server_info_script_for_target(host, target)?,
+        command: build_server_info_script_for_target_tier(host, target, tier)?,
         timeout_seconds: Some(SERVER_INFO_TIMEOUT.as_secs()),
         max_output_bytes: Some(SERVER_INFO_OUTPUT_BYTES),
     })
@@ -160,9 +260,18 @@ fn build_server_info_script_for_target(
     host: &RemoteHost,
     target: &RemoteTargetRef,
 ) -> AppResult<String> {
+    build_server_info_script_for_target_tier(host, target, ServerInfoCollectionTier::Full)
+}
+
+fn build_server_info_script_for_target_tier(
+    host: &RemoteHost,
+    target: &RemoteTargetRef,
+    tier: ServerInfoCollectionTier,
+) -> AppResult<String> {
     ensure_target_matches_host(host, target)?;
+    let script = server_info_script_for_tier(tier);
     match target {
-        RemoteTargetRef::Ssh { .. } => Ok(SERVER_INFO_SCRIPT.to_owned()),
+        RemoteTargetRef::Ssh { .. } => Ok(script),
         RemoteTargetRef::DockerContainer {
             container_id,
             runtime,
@@ -172,7 +281,7 @@ fn build_server_info_script_for_target(
             Ok(build_container_exec_script(
                 *runtime,
                 &container_id,
-                SERVER_INFO_SCRIPT,
+                &script,
                 &[],
             ))
         }
@@ -182,6 +291,38 @@ fn build_server_info_script_for_target(
             "服务器信息目标必须是 SSH 主机或容器".to_owned(),
         )),
     }
+}
+
+fn server_info_target_key(target: &RemoteTargetRef) -> String {
+    target.stable_id()
+}
+
+fn merge_server_info_snapshot(
+    cached: &ServerInfoSnapshot,
+    mut fresh: ServerInfoSnapshot,
+    tier: ServerInfoCollectionTier,
+) -> ServerInfoSnapshot {
+    if tier != ServerInfoCollectionTier::Full {
+        fresh.hostname = cached.hostname.clone();
+        fresh.os = cached.os.clone();
+        fresh.architecture = cached.architecture.clone();
+        fresh.kernel = cached.kernel.clone();
+        fresh.cpu_count = cached.cpu_count;
+        fresh.cpu_model = cached.cpu_model.clone();
+    }
+    if tier == ServerInfoCollectionTier::Fast {
+        fresh.disk_total_bytes = cached.disk_total_bytes;
+        fresh.disk_used_bytes = cached.disk_used_bytes;
+        fresh.disk_available_bytes = cached.disk_available_bytes;
+        fresh.disk_mount = cached.disk_mount.clone();
+        fresh.disks = cached.disks.clone();
+        fresh.process_count = cached.process_count;
+        fresh.running_process_count = cached.running_process_count;
+        fresh.top_processes = cached.top_processes.clone();
+        fresh.gpu_probe_status = cached.gpu_probe_status.clone();
+        fresh.gpus = cached.gpus.clone();
+    }
+    fresh
 }
 
 fn ensure_target_matches_host(host: &RemoteHost, target: &RemoteTargetRef) -> AppResult<()> {
@@ -274,6 +415,22 @@ pub fn parse_server_info_output(
     captured_at: String,
 ) -> ServerInfoSnapshot {
     let values = key_value_lines(stdout);
+    let proc_net_dev = parse_proc_net_dev_values(&values);
+    let (network_rx_bytes, network_tx_bytes, network_interfaces) = proc_net_dev
+        .map(|snapshot| {
+            (
+                snapshot.total_rx_bytes,
+                snapshot.total_tx_bytes,
+                snapshot.interfaces,
+            )
+        })
+        .unwrap_or_else(|| {
+            (
+                parse_u64(&values, "network_rx_bytes"),
+                parse_u64(&values, "network_tx_bytes"),
+                parse_network_interfaces(&values),
+            )
+        });
 
     ServerInfoSnapshot {
         host_id: host.id.clone(),
@@ -305,14 +462,89 @@ pub fn parse_server_info_output(
         disk_available_bytes: parse_u64(&values, "disk_available_bytes"),
         disk_mount: optional_text(&values, "disk_mount"),
         disks: parse_server_disks(&values),
-        network_rx_bytes: parse_u64(&values, "network_rx_bytes"),
-        network_tx_bytes: parse_u64(&values, "network_tx_bytes"),
-        network_interfaces: parse_network_interfaces(&values),
+        network_rx_bytes,
+        network_tx_bytes,
+        network_interfaces,
         top_processes: parse_server_processes(&values),
         gpu_probe_status: optional_text(&values, "gpu_probe_status"),
         gpus: parse_server_gpus(&values),
         captured_at,
     }
+}
+
+/// `/proc/net/dev` 的解析结果。
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProcNetDevSnapshot {
+    /// 所有有效接口的接收累计字节数。
+    pub total_rx_bytes: Option<u64>,
+    /// 所有有效接口的发送累计字节数。
+    pub total_tx_bytes: Option<u64>,
+    /// 成功解析的网络接口。
+    pub interfaces: Vec<ServerNetworkInterfaceInfo>,
+}
+
+/// 按 Linux `/proc/net/dev` 字段定义解析网络接口累计计数。
+pub fn parse_proc_net_dev(content: &str) -> ProcNetDevSnapshot {
+    let interfaces = content
+        .lines()
+        .filter_map(|line| {
+            let (name, counters) = line.split_once(':')?;
+            let name = name.trim();
+            if name.is_empty() {
+                return None;
+            }
+
+            let fields = counters.split_whitespace().collect::<Vec<_>>();
+            if fields.len() < 9 {
+                return None;
+            }
+
+            Some(ServerNetworkInterfaceInfo {
+                name: name.to_owned(),
+                rx_bytes: fields[0].parse().ok(),
+                tx_bytes: fields[8].parse().ok(),
+            })
+        })
+        .filter(|interface| interface.rx_bytes.is_some() && interface.tx_bytes.is_some())
+        .collect::<Vec<_>>();
+
+    let total_rx_bytes = interfaces.iter().try_fold(0_u64, |total, interface| {
+        total.checked_add(interface.rx_bytes?)
+    });
+    let total_tx_bytes = interfaces.iter().try_fold(0_u64, |total, interface| {
+        total.checked_add(interface.tx_bytes?)
+    });
+
+    ProcNetDevSnapshot {
+        total_rx_bytes: (!interfaces.is_empty()).then_some(total_rx_bytes).flatten(),
+        total_tx_bytes: (!interfaces.is_empty()).then_some(total_tx_bytes).flatten(),
+        interfaces,
+    }
+}
+
+fn parse_proc_net_dev_values(values: &HashMap<String, String>) -> Option<ProcNetDevSnapshot> {
+    let mut lines = values
+        .iter()
+        .filter_map(|(key, value)| {
+            let index = key
+                .strip_prefix("proc_net_dev_line_")?
+                .parse::<usize>()
+                .ok()?;
+            Some((index, value.as_str()))
+        })
+        .collect::<Vec<_>>();
+    if lines.is_empty() {
+        return None;
+    }
+    lines.sort_unstable_by_key(|(index, _)| *index);
+
+    Some(parse_proc_net_dev(
+        &lines
+            .into_iter()
+            .map(|(_, line)| line)
+            .collect::<Vec<_>>()
+            .join("\n"),
+    ))
 }
 
 fn key_value_lines(stdout: &str) -> HashMap<String, String> {
@@ -523,7 +755,47 @@ fn unix_timestamp() -> String {
         .unwrap_or_else(|_| "0".to_owned())
 }
 
+fn server_info_script_for_tier(tier: ServerInfoCollectionTier) -> String {
+    let mut active_tier = None;
+    SERVER_INFO_SCRIPT
+        .lines()
+        .filter_map(|line| match line.trim() {
+            "# KERMINAL_TIER_STATIC_BEGIN" => {
+                active_tier = Some(ServerInfoCollectionTier::Full);
+                None
+            }
+            "# KERMINAL_TIER_FAST_BEGIN" => {
+                active_tier = Some(ServerInfoCollectionTier::Fast);
+                None
+            }
+            "# KERMINAL_TIER_SLOW_BEGIN" => {
+                active_tier = Some(ServerInfoCollectionTier::FastAndSlow);
+                None
+            }
+            "# KERMINAL_TIER_END" => {
+                active_tier = None;
+                None
+            }
+            _ => {
+                let include = match (tier, active_tier) {
+                    (ServerInfoCollectionTier::Full, _) => true,
+                    (ServerInfoCollectionTier::FastAndSlow, Some(section)) => {
+                        section != ServerInfoCollectionTier::Full
+                    }
+                    (ServerInfoCollectionTier::Fast, Some(section)) => {
+                        section == ServerInfoCollectionTier::Fast
+                    }
+                    (_, None) => line.trim().is_empty(),
+                };
+                include.then_some(line)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 const SERVER_INFO_SCRIPT: &str = r#"
+# KERMINAL_TIER_STATIC_BEGIN
 printf 'hostname=%s\n' "$(hostname 2>/dev/null)"
 if [ -r /etc/os-release ]; then
   os_pretty="$(awk -F= '/^PRETTY_NAME=/ {
@@ -541,7 +813,9 @@ else
 fi
 printf 'architecture=%s\n' "$(uname -m 2>/dev/null)"
 printf 'kernel=%s\n' "$(uname -r 2>/dev/null)"
+# KERMINAL_TIER_END
 
+# KERMINAL_TIER_FAST_BEGIN
 if [ -r /proc/uptime ]; then
   awk '{ printf "uptime_seconds=%s\n", $1 }' /proc/uptime
 fi
@@ -549,7 +823,9 @@ fi
 if [ -r /proc/loadavg ]; then
   awk '{ printf "load_average=%s %s %s\n", $1, $2, $3 }' /proc/loadavg
 fi
+# KERMINAL_TIER_END
 
+# KERMINAL_TIER_STATIC_BEGIN
 cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null)"
 if [ -n "$cpu_count" ]; then
   printf 'cpu_count=%s\n' "$cpu_count"
@@ -567,7 +843,9 @@ if [ -r /proc/cpuinfo ]; then
     }
   ' /proc/cpuinfo
 fi
+# KERMINAL_TIER_END
 
+# KERMINAL_TIER_FAST_BEGIN
 if [ -r /proc/stat ]; then
   read_cpu_snapshot() {
     awk '/^cpu[0-9]* / {
@@ -634,7 +912,9 @@ if [ -r /proc/meminfo ]; then
     }
   ' /proc/meminfo
 fi
+# KERMINAL_TIER_END
 
+# KERMINAL_TIER_SLOW_BEGIN
 df -Pk / 2>/dev/null | awk 'NR==2 {
   printf "disk_total_bytes=%.0f\n", $2*1024
   printf "disk_used_bytes=%.0f\n", $3*1024
@@ -651,26 +931,18 @@ df -Pk 2>/dev/null | awk 'NR > 1 {
   printf "disk_%d_mount=%s\n", idx, $6
   idx++
 }'
+# KERMINAL_TIER_END
 
+# KERMINAL_TIER_FAST_BEGIN
 if [ -r /proc/net/dev ]; then
   awk 'NR > 2 {
-    split($0, parts, ":")
-    name=parts[1]
-    sub(/^[[:space:]]+/, "", name)
-    sub(/[[:space:]]+$/, "", name)
-    split(parts[2], fields, /[[:space:]]+/)
-    rx += fields[1]
-    tx += fields[9]
-    printf "network_interface_%d_name=%s\n", idx, name
-    printf "network_interface_%d_rx_bytes=%.0f\n", idx, fields[1]
-    printf "network_interface_%d_tx_bytes=%.0f\n", idx, fields[9]
+    printf "proc_net_dev_line_%d=%s\n", idx, $0
     idx++
-  } END {
-    printf "network_rx_bytes=%.0f\n", rx
-    printf "network_tx_bytes=%.0f\n", tx
   }' /proc/net/dev
 fi
+# KERMINAL_TIER_END
 
+# KERMINAL_TIER_SLOW_BEGIN
 if command -v ps >/dev/null 2>&1; then
   ps -eo stat= 2>/dev/null | awk '{
     count++
@@ -781,4 +1053,5 @@ elif command -v lspci >/dev/null 2>&1; then
 else
   printf 'gpu_probe_status=no_probe_command\n'
 fi
+# KERMINAL_TIER_END
 "#;

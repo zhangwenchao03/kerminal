@@ -13,6 +13,7 @@ describe("remoteHostApi", () => {
     vi.resetModules();
     invokeMock.mockReset();
     isTauriMock.mockReset();
+    window.history.replaceState({}, "", "/");
   });
 
   it("lists the remote host tree through Tauri", async () => {
@@ -146,6 +147,29 @@ describe("remoteHostApi", () => {
     const { listRemoteHostTree } = await import("../../../src/lib/remoteHostApi");
 
     await expect(listRemoteHostTree()).resolves.toEqual([]);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("provides a deterministic system-info target only in preview mode", async () => {
+    isTauriMock.mockReturnValue(false);
+    window.history.replaceState({}, "", "/?preview=system-info");
+    const { listRemoteHostTree } = await import("../../../src/lib/remoteHostApi");
+
+    const tree = await listRemoteHostTree();
+
+    expect(tree).toHaveLength(1);
+    expect(tree[0]).toMatchObject({
+      id: "group-preview-infrastructure",
+      name: "基础设施",
+    });
+    expect(tree[0].hosts[0]).toMatchObject({
+      authType: "agent",
+      host: "preview.internal",
+      id: "prod-api",
+      name: "生产 API",
+      production: true,
+      username: "deploy",
+    });
     expect(invokeMock).not.toHaveBeenCalled();
   });
 

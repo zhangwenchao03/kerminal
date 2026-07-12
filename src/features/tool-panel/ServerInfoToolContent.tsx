@@ -3,55 +3,51 @@ import {
   ArrowDown,
   ArrowUp,
   Cpu,
-  Gpu,
   HardDrive,
   MemoryStick,
-  Monitor,
   Network,
+  RefreshCw,
   Server,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { IconAction } from "../../components/ui/icon-action";
 import { Select } from "../../components/ui/select";
 import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
-import {
-  type ServerDiskInfo,
-  type ServerGpuInfo,
-  type ServerInfoSnapshot,
-  type ServerProcessInfo,
-} from "../../lib/serverInfoApi";
+import type { ServerInfoSnapshot } from "../../lib/serverInfoApi";
 import type { Machine } from "../workspace/types";
 import { RuntimeHealthCard } from "./RuntimeHealthCard";
 import {
-  coreUsages,
+  filterNetworkInterfaces,
+  networkInterfaceRoleLabel,
+  primaryNetworkTraffic,
+  type NetworkInterfaceFilter,
+} from "./serverInfoDashboardModel";
+import {
+  appendServerInfoTargetHistory,
+  historySeries,
+  serverInfoHistoryForTarget,
+  type ServerInfoHistoryPoint,
+} from "./serverInfoHistoryModel";
+import { resolveServerInfoHealth } from "./serverInfoHealthPolicy";
+import {
   formatBytes,
+  coreUsages,
   formatLoadAverage,
-  formatNetworkSample,
   formatPercent,
   formatProcessSummary,
-  formatTemperature,
   formatTimestamp,
   formatTrafficRate,
   formatUptime,
   gpuCardHelper,
   gpuMemoryLabel,
   loadAverageValues,
-  networkCardHelper,
   networkTrafficFromSnapshot,
   percentOf,
   serverGpuSummaryValue,
-  type NetworkInterfaceTraffic,
   type NetworkTrafficSnapshot,
 } from "./serverInfoMetricsModel";
 import { serverInfoTargetContext } from "./serverInfoTargetModel";
-import {
-  SystemInfoRow,
-  SystemInfoRows,
-  SystemMeterBar,
-  SystemMetricCard,
-  SystemOverviewCard,
-  SystemOverviewTile,
-} from "./SystemMetricCard";
 import {
   serverInfoRefreshOptions,
   useServerInfoSnapshot,
@@ -63,14 +59,13 @@ interface ServerInfoToolContentProps {
   selectedMachine?: Machine;
 }
 
-type ServerMetricCardId =
-  | "cpu"
-  | "gpu"
-  | "memory"
-  | "swap"
-  | "disk"
-  | "network"
-  | "process";
+type MonitorView = "overview" | "processes" | "resources";
+
+const views: Array<{ id: MonitorView; label: string }> = [
+  { id: "overview", label: "概览" },
+  { id: "resources", label: "资源" },
+  { id: "processes", label: "进程" },
+];
 
 export function ServerInfoToolContent({
   selectedMachine,
@@ -79,9 +74,8 @@ export function ServerInfoToolContent({
     () => serverInfoTargetContext(selectedMachine),
     [selectedMachine],
   );
-  const [expandedCards, setExpandedCards] = useState<Set<ServerMetricCardId>>(
-    () => new Set(),
-  );
+  const [activeView, setActiveView] = useState<MonitorView>("overview");
+  const [history, setHistory] = useState<ServerInfoHistoryPoint[]>([]);
   const {
     error,
     loading,
@@ -91,725 +85,528 @@ export function ServerInfoToolContent({
     setRefreshIntervalMs,
     snapshot,
   } = useServerInfoSnapshot(targetContext);
-  const snapshotGpus =
-    snapshot && Array.isArray(snapshot.gpus) ? snapshot.gpus : undefined;
-  const memoryPercent = snapshot
-    ? percentOf(snapshot.memoryUsedBytes, snapshot.memoryTotalBytes)
-    : undefined;
-  const diskPercent = snapshot
-    ? percentOf(snapshot.diskUsedBytes, snapshot.diskTotalBytes)
-    : undefined;
-  const toggleMetricCard = useCallback((cardId: ServerMetricCardId) => {
-    setExpandedCards((current) => {
-      const next = new Set(current);
-      if (next.has(cardId)) {
-        next.delete(cardId);
-      } else {
-        next.add(cardId);
-      }
-      return next;
-    });
-  }, []);
+
+  useEffect(() => {
+    setHistory(
+      targetContext
+        ? serverInfoHistoryForTarget(targetContext.cacheKey)
+        : [],
+    );
+  }, [targetContext?.cacheKey]);
+  useEffect(() => {
+    if (!snapshot || !targetContext) {
+      return;
+    }
+    setHistory(
+      appendServerInfoTargetHistory(
+        targetContext.cacheKey,
+        snapshot,
+        networkTraffic,
+      ),
+    );
+  }, [networkTraffic, snapshot, targetContext]);
 
   if (!targetContext) {
     return <RuntimeHealthCard />;
   }
 
+  const traffic =
+    networkTraffic ??
+    (snapshot
+      ? networkTrafficFromSnapshot(snapshot)
+      : {
+          interfaces: [],
+          totalRxBytesPerSecond: undefined,
+          totalTxBytesPerSecond: undefined,
+        });
+  const health = resolveServerInfoHealth({
+    capturedAt: snapshot?.capturedAt,
+    error: Boolean(error),
+    hasRateSample: Boolean(traffic.sampleDurationMs),
+    loading,
+    nowMs: Date.now(),
+    refreshIntervalMs,
+  });
+
   return (
-    <section className="space-y-3">
-      <SystemOverviewCard
-        badge={
-          targetContext.badgeText ? (
-            <span
-              className={cn(
-                "shrink-0 rounded-lg border px-2 py-1 text-xs",
-                selectedMachine?.production
-                  ? "border-amber-300/20 bg-amber-400/10 text-amber-700 dark:text-amber-200"
-                  : "kerminal-muted-surface text-zinc-500 dark:text-zinc-400",
-              )}
-            >
-              {targetContext.badgeText}
-            </span>
-          ) : undefined
-        }
-        footer={
-          <>
-            {error ? (
-              <UserFacingNotice compact message={error} />
-            ) : null}
-            <details className={cn(error && "mt-3")}>
-              <summary className="kerminal-focus-ring kerminal-pressable cursor-pointer rounded-lg text-xs font-medium text-zinc-600 focus-visible:outline-none dark:text-zinc-300">
-                系统详情
-              </summary>
-              <div className="mt-3 space-y-3">
-                <SystemInfoRows>
-                  <SystemInfoRow
-                    label="主机名"
-                    value={snapshot?.hostname ?? snapshot?.hostName ?? "-"}
-                  />
-                  <SystemInfoRow label="系统" value={snapshot?.os ?? "-"} />
-                  <SystemInfoRow
-                    label="架构"
-                    value={snapshot?.architecture ?? "-"}
-                  />
-                  <SystemInfoRow
-                    label="Kernel"
-                    value={snapshot?.kernel ?? "-"}
-                  />
-                  <SystemInfoRow
-                    label="运行时间"
-                    value={formatUptime(snapshot?.uptimeSeconds) ?? "-"}
-                  />
-                  <SystemInfoRow
-                    label="采样时间"
-                    value={
-                      snapshot
-                        ? formatTimestamp(snapshot.capturedAt)
-                        : "等待首次采集"
-                    }
-                  />
-                </SystemInfoRows>
-                <div className="flex items-center justify-between gap-3 text-xs text-zinc-500 dark:text-zinc-400">
-                  <span>采集间隔</span>
-                  <Select
-                    aria-label="服务器信息采集间隔"
-                    className="w-24"
-                    onValueChange={(value) =>
-                      setRefreshIntervalMs(Number(value))
-                    }
-                    options={serverInfoRefreshOptions.map((option) => ({
-                      label: option.label,
-                      value: String(option.value),
-                    }))}
-                    size="sm"
-                    value={String(refreshIntervalMs)}
-                  />
-                </div>
-              </div>
-            </details>
-          </>
-        }
-        icon={Server}
-        onRefresh={() => void refresh({ force: true })}
-        refreshAriaLabel={targetContext.refreshAriaLabel}
-        refreshing={loading}
-        subtitle={targetContext.subtitle}
-        title={targetContext.title}
-      >
-        <SystemOverviewTile
-          label="CPU"
-          value={snapshot ? formatPercent(snapshot.cpuUsagePercent) : undefined}
-        />
-        <SystemOverviewTile
-          label="内存"
-          value={snapshot ? formatPercent(memoryPercent) : undefined}
-        />
-        <SystemOverviewTile
-          label="磁盘"
-          value={snapshot ? formatPercent(diskPercent) : undefined}
-        />
-        <SystemOverviewTile
-          label="GPU"
-          value={
-            snapshotGpus ? serverGpuSummaryValue(snapshotGpus) : undefined
-          }
-        />
-      </SystemOverviewCard>
-
-      {loading && !snapshot ? (
-        <div className="kerminal-solid-surface rounded-2xl border px-4 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-          正在读取服务器信息...
+    <section className="min-w-0 space-y-3">
+      <header className="kerminal-solid-surface border-b px-3 pb-3 pt-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Server className="h-4 w-4 shrink-0 text-[rgb(var(--app-accent))]" />
+              <h2 className="truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+                {targetContext.title}
+              </h2>
+              <StatusDot status={health.status} />
+            </div>
+            <p className="mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400">
+              {targetContext.subtitle}
+            </p>
+          </div>
+          <IconAction
+            icon={RefreshCw}
+            label={targetContext.refreshAriaLabel}
+            loading={loading}
+            onClick={() => void refresh({ force: true })}
+            variant="ghost"
+          />
         </div>
-      ) : null}
-
-      {!loading && !error && !snapshot ? (
-        <div className="kerminal-solid-surface rounded-2xl border px-4 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-          暂无服务器信息。
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <div
+            aria-label="系统信息视图"
+            className="kerminal-muted-surface grid min-w-0 flex-1 grid-cols-3 rounded-lg border p-0.5"
+            role="tablist"
+          >
+            {views.map((view) => (
+              <button
+                aria-selected={activeView === view.id}
+                className={cn(
+                  "kerminal-focus-ring kerminal-pressable min-w-0 rounded-md px-2 py-1.5 text-xs font-medium focus-visible:outline-none",
+                  activeView === view.id
+                    ? "kerminal-solid-surface text-zinc-950 shadow-sm dark:text-zinc-50"
+                    : "text-zinc-500 dark:text-zinc-400",
+                )}
+                key={view.id}
+                onClick={() => setActiveView(view.id)}
+                role="tab"
+                type="button"
+              >
+                {view.label}
+              </button>
+            ))}
+          </div>
+          <Select
+            aria-label="服务器信息采集间隔"
+            className="w-[4.75rem] shrink-0"
+            onValueChange={(value) => setRefreshIntervalMs(Number(value))}
+            options={serverInfoRefreshOptions.map((option) => ({
+              label: option.label,
+              value: String(option.value),
+            }))}
+            size="sm"
+            value={String(refreshIntervalMs)}
+          />
         </div>
-      ) : null}
+        <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-zinc-500 dark:text-zinc-400">
+          <span>
+            {traffic.counterReset
+              ? "网络计数器已重置，等待下一次采样"
+              : health.label}
+          </span>
+          <span>
+            {snapshot
+              ? `更新于 ${formatTimestamp(snapshot.capturedAt)}`
+              : "等待首次采集"}
+          </span>
+        </div>
+      </header>
 
-      {snapshot ? (
-        <ServerMetrics
-          expandedCards={expandedCards}
-          networkTraffic={networkTraffic}
-          onToggleMetric={toggleMetricCard}
-          snapshot={snapshot}
-        />
-      ) : null}
+      {error ? <UserFacingNotice compact message={error} /> : null}
+      {!snapshot ? (
+        <EmptyState loading={loading} />
+      ) : (
+        <div role="tabpanel">
+          {activeView === "overview" ? (
+            <Overview snapshot={snapshot} traffic={traffic} history={history} />
+          ) : null}
+          {activeView === "resources" ? (
+            <Resources snapshot={snapshot} traffic={traffic} history={history} />
+          ) : null}
+          {activeView === "processes" ? <Processes snapshot={snapshot} /> : null}
+        </div>
+      )}
     </section>
   );
 }
 
-function ServerMetrics({
-  expandedCards,
-  onToggleMetric,
+function Overview({
+  history,
   snapshot,
-  networkTraffic,
+  traffic,
 }: {
-  expandedCards: Set<ServerMetricCardId>;
-  networkTraffic: NetworkTrafficSnapshot | null;
-  onToggleMetric: (cardId: ServerMetricCardId) => void;
+  history: ServerInfoHistoryPoint[];
   snapshot: ServerInfoSnapshot;
+  traffic: NetworkTrafficSnapshot;
 }) {
-  const memoryPercent = percentOf(
+  const memory = percentOf(
     snapshot.memoryUsedBytes,
     snapshot.memoryTotalBytes,
   );
-  const swapPercent = percentOf(
-    snapshot.swapUsedBytes,
-    snapshot.swapTotalBytes,
-  );
-  const diskPercent = percentOf(
-    snapshot.diskUsedBytes,
-    snapshot.diskTotalBytes,
-  );
-  const gpus = Array.isArray(snapshot.gpus) ? snapshot.gpus : [];
-  const disks = Array.isArray(snapshot.disks) ? snapshot.disks : [];
-  const loadAverage = loadAverageValues(snapshot.loadAverage);
-  const loadAverageLabel = formatLoadAverage(loadAverage);
-  const networkTrafficView =
-    networkTraffic ?? networkTrafficFromSnapshot(snapshot);
-  const networkInterfaces = networkTrafficView.interfaces;
-  const topNetworkInterface = networkTrafficView.topInterface;
-  const topProcesses = Array.isArray(snapshot.topProcesses)
-    ? snapshot.topProcesses
-    : [];
-  const cpuUsagePercent = snapshot.cpuUsagePercent ?? undefined;
-  const cpuCoreUsages = coreUsages(snapshot);
-  const processSummary = formatProcessSummary(snapshot);
-
+  const disk = percentOf(snapshot.diskUsedBytes, snapshot.diskTotalBytes);
+  const primaryTraffic = primaryNetworkTraffic(traffic.interfaces);
   return (
     <div className="space-y-3">
-      <SystemMetricCard
-        expanded={expandedCards.has("cpu")}
-        helper={
-          loadAverageLabel
-            ? `Load ${loadAverageLabel}`
-            : `${snapshot.cpuCount ?? "-"} 核`
-        }
-        icon={Cpu}
-        onToggle={() => onToggleMetric("cpu")}
-        title="CPU"
-        value={formatPercent(cpuUsagePercent)}
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-[var(--border-subtle)]">
+        <Metric
+          icon={<Cpu className="h-4 w-4" />}
+          label="CPU"
+          series={historySeries(history, "cpuPercent")}
+          value={formatPercent(snapshot.cpuUsagePercent)}
+        />
+        <Metric
+          icon={<MemoryStick className="h-4 w-4" />}
+          label="内存"
+          series={historySeries(history, "memoryPercent")}
+          value={formatPercent(memory)}
+        />
+        <Metric
+          icon={<ArrowDown className="h-4 w-4" />}
+          label="下行"
+          series={historySeries(history, "networkRxBytesPerSecond")}
+          value={formatTrafficRate(primaryTraffic.rxBytesPerSecond, "采样中")}
+        />
+        <Metric
+          icon={<ArrowUp className="h-4 w-4" />}
+          label="上行"
+          series={historySeries(history, "networkTxBytesPerSecond")}
+          value={formatTrafficRate(primaryTraffic.txBytesPerSecond, "采样中")}
+        />
+        <Metric
+          icon={<HardDrive className="h-4 w-4" />}
+          label="磁盘"
+          series={[]}
+          value={formatPercent(disk)}
+        />
+        <Metric
+          icon={<Activity className="h-4 w-4" />}
+          label="GPU"
+          series={[]}
+          value={serverGpuSummaryValue(snapshot.gpus ?? [])}
+        />
+      </div>
+      <Section title="系统">
+        <Info label="主机名" value={snapshot.hostname ?? snapshot.hostName} />
+        <Info label="系统" value={snapshot.os ?? "-"} />
+        <Info label="架构" value={snapshot.architecture ?? "-"} />
+        <Info label="Kernel" value={snapshot.kernel ?? "-"} />
+        <Info label="运行时间" value={formatUptime(snapshot.uptimeSeconds) ?? "-"} />
+        <Info label="根分区" value={`${formatPercent(disk)} · ${formatBytes(snapshot.diskAvailableBytes)} 可用`} />
+      </Section>
+    </div>
+  );
+}
+
+function Resources({
+  history,
+  snapshot,
+  traffic,
+}: {
+  history: ServerInfoHistoryPoint[];
+  snapshot: ServerInfoSnapshot;
+  traffic: NetworkTrafficSnapshot;
+}) {
+  const [networkFilter, setNetworkFilter] =
+    useState<NetworkInterfaceFilter>("primary");
+  const visibleInterfaces = filterNetworkInterfaces(
+    traffic.interfaces,
+    networkFilter,
+  );
+  const cores = coreUsages(snapshot);
+  return (
+    <div className="space-y-3">
+      <ResourceSection
+        icon={<Cpu className="h-4 w-4" />}
+        label="CPU"
+        meter={snapshot.cpuUsagePercent ?? undefined}
+        series={historySeries(history, "cpuPercent")}
+        value={formatPercent(snapshot.cpuUsagePercent)}
       >
-        {cpuUsagePercent !== undefined ? (
-          <SystemMeterBar value={cpuUsagePercent} />
-        ) : null}
-        <SystemInfoRows>
-          {cpuCoreUsages.length > 0 ? (
-            <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-4">
-              <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                每核
+        <Info label="型号" value={snapshot.cpuModel ?? "-"} />
+        <Info label="核心" value={`${snapshot.cpuCount ?? "-"} 核`} />
+        <Info
+          label="Load"
+          value={formatLoadAverage(loadAverageValues(snapshot.loadAverage)) ?? "-"}
+        />
+        {cores.length > 0 ? (
+          <div className="grid grid-cols-4 gap-x-3 gap-y-2 py-3">
+            {cores.map((usage, index) => (
+              <div className="min-w-0" key={index}>
+                <div className="flex items-center justify-between gap-1 font-mono text-[10px]">
+                  <span className="text-zinc-500">C{index}</span>
+                  <span>{Math.round(usage)}%</span>
+                </div>
+                <Meter compact value={usage} />
               </div>
-              <div className="space-y-2">
-                {cpuCoreUsages.map((value, index) => (
-                  <CoreUsageRow index={index + 1} key={index} value={value} />
-                ))}
+            ))}
+          </div>
+        ) : null}
+      </ResourceSection>
+      <Section
+        icon={<Activity className="h-4 w-4" />}
+        title="GPU"
+        trailing={gpuCardHelper(snapshot, snapshot.gpus ?? [])}
+      >
+        {(snapshot.gpus ?? []).length === 0 ? (
+          <p className="py-3 text-xs text-zinc-500">未发现可监控 GPU</p>
+        ) : (
+          (snapshot.gpus ?? []).map((gpu) => (
+            <div className="border-b py-2.5 last:border-b-0" key={gpu.name}>
+              <div className="truncate text-xs font-medium">{gpu.name}</div>
+              <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+                {gpuMemoryLabel(gpu)}
+                {gpu.utilizationPercent != null
+                  ? ` · ${formatPercent(gpu.utilizationPercent)}`
+                  : " · 仅静态识别"}
               </div>
             </div>
-          ) : null}
-          <SystemInfoRow
-            label="平均使用"
-            value={formatPercent(cpuUsagePercent)}
-          />
-          <SystemInfoRow
-            label="核心数"
-            value={snapshot.cpuCount?.toString() ?? "-"}
-          />
-          <SystemInfoRow label="Load" value={loadAverageLabel ?? "-"} />
-          <SystemInfoRow label="型号" value={snapshot.cpuModel ?? "-"} />
-          <SystemInfoRow label="架构" value={snapshot.architecture ?? "-"} />
-          <SystemInfoRow label="Kernel" value={snapshot.kernel ?? "-"} />
-          <SystemInfoRow label="进程" value={processSummary} />
-        </SystemInfoRows>
-      </SystemMetricCard>
-      <SystemMetricCard
-        expanded={expandedCards.has("gpu")}
-        helper={gpuCardHelper(snapshot, gpus)}
-        icon={Gpu}
-        onToggle={() => onToggleMetric("gpu")}
-        title="GPU"
-        value={serverGpuSummaryValue(gpus)}
-      >
-        {gpus.length > 0 ? (
-          <div className="space-y-3">
-            {gpus.map((gpu, index) => (
-              <ServerGpuRow
-                gpu={gpu}
-                index={index}
-                key={`${gpu.name}-${index}`}
-              />
-            ))}
-          </div>
-        ) : null}
-      </SystemMetricCard>
-      <SystemMetricCard
-        expanded={expandedCards.has("memory")}
-        helper={`${formatBytes(snapshot.memoryUsedBytes)} / ${formatBytes(
-          snapshot.memoryTotalBytes,
-        )}`}
-        icon={MemoryStick}
-        onToggle={() => onToggleMetric("memory")}
-        title="内存"
-        value={formatPercent(memoryPercent)}
-      >
-        {memoryPercent !== undefined ? (
-          <SystemMeterBar value={memoryPercent} />
-        ) : null}
-        <SystemInfoRows>
-          <SystemInfoRow
-            label="已用"
-            value={formatBytes(snapshot.memoryUsedBytes)}
-          />
-          <SystemInfoRow
-            label="可用"
-            value={formatBytes(snapshot.memoryAvailableBytes)}
-          />
-          <SystemInfoRow
-            label="Buffers"
-            value={formatBytes(snapshot.memoryBuffersBytes)}
-          />
-          <SystemInfoRow
-            label="Cached"
-            value={formatBytes(snapshot.memoryCachedBytes)}
-          />
-          <SystemInfoRow
-            label="总计"
-            value={formatBytes(snapshot.memoryTotalBytes)}
-          />
-          <SystemInfoRow label="使用率" value={formatPercent(memoryPercent)} />
-          <SystemInfoRow
-            label="运行时间"
-            value={formatUptime(snapshot.uptimeSeconds) ?? "-"}
-          />
-        </SystemInfoRows>
-      </SystemMetricCard>
-      <SystemMetricCard
-        expanded={expandedCards.has("swap")}
-        helper={`${formatBytes(snapshot.swapUsedBytes)} / ${formatBytes(
-          snapshot.swapTotalBytes,
-        )}`}
-        icon={Monitor}
-        onToggle={() => onToggleMetric("swap")}
-        title="Swap"
-        value={formatPercent(swapPercent)}
-      >
-        {swapPercent !== undefined ? (
-          <SystemMeterBar value={swapPercent} />
-        ) : null}
-        <SystemInfoRows>
-          <SystemInfoRow
-            label="已用"
-            value={formatBytes(snapshot.swapUsedBytes)}
-          />
-          <SystemInfoRow
-            label="总计"
-            value={formatBytes(snapshot.swapTotalBytes)}
-          />
-          <SystemInfoRow label="使用率" value={formatPercent(swapPercent)} />
-        </SystemInfoRows>
-      </SystemMetricCard>
-      <SystemMetricCard
-        expanded={expandedCards.has("disk")}
-        helper={`${snapshot.diskMount ?? "/"} · ${formatBytes(
-          snapshot.diskUsedBytes,
-        )} / ${formatBytes(snapshot.diskTotalBytes)}`}
-        icon={HardDrive}
-        onToggle={() => onToggleMetric("disk")}
-        title="磁盘"
-        value={formatPercent(diskPercent)}
-      >
-        {diskPercent !== undefined ? (
-          <SystemMeterBar value={diskPercent} />
-        ) : null}
-        <SystemInfoRows>
-          <SystemInfoRow label="挂载点" value={snapshot.diskMount ?? "/"} />
-          <SystemInfoRow
-            label="已用"
-            value={formatBytes(snapshot.diskUsedBytes)}
-          />
-          <SystemInfoRow
-            label="可用"
-            value={formatBytes(snapshot.diskAvailableBytes)}
-          />
-          <SystemInfoRow
-            label="总计"
-            value={formatBytes(snapshot.diskTotalBytes)}
-          />
-          <SystemInfoRow label="使用率" value={formatPercent(diskPercent)} />
-        </SystemInfoRows>
-        {disks.length > 0 ? (
-          <div className="mt-3 space-y-2">
-            {disks.map((disk, index) => (
-              <ServerDiskRow disk={disk} key={`${disk.mount}-${index}`} />
-            ))}
-          </div>
-        ) : null}
-      </SystemMetricCard>
-      <SystemMetricCard
-        expanded={expandedCards.has("network")}
-        helper={networkCardHelper(networkTrafficView)}
-        icon={Network}
-        onToggle={() => onToggleMetric("network")}
-        summary={
-          <NetworkTopInterfaceRow
-            networkInterface={topNetworkInterface}
-            sample={formatNetworkSample(networkTrafficView)}
-          />
-        }
-        title="网络"
-        value={
-          <NetworkRatePair
-            emptyLabel="采样中"
-            rxBytesPerSecond={networkTrafficView.totalRxBytesPerSecond}
-            txBytesPerSecond={networkTrafficView.totalTxBytesPerSecond}
-          />
-        }
-      >
-        <SystemInfoRows>
-          <SystemInfoRow
-            label="排行首位"
-            value={topNetworkInterface?.name ?? "-"}
-          />
-          <SystemInfoRow
-            label="上行"
-            value={formatTrafficRate(
-              topNetworkInterface?.txBytesPerSecond,
-              "等待采样",
-            )}
-          />
-          <SystemInfoRow
-            label="下行"
-            value={formatTrafficRate(
-              topNetworkInterface?.rxBytesPerSecond,
-              "等待采样",
-            )}
-          />
-          <SystemInfoRow
-            label="采样"
-            value={formatNetworkSample(networkTrafficView)}
-          />
-        </SystemInfoRows>
-        {networkInterfaces.length > 0 ? (
-          <div className="mt-3 space-y-2">
-            {networkInterfaces.map((networkInterface, index) => (
-              <ServerNetworkInterfaceRow
-                key={networkInterface.name}
-                networkInterface={networkInterface}
-                rank={index + 1}
-              />
-            ))}
-          </div>
-        ) : null}
-      </SystemMetricCard>
-      <SystemMetricCard
-        expanded={expandedCards.has("process")}
-        helper={processSummary}
-        icon={Activity}
-        onToggle={() => onToggleMetric("process")}
-        title="进程"
-        value={snapshot.processCount?.toString() ?? "-"}
-      >
-        <SystemInfoRows>
-          <SystemInfoRow
-            label="总数"
-            value={snapshot.processCount?.toString() ?? "-"}
-          />
-          <SystemInfoRow
-            label="运行中"
-            value={snapshot.runningProcessCount?.toString() ?? "-"}
-          />
-        </SystemInfoRows>
-        {topProcesses.length > 0 ? (
-          <div className="mt-3 space-y-2">
-            {topProcesses.map((process) => (
-              <ServerProcessRow
-                key={`${process.pid}-${process.name}`}
-                process={process}
-              />
-            ))}
-          </div>
-        ) : (
-          <p className="kerminal-muted-surface mt-3 rounded-xl border px-3 py-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-            未返回进程列表，可能仅有数量。
-          </p>
+          ))
         )}
-      </SystemMetricCard>
+      </Section>
+      <ResourceSection
+        icon={<MemoryStick className="h-4 w-4" />}
+        label="内存"
+        meter={percentOf(snapshot.memoryUsedBytes, snapshot.memoryTotalBytes)}
+        series={historySeries(history, "memoryPercent")}
+        value={`${formatBytes(snapshot.memoryUsedBytes)} / ${formatBytes(snapshot.memoryTotalBytes)}`}
+      >
+        <Info label="可用" value={formatBytes(snapshot.memoryAvailableBytes)} />
+        <Info label="Cached" value={formatBytes(snapshot.memoryCachedBytes)} />
+        <Info label="Swap" value={`${formatBytes(snapshot.swapUsedBytes)} / ${formatBytes(snapshot.swapTotalBytes)}`} />
+      </ResourceSection>
+      <Section icon={<Network className="h-4 w-4" />} title="网络接口">
+        <div
+          aria-label="网络接口筛选"
+          className="kerminal-muted-surface mt-2 grid grid-cols-3 rounded-md border p-0.5"
+          role="group"
+        >
+          {(
+            [
+              ["primary", "主要"],
+              ["all", "全部"],
+              ["virtual", "虚拟"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              aria-pressed={networkFilter === value}
+              className={cn(
+                "kerminal-focus-ring kerminal-pressable rounded px-2 py-1 text-[11px] focus-visible:outline-none",
+                networkFilter === value
+                  ? "kerminal-solid-surface font-medium shadow-sm"
+                  : "text-zinc-500 dark:text-zinc-400",
+              )}
+              key={value}
+              onClick={() => setNetworkFilter(value)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {visibleInterfaces.length === 0 ? (
+          <p className="py-3 text-xs text-zinc-500">未返回网络接口数据</p>
+        ) : (
+          visibleInterfaces.map((item) => (
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b py-2.5 last:border-b-0" key={item.name}>
+              <span className="min-w-0 truncate text-xs font-medium">
+                {item.name}
+                <span className="ml-1.5 font-normal text-zinc-500 dark:text-zinc-400">
+                  {networkInterfaceRoleLabel(item.role)}
+                </span>
+              </span>
+              <span className="text-right font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
+                ↓ {formatTrafficRate(item.rxBytesPerSecond, "采样中")} · ↑ {formatTrafficRate(item.txBytesPerSecond, "采样中")}
+              </span>
+            </div>
+          ))
+        )}
+      </Section>
+      <Section icon={<HardDrive className="h-4 w-4" />} title="文件系统">
+        {(snapshot.disks ?? []).map((disk) => (
+          <Info
+            key={`${disk.filesystem}-${disk.mount}`}
+            label={disk.mount}
+            value={`${formatBytes(disk.usedBytes)} / ${formatBytes(disk.totalBytes)}`}
+          />
+        ))}
+      </Section>
     </div>
   );
 }
 
-function ServerGpuRow({ gpu, index }: { gpu: ServerGpuInfo; index: number }) {
-  const memoryPercent = percentOf(
-    gpu.memoryUsedBytes ?? undefined,
-    gpu.memoryTotalBytes ?? undefined,
+function Processes({ snapshot }: { snapshot: ServerInfoSnapshot }) {
+  const [sortBy, setSortBy] = useState<"cpu" | "memory">("cpu");
+  const processes = [...(snapshot.topProcesses ?? [])].sort((left, right) =>
+    sortBy === "cpu"
+      ? (right.cpuUsagePercent ?? -1) - (left.cpuUsagePercent ?? -1)
+      : (right.memoryBytes ?? -1) - (left.memoryBytes ?? -1),
   );
-  const primaryPercent = gpu.utilizationPercent ?? memoryPercent;
-
   return (
-    <section className="kerminal-muted-surface rounded-xl border p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="break-words text-sm font-medium text-zinc-950 dark:text-zinc-50">
-            {gpu.name}
-          </div>
-          <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-            GPU {index + 1}
-            {gpu.vendor ? ` · ${gpu.vendor}` : ""}
-          </div>
-        </div>
-        <span className="shrink-0 text-xs font-semibold text-emerald-600 dark:text-emerald-300">
-          {formatPercent(gpu.utilizationPercent ?? memoryPercent)}
-        </span>
+    <Section icon={<Activity className="h-4 w-4" />} title="进程">
+      <div className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+        {formatProcessSummary(snapshot)}
       </div>
-      <div className="mt-3 space-y-3">
-        {gpu.utilizationPercent !== undefined &&
-        gpu.utilizationPercent !== null ? (
-          <LabeledMeter label="GPU 使用率" value={gpu.utilizationPercent} />
-        ) : null}
-        {memoryPercent !== undefined ? (
-          <LabeledMeter
-            helper={gpuMemoryLabel(gpu)}
-            label="显存占用"
-            value={memoryPercent}
-          />
-        ) : null}
-        {primaryPercent === undefined ? (
-          <div className="kerminal-muted-surface rounded-lg border px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
-            暂无 GPU 使用率或显存。
+      {processes.length === 0 ? (
+        <p className="py-4 text-center text-xs text-zinc-500">未返回进程排行</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem] gap-2 border-b pb-1.5 text-[10px] text-zinc-500 dark:text-zinc-400">
+            <span>进程</span>
+            <button
+              aria-pressed={sortBy === "cpu"}
+              className={cn("text-right", sortBy === "cpu" && "font-semibold text-zinc-900 dark:text-zinc-100")}
+              onClick={() => setSortBy("cpu")}
+              type="button"
+            >
+              CPU
+            </button>
+            <button
+              aria-pressed={sortBy === "memory"}
+              className={cn("text-right", sortBy === "memory" && "font-semibold text-zinc-900 dark:text-zinc-100")}
+              onClick={() => setSortBy("memory")}
+              type="button"
+            >
+              内存
+            </button>
           </div>
-        ) : null}
-      </div>
-      <SystemInfoRows>
-        <SystemInfoRow
-          label="使用率"
-          value={formatPercent(gpu.utilizationPercent)}
-        />
-        <SystemInfoRow label="显存" value={gpuMemoryLabel(gpu)} />
-        <SystemInfoRow
-          label="温度"
-          value={formatTemperature(gpu.temperatureCelsius)}
-        />
-        <SystemInfoRow label="驱动" value={gpu.driverVersion ?? "-"} />
-        <SystemInfoRow label="厂商" value={gpu.vendor ?? "-"} />
-      </SystemInfoRows>
-    </section>
+          {processes.map((process) => (
+            <div className="grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem] items-center gap-2 border-b py-2.5 last:border-b-0" key={`${process.pid}-${process.name}`}>
+              <div className="min-w-0">
+                <div className="truncate text-xs font-medium">{process.name}</div>
+                <div className="font-mono text-[10px] text-zinc-500">PID {process.pid}</div>
+              </div>
+              <span className="text-right font-mono text-[11px]">{formatPercent(process.cpuUsagePercent)}</span>
+              <span className="text-right font-mono text-[11px]">{formatBytes(process.memoryBytes)}</span>
+            </div>
+          ))}
+        </>
+      )}
+    </Section>
   );
 }
 
-function ServerDiskRow({ disk }: { disk: ServerDiskInfo }) {
-  const usagePercent = percentOf(disk.usedBytes, disk.totalBytes);
-
-  return (
-    <section className="kerminal-muted-surface rounded-xl border p-3">
-      <div className="flex items-start justify-between gap-3 text-xs">
-        <div className="min-w-0">
-          <div className="break-words font-medium text-zinc-700 dark:text-zinc-200">
-            {disk.mount}
-          </div>
-          <div className="mt-0.5 break-all text-zinc-500 dark:text-zinc-400">
-            {disk.filesystem}
-          </div>
-        </div>
-        <span className="shrink-0 font-semibold text-emerald-600 dark:text-emerald-300">
-          {formatPercent(usagePercent)}
-        </span>
-      </div>
-      {usagePercent !== undefined ? (
-        <SystemMeterBar value={usagePercent} />
-      ) : null}
-      <SystemInfoRows>
-        <SystemInfoRow label="已用" value={formatBytes(disk.usedBytes)} />
-        <SystemInfoRow label="可用" value={formatBytes(disk.availableBytes)} />
-        <SystemInfoRow label="总计" value={formatBytes(disk.totalBytes)} />
-      </SystemInfoRows>
-    </section>
-  );
-}
-
-function NetworkTopInterfaceRow({
-  networkInterface,
-  sample,
-}: {
-  networkInterface?: NetworkInterfaceTraffic;
-  sample: string;
-}) {
-  return (
-    <section className="kerminal-muted-surface rounded-xl border px-3 py-2.5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-            {networkInterface?.name ?? "未识别网卡"}
-          </div>
-          <div className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-400">
-            流量排行 #1 · {sample}
-          </div>
-        </div>
-        <NetworkRatePair
-          emptyLabel="等待采样"
-          rxBytesPerSecond={networkInterface?.rxBytesPerSecond}
-          txBytesPerSecond={networkInterface?.txBytesPerSecond}
-        />
-      </div>
-    </section>
-  );
-}
-
-function ServerNetworkInterfaceRow({
-  networkInterface,
-  rank,
-}: {
-  networkInterface: NetworkInterfaceTraffic;
-  rank: number;
-}) {
-  return (
-    <section className="kerminal-muted-surface rounded-xl border p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="break-words text-sm font-medium text-zinc-950 dark:text-zinc-50">
-            {networkInterface.name}
-          </div>
-          <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-            流量排行 #{rank}
-          </div>
-        </div>
-        <NetworkRatePair
-          emptyLabel="等待采样"
-          rxBytesPerSecond={networkInterface.rxBytesPerSecond}
-          txBytesPerSecond={networkInterface.txBytesPerSecond}
-        />
-      </div>
-      <SystemInfoRows>
-        <SystemInfoRow
-          label="上行"
-          value={formatTrafficRate(
-            networkInterface.txBytesPerSecond,
-            "等待采样",
-          )}
-        />
-        <SystemInfoRow
-          label="下行"
-          value={formatTrafficRate(
-            networkInterface.rxBytesPerSecond,
-            "等待采样",
-          )}
-        />
-        <SystemInfoRow
-          label="累计接收"
-          value={formatBytes(networkInterface.rxBytes)}
-        />
-        <SystemInfoRow
-          label="累计发送"
-          value={formatBytes(networkInterface.txBytes)}
-        />
-      </SystemInfoRows>
-    </section>
-  );
-}
-
-function NetworkRatePair({
-  emptyLabel = "-",
-  rxBytesPerSecond,
-  txBytesPerSecond,
-}: {
-  emptyLabel?: string;
-  rxBytesPerSecond?: number;
-  txBytesPerSecond?: number;
-}) {
-  if (rxBytesPerSecond === undefined && txBytesPerSecond === undefined) {
-    return (
-      <span className="font-mono text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-        {emptyLabel}
-      </span>
-    );
-  }
-
-  return (
-    <span className="inline-flex flex-wrap justify-end gap-x-2 gap-y-1 font-mono text-xs leading-5">
-      <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-300">
-        <ArrowUp className="h-3 w-3" />
-        {formatTrafficRate(txBytesPerSecond)}
-      </span>
-      <span className="inline-flex items-center gap-1 text-sky-600 dark:text-sky-300">
-        <ArrowDown className="h-3 w-3" />
-        {formatTrafficRate(rxBytesPerSecond)}
-      </span>
-    </span>
-  );
-}
-
-function ServerProcessRow({ process }: { process: ServerProcessInfo }) {
-  return (
-    <section className="kerminal-muted-surface rounded-xl border p-3">
-      <div className="flex items-start justify-between gap-3 text-xs">
-        <div className="min-w-0">
-          <div className="break-words text-sm font-medium text-zinc-950 dark:text-zinc-50">
-            {process.name}
-          </div>
-          <div className="mt-0.5 text-zinc-500 dark:text-zinc-400">
-            PID {process.pid}
-          </div>
-        </div>
-        <span className="shrink-0 font-semibold text-emerald-600 dark:text-emerald-300">
-          {formatPercent(process.cpuUsagePercent)}
-        </span>
-      </div>
-      <SystemInfoRows>
-        <SystemInfoRow
-          label="CPU"
-          value={formatPercent(process.cpuUsagePercent)}
-        />
-        <SystemInfoRow
-          label="内存"
-          value={formatPercent(process.memoryPercent)}
-        />
-        <SystemInfoRow label="RSS" value={formatBytes(process.memoryBytes)} />
-      </SystemInfoRows>
-    </section>
-  );
-}
-
-function LabeledMeter({
-  helper,
+function Metric({
+  icon,
   label,
+  series,
   value,
 }: {
-  helper?: string;
+  icon: ReactNode;
   label: string;
-  value: number;
+  series: number[];
+  value: string;
 }) {
   return (
-    <div>
-      <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="font-medium text-zinc-600 dark:text-zinc-300">
-          {label}
-        </span>
-        <span className="text-zinc-500 dark:text-zinc-400">
-          {helper
-            ? `${formatPercent(value)} · ${helper}`
-            : formatPercent(value)}
-        </span>
+    <div className="kerminal-solid-surface min-w-0 p-3">
+      <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+        {icon}<span>{label}</span>
       </div>
-      <SystemMeterBar value={value} />
+      <div className="mt-2 truncate text-base font-semibold tabular-nums">{value}</div>
+      <Sparkline values={series} />
     </div>
   );
 }
 
-function CoreUsageRow({ index, value }: { index: number; value: number }) {
+function ResourceSection({
+  children,
+  icon,
+  label,
+  meter,
+  series,
+  value,
+}: {
+  children: ReactNode;
+  icon: ReactNode;
+  label: string;
+  meter?: number;
+  series: number[];
+  value: string;
+}) {
   return (
-    <div className="grid grid-cols-[1.5rem_minmax(0,1fr)_3.5rem] items-center gap-2 text-xs">
-      <span className="text-right text-zinc-500 dark:text-zinc-400">
-        {index}
-      </span>
-      <div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface-hover)]">
-        <div
-          className="h-full rounded-full bg-emerald-500 dark:bg-emerald-400"
-          style={{ width: `${Math.max(0, Math.min(value, 100))}%` }}
-        />
+    <Section icon={icon} title={label} trailing={value}>
+      <Meter value={meter} />
+      <Sparkline values={series} />
+      {children}
+    </Section>
+  );
+}
+
+function Section({
+  children,
+  icon,
+  title,
+  trailing,
+}: {
+  children: ReactNode;
+  icon?: ReactNode;
+  title: string;
+  trailing?: string;
+}) {
+  return (
+    <section className="kerminal-solid-surface rounded-lg border px-3 py-2.5">
+      <div className="flex items-center justify-between gap-3 border-b pb-2">
+        <h3 className="flex min-w-0 items-center gap-2 text-xs font-semibold">
+          {icon}<span className="truncate">{title}</span>
+        </h3>
+        {trailing ? <span className="truncate text-xs font-semibold tabular-nums">{trailing}</span> : null}
       </div>
-      <span className="text-right font-medium text-zinc-600 dark:text-zinc-300">
-        {formatPercent(value)}
-      </span>
+      {children}
+    </section>
+  );
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[minmax(4.25rem,0.7fr)_minmax(0,1.3fr)] gap-3 border-b py-2 text-xs last:border-b-0">
+      <span className="text-zinc-500 dark:text-zinc-400">{label}</span>
+      <span className="min-w-0 break-words text-right">{value}</span>
+    </div>
+  );
+}
+
+function Meter({ compact = false, value }: { compact?: boolean; value?: number }) {
+  const normalized = value == null ? 0 : Math.max(0, Math.min(100, value));
+  return (
+    <div
+      aria-label="资源使用率"
+      aria-valuemax={100}
+      aria-valuemin={0}
+      aria-valuenow={Math.round(normalized)}
+      className={cn(
+        "overflow-hidden rounded-full bg-[var(--surface-hover)]",
+        compact ? "mt-1 h-1" : "mt-3 h-1.5",
+      )}
+      role="progressbar"
+    >
+      <div className="h-full rounded-full bg-[rgb(var(--app-accent))]" style={{ width: `${normalized}%` }} />
+    </div>
+  );
+}
+
+function Sparkline({ values }: { values: number[] }) {
+  if (values.length < 2) {
+    return <div className="mt-2 h-7 border-b border-dashed border-[var(--border-subtle)]" />;
+  }
+  const max = Math.max(...values, 1);
+  const points = values
+    .map((value, index) => `${(index / (values.length - 1)) * 100},${28 - (value / max) * 24}`)
+    .join(" ");
+  return (
+    <svg aria-hidden="true" className="mt-2 h-7 w-full text-[rgb(var(--app-accent))]" preserveAspectRatio="none" viewBox="0 0 100 28">
+      <polyline fill="none" points={points} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+function StatusDot({ status }: { status: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "h-2 w-2 shrink-0 rounded-full",
+        status === "live" && "bg-emerald-500",
+        status === "error" && "bg-red-500",
+        (status === "paused" || status === "stale") && "bg-amber-500",
+        (status === "baseline" || status === "idle") && "bg-zinc-400",
+      )}
+    />
+  );
+}
+
+function EmptyState({ loading }: { loading: boolean }) {
+  return (
+    <div className="kerminal-solid-surface rounded-lg border px-4 py-10 text-center text-sm text-zinc-500 dark:text-zinc-400">
+      {loading ? "正在读取服务器信息..." : "暂无服务器信息"}
     </div>
   );
 }
