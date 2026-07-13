@@ -47,7 +47,7 @@ export function UserFacingNotice({
   return (
     <section
       className={cn(
-        "rounded-xl border",
+        "rounded-[var(--radius-card)] border",
         compact ? "px-3 py-2.5" : "px-4 py-3",
         severityStyles[message.severity],
         className,

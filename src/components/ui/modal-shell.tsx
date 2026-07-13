@@ -1,4 +1,4 @@
-import { useEffect, useId, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "../../lib/cn";
@@ -45,6 +45,28 @@ const modalSizeClassNames = {
   { maxHeight: string; width: string }
 >;
 
+const focusableSelector = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
+
+const activeModalStack: string[] = [];
+let previousBodyOverflow = "";
+
+function isTopModal(modalId: string) {
+  return activeModalStack[activeModalStack.length - 1] === modalId;
+}
+
+function getFocusableElements(panel: HTMLElement) {
+  return Array.from(panel.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+    (element) => !element.hidden && element.getAttribute("aria-hidden") !== "true",
+  );
+}
+
 function hasHeightConstraintClassName(className?: string) {
   return /(?:^|\s)(?:h-|max-h-)/.test(className ?? "");
 }
@@ -82,6 +104,9 @@ export function ModalShell({
 }: ModalShellProps) {
   const titleId = useId();
   const descriptionId = useId();
+  const modalId = useId();
+  const panelRef = useRef<HTMLElement>(null);
+  const closeRef = useRef(onClose);
   const fullscreen = layout === "fullscreen";
   const workspace = layout === "workspace";
   const sizeClassNames = modalSizeClassNames[size];
@@ -97,19 +122,89 @@ export function ModalShell({
         : sizeClassNames.maxHeight;
 
   useEffect(() => {
+    closeRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
     if (!open) {
       return undefined;
     }
 
-    const closeOnEscape = (event: KeyboardEvent) => {
+    const previouslyFocused =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    activeModalStack.push(modalId);
+
+    // body portal 共享滚动锁；嵌套弹框关闭时不能提前恢复页面滚动。
+    if (activeModalStack.length === 1) {
+      previousBodyOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+    }
+
+    const focusInitialElement = () => {
+      const panel = panelRef.current;
+      if (!panel || !isTopModal(modalId)) {
+        return;
+      }
+      const autofocus = panel.querySelector<HTMLElement>("[autofocus]");
+      const firstFocusable = getFocusableElements(panel)[0];
+      (autofocus ?? firstFocusable ?? panel).focus();
+    };
+    const animationFrame = window.requestAnimationFrame(focusInitialElement);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!isTopModal(modalId)) {
+        return;
+      }
       if (event.key === "Escape") {
-        onClose();
+        event.preventDefault();
+        event.stopPropagation();
+        closeRef.current();
+        return;
+      }
+      if (event.key !== "Tab") {
+        return;
+      }
+
+      const panel = panelRef.current;
+      if (!panel) {
+        return;
+      }
+      const focusable = getFocusableElements(panel);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
 
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [onClose, open]);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener("keydown", handleKeyDown, true);
+      const stackIndex = activeModalStack.lastIndexOf(modalId);
+      if (stackIndex >= 0) {
+        activeModalStack.splice(stackIndex, 1);
+      }
+      if (activeModalStack.length === 0) {
+        document.body.style.overflow = previousBodyOverflow;
+      }
+      if (previouslyFocused?.isConnected) {
+        previouslyFocused.focus();
+      }
+    };
+  }, [modalId, open]);
 
   if (!open) {
     return null;
@@ -118,7 +213,7 @@ export function ModalShell({
   return createPortal(
     <div
       className={cn(
-        "fixed inset-0 z-50 flex backdrop-blur-md",
+        "kerminal-layer-dialog fixed inset-0 flex backdrop-blur-md",
         workspace
           ? "items-center justify-center bg-zinc-950/24 p-3 dark:bg-[rgb(9_9_11_/_0.52)] sm:p-6"
           : "bg-zinc-950/30 dark:bg-black/48",
@@ -127,21 +222,22 @@ export function ModalShell({
           : !workspace && "items-center justify-center p-4",
       )}
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
+        if (event.target === event.currentTarget && isTopModal(modalId)) {
           onClose();
         }
       }}
     >
       <WindowDragStrip />
       <section
+        ref={panelRef}
         aria-describedby={description ? descriptionId : undefined}
         aria-labelledby={titleId}
         aria-modal="true"
         className={cn(
           "kerminal-floating-enter relative z-10 flex w-full flex-col overflow-hidden text-zinc-950 dark:text-zinc-50",
           workspace
-            ? "kerminal-solid-surface rounded-[1.35rem] border bg-[var(--surface-overlay)]"
-            : "kerminal-floating-surface rounded-[1.5rem] border",
+            ? "kerminal-solid-surface rounded-[var(--radius-dialog)] border bg-[var(--surface-overlay)]"
+            : "kerminal-floating-surface rounded-[var(--radius-dialog)] border",
           fullscreen
             ? "h-full max-h-none"
             : workspace
@@ -152,6 +248,7 @@ export function ModalShell({
         )}
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
+        tabIndex={-1}
       >
         <header
           className={cn(

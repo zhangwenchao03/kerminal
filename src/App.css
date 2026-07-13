@@ -25,7 +25,11 @@
   --surface-terminal-header: rgb(
     var(--surface-terminal-rgb) / var(--app-terminal-header-opacity)
   );
-  --surface-solid: rgb(255 255 255 / 0.68);
+  --surface-content: rgb(255 255 255);
+  --surface-solid: var(--surface-content);
+  --surface-card: var(--surface-content);
+  --surface-panel: var(--surface-content);
+  --surface-elevated: rgb(255 255 255 / 0.96);
   --surface-overlay: rgb(255 255 255 / 0.92);
   --surface-nav-rgb: 255 255 255;
   --surface-nav-glass: rgb(
@@ -44,6 +48,18 @@
   --surface-selected: rgb(10 132 255 / 0.12);
   --border-subtle: rgb(0 0 0 / 0.08);
   --border-strong: rgb(0 0 0 / 0.12);
+  --surface-border: var(--border-subtle);
+  --text-primary: rgb(var(--app-text));
+  --text-secondary: rgb(var(--app-text-muted) / 0.78);
+  --text-tertiary: rgb(var(--app-text-subtle) / 0.72);
+  --accent-primary: rgb(var(--app-accent));
+  --layer-chrome: 20;
+  --layer-popover: 1000;
+  --layer-palette: 1100;
+  --layer-overlay: 1200;
+  --layer-dialog: 1300;
+  --layer-toast: 1400;
+  --layer-drag-preview: 1500;
   --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.04), 0 10px 30px rgb(0 0 0 / 0.06);
   --shadow-floating:
     0 1px 1px rgb(255 255 255 / 0.55) inset, 0 18px 60px rgb(0 0 0 / 0.14);
@@ -79,10 +95,10 @@
   --density-sidebar-icon-size: 30px;
   --density-sidebar-collapsed-gap: 8px;
   --density-sidebar-collapsed-button: 40px;
-  --radius-control: 0.75rem;
-  --radius-card: 1rem;
-  --radius-panel: 1.25rem;
-  --radius-dialog: 1.5rem;
+  --radius-control: 0.625rem;
+  --radius-card: 0.75rem;
+  --radius-panel: 1rem;
+  --radius-dialog: 1.25rem;
   --motion-fast: 120ms;
   --motion-menu: 160ms;
   --motion-panel: 220ms;
@@ -133,7 +149,11 @@
   --surface-terminal-header: rgb(
     var(--surface-terminal-rgb) / var(--app-terminal-header-opacity)
   );
-  --surface-solid: rgb(28 28 30 / 0.66);
+  --surface-content: rgb(28 28 30);
+  --surface-solid: var(--surface-content);
+  --surface-card: var(--surface-content);
+  --surface-panel: var(--surface-content);
+  --surface-elevated: rgb(36 36 38 / 0.96);
   --surface-overlay: rgb(20 20 22 / 0.92);
   --surface-nav-rgb: 17 17 19;
   --surface-nav-glass: rgb(
@@ -241,6 +261,7 @@ html[data-desktop-platform="macos"] body,
   overflow: visible;
 }
 
+html[data-density="compact"],
 #root > [data-density="compact"] {
   --density-control-height: 28px;
   --density-panel-gap: 8px;
@@ -261,6 +282,7 @@ html[data-desktop-platform="macos"] body,
   --density-sidebar-collapsed-button: 36px;
 }
 
+html[data-density="spacious"],
 #root > [data-density="spacious"] {
   --density-control-height: 36px;
   --density-panel-gap: 14px;
@@ -397,6 +419,30 @@ button {
   -webkit-backdrop-filter: blur(28px) saturate(180%);
 }
 
+.kerminal-layer-popover {
+  z-index: var(--layer-popover);
+}
+
+.kerminal-layer-palette {
+  z-index: var(--layer-palette);
+}
+
+.kerminal-layer-overlay {
+  z-index: var(--layer-overlay);
+}
+
+.kerminal-layer-dialog {
+  z-index: var(--layer-dialog);
+}
+
+.kerminal-layer-toast {
+  z-index: var(--layer-toast);
+}
+
+.kerminal-layer-drag-preview {
+  z-index: var(--layer-drag-preview);
+}
+
 .kerminal-workspace-surface {
   background: var(--surface-workspace-glass);
   background-clip: padding-box;
@@ -426,7 +472,7 @@ button {
 .kerminal-context-menu {
   background: var(--surface-context-menu);
   border: 1px solid var(--border-subtle);
-  border-radius: 16px;
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow-floating);
   color: rgb(var(--app-text));
   font-size: 13px;
@@ -688,7 +734,7 @@ button {
 .kerminal-solid-surface {
   background: var(--surface-solid);
   border-color: var(--border-subtle);
-  box-shadow: var(--shadow-soft);
+  box-shadow: none;
 }
 
 .kerminal-muted-surface {

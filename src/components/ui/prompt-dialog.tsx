@@ -102,7 +102,7 @@ export function PromptDialog({
               aria-invalid={Boolean(validationMessage)}
               autoFocus
               className={[
-                "kerminal-field-surface mt-1 h-9 w-full rounded-xl border px-3 text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600",
+                "kerminal-field-surface mt-1 h-9 w-full rounded-[var(--radius-control)] border px-3 text-[13px] text-[var(--text-primary)] placeholder:text-zinc-400 dark:placeholder:text-zinc-600",
                 inputMono ? "font-mono text-xs" : "",
               ]
                 .filter(Boolean)

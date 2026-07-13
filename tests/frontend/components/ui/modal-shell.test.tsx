@@ -19,6 +19,7 @@ describe("ModalShell", () => {
   beforeEach(() => {
     windowChromeMocks.frameState = "normal";
     windowChromeMocks.platform = "windows";
+    document.body.style.overflow = "";
   });
 
   it("applies adaptive preset constraints to default dialogs", () => {
@@ -95,5 +96,74 @@ describe("ModalShell", () => {
     expect(dragStrip).toHaveAttribute("data-tauri-drag-region");
 
     fireEvent.doubleClick(dragStrip!);
+  });
+
+  it("captures Escape, traps focus and restores the source focus", () => {
+    const onClose = vi.fn();
+    const source = document.createElement("button");
+    document.body.append(source);
+    source.focus();
+
+    const { rerender } = render(
+      <ModalShell onClose={onClose} open title="焦点合同">
+        <button type="button">第一个</button>
+        <button type="button">最后一个</button>
+      </ModalShell>,
+    );
+
+    const closeButton = screen.getByRole("button", { name: "关闭弹窗" });
+    const last = screen.getByRole("button", { name: "最后一个" });
+    last.focus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(closeButton).toHaveFocus();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
+
+    rerender(
+      <ModalShell onClose={onClose} open={false} title="焦点合同">
+        内容
+      </ModalShell>,
+    );
+    expect(source).toHaveFocus();
+    source.remove();
+  });
+
+  it("locks body scrolling until the last nested dialog closes", () => {
+    const { rerender } = render(
+      <>
+        <ModalShell onClose={vi.fn()} open title="父弹框">
+          父内容
+        </ModalShell>
+        <ModalShell onClose={vi.fn()} open title="子弹框">
+          子内容
+        </ModalShell>
+      </>,
+    );
+
+    expect(document.body.style.overflow).toBe("hidden");
+    rerender(
+      <>
+        <ModalShell onClose={vi.fn()} open title="父弹框">
+          父内容
+        </ModalShell>
+        <ModalShell onClose={vi.fn()} open={false} title="子弹框">
+          子内容
+        </ModalShell>
+      </>,
+    );
+    expect(document.body.style.overflow).toBe("hidden");
+
+    rerender(
+      <>
+        <ModalShell onClose={vi.fn()} open={false} title="父弹框">
+          父内容
+        </ModalShell>
+        <ModalShell onClose={vi.fn()} open={false} title="子弹框">
+          子内容
+        </ModalShell>
+      </>,
+    );
+    expect(document.body.style.overflow).toBe("");
   });
 });

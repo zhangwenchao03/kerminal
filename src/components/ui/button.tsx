@@ -4,12 +4,12 @@ import type { ButtonHTMLAttributes } from "react";
 import { cn } from "../../lib/cn";
 
 const buttonVariants = cva(
-  "kerminal-pressable kerminal-focus-ring inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium disabled:pointer-events-none disabled:opacity-45",
+  "kerminal-pressable kerminal-focus-ring inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-control)] text-[13px] font-medium disabled:pointer-events-none disabled:opacity-45",
   {
     variants: {
       variant: {
         primary:
-          "bg-[#0A84FF] text-white shadow-sm shadow-[#0A84FF]/20 hover:brightness-105",
+          "bg-[rgb(var(--app-accent))] text-white shadow-sm hover:brightness-105",
         secondary:
           "kerminal-solid-surface border text-zinc-800 hover:bg-[var(--surface-field-hover)] dark:text-zinc-100",
         ghost:
