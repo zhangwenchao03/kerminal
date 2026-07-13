@@ -55,6 +55,42 @@ describe("terminalSuggestionRanking", () => {
     expect(ranked).toEqual([]);
   });
 
+  it("keeps exact-query parameterized snippets in the menu without requiring a template prefix", () => {
+    const cached = {
+      cachedAt: 1,
+      candidate: candidate({
+        activation: "openSnippetPanel" as const,
+        candidateKind: "snippet" as const,
+        displayText: "HTTP 响应头",
+        id: "snippet:http-head",
+        provider: "snippet" as const,
+        replacementText: "curl --head {{url}}",
+        sourceId: "snippet.builtin.core.http_head",
+        suffix: "",
+      }),
+      sourceCursor: 4,
+      sourceInput: "http",
+      stale: false,
+    };
+
+    expect(
+      rankTerminalSuggestions([cached], {
+        contextKey: "ctx",
+        cursor: 4,
+        input: "http",
+        mode: "menu",
+      }),
+    ).toHaveLength(1);
+    expect(
+      rankTerminalSuggestions([cached], {
+        contextKey: "ctx",
+        cursor: 4,
+        input: "curl",
+        mode: "menu",
+      }),
+    ).toEqual([]);
+  });
+
   it("deduplicates spec and snippet replacements without losing source explanations", () => {
     const ranked = rankTerminalSuggestions(
       [

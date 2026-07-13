@@ -9,6 +9,9 @@ import type { TerminalSuggestionCacheStats } from "./terminalSuggestionModel";
 export interface CachedTerminalSuggestion {
   cachedAt: number;
   candidate: CommandSuggestionCandidate;
+  /** 候选产生时的查询，用于阻止标题匹配片段跨查询复用。 */
+  sourceCursor?: number;
+  sourceInput?: string;
   stale: boolean;
 }
 
@@ -156,7 +159,13 @@ export class TerminalSuggestionCache {
         this.staleHits += 1;
       }
       for (const candidate of bucket.candidates) {
-        results.push({ cachedAt: bucket.storedAt, candidate, stale });
+        results.push({
+          cachedAt: bucket.storedAt,
+          candidate,
+          sourceCursor: bucket.cursor,
+          sourceInput: bucket.input,
+          stale,
+        });
       }
     }
     return results;

@@ -29,7 +29,10 @@ export function rankTerminalSuggestions(
 ): RankedTerminalSuggestion[] {
   const deduped = new Map<string, RankedTerminalSuggestion>();
   for (const item of cached) {
-    const candidate = adaptCandidateForQuery(item.candidate, query);
+    const candidate = adaptCandidateForQuery(item.candidate, query, {
+      cursor: item.sourceCursor,
+      input: item.sourceInput,
+    });
     if (!candidate) {
       continue;
     }
@@ -60,6 +63,7 @@ export function adaptCandidateForQuery(
     TerminalSuggestionQuery,
     "contextKey" | "cursor" | "input" | "mode"
   >,
+  sourceQuery: { cursor?: number; input?: string } = {},
 ): CommandSuggestionCandidate | null {
   if (!candidate.allowedPresentations.includes(query.mode)) {
     return null;
@@ -78,6 +82,22 @@ export function adaptCandidateForQuery(
   }
   if (candidate.contextKey && candidate.contextKey !== query.contextKey) {
     return null;
+  }
+  if (
+    query.mode === "menu" &&
+    candidate.activation === "openSnippetPanel"
+  ) {
+    if (
+      (sourceQuery.input !== undefined && sourceQuery.input !== query.input) ||
+      (sourceQuery.cursor !== undefined && sourceQuery.cursor !== query.cursor)
+    ) {
+      return null;
+    }
+    return {
+      ...candidate,
+      replacementRange: { start: 0, end: query.cursor },
+      suffix: "",
+    };
   }
 
   const input = Array.from(query.input);
