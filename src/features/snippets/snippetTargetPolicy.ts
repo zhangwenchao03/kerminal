@@ -99,7 +99,8 @@ export function isSnippetTargetSnapshotCurrent(
 }
 
 /**
- * 统一计算兼容性和执行门禁。未知环境允许审阅/填入，但绝不自动提升为可运行。
+ * 统一计算兼容性和执行门禁。环境元数据未知的只读命令允许人工确认后运行，
+ * 但明确不兼容、目标绑定未知或风险未知时仍禁止提交。
  */
 export function evaluateSnippetPolicy({
   snapshot,
@@ -122,30 +123,39 @@ export function evaluateSnippetPolicy({
   }
   compatibility = combineCompatibility(
     compatibility,
-    classifyKnownValue(snapshot.platform, requirements.platforms, "目标平台未知", "目标平台不兼容", reasons),
+    classifyKnownValue(snapshot.platform, requirements.platforms, "尚未读取目标平台", "目标平台不兼容", reasons),
   );
   compatibility = combineCompatibility(
     compatibility,
-    classifyKnownValue(snapshot.shell, requirements.shells, "目标 shell 未知", "目标 shell 不兼容", reasons),
+    classifyKnownValue(snapshot.shell, requirements.shells, "尚未识别当前 shell", "目标 shell 不兼容", reasons),
   );
-  compatibility = combineCompatibility(
-    compatibility,
-    classifyContextBindings(snapshot, requirements.contextBindings, reasons),
+  const contextCompatibility = classifyContextBindings(
+    snapshot,
+    requirements.contextBindings,
+    reasons,
   );
+  compatibility = combineCompatibility(compatibility, contextCompatibility);
   const missingCapabilities = requirements.capabilities.filter(
     (capability) => !snapshot.capabilities.includes(capability),
   );
   if (missingCapabilities.length > 0 && compatibility !== "incompatible") {
     compatibility = "unknown";
-    reasons.push(`尚未确认能力：${missingCapabilities.join("、")}`);
+    reasons.push(`尚未验证命令可用性：${missingCapabilities.join("、")}`);
   }
 
   const effectiveRisk = hasLegacyRaw && risk === "inspect" ? "change" : risk;
+  const unknownEnvironmentInspect =
+    compatibility === "unknown" &&
+    contextCompatibility === "compatible" &&
+    effectiveRisk === "inspect";
   const requiresConfirmation =
-    snapshot.production || sensitive || effectiveRisk !== "inspect";
+    snapshot.production ||
+    sensitive ||
+    effectiveRisk !== "inspect" ||
+    unknownEnvironmentInspect;
   const canInsert = compatibility !== "incompatible";
   const canRun =
-    compatibility === "compatible" &&
+    (compatibility === "compatible" || unknownEnvironmentInspect) &&
     effectiveRisk !== "unknown";
   return {
     compatibility,

@@ -5,6 +5,7 @@ import {
   findTmuxAttachPane,
   resolveTmuxTarget,
   sortTmuxSessions,
+  upsertTmuxSession,
 } from "../../../../../src/features/tool-panel/tmux/tmuxToolModel";
 
 const sshMachine: Machine = {
@@ -123,6 +124,40 @@ describe("tmuxToolModel", () => {
     ).toEqual(["current", "attached", "recent"]);
   });
 
+  it("upserts a recovered create result without duplicating the session", () => {
+    const existing = {
+      activityAt: 1,
+      attached: false,
+      clients: 0,
+      id: "124_70_71_166-root-retry",
+      name: "124_70_71_166-root-retry",
+      status: "running" as const,
+      targetRef: "ssh:prod-api",
+      windows: 1,
+    };
+    const refreshed = {
+      ...existing,
+      id: "$9",
+      windows: 2,
+    };
+
+    expect(upsertTmuxSession([existing], refreshed)).toEqual([refreshed]);
+    expect(
+      upsertTmuxSession([existing], {
+        ...refreshed,
+        id: "$10",
+        name: "another-session",
+      }),
+    ).toHaveLength(2);
+    expect(
+      upsertTmuxSession([existing], {
+        ...refreshed,
+        id: existing.id,
+        targetRef: "ssh:staging-api",
+      }),
+    ).toHaveLength(2);
+  });
+
   it("builds stable default names and finds existing attach panes", () => {
     expect(
       defaultTmuxSessionName({
@@ -130,6 +165,12 @@ describe("tmuxToolModel", () => {
         now: new Date(2026, 5, 25, 3, 4, 5),
       }),
     ).toBe("my-api-20260625-030405");
+    expect(
+      defaultTmuxSessionName({
+        now: new Date(2026, 6, 13, 19, 22, 15),
+        targetLabel: "124.70.71.166 (root)",
+      }),
+    ).toBe("124_70_71_166-root-20260713-192215");
 
     const pane = {
       id: "pane-tmux",

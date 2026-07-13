@@ -12,9 +12,12 @@ use uuid::Uuid;
 
 use crate::{
     error::{AppError, AppResult},
-    models::sftp::{
-        SftpEntry, SftpEntryKind, SftpFileRevision, SftpPathStat, SftpReadTextFileResponse,
-        SftpWriteTextFileRequest, SftpWriteTextFileResponse,
+    models::{
+        file_preview::{file_preview_response_encoding, is_binary_file_preview_content},
+        sftp::{
+            SftpEntry, SftpEntryKind, SftpFileRevision, SftpPathStat, SftpReadTextFileResponse,
+            SftpWriteTextFileRequest, SftpWriteTextFileResponse,
+        },
     },
 };
 
@@ -98,26 +101,26 @@ pub(super) async fn read_remote_text_file(
     } else {
         bytes.as_slice()
     };
-    let binary = is_binary_bytes(visible_bytes);
-    if binary {
-        return Err(AppError::Sftp(format!(
-            "远程文件包含二进制内容，暂不支持作为文本编辑: {path}"
-        )));
-    }
-    let content = String::from_utf8_lossy(visible_bytes).into_owned();
+    let binary = is_binary_file_preview_content(&bytes);
+    // 二进制响应只保留元数据和 revision，禁止把原始字节经 lossy 转换后泄露给编辑器。
+    let content = if binary {
+        String::new()
+    } else {
+        String::from_utf8_lossy(visible_bytes).into_owned()
+    };
     let revision = revision_from_metadata(&metadata, Some(sha256_hex(visible_bytes)));
 
     Ok(SftpReadTextFileResponse {
         host_id,
         path,
-        bytes_read: visible_bytes.len(),
+        bytes_read: if binary { 0 } else { visible_bytes.len() },
         max_bytes,
         truncated,
-        encoding: "utf-8-lossy".to_owned(),
+        encoding: file_preview_response_encoding(binary).to_owned(),
         line_ending: detect_line_ending(&content),
         revision,
         binary,
-        readonly: false,
+        readonly: binary,
         content,
     })
 }
@@ -284,10 +287,6 @@ fn same_revision(expected: &SftpFileRevision, current: &SftpFileRevision) -> boo
         (Some(expected_hash), Some(current_hash)) => expected_hash == current_hash,
         _ => expected.size == current.size && expected.modified == current.modified,
     }
-}
-
-fn is_binary_bytes(bytes: &[u8]) -> bool {
-    bytes.contains(&0)
 }
 
 pub(super) fn sha256_hex(bytes: &[u8]) -> String {

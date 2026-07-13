@@ -126,6 +126,38 @@ const focusedSshPane = {
   title: sshMachine.name,
 };
 
+const secondarySshMachine: Machine = {
+  authType: "agent",
+  description: "ops@staging.internal:22",
+  host: "staging.internal",
+  id: "staging-api",
+  kind: "ssh",
+  name: "staging api",
+  port: 22,
+  production: false,
+  status: "online",
+  tags: ["ssh", "staging"],
+  username: "ops",
+};
+
+const secondarySshTab: TerminalTab = {
+  id: "tab-staging-api",
+  layout: { paneId: "pane-staging-api", type: "pane" },
+  machineId: secondarySshMachine.id,
+  title: secondarySshMachine.name,
+};
+
+const secondarySshPane = {
+  id: "pane-staging-api",
+  lines: [],
+  machineId: secondarySshMachine.id,
+  mode: "ssh" as const,
+  prompt: "$",
+  remoteHostId: secondarySshMachine.id,
+  status: "online" as const,
+  title: secondarySshMachine.name,
+};
+
 const contextWorkspaceProjection: WorkspaceContextProjection = {
   schemaVersion: 1,
   revision: 1,
@@ -661,6 +693,72 @@ describe("ToolPanel", () => {
 
     expect(await screen.findByText("tmux 3.4")).toBeInTheDocument();
     expect(screen.getByText("暂无会话")).toBeInTheDocument();
+  });
+
+  it("uses the selected host for tmux only when no tab or pane is active", async () => {
+    render(
+      <ToolPanel
+        activeTool="tmux"
+        onActiveToolChange={vi.fn()}
+        selectedMachine={sshMachine}
+        tools={tools}
+      />,
+    );
+
+    expect(await screen.findByText("tmux 3.4")).toBeInTheDocument();
+    expect(tmuxApiMocks.tmuxProbe).toHaveBeenCalledWith({
+      target: { target: { hostId: "prod-api", kind: "ssh" } },
+    });
+  });
+
+  it("pauses hidden target tools and refreshes the current host when reopened", async () => {
+    const onActiveToolChange = vi.fn();
+    const view = render(
+      <ToolPanel
+        activeMachine={sshMachine}
+        activeTab={sshTerminalTab}
+        activeTool="tmux"
+        focusedPane={focusedSshPane}
+        onActiveToolChange={onActiveToolChange}
+        selectedMachine={sshMachine}
+        tools={tools}
+      />,
+    );
+
+    expect(await screen.findByText("tmux 3.4")).toBeInTheDocument();
+    expect(tmuxApiMocks.tmuxProbe).toHaveBeenCalledTimes(1);
+
+    view.rerender(
+      <ToolPanel
+        activeMachine={secondarySshMachine}
+        activeTab={secondarySshTab}
+        activeTool="system"
+        focusedPane={secondarySshPane}
+        onActiveToolChange={onActiveToolChange}
+        selectedMachine={secondarySshMachine}
+        tools={tools}
+      />,
+    );
+
+    expect(await screen.findByText("远程服务器")).toBeInTheDocument();
+    expect(tmuxApiMocks.tmuxProbe).toHaveBeenCalledTimes(1);
+
+    view.rerender(
+      <ToolPanel
+        activeMachine={secondarySshMachine}
+        activeTab={secondarySshTab}
+        activeTool="tmux"
+        focusedPane={secondarySshPane}
+        onActiveToolChange={onActiveToolChange}
+        selectedMachine={secondarySshMachine}
+        tools={tools}
+      />,
+    );
+
+    await waitFor(() => expect(tmuxApiMocks.tmuxProbe).toHaveBeenCalledTimes(2));
+    expect(tmuxApiMocks.tmuxProbe).toHaveBeenLastCalledWith({
+      target: { target: { hostId: "staging-api", kind: "ssh" } },
+    });
   });
 
   it("shows the log export action on the logs title row", async () => {

@@ -1,17 +1,9 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
 export type CommandHistoryTarget =
-  | "local"
-  | "ssh"
-  | "telnet"
-  | "serial"
-  | "dockerContainer";
+  "local" | "ssh" | "telnet" | "serial" | "dockerContainer";
 export type CommandHistorySource =
-  | "user"
-  | "snippet"
-  | "workflow"
-  | "broadcast"
-  | "tool";
+  "user" | "snippet" | "workflow" | "broadcast" | "tool";
 
 export interface CommandHistoryEntry {
   id: string;
@@ -37,6 +29,12 @@ export interface CommandHistoryListRequest {
   sessionId?: string;
   limit?: number;
 }
+
+/** 命令历史清理范围；空对象保留全局清空的兼容语义。 */
+export type CommandHistoryClearRequest = Pick<
+  CommandHistoryListRequest,
+  "paneId" | "remoteHostId" | "sessionId" | "target"
+>;
 
 export interface CommandHistoryRecordRequest {
   command: string;
@@ -141,14 +139,21 @@ export async function deleteCommandHistory(entryId: string): Promise<boolean> {
   return invoke<boolean>("command_history_delete", { entryId });
 }
 
-export async function clearCommandHistory(): Promise<number> {
+export async function clearCommandHistory(
+  request: CommandHistoryClearRequest = {},
+): Promise<number> {
+  const normalized = normalizeScopeRequest(request);
   if (!isTauri()) {
-    const count = browserPreviewHistory.size;
-    browserPreviewHistory.clear();
-    return count;
+    const matchingIds = Array.from(browserPreviewHistory.values())
+      .filter((entry) => historyMatchesScope(entry, normalized))
+      .map((entry) => entry.id);
+    for (const entryId of matchingIds) {
+      browserPreviewHistory.delete(entryId);
+    }
+    return matchingIds.length;
   }
 
-  return invoke<number>("command_history_clear");
+  return invoke<number>("command_history_clear", { request: normalized });
 }
 
 function normalizeListRequest(
@@ -162,8 +167,25 @@ function normalizeListRequest(
     ...(request.remoteHostId?.trim()
       ? { remoteHostId: request.remoteHostId.trim() }
       : {}),
-    ...(request.sessionId?.trim() ? { sessionId: request.sessionId.trim() } : {}),
+    ...(request.sessionId?.trim()
+      ? { sessionId: request.sessionId.trim() }
+      : {}),
     limit: clampLimit(request.limit),
+  };
+}
+
+function normalizeScopeRequest(
+  request: CommandHistoryClearRequest,
+): CommandHistoryClearRequest {
+  return {
+    ...(request.target ? { target: request.target } : {}),
+    ...(request.paneId?.trim() ? { paneId: request.paneId.trim() } : {}),
+    ...(request.remoteHostId?.trim()
+      ? { remoteHostId: request.remoteHostId.trim() }
+      : {}),
+    ...(request.sessionId?.trim()
+      ? { sessionId: request.sessionId.trim() }
+      : {}),
   };
 }
 
@@ -175,10 +197,14 @@ function normalizeRecordRequest(
     source: request.source ?? "user",
     target: request.target ?? "local",
     ...(request.record === false ? { record: false } : {}),
-    ...(request.sessionId?.trim() ? { sessionId: request.sessionId.trim() } : {}),
+    ...(request.sessionId?.trim()
+      ? { sessionId: request.sessionId.trim() }
+      : {}),
     ...(request.paneId?.trim() ? { paneId: request.paneId.trim() } : {}),
     ...(request.tabId?.trim() ? { tabId: request.tabId.trim() } : {}),
-    ...(request.profileId?.trim() ? { profileId: request.profileId.trim() } : {}),
+    ...(request.profileId?.trim()
+      ? { profileId: request.profileId.trim() }
+      : {}),
     ...(request.remoteHostId?.trim()
       ? { remoteHostId: request.remoteHostId.trim() }
       : {}),
@@ -199,7 +225,9 @@ function browserPreviewList(request: CommandHistoryListRequest) {
   return Array.from(browserPreviewHistory.values())
     .filter((entry) => !request.source || entry.source === request.source)
     .filter((entry) => !request.target || entry.target === request.target)
-    .filter((entry) => (request.paneId ? entry.paneId === request.paneId : true))
+    .filter((entry) =>
+      request.paneId ? entry.paneId === request.paneId : true,
+    )
     .filter((entry) =>
       request.remoteHostId ? entry.remoteHostId === request.remoteHostId : true,
     )
@@ -209,6 +237,18 @@ function browserPreviewList(request: CommandHistoryListRequest) {
     .filter((entry) => (query ? historyMatchesQuery(entry, query) : true))
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     .slice(0, request.limit ?? 100);
+}
+
+function historyMatchesScope(
+  entry: CommandHistoryEntry,
+  request: CommandHistoryClearRequest,
+) {
+  return (
+    (!request.target || entry.target === request.target) &&
+    (!request.paneId || entry.paneId === request.paneId) &&
+    (!request.remoteHostId || entry.remoteHostId === request.remoteHostId) &&
+    (!request.sessionId || entry.sessionId === request.sessionId)
+  );
 }
 
 function historyMatchesQuery(entry: CommandHistoryEntry, query: string) {

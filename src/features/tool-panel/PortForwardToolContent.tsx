@@ -11,7 +11,6 @@ import {
   listPortForwards,
   startPortForward,
   stopPortForward,
-  type PortForwardProxyProtocol,
   type PortForwardSummary,
 } from "../../lib/portForwardApi";
 import {
@@ -53,17 +52,18 @@ import {
   proxyUrlForSession,
   resolveBindHost,
   sessionProxyProtocol,
-  type BindAddressMode,
-  type PortForwardScenario,
-  type SocksAdvancedMode,
 } from "./port-forward/portForwardWorkbenchModel";
+import { usePortForwardForm } from "./port-forward/usePortForwardForm";
+import { usePortForwardLifecycle } from "./port-forward/usePortForwardLifecycle";
 
 interface PortForwardToolContentProps {
+  active?: boolean;
   focusedPane?: TerminalPane;
   selectedMachine?: Machine;
 }
 
 export function PortForwardToolContent({
+  active = true,
   focusedPane,
   selectedMachine,
 }: PortForwardToolContentProps) {
@@ -71,14 +71,14 @@ export function PortForwardToolContent({
     selectedMachine?.kind === "ssh" ? selectedMachine.id : undefined;
   const [error, setError] = useState<UserFacingMessage | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [dialogHostId, setDialogHostId] = useState<string | null>(null);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [name, setName] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
-  const [scenario, setScenario] =
-    useState<PortForwardScenario>("hostService");
   const [sessions, setSessions] = useState<PortForwardSummary[]>([]);
-  const [sessionsLoaded, setSessionsLoaded] = useState(false);
+  const [sessionsLoadedHostId, setSessionsLoadedHostId] = useState<
+    string | null
+  >(null);
   const [sessionMetadata, setSessionMetadata] = useState<
     Record<string, PortForwardSessionMetadata>
   >({});
@@ -90,27 +90,57 @@ export function PortForwardToolContent({
       : undefined,
   );
 
-  const [localBindMode, setLocalBindMode] =
-    useState<BindAddressMode>("loopback");
-  const [localCustomBindHost, setLocalCustomBindHost] = useState("127.0.0.1");
-  const [remoteBindMode, setRemoteBindMode] =
-    useState<BindAddressMode>("loopback");
-  const [remoteCustomBindHost, setRemoteCustomBindHost] =
-    useState("127.0.0.1");
-
-  const [localListenPort, setLocalListenPort] = useState("15432");
-  const [hostTargetHost, setHostTargetHost] = useState("127.0.0.1");
-  const [hostTargetPort, setHostTargetPort] = useState("5432");
-  const [remoteListenPort, setRemoteListenPort] = useState("18080");
-  const [localTargetHost, setLocalTargetHost] = useState("127.0.0.1");
-  const [localTargetPort, setLocalTargetPort] = useState("3000");
-  const [localProxyHost, setLocalProxyHost] = useState("127.0.0.1");
-  const [localProxyPort, setLocalProxyPort] = useState("18081");
-  const [localSocksPort, setLocalSocksPort] = useState("1080");
-  const [proxyProtocol, setProxyProtocol] =
-    useState<PortForwardProxyProtocol>("http");
-  const [socksMode, setSocksMode] =
-    useState<SocksAdvancedMode>("localDynamic");
+  const {
+    applySession,
+    hostTargetHost,
+    hostTargetPort,
+    localBindMode,
+    localCustomBindHost,
+    localListenPort,
+    localProxyHost,
+    localProxyPort,
+    localSocksPort,
+    localTargetHost,
+    localTargetPort,
+    name,
+    proxyProtocol,
+    remoteBindMode,
+    remoteCustomBindHost,
+    remoteListenPort,
+    scenario,
+    setHostTargetHost,
+    setHostTargetPort,
+    setLocalBindMode,
+    setLocalCustomBindHost,
+    setLocalListenPort,
+    setLocalProxyHost,
+    setLocalProxyPort,
+    setLocalSocksPort,
+    setLocalTargetHost,
+    setLocalTargetPort,
+    setName,
+    setProxyProtocol,
+    setRemoteBindMode,
+    setRemoteCustomBindHost,
+    setRemoteListenPort,
+    setScenario,
+    setSocksMode,
+    socksMode,
+  } = usePortForwardForm(selectedHostId);
+  const {
+    beginListRequest,
+    captureBinding,
+    invalidateListRequests,
+    isCurrentBinding,
+    isCurrentListRequest,
+    runAction,
+  } = usePortForwardLifecycle({
+    active,
+    hostId: selectedHostId,
+    onError: setError,
+    onLoadingChange: setLoading,
+    onNotice: setNotice,
+  });
 
   const localBindHost = resolveBindHost(localBindMode, localCustomBindHost);
   const remoteBindHost = resolveBindHost(remoteBindMode, remoteCustomBindHost);
@@ -173,7 +203,7 @@ export function PortForwardToolContent({
       setAutoInjection(undefined);
       return;
     }
-    if (!sessionsLoaded) {
+    if (sessionsLoadedHostId !== selectedHostId) {
       setAutoInjection(current);
       return;
     }
@@ -190,7 +220,19 @@ export function PortForwardToolContent({
       return;
     }
     setAutoInjection(current);
-  }, [selectedHostId, selectedHostSessions, sessionsLoaded]);
+  }, [selectedHostId, selectedHostSessions, sessionsLoadedHostId]);
+
+  useEffect(() => {
+    setCreateDialogOpen(false);
+    setDialogHostId(null);
+    setEditingSessionId(null);
+    setError(null);
+    setNotice(null);
+    setLoading(false);
+    setSessions([]);
+    setSessionsLoadedHostId(null);
+    setSessionMetadata({});
+  }, [selectedHostId]);
 
   const canInjectIntoFocusedPane =
     selectedMachine?.kind === "ssh" &&
@@ -202,35 +244,41 @@ export function PortForwardToolContent({
     : "聚焦终端不是当前 SSH 主机。";
 
   const refresh = useCallback(async () => {
-    if (!selectedHostId) {
-      setSessions([]);
-      setSessionsLoaded(false);
+    const token = beginListRequest();
+    if (!token || !selectedHostId) {
       setLoading(false);
-      setError(null);
       return;
     }
     setLoading(true);
-    setSessionsLoaded(false);
+    setSessionsLoadedHostId(null);
     setError(null);
     try {
-      setSessions(await listPortForwards());
-      setSessionsLoaded(true);
+      const nextSessions = await listPortForwards();
+      if (isCurrentListRequest(token)) {
+        setSessions(nextSessions);
+        setSessionsLoadedHostId(selectedHostId);
+      }
     } catch (nextError) {
-      setError(
-        buildUserFacingError(nextError, {
-          detail: "当前主机的端口转发列表暂时不可用。",
-          recoveryAction: "请确认 SSH 连接可用后重试。",
-          title: "无法读取隧道",
-        }),
-      );
+      if (isCurrentListRequest(token)) {
+        setError(
+          buildUserFacingError(nextError, {
+            detail: "当前主机的端口转发列表暂时不可用。",
+            recoveryAction: "请确认 SSH 连接可用后重试。",
+            title: "无法读取隧道",
+          }),
+        );
+      }
     } finally {
-      setLoading(false);
+      if (isCurrentListRequest(token)) {
+        setLoading(false);
+      }
     }
-  }, [selectedHostId]);
+  }, [beginListRequest, isCurrentListRequest, selectedHostId]);
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    return invalidateListRequests;
+  }, [invalidateListRequests, refresh]);
 
   if (!selectedMachine || selectedMachine.kind !== "ssh") {
     const message =
@@ -242,9 +290,7 @@ export function PortForwardToolContent({
         <h3 className="font-medium text-zinc-950 dark:text-zinc-100">
           SSH 隧道
         </h3>
-        <p className="mt-2 leading-6">
-          {message}
-        </p>
+        <p className="mt-2 leading-6">{message}</p>
       </section>
     );
   }
@@ -258,12 +304,18 @@ export function PortForwardToolContent({
     (scenario === "socksAdvanced" && socksMode === "localDynamic");
 
   async function handleCreate() {
-    if (!selectedMachine || selectedMachine.kind !== "ssh") {
+    if (
+      !selectedMachine ||
+      selectedMachine.kind !== "ssh" ||
+      !selectedHostId ||
+      !dialogHostId ||
+      dialogHostId !== selectedHostId
+    ) {
       return;
     }
 
     const request = buildPortForwardCreateRequest({
-      hostId: selectedMachine.id,
+      hostId: dialogHostId,
       hostTargetHost,
       hostTargetPort,
       localBindHost,
@@ -286,152 +338,149 @@ export function PortForwardToolContent({
       return;
     }
 
-    setLoading(true);
-    setError(null);
-    setNotice(null);
-    try {
-      if (editingSessionId) {
-        await deletePortForward(editingSessionId);
-      }
-      const created = await createPortForward(request.value);
-      const metadata = metadataFromCreateRequest(request.value);
-      setSessionMetadata((current) => ({
-        ...current,
-        [created.id]: metadata,
-      }));
-      const listed = await listPortForwards();
-      setSessions(
-        listed.some((session) => session.id === created.id)
-          ? listed
-          : [...listed, created],
-      );
-      setNotice(
-        editingSessionId
-          ? "隧道配置已更新。"
-          : scenario === "hostNetwork"
-          ? "网络助手已创建，可复制或注入。"
-          : "隧道会话已创建。",
-      );
-      setEditingSessionId(null);
-      setCreateDialogOpen(false);
-    } catch (nextError) {
-      setError(
+    await runAction(
+      async (token) => {
+        if (editingSessionId) {
+          await deletePortForward(editingSessionId);
+        }
+        const created = await createPortForward(request.value);
+        const listed = await listPortForwards();
+        if (!isCurrentBinding(token)) {
+          return;
+        }
+        setSessionMetadata((current) => ({
+          ...current,
+          [created.id]: metadataFromCreateRequest(request.value),
+        }));
+        setSessions(
+          listed.some((session) => session.id === created.id)
+            ? listed
+            : [...listed, created],
+        );
+        setNotice(
+          editingSessionId
+            ? "隧道配置已更新。"
+            : scenario === "hostNetwork"
+              ? "网络助手已创建，可复制或注入。"
+              : "隧道会话已创建。",
+        );
+        setEditingSessionId(null);
+        setDialogHostId(null);
+        setCreateDialogOpen(false);
+      },
+      (nextError) =>
         buildUserFacingError(nextError, {
           detail: "隧道配置尚未创建。",
           recoveryAction: "请检查端口、绑定地址和 SSH 连接后重试。",
           title: "无法创建隧道",
         }),
-      );
-    } finally {
-      setLoading(false);
-    }
+    );
   }
 
   function handleOpenCreateDialog() {
+    if (!active || !selectedHostId) {
+      return;
+    }
     setError(null);
     setNotice(null);
     setEditingSessionId(null);
+    setDialogHostId(selectedHostId);
     setCreateDialogOpen(true);
   }
 
   function handleCloseCreateDialog() {
     setCreateDialogOpen(false);
+    setDialogHostId(null);
     setEditingSessionId(null);
     setError(null);
   }
-
   function handleEdit(session: PortForwardSummary) {
-    applySessionToForm(session);
+    if (!active || !selectedHostId || session.hostId !== selectedHostId) {
+      return;
+    }
+    applySession(session);
     setError(null);
     setNotice(null);
     setEditingSessionId(session.id);
+    setDialogHostId(selectedHostId);
     setCreateDialogOpen(true);
   }
-
   async function handleStart(forwardId: string) {
-    setLoading(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const started = await startPortForward(forwardId);
-      setSessions(await listPortForwards());
-      setNotice(`${started.name} 已启动。`);
-    } catch (nextError) {
-      setError(
+    await runAction(
+      async (token) => {
+        const started = await startPortForward(forwardId);
+        if (!isCurrentBinding(token)) return;
+        const nextSessions = await listPortForwards();
+        if (!isCurrentBinding(token)) return;
+        setSessions(nextSessions);
+        setNotice(`${started.name} 已启动。`);
+      },
+      (nextError) =>
         buildUserFacingError(nextError, {
           detail: "保存的隧道仍然保留。",
           recoveryAction: "请确认 SSH 连接可用后重试。",
           title: "无法启动隧道",
         }),
-      );
-    } finally {
-      setLoading(false);
-    }
+    );
   }
-
   async function handleStop(forwardId: string) {
-    setLoading(true);
-    setError(null);
-    setNotice(null);
-    try {
-      await stopPortForward(forwardId);
-      if (
-        selectedHostId &&
-        autoInjection?.sessionId === forwardId &&
-        clearHostNetworkAssistAutoInjection(selectedHostId, forwardId)
-      ) {
-        setAutoInjection(undefined);
-      }
-      setSessions(await listPortForwards());
-      setNotice("隧道已停止，配置仍保留。");
-    } catch (nextError) {
-      setError(
+    await runAction(
+      async (token) => {
+        await stopPortForward(forwardId);
+        const cleared = clearCurrentAutoInjection(forwardId);
+        if (!isCurrentBinding(token)) return;
+        if (cleared) setAutoInjection(undefined);
+        const nextSessions = await listPortForwards();
+        if (!isCurrentBinding(token)) return;
+        setSessions(nextSessions);
+        setNotice("隧道已停止，配置仍保留。");
+      },
+      (nextError) =>
         buildUserFacingError(nextError, {
           detail: "隧道可能仍在运行。",
           recoveryAction: "请刷新状态，确认 SSH 连接可用后重试。",
           title: "无法停止隧道",
         }),
-      );
-    } finally {
-      setLoading(false);
-    }
+    );
   }
-
   async function handleDelete(forwardId: string) {
-    setLoading(true);
-    setError(null);
-    setNotice(null);
-    try {
-      await deletePortForward(forwardId);
-      setSessionMetadata((current) => {
-        const next = { ...current };
-        delete next[forwardId];
-        return next;
-      });
-      if (
-        selectedHostId &&
-        autoInjection?.sessionId === forwardId &&
-        clearHostNetworkAssistAutoInjection(selectedHostId, forwardId)
-      ) {
-        setAutoInjection(undefined);
-      }
-      setSessions(await listPortForwards());
-      setNotice("隧道配置已删除。");
-    } catch (nextError) {
-      setError(
+    await runAction(
+      async (token) => {
+        await deletePortForward(forwardId);
+        const cleared = clearCurrentAutoInjection(forwardId);
+        if (!isCurrentBinding(token)) return;
+        setSessionMetadata((current) => {
+          const next = { ...current };
+          delete next[forwardId];
+          return next;
+        });
+        if (cleared) setAutoInjection(undefined);
+        const nextSessions = await listPortForwards();
+        if (!isCurrentBinding(token)) return;
+        setSessions(nextSessions);
+        setNotice("隧道配置已删除。");
+      },
+      (nextError) =>
         buildUserFacingError(nextError, {
           detail: "隧道配置仍然保留。",
           recoveryAction: "请刷新状态后重试删除。",
           title: "无法删除隧道",
         }),
-      );
-    } finally {
-      setLoading(false);
-    }
+    );
+  }
+  function clearCurrentAutoInjection(forwardId: string) {
+    return Boolean(
+      selectedHostId &&
+      autoInjection?.sessionId === forwardId &&
+      clearHostNetworkAssistAutoInjection(selectedHostId, forwardId),
+    );
   }
 
   async function handleCopy(value: string) {
+    const token = captureBinding();
+    if (!token) return;
     const result = await writeDesktopClipboardText(value);
+    if (!isCurrentBinding(token)) return;
     if (!result.ok) {
       setError(
         portForwardUserError(
@@ -445,6 +494,8 @@ export function PortForwardToolContent({
   }
 
   async function handleInject(session: PortForwardSummary) {
+    const token = captureBinding();
+    if (!token) return;
     if (!focusedPane || !canInjectIntoFocusedPane) {
       setError(portForwardUserError(injectDisabledReason));
       return;
@@ -468,11 +519,13 @@ export function PortForwardToolContent({
       paneId: focusedPane.id,
       source: "tool",
     });
-    setNotice("已注入当前终端，不会写入远端 profile。");
+    if (isCurrentBinding(token)) {
+      setNotice("已注入当前终端，不会写入远端 profile。");
+    }
   }
 
   function handleToggleAutoUse(session: PortForwardSummary) {
-    if (!selectedHostId) {
+    if (!active || !selectedHostId) {
       return;
     }
     if (session.status !== "running") {
@@ -510,7 +563,9 @@ export function PortForwardToolContent({
     };
     setHostNetworkAssistAutoInjection(injection);
     setAutoInjection(injection);
-    setNotice("同主机后续新 SSH 终端会自动执行代理 export，不会写入远端 profile。");
+    setNotice(
+      "同主机后续新 SSH 终端会自动执行代理 export，不会写入远端 profile。",
+    );
   }
 
   return (
@@ -612,7 +667,7 @@ export function PortForwardToolContent({
           </>
         }
         onClose={handleCloseCreateDialog}
-        open={createDialogOpen}
+        open={createDialogOpen && dialogHostId === selectedHostId}
         size="large"
         title={editingSessionId ? "编辑 SSH 隧道" : "添加 SSH 隧道"}
       >
@@ -649,7 +704,9 @@ export function PortForwardToolContent({
             label="名称"
             onChange={setName}
             placeholder={
-              scenario === "hostNetwork" ? "例如 主机网络助手" : "例如 PostgreSQL 隧道"
+              scenario === "hostNetwork"
+                ? "例如 主机网络助手"
+                : "例如 PostgreSQL 隧道"
             }
             value={name}
           />
@@ -676,9 +733,7 @@ export function PortForwardToolContent({
             />
           ) : null}
 
-          {error ? (
-            <UserFacingNotice compact message={error} />
-          ) : null}
+          {error ? <UserFacingNotice compact message={error} /> : null}
         </div>
       </ModalShell>
     </section>
@@ -688,10 +743,7 @@ export function PortForwardToolContent({
     if (scenario === "hostService") {
       return (
         <>
-          <EndpointHeader
-            detail="SSH 连接另一侧"
-            title="主机目标服务"
-          />
+          <EndpointHeader detail="SSH 连接另一侧" title="主机目标服务" />
           <FieldInput
             id="forward-host-target-host"
             label="主机目标地址"
@@ -734,10 +786,7 @@ export function PortForwardToolContent({
       return (
         <>
           <EndpointHeader detail="远端代理" title="主机代理" />
-          <ProtocolToggle
-            onChange={setProxyProtocol}
-            value={proxyProtocol}
-          />
+          <ProtocolToggle onChange={setProxyProtocol} value={proxyProtocol} />
           <BindAddressControl
             customHost={remoteCustomBindHost}
             idPrefix="forward-network-bind"
@@ -785,48 +834,6 @@ export function PortForwardToolContent({
         <PreviewValue label="出口" value="主机网络" />
       </>
     );
-  }
-
-  function applySessionToForm(session: PortForwardSummary) {
-    setName(session.name);
-    if (session.kind === "local") {
-      setScenario("hostService");
-      setLocalCustomBindHost(session.localBindHost ?? session.bindHost);
-      setLocalBindMode(bindModeFromHost(session.localBindHost ?? session.bindHost));
-      setLocalListenPort(String(session.sourcePort));
-      setHostTargetHost(session.targetHost ?? session.remoteEndpoint?.host ?? "127.0.0.1");
-      setHostTargetPort(String(session.targetPort ?? session.remoteEndpoint?.port ?? 80));
-      return;
-    }
-    if (session.kind === "dynamic") {
-      setScenario("socksAdvanced");
-      setSocksMode("localDynamic");
-      setLocalCustomBindHost(session.localBindHost ?? session.bindHost);
-      setLocalBindMode(bindModeFromHost(session.localBindHost ?? session.bindHost));
-      setLocalSocksPort(String(session.sourcePort));
-      return;
-    }
-    if (session.purpose === "hostNetworkAssist") {
-      if (session.proxyProtocol === "socks5" && !session.targetHost) {
-        setScenario("socksAdvanced");
-        setSocksMode("remoteDynamic");
-      } else {
-        setScenario("hostNetwork");
-      }
-      setProxyProtocol(session.proxyProtocol ?? "http");
-      setRemoteCustomBindHost(session.remoteBindHost ?? session.bindHost);
-      setRemoteBindMode(bindModeFromHost(session.remoteBindHost ?? session.bindHost));
-      setRemoteListenPort(String(session.sourcePort));
-      setLocalProxyHost(session.localEndpoint?.host ?? session.targetHost ?? "127.0.0.1");
-      setLocalProxyPort(String(session.localEndpoint?.port ?? session.targetPort ?? 18081));
-      return;
-    }
-    setScenario("localService");
-    setRemoteCustomBindHost(session.remoteBindHost ?? session.bindHost);
-    setRemoteBindMode(bindModeFromHost(session.remoteBindHost ?? session.bindHost));
-    setRemoteListenPort(String(session.sourcePort));
-    setLocalTargetHost(session.targetHost ?? session.localEndpoint?.host ?? "127.0.0.1");
-    setLocalTargetPort(String(session.targetPort ?? session.localEndpoint?.port ?? 3000));
   }
 
   function renderLocalEndpointFields() {
@@ -892,10 +899,7 @@ export function PortForwardToolContent({
               />
             </>
           ) : (
-            <PreviewValue
-              label="本机侧"
-              value="OpenSSH remote dynamic SOCKS"
-            />
+            <PreviewValue label="本机侧" value="OpenSSH remote dynamic SOCKS" />
           )}
           {networkCommandPreview ? (
             <CommandPreview value={networkCommandPreview} />
@@ -928,14 +932,16 @@ export function PortForwardToolContent({
         ) : (
           <PreviewValue
             label="远端注入"
-            value={buildNetworkAssistCommand({
-              protocol: "socks5",
-              proxyUrl: buildProxyUrl({
-                bindHost: remoteBindHost,
-                port: Number(remoteListenPort) || 0,
+            value={
+              buildNetworkAssistCommand({
                 protocol: "socks5",
-              }),
-            }).split("\n")[0]}
+                proxyUrl: buildProxyUrl({
+                  bindHost: remoteBindHost,
+                  port: Number(remoteListenPort) || 0,
+                  protocol: "socks5",
+                }),
+              }).split("\n")[0]
+            }
           />
         )}
       </>
@@ -952,15 +958,4 @@ function portForwardUserError(
     severity: "error",
     title,
   };
-}
-
-function bindModeFromHost(host: string | undefined): BindAddressMode {
-  const value = host?.trim();
-  if (!value || value === "127.0.0.1" || value === "localhost" || value === "::1") {
-    return "loopback";
-  }
-  if (value === "0.0.0.0" || value === "::") {
-    return "all";
-  }
-  return "custom";
 }

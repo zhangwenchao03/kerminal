@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Machine } from "../../../../src/features/workspace/types";
@@ -75,6 +75,15 @@ const sshMachine: Machine = {
   tags: ["ssh"],
 };
 
+const stagingMachine: Machine = {
+  description: "deploy@staging.internal",
+  id: "staging-api",
+  kind: "ssh",
+  name: "staging api",
+  status: "online",
+  tags: ["ssh"],
+};
+
 const focusedPane = {
   id: "pane-1",
   lines: [],
@@ -97,6 +106,16 @@ const session = {
   targetRef: "ssh:prod-api",
   windows: 1,
 };
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, reject, resolve };
+}
 
 describe("TmuxToolContent", () => {
   beforeEach(async () => {
@@ -187,6 +206,186 @@ describe("TmuxToolContent", () => {
     expect(tmuxApiMocks.tmuxListWindows).not.toHaveBeenCalled();
     expect(tmuxApiMocks.tmuxListPanes).not.toHaveBeenCalled();
     expect(tmuxApiMocks.tmuxCapturePane).not.toHaveBeenCalled();
+  });
+
+  it("keeps target B sessions when target A list resolves later", async () => {
+    const slowTargetA = createDeferred<Array<typeof session>>();
+    const targetASession = { ...session, name: "worker-a" };
+    const targetBSession = {
+      ...session,
+      id: "$1",
+      name: "worker-b",
+      targetRef: "ssh:staging-api",
+    };
+    tmuxApiMocks.tmuxListSessions
+      .mockImplementationOnce(() => slowTargetA.promise)
+      .mockResolvedValueOnce([targetBSession]);
+
+    const { rerender } = render(
+      <TmuxToolContent selectedMachine={sshMachine} />,
+    );
+    await waitFor(() =>
+      expect(tmuxApiMocks.tmuxListSessions).toHaveBeenCalledTimes(1),
+    );
+
+    rerender(<TmuxToolContent selectedMachine={stagingMachine} />);
+    expect(await screen.findByText("worker-b")).toBeInTheDocument();
+
+    await act(async () => {
+      slowTargetA.resolve([targetASession]);
+      await slowTargetA.promise;
+    });
+
+    expect(screen.getByText("worker-b")).toBeInTheDocument();
+    expect(screen.queryByText("worker-a")).not.toBeInTheDocument();
+  });
+
+  it("ignores target A probe failure after target B succeeds", async () => {
+    const failedTargetA = createDeferred<never>();
+    const targetBSession = {
+      ...session,
+      id: "$1",
+      name: "worker-b",
+      targetRef: "ssh:staging-api",
+    };
+    tmuxApiMocks.tmuxProbe
+      .mockImplementationOnce(() => failedTargetA.promise)
+      .mockResolvedValueOnce({
+        available: true,
+        target: { kind: "ssh", hostId: "staging-api" },
+        targetRef: "ssh:staging-api",
+        version: "tmux 3.4",
+      });
+    tmuxApiMocks.tmuxListSessions.mockResolvedValueOnce([targetBSession]);
+
+    const { rerender } = render(
+      <TmuxToolContent selectedMachine={sshMachine} />,
+    );
+    await waitFor(() => expect(tmuxApiMocks.tmuxProbe).toHaveBeenCalledTimes(1));
+
+    rerender(<TmuxToolContent selectedMachine={stagingMachine} />);
+    expect(await screen.findByText("worker-b")).toBeInTheDocument();
+
+    await act(async () => {
+      failedTargetA.reject(new Error("target A probe failed"));
+      await failedTargetA.promise.catch(() => undefined);
+    });
+
+    expect(screen.getByText("worker-b")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/读取 tmux 会话失败/),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("target A probe failed")).not.toBeInTheDocument();
+  });
+
+  it("does not probe or list sessions while inactive", async () => {
+    const user = userEvent.setup();
+    render(<TmuxToolContent active={false} selectedMachine={sshMachine} />);
+
+    expect(tmuxApiMocks.tmuxProbe).not.toHaveBeenCalled();
+    expect(tmuxApiMocks.tmuxListSessions).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "刷新" }));
+    expect(tmuxApiMocks.tmuxProbe).not.toHaveBeenCalled();
+    expect(tmuxApiMocks.tmuxListSessions).not.toHaveBeenCalled();
+  });
+
+  it("refreshes only the current target when reopened", async () => {
+    const targetBSession = {
+      ...session,
+      id: "$1",
+      name: "worker-b",
+      targetRef: "ssh:staging-api",
+    };
+    tmuxApiMocks.tmuxListSessions
+      .mockResolvedValueOnce([session])
+      .mockResolvedValueOnce([targetBSession]);
+
+    const { rerender } = render(
+      <TmuxToolContent active selectedMachine={sshMachine} />,
+    );
+    expect(await screen.findByText("api")).toBeInTheDocument();
+    expect(tmuxApiMocks.tmuxProbe).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <TmuxToolContent active={false} selectedMachine={sshMachine} />,
+    );
+    rerender(
+      <TmuxToolContent active={false} selectedMachine={stagingMachine} />,
+    );
+    expect(tmuxApiMocks.tmuxProbe).toHaveBeenCalledTimes(1);
+    expect(tmuxApiMocks.tmuxListSessions).toHaveBeenCalledTimes(1);
+
+    rerender(<TmuxToolContent active selectedMachine={stagingMachine} />);
+    expect(await screen.findByText("worker-b")).toBeInTheDocument();
+    expect(tmuxApiMocks.tmuxProbe).toHaveBeenCalledTimes(2);
+    expect(tmuxApiMocks.tmuxProbe).toHaveBeenLastCalledWith({
+      target: { target: { hostId: "staging-api", kind: "ssh" } },
+    });
+  });
+
+  it("does not apply an action result from the lifecycle before reopen", async () => {
+    const user = userEvent.setup();
+    const pendingCreate = createDeferred<typeof session>();
+    tmuxApiMocks.tmuxCreateSession.mockImplementationOnce(
+      () => pendingCreate.promise,
+    );
+
+    const { rerender } = render(
+      <TmuxToolContent active selectedMachine={sshMachine} />,
+    );
+    await user.click(await screen.findByRole("button", { name: "新建会话" }));
+    const input = screen.getByLabelText("会话名称");
+    await user.clear(input);
+    await user.type(input, "old-created");
+    await user.click(screen.getByRole("button", { name: "创建" }));
+    await waitFor(() =>
+      expect(tmuxApiMocks.tmuxCreateSession).toHaveBeenCalledTimes(1),
+    );
+
+    rerender(
+      <TmuxToolContent active={false} selectedMachine={sshMachine} />,
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    rerender(<TmuxToolContent active selectedMachine={sshMachine} />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "新建会话" })).toBeEnabled(),
+    );
+
+    await act(async () => {
+      pendingCreate.resolve({
+        ...session,
+        id: "$9",
+        name: "old-created",
+      });
+      await pendingCreate.promise;
+    });
+
+    expect(screen.getByText("api")).toBeInTheDocument();
+    expect(screen.queryByText("old-created")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "新建会话" }),
+    ).toBeEnabled();
+  });
+
+  it("closes a target-bound dialog when the selected target changes", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <TmuxToolContent active selectedMachine={sshMachine} />,
+    );
+    await user.click(await screen.findByRole("button", { name: "新建会话" }));
+    expect(
+      screen.getByRole("dialog", { name: "新建 tmux 会话" }),
+    ).toBeInTheDocument();
+
+    rerender(<TmuxToolContent active selectedMachine={stagingMachine} />);
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(tmuxApiMocks.tmuxCreateSession).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(tmuxApiMocks.tmuxProbe).toHaveBeenLastCalledWith({
+        target: { target: { hostId: "staging-api", kind: "ssh" } },
+      }),
+    );
   });
 
   it("copies and sends a common tmux command to the focused terminal", async () => {
@@ -338,12 +537,12 @@ describe("TmuxToolContent", () => {
     expect(technicalDetail).toBeVisible();
   });
 
-  it("creates a session from the dialog", async () => {
+  it("normalizes an IP-derived name and closes the dialog after creation", async () => {
     const user = userEvent.setup();
     tmuxApiMocks.tmuxCreateSession.mockResolvedValue({
       ...session,
       id: "$1",
-      name: "api-dev",
+      name: "124_70_71_166-root-20260713-192215",
     });
 
     render(<TmuxToolContent selectedMachine={sshMachine} />);
@@ -351,17 +550,21 @@ describe("TmuxToolContent", () => {
     await user.click(await screen.findByRole("button", { name: "新建会话" }));
     const input = screen.getByLabelText("会话名称");
     await user.clear(input);
-    await user.type(input, "api-dev");
+    await user.type(input, "124.70.71.166-root-20260713-192215");
     await user.click(screen.getByRole("button", { name: "创建" }));
 
     await waitFor(() =>
       expect(tmuxApiMocks.tmuxCreateSession).toHaveBeenCalledWith({
         cwd: undefined,
-        name: "api-dev",
+        name: "124_70_71_166-root-20260713-192215",
         target: { target: { hostId: "prod-api", kind: "ssh" } },
       }),
     );
-    expect(await screen.findByText("api-dev")).toBeInTheDocument();
+    expect(
+      await screen.findByText("124_70_71_166-root-20260713-192215"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText(/创建会话失败/)).not.toBeInTheDocument();
   });
 
   it("uses semantic colors for dialog action buttons", async () => {

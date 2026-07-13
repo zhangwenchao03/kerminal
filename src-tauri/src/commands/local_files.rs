@@ -16,7 +16,10 @@ use uuid::Uuid;
 
 use crate::{
     commands::file_dialog::{read_local_directory, LocalDirectoryListing},
-    models::sftp::SftpFileRevision,
+    models::{
+        file_preview::{file_preview_response_encoding, is_binary_file_preview_content},
+        sftp::SftpFileRevision,
+    },
     state::AppState,
     storage::local_file_operations::LocalFileOperationAuditWrite,
 };
@@ -372,27 +375,26 @@ fn read_text_file(request: LocalReadTextFileRequest) -> Result<LocalReadTextFile
     } else {
         bytes.as_slice()
     };
-    let binary = visible_bytes.contains(&0);
-    if binary {
-        return Err(format!(
-            "本机文件包含二进制内容，暂不支持作为文本编辑: {}",
-            path.display()
-        ));
-    }
-    let content = String::from_utf8_lossy(visible_bytes).into_owned();
+    let binary = is_binary_file_preview_content(&bytes);
+    // 二进制响应只保留元数据和 revision，禁止把原始字节经 lossy 转换后泄露给编辑器。
+    let content = if binary {
+        String::new()
+    } else {
+        String::from_utf8_lossy(visible_bytes).into_owned()
+    };
     let metadata = fs::metadata(&path)
         .map_err(|error| format!("读取本机文件元数据失败 {}: {error}", path.display()))?;
 
     Ok(LocalReadTextFileResponse {
         path: path_to_owned_string(&path),
-        bytes_read: visible_bytes.len(),
+        bytes_read: if binary { 0 } else { visible_bytes.len() },
         max_bytes,
         truncated,
-        encoding: "utf-8-lossy".to_owned(),
+        encoding: file_preview_response_encoding(binary).to_owned(),
         line_ending: detect_line_ending(&content),
         revision: local_file_revision(&path, Some(sha256_hex(visible_bytes)))?,
         binary,
-        readonly: metadata.permissions().readonly(),
+        readonly: binary || metadata.permissions().readonly(),
         content,
     })
 }

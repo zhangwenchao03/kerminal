@@ -144,6 +144,20 @@ pub struct CommandHistoryListRequest {
     pub limit: Option<usize>,
 }
 
+/// 命令历史清理范围；所有字段为空时保留清空全部历史的兼容语义。
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandHistoryClearRequest {
+    /// 目标类型过滤。
+    pub target: Option<CommandHistoryTarget>,
+    /// 前端 pane id 过滤。
+    pub pane_id: Option<String>,
+    /// SSH 主机过滤。
+    pub remote_host_id: Option<String>,
+    /// 终端 session 过滤。
+    pub session_id: Option<String>,
+}
+
 /// 记录命令历史请求。
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

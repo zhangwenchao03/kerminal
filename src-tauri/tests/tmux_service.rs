@@ -8,16 +8,16 @@ use kerminal_lib::{
     models::{
         remote_host::{RemoteHostAuthType, RemoteHostCreateRequest},
         target::RemoteTargetRef,
-        tmux::{TmuxListSessionsRequest, TmuxTargetRef},
+        tmux::{TmuxCreateSessionRequest, TmuxListSessionsRequest, TmuxTargetRef},
     },
     paths::KerminalPaths,
     services::{
         ssh_runtime::{SshAuthIdentity, SshAuthSecretKind},
         tmux_service::{
             rules::{
-                build_remote_command, command_args_with_socket, parse_panes, parse_sessions,
-                parse_windows, stable_tmux_target_ref, validate_target, FIELD_SEPARATOR,
-                SESSION_FORMAT,
+                build_remote_command, command_args_with_socket, normalize_tmux_session_name,
+                parse_panes, parse_sessions, parse_windows, stable_tmux_target_ref,
+                validate_target, FIELD_SEPARATOR, SESSION_FORMAT,
             },
             TmuxService,
         },
@@ -25,7 +25,9 @@ use kerminal_lib::{
     state::AppState,
 };
 use std::sync::Arc;
-use support::managed_ssh_runtime::{ssh_command_service_with_fake_runtime, FakeManagedSshRuntime};
+use support::managed_ssh_runtime::{
+    ssh_command_service_with_fake_runtime, FakeManagedExecOutput, FakeManagedSshRuntime,
+};
 use tempfile::{tempdir, TempDir};
 
 fn local_target() -> TmuxTargetRef {
@@ -102,6 +104,14 @@ fn parses_raw_tmux_fields_with_apostrophes() {
 
     assert_eq!(sessions[0].name, "api's");
     assert_eq!(sessions[0].current_path.as_deref(), Some("/srv/api's"));
+}
+
+#[test]
+fn normalizes_tmux_reserved_session_name_separators() {
+    assert_eq!(
+        normalize_tmux_session_name("124.70.71.166:root").expect("normalize session name"),
+        "124_70_71_166_root"
+    );
 }
 
 #[test]
@@ -209,6 +219,108 @@ async fn ssh_tmux_list_sessions_uses_managed_exec_runtime() {
     let key_debug = format!("{key:?}");
     assert!(!key_debug.contains("correct horse battery staple"));
     assert!(!key_debug.contains("credential:ssh"));
+}
+
+#[tokio::test]
+async fn ssh_tmux_create_returns_the_canonicalized_session() {
+    let (_home, state) = test_state();
+    let host_id = create_saved_password_host(&state);
+    let sep = FIELD_SEPARATOR;
+    let canonical_name = "124_70_71_166-root-20260713-192215";
+    let backend = Arc::new(FakeManagedSshRuntime::with_stdout(format!(
+        "$3{sep}{canonical_name}{sep}0{sep}0{sep}1710000000{sep}1710000100{sep}/root{sep}1\n"
+    )));
+    let ssh_commands = ssh_command_service_with_fake_runtime(&state, Arc::clone(&backend));
+
+    let created = TmuxService::new()
+        .create_session(
+            state.paths(),
+            &ssh_commands,
+            TmuxCreateSessionRequest {
+                cwd: Some("/root".to_owned()),
+                name: "124.70.71.166-root-20260713-192215".to_owned(),
+                target: TmuxTargetRef {
+                    socket_name: None,
+                    socket_path: None,
+                    target: RemoteTargetRef::Ssh { host_id },
+                    tmux_path: None,
+                },
+            },
+        )
+        .await
+        .expect("create canonicalized tmux session");
+
+    assert_eq!(created.id, "$3");
+    assert_eq!(created.name, canonical_name);
+    assert_eq!(backend.exec_count(), 2);
+}
+
+#[tokio::test]
+async fn ssh_tmux_create_keeps_success_when_summary_refresh_fails() {
+    let (_home, state) = test_state();
+    let host_id = create_saved_password_host(&state);
+    let backend = Arc::new(FakeManagedSshRuntime::with_stdout("unexpected tmux output"));
+    let ssh_commands = ssh_command_service_with_fake_runtime(&state, Arc::clone(&backend));
+
+    let created = TmuxService::new()
+        .create_session(
+            state.paths(),
+            &ssh_commands,
+            TmuxCreateSessionRequest {
+                cwd: Some("/root".to_owned()),
+                name: "124.70.71.166-root-fallback".to_owned(),
+                target: TmuxTargetRef {
+                    socket_name: None,
+                    socket_path: None,
+                    target: RemoteTargetRef::Ssh { host_id },
+                    tmux_path: None,
+                },
+            },
+        )
+        .await
+        .expect("keep successful tmux create when summary refresh fails");
+
+    assert_eq!(created.id, "124_70_71_166-root-fallback");
+    assert_eq!(created.name, "124_70_71_166-root-fallback");
+    assert_eq!(created.current_path.as_deref(), Some("/root"));
+    assert_eq!(created.windows, 1);
+    assert_eq!(backend.exec_count(), 2);
+}
+
+#[tokio::test]
+async fn ssh_tmux_create_recovers_a_duplicate_session_without_a_summary() {
+    let (_home, state) = test_state();
+    let host_id = create_saved_password_host(&state);
+    let backend = Arc::new(FakeManagedSshRuntime::default());
+    backend.set_output(FakeManagedExecOutput {
+        exit_code: Some(1),
+        stderr: "duplicate session: 124_70_71_166-root-retry".to_owned(),
+        stdout: String::new(),
+    });
+    let ssh_commands = ssh_command_service_with_fake_runtime(&state, Arc::clone(&backend));
+
+    let created = TmuxService::new()
+        .create_session(
+            state.paths(),
+            &ssh_commands,
+            TmuxCreateSessionRequest {
+                cwd: Some("/root".to_owned()),
+                name: "124.70.71.166-root-retry".to_owned(),
+                target: TmuxTargetRef {
+                    socket_name: None,
+                    socket_path: None,
+                    target: RemoteTargetRef::Ssh { host_id },
+                    tmux_path: None,
+                },
+            },
+        )
+        .await
+        .expect("recover duplicate tmux session without a summary");
+
+    assert_eq!(created.id, "124_70_71_166-root-retry");
+    assert_eq!(created.name, "124_70_71_166-root-retry");
+    assert_eq!(created.current_path.as_deref(), Some("/root"));
+    assert_eq!(backend.exec_count(), 2);
 }
 
 fn test_state() -> (TempDir, AppState) {

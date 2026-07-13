@@ -33,6 +33,38 @@ describe("sftpWorkspaceDialogModel", () => {
     });
   });
 
+  it("rejects known non-text files before opening the workspace editor", () => {
+    expect(
+      buildOpenWorkspaceEditorDialog({
+        entry: entry({ name: "agreement.PDF", path: "/srv/agreement.PDF" }),
+        nonce: 42,
+      }),
+    ).toEqual({
+      kind: "unsupported",
+      status: {
+        kind: "info",
+        message:
+          "PDF 或电子书文件不能在文本编辑器中预览，可下载后使用对应阅读应用查看。",
+      },
+    });
+  });
+
+  it("keeps unknown extensions and extensionless files eligible for content probing", () => {
+    for (const name of ["README", "service.custom-format"]) {
+      expect(
+        buildOpenWorkspaceEditorDialog({
+          entry: entry({ name, path: `/srv/${name}` }),
+          nonce: 42,
+        }),
+      ).toMatchObject({
+        dialog: {
+          openCommand: { nonce: 42, path: `/srv/${name}` },
+        },
+        kind: "open",
+      });
+    }
+  });
+
   it("rejects non-file editor targets with the existing status message", () => {
     expect(
       buildOpenWorkspaceEditorDialog({
@@ -49,13 +81,19 @@ describe("sftpWorkspaceDialogModel", () => {
   });
 
   it("keeps dirty workspace close blocked until confirmed", () => {
-    expect(resolveWorkspaceDialogCloseDecision({ confirmed: false, dirty: false })).toEqual({
+    expect(
+      resolveWorkspaceDialogCloseDecision({ confirmed: false, dirty: false }),
+    ).toEqual({
       kind: "close",
     });
-    expect(resolveWorkspaceDialogCloseDecision({ confirmed: false, dirty: true })).toEqual({
+    expect(
+      resolveWorkspaceDialogCloseDecision({ confirmed: false, dirty: true }),
+    ).toEqual({
       kind: "blocked",
     });
-    expect(resolveWorkspaceDialogCloseDecision({ confirmed: true, dirty: true })).toEqual({
+    expect(
+      resolveWorkspaceDialogCloseDecision({ confirmed: true, dirty: true }),
+    ).toEqual({
       kind: "close",
     });
   });

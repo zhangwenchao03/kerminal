@@ -1,74 +1,63 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useMemo, useState } from "react";
 import {
   ChevronDown,
-  CircleDot,
-  Copy,
   Link2,
   LogOut,
   Pencil,
   Plus,
   RefreshCw,
-  Send,
   Terminal,
   Trash2,
-  type LucideIcon,
 } from "lucide-react";
-import { IconAction } from "../../components/ui/icon-action";
 import { PromptDialog } from "../../components/ui/prompt-dialog";
 import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
-import type { UserFacingMessage } from "../../lib/userFacingMessage";
 import {
   tmuxCreateSession,
   tmuxDetachCurrent,
   tmuxKillSession,
-  tmuxListSessions,
-  tmuxProbe,
   tmuxRenameSession,
   type TmuxCapabilityStatus,
   type TmuxSessionSummary,
 } from "../../lib/tmuxApi";
 import { writePaneCommand } from "../terminal/terminalSessionRegistry";
-import type {
-  Machine,
-  TerminalPane,
-  TerminalTab,
-} from "../workspace/types";
+import type { Machine, TerminalPane, TerminalTab } from "../workspace/types";
 import {
   buildTmuxAttachCommand,
   writeTmuxDetachShortcut,
   writeTmuxShortcut,
 } from "./tmux/tmuxCommandModel";
 import {
-  COMMON_TMUX_COMMANDS,
-  COMMON_TMUX_SHORTCUTS,
   tmuxQuickrefDisplay,
   type TmuxQuickrefItem,
 } from "./tmux/tmuxQuickrefModel";
+import { TmuxCommandCheatsheet, TmuxIconButton } from "./tmux/TmuxToolControls";
 import {
   defaultTmuxSessionName,
+  normalizeTmuxSessionName,
   resolveTmuxTarget,
   sortTmuxSessions,
   tmuxActionDisabledReason,
   tmuxSessionMatchesBinding,
   tmuxStatusLabel,
+  upsertTmuxSession,
 } from "./tmux/tmuxToolModel";
 import {
   formatTmuxActionFailure,
   formatTmuxCapabilityReason,
-  formatTmuxLoadFailure,
   formatTmuxTargetReason,
   tmuxFailure,
   tmuxNotice,
 } from "./tmux/tmuxUserMessage";
+import {
+  type TmuxDialogState,
+  useTmuxToolLifecycle,
+} from "./tmux/useTmuxToolLifecycle";
 
 interface TmuxToolContentProps {
+  /** 工具是否处于当前可见面板；隐藏时暂停远端读取，重新打开时刷新当前目标。 */
+  active?: boolean;
   activeMachine?: Machine;
   activeTab?: TerminalTab;
   focusedPane?: TerminalPane;
@@ -80,27 +69,13 @@ interface TmuxToolContentProps {
   onOpenTmuxTerminal?: unknown;
 }
 
-type DialogState =
-  | { kind: "create"; name: string }
-  | { kind: "rename"; name: string; session: TmuxSessionSummary }
-  | { kind: "kill"; session: TmuxSessionSummary }
-  | null;
-
 export function TmuxToolContent({
+  active = true,
   activeMachine,
   activeTab,
   focusedPane,
   selectedMachine,
 }: TmuxToolContentProps) {
-  const [capability, setCapability] = useState<TmuxCapabilityStatus | null>(
-    null,
-  );
-  const [sessions, setSessions] = useState<TmuxSessionSummary[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [dialog, setDialog] = useState<DialogState>(null);
-  const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [error, setError] = useState<UserFacingMessage | null>(null);
-
   const targetResolution = useMemo(
     () =>
       resolveTmuxTarget({
@@ -115,60 +90,30 @@ export function TmuxToolContent({
     targetResolution.status === "ready"
       ? JSON.stringify(targetResolution.target)
       : targetResolution.status;
+  const {
+    busyAction,
+    capability,
+    captureBinding,
+    dialog,
+    error,
+    isCurrentBinding,
+    loading,
+    loadSessions,
+    sessions,
+    setBusyAction,
+    setDialog,
+    setError,
+    setSessions,
+  } = useTmuxToolLifecycle({
+    active,
+    targetKey,
+    targetResolution,
+  });
   const currentBinding = focusedPane?.tmuxBinding;
   const orderedSessions = useMemo(
     () => sortTmuxSessions(sessions, currentBinding),
     [currentBinding, sessions],
   );
-
-  const loadSessions = useCallback(async () => {
-    if (targetResolution.status !== "ready") {
-      setCapability(null);
-      setSessions([]);
-      setError(null);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    let nextCapability: TmuxCapabilityStatus;
-    try {
-      nextCapability = await tmuxProbe({ target: targetResolution.target });
-    } catch (loadError: unknown) {
-      setCapability(null);
-      setSessions([]);
-      setError(
-        tmuxFailure(loadError, formatTmuxLoadFailure(loadError), "请检查连接后重试。"),
-      );
-      setLoading(false);
-      return;
-    }
-
-    setCapability(nextCapability);
-    if (!nextCapability.available) {
-      setSessions([]);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const nextSessions = await tmuxListSessions({
-        target: targetResolution.target,
-      });
-      setSessions(nextSessions);
-    } catch (loadError: unknown) {
-      setSessions([]);
-      setError(
-        tmuxFailure(loadError, formatTmuxLoadFailure(loadError), "请检查连接后重试。"),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [targetResolution]);
-
-  useEffect(() => {
-    void loadSessions();
-  }, [loadSessions, targetKey]);
 
   const openCreateDialog = () => {
     setDialog({
@@ -187,7 +132,8 @@ export function TmuxToolContent({
     if (targetResolution.status !== "ready" || dialog?.kind !== "create") {
       return;
     }
-    const name = dialog.name.trim();
+    const operationBindingKey = captureBinding();
+    const name = normalizeTmuxSessionName(dialog.name);
     if (!name) {
       setError(tmuxNotice("请输入会话名称。"));
       return;
@@ -199,15 +145,25 @@ export function TmuxToolContent({
         name,
         target: targetResolution.target,
       });
+      if (!isCurrentBinding(operationBindingKey)) {
+        return;
+      }
       setDialog(null);
-      setSessions((current) => [...current, created]);
+      setSessions((current) => upsertTmuxSession(current, created));
       setError(null);
     } catch (createError: unknown) {
-      setError(
-        tmuxFailure(createError, formatTmuxActionFailure("创建会话", createError)),
-      );
+      if (isCurrentBinding(operationBindingKey)) {
+        setError(
+          tmuxFailure(
+            createError,
+            formatTmuxActionFailure("创建会话", createError),
+          ),
+        );
+      }
     } finally {
-      setBusyAction(null);
+      if (isCurrentBinding(operationBindingKey)) {
+        setBusyAction(null);
+      }
     }
   };
 
@@ -215,7 +171,8 @@ export function TmuxToolContent({
     if (targetResolution.status !== "ready" || dialog?.kind !== "rename") {
       return;
     }
-    const name = dialog.name.trim();
+    const operationBindingKey = captureBinding();
+    const name = normalizeTmuxSessionName(dialog.name);
     if (!name) {
       setError(tmuxNotice("请输入会话名称。"));
       return;
@@ -227,6 +184,9 @@ export function TmuxToolContent({
         sessionId: dialog.session.id,
         target: targetResolution.target,
       });
+      if (!isCurrentBinding(operationBindingKey)) {
+        return;
+      }
       setSessions((current) =>
         current.map((session) =>
           session.id === renamed.id ? renamed : session,
@@ -235,14 +195,18 @@ export function TmuxToolContent({
       setDialog(null);
       setError(null);
     } catch (renameError: unknown) {
-      setError(
-        tmuxFailure(
-          renameError,
-          formatTmuxActionFailure("重命名会话", renameError),
-        ),
-      );
+      if (isCurrentBinding(operationBindingKey)) {
+        setError(
+          tmuxFailure(
+            renameError,
+            formatTmuxActionFailure("重命名会话", renameError),
+          ),
+        );
+      }
     } finally {
-      setBusyAction(null);
+      if (isCurrentBinding(operationBindingKey)) {
+        setBusyAction(null);
+      }
     }
   };
 
@@ -250,6 +214,7 @@ export function TmuxToolContent({
     if (targetResolution.status !== "ready" || dialog?.kind !== "kill") {
       return;
     }
+    const operationBindingKey = captureBinding();
     const session = dialog.session;
     setBusyAction(`kill:${session.id}`);
     try {
@@ -257,17 +222,27 @@ export function TmuxToolContent({
         sessionId: session.id,
         target: targetResolution.target,
       });
+      if (!isCurrentBinding(operationBindingKey)) {
+        return;
+      }
       setSessions((current) =>
         current.filter((candidate) => candidate.id !== session.id),
       );
       setDialog(null);
       setError(null);
     } catch (killError: unknown) {
-      setError(
-        tmuxFailure(killError, formatTmuxActionFailure("结束会话", killError)),
-      );
+      if (isCurrentBinding(operationBindingKey)) {
+        setError(
+          tmuxFailure(
+            killError,
+            formatTmuxActionFailure("结束会话", killError),
+          ),
+        );
+      }
     } finally {
-      setBusyAction(null);
+      if (isCurrentBinding(operationBindingKey)) {
+        setBusyAction(null);
+      }
     }
   };
 
@@ -280,6 +255,7 @@ export function TmuxToolContent({
       setError(tmuxNotice("请先聚焦左侧终端，再连接 tmux 会话。"));
       return;
     }
+    const operationBindingKey = captureBinding();
     setBusyAction(`attach:${session.id}`);
     try {
       const result = await writePaneCommand({
@@ -288,6 +264,9 @@ export function TmuxToolContent({
         source: "tool",
         tabId: activeTab?.id,
       });
+      if (!isCurrentBinding(operationBindingKey)) {
+        return;
+      }
       if (!result.sent) {
         setError(
           tmuxNotice(
@@ -300,14 +279,18 @@ export function TmuxToolContent({
       }
       setError(null);
     } catch (attachError: unknown) {
-      setError(
-        tmuxFailure(
-          attachError,
-          formatTmuxActionFailure("连接会话", attachError),
-        ),
-      );
+      if (isCurrentBinding(operationBindingKey)) {
+        setError(
+          tmuxFailure(
+            attachError,
+            formatTmuxActionFailure("连接会话", attachError),
+          ),
+        );
+      }
     } finally {
-      setBusyAction(null);
+      if (isCurrentBinding(operationBindingKey)) {
+        setBusyAction(null);
+      }
     }
   };
 
@@ -316,11 +299,15 @@ export function TmuxToolContent({
       setError(tmuxNotice("请先聚焦左侧终端。"));
       return;
     }
+    const operationBindingKey = captureBinding();
     setBusyAction("detach");
     try {
       const shortcutSent = await writeTmuxDetachShortcut(focusedPane.id);
       if (shortcutSent) {
         await tmuxDetachCurrent(focusedPane.id).catch(() => false);
+        if (!isCurrentBinding(operationBindingKey)) {
+          return;
+        }
         setError(null);
         await loadSessions();
         return;
@@ -334,6 +321,9 @@ export function TmuxToolContent({
           source: "tool",
           tabId: activeTab?.id,
         });
+        if (!isCurrentBinding(operationBindingKey)) {
+          return;
+        }
         if (!result.sent) {
           setError(
             tmuxNotice(
@@ -347,32 +337,45 @@ export function TmuxToolContent({
         setError(null);
         return;
       }
+      if (!isCurrentBinding(operationBindingKey)) {
+        return;
+      }
       setError(null);
       await loadSessions();
     } catch (detachError: unknown) {
-      setError(
-        tmuxFailure(
-          detachError,
-          formatTmuxActionFailure("退出 tmux", detachError),
-        ),
-      );
+      if (isCurrentBinding(operationBindingKey)) {
+        setError(
+          tmuxFailure(
+            detachError,
+            formatTmuxActionFailure("退出 tmux", detachError),
+          ),
+        );
+      }
     } finally {
-      setBusyAction(null);
+      if (isCurrentBinding(operationBindingKey)) {
+        setBusyAction(null);
+      }
     }
   };
 
   const copyQuickrefItem = async (item: TmuxQuickrefItem) => {
+    const operationBindingKey = captureBinding();
     try {
       const result = await writeDesktopClipboardText(tmuxQuickrefDisplay(item));
+      if (!isCurrentBinding(operationBindingKey)) {
+        return;
+      }
       if (!result.ok) {
         setError(tmuxNotice("复制失败：当前环境没有剪贴板权限。"));
         return;
       }
       setError(null);
     } catch (copyError: unknown) {
-      setError(
-        tmuxFailure(copyError, formatTmuxActionFailure("复制", copyError)),
-      );
+      if (isCurrentBinding(operationBindingKey)) {
+        setError(
+          tmuxFailure(copyError, formatTmuxActionFailure("复制", copyError)),
+        );
+      }
     }
   };
 
@@ -381,10 +384,14 @@ export function TmuxToolContent({
       setError(tmuxNotice("请先聚焦左侧终端。"));
       return;
     }
+    const operationBindingKey = captureBinding();
     setBusyAction(`send:${tmuxQuickrefDisplay(item)}`);
     try {
       if (item.kind === "shortcut") {
         const shortcutSent = await writeTmuxShortcut(focusedPane.id, item.data);
+        if (!isCurrentBinding(operationBindingKey)) {
+          return;
+        }
         if (!shortcutSent) {
           setError(tmuxNotice("发送失败：当前终端还没准备好。"));
           return;
@@ -399,6 +406,9 @@ export function TmuxToolContent({
         source: "tool",
         tabId: activeTab?.id,
       });
+      if (!isCurrentBinding(operationBindingKey)) {
+        return;
+      }
       if (!result.sent) {
         setError(
           tmuxNotice(
@@ -411,14 +421,18 @@ export function TmuxToolContent({
       }
       setError(null);
     } catch (sendError: unknown) {
-      setError(
-        tmuxFailure(
-          sendError,
-          formatTmuxActionFailure("发送命令", sendError),
-        ),
-      );
+      if (isCurrentBinding(operationBindingKey)) {
+        setError(
+          tmuxFailure(
+            sendError,
+            formatTmuxActionFailure("发送命令", sendError),
+          ),
+        );
+      }
     } finally {
-      setBusyAction(null);
+      if (isCurrentBinding(operationBindingKey)) {
+        setBusyAction(null);
+      }
     }
   };
 
@@ -434,9 +448,7 @@ export function TmuxToolContent({
         onRefresh={loadSessions}
         targetResolution={targetResolution}
       />
-      {error ? (
-        <UserFacingNotice compact message={error} />
-      ) : null}
+      {error ? <UserFacingNotice compact message={error} /> : null}
       <TmuxSessionList
         busyAction={busyAction}
         capability={capability}
@@ -535,7 +547,9 @@ function TmuxHeader({
         <div className="flex shrink-0 items-center gap-1">
           <TmuxIconButton
             disabled={!ready || loading}
-            disabledReason={!ready ? "没有可用目标" : loading ? "正在刷新" : undefined}
+            disabledReason={
+              !ready ? "没有可用目标" : loading ? "正在刷新" : undefined
+            }
             icon={RefreshCw}
             iconClassName={cn("h-4 w-4", loading && "animate-spin")}
             label="刷新"
@@ -544,7 +558,11 @@ function TmuxHeader({
           <TmuxIconButton
             disabled={!available || loading}
             disabledReason={
-              !available ? "目标没有安装 tmux" : loading ? "正在刷新" : undefined
+              !available
+                ? "目标没有安装 tmux"
+                : loading
+                  ? "正在刷新"
+                  : undefined
             }
             icon={Plus}
             iconClassName="h-4 w-4"
@@ -615,7 +633,9 @@ function TmuxSessionList({
     );
   }
   if (loading) {
-    return <TmuxEmptyState title="正在读取会话" body="正在检测 tmux 能力与会话。" />;
+    return (
+      <TmuxEmptyState title="正在读取会话" body="正在检测 tmux 能力与会话。" />
+    );
   }
   if (capability && !capability.available) {
     return (
@@ -747,7 +767,7 @@ function TmuxDialog({
   onUpdateName,
 }: {
   busy: boolean;
-  dialog: DialogState;
+  dialog: TmuxDialogState;
   onClose: () => void;
   onCreate: () => void;
   onKill: () => void;
@@ -777,7 +797,8 @@ function TmuxDialog({
     );
   }
 
-  const title = dialog.kind === "create" ? "新建 tmux 会话" : "重命名 tmux 会话";
+  const title =
+    dialog.kind === "create" ? "新建 tmux 会话" : "重命名 tmux 会话";
   const action = dialog.kind === "create" ? onCreate : onRename;
   return (
     <PromptDialog
@@ -797,49 +818,6 @@ function TmuxDialog({
   );
 }
 
-function TmuxIconButton({
-  disabled,
-  disabledReason,
-  icon,
-  iconClassName = "h-3.5 w-3.5",
-  label,
-  onClick,
-  tone = "default",
-}: {
-  disabled?: boolean;
-  disabledReason?: string;
-  icon: LucideIcon;
-  iconClassName?: string;
-  label: string;
-  onClick: () => void;
-  tone?: "default" | "danger";
-}) {
-  const tooltip = disabledReason ?? label;
-  return (
-    <span className="group/tmux-action relative inline-flex" title={tooltip}>
-      <IconAction
-        className={cn(
-          "h-8 w-8 rounded-xl p-0 transition duration-150 active:scale-[0.96]",
-          tone === "danger" &&
-            "text-[#FF453A] hover:bg-[#FF453A]/10 hover:text-[#FF453A]",
-        )}
-        disabled={disabled}
-        disabledReason={disabledReason}
-        icon={icon}
-        iconClassName={iconClassName}
-        label={label}
-        onClick={onClick}
-        type="button"
-        tooltip={tooltip}
-        variant="ghost"
-      />
-      <span className="kerminal-solid-surface pointer-events-none absolute right-0 top-full z-30 mt-1 whitespace-nowrap rounded-lg border px-2 py-1 font-mono text-[11px] font-medium text-zinc-700 opacity-0 shadow-lg shadow-black/10 transition-opacity duration-150 group-hover/tmux-action:opacity-100 group-focus-within/tmux-action:opacity-100 dark:text-zinc-100 dark:shadow-black/30">
-        {tooltip}
-      </span>
-    </span>
-  );
-}
-
 function TmuxEmptyState({ body, title }: { body: string; title: string }) {
   return (
     <div className="rounded-2xl border border-dashed border-[var(--border-subtle)] px-3 py-5 text-center font-mono">
@@ -849,126 +827,6 @@ function TmuxEmptyState({ body, title }: { body: string; title: string }) {
       <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
         {body}
       </p>
-    </div>
-  );
-}
-
-function TmuxCommandCheatsheet({
-  busyAction,
-  focusedPane,
-  onCopyItem,
-  onSendItem,
-}: {
-  busyAction: string | null;
-  focusedPane?: TerminalPane;
-  onCopyItem: (item: TmuxQuickrefItem) => void;
-  onSendItem: (item: TmuxQuickrefItem) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const sendDisabledReason = !focusedPane?.id
-    ? "先聚焦左侧终端"
-    : busyAction
-      ? "正在执行操作"
-      : undefined;
-  return (
-    <section className="kerminal-solid-surface overflow-visible rounded-2xl border p-3">
-      <button
-        aria-expanded={expanded}
-        aria-label={expanded ? "收起快捷命令" : "展开快捷命令"}
-        className="kerminal-focus-ring kerminal-pressable flex w-full items-center gap-2 rounded-xl text-left focus-visible:outline-none"
-        onClick={() => setExpanded((current) => !current)}
-        type="button"
-      >
-        <CircleDot className="h-3.5 w-3.5 text-[#0A84FF]" strokeWidth={1.75} />
-        <span className="min-w-0 flex-1 text-sm font-medium text-zinc-800 dark:text-zinc-100">
-          快捷命令
-        </span>
-        <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
-          {COMMON_TMUX_COMMANDS.length + COMMON_TMUX_SHORTCUTS.length} 项
-        </span>
-        <ChevronDown
-          className={cn(
-            "h-4 w-4 shrink-0 text-zinc-500 transition-transform dark:text-zinc-400",
-            expanded && "rotate-180",
-          )}
-        />
-      </button>
-      {expanded ? (
-        <div className="mt-3 space-y-3">
-          <TmuxQuickrefGroup
-            ariaLabel="常用 tmux 命令"
-            items={COMMON_TMUX_COMMANDS}
-            onCopyItem={onCopyItem}
-            onSendItem={onSendItem}
-            sendDisabledReason={sendDisabledReason}
-            title="命令"
-          />
-          <TmuxQuickrefGroup
-            ariaLabel="常用 tmux 快捷键"
-            items={COMMON_TMUX_SHORTCUTS}
-            onCopyItem={onCopyItem}
-            onSendItem={onSendItem}
-            sendDisabledReason={sendDisabledReason}
-            title="快捷键"
-          />
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function TmuxQuickrefGroup({
-  ariaLabel,
-  items,
-  onCopyItem,
-  onSendItem,
-  sendDisabledReason,
-  title,
-}: {
-  ariaLabel: string;
-  items: TmuxQuickrefItem[];
-  onCopyItem: (item: TmuxQuickrefItem) => void;
-  onSendItem: (item: TmuxQuickrefItem) => void;
-  sendDisabledReason?: string;
-  title: string;
-}) {
-  return (
-    <div>
-      <h5 className="mb-1.5 font-mono text-[10px] font-semibold uppercase text-zinc-400 dark:text-zinc-500">
-        {title}
-      </h5>
-      <div aria-label={ariaLabel} className="space-y-1.5" role="list">
-        {items.map((item) => (
-          <div
-            className="group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-zinc-950/[0.025] px-2.5 py-2 transition duration-150 hover:bg-zinc-950/[0.045] dark:bg-white/[0.045] dark:hover:bg-white/[0.075]"
-            key={tmuxQuickrefDisplay(item)}
-            role="listitem"
-          >
-            <div className="min-w-0">
-              <code className="block truncate font-mono text-[11px] font-semibold text-zinc-900 dark:text-zinc-50">
-                {tmuxQuickrefDisplay(item)}
-              </code>
-              <p className="mt-0.5 truncate text-[11px] leading-4 text-zinc-500 dark:text-zinc-400">
-                {item.label}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-1 opacity-80 transition-opacity group-hover:opacity-100">
-              <TmuxIconButton
-                icon={Copy}
-                label={item.kind === "shortcut" ? "复制快捷键" : "复制命令"}
-                onClick={() => onCopyItem(item)}
-              />
-              <TmuxIconButton
-                disabled={Boolean(sendDisabledReason)}
-                disabledReason={sendDisabledReason}
-                icon={Send}
-                label="发送到终端"
-                onClick={() => onSendItem(item)}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

@@ -88,7 +88,7 @@ describe("snippetTargetPolicy", () => {
     ).toMatchObject({ requiresConfirmation: true });
   });
 
-  it("keeps unknown platform or capability insert-only", () => {
+  it("allows explicit inspect execution with confirmation when only environment metadata is unknown", () => {
     const decision = evaluateSnippetPolicy({
       requirements,
       risk: "inspect",
@@ -96,10 +96,13 @@ describe("snippetTargetPolicy", () => {
     });
     expect(decision).toMatchObject({
       canInsert: true,
-      canRun: false,
+      canRun: true,
       compatibility: "unknown",
+      requiresConfirmation: true,
     });
-    expect(decision.reasons).toContain("目标平台未知");
+    expect(decision.reasons).toContain("尚未读取目标平台");
+    expect(decision.reasons).toContain("尚未识别当前 shell");
+    expect(decision.reasons).toContain("尚未验证命令可用性：systemd");
   });
 
   it("blocks incompatible targets and requires strong confirmation for destructive execution", () => {

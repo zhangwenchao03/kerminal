@@ -68,10 +68,16 @@ import {
 } from "../sftp/remoteWorkspaceEditorCommandRuntime";
 import { RemoteWorkspaceEditorContextMenu } from "../sftp/RemoteWorkspaceEditorContextMenu";
 import {
+  isRemoteWorkspaceBinaryFileReadError,
   readRemoteWorkspaceTextFile,
   writeRemoteWorkspaceTextFile,
   type RemoteWorkspaceReadTextFileResponse,
 } from "../sftp/remoteWorkspaceEditorTransport";
+import { resolveWorkspaceFilePreviewPolicy } from "../sftp/workspaceFilePreviewPolicy";
+import {
+  BINARY_WORKSPACE_FILE_PREVIEW_NOTICE,
+  buildWorkspaceFilePreviewUnsupportedNotice,
+} from "../sftp/workspaceFilePreviewPresentation";
 import {
   WORKSPACE_FILE_TAB_COMMAND_EVENT,
   type WorkspaceFileTabCommandEventDetail,
@@ -95,7 +101,13 @@ export function WorkspaceFileTabSurface({
 }: WorkspaceFileTabSurfaceProps) {
   const [fileTab, setFileTab] = useState<OpenFileTab | null>(null);
   const [status, setStatus] = useState<RemoteWorkspaceStatus | null>(null);
-  const [errorNotice, setErrorNotice] = useState<UserFacingMessage | null>(null);
+  const [errorNotice, setErrorNotice] = useState<UserFacingMessage | null>(
+    null,
+  );
+  const [readFailureNotice, setReadFailureNotice] =
+    useState<UserFacingMessage | null>(null);
+  const [contentUnsupportedNotice, setContentUnsupportedNotice] =
+    useState<UserFacingMessage | null>(null);
   const [editorContextMenu, setEditorContextMenu] = useState<{
     x: number;
     y: number;
@@ -110,6 +122,21 @@ export function WorkspaceFileTabSurface({
     () => labelForWorkspaceFileTarget(tab.target),
     [tab.target],
   );
+  const pathPreviewDecision = useMemo(
+    () => resolveWorkspaceFilePreviewPolicy(tab.path),
+    [tab.path],
+  );
+  const pathUnsupportedNotice = useMemo<UserFacingMessage | null>(
+    () =>
+      pathPreviewDecision.kind === "unsupported"
+        ? buildWorkspaceFilePreviewUnsupportedNotice(pathPreviewDecision)
+        : null,
+    [pathPreviewDecision],
+  );
+  const unsupportedNotice =
+    pathUnsupportedNotice ??
+    contentUnsupportedNotice ??
+    (fileTab?.binary ? BINARY_WORKSPACE_FILE_PREVIEW_NOTICE : null);
   const dirty = fileTab ? isDirtyTab(fileTab) : false;
   const hasConflict =
     fileTab?.error?.includes("远端文件已变更") ||
@@ -119,12 +146,12 @@ export function WorkspaceFileTabSurface({
     () => ({
       dirty,
       hasConflict: Boolean(hasConflict),
-      hasEditor: Boolean(fileTab && !fileTab.loading),
+      hasEditor: Boolean(fileTab && !fileTab.loading && !unsupportedNotice),
       loading: Boolean(fileTab?.loading),
       readOnly: readonly,
       saving: Boolean(fileTab?.saving),
     }),
-    [dirty, fileTab, hasConflict, readonly],
+    [dirty, fileTab, hasConflict, readonly, unsupportedNotice],
   );
   const editorCommandGroups = useMemo(
     () => buildRemoteWorkspaceEditorCommandGroups(editorCommandState),
@@ -134,7 +161,9 @@ export function WorkspaceFileTabSurface({
     () => ({
       fontFamily: terminalAppearance.fontFamily,
       fontSize: terminalAppearance.fontSize,
-      fontWeight: String(terminalFontWeightValue(terminalAppearance.fontWeight)),
+      fontWeight: String(
+        terminalFontWeightValue(terminalAppearance.fontWeight),
+      ),
     }),
     [
       terminalAppearance.fontFamily,
@@ -148,6 +177,12 @@ export function WorkspaceFileTabSurface({
     requestIdRef.current = requestId;
     setStatus(null);
     setErrorNotice(null);
+    setReadFailureNotice(null);
+    setContentUnsupportedNotice(null);
+    if (pathPreviewDecision.kind === "unsupported") {
+      setFileTab(null);
+      return;
+    }
     setFileTab(createLoadingTab(tab.path));
     try {
       const response = await readRemoteWorkspaceTextFile({
@@ -158,9 +193,19 @@ export function WorkspaceFileTabSurface({
       if (requestIdRef.current !== requestId) {
         return;
       }
+      if (response.binary) {
+        setFileTab(null);
+        setContentUnsupportedNotice(BINARY_WORKSPACE_FILE_PREVIEW_NOTICE);
+        return;
+      }
       setFileTab(createWorkspaceLoadedTab(tab, response));
     } catch (error) {
       if (requestIdRef.current !== requestId) {
+        return;
+      }
+      if (isRemoteWorkspaceBinaryFileReadError(error)) {
+        setFileTab(null);
+        setContentUnsupportedNotice(BINARY_WORKSPACE_FILE_PREVIEW_NOTICE);
         return;
       }
       const message = errorMessage(error);
@@ -175,9 +220,9 @@ export function WorkspaceFileTabSurface({
         readonly: true,
       });
       setStatus({ kind: "error", message: notice.title });
-      setErrorNotice(notice);
+      setReadFailureNotice(notice);
     }
-  }, [tab.path, tab.target]);
+  }, [pathPreviewDecision.kind, tab.path, tab.target]);
 
   const saveFile = useCallback(
     async (overwriteOnConflict = false) => {
@@ -232,12 +277,19 @@ export function WorkspaceFileTabSurface({
   );
 
   const reloadFile = useCallback(async () => {
+    if (unsupportedNotice) {
+      return;
+    }
     if (!fileTab || fileTab.loading) {
       await loadFile();
       return;
     }
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
     setStatus(null);
     setErrorNotice(null);
+    setReadFailureNotice(null);
+    setContentUnsupportedNotice(null);
     setFileTab(startReloadingTab(fileTab));
     try {
       const response = await readRemoteWorkspaceTextFile({
@@ -245,6 +297,14 @@ export function WorkspaceFileTabSurface({
         path: tab.path,
         target: tab.target,
       });
+      if (requestIdRef.current !== requestId) {
+        return;
+      }
+      if (response.binary) {
+        setFileTab(null);
+        setContentUnsupportedNotice(BINARY_WORKSPACE_FILE_PREVIEW_NOTICE);
+        return;
+      }
       setFileTab((current) =>
         current
           ? normalizeLoadedAccess(tab, applyReloadSuccess(current, response))
@@ -253,6 +313,15 @@ export function WorkspaceFileTabSurface({
       setStatus({ kind: "info", message: `已重新加载 ${fileTab.name}` });
       setErrorNotice(null);
     } catch (error) {
+      if (requestIdRef.current !== requestId) {
+        return;
+      }
+      if (isRemoteWorkspaceBinaryFileReadError(error)) {
+        setFileTab(null);
+        setStatus(null);
+        setContentUnsupportedNotice(BINARY_WORKSPACE_FILE_PREVIEW_NOTICE);
+        return;
+      }
       const message = errorMessage(error);
       const notice = buildUserFacingError(error, {
         recoveryAction: "请检查连接后重试。",
@@ -264,14 +333,12 @@ export function WorkspaceFileTabSurface({
       setStatus({ kind: "error", message: notice.title });
       setErrorNotice(notice);
     }
-  }, [fileTab, loadFile, tab]);
+  }, [fileTab, loadFile, tab, unsupportedNotice]);
 
   const runEditorCommand = useCallback(
     async (command: RemoteWorkspaceEditorCommandId) => {
       setEditorContextMenu(null);
-      if (
-        !isRemoteWorkspaceEditorCommandEnabled(command, editorCommandState)
-      ) {
+      if (!isRemoteWorkspaceEditorCommandEnabled(command, editorCommandState)) {
         return;
       }
 
@@ -314,6 +381,10 @@ export function WorkspaceFileTabSurface({
   useEffect(() => {
     setFileTab(null);
     setStatus(null);
+    setErrorNotice(null);
+    setReadFailureNotice(null);
+    setContentUnsupportedNotice(null);
+    setEditorContextMenu(null);
     onDirtyChangeRef.current?.(false);
   }, [tab.id, tab.path]);
 
@@ -322,6 +393,12 @@ export function WorkspaceFileTabSurface({
   }, [dirty]);
 
   useEffect(() => () => onDirtyChangeRef.current?.(false), []);
+
+  useEffect(() => {
+    if (!fileTab || fileTab.loading || unsupportedNotice || readFailureNotice) {
+      editorRef.current = null;
+    }
+  }, [fileTab, readFailureNotice, unsupportedNotice]);
 
   useEffect(() => {
     runEditorCommandRef.current = (command) => {
@@ -415,7 +492,7 @@ export function WorkspaceFileTabSurface({
               {targetLabel} · {tab.path}
             </div>
           </div>
-          {inlineStatus && !errorNotice ? (
+          {inlineStatus && !errorNotice && !readFailureNotice ? (
             <span
               className="sr-only"
               role={inlineStatus.kind === "error" ? "alert" : "status"}
@@ -431,7 +508,9 @@ export function WorkspaceFileTabSurface({
             <Button
               aria-label="查找"
               className="h-8 w-8 rounded-lg"
-              disabled={!fileTab || fileTab.loading}
+              disabled={
+                !fileTab || fileTab.loading || Boolean(unsupportedNotice)
+              }
               onClick={() => runEditorCommandRef.current("find")}
               size="icon"
               title="查找"
@@ -459,7 +538,12 @@ export function WorkspaceFileTabSurface({
             <Button
               aria-label="重新加载文件"
               className="h-8 w-8 rounded-lg"
-              disabled={fileTab?.loading || fileTab?.saving}
+              disabled={
+                Boolean(unsupportedNotice) ||
+                !fileTab ||
+                fileTab.loading ||
+                fileTab.saving
+              }
               onClick={() => void reloadFile()}
               size="icon"
               title="重新加载"
@@ -512,18 +596,22 @@ export function WorkspaceFileTabSurface({
           </div>
         </header>
         <div className="min-h-0 flex-1 overflow-hidden">
-          {!fileTab || fileTab.loading ? (
+          {unsupportedNotice ? (
+            <div className="grid h-full place-items-center p-4">
+              <UserFacingNotice
+                className="w-full max-w-md"
+                compact
+                message={unsupportedNotice}
+              />
+            </div>
+          ) : !fileTab || fileTab.loading ? (
             <WorkspaceFileMessage
               icon={<RefreshCw className="h-4 w-4 animate-spin" />}
               message="正在读取文件..."
             />
-          ) : fileTab.error && !fileTab.content ? (
+          ) : readFailureNotice ? (
             <div className="grid h-full place-items-center p-4">
-              <UserFacingNotice compact message={errorNotice ?? {
-                recoveryAction: "请稍后重试。",
-                severity: "error",
-                title: "文件读取失败",
-              }}>
+              <UserFacingNotice compact message={readFailureNotice}>
                 <Button
                   className="h-8 rounded-md px-2 text-xs"
                   onClick={() => void loadFile()}
@@ -589,7 +677,11 @@ function WorkspaceFileEditorContent({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {errorNotice ? (
-        <UserFacingNotice className="m-2 mb-0 shrink-0" compact message={errorNotice} />
+        <UserFacingNotice
+          className="m-2 mb-0 shrink-0"
+          compact
+          message={errorNotice}
+        />
       ) : null}
       <div
         className="min-h-0 flex-1 bg-zinc-950"

@@ -305,11 +305,10 @@ export function ToolPanelStoreBridge({
   return (
     <ToolPanel
       {...props}
-      activeMachine={
-        workspaceContext.activeMachine ?? workspaceContext.selectedMachine
-      }
+      activeMachine={workspaceContext.activeMachine}
       activeTab={workspaceContext.activeTab}
       focusedPane={workspaceContext.focusedPane}
+      selectedMachine={workspaceContext.selectedMachine}
       workspaceContext={workspaceContext.projection}
       onClosePane={closePane}
       onOpenWorkspaceFileTab={openWorkspaceFileTab}

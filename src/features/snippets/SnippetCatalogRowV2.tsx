@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  BookmarkPlus,
   ChevronDown,
   ClipboardCopy,
   Copy,
@@ -14,6 +15,14 @@ import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 import {
+  dockerContainerTarget,
+  localTarget,
+  serialTarget,
+  sshTarget,
+  telnetTarget,
+  type RemoteTargetRef,
+} from "../../lib/targetModel";
+import {
   recordSnippetUsage,
   type SnippetCatalogItem,
   type SnippetCatalogVariable,
@@ -22,6 +31,7 @@ import { peekServerInfoSnapshot } from "../tool-panel/useServerInfoSnapshot";
 import {
   getTerminalPaneSessionRecord,
   runSnippetCommand,
+  type PaneSessionRecord,
   writeSnippetCommand,
 } from "../terminal/terminalSessionRegistry";
 import type { TerminalPane } from "../workspace/types";
@@ -84,7 +94,7 @@ export function SnippetCatalogRowV2({
         connectionGeneration: focusedRecord.connectionGeneration,
         displayName: focusedPane?.title,
         paneId: focusedPane?.id ?? "",
-        platform: targetPlatform(focusedPane),
+        platform: targetPlatform(focusedPane, focusedRecord),
         production: focusedPane?.remoteHostProduction,
         record: focusedRecord,
       })
@@ -159,7 +169,7 @@ export function SnippetCatalogRowV2({
         connectionGeneration: record.connectionGeneration,
         displayName: boundPane.title,
         paneId: boundPane.id,
-        platform: targetPlatform(boundPane),
+        platform: targetPlatform(boundPane, record),
         production: boundPane.remoteHostProduction,
         record,
       })
@@ -190,6 +200,15 @@ export function SnippetCatalogRowV2({
     render.plan?.containsSensitiveValue && !secretRevealed
       ? maskedRender.plan?.command ?? "[敏感命令已隐藏]"
       : render.plan?.command;
+  const runBlockedReason = sending
+    ? "命令正在提交"
+    : !bindingCurrent
+      ? "终端目标已变化，请重新展开片段"
+      : !render.plan
+        ? render.error ?? "请先填写并检查参数"
+        : !policy?.canRun
+          ? policy?.reasons.join("；") || "当前目标不允许直接运行"
+          : null;
 
   const submit = async (run: boolean) => {
     if (!boundSnapshot || !render.plan || !bindingCurrent) {
@@ -378,27 +397,93 @@ export function SnippetCatalogRowV2({
               {item.duration === "streaming" ? "该命令会持续输出，可用 Ctrl+C 停止。" : "该命令可能产生较高磁盘或网络负载。"}
             </p>
           ) : null}
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button disabled={copying || !bindingCurrent || !render.plan || render.plan.containsSensitiveValue} onClick={() => void copyRendered()} size="sm" type="button" variant="ghost">
-              <ClipboardCopy className="h-3.5 w-3.5" />复制结果
-            </Button>
-            {onEdit ? <Button onClick={onEdit} size="sm" type="button" variant="ghost"><Pencil className="h-3.5 w-3.5" />编辑</Button> : null}
-            <Button onClick={onClone} size="sm" type="button" variant="ghost"><Copy className="h-3.5 w-3.5" />{item.origin === "builtin" ? "保存到我的" : "克隆"}</Button>
-            {onDelete ? <Button onClick={onDelete} size="sm" type="button" variant="ghost"><Trash2 className="h-3.5 w-3.5" />删除</Button> : null}
-          </div>
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button disabled={sending || !bindingCurrent || !render.plan || !policy?.canInsert || multiline} onClick={() => void submit(false)} size="sm" type="button" variant="primary">
-              <CornerDownLeft className="h-3.5 w-3.5" />填入终端
-            </Button>
-            <Button
-              disabled={sending || !bindingCurrent || !render.plan || !policy?.canRun}
-              onClick={requestRun}
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              <Play className="h-3.5 w-3.5" />运行
-            </Button>
+          <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-zinc-200/70 pt-2.5 dark:border-zinc-700/70">
+            <div aria-label="片段管理" className="flex items-center gap-0.5" role="group">
+              <Button
+                aria-label="复制结果"
+                className="h-8 w-8 rounded-md p-0"
+                disabled={copying || !bindingCurrent || !render.plan || render.plan.containsSensitiveValue}
+                onClick={() => void copyRendered()}
+                size="icon"
+                title={render.plan?.containsSensitiveValue ? "敏感值不可复制" : "复制结果"}
+                type="button"
+                variant="ghost"
+              >
+                <ClipboardCopy className="h-4 w-4" />
+              </Button>
+              {onEdit ? (
+                <Button
+                  aria-label="编辑"
+                  className="h-8 w-8 rounded-md p-0"
+                  onClick={onEdit}
+                  size="icon"
+                  title="编辑"
+                  type="button"
+                  variant="ghost"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              ) : null}
+              <Button
+                aria-label={item.origin === "builtin" ? "保存到我的" : "克隆"}
+                className="h-8 w-8 rounded-md p-0"
+                onClick={onClone}
+                size="icon"
+                title={item.origin === "builtin" ? "保存到我的" : "克隆"}
+                type="button"
+                variant="ghost"
+              >
+                {item.origin === "builtin" ? (
+                  <BookmarkPlus className="h-4 w-4" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
+              </Button>
+              {onDelete ? (
+                <Button
+                  aria-label="删除"
+                  className="h-8 w-8 rounded-md p-0"
+                  onClick={onDelete}
+                  size="icon"
+                  title="删除"
+                  type="button"
+                  variant="danger"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              ) : null}
+            </div>
+            <div aria-label="终端操作" className="ml-auto flex items-center gap-1.5" role="group">
+              <Button
+                aria-label="填入终端"
+                className="rounded-md px-2.5"
+                disabled={sending || !bindingCurrent || !render.plan || !policy?.canInsert || multiline}
+                onClick={() => void submit(false)}
+                size="sm"
+                type="button"
+                variant="primary"
+              >
+                <CornerDownLeft className="h-3.5 w-3.5" />填入
+              </Button>
+              <Button
+                aria-disabled={Boolean(runBlockedReason) || undefined}
+                className="rounded-md px-2.5 aria-disabled:cursor-not-allowed aria-disabled:opacity-45"
+                disabled={sending}
+                onClick={() => {
+                  if (runBlockedReason) {
+                    onStatus(runBlockedReason);
+                    return;
+                  }
+                  requestRun();
+                }}
+                size="sm"
+                title={runBlockedReason ?? "运行"}
+                type="button"
+                variant="secondary"
+              >
+                <Play className="h-3.5 w-3.5" />运行
+              </Button>
+            </div>
           </div>
           <ModalShell
             footer={<><Button disabled={sending} onClick={() => setConfirmOpen(false)} type="button" variant="ghost">取消</Button><Button disabled={sending || Boolean(policy?.requiresStrongConfirmation && confirmationText !== boundSnapshot?.displayName)} onClick={() => { setConfirmOpen(false); void submit(true); }} type="button" variant="primary"><Play className="h-4 w-4" />确认提交</Button></>}
@@ -409,6 +494,11 @@ export function SnippetCatalogRowV2({
           >
             <div className="space-y-2 text-sm text-zinc-700 dark:text-zinc-200">
               <p>目标：{boundSnapshot?.displayName}</p>
+              {policy?.compatibility === "unknown" && policy.reasons.length > 0 ? (
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  环境未完全确认：{policy.reasons.join("；")}
+                </p>
+              ) : null}
               <pre className="max-h-36 overflow-auto whitespace-pre-wrap break-words border-l-2 border-amber-500/60 pl-2 font-mono text-xs">{displayedCommand}</pre>
               {policy?.requiresStrongConfirmation ? (
                 <label className="block space-y-1">
@@ -452,9 +542,12 @@ function platformKind(platform: string): SnippetPlatform {
   return platform === "linux" || platform === "macos" || platform === "windows" ? platform : "unknown";
 }
 
-function targetPlatform(pane: TerminalPane | undefined): SnippetPlatform {
+function targetPlatform(
+  pane: TerminalPane | undefined,
+  record: PaneSessionRecord | undefined,
+): SnippetPlatform {
   if (!pane) return "unknown";
-  const cached = peekServerInfoSnapshot(pane.target);
+  const cached = peekServerInfoSnapshot(snippetTargetRef(pane, record));
   const cachedPlatform = platformFromOs(cached?.os);
   if (cachedPlatform !== "unknown") return cachedPlatform;
   if (pane.mode !== "local") return "unknown";
@@ -464,9 +557,36 @@ function targetPlatform(pane: TerminalPane | undefined): SnippetPlatform {
   return platform.includes("linux") ? "linux" : "unknown";
 }
 
+/**
+ * pane 的旧数据可能只有 host/session 字段；补成与系统信息缓存一致的稳定目标键。
+ */
+function snippetTargetRef(
+  pane: TerminalPane,
+  record: PaneSessionRecord | undefined,
+): RemoteTargetRef | undefined {
+  if (pane.target) return pane.target;
+  if (record?.containerId && record.remoteHostId) {
+    return dockerContainerTarget({
+      containerId: record.containerId,
+      hostId: record.remoteHostId,
+      runtime: record.containerRuntime === "podman" ? "podman" : "docker",
+    });
+  }
+  const hostId = record?.remoteHostId ?? pane.remoteHostId;
+  if (record?.target === "ssh" && hostId) return sshTarget(hostId);
+  if (record?.target === "telnet" && hostId) return telnetTarget(hostId);
+  if (record?.target === "serial" && hostId) return serialTarget(hostId);
+  if (pane.mode === "local" || record?.target === "local") {
+    return localTarget(record?.profileId ?? pane.profileId);
+  }
+  return undefined;
+}
+
 function platformFromOs(os: string | null | undefined): SnippetPlatform {
   const value = os?.toLowerCase() ?? "";
   if (value.includes("windows")) return "windows";
   if (value.includes("darwin") || value.includes("macos") || value.includes("mac os")) return "macos";
-  return value.includes("linux") ? "linux" : "unknown";
+  return /(?:linux|ubuntu|debian|fedora|centos|red hat|rhel|rocky|alma|arch|alpine|suse|gentoo|mint|raspbian|amazon linux)/.test(value)
+    ? "linux"
+    : "unknown";
 }

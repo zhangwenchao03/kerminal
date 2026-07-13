@@ -47,6 +47,7 @@ import {
   claimAgentSendRequestAutoOpen,
   useAgentSendRequestSnapshot,
 } from "../agent-workflow/agentSendRequestStore";
+import { resolveToolPanelBinding } from "./toolPanelContextModel";
 
 interface ToolPanelProps {
   activeTool: ToolId | null;
@@ -55,6 +56,7 @@ interface ToolPanelProps {
   defaultRemoteGroupId?: string;
   defaultRemoteHostId?: string;
   focusedPane?: TerminalPane;
+  selectedMachine?: Machine;
   terminalPanes?: TerminalPane[];
   terminalTabs?: TerminalTab[];
   workspaceFileDirtyState?: WorkspaceFileDirtyState;
@@ -129,6 +131,7 @@ export function ToolPanel({
   activeMachine,
   activeTab,
   focusedPane,
+  selectedMachine,
   onClosePane,
   onActiveToolChange,
   onArtifactActionRequest,
@@ -237,6 +240,13 @@ export function ToolPanel({
           {renderedTools.map((tool) => {
             const toolId = tool.id;
             const selected = toolId === contentTool;
+            const binding = resolveToolPanelBinding(toolId, {
+              activeMachine,
+              activeTab,
+              focusedPane,
+              selectedMachine,
+              workspaceRevision: workspaceContext?.revision,
+            });
             const fullHeightTool =
               toolId === "agentLauncher" || toolId === "sftp";
             const contentOwnsHeader =
@@ -274,9 +284,9 @@ export function ToolPanel({
                   >
                     {toolId === "agentLauncher" ? (
                       <AgentLauncherToolContent
-                        activeTab={activeTab}
+                        activeTab={binding.activeTab}
                         desktopNotifications={settings?.desktopNotifications}
-                        focusedPane={focusedPane}
+                        focusedPane={binding.focusedPane}
                         resolvedTheme={resolvedTheme}
                         terminalAppearance={
                           terminalAppearance ??
@@ -288,7 +298,10 @@ export function ToolPanel({
                       />
                     ) : null}
                     {toolId === "system" ? (
-                      <ServerInfoToolContent selectedMachine={activeMachine} />
+                      <ServerInfoToolContent
+                        active={selected}
+                        selectedMachine={binding.machine}
+                      />
                     ) : null}
                     {toolId === "context" && workspaceContext ? (
                       <ContextInspectorToolContent
@@ -312,28 +325,31 @@ export function ToolPanel({
                     ) : null}
                     {toolId === "sftp" ? (
                       <SftpToolContent
+                        active={selected}
                         followedLocalPath={
-                          focusedPane?.mode === "local" &&
-                          focusedPane.machineId === activeMachine?.id
-                            ? (focusedPane.currentCwd ?? focusedPane.cwd)
+                          binding.focusedPane?.mode === "local" &&
+                          binding.focusedPane.machineId === binding.machine?.id
+                            ? (binding.focusedPane.currentCwd ??
+                              binding.focusedPane.cwd)
                             : undefined
                         }
                         followedRemotePath={
-                          focusedPane?.mode === "ssh" &&
-                          focusedPane.remoteHostId === activeMachine?.id
-                            ? focusedPane.currentCwd
-                            : focusedPane?.mode === "container" &&
-                                focusedPane.machineId === activeMachine?.id
-                              ? focusedPane.currentCwd
+                          binding.focusedPane?.mode === "ssh" &&
+                          binding.focusedPane.remoteHostId === binding.machine?.id
+                            ? binding.focusedPane.currentCwd
+                            : binding.focusedPane?.mode === "container" &&
+                                binding.focusedPane.machineId ===
+                                  binding.machine?.id
+                              ? binding.focusedPane.currentCwd
                               : undefined
                         }
                         interfaceDensity={interfaceDensity}
                         onOpenWorkspaceFileTab={onOpenWorkspaceFileTab}
-                        selectedMachine={activeMachine}
+                        selectedMachine={binding.machine}
                         sftpRevealRequest={sftpRevealRequest}
                         transferViewScope={sftpSidebarTransferViewScope({
-                          hostId: activeMachine?.id,
-                          tabId: activeTab?.id,
+                          hostId: binding.machine?.id,
+                          tabId: binding.activeTab?.id,
                         })}
                         workspaceFileDirtyState={workspaceFileDirtyState}
                         workspaceFileTabs={terminalTabs?.filter(
@@ -343,37 +359,49 @@ export function ToolPanel({
                     ) : null}
                     {toolId === "ports" ? (
                       <PortForwardToolContent
-                        focusedPane={focusedPane}
-                        selectedMachine={activeMachine}
+                        active={selected}
+                        focusedPane={binding.focusedPane}
+                        selectedMachine={binding.machine}
                       />
                     ) : null}
                     {toolId === "tmux" ? (
                       <TmuxToolContent
-                        activeMachine={activeMachine}
-                        activeTab={activeTab}
-                        focusedPane={focusedPane}
+                        active={selected}
+                        activeMachine={
+                          binding.source === "selectedMachine"
+                            ? undefined
+                            : binding.machine
+                        }
+                        activeTab={binding.activeTab}
+                        focusedPane={binding.focusedPane}
                         onClosePane={onClosePane}
                         onFocusTab={onFocusTab}
                         onOpenTmuxTerminal={onOpenTmuxTerminal}
+                        selectedMachine={
+                          binding.source === "selectedMachine"
+                            ? binding.machine
+                            : undefined
+                        }
                         terminalPanes={terminalPanes}
                         terminalTabs={terminalTabs}
                       />
                     ) : null}
                     {toolId === "snippets" ? (
                       <SnippetToolContent
-                        activeTabId={activeTab?.id}
+                        activeTabId={binding.activeTab?.id}
                         configRevision={snippetConfigRevision}
-                        focusedPane={focusedPane}
+                        focusedPane={binding.focusedPane}
                       />
                     ) : null}
                     {toolId === "logs" ? (
                       <LogToolContent
+                        active={selected}
                         diagnosticsBundleNotice={
                           <DiagnosticsBundleNotice
                             controller={diagnosticsBundle}
                           />
                         }
-                        focusedPane={focusedPane}
+                        focusedPane={binding.focusedPane}
                       />
                     ) : null}
                   </Suspense>
