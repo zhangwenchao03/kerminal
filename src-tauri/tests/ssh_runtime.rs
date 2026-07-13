@@ -34,8 +34,8 @@ use kerminal_lib::{
             policy::{
                 external_target_not_available_error, is_capability_unsupported,
                 is_external_runtime_target_id, is_managed_runtime_unwired,
-                is_retryable_channel_open_error, runtime_host_key_policy_for_host_id,
-                SshRuntimeCapability,
+                is_retryable_channel_open_error, known_hosts_revokes_key,
+                runtime_host_key_policy_for_host_id, SshRuntimeCapability,
             },
             ManagedSshSessionManager, ManagedSshSessionState, ManagedSshShellSession,
             SshAuthIdentity, SshAuthSecretKind, SshChannelKind, SshRuntimeBackend,
@@ -218,15 +218,15 @@ fn runtime_policy_centralizes_host_key_external_target_and_fallback_rules() {
     assert!(!is_external_runtime_target_id("saved-host-1"));
     assert_eq!(
         runtime_host_key_policy_for_host_id("external:launch-1"),
-        SshRuntimeHostKeyPolicy::TrustUnknown
+        SshRuntimeHostKeyPolicy::RequireKnown
     );
     assert_eq!(
         runtime_host_key_policy_for_host_id("saved-host-1"),
         SshRuntimeHostKeyPolicy::RequireKnown
     );
-    assert!(external_target_not_available_error("external:missing")
-        .to_string()
-        .contains("外部 SSH 临时目标不存在或已关闭: external:missing"));
+    let error = external_target_not_available_error("external:missing").to_string();
+    assert!(error.contains("外部 SSH 临时目标不存在或已关闭: request_hash="));
+    assert!(!error.contains("external:missing"));
 
     assert!(is_managed_runtime_unwired(&AppError::SshCommand(
         "managed SSH runtime backend is not wired yet".to_owned()
@@ -245,6 +245,29 @@ fn runtime_policy_centralizes_host_key_external_target_and_fallback_rules() {
         )),
         SshRuntimeCapability::Sftp
     ));
+}
+
+#[test]
+fn runtime_policy_rejects_openssh_revoked_key_even_when_normally_known() {
+    use russh::keys::{Algorithm, PrivateKey};
+
+    let temp = tempdir().expect("temp known_hosts");
+    let known_hosts = temp.path().join("known_hosts");
+    let key = PrivateKey::random(&mut rand::rng(), Algorithm::Ed25519)
+        .expect("generate host key")
+        .public_key()
+        .clone();
+    std::fs::write(
+        &known_hosts,
+        format!(
+            "known.example {}\n@revoked *.example {}\n",
+            key.to_openssh().expect("encode known key"),
+            key.to_openssh().expect("encode revoked key")
+        ),
+    )
+    .expect("write known_hosts");
+
+    assert!(known_hosts_revokes_key(&key, &known_hosts));
 }
 
 #[test]

@@ -55,11 +55,10 @@ async fn run() -> AppResult<()> {
     write_shim_log(
         &log_path,
         &format!(
-            "received persona={:?} argv_count={} cwd_present={} argv_redacted={:?}",
+            "received persona={:?} argv_count={} cwd_present={}",
             envelope.persona,
             envelope.argv.len(),
-            envelope.cwd.is_some(),
-            envelope.redacted_argv()
+            envelope.cwd.is_some()
         ),
     );
 
@@ -70,8 +69,9 @@ async fn run() -> AppResult<()> {
             write_shim_log(
                 &log_path,
                 &format!(
-                    "delivered_running launch_id={:?} pending_count={}",
-                    response.launch_id, response.pending_count
+                    "delivered_running request_hash_present={} pending_count={}",
+                    response.request_hash.is_some(),
+                    response.pending_count
                 ),
             );
             return Ok(());
@@ -99,10 +99,7 @@ async fn run() -> AppResult<()> {
     let main_exe = resolve_kerminal_main_executable(&current_exe).ok_or_else(|| {
         AppError::InvalidInput("Kerminal main executable was not found".to_owned())
     })?;
-    write_shim_log(
-        &log_path,
-        &format!("starting_main path={}", main_exe.display()),
-    );
+    write_shim_log(&log_path, "starting_main path_present=true");
     start_kerminal_main(&main_exe)?;
     deliver_after_cold_start(&endpoint, envelope, &log_path).await
 }
@@ -119,8 +116,9 @@ async fn deliver_after_cold_start(
             write_shim_log(
                 log_path,
                 &format!(
-                    "delivered_after_cold_start launch_id={:?} pending_count={}",
-                    response.launch_id, response.pending_count
+                    "delivered_after_cold_start request_hash_present={} pending_count={}",
+                    response.request_hash.is_some(),
+                    response.pending_count
                 ),
             );
             Ok(())

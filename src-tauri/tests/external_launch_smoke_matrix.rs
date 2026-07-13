@@ -19,8 +19,8 @@ use kerminal_lib::{
             external_launch_bridge_endpoint, run_external_launch_bridge_server,
             send_external_launch_bridge_envelope, ExternalLaunchAcceptOutcome,
             ExternalLaunchBridgeEndpoint, ExternalLaunchBridgeEnvelope, ExternalLaunchEntrypoint,
-            ExternalLaunchEventKind, ExternalLaunchEventPayload, ExternalLaunchIntake,
-            ExternalLaunchPolicy, ExternalLaunchSourceTool, KERMINAL_MAIN_EXE_ENV,
+            ExternalLaunchEventPayload, ExternalLaunchIntake, ExternalLaunchPolicy,
+            ExternalLaunchSourceTool, ExternalLaunchTaskSnapshot, KERMINAL_MAIN_EXE_ENV,
             KERMINAL_SHIM_PERSONA_ALIAS_ARG,
         },
         mcp_tool_executor_service::{McpToolExecutionContext, McpToolExecutionStatus},
@@ -82,6 +82,7 @@ async fn direct_kerminal_args_materialize_password_no_save_and_public_surfaces_a
             .secret_broker()
             .snapshot()
             .expect("secret snapshot"),
+        ExternalLaunchTaskSnapshot::default(),
     );
     assert_no_public_secret(
         "external launch DTO snapshot",
@@ -297,6 +298,7 @@ async fn bridge_policy_and_concurrent_click_smoke_matrix_is_redacted() {
             .secret_broker()
             .snapshot()
             .expect("disabled secret snapshot"),
+        ExternalLaunchTaskSnapshot::default(),
     );
     assert_no_public_secret(
         "policy disabled snapshot",
@@ -333,10 +335,8 @@ async fn bridge_policy_and_concurrent_click_smoke_matrix_is_redacted() {
             .expect("concurrent bridge task")
             .expect("concurrent bridge response");
         assert!(response.ok);
-        assert_eq!(
-            response.event.as_ref().map(|event| event.kind),
-            Some(ExternalLaunchEventKind::Queued)
-        );
+        assert!(response.event.is_none());
+        assert_eq!(response.request_hash.as_deref().map(str::len), Some(12));
         serialized_responses
             .push_str(&serde_json::to_string(&response).expect("serialize bridge response"));
     }
@@ -374,6 +374,7 @@ fn mcp_context_with_ssh_runtime<'a>(
         diagnostics: state.diagnostics(),
         docker_hosts: state.docker_hosts(),
         external_launch_intake: state.external_launch_intake(),
+        external_launch_tasks: state.external_launch_tasks(),
         local_network_proxy: state.local_network_proxy(),
         paths: state.paths(),
         port_forwards: state.port_forwards(),

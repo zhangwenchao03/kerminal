@@ -335,3 +335,28 @@ async fn host_key_policy_learns_unknown_key_only_when_explicit() {
             .expect("check learned key")
     );
 }
+
+#[tokio::test]
+async fn host_key_policy_rejects_revoked_key_even_when_explicit_trust_is_requested() {
+    use std::io::Write;
+
+    let dir = tempdir().expect("temp known hosts dir");
+    let known_hosts_path = dir.path().join("known_hosts");
+    let key = keys::parse_public_key_base64(
+        "AAAAC3NzaC1lZDI1NTE5AAAAIJdD7y3aLq454yWBdwLWbieU1ebz9/cu7/QEXn9OIeZJ",
+    )
+    .expect("parse public key");
+    let mut file = std::fs::File::create(&known_hosts_path).expect("create known_hosts");
+    writeln!(
+        file,
+        "@revoked *.internal {}",
+        key.to_openssh().expect("encode key")
+    )
+    .expect("write revoked marker");
+
+    assert!(
+        !rules::check_native_host_key("localhost", 13265, known_hosts_path, true, &key)
+            .await
+            .expect("revoked key must be rejected")
+    );
+}

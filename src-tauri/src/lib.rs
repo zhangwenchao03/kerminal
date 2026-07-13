@@ -26,6 +26,8 @@ use state::AppState;
 use std::sync::Arc;
 #[cfg(not(test))]
 use tauri::{webview::PageLoadEvent, Emitter, Manager};
+#[cfg(not(test))]
+use tauri_plugin_deep_link::DeepLinkExt;
 
 #[cfg(not(test))]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -70,25 +72,21 @@ pub fn run() {
                 "AppState should only be managed once during Kerminal setup"
             );
             start_external_launch_bridge(app);
+            start_external_deep_link_handler(app);
             let cold_start_args = std::env::args().collect::<Vec<_>>();
             tauri_plugin_log::log::info!(
                 target: "desktop.lifecycle",
                 "AppState initialized and managed"
             );
-            let external_launch_outcome = app
-                .state::<AppState>()
-                .external_launch_intake()
-                .accept_args_with_parent_command_line(
-                    cold_start_args.clone(),
-                    std::env::current_dir()
-                        .ok()
-                        .map(|path| path.to_string_lossy().into_owned()),
-                    services::external_launch::ExternalLaunchEntrypoint::DirectArgv,
-                    services::external_launch::direct_parent_command_line_for_args(
-                        &cold_start_args,
-                    ),
-                )?;
-            emit_external_launch_outcome(app, &external_launch_outcome);
+            let cwd = std::env::current_dir()
+                .ok()
+                .map(|path| path.to_string_lossy().into_owned());
+            dispatch_external_launch_args(
+                app.handle().clone(),
+                cold_start_args,
+                cwd,
+                services::external_launch::ExternalLaunchEntrypoint::DirectArgv,
+            );
             let config_observer = app.state::<AppState>().config_change_observer().clone();
             if let Err(error) = config_observer.start(app.handle().clone()) {
                 eprintln!("config watcher failed to start: {error}");
@@ -118,6 +116,52 @@ pub fn run() {
     commands::registry::register_kerminal_commands(builder)
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(not(test))]
+fn start_external_deep_link_handler<R: tauri::Runtime>(app: &tauri::App<R>) {
+    let app_handle = app.handle().clone();
+    app.deep_link().on_open_url(move |event| {
+        // 插件回调不可执行 parser 或文件 I/O；每个 URL 都交给有界后台 intake。
+        for url in event.urls() {
+            let app_handle = app_handle.clone();
+            dispatch_external_launch_args(
+                app_handle,
+                vec!["kerminal".to_owned(), url.to_string()],
+                None,
+                services::external_launch::ExternalLaunchEntrypoint::Protocol,
+            );
+        }
+    });
+}
+
+/// 窗口生命周期入口只捕获有界参数；父进程发现、文件读取和 parser 全部在后台执行。
+#[cfg(not(test))]
+pub(crate) fn dispatch_external_launch_args<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    argv: Vec<String>,
+    cwd: Option<String>,
+    entrypoint: services::external_launch::ExternalLaunchEntrypoint,
+) {
+    let intake = app.state::<AppState>().external_launch_intake().clone();
+    tauri::async_runtime::spawn(async move {
+        let result =
+            if services::external_launch::external_launch_protocol_url_from_args(&argv).is_some() {
+                services::external_launch::accept_external_launch_protocol_args_bounded(
+                    &intake, argv, cwd,
+                )
+                .await
+            } else {
+                intake.accept_args_bounded(argv, cwd, entrypoint).await
+            };
+        match result {
+            Ok(outcome) => emit_external_launch_outcome(&app, &outcome),
+            Err(error) => tauri_plugin_log::log::warn!(
+                target: "desktop.lifecycle",
+                "external launch intake rejected a request: {error}"
+            ),
+        }
+    });
 }
 
 #[cfg(not(test))]
@@ -153,8 +197,8 @@ fn start_external_launch_bridge<R: tauri::Runtime>(app: &tauri::App<R>) {
 }
 
 #[cfg(not(test))]
-fn emit_external_launch_outcome<R: tauri::Runtime>(
-    app: &tauri::App<R>,
+fn emit_external_launch_outcome<R: tauri::Runtime, M: tauri::Manager<R> + tauri::Emitter<R>>(
+    app: &M,
     outcome: &services::external_launch::ExternalLaunchAcceptOutcome,
 ) {
     let Some(payload) = outcome.event_payload() else {

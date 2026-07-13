@@ -2,7 +2,7 @@
 //!
 //! @author kongweiguang
 
-use std::fs;
+use std::{fs, thread, time::Duration};
 
 use kerminal_lib::services::external_launch::{
     ExternalLaunchParseInput, ExternalLaunchParserRegistry, ExternalLaunchSecretBroker,
@@ -194,6 +194,83 @@ fn broker_converts_key_passphrase_without_leaking_debug() {
     assert_redacted(&broker, "KERM_FIXTURE_KEY_PASSPHRASE_DO_NOT_USE");
 }
 
+#[test]
+fn broker_rejects_unc_and_device_password_file_paths_before_opening() {
+    let broker = ExternalLaunchSecretBroker::new();
+    for unsafe_path in [
+        r"\\server\share\password.txt",
+        r"\\?\C:\secrets\password.txt",
+        r"\\.\PIPE\password",
+        "NUL.txt",
+    ] {
+        let request = parse_putty_password_file(unsafe_path);
+        let error = broker
+            .protect_request(request)
+            .expect_err("unsafe password file path must fail closed");
+        assert!(
+            error.to_string().contains("device") || error.to_string().contains("UNC"),
+            "unexpected error for {unsafe_path}: {error}"
+        );
+    }
+    assert_eq!(broker.snapshot().expect("snapshot").active_secret_count, 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn broker_rejects_symlink_password_file() {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let target = temp.path().join("password.txt");
+    let link = temp.path().join("password-link.txt");
+    fs::write(&target, "KERM_SYMLINK_PASSWORD\n").expect("write password");
+    symlink(&target, &link).expect("create symlink");
+
+    let error = ExternalLaunchSecretBroker::new()
+        .protect_request(parse_putty_password_file(&link.to_string_lossy()))
+        .expect_err("symlink password file must fail closed");
+    assert!(error.to_string().contains("symbolic link"));
+}
+
+#[test]
+fn broker_rejects_secret_capacity_without_retaining_extra_values() {
+    let broker = ExternalLaunchSecretBroker::with_limits(1, Duration::from_secs(60));
+    broker
+        .protect_request(parse_putty_password("KERM_SECRET_CAPACITY_FIRST"))
+        .expect("store first secret");
+
+    let error = broker
+        .protect_request(parse_putty_password("KERM_SECRET_CAPACITY_SECOND"))
+        .expect_err("capacity must fail closed");
+
+    assert!(error.to_string().contains("capacity"));
+    assert_eq!(broker.snapshot().expect("snapshot").active_secret_count, 1);
+    assert_redacted(&broker, "KERM_SECRET_CAPACITY_SECOND");
+}
+
+#[test]
+fn broker_expires_orphan_secret_refs() {
+    let broker = ExternalLaunchSecretBroker::with_limits(4, Duration::from_millis(5));
+    let protected = broker
+        .protect_request(parse_putty_password("KERM_SECRET_TTL_CANARY"))
+        .expect("protect expiring secret");
+    let secret_ref = protected
+        .auth
+        .password
+        .as_ref()
+        .and_then(ExternalSecretSlot::as_session_ref)
+        .expect("password ref")
+        .clone();
+
+    thread::sleep(Duration::from_millis(20));
+
+    assert!(broker
+        .resolve_secret(&secret_ref)
+        .expect("resolve expired ref")
+        .is_none());
+    assert_eq!(broker.snapshot().expect("snapshot").active_secret_count, 0);
+}
+
 fn parse_putty_password(
     password: &str,
 ) -> kerminal_lib::services::external_launch::ExternalSshLaunchRequest {
@@ -209,6 +286,23 @@ fn parse_putty_password(
             ],
         ))
         .expect("parse putty password")
+}
+
+fn parse_putty_password_file(
+    path: &str,
+) -> kerminal_lib::services::external_launch::ExternalSshLaunchRequest {
+    ExternalLaunchParserRegistry::new()
+        .parse(&ExternalLaunchParseInput::direct_argv(
+            ExternalLaunchSourceTool::Putty,
+            vec![
+                "putty.exe".to_owned(),
+                "-ssh".to_owned(),
+                "secret-file@example.internal".to_owned(),
+                "-pwfile".to_owned(),
+                path.to_owned(),
+            ],
+        ))
+        .expect("parse password file request")
 }
 
 fn assert_redacted(value: &impl std::fmt::Debug, secret: &str) {

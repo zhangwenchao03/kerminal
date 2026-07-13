@@ -162,6 +162,8 @@ fn parse_kerminal_protocol_url(
         ));
     }
 
+    validate_protocol_query(&url)?;
+
     let host = required_query_param(&url, "host")?;
     let port = query_param(&url, "port")
         .map(|value| parse_port(&value))
@@ -169,27 +171,9 @@ fn parse_kerminal_protocol_url(
         .unwrap_or(22);
     let username = query_param(&url, "user").or_else(|| query_param(&url, "username"));
     let target = ExternalSshTarget::new(host, port, username)?;
-    let mut auth = ExternalSshAuth::default();
-    if let Some(password) = query_param(&url, "password") {
-        auth.password = Some(ExternalSecretSlot::inline(
-            ExternalSecretKind::Password,
-            ExternalSecretSource::Url,
-            password,
-        )?);
-    }
-    auth.identity_file =
-        query_param(&url, "identityFile").or_else(|| query_param(&url, "identity_file"));
-    if let Some(passphrase) =
-        query_param(&url, "keyPassphrase").or_else(|| query_param(&url, "key_passphrase"))
-    {
-        auth.key_passphrase = Some(ExternalSecretSlot::inline(
-            ExternalSecretKind::KeyPassphrase,
-            ExternalSecretSource::Url,
-            passphrase,
-        )?);
-    }
+    let auth = ExternalSshAuth::default();
     let options = ExternalSshLaunchOptions {
-        display_name: Some(target.display_name()),
+        display_name: query_param(&url, "displayName").or_else(|| Some(target.display_name())),
         open_sftp: query_param(&url, "openSftp")
             .or_else(|| query_param(&url, "open_sftp"))
             .is_some_and(|value| is_truthy_query_value(&value)),
@@ -206,6 +190,26 @@ fn parse_kerminal_protocol_url(
         options,
         redacted,
     ))
+}
+
+fn validate_protocol_query(url: &Url) -> AppResult<()> {
+    const ALLOWED: &[&str] = &[
+        "host",
+        "port",
+        "user",
+        "username",
+        "displayName",
+        "openSftp",
+        "open_sftp",
+    ];
+    for (key, _) in url.query_pairs() {
+        if !ALLOWED.contains(&key.as_ref()) {
+            return Err(AppError::InvalidInput(format!(
+                "unsupported or unsafe Kerminal protocol parameter: {key}"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn redact_kerminal_protocol_url(url: &Url) -> String {

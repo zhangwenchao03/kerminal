@@ -13,6 +13,10 @@ use super::{
     },
 };
 
+const EXTERNAL_LAUNCH_MAX_ARG_COUNT: usize = 256;
+const EXTERNAL_LAUNCH_MAX_ARG_BYTES: usize = 32 * 1024;
+const EXTERNAL_LAUNCH_MAX_TOTAL_ARG_BYTES: usize = 64 * 1024;
+
 /// Parser for one external terminal persona.
 pub trait ExternalLaunchParser: Send + Sync {
     fn tool(&self) -> ExternalLaunchSourceTool;
@@ -53,6 +57,7 @@ impl ExternalLaunchParserRegistry {
                 "external SSH launch argv must not be empty".to_owned(),
             ));
         }
+        validate_input_size(input)?;
         let inferred_tool = input
             .source_tool
             .or_else(|| infer_source_tool_from_args(&input.argv));
@@ -69,4 +74,24 @@ impl ExternalLaunchParserRegistry {
             input.argv[0]
         )))
     }
+}
+
+/// 在 persona parser 前统一限制深层命令、URL 与父进程命令行的资源消耗。
+fn validate_input_size(input: &ExternalLaunchParseInput) -> AppResult<()> {
+    if input.argv.len() > EXTERNAL_LAUNCH_MAX_ARG_COUNT
+        || input
+            .argv
+            .iter()
+            .any(|argument| argument.len() > EXTERNAL_LAUNCH_MAX_ARG_BYTES)
+        || input.argv.iter().map(String::len).sum::<usize>() > EXTERNAL_LAUNCH_MAX_TOTAL_ARG_BYTES
+        || input
+            .parent_command_line
+            .as_ref()
+            .is_some_and(|command| command.len() > EXTERNAL_LAUNCH_MAX_TOTAL_ARG_BYTES)
+    {
+        return Err(AppError::InvalidInput(
+            "external SSH launch arguments exceed the supported size limit".to_owned(),
+        ));
+    }
+    Ok(())
 }

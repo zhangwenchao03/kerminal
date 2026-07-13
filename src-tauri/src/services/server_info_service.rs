@@ -759,22 +759,22 @@ fn server_info_script_for_tier(tier: ServerInfoCollectionTier) -> String {
     let mut active_tier = None;
     SERVER_INFO_SCRIPT
         .lines()
-        .filter_map(|line| match line.trim() {
+        .filter(|line| match line.trim() {
             "# KERMINAL_TIER_STATIC_BEGIN" => {
                 active_tier = Some(ServerInfoCollectionTier::Full);
-                None
+                false
             }
             "# KERMINAL_TIER_FAST_BEGIN" => {
                 active_tier = Some(ServerInfoCollectionTier::Fast);
-                None
+                false
             }
             "# KERMINAL_TIER_SLOW_BEGIN" => {
                 active_tier = Some(ServerInfoCollectionTier::FastAndSlow);
-                None
+                false
             }
             "# KERMINAL_TIER_END" => {
                 active_tier = None;
-                None
+                false
             }
             _ => {
                 let include = match (tier, active_tier) {
@@ -787,7 +787,7 @@ fn server_info_script_for_tier(tier: ServerInfoCollectionTier) -> String {
                     }
                     (_, None) => line.trim().is_empty(),
                 };
-                include.then_some(line)
+                include
             }
         })
         .collect::<Vec<_>>()

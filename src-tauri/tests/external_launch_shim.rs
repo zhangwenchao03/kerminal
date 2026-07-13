@@ -108,6 +108,10 @@ fn shim_env_persona_fills_unknown_argv0() {
     .expect("build shim envelope");
 
     assert_eq!(envelope.persona, ExternalLaunchSourceTool::Putty);
+    assert_eq!(envelope.schema_version, 2);
+    assert!(!envelope.request_id.is_empty());
+    assert!(envelope.app_generation.is_empty());
+    assert!(envelope.nonce.is_empty());
 }
 
 #[test]

@@ -113,6 +113,41 @@ fn broker_can_clear_session_only_secret() {
 }
 
 #[test]
+fn stale_receipt_cannot_delete_a_newer_session_secret() {
+    let broker = SshAuthBroker::new();
+    let route = prompt_only_password_route();
+    let prompt_id = "ssh-auth:target:deploy@example.com:22:password";
+    let stale = broker
+        .remember_session_secret(SshSessionSecretInput {
+            prompt_id: prompt_id.to_owned(),
+            secret_kind: SshAuthSecretKind::Password,
+            value: "first-session-password".to_owned(),
+        })
+        .expect("remember first generation");
+    broker
+        .remember_session_secret(SshSessionSecretInput {
+            prompt_id: prompt_id.to_owned(),
+            secret_kind: SshAuthSecretKind::Password,
+            value: "second-session-password".to_owned(),
+        })
+        .expect("remember replacement generation");
+
+    assert!(!broker
+        .forget_session_secret_receipt(&stale)
+        .expect("stale receipt cleanup"));
+    let SshAuthBrokerResolution::Ready { auth } = broker
+        .resolve_route_auth(&route)
+        .expect("resolve newer secret")
+    else {
+        panic!("newer secret must remain available");
+    };
+    let ResolvedSshAuthMaterial::Password { value, .. } = auth.target.material else {
+        panic!("expected password material");
+    };
+    assert_eq!(value, "second-session-password");
+}
+
+#[test]
 fn broker_rejects_empty_or_invalid_session_secret_input() {
     let broker = SshAuthBroker::new();
 

@@ -1063,7 +1063,7 @@ async fn native_command_rejects_untrusted_loopback_host_key() {
 }
 
 #[tokio::test]
-async fn external_native_command_trusts_unknown_loopback_host_key() {
+async fn external_native_command_rejects_unknown_loopback_host_key() {
     let server = start_loopback_command_server().await;
     let (_home, state) = test_state();
     let known_hosts_path = state.paths().root.join("known_hosts");
@@ -1105,7 +1105,7 @@ async fn external_native_command_trusts_unknown_loopback_host_key() {
         auth_broker,
         materializer,
     );
-    let output = ssh_commands
+    let error = ssh_commands
         .execute_native(
             state.paths(),
             SshCommandRequest {
@@ -1116,18 +1116,13 @@ async fn external_native_command_trusts_unknown_loopback_host_key() {
             },
         )
         .await
-        .expect("unknown external host key should be trusted on first use");
+        .expect_err("unknown external host key must require explicit confirmation");
 
-    assert!(output.success);
-    assert_eq!(output.exit_code, Some(0));
-    assert_eq!(output.stdout, "exec=sh -s\nscript=printf external-ready\n");
-    assert!(keys::known_hosts::check_known_hosts_path(
-        "127.0.0.1",
-        server.addr.port(),
-        &server.host_key,
-        &known_hosts_path,
-    )
-    .expect("check learned external known host"));
+    assert!(error.to_string().contains("Unknown server key"));
+    assert!(
+        !known_hosts_path.exists(),
+        "external command must not silently learn an unknown host key"
+    );
 }
 
 #[tokio::test]

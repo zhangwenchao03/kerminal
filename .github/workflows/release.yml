@@ -31,6 +31,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify launch shim package contract
+        run: npm run test:launch-shim-package-contract
+
       - name: Verify release tag and versions
         id: release
         shell: bash
@@ -171,6 +174,15 @@ jobs:
       - name: Install project dependencies
         run: npm ci
 
+      - name: Verify external launch release contract
+        run: npm run test:launch-shim-package-contract
+
+      - name: Verify external launch security and responsiveness gates
+        if: runner.os == 'Windows'
+        run: |
+          npm run verify:external-launch-security
+          npm run verify:external-launch-responsiveness
+
       - name: Build and publish Tauri release
         uses: tauri-apps/tauri-action@v0.6.2
         env:
@@ -191,3 +203,7 @@ jobs:
           tagName: ${{ env.RELEASE_TAG }}
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
+
+      - name: Verify Windows external launch package contents
+        if: runner.os == 'Windows'
+        run: npm run verify:external-launch-windows-package -- --bundle-dir src-tauri/target/release/bundle/nsis --require-updater-signature --require-archive-inspection

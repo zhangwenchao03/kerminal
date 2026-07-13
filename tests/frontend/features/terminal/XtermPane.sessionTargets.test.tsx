@@ -381,6 +381,35 @@ describe("XtermPane session targets and appearance", () => {
     });
   });
 
+  it("releases an external SSH launch when its terminal pane unmounts", async () => {
+    const view = render(
+      <XtermPane
+        focused
+        paneId="pane-external-ssh"
+        remoteHostId="external:launch-reconnect"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="external server"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mocks.api.createSshTerminalSession).toHaveBeenCalledWith(
+        { cols: 100, hostId: "external:launch-reconnect", rows: 30 },
+        expect.any(Function),
+      );
+    });
+
+    view.unmount();
+
+    await waitFor(() => {
+      expect(mocks.api.closeTerminal).toHaveBeenCalledWith("ssh-session-1");
+      expect(mocks.api.closeExternalSshLaunch).toHaveBeenCalledWith(
+        "launch-reconnect",
+      );
+    });
+  });
+
   it("clears the default SSH startup notice before redacted auth output", async () => {
     mocks.api.createSshTerminalSession.mockImplementationOnce(
       async (_request, onOutput) => {

@@ -229,7 +229,7 @@ impl TerminalManager {
             target: "terminal.managed",
             "event=open.ok session_id={} target_ref={} shell={} rows={} cols={}",
             session_id,
-            summary.target_ref.as_deref().unwrap_or("<none>"),
+            terminal_target_ref_log_label(summary.target_ref.as_deref()),
             summary.shell,
             summary.rows,
             summary.cols
@@ -1353,6 +1353,19 @@ fn normalize_target_ref(value: Option<String>) -> Option<String> {
     value
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
+}
+
+fn terminal_target_ref_log_label(target_ref: Option<&str>) -> String {
+    let Some(target_ref) = target_ref else {
+        return "<none>".to_owned();
+    };
+    let Some(launch_id) = target_ref.strip_prefix("ssh:external:") else {
+        return target_ref.to_owned();
+    };
+    format!(
+        "ssh:external:request_hash={}",
+        crate::services::external_launch::redaction::opaque_id_hash(launch_id)
+    )
 }
 
 fn normalize_display_cwd(cwd: Option<String>) -> AppResult<Option<String>> {

@@ -49,7 +49,9 @@ notify = "8.2.0"
 notify-debouncer-full = "0.7.0"
 time = { version = "0.3", features = ["formatting"] }
 tokio-util = "0.7"
+zeroize = "1"
 tauri-plugin-dialog = "2"
+tauri-plugin-deep-link = "2.4.9"
 rfd = { version = "0.16.0", default-features = false }
 async-trait = "0.1"
 futures = "0.3"
@@ -62,7 +64,7 @@ tar = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { version = "5.4.1", features = ["std"] }
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_JobObjects", "Win32_System_Threading"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_JobObjects", "Win32_System_Threading"] }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-clipboard-manager = "2.3.2"

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
   const fitInstances: MockFitAddon[] = [];
   const searchInstances: MockSearchAddon[] = [];
   const api = {
+    closeExternalSshLaunch: vi.fn(),
     closeTerminal: vi.fn(),
     createSerialTerminalSession: vi.fn(),
     createSshTerminalSession: vi.fn(),
@@ -405,6 +406,11 @@ vi.mock("../../../../src/lib/terminalApi", () => ({
   writeTerminal: (...args: unknown[]) => mocks.api.writeTerminal(...args),
 }));
 
+vi.mock("../../../../src/lib/externalLaunchApi", () => ({
+  closeExternalSshLaunch: (...args: unknown[]) =>
+    mocks.api.closeExternalSshLaunch(...args),
+}));
+
 vi.mock("../../../../src/features/ssh-auth/sshAuthPromptStore", () => ({
   requestSshAuthPrompt: (...args: unknown[]) =>
     mocks.api.requestSshAuthPrompt(...args),
@@ -571,6 +577,7 @@ beforeEach(() => {
   mocks.fitInstances.length = 0;
   mocks.searchInstances.length = 0;
   mocks.setLatestOutputHandler(undefined);
+  mocks.api.closeExternalSshLaunch.mockReset();
   mocks.api.createSerialTerminalSession.mockReset();
   mocks.api.createSshTerminalSession.mockReset();
   mocks.api.createTelnetTerminalSession.mockReset();
@@ -719,6 +726,7 @@ beforeEach(() => {
   mocks.api.writeTerminal.mockResolvedValue(undefined);
   mocks.api.resizeTerminal.mockResolvedValue(undefined);
   mocks.api.closeTerminal.mockResolvedValue(undefined);
+  mocks.api.closeExternalSshLaunch.mockResolvedValue(undefined);
   mocks.api.getTerminalLogState.mockResolvedValue({
     active: false,
     bytesWritten: 0,

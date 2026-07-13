@@ -83,6 +83,17 @@ export interface ExternalLaunchMaterializedTarget {
   port: number;
   username: string;
   authType: "password" | "key" | "agent";
+  production: boolean;
+  safety: "restricted-unknown" | "known-non-production" | "production";
+}
+
+export interface ExternalHostKeyInspection {
+  algorithm: string;
+  fingerprint: string;
+  host: string;
+  launchId: string;
+  port: number;
+  status: "known" | "unknown" | "changed";
 }
 
 export interface ExternalLaunchTargetSummary {
@@ -108,11 +119,15 @@ export interface ExternalLaunchPolicySnapshot {
   shimBridgeEnabled: boolean;
   autoOpenSftp: boolean;
   disabledTools: ExternalLaunchSourceTool[];
+  pendingCapacity: number;
+  claimLeaseMs: number;
 }
 
 export interface ExternalLaunchIntakeSnapshot {
   pendingCount: number;
-  pendingLaunchIds: string[];
+  pendingRequestHashes: string[];
+  claimedCount: number;
+  claimedRequestHashes: string[];
   acceptedCount: number;
   rejectedCount: number;
   noopCount: number;
@@ -125,16 +140,43 @@ export interface ExternalLaunchIntakeSnapshot {
     rawHash: string;
     cwdPresent: boolean;
   };
+  health: ExternalLaunchRuntimeHealthSnapshot;
+}
+
+export interface ExternalLaunchRuntimeHealthSnapshot {
+  bridgeListening: boolean;
+  bridgeGenerationTag?: string;
+  bridgeRestartCount: number;
+  bridgeActiveClients: number;
+  dedupCount: number;
+  backpressureCount: number;
+  expiryCount: number;
+  cancelCount: number;
+  oldestLaunchAgeMs: number;
+  lastIntakeLatencyMs?: number;
+}
+
+export interface ExternalLaunchTaskSnapshot {
+  queuedCount: number;
+  inFlightCount: number;
+  connectedCount: number;
+  cancelledCount: number;
+  deadlineCount: number;
+  lateCleanupCount: number;
+  completedCount: number;
+  oldestTaskAgeMs: number;
+  lastConnectLatencyMs?: number;
 }
 
 export interface ExternalLaunchSecretSnapshot {
   activeSecretCount: number;
-  launchIds: string[];
+  requestHashes: string[];
 }
 
 export interface ExternalLaunchSnapshot {
   intake: ExternalLaunchIntakeSnapshot;
   secrets: ExternalLaunchSecretSnapshot;
+  tasks: ExternalLaunchTaskSnapshot;
 }
 
 export type ExternalLaunchAliasTool = Exclude<
@@ -230,8 +272,56 @@ export async function materializeExternalSshLaunch(
     host: "preview.invalid",
     launchId: request.launchId,
     port: 22,
+    production: true,
+    safety: "restricted-unknown",
     targetId: `external:${request.launchId}`,
     username: request.username ?? "preview",
+  };
+}
+
+export interface ExternalLaunchDeepLinkStatus {
+  registered: boolean;
+  scheme: string;
+  supported: boolean;
+}
+
+export async function inspectExternalLaunchHostKey(
+  launchId: string,
+): Promise<ExternalHostKeyInspection> {
+  validateBrowserPreviewLaunchId(launchId);
+  if (isTauri()) {
+    return invoke<ExternalHostKeyInspection>("external_launch_host_key_inspect", {
+      launchId,
+    });
+  }
+  return {
+    algorithm: "ssh-ed25519",
+    fingerprint: "SHA256:browser-preview",
+    host: "preview.invalid",
+    launchId,
+    port: 22,
+    status: "known",
+  };
+}
+
+export async function trustExternalLaunchHostKey(
+  launchId: string,
+  expectedFingerprint: string,
+): Promise<ExternalHostKeyInspection> {
+  validateBrowserPreviewLaunchId(launchId);
+  if (isTauri()) {
+    return invoke<ExternalHostKeyInspection>("external_launch_host_key_trust", {
+      expectedFingerprint,
+      launchId,
+    });
+  }
+  return {
+    algorithm: "ssh-ed25519",
+    fingerprint: expectedFingerprint,
+    host: "preview.invalid",
+    launchId,
+    port: 22,
+    status: "known",
   };
 }
 
@@ -262,23 +352,68 @@ export async function getExternalLaunchSnapshot(): Promise<ExternalLaunchSnapsho
   return {
     intake: {
       acceptedCount: 0,
+      claimedCount: 0,
+      claimedRequestHashes: [],
       noopCount: 0,
       pendingCount: 0,
-      pendingLaunchIds: [],
+      pendingRequestHashes: [],
+      health: {
+        backpressureCount: 0,
+        bridgeActiveClients: 0,
+        bridgeListening: false,
+        bridgeRestartCount: 0,
+        cancelCount: 0,
+        dedupCount: 0,
+        expiryCount: 0,
+        oldestLaunchAgeMs: 0,
+      },
       policy: {
         acceptVendorArgs: true,
         autoOpenSftp: false,
         disabledTools: [],
         enabled: true,
         shimBridgeEnabled: true,
+        pendingCapacity: 128,
+        claimLeaseMs: 30_000,
       },
       rejectedCount: 0,
     },
     secrets: {
       activeSecretCount: 0,
-      launchIds: [],
+      requestHashes: [],
+    },
+    tasks: {
+      cancelledCount: 0,
+      completedCount: 0,
+      connectedCount: 0,
+      deadlineCount: 0,
+      inFlightCount: 0,
+      lateCleanupCount: 0,
+      oldestTaskAgeMs: 0,
+      queuedCount: 0,
     },
   };
+}
+
+export async function getExternalLaunchDeepLinkStatus(): Promise<ExternalLaunchDeepLinkStatus> {
+  if (isTauri()) {
+    return invoke<ExternalLaunchDeepLinkStatus>("external_launch_deep_link_status");
+  }
+  return { registered: false, scheme: "kerminal", supported: false };
+}
+
+export async function registerExternalLaunchDeepLink(): Promise<ExternalLaunchDeepLinkStatus> {
+  if (isTauri()) {
+    return invoke<ExternalLaunchDeepLinkStatus>("external_launch_deep_link_register");
+  }
+  return { registered: false, scheme: "kerminal", supported: false };
+}
+
+export async function unregisterExternalLaunchDeepLink(): Promise<ExternalLaunchDeepLinkStatus> {
+  if (isTauri()) {
+    return invoke<ExternalLaunchDeepLinkStatus>("external_launch_deep_link_unregister");
+  }
+  return { registered: false, scheme: "kerminal", supported: false };
 }
 
 export async function getExternalLaunchAliasStatus(): Promise<ExternalLaunchAliasStatus> {

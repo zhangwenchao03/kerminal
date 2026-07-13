@@ -20,8 +20,9 @@ use kerminal_lib::{
     services::{
         docker_host_service::DockerHostService,
         external_launch::{
-            external_target_id, ExternalLaunchAcceptOutcome, ExternalLaunchEntrypoint,
-            ExternalLaunchIntake, ExternalSessionMaterializer,
+            external_target_id, external_target_safety_for_saved_hosts,
+            ExternalLaunchAcceptOutcome, ExternalLaunchEntrypoint, ExternalLaunchIntake,
+            ExternalSessionMaterializer, ExternalTargetSafety,
         },
         mcp_tool_executor_service::{McpToolExecutionContext, McpToolExecutionStatus},
         port_forward_service::PortForwardService,
@@ -85,6 +86,8 @@ fn materializer_moves_password_to_auth_broker_and_keeps_external_target_after_ac
     assert_eq!(target.host.host, "example.internal");
     assert_eq!(target.host.port, 2202);
     assert_eq!(target.host.username, "deploy");
+    assert!(target.host.production);
+    assert_eq!(target.safety, ExternalTargetSafety::RestrictedUnknown);
     assert_eq!(
         fixture
             .auth_broker
@@ -97,6 +100,8 @@ fn materializer_moves_password_to_auth_broker_and_keeps_external_target_after_ac
     let debug = format!("{target:?}");
     assert!(!debug.contains(PASSWORD_SECRET));
     assert!(!debug.contains("external-secret:"));
+    assert!(!debug.contains(&launch_id));
+    assert!(debug.contains("request_hash"));
 
     assert_eq!(
         fixture
@@ -141,6 +146,43 @@ fn materializer_moves_password_to_auth_broker_and_keeps_external_target_after_ac
 }
 
 #[test]
+fn external_target_safety_only_downgrades_for_exact_saved_non_production_match() {
+    let fixture = materializer_fixture();
+    let launch_id = queue_putty_password_launch(&fixture.intake, Some("deploy"));
+    let _ = fixture.intake.take_pending().expect("take pending");
+    let request = fixture
+        .intake
+        .active_request(&launch_id)
+        .expect("active request")
+        .expect("queued request");
+    let target = fixture
+        .materializer
+        .materialize(&fixture.paths, &launch_id, None)
+        .expect("materialize restricted target");
+
+    let mut saved = target.host.clone();
+    saved.id = "saved-non-production".to_owned();
+    saved.host = "EXAMPLE.INTERNAL.".to_owned();
+    saved.production = false;
+    assert_eq!(
+        external_target_safety_for_saved_hosts(&request, "deploy", &[saved.clone()]),
+        ExternalTargetSafety::KnownNonProduction
+    );
+
+    saved.production = true;
+    assert_eq!(
+        external_target_safety_for_saved_hosts(&request, "deploy", &[saved.clone()]),
+        ExternalTargetSafety::Production
+    );
+
+    saved.port += 1;
+    assert_eq!(
+        external_target_safety_for_saved_hosts(&request, "deploy", &[saved]),
+        ExternalTargetSafety::RestrictedUnknown
+    );
+}
+
+#[test]
 fn materializer_requires_username_or_trusted_override() {
     let fixture = materializer_fixture();
     let launch_id = queue_putty_password_launch(&fixture.intake, None);
@@ -181,7 +223,7 @@ fn materializer_reports_expired_password_secret_without_leaking_refs() {
     let message = error.to_string();
 
     assert!(message.contains("外部 SSH 启动凭据已过期或不可用"));
-    assert!(message.contains(&launch_id));
+    assert_hashed_launch_id(&message, &launch_id);
     assert!(message.contains("secret_kind=password"));
     assert!(!message.contains(PASSWORD_SECRET));
     assert!(!message.contains("external-secret:"));
@@ -209,7 +251,7 @@ fn materializer_reports_expired_key_passphrase_without_leaking_refs() {
     let message = error.to_string();
 
     assert!(message.contains("外部 SSH 启动凭据已过期或不可用"));
-    assert!(message.contains(&launch_id));
+    assert_hashed_launch_id(&message, &launch_id);
     assert!(message.contains("secret_kind=key-passphrase"));
     assert!(!message.contains(PASSPHRASE_SECRET));
     assert!(!message.contains("external-secret:"));
@@ -223,9 +265,8 @@ fn materializer_reports_stale_launch_id_as_not_found() {
         .materialize(&fixture.paths, "stale-launch-id", None)
         .expect_err("stale launch id should fail");
 
-    assert!(error
-        .to_string()
-        .contains("外部 SSH 启动请求不存在: stale-launch-id"));
+    let message = error.to_string();
+    assert_hashed_launch_id(&message, "stale-launch-id");
 }
 
 #[test]
@@ -241,6 +282,8 @@ fn materializer_moves_external_key_passphrase_to_runtime_host_and_auth_broker() 
     let request_debug = format!("{request:?}");
     assert!(!request_debug.contains(PASSPHRASE_SECRET));
     assert!(!request_debug.contains("id_ed25519"));
+    assert!(!request_debug.contains(&launch_id));
+    assert!(request_debug.contains("request_hash"));
 
     let target = fixture
         .materializer
@@ -263,6 +306,7 @@ fn materializer_moves_external_key_passphrase_to_runtime_host_and_auth_broker() 
     let debug = format!("{target:?}");
     assert!(!debug.contains(PASSPHRASE_SECRET));
     assert!(!debug.contains("id_ed25519"));
+    assert!(!debug.contains(&launch_id));
 
     fixture
         .intake
@@ -566,6 +610,16 @@ async fn mcp_tools_use_materialized_external_target_without_host_toml() {
     );
 }
 
+fn assert_hashed_launch_id(message: &str, raw_launch_id: &str) {
+    assert!(!message.contains(raw_launch_id));
+    let hash = message
+        .split_once("request_hash=")
+        .map(|(_, suffix)| suffix.split_whitespace().next().unwrap_or(suffix))
+        .expect("error should contain request_hash");
+    assert_eq!(hash.len(), 12, "request hash must stay bounded and opaque");
+    assert!(hash.bytes().all(|byte| byte.is_ascii_hexdigit()));
+}
+
 struct MaterializerFixture {
     _home: TempDir,
     paths: KerminalPaths,
@@ -616,6 +670,7 @@ fn mcp_context<'a>(
         diagnostics: state.diagnostics(),
         docker_hosts: state.docker_hosts(),
         external_launch_intake: state.external_launch_intake(),
+        external_launch_tasks: state.external_launch_tasks(),
         local_network_proxy: state.local_network_proxy(),
         paths: state.paths(),
         port_forwards: state.port_forwards(),

@@ -1,12 +1,23 @@
 import {
   Ban,
+  CircleCheck,
   FolderOpen,
+  Link2,
+  LoaderCircle,
   Power,
   Route,
   ShieldAlert,
   Terminal,
 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Button } from "../../../components/ui/button";
 import { cn } from "../../../lib/cn";
+import {
+  getExternalLaunchDeepLinkStatus,
+  registerExternalLaunchDeepLink,
+  unregisterExternalLaunchDeepLink,
+  type ExternalLaunchDeepLinkStatus,
+} from "../../../lib/externalLaunchApi";
 import {
   externalLaunchSourceTools,
   type ExternalLaunchSettings,
@@ -97,6 +108,10 @@ export function ExternalLaunchSettingsSection({
   revealCompatibility?: boolean;
   updateExternalLaunch: (settings: Partial<ExternalLaunchSettings>) => void;
 }) {
+  const [deepLinkStatus, setDeepLinkStatus] =
+    useState<ExternalLaunchDeepLinkStatus | null>(null);
+  const [deepLinkBusy, setDeepLinkBusy] = useState(false);
+  const [deepLinkError, setDeepLinkError] = useState("");
   const disabledToolSet = new Set(externalLaunch.disabledTools);
   const disabledToolCount = externalLaunch.disabledTools.length;
   const setToolEnabled = (tool: ExternalLaunchSourceTool, enabled: boolean) => {
@@ -105,6 +120,45 @@ export function ExternalLaunchSettingsSection({
         ? externalLaunch.disabledTools.filter((item) => item !== tool)
         : [...externalLaunch.disabledTools, tool],
     });
+  };
+
+  useEffect(() => {
+    let active = true;
+    void getExternalLaunchDeepLinkStatus()
+      .then((status) => {
+        if (active) {
+          setDeepLinkStatus(status);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setDeepLinkError("无法读取系统协议注册状态。");
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const updateDeepLinkRegistration = async (register: boolean) => {
+    if (deepLinkBusy) {
+      return;
+    }
+    setDeepLinkBusy(true);
+    setDeepLinkError("");
+    try {
+      setDeepLinkStatus(
+        register
+          ? await registerExternalLaunchDeepLink()
+          : await unregisterExternalLaunchDeepLink(),
+      );
+    } catch {
+      setDeepLinkError(
+        register ? "系统协议注册失败。" : "系统协议注销失败。",
+      );
+    } finally {
+      setDeepLinkBusy(false);
+    }
   };
 
   return (
@@ -144,6 +198,54 @@ export function ExternalLaunchSettingsSection({
           onChange={(autoOpenSftp) => updateExternalLaunch({ autoOpenSftp })}
         />
       </section>
+
+      <div className="mt-4 border-y border-[var(--border-subtle)] py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-2">
+            <Link2 className="mt-0.5 h-4 w-4 shrink-0 text-sky-500 dark:text-sky-300" />
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-[var(--text-primary)]">
+                kerminal:// 系统协议
+              </div>
+              <div className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
+                {deepLinkStatus?.supported
+                  ? deepLinkStatus.registered
+                    ? "已为当前 Windows 用户注册"
+                    : "未注册，外部链接不会唤起 Kerminal"
+                  : "当前平台不提供生产级协议注册"}
+              </div>
+            </div>
+          </div>
+          {deepLinkStatus?.supported ? (
+            <Button
+              disabled={deepLinkBusy}
+              onClick={() =>
+                void updateDeepLinkRegistration(!deepLinkStatus.registered)
+              }
+              size="sm"
+              type="button"
+              variant={deepLinkStatus.registered ? "ghost" : "primary"}
+            >
+              {deepLinkBusy ? (
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+              ) : deepLinkStatus.registered ? (
+                <CircleCheck className="h-4 w-4" />
+              ) : (
+                <Link2 className="h-4 w-4" />
+              )}
+              {deepLinkStatus.registered ? "注销协议" : "注册协议"}
+            </Button>
+          ) : null}
+        </div>
+        {deepLinkError ? (
+          <div
+            className="mt-2 text-xs text-red-700 dark:text-red-300"
+            role="alert"
+          >
+            {deepLinkError}
+          </div>
+        ) : null}
+      </div>
 
       <div className="mt-4">
         <SettingsDisclosure
