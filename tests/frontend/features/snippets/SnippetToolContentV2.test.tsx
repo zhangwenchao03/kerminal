@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   clearUsage: vi.fn(),
   documents: vi.fn(),
   history: vi.fn(),
+  peekServerInfo: vi.fn(),
   openPath: vi.fn(),
   workspaceStatus: vi.fn(),
 }));
@@ -31,6 +32,9 @@ vi.mock("../../../../src/lib/desktopClipboardApi", () => ({
 }));
 vi.mock("../../../../src/lib/commandHistoryApi", () => ({
   listCommandHistory: (...args: unknown[]) => mocks.history(...args),
+}));
+vi.mock("../../../../src/features/tool-panel/useServerInfoSnapshot", () => ({
+  peekServerInfoSnapshot: (...args: unknown[]) => mocks.peekServerInfo(...args),
 }));
 vi.mock("../../../../src/lib/agentLauncherApi", () => ({
   getExternalAgentWorkspaceStatus: (...args: unknown[]) =>
@@ -99,6 +103,7 @@ describe("SnippetToolContentV2", () => {
     mocks.clearUsage.mockReset().mockResolvedValue(2);
     mocks.documents.mockReset().mockResolvedValue({ snippets: [], warnings: [] });
     mocks.history.mockReset().mockResolvedValue([]);
+    mocks.peekServerInfo.mockReset().mockReturnValue(null);
     mocks.openPath.mockReset().mockResolvedValue(undefined);
     mocks.workspaceStatus.mockReset().mockResolvedValue({
       workspaceDir: "C:/Users/test/.kerminal",
@@ -127,6 +132,8 @@ describe("SnippetToolContentV2", () => {
       target: { value: "https://example.com/a b" },
     });
     expect(screen.getByText(/curl -I 'https:\/\/example.com\/a b'/)).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "片段管理" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "终端操作" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /填入终端/ }));
     await waitFor(() =>
       expect(mocks.insert).toHaveBeenCalledWith({
@@ -166,6 +173,64 @@ describe("SnippetToolContentV2", () => {
       "copyRendered",
     );
     expect(await screen.findByText("渲染后的命令已复制")).toBeInTheDocument();
+  });
+
+  it("confirms inspect execution when target capabilities are not yet known", async () => {
+    render(
+      <SnippetToolContentV2
+        focusedPane={{ id: "pane-1", mode: "local", title: "PowerShell" } as never}
+      />,
+    );
+    fireEvent.click(await screen.findByText("HTTP 响应头"));
+    fireEvent.change(screen.getByLabelText("URL"), {
+      target: { value: "https://example.com" },
+    });
+
+    const run = screen.getByRole("button", { name: "运行" });
+    expect(run).not.toHaveAttribute("aria-disabled");
+    fireEvent.click(run);
+
+    expect(
+      await screen.findByText(/环境未完全确认.*尚未验证命令可用性.*curl/),
+    ).toBeInTheDocument();
+    expect(mocks.run).not.toHaveBeenCalled();
+  });
+
+  it("reuses cached SSH platform metadata when a legacy pane has no target ref", async () => {
+    mocks.list.mockResolvedValue([{
+      ...item,
+      capabilities: [],
+      platforms: ["linux"],
+      scope: "ssh",
+      shells: ["bash"],
+    }]);
+    mocks.record.mockReturnValue({
+      connectionGeneration: 7,
+      remoteHostId: "host-a",
+      sessionId: "session-ssh",
+      shell: "/bin/bash",
+      target: "ssh",
+    });
+    mocks.peekServerInfo.mockReturnValue({ os: "Ubuntu 24.04 LTS" });
+
+    render(
+      <SnippetToolContentV2
+        focusedPane={{
+          id: "pane-ssh",
+          mode: "ssh",
+          remoteHostId: "host-a",
+          title: "Ubuntu",
+        } as never}
+      />,
+    );
+    fireEvent.click(await screen.findByText("HTTP 响应头"));
+
+    expect(mocks.peekServerInfo).toHaveBeenCalledWith({
+      hostId: "host-a",
+      kind: "ssh",
+    });
+    expect(screen.queryByText("尚未读取目标平台")).not.toBeInTheDocument();
+    expect(screen.queryByText("尚未识别当前 shell")).not.toBeInTheDocument();
   });
 
   it("masks secret values by default, reveals only while held, and disables copy", async () => {
