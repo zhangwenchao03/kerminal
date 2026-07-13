@@ -51,7 +51,8 @@ function scheduleStartupRetry() {
   try {
     window.sessionStorage.setItem(startupRetryKey, String(retryCount));
   } catch {
-    // Ignore storage failures; the visible fallback will handle the failure.
+    // 无法持久化重试次数时不能继续静默等待，否则 bootstrap 失败后会留下空白根节点。
+    showStartupFailure();
     return;
   }
 
