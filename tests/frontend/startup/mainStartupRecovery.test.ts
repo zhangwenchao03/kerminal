@@ -62,9 +62,7 @@ describe("main startup recovery", () => {
 
     const root = document.getElementById("root");
     await vi.waitFor(() => {
-      expect(root).toHaveTextContent(
-        "应用启动失败，请重新打开应用；如果持续失败，请通过应用日志反馈问题。",
-      );
+      expectVisibleStartupFailure(root);
     });
     expect(setItem).toHaveBeenCalledWith(
       "kerminal:startup-import-retries",
@@ -125,9 +123,7 @@ describe("main startup recovery", () => {
 
     const root = document.getElementById("root");
     await vi.waitFor(() => {
-      expect(root).toHaveTextContent(
-        "应用启动失败，请重新打开应用；如果持续失败，请通过应用日志反馈问题。",
-      );
+      expectVisibleStartupFailure(root);
     });
     expect(setItem).not.toHaveBeenCalled();
     expect(
@@ -135,3 +131,11 @@ describe("main startup recovery", () => {
     ).toBe(false);
   });
 });
+
+function expectVisibleStartupFailure(root: HTMLElement | null) {
+  expect(root).toHaveTextContent("应用启动失败");
+  expect(root).toHaveTextContent(
+    "请重新加载应用；如果持续失败，请通过应用日志反馈问题。",
+  );
+  expect(root).toHaveTextContent("Outdated Optimize Dep");
+}

@@ -16,7 +16,7 @@ void import("./bootstrap")
     console.error("Kerminal 启动失败", error);
 
     if (shouldRetryStartupImport(error)) {
-      scheduleStartupRetry();
+      scheduleStartupRetry(error);
       return;
     }
 
@@ -45,14 +45,14 @@ function getStartupRetryCount() {
   }
 }
 
-function scheduleStartupRetry() {
+function scheduleStartupRetry(error: unknown) {
   const retryCount = getStartupRetryCount() + 1;
 
   try {
     window.sessionStorage.setItem(startupRetryKey, String(retryCount));
   } catch {
     // 无法持久化重试次数时不能继续静默等待，否则 bootstrap 失败后会留下空白根节点。
-    showStartupFailure();
+    showStartupFailure(error);
     return;
   }
 

@@ -286,7 +286,7 @@
     },
     {
       "file": "src/App.css",
-      "lines": 847,
+      "lines": 893,
       "deadline": "before TASK-080",
       "owner": "ui-unification",
       "targetTask": "TASK-073"
