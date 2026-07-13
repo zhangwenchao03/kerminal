@@ -574,7 +574,7 @@ describe("TmuxToolContent", () => {
 
     await user.click(await screen.findByRole("button", { name: "新建会话" }));
     expect(screen.getByRole("button", { name: "创建" })).toHaveClass(
-      "bg-[#0A84FF]",
+      "bg-[rgb(var(--app-accent))]",
     );
     await user.click(screen.getByRole("button", { name: "取消" }));
 

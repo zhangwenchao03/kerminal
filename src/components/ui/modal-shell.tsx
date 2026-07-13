@@ -147,6 +147,14 @@ export function ModalShell({
       if (!panel || !isTopModal(modalId)) {
         return;
       }
+      // React autoFocus 会先于 RAF 生效；已有合法焦点时不能再抢回关闭按钮。
+      if (
+        document.activeElement instanceof HTMLElement &&
+        document.activeElement !== panel &&
+        panel.contains(document.activeElement)
+      ) {
+        return;
+      }
       const autofocus = panel.querySelector<HTMLElement>("[autofocus]");
       const firstFocusable = getFocusableElements(panel)[0];
       (autofocus ?? firstFocusable ?? panel).focus();

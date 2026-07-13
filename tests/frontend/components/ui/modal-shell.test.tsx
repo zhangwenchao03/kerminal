@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ModalShell } from "../../../../src/components/ui/modal-shell";
 
@@ -165,5 +166,23 @@ describe("ModalShell", () => {
       </>,
     );
     expect(document.body.style.overflow).toBe("");
+  });
+
+  it("does not steal focus from a React autoFocus input", async () => {
+    const user = userEvent.setup();
+    render(
+      <ModalShell onClose={vi.fn()} open title="自动聚焦">
+        <label>
+          密码
+          <input autoFocus />
+        </label>
+      </ModalShell>,
+    );
+
+    const input = screen.getByRole("textbox", { name: "密码" });
+    await user.type(input, "secret-password");
+
+    expect(input).toHaveFocus();
+    expect(input).toHaveValue("secret-password");
   });
 });
