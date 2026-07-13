@@ -67,10 +67,10 @@ const workflowStepScopeOptions = [
   ...workflowScopeOptions,
 ];
 
-const workflowPanelClassName = "kerminal-solid-surface rounded-2xl border p-4";
+const workflowPanelClassName = "kerminal-solid-surface rounded-[var(--radius-card)] border p-4";
 
 const workflowMutedPanelClassName =
-  "kerminal-muted-surface rounded-2xl border p-4 text-sm text-zinc-500 dark:text-zinc-400";
+  "rounded-[var(--radius-card)] border border-[var(--border-subtle)] p-4 text-sm text-zinc-500 dark:text-zinc-400";
 
 const workflowInputClassName =
   "kerminal-field-surface h-9 w-full rounded-xl border px-3 text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
@@ -462,7 +462,7 @@ export function WorkflowToolContent({
       {error ? (
         typeof error === "string" ? (
           <div
-            className={workflowNoticeClassName("error", "rounded-2xl p-4")}
+            className={workflowNoticeClassName("error", "rounded-[var(--radius-card)] p-4")}
             role="alert"
           >
             {error}
@@ -473,7 +473,7 @@ export function WorkflowToolContent({
       ) : null}
       {configDraftNotice ? (
         <div
-          className={workflowNoticeClassName("warning", "rounded-2xl p-3 font-mono text-xs")}
+          className={workflowNoticeClassName("warning", "rounded-[var(--radius-card)] p-3 font-mono text-xs")}
           role="status"
         >
           {configDraftNotice}
@@ -527,7 +527,7 @@ function DraftStepEditor({
   const stepNumber = index + 1;
 
   return (
-    <div className="kerminal-muted-surface rounded-2xl border p-3">
+    <div className="rounded-[var(--radius-card)] border border-[var(--border-subtle)] p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
           步骤 {stepNumber}
@@ -715,7 +715,7 @@ function WorkflowCard({
       </div>
 
       {runState ? (
-        <div className="kerminal-muted-surface kerminal-floating-enter mt-3 rounded-2xl border p-3">
+        <div className="kerminal-floating-enter mt-3 rounded-[var(--radius-card)] border border-[var(--border-subtle)] p-3">
           {variables.length > 0 ? (
             <div className="space-y-2">
               {variables.map((name) => (

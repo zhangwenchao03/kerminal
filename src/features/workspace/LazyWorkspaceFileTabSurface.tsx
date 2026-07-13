@@ -21,7 +21,7 @@ function WorkspaceFileTabSurfaceFallback() {
   return (
     <section
       aria-label="文件标签加载中"
-      className="kerminal-solid-surface flex h-full min-h-0 items-center justify-center rounded-2xl border px-4 text-sm text-zinc-500 dark:text-zinc-400"
+      className="kerminal-solid-surface flex h-full min-h-0 items-center justify-center rounded-[var(--radius-card)] border px-4 text-sm text-zinc-500 dark:text-zinc-400"
     >
       正在加载文件视图...
     </section>

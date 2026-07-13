@@ -511,7 +511,7 @@ export function TerminalWorkspaceContent({
                 />
               ) : (
                 (renderCustomTab?.(tab, active) ?? (
-                  <div className="kerminal-solid-surface flex h-full items-center justify-center rounded-2xl border text-sm text-zinc-500 dark:text-zinc-400">
+                  <div className="kerminal-solid-surface flex h-full items-center justify-center rounded-[var(--radius-card)] border text-sm text-zinc-500 dark:text-zinc-400">
                     此标签暂不可用。
                   </div>
                 ))

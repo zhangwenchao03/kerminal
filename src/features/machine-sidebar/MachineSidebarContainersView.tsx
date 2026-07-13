@@ -94,7 +94,7 @@ export function MachineSidebarContainersView({
   if (!selectedHost) {
     return (
       <div className="kerminal-sidebar-list scrollbar-none flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto p-3">
-        <div className="kerminal-muted-surface rounded-2xl border border-dashed px-3 py-6 text-center text-sm text-zinc-500">
+        <div className="rounded-[var(--radius-card)] border border-dashed border-[var(--border-subtle)] px-3 py-6 text-center text-sm text-zinc-500">
           添加 SSH 主机后，可在这里查看 Docker、Podman 和 Compose。
         </div>
       </div>

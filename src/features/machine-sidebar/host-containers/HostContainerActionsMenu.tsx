@@ -185,7 +185,7 @@ export function HostContainerActionsMenu({
       {position
         ? createPortal(
             <div
-              className="kerminal-context-menu kerminal-floating-enter fixed z-[1001] w-44"
+              className="kerminal-context-menu kerminal-floating-enter kerminal-layer-popover fixed w-44"
               onClick={(event) => event.stopPropagation()}
               ref={menuRef}
               role="menu"

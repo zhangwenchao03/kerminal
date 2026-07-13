@@ -61,7 +61,7 @@ const sidebarGroupButtonClassName =
 const sidebarCountBadgeClassName =
   "rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[11px] text-zinc-500 dark:text-zinc-400";
 const sidebarEmptyStateClassName =
-  "kerminal-muted-surface flex flex-col items-center rounded-2xl border border-dashed px-3 py-6 text-center text-sm text-zinc-500";
+  "flex flex-col items-center rounded-[var(--radius-card)] border border-dashed border-[var(--border-subtle)] px-3 py-6 text-center text-sm text-zinc-500";
 const sidebarFooterClassName =
   "kerminal-sidebar-footer flex items-center justify-between border-t border-[var(--border-subtle)]";
 const sidebarSettingsSelectedClassName =

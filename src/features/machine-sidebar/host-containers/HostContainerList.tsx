@@ -167,7 +167,7 @@ export function HostContainerList({
                 <div
                   className={cn(
                     "overflow-hidden border border-[var(--border-subtle)] bg-[var(--surface-solid)]/64 shadow-sm shadow-black/5 dark:shadow-black/20",
-                    sidebar ? "rounded-xl" : "rounded-2xl",
+                    sidebar ? "rounded-[var(--radius-control)]" : "rounded-[var(--radius-card)]",
                   )}
                   key={project.id}
                 >
@@ -503,7 +503,7 @@ function HostContainerRow({
         "kerminal-focus-ring group grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-3 text-left outline-none transition",
         compact
           ? "rounded-xl border border-transparent px-2 py-1.5"
-          : "rounded-2xl border px-3 py-2.5",
+          : "rounded-[var(--radius-card)] border px-3 py-2.5",
         sidebar && !compact && "rounded-xl px-2.5 py-2",
         selected
           ? "border-sky-500/40 bg-[var(--surface-selected)] shadow-sm shadow-sky-500/10"

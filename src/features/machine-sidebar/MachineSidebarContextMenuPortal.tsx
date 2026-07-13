@@ -17,7 +17,7 @@ import {
 } from "./machineSidebarMenuModel";
 
 const sidebarContextMenuSurfaceClassName =
-  "kerminal-context-menu kerminal-floating-enter fixed z-[1000] w-56";
+  "kerminal-context-menu kerminal-floating-enter kerminal-layer-popover fixed w-56";
 
 type MachineSidebarContextMenuPortalProps = Pick<
   MachineSidebarProps,

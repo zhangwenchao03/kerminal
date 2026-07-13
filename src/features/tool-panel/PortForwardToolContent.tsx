@@ -286,7 +286,7 @@ export function PortForwardToolContent({
         ? "当前容器目标不支持直接创建 SSH 隧道。请切回宿主 SSH 主机管理端口转发。"
         : "请选择 SSH 主机。";
     return (
-      <section className="kerminal-solid-surface rounded-2xl border p-4 text-sm text-zinc-500 dark:text-zinc-400">
+      <section className="kerminal-solid-surface rounded-[var(--radius-card)] border p-4 text-sm text-zinc-500 dark:text-zinc-400">
         <h3 className="font-medium text-zinc-950 dark:text-zinc-100">
           SSH 隧道
         </h3>
@@ -570,7 +570,7 @@ export function PortForwardToolContent({
 
   return (
     <section className="space-y-3">
-      <div className="kerminal-solid-surface rounded-2xl border p-4">
+      <div className="kerminal-solid-surface rounded-[var(--radius-card)] border p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="font-medium text-zinc-950 dark:text-zinc-100">

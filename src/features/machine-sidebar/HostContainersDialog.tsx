@@ -511,7 +511,7 @@ export function HostContainersDialog({
         title={`${host.name} / 容器`}
       >
         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-          <div className="grid grid-cols-4 overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-solid)]/82 shadow-sm shadow-black/5 dark:shadow-black/20">
+          <div className="grid grid-cols-4 overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-solid)]">
             <SummaryMetric
               label="Compose"
               value={composeViewModel.projects.length}
@@ -523,7 +523,7 @@ export function HostContainersDialog({
             <SummaryMetric label="运行" value={viewModel.runningCount} />
             <SummaryMetric label="异常" value={composeViewModel.errorCount} />
           </div>
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-solid)]/82 px-3 py-2 text-xs text-zinc-500 shadow-sm shadow-black/5 dark:text-zinc-400 dark:shadow-black/20 md:min-w-48">
+          <div className="flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-solid)] px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400 md:min-w-48">
             <span>状态</span>
             <span className="font-mono text-zinc-700 dark:text-zinc-200">
               {statusText}
@@ -574,7 +574,7 @@ export function HostContainersDialog({
         </div>
 
         <div
-          className="grid min-h-0 gap-3 overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-solid)]/78 p-3 shadow-sm shadow-black/5 dark:shadow-black/20 lg:grid-cols-[348px_minmax(0,1fr)] 2xl:grid-cols-[360px_minmax(0,1fr)]"
+          className="grid min-h-0 gap-3 overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-solid)] p-3 lg:grid-cols-[348px_minmax(0,1fr)] 2xl:grid-cols-[360px_minmax(0,1fr)]"
           data-testid="host-container-workbench"
         >
           <div
@@ -839,7 +839,7 @@ function StateMessage({
   return (
     <div
       className={cn(
-        "flex min-h-32 items-center justify-center rounded-2xl border px-4 py-8 text-center text-sm",
+        "flex min-h-32 items-center justify-center rounded-[var(--radius-card)] border px-4 py-8 text-center text-sm",
         tone === "danger"
           ? "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-200"
           : "border-dashed border-[var(--border-subtle)] text-zinc-500 dark:text-zinc-400",

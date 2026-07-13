@@ -23,7 +23,7 @@ const agentIcons = {
   custom: Wrench,
 };
 const agentLaunchContextMenuClassName =
-  "kerminal-context-menu kerminal-agent-launch-menu kerminal-floating-enter absolute z-[1000] w-[164px]";
+  "kerminal-context-menu kerminal-agent-launch-menu kerminal-floating-enter kerminal-layer-popover absolute w-[164px]";
 
 export type AgentLaunchTargetMode = "current" | "unbound";
 
