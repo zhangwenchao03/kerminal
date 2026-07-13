@@ -80,6 +80,22 @@ describe("terminalSuggestionMenuModel", () => {
         key: "Escape",
       }),
     ).toBeNull();
+
+    const parameterized = createTerminalSuggestionMenuState({
+      candidates: [
+        candidate({
+          activation: "openSnippetPanel",
+          candidateKind: "snippet",
+        }),
+      ],
+      open: true,
+    });
+    expect(
+      resolveTerminalSuggestionMenuKeyIntent(parameterized, { key: "Enter" }),
+    ).toMatchObject({
+      candidate: { id: "candidate" },
+      type: "openSnippetPanel",
+    });
   });
 
   it("derives provider, danger, description, and stale presentation", () => {
@@ -99,6 +115,24 @@ describe("terminalSuggestionMenuModel", () => {
       providerLabel: "远端命令",
       stale: true,
     });
+
+    expect(
+      terminalSuggestionMenuCandidateView(
+        candidate({ provider: "snippet" }),
+        false,
+      ).providerLabel,
+    ).toBe("片段");
+    expect(
+      terminalSuggestionMenuCandidateView(
+        candidate({
+          activation: "openSnippetPanel",
+          candidateKind: "snippet",
+          metadata: { origin: "user" },
+          provider: "snippet",
+        }),
+        false,
+      ).providerLabel,
+    ).toBe("我的片段 · 配置");
   });
 });
 

@@ -33,6 +33,9 @@ pub enum FileStoreError {
 
     #[error("file store lock is already held: {0}")]
     Locked(PathBuf),
+
+    #[error("file was changed externally: {0}")]
+    RevisionConflict(PathBuf),
 }
 
 pub type FileStoreResult<T> = Result<T, FileStoreError>;

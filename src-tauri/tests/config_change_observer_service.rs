@@ -326,6 +326,12 @@ fn seed_rendered_config_files(root: &Path) {
                 sort_order: 10,
                 created_at: timestamp.clone(),
                 updated_at: timestamp.clone(),
+                category: None,
+                risk: None,
+                default_action: None,
+                variables: Vec::new(),
+                context_bindings: Vec::new(),
+                derived_from: None,
             }],
             &[],
         )

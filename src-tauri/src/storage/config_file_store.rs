@@ -10,12 +10,17 @@ use std::{
 };
 
 mod documents;
+mod snippet_document;
+
+pub use snippet_document::{
+    SnippetDocumentList, SnippetDocumentPatch, SnippetDocumentSnapshot, SnippetDocumentWarning,
+};
 
 use documents::{
     ProfileTomlDocument, RemoteHostGroupsTomlDocument, RemoteHostTomlDocument,
     SettingsTomlDocument, SnippetTomlDocument, WorkflowTomlDocument,
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
@@ -37,6 +42,14 @@ use crate::{
 
 /// Kerminal file-backed config schema version.
 pub const CONFIG_FILE_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SnippetDeleteReceipt {
+    pub change_set_id: String,
+    pub snippet_id: String,
+    pub expires_at_unix_ms: u128,
+}
 const SETTINGS_RELATIVE_PATH: &str = "settings.toml";
 const PROFILES_RELATIVE_DIR: &str = "profiles";
 const HOSTS_RELATIVE_DIR: &str = "hosts";
@@ -269,6 +282,45 @@ impl ConfigFileStore {
         self.files
             .apply_change_set(&change_set_id, &timestamp, changes)?;
         Ok(())
+    }
+
+    /// 删除单个片段并返回短时恢复 receipt。
+    pub fn delete_snippet_with_receipt(
+        &self,
+        snippet_id: &str,
+    ) -> FileStoreResult<SnippetDeleteReceipt> {
+        let relative_path = snippet_relative_path(snippet_id)?;
+        let change_set_id = format!("snippet-delete-{}", Uuid::new_v4());
+        self.files.apply_change_set(
+            &change_set_id,
+            &timestamp_now(),
+            vec![FileStoreChange::delete(relative_path)?],
+        )?;
+        Ok(SnippetDeleteReceipt {
+            change_set_id,
+            snippet_id: snippet_id.to_owned(),
+            expires_at_unix_ms: unix_time_millis() + 15_000,
+        })
+    }
+
+    /// receipt 超时或 ID 已被占用时拒绝覆盖。
+    pub fn restore_deleted_snippet(
+        &self,
+        receipt: &SnippetDeleteReceipt,
+    ) -> FileStoreResult<CommandSnippet> {
+        if unix_time_millis() > receipt.expires_at_unix_ms {
+            return Err(FileStoreError::InvalidPath(
+                "snippet delete receipt expired".to_owned(),
+            ));
+        }
+        if self.snippet_by_id(&receipt.snippet_id)?.is_some() {
+            return Err(FileStoreError::RevisionConflict(snippet_relative_path(
+                &receipt.snippet_id,
+            )?));
+        }
+        self.files
+            .restore_change_set(&receipt.change_set_id, &timestamp_now())?;
+        self.read_snippet(&receipt.snippet_id)
     }
 
     /// Read all workflow TOML files ordered by sort order and title.
@@ -567,6 +619,19 @@ impl ConfigFileStore {
             .files
             .read_toml::<SnippetTomlDocument>(&relative_path)?;
         let snippet = with_error_path(document.into_snippet(), &relative_path)?;
+        crate::models::snippet::validate_snippet_metadata_contract(
+            snippet.risk.as_deref(),
+            snippet.default_action.as_deref(),
+            &snippet.variables,
+            &snippet.context_bindings,
+        )
+        .map_err(|message| {
+            FileStoreError::TomlParse(
+                TomlParseError::single(1, 1, message)
+                    .with_path(relative_path.clone())
+                    .with_recovery("修正 snippets/<id>.toml 中的可选元数据字段。"),
+            )
+        })?;
         if snippet.id != snippet_id {
             return Err(FileStoreError::TomlParse(
                 TomlParseError::single(
@@ -744,6 +809,13 @@ fn timestamp_now() -> String {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs().to_string())
         .unwrap_or_else(|_| "0".to_owned())
+}
+
+fn unix_time_millis() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default()
 }
 
 fn encode_toml<T: Serialize>(value: &T) -> FileStoreResult<String> {

@@ -10,12 +10,15 @@ export type CommandSuggestionProvider =
   | "history"
   | "remoteCommand"
   | "remotePath"
+  | "snippet"
   | "spec";
 
 export type CommandSuggestionSensitivity = "normal" | "sensitive" | "dangerous";
 export type CommandSuggestionFeedbackAction = "accepted" | "dismissed";
 export type CommandSuggestionQueryMode = "inline" | "menu";
 export type CommandSuggestionPresentation = "inline" | "menu";
+export type CommandSuggestionCandidateKind = "command" | "snippet";
+export type CommandSuggestionActivation = "insert" | "openSnippetPanel";
 export type CommandSuggestionAuditEventKind =
   | "feedback"
   | "remoteProbeRefresh"
@@ -81,16 +84,30 @@ export interface CommandSuggestionCandidate {
   allowedPresentations: CommandSuggestionPresentation[];
   acceptBoundaries: number[];
   contextKey?: string;
+  /** 旧候选缺省为 command，归一化边界会补齐。 */
+  candidateKind?: CommandSuggestionCandidateKind;
+  /** 旧候选缺省为 insert；openSnippetPanel 永远不能写入终端。 */
+  activation?: CommandSuggestionActivation;
+  sourceExplanation?: string;
+  mergedSourceExplanations?: string[];
 }
 
 export type CommandSuggestionCandidatePayload = Omit<
   CommandSuggestionCandidate,
-  "acceptBoundaries" | "allowedPresentations" | "contextKey"
+  | "acceptBoundaries"
+  | "activation"
+  | "allowedPresentations"
+  | "candidateKind"
+  | "contextKey"
 > &
   Partial<
     Pick<
       CommandSuggestionCandidate,
-      "acceptBoundaries" | "allowedPresentations" | "contextKey"
+      | "acceptBoundaries"
+      | "activation"
+      | "allowedPresentations"
+      | "candidateKind"
+      | "contextKey"
     >
   >;
 
@@ -585,15 +602,45 @@ export function normalizeCommandSuggestionCandidate(
 
   return {
     ...candidate,
+    activation:
+      candidate.activation === "openSnippetPanel"
+        ? "openSnippetPanel"
+        : "insert",
     replacementRange,
     allowedPresentations,
     acceptBoundaries,
+    candidateKind:
+      candidate.candidateKind === "snippet" ? "snippet" : "command",
+    ...(normalizeOptionalText(candidate.sourceId)
+      ? { sourceId: normalizeOptionalText(candidate.sourceId) }
+      : {}),
+    ...(normalizeOptionalText(candidate.sourceExplanation)
+      ? { sourceExplanation: normalizeOptionalText(candidate.sourceExplanation) }
+      : {}),
+    ...(normalizeSourceExplanations(candidate.mergedSourceExplanations).length > 0
+      ? {
+          mergedSourceExplanations: normalizeSourceExplanations(
+            candidate.mergedSourceExplanations,
+          ),
+        }
+      : {}),
     ...(candidate.contextKey?.trim()
       ? { contextKey: candidate.contextKey.trim() }
       : request.contextKey
         ? { contextKey: request.contextKey }
         : {}),
   };
+}
+
+function normalizeOptionalText(value: string | undefined) {
+  const normalized = value?.trim();
+  return normalized || undefined;
+}
+
+function normalizeSourceExplanations(values: string[] | undefined) {
+  return Array.from(
+    new Set((values ?? []).map((value) => value.trim()).filter(Boolean)),
+  );
 }
 
 export function normalizeSuggestionFeedbackRecordRequest(

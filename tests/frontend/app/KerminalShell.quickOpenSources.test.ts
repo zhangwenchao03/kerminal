@@ -174,6 +174,59 @@ describe("Kerminal Quick Open production sources", () => {
     expect(writeTerminal.mock.calls[0]?.[1]).not.toMatch(/[\r\n]$/);
   });
 
+  it("deep-links snippets in V2 and restores insert-only behavior during rollback", async () => {
+    const v2Environment = environment();
+    const writeTerminal = vi.fn(
+      async (_sessionId: string, _data: string) => undefined,
+    );
+    const v2Result = await resolveKerminalQuickOpenReference(
+      { id: "snippet-1", kind: "snippet" },
+      v2Environment,
+      {
+        signal: new AbortController().signal,
+        snippetFeatureGates: { snippetCatalogV2: true, snippetPanelV2: true },
+        writeTerminal,
+      },
+    );
+    expect(v2Result).toEqual({ kind: "completed" });
+    expect(v2Environment.onOpenTool).toHaveBeenCalledWith("snippets");
+    expect(writeTerminal).not.toHaveBeenCalled();
+
+    const rollbackEnvironment = environment();
+    const rollbackResult = await resolveKerminalQuickOpenReference(
+      { id: "snippet-1", kind: "snippet" },
+      rollbackEnvironment,
+      {
+        getTerminalPaneSession: () => "session-1",
+        signal: new AbortController().signal,
+        snippetFeatureGates: { snippetCatalogV2: false, snippetPanelV2: false },
+        sourceApi: sourceApi({
+          listSnippets: async () => [
+            {
+              command: "git status --short",
+              createdAt: "1",
+              id: "snippet-1",
+              scope: "local",
+              sortOrder: 1,
+              tags: [],
+              title: "状态",
+              updatedAt: "1",
+            },
+          ],
+        }),
+        writeTerminal,
+      },
+    );
+    expect(rollbackResult).toEqual({ kind: "completed" });
+    expect(writeTerminal).toHaveBeenLastCalledWith(
+      "session-1",
+      "git status --short",
+    );
+    expect(
+      writeTerminal.mock.calls[writeTerminal.mock.calls.length - 1]?.[1],
+    ).not.toMatch(/[\r\n]$/u);
+  });
+
   it("opens honest deep entries when exact workflow or agent selection is unavailable", async () => {
     const workflowEnvironment = environment();
     const workflowResult = await resolveKerminalQuickOpenReference(

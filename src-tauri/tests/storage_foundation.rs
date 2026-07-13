@@ -16,7 +16,7 @@ use kerminal_lib::{
     },
     state::AppState,
     storage::{
-        command_migrations::CURRENT_COMMAND_SCHEMA_VERSION,
+        command_migrations::{self, CURRENT_COMMAND_SCHEMA_VERSION},
         local_file_operations::LocalFileOperationAuditWrite,
     },
 };
@@ -150,6 +150,8 @@ fn command_sqlite_creates_only_command_domain_tables() {
             "command_suggestion_feedback".to_owned(),
             "command_suggestion_provider_cache".to_owned(),
             "command_suggestion_telemetry".to_owned(),
+            "snippet_preferences".to_owned(),
+            "snippet_usage_receipts".to_owned(),
         ])
     );
 }
@@ -221,6 +223,55 @@ fn command_database_rejects_future_schema_version() {
         } if database_version == CURRENT_COMMAND_SCHEMA_VERSION + 1
             && supported_version == CURRENT_COMMAND_SCHEMA_VERSION
     ));
+}
+
+#[test]
+fn command_schema_upgrade_preserves_v1_rows_and_accepts_snippet_provider() {
+    let mut conn = Connection::open_in_memory().expect("open command database");
+    command_migrations::migrate(&mut conn).expect("create current schema");
+    conn.execute(
+        "INSERT INTO command_suggestion_feedback (id, action, provider, replacement_text, input, created_at_unix_ms) VALUES ('old', 'accepted', 'history', 'pwd', 'pw', 1)",
+        [],
+    )
+    .expect("seed existing feedback");
+    conn.pragma_update(None, "user_version", 1)
+        .expect("simulate v1 database");
+
+    command_migrations::migrate(&mut conn).expect("migrate v1 database");
+
+    let preserved: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM command_suggestion_feedback WHERE id = 'old'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read preserved feedback");
+    assert_eq!(preserved, 1);
+    assert_eq!(
+        command_migrations::schema_version(&conn).expect("read migrated version"),
+        CURRENT_COMMAND_SCHEMA_VERSION
+    );
+
+    conn.execute(
+        "INSERT INTO command_suggestion_provider_cache (provider, host_id, scope_key, payload_json, cached_at_unix_ms, expires_at_unix_ms, ttl_seconds) VALUES ('snippet', 'local', 'catalog', '[]', 1, 2, 1)",
+        [],
+    )
+    .expect("insert snippet cache");
+    conn.execute(
+        "INSERT INTO command_suggestion_feedback (id, action, provider, replacement_text, input, created_at_unix_ms) VALUES ('snippet-feedback', 'accepted', 'snippet', 'systemctl status nginx', 'system', 2)",
+        [],
+    )
+    .expect("insert snippet feedback");
+    conn.execute(
+        "INSERT INTO command_suggestion_telemetry (provider, first_event_unix_ms, last_event_unix_ms) VALUES ('snippet', 1, 2)",
+        [],
+    )
+    .expect("insert snippet telemetry");
+    conn.execute(
+        "INSERT INTO command_suggestion_audit_events (id, event_kind, provider, decision, created_at_unix_ms) VALUES ('snippet-audit', 'feedback', 'snippet', 'recorded', 2)",
+        [],
+    )
+    .expect("insert snippet audit");
 }
 
 #[test]

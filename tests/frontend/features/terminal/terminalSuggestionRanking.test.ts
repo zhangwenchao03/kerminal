@@ -36,6 +36,59 @@ describe("terminalSuggestionRanking", () => {
     );
     expect(ranked).toEqual([]);
   });
+
+  it("keeps panel activations out of inline suggestions", () => {
+    const ranked = rankTerminalSuggestions(
+      [{
+        cachedAt: 1,
+        candidate: candidate({
+          activation: "openSnippetPanel",
+          candidateKind: "snippet",
+          id: "snippet:parameterized",
+          provider: "snippet",
+        }),
+        stale: false,
+      }],
+      { contextKey: "ctx", cursor: 3, input: "git", mode: "inline" },
+    );
+
+    expect(ranked).toEqual([]);
+  });
+
+  it("deduplicates spec and snippet replacements without losing source explanations", () => {
+    const ranked = rankTerminalSuggestions(
+      [
+        {
+          cachedAt: 1,
+          candidate: candidate({
+            id: "spec:git-status",
+            provider: "spec",
+            score: 0.8,
+            sourceExplanation: "Git 命令规范",
+          }),
+          stale: false,
+        },
+        {
+          cachedAt: 1,
+          candidate: candidate({
+            candidateKind: "snippet",
+            id: "snippet:git-status",
+            provider: "snippet",
+            score: 0.9,
+            sourceExplanation: "内置 Git 片段",
+          }),
+          stale: false,
+        },
+      ],
+      { contextKey: "ctx", cursor: 3, input: "git", mode: "menu" },
+    );
+
+    expect(ranked).toHaveLength(1);
+    expect(ranked[0]?.candidate).toMatchObject({
+      id: "snippet:git-status",
+      mergedSourceExplanations: ["Git 命令规范", "内置 Git 片段"],
+    });
+  });
 });
 
 function candidate(

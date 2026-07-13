@@ -4,6 +4,7 @@ import type { ServerInfoSnapshot } from "../../../../src/lib/serverInfoApi";
 import type { ServerInfoTargetContext } from "../../../../src/features/tool-panel/serverInfoTargetModel";
 import {
   clearServerInfoSnapshotCacheForTest,
+  peekServerInfoSnapshot,
   resolveServerInfoRefreshDelay,
   useServerInfoSnapshot,
 } from "../../../../src/features/tool-panel/useServerInfoSnapshot";
@@ -63,6 +64,8 @@ describe("useServerInfoSnapshot", () => {
       target: { hostId: "prod-api", kind: "ssh" },
     });
     expect(result.current.error).toBeNull();
+    expect(peekServerInfoSnapshot(targetContext.target)?.os).toBe("Linux");
+    expect(serverInfoApiMock.getServerInfoSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it("loads local targets from the runtime health API", async () => {

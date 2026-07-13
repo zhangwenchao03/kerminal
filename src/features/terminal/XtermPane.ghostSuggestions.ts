@@ -10,6 +10,7 @@ import type { CommandHistoryTarget } from "../../lib/commandHistoryApi";
 import { writeTerminal } from "../../lib/terminalApi";
 import type { AppSettings } from "../settings/settingsModel";
 import type { TerminalPane } from "../workspace/types";
+import { requestSnippetPanelOpen } from "../snippets/snippetPanelEvents";
 import {
   applyTerminalInputData,
   terminalSuggestionEligibility,
@@ -245,7 +246,8 @@ export function createXtermPaneGhostSuggestions({
         replacementText: candidate.replacementText,
         sessionId: sessionId ?? undefined,
         shell,
-        sourceId: candidate.sourceId,
+        sourceId:
+          candidate.provider === "snippet" ? candidate.id : candidate.sourceId,
         target: suggestionTarget.target,
       }).catch(() => undefined);
     },
@@ -566,6 +568,17 @@ export function createXtermPaneGhostSuggestions({
         type: "select",
       });
       syncSuggestionMenu();
+      return true;
+    }
+    if (intent.type === "openSnippetPanel") {
+      const snippetId = intent.candidate.sourceId;
+      if (!snippetId) {
+        hideSuggestionMenu();
+        return true;
+      }
+      requestSnippetPanelOpen({ paneId, snippetId });
+      hideSuggestionMenu();
+      hideGhostSuggestion();
       return true;
     }
     const acceptance = controller.acceptCandidate(intent.candidate, "all");

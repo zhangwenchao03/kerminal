@@ -3,8 +3,9 @@
 //! @author kongweiguang
 
 use kerminal_lib::models::command_suggestion::{
-    CommandSuggestionCandidate, CommandSuggestionRequest, CommandSuggestionSensitivity,
-    SuggestionPresentation, SuggestionProviderKind, SuggestionQueryMode,
+    CommandSuggestionActivation, CommandSuggestionCandidate, CommandSuggestionCandidateKind,
+    CommandSuggestionRequest, CommandSuggestionSensitivity, SuggestionPresentation,
+    SuggestionProviderKind, SuggestionQueryMode,
 };
 use serde_json::json;
 
@@ -49,6 +50,38 @@ fn legacy_candidates_receive_safe_presentation_defaults() {
     );
     assert!(normal.accept_boundaries.is_empty());
     assert!(dangerous.accept_boundaries.is_empty());
+    assert_eq!(
+        normal.candidate_kind,
+        CommandSuggestionCandidateKind::Command
+    );
+    assert_eq!(normal.activation, CommandSuggestionActivation::Insert);
+    assert_eq!(normal.source_explanation, None);
+    assert!(normal.merged_source_explanations.is_empty());
+}
+
+#[test]
+fn snippet_candidate_contract_uses_stable_camel_case_values() {
+    let mut payload = legacy_candidate_json("normal");
+    payload["provider"] = json!("snippet");
+    payload["candidateKind"] = json!("snippet");
+    payload["activation"] = json!("openSnippetPanel");
+
+    let candidate: CommandSuggestionCandidate =
+        serde_json::from_value(payload).expect("deserialize snippet candidate");
+    let serialized = serde_json::to_value(&candidate).expect("serialize snippet candidate");
+
+    assert_eq!(candidate.provider, SuggestionProviderKind::Snippet);
+    assert_eq!(
+        candidate.candidate_kind,
+        CommandSuggestionCandidateKind::Snippet
+    );
+    assert_eq!(
+        candidate.activation,
+        CommandSuggestionActivation::OpenSnippetPanel
+    );
+    assert_eq!(serialized["provider"], "snippet");
+    assert_eq!(serialized["candidateKind"], "snippet");
+    assert_eq!(serialized["activation"], "openSnippetPanel");
 }
 
 #[test]
@@ -65,6 +98,10 @@ fn unicode_candidate_contract_round_trips_without_offset_conversion() {
         "description": "Unicode 候选",
         "sourceId": "history-unicode",
         "metadata": { "source": "test" },
+        "candidateKind": "command",
+        "activation": "insert",
+        "sourceExplanation": null,
+        "mergedSourceExplanations": [],
         "allowedPresentations": ["inline", "menu"],
         "acceptBoundaries": [9, 11],
         "contextKey": "ssh:host-prod:/srv:zh"

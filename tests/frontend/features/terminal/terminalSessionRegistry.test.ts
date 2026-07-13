@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getTerminalPaneSession,
+  getTerminalPaneSessionRecord,
   markTerminalPaneSessionDisconnected,
   markTerminalPaneSessionReconnected,
   registerTerminalPaneSession,
   resetTerminalPaneSessionsForTests,
+  runSnippetCommand,
   updateTerminalPaneSessionCwd,
   unregisterTerminalPaneSession,
   writeBroadcastCommand,
@@ -539,7 +541,7 @@ describe("terminalSessionRegistry", () => {
       target: "local",
     });
 
-    const result = await writeSnippetCommand({
+    const result = await runSnippetCommand({
       command: " git status --short ",
       paneId: "pane-a",
       tabId: "tab-a",
@@ -568,6 +570,85 @@ describe("terminalSessionRegistry", () => {
         target: "local",
       }),
     );
+  });
+
+  it("inserts a snippet without appending carriage return or history", async () => {
+    registerTerminalPaneSession("pane-a", "session-a", {
+      target: "local",
+    });
+
+    await writeSnippetCommand({
+      command: " git status --short ",
+      paneId: "pane-a",
+    });
+
+    expect(writeTerminalMock).toHaveBeenCalledWith(
+      "session-a",
+      "git status --short",
+    );
+    expect(recordCommandHistoryMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects multiline insertion because embedded newlines could submit early lines", async () => {
+    registerTerminalPaneSession("pane-a", "session-a", { target: "local" });
+
+    const result = await writeSnippetCommand({
+      command: "pwd\nls",
+      paneId: "pane-a",
+    });
+
+    expect(result).toEqual({
+      paneId: "pane-a",
+      reason: "multiline-unsupported",
+      sent: false,
+    });
+    expect(writeTerminalMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a snippet intent after the pane reconnects", async () => {
+    registerTerminalPaneSession("pane-a", "session-old", {
+      remoteHostId: "host-a",
+      target: "ssh",
+    });
+    const snapshot = getTerminalPaneSessionRecord("pane-a");
+    registerTerminalPaneSession("pane-a", "session-new", {
+      remoteHostId: "host-a",
+      target: "ssh",
+    });
+
+    const result = await runSnippetCommand({
+      command: "uptime",
+      expectedConnectionGeneration: snapshot?.connectionGeneration,
+      expectedSessionId: snapshot?.sessionId,
+      expectedTargetRef:
+        snapshot?.targetRef ?? snapshot?.remoteHostId ?? snapshot?.sessionId,
+      paneId: "pane-a",
+    });
+
+    expect(result).toEqual({
+      paneId: "pane-a",
+      reason: "stale-binding",
+      sent: false,
+    });
+    expect(writeTerminalMock).not.toHaveBeenCalled();
+    expect(recordCommandHistoryMock).not.toHaveBeenCalled();
+  });
+
+  it("submits a sensitive snippet without persisting command history", async () => {
+    registerTerminalPaneSession("pane-a", "session-a", { target: "local" });
+
+    const result = await runSnippetCommand({
+      command: "curl -H 'Authorization: Bearer secret-value' https://example.com",
+      paneId: "pane-a",
+      recordHistory: false,
+    });
+
+    expect(result.sent).toBe(true);
+    expect(writeTerminalMock).toHaveBeenCalledWith(
+      "session-a",
+      "curl -H 'Authorization: Bearer secret-value' https://example.com\r",
+    );
+    expect(recordCommandHistoryMock).not.toHaveBeenCalled();
   });
 
   it("writes workflow commands through the generic pane writer", async () => {

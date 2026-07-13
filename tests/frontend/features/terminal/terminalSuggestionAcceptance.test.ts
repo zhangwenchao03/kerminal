@@ -72,6 +72,20 @@ describe("terminalSuggestionAcceptance", () => {
       })?.acceptedBoundary,
     ).toBe(10);
   });
+
+  it("never converts openSnippetPanel activation into terminal text", () => {
+    expect(
+      resolveTerminalSuggestionAcceptance({
+        candidate: candidate({
+          activation: "openSnippetPanel",
+          candidateKind: "snippet",
+        }),
+        cursor: 3,
+        input: "git",
+        unit: "all",
+      }),
+    ).toBeNull();
+  });
 });
 
 function candidate(

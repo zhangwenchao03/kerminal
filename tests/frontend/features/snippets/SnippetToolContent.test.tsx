@@ -7,6 +7,14 @@ import type {
 } from "../../../../src/features/workspace/types";
 import { SnippetToolContent } from "../../../../src/features/snippets/SnippetToolContent";
 
+vi.mock("../../../../src/features/snippets/snippetFeatureGates", () => ({
+  resolveRuntimeSnippetFeatureGates: () => ({
+    snippetCatalogV2: false,
+    snippetPanelV2: false,
+  }),
+  snippetV2NavigationEnabled: () => false,
+}));
+
 const snippetApiMocks = vi.hoisted(() => ({
   createSnippet: vi.fn(),
   deleteSnippet: vi.fn(),
@@ -21,7 +29,7 @@ const workflowApiMocks = vi.hoisted(() => ({
 
 const terminalSessionRegistryMocks = vi.hoisted(() => ({
   getTerminalPaneSession: vi.fn(),
-  writeSnippetCommand: vi.fn(),
+  runSnippetCommand: vi.fn(),
   writeWorkflowCommand: vi.fn(),
 }));
 
@@ -102,8 +110,8 @@ describe("SnippetToolContent", () => {
     terminalSessionRegistryMocks.getTerminalPaneSession.mockReturnValue(
       "session-1",
     );
-    terminalSessionRegistryMocks.writeSnippetCommand.mockReset();
-    terminalSessionRegistryMocks.writeSnippetCommand.mockResolvedValue({
+    terminalSessionRegistryMocks.runSnippetCommand.mockReset();
+    terminalSessionRegistryMocks.runSnippetCommand.mockResolvedValue({
       paneId: "pane-1",
       sent: true,
       sessionId: "session-1",
@@ -209,7 +217,7 @@ describe("SnippetToolContent", () => {
     await user.click(screen.getByRole("button", { name: "运行片段 Git 状态" }));
 
     expect(
-      terminalSessionRegistryMocks.writeSnippetCommand,
+      terminalSessionRegistryMocks.runSnippetCommand,
     ).toHaveBeenCalledWith({
       command: "git status --short\ngit branch --show-current",
       paneId: "pane-1",
@@ -365,7 +373,7 @@ describe("SnippetToolContent", () => {
     await user.click(screen.getByRole("button", { name: "发送到当前分屏" }));
 
     expect(
-      terminalSessionRegistryMocks.writeSnippetCommand,
+      terminalSessionRegistryMocks.runSnippetCommand,
     ).toHaveBeenCalledWith({
       command: "echo Kerminal",
       paneId: "pane-1",
@@ -398,13 +406,13 @@ describe("SnippetToolContent", () => {
       screen.getByRole("button", { name: "运行片段 查看服务日志" }),
     ).toBeDisabled();
     expect(
-      terminalSessionRegistryMocks.writeSnippetCommand,
+      terminalSessionRegistryMocks.runSnippetCommand,
     ).not.toHaveBeenCalled();
   });
 
   it("shows an error when the focused pane session is not connected", async () => {
     const user = userEvent.setup();
-    terminalSessionRegistryMocks.writeSnippetCommand.mockResolvedValueOnce({
+    terminalSessionRegistryMocks.runSnippetCommand.mockResolvedValueOnce({
       paneId: "pane-1",
       reason: "missing-session",
       sent: false,

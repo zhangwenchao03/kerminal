@@ -13,6 +13,7 @@ pub(super) struct NormalizedSuggestionRequest {
     pub(super) providers: Option<Vec<SuggestionProviderKind>>,
     pub(super) remote_host_id: Option<String>,
     pub(super) session_id: Option<String>,
+    pub(super) shell: Option<String>,
     pub(super) target: CommandHistoryTarget,
 }
 
@@ -61,6 +62,7 @@ impl TryFrom<CommandSuggestionRequest> for NormalizedSuggestionRequest {
                 request.session_id,
                 MAX_CONTEXT_CHARS,
             )?,
+            shell: normalize_optional_text("Shell", request.shell, MAX_CONTEXT_CHARS)?,
             target: request.target,
         })
     }

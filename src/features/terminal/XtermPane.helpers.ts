@@ -9,6 +9,10 @@ import type {
   CommandSuggestionCandidate,
   CommandSuggestionProvider,
 } from "../../lib/terminalSuggestionApi";
+import {
+  resolveRuntimeSnippetFeatureGates,
+  snippetV2NavigationEnabled,
+} from "../snippets/snippetFeatureGates";
 import type { TerminalAppearance } from "../settings/settingsModel";
 import type { TerminalCommandBlockView } from "./terminalCommandBlocks";
 import {
@@ -77,6 +81,9 @@ export function terminalSuggestionProviders({
   }
   if (inlineSuggestion.providers.spec) {
     providers.push("spec");
+  }
+  if (snippetV2NavigationEnabled(resolveRuntimeSnippetFeatureGates())) {
+    providers.push("snippet");
   }
   return providers;
 }

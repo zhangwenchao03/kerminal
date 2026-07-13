@@ -79,6 +79,7 @@ export const commandSuggestionProviderLabels: Record<CommandSuggestionProvider, 
   history: "历史",
   remoteCommand: "远端命令",
   remotePath: "远端路径",
+  snippet: "片段",
   spec: "CLI Spec",
 };
 

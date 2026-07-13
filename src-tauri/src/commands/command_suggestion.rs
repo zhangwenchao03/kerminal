@@ -26,7 +26,12 @@ pub fn command_suggestion_list(
 ) -> Result<Vec<CommandSuggestionCandidate>, String> {
     state
         .command_suggestions()
-        .list_suggestions(state.command_store(), state.command_history(), request)
+        .list_suggestions_with_snippets(
+            state.command_store(),
+            state.command_history(),
+            state.snippets(),
+            request,
+        )
         .map_err(|error| error.to_string())
 }
 
@@ -38,7 +43,7 @@ pub fn command_suggestion_record_feedback(
 ) -> Result<CommandSuggestionFeedbackRecordResult, String> {
     state
         .command_suggestions()
-        .record_feedback(state.command_store(), request)
+        .record_feedback_with_snippets(state.command_store(), state.snippets(), request)
         .map_err(|error| error.to_string())
 }
 
