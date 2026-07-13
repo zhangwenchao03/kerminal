@@ -15,7 +15,7 @@ import { TerminalTabAttention } from "./TerminalTabAttention";
 import type { TerminalTabPresentation } from "./terminalTabPresentationModel";
 
 const terminalFloatingPanelClassName =
-  "kerminal-floating-enter fixed z-[1000] border border-[var(--border-subtle)] bg-[var(--surface-overlay)] text-sm shadow-2xl shadow-black/20 backdrop-blur-xl dark:shadow-black/50";
+  "kerminal-floating-surface kerminal-floating-enter kerminal-layer-popover fixed border text-[13px]";
 const terminalOverviewItemClassName =
   "kerminal-focus-ring kerminal-pressable flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left";
 const terminalOverviewIdleClassName =
@@ -58,7 +58,7 @@ export function TerminalTabOverviewMenu({
       aria-label="所有终端标签"
       className={cn(
         terminalFloatingPanelClassName,
-        "w-72 overflow-hidden rounded-2xl",
+        "w-72 overflow-hidden rounded-[var(--radius-card)]",
       )}
       onClick={(event) => event.stopPropagation()}
       ref={menuRef}

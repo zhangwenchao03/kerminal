@@ -15,7 +15,7 @@ import {
 const commandBlockFoldSummaryClassName =
   "rounded-full border border-[var(--border-subtle)] bg-[var(--surface-overlay)] px-2 py-0.5 text-[11px] font-medium text-zinc-500 shadow-sm backdrop-blur-xl dark:text-zinc-300";
 const commandBlockMenuSurfaceClassName =
-  "kerminal-context-menu kerminal-floating-enter fixed z-[1000] w-44";
+  "kerminal-context-menu kerminal-floating-enter kerminal-layer-popover fixed w-44";
 const commandBlockMenuItemClassName =
   "kerminal-context-menu-item";
 
