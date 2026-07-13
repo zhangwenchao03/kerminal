@@ -1,7 +1,4 @@
-import type {
-  SftpEntry,
-  SftpFileRevision,
-} from "../../lib/sftpApiTypes";
+import type { SftpEntry, SftpFileRevision } from "../../lib/sftpApiTypes";
 import type { RemoteTargetRef } from "../../lib/targetModel";
 import type {
   RemoteWorkspaceReadTextFileResponse,
@@ -28,6 +25,7 @@ export type WorkspaceTreeNode = {
 };
 
 export type OpenFileTab = {
+  binary: boolean;
   content: string;
   encoding: string;
   error: string | null;
@@ -108,6 +106,7 @@ export function updateTreeNode(
 
 export function createLoadingTab(path: string): OpenFileTab {
   return {
+    binary: false,
     content: "",
     encoding: "utf-8",
     error: null,
@@ -128,8 +127,10 @@ export function createLoadedTab(
   path: string,
   response: RemoteWorkspaceReadResponse,
 ): OpenFileTab {
+  const content = response.binary ? "" : response.content;
   return {
-    content: response.content,
+    binary: response.binary,
+    content,
     encoding: response.encoding,
     error: null,
     language: languageForPath(path),
@@ -139,7 +140,7 @@ export function createLoadedTab(
     path,
     readonly: response.readonly || response.truncated || response.binary,
     revision: response.revision,
-    savedContent: response.content,
+    savedContent: content,
     saving: false,
     truncated: response.truncated,
   };
@@ -200,10 +201,7 @@ export function applySaveSuccess(
   };
 }
 
-export function applySaveError(
-  tab: OpenFileTab,
-  message: string,
-): OpenFileTab {
+export function applySaveError(tab: OpenFileTab, message: string): OpenFileTab {
   return {
     ...tab,
     error: message,
@@ -219,9 +217,11 @@ export function applyReloadSuccess(
   tab: OpenFileTab,
   response: RemoteWorkspaceReadResponse,
 ): OpenFileTab {
+  const content = response.binary ? "" : response.content;
   return {
     ...tab,
-    content: response.content,
+    binary: response.binary,
+    content,
     encoding: response.encoding,
     error: null,
     language: languageForPath(tab.path),
@@ -229,7 +229,7 @@ export function applyReloadSuccess(
     loading: false,
     readonly: response.readonly || response.truncated || response.binary,
     revision: response.revision,
-    savedContent: response.content,
+    savedContent: content,
     truncated: response.truncated,
   };
 }
@@ -390,18 +390,18 @@ const languageByFilename: Record<string, string> = {
   ".zprofile": "shell",
   ".zshrc": "shell",
   "cargo.lock": "ini",
-  "dockerfile": "dockerfile",
-  "containerfile": "dockerfile",
-  "crontab": "shell",
-  "fstab": "shell",
-  "gemfile": "ruby",
-  "kubeconfig": "yaml",
-  "license": "plaintext",
-  "pipfile": "ini",
-  "procfile": "shell",
-  "readme": "markdown",
-  "ssh_config": "ini",
-  "sshd_config": "ini",
+  dockerfile: "dockerfile",
+  containerfile: "dockerfile",
+  crontab: "shell",
+  fstab: "shell",
+  gemfile: "ruby",
+  kubeconfig: "yaml",
+  license: "plaintext",
+  pipfile: "ini",
+  procfile: "shell",
+  readme: "markdown",
+  ssh_config: "ini",
+  sshd_config: "ini",
 };
 
 export function languageForPath(path: string) {

@@ -1,9 +1,14 @@
 use super::*;
 
+use crate::models::file_preview::{file_preview_response_encoding, is_binary_file_preview_content};
+
+const CONTAINER_TEXT_PREVIEW_PROBE_BYTES: usize = 4 * 1024;
+
 pub struct ContainerTextMetadata {
     pub modified: Option<String>,
     pub permissions: Option<String>,
     pub permissions_mode: Option<u32>,
+    pub preview_probe: Vec<u8>,
     pub size: u64,
 }
 
@@ -32,47 +37,58 @@ bytes=$(wc -c < "$target" | tr -d ' ')
 mode=$(stat -c '%a' "$target" 2>/dev/null || printf '')
 mtime=$(stat -c '%Y' "$target" 2>/dev/null || printf '')
 perms=$(ls -ld "$target" 2>/dev/null | awk '{print $1}' || printf '')
-printf '__KERMINAL_TEXT:%s:%s:%s:%s__\n' "$bytes" "$mode" "$mtime" "$perms"
+probe=$(dd if="$target" bs=1 count=4096 2>/dev/null | od -An -v -tx1 | tr -d '[:space:]')
+printf '__KERMINAL_TEXT:%s:%s:%s:%s:%s__\n' "$bytes" "$mode" "$mtime" "$perms" "$probe"
 dd if="$target" bs=1 count="$max_bytes" 2>/dev/null
 "#,
             args: &read_args,
             timeout_seconds: CONTAINER_FILE_TIMEOUT_SECONDS,
             max_output_bytes: read_limit
+                .saturating_add(CONTAINER_TEXT_PREVIEW_PROBE_BYTES.saturating_mul(2))
                 .saturating_add(1024)
-                .min(MAX_TEXT_FILE_BYTES.saturating_add(1024)),
+                .min(
+                    MAX_TEXT_FILE_BYTES
+                        .saturating_add(CONTAINER_TEXT_PREVIEW_PROBE_BYTES.saturating_mul(2))
+                        .saturating_add(1024),
+                ),
         },
     )
     .await?;
-    let (metadata, content) = split_text_output(&output.stdout)?;
-    let (content, content_limited) = limit_text_content(&content, max_bytes);
-    let binary = is_binary_bytes(content.as_bytes());
-    if binary {
-        return Err(AppError::Docker(format!(
-            "容器文件包含二进制内容，暂不支持作为文本编辑: {}",
-            request.path
-        )));
-    }
-    let bytes_read = content.len();
-    let truncated = content_limited || output.stdout_truncated || metadata.size > bytes_read as u64;
+    let (metadata, captured_content) = split_text_output(&output.stdout)?;
+    // SSH 命令输出会先做 UTF-8 lossy 展示，因此优先使用容器内生成的原始字节探针；
+    // raw 内容判断仅作为旧输出或探针工具不可用时的兼容兜底。
+    let binary = is_binary_file_preview_content(&metadata.preview_probe)
+        || is_binary_file_preview_content(captured_content.as_bytes());
+    let (visible_content, content_limited) = limit_text_content(&captured_content, max_bytes);
+    let visible_bytes_read = visible_content.len();
+    let truncated =
+        content_limited || output.stdout_truncated || metadata.size > visible_bytes_read as u64;
+    let revision_sha256 = sha256_hex(visible_content.as_bytes());
+    // 二进制响应只保留元数据和 revision，禁止把远端命令的 lossy 输出传给编辑器。
+    let content = if binary {
+        String::new()
+    } else {
+        visible_content
+    };
 
     Ok(DockerContainerReadTextFileResponse {
         host_id: request.host_id,
         container_id: request.container_id,
         path: request.path,
-        bytes_read,
+        bytes_read: if binary { 0 } else { visible_bytes_read },
         max_bytes,
         truncated,
-        encoding: "utf-8-lossy".to_owned(),
+        encoding: file_preview_response_encoding(binary).to_owned(),
         line_ending: detect_line_ending(&content),
         revision: SftpFileRevision {
             size: metadata.size,
             modified: metadata.modified,
             permissions: metadata.permissions,
             permissions_mode: metadata.permissions_mode,
-            content_sha256: Some(sha256_hex(content.as_bytes())),
+            content_sha256: Some(revision_sha256),
         },
         binary,
-        readonly: false,
+        readonly: binary,
         content,
     })
 }
@@ -108,7 +124,7 @@ pub fn split_text_output(output: &str) -> AppResult<(ContainerTextMetadata, Stri
         .strip_prefix(marker_prefix)
         .and_then(|value| value.strip_suffix("__"))
         .ok_or_else(|| AppError::Docker("容器文本文件元数据格式无效".to_owned()))?;
-    let mut fields = marker.splitn(4, ':');
+    let mut fields = marker.splitn(5, ':');
     let size = fields
         .next()
         .and_then(|value| value.parse::<u64>().ok())
@@ -124,16 +140,39 @@ pub fn split_text_output(output: &str) -> AppResult<(ContainerTextMetadata, Stri
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned);
+    let preview_probe = decode_preview_probe_hex(fields.next().unwrap_or_default())?;
 
     Ok((
         ContainerTextMetadata {
             modified,
             permissions,
             permissions_mode,
+            preview_probe,
             size,
         },
         content.to_owned(),
     ))
+}
+
+fn decode_preview_probe_hex(value: &str) -> AppResult<Vec<u8>> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(Vec::new());
+    }
+    if !value.len().is_multiple_of(2) {
+        return Err(AppError::Docker("容器文本文件字节探针长度无效".to_owned()));
+    }
+
+    value
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| {
+            let digits = std::str::from_utf8(pair)
+                .map_err(|_| AppError::Docker("容器文本文件字节探针不是有效十六进制".to_owned()))?;
+            u8::from_str_radix(digits, 16)
+                .map_err(|_| AppError::Docker("容器文本文件字节探针不是有效十六进制".to_owned()))
+        })
+        .collect()
 }
 
 pub(super) fn parse_octal_permissions(value: &str) -> Option<u32> {
@@ -169,10 +208,6 @@ pub fn same_revision(expected: &SftpFileRevision, current: &SftpFileRevision) ->
         (Some(expected_hash), Some(current_hash)) => expected_hash == current_hash,
         _ => expected.size == current.size && expected.modified == current.modified,
     }
-}
-
-pub(super) fn is_binary_bytes(bytes: &[u8]) -> bool {
-    bytes.contains(&0)
 }
 
 pub(super) fn sha256_hex(bytes: &[u8]) -> String {

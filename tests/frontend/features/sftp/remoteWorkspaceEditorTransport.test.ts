@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MISSING_REMOTE_WORKSPACE_TARGET_MESSAGE,
+  isRemoteWorkspaceBinaryFileReadError,
   listRemoteWorkspaceDirectory,
   readRemoteWorkspaceTextFile,
   writeRemoteWorkspaceTextFile,
@@ -100,7 +101,9 @@ describe("remoteWorkspaceEditorTransport", () => {
       overwriteOnConflict: true,
       path: "/etc/app.conf",
     });
-    expect(containerFilesApiMocks.listDockerContainerDirectory).not.toHaveBeenCalled();
+    expect(
+      containerFilesApiMocks.listDockerContainerDirectory,
+    ).not.toHaveBeenCalled();
   });
 
   it("routes Docker container workspace operations to container file APIs", async () => {
@@ -136,20 +139,26 @@ describe("remoteWorkspaceEditorTransport", () => {
       target,
     });
 
-    expect(containerFilesApiMocks.listDockerContainerDirectory).toHaveBeenCalledWith({
+    expect(
+      containerFilesApiMocks.listDockerContainerDirectory,
+    ).toHaveBeenCalledWith({
       containerId: "container-1",
       hostId: "host-1",
       path: "/app",
       runtime: "podman",
     });
-    expect(containerFilesApiMocks.readDockerContainerTextFile).toHaveBeenCalledWith({
+    expect(
+      containerFilesApiMocks.readDockerContainerTextFile,
+    ).toHaveBeenCalledWith({
       containerId: "container-1",
       hostId: "host-1",
       maxBytes: 2048,
       path: "/app/package.json",
       runtime: "podman",
     });
-    expect(containerFilesApiMocks.writeDockerContainerTextFile).toHaveBeenCalledWith({
+    expect(
+      containerFilesApiMocks.writeDockerContainerTextFile,
+    ).toHaveBeenCalledWith({
       containerId: "container-1",
       content: "{}\n",
       create: false,
@@ -164,8 +173,12 @@ describe("remoteWorkspaceEditorTransport", () => {
   });
 
   it("routes local workspace file read and write operations to local file APIs", async () => {
-    localFilesApiMocks.readLocalTextFile.mockResolvedValue({ content: "local" });
-    localFilesApiMocks.writeLocalTextFile.mockResolvedValue({ bytesWritten: 5 });
+    localFilesApiMocks.readLocalTextFile.mockResolvedValue({
+      content: "local",
+    });
+    localFilesApiMocks.writeLocalTextFile.mockResolvedValue({
+      bytesWritten: 5,
+    });
     const target = { kind: "local" as const };
     const revision = { contentSha256: "sha-a", size: 5 };
 
@@ -207,5 +220,26 @@ describe("remoteWorkspaceEditorTransport", () => {
         target: undefined,
       }),
     ).rejects.toThrow(MISSING_REMOTE_WORKSPACE_TARGET_MESSAGE);
+  });
+
+  it("only classifies the stable binary marker as an unsupported preview", () => {
+    expect(
+      isRemoteWorkspaceBinaryFileReadError(
+        new Error("远程文件包含二进制内容，暂不支持作为文本编辑"),
+      ),
+    ).toBe(true);
+    expect(
+      isRemoteWorkspaceBinaryFileReadError(
+        "容器文件包含二进制内容，暂不支持作为文本编辑",
+      ),
+    ).toBe(true);
+    expect(
+      isRemoteWorkspaceBinaryFileReadError(
+        new Error("permission denied while reading remote file"),
+      ),
+    ).toBe(false);
+    expect(
+      isRemoteWorkspaceBinaryFileReadError({ message: "文件包含二进制内容" }),
+    ).toBe(false);
   });
 });

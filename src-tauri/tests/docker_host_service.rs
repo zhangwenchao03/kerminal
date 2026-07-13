@@ -282,7 +282,7 @@ fn splits_preview_output_marker() {
 #[test]
 fn splits_container_text_output_metadata() {
     let (metadata, content) =
-        split_text_output("__KERMINAL_TEXT:12:644:1770000000:-rw-r--__\nhello")
+        split_text_output("__KERMINAL_TEXT:12:644:1770000000:-rw-r--:89504e470d0a1a0a__\nhello")
             .expect("split text");
 
     assert_eq!(content, "hello");
@@ -290,6 +290,17 @@ fn splits_container_text_output_metadata() {
     assert_eq!(metadata.permissions_mode, Some(0o644));
     assert_eq!(metadata.modified.as_deref(), Some("1770000000"));
     assert_eq!(metadata.permissions.as_deref(), Some("-rw-r--"));
+    assert_eq!(metadata.preview_probe, b"\x89PNG\r\n\x1a\n");
+}
+
+#[test]
+fn keeps_legacy_container_text_metadata_without_a_probe_compatible() {
+    let (metadata, content) =
+        split_text_output("__KERMINAL_TEXT:5:644:1770000000:-rw-r--__\nhello")
+            .expect("split legacy text");
+
+    assert_eq!(content, "hello");
+    assert!(metadata.preview_probe.is_empty());
 }
 
 #[test]
