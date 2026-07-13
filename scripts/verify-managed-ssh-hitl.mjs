@@ -248,8 +248,8 @@ const preflightCommands = [
     purpose: "Real SSH target access and external launch comparison",
   },
   {
-    id: "npm",
-    command: "npm",
+    id: "pnpm",
+    command: "pnpm",
     args: ["--version"],
     required: true,
     purpose: "Run build, Tauri, and managed SSH verification scripts",
@@ -263,8 +263,8 @@ const preflightCommands = [
   },
   {
     id: "tauri-cli",
-    command: "npx",
-    args: ["tauri", "--version"],
+    command: "pnpm",
+    args: ["exec", "tauri", "--version"],
     required: true,
     purpose: "Launch a real Tauri window for HITL observation",
   },
@@ -1306,13 +1306,13 @@ Rules:
 ## Suggested Commands
 
 \`\`\`powershell
-npm run smoke:ssh-terminal:password
-npm run smoke:ssh-terminal:password:wsl
+pnpm run smoke:ssh-terminal:password
+pnpm run smoke:ssh-terminal:password:wsl
 cargo test --manifest-path src-tauri/Cargo.toml --test terminal_agent_cli_hitl_matrix -- --ignored --nocapture
-npm run build
-npm run tauri:dev
-npm run verify:managed-ssh-hitl -- --check .updeng/docs/verification/managed-ssh-hitl-YYYYMMDD.md --json-report .updeng/docs/verification/managed-ssh-hitl-YYYYMMDD.json
-npm run verify:managed-ssh-hitl -- --preflight --json-report .updeng/docs/verification/managed-ssh-hitl-preflight-YYYYMMDD.json
+pnpm run build
+pnpm run tauri:dev
+pnpm run verify:managed-ssh-hitl -- --check .updeng/docs/verification/managed-ssh-hitl-YYYYMMDD.md --json-report .updeng/docs/verification/managed-ssh-hitl-YYYYMMDD.json
+pnpm run verify:managed-ssh-hitl -- --preflight --json-report .updeng/docs/verification/managed-ssh-hitl-preflight-YYYYMMDD.json
 \`\`\`
 `;
 }
@@ -1332,7 +1332,7 @@ function captureGuideTemplate(now) {
 - 最终检查命令：
 
 \`\`\`powershell
-npm run verify:managed-ssh-hitl -- --check .updeng/docs/verification/managed-ssh-hitl-YYYYMMDD.md --json-report .updeng/docs/verification/managed-ssh-hitl-YYYYMMDD.json
+pnpm run verify:managed-ssh-hitl -- --check .updeng/docs/verification/managed-ssh-hitl-YYYYMMDD.md --json-report .updeng/docs/verification/managed-ssh-hitl-YYYYMMDD.json
 \`\`\`
 
 ## 操作规则
@@ -1435,20 +1435,20 @@ function printUsage() {
       "Managed SSH HITL evidence gate.",
       "",
       "Create a redacted evidence template:",
-      "  npm run verify:managed-ssh-hitl -- --write-template",
-      "  npm run verify:managed-ssh-hitl -- --write-template .updeng/docs/verification/managed-ssh-hitl-YYYYMMDD.md",
+      "  pnpm run verify:managed-ssh-hitl -- --write-template",
+      "  pnpm run verify:managed-ssh-hitl -- --write-template .updeng/docs/verification/managed-ssh-hitl-YYYYMMDD.md",
       "",
       "Create a real-target capture guide:",
-      "  npm run verify:managed-ssh-hitl -- --write-capture-guide",
-      "  npm run verify:managed-ssh-hitl -- --write-capture-guide .updeng/docs/verification/managed-ssh-hitl-capture-guide-YYYYMMDD.md",
+      "  pnpm run verify:managed-ssh-hitl -- --write-capture-guide",
+      "  pnpm run verify:managed-ssh-hitl -- --write-capture-guide .updeng/docs/verification/managed-ssh-hitl-capture-guide-YYYYMMDD.md",
       "",
       "Check completed evidence:",
-      "  npm run verify:managed-ssh-hitl -- --check .updeng/docs/verification/managed-ssh-hitl-YYYYMMDD.md",
-      "  npm run verify:managed-ssh-hitl -- --check .updeng/docs/verification/managed-ssh-hitl-YYYYMMDD.md --json-report .updeng/docs/verification/managed-ssh-hitl-YYYYMMDD.json",
+      "  pnpm run verify:managed-ssh-hitl -- --check .updeng/docs/verification/managed-ssh-hitl-YYYYMMDD.md",
+      "  pnpm run verify:managed-ssh-hitl -- --check .updeng/docs/verification/managed-ssh-hitl-YYYYMMDD.md --json-report .updeng/docs/verification/managed-ssh-hitl-YYYYMMDD.json",
       "",
       "Check local HITL prerequisites without connecting to a host:",
-      "  npm run verify:managed-ssh-hitl -- --preflight",
-      "  npm run verify:managed-ssh-hitl -- --preflight --json-report .updeng/docs/verification/managed-ssh-hitl-preflight-YYYYMMDD.json",
+      "  pnpm run verify:managed-ssh-hitl -- --preflight",
+      "  pnpm run verify:managed-ssh-hitl -- --preflight --json-report .updeng/docs/verification/managed-ssh-hitl-preflight-YYYYMMDD.json",
       "  Preflight also checks the local automated verification artifacts required before real target HITL starts.",
       "",
       "The evidence markdown and JSON report paths must both stay under .updeng/docs/verification/.",

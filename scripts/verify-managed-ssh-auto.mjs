@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(scriptDir, "..");
+const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const cargoTargetDir = path.join(
   workspaceRoot,
   ".updeng",
@@ -56,7 +57,7 @@ const defaultMatrix = [
   rustTest("mcp_tool_executor_service", "MCP managed SSH/runtime tool regressions."),
   {
     id: "frontend-managed-ssh",
-    command: "npm",
+    command: pnpmCommand,
     args: [
       "run",
       "test",
@@ -74,7 +75,7 @@ const defaultMatrix = [
   },
   {
     id: "frontend-build",
-    command: "npm",
+    command: pnpmCommand,
     args: ["run", "build"],
     cwd: workspaceRoot,
     description: "Production frontend build.",
@@ -84,7 +85,7 @@ const defaultMatrix = [
 const readinessMatrix = [
   {
     id: "readiness-hitl-preflight",
-    command: "npm",
+    command: pnpmCommand,
     args: ["run", "verify:managed-ssh-hitl", "--", "--preflight"],
     cwd: workspaceRoot,
     description:
@@ -527,26 +528,26 @@ function printUsage() {
       "Managed SSH automated verification matrix.",
       "",
       "Run all automated checks:",
-      "  npm run verify:managed-ssh-auto",
+      "  pnpm run verify:managed-ssh-auto",
       "",
       "List or dry-run checks:",
-      "  npm run verify:managed-ssh-auto -- --list",
-      "  npm run verify:managed-ssh-auto -- --dry-run",
+      "  pnpm run verify:managed-ssh-auto -- --list",
+      "  pnpm run verify:managed-ssh-auto -- --dry-run",
       "",
       "Run verifier self-tests:",
-      "  npm run verify:managed-ssh-auto -- --self-test",
+      "  pnpm run verify:managed-ssh-auto -- --self-test",
       "",
       "Include readiness checks that may start real local CLIs without submitting prompts:",
-      "  npm run verify:managed-ssh-auto -- --include-readiness --only readiness",
+      "  pnpm run verify:managed-ssh-auto -- --include-readiness --only readiness",
       "",
       "Include focused checks for specific production contracts already covered by broader suites:",
-      "  npm run verify:managed-ssh-auto -- --include-focused --only bulk-transfer",
+      "  pnpm run verify:managed-ssh-auto -- --include-focused --only bulk-transfer",
       "",
       "Run a subset by id substring:",
-      "  npm run verify:managed-ssh-auto -- --only ssh_runtime,frontend-managed-ssh",
+      "  pnpm run verify:managed-ssh-auto -- --only ssh_runtime,frontend-managed-ssh",
       "",
       "Write a redacted markdown report:",
-      "  npm run verify:managed-ssh-auto -- --report .updeng/docs/verification/managed-ssh-auto-YYYYMMDD.md",
+      "  pnpm run verify:managed-ssh-auto -- --report .updeng/docs/verification/managed-ssh-auto-YYYYMMDD.md",
       "",
       "This does not replace real-host HITL evidence. Run verify:managed-ssh-hitl",
       "after completing the real SSH host, jump host, external launch, agent, and concurrency matrix.",

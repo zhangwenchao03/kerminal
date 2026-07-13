@@ -184,6 +184,18 @@ claude
 
 默认保存在当前用户目录下的 `~/.kerminal`。卸载或迁移前，可以先备份该目录。
 
+## 源码开发
+
+仓库统一使用 `pnpm@10.33.0`。准备 Node.js 20+、Rust stable 和 Tauri 对应平台依赖后运行：
+
+```powershell
+corepack enable
+pnpm install --frozen-lockfile
+pnpm run dev
+```
+
+桌面开发与生产构建分别使用 `pnpm run tauri:dev` 和 `pnpm run build`。
+
 ## 开源协议
 
 Kerminal 源代码以 GNU Affero General Public License v3.0 only（AGPL-3.0-only）授权，详见 [LICENSE](LICENSE)。

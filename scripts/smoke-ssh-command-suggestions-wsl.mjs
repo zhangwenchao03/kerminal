@@ -78,7 +78,7 @@ try {
       `WSL OpenSSH smoke target ready: mode=${terminalPasswordWrong ? "terminal-password-wrong" : "terminal-password"} distro=${distro || "<default>"} user=${setup.user} port=${port}`,
     );
 
-    result = spawnSync("npm", ["run", "smoke:ssh-terminal:password"], {
+    result = spawnSync("pnpm", ["run", "smoke:ssh-terminal:password"], {
       cwd: workspace,
       env: {
         ...process.env,
@@ -143,7 +143,7 @@ try {
             stdio: "inherit",
           },
         )
-      : spawnSync("npm", ["run", "smoke:ssh-suggestions"], {
+      : spawnSync("pnpm", ["run", "smoke:ssh-suggestions"], {
         cwd: workspace,
         env: smokeEnv,
         shell: process.platform === "win32",

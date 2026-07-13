@@ -27,7 +27,7 @@ const assetExtensions = new Set([
 ]);
 
 if (!existsSync(distRoot)) {
-  console.error("dist directory not found. Run npm run build before collecting bundle baseline.");
+  console.error("dist directory not found. Run pnpm run build before collecting bundle baseline.");
   process.exit(1);
 }
 

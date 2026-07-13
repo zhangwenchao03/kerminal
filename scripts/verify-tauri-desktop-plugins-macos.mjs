@@ -117,12 +117,12 @@ function buildCommandPlan() {
     CARGO_TARGET_DIR: cargoTargetDir,
     KERMINAL_CONFIG_ROOT: configRoot,
   };
-  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+  const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
   return [
     shellCommand("macOS version", "sw_vers", [], { env, optional: currentPlatform !== "darwin" }),
     shellCommand("kernel version", "uname", ["-a"], { env }),
     shellCommand("node version", process.execPath, ["--version"], { env }),
-    shellCommand("npm version", npmCommand, ["--version"], { env }),
+    shellCommand("pnpm version", pnpmCommand, ["--version"], { env }),
     shellCommand("rustc version", "rustc", ["--version"], { env }),
     shellCommand("cargo version", "cargo", ["--version"], { env }),
     shellCommand("xcode-select path", "xcode-select", ["-p"], {
@@ -131,7 +131,7 @@ function buildCommandPlan() {
     }),
     shellCommand(
       "frontend desktop plugin tests",
-      npmCommand,
+      pnpmCommand,
       [
         "run",
         "test:frontend",
@@ -174,10 +174,10 @@ function buildCommandPlan() {
       ],
       { env },
     ),
-    shellCommand("frontend production build", npmCommand, ["run", "build"], { env }),
+    shellCommand("frontend production build", pnpmCommand, ["run", "build"], { env }),
     ...(args.tauriBuild
       ? [
-          shellCommand("tauri build", npmCommand, ["run", "tauri:build"], {
+          shellCommand("tauri build", pnpmCommand, ["run", "tauri:build"], {
             env,
             optional: true,
           }),
@@ -292,7 +292,7 @@ function buildRoundLogTemplate(result) {
     `  - 环境：platform=${result.platform}；详见 \`${relativePath(outputJson)}\`。\n` +
     scopeLine +
     `  - 自动化：\n${commandSummary}\n` +
-    "  - 启动：<运行 `KERMINAL_CONFIG_ROOT=... CARGO_TARGET_DIR=... npm run tauri:dev`，记录窗口截图/日志路径>。\n" +
+    "  - 启动：<运行 `KERMINAL_CONFIG_ROOT=... CARGO_TARGET_DIR=... pnpm run tauri:dev`，记录窗口截图/日志路径>。\n" +
     "  - single-instance：<主窗口打开/最小化/关闭到 Dock 或 tray 后二次启动结果>。\n" +
     "  - window-state：<size/position/maximized/显示器变化恢复结果>。\n" +
     "  - notification：<granted/denied/真实事件结果>。\n" +
@@ -305,14 +305,14 @@ function buildRoundLogTemplate(result) {
 
 function buildManualChecklist() {
   return [
-    "Run real `npm run tauri:dev` with the reported KERMINAL_CONFIG_ROOT and CARGO_TARGET_DIR.",
+    "Run real `pnpm run tauri:dev` with the reported KERMINAL_CONFIG_ROOT and CARGO_TARGET_DIR.",
     "Verify single-instance focus for open, minimized, and closed-window-but-running states.",
     "Verify window-state restores size, position, and maximized state.",
     "Verify notification granted and denied behavior without startup permission spam.",
     "Verify Kerminal-managed logs are generated and secret grep does not expose credentials.",
     "Verify official clipboard-manager text write/read and UI copy paths.",
     "Verify SFTP internal clipboard, Finder drag/drop, and Finder file-list pasteboard degradation.",
-    "Optionally run `npm run tauri:build` or record signing/notarization blockers.",
+    "Optionally run `pnpm run tauri:build` or record signing/notarization blockers.",
   ];
 }
 
@@ -376,7 +376,7 @@ function printUsage() {
     "  --output-dir <path>        Directory for JSON and Round Log template outputs.\n" +
     "  --config-root <path>       Isolated Kerminal config root for validation.\n" +
     "  --cargo-target-dir <path>  Isolated Cargo target directory for validation.\n" +
-    "  --tauri-build             Also run npm run tauri:build as an optional command.\n" +
+    "  --tauri-build             Also run pnpm run tauri:build as an optional command.\n" +
     "  --allow-non-macos         Execute automated checks even when not on macOS.\n" +
     "  --help                    Show this help.\n");
 }

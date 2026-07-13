@@ -9,6 +9,7 @@ const defaultRepoRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url
 const repoRoot = path.resolve(readOption("--repo-root") || defaultRepoRoot);
 const externalBin = "binaries/kerminal-launch-shim-sidecar";
 const hookPath = "../scripts/kerminal-launch-shim-nsis-hooks.nsh";
+const packageManager = "pnpm@10.33.0";
 const prepareCommand = "node scripts/prepare-launch-shim-sidecar.mjs";
 const verifyCommand =
   "node scripts/verify-launch-shim-package-contract.mjs && node scripts/prepare-launch-shim-sidecar.mjs --verify --no-build";
@@ -50,6 +51,19 @@ function main() {
 }
 
 function assertAutomationContract(packageJson, releaseWorkflow) {
+  assertEqual(
+    packageJson.packageManager,
+    packageManager,
+    `package.json packageManager must be pinned to ${packageManager}`,
+  );
+  assertPathExists(
+    "pnpm-lock.yaml",
+    "repository must include pnpm-lock.yaml for reproducible installs",
+  );
+  assertPathMissing(
+    "package-lock.json",
+    "repository must not include package-lock.json after migrating to pnpm",
+  );
   for (const script of [
     "verify:external-launch-security",
     "verify:external-launch-responsiveness",
@@ -60,14 +74,27 @@ function assertAutomationContract(packageJson, releaseWorkflow) {
     }
   }
   for (const command of [
-    "npm run verify:external-launch-security",
-    "npm run verify:external-launch-responsiveness",
-    "npm run verify:external-launch-windows-package",
+    "pnpm run verify:external-launch-security",
+    "pnpm run verify:external-launch-responsiveness",
+    "pnpm run verify:external-launch-windows-package",
   ]) {
     assertContains(
       releaseWorkflow,
       command,
       `release workflow must run ${command}`,
+    );
+  }
+  for (const releaseContract of [
+    "pnpm/action-setup@v4",
+    "version: 10.33.0",
+    "cache: pnpm",
+    "cache-dependency-path: pnpm-lock.yaml",
+    "pnpm install --frozen-lockfile",
+  ]) {
+    assertContains(
+      releaseWorkflow,
+      releaseContract,
+      `release workflow must include ${releaseContract}`,
     );
   }
   assertContains(
@@ -157,14 +184,19 @@ function assertBuildContract(packageJson, config) {
     verifyCommand,
     "package.json verify:launch-shim-sidecar must verify the package contract and sidecar artifact",
   );
+  assertEqual(
+    config.build?.beforeDevCommand,
+    "pnpm run dev",
+    "tauri.conf.json build.beforeDevCommand must use pnpm",
+  );
 
   const beforeBuild = config.build?.beforeBuildCommand;
   if (typeof beforeBuild !== "string") {
     fail("tauri.conf.json build.beforeBuildCommand must be a command string");
   }
   const steps = beforeBuild.split("&&").map((step) => step.trim());
-  const frontendBuildIndex = steps.indexOf("npm run build");
-  const prepareIndex = steps.indexOf("npm run prepare:launch-shim-sidecar");
+  const frontendBuildIndex = steps.indexOf("pnpm run build");
+  const prepareIndex = steps.indexOf("pnpm run prepare:launch-shim-sidecar");
   if (frontendBuildIndex === -1 || prepareIndex <= frontendBuildIndex) {
     fail(
       "tauri.conf.json build.beforeBuildCommand must build the frontend, then prepare the launch shim sidecar",
@@ -264,6 +296,18 @@ function assertContains(actual, expected, message) {
 function assertEqual(actual, expected, message) {
   if (actual !== expected) {
     fail(`${message}; got ${JSON.stringify(actual)}`);
+  }
+}
+
+function assertPathExists(relativePath, message) {
+  if (!fs.existsSync(path.join(repoRoot, relativePath))) {
+    fail(message);
+  }
+}
+
+function assertPathMissing(relativePath, message) {
+  if (fs.existsSync(path.join(repoRoot, relativePath))) {
+    fail(message);
   }
 }
 

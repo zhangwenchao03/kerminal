@@ -34,13 +34,44 @@ test("缺少 externalBin 时拒绝发布", (context) => {
 
 test("构建流程没有准备 sidecar 时拒绝发布", (context) => {
   const fixture = createFixture(context, ({ config }) => {
-    config.build.beforeBuildCommand = "npm run build";
+    config.build.beforeBuildCommand = "pnpm run build";
   });
 
   const result = runVerifier(fixture);
 
   assert.equal(result.ok, false);
   assert.match(result.output, /beforeBuildCommand/);
+});
+
+test("仓库没有固定 pnpm 版本时拒绝发布", (context) => {
+  const fixture = createFixture(context, ({ packageJson }) => {
+    packageJson.packageManager = "pnpm@10.32.0";
+  });
+
+  const result = runVerifier(fixture);
+
+  assert.equal(result.ok, false);
+  assert.match(result.output, /packageManager/);
+});
+
+test("缺少 pnpm 锁文件时拒绝发布", (context) => {
+  const fixture = createFixture(context, () => {});
+  fs.rmSync(path.join(fixture, "pnpm-lock.yaml"));
+
+  const result = runVerifier(fixture);
+
+  assert.equal(result.ok, false);
+  assert.match(result.output, /pnpm-lock\.yaml/);
+});
+
+test("仓库残留 npm 锁文件时拒绝发布", (context) => {
+  const fixture = createFixture(context, () => {});
+  fs.writeFileSync(path.join(fixture, "package-lock.json"), "{}\n");
+
+  const result = runVerifier(fixture);
+
+  assert.equal(result.ok, false);
+  assert.match(result.output, /package-lock\.json/);
 });
 
 test("安装复制失败没有 fail closed 时拒绝发布", (context) => {
@@ -147,6 +178,7 @@ function createFixture(context, mutate) {
     "src-tauri/src/lib.rs",
     "src-tauri/src/commands/registry.rs",
     ".github/workflows/release.yml",
+    "pnpm-lock.yaml",
     "scripts/prepare-launch-shim-sidecar.mjs",
   ]) {
     fs.copyFileSync(

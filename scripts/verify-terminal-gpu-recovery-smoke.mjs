@@ -89,7 +89,7 @@ for (const [label, filePath] of [
   ["@xterm/addon-webgl module", webglAddonModulePath],
 ]) {
   if (!existsSync(filePath)) {
-    console.error(`${label} not found. Run npm install first.`);
+    console.error(`${label} not found. Run pnpm install first.`);
     process.exit(1);
   }
 }

@@ -4,9 +4,9 @@
   "version": "0.3.6",
   "identifier": "io.github.kongweiguang.kerminal",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "pnpm run dev",
     "devUrl": "http://localhost:1425",
-    "beforeBuildCommand": "npm run build && npm run prepare:launch-shim-sidecar",
+    "beforeBuildCommand": "pnpm run build && pnpm run prepare:launch-shim-sidecar",
     "frontendDist": "../dist"
   },
   "app": {
