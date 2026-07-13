@@ -100,9 +100,18 @@ jobs:
 
           echo "release_tag=${tag}" >> "${GITHUB_OUTPUT}"
 
+  quality:
+    name: Release quality gate
+    needs: preflight
+    uses: ./.github/workflows/quality.yml
+    with:
+      ref: ${{ needs.preflight.outputs.release_tag }}
+
   publish-tauri:
     name: Build ${{ matrix.name }}
-    needs: preflight
+    needs:
+      - preflight
+      - quality
     runs-on: ${{ matrix.platform }}
     env:
       NODE_OPTIONS: --max-old-space-size=4096
