@@ -1,6 +1,6 @@
 import type { SnippetCatalogItem } from "../../lib/snippetApi";
 
-/** 在已加载的有界目录投影中执行与 Rust catalog 一致的大小写无关搜索。 */
+/** 在已加载的有界目录投影中按用户可见片段内容执行大小写无关搜索。 */
 export function catalogItemMatchesQuery(
   item: SnippetCatalogItem,
   normalizedQuery: string,
@@ -11,7 +11,6 @@ export function catalogItemMatchesQuery(
     item.template,
     item.category,
     ...item.tags,
-    ...item.capabilities,
   ].some((value) => value.toLowerCase().includes(normalizedQuery));
 }
 

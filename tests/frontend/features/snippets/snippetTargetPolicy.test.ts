@@ -1,35 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
   createSnippetTargetSnapshot,
-  evaluateSnippetPolicy,
   isSnippetTargetSnapshotCurrent,
-  normalizeSnippetShell,
+  resolveSnippetExecutionPolicy,
 } from "../../../../src/features/snippets/snippetTargetPolicy";
 import type { PaneSessionRecord } from "../../../../src/features/terminal/terminalSessionRegistry";
 
-const requirements = {
-  capabilities: ["systemd"],
-  contextBindings: [],
-  platforms: ["linux" as const],
-  scopes: ["ssh" as const],
-  shells: ["posix" as const],
-};
-
 type SnapshotOverrides = Partial<{
-  capabilities: readonly string[];
   connectionGeneration: number;
-  platform: "linux" | "macos" | "windows" | "unknown";
   production: boolean;
   record: PaneSessionRecord;
 }>;
 
 function snapshot(overrides: SnapshotOverrides = {}) {
   return createSnippetTargetSnapshot({
-    capabilities: ["systemd"],
+    capturedAt: 100,
     connectionGeneration: 4,
     displayName: "prod-web-1",
     paneId: "pane-a",
-    platform: "linux",
     production: false,
     record: {
       connectionGeneration: 4,
@@ -38,119 +26,93 @@ function snapshot(overrides: SnapshotOverrides = {}) {
       shell: "/bin/bash",
       target: "ssh",
     },
-    capturedAt: 100,
     ...overrides,
   });
 }
 
 describe("snippetTargetPolicy", () => {
-  it("creates a stable snapshot from existing context without probing", () => {
+  it("只冻结发送所需的目标身份，不携带环境识别结果", () => {
     expect(snapshot()).toEqual({
-      capabilities: ["systemd"],
       capturedAt: 100,
       connectionGeneration: 4,
       displayName: "prod-web-1",
-      hostId: "host-a",
       paneId: "pane-a",
-      platform: "linux",
       production: false,
       sessionId: "session-a",
-      shell: "posix",
       targetId: "host-a",
-      targetKind: "ssh",
     });
   });
 
-  it("rejects stale generation, session and target bindings", () => {
+  it("拒绝过期的 generation、session 和 target 绑定", () => {
     const original = snapshot();
     expect(isSnippetTargetSnapshotCurrent(original, snapshot())).toBe(true);
-    expect(isSnippetTargetSnapshotCurrent(original, snapshot({ connectionGeneration: 5 }))).toBe(false);
     expect(
       isSnippetTargetSnapshotCurrent(
         original,
-        snapshot({ record: { connectionGeneration: 5, remoteHostId: "host-b", sessionId: "session-b", target: "ssh" } }),
+        snapshot({ connectionGeneration: 5 }),
+      ),
+    ).toBe(false);
+    expect(
+      isSnippetTargetSnapshotCurrent(
+        original,
+        snapshot({
+          record: {
+            connectionGeneration: 5,
+            remoteHostId: "host-b",
+            sessionId: "session-b",
+            target: "ssh",
+          },
+        }),
       ),
     ).toBe(false);
   });
 
-  it("allows compatible inspect commands and upgrades production confirmation", () => {
+  it("只读命令直接发送，生产、敏感和变更命令进入确认", () => {
     expect(
-      evaluateSnippetPolicy({ requirements, risk: "inspect", snapshot: snapshot() }),
+      resolveSnippetExecutionPolicy({ risk: "inspect", snapshot: snapshot() }),
     ).toMatchObject({
-      canInsert: true,
-      canRun: true,
-      compatibility: "compatible",
       effectiveRisk: "inspect",
       requiresConfirmation: false,
+      requiresStrongConfirmation: false,
     });
     expect(
-      evaluateSnippetPolicy({ requirements, risk: "inspect", snapshot: snapshot({ production: true }) }),
+      resolveSnippetExecutionPolicy({
+        risk: "inspect",
+        snapshot: snapshot({ production: true }),
+      }),
+    ).toMatchObject({ requiresConfirmation: true });
+    expect(
+      resolveSnippetExecutionPolicy({
+        risk: "inspect",
+        sensitive: true,
+        snapshot: snapshot(),
+      }),
+    ).toMatchObject({ requiresConfirmation: true });
+    expect(
+      resolveSnippetExecutionPolicy({ risk: "change", snapshot: snapshot() }),
+    ).toMatchObject({ requiresConfirmation: true });
+    expect(
+      resolveSnippetExecutionPolicy({ risk: "unknown", snapshot: snapshot() }),
     ).toMatchObject({ requiresConfirmation: true });
   });
 
-  it("allows explicit inspect execution with confirmation when only environment metadata is unknown", () => {
-    const decision = evaluateSnippetPolicy({
-      requirements,
-      risk: "inspect",
-      snapshot: snapshot({ capabilities: [], platform: "unknown", record: { connectionGeneration: 4, remoteHostId: "host-a", sessionId: "session-a", target: "ssh" } }),
-    });
-    expect(decision).toMatchObject({
-      canInsert: true,
-      canRun: true,
-      compatibility: "unknown",
-      requiresConfirmation: true,
-    });
-    expect(decision.reasons).toContain("尚未读取目标平台");
-    expect(decision.reasons).toContain("尚未识别当前 shell");
-    expect(decision.reasons).toContain("尚未验证命令可用性：systemd");
-  });
-
-  it("blocks incompatible targets and requires strong confirmation for destructive execution", () => {
+  it("破坏性命令保留目标名称强确认，旧 raw 片段提升为变更风险", () => {
     expect(
-      evaluateSnippetPolicy({ requirements, risk: "inspect", snapshot: snapshot({ platform: "windows" }) }),
-    ).toMatchObject({ canInsert: false, canRun: false, compatibility: "incompatible" });
-    expect(
-      evaluateSnippetPolicy({ requirements, risk: "destructive", snapshot: snapshot() }),
+      resolveSnippetExecutionPolicy({
+        risk: "destructive",
+        snapshot: snapshot(),
+      }),
     ).toMatchObject({
-      canInsert: true,
-      canRun: true,
+      effectiveRisk: "destructive",
       requiresConfirmation: true,
       requiresStrongConfirmation: true,
     });
-  });
-
-  it("upgrades legacy raw inspect commands to change", () => {
     expect(
-      evaluateSnippetPolicy({ hasLegacyRaw: true, requirements, risk: "inspect", snapshot: snapshot() }),
+      resolveSnippetExecutionPolicy({
+        hasLegacyRaw: true,
+        risk: "inspect",
+        snapshot: snapshot(),
+      }),
     ).toMatchObject({ effectiveRisk: "change", requiresConfirmation: true });
-  });
-
-  it("enforces host bindings and keeps unprovable group bindings insert-only", () => {
-    expect(
-      evaluateSnippetPolicy({
-        requirements: {
-          ...requirements,
-          contextBindings: [{ kind: "host", targetId: "host-b" }],
-        },
-        risk: "inspect",
-        snapshot: snapshot(),
-      }),
-    ).toMatchObject({ canInsert: false, canRun: false, compatibility: "incompatible" });
-    expect(
-      evaluateSnippetPolicy({
-        requirements: {
-          ...requirements,
-          contextBindings: [{ kind: "hostGroup", targetId: "prod" }],
-        },
-        risk: "inspect",
-        snapshot: snapshot(),
-      }),
-    ).toMatchObject({ canInsert: true, canRun: false, compatibility: "unknown" });
-  });
-
-  it("normalizes known shells conservatively", () => {
-    expect(normalizeSnippetShell("C:/Program Files/PowerShell/7/pwsh.exe")).toBe("powershell");
-    expect(normalizeSnippetShell("/usr/bin/zsh")).toBe("posix");
-    expect(normalizeSnippetShell("custom-shell")).toBe("unknown");
   });
 });

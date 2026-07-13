@@ -174,6 +174,8 @@ export function useSftpTargetLifecycle({
     const mounted = stateRef.current;
     if (mounted?.bindingKey === bindingKey) {
       mounted.active = active;
+      // StrictMode 会执行 cleanup/setup 重放；setup 必须恢复目标，才能再次发起首次目录读取。
+      mounted.target = target;
     }
     return () => {
       // 卸载时同步失效所有仍在飞行的 Promise；远端副作用可以结束，但不能再回写 UI。

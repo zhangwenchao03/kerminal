@@ -45,9 +45,10 @@ describe("snippetCatalogSearch", () => {
     expect(items[0]?.id).toBe("snippet-0");
   });
 
-  it("matches title, description, category, tag and capability consistently", () => {
+  it("matches user-visible title, description, category and tags", () => {
     const items = [item(1), item(2)];
-    expect(searchSnippetCatalog(items, "SYSTEMCTL").map((entry) => entry.id)).toEqual([
+    expect(searchSnippetCatalog(items, "SYSTEMCTL")).toEqual([]);
+    expect(searchSnippetCatalog(items, "service").map((entry) => entry.id)).toEqual([
       "snippet-1",
     ]);
     expect(searchSnippetCatalog(items, "tag-2").map((entry) => entry.id)).toEqual([

@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -20,6 +21,25 @@ function deferred<T>() {
 }
 
 describe("SftpToolContent target binding", () => {
+  it("在 StrictMode effect 重放后仍自动加载首次目录", async () => {
+    sftpApiMocks.listSftpDirectory.mockImplementation(
+      async ({ hostId, path }: { hostId: string; path: string }) =>
+        listing(hostId, path),
+    );
+
+    render(
+      <StrictMode>
+        <SftpToolContent active selectedMachine={sshMachine} />
+      </StrictMode>,
+    );
+
+    expect(await screen.findByText("prod-api.txt")).toBeInTheDocument();
+    expect(sftpApiMocks.listSftpDirectory).toHaveBeenLastCalledWith({
+      hostId: "prod-api",
+      path: "/",
+    });
+  });
+
   it("stops reads while inactive and reloads only the latest target", async () => {
     sftpApiMocks.listSftpDirectory.mockImplementation(
       async ({ hostId, path }: { hostId: string; path: string }) =>

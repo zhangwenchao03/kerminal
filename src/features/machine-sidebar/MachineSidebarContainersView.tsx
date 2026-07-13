@@ -116,6 +116,13 @@ export function MachineSidebarContainersView({
     onHostChange?.(machine.id);
     closeHostDropdown();
   };
+  const enterContainer: NonNullable<
+    HostContainersToolContentProps["onEnterContainer"]
+  > = (container) => {
+    // 进入终端会把 selected machine 切成容器；先固化宿主机，避免左栏退回第一台 SSH 主机。
+    onHostChange?.(container.hostId);
+    onEnterContainer?.(container);
+  };
 
   return (
     <div className="kerminal-sidebar-list scrollbar-none flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto p-2.5">
@@ -200,7 +207,7 @@ export function MachineSidebarContainersView({
         initialContainerId={
           hostId && hostId === selectedHost.id ? initialContainerId : undefined
         }
-        onEnterContainer={onEnterContainer}
+        onEnterContainer={enterContainer}
         onFetchContainerStats={onFetchContainerStats}
         onInspectContainer={onInspectContainer}
         onLifecycleContainer={onLifecycleContainer}

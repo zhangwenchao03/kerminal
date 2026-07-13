@@ -15,31 +15,20 @@ import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 import {
-  dockerContainerTarget,
-  localTarget,
-  serialTarget,
-  sshTarget,
-  telnetTarget,
-  type RemoteTargetRef,
-} from "../../lib/targetModel";
-import {
   recordSnippetUsage,
   type SnippetCatalogItem,
   type SnippetCatalogVariable,
 } from "../../lib/snippetApi";
-import { peekServerInfoSnapshot } from "../tool-panel/useServerInfoSnapshot";
 import {
   getTerminalPaneSessionRecord,
   runSnippetCommand,
-  type PaneSessionRecord,
   writeSnippetCommand,
 } from "../terminal/terminalSessionRegistry";
 import type { TerminalPane } from "../workspace/types";
 import {
   createSnippetTargetSnapshot,
-  evaluateSnippetPolicy,
   isSnippetTargetSnapshotCurrent,
-  type SnippetPlatform,
+  resolveSnippetExecutionPolicy,
   type SnippetShell,
   type SnippetTargetSnapshot,
 } from "./snippetTargetPolicy";
@@ -90,11 +79,9 @@ export function SnippetCatalogRowV2({
     : undefined;
   const candidateSnapshot = focusedRecord
     ? createSnippetTargetSnapshot({
-        capabilities: [],
         connectionGeneration: focusedRecord.connectionGeneration,
         displayName: focusedPane?.title,
         paneId: focusedPane?.id ?? "",
-        platform: targetPlatform(focusedPane, focusedRecord),
         production: focusedPane?.remoteHostProduction,
         record: focusedRecord,
       })
@@ -165,11 +152,9 @@ export function SnippetCatalogRowV2({
   }, [definitions, item.template, record, render, values]);
   const currentBoundSnapshot = record && boundPane
     ? createSnippetTargetSnapshot({
-        capabilities: [],
         connectionGeneration: record.connectionGeneration,
         displayName: boundPane.title,
         paneId: boundPane.id,
-        platform: targetPlatform(boundPane, record),
         production: boundPane.remoteHostProduction,
         record,
       })
@@ -180,16 +165,9 @@ export function SnippetCatalogRowV2({
       isSnippetTargetSnapshotCurrent(boundSnapshot, currentBoundSnapshot),
   );
   const bindingInvalid = Boolean(boundSnapshot && !bindingCurrent);
-  const policy = boundSnapshot
-    ? evaluateSnippetPolicy({
+  const executionPolicy = boundSnapshot
+    ? resolveSnippetExecutionPolicy({
         hasLegacyRaw: render.plan?.legacyRaw,
-        requirements: {
-          capabilities: item.capabilities,
-          contextBindings: item.contextBindings,
-          platforms: item.platforms.map(platformKind),
-          scopes: item.scope === "any" ? [] : [item.scope],
-          shells: [...new Set(item.shells.map(shellNameKind))],
-        },
         risk: item.risk,
         sensitive: item.sensitive || Boolean(render.plan?.containsSensitiveValue),
         snapshot: boundSnapshot,
@@ -206,9 +184,7 @@ export function SnippetCatalogRowV2({
       ? "终端目标已变化，请重新展开片段"
       : !render.plan
         ? render.error ?? "请先填写并检查参数"
-        : !policy?.canRun
-          ? policy?.reasons.join("；") || "当前目标不允许直接运行"
-          : null;
+        : null;
 
   const submit = async (run: boolean) => {
     if (!boundSnapshot || !render.plan || !bindingCurrent) {
@@ -249,8 +225,8 @@ export function SnippetCatalogRowV2({
     }
   };
   const requestRun = () => {
-    if (sending || !bindingCurrent || !render.plan || !policy?.canRun) return;
-    if (policy.requiresConfirmation || item.duration !== "instant" || multiline) {
+    if (sending || !bindingCurrent || !render.plan || !executionPolicy) return;
+    if (executionPolicy.requiresConfirmation || item.duration !== "instant" || multiline) {
       setConfirmationText("");
       setConfirmOpen(true);
       return;
@@ -316,7 +292,7 @@ export function SnippetCatalogRowV2({
             if (!(event.ctrlKey || event.metaKey) || event.key !== "Enter") return;
             event.preventDefault();
             if (event.shiftKey) requestRun();
-            else if (policy?.canInsert && !multiline) void submit(false);
+            else if (bindingCurrent && render.plan && !multiline) void submit(false);
           }}
         >
           {item.variables.map((variable) => (
@@ -386,7 +362,6 @@ export function SnippetCatalogRowV2({
               终端目标已变化，请收起后重新展开片段。
             </p>
           ) : null}
-          {policy?.reasons.map((reason) => <p className="text-[11px] text-zinc-500" key={reason}>{reason}</p>)}
           {multiline ? (
             <p className="text-[11px] text-amber-700 dark:text-amber-300">
               多行片段不能直接填入输入行；运行前会要求确认完整内容。
@@ -457,7 +432,7 @@ export function SnippetCatalogRowV2({
               <Button
                 aria-label="填入终端"
                 className="rounded-md px-2.5"
-                disabled={sending || !bindingCurrent || !render.plan || !policy?.canInsert || multiline}
+                disabled={sending || !bindingCurrent || !render.plan || multiline}
                 onClick={() => void submit(false)}
                 size="sm"
                 type="button"
@@ -486,7 +461,7 @@ export function SnippetCatalogRowV2({
             </div>
           </div>
           <ModalShell
-            footer={<><Button disabled={sending} onClick={() => setConfirmOpen(false)} type="button" variant="ghost">取消</Button><Button disabled={sending || Boolean(policy?.requiresStrongConfirmation && confirmationText !== boundSnapshot?.displayName)} onClick={() => { setConfirmOpen(false); void submit(true); }} type="button" variant="primary"><Play className="h-4 w-4" />确认提交</Button></>}
+            footer={<><Button disabled={sending} onClick={() => setConfirmOpen(false)} type="button" variant="ghost">取消</Button><Button disabled={sending || Boolean(executionPolicy?.requiresStrongConfirmation && confirmationText !== boundSnapshot?.displayName)} onClick={() => { setConfirmOpen(false); void submit(true); }} type="button" variant="primary"><Play className="h-4 w-4" />确认提交</Button></>}
             onClose={() => setConfirmOpen(false)}
             open={confirmOpen}
             size="small"
@@ -494,13 +469,8 @@ export function SnippetCatalogRowV2({
           >
             <div className="space-y-2 text-sm text-zinc-700 dark:text-zinc-200">
               <p>目标：{boundSnapshot?.displayName}</p>
-              {policy?.compatibility === "unknown" && policy.reasons.length > 0 ? (
-                <p className="text-xs text-amber-700 dark:text-amber-300">
-                  环境未完全确认：{policy.reasons.join("；")}
-                </p>
-              ) : null}
               <pre className="max-h-36 overflow-auto whitespace-pre-wrap break-words border-l-2 border-amber-500/60 pl-2 font-mono text-xs">{displayedCommand}</pre>
-              {policy?.requiresStrongConfirmation ? (
+              {executionPolicy?.requiresStrongConfirmation ? (
                 <label className="block space-y-1">
                   <span className="text-xs font-medium">输入目标名称“{boundSnapshot?.displayName}”以确认</span>
                   <input
@@ -530,63 +500,4 @@ function shellKind(shell?: string): SnippetShell {
   if (value.includes("cmd")) return "cmd";
   if (["bash", "zsh", "fish", "/sh", "sh.exe"].some((name) => value.includes(name))) return "posix";
   return "unknown";
-}
-
-function shellNameKind(shell: string): SnippetShell {
-  if (shell === "powerShell") return "powershell";
-  if (shell === "cmd") return "cmd";
-  return ["bash", "zsh", "fish"].includes(shell) ? "posix" : "unknown";
-}
-
-function platformKind(platform: string): SnippetPlatform {
-  return platform === "linux" || platform === "macos" || platform === "windows" ? platform : "unknown";
-}
-
-function targetPlatform(
-  pane: TerminalPane | undefined,
-  record: PaneSessionRecord | undefined,
-): SnippetPlatform {
-  if (!pane) return "unknown";
-  const cached = peekServerInfoSnapshot(snippetTargetRef(pane, record));
-  const cachedPlatform = platformFromOs(cached?.os);
-  if (cachedPlatform !== "unknown") return cachedPlatform;
-  if (pane.mode !== "local") return "unknown";
-  const platform = navigator.platform.toLowerCase();
-  if (platform.includes("win")) return "windows";
-  if (platform.includes("mac")) return "macos";
-  return platform.includes("linux") ? "linux" : "unknown";
-}
-
-/**
- * pane 的旧数据可能只有 host/session 字段；补成与系统信息缓存一致的稳定目标键。
- */
-function snippetTargetRef(
-  pane: TerminalPane,
-  record: PaneSessionRecord | undefined,
-): RemoteTargetRef | undefined {
-  if (pane.target) return pane.target;
-  if (record?.containerId && record.remoteHostId) {
-    return dockerContainerTarget({
-      containerId: record.containerId,
-      hostId: record.remoteHostId,
-      runtime: record.containerRuntime === "podman" ? "podman" : "docker",
-    });
-  }
-  const hostId = record?.remoteHostId ?? pane.remoteHostId;
-  if (record?.target === "ssh" && hostId) return sshTarget(hostId);
-  if (record?.target === "telnet" && hostId) return telnetTarget(hostId);
-  if (record?.target === "serial" && hostId) return serialTarget(hostId);
-  if (pane.mode === "local" || record?.target === "local") {
-    return localTarget(record?.profileId ?? pane.profileId);
-  }
-  return undefined;
-}
-
-function platformFromOs(os: string | null | undefined): SnippetPlatform {
-  const value = os?.toLowerCase() ?? "";
-  if (value.includes("windows")) return "windows";
-  if (value.includes("darwin") || value.includes("macos") || value.includes("mac os")) return "macos";
-  return /(?:linux|ubuntu|debian|fedora|centos|red hat|rhel|rocky|alma|arch|alpine|suse|gentoo|mint|raspbian|amazon linux)/.test(value)
-    ? "linux"
-    : "unknown";
 }

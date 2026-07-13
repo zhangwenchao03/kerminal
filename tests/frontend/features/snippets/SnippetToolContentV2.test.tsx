@@ -14,7 +14,6 @@ const mocks = vi.hoisted(() => ({
   clearUsage: vi.fn(),
   documents: vi.fn(),
   history: vi.fn(),
-  peekServerInfo: vi.fn(),
   openPath: vi.fn(),
   workspaceStatus: vi.fn(),
 }));
@@ -32,9 +31,6 @@ vi.mock("../../../../src/lib/desktopClipboardApi", () => ({
 }));
 vi.mock("../../../../src/lib/commandHistoryApi", () => ({
   listCommandHistory: (...args: unknown[]) => mocks.history(...args),
-}));
-vi.mock("../../../../src/features/tool-panel/useServerInfoSnapshot", () => ({
-  peekServerInfoSnapshot: (...args: unknown[]) => mocks.peekServerInfo(...args),
 }));
 vi.mock("../../../../src/lib/agentLauncherApi", () => ({
   getExternalAgentWorkspaceStatus: (...args: unknown[]) =>
@@ -103,7 +99,6 @@ describe("SnippetToolContentV2", () => {
     mocks.clearUsage.mockReset().mockResolvedValue(2);
     mocks.documents.mockReset().mockResolvedValue({ snippets: [], warnings: [] });
     mocks.history.mockReset().mockResolvedValue([]);
-    mocks.peekServerInfo.mockReset().mockReturnValue(null);
     mocks.openPath.mockReset().mockResolvedValue(undefined);
     mocks.workspaceStatus.mockReset().mockResolvedValue({
       workspaceDir: "C:/Users/test/.kerminal",
@@ -113,10 +108,6 @@ describe("SnippetToolContentV2", () => {
         detail: "ready",
         status: "ready",
       },
-    });
-    Object.defineProperty(window.navigator, "platform", {
-      configurable: true,
-      value: "Win32",
     });
   });
 
@@ -175,7 +166,7 @@ describe("SnippetToolContentV2", () => {
     expect(await screen.findByText("渲染后的命令已复制")).toBeInTheDocument();
   });
 
-  it("confirms inspect execution when target capabilities are not yet known", async () => {
+  it("runs inspect commands without capability recognition", async () => {
     render(
       <SnippetToolContentV2
         focusedPane={{ id: "pane-1", mode: "local", title: "PowerShell" } as never}
@@ -190,16 +181,22 @@ describe("SnippetToolContentV2", () => {
     expect(run).not.toHaveAttribute("aria-disabled");
     fireEvent.click(run);
 
+    await waitFor(() =>
+      expect(mocks.run).toHaveBeenCalledWith(
+        expect.objectContaining({ command: "curl -I 'https://example.com'" }),
+      ),
+    );
     expect(
-      await screen.findByText(/环境未完全确认.*尚未验证命令可用性.*curl/),
-    ).toBeInTheDocument();
-    expect(mocks.run).not.toHaveBeenCalled();
+      screen.queryByRole("dialog", { name: "确认运行命令" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/尚未识别|尚未验证|环境未完全确认/)).not.toBeInTheDocument();
   });
 
-  it("reuses cached SSH platform metadata when a legacy pane has no target ref", async () => {
+  it("ignores platform, shell, scope and context compatibility metadata", async () => {
     mocks.list.mockResolvedValue([{
       ...item,
-      capabilities: [],
+      capabilities: ["missing-command"],
+      contextBindings: [{ kind: "host", targetId: "another-host" }],
       platforms: ["linux"],
       scope: "ssh",
       shells: ["bash"],
@@ -211,7 +208,6 @@ describe("SnippetToolContentV2", () => {
       shell: "/bin/bash",
       target: "ssh",
     });
-    mocks.peekServerInfo.mockReturnValue({ os: "Ubuntu 24.04 LTS" });
 
     render(
       <SnippetToolContentV2
@@ -224,13 +220,15 @@ describe("SnippetToolContentV2", () => {
       />,
     );
     fireEvent.click(await screen.findByText("HTTP 响应头"));
-
-    expect(mocks.peekServerInfo).toHaveBeenCalledWith({
-      hostId: "host-a",
-      kind: "ssh",
+    fireEvent.change(screen.getByLabelText("URL"), {
+      target: { value: "https://example.com" },
     });
-    expect(screen.queryByText("尚未读取目标平台")).not.toBeInTheDocument();
-    expect(screen.queryByText("尚未识别当前 shell")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "运行" }));
+
+    await waitFor(() => expect(mocks.run).toHaveBeenCalledTimes(1));
+    expect(
+      screen.queryByText(/尚未读取|尚未识别|尚未验证|不兼容|环境未完全确认/),
+    ).not.toBeInTheDocument();
   });
 
   it("masks secret values by default, reveals only while held, and disables copy", async () => {

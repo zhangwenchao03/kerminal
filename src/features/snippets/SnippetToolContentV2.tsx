@@ -364,7 +364,7 @@ export function SnippetToolContentV2({
         <input
           className="kerminal-field-surface h-9 w-full rounded-lg border pl-9 pr-3 text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100"
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="搜索名称、命令、标签或能力"
+          placeholder="搜索名称、命令或标签"
           ref={searchRef}
           value={query}
         />
