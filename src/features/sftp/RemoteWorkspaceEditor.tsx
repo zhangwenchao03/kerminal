@@ -693,8 +693,8 @@ export function RemoteWorkspaceEditor({
     <>
       <section
         className={cn(
-          "kerminal-solid-surface overflow-hidden rounded-2xl border",
-          expanded && "flex h-full min-h-0 flex-col rounded-xl",
+          "kerminal-solid-surface overflow-hidden rounded-[var(--radius-card)] border",
+          expanded && "flex h-full min-h-0 flex-col",
         )}
       >
         <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-2.5">
@@ -922,7 +922,7 @@ export function RemoteWorkspaceEditor({
         size="small"
         title="关闭未保存文件"
       >
-        <div className="rounded-xl border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-100">
+        <div className="rounded-[var(--radius-control)] border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-100">
           当前文件有未保存修改。
         </div>
       </ModalShell>

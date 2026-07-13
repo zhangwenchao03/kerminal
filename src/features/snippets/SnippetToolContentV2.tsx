@@ -362,7 +362,7 @@ export function SnippetToolContentV2({
         <span className="sr-only">搜索命令片段</span>
         <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
         <input
-          className="kerminal-field-surface h-9 w-full rounded-lg border pl-9 pr-3 text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100"
+          className="kerminal-field-surface h-9 w-full rounded-[var(--radius-control)] border pl-9 pr-3 text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100"
           onChange={(event) => setQuery(event.target.value)}
           placeholder="搜索名称、命令或标签"
           ref={searchRef}
@@ -400,7 +400,7 @@ export function SnippetToolContentV2({
             aria-controls={`snippet-panel-${id}`}
             className={`kerminal-focus-ring h-8 border-b-2 text-xs ${
               view === id
-                ? "border-sky-500 text-zinc-950 dark:text-white"
+                ? "border-[rgb(var(--app-accent))] text-zinc-950 dark:text-zinc-50"
                 : "border-transparent text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
             }`}
             id={`snippet-tab-${id}`}

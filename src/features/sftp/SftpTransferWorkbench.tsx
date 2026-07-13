@@ -377,20 +377,20 @@ export function SftpTransferWorkbench({
       ? "grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]"
       : "grid min-h-0 flex-1 grid-cols-1 gap-3 p-3 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]";
   const headerIconClass = compactDensity
-    ? "h-8 w-8 rounded-lg"
+    ? "h-8 w-8 rounded-[var(--radius-control)]"
     : spaciousDensity
-      ? "h-10 w-10 rounded-2xl"
-      : "h-9 w-9 rounded-xl";
+      ? "h-10 w-10 rounded-[var(--radius-control)]"
+      : "h-9 w-9 rounded-[var(--radius-control)]";
   const headerActionClass = compactDensity
-    ? "h-8 w-8 rounded-lg"
+    ? "h-8 w-8 rounded-[var(--radius-control)]"
     : spaciousDensity
-      ? "h-10 w-10 rounded-xl"
-      : "h-9 w-9 rounded-lg";
+      ? "h-10 w-10 rounded-[var(--radius-control)]"
+      : "h-9 w-9 rounded-[var(--radius-control)]";
 
   return (
     <section
       aria-label="SFTP 传输工作台"
-      className="kerminal-solid-surface flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border"
+      className="kerminal-solid-surface flex h-full min-h-0 flex-col overflow-hidden rounded-[var(--radius-card)] border"
     >
       <header
         className={cn(
@@ -558,17 +558,17 @@ function LeftPane({
       ? "px-3 py-2"
       : "px-3 py-2";
   const localTabButtonClass = compactDensity
-    ? "h-7 rounded-lg px-2"
+    ? "h-7 rounded-[var(--radius-control)] px-2"
     : spaciousDensity
-      ? "h-9 rounded-xl px-2.5"
-      : "h-8 rounded-lg px-2";
+      ? "h-9 rounded-[var(--radius-control)] px-2.5"
+      : "h-8 rounded-[var(--radius-control)] px-2";
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
       <div
         aria-label="左侧目标"
         className={cn(
-          "kerminal-muted-surface flex shrink-0 items-center gap-2 rounded-xl border",
+          "kerminal-muted-surface flex shrink-0 items-center gap-2 rounded-[var(--radius-control)] border",
           targetBarPaddingClass,
         )}
       >
@@ -626,7 +626,7 @@ function LeftPane({
             transferViewScope={transferViewScope}
           />
         ) : (
-          <div className="kerminal-muted-surface flex h-full min-h-0 flex-col overflow-hidden rounded-xl border">
+          <div className="kerminal-muted-surface flex h-full min-h-0 flex-col overflow-hidden rounded-[var(--radius-card)] border">
             <RemoteHostPaneBody
               active={active}
               activeTab={activeTab}
@@ -696,7 +696,7 @@ function HostPane({
       : "px-3 py-2";
 
   return (
-    <div className="kerminal-muted-surface flex min-h-0 flex-col overflow-hidden rounded-xl border">
+    <div className="kerminal-muted-surface flex min-h-0 flex-col overflow-hidden rounded-[var(--radius-card)] border">
       <div
         aria-label={title}
         className={cn(
@@ -783,10 +783,10 @@ function SearchableSftpHostSelect({
     [machines, normalizedSearch],
   );
   const inputClass = compactDensity
-    ? "h-7 rounded-lg pl-7 pr-3 text-xs"
+    ? "h-7 rounded-[var(--radius-control)] pl-7 pr-3 text-xs"
     : spaciousDensity
-      ? "h-9 rounded-xl pl-8 pr-3 text-xs"
-      : "h-8 rounded-lg pl-7 pr-3 text-xs";
+      ? "h-9 rounded-[var(--radius-control)] pl-8 pr-3 text-xs"
+      : "h-8 rounded-[var(--radius-control)] pl-7 pr-3 text-xs";
 
   const closeDropdown = () => {
     setOpen(false);
@@ -849,7 +849,7 @@ function SearchableSftpHostSelect({
       </label>
       {open ? (
         <div
-          className="kerminal-floating-surface kerminal-floating-enter absolute right-0 top-[calc(100%+0.375rem)] z-50 w-56 overflow-hidden rounded-2xl border p-1 text-sm text-zinc-950 dark:text-zinc-100"
+          className="kerminal-floating-surface kerminal-floating-enter kerminal-layer-popover absolute right-0 top-[calc(100%+0.375rem)] w-56 overflow-hidden rounded-[var(--radius-card)] border p-1 text-sm text-zinc-950 dark:text-zinc-100"
           id={listboxId}
           role="listbox"
         >
@@ -858,7 +858,7 @@ function SearchableSftpHostSelect({
               filteredMachines.map((machine) => (
                 <button
                   aria-selected={false}
-                  className="kerminal-focus-ring kerminal-pressable grid min-w-0 gap-0.5 rounded-xl px-2.5 py-2 text-left text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50"
+                  className="kerminal-focus-ring kerminal-pressable grid min-w-0 gap-0.5 rounded-[var(--radius-control)] px-2.5 py-2 text-left text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50"
                   key={machine.id}
                   onClick={() => selectHost(machine.id)}
                   role="option"
@@ -884,7 +884,7 @@ function SearchableSftpHostSelect({
           {onCreateSshHost ? (
             <button
               aria-selected={false}
-              className="kerminal-focus-ring kerminal-pressable mt-1 flex w-full items-start gap-2 rounded-xl border-t border-[var(--border-subtle)] px-2.5 py-2 text-left text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50"
+              className="kerminal-focus-ring kerminal-pressable mt-1 flex w-full items-start gap-2 rounded-[var(--radius-control)] border-t border-[var(--border-subtle)] px-2.5 py-2 text-left text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50"
               onClick={createSshHost}
               role="option"
               type="button"

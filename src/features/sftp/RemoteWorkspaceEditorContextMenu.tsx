@@ -89,7 +89,7 @@ export function RemoteWorkspaceEditorContextMenu({
   const menu = (
     <div
       aria-label={`${title} 编辑菜单`}
-      className="kerminal-context-menu kerminal-floating-enter fixed z-[1000] w-60"
+      className="kerminal-context-menu kerminal-floating-enter kerminal-layer-popover fixed w-60"
       data-menu-domain="remote-workspace-editor"
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}

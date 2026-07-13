@@ -67,7 +67,7 @@ export function LocalRenameDialog({
           submitRename();
         }}
       >
-        <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-3 text-sm text-zinc-700 dark:text-zinc-200">
+        <div className="rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-3 text-sm text-zinc-700 dark:text-zinc-200">
           <div className="flex items-center gap-2 font-medium">
             <Edit3 className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
             将重命名本机{entry.kind === "directory" ? "目录" : "文件"}：
@@ -84,7 +84,7 @@ export function LocalRenameDialog({
           <input
             aria-label="新名称"
             autoFocus
-            className="kerminal-field-surface mt-1 h-9 w-full rounded-xl border px-3 font-mono text-xs text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600"
+            className="kerminal-field-surface mt-1 h-9 w-full rounded-[var(--radius-control)] border px-3 font-mono text-xs text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600"
             onChange={(event) => setNameDraft(event.target.value)}
             placeholder={entry.name}
             spellCheck={false}

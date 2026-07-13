@@ -59,13 +59,15 @@ export function LocalTransferPaneListView({
       <div
         className={cn(
           "kerminal-solid-surface relative flex h-full min-h-0 flex-col overflow-hidden border transition",
-          compactDensity ? "rounded-xl" : "rounded-2xl",
+          compactDensity
+            ? "rounded-[var(--radius-control)]"
+            : "rounded-[var(--radius-card)]",
         )}
       >
         <div className="min-h-0 flex-1 overflow-hidden">
           {loading ? (
             <div
-              className="kerminal-muted-surface m-3 rounded-xl border px-3 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400"
+              className="px-3 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400"
               role="status"
             >
               正在读取本地目录...
@@ -83,7 +85,7 @@ export function LocalTransferPaneListView({
             />
           ) : null}
           {!loading && !error && listing && visibleEntries.length === 0 ? (
-            <div className="kerminal-muted-surface m-3 rounded-xl border px-3 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
+            <div className="px-3 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
               当前视图没有可显示项目。
             </div>
           ) : null}

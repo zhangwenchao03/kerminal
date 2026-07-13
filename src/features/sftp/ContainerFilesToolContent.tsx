@@ -545,7 +545,7 @@ export function ContainerFilesToolContent({
         value={containerDialogValue(containerDialog)}
       >
         {containerDialog?.kind === "delete" ? (
-          <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-3 text-sm text-red-700 dark:text-red-100">
+          <div className="rounded-[var(--radius-control)] border border-red-500/20 bg-red-500/10 px-3 py-3 text-sm text-red-700 dark:text-red-100">
             将删除容器{containerDialog.entry.kind === "directory" ? "目录" : "项目"}：
             <span className="mt-1 block break-all font-mono text-xs">
               {containerDialog.entry.path}

@@ -279,7 +279,7 @@ export function SnippetCatalogRowV2({
         >
           <span className="min-w-0 flex-1">
             <span className="block truncate text-xs font-medium text-zinc-900 dark:text-zinc-100">{item.title}</span>
-            <span className="block truncate font-mono text-[11px] text-zinc-500 dark:text-zinc-400">{item.description || item.template}</span>
+            <span className={`block truncate text-[11px] text-zinc-500 dark:text-zinc-400 ${item.description ? "" : "font-mono"}`}>{item.description || item.template}</span>
           </span>
           <span className="shrink-0 text-[10px] text-zinc-400">{item.origin === "builtin" ? item.category : "我的"}</span>
           <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform ${expanded ? "rotate-180" : ""}`} />
@@ -332,7 +332,7 @@ export function SnippetCatalogRowV2({
             </label>
           ))}
           <div className="flex min-w-0 items-start gap-2">
-            <pre className="min-w-0 flex-1 max-h-28 overflow-auto whitespace-pre-wrap break-words border-l-2 border-sky-500/50 pl-2 font-mono text-[11px] text-zinc-700 dark:text-zinc-200">
+            <pre className="min-w-0 max-h-28 flex-1 overflow-auto whitespace-pre-wrap break-words border-l-2 border-[rgb(var(--app-accent))] pl-2 font-mono text-[11px] text-zinc-700 dark:text-zinc-200">
               {displayedCommand ?? item.template}
             </pre>
             {render.plan?.containsSensitiveValue ? (
@@ -372,7 +372,7 @@ export function SnippetCatalogRowV2({
               {item.duration === "streaming" ? "该命令会持续输出，可用 Ctrl+C 停止。" : "该命令可能产生较高磁盘或网络负载。"}
             </p>
           ) : null}
-          <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-zinc-200/70 pt-2.5 dark:border-zinc-700/70">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-[var(--border-subtle)] pt-2.5">
             <div aria-label="片段管理" className="flex items-center gap-0.5" role="group">
               <Button
                 aria-label="复制结果"

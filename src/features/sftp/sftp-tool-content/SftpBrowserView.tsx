@@ -82,7 +82,7 @@ const sftpDividerClassName =
   "mx-1 hidden h-5 w-px bg-[var(--border-subtle)] min-[420px]:block";
 
 const sftpUploadMenuItemClassName =
-  "kerminal-focus-ring kerminal-pressable flex h-8 w-full items-center gap-2 rounded-xl px-2 text-left text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-zinc-50";
+  "kerminal-focus-ring kerminal-pressable flex h-8 w-full items-center gap-2 rounded-[var(--radius-control)] px-2 text-left text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-zinc-50";
 
 const SFTP_UPLOAD_MENU_WIDTH = 176;
 const SFTP_UPLOAD_MENU_VIEWPORT_GAP = 8;
@@ -272,10 +272,10 @@ export function SftpBrowserView({
       ? "p-4"
       : "p-3";
   const pathSurfaceClass = compactChrome
-    ? "rounded-xl px-2.5 py-2"
+    ? "rounded-[var(--radius-card)] px-2.5 py-2"
     : spaciousDensity
-      ? "rounded-2xl p-4"
-      : "rounded-2xl p-3";
+      ? "rounded-[var(--radius-card)] p-4"
+      : "rounded-[var(--radius-card)] p-3";
   const bodyPaddingClass = compactChrome
     ? "p-2"
     : spaciousDensity
@@ -520,7 +520,8 @@ export function SftpBrowserView({
         <div
           className={cn(
             "kerminal-solid-surface border",
-            compactChrome ? "rounded-xl p-3" : "rounded-2xl p-4",
+            "rounded-[var(--radius-card)]",
+            compactChrome ? "p-3" : "p-4",
           )}
         >
           <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
@@ -594,7 +595,7 @@ export function SftpBrowserView({
             </div>
           ) : null}
           {!compactChrome ? (
-            <div className="kerminal-muted-surface mt-3 flex items-center gap-2 rounded-xl border px-2 py-1.5">
+            <div className="kerminal-muted-surface mt-3 flex items-center gap-2 rounded-[var(--radius-control)] border px-2 py-1.5">
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-300">
                 <Terminal className="h-3.5 w-3.5" />
               </div>
@@ -785,8 +786,7 @@ export function SftpBrowserView({
       <div className={cn("min-h-0 flex-1", bodyPaddingClass)}>
         <div
           className={cn(
-            "relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border transition",
-            compactChrome && "rounded-xl",
+            "relative flex h-full min-h-0 flex-col overflow-hidden rounded-[var(--radius-card)] border transition",
             !dragDropActive &&
               !remoteDownloadDropActive &&
               "kerminal-solid-surface",
@@ -808,7 +808,7 @@ export function SftpBrowserView({
         >
           {remoteDownloadDragActive ? (
             <div className="kerminal-reduced-transparency-surface pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-emerald-500/10 backdrop-blur-[1px]">
-              <div className="kerminal-floating-surface flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-medium text-emerald-700 dark:text-emerald-100">
+              <div className="kerminal-floating-surface flex items-center gap-2 rounded-[var(--radius-card)] border px-4 py-3 text-sm font-medium text-emerald-700 dark:text-emerald-100">
                 <Download className="h-4 w-4" />
                 {remoteDragEntriesRef.current.length > 1
                   ? `拖到下方列表复制 ${remoteDragEntriesRef.current.length} 项`
@@ -817,7 +817,7 @@ export function SftpBrowserView({
             </div>
           ) : dragDropActive ? (
             <div className="kerminal-reduced-transparency-surface pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-sky-500/10 backdrop-blur-[1px]">
-              <div className="kerminal-floating-surface rounded-2xl border px-4 py-3 text-sm font-medium text-sky-700 dark:text-sky-100">
+              <div className="kerminal-floating-surface rounded-[var(--radius-card)] border px-4 py-3 text-sm font-medium text-sky-700 dark:text-sky-100">
                 释放以上传到 {currentPath}
               </div>
             </div>
@@ -851,7 +851,7 @@ export function SftpBrowserView({
           <div className="min-h-0 flex-1 overflow-hidden">
             {loading ? (
               <div
-                className="kerminal-muted-surface m-3 rounded-xl border px-3 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400"
+                className="px-3 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400"
                 role="status"
               >
                 正在读取远程目录...
@@ -883,7 +883,7 @@ export function SftpBrowserView({
               </div>
             ) : null}
             {!loading && !error && listing && visibleEntries.length === 0 ? (
-              <div className="kerminal-muted-surface m-3 rounded-xl border px-3 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
+              <div className="px-3 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
                 {entries.length === 0
                   ? "当前目录为空。"
                   : "当前筛选下没有可见项目。"}
@@ -1001,7 +1001,7 @@ export function SftpBrowserView({
             ) : null}
             {!loading && !error && browserMode === "workspace" ? (
               <div className="grid gap-3 overflow-auto p-3 text-sm">
-                <div className="kerminal-muted-surface rounded-xl border px-3 py-3">
+                <div className="border-b border-[var(--border-subtle)] pb-3">
                   <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                     当前根目录
                   </div>
@@ -1009,7 +1009,7 @@ export function SftpBrowserView({
                     {currentPath}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[var(--radius-card)] border bg-[var(--border-subtle)]">
                   <SftpWorkspaceMetric label="目录" value={directoryCount} />
                   <SftpWorkspaceMetric label="文件" value={fileCount} />
                   <SftpWorkspaceMetric
@@ -1028,7 +1028,7 @@ export function SftpBrowserView({
                     value={visibleTransfers.length}
                   />
                 </div>
-                <div className="kerminal-muted-surface rounded-xl border px-3 py-3">
+                <div className="border-b border-[var(--border-subtle)] pb-3">
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
@@ -1111,7 +1111,7 @@ export function SftpBrowserView({
         ? createPortal(
             <div
               aria-label="上传菜单"
-              className="kerminal-floating-surface kerminal-floating-enter fixed z-[1000] w-44 overflow-hidden rounded-2xl border bg-[var(--surface-overlay)] p-1.5 text-zinc-900 shadow-xl shadow-black/15 dark:text-zinc-100 dark:shadow-black/35"
+              className="kerminal-floating-surface kerminal-floating-enter kerminal-layer-popover fixed w-44 overflow-hidden rounded-[var(--radius-card)] border bg-[var(--surface-overlay)] p-1.5 text-zinc-900 dark:text-zinc-100"
               data-sftp-upload-menu="true"
               role="menu"
               style={{
@@ -1256,7 +1256,7 @@ function SftpWorkspaceMetric({
   value: number;
 }) {
   return (
-    <div className="kerminal-muted-surface rounded-xl border px-3 py-2">
+    <div className="kerminal-solid-surface px-3 py-2">
       <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
         {label}
       </div>

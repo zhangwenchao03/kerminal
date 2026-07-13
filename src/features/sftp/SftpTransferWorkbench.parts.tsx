@@ -24,7 +24,7 @@ export function HostTabButton({
     interfaceDensity === "compact"
       ? "h-7 rounded-lg px-2"
       : interfaceDensity === "spacious"
-        ? "h-9 rounded-xl px-2.5"
+        ? "h-9 rounded-[var(--radius-control)] px-2.5"
         : "h-8 rounded-lg px-2";
   return (
     <span

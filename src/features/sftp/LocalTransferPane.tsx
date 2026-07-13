@@ -796,7 +796,7 @@ export function LocalTransferPane({
     <div
       aria-label="本地目录面板"
       className={cn(
-        "kerminal-muted-surface flex h-full min-h-0 flex-col overflow-hidden rounded-xl border transition",
+        "kerminal-muted-surface flex h-full min-h-0 flex-col overflow-hidden rounded-[var(--radius-card)] border transition",
         remoteDropActive &&
           "border-sky-400/70 ring-2 ring-sky-400/30 dark:border-sky-300/70 dark:ring-sky-300/25",
         dropRejectedActive &&
