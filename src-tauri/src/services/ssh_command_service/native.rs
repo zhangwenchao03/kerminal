@@ -44,7 +44,10 @@ use crate::{
     services::{
         ssh_credential_resolver::{NativeSshHopMaterial, NativeSshRouteMaterial},
         ssh_route_plan::build_ssh_route_plan,
-        ssh_runtime::{SshRuntimeExecRawOutput, SshRuntimeSftpStream, SshRuntimeShellRequest},
+        ssh_runtime::{
+            policy::known_hosts_revokes_key, SshRuntimeExecRawOutput, SshRuntimeSftpStream,
+            SshRuntimeShellRequest,
+        },
     },
 };
 pub(crate) use auth::resolve_native_auth_material;
@@ -198,6 +201,9 @@ impl client::Handler for NativeCommandClientHandler {
         &mut self,
         server_public_key: &PublicKey,
     ) -> Result<bool, Self::Error> {
+        if known_hosts_revokes_key(server_public_key, &self.known_hosts_path) {
+            return Ok(false);
+        }
         match keys::known_hosts::check_known_hosts_path(
             &self.host,
             self.port,

@@ -5,11 +5,15 @@
 use std::{
     collections::HashMap,
     fmt,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use serde::Serialize;
+use zeroize::Zeroize;
 
 use crate::{
     error::{AppError, AppResult},
@@ -33,6 +37,7 @@ pub struct SshAuthBroker {
 }
 
 struct SshAuthBrokerInner {
+    next_generation: AtomicU64,
     session_secrets: Mutex<HashMap<SshSessionSecretKey, SshSessionSecretEntry>>,
 }
 
@@ -56,6 +61,7 @@ impl SshAuthBroker {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(SshAuthBrokerInner {
+                next_generation: AtomicU64::new(1),
                 session_secrets: Mutex::new(HashMap::new()),
             }),
         }
@@ -78,8 +84,10 @@ impl SshAuthBroker {
             secret_kind: input.secret_kind,
         };
         let now = unix_timestamp();
+        let generation = self.inner.next_generation.fetch_add(1, Ordering::Relaxed);
         let entry = SshSessionSecretEntry {
             created_at: now.clone(),
+            generation,
             last_used_at: now,
             secret_kind: input.secret_kind,
             value: input.value,
@@ -87,9 +95,32 @@ impl SshAuthBroker {
 
         self.session_secrets()?.insert(key, entry);
         Ok(SshSessionSecretReceipt {
+            generation,
             prompt_id: input.prompt_id,
             secret_kind: input.secret_kind,
         })
+    }
+
+    /// 仅删除该 receipt 自己写入且仍为当前版本的 secret，避免旧会话清理误删并发新值。
+    #[doc(hidden)]
+    pub fn forget_session_secret_receipt(
+        &self,
+        receipt: &SshSessionSecretReceipt,
+    ) -> AppResult<bool> {
+        validate_prompt_id(&receipt.prompt_id)?;
+        let key = SshSessionSecretKey {
+            prompt_id: receipt.prompt_id.clone(),
+            secret_kind: receipt.secret_kind,
+        };
+        let mut secrets = self.session_secrets()?;
+        if secrets
+            .get(&key)
+            .is_some_and(|entry| entry.generation == receipt.generation)
+        {
+            secrets.remove(&key);
+            return Ok(true);
+        }
+        Ok(false)
     }
 
     /// Remove one session-only secret from memory.
@@ -298,6 +329,8 @@ impl fmt::Debug for SshSessionSecretInput {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SshSessionSecretReceipt {
+    #[serde(skip)]
+    generation: u64,
     pub prompt_id: String,
     pub secret_kind: SshAuthSecretKind,
 }
@@ -347,12 +380,18 @@ struct SshSessionSecretKey {
     secret_kind: SshAuthSecretKind,
 }
 
-#[derive(Clone, PartialEq, Eq)]
 struct SshSessionSecretEntry {
     created_at: String,
+    generation: u64,
     last_used_at: String,
     secret_kind: SshAuthSecretKind,
     value: String,
+}
+
+impl Drop for SshSessionSecretEntry {
+    fn drop(&mut self) {
+        self.value.zeroize();
+    }
 }
 
 impl fmt::Debug for SshSessionSecretEntry {

@@ -252,6 +252,8 @@ pub struct McpToolExecutionContext<'a> {
     pub docker_hosts: &'a DockerHostService,
     /// 外部 SSH 启动 intake 服务。
     pub external_launch_intake: &'a ExternalLaunchIntake,
+    /// 外部 SSH 创建任务运行态注册表。
+    pub external_launch_tasks: &'a crate::services::external_launch::ExternalLaunchTaskRegistry,
     /// tmux 会话管理服务。
     pub tmux: &'a TmuxService,
     /// SSH 端口转发服务。

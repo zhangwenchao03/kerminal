@@ -2,7 +2,11 @@
 //!
 //! @author kongweiguang
 
-use std::fs;
+use std::{
+    fs,
+    io::Read,
+    path::{Component, Path},
+};
 
 use crate::error::{AppError, AppResult};
 
@@ -27,6 +31,8 @@ use crate::services::external_launch::{
 };
 
 pub(crate) struct MobaXtermParser;
+
+const MAX_MOBAXTERM_SESSION_FILE_BYTES: u64 = 64 * 1024;
 
 struct BhostParentTarget {
     target: ExternalSshTarget,
@@ -289,10 +295,88 @@ fn parse_mobaxterm_session_file(
 }
 
 fn read_mobaxterm_session_file(path: &str) -> AppResult<MobaSessionTarget> {
-    let text = fs::read_to_string(path).map_err(|error| {
-        AppError::InvalidInput(format!("failed to read MobaXterm session file: {error}"))
+    let path = Path::new(path);
+    reject_unsafe_session_file_path(path)?;
+    let metadata = fs::symlink_metadata(path).map_err(|_| {
+        AppError::InvalidInput("failed to inspect MobaXterm session file".to_owned())
     })?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(AppError::InvalidInput(
+            "MobaXterm session path must be a regular non-symlink file".to_owned(),
+        ));
+    }
+    if metadata.len() > MAX_MOBAXTERM_SESSION_FILE_BYTES {
+        return Err(AppError::InvalidInput(
+            "MobaXterm session file exceeds 64 KiB".to_owned(),
+        ));
+    }
+    let mut file = fs::File::open(path)
+        .map_err(|_| AppError::InvalidInput("failed to open MobaXterm session file".to_owned()))?;
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.by_ref()
+        .take(MAX_MOBAXTERM_SESSION_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| AppError::InvalidInput("failed to read MobaXterm session file".to_owned()))?;
+    if bytes.len() as u64 > MAX_MOBAXTERM_SESSION_FILE_BYTES {
+        return Err(AppError::InvalidInput(
+            "MobaXterm session file exceeds 64 KiB".to_owned(),
+        ));
+    }
+    let text = String::from_utf8(bytes)
+        .map_err(|_| AppError::InvalidInput("MobaXterm session file must be UTF-8".to_owned()))?;
     parse_mobaxterm_session_text(&text)
+}
+
+fn reject_unsafe_session_file_path(path: &Path) -> AppResult<()> {
+    let normalized = path.to_string_lossy().replace('/', "\\");
+    if normalized.starts_with("\\\\")
+        || normalized.starts_with("\\?\\")
+        || normalized.starts_with("\\.\\")
+    {
+        return Err(AppError::InvalidInput(
+            "MobaXterm session file cannot use UNC or device paths".to_owned(),
+        ));
+    }
+    if path.components().any(|component| {
+        let Component::Normal(value) = component else {
+            return false;
+        };
+        let name = value.to_string_lossy();
+        matches!(
+            name.split('.')
+                .next()
+                .unwrap_or_default()
+                .to_ascii_uppercase()
+                .as_str(),
+            "CON"
+                | "PRN"
+                | "AUX"
+                | "NUL"
+                | "COM1"
+                | "COM2"
+                | "COM3"
+                | "COM4"
+                | "COM5"
+                | "COM6"
+                | "COM7"
+                | "COM8"
+                | "COM9"
+                | "LPT1"
+                | "LPT2"
+                | "LPT3"
+                | "LPT4"
+                | "LPT5"
+                | "LPT6"
+                | "LPT7"
+                | "LPT8"
+                | "LPT9"
+        )
+    }) {
+        return Err(AppError::InvalidInput(
+            "MobaXterm session file cannot use a reserved device name".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 fn parse_mobaxterm_session_text(text: &str) -> AppResult<MobaSessionTarget> {
@@ -328,7 +412,7 @@ fn parse_mobaxterm_session_text(text: &str) -> AppResult<MobaSessionTarget> {
         let identity_file = fields
             .get(15)
             .map(|value| value.trim())
-            .filter(|value| !value.is_empty() && *value != "<none>")
+            .filter(|value| looks_like_identity_file(value))
             .map(str::to_owned);
         let display_name = session_name.trim().to_owned();
         return Ok(MobaSessionTarget {
@@ -342,6 +426,19 @@ fn parse_mobaxterm_session_text(text: &str) -> AppResult<MobaSessionTarget> {
     Err(AppError::InvalidInput(
         "MobaXterm session file does not contain an SSH session".to_owned(),
     ))
+}
+
+fn looks_like_identity_file(value: &str) -> bool {
+    let value = value.trim();
+    if value.is_empty() || value == "<none>" {
+        return false;
+    }
+    let lower = value.to_ascii_lowercase();
+    value.contains('/')
+        || value.contains('\\')
+        || [".pem", ".ppk", ".key", "id_rsa", "id_ed25519"]
+            .iter()
+            .any(|suffix| lower.ends_with(suffix))
 }
 
 fn derive_mobaxterm_session_username(session_name: &str) -> Option<String> {

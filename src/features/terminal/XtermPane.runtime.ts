@@ -2,6 +2,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { Terminal as XtermTerminal } from "@xterm/xterm";
 import { closeTerminal, getTerminalLogState, listTerminalSessions, resizeTerminal, type TerminalOutputEvent } from "../../lib/terminalApi";
+import { closeExternalSshLaunch } from "../../lib/externalLaunchApi";
 import {
   markTerminalPaneSessionDisconnected,
   markTerminalPaneSessionReconnected,
@@ -524,6 +525,9 @@ export function installXtermPaneRuntime(params: any) {
     }),
   });
   const hasRemoteTerminalTarget = () => Boolean(remoteHostId || target?.kind === "dockerContainer" || target?.kind === "telnet" || target?.kind === "serial");
+  const externalLaunchId = remoteHostId?.startsWith("external:")
+    ? remoteHostId.slice("external:".length)
+    : null;
   let transientStartupNoticeVisible = false;
   const startupNoticeFor = (reason: "initial" | "reconnect") => {
     if (reason === "reconnect") {
@@ -885,6 +889,15 @@ export function installXtermPaneRuntime(params: any) {
     disconnectSessionRef.current = null;
     if (sessionId) {
       unregisterTerminalPaneSession(paneId, sessionId);
+    }
+    if (externalLaunchId) {
+      const closeSession = sessionId
+        ? closeTerminal(sessionId).catch(() => undefined)
+        : Promise.resolve();
+      void closeSession.finally(() =>
+        closeExternalSshLaunch(externalLaunchId).catch(() => undefined),
+      );
+    } else if (sessionId) {
       void closeTerminal(sessionId);
     }
     unregisterTerminalRenderer();

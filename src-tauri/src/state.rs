@@ -19,7 +19,8 @@ use crate::{
         docker_host_service::DockerHostService,
         external_agent_workspace::ExternalAgentWorkspaceService,
         external_launch::{
-            ExternalLaunchIntake, ExternalLaunchPolicy, ExternalSessionMaterializer,
+            ExternalLaunchIntake, ExternalLaunchPolicy, ExternalLaunchTaskRegistry,
+            ExternalSessionMaterializer,
         },
         local_network_proxy_service::LocalNetworkProxyService,
         mcp_streamable_http_server::McpStreamableHttpServerService,
@@ -63,6 +64,7 @@ pub struct AppState {
     diagnostics: DiagnosticsService,
     docker_hosts: DockerHostService,
     external_launch_intake: ExternalLaunchIntake,
+    external_launch_tasks: ExternalLaunchTaskRegistry,
     external_session_materializer: ExternalSessionMaterializer,
     local_network_proxy: LocalNetworkProxyService,
     mcp_http_server: McpStreamableHttpServerService,
@@ -111,6 +113,7 @@ impl AppState {
         let diagnostics = DiagnosticsService::new();
         let docker_hosts = DockerHostService::new();
         let external_launch_intake = ExternalLaunchIntake::new();
+        let external_launch_tasks = ExternalLaunchTaskRegistry::new();
         let local_network_proxy = LocalNetworkProxyService::new();
         let config_files = ConfigFileStore::new(paths.root.clone());
         let workspace_sync = WorkspaceSyncService::new(paths.clone());
@@ -128,9 +131,10 @@ impl AppState {
         let ssh_auth_broker = SshAuthBroker::new();
         let ssh_runtime =
             ManagedSshSessionManager::with_backend(Arc::new(NativeSshRuntimeBackend::new()));
-        let external_session_materializer = ExternalSessionMaterializer::new(
+        let external_session_materializer = ExternalSessionMaterializer::with_remote_hosts(
             external_launch_intake.clone(),
             ssh_auth_broker.clone(),
+            remote_hosts.clone(),
         );
         let port_forwards = PortForwardService::with_ssh_runtime(
             ssh_runtime.clone(),
@@ -174,6 +178,7 @@ impl AppState {
             diagnostics,
             docker_hosts,
             external_launch_intake,
+            external_launch_tasks,
             external_session_materializer,
             local_network_proxy,
             mcp_http_server,
@@ -259,6 +264,11 @@ impl AppState {
     /// 返回外部 SSH 启动 intake 服务。
     pub fn external_launch_intake(&self) -> &ExternalLaunchIntake {
         &self.external_launch_intake
+    }
+
+    /// 返回 external SSH 创建任务注册表。
+    pub fn external_launch_tasks(&self) -> &ExternalLaunchTaskRegistry {
+        &self.external_launch_tasks
     }
 
     /// 返回外部 SSH 启动临时 target materializer。

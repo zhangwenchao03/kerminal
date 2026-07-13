@@ -22,6 +22,7 @@ import {
   externalSshLaunchDescription,
   externalSshLaunchDisplayName,
   externalSshLaunchMachineId,
+  externalSshLaunchProduction,
   externalSshLaunchTags,
   isExternalSshMachineId,
 } from "../external-launch/externalSshLaunchModel";
@@ -846,6 +847,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
         kind: "ssh",
         name: externalSshLaunchDisplayName(launch),
         port: launch.target.port,
+        production: externalSshLaunchProduction(launch),
         status: "online",
         tags: externalSshLaunchTags(launch),
         target: sshTarget(machineId),

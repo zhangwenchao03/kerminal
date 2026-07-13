@@ -14,7 +14,7 @@ use kerminal_lib::{
     services::external_launch::{
         ExternalLaunchEntrypoint, ExternalLaunchIntake, ExternalLaunchParseInput,
         ExternalLaunchParserRegistry, ExternalLaunchPolicy, ExternalLaunchSecretBroker,
-        ExternalLaunchSourceTool,
+        ExternalLaunchSourceTool, ExternalLaunchTaskSnapshot,
     },
 };
 use tempfile::tempdir;
@@ -50,6 +50,15 @@ fn command_dto_exposes_only_redacted_auth_metadata() {
     assert!(!dto.auth.has_key_passphrase);
     assert!(!dto.auth.password_file_present);
     assert!(dto.auth.identity_file.is_none());
+    let diagnostics_json =
+        serde_json::to_string(&dto.diagnostics).expect("serialize public diagnostics");
+    assert!(!diagnostics_json.contains("example.internal"));
+    assert!(!diagnostics_json.contains("ops"));
+    assert!(dto
+        .diagnostics
+        .argv_redacted
+        .iter()
+        .all(|arg| matches!(arg.as_str(), "<executable>" | "<option>" | "<argument>")));
     assert!(!json.contains("KERM_COMMAND_DTO_SECRET_DO_NOT_USE"));
     assert!(!json.contains("external-secret:"));
 }
@@ -106,20 +115,32 @@ fn snapshot_dto_exposes_policy_without_secret_refs() {
             ExternalLaunchEntrypoint::DirectArgv,
         )
         .expect("accept launch");
+    let claimed = intake.take_pending().expect("claim launch");
+    let claimed_launch_id = claimed[0].id.clone();
 
     let dto = external_launch_snapshot_to_dto(
         intake.snapshot().expect("intake snapshot"),
         intake.secret_broker().snapshot().expect("secret snapshot"),
+        ExternalLaunchTaskSnapshot::default(),
     );
     let json = serde_json::to_string(&dto).expect("serialize snapshot dto");
 
-    assert_eq!(dto.intake.pending_count, 1);
+    assert_eq!(dto.intake.pending_count, 0);
+    assert_eq!(dto.intake.claimed_count, 1);
+    assert_eq!(dto.intake.claimed_request_hashes.len(), 1);
+    assert_eq!(dto.intake.claimed_request_hashes[0].len(), 12);
     assert!(dto
         .intake
         .policy
         .disabled_tools
         .contains(&ExternalLaunchSourceTool::Xshell));
     assert_eq!(dto.secrets.active_secret_count, 1);
+    assert_eq!(dto.tasks, Default::default());
+    assert_eq!(
+        dto.secrets.request_hashes,
+        dto.intake.claimed_request_hashes
+    );
+    assert!(!json.contains(&claimed_launch_id));
     assert!(!json.contains("KERM_COMMAND_SNAPSHOT_SECRET_DO_NOT_USE"));
     assert!(!json.contains("external-secret:"));
 }

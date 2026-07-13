@@ -8,6 +8,7 @@ import {
   externalSshLaunchIdFromMachineId,
   externalSshLaunchMachineId,
   externalSshLaunchNeedsUsername,
+  externalSshLaunchProduction,
   isExternalSshMachineId,
   resolveExternalSshLaunchUsername,
 } from "../../../../src/features/external-launch/externalSshLaunchModel";
@@ -80,6 +81,8 @@ describe("externalSshLaunchModel", () => {
       host: "materialized.internal",
       launchId: "launch-1",
       port: 2202,
+      production: false,
+      safety: "known-non-production",
       targetId: "external:launch-1",
       username: "resolved-user",
     });
@@ -97,6 +100,8 @@ describe("externalSshLaunchModel", () => {
       "resolved-user@materialized.internal:2202 · PuTTY",
     );
     expect(externalSshLaunchMachineId(materialized)).toBe("external:launch-1");
+    expect(externalSshLaunchProduction(materialized)).toBe(false);
+    expect(externalSshLaunchProduction(launch)).toBe(true);
   });
 });
 

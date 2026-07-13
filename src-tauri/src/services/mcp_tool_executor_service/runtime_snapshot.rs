@@ -9,6 +9,7 @@ use super::*;
 use crate::models::agent_session::AgentSessionDiagnostic;
 use crate::services::external_launch::{
     ExternalLaunchIntakeSnapshot, ExternalLaunchRejected, ExternalLaunchSecretBrokerSnapshot,
+    ExternalLaunchTaskSnapshot,
 };
 
 pub(super) fn execute_kerminal_runtime_snapshot(
@@ -186,6 +187,17 @@ pub(super) fn execute_kerminal_runtime_snapshot(
             None
         }
     };
+    let external_launch_tasks = match context.external_launch_tasks.snapshot() {
+        Ok(snapshot) => Some(snapshot),
+        Err(error) => {
+            diagnostics.push(runtime_snapshot_diagnostic(
+                "external_launch.tasks",
+                "externalLaunchTasksUnavailable",
+                &error,
+            ));
+            None
+        }
+    };
     let external_launch_pending_count = external_launch_intake
         .as_ref()
         .map(|snapshot| snapshot.pending_count)
@@ -197,6 +209,7 @@ pub(super) fn execute_kerminal_runtime_snapshot(
     let external_launch_runtime = external_launch_snapshot_json(
         external_launch_intake.as_ref(),
         external_launch_secrets.as_ref(),
+        external_launch_tasks.as_ref(),
     );
 
     let managed_ssh_runtime = match context.ssh_runtime.snapshot() {
@@ -391,23 +404,57 @@ fn agent_session_runtime_diagnostic(diagnostic: &AgentSessionDiagnostic) -> Valu
 fn external_launch_snapshot_json(
     intake: Option<&ExternalLaunchIntakeSnapshot>,
     secrets: Option<&ExternalLaunchSecretBrokerSnapshot>,
+    tasks: Option<&ExternalLaunchTaskSnapshot>,
 ) -> Value {
     json!({
         "intake": intake.map(|snapshot| {
             json!({
                 "pendingCount": snapshot.pending_count,
-                "pendingLaunchIds": &snapshot.pending_launch_ids,
+                "pendingRequestHashes": snapshot.pending_launch_ids.iter().map(|launch_id| {
+                    crate::services::external_launch::redaction::opaque_id_hash(launch_id)
+                }).collect::<Vec<_>>(),
+                "claimedCount": snapshot.claimed_count,
+                "claimedRequestHashes": snapshot.claimed_launch_ids.iter().map(|launch_id| {
+                    crate::services::external_launch::redaction::opaque_id_hash(launch_id)
+                }).collect::<Vec<_>>(),
                 "acceptedCount": snapshot.accepted_count,
                 "rejectedCount": snapshot.rejected_count,
                 "noopCount": snapshot.noop_count,
                 "lastRejection": snapshot.last_rejection.as_ref().map(external_launch_rejection_json),
-                "policy": &snapshot.policy
+                "policy": &snapshot.policy,
+                "health": {
+                    "bridgeListening": snapshot.health.bridge_listening,
+                    "bridgeGenerationTag": snapshot.health.bridge_generation_tag,
+                    "bridgeRestartCount": snapshot.health.bridge_restart_count,
+                    "bridgeActiveClients": snapshot.health.bridge_active_clients,
+                    "dedupCount": snapshot.health.dedup_count,
+                    "backpressureCount": snapshot.health.backpressure_count,
+                    "expiryCount": snapshot.health.expiry_count,
+                    "cancelCount": snapshot.health.cancel_count,
+                    "oldestLaunchAgeMs": snapshot.health.oldest_launch_age_ms,
+                    "lastIntakeLatencyMs": snapshot.health.last_intake_latency_ms
+                }
             })
         }),
         "secrets": secrets.map(|snapshot| {
             json!({
                 "activeSecretCount": snapshot.active_secret_count,
-                "launchIds": &snapshot.launch_ids
+                "requestHashes": snapshot.launch_ids.iter().map(|launch_id| {
+                    crate::services::external_launch::redaction::opaque_id_hash(launch_id)
+                }).collect::<Vec<_>>()
+            })
+        }),
+        "tasks": tasks.map(|snapshot| {
+            json!({
+                "queuedCount": snapshot.queued_count,
+                "inFlightCount": snapshot.in_flight_count,
+                "connectedCount": snapshot.connected_count,
+                "cancelledCount": snapshot.cancelled_count,
+                "deadlineCount": snapshot.deadline_count,
+                "lateCleanupCount": snapshot.late_cleanup_count,
+                "completedCount": snapshot.completed_count,
+                "oldestTaskAgeMs": snapshot.oldest_task_age_ms,
+                "lastConnectLatencyMs": snapshot.last_connect_latency_ms
             })
         }),
         "configuration": {
@@ -416,7 +463,7 @@ fn external_launch_snapshot_json(
             "validator": "kerminal.config.validate",
             "mcpCrudBoundary": "external_launch.* control/configuration tools are intentionally absent; edit settings.toml and validate."
         },
-        "secretBoundary": "External launch passwords, URL passwords, password file contents, private keys, and key passphrases are never included in runtime snapshots; only counts and launch ids are exposed."
+        "secretBoundary": "External launch passwords, URL passwords, password file contents, private keys, key passphrases, and actionable launch ids are never included in runtime snapshots; only counts and irreversible request hashes are exposed."
     })
 }
 

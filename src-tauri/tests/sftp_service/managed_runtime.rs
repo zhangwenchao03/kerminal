@@ -430,6 +430,14 @@ fn external_browser_transport_reconnects_after_retained_sftp_channel_breaks() {
         .external_session_materializer()
         .materialize(state.paths(), &launch_id, None)
         .expect("materialize external launch");
+    runtime
+        .block_on(state.sftp().trust_host_key(
+            state.paths(),
+            SftpTrustHostKeyRequest {
+                host_id: target.host_id.clone(),
+            },
+        ))
+        .expect("explicitly trust external loopback host key");
     state
         .external_launch_intake()
         .secret_broker()

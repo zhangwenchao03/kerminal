@@ -71,10 +71,27 @@ pub fn terminal_resize(
 /// 关闭终端会话。
 #[tauri::command]
 pub fn terminal_close(state: State<'_, AppState>, session_id: String) -> TerminalCommandResult<()> {
+    let external_launch_id = state
+        .terminals()
+        .session_summary(&session_id)
+        .ok()
+        .and_then(|summary| summary.target_ref)
+        .and_then(|target_ref| target_ref.strip_prefix("ssh:").map(str::to_owned))
+        .and_then(|host_id| {
+            crate::services::external_launch::external_launch_id_from_target_id(&host_id)
+                .map(str::to_owned)
+        });
     state
         .terminals()
         .close(&session_id)
-        .map_err(map_terminal_command_error(TerminalErrorOperation::Close))
+        .map_err(map_terminal_command_error(TerminalErrorOperation::Close))?;
+    if let Some(launch_id) = external_launch_id {
+        state
+            .external_launch_tasks()
+            .release_connected_session(&launch_id, &session_id)
+            .map_err(map_terminal_command_error(TerminalErrorOperation::Close))?;
+    }
+    Ok(())
 }
 
 /// 收割当前进程内的本地 PTY orphan 会话。

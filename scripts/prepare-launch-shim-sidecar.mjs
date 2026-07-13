@@ -18,7 +18,13 @@ const nsisHookPath = "../scripts/kerminal-launch-shim-nsis-hooks.nsh";
 const args = new Set(process.argv.slice(2));
 const noBuild = args.has("--no-build");
 const verifyOnly = args.has("--verify");
-const targetTriple = readOption("--target") || process.env.KERMINAL_SHIM_TARGET_TRIPLE || process.env.CARGO_BUILD_TARGET || hostTriple();
+// Tauri 在交叉构建 beforeBuildCommand 时通过该变量传递最终 bundle target。
+const targetTriple =
+  readOption("--target") ||
+  process.env.KERMINAL_SHIM_TARGET_TRIPLE ||
+  process.env.TAURI_ENV_TARGET_TRIPLE ||
+  process.env.CARGO_BUILD_TARGET ||
+  hostTriple();
 const extension = targetTriple.includes("windows") ? ".exe" : "";
 const sidecarDir = path.join(tauriDir, "binaries");
 const sidecarPath = path.join(sidecarDir, `${sidecarName}-${targetTriple}${extension}`);

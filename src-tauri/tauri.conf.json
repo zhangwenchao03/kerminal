@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1425",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build && npm run prepare:launch-shim-sidecar",
     "frontendDist": "../dist"
   },
   "app": {
@@ -44,6 +44,9 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
+    "externalBin": [
+      "binaries/kerminal-launch-shim-sidecar"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -53,12 +56,16 @@
     ],
     "windows": {
       "nsis": {
+        "installerHooks": "../scripts/kerminal-launch-shim-nsis-hooks.nsh",
         "installerIcon": "icons/icon.ico",
         "uninstallerIcon": "icons/icon.ico"
       }
     }
   },
   "plugins": {
+    "deep-link": {
+      "desktop": []
+    },
     "updater": {
       "endpoints": [
         "https://github.com/kongweiguang/kerminal/releases/latest/download/latest.json"

@@ -864,6 +864,7 @@ fn mcp_context_with_ssh_runtime<'a>(
         diagnostics: state.diagnostics(),
         docker_hosts: state.docker_hosts(),
         external_launch_intake: state.external_launch_intake(),
+        external_launch_tasks: state.external_launch_tasks(),
         local_network_proxy: state.local_network_proxy(),
         paths: state.paths(),
         port_forwards: state.port_forwards(),

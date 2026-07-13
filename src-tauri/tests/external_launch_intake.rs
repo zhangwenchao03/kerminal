@@ -2,11 +2,375 @@
 //!
 //! @author kongweiguang
 
+use std::time::{Duration, Instant};
+
 use kerminal_lib::services::external_launch::{
     build_external_launch_shim_envelope, ExternalLaunchAcceptOutcome, ExternalLaunchEntrypoint,
     ExternalLaunchEventKind, ExternalLaunchIntake, ExternalLaunchPolicy, ExternalLaunchSourceTool,
     ExternalSecretSlot,
 };
+
+#[test]
+fn duplicate_bridge_request_id_is_idempotent() {
+    let intake = ExternalLaunchIntake::new();
+    let mut envelope = build_external_launch_shim_envelope(
+        vec![
+            "putty.exe".to_owned(),
+            "-ssh".to_owned(),
+            "ops@dedup.example.internal".to_owned(),
+        ],
+        None,
+        None,
+    )
+    .expect("build shim envelope");
+    envelope.request_id = "request-stable-1".to_owned();
+
+    let first = intake
+        .accept_bridge_envelope(envelope.clone())
+        .expect("accept first envelope");
+    let duplicate = intake
+        .accept_bridge_envelope(envelope)
+        .expect("accept duplicate envelope");
+
+    let first = match first {
+        ExternalLaunchAcceptOutcome::Queued(value) => value,
+        other => panic!("expected first queued outcome, got {other:?}"),
+    };
+    let duplicate = match duplicate {
+        ExternalLaunchAcceptOutcome::Queued(value) => value,
+        other => panic!("expected duplicate queued outcome, got {other:?}"),
+    };
+    assert_eq!(duplicate.launch_id, first.launch_id);
+    assert_eq!(intake.snapshot().expect("snapshot").pending_count, 1);
+    assert_eq!(intake.snapshot().expect("snapshot").accepted_count, 1);
+}
+
+#[test]
+fn bridge_request_id_reuse_with_different_payload_is_rejected() {
+    let intake = ExternalLaunchIntake::new();
+    let mut first = build_external_launch_shim_envelope(
+        vec![
+            "putty.exe".to_owned(),
+            "-ssh".to_owned(),
+            "first@dedup.example.internal".to_owned(),
+        ],
+        None,
+        None,
+    )
+    .expect("build first envelope");
+    first.request_id = "request-collision-1".to_owned();
+    let mut conflicting = build_external_launch_shim_envelope(
+        vec![
+            "putty.exe".to_owned(),
+            "-ssh".to_owned(),
+            "other@dedup.example.internal".to_owned(),
+        ],
+        None,
+        None,
+    )
+    .expect("build conflicting envelope");
+    conflicting.request_id = first.request_id.clone();
+
+    intake
+        .accept_bridge_envelope(first)
+        .expect("accept first envelope");
+    let error = intake
+        .accept_bridge_envelope(conflicting)
+        .expect_err("request id cannot be reused for another payload");
+
+    assert!(error.to_string().contains("request id was reused"));
+    assert_eq!(intake.snapshot().expect("snapshot").pending_count, 1);
+}
+
+#[test]
+fn bridge_delivery_history_is_bounded_and_evicts_oldest_request() {
+    let intake = ExternalLaunchIntake::new();
+    let mut first_envelope = None;
+    let mut first_launch_id = None;
+    let mut second_envelope = None;
+    let mut second_launch_id = None;
+
+    for index in 0..512 {
+        let mut envelope = build_external_launch_shim_envelope(
+            vec![
+                "putty.exe".to_owned(),
+                "-ssh".to_owned(),
+                "ops@history.example.internal".to_owned(),
+            ],
+            None,
+            None,
+        )
+        .expect("build history envelope");
+        envelope.request_id = format!("history-request-{index}");
+        if index == 0 {
+            first_envelope = Some(envelope.clone());
+        } else if index == 1 {
+            second_envelope = Some(envelope.clone());
+        }
+        let queued = match intake
+            .accept_bridge_envelope(envelope)
+            .expect("accept history envelope")
+        {
+            ExternalLaunchAcceptOutcome::Queued(queued) => queued,
+            other => panic!("expected queued history envelope, got {other:?}"),
+        };
+        if index == 0 {
+            first_launch_id = Some(queued.launch_id.clone());
+        } else if index == 1 {
+            second_launch_id = Some(queued.launch_id.clone());
+        }
+        let claimed = intake.take_pending().expect("claim history request");
+        assert_eq!(claimed.len(), 1);
+        assert!(intake
+            .acknowledge(&queued.launch_id)
+            .expect("ack history request"));
+    }
+
+    let first_envelope = first_envelope.expect("first envelope");
+    let first_launch_id = first_launch_id.expect("first launch id");
+    let refreshed = match intake
+        .accept_bridge_envelope(first_envelope.clone())
+        .expect("refresh first LRU entry")
+    {
+        ExternalLaunchAcceptOutcome::Queued(queued) => queued,
+        other => panic!("expected refreshed duplicate, got {other:?}"),
+    };
+    assert_eq!(refreshed.launch_id, first_launch_id);
+
+    let mut newest = build_external_launch_shim_envelope(
+        vec![
+            "putty.exe".to_owned(),
+            "-ssh".to_owned(),
+            "ops@history.example.internal".to_owned(),
+        ],
+        None,
+        None,
+    )
+    .expect("build newest envelope");
+    newest.request_id = "history-request-512".to_owned();
+    let newest = match intake
+        .accept_bridge_envelope(newest)
+        .expect("accept newest history envelope")
+    {
+        ExternalLaunchAcceptOutcome::Queued(queued) => queued,
+        other => panic!("expected newest queued envelope, got {other:?}"),
+    };
+    let claimed = intake.take_pending().expect("claim newest request");
+    assert_eq!(claimed.len(), 1);
+    assert!(intake
+        .acknowledge(&newest.launch_id)
+        .expect("ack newest request"));
+
+    let second_replay = match intake
+        .accept_bridge_envelope(second_envelope.expect("second envelope"))
+        .expect("replay LRU-evicted request")
+    {
+        ExternalLaunchAcceptOutcome::Queued(queued) => queued,
+        other => panic!("expected replay to queue after LRU eviction, got {other:?}"),
+    };
+    assert_ne!(
+        second_replay.launch_id,
+        second_launch_id.expect("second launch id")
+    );
+    let first_replay = match intake
+        .accept_bridge_envelope(first_envelope)
+        .expect("replay refreshed request")
+    {
+        ExternalLaunchAcceptOutcome::Queued(queued) => queued,
+        other => panic!("expected refreshed request to stay deduplicated, got {other:?}"),
+    };
+    assert_eq!(first_replay.launch_id, first_launch_id);
+}
+
+#[test]
+fn pending_queue_rejects_over_capacity_without_retaining_secret() {
+    let intake = ExternalLaunchIntake::with_policy(ExternalLaunchPolicy {
+        pending_capacity: 1,
+        ..ExternalLaunchPolicy::default()
+    });
+    intake
+        .accept_args(
+            vec![
+                "putty.exe".to_owned(),
+                "-ssh".to_owned(),
+                "first@capacity.example.internal".to_owned(),
+                "-pw".to_owned(),
+                "KERM_CAPACITY_FIRST_SECRET_DO_NOT_USE".to_owned(),
+            ],
+            None,
+            ExternalLaunchEntrypoint::DirectArgv,
+        )
+        .expect("accept first launch");
+
+    let outcome = intake
+        .accept_args(
+            vec![
+                "putty.exe".to_owned(),
+                "-ssh".to_owned(),
+                "second@capacity.example.internal".to_owned(),
+                "-pw".to_owned(),
+                "KERM_CAPACITY_SECOND_SECRET_DO_NOT_USE".to_owned(),
+            ],
+            None,
+            ExternalLaunchEntrypoint::DirectArgv,
+        )
+        .expect("capacity rejection is an intake outcome");
+
+    assert!(matches!(outcome, ExternalLaunchAcceptOutcome::Rejected(_)));
+    let snapshot = intake.snapshot().expect("snapshot");
+    assert_eq!(snapshot.pending_count, 1);
+    assert_eq!(snapshot.rejected_count, 1);
+    assert_eq!(
+        intake
+            .secret_broker()
+            .snapshot()
+            .expect("secret snapshot")
+            .active_secret_count,
+        1
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn bounded_intake_reads_password_file_off_the_async_callback_path() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let password_path = temp.path().join("password.txt");
+    std::fs::write(&password_path, "KERM_BOUNDED_PASSFILE_SECRET\n").expect("write password file");
+    let intake = ExternalLaunchIntake::new();
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(2),
+        intake.accept_args_bounded(
+            vec![
+                "putty.exe".to_owned(),
+                "-ssh".to_owned(),
+                "bounded@example.internal".to_owned(),
+                "-pwfile".to_owned(),
+                password_path.to_string_lossy().into_owned(),
+            ],
+            None,
+            ExternalLaunchEntrypoint::SingleInstance,
+        ),
+    )
+    .await
+    .expect("bounded intake should complete")
+    .expect("accept bounded launch");
+
+    assert!(matches!(outcome, ExternalLaunchAcceptOutcome::Queued(_)));
+    let request = intake
+        .take_pending()
+        .expect("take pending")
+        .pop()
+        .expect("queued request");
+    assert!(request.auth.password_file.is_some());
+    assert!(!format!("{request:?}").contains(&password_path.to_string_lossy().to_string()));
+    assert!(request
+        .auth
+        .password
+        .as_ref()
+        .is_some_and(ExternalSecretSlot::is_session_ref));
+    assert!(!format!("{request:?}").contains("KERM_BOUNDED_PASSFILE_SECRET"));
+}
+
+#[test]
+fn claimed_launch_is_requeued_after_lease_expiry_and_ack_is_idempotent() {
+    let intake = ExternalLaunchIntake::with_policy(ExternalLaunchPolicy {
+        claim_lease_ms: 30_000,
+        ..ExternalLaunchPolicy::default()
+    });
+    let outcome = intake
+        .accept_args(
+            vec![
+                "ssh.exe".to_owned(),
+                "lease@recovery.example.internal".to_owned(),
+            ],
+            None,
+            ExternalLaunchEntrypoint::DirectArgv,
+        )
+        .expect("accept lease launch");
+    let launch_id = match outcome {
+        ExternalLaunchAcceptOutcome::Queued(value) => value.launch_id,
+        other => panic!("expected queued outcome, got {other:?}"),
+    };
+    let started_at = Instant::now();
+
+    assert_eq!(
+        intake
+            .claim_pending_at(started_at)
+            .expect("claim pending")
+            .len(),
+        1
+    );
+    assert!(intake
+        .claim_pending_at(started_at + Duration::from_secs(29))
+        .expect("claim before expiry")
+        .is_empty());
+    assert_eq!(
+        intake
+            .claim_pending_at(started_at + Duration::from_secs(31))
+            .expect("reclaim after expiry")
+            .len(),
+        1
+    );
+    assert!(intake.acknowledge(&launch_id).expect("first ack"));
+    assert!(!intake.acknowledge(&launch_id).expect("duplicate ack"));
+    assert!(intake
+        .active_request(&launch_id)
+        .expect("active lookup")
+        .is_none());
+}
+
+#[test]
+fn recover_pending_redelivers_claim_for_webview_reload() {
+    let intake = ExternalLaunchIntake::new();
+    let outcome = intake
+        .accept_args(
+            vec![
+                "ssh.exe".to_owned(),
+                "reload@recovery.example.internal".to_owned(),
+            ],
+            None,
+            ExternalLaunchEntrypoint::DirectArgv,
+        )
+        .expect("accept reload launch");
+    let launch_id = match outcome {
+        ExternalLaunchAcceptOutcome::Queued(value) => value.launch_id,
+        other => panic!("expected queued outcome, got {other:?}"),
+    };
+
+    assert_eq!(intake.recover_pending().expect("first recovery").len(), 1);
+    let recovered = intake.recover_pending().expect("webview reload recovery");
+
+    assert_eq!(recovered.len(), 1);
+    assert_eq!(recovered[0].id, launch_id);
+    assert!(intake
+        .acknowledge(&launch_id)
+        .expect("ack recovered launch"));
+    assert!(intake.recover_pending().expect("after ack").is_empty());
+}
+
+#[test]
+fn acknowledge_rejects_a_request_that_has_not_been_claimed() {
+    let intake = ExternalLaunchIntake::new();
+    let outcome = intake
+        .accept_args(
+            vec![
+                "ssh.exe".to_owned(),
+                "pending@ack-order.example.internal".to_owned(),
+            ],
+            None,
+            ExternalLaunchEntrypoint::DirectArgv,
+        )
+        .expect("accept pending launch");
+    let launch_id = match outcome {
+        ExternalLaunchAcceptOutcome::Queued(value) => value.launch_id,
+        other => panic!("expected queued outcome, got {other:?}"),
+    };
+
+    let error = intake
+        .acknowledge(&launch_id)
+        .expect_err("pending launch cannot be acknowledged");
+    assert!(error.to_string().contains("尚未被领取"));
+}
 
 #[test]
 fn intake_noops_for_regular_kerminal_activation() {

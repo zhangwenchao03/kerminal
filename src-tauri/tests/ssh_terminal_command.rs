@@ -2,10 +2,16 @@
 //!
 //! @author kongweiguang
 
-use std::time::{Duration, Instant};
+use std::{
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::{Duration, Instant},
+};
 
 use kerminal_lib::{
-    commands::ssh::rules::run_ssh_create_task,
+    commands::ssh::rules::{run_bounded_ssh_create_task, run_ssh_create_task},
     models::terminal::{TerminalCommandError, TerminalErrorClass, TerminalErrorOperation},
 };
 
@@ -41,6 +47,37 @@ async fn slow_ssh_create_task_does_not_block_async_runtime_heartbeat() {
         "SSH 创建任务阻塞了异步运行时心跳"
     );
     create_task.await.expect("SSH 创建 worker 应正常完成");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn external_ssh_create_budget_never_runs_more_than_configured_workers() {
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(2));
+    let active = Arc::new(AtomicUsize::new(0));
+    let peak = Arc::new(AtomicUsize::new(0));
+    let mut tasks = Vec::new();
+
+    for _ in 0..6 {
+        let semaphore = Arc::clone(&semaphore);
+        let active = Arc::clone(&active);
+        let peak = Arc::clone(&peak);
+        tasks.push(tokio::spawn(async move {
+            run_bounded_ssh_create_task(semaphore, Duration::from_secs(2), move || {
+                let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+                peak.fetch_max(current, Ordering::SeqCst);
+                std::thread::sleep(Duration::from_millis(40));
+                active.fetch_sub(1, Ordering::SeqCst);
+                Ok(())
+            })
+            .await
+        }));
+    }
+
+    for task in tasks {
+        task.await
+            .expect("join bounded create task")
+            .expect("run task");
+    }
+    assert_eq!(peak.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test(flavor = "current_thread")]

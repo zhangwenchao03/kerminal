@@ -9,23 +9,113 @@ use kerminal_lib::services::external_launch::{
     ExternalLaunchSourceTool, ExternalSshLaunchRequest,
 };
 
-const CASES_JSON: &str = include_str!("fixtures/external_launch/cases.json");
+const CASES_JSON: &[&str] = &[
+    include_str!("fixtures/external_launch/cases.json"),
+    include_str!("fixtures/external_launch/cases-putty.json"),
+    include_str!("fixtures/external_launch/cases-mobaxterm.json"),
+    include_str!("fixtures/external_launch/cases-xshell.json"),
+    include_str!("fixtures/external_launch/cases-securecrt.json"),
+    include_str!("fixtures/external_launch/cases-openssh.json"),
+    include_str!("fixtures/external_launch/cases-kerminal-native.json"),
+];
 
 #[test]
-fn registry_parses_p0_external_launch_fixtures() {
+fn openssh_option_schema_preserves_destination_after_known_value_options() {
+    let request = ExternalLaunchParserRegistry::new()
+        .parse(&ExternalLaunchParseInput::direct_argv(
+            ExternalLaunchSourceTool::Openssh,
+            vec![
+                "ssh.exe".to_owned(),
+                "-E".to_owned(),
+                "ssh.log".to_owned(),
+                "-p2202".to_owned(),
+                "-ldeploy".to_owned(),
+                "example.internal".to_owned(),
+            ],
+        ))
+        .expect("parse OpenSSH options with declared arity");
+
+    assert_eq!(request.target.host, "example.internal");
+    assert_eq!(request.target.port, 2202);
+    assert_eq!(request.target.username.as_deref(), Some("deploy"));
+}
+
+#[test]
+fn openssh_rejects_unknown_options_instead_of_reinterpreting_their_values() {
+    let error = ExternalLaunchParserRegistry::new()
+        .parse(&ExternalLaunchParseInput::direct_argv(
+            ExternalLaunchSourceTool::Openssh,
+            vec![
+                "ssh.exe".to_owned(),
+                "-Z".to_owned(),
+                "option-value".to_owned(),
+                "example.internal".to_owned(),
+            ],
+        ))
+        .expect_err("unknown OpenSSH option must fail closed");
+
+    assert!(error.to_string().contains("unsupported OpenSSH option"));
+}
+
+#[test]
+fn parser_rejects_oversized_nested_command_before_persona_parsing() {
+    const CANARY: &str = "KERM_OVERSIZED_REMOTE_COMMAND_CANARY";
+    let oversized = format!("{CANARY}{}", "x".repeat(64 * 1024));
+    let error = ExternalLaunchParserRegistry::new()
+        .parse(&ExternalLaunchParseInput::direct_argv(
+            ExternalLaunchSourceTool::Openssh,
+            vec![
+                "ssh.exe".to_owned(),
+                "deploy@example.internal".to_owned(),
+                oversized,
+            ],
+        ))
+        .expect_err("oversized command must fail before parsing");
+
+    assert!(error.to_string().contains("size limit"));
+    assert!(!error.to_string().contains(CANARY));
+}
+
+#[test]
+fn external_launch_debug_output_never_contains_remote_command_text() {
+    const COMMAND_CANARY: &str = "KERM_REMOTE_COMMAND_CANARY_DO_NOT_LOG";
+    const HOST_CANARY: &str = "debug-host-canary.example.internal";
+    const USER_CANARY: &str = "debug-user-canary";
+    let request = ExternalLaunchParserRegistry::new()
+        .parse(&ExternalLaunchParseInput::direct_argv(
+            ExternalLaunchSourceTool::Openssh,
+            vec![
+                "ssh.exe".to_owned(),
+                format!("{USER_CANARY}@{HOST_CANARY}"),
+                "echo".to_owned(),
+                COMMAND_CANARY.to_owned(),
+            ],
+        ))
+        .expect("parse remote command");
+
+    assert_eq!(
+        request.options.remote_command.as_deref(),
+        Some("echo KERM_REMOTE_COMMAND_CANARY_DO_NOT_LOG")
+    );
+    assert!(!format!("{request:?}").contains(COMMAND_CANARY));
+    assert!(!format!("{request:?}").contains(HOST_CANARY));
+    assert!(!format!("{request:?}").contains(USER_CANARY));
+}
+
+#[test]
+fn registry_parses_all_external_launch_fixtures() {
     let registry = ExternalLaunchParserRegistry::new();
-    for case in fixture_cases()
-        .into_iter()
-        .filter(|case| required_text(case, "priority") == "P0")
-    {
+    for case in fixture_cases() {
         let id = required_text(&case, "id");
         let source_tool =
             ExternalLaunchSourceTool::from_external_name(required_text(&case, "sourceTool"))
                 .unwrap_or_else(|error| panic!("{id}: unsupported source tool: {error}"));
-        let argv = required_array_value(&case, "argv")
+        let mut argv = required_array_value(&case, "argv")
             .iter()
             .map(|value| value.as_str().expect("argv string").to_owned())
             .collect::<Vec<_>>();
+        let fixture_dir = tempfile::tempdir().expect("fixture tempdir");
+        materialize_sidecar_args(&case, fixture_dir.path(), &mut argv);
         let request = registry
             .parse(&fixture_parse_input(&case, source_tool, argv))
             .unwrap_or_else(|error| panic!("{id}: parse failed: {error}"));
@@ -36,6 +126,40 @@ fn registry_parses_p0_external_launch_fixtures() {
         assert_expected_options(id, &request, required_object(&case, "expected"));
         assert_expected_diagnostics(id, &request, required_object(&case, "expected"));
         assert_debug_redacted(id, &request, required_object(&case, "expected"));
+    }
+}
+
+/// 将 fixture 中的声明式 sidecar 文件映射到本轮临时目录，避免测试依赖机器固定路径。
+fn materialize_sidecar_args(case: &Value, root: &std::path::Path, argv: &mut [String]) {
+    if let Some(content) = case.get("sessionFileText").and_then(Value::as_str) {
+        let local_path = root.join("session.moba");
+        std::fs::write(&local_path, content).expect("write MobaXterm session fixture");
+        if let Some(argument) = argv
+            .iter_mut()
+            .find(|argument| argument.to_ascii_lowercase().ends_with(".moba"))
+        {
+            *argument = local_path.to_string_lossy().into_owned();
+        }
+    }
+    let Some(files) = case.get("sidecarFiles").and_then(Value::as_object) else {
+        return;
+    };
+    for (index, (declared_path, content)) in files.iter().enumerate() {
+        let extension = std::path::Path::new(declared_path)
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("txt");
+        let local_path = root.join(format!("sidecar-{index}.{extension}"));
+        std::fs::write(
+            &local_path,
+            content.as_str().expect("sidecar content string"),
+        )
+        .expect("write fixture sidecar");
+        for argument in argv.iter_mut() {
+            if argument == declared_path {
+                *argument = local_path.to_string_lossy().into_owned();
+            }
+        }
     }
 }
 
@@ -556,9 +680,9 @@ fn registry_accepts_bare_user_at_host_when_argv0_is_kerminal() {
 }
 
 #[test]
-fn kerminal_protocol_url_redacts_secret_query_values() {
+fn kerminal_protocol_url_rejects_secret_and_local_file_parameters() {
     let registry = ExternalLaunchParserRegistry::new();
-    let request = registry
+    let error = registry
         .parse(&ExternalLaunchParseInput::direct_argv(
             ExternalLaunchSourceTool::KerminalNative,
             vec![
@@ -566,7 +690,58 @@ fn kerminal_protocol_url_redacts_secret_query_values() {
                 "kerminal://ssh?host=proto.internal&port=2201&user=proto&password=KERM_FIXTURE_PROTOCOL_PASSWORD_DO_NOT_USE&identityFile=C%3A%5CUsers%5Calice%5C.ssh%5Cproto.key&keyPassphrase=KERM_FIXTURE_PROTOCOL_PASSPHRASE_DO_NOT_USE&openSftp=true".to_owned(),
             ],
         ))
-        .expect("parse Kerminal protocol URL");
+        .expect_err("protocol URL secrets must fail closed");
+
+    assert!(error
+        .to_string()
+        .contains("unsupported or unsafe Kerminal protocol parameter"));
+    assert!(!error
+        .to_string()
+        .contains("KERM_FIXTURE_PROTOCOL_PASSWORD_DO_NOT_USE"));
+}
+
+#[test]
+fn mobaxterm_session_file_rejects_unsafe_and_oversized_paths() {
+    let registry = ExternalLaunchParserRegistry::new();
+    let unsafe_error = registry
+        .parse(&ExternalLaunchParseInput::direct_argv(
+            ExternalLaunchSourceTool::Mobaxterm,
+            vec![
+                "MobaXterm.exe".to_owned(),
+                r"\\server\share\unsafe.moba".to_owned(),
+            ],
+        ))
+        .expect_err("UNC session file must fail closed");
+    assert!(unsafe_error.to_string().contains("UNC"));
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let oversized = temp.path().join("oversized.moba");
+    std::fs::write(&oversized, vec![b'x'; 64 * 1024 + 1]).expect("write oversized fixture");
+    let oversized_error = registry
+        .parse(&ExternalLaunchParseInput::direct_argv(
+            ExternalLaunchSourceTool::Mobaxterm,
+            vec![
+                "MobaXterm.exe".to_owned(),
+                oversized.to_string_lossy().into_owned(),
+            ],
+        ))
+        .expect_err("oversized session file must fail closed");
+    assert!(oversized_error.to_string().contains("64 KiB"));
+}
+
+#[test]
+fn kerminal_protocol_url_accepts_only_connection_preview_fields() {
+    let request = ExternalLaunchParserRegistry::new()
+        .parse(&ExternalLaunchParseInput::from_args(
+            ExternalLaunchEntrypoint::Protocol,
+            Some(ExternalLaunchSourceTool::KerminalNative),
+            Some("kerminal-native".to_owned()),
+            vec![
+                "kerminal.exe".to_owned(),
+                "kerminal://ssh?host=proto.internal&port=2201&user=proto&displayName=Production%20preview&openSftp=true".to_owned(),
+            ],
+        ))
+        .expect("parse allowlisted Kerminal protocol URL");
 
     assert_eq!(
         request.source.tool,
@@ -575,26 +750,14 @@ fn kerminal_protocol_url_redacts_secret_query_values() {
     assert_eq!(request.target.host, "proto.internal");
     assert_eq!(request.target.port, 2201);
     assert_eq!(request.target.username.as_deref(), Some("proto"));
-    assert_eq!(
-        request.auth.identity_file.as_deref(),
-        Some("C:\\Users\\alice\\.ssh\\proto.key")
-    );
-    assert!(request.auth.has_password());
-    assert!(request.auth.key_passphrase.is_some());
+    assert!(!request.auth.has_secret_material());
+    assert!(request.auth.identity_file.is_none());
     assert!(request.options.open_sftp);
     assert_eq!(
         request.options.display_name.as_deref(),
-        Some("proto@proto.internal")
+        Some("Production preview")
     );
     assert_eq!(request.diagnostics.parser, "kerminal-native-protocol");
-    let redacted_url = &request.diagnostics.argv_redacted[1];
-    assert!(redacted_url.contains("password=%3Credacted%3E"));
-    assert!(redacted_url.contains("keyPassphrase=%3Credacted%3E"));
-    assert!(redacted_url.contains("identityFile=%3Cpath%3Afingerprint%3E"));
-    let debug = format!("{request:?}");
-    assert!(!debug.contains("KERM_FIXTURE_PROTOCOL_PASSWORD_DO_NOT_USE"));
-    assert!(!debug.contains("KERM_FIXTURE_PROTOCOL_PASSPHRASE_DO_NOT_USE"));
-    assert!(!debug.contains("proto.key"));
 }
 
 #[test]
@@ -751,10 +914,15 @@ fn assert_debug_redacted(
 }
 
 fn fixture_cases() -> Vec<Value> {
-    let root: Value = serde_json::from_str(CASES_JSON).expect("parse external launch fixtures");
-    root.as_array()
-        .expect("fixture root must be an array")
-        .to_vec()
+    CASES_JSON
+        .iter()
+        .flat_map(|source| {
+            let root: Value = serde_json::from_str(source).expect("parse external launch fixtures");
+            root.as_array()
+                .expect("fixture root must be an array")
+                .to_vec()
+        })
+        .collect()
 }
 
 fn required_text<'a>(value: &'a Value, key: &str) -> &'a str {

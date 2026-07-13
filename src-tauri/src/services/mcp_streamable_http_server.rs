@@ -462,6 +462,7 @@ fn execution_context<'a>(state: &'a AppState) -> McpToolExecutionContext<'a> {
         sftp: state.sftp(),
         docker_hosts: state.docker_hosts(),
         external_launch_intake: state.external_launch_intake(),
+        external_launch_tasks: state.external_launch_tasks(),
         tmux: state.tmux(),
         port_forwards: state.port_forwards(),
         local_network_proxy: state.local_network_proxy(),

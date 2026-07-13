@@ -127,6 +127,12 @@ export function externalSshLaunchAuthType(
   return "agent";
 }
 
+export function externalSshLaunchProduction(
+  launch: ExternalSshLaunchRequest | ExternalSshLaunchResolvedRequest,
+): boolean {
+  return materializedTarget(launch)?.production ?? true;
+}
+
 export function externalSshLaunchMachineId(
   launch: ExternalSshLaunchRequest | ExternalSshLaunchResolvedRequest,
 ) {
