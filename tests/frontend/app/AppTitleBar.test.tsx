@@ -44,7 +44,8 @@ describe("AppTitleBar", () => {
 
     expect(titleBar).not.toHaveClass("kerminal-material-nav");
     expect(titleBar).not.toHaveClass("border-b");
-    expect(titleBar).toHaveClass("text-zinc-100");
+    expect(titleBar).toHaveClass("text-[var(--text-primary)]");
+    expect(titleBar).toHaveAttribute("data-resolved-theme", "dark");
   });
 
   it("renders without descriptive Chinese title bar copy", () => {
@@ -76,7 +77,7 @@ describe("AppTitleBar", () => {
       "h-7",
     );
     expect(screen.getByRole("button", { name: "关闭窗口" })).toHaveClass(
-      "rounded-lg",
+      "rounded-[var(--radius-control)]",
     );
     expect(screen.getByRole("button", { name: "最大化窗口" })).toHaveAttribute(
       "title",

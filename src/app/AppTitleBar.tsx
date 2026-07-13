@@ -115,14 +115,12 @@ export function AppTitleBar({
   return (
     <header
       className={cn(
-        "flex h-9 shrink-0 select-none items-center justify-between px-2.5",
+        "flex h-9 shrink-0 select-none items-center justify-between px-2.5 text-[var(--text-primary)]",
         surface && "kerminal-material-nav border-b",
-        resolvedTheme === "dark"
-          ? "text-zinc-100"
-          : "text-zinc-950",
         className,
       )}
       data-desktop-platform={desktopPlatform}
+      data-resolved-theme={resolvedTheme}
       data-traffic-light-inset={
         windowChrome.reserveTrafficLightInset ? "true" : undefined
       }
@@ -141,7 +139,7 @@ export function AppTitleBar({
           <button
             aria-label={leftPanelCollapsed ? "展开主机侧边栏" : "折叠主机侧边栏"}
             aria-pressed={leftPanelCollapsed}
-            className="kerminal-pressable kerminal-focus-ring grid h-7 w-7 place-items-center rounded-lg text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
+            className="kerminal-pressable kerminal-focus-ring grid h-7 w-7 place-items-center rounded-[var(--radius-control)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
             onClick={toggleLeftPanelCollapsed}
             onPointerCancel={endCollapseButtonPointer}
             onPointerDown={beginCollapseButtonPointer}
@@ -179,7 +177,7 @@ function CustomWindowControls({
     : "最大化窗口";
 
   return (
-    <div aria-label="窗口控制" className="flex items-center gap-1">
+    <div aria-label="窗口控制" className="flex items-center gap-0.5">
       <WindowControlButton
         ariaLabel="最小化窗口"
         icon={<Minus className="h-4 w-4" />}
@@ -235,9 +233,9 @@ function WindowControlButton({
     <button
       aria-label={ariaLabel}
       className={cn(
-        "kerminal-pressable kerminal-focus-ring pointer-events-auto grid h-7 w-7 place-items-center rounded-lg text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50",
+        "kerminal-pressable kerminal-focus-ring pointer-events-auto grid h-7 w-7 place-items-center rounded-[var(--radius-control)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]",
         danger &&
-          "hover:bg-red-500/12 hover:text-red-600 dark:hover:text-red-300",
+          "hover:bg-[rgb(var(--app-danger)/0.12)] hover:text-[rgb(var(--app-danger))]",
       )}
       onClick={onClick}
       title={ariaLabel}

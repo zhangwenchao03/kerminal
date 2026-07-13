@@ -8,7 +8,8 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { AlertCircle, LoaderCircle, X } from "lucide-react";
+import { AlertCircle, LoaderCircle, Search, X } from "lucide-react";
+import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
 import { useWorkspacePaletteFocus } from "./workspacePaletteFocusModel";
 import { resolveWorkspacePaletteKeyboardCommand } from "./workspacePaletteKeyboardModel";
@@ -184,7 +185,7 @@ export function WorkspacePaletteShell({
 
   const stateContent =
     status === "loading" && items.length === 0 ? (
-      <div className="flex h-full items-center justify-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+      <div className="flex h-full items-center justify-center gap-2 text-[13px] text-[var(--text-secondary)]">
         <LoaderCircle
           aria-hidden="true"
           className="h-4 w-4 animate-spin motion-reduce:animate-none"
@@ -192,15 +193,15 @@ export function WorkspacePaletteShell({
         {loadingMessage}
       </div>
     ) : status === "error" && items.length === 0 ? (
-      <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
+      <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-[13px] text-[var(--text-secondary)]">
         <AlertCircle
           aria-hidden="true"
-          className="h-5 w-5 text-rose-600 dark:text-rose-300"
+          className="h-5 w-5 text-[rgb(var(--app-danger))]"
         />
         <span>{statusMessage ?? "无法加载结果"}</span>
       </div>
     ) : items.length === 0 ? (
-      <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
+      <div className="flex h-full items-center justify-center px-6 text-center text-[13px] text-[var(--text-secondary)]">
         {emptyMessage}
       </div>
     ) : (
@@ -212,8 +213,10 @@ export function WorkspacePaletteShell({
               aria-disabled={item.disabled || undefined}
               aria-selected={active}
               className={cn(
-                "flex min-h-12 cursor-default items-center gap-3 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100",
-                active && "bg-[var(--surface-hover)]",
+                "flex min-h-12 cursor-default items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-2 text-[13px] text-[var(--text-primary)]",
+                active
+                  ? "bg-[var(--surface-selected)]"
+                  : !item.disabled && "hover:bg-[var(--surface-hover)]",
                 item.disabled && "opacity-45",
               )}
               id={`${listboxId}-option-${index}`}
@@ -239,20 +242,23 @@ export function WorkspacePaletteShell({
               role="option"
             >
               {item.leading ? (
-                <span aria-hidden="true" className="shrink-0">
+                <span
+                  aria-hidden="true"
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-[var(--radius-control)] bg-[var(--surface-muted)] text-[var(--text-secondary)]"
+                >
                   {item.leading}
                 </span>
               ) : null}
               <span className="min-w-0 flex-1">
-                <span className="block truncate">{item.label}</span>
+                <span className="block truncate font-medium">{item.label}</span>
                 {item.description ? (
-                  <span className="mt-0.5 block truncate text-xs text-zinc-500 dark:text-zinc-400">
+                  <span className="mt-0.5 block truncate text-[11px] leading-4 text-[var(--text-secondary)]">
                     {item.description}
                   </span>
                 ) : null}
               </span>
               {item.trailing ? (
-                <span className="shrink-0 text-xs text-zinc-500 dark:text-zinc-400">
+                <span className="max-w-[42%] shrink-0 truncate text-[11px] text-[var(--text-secondary)]">
                   {item.trailing}
                 </span>
               ) : null}
@@ -264,7 +270,7 @@ export function WorkspacePaletteShell({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[70] flex items-start justify-center bg-black/30 px-4 pt-[min(14vh,8rem)] backdrop-blur-sm dark:bg-black/55"
+      className="kerminal-layer-palette fixed inset-0 flex items-start justify-center bg-zinc-950/24 px-3 pt-[min(14vh,8rem)] backdrop-blur-[2px] dark:bg-black/52 sm:px-4"
       data-workspace-palette-overlay=""
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
@@ -276,7 +282,7 @@ export function WorkspacePaletteShell({
         aria-describedby={description ? descriptionId : undefined}
         aria-labelledby={titleId}
         aria-modal="true"
-        className="flex h-[min(31rem,calc(100vh-5rem))] w-[min(42rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-overlay)] text-zinc-950 shadow-[var(--shadow-floating)] motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-reduce:transition-none dark:text-zinc-50"
+        className="kerminal-floating-enter kerminal-floating-surface flex h-[min(31rem,calc(100vh-5rem))] w-[min(42rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-[var(--radius-panel)] border text-[var(--text-primary)]"
         onMouseDown={(event) => event.stopPropagation()}
         ref={panelRef}
         role="dialog"
@@ -285,7 +291,11 @@ export function WorkspacePaletteShell({
           <h2 id={titleId}>{title}</h2>
           {description ? <p id={descriptionId}>{description}</p> : null}
         </header>
-        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-2">
+        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3">
+          <Search
+            aria-hidden="true"
+            className="h-4 w-4 shrink-0 text-[var(--text-tertiary)]"
+          />
           <input
             aria-activedescendant={activeDescendant}
             aria-autocomplete="list"
@@ -293,7 +303,7 @@ export function WorkspacePaletteShell({
             aria-describedby={statusId}
             aria-expanded="true"
             aria-label={title}
-            className="min-w-0 flex-1 bg-transparent px-1 py-2 text-sm text-zinc-950 outline-none placeholder:text-zinc-400 dark:text-zinc-50 dark:placeholder:text-zinc-500"
+            className="min-w-0 flex-1 bg-transparent px-1 py-2 text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)]"
             onChange={(event) => onQueryChange(event.target.value)}
             onKeyDown={handleInputKeyDown}
             placeholder={placeholder}
@@ -303,19 +313,22 @@ export function WorkspacePaletteShell({
             type="text"
             value={query}
           />
-          <button
+          <Button
             aria-label="关闭"
-            className="kerminal-focus-ring grid h-8 w-8 shrink-0 place-items-center rounded-md text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
+            className="h-8 w-8 shrink-0 rounded-[var(--radius-control)]"
             onClick={onClose}
+            size="icon"
+            title="关闭"
             type="button"
+            variant="ghost"
           >
             <X aria-hidden="true" className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
         <div
           aria-busy={status === "loading" || status === "partial"}
           aria-label={`${title}结果`}
-          className="min-h-0 flex-1 overflow-y-auto py-1"
+          className="min-h-0 flex-1 overflow-y-auto p-1.5"
           id={listboxId}
           role="listbox"
         >
@@ -323,7 +336,7 @@ export function WorkspacePaletteShell({
         </div>
         <div
           aria-live="polite"
-          className="flex h-9 shrink-0 items-center justify-between gap-3 border-t border-[var(--border-subtle)] px-3 text-xs text-zinc-500 dark:text-zinc-400"
+          className="flex h-8 shrink-0 items-center justify-between gap-3 border-t border-[var(--border-subtle)] px-3 text-[11px] text-[var(--text-secondary)]"
           id={statusId}
           role="status"
         >

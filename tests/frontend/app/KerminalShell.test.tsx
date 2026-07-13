@@ -994,7 +994,7 @@ describe("KerminalShell", () => {
 
     const titleBar = screen.getByRole("banner");
 
-    expect(titleBar).toHaveClass("z-50");
+    expect(titleBar).toHaveClass("z-[var(--layer-chrome)]");
     expect(titleBar).not.toHaveClass("kerminal-material-nav");
     expect(titleBar).not.toHaveClass("border-b");
     expect(screen.getByLabelText("终端标签栏").parentElement).toHaveClass(
