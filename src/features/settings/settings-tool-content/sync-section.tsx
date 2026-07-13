@@ -107,7 +107,7 @@ export function SyncSettingsSection() {
 
   return (
     <div className="space-y-4 text-zinc-950 dark:text-zinc-50" id="settings-sync-panel">
-      <section className="kerminal-solid-surface overflow-hidden rounded-2xl border">
+      <section className="kerminal-solid-surface overflow-hidden rounded-[var(--radius-panel)] border">
         <div className="border-b border-[var(--border-subtle)] px-5 py-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
@@ -122,7 +122,7 @@ export function SyncSettingsSection() {
 
             {viewModel.canSync ? (
               <button
-                className="kerminal-focus-ring kerminal-pressable inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl bg-sky-600 px-3.5 text-sm font-semibold text-white shadow-sm shadow-sky-600/15 transition hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-sky-500 dark:hover:bg-sky-400"
+                className="kerminal-focus-ring kerminal-pressable inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-[var(--radius-control)] bg-[rgb(var(--app-accent))] px-3.5 text-[13px] font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={busy}
                 onClick={() => void syncWorkspace()}
                 type="button"
@@ -158,7 +158,7 @@ export function SyncSettingsSection() {
         ) : null}
       </section>
 
-      <section className="kerminal-solid-surface overflow-hidden rounded-2xl border">
+      <section className="kerminal-solid-surface overflow-hidden rounded-[var(--radius-panel)] border">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border-subtle)] px-5 py-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -174,7 +174,7 @@ export function SyncSettingsSection() {
           </div>
 
           <button
-            className="kerminal-focus-ring kerminal-pressable inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-field)] px-3.5 text-sm font-semibold text-zinc-700 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-100"
+            className="kerminal-focus-ring kerminal-pressable inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-field)] px-3.5 text-[13px] font-semibold text-[var(--text-primary)] transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60"
             disabled={busy}
             onClick={() => void saveKey()}
             type="button"
@@ -187,7 +187,7 @@ export function SyncSettingsSection() {
         <div className="space-y-3 p-4">
           <textarea
             aria-label="密钥文件内容"
-            className="kerminal-focus-ring min-h-64 w-full resize-y rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-field)] p-4 font-mono text-xs leading-5 text-zinc-800 outline-none shadow-inner shadow-black/[0.02] placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+            className="kerminal-focus-ring min-h-64 w-full resize-y rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-field)] p-3 font-mono text-xs leading-5 text-zinc-800 outline-none placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500"
             disabled={loadState === "loading"}
             onChange={(event) => setKeyToml(event.currentTarget.value)}
             placeholder="schema_version = 1"
@@ -236,7 +236,7 @@ function StatusIcon({ state }: { state: StatusTone }) {
   return (
     <span
       className={cn(
-        "flex h-7 w-7 shrink-0 items-center justify-center rounded-xl",
+        "flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-control)]",
         toneClassName(state, "background"),
       )}
     >
@@ -258,7 +258,7 @@ function InfoRow({
 }) {
   return (
     <div className="flex min-w-0 items-center gap-3 border-t border-[var(--border-subtle)] px-5 py-3.5 md:border-r md:last:border-r-0">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-muted)] text-zinc-500 dark:text-zinc-400">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--surface-muted)] text-zinc-500 dark:text-zinc-400">
         <Icon className="h-4 w-4" />
       </span>
       <div className="min-w-0">

@@ -15,9 +15,9 @@ import { xtermThemeFor } from "../terminalTheme";
 
 function terminalSchemeButtonClassName(selected: boolean) {
   return cn(
-    "kerminal-focus-ring kerminal-pressable min-h-20 rounded-xl border px-3 py-2.5 text-left transition",
+    "kerminal-focus-ring kerminal-pressable min-h-20 rounded-[var(--radius-control)] border px-3 py-2.5 text-left transition",
     selected
-      ? "border-sky-500/45 bg-[var(--surface-selected)] text-sky-700 shadow-sm shadow-sky-950/5 ring-1 ring-sky-500/15 dark:border-sky-300/35 dark:text-sky-100 dark:ring-sky-300/15"
+      ? "border-sky-500/45 bg-[var(--surface-selected)] text-sky-700 ring-1 ring-sky-500/10 dark:border-sky-300/35 dark:text-sky-100 dark:ring-sky-300/10"
       : "kerminal-muted-surface text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50",
   );
 }
@@ -107,7 +107,7 @@ export function TerminalAppearancePreview({
       <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
         字体预览
       </div>
-      <div className="mt-2 flex min-w-0 items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[rgb(255_255_255_/_0.04)] px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
+      <div className="mt-2 flex min-w-0 items-center gap-2 rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-content)] px-3 py-2 text-xs text-[var(--text-secondary)]">
         <span
           aria-hidden="true"
           className="inline-flex h-7 w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--border-subtle)] text-sm text-zinc-800 dark:text-zinc-100"
@@ -127,7 +127,7 @@ export function TerminalAppearancePreview({
       </div>
       <pre
         aria-label="终端字体预览"
-        className="mt-2 overflow-hidden rounded-xl border border-[var(--border-subtle)] p-3 text-left shadow-inner"
+        className="mt-2 overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-subtle)] p-3 text-left"
         data-font-family={terminal.fontFamily}
         data-font-label={fontLabel}
         key={terminal.fontFamily}
@@ -205,7 +205,7 @@ export function CursorStylePreview({
   return (
     <span
       aria-hidden="true"
-      className="mt-3 block overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[#0b1220] shadow-inner"
+      className="mt-3 block overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[#0b1220]"
     >
       <span className="flex h-7 items-center gap-1 border-b border-[rgb(255_255_255_/_0.08)] bg-[rgb(255_255_255_/_0.04)] px-3">
         <span className="h-1.5 w-1.5 rounded-full bg-rose-400/80" />

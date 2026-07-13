@@ -163,7 +163,7 @@ export function ExternalLaunchSettingsSection({
 
   return (
     <section
-      className="kerminal-solid-surface rounded-2xl border p-5"
+      className="kerminal-solid-surface rounded-[var(--radius-panel)] border p-4"
       id="settings-external-launch-panel"
     >
       <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
@@ -171,7 +171,7 @@ export function ExternalLaunchSettingsSection({
         外部 SSH 启动
       </div>
 
-      <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-xs leading-5 text-amber-800 dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100">
+      <div className="mt-3 flex items-start gap-2 rounded-[var(--radius-control)] border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-xs leading-5 text-amber-800 dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100">
         <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
         外部传入的密码和私钥口令仅用于当前会话，不写入连接配置。
       </div>
@@ -267,10 +267,10 @@ export function ExternalLaunchSettingsSection({
                   aria-checked={enabled}
                   aria-label={`允许 ${metadata.label}`}
                   className={cn(
-                    "kerminal-focus-ring kerminal-pressable flex min-h-20 flex-col items-start rounded-xl border px-3 py-3 text-left transition-[background-color,border-color,box-shadow,transform,filter]",
+                    "kerminal-focus-ring kerminal-pressable flex min-h-20 flex-col items-start rounded-[var(--radius-control)] border px-3 py-3 text-left transition-[background-color,border-color,transform,filter]",
                     enabled
-                      ? "border-sky-400/35 bg-[var(--surface-selected)] text-zinc-950 shadow-sm shadow-sky-950/5 ring-1 ring-sky-500/15 hover:brightness-105 dark:border-sky-300/25 dark:text-zinc-100 dark:ring-sky-300/15"
-                      : "kerminal-solid-surface text-zinc-700 hover:bg-[var(--surface-hover)] dark:text-zinc-300",
+                      ? "border-sky-400/35 bg-[var(--surface-selected)] text-[var(--text-primary)] ring-1 ring-sky-500/10 hover:brightness-105 dark:border-sky-300/25 dark:ring-sky-300/10"
+                      : "bg-[var(--surface-content)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]",
                   )}
                   data-state={enabled ? "checked" : "unchecked"}
                   key={tool}
@@ -324,7 +324,7 @@ function LaunchExample({
   label: string;
 }) {
   return (
-    <div className="grid min-w-0 gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-card)] px-3 py-2.5 sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-start">
+    <div className="grid min-w-0 gap-2 border-b border-[var(--border-subtle)] px-1 py-2.5 last:border-b-0 sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-start">
       <div className="text-xs font-medium leading-5 text-zinc-500 dark:text-zinc-400">
         {label}
       </div>

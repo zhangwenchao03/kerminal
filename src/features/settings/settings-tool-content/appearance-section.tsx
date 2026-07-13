@@ -19,20 +19,20 @@ interface AppearanceSettingsSectionProps {
 }
 
 const appearanceCompactPanelClassName =
-  "kerminal-solid-surface rounded-2xl border p-4";
+  "kerminal-solid-surface rounded-[var(--radius-panel)] border p-4";
 const appearanceInlineButtonClassName =
-  "kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-200";
+  "kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex h-9 items-center justify-center gap-2 rounded-[var(--radius-control)] border px-3 text-[13px] text-[var(--text-primary)] transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60";
 const appearanceFieldClassName =
-  "kerminal-field-surface mt-1 h-10 w-full rounded-xl border px-3 text-sm text-zinc-950 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
+  "kerminal-field-surface mt-1 h-9 w-full rounded-[var(--radius-control)] border px-3 text-sm text-[var(--text-primary)] placeholder:text-zinc-400 dark:placeholder:text-zinc-500";
 
 function appearanceChoiceButtonClassName(
   selected: boolean,
   className?: string,
 ) {
   return cn(
-    "kerminal-focus-ring kerminal-pressable rounded-xl border text-left transition",
+    "kerminal-focus-ring kerminal-pressable rounded-[var(--radius-control)] border text-left transition",
     selected
-      ? "border-sky-500/45 bg-[var(--surface-selected)] text-sky-700 shadow-sm shadow-sky-950/5 ring-1 ring-sky-500/15 dark:border-sky-300/35 dark:text-sky-100 dark:ring-sky-300/15"
+      ? "border-sky-500/35 bg-[var(--surface-selected)] text-sky-700 ring-1 ring-sky-500/10 dark:border-sky-300/30 dark:text-sky-100 dark:ring-sky-300/10"
       : "kerminal-muted-surface text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50",
     className,
   );

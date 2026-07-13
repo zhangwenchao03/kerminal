@@ -23,24 +23,24 @@ interface KeybindingsSettingsSectionProps {
 }
 
 const keybindingsPanelClassName =
-  "kerminal-solid-surface rounded-2xl border p-5";
+  "kerminal-solid-surface rounded-[var(--radius-panel)] border p-4";
 const keybindingsSubpanelClassName =
-  "kerminal-muted-surface rounded-xl border p-3";
+  "border-t border-[var(--border-subtle)] pt-3";
 const keybindingsTabListClassName =
-  "kerminal-muted-surface inline-grid grid-cols-2 rounded-xl border p-1";
+  "kerminal-muted-surface inline-grid grid-cols-2 rounded-[var(--radius-control)] border p-0.5";
 const keybindingsBadgeClassName =
   "kerminal-muted-surface rounded-full border px-2 py-0.5 text-[11px] text-zinc-500 dark:text-zinc-400";
 const keybindingsInputClassName =
-  "kerminal-field-surface h-9 w-full rounded-lg border px-2.5 font-mono text-xs text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
+  "kerminal-field-surface h-9 w-full rounded-[var(--radius-control)] border px-2.5 font-mono text-xs text-[var(--text-primary)] placeholder:text-zinc-400 dark:placeholder:text-zinc-500";
 const keybindingsIconButtonClassName =
-  "kerminal-focus-ring kerminal-pressable inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-field)] text-zinc-500 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-300";
+  "kerminal-focus-ring kerminal-pressable inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-field)] text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-50";
 
 function keybindingsTabClassName(selected: boolean) {
   return cn(
-    "kerminal-focus-ring kerminal-pressable h-8 rounded-lg px-3 text-sm font-medium transition",
+    "kerminal-focus-ring kerminal-pressable h-8 rounded-[var(--radius-control)] px-3 text-[13px] font-medium transition",
     selected
-      ? "bg-[var(--surface-selected)] text-sky-700 shadow-sm dark:text-sky-100"
-      : "text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100",
+      ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
+      : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]",
   );
 }
 
@@ -142,7 +142,7 @@ export function KeybindingsSettingsSection({
                     {scopedKeybindings.length} 项
                   </span>
                 </div>
-                <div className="mt-3 grid gap-2">
+                <div className="mt-3 divide-y divide-[var(--border-subtle)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-content)]">
                   {scopedKeybindings.map((keybinding) => {
                     const currentBinding = bindingForPlatform(
                       keybinding,
@@ -157,7 +157,7 @@ export function KeybindingsSettingsSection({
 
                     return (
                       <div
-                        className="kerminal-muted-surface grid gap-3 rounded-xl border px-3 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(150px,0.3fr)]"
+                        className="grid gap-3 px-3 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(150px,0.3fr)]"
                         key={keybinding.action}
                       >
                         <div className="min-w-0">
@@ -228,7 +228,7 @@ export function KeybindingsSettingsSection({
           },
         )}
       </div>
-      <p className="kerminal-muted-surface mt-4 rounded-xl border px-3 py-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+      <p className="mt-4 border-t border-[var(--border-subtle)] px-1 pt-3 text-xs leading-5 text-[var(--text-secondary)]">
         使用 Ctrl+Shift+T 格式；留空表示禁用。
       </p>
     </section>

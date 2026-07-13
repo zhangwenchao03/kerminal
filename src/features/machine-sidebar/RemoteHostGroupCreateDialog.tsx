@@ -113,21 +113,21 @@ export function RemoteHostGroupCreateDialog({
       size="small"
       title={group ? "重命名分组" : "新建分组"}
     >
-      <form className="space-y-4" onSubmit={submit}>
+      <form className="space-y-3" onSubmit={submit}>
         <label className="block">
-          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+          <span className="text-xs font-medium text-[var(--text-secondary)]">
             分组名称
           </span>
           <input
             autoFocus
-            className="kerminal-field-surface mt-1 h-9 w-full rounded-xl border px-3 text-sm"
+            className="kerminal-field-surface mt-1 h-9 w-full rounded-[var(--radius-control)] border px-3 text-sm text-[var(--text-primary)]"
             onChange={(event) => setName(event.currentTarget.value)}
             placeholder="例如：开发环境"
             value={name}
           />
         </label>
         {error ? (
-          <p className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
+          <p className="rounded-[var(--radius-control)] border border-red-500/20 bg-red-500/10 px-3 py-2 text-[13px] leading-5 text-red-600 dark:text-red-300">
             {error}
           </p>
         ) : null}

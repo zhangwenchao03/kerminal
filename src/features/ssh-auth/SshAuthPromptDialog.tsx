@@ -82,7 +82,7 @@ export function SshAuthPromptDialog({
       title={viewModel.title}
     >
       <form
-        className="space-y-4"
+        className="space-y-3"
         id="ssh-auth-prompt-form"
         onSubmit={(event) => {
           event.preventDefault();
@@ -99,22 +99,22 @@ export function SshAuthPromptDialog({
           );
         }}
       >
-        <div className="flex gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-field)] p-3">
-          <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-[#0A84FF]" />
-          <div className="min-w-0 text-sm leading-5 text-zinc-600 dark:text-zinc-300">
+        <div className="flex gap-3 rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-content)] p-3">
+          <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-[rgb(var(--app-accent))]" />
+          <div className="min-w-0 text-[13px] leading-5 text-[var(--text-secondary)]">
             {viewModel.helperText}
           </div>
         </div>
 
         <label className="block" htmlFor={inputId}>
-          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+          <span className="text-xs font-medium text-[var(--text-secondary)]">
             {viewModel.fieldLabel}
           </span>
           {viewModel.fieldKind === "textarea" ? (
             <textarea
               aria-invalid={Boolean(validationMessage)}
               autoFocus
-              className="kerminal-field-surface mt-1 min-h-40 w-full resize-none rounded-xl border px-3 py-2 font-mono text-xs text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600"
+              className="kerminal-field-surface mt-1 min-h-40 w-full resize-none rounded-[var(--radius-control)] border px-3 py-2 font-mono text-xs text-[var(--text-primary)] placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
               id={inputId}
               onChange={(event) => setValue(event.target.value)}
               spellCheck={false}
@@ -124,7 +124,7 @@ export function SshAuthPromptDialog({
             <input
               aria-invalid={Boolean(validationMessage)}
               autoFocus
-              className="kerminal-field-surface mt-1 h-9 w-full rounded-xl border px-3 text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600"
+              className="kerminal-field-surface mt-1 h-9 w-full rounded-[var(--radius-control)] border px-3 text-sm text-[var(--text-primary)] placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
               id={inputId}
               onChange={(event) => setValue(event.target.value)}
               spellCheck={false}
@@ -135,8 +135,8 @@ export function SshAuthPromptDialog({
         </label>
 
         {viewModel.canPersist ? (
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border-subtle)] px-3 py-2">
-            <div className="flex min-w-0 items-center gap-2 text-sm text-zinc-700 dark:text-zinc-200">
+          <div className="flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-content)] px-3 py-2.5">
+            <div className="flex min-w-0 items-center gap-2 text-[13px] text-[var(--text-primary)]">
               <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-500" />
               <span className="truncate">{viewModel.persistLabel}</span>
             </div>

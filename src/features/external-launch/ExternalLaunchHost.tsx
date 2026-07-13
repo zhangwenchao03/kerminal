@@ -586,54 +586,56 @@ function ExternalLaunchSecurityDialog({
       size="small"
       title="确认外部 SSH 目标"
     >
-      <div className="space-y-3 text-sm text-[var(--text-secondary)]">
-        {hostKey.status === "unknown" ? (
-          <div>
-            <div className="font-medium text-[var(--text-primary)]">
-              首次连接主机指纹
+      <div className="space-y-3 text-[13px] text-[var(--text-secondary)]">
+        <div className="divide-y divide-[var(--border-subtle)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-content)]">
+          {hostKey.status === "unknown" ? (
+            <div className="px-3 py-2.5">
+              <div className="font-medium text-[var(--text-primary)]">
+                首次连接主机指纹
+              </div>
+              <div className="mt-1 text-xs">{hostKey.algorithm}</div>
+              <div className="mt-1 break-all font-mono text-xs text-[var(--text-primary)]">
+                {hostKey.fingerprint}
+              </div>
             </div>
-            <div className="mt-1 text-xs">{hostKey.algorithm}</div>
-            <div className="mt-1 break-all font-mono text-xs text-[var(--text-primary)]">
-              {hostKey.fingerprint}
+          ) : null}
+          {materialized.safety === "production" ? (
+            <div className="bg-amber-500/10 px-3 py-2.5 text-amber-800 dark:text-amber-100">
+              <div className="font-medium">生产目标</div>
+              <div className="mt-1 text-xs">
+                该连接按生产主机保护，确认后才会创建终端。
+              </div>
             </div>
-          </div>
-        ) : null}
-        {materialized.safety === "production" ? (
-          <div className="rounded-md border border-amber-300/30 bg-amber-500/10 p-2 text-amber-800 dark:text-amber-100">
-            <div className="font-medium">生产目标</div>
-            <div className="mt-1 text-xs">
-              该连接按生产主机保护，确认后才会创建终端。
+          ) : null}
+          {materialized.safety === "restricted-unknown" ? (
+            <div className="bg-amber-500/10 px-3 py-2.5 text-amber-800 dark:text-amber-100">
+              <div className="font-medium">受限的未知目标</div>
+              <div className="mt-1 text-xs">
+                该目标未精确匹配已保存的非生产主机，默认按受限目标保护。
+              </div>
             </div>
-          </div>
-        ) : null}
-        {materialized.safety === "restricted-unknown" ? (
-          <div className="rounded-md border border-amber-300/30 bg-amber-500/10 p-2 text-amber-800 dark:text-amber-100">
-            <div className="font-medium">受限的未知目标</div>
-            <div className="mt-1 text-xs">
-              该目标未精确匹配已保存的非生产主机，默认按受限目标保护。
+          ) : null}
+          {launch.source.entrypoint === "protocol" ? (
+            <div className="px-3 py-2.5">
+              <div className="font-medium text-[var(--text-primary)]">
+                系统协议链接
+              </div>
+              <div className="mt-1 text-xs">
+                此请求由外部链接发起，请确认目标与来源符合预期。
+              </div>
             </div>
-          </div>
-        ) : null}
-        {launch.source.entrypoint === "protocol" ? (
-          <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-hover)] p-2">
-            <div className="font-medium text-[var(--text-primary)]">
-              系统协议链接
+          ) : null}
+          {remoteCommand ? (
+            <div className="px-3 py-2.5">
+              <div className="font-medium text-[var(--text-primary)]">
+                连接后执行命令
+              </div>
+              <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-[var(--radius-control)] bg-[var(--surface-field)] p-2 font-mono text-xs">
+                {remoteCommand}
+              </pre>
             </div>
-            <div className="mt-1 text-xs">
-              此请求由外部链接发起，请确认目标与来源符合预期。
-            </div>
-          </div>
-        ) : null}
-        {remoteCommand ? (
-          <div>
-            <div className="font-medium text-[var(--text-primary)]">
-              连接后执行命令
-            </div>
-            <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md bg-[var(--surface-hover)] p-2 font-mono text-xs">
-              {remoteCommand}
-            </pre>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
         {error ? <UserFacingNotice message={error} /> : null}
       </div>
     </ModalShell>

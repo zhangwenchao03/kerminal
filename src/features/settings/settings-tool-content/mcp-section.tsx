@@ -28,7 +28,7 @@ import { SettingsDisclosure } from "./shared-controls";
 import type { McpHttpServerLoadState } from "./types";
 
 const mcpSectionButtonClass =
-  "kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex h-9 items-center justify-center gap-2 rounded-xl border px-3 text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-200";
+  "kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex h-9 items-center justify-center gap-2 rounded-[var(--radius-control)] border px-3 text-[13px] text-[var(--text-primary)] transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60";
 
 interface McpSkillsSettingsSectionProps {
   desktopNotifications: DesktopNotificationSettings;
@@ -140,7 +140,7 @@ export function McpSkillsSettingsSection({
   }, []);
 
   return (
-    <section className="kerminal-solid-surface rounded-2xl border p-5">
+    <section className="kerminal-solid-surface rounded-[var(--radius-panel)] border p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
           <Server className="h-4 w-4 text-sky-500 dark:text-sky-300" />
