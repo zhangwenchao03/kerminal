@@ -21,7 +21,7 @@ use crate::{
             TmuxCapturePaneRequest, TmuxCreateSessionRequest, TmuxKillSessionRequest,
             TmuxListPanesRequest, TmuxListSessionsRequest, TmuxListWindowsRequest, TmuxPaneBinding,
             TmuxPaneCapture, TmuxPaneSummary, TmuxProbeRequest, TmuxRenameSessionRequest,
-            TmuxSessionSummary, TmuxTargetRef, TmuxWindowSummary,
+            TmuxSessionStatus, TmuxSessionSummary, TmuxTargetRef, TmuxWindowSummary,
         },
     },
     paths::KerminalPaths,
@@ -127,17 +127,41 @@ impl TmuxService {
         request: TmuxCreateSessionRequest,
     ) -> AppResult<TmuxSessionSummary> {
         validate_target(&request.target)?;
-        let name = validate_name("tmux session 名称", &request.name)?;
+        let name = normalize_tmux_session_name(&request.name)?;
         let mut args = owned_args(&["new-session", "-d", "-s"]);
         args.push(name.clone());
         let cwd = validate_optional_text("tmux session 初始目录", request.cwd.as_deref())?;
         if let Some(cwd) = cwd.as_deref() {
             args.extend(["-c".to_owned(), cwd.to_owned()]);
         }
+        let target_ref = stable_tmux_target_ref(&request.target);
         let output = self
             .run_tmux(paths, ssh_commands, &request.target, &args)
             .await?;
         if !output.success {
+            // 上一次创建可能已经成功，但旧客户端因确认阶段失败而重试同名请求。
+            // 对 duplicate session 做幂等恢复，避免继续把已存在的目标误报为失败。
+            if is_duplicate_session_output(&output) {
+                if let Ok(sessions) = self
+                    .list_sessions(
+                        paths,
+                        ssh_commands,
+                        TmuxListSessionsRequest {
+                            target: request.target.clone(),
+                        },
+                    )
+                    .await
+                {
+                    if let Some(existing) =
+                        sessions.into_iter().find(|session| session.name == name)
+                    {
+                        return Ok(existing);
+                    }
+                }
+                // duplicate session 已证明规范化后的同名会话存在；列表刷新失败时
+                // 仍按幂等成功返回，避免旧客户端重试后继续显示假失败。
+                return Ok(created_session_fallback(name, cwd, target_ref));
+            }
             return Err(command_failure(&output));
         }
 
@@ -149,11 +173,16 @@ impl TmuxService {
                     target: request.target,
                 },
             )
-            .await?;
-        sessions
-            .into_iter()
-            .find(|session| session.name == name)
-            .ok_or_else(|| AppError::NotFound(format!("tmux session 创建后未找到: {name}")))
+            .await;
+        if let Ok(sessions) = sessions {
+            if let Some(created) = sessions.into_iter().find(|session| session.name == name) {
+                return Ok(created);
+            }
+        }
+
+        // new-session 已返回成功时，后续列表只是摘要增强，不能反向把远端成功写操作
+        // 标记为失败。tmux 的所有目标参数都接受 session 名称，因此可安全作为临时 id。
+        Ok(created_session_fallback(name, cwd, target_ref))
     }
 
     /// 重命名 tmux session。
@@ -165,7 +194,7 @@ impl TmuxService {
     ) -> AppResult<TmuxSessionSummary> {
         validate_target(&request.target)?;
         let session_id = validate_name("tmux session id", &request.session_id)?;
-        let name = validate_name("tmux session 新名称", &request.name)?;
+        let name = normalize_tmux_session_name(&request.name)?;
         let output = self
             .run_tmux(
                 paths,
@@ -408,8 +437,8 @@ impl TmuxService {
 pub mod rules {
     pub use super::parser::{parse_panes, parse_sessions, parse_windows, FIELD_SEPARATOR};
     pub use super::{
-        build_remote_command, command_args_with_socket, stable_tmux_target_ref, validate_target,
-        SESSION_FORMAT,
+        build_remote_command, command_args_with_socket, normalize_tmux_session_name,
+        stable_tmux_target_ref, validate_target, SESSION_FORMAT,
     };
 }
 
@@ -634,11 +663,57 @@ fn is_not_found_output(output: &TmuxCommandOutput) -> bool {
     text.contains("can't find") || text.contains("not found") || text.contains("no such")
 }
 
-fn unix_timestamp_string() -> String {
+fn is_duplicate_session_output(output: &TmuxCommandOutput) -> bool {
+    let text = format!("{}\n{}", output.stderr, output.stdout).to_lowercase();
+    text.contains("duplicate session")
+}
+
+/// 按 tmux 的 session 名称规则规范化分隔符。
+///
+/// tmux 会把 `.` 和 `:` 自动替换成 `_`；调用前先做相同转换，避免命令成功后
+/// 使用原始名称回查而产生“创建后未找到”的假失败。
+#[doc(hidden)]
+pub fn normalize_tmux_session_name(value: &str) -> AppResult<String> {
+    let value = validate_name("tmux session 名称", value)?;
+    Ok(value
+        .chars()
+        .map(|character| match character {
+            '.' | ':' => '_',
+            other => other,
+        })
+        .collect())
+}
+
+/// 创建命令成功但摘要刷新失败时返回最小可操作 session。
+fn created_session_fallback(
+    name: String,
+    cwd: Option<String>,
+    target_ref: String,
+) -> TmuxSessionSummary {
+    let now = unix_timestamp();
+    TmuxSessionSummary {
+        activity_at: Some(now),
+        attached: false,
+        clients: 0,
+        created_at: Some(now),
+        current_path: cwd,
+        id: name.clone(),
+        name,
+        status: TmuxSessionStatus::Running,
+        target_ref,
+        windows: 1,
+    }
+}
+
+fn unix_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs().to_string())
-        .unwrap_or_else(|_| "0".to_owned())
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
+}
+
+fn unix_timestamp_string() -> String {
+    unix_timestamp().to_string()
 }
 
 #[allow(dead_code)]

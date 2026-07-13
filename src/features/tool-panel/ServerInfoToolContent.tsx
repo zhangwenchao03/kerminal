@@ -56,10 +56,17 @@ import {
 export { clearServerInfoSnapshotCacheForTest } from "./useServerInfoSnapshot";
 
 interface ServerInfoToolContentProps {
+  active?: boolean;
   selectedMachine?: Machine;
 }
 
 type MonitorView = "overview" | "processes" | "resources";
+
+/** 将趋势数据与采集目标一起保存，避免切换目标时复用上一台机器的历史。 */
+interface TargetHistoryState {
+  points: ServerInfoHistoryPoint[];
+  targetKey?: string;
+}
 
 const views: Array<{ id: MonitorView; label: string }> = [
   { id: "overview", label: "概览" },
@@ -68,43 +75,80 @@ const views: Array<{ id: MonitorView; label: string }> = [
 ];
 
 export function ServerInfoToolContent({
+  active = true,
   selectedMachine,
 }: ServerInfoToolContentProps) {
   const targetContext = useMemo(
     () => serverInfoTargetContext(selectedMachine),
     [selectedMachine],
   );
+  const activeTargetContext = active ? targetContext : undefined;
+  const activeTargetKey = activeTargetContext?.cacheKey;
   const [activeView, setActiveView] = useState<MonitorView>("overview");
-  const [history, setHistory] = useState<ServerInfoHistoryPoint[]>([]);
+  const [snapshotTargetKey, setSnapshotTargetKey] = useState(activeTargetKey);
+  const [historyState, setHistoryState] = useState<TargetHistoryState>(() => ({
+    points: activeTargetKey ? serverInfoHistoryForTarget(activeTargetKey) : [],
+    targetKey: activeTargetKey,
+  }));
   const {
-    error,
-    loading,
-    networkTraffic,
+    error: sourceError,
+    loading: sourceLoading,
+    networkTraffic: sourceNetworkTraffic,
     refresh,
     refreshIntervalMs,
     setRefreshIntervalMs,
-    snapshot,
-  } = useServerInfoSnapshot(targetContext);
+    snapshot: sourceSnapshot,
+  } = useServerInfoSnapshot(activeTargetContext);
+
+  // hook 的目标切换依赖 effect，切换后的首个 render 仍可能带着旧目标 state。
+  // 只有 hook 已完成目标交接后，才允许快照、网络速率和错误进入当前视图。
+  const targetStateReady =
+    activeTargetKey !== undefined && snapshotTargetKey === activeTargetKey;
+  const error = targetStateReady ? sourceError : null;
+  const loading = targetStateReady
+    ? sourceLoading
+    : activeTargetKey !== undefined;
+  const networkTraffic = targetStateReady ? sourceNetworkTraffic : null;
+  const snapshot = targetStateReady ? sourceSnapshot : null;
+  const history =
+    historyState.targetKey === activeTargetKey ? historyState.points : [];
 
   useEffect(() => {
-    setHistory(
-      targetContext
-        ? serverInfoHistoryForTarget(targetContext.cacheKey)
-        : [],
-    );
-  }, [targetContext?.cacheKey]);
+    if (activeTargetContext) {
+      void refresh({ force: true });
+    }
+  }, [activeTargetContext, refresh]);
+
   useEffect(() => {
-    if (!snapshot || !targetContext) {
+    setSnapshotTargetKey(activeTargetKey);
+  }, [activeTargetKey]);
+
+  useEffect(() => {
+    setHistoryState({
+      points: activeTargetKey
+        ? serverInfoHistoryForTarget(activeTargetKey)
+        : [],
+      targetKey: activeTargetKey,
+    });
+  }, [activeTargetKey]);
+
+  useEffect(() => {
+    if (!snapshot || !activeTargetKey) {
       return;
     }
-    setHistory(
-      appendServerInfoTargetHistory(
-        targetContext.cacheKey,
+    setHistoryState({
+      points: appendServerInfoTargetHistory(
+        activeTargetKey,
         snapshot,
         networkTraffic,
       ),
-    );
-  }, [networkTraffic, snapshot, targetContext]);
+      targetKey: activeTargetKey,
+    });
+  }, [activeTargetKey, networkTraffic, snapshot]);
+
+  if (!active) {
+    return null;
+  }
 
   if (!targetContext) {
     return <RuntimeHealthCard />;
@@ -211,9 +255,15 @@ export function ServerInfoToolContent({
             <Overview snapshot={snapshot} traffic={traffic} history={history} />
           ) : null}
           {activeView === "resources" ? (
-            <Resources snapshot={snapshot} traffic={traffic} history={history} />
+            <Resources
+              snapshot={snapshot}
+              traffic={traffic}
+              history={history}
+            />
           ) : null}
-          {activeView === "processes" ? <Processes snapshot={snapshot} /> : null}
+          {activeView === "processes" ? (
+            <Processes snapshot={snapshot} />
+          ) : null}
         </div>
       )}
     </section>
@@ -229,10 +279,7 @@ function Overview({
   snapshot: ServerInfoSnapshot;
   traffic: NetworkTrafficSnapshot;
 }) {
-  const memory = percentOf(
-    snapshot.memoryUsedBytes,
-    snapshot.memoryTotalBytes,
-  );
+  const memory = percentOf(snapshot.memoryUsedBytes, snapshot.memoryTotalBytes);
   const disk = percentOf(snapshot.diskUsedBytes, snapshot.diskTotalBytes);
   const primaryTraffic = primaryNetworkTraffic(traffic.interfaces);
   return (
@@ -280,8 +327,14 @@ function Overview({
         <Info label="系统" value={snapshot.os ?? "-"} />
         <Info label="架构" value={snapshot.architecture ?? "-"} />
         <Info label="Kernel" value={snapshot.kernel ?? "-"} />
-        <Info label="运行时间" value={formatUptime(snapshot.uptimeSeconds) ?? "-"} />
-        <Info label="根分区" value={`${formatPercent(disk)} · ${formatBytes(snapshot.diskAvailableBytes)} 可用`} />
+        <Info
+          label="运行时间"
+          value={formatUptime(snapshot.uptimeSeconds) ?? "-"}
+        />
+        <Info
+          label="根分区"
+          value={`${formatPercent(disk)} · ${formatBytes(snapshot.diskAvailableBytes)} 可用`}
+        />
       </Section>
     </div>
   );
@@ -316,7 +369,9 @@ function Resources({
         <Info label="核心" value={`${snapshot.cpuCount ?? "-"} 核`} />
         <Info
           label="Load"
-          value={formatLoadAverage(loadAverageValues(snapshot.loadAverage)) ?? "-"}
+          value={
+            formatLoadAverage(loadAverageValues(snapshot.loadAverage)) ?? "-"
+          }
         />
         {cores.length > 0 ? (
           <div className="grid grid-cols-4 gap-x-3 gap-y-2 py-3">
@@ -362,7 +417,10 @@ function Resources({
       >
         <Info label="可用" value={formatBytes(snapshot.memoryAvailableBytes)} />
         <Info label="Cached" value={formatBytes(snapshot.memoryCachedBytes)} />
-        <Info label="Swap" value={`${formatBytes(snapshot.swapUsedBytes)} / ${formatBytes(snapshot.swapTotalBytes)}`} />
+        <Info
+          label="Swap"
+          value={`${formatBytes(snapshot.swapUsedBytes)} / ${formatBytes(snapshot.swapTotalBytes)}`}
+        />
       </ResourceSection>
       <Section icon={<Network className="h-4 w-4" />} title="网络接口">
         <div
@@ -397,7 +455,10 @@ function Resources({
           <p className="py-3 text-xs text-zinc-500">未返回网络接口数据</p>
         ) : (
           visibleInterfaces.map((item) => (
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b py-2.5 last:border-b-0" key={item.name}>
+            <div
+              className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b py-2.5 last:border-b-0"
+              key={item.name}
+            >
               <span className="min-w-0 truncate text-xs font-medium">
                 {item.name}
                 <span className="ml-1.5 font-normal text-zinc-500 dark:text-zinc-400">
@@ -405,7 +466,8 @@ function Resources({
                 </span>
               </span>
               <span className="text-right font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
-                ↓ {formatTrafficRate(item.rxBytesPerSecond, "采样中")} · ↑ {formatTrafficRate(item.txBytesPerSecond, "采样中")}
+                ↓ {formatTrafficRate(item.rxBytesPerSecond, "采样中")} · ↑{" "}
+                {formatTrafficRate(item.txBytesPerSecond, "采样中")}
               </span>
             </div>
           ))
@@ -444,7 +506,11 @@ function Processes({ snapshot }: { snapshot: ServerInfoSnapshot }) {
             <span>进程</span>
             <button
               aria-pressed={sortBy === "cpu"}
-              className={cn("text-right", sortBy === "cpu" && "font-semibold text-zinc-900 dark:text-zinc-100")}
+              className={cn(
+                "text-right",
+                sortBy === "cpu" &&
+                  "font-semibold text-zinc-900 dark:text-zinc-100",
+              )}
               onClick={() => setSortBy("cpu")}
               type="button"
             >
@@ -452,7 +518,11 @@ function Processes({ snapshot }: { snapshot: ServerInfoSnapshot }) {
             </button>
             <button
               aria-pressed={sortBy === "memory"}
-              className={cn("text-right", sortBy === "memory" && "font-semibold text-zinc-900 dark:text-zinc-100")}
+              className={cn(
+                "text-right",
+                sortBy === "memory" &&
+                  "font-semibold text-zinc-900 dark:text-zinc-100",
+              )}
               onClick={() => setSortBy("memory")}
               type="button"
             >
@@ -460,13 +530,24 @@ function Processes({ snapshot }: { snapshot: ServerInfoSnapshot }) {
             </button>
           </div>
           {processes.map((process) => (
-            <div className="grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem] items-center gap-2 border-b py-2.5 last:border-b-0" key={`${process.pid}-${process.name}`}>
+            <div
+              className="grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem] items-center gap-2 border-b py-2.5 last:border-b-0"
+              key={`${process.pid}-${process.name}`}
+            >
               <div className="min-w-0">
-                <div className="truncate text-xs font-medium">{process.name}</div>
-                <div className="font-mono text-[10px] text-zinc-500">PID {process.pid}</div>
+                <div className="truncate text-xs font-medium">
+                  {process.name}
+                </div>
+                <div className="font-mono text-[10px] text-zinc-500">
+                  PID {process.pid}
+                </div>
               </div>
-              <span className="text-right font-mono text-[11px]">{formatPercent(process.cpuUsagePercent)}</span>
-              <span className="text-right font-mono text-[11px]">{formatBytes(process.memoryBytes)}</span>
+              <span className="text-right font-mono text-[11px]">
+                {formatPercent(process.cpuUsagePercent)}
+              </span>
+              <span className="text-right font-mono text-[11px]">
+                {formatBytes(process.memoryBytes)}
+              </span>
             </div>
           ))}
         </>
@@ -489,9 +570,12 @@ function Metric({
   return (
     <div className="kerminal-solid-surface min-w-0 p-3">
       <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-        {icon}<span>{label}</span>
+        {icon}
+        <span>{label}</span>
       </div>
-      <div className="mt-2 truncate text-base font-semibold tabular-nums">{value}</div>
+      <div className="mt-2 truncate text-base font-semibold tabular-nums">
+        {value}
+      </div>
       <Sparkline values={series} />
     </div>
   );
@@ -536,9 +620,14 @@ function Section({
     <section className="kerminal-solid-surface rounded-lg border px-3 py-2.5">
       <div className="flex items-center justify-between gap-3 border-b pb-2">
         <h3 className="flex min-w-0 items-center gap-2 text-xs font-semibold">
-          {icon}<span className="truncate">{title}</span>
+          {icon}
+          <span className="truncate">{title}</span>
         </h3>
-        {trailing ? <span className="truncate text-xs font-semibold tabular-nums">{trailing}</span> : null}
+        {trailing ? (
+          <span className="truncate text-xs font-semibold tabular-nums">
+            {trailing}
+          </span>
+        ) : null}
       </div>
       {children}
     </section>
@@ -559,7 +648,13 @@ function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Meter({ compact = false, value }: { compact?: boolean; value?: number }) {
+function Meter({
+  compact = false,
+  value,
+}: {
+  compact?: boolean;
+  value?: number;
+}) {
   const normalized = value == null ? 0 : Math.max(0, Math.min(100, value));
   return (
     <div
@@ -573,22 +668,43 @@ function Meter({ compact = false, value }: { compact?: boolean; value?: number }
       )}
       role="progressbar"
     >
-      <div className="h-full rounded-full bg-[rgb(var(--app-accent))]" style={{ width: `${normalized}%` }} />
+      <div
+        className="h-full rounded-full bg-[rgb(var(--app-accent))]"
+        style={{ width: `${normalized}%` }}
+      />
     </div>
   );
 }
 
 function Sparkline({ values }: { values: number[] }) {
   if (values.length < 2) {
-    return <div className="mt-2 h-7 border-b border-dashed border-[var(--border-subtle)]" />;
+    return (
+      <div className="mt-2 h-7 border-b border-dashed border-[var(--border-subtle)]" />
+    );
   }
   const max = Math.max(...values, 1);
   const points = values
-    .map((value, index) => `${(index / (values.length - 1)) * 100},${28 - (value / max) * 24}`)
+    .map(
+      (value, index) =>
+        `${(index / (values.length - 1)) * 100},${28 - (value / max) * 24}`,
+    )
     .join(" ");
   return (
-    <svg aria-hidden="true" className="mt-2 h-7 w-full text-[rgb(var(--app-accent))]" preserveAspectRatio="none" viewBox="0 0 100 28">
-      <polyline fill="none" points={points} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+    <svg
+      aria-hidden="true"
+      className="mt-2 h-7 w-full text-[rgb(var(--app-accent))]"
+      preserveAspectRatio="none"
+      viewBox="0 0 100 28"
+    >
+      <polyline
+        fill="none"
+        points={points}
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+        vectorEffect="non-scaling-stroke"
+      />
     </svg>
   );
 }

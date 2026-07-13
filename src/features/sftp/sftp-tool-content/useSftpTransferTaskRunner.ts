@@ -20,21 +20,33 @@ import { buildDockerDirectTransferSummary } from "./sftpDockerDirectTransferMode
 import type { SftpTransferActionItem } from "./sftpTransferActionPlan";
 import { withSftpTransferViewScope } from "./sftpTransferScopeModel";
 import { buildSftpTransferTaskExecutionPlan } from "./sftpTransferTaskRunnerModel";
+import {
+  createSftpTargetBindingSnapshot,
+  type SftpTargetBindingToken,
+  type SftpTargetBoundDirectoryLoader,
+} from "./useSftpTargetLifecycle";
 import type { SftpFileTarget, SftpStatus } from "./types";
 
 type UseSftpTransferTaskRunnerArgs = {
+  captureTarget?: (
+    expectedTarget?: SftpFileTarget | null,
+  ) => SftpTargetBindingToken | null;
   currentPath: string;
   fileTarget: SftpFileTarget | null;
-  loadDirectory: (path: string) => Promise<void>;
+  isTargetBindingCurrent?: (binding: SftpTargetBindingToken | null) => boolean;
+  loadDirectory: SftpTargetBoundDirectoryLoader;
   refreshTransfers: () => Promise<void>;
   setOperationStatus: Dispatch<SetStateAction<SftpStatus | null>>;
   setTransfers: Dispatch<SetStateAction<SftpTransferSummary[]>>;
   viewScope?: string | null;
 };
 
+/** 以动作发起时的目标快照执行传输，并拒绝旧代次完成回调。 */
 export function useSftpTransferTaskRunner({
+  captureTarget,
   currentPath,
   fileTarget,
+  isTargetBindingCurrent,
   loadDirectory,
   refreshTransfers,
   setOperationStatus,
@@ -43,9 +55,24 @@ export function useSftpTransferTaskRunner({
 }: UseSftpTransferTaskRunnerArgs) {
   const runTransferTask = useCallback(
     async (transferPlan: SftpTransferActionItem) => {
+      const binding = captureTransferBinding(
+        fileTarget,
+        captureTarget ?? loadDirectory.captureTarget,
+      );
+      if (!binding) {
+        return;
+      }
+      const bindingIsCurrent = () =>
+        transferBindingIsCurrent(
+          binding,
+          isTargetBindingCurrent ?? loadDirectory.isTargetBindingCurrent,
+        );
+      const hasTargetLifecycle = Boolean(
+        captureTarget ?? loadDirectory.captureTarget,
+      );
       const executionPlan = buildSftpTransferTaskExecutionPlan({
         currentPath,
-        fileTarget,
+        fileTarget: binding.target,
         transferPlan,
       });
       if (executionPlan.kind === "noop") {
@@ -55,6 +82,9 @@ export function useSftpTransferTaskRunner({
         const summary = await enqueueSftpTransfer(
           withSftpTransferViewScope(executionPlan.request, viewScope),
         );
+        if (!bindingIsCurrent()) {
+          return;
+        }
         setTransfers((current) =>
           mergeTransferSnapshot(current, sanitizeSftpTransferSummary(summary)),
         );
@@ -63,7 +93,8 @@ export function useSftpTransferTaskRunner({
         return;
       }
 
-      if (!fileTarget || fileTarget.kind !== "dockerContainer") {
+      const operationTarget = binding.target;
+      if (operationTarget.kind !== "dockerContainer") {
         return;
       }
 
@@ -73,6 +104,9 @@ export function useSftpTransferTaskRunner({
         status: "running" | "succeeded" | "failed",
         error?: string,
       ) => {
+        if (!bindingIsCurrent()) {
+          return;
+        }
         setTransfers((current) =>
           mergeTransferSnapshot(
             current,
@@ -80,7 +114,7 @@ export function useSftpTransferTaskRunner({
               createdAt,
               direction: executionPlan.direction,
               error,
-              fileTarget,
+              fileTarget: operationTarget,
               id: transferId,
               request: executionPlan.containerRequest,
               status,
@@ -97,10 +131,15 @@ export function useSftpTransferTaskRunner({
         if (executionPlan.direction === "upload") {
           await uploadDockerContainerPath(executionPlan.containerRequest);
           if (executionPlan.refreshRemotePath) {
-            await loadDirectory(executionPlan.refreshRemotePath);
+            await (hasTargetLifecycle
+              ? loadDirectory(executionPlan.refreshRemotePath, binding)
+              : loadDirectory(executionPlan.refreshRemotePath));
           }
         } else {
           await downloadDockerContainerPath(executionPlan.containerRequest);
+        }
+        if (!bindingIsCurrent()) {
+          return;
         }
         updateDockerTransferSnapshot("succeeded");
       } catch (nextError) {
@@ -112,8 +151,10 @@ export function useSftpTransferTaskRunner({
       }
     },
     [
+      captureTarget,
       currentPath,
       fileTarget,
+      isTargetBindingCurrent,
       loadDirectory,
       refreshTransfers,
       setOperationStatus,
@@ -123,6 +164,25 @@ export function useSftpTransferTaskRunner({
   );
 
   return { runTransferTask };
+}
+
+function captureTransferBinding(
+  target: SftpFileTarget | null,
+  captureTarget?: (
+    expectedTarget?: SftpFileTarget | null,
+  ) => SftpTargetBindingToken | null,
+) {
+  if (captureTarget) {
+    return captureTarget(target);
+  }
+  return target ? createSftpTargetBindingSnapshot(target) : null;
+}
+
+function transferBindingIsCurrent(
+  binding: SftpTargetBindingToken,
+  isCurrent?: (binding: SftpTargetBindingToken | null) => boolean,
+) {
+  return isCurrent ? isCurrent(binding) : true;
 }
 
 function createDockerDirectTransferId() {

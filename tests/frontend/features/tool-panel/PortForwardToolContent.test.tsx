@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PortForwardSummary } from "../../../../src/lib/portForwardApi";
@@ -101,6 +101,18 @@ const sshMachine: Machine = {
   username: "deploy",
 };
 
+const stageSshMachine: Machine = {
+  ...sshMachine,
+  credentialRef: "C:/keys/stage_ed25519",
+  description: "deploy@stage.internal:22",
+  host: "stage.internal",
+  id: "stage-api",
+  name: "stage api",
+  production: false,
+  status: "online",
+  tags: ["ssh", "stage"],
+};
+
 const localMachine: Machine = {
   description: "默认本地配置",
   id: "local-powershell",
@@ -163,6 +175,16 @@ function networkAssistSession(
     targetPort: 18081,
     ...overrides,
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, reject, resolve };
 }
 
 describe("PortForwardToolContent", () => {
@@ -576,5 +598,130 @@ describe("PortForwardToolContent", () => {
 
     expect(screen.getByText(/GatewayPorts/)).toBeInTheDocument();
     expect(screen.getAllByText(/生产主机/).length).toBeGreaterThan(0);
+  });
+
+  it("does not list while inactive and reloads the current host when reopened", async () => {
+    portForwardApiMocks.listPortForwards.mockResolvedValue([
+      networkAssistSession({
+        hostId: "stage-api",
+        id: "forward-stage",
+        name: "Stage proxy",
+      }),
+    ]);
+    const { rerender } = render(
+      <PortForwardToolContent active={false} selectedMachine={sshMachine} />,
+    );
+
+    await act(async () => undefined);
+    expect(portForwardApiMocks.listPortForwards).not.toHaveBeenCalled();
+
+    rerender(
+      <PortForwardToolContent active selectedMachine={stageSshMachine} />,
+    );
+
+    expect(await screen.findByText("Stage proxy")).toBeInTheDocument();
+    expect(portForwardApiMocks.listPortForwards).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the fast current host list when the previous host resolves later", async () => {
+    const slowProd = deferred<PortForwardSummary[]>();
+    const fastStage = deferred<PortForwardSummary[]>();
+    portForwardApiMocks.listPortForwards
+      .mockReturnValueOnce(slowProd.promise)
+      .mockReturnValueOnce(fastStage.promise);
+
+    const { rerender } = render(
+      <PortForwardToolContent active selectedMachine={sshMachine} />,
+    );
+    await waitFor(() =>
+      expect(portForwardApiMocks.listPortForwards).toHaveBeenCalledTimes(1),
+    );
+
+    rerender(
+      <PortForwardToolContent active selectedMachine={stageSshMachine} />,
+    );
+    await waitFor(() =>
+      expect(portForwardApiMocks.listPortForwards).toHaveBeenCalledTimes(2),
+    );
+
+    await act(async () => {
+      fastStage.resolve([
+        networkAssistSession({
+          hostId: "stage-api",
+          id: "forward-stage",
+          name: "Stage proxy",
+        }),
+      ]);
+      await fastStage.promise;
+    });
+    expect(await screen.findByText("Stage proxy")).toBeInTheDocument();
+
+    await act(async () => {
+      slowProd.resolve([
+        networkAssistSession({ id: "forward-prod", name: "Prod proxy" }),
+      ]);
+      await slowProd.promise;
+    });
+    expect(screen.getByText("Stage proxy")).toBeInTheDocument();
+    expect(screen.queryByText("Prod proxy")).not.toBeInTheDocument();
+  });
+
+  it("closes and resets the target-bound dialog when the host changes", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <PortForwardToolContent active selectedMachine={sshMachine} />,
+    );
+
+    await user.click(await screen.findByRole("button", { name: "添加隧道" }));
+    await user.type(screen.getByLabelText("名称"), "Prod draft");
+
+    rerender(
+      <PortForwardToolContent active selectedMachine={stageSshMachine} />,
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "添加 SSH 隧道" }),
+    ).not.toBeInTheDocument();
+    expect(portForwardApiMocks.createPortForward).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "添加隧道" }));
+    expect(screen.getByLabelText("名称")).toHaveValue("");
+  });
+
+  it("does not apply an old host action result to the newly selected host", async () => {
+    const user = userEvent.setup();
+    const slowStart = deferred<PortForwardSummary>();
+    portForwardApiMocks.startPortForward.mockReturnValueOnce(slowStart.promise);
+    portForwardApiMocks.listPortForwards
+      .mockResolvedValueOnce([networkAssistSession({ status: "exited" })])
+      .mockResolvedValueOnce([
+        networkAssistSession({
+          hostId: "stage-api",
+          id: "forward-stage",
+          name: "Stage proxy",
+        }),
+      ]);
+
+    const { rerender } = render(
+      <PortForwardToolContent active selectedMachine={sshMachine} />,
+    );
+    await user.click(await screen.findByRole("button", { name: "启动隧道" }));
+    await waitFor(() =>
+      expect(portForwardApiMocks.startPortForward).toHaveBeenCalledWith(
+        "forward-network",
+      ),
+    );
+
+    rerender(
+      <PortForwardToolContent active selectedMachine={stageSshMachine} />,
+    );
+    expect(await screen.findByText("Stage proxy")).toBeInTheDocument();
+
+    await act(async () => {
+      slowStart.resolve(networkAssistSession());
+      await slowStart.promise;
+    });
+    expect(screen.getByText("Stage proxy")).toBeInTheDocument();
+    expect(screen.queryByText("主机网络助手 已启动。")).not.toBeInTheDocument();
+    expect(portForwardApiMocks.listPortForwards).toHaveBeenCalledTimes(2);
   });
 });

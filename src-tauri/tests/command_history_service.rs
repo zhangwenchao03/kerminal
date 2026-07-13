@@ -5,8 +5,8 @@
 use kerminal_lib::{
     error::AppError,
     models::command_history::{
-        CommandHistoryListRequest, CommandHistoryRecordRequest, CommandHistorySource,
-        CommandHistoryTarget,
+        CommandHistoryClearRequest, CommandHistoryListRequest, CommandHistoryRecordRequest,
+        CommandHistorySource, CommandHistoryTarget,
     },
     paths::KerminalPaths,
     state::AppState,
@@ -306,6 +306,61 @@ fn delete_and_clear_history_round_trip() {
         .list_history(state.command_store(), CommandHistoryListRequest::default())
         .expect("list after clear")
         .is_empty());
+}
+
+#[test]
+fn clear_history_scoped_keeps_other_panes_and_hosts() {
+    let (_home, state) = test_state();
+    record_with_pane(
+        &state,
+        "echo prod left",
+        CommandHistorySource::User,
+        CommandHistoryTarget::Ssh,
+        "pane-left",
+        Some("host-prod"),
+    );
+    record_with_pane(
+        &state,
+        "echo prod right",
+        CommandHistorySource::User,
+        CommandHistoryTarget::Ssh,
+        "pane-right",
+        Some("host-prod"),
+    );
+    record_with_pane(
+        &state,
+        "echo stage left",
+        CommandHistorySource::User,
+        CommandHistoryTarget::Ssh,
+        "pane-left",
+        Some("host-stage"),
+    );
+
+    let cleared = state
+        .command_history()
+        .clear_history_scoped(
+            state.command_store(),
+            CommandHistoryClearRequest {
+                target: Some(CommandHistoryTarget::Ssh),
+                pane_id: Some(" pane-left ".to_owned()),
+                remote_host_id: Some(" host-prod ".to_owned()),
+                session_id: None,
+            },
+        )
+        .expect("clear scoped history");
+    assert_eq!(cleared, 1);
+
+    let remaining = state
+        .command_history()
+        .list_history(state.command_store(), CommandHistoryListRequest::default())
+        .expect("list remaining history");
+    assert_eq!(remaining.len(), 2);
+    assert!(remaining
+        .iter()
+        .any(|entry| entry.command == "echo prod right"));
+    assert!(remaining
+        .iter()
+        .any(|entry| entry.command == "echo stage left"));
 }
 
 #[test]

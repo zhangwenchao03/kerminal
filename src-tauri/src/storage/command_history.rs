@@ -56,6 +56,19 @@ pub(crate) struct CommandHistoryListFilter<'a> {
     pub limit: usize,
 }
 
+/// command_history 删除范围；字段全部为空时匹配全部历史。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CommandHistoryClearFilter<'a> {
+    /// 目标类型过滤。
+    pub target: Option<CommandHistoryTarget>,
+    /// 前端 pane id 过滤。
+    pub pane_id: Option<&'a str>,
+    /// SSH 主机过滤。
+    pub remote_host_id: Option<&'a str>,
+    /// 终端 session 过滤。
+    pub session_id: Option<&'a str>,
+}
+
 impl CommandSqliteStore {
     /// 返回全部命令历史，按最新优先排序。
     pub fn list_command_history(&self) -> AppResult<Vec<CommandHistoryEntry>> {
@@ -144,6 +157,30 @@ impl CommandSqliteStore {
     /// 清空命令历史。
     pub fn clear_command_history(&self) -> AppResult<usize> {
         self.with_connection_mut(|conn| Ok(conn.execute("DELETE FROM command_history", [])?))
+    }
+
+    /// 按 pane/目标/主机/session 范围删除命令历史。
+    pub(crate) fn clear_command_history_filtered(
+        &self,
+        filter: &CommandHistoryClearFilter<'_>,
+    ) -> AppResult<usize> {
+        self.with_connection_mut(|conn| {
+            Ok(conn.execute(
+                "
+                DELETE FROM command_history
+                WHERE (?1 IS NULL OR target = ?1)
+                  AND (?2 IS NULL OR pane_id = ?2)
+                  AND (?3 IS NULL OR remote_host_id = ?3)
+                  AND (?4 IS NULL OR session_id = ?4)
+                ",
+                params![
+                    filter.target.map(CommandHistoryTarget::as_str),
+                    filter.pane_id,
+                    filter.remote_host_id,
+                    filter.session_id,
+                ],
+            )?)
+        })
     }
 }
 
