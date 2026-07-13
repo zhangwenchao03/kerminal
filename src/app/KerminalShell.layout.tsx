@@ -103,10 +103,8 @@ export function KerminalShellLayout({
     <div
       ref={frame.workspaceFrameRef}
       className={cn(
-        "relative grid h-screen overflow-hidden",
-        frame.resolvedTheme === "dark"
-          ? "dark text-zinc-100"
-          : "text-zinc-950",
+        "relative grid h-screen overflow-hidden text-[var(--text-primary)]",
+        frame.resolvedTheme === "dark" && "dark",
       )}
       data-desktop-platform={frame.desktopPlatform}
       data-density={frame.density}

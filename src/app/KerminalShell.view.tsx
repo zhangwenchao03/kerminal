@@ -1,14 +1,17 @@
 // @author kongweiguang
 
 import {
+  CircleAlert,
   Bot,
   Cpu,
   FileText,
   FolderOpen,
   History,
+  Info,
   Network,
   PanelsTopLeft,
   ScanSearch,
+  TriangleAlert,
   X,
 } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
@@ -36,15 +39,60 @@ const shellToolRailIcons: Partial<Record<ToolId, typeof Bot>> = {
   tmux: PanelsTopLeft,
 };
 
-function shellNoticeClassName(level: ConfigChangeNotice["level"] | "warning") {
-  return cn(
-    "absolute bottom-3 left-1/2 z-20 flex max-w-[min(720px,calc(100%-32px))] -translate-x-1/2 items-start gap-2 rounded-xl border px-3 py-2 font-mono text-xs shadow-lg shadow-black/20",
-    level === "info" &&
-      "border-emerald-300/25 bg-emerald-50/95 text-emerald-900 dark:border-emerald-300/20 dark:bg-emerald-950/85 dark:text-emerald-100",
-    level === "warning" &&
-      "border-amber-300/30 bg-amber-50/95 text-amber-900 dark:border-amber-300/20 dark:bg-amber-950/85 dark:text-amber-100",
-    level === "error" &&
-      "border-rose-300/30 bg-rose-50/95 text-rose-900 dark:border-rose-300/20 dark:bg-rose-950/85 dark:text-rose-100",
+const shellNoticeTone = {
+  error: {
+    Icon: CircleAlert,
+    iconClassName: "text-[rgb(var(--app-danger))]",
+  },
+  info: {
+    Icon: Info,
+    iconClassName: "text-[rgb(var(--app-accent))]",
+  },
+  warning: {
+    Icon: TriangleAlert,
+    iconClassName: "text-amber-600 dark:text-amber-300",
+  },
+} as const;
+
+function ShellNotice({
+  level,
+  message,
+  onDismiss,
+  role,
+}: {
+  level: ConfigChangeNotice["level"];
+  message: string;
+  onDismiss: () => void;
+  role: "alert" | "status";
+}) {
+  const { Icon, iconClassName } = shellNoticeTone[level];
+
+  return (
+    <div className="kerminal-layer-toast pointer-events-none fixed bottom-4 left-1/2 w-[min(40rem,calc(100vw-1.5rem))] -translate-x-1/2">
+      <div
+        aria-live={role === "alert" ? "assertive" : "polite"}
+        className="kerminal-floating-enter kerminal-floating-surface pointer-events-auto flex items-start gap-2.5 rounded-[var(--radius-card)] border px-3 py-2.5 text-[13px] leading-5 text-[var(--text-primary)]"
+        data-shell-notice-level={level}
+        role={role}
+      >
+        <Icon
+          aria-hidden="true"
+          className={cn("mt-0.5 h-4 w-4 shrink-0", iconClassName)}
+        />
+        <span className="min-w-0 flex-1 break-words">{message}</span>
+        <Button
+          aria-label="关闭提示"
+          className="h-7 w-7 shrink-0 rounded-[var(--radius-control)]"
+          onClick={onDismiss}
+          size="icon"
+          title="关闭提示"
+          type="button"
+          variant="ghost"
+        >
+          <X aria-hidden="true" className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -83,7 +131,7 @@ export function ShellToolRail({
               <Button
                 aria-label={`打开 ${tool.title}`}
                 className={cn(
-                  "h-8 w-8 rounded-lg",
+                  "h-[var(--density-control-height)] w-[var(--density-control-height)] rounded-[var(--radius-control)]",
                   tool.id === "logs" && "mt-auto",
                 )}
                 data-shell-tool-id={tool.id}
@@ -178,21 +226,21 @@ export function ShellCompactToolPanel({
     <>
       <button
         aria-label="关闭紧凑工具面板"
-        className="absolute inset-x-0 bottom-0 top-9 z-30 bg-zinc-950/18 backdrop-blur-[1px] dark:bg-black/35"
+        className="kerminal-layer-overlay absolute inset-x-0 bottom-0 top-9 bg-zinc-950/18 backdrop-blur-[2px] dark:bg-black/40"
         onClick={onClose}
         type="button"
       />
       <section
         aria-modal="true"
         aria-label="紧凑工具面板"
-        className="kerminal-floating-enter absolute bottom-0 right-0 top-9 z-40 w-[min(440px,calc(100%-12px))] overflow-hidden border-l border-[var(--border-subtle)] bg-[var(--surface-overlay)] shadow-[var(--shadow-floating)]"
+        className="kerminal-floating-enter kerminal-floating-surface kerminal-layer-dialog absolute bottom-2 right-2 top-11 w-[min(440px,calc(100%-16px))] overflow-hidden rounded-[var(--radius-panel)] border"
         ref={panelRef}
         role="dialog"
       >
         <header className="flex h-10 items-center justify-end border-b border-[var(--border-subtle)] px-2">
           <Button
             aria-label="关闭工具面板"
-            className="h-8 w-8 rounded-lg"
+            className="h-8 w-8 rounded-[var(--radius-control)]"
             onClick={onClose}
             size="icon"
             title="关闭"
@@ -244,7 +292,7 @@ export function ShellResponsiveToolPanel({
   return (
     <>
       <div
-        className="relative z-20 h-full overflow-hidden"
+        className="relative z-[var(--layer-chrome)] h-full overflow-hidden"
         style={{ gridColumn: "5 / 6", gridRow: "2 / 3" }}
       >
         {open ? (compact ? null : panel) : rail}
@@ -293,7 +341,7 @@ export function ShellWindowChrome({
         }}
       />
       <AppTitleBar
-        className="pointer-events-none col-[1/-1] row-[1/2] z-50 border-b-0 bg-transparent"
+        className="pointer-events-none col-[1/-1] row-[1/2] z-[var(--layer-chrome)] border-b-0 bg-transparent"
         desktopPlatform={desktopPlatform}
         leftPanelCollapsed={leftPanelCollapsed}
         onLeftPanelCollapsedChange={onLeftPanelCollapsedChange}
@@ -320,21 +368,12 @@ export function KerminalShellNotices({
 }) {
   if (configNotice) {
     return (
-      <div
-        aria-live="polite"
-        className={shellNoticeClassName(configNotice.level)}
+      <ShellNotice
+        level={configNotice.level}
+        message={configNotice.text}
+        onDismiss={onConfigNoticeDismiss}
         role={configNotice.level === "error" ? "alert" : "status"}
-      >
-        <span className="min-w-0 flex-1 truncate">{configNotice.text}</span>
-        <button
-          aria-label="关闭提示"
-          className="rounded-md p-1 opacity-75 transition hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
-          onClick={onConfigNoticeDismiss}
-          type="button"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
+      />
     );
   }
 
@@ -343,16 +382,11 @@ export function KerminalShellNotices({
   }
 
   return (
-    <div className={shellNoticeClassName("warning")} role="alert">
-      <span className="min-w-0 flex-1">{shellNoticeMessage}</span>
-      <button
-        aria-label="关闭提示"
-        className="rounded-md p-1 opacity-75 transition hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
-        onClick={onShellNoticeDismiss}
-        type="button"
-      >
-        <X className="h-4 w-4" />
-      </button>
-    </div>
+    <ShellNotice
+      level="warning"
+      message={shellNoticeMessage}
+      onDismiss={onShellNoticeDismiss}
+      role="alert"
+    />
   );
 }

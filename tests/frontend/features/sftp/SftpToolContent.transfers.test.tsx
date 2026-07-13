@@ -246,7 +246,7 @@ describe("SftpToolContent transfers and containers", () => {
     const uploadMenu = screen.getByRole("menu", { name: "上传菜单" });
     expect(uploadMenu).toHaveAttribute("data-sftp-upload-menu", "true");
     expect(uploadMenu).toHaveClass("fixed");
-    expect(uploadMenu).toHaveClass("z-[1000]");
+    expect(uploadMenu).toHaveClass("kerminal-layer-popover");
     expect(uploadMenu).toHaveClass("bg-[var(--surface-overlay)]");
     expect(document.body).toContainElement(uploadMenu);
   });

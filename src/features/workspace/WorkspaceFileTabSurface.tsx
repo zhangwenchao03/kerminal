@@ -479,7 +479,7 @@ export function WorkspaceFileTabSurface({
     <>
       <section
         aria-label={`文件 ${tab.title}`}
-        className="kerminal-solid-surface flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border text-zinc-900 dark:text-zinc-100"
+        className="kerminal-solid-surface flex h-full min-h-0 flex-col overflow-hidden rounded-[var(--radius-card)] border text-zinc-900 dark:text-zinc-100"
         data-testid="workspace-file-tab-surface"
       >
         <header className="flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-2">

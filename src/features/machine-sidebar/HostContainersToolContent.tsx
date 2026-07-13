@@ -543,7 +543,7 @@ export function HostContainersToolContent({
         <section
           className={cn(
             "min-w-0 overflow-hidden border border-[var(--border-subtle)] bg-[var(--surface-solid)]/78 shadow-sm shadow-black/5 dark:shadow-black/20",
-            sidebar ? "rounded-xl p-2.5" : "rounded-2xl p-3",
+            sidebar ? "rounded-[var(--radius-control)] p-2.5" : "rounded-[var(--radius-card)] p-3",
           )}
         >
           {sidebar ? null : (
@@ -631,7 +631,7 @@ export function HostContainersToolContent({
         <section
           className={cn(
             "grid min-w-0 gap-3 overflow-hidden border border-[var(--border-subtle)] bg-[var(--surface-solid)]/78 shadow-sm shadow-black/5 dark:shadow-black/20",
-            sidebar ? "min-h-[18rem] rounded-xl p-2" : "min-h-[20rem] rounded-2xl p-3",
+            sidebar ? "min-h-[18rem] rounded-[var(--radius-control)] p-2" : "min-h-[20rem] rounded-[var(--radius-card)] p-3",
           )}
         >
           <div
@@ -891,7 +891,7 @@ function StateMessage({
   return (
     <div
       className={cn(
-        "flex min-h-32 items-center justify-center rounded-2xl border px-4 py-8 text-center text-sm",
+        "flex min-h-32 items-center justify-center rounded-[var(--radius-card)] border px-4 py-8 text-center text-sm",
         tone === "danger"
           ? "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-200"
           : "border-dashed border-[var(--border-subtle)] text-zinc-500 dark:text-zinc-400",

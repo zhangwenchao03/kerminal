@@ -26,7 +26,7 @@ export function SftpSettingsSection({
 }: SftpSettingsSectionProps) {
   return (
     <div className="space-y-4" id="settings-sftp-panel">
-      <section className="kerminal-solid-surface rounded-2xl border p-4">
+      <section className="kerminal-solid-surface rounded-[var(--radius-panel)] border p-4">
         <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
           <Network className="h-4 w-4 text-sky-500 dark:text-sky-300" />
           SFTP 传输

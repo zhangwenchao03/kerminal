@@ -75,7 +75,7 @@ export function ExternalLaunchResolutionDialog({
       title="补全 SSH 用户名"
     >
       <form
-        className="space-y-4"
+        className="space-y-3"
         id="external-launch-resolution-form"
         onSubmit={(event) => {
           event.preventDefault();
@@ -85,22 +85,22 @@ export function ExternalLaunchResolutionDialog({
           onResolve(resolveExternalSshLaunchUsername(launch, username));
         }}
       >
-        <div className="flex gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-field)] p-3">
-          <Terminal className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500 dark:text-zinc-300" />
-          <div className="min-w-0 text-sm leading-5 text-zinc-600 dark:text-zinc-300">
+        <div className="flex gap-3 rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-content)] p-3">
+          <Terminal className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
+          <div className="min-w-0 text-[13px] leading-5 text-[var(--text-secondary)]">
             {externalSshLaunchSourceLabel(launch)} 没有提供用户名，Kerminal
             需要用户名来创建临时 SSH 目标。
           </div>
         </div>
 
         <label className="block" htmlFor={inputId}>
-          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+          <span className="text-xs font-medium text-[var(--text-secondary)]">
             用户名
           </span>
           <input
             aria-invalid={Boolean(validationMessage)}
             autoFocus
-            className="kerminal-field-surface mt-1 h-9 w-full rounded-xl border px-3 text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600"
+            className="kerminal-field-surface mt-1 h-9 w-full rounded-[var(--radius-control)] border px-3 text-sm text-[var(--text-primary)] placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
             id={inputId}
             onChange={(event) => setUsername(event.target.value)}
             spellCheck={false}

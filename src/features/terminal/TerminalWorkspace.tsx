@@ -70,7 +70,7 @@ import {
 } from "./terminalTabChrome";
 
 const terminalContextMenuPanelClassName =
-  "kerminal-context-menu kerminal-floating-enter fixed z-[1000] w-56";
+  "kerminal-context-menu kerminal-floating-enter kerminal-layer-popover fixed w-56";
 const TAB_OVERVIEW_OVERFLOW_TOLERANCE = 1;
 const EMPTY_PANE_CHROME_SNAPSHOTS: ReturnType<
   typeof terminalChromeRuntimeStore.getSnapshots

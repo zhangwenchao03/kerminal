@@ -8,9 +8,9 @@ export interface TerminalEmptyStateProps {
 
 export function TerminalEmptyState(_props: TerminalEmptyStateProps) {
   return (
-    <div className="kerminal-solid-surface flex h-full items-center justify-center rounded-2xl border p-6 text-zinc-700 dark:text-zinc-200">
+    <div className="kerminal-solid-surface flex h-full items-center justify-center rounded-[var(--radius-card)] border p-6 text-zinc-700 dark:text-zinc-200">
       <div className="mx-auto flex w-full max-w-sm flex-col items-center text-center">
-        <div className="kerminal-muted-surface flex h-16 w-16 items-center justify-center rounded-2xl border p-3 shadow-sm shadow-black/5">
+        <div className="flex h-16 w-16 items-center justify-center rounded-[var(--radius-card)] border border-[var(--border-subtle)] p-3">
           <img
             alt="Kerminal"
             className="h-10 w-10"

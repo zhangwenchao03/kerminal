@@ -563,7 +563,7 @@ export function TerminalTabRenameDialog({
       title="重命名标签"
     >
       <form className="space-y-4" onSubmit={submit}>
-        <div className="kerminal-muted-surface rounded-2xl border p-4">
+        <div className="rounded-[var(--radius-card)] border border-[var(--border-subtle)] p-4">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Pencil className="h-4 w-4 text-sky-500 dark:text-sky-300" />
             标签信息

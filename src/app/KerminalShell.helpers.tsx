@@ -80,7 +80,7 @@ export function DialogLazyFallback() {
   return (
     <div
       aria-label="正在加载弹窗"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/30 p-4 text-zinc-950 backdrop-blur-md dark:bg-black/48 dark:text-zinc-50"
+      className="kerminal-layer-dialog fixed inset-0 flex items-center justify-center bg-zinc-950/30 p-4 text-[var(--text-primary)] backdrop-blur-md dark:bg-black/48"
       role="status"
     >
       <WindowDragStrip />

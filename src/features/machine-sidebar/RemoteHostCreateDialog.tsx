@@ -867,7 +867,7 @@ export function RemoteHostCreateDialog({
         title={editingHost || editingLocalMachine ? "编辑连接配置" : "新建主机"}
       >
         <div className="space-y-4">
-          <div className="scrollbar-none flex gap-2 overflow-x-auto border-b border-[var(--border-subtle)] pb-3">
+          <div className="scrollbar-none flex gap-1 overflow-x-auto border-b border-[var(--border-subtle)] pb-3">
             {protocolTabs.map((protocol) => {
               const Icon = protocol.Icon;
               const selected = protocol.id === mode;
@@ -920,17 +920,17 @@ export function RemoteHostCreateDialog({
                   title={protocol.label}
                   type="button"
                 >
-                  <Icon className="h-5 w-5" />
+                  <Icon className="h-4 w-4" />
                   <span>{protocol.label}</span>
                 </button>
               );
             })}
           </div>
 
-          <div className="grid min-h-[424px] gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+          <div className="grid min-h-[424px] gap-4 md:grid-cols-[190px_minmax(0,1fr)]">
             <nav
               aria-label="连接配置分区"
-              className="kerminal-muted-surface rounded-2xl border p-2"
+              className="space-y-1 border-b border-[var(--border-subtle)] pb-3 md:border-b-0 md:border-r md:pb-0 md:pr-4"
             >
               {activeSections.map((section) => {
                 const Icon = section.Icon;

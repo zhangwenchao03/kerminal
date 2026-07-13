@@ -138,7 +138,7 @@ export function RuntimeHealthCard() {
               </UserFacingNotice>
             ) : null}
             {!snapshot && !error ? (
-              <div className="kerminal-muted-surface mt-3 rounded-xl px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">
+              <div className="mt-3 border-t border-[var(--border-subtle)] pt-3 text-sm text-zinc-500 dark:text-zinc-400">
                 {loading ? "正在采集运行体验..." : "等待运行体验数据。"}
               </div>
             ) : null}
@@ -194,7 +194,7 @@ export function RuntimeHealthCard() {
                   <span className="font-medium text-zinc-950 dark:text-zinc-50">
                     平均使用率
                   </span>
-                  <span className="font-semibold text-emerald-600 dark:text-emerald-300">
+                  <span className="font-semibold text-[rgb(var(--app-accent))]">
                     {formatPercent(snapshot.system.globalCpuUsagePercent)}
                   </span>
                 </div>
@@ -227,7 +227,7 @@ export function RuntimeHealthCard() {
                 ))}
               </div>
             ) : (
-              <p className="kerminal-muted-surface rounded-xl px-3 py-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+              <p className="border-l-2 border-[var(--border-strong)] pl-3 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
                 未返回 GPU；受限环境、驱动不支持或无独显时可能为空。
               </p>
             )}
@@ -363,12 +363,12 @@ function CircularMeter({ value }: { value: number }) {
       aria-label={`CPU 平均使用率 ${formatPercent(percent)}`}
       className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-full"
       style={{
-        background: `conic-gradient(rgb(16 185 129) ${percent * 3.6}deg, rgba(113, 113, 122, 0.22) 0deg)`,
+        background: `conic-gradient(rgb(var(--app-accent)) ${percent * 3.6}deg, rgba(113, 113, 122, 0.22) 0deg)`,
       }}
     >
       <div className="absolute inset-1.5 rounded-full bg-[var(--surface-solid)]" />
       <div className="relative text-center">
-        <div className="text-lg font-semibold text-emerald-600 dark:text-emerald-300">
+        <div className="text-lg font-semibold text-[rgb(var(--app-accent))]">
           {Math.round(percent)}
         </div>
         <div className="-mt-1 text-[10px] text-zinc-500 dark:text-zinc-400">%</div>
@@ -383,7 +383,7 @@ function CoreUsageRow({ index, value }: { index: number; value: number }) {
       <span className="text-right text-zinc-500 dark:text-zinc-400">{index}</span>
       <div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface-hover)]">
         <div
-          className="h-full rounded-full bg-emerald-500 dark:bg-emerald-400"
+          className="h-full rounded-full bg-[rgb(var(--app-accent))]"
           style={{ width: `${clampPercent(value)}%` }}
         />
       </div>
@@ -399,7 +399,7 @@ function GpuDetail({ gpu, index }: { gpu: RuntimeGpuHealth; index: number }) {
   const primaryPercent = gpu.utilizationPercent ?? memoryPercent;
 
   return (
-    <section className="kerminal-muted-surface rounded-xl p-3">
+    <section className="border-b border-[var(--border-subtle)] py-3 first:pt-0 last:border-b-0 last:pb-0">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="break-words text-sm font-medium text-zinc-950 dark:text-zinc-50">
@@ -410,7 +410,7 @@ function GpuDetail({ gpu, index }: { gpu: RuntimeGpuHealth; index: number }) {
             {gpu.vendor ? ` · ${gpu.vendor}` : ""}
           </div>
         </div>
-      <span className="shrink-0 text-xs font-semibold text-emerald-600 dark:text-emerald-300">
+        <span className="shrink-0 text-xs font-semibold text-[rgb(var(--app-accent))]">
           {formatOptionalPercent(gpu.utilizationPercent ?? memoryPercent)}
         </span>
       </div>
@@ -426,7 +426,7 @@ function GpuDetail({ gpu, index }: { gpu: RuntimeGpuHealth; index: number }) {
           />
         ) : null}
         {primaryPercent === undefined ? (
-          <div className="kerminal-muted-surface rounded-lg px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
+          <div className="border-l-2 border-[var(--border-strong)] pl-3 text-xs text-zinc-500 dark:text-zinc-400">
             暂无 GPU 使用率或显存。
           </div>
         ) : null}

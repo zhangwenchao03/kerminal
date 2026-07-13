@@ -23,7 +23,7 @@ function SftpTransferWorkbenchFallback() {
   return (
     <section
       aria-label="SFTP 传输工作台加载中"
-      className="kerminal-solid-surface flex h-full min-h-0 items-center justify-center rounded-2xl border px-4 text-sm text-zinc-500 dark:text-zinc-400"
+      className="kerminal-solid-surface flex h-full min-h-0 items-center justify-center rounded-[var(--radius-card)] border px-4 text-sm text-zinc-500 dark:text-zinc-400"
     >
       正在加载 SFTP 传输工作台...
     </section>

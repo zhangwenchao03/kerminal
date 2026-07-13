@@ -44,7 +44,7 @@ function TerminalPaneErrorFallback({
   return (
     <section
       aria-label={`${pane.title} 终端分屏异常`}
-      className="flex h-full min-h-0 flex-col justify-between overflow-hidden rounded-2xl border border-rose-300/25 bg-rose-50 p-4 text-rose-950 shadow-sm dark:border-rose-300/20 dark:bg-rose-950/30 dark:text-rose-50"
+      className="flex h-full min-h-0 flex-col justify-between overflow-hidden rounded-[var(--radius-card)] border border-rose-300/25 bg-rose-50 p-4 text-rose-950 dark:border-rose-300/20 dark:bg-rose-950/30 dark:text-rose-50"
     >
       <div>
         <div className="flex items-center gap-2 text-sm font-semibold">

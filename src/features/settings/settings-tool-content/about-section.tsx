@@ -37,15 +37,16 @@ import type { DesktopNotificationSettings } from "../settingsModel";
 const githubRepositoryUrl = "https://github.com/kongweiguang/kerminal";
 const appVersion = `v${packageJson.version}`;
 const licenseName = packageJson.license ?? "AGPL-3.0-only";
-const aboutPanelClassName = "kerminal-solid-surface rounded-2xl border p-5";
+const aboutPanelClassName =
+  "kerminal-solid-surface rounded-[var(--radius-panel)] border p-4";
 const aboutListClassName =
-  "mt-5 overflow-hidden rounded-xl border border-black/10 bg-black/[0.025] dark:border-white/10 dark:bg-black/20";
+  "mt-4 overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-content)]";
 const aboutRowClassName =
-  "flex flex-wrap items-center justify-between gap-3 border-b border-black/10 px-4 py-3 last:border-b-0 dark:border-white/10";
+  "flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-3 py-2.5 last:border-b-0";
 const aboutButtonClassName =
-  "kerminal-focus-ring kerminal-pressable inline-flex h-8 items-center gap-1.5 rounded-lg border border-black/10 bg-white/70 px-2.5 text-xs font-medium text-zinc-700 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/8 dark:text-zinc-200";
+  "kerminal-focus-ring kerminal-pressable inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-content)] px-2.5 text-xs font-medium text-[var(--text-primary)] transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60";
 const aboutPrimaryButtonClassName =
-  "kerminal-focus-ring kerminal-pressable inline-flex h-8 items-center gap-1.5 rounded-lg border border-sky-400/25 bg-[var(--surface-selected)] px-2.5 text-xs font-medium text-sky-700 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 dark:text-sky-100";
+  "kerminal-focus-ring kerminal-pressable inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-control)] border border-sky-400/25 bg-[var(--surface-selected)] px-2.5 text-xs font-medium text-sky-700 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 dark:text-sky-100";
 
 type UpdateCheckState =
   | "idle"

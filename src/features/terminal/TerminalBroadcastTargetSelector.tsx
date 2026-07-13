@@ -132,7 +132,7 @@ export function TerminalBroadcastTargetSelector({
       {selectorOpen ? (
         <div
           aria-label="发送目标选择"
-          className="kerminal-floating-enter absolute left-0 top-[calc(100%+0.5rem)] z-[1000] w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] p-2 text-sm shadow-2xl shadow-black/20 backdrop-blur-xl dark:shadow-black/50"
+          className="kerminal-floating-surface kerminal-floating-enter kerminal-layer-popover absolute left-0 top-[calc(100%+0.5rem)] w-80 max-w-[calc(100vw-2rem)] rounded-[var(--radius-card)] border p-2 text-[13px]"
           role="menu"
         >
           <div className="space-y-1">

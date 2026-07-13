@@ -483,7 +483,7 @@ function LegacySnippetToolContent({
         </label>
         <Button
           aria-label="添加脚本片段"
-          className="h-9 w-9 rounded-xl"
+          className="h-9 w-9 rounded-[var(--radius-control)]"
           onClick={openCreateDialog}
           size="icon"
           title="添加"
@@ -515,7 +515,7 @@ function LegacySnippetToolContent({
         })}
       </div>
 
-      <div className="kerminal-muted-surface grid grid-cols-2 rounded-xl border p-1">
+      <div className="kerminal-muted-surface grid grid-cols-2 rounded-[var(--radius-control)] border p-1">
         {(
           [
             { count: snippets.length, label: "我的片段", value: "mine" },
@@ -580,16 +580,16 @@ function LegacySnippetToolContent({
       {error ? <UserFacingNotice compact message={error} /> : null}
       {configDraftNotice ? (
         <div
-          className="rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 font-mono text-xs text-amber-800 dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100"
+          className="rounded-[var(--radius-control)] border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-xs text-amber-800 dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100"
           role="status"
         >
           {configDraftNotice}
         </div>
       ) : null}
 
-      <div className="kerminal-solid-surface overflow-hidden rounded-2xl border">
+      <div className="overflow-hidden border-y border-[var(--border-subtle)]">
         {catalogMode === "mine" && loading && snippets.length === 0 ? (
-          <div className="kerminal-muted-surface m-3 rounded-xl border border-dashed px-3 py-8 text-center font-mono text-xs text-zinc-500 dark:text-zinc-400">
+          <div className="px-3 py-8 text-center text-xs text-zinc-500 dark:text-zinc-400">
             正在加载...
           </div>
         ) : null}
@@ -602,10 +602,10 @@ function LegacySnippetToolContent({
         ) : null}
         {groupedSnippets.map((group) => (
           <div key={group.id}>
-            <div className="kerminal-muted-surface border-b px-3 py-1.5 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
+            <div className="kerminal-muted-surface border-b border-[var(--border-subtle)] px-3 py-1.5 text-[11px] text-zinc-500 dark:text-zinc-400">
               {group.label} / {group.snippets.length}
             </div>
-            <div className="divide-y divide-black/6 dark:divide-white/6">
+            <div className="divide-y divide-[var(--border-subtle)]">
               {group.snippets.map((snippet) => (
                 <SnippetRow
                   copied={copiedId === snippet.id}

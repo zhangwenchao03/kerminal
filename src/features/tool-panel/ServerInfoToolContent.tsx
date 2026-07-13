@@ -208,7 +208,7 @@ export function ServerInfoToolContent({
                 className={cn(
                   "kerminal-focus-ring kerminal-pressable min-w-0 rounded-md px-2 py-1.5 text-xs font-medium focus-visible:outline-none",
                   activeView === view.id
-                    ? "kerminal-solid-surface text-zinc-950 shadow-sm dark:text-zinc-50"
+                    ? "kerminal-solid-surface text-zinc-950 dark:text-zinc-50"
                     : "text-zinc-500 dark:text-zinc-400",
                 )}
                 key={view.id}
@@ -284,7 +284,7 @@ function Overview({
   const primaryTraffic = primaryNetworkTraffic(traffic.interfaces);
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-[var(--border-subtle)]">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[var(--radius-card)] border bg-[var(--border-subtle)]">
         <Metric
           icon={<Cpu className="h-4 w-4" />}
           label="CPU"
@@ -440,7 +440,7 @@ function Resources({
               className={cn(
                 "kerminal-focus-ring kerminal-pressable rounded px-2 py-1 text-[11px] focus-visible:outline-none",
                 networkFilter === value
-                  ? "kerminal-solid-surface font-medium shadow-sm"
+                  ? "kerminal-solid-surface font-medium"
                   : "text-zinc-500 dark:text-zinc-400",
               )}
               key={value}
@@ -617,7 +617,7 @@ function Section({
   trailing?: string;
 }) {
   return (
-    <section className="kerminal-solid-surface rounded-lg border px-3 py-2.5">
+    <section className="kerminal-solid-surface rounded-[var(--radius-card)] border px-3 py-2.5">
       <div className="flex items-center justify-between gap-3 border-b pb-2">
         <h3 className="flex min-w-0 items-center gap-2 text-xs font-semibold">
           {icon}
@@ -726,7 +726,7 @@ function StatusDot({ status }: { status: string }) {
 
 function EmptyState({ loading }: { loading: boolean }) {
   return (
-    <div className="kerminal-solid-surface rounded-lg border px-4 py-10 text-center text-sm text-zinc-500 dark:text-zinc-400">
+    <div className="kerminal-solid-surface rounded-[var(--radius-card)] border px-4 py-10 text-center text-sm text-zinc-500 dark:text-zinc-400">
       {loading ? "正在读取系统信息..." : "暂无系统信息"}
     </div>
   );

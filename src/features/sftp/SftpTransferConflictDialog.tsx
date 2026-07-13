@@ -51,7 +51,7 @@ export function SftpTransferConflictDialog({
       title="处理传输冲突"
     >
       <div className="space-y-3">
-        <div className="rounded-2xl border border-amber-400/25 bg-amber-500/10 px-3 py-3 text-sm text-amber-800 dark:text-amber-100">
+        <div className="rounded-[var(--radius-control)] border border-amber-400/25 bg-amber-500/10 px-3 py-3 text-sm text-amber-800 dark:text-amber-100">
           <div className="flex items-center gap-2 font-medium">
             <FileWarning className="h-4 w-4" />
             检测到 {conflictCount} 个目标冲突
@@ -64,7 +64,7 @@ export function SftpTransferConflictDialog({
         <div className="grid gap-2">
           {conflictOptions.map((option) => (
             <button
-              className="kerminal-focus-ring kerminal-pressable rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-3 py-3 text-left transition hover:border-sky-400/45 hover:bg-[var(--surface-hover)]"
+              className="kerminal-focus-ring kerminal-pressable rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-3 py-3 text-left transition hover:border-sky-400/45 hover:bg-[var(--surface-hover)]"
               key={option.policy}
               onClick={() => onConfirm(option.policy)}
               type="button"

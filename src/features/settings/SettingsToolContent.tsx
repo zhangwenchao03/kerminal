@@ -226,10 +226,13 @@ export function SettingsToolContent({
   };
 
   return (
-    <section className="grid gap-5 lg:grid-cols-[196px_minmax(0,1fr)]">
-      <nav aria-label="设置分类" className="lg:sticky lg:top-0 lg:self-start">
-        <div className="kerminal-solid-surface rounded-2xl border p-2">
-          <label className="kerminal-field-surface flex h-10 items-center gap-2 rounded-xl border px-2 text-sm text-zinc-950 dark:text-zinc-100">
+    <section className="grid gap-4 lg:grid-cols-[190px_minmax(0,1fr)]">
+      <nav
+        aria-label="设置分类"
+        className="border-b border-[var(--border-subtle)] pb-4 lg:sticky lg:top-0 lg:self-start lg:border-b-0 lg:border-r lg:pb-0 lg:pr-4"
+      >
+        <div>
+          <label className="kerminal-field-surface flex h-9 items-center gap-2 rounded-[var(--radius-control)] border px-2 text-[13px] text-[var(--text-primary)]">
             <Search className="h-4 w-4 shrink-0 text-zinc-400" />
             <input
               aria-label="搜索设置"
@@ -258,7 +261,7 @@ export function SettingsToolContent({
                 settingsSearchResults.map((result) => (
                   <button
                     aria-label={`打开设置项：${result.title}`}
-                    className="kerminal-focus-ring kerminal-pressable kerminal-muted-surface block w-full rounded-xl border px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-zinc-50"
+                    className="kerminal-focus-ring kerminal-pressable block w-full rounded-[var(--radius-control)] px-2.5 py-2 text-left text-[13px] text-[var(--text-primary)] transition hover:bg-[var(--surface-hover)]"
                     key={`${result.sectionId}:${result.targetId}:${result.title}`}
                     onClick={() => navigateToSearchResult(result)}
                     type="button"
@@ -273,7 +276,7 @@ export function SettingsToolContent({
                   </button>
                 ))
               ) : (
-                <div className="kerminal-muted-surface rounded-xl border px-3 py-3 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+                <div className="rounded-[var(--radius-control)] px-2.5 py-3 text-xs leading-5 text-[var(--text-secondary)]">
                   没有找到匹配设置。
                 </div>
               )}
@@ -290,10 +293,10 @@ export function SettingsToolContent({
                     aria-label={`打开设置分类：${section.label}`}
                     aria-pressed={selected}
                     className={cn(
-                      "kerminal-focus-ring kerminal-pressable flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm",
+                      "kerminal-focus-ring kerminal-pressable flex min-h-10 w-full items-center gap-2 rounded-[var(--radius-control)] px-2 py-1.5 text-left text-[13px]",
                       selected
                         ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
-                        : "text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50",
+                        : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]",
                     )}
                     key={section.id}
                     onClick={() => {
@@ -307,7 +310,7 @@ export function SettingsToolContent({
                         "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
                         selected
                           ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
-                          : "bg-[var(--surface-muted)] text-sky-600 dark:text-sky-300",
+                          : "bg-[var(--surface-muted)] text-[var(--text-secondary)]",
                       )}
                     >
                       <Icon className="h-4 w-4" />
@@ -323,10 +326,10 @@ export function SettingsToolContent({
         </div>
       </nav>
 
-      <div className="min-w-0 space-y-5">
+      <div className="min-w-0 space-y-4">
         {externalChangeNotice ? (
           <div
-            className="rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 font-mono text-xs text-amber-800 dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100"
+            className="rounded-[var(--radius-control)] border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-xs leading-5 text-amber-800 dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100"
             role="status"
           >
             {externalChangeNotice}

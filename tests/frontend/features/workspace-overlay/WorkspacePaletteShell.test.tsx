@@ -35,11 +35,18 @@ describe("WorkspacePaletteShell", () => {
     const dialog = screen.getByRole("dialog", { name: "工作区搜索" });
     const combobox = screen.getByRole("combobox", { name: "工作区搜索" });
     const options = screen.getAllByRole("option");
+    const overlay = document.querySelector("[data-workspace-palette-overlay]");
 
-    expect(dialog).toHaveClass("h-[min(31rem,calc(100vh-5rem))]");
+    expect(overlay).toHaveClass("kerminal-layer-palette");
+    expect(dialog).toHaveClass(
+      "h-[min(31rem,calc(100vh-5rem))]",
+      "kerminal-floating-surface",
+      "rounded-[var(--radius-panel)]",
+    );
     expect(combobox).toHaveAttribute("aria-controls");
     expect(combobox).toHaveAttribute("aria-activedescendant", options[0].id);
     expect(options[0]).toHaveAttribute("aria-selected", "true");
+    expect(options[0]).toHaveClass("bg-[var(--surface-selected)]");
     expect(options[1]).toHaveAttribute("aria-disabled", "true");
     expect(combobox).toHaveFocus();
   });

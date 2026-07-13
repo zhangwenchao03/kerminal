@@ -96,7 +96,7 @@ export function SftpActionDialog({
       ) : null}
 
       {action.kind === "delete" ? (
-        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-3 text-sm text-red-700 dark:text-red-100">
+        <div className="rounded-[var(--radius-control)] border border-red-500/20 bg-red-500/10 px-3 py-3 text-sm text-red-700 dark:text-red-100">
           {action.entries.length > 1 ? (
             <>
               <div>
@@ -104,7 +104,7 @@ export function SftpActionDialog({
                 {action.entries.filter((entry) => entry.kind === "directory").length}{" "}
                 个目录。
               </div>
-              <div className="mt-2 max-h-32 overflow-auto rounded-xl border border-red-500/15 bg-red-500/5 p-2">
+              <div className="mt-2 max-h-32 overflow-auto rounded-[var(--radius-control)] border border-red-500/15 bg-red-500/5 p-2">
                 {action.entries.slice(0, 8).map((entry) => (
                   <div className="break-all font-mono text-xs" key={entry.path}>
                     {entry.name || entry.path}
@@ -156,7 +156,7 @@ function PathInput({
       </span>
       <input
         aria-label={label}
-        className="kerminal-field-surface mt-1 h-9 w-full rounded-xl border px-3 font-mono text-xs text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600"
+        className="kerminal-field-surface mt-1 h-9 w-full rounded-[var(--radius-control)] border px-3 font-mono text-xs text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600"
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         spellCheck={false}
@@ -172,7 +172,7 @@ function ReadonlyPath({ label, value }: { label: string; value: string }) {
       <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
         {label}
       </div>
-      <div className="kerminal-muted-surface mt-1 break-all rounded-xl border px-3 py-2 font-mono text-xs text-zinc-700 dark:text-zinc-300">
+      <div className="kerminal-muted-surface mt-1 break-all rounded-[var(--radius-control)] border px-3 py-2 font-mono text-xs text-zinc-700 dark:text-zinc-300">
         {value}
       </div>
     </div>
@@ -193,7 +193,7 @@ export function StatusMessage({
   return (
     <div
       className={cn(
-        "mt-3 rounded-xl border px-3 py-2 text-sm",
+        "mt-3 rounded-[var(--radius-control)] border px-3 py-2 text-sm",
         status.kind === "error" &&
           "border-rose-300/30 bg-rose-500/10 text-rose-700 dark:text-rose-100",
         status.kind === "success" &&

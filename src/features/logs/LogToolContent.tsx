@@ -306,11 +306,11 @@ export function LogToolContent({
     <section className="space-y-3">
       {diagnosticsBundleNotice}
 
-      <section className="kerminal-solid-surface rounded-lg border p-3">
+      <section className="border-b border-[var(--border-subtle)] pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-              <FileText className="h-4 w-4 text-emerald-500 dark:text-emerald-300" />
+              <FileText className="h-4 w-4 text-[rgb(var(--app-accent))]" />
               应用日志
             </div>
             <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
@@ -374,11 +374,11 @@ export function LogToolContent({
         ) : null}
       </section>
 
-      <section className="kerminal-solid-surface rounded-lg border p-3">
+      <section className="border-b border-[var(--border-subtle)] pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-              <History className="h-4 w-4 text-sky-500 dark:text-sky-300" />
+              <History className="h-4 w-4 text-[rgb(var(--app-accent))]" />
               命令历史
             </div>
             <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
@@ -475,7 +475,7 @@ export function LogToolContent({
         </div>
       ) : null}
 
-      <section className="kerminal-solid-surface overflow-hidden rounded-lg border">
+      <section className="kerminal-solid-surface overflow-hidden rounded-[var(--radius-card)] border">
         <div className="flex items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-3 py-2">
           <div className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
             最近记录
@@ -508,7 +508,7 @@ export function LogToolContent({
                 <span>时间</span>
                 <span className="text-right">操作</span>
               </div>
-              <div className="divide-y divide-black/8 dark:divide-white/[0.08]">
+              <div className="divide-y divide-[var(--border-subtle)]">
                 {pageEntries.map((entry) => (
                   <div
                     className="grid min-w-[760px] grid-cols-[92px_minmax(180px,1fr)_160px_120px_40px] items-center gap-3 px-3 py-2 text-sm"

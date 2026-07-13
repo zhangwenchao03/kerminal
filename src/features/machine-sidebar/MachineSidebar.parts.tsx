@@ -54,7 +54,7 @@ export {
 } from "./MachineSidebarMachineRow";
 
 const collapsedPopoverSurfaceClassName =
-  "kerminal-floating-enter fixed bottom-[84px] left-[72px] top-[56px] z-[1000] flex w-80 max-w-[calc(100vw-88px)] flex-col overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] text-zinc-950 shadow-2xl shadow-black/20 backdrop-blur-xl dark:text-zinc-50 dark:shadow-black/50";
+  "kerminal-floating-surface kerminal-floating-enter kerminal-layer-popover fixed bottom-[84px] left-[72px] top-[56px] flex w-80 max-w-[calc(100vw-88px)] flex-col overflow-hidden rounded-[var(--radius-panel)] border text-[var(--text-primary)]";
 const sidebarPopoverHeaderClassName =
   "kerminal-sidebar-header flex items-start justify-between gap-2 border-b border-[var(--border-subtle)]";
 const sidebarSmallIconButtonClassName =
@@ -66,7 +66,7 @@ const sidebarCountBadgeClassName =
 const sidebarStatusDotClassName =
   "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-[var(--surface-nav-glass)]";
 const sidebarEmptyStateClassName =
-  "kerminal-muted-surface rounded-2xl border border-dashed px-3 py-6 text-center text-sm text-zinc-500";
+  "rounded-[var(--radius-card)] border border-dashed border-[var(--border-subtle)] px-3 py-6 text-center text-sm text-zinc-500";
 const collapsedSidebarRootClassName =
   "kerminal-material-nav kerminal-shell-sidebar relative flex h-full w-full min-w-0 flex-col border-r";
 const collapsedSidebarButtonBaseClassName =
@@ -86,7 +86,7 @@ const contextMenuItemIdleClassName =
 const contextMenuItemDangerClassName =
   "kerminal-context-menu-item--danger";
 const dragPreviewSurfaceClassName =
-  "pointer-events-none fixed z-[1000] w-64 select-none rounded-2xl border border-sky-300/60 bg-[var(--surface-overlay)] p-3 text-sm text-zinc-950 shadow-2xl shadow-sky-900/20 ring-4 ring-sky-400/18 backdrop-blur-xl dark:border-sky-300/35 dark:text-zinc-50 dark:shadow-black/50";
+  "kerminal-layer-drag-preview pointer-events-none fixed w-64 select-none rounded-[var(--radius-card)] border border-sky-300/60 bg-[var(--surface-elevated)] p-3 text-sm text-[var(--text-primary)] shadow-[var(--shadow-floating)] ring-2 ring-sky-400/18 dark:border-sky-300/35";
 const dragPreviewHintClassName =
   "mt-2 rounded-xl bg-[var(--surface-selected)] px-3 py-1.5 text-xs font-medium text-sky-700 dark:text-sky-200";
 

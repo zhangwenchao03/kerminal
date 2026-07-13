@@ -3,7 +3,7 @@ import { RefreshCw } from "lucide-react";
 export function RemoteWorkspaceEditorFallback() {
   return (
     <div
-      className="kerminal-solid-surface flex h-full min-h-[560px] flex-col overflow-hidden rounded-xl border"
+      className="kerminal-solid-surface flex h-full min-h-[560px] flex-col overflow-hidden rounded-[var(--radius-card)] border"
       role="status"
     >
       <div className="flex h-14 shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-4">

@@ -111,7 +111,7 @@ export function SftpContextMenu({
   return (
     <div
       aria-label={ariaLabel}
-      className="kerminal-context-menu kerminal-floating-enter fixed z-[1000] w-60"
+      className="kerminal-context-menu kerminal-floating-enter kerminal-layer-popover fixed w-60"
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
       onPointerDown={(event) => event.stopPropagation()}

@@ -97,7 +97,7 @@ export function TerminalPaneCard({
     <section
       aria-label={model.ariaLabel}
       className={cn(
-        "kerminal-terminal-surface flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border transition-[opacity,transform,box-shadow] duration-[180ms] ease-out",
+        "kerminal-terminal-surface flex h-full min-h-0 flex-col overflow-hidden rounded-[var(--radius-panel)] border transition-[opacity,transform,box-shadow] duration-[180ms] ease-out",
         dragging &&
           "scale-[0.985] opacity-35 ring-2 ring-dashed ring-sky-400/70",
       )}

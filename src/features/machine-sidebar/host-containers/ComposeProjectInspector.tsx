@@ -51,7 +51,7 @@ const statusToneClassNames = {
 const inspectorIconButtonClassName =
   "h-8 w-8 rounded-lg text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50";
 const inspectorPanelClassName =
-  "grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)]/88 p-3 shadow-sm shadow-black/5 dark:shadow-black/20";
+  "grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-content)] p-3";
 const inspectorHeaderClassName =
   "grid h-[5.75rem] grid-rows-[minmax(0,2.25rem)_2rem] gap-3 border-b border-[var(--border-subtle)] pb-3";
 const inspectorTabsClassName =
@@ -814,7 +814,7 @@ function StateMessage({
   return (
     <div
       className={cn(
-        "flex min-h-32 items-center justify-center rounded-2xl border px-4 py-8 text-center text-sm",
+        "flex min-h-32 items-center justify-center rounded-[var(--radius-card)] border px-4 py-8 text-center text-sm",
         tone === "danger"
           ? "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-200"
           : "border-dashed border-[var(--border-subtle)] text-zinc-500 dark:text-zinc-400",

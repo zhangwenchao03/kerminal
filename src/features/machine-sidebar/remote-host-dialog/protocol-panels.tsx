@@ -185,7 +185,7 @@ export function SerialOptionsPanel({
       <FieldRow label="数据位">
         <Select
           aria-label="数据位"
-          buttonClassName="h-10"
+          buttonClassName="h-9"
           onValueChange={setSerialDataBits}
           options={serialDataBitOptions}
           value={serialDataBits}
@@ -194,7 +194,7 @@ export function SerialOptionsPanel({
       <FieldRow label="停止位">
         <Select
           aria-label="停止位"
-          buttonClassName="h-10"
+          buttonClassName="h-9"
           onValueChange={setSerialStopBits}
           options={serialStopBitOptions}
           value={serialStopBits}
@@ -203,7 +203,7 @@ export function SerialOptionsPanel({
       <FieldRow label="校验">
         <Select
           aria-label="校验"
-          buttonClassName="h-10"
+          buttonClassName="h-9"
           onValueChange={setSerialParity}
           options={serialParityOptions}
           value={serialParity}
@@ -212,7 +212,7 @@ export function SerialOptionsPanel({
       <FieldRow label="流控">
         <Select
           aria-label="流控"
-          buttonClassName="h-10"
+          buttonClassName="h-9"
           onValueChange={setSerialFlow}
           options={serialFlowOptions}
           value={serialFlow}
@@ -349,7 +349,7 @@ export function RdpDisplayPanel({
   return (
     <div className="grid gap-3">
       <FieldRow label="模式">
-        <div className="kerminal-field-surface flex h-10 items-center justify-between gap-3 rounded-xl border px-3 text-sm text-zinc-600 dark:text-zinc-300">
+        <div className="kerminal-field-surface flex min-h-9 items-center justify-between gap-3 rounded-[var(--radius-control)] border px-3 py-1.5 text-[13px] text-[var(--text-secondary)]">
           <span>全屏</span>
           <Switch
             aria-label="全屏"

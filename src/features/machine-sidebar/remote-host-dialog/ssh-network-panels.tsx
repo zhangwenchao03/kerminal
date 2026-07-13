@@ -52,7 +52,7 @@ export function SshProxyPanel({
       <FieldRow label="协议">
         <Select
           aria-label="代理协议"
-          buttonClassName="h-10"
+          buttonClassName="h-9"
           onValueChange={(value) => {
             const protocol = value as SshProxyProtocol;
             updateProxy(
@@ -148,7 +148,7 @@ export function SshTunnelPanel({
         <FieldRow label="类型">
           <Select
             aria-label="隧道类型"
-            buttonClassName="h-10"
+            buttonClassName="h-9"
             onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
@@ -240,7 +240,7 @@ export function SshTunnelPanel({
           </Button>
         </div>
         {draftError ? (
-          <p className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
+          <p className="rounded-[var(--radius-control)] border border-red-500/20 bg-red-500/10 px-3 py-2 text-[13px] leading-5 text-red-600 dark:text-red-300">
             {draftError}
           </p>
         ) : null}

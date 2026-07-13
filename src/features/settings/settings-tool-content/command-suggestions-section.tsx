@@ -36,9 +36,8 @@ interface CommandSuggestionSettingsSectionProps {
 
 const suggestionsPanelClassName = "min-w-0";
 const suggestionsSubpanelClassName =
-  "kerminal-solid-surface rounded-2xl border p-4";
-const suggestionsInsetPanelClassName =
-  "kerminal-muted-surface rounded-xl border p-3";
+  "kerminal-solid-surface rounded-[var(--radius-panel)] border p-4";
+const suggestionsInsetPanelClassName = "min-w-0";
 
 export function CommandSuggestionSettingsSection({
   normalizedSettings,
@@ -67,10 +66,10 @@ export function CommandSuggestionSettingsSection({
           </div>
           <div
             className={cn(
-              "flex min-w-[220px] items-center justify-between gap-3 rounded-xl border px-3 py-2",
+              "flex min-w-[220px] items-center justify-between gap-3 rounded-[var(--radius-control)] border px-3 py-2",
               inlineSuggestion.enabled
-                ? "border-sky-500/30 bg-[var(--surface-selected)] text-sky-800 shadow-sm shadow-sky-950/5 dark:border-sky-300/25 dark:text-sky-100"
-                : "kerminal-muted-surface text-zinc-600 dark:text-zinc-300",
+                ? "border-sky-500/30 bg-[var(--surface-selected)] text-sky-800 dark:border-sky-300/25 dark:text-sky-100"
+                : "bg-[var(--surface-content)] text-[var(--text-secondary)]",
             )}
           >
             <span className="truncate text-xs font-semibold">
@@ -96,7 +95,7 @@ export function CommandSuggestionSettingsSection({
               策略与接受
             </div>
             <div className="mt-3 grid gap-2 md:grid-cols-2">
-              <label className="kerminal-muted-surface block rounded-xl border px-3 py-2">
+              <label className="block rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-content)] px-3 py-2">
                 <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                   展示方式
                 </span>
@@ -114,7 +113,7 @@ export function CommandSuggestionSettingsSection({
                   value={inlineSuggestion.presentation}
                 />
               </label>
-              <label className="kerminal-muted-surface block rounded-xl border px-3 py-2">
+              <label className="block rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-content)] px-3 py-2">
                 <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                   接受按键
                 </span>
@@ -130,7 +129,7 @@ export function CommandSuggestionSettingsSection({
                   value={inlineSuggestion.acceptKey}
                 />
               </label>
-              <label className="kerminal-muted-surface block rounded-xl border px-3 py-2">
+              <label className="block rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-content)] px-3 py-2">
                 <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                   远端刷新
                 </span>
@@ -148,7 +147,7 @@ export function CommandSuggestionSettingsSection({
                   value={inlineSuggestion.remoteRefresh}
                 />
               </label>
-              <label className="kerminal-muted-surface block rounded-xl border px-3 py-2">
+              <label className="block rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-content)] px-3 py-2">
                 <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                   生产主机策略
                 </span>
@@ -165,7 +164,7 @@ export function CommandSuggestionSettingsSection({
                   value={inlineSuggestion.productionHostPolicy}
                 />
               </label>
-              <div className="kerminal-muted-surface flex min-h-10 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300">
+              <div className="flex min-h-10 items-center justify-between gap-3 rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-content)] px-3 py-2 text-[13px] text-[var(--text-primary)]">
                 <span className="min-w-0 truncate">允许 Alt+Right 分段接受</span>
                 <Switch
                   aria-label="允许分段接受命令建议"
@@ -175,7 +174,7 @@ export function CommandSuggestionSettingsSection({
                   }
                 />
               </div>
-              <div className="kerminal-muted-surface flex min-h-10 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300">
+              <div className="flex min-h-10 items-center justify-between gap-3 rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-content)] px-3 py-2 text-[13px] text-[var(--text-primary)]">
                 <span className="min-w-0 truncate">允许 Tab 打开候选列表</span>
                 <Switch
                   aria-label="允许 Tab 打开命令建议列表"
@@ -185,7 +184,7 @@ export function CommandSuggestionSettingsSection({
                   }
                 />
               </div>
-              <div className="kerminal-muted-surface flex min-h-10 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 md:col-span-2">
+              <div className="flex min-h-10 items-center justify-between gap-3 rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-content)] px-3 py-2 text-[13px] text-[var(--text-primary)] md:col-span-2">
                 <span className="flex min-w-0 items-center gap-2">
                   <Network className="h-4 w-4 shrink-0 text-zinc-400" />
                   <span className="min-w-0 truncate text-left leading-5">

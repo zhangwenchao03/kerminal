@@ -158,7 +158,7 @@ export function SshAuthFields({
     <div className="grid gap-3">
       <Select
         aria-label="认证方式"
-        buttonClassName="h-10"
+        buttonClassName="h-9"
         onValueChange={(value) => {
           const nextAuthType = value as RemoteHostAuthType;
           if (nextAuthType === authType) {
@@ -196,7 +196,7 @@ export function SshAuthFields({
             </div>
           ) : (
             <div className="grid gap-2">
-              <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_40px]">
+              <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_36px]">
                 <input
                   aria-label="私钥路径"
                   className={inputClassName}
@@ -208,7 +208,7 @@ export function SshAuthFields({
                 />
                 <Button
                   aria-label="Choose private key file"
-                  className="h-10 w-10 px-0"
+                  className="h-9 w-9 px-0"
                   onClick={() => void choosePrivateKeyFile()}
                   title="Choose private key file"
                   type="button"

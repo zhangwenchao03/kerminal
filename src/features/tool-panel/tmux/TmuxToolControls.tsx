@@ -79,7 +79,7 @@ export function TmuxCommandCheatsheet({
       ? "正在执行操作"
       : undefined;
   return (
-    <section className="kerminal-solid-surface overflow-visible rounded-2xl border p-3">
+    <section className="kerminal-solid-surface overflow-visible rounded-[var(--radius-card)] border p-3">
       <button
         aria-expanded={expanded}
         aria-label={expanded ? "收起快捷命令" : "展开快捷命令"}

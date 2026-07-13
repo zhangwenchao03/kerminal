@@ -43,13 +43,13 @@ interface TerminalSettingsSectionProps {
 
 const terminalPanelClassName = "min-w-0 space-y-4";
 const terminalSubpanelClassName =
-  "kerminal-muted-surface min-w-0 rounded-xl border p-4";
+  "kerminal-solid-surface min-w-0 rounded-[var(--radius-panel)] border p-4";
 
 function terminalChoiceButtonClassName(selected: boolean, className?: string) {
   return cn(
-    "kerminal-focus-ring kerminal-pressable rounded-xl border text-left transition",
+    "kerminal-focus-ring kerminal-pressable rounded-[var(--radius-control)] border text-left transition",
     selected
-      ? "border-sky-500/45 bg-[var(--surface-selected)] text-sky-700 shadow-sm shadow-sky-950/5 ring-1 ring-sky-500/15 dark:border-sky-300/35 dark:text-sky-100 dark:ring-sky-300/15"
+      ? "border-sky-500/35 bg-[var(--surface-selected)] text-sky-700 ring-1 ring-sky-500/10 dark:border-sky-300/30 dark:text-sky-100 dark:ring-sky-300/10"
       : "kerminal-muted-surface text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50",
     className,
   );
@@ -179,7 +179,7 @@ export function TerminalSettingsSection({
       >
         <div
           className={cn(
-            "rounded-xl border px-3 py-2 text-xs leading-5",
+            "rounded-[var(--radius-control)] border px-3 py-2 text-xs leading-5",
             rendererStatus.tone === "warning"
               ? "border-amber-400/35 bg-amber-50 text-amber-800 dark:border-amber-300/25 dark:bg-amber-400/10 dark:text-amber-100"
               : "kerminal-solid-surface text-zinc-500 dark:text-zinc-400",
@@ -191,7 +191,7 @@ export function TerminalSettingsSection({
         {canRetryGpu ? (
           <button
             aria-label="重新尝试 GPU"
-            className="kerminal-focus-ring kerminal-pressable mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-amber-400/35 bg-amber-50 px-3 text-sm font-medium text-amber-800 transition hover:bg-amber-100 dark:border-amber-300/25 dark:bg-amber-400/10 dark:text-amber-100 dark:hover:bg-amber-400/15"
+            className="kerminal-focus-ring kerminal-pressable mt-3 inline-flex h-9 items-center gap-2 rounded-[var(--radius-control)] border border-amber-400/35 bg-amber-400/10 px-3 text-[13px] font-medium text-amber-800 transition hover:bg-amber-400/15 dark:border-amber-300/25 dark:text-amber-100"
             onClick={() => {
               if (retryGlobalRendererFallback) {
                 terminalRendererRegistry.retryGpu();
@@ -272,7 +272,7 @@ export function TerminalSettingsSection({
                   updateTerminal({ macOptionIsMeta })
                 }
               />
-              <label className="kerminal-muted-surface block rounded-xl border px-3 py-2 md:col-span-2">
+              <label className="block rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-content)] px-3 py-2 md:col-span-2">
                 <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                   右键行为
                 </span>

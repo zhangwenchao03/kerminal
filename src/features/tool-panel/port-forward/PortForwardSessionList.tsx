@@ -55,7 +55,7 @@ export function PortForwardSessionList({
   return (
     <section
       aria-label="隧道会话"
-      className="kerminal-solid-surface rounded-2xl border p-2"
+      className="kerminal-solid-surface rounded-[var(--radius-card)] border p-2"
     >
       {loading ? (
         <div className="px-2 py-1.5 text-right text-xs text-zinc-500 dark:text-zinc-400">

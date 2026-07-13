@@ -526,7 +526,7 @@ function TmuxHeader({
         : formatTmuxCapabilityReason(capability?.reason);
 
   return (
-    <div className="kerminal-solid-surface rounded-2xl border p-3">
+    <div className="kerminal-solid-surface rounded-[var(--radius-card)] border p-3">
       <div className="flex items-center gap-2">
         <div className="kerminal-muted-surface grid h-8 w-8 shrink-0 place-items-center rounded-xl border text-zinc-700 dark:text-zinc-100">
           <Terminal className="h-4 w-4" strokeWidth={1.75} />
@@ -650,7 +650,7 @@ function TmuxSessionList({
   }
 
   return (
-    <div className="kerminal-solid-surface overflow-visible rounded-2xl border">
+    <div className="kerminal-solid-surface overflow-visible rounded-[var(--radius-card)] border">
       {sessions.map((session) => {
         const current = tmuxSessionMatchesBinding(session, currentBinding);
         const disabledReason = tmuxActionDisabledReason({
@@ -820,7 +820,7 @@ function TmuxDialog({
 
 function TmuxEmptyState({ body, title }: { body: string; title: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-[var(--border-subtle)] px-3 py-5 text-center font-mono">
+    <div className="rounded-[var(--radius-card)] border border-dashed border-[var(--border-subtle)] px-3 py-5 text-center font-mono">
       <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
         {title}
       </p>

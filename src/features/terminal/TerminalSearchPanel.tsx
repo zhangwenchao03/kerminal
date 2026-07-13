@@ -14,7 +14,7 @@ import {
 } from "./terminalSearchPanelModel";
 
 const terminalSearchPanelClassName =
-  "kerminal-floating-enter absolute right-3 top-10 z-30 flex max-w-[calc(100%-1.5rem)] items-center gap-1 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] p-1.5 shadow-2xl shadow-black/15 backdrop-blur-xl dark:shadow-black/35";
+  "kerminal-floating-surface kerminal-floating-enter absolute right-3 top-10 z-30 flex max-w-[calc(100%-1.5rem)] items-center gap-1 rounded-[var(--radius-card)] border p-1.5";
 const terminalSearchInputClassName =
   "h-8 w-44 bg-transparent px-1 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-zinc-100";
 const terminalSearchActiveToggleClassName =

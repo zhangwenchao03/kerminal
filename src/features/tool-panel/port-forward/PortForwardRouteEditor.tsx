@@ -62,7 +62,7 @@ function EndpointPanel({
   side: "host" | "local";
 }) {
   return (
-    <div className="kerminal-muted-surface min-w-0 rounded-2xl border p-3">
+    <div className="min-w-0 rounded-[var(--radius-card)] border border-[var(--border-subtle)] p-3">
       <div className="mb-3 inline-flex rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-field)] px-2 py-1 text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">
         {side === "host" ? "主机" : "本机"}
       </div>
