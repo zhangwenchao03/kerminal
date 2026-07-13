@@ -82,17 +82,30 @@ describe("serverInfoTargetModel", () => {
     expect(serverInfoTargetContext(machine)?.badgeText).toBeUndefined();
   });
 
-  it("returns no target for local machines or incomplete containers", () => {
+  it("builds a local system target from the active terminal profile", () => {
     expect(
       serverInfoTargetContext({
-        description: "local shell",
-        id: "local",
+        description: "PowerShell 7",
+        id: "profile:powershell",
         kind: "local",
-        name: "Local",
+        name: "PowerShell",
+        profileId: "powershell",
+        shell: "pwsh.exe",
         status: "online",
         tags: [],
+        target: { kind: "local", profileId: "powershell" },
       }),
-    ).toBeUndefined();
+    ).toEqual({
+      cacheKey: "local:powershell",
+      hostId: "profile:powershell",
+      refreshAriaLabel: "刷新本机系统信息",
+      subtitle: "PowerShell · pwsh.exe",
+      target: { kind: "local", profileId: "powershell" },
+      title: "本机系统",
+    });
+  });
+
+  it("returns no target for incomplete containers", () => {
     expect(
       serverInfoTargetContext({
         description: "missing parent/container",

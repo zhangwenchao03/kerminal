@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getRuntimeHealthSnapshot } from "../../lib/diagnosticsApi";
 import {
   getServerInfoSnapshot,
   type ServerInfoSnapshot,
@@ -13,6 +14,7 @@ import {
   type NetworkTrafficSnapshot,
   updateNetworkTrafficCache,
 } from "./serverInfoMetricsModel";
+import { localServerInfoSnapshot } from "./localServerInfoModel";
 import type { ServerInfoTargetContext } from "./serverInfoTargetModel";
 
 const serverInfoSnapshotCache = new Map<string, ServerInfoSnapshot>();
@@ -57,6 +59,7 @@ const defaultSubscribeToVisibilityChange: VisibilityChangeSubscriber = (
   return () => document.removeEventListener("visibilitychange", onChange);
 };
 
+/** 管理本机、SSH 主机或容器的系统信息快照、缓存与定时刷新。 */
 export function useServerInfoSnapshot(
   targetContext: ServerInfoTargetContext | undefined,
   {
@@ -116,10 +119,7 @@ export function useServerInfoSnapshot(
       try {
         let snapshotRequest = serverInfoInFlight.get(targetContext.cacheKey);
         if (!snapshotRequest) {
-          snapshotRequest = getServerInfoSnapshot({
-            hostId: targetContext.hostId,
-            target: targetContext.target,
-          }).finally(() => {
+          snapshotRequest = loadTargetSnapshot(targetContext).finally(() => {
             serverInfoInFlight.delete(targetContext.cacheKey);
           });
           serverInfoInFlight.set(targetContext.cacheKey, snapshotRequest);
@@ -136,10 +136,15 @@ export function useServerInfoSnapshot(
         }
       } catch (nextError) {
         if (requestIdRef.current === requestId) {
+          const localTarget = targetContext.target.kind === "local";
           setError(
             buildUserFacingError(nextError, {
-              recoveryAction: "请检查连接后重试。",
-              title: "无法读取服务器信息",
+              recoveryAction: localTarget
+                ? "请稍后重试。"
+                : "请检查连接后重试。",
+              title: localTarget
+                ? "无法读取本机系统信息"
+                : "无法读取服务器信息",
             }),
           );
         }
@@ -257,6 +262,19 @@ export function useServerInfoSnapshot(
     setRefreshIntervalMs,
     snapshot,
   };
+}
+
+/** 按目标边界选择只读采集源，本机不经过只支持 SSH/容器的远程 IPC。 */
+async function loadTargetSnapshot(targetContext: ServerInfoTargetContext) {
+  if (targetContext.target.kind === "local") {
+    const runtimeSnapshot = await getRuntimeHealthSnapshot();
+    return localServerInfoSnapshot(runtimeSnapshot, targetContext.hostId);
+  }
+
+  return getServerInfoSnapshot({
+    hostId: targetContext.hostId,
+    target: targetContext.target,
+  });
 }
 
 export function resolveServerInfoRefreshDelay({

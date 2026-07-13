@@ -177,7 +177,7 @@ export function ServerInfoToolContent({
             ))}
           </div>
           <Select
-            aria-label="服务器信息采集间隔"
+            aria-label="系统信息采集间隔"
             className="w-[4.75rem] shrink-0"
             onValueChange={(value) => setRefreshIntervalMs(Number(value))}
             options={serverInfoRefreshOptions.map((option) => ({
@@ -611,7 +611,7 @@ function StatusDot({ status }: { status: string }) {
 function EmptyState({ loading }: { loading: boolean }) {
   return (
     <div className="kerminal-solid-surface rounded-lg border px-4 py-10 text-center text-sm text-zinc-500 dark:text-zinc-400">
-      {loading ? "正在读取服务器信息..." : "暂无服务器信息"}
+      {loading ? "正在读取系统信息..." : "暂无系统信息"}
     </div>
   );
 }

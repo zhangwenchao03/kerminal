@@ -734,7 +734,7 @@ describe("ToolPanel", () => {
     expect(onActiveToolChange).not.toHaveBeenCalled();
   });
 
-  it("shows local runtime system metrics for local machines", async () => {
+  it("shows the redesigned system monitor for local machines", async () => {
     render(
       <ToolPanel
         activeTool="system"
@@ -744,11 +744,18 @@ describe("ToolPanel", () => {
       />,
     );
 
-    expect(await screen.findByText("本机运行体验")).toBeInTheDocument();
+    expect(await screen.findByText("本机系统")).toBeInTheDocument();
     expect(screen.queryByText("远程服务器")).not.toBeInTheDocument();
     expect(
-      await screen.findByRole("button", { name: "展开CPU详情" }),
+      screen.getByRole("tablist", { name: "系统信息视图" }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "概览" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: "资源" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "进程" })).toBeInTheDocument();
+    expect(diagnosticsApiMocks.getRuntimeHealthSnapshot).toHaveBeenCalled();
     expect(serverInfoApiMocks.getServerInfoSnapshot).not.toHaveBeenCalled();
   });
 
@@ -766,11 +773,13 @@ describe("ToolPanel", () => {
       />,
     );
 
-    expect(await screen.findByText("无法读取运行状态")).toBeVisible();
+    expect(await screen.findByText("无法读取本机系统信息")).toBeVisible();
     const technicalDetail = screen.getByText(/snapshot failed/);
     expect(technicalDetail).not.toBeVisible();
     expect(technicalDetail).not.toHaveTextContent("token=secret");
-    expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "刷新本机系统信息" }),
+    ).toBeInTheDocument();
   });
 
   it("loads and refreshes system metrics for the active SSH host", async () => {
@@ -798,7 +807,7 @@ describe("ToolPanel", () => {
     expect(screen.getByRole("tab", { name: "进程" })).toBeInTheDocument();
     expect(screen.getByText("6.8.0")).toBeInTheDocument();
     const intervalSelect = screen.getByRole("combobox", {
-      name: "服务器信息采集间隔",
+      name: "系统信息采集间隔",
     });
     expect(intervalSelect).toHaveAttribute("aria-valuetext", "3s");
     await user.click(intervalSelect);
