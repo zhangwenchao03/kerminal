@@ -75,20 +75,14 @@ impl RemoteHostService {
         let group = RemoteHostGroup {
             id: Uuid::new_v4().to_string(),
             name: normalize_required_text("分组名称", request.name)?,
-            sort_order: self
-                .config
-                .next_remote_host_group_sort_order()
-                .map_err(config_file_error)?,
+            // 最终排序值由仓储在同锁 read-modify-write 中分配。
+            sort_order: 0,
             created_at: timestamp.clone(),
             updated_at: timestamp,
         };
-
-        let mut groups = self.list_groups()?;
-        groups.push(group.clone());
         self.config
-            .apply_remote_host_change_set(Some(&groups), &[], &[])
-            .map_err(config_file_error)?;
-        Ok(group)
+            .append_remote_host_group(group)
+            .map_err(config_file_error)
     }
 
     /// 更新远程主机分组。

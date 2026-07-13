@@ -10,6 +10,7 @@ use std::{
 };
 
 mod documents;
+mod remote_host_repository;
 mod snippet_document;
 
 pub use snippet_document::{
@@ -521,17 +522,6 @@ impl ConfigFileStore {
             );
         }
         Ok(tree)
-    }
-
-    /// Return the next group sort order.
-    pub fn next_remote_host_group_sort_order(&self) -> FileStoreResult<i64> {
-        Ok(self
-            .list_remote_host_groups()?
-            .into_iter()
-            .map(|group| group.sort_order)
-            .max()
-            .unwrap_or(0)
-            + 10)
     }
 
     /// Return the next host sort order within a group or ungrouped area.

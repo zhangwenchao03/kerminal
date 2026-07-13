@@ -3,19 +3,30 @@
 //! @author kongweiguang
 
 use std::{
-    fs::{self, File, OpenOptions},
+    fs,
     io::ErrorKind,
-    io::Write,
     path::{Component, Path, PathBuf},
+    thread,
+    time::{Duration, Instant},
 };
 
 use thiserror::Error;
-use uuid::Uuid;
 
-use crate::storage::storage_manifest::{StorageManifest, STORAGE_MANIFEST_SCHEMA_VERSION};
+pub use crate::storage::file_lock::FileStoreLock;
+
+use crate::storage::{
+    atomic_file::{self, durable_copy},
+    durable_file_transaction::{
+        apply_changes_locked, recover_pending_locked, restore_change_set_locked,
+        DurableFileTransaction,
+    },
+    file_lock,
+    storage_manifest::{StorageManifest, STORAGE_MANIFEST_SCHEMA_VERSION},
+};
 
 const STORAGE_MANIFEST_RELATIVE_PATH: &str = "storage-manifest.toml";
-const FILE_STORE_LOCK_RELATIVE_PATH: &str = ".storage.lock";
+const TRANSACTION_LOCK_WAIT: Duration = Duration::from_secs(5);
+const TRANSACTION_LOCK_RETRY: Duration = Duration::from_millis(10);
 
 #[derive(Debug, Error)]
 pub enum FileStoreError {
@@ -33,6 +44,22 @@ pub enum FileStoreError {
 
     #[error("file store lock is already held: {0}")]
     Locked(PathBuf),
+
+    /// 锁文件缺字段、schema 不支持或 owner 身份无法验证；必须 fail-closed。
+    #[error("file store lock metadata is invalid: {0}")]
+    InvalidLock(PathBuf),
+
+    /// journal 无法解析或内部路径/状态不满足事务不变量。
+    #[error("transaction journal is invalid at {path}: {reason}")]
+    TransactionJournal { path: PathBuf, reason: String },
+
+    /// 启动恢复无法安全完成；调用方不得继续覆盖相关目标。
+    #[error("transaction recovery failed for {id}: {reason}")]
+    TransactionRecovery { id: String, reason: String },
+
+    /// 中断期间目标被外部修改，自动恢复会保留外部内容并停止。
+    #[error("transaction target changed after interruption: {0}")]
+    TransactionConflict(PathBuf),
 
     #[error("file was changed externally: {0}")]
     RevisionConflict(PathBuf),
@@ -64,10 +91,9 @@ impl FileStore {
         &self,
         relative_path: impl AsRef<Path>,
     ) -> FileStoreResult<T> {
-        let relative_path = relative_path.as_ref();
-        let absolute_path = self.path_for(relative_path)?;
-        let source = fs::read_to_string(&absolute_path)?;
-        T::decode_toml(&source).map_err(|error| error.with_path(relative_path.to_path_buf()).into())
+        let _lock = self.acquire_transaction_lock()?;
+        recover_pending_locked(self)?;
+        self.read_toml_locked(relative_path.as_ref())
     }
 
     pub fn write_toml<T: TomlDocument>(
@@ -76,39 +102,54 @@ impl FileStore {
         value: &T,
     ) -> FileStoreResult<PathBuf> {
         let encoded = value.encode_toml()?;
-        self.atomic_write(relative_path, encoded.as_bytes())
+        let _lock = self.acquire_transaction_lock()?;
+        recover_pending_locked(self)?;
+        self.atomic_write_locked(relative_path, encoded.as_bytes())
     }
 
     pub fn read_storage_manifest(&self) -> FileStoreResult<StorageManifest> {
-        match self.read_toml::<StorageManifest>(STORAGE_MANIFEST_RELATIVE_PATH) {
-            Ok(manifest) => Ok(manifest),
-            Err(FileStoreError::Io(error)) if error.kind() == ErrorKind::NotFound => {
-                Ok(StorageManifest::new())
-            }
-            Err(error) => Err(error),
-        }
+        let _lock = self.acquire_transaction_lock()?;
+        recover_pending_locked(self)?;
+        self.read_storage_manifest_locked()
     }
 
     pub fn write_storage_manifest(&self, manifest: &StorageManifest) -> FileStoreResult<PathBuf> {
-        self.write_toml(STORAGE_MANIFEST_RELATIVE_PATH, manifest)
+        let _lock = self.acquire_transaction_lock()?;
+        recover_pending_locked(self)?;
+        self.write_storage_manifest_locked(manifest)
     }
 
+    /// 尝试获取跨进程锁；活跃 owner 存在时保持既有的立即返回 `Locked` 语义。
     pub fn acquire_lock(&self) -> FileStoreResult<FileStoreLock> {
-        let lock_path = self.path_for(FILE_STORE_LOCK_RELATIVE_PATH)?;
-        if let Some(parent) = lock_path.parent() {
-            fs::create_dir_all(parent)?;
+        file_lock::acquire(&self.root)
+    }
+
+    /// 执行同锁 read-modify-write；闭包内只能通过事务对象读写目标文件。
+    pub fn run_transaction<T, F>(
+        &self,
+        id: &str,
+        timestamp: &str,
+        operation: F,
+    ) -> FileStoreResult<T>
+    where
+        F: FnOnce(&mut DurableFileTransaction<'_>) -> FileStoreResult<T>,
+    {
+        validate_change_set_id(id)?;
+        let _lock = self.acquire_transaction_lock()?;
+        recover_pending_locked(self)?;
+        let mut transaction = DurableFileTransaction::new(self);
+        let result = operation(&mut transaction)?;
+        let changes = transaction.into_changes();
+        if !changes.is_empty() {
+            apply_changes_locked(self, id, timestamp, changes)?;
         }
-        match OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&lock_path)
-        {
-            Ok(_) => Ok(FileStoreLock { path: lock_path }),
-            Err(error) if error.kind() == ErrorKind::AlreadyExists => {
-                Err(FileStoreError::Locked(lock_path))
-            }
-            Err(error) => Err(error.into()),
-        }
+        Ok(result)
+    }
+
+    /// 扫描并恢复上次进程留下的 pending journal；重复调用保持幂等。
+    pub fn recover_pending_transactions(&self) -> FileStoreResult<()> {
+        let _lock = self.acquire_transaction_lock()?;
+        recover_pending_locked(self)
     }
 
     pub fn apply_change_set(
@@ -118,54 +159,9 @@ impl FileStore {
         changes: Vec<FileStoreChange>,
     ) -> FileStoreResult<StorageManifest> {
         validate_change_set_id(id)?;
-        if changes.is_empty() {
-            return Err(FileStoreError::InvalidPath(
-                "change set must include at least one file".to_string(),
-            ));
-        }
-
-        let _lock = self.acquire_lock()?;
-        let mut manifest = self.read_storage_manifest()?;
-        let backup_root = change_set_backup_root(id)?;
-        let backup_root_text = manifest_path_string(&backup_root);
-        let touched_files = changes
-            .iter()
-            .map(|change| manifest_path_string(&change.relative_path))
-            .collect::<Vec<_>>();
-
-        manifest.begin_change_set(id, timestamp, touched_files);
-        manifest.set_backup_dir(id, backup_root_text);
-        self.write_storage_manifest(&manifest)?;
-
-        let apply_result = (|| -> FileStoreResult<()> {
-            for change in &changes {
-                self.backup_existing(&change.relative_path, &backup_root)?;
-            }
-            for change in &changes {
-                match &change.contents {
-                    Some(contents) => {
-                        self.atomic_write(&change.relative_path, contents)?;
-                    }
-                    None => {
-                        self.remove_file(&change.relative_path)?;
-                    }
-                }
-            }
-            Ok(())
-        })();
-
-        match apply_result {
-            Ok(()) => {
-                manifest.mark_applied(id, timestamp);
-                self.write_storage_manifest(&manifest)?;
-                Ok(manifest)
-            }
-            Err(error) => {
-                manifest.mark_failed(id, timestamp, error.to_string());
-                let _ = self.write_storage_manifest(&manifest);
-                Err(error)
-            }
-        }
+        let _lock = self.acquire_transaction_lock()?;
+        recover_pending_locked(self)?;
+        apply_changes_locked(self, id, timestamp, coalesce_legacy_changes(changes))
     }
 
     pub fn restore_change_set(
@@ -174,74 +170,20 @@ impl FileStore {
         timestamp: &str,
     ) -> FileStoreResult<StorageManifest> {
         validate_change_set_id(id)?;
-        let _lock = self.acquire_lock()?;
-        let mut manifest = self.read_storage_manifest()?;
-        let change_set = manifest
-            .change_set(id)
-            .cloned()
-            .ok_or_else(|| FileStoreError::InvalidPath(format!("unknown change set: {id}")))?;
-        let backup_dir = change_set.backup_dir.clone().ok_or_else(|| {
-            FileStoreError::InvalidPath(format!("change set has no backup dir: {id}"))
-        })?;
-        let backup_dir = sanitize_relative_path(Path::new(&backup_dir))?;
-
-        let restore_result = (|| -> FileStoreResult<()> {
-            for touched_file in &change_set.touched_files {
-                let relative_path = sanitize_relative_path(Path::new(touched_file))?;
-                let backup_relative_path = backup_dir.join(&relative_path);
-                let backup_path = self.path_for(&backup_relative_path)?;
-
-                if backup_path.is_file() {
-                    let contents = fs::read(&backup_path)?;
-                    self.atomic_write(&relative_path, &contents)?;
-                } else if backup_path.exists() {
-                    return Err(FileStoreError::InvalidPath(format!(
-                        "backup is not a file: {}",
-                        backup_relative_path.display()
-                    )));
-                } else {
-                    self.remove_file(&relative_path)?;
-                }
-            }
-            Ok(())
-        })();
-
-        match restore_result {
-            Ok(()) => {
-                manifest.mark_repaired(id, timestamp);
-                self.write_storage_manifest(&manifest)?;
-                Ok(manifest)
-            }
-            Err(error) => {
-                manifest.mark_failed(id, timestamp, format!("repair failed: {error}"));
-                let _ = self.write_storage_manifest(&manifest);
-                Err(error)
-            }
-        }
+        let _lock = self.acquire_transaction_lock()?;
+        restore_change_set_locked(self, id, timestamp)
     }
 
+    /// 原子写入单文件。多文件一致性或 read-modify-write 必须使用 `run_transaction`。
     pub fn atomic_write(
         &self,
         relative_path: impl AsRef<Path>,
         contents: &[u8],
     ) -> FileStoreResult<PathBuf> {
-        let target_path = self.path_for(relative_path)?;
-        let parent = target_path.parent().ok_or_else(|| {
-            FileStoreError::InvalidPath(format!("missing parent for {}", target_path.display()))
-        })?;
-        fs::create_dir_all(parent)?;
-
-        let temp_path = temp_path_for(&target_path)?;
-        let write_result = write_temp_file(&temp_path, contents)
-            .and_then(|()| persist_temp_file(&temp_path, &target_path))
-            .and_then(|()| sync_parent_dir(parent));
-
-        if let Err(error) = write_result {
-            let _ = fs::remove_file(&temp_path);
-            return Err(error.into());
-        }
-
-        Ok(target_path)
+        let relative_path = sanitize_relative_path(relative_path.as_ref())?;
+        let _lock = self.acquire_transaction_lock()?;
+        recover_pending_locked(self)?;
+        self.atomic_write_locked(&relative_path, contents)
     }
 
     pub fn backup_existing(
@@ -264,51 +206,117 @@ impl FileStore {
 
         let backup_root = self.path_for(backup_relative_root)?;
         let backup_path = backup_root.join(clean_relative_path);
-        let parent = backup_path.parent().ok_or_else(|| {
-            FileStoreError::InvalidPath(format!("missing parent for {}", backup_path.display()))
-        })?;
-        fs::create_dir_all(parent)?;
-        fs::copy(&source_path, &backup_path)?;
-        sync_parent_dir(parent)?;
+        durable_copy(&source_path, &backup_path)?;
         Ok(Some(backup_path))
     }
 
     pub fn remove_file(&self, relative_path: impl AsRef<Path>) -> FileStoreResult<bool> {
-        let relative_path = relative_path.as_ref();
-        let target_path = self.path_for(relative_path)?;
-        match fs::metadata(&target_path) {
-            Ok(metadata) if metadata.is_file() => {
-                fs::remove_file(&target_path)?;
-                if let Some(parent) = target_path.parent() {
-                    sync_parent_dir(parent)?;
-                }
-                Ok(true)
+        let _lock = self.acquire_transaction_lock()?;
+        recover_pending_locked(self)?;
+        self.remove_file_locked(relative_path.as_ref())
+    }
+
+    pub(crate) fn read_toml_locked<T: TomlDocument>(
+        &self,
+        relative_path: &Path,
+    ) -> FileStoreResult<T> {
+        let relative_path = sanitize_relative_path(relative_path)?;
+        let absolute_path = self.path_for(&relative_path)?;
+        let source = fs::read_to_string(&absolute_path)?;
+        T::decode_toml(&source).map_err(|error| error.with_path(relative_path).into())
+    }
+
+    pub(crate) fn read_storage_manifest_locked(&self) -> FileStoreResult<StorageManifest> {
+        match self.read_toml_locked::<StorageManifest>(Path::new(STORAGE_MANIFEST_RELATIVE_PATH)) {
+            Ok(manifest) => Ok(manifest),
+            Err(FileStoreError::Io(error)) if error.kind() == ErrorKind::NotFound => {
+                Ok(StorageManifest::new())
             }
-            Ok(_) => Err(FileStoreError::InvalidPath(format!(
-                "restore target is not a file: {}",
-                relative_path.display()
-            ))),
-            Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
-            Err(error) => Err(error.into()),
+            Err(error) => Err(error),
         }
     }
-}
 
-#[derive(Debug)]
-pub struct FileStoreLock {
-    path: PathBuf,
-}
+    pub(crate) fn write_storage_manifest_locked(
+        &self,
+        manifest: &StorageManifest,
+    ) -> FileStoreResult<PathBuf> {
+        let encoded = manifest.encode_toml()?;
+        self.atomic_write_locked(STORAGE_MANIFEST_RELATIVE_PATH, encoded.as_bytes())
+    }
 
-impl Drop for FileStoreLock {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
+    pub(crate) fn atomic_write_locked(
+        &self,
+        relative_path: impl AsRef<Path>,
+        contents: &[u8],
+    ) -> FileStoreResult<PathBuf> {
+        let target_path = self.path_for(relative_path)?;
+        self.atomic_write_absolute_locked(&target_path, contents)?;
+        Ok(target_path)
+    }
+
+    pub(crate) fn atomic_write_absolute_locked(
+        &self,
+        absolute_path: &Path,
+        contents: &[u8],
+    ) -> FileStoreResult<()> {
+        atomic_file::atomic_write(absolute_path, contents).map_err(Into::into)
+    }
+
+    pub(crate) fn remove_file_locked(
+        &self,
+        relative_path: impl AsRef<Path>,
+    ) -> FileStoreResult<bool> {
+        let relative_path = sanitize_relative_path(relative_path.as_ref())?;
+        let target_path = self.path_for(&relative_path)?;
+        atomic_file::durable_remove_file(&target_path).map_err(|error| {
+            if error.kind() == ErrorKind::InvalidInput {
+                FileStoreError::InvalidPath(format!(
+                    "restore target is not a file: {}",
+                    relative_path.display()
+                ))
+            } else {
+                error.into()
+            }
+        })
+    }
+
+    pub(crate) fn validate_change_path(&self, relative_path: &Path) -> FileStoreResult<PathBuf> {
+        let clean = sanitize_relative_path(relative_path)?;
+        if clean == Path::new(STORAGE_MANIFEST_RELATIVE_PATH)
+            || clean.starts_with("backups")
+            || clean.starts_with(".storage-transactions")
+            || clean == Path::new(".storage.lock")
+        {
+            return Err(FileStoreError::InvalidPath(format!(
+                "transaction path is reserved: {}",
+                clean.display()
+            )));
+        }
+        Ok(clean)
+    }
+
+    fn acquire_transaction_lock(&self) -> FileStoreResult<FileStoreLock> {
+        let started = Instant::now();
+        loop {
+            match self.acquire_lock() {
+                Ok(lock) => return Ok(lock),
+                Err(error @ FileStoreError::Locked(_))
+                    if started.elapsed() >= TRANSACTION_LOCK_WAIT =>
+                {
+                    return Err(error)
+                }
+                Err(FileStoreError::Locked(_)) => thread::sleep(TRANSACTION_LOCK_RETRY),
+                Err(error) => return Err(error),
+            }
+        }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileStoreChange {
-    relative_path: PathBuf,
-    contents: Option<Vec<u8>>,
+    pub(crate) relative_path: PathBuf,
+    pub(crate) contents: Option<Vec<u8>>,
+    pub(crate) expected_original_sha256: Option<String>,
 }
 
 impl FileStoreChange {
@@ -319,6 +327,7 @@ impl FileStoreChange {
         Ok(Self {
             relative_path: sanitize_relative_path(relative_path.as_ref())?,
             contents: Some(contents.into()),
+            expected_original_sha256: None,
         })
     }
 
@@ -326,6 +335,7 @@ impl FileStoreChange {
         Ok(Self {
             relative_path: sanitize_relative_path(relative_path.as_ref())?,
             contents: None,
+            expected_original_sha256: None,
         })
     }
 
@@ -440,7 +450,7 @@ impl ParseDiagnostic {
     }
 }
 
-fn sanitize_relative_path(relative_path: &Path) -> FileStoreResult<PathBuf> {
+pub(crate) fn sanitize_relative_path(relative_path: &Path) -> FileStoreResult<PathBuf> {
     let mut clean = PathBuf::new();
     for component in relative_path.components() {
         match component {
@@ -461,7 +471,7 @@ fn sanitize_relative_path(relative_path: &Path) -> FileStoreResult<PathBuf> {
     Ok(clean)
 }
 
-fn validate_change_set_id(id: &str) -> FileStoreResult<()> {
+pub(crate) fn validate_change_set_id(id: &str) -> FileStoreResult<()> {
     let id = id.trim();
     if id.is_empty()
         || id == "."
@@ -479,64 +489,25 @@ fn validate_change_set_id(id: &str) -> FileStoreResult<()> {
     Ok(())
 }
 
-fn change_set_backup_root(id: &str) -> FileStoreResult<PathBuf> {
-    validate_change_set_id(id)?;
-    Ok(PathBuf::from("backups").join(id))
-}
-
-fn manifest_path_string(path: &Path) -> String {
+pub(crate) fn manifest_path_string(path: &Path) -> String {
     path.components()
         .map(|component| component.as_os_str().to_string_lossy())
         .collect::<Vec<_>>()
         .join("/")
 }
 
-fn temp_path_for(target_path: &Path) -> FileStoreResult<PathBuf> {
-    let parent = target_path.parent().ok_or_else(|| {
-        FileStoreError::InvalidPath(format!("missing parent for {}", target_path.display()))
-    })?;
-    let file_name = target_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| FileStoreError::InvalidPath(target_path.display().to_string()))?;
-    Ok(parent.join(format!(
-        ".{file_name}.tmp-{}-{}",
-        std::process::id(),
-        Uuid::new_v4()
-    )))
-}
-
-fn write_temp_file(temp_path: &Path, contents: &[u8]) -> std::io::Result<()> {
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(temp_path)?;
-    file.write_all(contents)?;
-    file.sync_all()?;
-    Ok(())
-}
-
-#[cfg(not(windows))]
-fn persist_temp_file(temp_path: &Path, target_path: &Path) -> std::io::Result<()> {
-    fs::rename(temp_path, target_path)
-}
-
-#[cfg(windows)]
-fn persist_temp_file(temp_path: &Path, target_path: &Path) -> std::io::Result<()> {
-    match fs::rename(temp_path, target_path) {
-        Ok(()) => Ok(()),
-        Err(error) if target_path.exists() => {
-            // std::fs::rename does not replace existing files on Windows.
-            fs::remove_file(target_path)?;
-            fs::rename(temp_path, target_path).map_err(|_| error)
+fn coalesce_legacy_changes(changes: Vec<FileStoreChange>) -> Vec<FileStoreChange> {
+    let mut normalized = Vec::<FileStoreChange>::new();
+    for change in changes {
+        if let Some(existing) = normalized
+            .iter_mut()
+            .find(|existing| existing.relative_path == change.relative_path)
+        {
+            // 旧 facade 允许同一路径出现多次，逐项应用后的稳定语义是最后一项生效。
+            *existing = change;
+        } else {
+            normalized.push(change);
         }
-        Err(error) => Err(error),
     }
-}
-
-fn sync_parent_dir(parent: &Path) -> std::io::Result<()> {
-    if let Ok(directory) = File::open(parent) {
-        let _ = directory.sync_all();
-    }
-    Ok(())
+    normalized
 }

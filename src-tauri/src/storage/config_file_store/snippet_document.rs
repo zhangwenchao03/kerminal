@@ -64,6 +64,7 @@ pub struct SnippetDocumentPatch {
 impl ConfigFileStore {
     /// V2 列表隔离单文件错误；旧 `list_snippets` 行为保持不变。
     pub fn list_snippet_documents(&self) -> FileStoreResult<SnippetDocumentList> {
+        self.files.recover_pending_transactions()?;
         let directory = self.files.path_for(SNIPPETS_RELATIVE_DIR)?;
         let entries = match fs::read_dir(directory) {
             Ok(entries) => entries,
@@ -129,6 +130,7 @@ impl ConfigFileStore {
         &self,
         snippet_id: &str,
     ) -> FileStoreResult<SnippetDocumentSnapshot> {
+        self.files.recover_pending_transactions()?;
         let relative_path = snippet_relative_path(snippet_id)?;
         let source = fs::read_to_string(self.files.path_for(&relative_path)?)?;
         let snippet = self
@@ -147,39 +149,38 @@ impl ConfigFileStore {
         patch: &SnippetDocumentPatch,
     ) -> FileStoreResult<SnippetDocumentSnapshot> {
         let relative_path = snippet_relative_path(snippet_id)?;
-        let _lock = self.files.acquire_lock()?;
-        let absolute_path = self.files.path_for(&relative_path)?;
-        let source = fs::read_to_string(&absolute_path)?;
-        if content_revision(&source) != patch.expected_revision {
-            return Err(FileStoreError::RevisionConflict(relative_path));
-        }
-        crate::models::snippet::validate_snippet_metadata_contract(
-            patch.risk.as_deref(),
-            patch.default_action.as_deref(),
-            &patch.variables,
-            &patch.context_bindings,
-        )
-        .map_err(FileStoreError::TomlEncode)?;
-        let mut document = DocumentMut::from_str(&source)
-            .map_err(|error| FileStoreError::TomlEncode(error.to_string()))?;
-        document["title"] = value(&patch.title);
-        match patch.description.as_deref() {
-            Some(description) => document["description"] = value(description),
-            None => {
-                document.remove("description");
-            }
-        }
-        document["command"] = value(&patch.command);
-        document["tags"] =
-            Item::Value(Array::from_iter(patch.tags.iter().map(String::as_str)).into());
-        document["scope"] = value(patch.scope.as_str());
-        document["sort_order"] = value(patch.sort_order);
-        document["updated_at"] = value(&patch.updated_at);
-        patch_owned_metadata(&mut document, patch)?;
-        let encoded = document.to_string();
+        let change_set_id = format!("snippet-document-{}", uuid::Uuid::new_v4());
         self.files
-            .atomic_write(&relative_path, encoded.as_bytes())?;
-        drop(_lock);
+            .run_transaction(&change_set_id, &super::timestamp_now(), |transaction| {
+                let source = transaction.read_to_string(&relative_path)?;
+                if content_revision(&source) != patch.expected_revision {
+                    return Err(FileStoreError::RevisionConflict(relative_path.clone()));
+                }
+                crate::models::snippet::validate_snippet_metadata_contract(
+                    patch.risk.as_deref(),
+                    patch.default_action.as_deref(),
+                    &patch.variables,
+                    &patch.context_bindings,
+                )
+                .map_err(FileStoreError::TomlEncode)?;
+                let mut document = DocumentMut::from_str(&source)
+                    .map_err(|error| FileStoreError::TomlEncode(error.to_string()))?;
+                document["title"] = value(&patch.title);
+                match patch.description.as_deref() {
+                    Some(description) => document["description"] = value(description),
+                    None => {
+                        document.remove("description");
+                    }
+                }
+                document["command"] = value(&patch.command);
+                document["tags"] =
+                    Item::Value(Array::from_iter(patch.tags.iter().map(String::as_str)).into());
+                document["scope"] = value(patch.scope.as_str());
+                document["sort_order"] = value(patch.sort_order);
+                document["updated_at"] = value(&patch.updated_at);
+                patch_owned_metadata(&mut document, patch)?;
+                transaction.write(&relative_path, document.to_string().into_bytes())
+            })?;
         self.read_snippet_document(snippet_id)
     }
 }

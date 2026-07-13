@@ -2,7 +2,11 @@
 //!
 //! @author kongweiguang
 
-use std::fs;
+use std::{
+    fs,
+    sync::{Arc, Barrier},
+    thread,
+};
 
 use kerminal_lib::{
     error::AppError,
@@ -24,6 +28,50 @@ fn initialization_starts_without_remote_host_groups() {
     let tree = state.remote_hosts().list_tree().expect("list host tree");
 
     assert!(tree.is_empty());
+}
+
+#[test]
+fn concurrent_group_creates_do_not_lose_updates() {
+    const WORKERS: usize = 8;
+    let (_home, state) = test_state();
+    let service = state.remote_hosts().clone();
+    let barrier = Arc::new(Barrier::new(WORKERS));
+    let workers = (0..WORKERS)
+        .map(|index| {
+            let service = service.clone();
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                service
+                    .create_group(RemoteHostGroupCreateRequest {
+                        name: format!("并发分组-{index}"),
+                    })
+                    .expect("create group")
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let mut created = workers
+        .into_iter()
+        .map(|worker| worker.join().expect("join group worker"))
+        .collect::<Vec<_>>();
+    created.sort_by_key(|group| group.sort_order);
+    let persisted = service.list_groups().expect("list persisted groups");
+
+    assert_eq!(created.len(), WORKERS);
+    assert_eq!(persisted.len(), WORKERS);
+    assert_eq!(
+        created
+            .iter()
+            .map(|group| group.sort_order)
+            .collect::<Vec<_>>(),
+        (1..=WORKERS)
+            .map(|index| (index as i64) * 10)
+            .collect::<Vec<_>>()
+    );
+    for group in created {
+        assert!(persisted.iter().any(|candidate| candidate.id == group.id));
+    }
 }
 
 #[test]
