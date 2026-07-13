@@ -1,0 +1,518 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "file": "src/app/KerminalShell.contextWorkspace.tsx",
+      "message": "React Hook useMemo has a missing dependency: 'props'. Either include it or remove the dependency array.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/app/KerminalShell.workspaceBridge.tsx",
+      "message": "React Hook useMemo has an unnecessary dependency: 'toolPanelWorkspaceSnapshot'. Either exclude it or remove the dependency array.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/app/useKerminalShellConfigRefresh.ts",
+      "message": "All imports in the declaration are only used as types. Use `import type`.",
+      "rule": "@typescript-eslint/consistent-type-imports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-types",
+      "targetTask": "TASK-020/TASK-070"
+    },
+    {
+      "file": "src/features/logs/LogToolContent.tsx",
+      "message": "React Hook useCallback has a missing dependency: 'historyScope.bound'. Either include it or remove the dependency array.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/logs/LogToolContent.tsx",
+      "message": "The 'visibleEntries' conditional could make the dependencies of useMemo Hook (at line 210) change on every render. To fix this, wrap the initialization of 'visibleEntries' in its own useMemo() Hook.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/machine-sidebar/host-containers/ComposeProjectInspector.tsx",
+      "message": "React Hook useEffect has a missing dependency: 'project?.configPaths'. Either include it or remove the dependency array. If 'setSelectedPath' needs the current value of 'project.configPaths', you can also switch to useReducer instead of useState and read 'project.configPaths' in the reducer.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/machine-sidebar/HostContainersDialog.tsx",
+      "message": "React Hook useEffect has a missing dependency: 'selectedContainer'. Either include it or remove the dependency array.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/machine-sidebar/HostContainersToolContent.tsx",
+      "message": "React Hook useEffect has a missing dependency: 'selectedContainer'. Either include it or remove the dependency array.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/machine-sidebar/RemoteHostCreateDialog.tsx",
+      "message": "React Hook useEffect has missing dependencies: 'defaultGroupId' and 'setError'. Either include them or remove the dependency array.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/machine-sidebar/RemoteHostCreateDialog.tsx",
+      "message": "React Hook useEffect has missing dependencies: 'editingHost' and 'setError'. Either include them or remove the dependency array.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/sftp/MonacoTextEditor.tsx",
+      "message": "The ref value 'modelsRef.current' will likely have changed by the time this effect cleanup function runs. If this ref points to a node rendered by React, copy 'modelsRef.current' to a variable inside the effect, and use that variable in the cleanup function.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/sftp/RemoteWorkspaceEditorContextMenu.tsx",
+      "message": "React Hook useLayoutEffect has a missing dependency: 'position'. Either include it or remove the dependency array. If 'setResolvedPosition' needs the current value of 'position', you can also switch to useReducer instead of useState and read 'position' in the reducer.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/SftpContextMenu.tsx",
+      "message": "Imports \"FileText\" are only used as type.",
+      "rule": "@typescript-eslint/consistent-type-imports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-types",
+      "targetTask": "TASK-020/TASK-070"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/useSftpTargetLifecycle.ts",
+      "message": "React Hook useEffect has a missing dependency: 'target'. Either include it or remove the dependency array.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/useSftpTransferActions.ts",
+      "message": "React Hook useCallback has missing dependencies: 'setContextMenu', 'setDialogAction', 'setDialogStatus', and 'setOperationStatus'. Either include them or remove the dependency array. If 'setContextMenu' changes too often, find the parent component that defines it and wrap that definition in useCallback.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/sftp/SftpToolContent.tsx",
+      "message": "React Hook useCallback has a missing dependency: 'setFollowTerminalDirectory'. Either include it or remove the dependency array. If 'setFollowTerminalDirectory' changes too often, find the parent component that defines it and wrap that definition in useCallback.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/sftp/SftpToolContent.tsx",
+      "message": "React Hook useEffect has a missing dependency: 'setFollowTerminalDirectory'. Either include it or remove the dependency array. If 'setFollowTerminalDirectory' changes too often, find the parent component that defines it and wrap that definition in useCallback.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/sftp/SftpToolContent.tsx",
+      "message": "The 'entries' logical expression could make the dependencies of useMemo Hook (at line 264) change on every render. To fix this, wrap the initialization of 'entries' in its own useMemo() Hook.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/sftp/SftpTransferWorkbench.tsx",
+      "message": "React Hook useEffect has missing dependencies: 'addLeftHostTab' and 'addRightHostTab'. Either include them or remove the dependency array.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/snippets/snippetTemplate.ts",
+      "message": "The value assigned to 'valid' is not used in subsequent statements.",
+      "rule": "no-useless-assignment",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "src/features/terminal/artifacts/detector.ts",
+      "message": "Unexpected control character(s) in regular expression: \\x1b, \\x07, \\x1b, \\x07, \\x1b, \\x1b, \\x07, \\x1b.",
+      "rule": "no-control-regex",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "src/features/terminal/artifacts/detector.ts",
+      "message": "Unexpected control character(s) in regular expression: \\x1b, \\x07, \\x1b, \\x07, \\x1b.",
+      "rule": "no-control-regex",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "src/features/terminal/artifacts/ui/TerminalArtifactList.tsx",
+      "message": "The 'items' logical expression could make the dependencies of useMemo Hook (at line 51) change on every render. To fix this, wrap the initialization of 'items' in its own useMemo() Hook.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/terminal/terminalCommandBlocks.ts",
+      "message": "Unexpected control character(s) in regular expression: \\x00, \\x08, \\x0b, \\x0c, \\x0e, \\x1f.",
+      "rule": "no-control-regex",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalCommandBlocks.ts",
+      "message": "Unexpected control character(s) in regular expression: \\x1b, \\x07, \\x07, \\x1b.",
+      "rule": "no-control-regex",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalCommandBlocks.ts",
+      "message": "Unexpected control character(s) in regular expression: \\x1b.",
+      "rule": "no-control-regex",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "src/features/terminal/TerminalContextMenu.tsx",
+      "message": "React Hook useLayoutEffect has a missing dependency: 'position'. Either include it or remove the dependency array. If 'setResolvedPosition' needs the current value of 'position', you can also switch to useReducer instead of useState and read 'position' in the reducer.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/terminal/terminalRenderer.ts",
+      "message": "'runGpuOperation' is never reassigned. Use 'const' instead.",
+      "rule": "prefer-const",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalShellIntegrationModel.ts",
+      "message": "Unexpected control character(s) in regular expression: \\x00, \\x1f.",
+      "rule": "no-control-regex",
+      "count": 2,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalSshFailurePolicy.ts",
+      "message": "Unexpected control character(s) in regular expression: \\x1b.",
+      "rule": "no-control-regex",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "src/features/terminal/TerminalSuggestionMenu.tsx",
+      "message": "React Hook useLayoutEffect has missing dependencies: 'anchor' and 'paneSize'. Either include them or remove the dependency array.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/terminal/XtermPane.ghostSuggestions.ts",
+      "message": "'lastSuggestionFailureAt' is always 'undefined' because it's never assigned.",
+      "rule": "no-unassigned-vars",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "src/features/terminal/XtermPane.helpers.ts",
+      "message": "Unexpected control character(s) in regular expression: \\x00, \\x08, \\x0b, \\x0c, \\x0e, \\x1f.",
+      "rule": "no-control-regex",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "src/features/terminal/XtermPane.helpers.ts",
+      "message": "Unexpected control character(s) in regular expression: \\x00, \\x1f.",
+      "rule": "no-control-regex",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "src/features/terminal/XtermPane.helpers.ts",
+      "message": "Unexpected control character(s) in regular expression: \\x1b, \\x07, \\x07, \\x1b.",
+      "rule": "no-control-regex",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "src/features/terminal/XtermPane.helpers.ts",
+      "message": "Unexpected control character(s) in regular expression: \\x1b.",
+      "rule": "no-control-regex",
+      "count": 2,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "src/features/terminal/XtermPane.runtime.ts",
+      "message": "Unexpected any. Specify a different type.",
+      "rule": "@typescript-eslint/no-explicit-any",
+      "count": 2,
+      "deadline": "before TASK-080",
+      "owner": "frontend-types",
+      "targetTask": "TASK-020/TASK-070"
+    },
+    {
+      "file": "src/features/terminal/XtermPane.sshAuthRecovery.ts",
+      "message": "There is no `cause` attached to the symptom error being thrown.",
+      "rule": "preserve-caught-error",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "src/features/terminal/XtermPane.tsx",
+      "message": "All imports in the declaration are only used as types. Use `import type`.",
+      "rule": "@typescript-eslint/consistent-type-imports",
+      "count": 3,
+      "deadline": "before TASK-080",
+      "owner": "frontend-types",
+      "targetTask": "TASK-020/TASK-070"
+    },
+    {
+      "file": "src/features/terminal/XtermPane.tsx",
+      "message": "React Hook useCallback has a missing dependency: 'paneId'. Either include it or remove the dependency array.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 2,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/terminal/XtermPane.tsx",
+      "message": "React Hook useCallback has a missing dependency: 'search'. Either include it or remove the dependency array.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/terminal/XtermPane.tsx",
+      "message": "React Hook useCallback has a missing dependency: 'setCommandBlockNotice'. Either include it or remove the dependency array.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 2,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/terminal/XtermPane.tsx",
+      "message": "React Hook useEffect has missing dependencies: 'args', 'env', 'search.setResults', 'setCommandBlockNotice', 'suggestionMenuRuntime.runtimeParams', 'target', 'terminalAppearance', 'terminalFontWeight', 'terminalRuntimeLifecycleRef', and 'terminalTheme'. Either include them or remove the dependency array.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/terminal/XtermPane.tsx",
+      "message": "React Hook useMemo has a missing dependency: 'terminalAppearance'. Either include it or remove the dependency array.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/tool-panel/AgentLauncherToolContent.tsx",
+      "message": "The ref value 'workflowMountGenerationRef.current' will likely have changed by the time this effect cleanup function runs. If this ref points to a node rendered by React, copy 'workflowMountGenerationRef.current' to a variable inside the effect, and use that variable in the cleanup function.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/tool-panel/context-inspector/useContextInspectorAgent.ts",
+      "message": "React Hook useEffect has a missing dependency: 'context.agent'. Either include it or remove the dependency array. If 'setAgent' needs the current value of 'context.agent', you can also switch to useReducer instead of useState and read 'context.agent' in the reducer.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/workspace-actions/invoker.ts",
+      "message": "All imports in the declaration are only used as types. Use `import type`.",
+      "rule": "@typescript-eslint/consistent-type-imports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-types",
+      "targetTask": "TASK-020/TASK-070"
+    },
+    {
+      "file": "src/features/workspace/WorkspaceFileTabSurface.tsx",
+      "message": "React Hook useCallback has a missing dependency: 'tab'. Either include it or remove the dependency array. If 'setFileTab' needs the current value of 'tab', you can also switch to useReducer instead of useState and read 'tab' in the reducer.",
+      "rule": "react-hooks/exhaustive-deps",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-react",
+      "targetTask": "TASK-070"
+    },
+    {
+      "file": "src/features/workspace/workspaceSession.ts",
+      "message": "The `{}` (\"empty object\") type allows any non-nullish value, including literals like `0` and `\"\"`. - If that's what you want, disable this lint rule with an inline comment or configure the 'allowObjectTypes' rule option. - If you want a type meaning \"any object\", you probably want `object` instead. - If you want a type meaning \"any value\", you probably want `unknown` instead.",
+      "rule": "@typescript-eslint/no-empty-object-type",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-types",
+      "targetTask": "TASK-020/TASK-070"
+    },
+    {
+      "file": "tests/frontend/app/KerminalShell.splitDrop.test.tsx",
+      "message": "'machineButton' is never reassigned. Use 'const' instead.",
+      "rule": "prefer-const",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "tests/frontend/features/terminal/terminalRendererRegistry.test.ts",
+      "message": "'now' is never reassigned. Use 'const' instead.",
+      "rule": "prefer-const",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "tests/frontend/features/terminal/XtermPane.realXtermCompatibility.test.ts",
+      "message": "Unexpected control character(s) in regular expression: \\x1b.",
+      "rule": "no-control-regex",
+      "count": 2,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "tests/frontend/features/terminal/XtermPane.realXtermCompatibility.test.ts",
+      "message": "'disposable' is never reassigned. Use 'const' instead.",
+      "rule": "prefer-const",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "tests/frontend/features/tool-panel/ToolPanel.test.tsx",
+      "message": "The value assigned to 'view' is not used in subsequent statements.",
+      "rule": "no-useless-assignment",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "tests/frontend/lib/xtermWebviewCompatibility.test.ts",
+      "message": "The value assigned to 'patchedResult' is not used in subsequent statements.",
+      "rule": "no-useless-assignment",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "tests/frontend/support/machine-sidebar/RemoteHostCreateDialog.testSupport.ts",
+      "message": "All imports in the declaration are only used as types. Use `import type`.",
+      "rule": "@typescript-eslint/consistent-type-imports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "tests/frontend/support/settings/SettingsToolContent.testHarness.tsx",
+      "message": "All imports in the declaration are only used as types. Use `import type`.",
+      "rule": "@typescript-eslint/consistent-type-imports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    }
+  ]
+}

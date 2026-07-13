@@ -1,0 +1,3983 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "file": "package.json",
+      "name": "@monaco-editor/react",
+      "type": "dependencies",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "dependency-governance",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "package.json",
+      "name": "@tauri-apps/plugin-dialog",
+      "type": "dependencies",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "dependency-governance",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "package.json",
+      "name": "@tauri-apps/plugin-window-state",
+      "type": "dependencies",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "dependency-governance",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "package.json",
+      "name": "react-arborist",
+      "type": "dependencies",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "dependency-governance",
+      "targetTask": "TASK-072"
+    },
+    {
+      "file": "scripts/prepare-launch-shim-sidecar.mjs",
+      "name": "rustc",
+      "type": "binaries",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "scripts/smoke-ssh-command-suggestions-wsl.mjs",
+      "name": "ssh-keygen.exe",
+      "type": "binaries",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "scripts/smoke-ssh-command-suggestions-wsl.mjs",
+      "name": "ssh.exe",
+      "type": "binaries",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "scripts/smoke-ssh-command-suggestions-wsl.mjs",
+      "name": "wsl.exe",
+      "type": "binaries",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "src/app/configChangeNoticeModel.ts",
+      "name": "ConfigChangeNoticeLevel",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/app/configRefreshCoordinator.ts",
+      "name": "ConfigChangeDomain",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/app/configRefreshCoordinator.ts",
+      "name": "ConfigChangeEventDiagnostic",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/app/configRefreshCoordinator.ts",
+      "name": "ConfigDomainRefreshers",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/app/KerminalShell.contextWorkspace.tsx",
+      "name": "KerminalShellContextWorkspace",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/app/KerminalShell.contextWorkspace.tsx",
+      "name": "KerminalShellContextWorkspaceProps",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/app/KerminalShell.static.tsx",
+      "name": "LEFT_RAIL_WIDTH",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/app/KerminalShell.workspaceSelectors.ts",
+      "name": "collectOpenMachineIds",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/agent-workflow/agentSendRequestStore.ts",
+      "name": "subscribeAgentSendRequest",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/agent-workflow/agentSendRequestStore.ts",
+      "name": "AgentSendRequestSource",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/agent-workflow/agentWorkflowPorts.ts",
+      "name": "AgentWorkflowPromptTransportContext",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/agent-workflow/agentWorkflowTypes.ts",
+      "name": "AgentWorkflowStatusSource",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/command-palette/CommandPalette.tsx",
+      "name": "shouldCloseCommandPalette",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/command-palette/index.ts",
+      "name": "formatCommandPaletteEffect",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/command-palette/index.ts",
+      "name": "CommandPaletteActionItem",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/command-palette/index.ts",
+      "name": "CommandPaletteActionPresentation",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/command-palette/index.ts",
+      "name": "CommandPaletteExecutionFeedback",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/command-palette/index.ts",
+      "name": "CommandPaletteProps",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/host-containers/composeProjectModel.ts",
+      "name": "readContainerComposeConfigPathResolution",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/host-containers/composeProjectModel.ts",
+      "name": "resolveComposeConfigPaths",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/host-containers/composeProjectModel.ts",
+      "name": "ComposeContainerView",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/host-containers/composeProjectModel.ts",
+      "name": "ComposeRuntimeFamily",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/host-containers/composeProjectModel.ts",
+      "name": "ComposeServiceView",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/host-containers/composeProjectModel.ts",
+      "name": "DockerComposeContainerMetadata",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/MachineSidebar.parts.tsx",
+      "name": "dragPreviewPosition",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/MachineSidebar.parts.tsx",
+      "name": "machineIcon",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/MachineSidebar.parts.tsx",
+      "name": "machineTitle",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/MachineSidebar.parts.tsx",
+      "name": "sidebarDisplayStatus",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/MachineSidebar.parts.tsx",
+      "name": "statusTitle",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/MachineSidebar.shared.ts",
+      "name": "MachineSidebarExternalDragFeedback",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/MachineSidebarMachineRow.tsx",
+      "name": "machineIcon",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/MachineSidebarMachineRow.tsx",
+      "name": "machineTitle",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/MachineSidebarMachineRow.tsx",
+      "name": "statusTitle",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/remote-host-dialog/local-form.ts",
+      "name": "addLocalShellPreset",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/remote-host-dialog/local-form.ts",
+      "name": "normalizeShellPresetValue",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/remote-host-dialog/local-form.ts",
+      "name": "parseLocalArgs",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/remote-host-dialog/local-form.ts",
+      "name": "parseLocalEnv",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/remote-host-dialog/model.tsx",
+      "name": "DEFAULT_GROUP_LABEL",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/remote-host-dialog/request-builders.ts",
+      "name": "buildSerialTags",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/remote-host-dialog/request-builders.ts",
+      "name": "ensureTag",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/remote-host-dialog/request-builders.ts",
+      "name": "normalizePrivateKeyPath",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/remote-host-dialog/request-builders.ts",
+      "name": "normalizeSshOptionsForRequest",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/remote-host-dialog/request-builders.ts",
+      "name": "parseTags",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/remote-host-dialog/request-builders.ts",
+      "name": "readSerialTag",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/remote-host-dialog/request-builders.ts",
+      "name": "validatePort",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/remote-host-dialog/request-builders.ts",
+      "name": "validateSshOptions",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/remote-host-dialog/searchable-host-select.tsx",
+      "name": "formatHostIdentity",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/remote-host-dialog/ssh-jump-panel.tsx",
+      "name": "formatSshMachineDescription",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/remote-host-dialog/ssh-network-panels.tsx",
+      "name": "SshTunnelList",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/machine-sidebar/remote-host-dialog/ssh-properties-panel.tsx",
+      "name": "SshAuthFields",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/quick-open/scoring.ts",
+      "name": "scoreQuickOpenCandidate",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/quick-open/types.ts",
+      "name": "QuickOpenSearchStatus",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/settings/settings-tool-content/options.ts",
+      "name": "commandSuggestionProviderLabels",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/settings/settings-tool-content/shared-controls.tsx",
+      "name": "TextAreaSetting",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/settings/settings-tool-content/shared-controls.tsx",
+      "name": "TextSetting",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/settings/settingsModel.ts",
+      "name": "defaultAppearanceSettings",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/settings/settingsModel.ts",
+      "name": "defaultDesktopNotificationSettings",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/settings/settingsModel.ts",
+      "name": "defaultExternalLaunchSettings",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/settings/settingsModel.ts",
+      "name": "defaultSftpPerformanceSettings",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/settings/settingsModel.ts",
+      "name": "SFTP_GLOBAL_TRANSFERS_DEFAULT",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/settings/settingsModel.ts",
+      "name": "SFTP_HOST_TRANSFERS_DEFAULT",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/settings/settingsModel.ts",
+      "name": "SFTP_PACKET_BYTES_DEFAULT",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/settings/settingsModel.ts",
+      "name": "SFTP_PIPELINE_DEPTH_DEFAULT",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/settings/settingsModel.ts",
+      "name": "SFTP_TIMEOUT_SECONDS_DEFAULT",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/settings/settingsModel.ts",
+      "name": "TERMINAL_INLINE_SUGGESTION_AUDIT_RETENTION_DAYS_DEFAULT",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/settings/settingsModel.ts",
+      "name": "TERMINAL_INLINE_SUGGESTION_FEEDBACK_RETENTION_DAYS_DEFAULT",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/settings/settingsModel.ts",
+      "name": "TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS_MAX",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/settings/settingsModel.ts",
+      "name": "TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS_MIN",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/settings/settingsModel.ts",
+      "name": "ExternalLaunchShimBridgeSettings",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/settings/settingsModel.ts",
+      "name": "TerminalCommandSuggestionMenuShortcut",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/ContainerFilesToolContent.tsx",
+      "name": "src/features/sftp/ContainerFilesToolContent.tsx",
+      "type": "files",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/localTransferPaneModel.ts",
+      "name": "isHiddenLocalDirectoryEntry",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/RemoteFilePreviewEditor.tsx",
+      "name": "src/features/sftp/RemoteFilePreviewEditor.tsx",
+      "type": "files",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/RemoteWorkspaceEditorParts.tsx",
+      "name": "EditorToolbarButton",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/RemoteWorkspaceEditorFallback.tsx",
+      "name": "src/features/sftp/sftp-tool-content/RemoteWorkspaceEditorFallback.tsx",
+      "type": "files",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/sftpBrowserModeModel.ts",
+      "name": "sftpBrowserModes",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/sftpDialogModel.ts",
+      "name": "getChmodModeBlocker",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/sftpDialogModel.ts",
+      "name": "getNonRootRemotePathBlocker",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/sftpDialogModel.ts",
+      "name": "getRenameNameBlocker",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/sftpDialogModel.ts",
+      "name": "renameTargetPath",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/sftpDragDropModel.ts",
+      "name": "isDragDropPayload",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/sftpDragDropModel.ts",
+      "name": "isExtendedSelectionEvent",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/sftpDragDropModel.ts",
+      "name": "isPointInsideRect",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/sftpPathModel.ts",
+      "name": "defaultRenamePath",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/sftpPathModel.ts",
+      "name": "duplicateRemotePath",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/sftpTransferConflictPreflight.ts",
+      "name": "isSftpTransferStatNotFoundError",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/sftpTransferConflictPreflight.ts",
+      "name": "MAX_SFTP_TRANSFER_CONFLICT_PREFLIGHT_CONCURRENCY",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/sftpTransferConflictPreflight.ts",
+      "name": "SftpTransferConflictPreflightCanceledError",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/sftpTransferConflictPreflight.ts",
+      "name": "transferRequestsFromPreflightInput",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/sftpTransferConflictPreflight.ts",
+      "name": "SftpTransferConflictPreflightItem",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/sftpTransferConflictPreflight.ts",
+      "name": "SftpTransferConflictPreflightStats",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/sftpTransferScopeModel.ts",
+      "name": "defaultSftpSidebarTransferViewScope",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/useSftpTargetLifecycle.ts",
+      "name": "sftpTargetSessionKey",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftp-tool-content/useSftpTransferConflictPrompt.ts",
+      "name": "SftpTransferConflictPromptState",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftpTransferClipboardModel.ts",
+      "name": "SftpWorkbenchLocalClipboardEntry",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftpTransferClipboardModel.ts",
+      "name": "SftpWorkbenchRemoteClipboard",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftpTransferResolver.ts",
+      "name": "FileTransferEntryKind",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftpTransferResolver.ts",
+      "name": "ResolvedTransferTask",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftpTransferResolver.ts",
+      "name": "TransferOperation",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/sftpTransferRetryPolicy.ts",
+      "name": "canRetrySftpTransfer",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/useSftpTransferQueueSync.ts",
+      "name": "SftpTransferUpdateListener",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/useSftpTransferQueueSync.ts",
+      "name": "VisibilityChangeSubscriber",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/sftp/workspaceFilePreviewPolicy.ts",
+      "name": "WorkspaceFilePreviewUnsupportedCategory",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/snippets/snippetCatalogSearch.ts",
+      "name": "catalogItemMatchesQuery",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/snippets/snippetTargetPolicy.ts",
+      "name": "SnippetDuration",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/snippets/snippetTemplate.ts",
+      "name": "SnippetRenderStrategy",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/snippets/snippetTemplate.ts",
+      "name": "SnippetVariableKind",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/snippets/snippetTransfer.ts",
+      "name": "SnippetTransferCandidate",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/ssh-auth/sshAuthPromptModel.ts",
+      "name": "sshAuthPromptFieldKind",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/ssh-auth/sshAuthPromptModel.ts",
+      "name": "SshAuthPromptFieldKind",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/artifacts/actions.ts",
+      "name": "TerminalArtifactActionRoute",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/artifacts/actions.ts",
+      "name": "TerminalArtifactUiActionId",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/artifacts/eventAdapter.ts",
+      "name": "TerminalArtifactEvent",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/artifacts/ui/TerminalArtifactList.tsx",
+      "name": "TerminalArtifactListStatus",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/broadcastCommandPolicy.ts",
+      "name": "BroadcastRisk",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/TerminalBroadcastConfirmation.tsx",
+      "name": "src/features/terminal/TerminalBroadcastConfirmation.tsx",
+      "type": "files",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalChromeRuntimeStore.ts",
+      "name": "TerminalChromeActivityDiagnosticsSnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalCommandBlockLifecycle.ts",
+      "name": "collectTrailingEmptyPromptLines",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalCommandBlocks.ts",
+      "name": "hasRunningInteractiveTuiCommand",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalCommandBlocks.ts",
+      "name": "TerminalBufferKind",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/TerminalContextMenu.tsx",
+      "name": "terminalContextMenuGroups",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/TerminalContextMenu.tsx",
+      "name": "TerminalContextMenuItemModel",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalContextMenuModel.ts",
+      "name": "TerminalContextMenuSize",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalContextMenuModel.ts",
+      "name": "TerminalContextMenuViewport",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalEmptyStateModel.ts",
+      "name": "TerminalEmptyStateActionId",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalEmptyStateModel.ts",
+      "name": "TerminalEmptyStateActionVariant",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalGpuRenderRecovery.ts",
+      "name": "TerminalGpuRenderRecoveryEvent",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalGpuRenderRecoveryPolicy.ts",
+      "name": "resolveTerminalGpuRenderRecoveryConfig",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalGpuRenderRecoveryPolicy.ts",
+      "name": "TERMINAL_GPU_RENDER_RECOVERY_DEFAULT_CONFIG",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalInputModel.ts",
+      "name": "terminalInputSuffix",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalInputModel.ts",
+      "name": "TerminalInputHideReason",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalKeyboardPolicy.ts",
+      "name": "TerminalKeyboardCaseId",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalKeyboardPolicy.ts",
+      "name": "TerminalKeyboardHandlingIntent",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalOutputInstrumentation.ts",
+      "name": "TerminalOutputInstrumentationBucket",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalOutputWriter.ts",
+      "name": "TerminalOutputCadence",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalOutputWriter.ts",
+      "name": "TerminalOutputCallbackMode",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalPaneActivityModel.ts",
+      "name": "DEFAULT_TERMINAL_PANE_ACTIVITY_STATE",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalPaneActivityModel.ts",
+      "name": "TerminalPaneConnectionState",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/TerminalPaneMoveOverlay.tsx",
+      "name": "terminalPaneMovePreviewPosition",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalPaneRuntimeLifecycle.ts",
+      "name": "TERMINAL_PANE_RUNTIME_LIFECYCLE_DEFAULT_CONFIG",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalPaneRuntimeLifecycle.ts",
+      "name": "TerminalPaneOutputHistoryWorkMode",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalPaneRuntimeLifecycle.ts",
+      "name": "TerminalPaneRendererResourceMode",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalPaneRuntimeLifecycle.ts",
+      "name": "TerminalPaneRuntimeLifecycleReason",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalPaneRuntimeLifecycle.ts",
+      "name": "TerminalPaneRuntimeWorkMode",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalPaneRuntimeLifecycle.ts",
+      "name": "TerminalPaneSuggestionWorkMode",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalPaneVisibleRecovery.ts",
+      "name": "createWindowVisibleRecoveryScheduler",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRenderer.ts",
+      "name": "shouldAttemptGpuRenderer",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRenderer.ts",
+      "name": "TerminalRendererLogger",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererCompatibility.ts",
+      "name": "XtermWebglCompatibilityCapabilities",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererCompatibility.ts",
+      "name": "XtermWebglCompatibilityLogger",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererCompatibility.ts",
+      "name": "XtermWebglDisposableAddon",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererCompatibility.ts",
+      "name": "XtermWebglDisposeTarget",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererDimensions.ts",
+      "name": "src/features/terminal/terminalRendererDimensions.ts",
+      "type": "files",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererHealth.ts",
+      "name": "TerminalRendererHealthAction",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererHealth.ts",
+      "name": "TerminalRendererHealthLevel",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererLifecycle.ts",
+      "name": "TERMINAL_RENDERER_LIFECYCLE_STATES",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererLifecycle.ts",
+      "name": "TerminalRendererDisposeResult",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererLifecycle.ts",
+      "name": "TerminalRendererRejectedTransition",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererLifecycle.ts",
+      "name": "TerminalRendererTransitionRejection",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererLifecycle.ts",
+      "name": "TerminalRendererTransitionRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererPerformanceTelemetry.ts",
+      "name": "TerminalRendererCounterMetric",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererPerformanceTelemetry.ts",
+      "name": "TerminalRendererDurationMetric",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererPerformanceTelemetry.ts",
+      "name": "TerminalRendererDurationSummary",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererPerformanceTelemetry.ts",
+      "name": "TerminalRendererResourceSnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererPolicy.ts",
+      "name": "resolveSuggestedRendererFallback",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererPolicy.ts",
+      "name": "resolveTerminalRendererPolicyConfig",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererRegistry.ts",
+      "name": "RegisterTerminalRendererPaneOptions",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererRegistry.ts",
+      "name": "TerminalRendererPaneSnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRendererSurfaceCoordinator.ts",
+      "name": "TerminalRendererSurfaceDimensions",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeDiagnostics.ts",
+      "name": "RuntimeConfigDiagnosticSnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeDiagnostics.ts",
+      "name": "RuntimeConfigWatcherSnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeDiagnostics.ts",
+      "name": "RuntimeDiagnosticsSeverity",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeDiagnostics.ts",
+      "name": "RuntimeDiagnosticsSystem",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeDiagnostics.ts",
+      "name": "RuntimeProductionReadinessGateIssue",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeDiagnostics.ts",
+      "name": "RuntimeProductionReadinessGateIssueKind",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeDiagnostics.ts",
+      "name": "RuntimePtyPumpSnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeDiagnostics.ts",
+      "name": "RuntimeSftpPreflightSnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeDiagnostics.ts",
+      "name": "RuntimeSftpTransferSnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeDiagnostics.ts",
+      "name": "RuntimeSshSnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeDiagnostics.ts",
+      "name": "RuntimeSuggestionProbeKind",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeDiagnostics.ts",
+      "name": "RuntimeSuggestionProbeSnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeDiagnostics.ts",
+      "name": "RuntimeTerminalChromeActivitySnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeDiagnostics.ts",
+      "name": "RuntimeTerminalOutputSnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeDiagnosticsStore.ts",
+      "name": "getTerminalRuntimeDiagnosticsProviderCount",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeDiagnosticsStore.ts",
+      "name": "subscribeTerminalRuntimeDiagnostics",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeDiagnosticsStore.ts",
+      "name": "TerminalReconnectRuntimeDiagnostics",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeDiagnosticsStore.ts",
+      "name": "TerminalRuntimeDiagnosticsPaneProviderSnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalRuntimeOutputBuffer.ts",
+      "name": "TerminalRuntimeOutputBufferSnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalSessionRegistry.ts",
+      "name": "listTerminalPaneSessionRecords",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalSessionRegistry.ts",
+      "name": "PaneSessionListRecord",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalSessionResizeCoordinator.ts",
+      "name": "TerminalSessionDimensions",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalSessionResizeCoordinator.ts",
+      "name": "TerminalSessionResizeScheduler",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalShellIntegrationModel.ts",
+      "name": "TerminalShellIntegrationOsc133Marker",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalShellIntegrationModel.ts",
+      "name": "TerminalShellIntegrationOsc133Segment",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalSshFailurePolicy.ts",
+      "name": "SshTerminalFailureClass",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalSuggestionMenuModel.ts",
+      "name": "TERMINAL_SUGGESTION_MENU_MAX_ITEMS <-> TERMINAL_SUGGESTION_MENU_REQUEST_LIMIT",
+      "type": "duplicates",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalSuggestionMenuModel.ts",
+      "name": "TERMINAL_SUGGESTION_MENU_MIN_ITEMS",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalSuggestionMenuModel.ts",
+      "name": "terminalSuggestionProviderLabel",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalSuggestionMenuModel.ts",
+      "name": "TerminalSuggestionMenuAcceptKey",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalSuggestionMenuPosition.ts",
+      "name": "TerminalSuggestionMenuPlacement",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalSuggestionMenuPosition.ts",
+      "name": "TerminalSuggestionMenuSize",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalSuggestionModel.ts",
+      "name": "TerminalSuggestionFeedbackKind",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalSuggestionProbePolicy.ts",
+      "name": "resolveTerminalSuggestionProbePolicyConfig",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalSuggestionProbePolicy.ts",
+      "name": "TerminalSuggestionProbeWorkMode",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalSuggestionRanking.ts",
+      "name": "adaptCandidateForQuery",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/terminalTabIdentityModel.ts",
+      "name": "TerminalTabIdentityAccentSource",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/XtermPane.helpers.ts",
+      "name": "terminalInlineSuggestionAllowsRemoteProbe",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/XtermPane.search.ts",
+      "name": "XtermPaneSearchResults",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/XtermPane.tsx",
+      "name": "XtermPaneSessionFinishedEvent",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/terminal/XtermPane.types.ts",
+      "name": "XtermPaneSessionFinishedEvent",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/agent-launcher/agentLauncherModel.ts",
+      "name": "agentTitle",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/agent-launcher/agentLauncherModel.ts",
+      "name": "EXTERNAL_AGENT_IDS",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/agent-launcher/agentLauncherModel.ts",
+      "name": "EXTERNAL_AGENT_WORKSPACE_FILE_AGENT_IDS",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/agent-launcher/agentLauncherModel.ts",
+      "name": "formatAgentLauncherPath",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/agent-launcher/agentLauncherModel.ts",
+      "name": "AgentAvailabilityLabel",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/agent-launcher/agentLauncherModel.ts",
+      "name": "AgentLauncherTone",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/agent-launcher/agentLauncherModel.ts",
+      "name": "ParsedAgentCommand",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/agent-launcher/agentPromptQueueModel.ts",
+      "name": "AGENT_PROMPT_HISTORY_LIMIT",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/agent-launcher/agentPromptQueueModel.ts",
+      "name": "AgentPromptHistoryAction",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/agent-launcher/agentTerminalContextModel.ts",
+      "name": "AGENT_TERMINAL_BRANCH_NAME_MAX_CHARS",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/agent-launcher/agentTerminalContextModel.ts",
+      "name": "AGENT_TERMINAL_COMMAND_BLOCK_MAX_CHARS",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/agent-launcher/agentTerminalContextModel.ts",
+      "name": "AGENT_TERMINAL_CONTEXT_OUTPUT_MAX_CHARS",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/agent-launcher/agentTerminalContextModel.ts",
+      "name": "AGENT_TERMINAL_SELECTION_MAX_CHARS",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/agent-launcher/agentTerminalContextModel.ts",
+      "name": "AgentTerminalRuntimeContext",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/agent-launcher/agentTerminalViewportModel.ts",
+      "name": "AGENT_TERMINAL_MIN_VIEWPORT",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/managedSshToolAvailabilityModel.ts",
+      "name": "ManagedSshToolAvailabilityKind",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/managedSshToolAvailabilityModel.ts",
+      "name": "ManagedSshToolCapability",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/port-forward/portForwardWorkbenchModel.ts",
+      "name": "ALL_INTERFACES_BIND_HOST",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/port-forward/portForwardWorkbenchModel.ts",
+      "name": "isLoopbackBindHost",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/port-forward/portForwardWorkbenchModel.ts",
+      "name": "LOOPBACK_BIND_HOST",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/port-forward/portForwardWorkbenchModel.ts",
+      "name": "proxyHostForRemoteUse",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/serverInfoDashboardModel.ts",
+      "name": "classifiedNetworkInterfaces",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/serverInfoHealthPolicy.ts",
+      "name": "ServerInfoHealthStatus",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/serverInfoMetricsModel.ts",
+      "name": "formatNetworkSample",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/serverInfoMetricsModel.ts",
+      "name": "formatTemperature",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/serverInfoMetricsModel.ts",
+      "name": "gpuMissingMessage",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/serverInfoMetricsModel.ts",
+      "name": "joinDefined",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/serverInfoMetricsModel.ts",
+      "name": "networkCardHelper",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/serverInfoTargetModel.ts",
+      "name": "ServerInfoTargetRef",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/tmux/tmuxToolModel.ts",
+      "name": "tmuxPaneBindingMatches",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/toolPanelContextModel.ts",
+      "name": "ToolPanelBindingSource",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/tool-panel/useServerInfoSnapshot.ts",
+      "name": "VisibilityChangeSubscriber",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workflows/workflowRunModel.ts",
+      "name": "buildWorkflowVariableValues",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workflows/workflowRunModel.ts",
+      "name": "extractWorkflowVariables",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace-actions/availabilityPolicy.ts",
+      "name": "allWorkspaceActionPolicies",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace-actions/errorClassification.ts",
+      "name": "WorkspaceActionErrorKind",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace-actions/types.ts",
+      "name": "WorkspaceActionEffect",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace-overlay/index.ts",
+      "name": "resolveWorkspacePaletteKeyboardCommand",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace-overlay/index.ts",
+      "name": "WorkspacePaletteKeyboardCommand",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace-overlay/index.ts",
+      "name": "WorkspacePaletteKeyboardInput",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace-overlay/index.ts",
+      "name": "WorkspacePaletteShellProps",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace/context/workspaceContextTypes.ts",
+      "name": "WorkspaceContextDiagnosticSeverity",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace/context/workspaceContextTypes.ts",
+      "name": "WorkspaceContextPaneRef",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace/context/workspaceContextTypes.ts",
+      "name": "WorkspaceContextResources",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace/context/workspaceContextTypes.ts",
+      "name": "WorkspaceContextRuntime",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace/context/workspaceContextTypes.ts",
+      "name": "WorkspaceContextSource",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace/context/workspaceContextTypes.ts",
+      "name": "WorkspaceContextSourceStatus",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace/context/workspaceContextTypes.ts",
+      "name": "WorkspaceContextTabRef",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace/types.ts",
+      "name": "toolIds",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace/workspaceFileTabActions.ts",
+      "name": "WorkspaceFileTabCommand",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace/workspaceStore.ts",
+      "name": "machineGroups",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace/workspaceStore.ts",
+      "name": "terminalPanes",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace/workspaceStore.ts",
+      "name": "terminalTabs",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace/workspaceStore.ts",
+      "name": "AddDockerContainerOptions",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace/workspaceStore.ts",
+      "name": "OpenSftpTransferTabOptions",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace/workspaceStore.ts",
+      "name": "OpenSshCommandTerminalOptions",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/features/workspace/workspaceStore.ts",
+      "name": "SplitFocusedPaneOptions",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/agentLauncherApi.ts",
+      "name": "rebindAgentSessionTarget",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/agentLauncherApi.ts",
+      "name": "AgentSessionTargetRecord",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/agentLauncherApi.ts",
+      "name": "ExternalAgentFileOperation",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/agentLauncherApi.ts",
+      "name": "ExternalAgentOverwritePolicy",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/agentLauncherApi.ts",
+      "name": "ExternalAgentValidatorStatus",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/appLog.ts",
+      "name": "appLog",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/appLog.ts",
+      "name": "redactLogKeyValues",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/connectionApi.ts",
+      "name": "openRdpConnection",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/connectionApi.ts",
+      "name": "ConnectionTestMode",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/connectionApi.ts",
+      "name": "RdpOpenRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/containerFilesApi.ts",
+      "name": "fileNameFromPath",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/containerFilesApi.ts",
+      "name": "joinRemotePath",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/containerFilesApi.ts",
+      "name": "normalizeRemotePath",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/containerFilesApi.ts",
+      "name": "parentRemotePath",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/containerFilesApi.ts",
+      "name": "previewDockerContainerFile",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/containerFilesApi.ts",
+      "name": "DockerContainerFilePreview",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/containerFilesApi.ts",
+      "name": "DockerContainerPreviewRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/desktopClipboardApi.ts",
+      "name": "DesktopClipboardTextTransport",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/desktopNotificationApi.ts",
+      "name": "DesktopNotificationSendReason",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/desktopNotificationPolicy.ts",
+      "name": "notificationKeyForEvent",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/desktopNotificationPolicy.ts",
+      "name": "DesktopNotificationEventKind",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/desktopNotificationPolicy.ts",
+      "name": "DesktopNotificationImportance",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/diagnosticsApi.ts",
+      "name": "ConfigWatchBackend",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/diagnosticsApi.ts",
+      "name": "ConfigWatchDomain",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/diagnosticsApi.ts",
+      "name": "ConfigWatchStatus",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/diagnosticsApi.ts",
+      "name": "ManagedSshSessionKeySummary",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/diagnosticsApi.ts",
+      "name": "RuntimeProcessHealth",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/diagnosticsApi.ts",
+      "name": "RuntimeSamplingInfo",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/diagnosticsApi.ts",
+      "name": "RuntimeSystemHealth",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/dockerApi.ts",
+      "name": "DockerComposeMetadata",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/dockerApi.ts",
+      "name": "DockerComposeRuntimeFamily",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "EXTERNAL_TARGET_PREFIX",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "externalLaunchAliasTools",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalLaunchAliasInspection",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalLaunchAliasInstallMode",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalLaunchAliasState",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalLaunchAliasTool",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalLaunchEntrypoint",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalLaunchEventKind",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalLaunchIntakeSnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalLaunchPolicySnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalLaunchRequestDiagnostics",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalLaunchRuntimeHealthSnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalLaunchSecretSnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalLaunchSource",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalLaunchSourceTool",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalLaunchTargetSummary",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalLaunchTaskSnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalSshAuthMetadata",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalSshLaunchOptions",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalSshRouteHop",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/externalLaunchApi.ts",
+      "name": "ExternalSshTarget",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/fileDialogApi.ts",
+      "name": "selectLocalImage",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/nativeMenuApi.ts",
+      "name": "NativeMenuActionPayload",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/nativePopupMenu.ts",
+      "name": "src/lib/nativePopupMenu.ts",
+      "type": "files",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/paneSessionTraceApi.ts",
+      "name": "PaneSessionBindingMetadata",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/portForwardApi.ts",
+      "name": "closePortForward",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/portForwardApi.ts",
+      "name": "PortForwardAccessScope",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/portForwardApi.ts",
+      "name": "PortForwardEndpoint",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/portForwardApi.ts",
+      "name": "PortForwardKind",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/portForwardApi.ts",
+      "name": "PortForwardRuntimeDiagnostics",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/portForwardApi.ts",
+      "name": "PortForwardRuntimeMode",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/portForwardApi.ts",
+      "name": "PortForwardStatus",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/profileApi.ts",
+      "name": "deleteProfile",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/profileApi.ts",
+      "name": "ShellCandidateSource",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/remoteHostApi.ts",
+      "name": "browserPreviewRemoteHostTree",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/remoteHostApi.ts",
+      "name": "listRemoteHostGroups",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/remoteHostApi.ts",
+      "name": "RemoteHostCredentialRevealStatus",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/remoteHostApi.ts",
+      "name": "RemoteHostCredentialStatus",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/remoteHostApi.ts",
+      "name": "SshProxyOptions",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/remoteHostApi.ts",
+      "name": "SshTerminalOptions",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/remoteHostApi.ts",
+      "name": "SshTransferOptions",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/serverInfoApi.ts",
+      "name": "ServerDiskInfo",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/serverInfoApi.ts",
+      "name": "ServerNetworkInterfaceInfo",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/serverInfoApi.ts",
+      "name": "ServerProcessInfo",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/sftpApi.ts",
+      "name": "SftpClassifyLocalPathsRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/sftpApi.ts",
+      "name": "SftpFilePreview",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/sftpApi.ts",
+      "name": "SftpListDirectoryRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/sftpApi.ts",
+      "name": "SftpLocalPathKind",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/sftpApi.ts",
+      "name": "SftpPreviewRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/sftpApi.ts",
+      "name": "SftpReadTextFileRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/sftpApi.ts",
+      "name": "SftpReadTextFileResponse",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/sftpApi.ts",
+      "name": "SftpTransferCancelRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/sftpApi.ts",
+      "name": "SftpTransferOperation",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/sftpApi.ts",
+      "name": "SftpTransferRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/sftpApi.ts",
+      "name": "SftpTransferScopeRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/sftpApi.ts",
+      "name": "SftpTransferTransportMode",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/sftpApi.ts",
+      "name": "SftpWriteTextFileRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/sftpApi.ts",
+      "name": "SftpWriteTextFileResponse",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/sftpApiTypes.ts",
+      "name": "SftpTypes::SftpLocalPathKind",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/sftpApiTypes.ts",
+      "name": "SftpTypes::SftpTransferTransportMode",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/snippetApi.ts",
+      "name": "updateSnippet",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/snippetApi.ts",
+      "name": "SnippetUpdateRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/sshAuthApi.ts",
+      "name": "SshAuthPromptRole",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/sshAuthApi.ts",
+      "name": "SshSessionSecretSnapshot",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/targetModel.ts",
+      "name": "isSameTarget",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/targetModel.ts",
+      "name": "localTargetCapabilities",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/targetModel.ts",
+      "name": "normalizeRemotePath",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/targetModel.ts",
+      "name": "serialTargetCapabilities",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/targetModel.ts",
+      "name": "sshTargetCapabilities",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/targetModel.ts",
+      "name": "telnetTargetCapabilities",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/targetModel.ts",
+      "name": "TargetDescriptor",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalApi.ts",
+      "name": "TerminalErrorClass",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalApi.ts",
+      "name": "TerminalErrorOperation",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalApi.ts",
+      "name": "TerminalErrorRecovery",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalApi.ts",
+      "name": "TerminalOutputKind",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalApi.ts",
+      "name": "TerminalPtyOutputPumpFlushReason",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalApi.ts",
+      "name": "TerminalSessionStatus",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalApi.ts",
+      "name": "TerminalShellIntegrationStatus",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalApi.ts",
+      "name": "TerminalShellIntegrationSummary",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "normalizeCommandSuggestionCandidate",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "normalizeCommandSuggestionRequest",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "normalizeDiagnosticsCleanupRequest",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "normalizeGitRefreshRequest",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "normalizeRemoteCommandRefreshRequest",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "normalizeRemoteHistoryRefreshRequest",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "normalizeRemotePathRefreshRequest",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "normalizeSuggestionAuditRecordRequest",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "normalizeSuggestionFeedbackRecordRequest",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "CommandSuggestionActivation",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "CommandSuggestionAuditDecision",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "CommandSuggestionAuditEvent",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "CommandSuggestionAuditEventKind",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "CommandSuggestionCandidateKind",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "CommandSuggestionCandidatePayload",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "CommandSuggestionFeedbackAction",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "CommandSuggestionPresentation",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "CommandSuggestionProviderTelemetry",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "CommandSuggestionReplacementRange",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "CommandSuggestionSensitivity",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "NormalizedCommandSuggestionDiagnosticsCleanupRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "NormalizedCommandSuggestionFeedbackRecordRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "NormalizedCommandSuggestionGitRefreshRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "NormalizedCommandSuggestionRemoteCommandRefreshRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "NormalizedCommandSuggestionRemoteHistoryRefreshRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "NormalizedCommandSuggestionRemotePathRefreshRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/terminalSuggestionApi.ts",
+      "name": "NormalizedCommandSuggestionRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/tmuxApi.ts",
+      "name": "tmuxCapturePane",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/tmuxApi.ts",
+      "name": "tmuxListPanes",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/tmuxApi.ts",
+      "name": "tmuxListWindows",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/tmuxApi.ts",
+      "name": "TmuxCapturePaneRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/tmuxApi.ts",
+      "name": "TmuxListPanesRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/tmuxApi.ts",
+      "name": "TmuxListWindowsRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/tmuxApi.ts",
+      "name": "TmuxPaneCapture",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/tmuxApi.ts",
+      "name": "TmuxPaneSummary",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/tmuxApi.ts",
+      "name": "TmuxSessionStatus",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/tmuxApi.ts",
+      "name": "TmuxWindowSummary",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/windowChromeModel.ts",
+      "name": "WindowControlMode",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/windowChromeModel.ts",
+      "name": "WindowFrameRadiusMode",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/workflowApi.ts",
+      "name": "updateWorkflow",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/workflowApi.ts",
+      "name": "WorkflowStepInput",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/workflowApi.ts",
+      "name": "WorkflowUpdateRequest",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/workspaceSyncApi.ts",
+      "name": "browserWorkspaceSyncStatus",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/workspaceSyncApi.ts",
+      "name": "ensureWorkspaceSync",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/workspaceSyncApi.ts",
+      "name": "exportVaultKey",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/workspaceSyncApi.ts",
+      "name": "importVaultKey",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/workspaceSyncApi.ts",
+      "name": "rotateVaultKey",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "src/lib/workspaceSyncApi.ts",
+      "name": "WorkspaceSyncRunStatus",
+      "type": "types",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "frontend-architecture",
+      "targetTask": "TASK-022/TASK-072"
+    },
+    {
+      "file": "tests/frontend/support/machine-sidebar/RemoteHostCreateDialog.testSupport.ts",
+      "name": "apiContainer",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "tests/frontend/support/settings/SettingsToolContent.testHarness.tsx",
+      "name": "AGENT_WORKSPACE_DIRECTORY",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "tests/frontend/support/settings/SettingsToolContent.testHarness.tsx",
+      "name": "agentLauncherApiMock",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "tests/frontend/support/settings/SettingsToolContent.testHarness.tsx",
+      "name": "installClipboardMock",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "tests/frontend/support/settings/SettingsToolContent.testHarness.tsx",
+      "name": "resetSettingsToolContentMocks",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "tests/frontend/support/settings/SettingsToolContent.testHarness.tsx",
+      "name": "SettingsToolContent",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "tests/frontend/support/settings/SettingsToolContent.testHarness.tsx",
+      "name": "tauriCoreMock",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "tests/frontend/support/terminal/terminalRendererBrowserSmokeBridge.ts",
+      "name": "tests/frontend/support/terminal/terminalRendererBrowserSmokeBridge.ts",
+      "type": "files",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    },
+    {
+      "file": "tests/frontend/support/terminal/XtermPane.testSupport.tsx",
+      "name": "defaultAppSettings",
+      "type": "exports",
+      "count": 1,
+      "deadline": "before TASK-080",
+      "owner": "test-architecture",
+      "targetTask": "TASK-071"
+    }
+  ]
+}

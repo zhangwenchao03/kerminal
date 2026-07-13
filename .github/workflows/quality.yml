@@ -100,11 +100,15 @@ jobs:
       - name: Run the shared quality entry
         run: pnpm run check
 
-      - name: Upload source-size report
+      - name: Upload quality reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           if-no-files-found: ignore
-          name: source-size-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .updeng/docs/verification/source-size.json
+          name: quality-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .updeng/docs/verification/source-size.json
+            .updeng/docs/verification/frontend-architecture.json
+            .updeng/docs/verification/eslint.json
+            .updeng/docs/verification/dead-code.json
           retention-days: 14

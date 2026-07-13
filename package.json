@@ -8,7 +8,10 @@
   "scripts": {
     "dev": "vite",
     "dev:force": "vite --force",
+    "check:architecture": "node scripts/check-frontend-architecture.mjs --output .updeng/docs/verification/frontend-architecture.json",
+    "check:dead-code": "node scripts/check-dead-code.mjs --output .updeng/docs/verification/dead-code.json",
     "check:source-size": "node scripts/check-source-size.mjs --output .updeng/docs/verification/source-size.json",
+    "lint": "node scripts/check-eslint.mjs --output .updeng/docs/verification/eslint.json",
     "typecheck": "tsc --noEmit",
     "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest",
@@ -16,6 +19,7 @@
     "test:terminal-ghost": "vitest run tests/frontend/features/terminal/terminalInputModel.test.ts tests/frontend/features/terminal/XtermPane.test.tsx tests/frontend/lib/terminalSuggestionApi.test.ts",
     "test:terminal-renderer-lifecycle": "vitest run tests/frontend/features/terminal/terminalRendererLifecycle.test.ts tests/frontend/features/terminal/terminalRenderer.test.ts tests/frontend/features/terminal/terminalRendererHealth.test.ts",
     "test:rust": "cd src-tauri && cargo test",
+    "test:quality-gates": "node --test tests/scripts/check-frontend-architecture.test.mjs tests/scripts/check-eslint.test.mjs tests/scripts/check-dead-code.test.mjs",
     "test:source-size": "node --test tests/scripts/check-source-size.test.mjs",
     "test:launch-shim-package-contract": "node --test tests/scripts/launch-shim-package-contract.test.mjs",
     "test:external-launch-windows-package": "node --test tests/scripts/external-launch-windows-package.test.mjs",
@@ -56,7 +60,7 @@
     "check:terminal-ghost": "pnpm run verify:terminal-ghost-frame && pnpm run verify:terminal-ghost-visual && pnpm run verify:terminal-ghost-xterm && pnpm run verify:terminal-ghost-app",
     "check:ssh-command-ghost": "pnpm run test:terminal-ghost && pnpm run verify:command-suggestion-latency && pnpm run smoke:ssh-suggestions:loopback && pnpm run smoke:ssh-terminal:password:loopback && pnpm run check:terminal-ghost",
     "check:rust": "cd src-tauri && cargo fmt --check && cargo clippy --all-targets --all-features -- -D warnings && cargo test -j 1",
-    "check": "pnpm run test:source-size && pnpm run check:source-size && pnpm run typecheck:test && pnpm run test:launch-shim-package-contract && pnpm run test:external-launch-windows-package && pnpm run test:frontend && pnpm run check:rust && pnpm run build",
+    "check": "pnpm run test:source-size && pnpm run test:quality-gates && pnpm run check:source-size && pnpm run check:architecture && pnpm run lint && pnpm run check:dead-code && pnpm run typecheck:test && pnpm run test:launch-shim-package-contract && pnpm run test:external-launch-windows-package && pnpm run test:frontend && pnpm run check:rust && pnpm run build",
     "build": "tsc && vite build",
     "prepare:launch-shim-sidecar": "node scripts/prepare-launch-shim-sidecar.mjs",
     "verify:launch-shim-sidecar": "node scripts/verify-launch-shim-package-contract.mjs && node scripts/prepare-launch-shim-sidecar.mjs --verify --no-build",
@@ -97,6 +101,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "^2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -104,8 +109,14 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
+    "esbuild": "^0.27.7",
+    "eslint": "^10.7.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.7.0",
     "jsdom": "^29.1.1",
+    "knip": "^6.26.0",
     "typescript": "~5.8.3",
+    "typescript-eslint": "^8.63.0",
     "vite": "^7.0.4",
     "vitest": "^4.1.9"
   }
