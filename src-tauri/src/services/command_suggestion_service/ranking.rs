@@ -49,7 +49,7 @@ pub(super) fn rank_candidates(
         .filter(|candidate| candidate.sensitivity != CommandSuggestionSensitivity::Sensitive)
         .map(|candidate| CommandSuggestionFeedbackKey {
             provider: candidate.provider,
-            replacement_text: candidate.replacement_text.clone(),
+            replacement_text: feedback_replacement_key(candidate),
         })
         .collect::<Vec<_>>();
     let feedback = storage.command_suggestion_feedback_scores(
@@ -68,7 +68,7 @@ pub(super) fn rank_candidates(
         let feedback_score = feedback
             .get(&CommandSuggestionFeedbackKey {
                 provider: candidate.provider,
-                replacement_text: candidate.replacement_text.clone(),
+                replacement_text: feedback_replacement_key(&candidate),
             })
             .copied()
             .unwrap_or_default();
@@ -110,6 +110,15 @@ pub(super) fn rank_candidates(
     ranked.sort_by(compare_ranked_candidates);
     ranked.truncate(request.limit);
     Ok(ranked)
+}
+
+/// 片段反馈只按服务端候选身份聚合，禁止把完整命令写入通用反馈表。
+fn feedback_replacement_key(candidate: &CommandSuggestionCandidate) -> String {
+    if candidate.provider == SuggestionProviderKind::Snippet {
+        format!("@snippet:{}", candidate.id)
+    } else {
+        candidate.replacement_text.clone()
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -346,6 +355,7 @@ fn provider_reliability(provider: SuggestionProviderKind) -> f64 {
         SuggestionProviderKind::RemotePath => 0.90,
         SuggestionProviderKind::Git => 0.88,
         SuggestionProviderKind::RemoteCommand => 0.84,
+        SuggestionProviderKind::Snippet => 0.94,
     }
 }
 
@@ -356,6 +366,7 @@ fn provider_priority(provider: SuggestionProviderKind) -> u8 {
         SuggestionProviderKind::RemotePath => 2,
         SuggestionProviderKind::Git => 3,
         SuggestionProviderKind::RemoteCommand => 4,
+        SuggestionProviderKind::Snippet => 1,
     }
 }
 

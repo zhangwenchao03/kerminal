@@ -42,6 +42,10 @@ pub(super) fn spec_candidates(
         }
 
         candidates.push(CommandSuggestionCandidate {
+            activation: CommandSuggestionActivation::Insert,
+            candidate_kind: CommandSuggestionCandidateKind::Command,
+            merged_source_explanations: Vec::new(),
+            source_explanation: None,
             accept_boundaries: Vec::new(),
             allowed_presentations,
             context_key: request.context_key.clone(),

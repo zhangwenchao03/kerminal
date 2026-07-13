@@ -64,6 +64,23 @@ const sampleSnippets: CommandSnippet[] = [
 ];
 
 describe("snippetCatalogModel", () => {
+  it("matches the complete V1 preset catalog golden", async () => {
+    const projection = presetSnippets.map(
+      ({ command, id, scope, sortOrder, tags, title }) => ({
+        command,
+        id,
+        scope,
+        sortOrder,
+        tags,
+        title,
+      }),
+    );
+
+    await expect(`${JSON.stringify(projection, null, 2)}\n`).toMatchFileSnapshot(
+      "../../../fixtures/snippets/preset-snippets-v1.golden.json",
+    );
+  });
+
   it("defines stable preset snippets", () => {
     expect(presetSnippets).toHaveLength(38);
     expect(presetSnippets.every((snippet) => isPresetSnippetId(snippet.id))).toBe(

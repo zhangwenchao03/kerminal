@@ -26,6 +26,9 @@ export function resolveTerminalSuggestionAcceptance({
   input: string;
   unit: TerminalSuggestionAcceptUnit;
 }): TerminalSuggestionAcceptance | null {
+  if (candidate.activation === "openSnippetPanel") {
+    return null;
+  }
   const inputChars = Array.from(input);
   const replacement = Array.from(candidate.replacementText);
   const range = candidate.replacementRange;

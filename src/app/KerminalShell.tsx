@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   MachineSidebarMachineDragEvent,
   MachineSidebarViewMode,
@@ -74,6 +74,10 @@ import {
   shellQuote,
   terminalSplitDropZoneLabel,
 } from "./KerminalShell.contextWorkspaceShellHelpers";
+import {
+  SNIPPET_PANEL_OPEN_EVENT,
+  type SnippetPanelOpenRequest,
+} from "../features/snippets/snippetPanelEvents";
 
 export function KerminalShell() {
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
@@ -393,6 +397,17 @@ export function KerminalShell() {
     },
     [activateTool],
   );
+  useEffect(() => {
+    const handleSnippetPanelOpen = (event: Event) => {
+      const request = (event as CustomEvent<SnippetPanelOpenRequest>).detail;
+      if (!request?.snippetId) return;
+      if (request.paneId) focusPane(request.paneId);
+      activateShellTool("snippets");
+    };
+    window.addEventListener(SNIPPET_PANEL_OPEN_EVENT, handleSnippetPanelOpen);
+    return () =>
+      window.removeEventListener(SNIPPET_PANEL_OPEN_EVENT, handleSnippetPanelOpen);
+  }, [activateShellTool, focusPane]);
   const selectHostContainersHost = useCallback(
     (machineId: string) => {
       selectMachine(machineId);

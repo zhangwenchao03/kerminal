@@ -16,6 +16,7 @@ import {
 } from "./serverInfoMetricsModel";
 import { localServerInfoSnapshot } from "./localServerInfoModel";
 import type { ServerInfoTargetContext } from "./serverInfoTargetModel";
+import { targetStableId, type RemoteTargetRef } from "../../lib/targetModel";
 
 const serverInfoSnapshotCache = new Map<string, ServerInfoSnapshot>();
 const serverInfoInFlight = new Map<string, Promise<ServerInfoSnapshot>>();
@@ -262,6 +263,17 @@ export function useServerInfoSnapshot(
     setRefreshIntervalMs,
     snapshot,
   };
+}
+
+/**
+ * 只读查看其它工具已经采集的目标信息；不会创建请求或触发远程探测。
+ */
+export function peekServerInfoSnapshot(
+  target: RemoteTargetRef | undefined,
+): ServerInfoSnapshot | null {
+  return target
+    ? (serverInfoSnapshotCache.get(targetStableId(target)) ?? null)
+    : null;
 }
 
 /** 按目标边界选择只读采集源，本机不经过只支持 SSH/容器的远程 IPC。 */

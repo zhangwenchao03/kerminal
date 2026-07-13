@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    error::AppError,
     models::{
         profile::TerminalProfile,
         remote_host::{RemoteHost, RemoteHostAuthType, RemoteHostGroup, SshOptions},
@@ -132,6 +133,14 @@ pub(super) struct SnippetTomlDocument {
     sort_order: i64,
     created_at: String,
     updated_at: String,
+    category: Option<String>,
+    risk: Option<String>,
+    default_action: Option<String>,
+    #[serde(default)]
+    variables: Vec<SnippetVariableTomlEntry>,
+    #[serde(default)]
+    context_bindings: Vec<SnippetContextBindingTomlEntry>,
+    derived_from: Option<String>,
 }
 
 impl SnippetTomlDocument {
@@ -147,11 +156,28 @@ impl SnippetTomlDocument {
             sort_order: snippet.sort_order,
             created_at: snippet.created_at,
             updated_at: snippet.updated_at,
+            category: snippet.category,
+            risk: snippet.risk,
+            default_action: snippet.default_action,
+            variables: snippet.variables.into_iter().map(Into::into).collect(),
+            context_bindings: snippet
+                .context_bindings
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            derived_from: snippet.derived_from,
         }
     }
 
     pub(super) fn into_snippet(self) -> FileStoreResult<CommandSnippet> {
         validate_schema_version(self.schema_version)?;
+        reject_secret_variable_values(self.variables.iter().map(|variable| {
+            (
+                &variable.kind,
+                &variable.default_value,
+                &variable.suggestions,
+            )
+        }))?;
         Ok(CommandSnippet {
             id: self.id,
             title: self.title,
@@ -162,7 +188,102 @@ impl SnippetTomlDocument {
             sort_order: self.sort_order,
             created_at: self.created_at,
             updated_at: self.updated_at,
+            category: self.category,
+            risk: self.risk,
+            default_action: self.default_action,
+            variables: self.variables.into_iter().map(Into::into).collect(),
+            context_bindings: self.context_bindings.into_iter().map(Into::into).collect(),
+            derived_from: self.derived_from,
         })
+    }
+}
+
+fn reject_secret_variable_values<'a>(
+    variables: impl IntoIterator<Item = (&'a String, &'a Option<String>, &'a Vec<String>)>,
+) -> FileStoreResult<()> {
+    if variables.into_iter().any(|(kind, default, suggestions)| {
+        kind == "secret"
+            && (default.as_deref().is_some_and(|value| !value.is_empty())
+                || !suggestions.is_empty())
+    }) {
+        return Err(toml_validation_error(AppError::InvalidInput(
+            "variables 中的 secret 变量禁止保存 default_value 或 suggestions".to_owned(),
+        )));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SnippetVariableTomlEntry {
+    name: String,
+    label: String,
+    description: String,
+    kind: String,
+    required: bool,
+    default_value: Option<String>,
+    #[serde(default)]
+    suggestions: Vec<String>,
+    validation: Option<String>,
+    render_strategy: String,
+    #[serde(default)]
+    sensitive: bool,
+}
+
+impl From<SnippetVariableTomlEntry> for crate::models::snippet::SnippetCatalogVariable {
+    fn from(value: SnippetVariableTomlEntry) -> Self {
+        Self {
+            name: value.name,
+            label: value.label,
+            description: value.description,
+            kind: value.kind,
+            required: value.required,
+            default_value: value.default_value,
+            suggestions: value.suggestions,
+            validation: value.validation,
+            render_strategy: value.render_strategy,
+            sensitive: value.sensitive,
+        }
+    }
+}
+
+impl From<crate::models::snippet::SnippetCatalogVariable> for SnippetVariableTomlEntry {
+    fn from(value: crate::models::snippet::SnippetCatalogVariable) -> Self {
+        Self {
+            name: value.name,
+            label: value.label,
+            description: value.description,
+            kind: value.kind,
+            required: value.required,
+            default_value: value.default_value,
+            suggestions: value.suggestions,
+            validation: value.validation,
+            render_strategy: value.render_strategy,
+            sensitive: value.sensitive,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SnippetContextBindingTomlEntry {
+    kind: crate::models::snippet::SnippetContextBindingKind,
+    target_id: Option<String>,
+}
+
+impl From<SnippetContextBindingTomlEntry> for crate::models::snippet::SnippetContextBinding {
+    fn from(value: SnippetContextBindingTomlEntry) -> Self {
+        Self {
+            kind: value.kind,
+            target_id: value.target_id,
+        }
+    }
+}
+
+impl From<crate::models::snippet::SnippetContextBinding> for SnippetContextBindingTomlEntry {
+    fn from(value: crate::models::snippet::SnippetContextBinding) -> Self {
+        Self {
+            kind: value.kind,
+            target_id: value.target_id,
+        }
     }
 }
 

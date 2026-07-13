@@ -14,6 +14,7 @@ export type TerminalSuggestionMenuAcceptKey = "Enter" | "ArrowRight";
 export type TerminalSuggestionMenuIntent =
   | { type: "close" }
   | { candidate: CommandSuggestionCandidate; type: "accept" }
+  | { candidate: CommandSuggestionCandidate; type: "openSnippetPanel" }
   | { index: number; type: "move" }
   | { type: "open" };
 
@@ -157,7 +158,7 @@ export function resolveTerminalSuggestionMenuKeyIntent(
   }
   if (event.key === "Enter" || event.key === "ArrowRight") {
     const candidate = state.candidates[state.selectedIndex];
-    return candidate ? { candidate, type: "accept" } : null;
+    return candidate ? terminalSuggestionMenuCandidateIntent(candidate) : null;
   }
   return null;
 }
@@ -166,11 +167,23 @@ export function terminalSuggestionMenuCandidateView(
   candidate: CommandSuggestionCandidate,
   menuStale: boolean,
 ): TerminalSuggestionMenuCandidateView {
+  const snippetOrigin = candidate.metadata?.origin;
   return {
     candidate,
     dangerous: candidate.sensitivity === "dangerous",
-    description: candidate.description,
-    providerLabel: terminalSuggestionProviderLabel(candidate.provider),
+    description: [
+      candidate.description,
+      candidate.sourceExplanation,
+      ...(candidate.mergedSourceExplanations ?? []),
+    ]
+      .filter((value, index, values): value is string =>
+        Boolean(value && values.indexOf(value) === index),
+      )
+      .join(" · ") || undefined,
+    providerLabel:
+      candidate.activation === "openSnippetPanel"
+        ? `${snippetOrigin === "user" ? "我的片段" : "内置片段"} · 配置`
+        : terminalSuggestionProviderLabel(candidate.provider),
     stale: menuStale || candidate.metadata?.stale === true,
   };
 }
@@ -187,9 +200,19 @@ export function terminalSuggestionProviderLabel(
       return "远端命令";
     case "remotePath":
       return "远端路径";
+    case "snippet":
+      return "片段";
     case "git":
       return "Git";
   }
+}
+
+export function terminalSuggestionMenuCandidateIntent(
+  candidate: CommandSuggestionCandidate,
+): TerminalSuggestionMenuIntent {
+  return candidate.activation === "openSnippetPanel"
+    ? { candidate, type: "openSnippetPanel" }
+    : { candidate, type: "accept" };
 }
 
 function normalizeMenuCandidates(

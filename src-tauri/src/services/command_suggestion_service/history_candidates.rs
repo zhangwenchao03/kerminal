@@ -142,6 +142,10 @@ pub(super) fn history_candidate(
     );
 
     Some(CommandSuggestionCandidate {
+        activation: CommandSuggestionActivation::Insert,
+        candidate_kind: CommandSuggestionCandidateKind::Command,
+        merged_source_explanations: Vec::new(),
+        source_explanation: None,
         accept_boundaries: Vec::new(),
         allowed_presentations: CommandSuggestionCandidate::presentations_for(sensitivity),
         context_key: request.context_key.clone(),
@@ -270,6 +274,10 @@ fn menu_history_candidate(
             .to_string(),
     );
     CommandSuggestionCandidate {
+        activation: CommandSuggestionActivation::Insert,
+        candidate_kind: CommandSuggestionCandidateKind::Command,
+        merged_source_explanations: Vec::new(),
+        source_explanation: None,
         accept_boundaries: Vec::new(),
         allowed_presentations: vec![SuggestionPresentation::Menu],
         context_key: request.context_key.clone(),
@@ -392,6 +400,10 @@ pub(super) fn remote_history_candidate(
     );
 
     Some(CommandSuggestionCandidate {
+        activation: CommandSuggestionActivation::Insert,
+        candidate_kind: CommandSuggestionCandidateKind::Command,
+        merged_source_explanations: Vec::new(),
+        source_explanation: None,
         accept_boundaries: Vec::new(),
         allowed_presentations: CommandSuggestionCandidate::presentations_for(sensitivity),
         context_key: request.context_key.clone(),
@@ -464,6 +476,10 @@ pub(super) fn remote_command_candidate(
     };
 
     Some(CommandSuggestionCandidate {
+        activation: CommandSuggestionActivation::Insert,
+        candidate_kind: CommandSuggestionCandidateKind::Command,
+        merged_source_explanations: Vec::new(),
+        source_explanation: None,
         accept_boundaries: Vec::new(),
         allowed_presentations: CommandSuggestionCandidate::presentations_for(
             CommandSuggestionSensitivity::Normal,

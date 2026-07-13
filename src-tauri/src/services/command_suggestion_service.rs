@@ -17,9 +17,10 @@ use crate::{
     models::{
         command_history::{CommandHistoryEntry, CommandHistorySource, CommandHistoryTarget},
         command_suggestion::{
-            CommandSuggestionAuditDecision, CommandSuggestionAuditEventKind,
-            CommandSuggestionAuditRecordRequest, CommandSuggestionAuditRecordResult,
-            CommandSuggestionCandidate, CommandSuggestionDiagnosticsCleanupRequest,
+            CommandSuggestionActivation, CommandSuggestionAuditDecision,
+            CommandSuggestionAuditEventKind, CommandSuggestionAuditRecordRequest,
+            CommandSuggestionAuditRecordResult, CommandSuggestionCandidate,
+            CommandSuggestionCandidateKind, CommandSuggestionDiagnosticsCleanupRequest,
             CommandSuggestionDiagnosticsCleanupResult, CommandSuggestionFeedbackAction,
             CommandSuggestionFeedbackRecordRequest, CommandSuggestionFeedbackRecordResult,
             CommandSuggestionGitRefreshRequest, CommandSuggestionGitRefreshResult,
@@ -36,11 +37,13 @@ use crate::{
             TerminalInlineSuggestionProductionHostPolicy, TerminalInlineSuggestionSettings,
         },
         sftp::{SftpDirectoryListing, SftpEntry, SftpEntryKind, SftpListDirectoryRequest},
+        snippet::{SnippetCatalogListRequest, SnippetScope},
         ssh_command::SshCommandRequest,
     },
     paths::KerminalPaths,
     services::{
         command_history_service::CommandHistoryService, sftp_service::SftpService,
+        snippet_catalog_service, snippet_service::SnippetService,
         ssh_command_service::SshCommandService,
     },
     storage::{
@@ -69,6 +72,7 @@ mod refresh;
 mod remote_cache_policy;
 mod remote_refresh;
 mod shell_path;
+mod snippet_candidates;
 mod spec_candidates;
 mod spec_registry;
 mod telemetry_persistence;
@@ -78,7 +82,7 @@ pub use self::model::{GitRefEntry, GitRefKind};
 use self::{
     cache_utils::*, classification::*, discovery::*, feedback::*, git_candidates::*,
     history_candidates::*, model::*, ranking::*, remote_cache_policy::*, remote_refresh::*,
-    shell_path::*, spec_candidates::*, telemetry_persistence::*,
+    shell_path::*, snippet_candidates::*, spec_candidates::*, telemetry_persistence::*,
 };
 
 const DEFAULT_LIMIT: usize = 8;
@@ -152,6 +156,7 @@ const TELEMETRY_PROVIDER_ORDER: &[SuggestionProviderKind] = &[
     SuggestionProviderKind::RemoteCommand,
     SuggestionProviderKind::Git,
     SuggestionProviderKind::Spec,
+    SuggestionProviderKind::Snippet,
 ];
 /// 命令建议业务入口。
 #[derive(Debug)]

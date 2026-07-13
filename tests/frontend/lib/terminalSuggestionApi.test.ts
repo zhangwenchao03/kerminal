@@ -95,8 +95,50 @@ describe("terminalSuggestionApi", () => {
 
     expect(suggestions[0]).toMatchObject({
       acceptBoundaries: [],
+      activation: "insert",
       allowedPresentations: ["inline"],
+      candidateKind: "command",
       replacementRange: { end: 7, start: 0 },
+    });
+  });
+
+  it("normalizes snippet activation and merged source explanations", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue([
+      {
+        activation: "openSnippetPanel",
+        allowedPresentations: ["menu"],
+        candidateKind: "snippet",
+        displayText: "查看服务日志",
+        id: "snippet:service-logs",
+        mergedSourceExplanations: [" 命令规范 ", "个人片段", "个人片段"],
+        provider: "snippet",
+        replacementRange: { end: 3, start: 0 },
+        replacementText: "journalctl -u {{service}}",
+        score: 0.9,
+        sensitivity: "normal",
+        sourceExplanation: " 内置运维片段 ",
+        sourceId: " builtin.service-logs ",
+        suffix: "",
+      },
+    ]);
+    const { listTerminalSuggestions } = await import(
+      "../../../src/lib/terminalSuggestionApi"
+    );
+
+    const [suggestion] = await listTerminalSuggestions({
+      cursor: 3,
+      input: "jou",
+      mode: "menu",
+    });
+
+    expect(suggestion).toMatchObject({
+      activation: "openSnippetPanel",
+      candidateKind: "snippet",
+      mergedSourceExplanations: ["命令规范", "个人片段"],
+      provider: "snippet",
+      sourceExplanation: "内置运维片段",
+      sourceId: "builtin.service-logs",
     });
   });
 

@@ -35,6 +35,10 @@ pub(super) fn git_ref_candidate(
     }
 
     Some(CommandSuggestionCandidate {
+        activation: CommandSuggestionActivation::Insert,
+        candidate_kind: CommandSuggestionCandidateKind::Command,
+        merged_source_explanations: Vec::new(),
+        source_explanation: None,
         accept_boundaries: Vec::new(),
         allowed_presentations: CommandSuggestionCandidate::presentations_for(
             CommandSuggestionSensitivity::Normal,

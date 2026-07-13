@@ -54,7 +54,7 @@ describe("XtermPane inline suggestions", () => {
           cwd: "C:/dev/rust/kerminal",
           input: "git",
           limit: 1,
-          providers: ["history", "spec"],
+          providers: ["history", "spec", "snippet"],
           target: "local",
         }),
       );

@@ -162,6 +162,8 @@ export function terminalSuggestionProviderPriority(
       return 5;
     case "spec":
       return 4;
+    case "snippet":
+      return 4;
     case "remoteCommand":
       return 3;
     case "remotePath":

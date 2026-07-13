@@ -23,7 +23,7 @@ import {
   type UserFacingMessage,
 } from "../../lib/userFacingMessage";
 import { createWorkflow, type WorkflowScope } from "../../lib/workflowApi";
-import { writeSnippetCommand } from "../terminal/terminalSessionRegistry";
+import { runSnippetCommand } from "../terminal/terminalSessionRegistry";
 import type { TerminalPane } from "../workspace/types";
 import {
   extractSnippetVariables,
@@ -52,6 +52,11 @@ import {
   snippetScopeOptions,
   type SnippetCatalogMode,
 } from "./snippetCatalogModel";
+import {
+  resolveRuntimeSnippetFeatureGates,
+  snippetV2NavigationEnabled,
+} from "./snippetFeatureGates";
+import { SnippetToolContentV2 } from "./SnippetToolContentV2";
 
 interface SnippetToolContentProps {
   activeTabId?: string;
@@ -105,7 +110,15 @@ function useHorizontalFilterWheel(): RefCallback<HTMLDivElement> {
   }, []);
 }
 
-export function SnippetToolContent({
+export function SnippetToolContent(props: SnippetToolContentProps) {
+  return snippetV2NavigationEnabled(resolveRuntimeSnippetFeatureGates()) ? (
+    <SnippetToolContentV2 {...props} />
+  ) : (
+    <LegacySnippetToolContent {...props} />
+  );
+}
+
+function LegacySnippetToolContent({
   activeTabId,
   configRevision,
   focusedPane,
@@ -418,7 +431,7 @@ export function SnippetToolContent({
       values: normalizedValues,
     });
     try {
-      const result = await writeSnippetCommand({
+      const result = await runSnippetCommand({
         command: renderedCommand,
         paneId: focusedPane?.id ?? "",
         tabId: activeTabId,

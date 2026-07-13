@@ -22,6 +22,8 @@ pub enum SuggestionProviderKind {
     Git,
     /// 离线 CLI specs provider。
     Spec,
+    /// 用户维护的命令片段 provider。
+    Snippet,
 }
 
 impl SuggestionProviderKind {
@@ -33,6 +35,7 @@ impl SuggestionProviderKind {
             Self::RemoteCommand => "remoteCommand",
             Self::Git => "git",
             Self::Spec => "spec",
+            Self::Snippet => "snippet",
         }
     }
 }
@@ -47,9 +50,32 @@ impl TryFrom<&str> for SuggestionProviderKind {
             "remoteCommand" => Ok(Self::RemoteCommand),
             "git" => Ok(Self::Git),
             "spec" => Ok(Self::Spec),
+            "snippet" => Ok(Self::Snippet),
             _ => Err(format!("未知命令建议 provider: {value}")),
         }
     }
+}
+
+/// 候选表达的业务对象类型。
+#[derive(Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum CommandSuggestionCandidateKind {
+    /// 普通命令候选；旧候选默认按此处理。
+    #[default]
+    Command,
+    /// 来自片段目录的可复用命令。
+    Snippet,
+}
+
+/// 接受候选后由前端执行的动作。
+#[derive(Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum CommandSuggestionActivation {
+    /// 只插入终端输入缓冲区，不执行命令。
+    #[default]
+    Insert,
+    /// 打开并聚焦右栏片段参数面板。
+    OpenSnippetPanel,
 }
 
 /// 建议的敏感度。
@@ -584,6 +610,10 @@ pub struct CommandSuggestionCandidate {
     pub id: String,
     /// 候选来源 provider。
     pub provider: SuggestionProviderKind,
+    /// 候选的业务对象类型。
+    pub candidate_kind: CommandSuggestionCandidateKind,
+    /// 接受候选后的交互动作。
+    pub activation: CommandSuggestionActivation,
     /// UI 展示文本。
     pub display_text: String,
     /// 接受建议后写入的替换文本。
@@ -598,6 +628,10 @@ pub struct CommandSuggestionCandidate {
     pub sensitivity: CommandSuggestionSensitivity,
     /// 来源解释。
     pub description: Option<String>,
+    /// 对候选来源的稳定解释，供合并来源后的 UI 展示。
+    pub source_explanation: Option<String>,
+    /// 去重合并后保留的其它来源解释。
+    pub merged_source_explanations: Vec<String>,
     /// 上游记录 id。
     pub source_id: Option<String>,
     /// 轻量元数据。
@@ -635,6 +669,10 @@ impl<'de> Deserialize<'de> for CommandSuggestionCandidate {
         struct CandidatePayload {
             id: String,
             provider: SuggestionProviderKind,
+            #[serde(default)]
+            candidate_kind: CommandSuggestionCandidateKind,
+            #[serde(default)]
+            activation: CommandSuggestionActivation,
             display_text: String,
             replacement_text: String,
             replacement_range: CommandSuggestionReplacementRange,
@@ -642,6 +680,9 @@ impl<'de> Deserialize<'de> for CommandSuggestionCandidate {
             score: f64,
             sensitivity: CommandSuggestionSensitivity,
             description: Option<String>,
+            source_explanation: Option<String>,
+            #[serde(default)]
+            merged_source_explanations: Vec<String>,
             source_id: Option<String>,
             metadata: Option<BTreeMap<String, String>>,
             allowed_presentations: Option<Vec<SuggestionPresentation>>,
@@ -663,6 +704,8 @@ impl<'de> Deserialize<'de> for CommandSuggestionCandidate {
         Ok(Self {
             id: payload.id,
             provider: payload.provider,
+            candidate_kind: payload.candidate_kind,
+            activation: payload.activation,
             display_text: payload.display_text,
             replacement_text: payload.replacement_text,
             replacement_range: payload.replacement_range,
@@ -670,6 +713,8 @@ impl<'de> Deserialize<'de> for CommandSuggestionCandidate {
             score: payload.score,
             sensitivity: payload.sensitivity,
             description: payload.description,
+            source_explanation: payload.source_explanation,
+            merged_source_explanations: payload.merged_source_explanations,
             source_id: payload.source_id,
             metadata: payload.metadata,
             allowed_presentations,

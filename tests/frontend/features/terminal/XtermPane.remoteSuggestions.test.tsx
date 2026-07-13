@@ -383,7 +383,14 @@ describe("XtermPane remote suggestions", () => {
       expect(mocks.api.listTerminalSuggestions).toHaveBeenCalledWith(
         expect.objectContaining({
           input: "ls",
-          providers: ["history", "remotePath", "remoteCommand", "git", "spec"],
+          providers: [
+            "history",
+            "remotePath",
+            "remoteCommand",
+            "git",
+            "spec",
+            "snippet",
+          ],
           remoteHostId: "host-prod",
           target: "ssh",
         }),
@@ -456,7 +463,7 @@ describe("XtermPane remote suggestions", () => {
       expect(mocks.api.listTerminalSuggestions).toHaveBeenCalledWith(
         expect.objectContaining({
           input: "ls",
-          providers: ["history", "spec"],
+          providers: ["history", "spec", "snippet"],
           remoteHostId: "host-prod",
           target: "ssh",
         }),
@@ -528,7 +535,7 @@ describe("XtermPane remote suggestions", () => {
       expect(mocks.api.listTerminalSuggestions).toHaveBeenCalledWith(
         expect.objectContaining({
           input: "ls",
-          providers: ["history", "spec"],
+          providers: ["history", "spec", "snippet"],
           remoteHostId: "host-prod",
           target: "ssh",
         }),
@@ -586,7 +593,14 @@ describe("XtermPane remote suggestions", () => {
       expect(mocks.api.listTerminalSuggestions).toHaveBeenCalledWith(
         expect.objectContaining({
           input: "ls",
-          providers: ["history", "remotePath", "remoteCommand", "git", "spec"],
+          providers: [
+            "history",
+            "remotePath",
+            "remoteCommand",
+            "git",
+            "spec",
+            "snippet",
+          ],
           remoteHostId: "host-prod",
           target: "ssh",
         }),

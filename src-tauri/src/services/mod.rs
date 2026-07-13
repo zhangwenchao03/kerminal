@@ -28,6 +28,8 @@ pub mod serial_terminal_service;
 pub mod server_info_service;
 pub mod settings_service;
 pub mod sftp_service;
+pub mod snippet_catalog_registry;
+pub mod snippet_catalog_service;
 pub mod snippet_service;
 pub mod ssh_command_plan;
 pub mod ssh_command_service;

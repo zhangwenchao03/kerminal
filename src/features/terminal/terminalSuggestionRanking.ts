@@ -44,8 +44,11 @@ export function rankTerminalSuggestions(
       normalizeReplacement(candidate.replacementText),
     ].join("\u0000");
     const current = deduped.get(key);
-    if (!current || compareRanked(ranked, current) < 0) {
+    if (!current) {
       deduped.set(key, ranked);
+    } else {
+      const winner = compareRanked(ranked, current) < 0 ? ranked : current;
+      deduped.set(key, mergeSourceExplanations(winner, ranked, current));
     }
   }
   return Array.from(deduped.values()).sort(compareRanked).slice(0, limit);
@@ -59,6 +62,12 @@ export function adaptCandidateForQuery(
   >,
 ): CommandSuggestionCandidate | null {
   if (!candidate.allowedPresentations.includes(query.mode)) {
+    return null;
+  }
+  if (
+    query.mode === "inline" &&
+    candidate.activation === "openSnippetPanel"
+  ) {
     return null;
   }
   if (
@@ -99,6 +108,30 @@ export function adaptCandidateForQuery(
     replacementRange: { start, end: query.cursor },
     suffix,
   };
+}
+
+/** 相同替换文本只展示一次，但保留各 provider 对该候选的来源解释。 */
+function mergeSourceExplanations(
+  winner: RankedTerminalSuggestion,
+  ...items: readonly RankedTerminalSuggestion[]
+): RankedTerminalSuggestion {
+  const explanations = Array.from(
+    new Set(
+      items.flatMap(({ candidate }) => [
+        ...(candidate.mergedSourceExplanations ?? []),
+        ...(candidate.sourceExplanation ? [candidate.sourceExplanation] : []),
+      ]),
+    ),
+  ).sort();
+  return explanations.length > 0
+    ? {
+        ...winner,
+        candidate: {
+          ...winner.candidate,
+          mergedSourceExplanations: explanations,
+        },
+      }
+    : winner;
 }
 
 function frontendScore(

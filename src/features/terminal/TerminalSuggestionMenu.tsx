@@ -5,6 +5,7 @@ import { useId, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import {
   terminalSuggestionMenuCandidateView,
+  terminalSuggestionMenuCandidateIntent,
   type TerminalSuggestionMenuIntent,
   type TerminalSuggestionMenuState,
 } from "./terminalSuggestionMenuModel";
@@ -83,6 +84,10 @@ export function TerminalSuggestionMenu({
   }
 
   const activeOptionId = `${listboxId}-option-${state.selectedIndex}`;
+  const activeView = terminalSuggestionMenuCandidateView(
+    state.candidates[state.selectedIndex],
+    state.stale,
+  );
 
   return (
     <div
@@ -102,6 +107,9 @@ export function TerminalSuggestionMenu({
       }}
       tabIndex={-1}
     >
+      <span aria-live="polite" className="sr-only">
+        {candidateAriaLabel(activeView)}
+      </span>
       {state.candidates.map((candidate, index) => {
         const selected = index === state.selectedIndex;
         const view = terminalSuggestionMenuCandidateView(
@@ -126,7 +134,9 @@ export function TerminalSuggestionMenu({
             data-stale={view.stale ? "true" : undefined}
             id={`${listboxId}-option-${index}`}
             key={candidate.id}
-            onClick={() => onIntent({ candidate, type: "accept" })}
+            onClick={() =>
+              onIntent(terminalSuggestionMenuCandidateIntent(candidate))
+            }
             onMouseEnter={() => onIntent({ index, type: "move" })}
             role="option"
           >

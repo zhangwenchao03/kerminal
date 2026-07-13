@@ -92,7 +92,7 @@ describe("SftpToolContent events and dialogs", () => {
       screen.getByRole("button", { name: "查看传输详情 app.log" }),
     );
 
-    expect(screen.getByText(/SSH 认证失败/)).toBeVisible();
+    expect(await screen.findByText(/SSH 认证失败/)).toBeVisible();
     expect(screen.getByText(/password="\[已隐藏\]"/)).toBeVisible();
     expect(
       screen.queryByText(/transfer-event-secret/),

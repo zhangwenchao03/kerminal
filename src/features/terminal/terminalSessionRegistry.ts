@@ -18,6 +18,7 @@ import {
 
 export interface PaneSessionRecord {
   sessionId: string;
+  connectionGeneration: number;
   commandBlockText?: string;
   containerId?: string;
   containerRuntime?: string;
@@ -42,6 +43,7 @@ export interface TerminalPaneRuntimeContext {
 }
 
 const paneSessions = new Map<string, PaneSessionRecord>();
+const paneConnectionGenerations = new Map<string, number>();
 const hostNetworkAssistInjectionTasks = new Map<string, Promise<void>>();
 
 export interface BroadcastWriteRequest {
@@ -57,6 +59,10 @@ export interface BroadcastWriteResult {
 
 export interface SnippetWriteRequest {
   command: string;
+  expectedConnectionGeneration?: number;
+  expectedSessionId?: string;
+  expectedTargetRef?: string;
+  recordHistory?: boolean;
   paneId: string;
   tabId?: string;
 }
@@ -70,7 +76,7 @@ export interface PaneCommandWriteRequest {
 
 export interface PaneCommandWriteResult {
   paneId: string;
-  reason?: "empty-command" | "missing-session";
+  reason?: "empty-command" | "missing-session" | "stale-binding" | "multiline-unsupported";
   sent: boolean;
   sessionId?: string;
   target?: CommandHistoryTarget;
@@ -84,9 +90,12 @@ export function registerTerminalPaneSession(
   sessionId: string,
   metadata: Partial<Omit<PaneSessionRecord, "sessionId">> = {},
 ) {
+  const connectionGeneration = (paneConnectionGenerations.get(paneId) ?? 0) + 1;
+  paneConnectionGenerations.set(paneId, connectionGeneration);
   const record = {
     containerId: metadata.containerId,
     containerRuntime: metadata.containerRuntime,
+    connectionGeneration,
     sessionId,
     targetRef: metadata.targetRef,
     targetToken: metadata.targetToken,
@@ -190,6 +199,7 @@ export function markTerminalPaneSessionReconnected(
 
 export function resetTerminalPaneSessionsForTests() {
   paneSessions.clear();
+  paneConnectionGenerations.clear();
   hostNetworkAssistInjectionTasks.clear();
   resetHostNetworkAssistAutoInjectionForTests();
 }
@@ -421,7 +431,74 @@ export async function writePaneCommand({
 export async function writeSnippetCommand(
   request: SnippetWriteRequest,
 ): Promise<SnippetWriteResult> {
+  const normalizedCommand = request.command.trim();
+  if (!normalizedCommand) {
+    return { paneId: request.paneId, reason: "empty-command", sent: false };
+  }
+  if (/[\r\n]/.test(normalizedCommand)) {
+    return {
+      paneId: request.paneId,
+      reason: "multiline-unsupported",
+      sent: false,
+    };
+  }
+  const session = paneSessions.get(request.paneId);
+  if (!session) {
+    return { paneId: request.paneId, reason: "missing-session", sent: false };
+  }
+  if (!snippetBindingMatches(request, session)) {
+    return { paneId: request.paneId, reason: "stale-binding", sent: false };
+  }
+  await writeTerminal(session.sessionId, normalizedCommand);
+  return {
+    paneId: request.paneId,
+    sent: true,
+    sessionId: session.sessionId,
+    target: session.target,
+  };
+}
+
+/** 显式运行片段；旧右栏在 V2 切换前继续使用该入口。 */
+export async function runSnippetCommand(
+  request: SnippetWriteRequest,
+): Promise<SnippetWriteResult> {
+  const session = paneSessions.get(request.paneId);
+  if (!session) {
+    return { paneId: request.paneId, reason: "missing-session", sent: false };
+  }
+  if (!snippetBindingMatches(request, session)) {
+    return { paneId: request.paneId, reason: "stale-binding", sent: false };
+  }
+  if (request.recordHistory === false) {
+    const command = request.command.trim();
+    if (!command) {
+      return { paneId: request.paneId, reason: "empty-command", sent: false };
+    }
+    await writeTerminal(session.sessionId, `${command}\r`);
+    return {
+      paneId: request.paneId,
+      sent: true,
+      sessionId: session.sessionId,
+      target: session.target,
+    };
+  }
   return writePaneCommand({ ...request, source: "snippet" });
+}
+
+/** 确认弹框期间连接发生重建或换目标时，旧意图不得写入新会话。 */
+function snippetBindingMatches(
+  request: SnippetWriteRequest,
+  session: PaneSessionRecord,
+): boolean {
+  return (
+    (request.expectedSessionId === undefined ||
+      request.expectedSessionId === session.sessionId) &&
+    (request.expectedConnectionGeneration === undefined ||
+      request.expectedConnectionGeneration === session.connectionGeneration) &&
+    (request.expectedTargetRef === undefined ||
+      request.expectedTargetRef ===
+        (session.targetRef ?? session.remoteHostId ?? session.sessionId))
+  );
 }
 
 export async function writeWorkflowCommand(
