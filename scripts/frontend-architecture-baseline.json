@@ -1939,28 +1939,6 @@
     },
     {
       "kind": "import",
-      "rule": "feature-to-app",
-      "runtime": true,
-      "source": "src/features/sftp/RemoteWorkspaceEditor.tsx",
-      "specifier": "../../app/appKeybindingPolicy",
-      "target": "src/app/appKeybindingPolicy.ts",
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-020"
-    },
-    {
-      "kind": "import",
-      "rule": "feature-to-app",
-      "runtime": true,
-      "source": "src/features/workspace/WorkspaceFileTabSurface.tsx",
-      "specifier": "../../app/appKeybindingPolicy",
-      "target": "src/app/appKeybindingPolicy.ts",
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-020"
-    },
-    {
-      "kind": "import",
       "rule": "lib-to-feature",
       "runtime": true,
       "source": "src/lib/settingsApi.ts",
