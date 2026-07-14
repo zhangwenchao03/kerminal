@@ -7,15 +7,10 @@ import { resolveDesktopPlatform } from "../lib/desktopPlatform";
 import {
   createRemoteHostGroup,
   updateRemoteHost,
-  type RemoteHost,
 } from "../lib/remoteHostApi";
 import { useDocumentTheme } from "../lib/useDocumentTheme";
 import { useTauriWindowFrameState } from "../lib/useTauriWindowFrameState";
 import { resolveWindowChromeModel } from "../lib/windowChromeModel";
-import type {
-  SftpTransferCreatedHostTarget,
-  SftpTransferCreateHostRequest,
-} from "../features/sftp/SftpTransferWorkbench";
 import type { ToolId } from "../features/workspace/types";
 import {
   htmlLanguage,
@@ -31,6 +26,7 @@ import { useKerminalShellNavigation } from "./useKerminalShellNavigation";
 import { useKerminalShellConfigRefresh } from "./useKerminalShellConfigRefresh";
 import { useKerminalShellPanelResize } from "./useKerminalShellPanelResize";
 import { useKerminalShellSettings } from "./useKerminalShellSettings";
+import { useKerminalShellSftpHostCreate } from "./useKerminalShellSftpHostCreate";
 import { useKerminalShellTabClose } from "./useKerminalShellTabClose";
 import { DEFAULT_REMOTE_GROUP_NAME } from "./KerminalShell.static";
 import {
@@ -40,7 +36,6 @@ import {
 import { KerminalShellLayout } from "./KerminalShell.layout";
 import { useKerminalShellStartupSync } from "./useKerminalShellStartupSync";
 import { useKerminalShellTerminalDrop } from "./useKerminalShellTerminalDrop";
-import { isSftpCapableRemoteHost } from "./KerminalShell.contextWorkspaceShellHelpers";
 import {
   SNIPPET_PANEL_OPEN_EVENT,
   type SnippetPanelOpenRequest,
@@ -122,10 +117,6 @@ export function KerminalShell() {
   const setSettings = useWorkspaceStore((state) => state.setSettings);
   const viewportWidth = useViewportWidth();
   const [shellNoticeVisible, setShellNoticeVisible] = useState(false);
-  const [pendingSftpHostTarget, setPendingSftpHostTarget] =
-    useState<SftpTransferCreateHostRequest | null>(null);
-  const [createdSftpHostTarget, setCreatedSftpHostTarget] =
-    useState<SftpTransferCreatedHostTarget>();
   const [machineSidebarView, setMachineSidebarView] =
     useState<MachineSidebarViewMode>("hosts");
   const [hostContainersHostId, setHostContainersHostId] = useState<
@@ -136,7 +127,6 @@ export function KerminalShell() {
     setHostContainersInitialContainerId,
   ] = useState<string>();
   const workspaceFrameRef = useRef<HTMLDivElement>(null);
-  const createdSftpHostSequenceRef = useRef(0);
   const {
     handleSettingsChange,
     handleSettingsDialogChange,
@@ -392,36 +382,16 @@ export function KerminalShell() {
   });
   const shellNoticeMessage =
     profileLoadError ?? remoteHostLoadError ?? settingsLoadError;
-  const openSftpTransferHostCreateDialog = useCallback(
-    (request: SftpTransferCreateHostRequest) => {
-      if (!request.workspaceTabId) {
-        return;
-      }
-      setPendingSftpHostTarget(request);
-      openConnectionDialog({ mode: "ssh" });
-    },
-    [openConnectionDialog],
-  );
-  const handleConnectionDialogClose = useCallback(() => {
-    setPendingSftpHostTarget(null);
-    closeConnectionDialog();
-  }, [closeConnectionDialog]);
-  const handleConnectionDialogCreated = useCallback(
-    async (host: RemoteHost) => {
-      await handleRemoteHostCreated(host);
-      if (pendingSftpHostTarget && isSftpCapableRemoteHost(host)) {
-        createdSftpHostSequenceRef.current += 1;
-        setCreatedSftpHostTarget({
-          hostId: host.id,
-          sequence: createdSftpHostSequenceRef.current,
-          side: pendingSftpHostTarget.side,
-          workspaceTabId: pendingSftpHostTarget.workspaceTabId,
-        });
-      }
-      setPendingSftpHostTarget(null);
-    },
-    [handleRemoteHostCreated, pendingSftpHostTarget],
-  );
+  const {
+    createdSftpHostTarget,
+    handleConnectionDialogClose,
+    handleConnectionDialogCreated,
+    openSftpTransferHostCreateDialog,
+  } = useKerminalShellSftpHostCreate({
+    closeConnectionDialog,
+    handleRemoteHostCreated,
+    openConnectionDialog,
+  });
   useKerminalShellStartupSync({
     configRefreshCoordinator, handleWorkspaceShellLayoutRestored,
     refreshRemoteHostTree, settingsDialogDirtyRef, settingsSaveState,
