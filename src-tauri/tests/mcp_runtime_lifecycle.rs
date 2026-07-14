@@ -2,7 +2,11 @@
 //!
 //! @author kongweiguang
 
-use std::{collections::BTreeSet, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeSet,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use kerminal_lib::{
     models::mcp_server::McpHttpServerStartRequest, paths::KerminalPaths, state::AppState,
@@ -59,13 +63,7 @@ async fn concurrent_start_is_single_flight_and_stop_releases_the_port() {
         .await
         .expect("stop and join MCP server");
     assert!(!service.status().expect("status after stop").running);
-    let rebound = tokio::time::timeout(
-        Duration::from_secs(3),
-        TcpListener::bind(("127.0.0.1", port)),
-    )
-    .await
-    .expect("port release timeout")
-    .expect("rebind released MCP port");
+    let rebound = bind_released_port(port).await;
     drop(rebound);
 
     let restarted = service
@@ -80,6 +78,21 @@ async fn concurrent_start_is_single_flight_and_stop_releases_the_port() {
         .expect("restart MCP server on released port");
     assert_eq!(restarted.port, Some(port));
     service.stop_and_wait().await.expect("final MCP stop");
+}
+
+/// Windows 可能在 listener 任务退出后短暂延迟同端口重绑，必须在期限内真实重试。
+async fn bind_released_port(port: u16) -> TcpListener {
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        match TcpListener::bind(("127.0.0.1", port)).await {
+            Ok(listener) => return listener,
+            Err(error) if Instant::now() < deadline => {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                let _ = error;
+            }
+            Err(error) => panic!("rebind released MCP port: {error}"),
+        }
+    }
 }
 
 #[tokio::test]
