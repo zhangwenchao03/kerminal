@@ -9,13 +9,9 @@ import {
   type TerminalProfile,
 } from "../../lib/profileApi";
 import type { DockerContainerSummary } from "../../lib/dockerApi";
-import {
-  localTarget,
-  sshTarget,
-} from "../../lib/targetModel";
+import { sshTarget } from "../../lib/targetModel";
 import type { TmuxAttachLaunch } from "../../lib/tmuxApi";
 import type { RemoteHostGroupWithHosts } from "../../lib/remoteHostApi";
-import type { ExternalSshLaunchResolvedRequest } from "../external-launch/externalSshLaunchModel";
 import {
   externalSshLaunchAuthType,
   externalSshLaunchDescription,
@@ -23,8 +19,8 @@ import {
   externalSshLaunchMachineId,
   externalSshLaunchProduction,
   externalSshLaunchTags,
-  isExternalSshMachineId,
-} from "../external-launch/externalSshLaunchModel";
+  type ExternalSshLaunchResolvedRequest,
+} from "../external-launch";
 import {
   machineGroups,
   terminalPanes,
@@ -56,7 +52,6 @@ import type {
 } from "./types";
 import { isToolId, isWorkspaceFileTab } from "./types";
 import {
-  addDockerContainerMachineToGroup,
   addMachineToGroup,
   addPersistentSidebarMachines,
   containerToMachine,
@@ -65,15 +60,18 @@ import {
   isPersistedLocalProfile,
   localMachineIdForProfile,
   localMachinesFromSession,
-  localRuntimeDescription,
   mergeSidebarMachines,
-  nextPinnedSortOrder,
-  nextUnpinnedSortOrder,
-  profileToLocalMachine,
-  removeMachineFromGroups,
-  sortMachineGroups,
   syncTerminalPaneProductionFlags,
 } from "./workspaceMachineModel";
+import {
+  addDockerContainerState,
+  addLocalProfileMachineState,
+  moveSidebarMachineState,
+  pinMachineGroupState,
+  removeSidebarMachineState,
+  renameMachineGroupState,
+  updateLocalMachineState,
+} from "./workspaceMachineState";
 import {
   closeTerminalPaneState,
   closeTerminalTabState,
@@ -96,7 +94,6 @@ import {
   createSshTerminalOpenState,
   createTelnetTerminalOpenState,
   focusExistingMachineTabState,
-  syncContainerTerminalOpenState,
 } from "./workspaceTerminalOpenState";
 import { openTmuxAttachTerminalState } from "./workspaceTmuxState";
 import {
@@ -264,31 +261,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
   setRemoteHostTree: (remoteGroups) =>
     set((state) => updateRemoteHostTreeState(state, remoteGroups)),
   addDockerContainer: (container, options) =>
-    set((state) => {
-      const hostMachine = findMachine(state.machineGroups, container.hostId);
-      if (!hostMachine || hostMachine.kind !== "ssh") {
-        return {};
-      }
-
-      const machine = containerToMachine(container, hostMachine, options);
-
-      const openState = syncContainerTerminalOpenState(state, machine);
-
-      return {
-        machineGroups: addDockerContainerMachineToGroup(
-          state.machineGroups,
-          machine,
-          options?.groupId ?? hostMachine.remoteGroupId,
-        ),
-        removedSidebarMachineIds: removeRemovedSidebarMachineId(
-          state.removedSidebarMachineIds,
-          machine.id,
-        ),
-        selectedMachineId: machine.id,
-        terminalPanes: openState.terminalPanes,
-        terminalTabs: openState.terminalTabs,
-      };
-    }),
+    set((state) => addDockerContainerState(state, container, options)),
   openDockerContainerTerminal: (container, options) =>
     set((state) => {
       if (container.status !== "running") {
@@ -315,169 +288,17 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
       });
     }),
   addLocalProfileMachine: (profile, groupId) =>
-    set((state) => {
-      const machine = {
-        ...profileToLocalMachine(profile),
-        remoteGroupId: groupId,
-      };
-
-      return {
-        machineGroups: addMachineToGroup(state.machineGroups, machine, groupId),
-        removedSidebarMachineIds: removeRemovedSidebarMachineId(
-          state.removedSidebarMachineIds,
-          machine.id,
-        ),
-        selectedMachineId: machine.id,
-      };
-    }),
+    set((state) => addLocalProfileMachineState(state, profile, groupId)),
   moveSidebarMachine: (machineId, groupId) =>
-    set((state) => {
-      const machine = findMachine(state.machineGroups, machineId);
-      if (!machine) {
-        return {};
-      }
-      const nextGroups = addMachineToGroup(
-        removeMachineFromGroups(state.machineGroups, machineId),
-        {
-          ...machine,
-          remoteGroupId: groupId,
-        },
-        groupId,
-      );
-
-      return {
-        machineGroups: nextGroups,
-        selectedMachineId: findMachine(nextGroups, state.selectedMachineId)
-          ? state.selectedMachineId
-          : machineId,
-      };
-    }),
+    set((state) => moveSidebarMachineState(state, machineId, groupId)),
   pinMachineGroup: (groupId, pinned = true) =>
-    set((state) => {
-      const targetGroup = state.machineGroups.find(
-        (group) => group.id === groupId,
-      );
-      if (!targetGroup) {
-        return {};
-      }
-      const nextSortOrder = pinned
-        ? nextPinnedSortOrder(state.machineGroups)
-        : nextUnpinnedSortOrder(state.machineGroups, groupId);
-      const pinnedGroup = {
-        ...targetGroup,
-        pinned,
-        sortOrder: nextSortOrder,
-      };
-
-      return {
-        machineGroups: sortMachineGroups(
-          state.machineGroups.map((group) =>
-            group.id === groupId ? pinnedGroup : group,
-          ),
-        ),
-      };
-    }),
+    set((state) => pinMachineGroupState(state, groupId, pinned)),
   removeSidebarMachine: (machineId) =>
-    set((state) => {
-      const machine = findMachine(state.machineGroups, machineId);
-      if (!machine) {
-        return {};
-      }
-      const removeAsPersistentSidebarMachine =
-        machine.kind === "local" || machine.kind === "dockerContainer";
-      const removeAsTemporaryExternalMachine =
-        machine.kind === "ssh" && isExternalSshMachineId(machine.id);
-      if (
-        !removeAsPersistentSidebarMachine &&
-        !removeAsTemporaryExternalMachine
-      ) {
-        return {};
-      }
-
-      const machineGroups = removeMachineFromGroups(
-        state.machineGroups,
-        machineId,
-      );
-      const selectedMachineExists = Boolean(
-        findMachine(machineGroups, state.selectedMachineId),
-      );
-      return {
-        machineGroups,
-        removedSidebarMachineIds: removeAsPersistentSidebarMachine
-          ? addRemovedSidebarMachineId(state.removedSidebarMachineIds, machineId)
-          : state.removedSidebarMachineIds,
-        selectedMachineId: selectedMachineExists
-          ? state.selectedMachineId
-          : (machineGroups[0]?.machines[0]?.id ?? ""),
-      };
-    }),
+    set((state) => removeSidebarMachineState(state, machineId)),
   renameMachineGroup: (groupId, title) =>
-    set((state) => {
-      const trimmedTitle = title.trim();
-      if (!trimmedTitle) {
-        return {};
-      }
-
-      return {
-        machineGroups: state.machineGroups.map((group) =>
-          group.id === groupId ? { ...group, title: trimmedTitle } : group,
-        ),
-      };
-    }),
+    set((state) => renameMachineGroupState(state, groupId, title)),
   updateLocalMachine: (machineId, options) =>
-    set((state) => {
-      const machine = findMachine(state.machineGroups, machineId);
-      if (!machine || machine.kind !== "local") {
-        return {};
-      }
-
-      const nextMachine: Machine = {
-        ...machine,
-        args: options.args,
-        cwd: options.cwd,
-        description: localRuntimeDescription({
-          args: options.args,
-          cwd: options.cwd,
-          shell: options.shell,
-        }),
-        env: options.env,
-        name: options.title?.trim() || machine.name,
-        remoteGroupId: options.groupId ?? machine.remoteGroupId,
-        shell: options.shell,
-        target: localTarget(machine.profileId),
-      };
-      const machineGroups = addMachineToGroup(
-        removeMachineFromGroups(state.machineGroups, machineId),
-        nextMachine,
-        nextMachine.remoteGroupId,
-      );
-
-      return {
-        machineGroups,
-        selectedMachineId: findMachine(machineGroups, state.selectedMachineId)
-          ? state.selectedMachineId
-          : nextMachine.id,
-        terminalPanes: state.terminalPanes.map((pane) =>
-          pane.machineId === machineId
-            ? {
-                ...pane,
-                args: nextMachine.args,
-                cwd: nextMachine.cwd,
-                env: nextMachine.env,
-                profileId: nextMachine.profileId,
-                shell: nextMachine.shell,
-                target: localTarget(nextMachine.profileId),
-                title: nextMachine.name,
-              }
-            : pane,
-        ),
-        terminalTabs: state.terminalTabs.map((tab) =>
-          tab.machineId === machineId
-            ? { ...tab, title: nextMachine.name }
-            : tab,
-        ),
-      };
-    }),
+    set((state) => updateLocalMachineState(state, machineId, options)),
   selectMachine: (selectedMachineId) => set({ selectedMachineId }),
   selectTab: (activeTabId) =>
     set((state) => {
@@ -1024,12 +845,6 @@ function activeProfile(state: WorkspaceState) {
     state.profiles.find((profile) => profile.isDefault) ??
     state.profiles[0]
   );
-}
-
-function addRemovedSidebarMachineId(machineIds: string[], machineId: string) {
-  return machineIds.includes(machineId)
-    ? machineIds
-    : [...machineIds, machineId];
 }
 
 function removeRemovedSidebarMachineId(

@@ -1865,28 +1865,6 @@
       "rule": "cross-feature-private-import",
       "runtime": true,
       "source": "src/features/workspace/workspaceStore.ts",
-      "specifier": "../external-launch/externalSshLaunchModel",
-      "target": "src/features/external-launch/externalSshLaunchModel.ts",
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-020"
-    },
-    {
-      "kind": "import",
-      "rule": "cross-feature-private-import",
-      "runtime": false,
-      "source": "src/features/workspace/workspaceStore.ts",
-      "specifier": "../external-launch/externalSshLaunchModel",
-      "target": "src/features/external-launch/externalSshLaunchModel.ts",
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-020"
-    },
-    {
-      "kind": "import",
-      "rule": "cross-feature-private-import",
-      "runtime": true,
-      "source": "src/features/workspace/workspaceStore.ts",
       "specifier": "../settings/settingsModel",
       "target": "src/features/settings/settingsModel.ts",
       "deadline": "before TASK-080",
