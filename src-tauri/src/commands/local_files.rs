@@ -14,7 +14,6 @@ use crate::{
     commands::file_dialog::{read_local_directory, LocalDirectoryListing},
     services::local_file_service,
     state::AppState,
-    storage::local_file_operations::LocalFileOperationAuditWrite,
 };
 
 mod stat;
@@ -46,19 +45,9 @@ pub struct LocalRenamePathRequest {
     pub root_path: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct LocalDeletePathRequest {
-    pub path: String,
-    pub kind: String,
-    pub root_path: Option<String>,
-    pub confirm_name: String,
-    pub recursive: bool,
-}
-
 pub use crate::services::local_file_service::{
-    LocalReadTextFileRequest, LocalReadTextFileResponse, LocalWriteTextFileRequest,
-    LocalWriteTextFileResponse,
+    LocalDeletePathRequest, LocalReadTextFileRequest, LocalReadTextFileResponse,
+    LocalWriteTextFileRequest, LocalWriteTextFileResponse,
 };
 
 /// 获取本机路径元信息，用于传输冲突预检；不存在不是错误。
@@ -104,17 +93,21 @@ pub async fn local_files_delete_path(
     request: LocalDeletePathRequest,
 ) -> Result<LocalDirectoryListing, String> {
     let audit_request = request.clone();
-    let delete_result = tokio::task::spawn_blocking(move || delete_path(request))
-        .await
-        .map_err(|error| format!("删除本机路径线程失败: {error}"))?;
-    let audit = local_delete_audit_write(&audit_request, &delete_result);
-    state
-        .storage()
-        .insert_local_file_operation_audit(&audit)
-        .map_err(|error| match &delete_result {
-            Ok(_) => format!("删除已完成但审计写入失败: {error}"),
-            Err(delete_error) => format!("{delete_error}；审计写入失败: {error}"),
-        })?;
+    let delete_result = tokio::task::spawn_blocking(move || {
+        local_file_service::delete_path(request).and_then(|outcome| {
+            read_local_directory(Some(outcome.parent_path.to_string_lossy().as_ref()))
+        })
+    })
+    .await
+    .map_err(|error| format!("删除本机路径线程失败: {error}"))?;
+    local_file_service::record_delete_audit(
+        state.storage(),
+        &audit_request,
+        delete_result
+            .as_ref()
+            .map(|listing| listing.path.as_str())
+            .map_err(String::as_str),
+    )?;
     delete_result
 }
 
@@ -254,89 +247,6 @@ fn rename_path(request: LocalRenamePathRequest) -> Result<LocalDirectoryListing,
         )
     })?;
     read_local_directory(Some(source_parent.to_string_lossy().as_ref()))
-}
-
-fn delete_path(request: LocalDeletePathRequest) -> Result<LocalDirectoryListing, String> {
-    let source = existing_path(&request.path, "源路径")?;
-    let source_parent = source
-        .parent()
-        .ok_or_else(|| format!("源路径缺少父目录: {}", source.display()))?
-        .to_path_buf();
-    let source_name = source
-        .file_name()
-        .ok_or_else(|| format!("不能删除文件系统根路径: {}", source.display()))?
-        .to_string_lossy()
-        .into_owned();
-
-    let source_kind = local_file_kind(&source)?;
-    if request.kind != "file" && request.kind != "directory" {
-        return Err(format!("不支持删除的本机路径类型: {}", request.kind));
-    }
-    if request.kind != source_kind {
-        return Err(format!(
-            "源路径类型不匹配: 请求为 {}，实际为 {}",
-            request.kind, source_kind
-        ));
-    }
-    if request.confirm_name != source_name {
-        return Err("删除确认名称不匹配".to_owned());
-    }
-
-    if let Some(root_path) = request.root_path.as_deref() {
-        if !root_path.trim().is_empty() {
-            let root = existing_directory(root_path, "根目录")?;
-            if source == root {
-                return Err(format!("不能删除根目录本身: {}", root.display()));
-            }
-            if !source.starts_with(&root) {
-                return Err(format!("删除目标超出允许根目录: {}", source.display()));
-            }
-        }
-    }
-
-    if source_kind == "file" {
-        fs::remove_file(&source)
-            .map_err(|error| format!("删除文件失败 {}: {error}", source.display()))?;
-    } else if source_kind == "directory" {
-        if !request.recursive {
-            return Err(format!("删除目录必须启用递归确认: {}", source.display()));
-        }
-        reject_directory_tree_symlinks(&source)?;
-        fs::remove_dir_all(&source)
-            .map_err(|error| format!("删除目录失败 {}: {error}", source.display()))?;
-    } else {
-        return Err(format!("不支持删除的本机路径类型: {source_kind}"));
-    }
-
-    read_local_directory(Some(source_parent.to_string_lossy().as_ref()))
-}
-
-fn local_delete_audit_write(
-    request: &LocalDeletePathRequest,
-    result: &Result<LocalDirectoryListing, String>,
-) -> LocalFileOperationAuditWrite {
-    LocalFileOperationAuditWrite {
-        confirmation_matched: requested_confirm_name_matches(request),
-        error: result.as_ref().err().cloned(),
-        kind: request.kind.clone(),
-        operation: "delete".to_owned(),
-        parent_path: result.as_ref().ok().map(|listing| listing.path.clone()),
-        path: request.path.clone(),
-        recursive: request.recursive,
-        root_path: request.root_path.clone(),
-        status: if result.is_ok() {
-            "succeeded".to_owned()
-        } else {
-            "failed".to_owned()
-        },
-    }
-}
-
-fn requested_confirm_name_matches(request: &LocalDeletePathRequest) -> bool {
-    Path::new(&request.path)
-        .file_name()
-        .map(|name| name.to_string_lossy() == request.confirm_name)
-        .unwrap_or(false)
 }
 
 fn existing_path(path: &str, label: &str) -> Result<PathBuf, String> {
@@ -479,21 +389,6 @@ fn copy_directory_recursive(source: &Path, target: &Path) -> Result<(), String> 
                 kind,
                 source_child.display()
             ));
-        }
-    }
-    Ok(())
-}
-
-fn reject_directory_tree_symlinks(directory: &Path) -> Result<(), String> {
-    for entry in fs::read_dir(directory)
-        .map_err(|error| format!("读取待删除目录失败 {}: {error}", directory.display()))?
-    {
-        let entry = entry
-            .map_err(|error| format!("读取待删除目录项失败 {}: {error}", directory.display()))?;
-        let child = entry.path();
-        reject_symlink(&child, "待删除目录项")?;
-        if local_file_kind(&child)? == "directory" {
-            reject_directory_tree_symlinks(&child)?;
         }
     }
     Ok(())
