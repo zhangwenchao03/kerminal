@@ -342,7 +342,7 @@
     },
     {
       "file": "src/features/terminal/terminalRenderer.ts",
-      "lines": 987,
+      "lines": 978,
       "deadline": "before TASK-080",
       "owner": "terminal-runtime",
       "targetTask": "TASK-050/TASK-052"
@@ -454,7 +454,7 @@
     },
     {
       "file": "tests/frontend/features/terminal/terminalRenderer.test.ts",
-      "lines": 894,
+      "lines": 872,
       "deadline": "before TASK-080",
       "owner": "test-architecture",
       "targetTask": "TASK-071"
