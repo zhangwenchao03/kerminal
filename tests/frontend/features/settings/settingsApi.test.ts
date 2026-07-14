@@ -37,6 +37,29 @@ describe("settingsApi", () => {
     });
   });
 
+  it("accepts an explicit runtime port without leaking platform detection", async () => {
+    const { createSettingsApi } = await import(
+      "../../../../src/features/settings/settingsApi"
+    );
+    const load = vi.fn().mockResolvedValue({
+      ...defaultAppSettings,
+      terminal: { ...defaultAppSettings.terminal, fontSize: 1 },
+    });
+    const save = vi.fn().mockResolvedValue(null);
+    const api = createSettingsApi(() => ({ load, save }));
+
+    await expect(api.getSettings()).resolves.toMatchObject({
+      terminal: { fontSize: 10 },
+    });
+    await expect(
+      api.updateSettings({ ...defaultAppSettings, themeMode: "light" }),
+    ).resolves.toMatchObject({ themeMode: "light" });
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({ themeMode: "light" }),
+    );
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
   it("keeps browser preview reads side-effect free", async () => {
     isTauriMock.mockReturnValue(false);
     const { getSettings } = await import(
