@@ -139,7 +139,7 @@
     },
     {
       "file": "src-tauri/src/services/terminal_manager.rs",
-      "lines": 1269,
+      "lines": 1062,
       "deadline": "before TASK-080",
       "owner": "terminal-runtime",
       "targetTask": "TASK-050/TASK-052"
