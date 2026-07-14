@@ -362,13 +362,6 @@
       "targetTask": "TASK-071"
     },
     {
-      "file": "tests/frontend/features/sftp/SftpToolContent.test.tsx",
-      "lines": 876,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
       "file": "tests/frontend/features/sftp/SftpTransferWorkbench.test.tsx",
       "lines": 943,
       "deadline": "before TASK-080",
