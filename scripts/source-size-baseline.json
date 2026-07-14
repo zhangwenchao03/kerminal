@@ -166,13 +166,6 @@
       "targetTask": "TASK-071"
     },
     {
-      "file": "src-tauri/tests/sftp_service/managed_runtime.rs",
-      "lines": 987,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
       "file": "src-tauri/tests/sftp_service/native_backend.rs",
       "lines": 947,
       "deadline": "before TASK-080",
