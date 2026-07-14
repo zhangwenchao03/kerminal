@@ -65,6 +65,27 @@ pub struct AppState {
     startup_recovery: StartupRecoverySnapshot,
 }
 
+/// AppState 的显式组合入口。
+///
+/// 桌面启动继续使用 `AppState::initialize`，测试与 portable 运行模式可在不依赖
+/// 环境变量的情况下传入已解析的路径集合。
+#[derive(Debug)]
+pub struct AppStateBuilder {
+    paths: KerminalPaths,
+}
+
+impl AppStateBuilder {
+    /// 以已解析的数据目录创建组合入口。
+    pub fn with_paths(paths: KerminalPaths) -> Self {
+        Self { paths }
+    }
+
+    /// 构造应用状态；初始化失败时不会返回半初始化的 AppState。
+    pub fn build(self) -> AppResult<AppState> {
+        AppState::build_from_paths(self.paths)
+    }
+}
+
 impl AppState {
     /// 使用当前系统 home 目录初始化应用状态。
     pub fn initialize() -> AppResult<Self> {
@@ -73,6 +94,11 @@ impl AppState {
 
     /// 使用指定路径初始化应用状态，主要用于测试和未来 portable 模式。
     pub fn initialize_with_paths(paths: KerminalPaths) -> AppResult<Self> {
+        AppStateBuilder::with_paths(paths).build()
+    }
+
+    /// 由 builder 调用的实际构造过程，保证所有入口共享同一初始化顺序。
+    fn build_from_paths(paths: KerminalPaths) -> AppResult<Self> {
         let operations = OperationalCapabilities::initialize(&paths)?;
         let config_files = ConfigFileStore::new(paths.root.clone());
         let (configuration, persisted_settings, startup_recovery) =

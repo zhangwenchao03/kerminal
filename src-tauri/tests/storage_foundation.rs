@@ -14,7 +14,7 @@ use kerminal_lib::{
         expand_home_relative_path, KerminalPaths, COMMAND_DATABASE_FILE_NAME,
         KERMINAL_CONFIG_ROOT_ENV, KERMINAL_DIR_NAME,
     },
-    state::AppState,
+    state::{AppState, AppStateBuilder},
     storage::{
         command_migrations::{self, CURRENT_COMMAND_SCHEMA_VERSION},
         local_file_operations::LocalFileOperationAuditWrite,
@@ -41,6 +41,18 @@ fn resolves_kerminal_paths_under_home_directory() {
     assert_eq!(paths.exports, paths.root.join("exports"));
     assert_eq!(paths.temp, paths.root.join("temp"));
     assert_eq!(paths.diagnostics, paths.root.join("diagnostics"));
+}
+
+#[test]
+fn app_state_builder_initializes_explicit_paths() {
+    let home = tempdir().expect("create temp home");
+    let paths = KerminalPaths::from_home_dir(home.path());
+    let state = AppStateBuilder::with_paths(paths.clone())
+        .build()
+        .expect("build app state");
+
+    assert_eq!(state.paths(), &paths);
+    assert!(paths.command_database_file.exists());
 }
 
 #[test]
