@@ -384,7 +384,7 @@
     },
     {
       "file": "src/features/terminal/XtermPane.runtime.ts",
-      "lines": 923,
+      "lines": 908,
       "deadline": "before TASK-080",
       "owner": "terminal-runtime",
       "targetTask": "TASK-050/TASK-052"
