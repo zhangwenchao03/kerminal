@@ -1,12 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { SshAuthPromptRequest } from "../../../../src/lib/sshAuthApi";
 import {
-  __resetSshAuthPromptStoreForTests,
-  cancelSshAuthPrompt,
-  completeSshAuthPrompt,
-  failSshAuthPrompt,
-  getCurrentSshAuthPrompt,
-  requestSshAuthPrompt,
+  createSshAuthPromptStore,
+  type SshAuthPromptStore,
 } from "../../../../src/features/ssh-auth/sshAuthPromptStore";
 
 const targetPasswordPrompt: SshAuthPromptRequest = {
@@ -20,13 +16,15 @@ const targetPasswordPrompt: SshAuthPromptRequest = {
 };
 
 describe("sshAuthPromptStore", () => {
+  let store: SshAuthPromptStore;
+
   beforeEach(() => {
-    __resetSshAuthPromptStoreForTests();
+    store = createSshAuthPromptStore();
   });
 
   it("queues prompts in order and resolves the completed prompt", async () => {
-    const first = requestSshAuthPrompt({ prompt: targetPasswordPrompt });
-    const second = requestSshAuthPrompt({
+    const first = store.request({ prompt: targetPasswordPrompt });
+    const second = store.request({
       prompt: {
         ...targetPasswordPrompt,
         promptId: "ssh-auth:target:kong@dev.example.com:22:keyPassphrase",
@@ -34,11 +32,11 @@ describe("sshAuthPromptStore", () => {
       },
     });
 
-    const current = getCurrentSshAuthPrompt();
+    const current = store.getCurrent();
     expect(current?.id).toBe("ssh-auth-prompt-1");
     expect(current?.options.prompt.promptId).toBe(targetPasswordPrompt.promptId);
 
-    completeSshAuthPrompt("ssh-auth-prompt-1", {
+    store.complete("ssh-auth-prompt-1", {
       promptId: targetPasswordPrompt.promptId,
       secretKind: "password",
     });
@@ -47,23 +45,25 @@ describe("sshAuthPromptStore", () => {
       promptId: targetPasswordPrompt.promptId,
       secretKind: "password",
     });
-    expect(getCurrentSshAuthPrompt()?.id).toBe("ssh-auth-prompt-2");
+    expect(store.getCurrent()?.id).toBe("ssh-auth-prompt-2");
 
-    cancelSshAuthPrompt("ssh-auth-prompt-2");
+    store.cancel("ssh-auth-prompt-2");
     await expect(second).resolves.toBeNull();
-    expect(getCurrentSshAuthPrompt()).toBeNull();
+    expect(store.getCurrent()).toBeNull();
   });
 
-  it("rejects failed prompts and reset cancels pending prompts", async () => {
-    const failed = requestSshAuthPrompt({ prompt: targetPasswordPrompt });
-    failSshAuthPrompt("ssh-auth-prompt-1", new Error("submit failed"));
+  it("rejects failed prompts without leaking state into another store", async () => {
+    const failed = store.request({ prompt: targetPasswordPrompt });
+    store.fail("ssh-auth-prompt-1", new Error("submit failed"));
 
     await expect(failed).rejects.toThrow("submit failed");
 
-    const pending = requestSshAuthPrompt({ prompt: targetPasswordPrompt });
-    __resetSshAuthPromptStoreForTests();
+    const isolatedStore = createSshAuthPromptStore();
+    const pending = isolatedStore.request({ prompt: targetPasswordPrompt });
+    expect(store.getCurrent()).toBeNull();
 
+    isolatedStore.cancel("ssh-auth-prompt-1");
     await expect(pending).resolves.toBeNull();
-    expect(getCurrentSshAuthPrompt()).toBeNull();
+    expect(isolatedStore.getCurrent()).toBeNull();
   });
 });

@@ -8,11 +8,12 @@ import { formatSshAuthPromptError } from "./sshAuthPromptModel";
 import {
   cancelSshAuthPrompt,
   completeSshAuthPrompt,
+  type SshAuthPromptStore,
   useCurrentSshAuthPrompt,
 } from "./sshAuthPromptStore";
 
-export function SshAuthPromptHost() {
-  const current = useCurrentSshAuthPrompt();
+export function SshAuthPromptHost({ store }: { store?: SshAuthPromptStore }) {
+  const current = useCurrentSshAuthPrompt(store);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,8 +26,8 @@ export function SshAuthPromptHost() {
       return;
     }
     setError(null);
-    cancelSshAuthPrompt(current.id);
-  }, [busy, current]);
+    (store?.cancel ?? cancelSshAuthPrompt)(current.id);
+  }, [busy, current, store]);
 
   const submitPrompt = useCallback(
     async (request: SshAuthPromptResponseRequest) => {
@@ -37,14 +38,14 @@ export function SshAuthPromptHost() {
       setError(null);
       try {
         const receipt = await submitSshAuthPromptResponse(request);
-        completeSshAuthPrompt(current.id, receipt);
+        (store?.complete ?? completeSshAuthPrompt)(current.id, receipt);
       } catch (nextError) {
         setError(formatSshAuthPromptError(nextError));
       } finally {
         setBusy(false);
       }
     },
-    [current],
+    [current, store],
   );
 
   return (
