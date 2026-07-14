@@ -15,8 +15,8 @@ import {
   writeWorkflowCommand,
 } from "../../../../src/features/terminal/terminalSessionRegistry";
 import {
-  clearHostNetworkAssistAutoInjection,
-  setHostNetworkAssistAutoInjection,
+  clearRemoteSocksAutoInjection,
+  setRemoteSocksAutoInjection,
 } from "../../../../src/features/terminal/terminalProxyAutoInjection";
 
 const writeTerminalMock = vi.hoisted(() => vi.fn());
@@ -109,12 +109,12 @@ describe("terminalSessionRegistry", () => {
     expect(getTerminalPaneSession("pane-a")).toBeUndefined();
   });
 
-  it("auto injects host network assist exports into later same-host SSH sessions", async () => {
-    setHostNetworkAssistAutoInjection({
-      command: "export HTTP_PROXY='http://127.0.0.1:18080'",
+  it("auto injects remote SOCKS exports into later same-host SSH sessions", async () => {
+    setRemoteSocksAutoInjection({
+      command: "export ALL_PROXY='socks5h://127.0.0.1:18080'",
       hostId: "host-a",
-      protocol: "http",
-      proxyUrl: "http://127.0.0.1:18080",
+      protocol: "socks5",
+      proxyUrl: "socks5h://127.0.0.1:18080",
       sessionId: "forward-a",
     });
 
@@ -126,12 +126,12 @@ describe("terminalSessionRegistry", () => {
     await vi.waitFor(() =>
       expect(writeTerminalMock).toHaveBeenCalledWith(
         "session-a",
-        "export HTTP_PROXY='http://127.0.0.1:18080'\r",
+        "export ALL_PROXY='socks5h://127.0.0.1:18080'\r",
       ),
     );
     expect(recordCommandHistoryMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        command: "export HTTP_PROXY='http://127.0.0.1:18080'",
+        command: "export ALL_PROXY='socks5h://127.0.0.1:18080'",
         paneId: "pane-a",
         remoteHostId: "host-a",
         source: "tool",
@@ -140,12 +140,12 @@ describe("terminalSessionRegistry", () => {
     );
   });
 
-  it("does not auto inject host network assist exports into a different host", async () => {
-    setHostNetworkAssistAutoInjection({
-      command: "export HTTP_PROXY='http://127.0.0.1:18080'",
+  it("does not auto inject remote SOCKS exports into a different host", async () => {
+    setRemoteSocksAutoInjection({
+      command: "export ALL_PROXY='socks5h://127.0.0.1:18080'",
       hostId: "host-a",
-      protocol: "http",
-      proxyUrl: "http://127.0.0.1:18080",
+      protocol: "socks5",
+      proxyUrl: "socks5h://127.0.0.1:18080",
       sessionId: "forward-a",
     });
 
@@ -160,15 +160,15 @@ describe("terminalSessionRegistry", () => {
     expect(recordCommandHistoryMock).not.toHaveBeenCalled();
   });
 
-  it("stops auto injecting after the host network assist auto-use toggle is cleared", async () => {
-    setHostNetworkAssistAutoInjection({
-      command: "export HTTP_PROXY='http://127.0.0.1:18080'",
+  it("stops auto injecting after the remote SOCKS toggle is cleared", async () => {
+    setRemoteSocksAutoInjection({
+      command: "export ALL_PROXY='socks5h://127.0.0.1:18080'",
       hostId: "host-a",
-      protocol: "http",
-      proxyUrl: "http://127.0.0.1:18080",
+      protocol: "socks5",
+      proxyUrl: "socks5h://127.0.0.1:18080",
       sessionId: "forward-a",
     });
-    clearHostNetworkAssistAutoInjection("host-a", "forward-a");
+    clearRemoteSocksAutoInjection("host-a", "forward-a");
 
     registerTerminalPaneSession("pane-a", "session-a", {
       remoteHostId: "host-a",
@@ -182,11 +182,11 @@ describe("terminalSessionRegistry", () => {
   });
 
   it("does not repeat auto injection when the same pane session is registered again", () => {
-    setHostNetworkAssistAutoInjection({
-      command: "export HTTP_PROXY='http://127.0.0.1:18080'",
+    setRemoteSocksAutoInjection({
+      command: "export ALL_PROXY='socks5h://127.0.0.1:18080'",
       hostId: "host-a",
-      protocol: "http",
-      proxyUrl: "http://127.0.0.1:18080",
+      protocol: "socks5",
+      proxyUrl: "socks5h://127.0.0.1:18080",
       sessionId: "forward-a",
     });
 
@@ -202,12 +202,12 @@ describe("terminalSessionRegistry", () => {
     expect(writeTerminalMock).toHaveBeenCalledTimes(1);
   });
 
-  it("writes workflow commands after the pending host network assist injection", async () => {
-    setHostNetworkAssistAutoInjection({
-      command: "export HTTP_PROXY='http://127.0.0.1:18080'",
+  it("writes workflow commands after the pending remote SOCKS injection", async () => {
+    setRemoteSocksAutoInjection({
+      command: "export ALL_PROXY='socks5h://127.0.0.1:18080'",
       hostId: "host-a",
-      protocol: "http",
-      proxyUrl: "http://127.0.0.1:18080",
+      protocol: "socks5",
+      proxyUrl: "socks5h://127.0.0.1:18080",
       sessionId: "forward-a",
     });
     registerTerminalPaneSession("pane-a", "session-a", {
@@ -223,7 +223,7 @@ describe("terminalSessionRegistry", () => {
     expect(writeTerminalMock).toHaveBeenNthCalledWith(
       1,
       "session-a",
-      "export HTTP_PROXY='http://127.0.0.1:18080'\r",
+      "export ALL_PROXY='socks5h://127.0.0.1:18080'\r",
     );
     expect(writeTerminalMock).toHaveBeenNthCalledWith(
       2,

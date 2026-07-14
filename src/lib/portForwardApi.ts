@@ -1,10 +1,12 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
-export type PortForwardKind = "local" | "remote" | "dynamic";
+export type PortForwardKind =
+  | "local"
+  | "remote"
+  | "dynamic"
+  | "remoteDynamic";
 
 export type PortForwardStatus = "running" | "exited";
-
-export type PortForwardPurpose = "generic" | "hostNetworkAssist";
 
 export type PortForwardProxyProtocol = "http" | "socks5";
 
@@ -60,9 +62,8 @@ export interface PortForwardCreateRequest {
   localBindHost?: string;
   localEndpoint?: PortForwardEndpoint;
   origin?: PortForwardOrigin;
-  proxyProtocol?: PortForwardProxyProtocol;
+  proxyProtocol?: "socks5";
   proxyUrl?: string;
-  purpose?: PortForwardPurpose;
   remoteAccessScope?: PortForwardAccessScope;
   remoteBindHost?: string;
   remoteEndpoint?: PortForwardEndpoint;
@@ -87,7 +88,6 @@ export interface PortForwardSummary {
   origin?: PortForwardOrigin;
   proxyProtocol?: PortForwardProxyProtocol;
   proxyUrl?: string;
-  purpose?: PortForwardPurpose;
   remoteAccessScope?: PortForwardAccessScope;
   remoteBindHost?: string;
   remoteEndpoint?: PortForwardEndpoint;
@@ -113,13 +113,10 @@ export async function createPortForward(
       localBindHost: normalized.localBindHost,
       localEndpoint: normalized.localEndpoint,
       name: normalized.name || defaultForwardName(normalized),
-      origin:
-        normalized.origin ??
-        (normalized.purpose === "hostNetworkAssist" ? "networkAssist" : "user"),
+      origin: normalized.origin ?? "user",
       pid: 0,
       proxyProtocol: normalized.proxyProtocol,
       proxyUrl: normalized.proxyUrl ?? defaultProxyUrl(normalized),
-      purpose: normalized.purpose ?? "generic",
       remoteAccessScope: normalized.remoteAccessScope,
       remoteBindHost: normalized.remoteBindHost,
       remoteEndpoint: normalized.remoteEndpoint,
@@ -199,7 +196,8 @@ function normalizeCreateRequest(
 ): PortForwardCreateRequest {
   const dynamicWithoutTarget =
     request.kind === "dynamic" ||
-    (request.purpose === "hostNetworkAssist" &&
+    request.kind === "remoteDynamic" ||
+    (request.kind === "remote" &&
       request.proxyProtocol === "socks5" &&
       !request.targetHost &&
       !request.targetPort);
@@ -224,8 +222,8 @@ function normalizeCreateRequest(
 }
 
 function defaultForwardName(request: PortForwardCreateRequest) {
-  if (request.purpose === "hostNetworkAssist") {
-    return `主机网络助手 :${request.sourcePort}`;
+  if (request.kind === "remoteDynamic") {
+    return `远端 SOCKS :${request.sourcePort}`;
   }
   if (request.kind === "dynamic") {
     return `SOCKS :${request.sourcePort}`;
@@ -236,13 +234,11 @@ function defaultForwardName(request: PortForwardCreateRequest) {
 function defaultProxyUrl(
   request: PortForwardCreateRequest,
 ): string | undefined {
-  if (request.purpose !== "hostNetworkAssist") {
+  if (request.kind !== "remoteDynamic") {
     return undefined;
   }
-  const protocol = request.proxyProtocol ?? "http";
-  const scheme = protocol === "socks5" ? "socks5h" : "http";
   const host = proxyHostForRemoteUse(request.remoteBindHost ?? request.bindHost);
-  return `${scheme}://${formatProxyHost(host)}:${request.sourcePort}`;
+  return `socks5h://${formatProxyHost(host)}:${request.sourcePort}`;
 }
 
 function proxyHostForRemoteUse(host: string | undefined): string {

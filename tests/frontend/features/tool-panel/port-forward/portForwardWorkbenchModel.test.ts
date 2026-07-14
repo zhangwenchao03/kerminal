@@ -7,7 +7,7 @@ import {
   resolveBindHost,
 } from "../../../../../src/features/tool-panel/port-forward/portForwardWorkbenchModel";
 
-function networkAssistSession(
+function remoteSocksSession(
   overrides: Partial<PortForwardSummary> = {},
 ): PortForwardSummary {
   return {
@@ -16,23 +16,20 @@ function networkAssistSession(
     hostId: "host-a",
     hostName: "host a",
     id: "forward-a",
-    kind: "remote",
-    name: "主机网络助手",
-    origin: "networkAssist",
-    proxyProtocol: "http",
-    proxyUrl: "http://127.0.0.1:18080",
-    purpose: "hostNetworkAssist",
+    kind: "remoteDynamic",
+    name: "远端 SOCKS",
+    origin: "user",
+    proxyProtocol: "socks5",
+    proxyUrl: "socks5h://127.0.0.1:18080",
     sourcePort: 18080,
     status: "running",
-    targetHost: "127.0.0.1",
-    targetPort: 18081,
     ...overrides,
   };
 }
 
 describe("portForwardWorkbenchModel user proxy scripts", () => {
   it("builds a user-level setup script without requiring root-owned paths", () => {
-    const script = buildUserProxySetupScript(networkAssistSession());
+    const script = buildUserProxySetupScript(remoteSocksSession());
 
     expect(script).toContain('KERM_HOME="${HOME:?HOME is required}"');
     expect(script).toContain('KERM_PROFILE="$KERM_HOME/.profile"');
@@ -44,7 +41,7 @@ describe("portForwardWorkbenchModel user proxy scripts", () => {
   });
 
   it("defines undo helpers before restoring user-level tool config", () => {
-    const script = buildUserProxyUndoScript(networkAssistSession());
+    const script = buildUserProxyUndoScript(remoteSocksSession());
 
     expect(script).toBeDefined();
     const undoScript = script ?? "";
@@ -74,14 +71,12 @@ describe("portForwardWorkbenchModel bind and proxy helpers", () => {
       buildProxyUrl({
         bindHost: "0.0.0.0",
         port: 18080,
-        protocol: "http",
       }),
-    ).toBe("http://127.0.0.1:18080");
+    ).toBe("socks5h://127.0.0.1:18080");
     expect(
       buildProxyUrl({
         bindHost: "::",
         port: 18081,
-        protocol: "socks5",
       }),
     ).toBe("socks5h://[::1]:18081");
   });

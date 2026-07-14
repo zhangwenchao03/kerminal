@@ -343,7 +343,6 @@ fn execution_context<'a>(state: &'a AppState) -> McpToolExecutionContext<'a> {
         external_launch_tasks: state.external_launch_tasks(),
         tmux: state.tmux(),
         port_forwards: state.port_forwards(),
-        local_network_proxy: state.local_network_proxy(),
         ssh_commands: state.ssh_commands(),
         ssh_runtime: state.ssh_runtime(),
         paths: state.paths(),

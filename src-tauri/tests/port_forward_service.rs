@@ -18,8 +18,8 @@ use kerminal_lib::{
     models::{
         port_forward::{
             PortForwardCreateRequest, PortForwardEndpoint, PortForwardKind, PortForwardOrigin,
-            PortForwardProxyApplyScope, PortForwardProxyProtocol, PortForwardPurpose,
-            PortForwardRuntimeMode, PortForwardStatus, PortForwardSummary,
+            PortForwardProxyApplyScope, PortForwardProxyProtocol, PortForwardRuntimeMode,
+            PortForwardStatus, PortForwardSummary,
         },
         remote_host::{RemoteHostAuthType, RemoteHostCreateRequest},
     },
@@ -335,20 +335,19 @@ fn create_remote_forward_prefers_managed_runtime_and_releases_channel_on_stop() 
 }
 
 #[test]
-fn create_host_network_assist_http_prefers_managed_remote_forward() {
+fn create_http_network_assist_is_rejected() {
     let (_home, state) = test_state();
     let host_id = create_saved_password_host(&state);
     let backend = Arc::new(FakeManagedSshRuntime::default());
-    let manager = ManagedSshSessionManager::with_backend(Arc::clone(&backend));
+    let manager = ManagedSshSessionManager::with_backend(backend);
     let service = PortForwardService::with_ssh_runtime(
-        manager.clone(),
+        manager,
         state.ssh_auth_broker().clone(),
         state.external_session_materializer().clone(),
     );
     let source_port = unused_local_port();
-    let local_proxy_port = unused_local_port();
 
-    let summary = service
+    let error = service
         .create_with_context(
             state.storage(),
             state.remote_hosts(),
@@ -356,77 +355,21 @@ fn create_host_network_assist_http_prefers_managed_remote_forward() {
             PortForwardCreateRequest {
                 host_id: host_id.clone(),
                 kind: PortForwardKind::Remote,
-                local_endpoint: Some(PortForwardEndpoint {
-                    host: "127.0.0.1".to_owned(),
-                    label: Some("本机 HTTP CONNECT 代理".to_owned()),
-                    port: Some(local_proxy_port),
-                }),
-                name: Some("managed host network assist".to_owned()),
+                name: Some("removed HTTP network assist".to_owned()),
                 origin: PortForwardOrigin::NetworkAssist,
                 proxy_protocol: Some(PortForwardProxyProtocol::Http),
-                purpose: PortForwardPurpose::HostNetworkAssist,
                 remote_bind_host: Some("127.0.0.1".to_owned()),
                 source_port,
                 ..Default::default()
             },
         )
-        .expect("create managed host network assist http forward");
+        .expect_err("HTTP network assist should be rejected");
 
-    assert_eq!(summary.status, PortForwardStatus::Running);
-    assert_eq!(summary.pid, None);
-    let runtime = summary.runtime.as_ref().expect("runtime diagnostics");
-    assert_eq!(runtime.mode, PortForwardRuntimeMode::ManagedSshRuntime);
-    assert_eq!(runtime.tunnel_kind, "hostNetworkAssistHttp");
-    assert_eq!(
-        runtime.managed_channel_kind.as_deref(),
-        Some(SshChannelKind::ForwardListener.as_str())
-    );
-    assert_eq!(summary.purpose, PortForwardPurpose::HostNetworkAssist);
-    assert_eq!(summary.origin, PortForwardOrigin::NetworkAssist);
-    assert_eq!(summary.proxy_protocol, Some(PortForwardProxyProtocol::Http));
-    assert_eq!(summary.target_host.as_deref(), Some("127.0.0.1"));
-    assert_eq!(summary.target_port, Some(local_proxy_port));
-    assert_eq!(backend.connect_count(), 1);
-    assert_eq!(backend.remote_forward_count(), 1);
-    assert_eq!(backend.local_forward_count(), 0);
-    assert_eq!(backend.dynamic_forward_count(), 0);
-    assert_eq!(backend.channel_count(), 0);
-    assert_eq!(
-        backend.last_remote_forward_request(),
-        Some(SshRuntimeRemoteForwardRequest::new(
-            "127.0.0.1",
-            source_port,
-            "127.0.0.1",
-            local_proxy_port
-        ))
-    );
-    let running_snapshot = manager.snapshot().expect("running managed snapshot");
-    assert_eq!(running_snapshot.active_sessions, 1);
-    assert_eq!(running_snapshot.active_channels, 1);
-    assert!(running_snapshot.recent_legacy_fallbacks.is_empty());
-    assert_eq!(
-        running_snapshot.sessions[0]
-            .channel_counts
-            .get(&SshChannelKind::ForwardListener),
-        Some(&1)
-    );
-
-    assert!(service
-        .stop(state.storage(), &summary.id)
-        .expect("stop managed host network assist forward"));
-    let stopped = service
-        .get(state.storage(), &summary.id)
-        .expect("read stopped summary")
-        .expect("stopped summary");
-    assert_eq!(stopped.status, PortForwardStatus::Exited);
-    assert_eq!(stopped.pid, None);
-    let stopped_snapshot = manager.snapshot().expect("stopped managed snapshot");
-    assert_eq!(stopped_snapshot.active_sessions, 1);
-    assert_eq!(stopped_snapshot.active_channels, 0);
+    assert!(error.to_string().contains("HTTP 网络助手已移除"));
 }
 
 #[test]
-fn create_host_network_assist_socks5_prefers_managed_remote_dynamic_forward() {
+fn create_remote_dynamic_socks5_prefers_managed_runtime() {
     let (_home, state) = test_state();
     let host_id = create_saved_password_host(&state);
     let backend = Arc::new(FakeManagedSshRuntime::default());
@@ -445,11 +388,10 @@ fn create_host_network_assist_socks5_prefers_managed_remote_dynamic_forward() {
             state.paths(),
             PortForwardCreateRequest {
                 host_id: host_id.clone(),
-                kind: PortForwardKind::Remote,
-                name: Some("managed host network assist socks".to_owned()),
+                kind: PortForwardKind::RemoteDynamic,
+                name: Some("managed remote SOCKS".to_owned()),
                 origin: PortForwardOrigin::NetworkAssist,
                 proxy_protocol: Some(PortForwardProxyProtocol::Socks5),
-                purpose: PortForwardPurpose::HostNetworkAssist,
                 remote_bind_host: Some("127.0.0.1".to_owned()),
                 source_port,
                 ..Default::default()
@@ -461,12 +403,11 @@ fn create_host_network_assist_socks5_prefers_managed_remote_dynamic_forward() {
     assert_eq!(summary.pid, None);
     let runtime = summary.runtime.as_ref().expect("runtime diagnostics");
     assert_eq!(runtime.mode, PortForwardRuntimeMode::ManagedSshRuntime);
-    assert_eq!(runtime.tunnel_kind, "hostNetworkAssistSocks5");
+    assert_eq!(runtime.tunnel_kind, "remoteDynamic");
     assert_eq!(
         runtime.managed_channel_kind.as_deref(),
         Some(SshChannelKind::ForwardListener.as_str())
     );
-    assert_eq!(summary.purpose, PortForwardPurpose::HostNetworkAssist);
     assert_eq!(summary.origin, PortForwardOrigin::NetworkAssist);
     assert_eq!(
         summary.proxy_protocol,
@@ -982,7 +923,7 @@ fn create_remote_forward_with_native_runtime_proxies_bytes_over_forwarded_tcpip(
 }
 
 #[test]
-fn create_host_network_assist_socks5_with_native_runtime_proxies_remote_dynamic_bytes() {
+fn create_remote_dynamic_socks5_with_native_runtime_proxies_bytes() {
     let echo = EchoServer::start();
     let ssh_server = LoopbackTerminalJumpServer::start(echo.addr);
     let (_home, state) = test_state();
@@ -1019,11 +960,10 @@ fn create_host_network_assist_socks5_with_native_runtime_proxies_remote_dynamic_
             state.paths(),
             PortForwardCreateRequest {
                 host_id: host.id.clone(),
-                kind: PortForwardKind::Remote,
+                kind: PortForwardKind::RemoteDynamic,
                 name: Some("native remote dynamic socks".to_owned()),
                 origin: PortForwardOrigin::NetworkAssist,
                 proxy_protocol: Some(PortForwardProxyProtocol::Socks5),
-                purpose: PortForwardPurpose::HostNetworkAssist,
                 remote_bind_host: Some("127.0.0.1".to_owned()),
                 source_port,
                 ..Default::default()
@@ -1103,7 +1043,6 @@ fn list_restores_persisted_forward_as_exited_after_restart() {
             host_name: host.name,
             name: "网络助手".to_owned(),
             kind: PortForwardKind::Remote,
-            purpose: PortForwardPurpose::HostNetworkAssist,
             origin: PortForwardOrigin::NetworkAssist,
             bind_host: "127.0.0.1".to_owned(),
             local_bind_host: Some("127.0.0.1".to_owned()),
@@ -1121,8 +1060,6 @@ fn list_restores_persisted_forward_as_exited_after_restart() {
             remote_access_scope: None,
             proxy_url: Some("http://127.0.0.1:18080".to_owned()),
             proxy_apply_scope: PortForwardProxyApplyScope::FutureTerminals,
-            shared_proxy_service_id: Some("proxy-service-1".to_owned()),
-            local_proxy_entry_id: Some("proxy-entry-1".to_owned()),
             command_preview: "ssh -R 127.0.0.1:18080:127.0.0.1:18081 tester@127.0.0.1".to_owned(),
             last_error: None,
             runtime: None,
@@ -1154,8 +1091,6 @@ fn list_restores_persisted_forward_as_exited_after_restart() {
     assert_eq!(restored.id, "forward-restart-1");
     assert_eq!(restored.status, PortForwardStatus::Exited);
     assert_eq!(restored.pid, None);
-    assert_eq!(restored.shared_proxy_service_id, None);
-    assert_eq!(restored.local_proxy_entry_id, None);
     assert_eq!(
         restored.last_error.as_deref(),
         Some("应用重启后隧道不会自动重连。")
@@ -1166,7 +1101,7 @@ fn list_restores_persisted_forward_as_exited_after_restart() {
         .expect("restored runtime diagnostics");
     assert_eq!(runtime.mode, PortForwardRuntimeMode::Restored);
     assert_eq!(runtime.backend, "restored");
-    assert_eq!(runtime.tunnel_kind, "hostNetworkAssistHttp");
+    assert_eq!(runtime.tunnel_kind, "legacyHttp");
     assert_eq!(runtime.cleanup_status, "restoredAfterAppRestart");
     assert_eq!(
         runtime.recent_failure.as_deref(),

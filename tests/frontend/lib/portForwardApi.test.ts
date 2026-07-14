@@ -122,7 +122,7 @@ describe("portForwardApi", () => {
     expect(afterDelete.map((session) => session.id)).not.toContain(created.id);
   });
 
-  it("keeps host network assist metadata in browser preview sessions", async () => {
+  it("keeps remote SOCKS metadata in browser preview sessions", async () => {
     isTauriMock.mockReturnValue(false);
     const { deletePortForward, createPortForward, listPortForwards } =
       await import("../../../src/lib/portForwardApi");
@@ -130,28 +130,24 @@ describe("portForwardApi", () => {
     const created = await createPortForward({
       bindHost: "0.0.0.0",
       hostId: "host-lab",
-      kind: "remote",
-      origin: "networkAssist",
-      proxyProtocol: "http",
-      purpose: "hostNetworkAssist",
+      kind: "remoteDynamic",
+      origin: "user",
+      proxyProtocol: "socks5",
       remoteBindHost: "0.0.0.0",
       sourcePort: 18080,
-      targetHost: "127.0.0.1",
-      targetPort: 18081,
     });
     const afterCreate = await listPortForwards();
     await deletePortForward(created.id);
 
-    expect(created.origin).toBe("networkAssist");
-    expect(created.purpose).toBe("hostNetworkAssist");
-    expect(created.proxyUrl).toBe("http://127.0.0.1:18080");
+    expect(created.origin).toBe("user");
+    expect(created.proxyUrl).toBe("socks5h://127.0.0.1:18080");
     expect(afterCreate[0]).toMatchObject({
-      proxyProtocol: "http",
+      proxyProtocol: "socks5",
       remoteBindHost: "0.0.0.0",
     });
   });
 
-  it("passes host network assist preview fields through Tauri commands", async () => {
+  it("passes remote SOCKS fields through Tauri commands", async () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockResolvedValueOnce({
       bindHost: "127.0.0.1",
@@ -159,38 +155,32 @@ describe("portForwardApi", () => {
       hostId: "host-lab",
       hostName: "lab",
       id: "forward-network",
-      kind: "remote",
-      name: "主机网络助手",
+      kind: "remoteDynamic",
+      name: "远端 SOCKS",
       sourcePort: 18080,
       status: "running",
-      targetHost: "127.0.0.1",
-      targetPort: 18081,
     });
     const { createPortForward } = await import("../../../src/lib/portForwardApi");
 
     await createPortForward({
       bindHost: "127.0.0.1",
-      commandPreview: "export HTTP_PROXY='http://127.0.0.1:18080'",
+      commandPreview: "export ALL_PROXY='socks5h://127.0.0.1:18080'",
       hostId: "host-lab",
-      kind: "remote",
-      name: "主机网络助手",
-      origin: "networkAssist",
-      proxyProtocol: "http",
-      proxyUrl: "http://127.0.0.1:18080",
-      purpose: "hostNetworkAssist",
+      kind: "remoteDynamic",
+      name: "远端 SOCKS",
+      origin: "user",
+      proxyProtocol: "socks5",
+      proxyUrl: "socks5h://127.0.0.1:18080",
       remoteBindHost: "127.0.0.1",
       sourcePort: 18080,
-      targetHost: "127.0.0.1",
-      targetPort: 18081,
     });
 
     expect(invokeMock).toHaveBeenCalledWith("port_forward_create", {
       request: expect.objectContaining({
-        commandPreview: "export HTTP_PROXY='http://127.0.0.1:18080'",
-        origin: "networkAssist",
-        proxyProtocol: "http",
-        proxyUrl: "http://127.0.0.1:18080",
-        purpose: "hostNetworkAssist",
+        commandPreview: "export ALL_PROXY='socks5h://127.0.0.1:18080'",
+        origin: "user",
+        proxyProtocol: "socks5",
+        proxyUrl: "socks5h://127.0.0.1:18080",
         remoteBindHost: "127.0.0.1",
       }),
     });

@@ -5,7 +5,6 @@ import {
   type SelectOption,
 } from "../../../components/ui/select";
 import { cn } from "../../../lib/cn";
-import type { PortForwardProxyProtocol } from "../../../lib/portForwardApi";
 import {
   isNonLoopbackBindHost,
   type BindAddressMode,
@@ -153,35 +152,6 @@ export function BindAddressControl({
   );
 }
 
-export function ProtocolToggle({
-  onChange,
-  value,
-}: {
-  onChange: (value: PortForwardProxyProtocol) => void;
-  value: PortForwardProxyProtocol;
-}) {
-  return (
-    <div className="grid grid-cols-1 gap-1 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-field)] p-1">
-      {(["http", "socks5"] as const).map((protocol) => (
-        <button
-          aria-pressed={value === protocol}
-          className={cn(
-            "kerminal-focus-ring kerminal-pressable min-w-0 rounded-lg px-2 py-1.5 text-xs font-medium",
-            value === protocol
-              ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
-              : "text-zinc-500 hover:bg-[var(--surface-hover)] dark:text-zinc-400",
-          )}
-          key={protocol}
-          onClick={() => onChange(protocol)}
-          type="button"
-        >
-          {protocol === "http" ? "HTTP_PROXY" : "SOCKS5"}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 export function SocksModeToggle({
   onChange,
   value,
@@ -222,17 +192,6 @@ export function PreviewValue({ label, value }: { label: string; value: string })
       <code className="kerminal-field-surface mt-1 block break-all rounded-xl border px-3 py-2 font-mono text-xs leading-5 text-zinc-800 dark:text-zinc-200">
         {value}
       </code>
-    </div>
-  );
-}
-
-export function CommandPreview({ value }: { value: string }) {
-  return (
-    <div>
-      <div className={labelClassName}>网络助手注入命令</div>
-      <pre className="kerminal-field-surface mt-1 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-xl border px-3 py-2 font-mono text-[11px] leading-5 text-zinc-800 dark:text-zinc-200">
-        {value}
-      </pre>
     </div>
   );
 }

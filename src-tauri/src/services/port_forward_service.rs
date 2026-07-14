@@ -181,8 +181,6 @@ impl PortForwardService {
                         Some(last_error),
                     );
                     session.summary.pid = None;
-                    session.summary.shared_proxy_service_id = None;
-                    session.summary.local_proxy_entry_id = None;
                     session.cleanup_paths.cleanup_now();
                     exited_updates.push(session.summary.clone());
                 }
@@ -513,6 +511,13 @@ impl PortForwardService {
                     ),
                 _ => return Ok(None),
             },
+            PortForwardKind::RemoteDynamic => facade.start_remote_dynamic_forward(
+                &context,
+                SshRuntimeRemoteDynamicForwardRequest::new(
+                    plan.bind_host.clone(),
+                    request.source_port,
+                ),
+            ),
             PortForwardKind::Dynamic => facade.start_dynamic_forward(
                 &context,
                 SshRuntimeDynamicForwardRequest::new(plan.bind_host.clone(), request.source_port),

@@ -8,8 +8,8 @@ use kerminal_lib::{
     error::AppError,
     models::{
         port_forward::{
-            PortForwardCreateRequest, PortForwardEndpoint, PortForwardKind, PortForwardOrigin,
-            PortForwardProxyProtocol, PortForwardPurpose, PortForwardRemoteAccessScope,
+            PortForwardCreateRequest, PortForwardKind, PortForwardProxyProtocol,
+            PortForwardRemoteAccessScope,
         },
         remote_host::{RemoteHost, RemoteHostAuthType, SshJumpHostOptions},
     },
@@ -218,41 +218,27 @@ fn build_dynamic_forward_plan_does_not_require_target() {
 }
 
 #[test]
-fn build_host_network_assist_http_plan_uses_remote_forward_to_local_proxy() {
+fn build_http_network_assist_plan_is_rejected() {
     let mut request = request(PortForwardKind::Remote);
-    request.purpose = PortForwardPurpose::HostNetworkAssist;
-    request.origin = PortForwardOrigin::NetworkAssist;
-    request.remote_bind_host = Some("0.0.0.0".to_owned());
     request.source_port = 18080;
     request.target_host = None;
     request.target_port = None;
-    request.local_endpoint = Some(PortForwardEndpoint {
-        host: "127.0.0.1".to_owned(),
-        port: Some(40123),
-        label: Some("proxy entry".to_owned()),
-    });
     request.proxy_protocol = Some(PortForwardProxyProtocol::Http);
 
-    let plan = build_forward_plan(
+    let error = build_forward_plan(
         &remote_host(RemoteHostAuthType::Agent),
         "ssh".to_owned(),
         None,
         &request,
     )
-    .expect("build network assist plan");
+    .expect_err("HTTP network assist should be rejected");
 
-    assert!(plan
-        .args
-        .windows(2)
-        .any(|pair| pair == ["-R", "0.0.0.0:18080:127.0.0.1:40123"]));
-    assert_eq!(plan.proxy_url.as_deref(), Some("http://127.0.0.1:18080"));
-    assert_eq!(plan.proxy_protocol, Some(PortForwardProxyProtocol::Http));
+    assert!(error.to_string().contains("HTTP 网络助手已移除"));
 }
 
 #[test]
-fn build_host_network_assist_socks_plan_uses_remote_dynamic() {
-    let mut request = request(PortForwardKind::Remote);
-    request.purpose = PortForwardPurpose::HostNetworkAssist;
+fn build_remote_dynamic_socks_plan_uses_remote_dynamic() {
+    let mut request = request(PortForwardKind::RemoteDynamic);
     request.remote_bind_host = Some("127.0.0.1".to_owned());
     request.source_port = 18081;
     request.target_host = None;
@@ -275,9 +261,8 @@ fn build_host_network_assist_socks_plan_uses_remote_dynamic() {
 }
 
 #[test]
-fn build_host_network_assist_socks_proxy_url_uses_client_reachable_host() {
-    let mut request = request(PortForwardKind::Remote);
-    request.purpose = PortForwardPurpose::HostNetworkAssist;
+fn build_remote_dynamic_socks_proxy_url_uses_client_reachable_host() {
+    let mut request = request(PortForwardKind::RemoteDynamic);
     request.remote_bind_host = Some("0.0.0.0".to_owned());
     request.source_port = 18082;
     request.target_host = None;
@@ -301,18 +286,12 @@ fn build_host_network_assist_socks_proxy_url_uses_client_reachable_host() {
 
 #[test]
 fn proxy_url_formats_ipv6_wildcard_as_loopback_literal() {
-    let mut request = request(PortForwardKind::Remote);
-    request.purpose = PortForwardPurpose::HostNetworkAssist;
+    let mut request = request(PortForwardKind::RemoteDynamic);
     request.remote_bind_host = Some("::".to_owned());
     request.source_port = 18083;
     request.target_host = None;
     request.target_port = None;
-    request.local_endpoint = Some(PortForwardEndpoint {
-        host: "127.0.0.1".to_owned(),
-        port: Some(40124),
-        label: Some("proxy entry".to_owned()),
-    });
-    request.proxy_protocol = Some(PortForwardProxyProtocol::Http);
+    request.proxy_protocol = Some(PortForwardProxyProtocol::Socks5);
 
     let plan = build_forward_plan(
         &remote_host(RemoteHostAuthType::Agent),
@@ -322,7 +301,7 @@ fn proxy_url_formats_ipv6_wildcard_as_loopback_literal() {
     )
     .expect("build ipv6 wildcard network assist plan");
 
-    assert_eq!(plan.proxy_url.as_deref(), Some("http://[::1]:18083"));
+    assert_eq!(plan.proxy_url.as_deref(), Some("socks5h://[::1]:18083"));
 }
 
 #[test]

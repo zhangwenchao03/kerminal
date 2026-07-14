@@ -3,13 +3,14 @@
 //! @author kongweiguang
 
 use crate::models::port_forward::{
-    PortForwardCreateRequest, PortForwardKind, PortForwardProxyProtocol, PortForwardPurpose,
+    PortForwardCreateRequest, PortForwardKind, PortForwardProxyProtocol,
     PortForwardRuntimeDiagnostics, PortForwardRuntimeMode, PortForwardStatus, PortForwardSummary,
 };
 
 use super::runtime_process::ManagedForwardProcess;
 
 pub(super) fn restored_summary(mut summary: PortForwardSummary) -> PortForwardSummary {
+    normalize_legacy_summary(&mut summary);
     if summary.status != PortForwardStatus::Running {
         return summary;
     }
@@ -35,9 +36,18 @@ pub(super) fn stopped_summary(
     }
     summary.status = PortForwardStatus::Exited;
     summary.pid = None;
-    summary.shared_proxy_service_id = None;
-    summary.local_proxy_entry_id = None;
     summary
+}
+
+/// 旧 remote + SOCKS 且无 target 的持久化记录等价于新的显式 RemoteDynamic。
+fn normalize_legacy_summary(summary: &mut PortForwardSummary) {
+    if summary.kind == PortForwardKind::Remote
+        && summary.proxy_protocol == Some(PortForwardProxyProtocol::Socks5)
+        && summary.target_host.is_none()
+        && summary.target_port.is_none()
+    {
+        summary.kind = PortForwardKind::RemoteDynamic;
+    }
 }
 
 pub(super) fn runtime_diagnostics_for_process(
@@ -112,30 +122,10 @@ fn mark_summary_runtime_restored(summary: &mut PortForwardSummary) {
 }
 
 pub(super) fn tunnel_kind_for_request(request: &PortForwardCreateRequest) -> String {
-    if request.purpose == PortForwardPurpose::HostNetworkAssist {
-        return match request
-            .proxy_protocol
-            .unwrap_or(PortForwardProxyProtocol::Http)
-        {
-            PortForwardProxyProtocol::Http => "hostNetworkAssistHttp",
-            PortForwardProxyProtocol::Socks5 => "hostNetworkAssistSocks5",
-        }
-        .to_owned();
-    }
     tunnel_kind_for_kind(request.kind, request.proxy_protocol)
 }
 
 fn tunnel_kind_for_summary(summary: &PortForwardSummary) -> String {
-    if summary.purpose == PortForwardPurpose::HostNetworkAssist {
-        return match summary
-            .proxy_protocol
-            .unwrap_or(PortForwardProxyProtocol::Http)
-        {
-            PortForwardProxyProtocol::Http => "hostNetworkAssistHttp",
-            PortForwardProxyProtocol::Socks5 => "hostNetworkAssistSocks5",
-        }
-        .to_owned();
-    }
     tunnel_kind_for_kind(summary.kind, summary.proxy_protocol)
 }
 
@@ -143,33 +133,28 @@ pub(super) fn tunnel_kind_for_kind(
     kind: PortForwardKind,
     proxy_protocol: Option<PortForwardProxyProtocol>,
 ) -> String {
+    if proxy_protocol == Some(PortForwardProxyProtocol::Http) {
+        return "legacyHttp".to_owned();
+    }
     match kind {
         PortForwardKind::Local => "local",
         PortForwardKind::Remote if proxy_protocol == Some(PortForwardProxyProtocol::Socks5) => {
             "remoteDynamic"
         }
         PortForwardKind::Remote => "remote",
+        PortForwardKind::RemoteDynamic => "remoteDynamic",
         PortForwardKind::Dynamic => "dynamic",
     }
     .to_owned()
 }
 
 pub(super) fn is_managed_forward_candidate(request: &PortForwardCreateRequest) -> bool {
-    match request.purpose {
-        PortForwardPurpose::Generic => true,
-        PortForwardPurpose::HostNetworkAssist => {
-            request.kind == PortForwardKind::Remote
-                && matches!(
-                    request
-                        .proxy_protocol
-                        .unwrap_or(PortForwardProxyProtocol::Http),
-                    PortForwardProxyProtocol::Http | PortForwardProxyProtocol::Socks5
-                )
-        }
-    }
+    request.proxy_protocol != Some(PortForwardProxyProtocol::Http)
 }
 
 pub(super) fn is_remote_dynamic_forward_request(request: &PortForwardCreateRequest) -> bool {
-    request.kind == PortForwardKind::Remote
-        && request.proxy_protocol == Some(PortForwardProxyProtocol::Socks5)
+    matches!(
+        request.kind,
+        PortForwardKind::Remote | PortForwardKind::RemoteDynamic
+    ) && request.proxy_protocol == Some(PortForwardProxyProtocol::Socks5)
 }

@@ -12,8 +12,8 @@ import {
   registerTerminalSessionBinding,
 } from "../../lib/paneSessionTraceApi";
 import {
-  getHostNetworkAssistAutoInjection,
-  resetHostNetworkAssistAutoInjectionForTests,
+  getRemoteSocksAutoInjection,
+  resetRemoteSocksAutoInjectionForTests,
 } from "./terminalProxyAutoInjection";
 
 export interface PaneSessionRecord {
@@ -44,7 +44,7 @@ export interface TerminalPaneRuntimeContext {
 
 const paneSessions = new Map<string, PaneSessionRecord>();
 const paneConnectionGenerations = new Map<string, number>();
-const hostNetworkAssistInjectionTasks = new Map<string, Promise<void>>();
+const remoteSocksInjectionTasks = new Map<string, Promise<void>>();
 
 export interface BroadcastWriteRequest {
   command?: string;
@@ -108,7 +108,7 @@ export function registerTerminalPaneSession(
   };
   paneSessions.set(paneId, record);
   reportTerminalSessionRegistered(paneId, record);
-  void injectHostNetworkAssistIfEnabled(paneId, record)?.catch(() => undefined);
+  void injectRemoteSocksIfEnabled(paneId, record)?.catch(() => undefined);
 }
 
 export function unregisterTerminalPaneSession(
@@ -119,7 +119,7 @@ export function unregisterTerminalPaneSession(
   if (sessionId && currentSession?.sessionId !== sessionId) {
     return;
   }
-  clearInjectedHostNetworkAssistSessions(paneId, currentSession?.sessionId);
+  clearInjectedRemoteSocksSessions(paneId, currentSession?.sessionId);
   paneSessions.delete(paneId);
   if (currentSession) {
     reportTerminalSessionClosed(paneId, currentSession.sessionId);
@@ -200,8 +200,8 @@ export function markTerminalPaneSessionReconnected(
 export function resetTerminalPaneSessionsForTests() {
   paneSessions.clear();
   paneConnectionGenerations.clear();
-  hostNetworkAssistInjectionTasks.clear();
-  resetHostNetworkAssistAutoInjectionForTests();
+  remoteSocksInjectionTasks.clear();
+  resetRemoteSocksAutoInjectionForTests();
 }
 
 function reportTerminalSessionRegistered(
@@ -287,7 +287,7 @@ function joinTargetRefParts(parts: Array<string | undefined>): string {
     .join(":");
 }
 
-function injectHostNetworkAssistIfEnabled(
+function injectRemoteSocksIfEnabled(
   paneId: string,
   session: PaneSessionRecord,
 ): Promise<void> | undefined {
@@ -295,7 +295,7 @@ function injectHostNetworkAssistIfEnabled(
     return undefined;
   }
 
-  const injection = getHostNetworkAssistAutoInjection(session.remoteHostId);
+  const injection = getRemoteSocksAutoInjection(session.remoteHostId);
   if (!injection) {
     return undefined;
   }
@@ -308,7 +308,7 @@ function injectHostNetworkAssistIfEnabled(
   const injectionKey = [paneId, session.sessionId, injectionSessionId].join(
     "\u0000",
   );
-  const existingTask = hostNetworkAssistInjectionTasks.get(injectionKey);
+  const existingTask = remoteSocksInjectionTasks.get(injectionKey);
   if (existingTask) {
     return existingTask;
   }
@@ -329,22 +329,22 @@ function injectHostNetworkAssistIfEnabled(
     )
     .then(() => undefined)
     .catch(() => {
-      hostNetworkAssistInjectionTasks.delete(injectionKey);
+      remoteSocksInjectionTasks.delete(injectionKey);
     });
-  hostNetworkAssistInjectionTasks.set(injectionKey, task);
+  remoteSocksInjectionTasks.set(injectionKey, task);
   return task;
 }
 
-function clearInjectedHostNetworkAssistSessions(
+function clearInjectedRemoteSocksSessions(
   paneId: string,
   sessionId?: string,
 ) {
   const prefix = sessionId
     ? `${paneId}\u0000${sessionId}\u0000`
     : `${paneId}\u0000`;
-  for (const key of hostNetworkAssistInjectionTasks.keys()) {
+  for (const key of remoteSocksInjectionTasks.keys()) {
     if (key.startsWith(prefix)) {
-      hostNetworkAssistInjectionTasks.delete(key);
+      remoteSocksInjectionTasks.delete(key);
     }
   }
 }
@@ -400,10 +400,10 @@ export async function writePaneCommand({
   }
 
   const autoInjectionCommand = session.remoteHostId
-    ? getHostNetworkAssistAutoInjection(session.remoteHostId)?.command.trim()
+    ? getRemoteSocksAutoInjection(session.remoteHostId)?.command.trim()
     : undefined;
   if (autoInjectionCommand && autoInjectionCommand !== normalizedCommand) {
-    await injectHostNetworkAssistIfEnabled(paneId, session);
+    await injectRemoteSocksIfEnabled(paneId, session);
   }
 
   await writeTerminal(session.sessionId, `${normalizedCommand}\r`);

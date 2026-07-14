@@ -9,8 +9,8 @@ use crate::{
     models::{
         port_forward::{
             PortForwardCreateRequest, PortForwardEndpoint, PortForwardKind,
-            PortForwardProxyProtocol, PortForwardPurpose, PortForwardRemoteAccessScope,
-            PortForwardStatus, PortForwardSummary,
+            PortForwardProxyProtocol, PortForwardRemoteAccessScope, PortForwardStatus,
+            PortForwardSummary,
         },
         remote_host::RemoteHost,
         terminal::TerminalSecretInputPlan,
@@ -49,7 +49,7 @@ pub struct ForwardCommandPlan {
     pub local_endpoint: Option<PortForwardEndpoint>,
     /// 远端侧端点。
     pub remote_endpoint: Option<PortForwardEndpoint>,
-    /// 主机网络助手代理协议。
+    /// SOCKS 转发协议；`Http` 仅用于识别旧记录。
     pub proxy_protocol: Option<PortForwardProxyProtocol>,
     /// 远端监听可见范围。
     pub remote_access_scope: Option<PortForwardRemoteAccessScope>,
@@ -104,7 +104,6 @@ impl ForwardCommandPlan {
             host_name: host.name.clone(),
             name: normalized_name(request, host),
             kind: request.kind,
-            purpose: request.purpose,
             origin: request.origin,
             bind_host: self.bind_host.clone(),
             local_bind_host: self.local_bind_host.clone(),
@@ -118,8 +117,6 @@ impl ForwardCommandPlan {
             remote_access_scope: self.remote_access_scope,
             proxy_url: self.proxy_url.clone(),
             proxy_apply_scope: request.proxy_apply_scope,
-            shared_proxy_service_id: request.shared_proxy_service_id.clone(),
-            local_proxy_entry_id: request.local_proxy_entry_id.clone(),
             command_preview: self.command_preview.clone(),
             last_error: None,
             runtime: None,
@@ -267,13 +264,23 @@ struct ForwardRoutePlan {
 }
 
 fn resolve_forward_route(request: &PortForwardCreateRequest) -> AppResult<ForwardRoutePlan> {
-    if request.purpose == PortForwardPurpose::HostNetworkAssist {
-        return resolve_host_network_assist_route(request);
+    if request.proxy_protocol == Some(PortForwardProxyProtocol::Http) {
+        return Err(AppError::InvalidInput(
+            "HTTP 网络助手已移除，请改用远端 SOCKS 转发".to_owned(),
+        ));
     }
 
     match request.kind {
         PortForwardKind::Local => resolve_local_route(request),
+        PortForwardKind::Remote
+            if request.proxy_protocol == Some(PortForwardProxyProtocol::Socks5)
+                && request.target_host.is_none()
+                && request.target_port.is_none() =>
+        {
+            resolve_remote_dynamic_route(request)
+        }
         PortForwardKind::Remote => resolve_remote_route(request),
+        PortForwardKind::RemoteDynamic => resolve_remote_dynamic_route(request),
         PortForwardKind::Dynamic => resolve_dynamic_route(request),
     }
 }
@@ -377,12 +384,7 @@ fn resolve_dynamic_route(request: &PortForwardCreateRequest) -> AppResult<Forwar
     })
 }
 
-fn resolve_host_network_assist_route(
-    request: &PortForwardCreateRequest,
-) -> AppResult<ForwardRoutePlan> {
-    let proxy_protocol = request
-        .proxy_protocol
-        .unwrap_or(PortForwardProxyProtocol::Http);
+fn resolve_remote_dynamic_route(request: &PortForwardCreateRequest) -> AppResult<ForwardRoutePlan> {
     let bind_host = listener_bind_host(request.remote_bind_host.as_deref(), request)?;
     let remote_endpoint = endpoint(
         Some(bind_host.clone()),
@@ -395,65 +397,26 @@ fn resolve_host_network_assist_route(
             .unwrap_or_else(|| infer_remote_access_scope(&bind_host)),
     );
 
-    match proxy_protocol {
-        PortForwardProxyProtocol::Http => {
-            let local_proxy = request.local_endpoint.as_ref().ok_or_else(|| {
-                AppError::InvalidInput("HTTP 网络助手需要本机代理端点".to_owned())
-            })?;
-            let local_host = validate_host_like(&local_proxy.host, "本机代理地址")?;
-            let local_port = required_endpoint_port(local_proxy, "本机代理端口")?;
-            let local_endpoint = endpoint(
-                Some(local_host.clone()),
-                Some(local_port),
-                "本机 HTTP CONNECT 代理",
-            )?;
-            Ok(ForwardRoutePlan {
-                kind: PortForwardKind::Remote,
-                forward_arg: format!(
-                    "{}:{}:{}:{}",
-                    bind_host, request.source_port, local_host, local_port
-                ),
-                bind_host: bind_host.clone(),
-                target_host: Some(local_host),
-                target_port: Some(local_port),
-                local_bind_host: local_endpoint
-                    .as_ref()
-                    .map(|endpoint| endpoint.host.clone()),
-                remote_bind_host: remote_endpoint
-                    .as_ref()
-                    .map(|endpoint| endpoint.host.clone()),
-                local_endpoint,
-                remote_endpoint,
-                proxy_protocol: Some(proxy_protocol),
-                remote_access_scope,
-                proxy_url: Some(format!(
-                    "http://{}:{}",
-                    format_proxy_host(&proxy_client_host(&bind_host)),
-                    request.source_port
-                )),
-            })
-        }
-        PortForwardProxyProtocol::Socks5 => Ok(ForwardRoutePlan {
-            kind: PortForwardKind::Remote,
-            forward_arg: format!("{}:{}", bind_host, request.source_port),
-            bind_host: bind_host.clone(),
-            target_host: None,
-            target_port: None,
-            local_bind_host: None,
-            remote_bind_host: remote_endpoint
-                .as_ref()
-                .map(|endpoint| endpoint.host.clone()),
-            local_endpoint: None,
-            remote_endpoint,
-            proxy_protocol: Some(proxy_protocol),
-            remote_access_scope,
-            proxy_url: Some(format!(
-                "socks5h://{}:{}",
-                format_proxy_host(&proxy_client_host(&bind_host)),
-                request.source_port
-            )),
-        }),
-    }
+    Ok(ForwardRoutePlan {
+        kind: PortForwardKind::RemoteDynamic,
+        forward_arg: format!("{}:{}", bind_host, request.source_port),
+        bind_host: bind_host.clone(),
+        target_host: None,
+        target_port: None,
+        local_bind_host: None,
+        remote_bind_host: remote_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.host.clone()),
+        local_endpoint: None,
+        remote_endpoint,
+        proxy_protocol: Some(PortForwardProxyProtocol::Socks5),
+        remote_access_scope,
+        proxy_url: Some(format!(
+            "socks5h://{}:{}",
+            format_proxy_host(&proxy_client_host(&bind_host)),
+            request.source_port
+        )),
+    })
 }
 
 fn listener_bind_host(
@@ -511,13 +474,6 @@ fn endpoint(
     }))
 }
 
-fn required_endpoint_port(endpoint: &PortForwardEndpoint, label: &str) -> AppResult<u16> {
-    match endpoint.port {
-        Some(port) if port > 0 => Ok(port),
-        _ => Err(AppError::InvalidInput(format!("{label}必须大于 0"))),
-    }
-}
-
 fn required_target_host(request: &PortForwardCreateRequest) -> AppResult<String> {
     let target_host = request
         .target_host
@@ -567,7 +523,7 @@ fn infer_remote_access_scope(bind_host: &str) -> PortForwardRemoteAccessScope {
 pub(super) fn forward_flag(kind: PortForwardKind) -> &'static str {
     match kind {
         PortForwardKind::Local => "-L",
-        PortForwardKind::Remote => "-R",
+        PortForwardKind::Remote | PortForwardKind::RemoteDynamic => "-R",
         PortForwardKind::Dynamic => "-D",
     }
 }

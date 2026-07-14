@@ -181,7 +181,7 @@
     },
     {
       "file": "src-tauri/tests/external_launch_materializer.rs",
-      "lines": 833,
+      "lines": 832,
       "deadline": "before TASK-080",
       "owner": "test-architecture",
       "targetTask": "TASK-071"
@@ -202,21 +202,21 @@
     },
     {
       "file": "src-tauri/tests/mcp_tool_executor_service.rs",
-      "lines": 910,
+      "lines": 895,
       "deadline": "before TASK-080",
       "owner": "test-architecture",
       "targetTask": "TASK-071"
     },
     {
       "file": "src-tauri/tests/port_forward_service.rs",
-      "lines": 1407,
+      "lines": 1342,
       "deadline": "before TASK-080",
       "owner": "test-architecture",
       "targetTask": "TASK-071"
     },
     {
       "file": "src-tauri/tests/real_host_60_core_smoke.rs",
-      "lines": 866,
+      "lines": 863,
       "deadline": "before TASK-080",
       "owner": "test-architecture",
       "targetTask": "TASK-071"
@@ -405,7 +405,7 @@
     },
     {
       "file": "src/features/tool-panel/PortForwardToolContent.tsx",
-      "lines": 962,
+      "lines": 863,
       "deadline": "before TASK-080",
       "owner": "frontend-architecture",
       "targetTask": "TASK-070"

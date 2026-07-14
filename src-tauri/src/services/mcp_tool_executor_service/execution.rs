@@ -286,19 +286,15 @@ pub(super) async fn execute_tool(
         "tmux.attach_plan" => execute_tmux_attach_plan(context.tmux, arguments),
         "port_forward.create" => execute_port_forward_create(
             context.port_forwards,
-            context.local_network_proxy,
             context.storage,
             context.remote_hosts,
             context.paths,
             arguments,
         ),
         "port_forward.list" => execute_port_forward_list(context.port_forwards, context.storage),
-        "port_forward.close" => execute_port_forward_close(
-            context.port_forwards,
-            context.local_network_proxy,
-            context.storage,
-            arguments,
-        ),
+        "port_forward.close" => {
+            execute_port_forward_close(context.port_forwards, context.storage, arguments)
+        }
         "history.search" => {
             execute_history_search(context.command_history, context.command_store, arguments)
         }

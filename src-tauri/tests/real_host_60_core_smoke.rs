@@ -13,7 +13,7 @@ use kerminal_lib::{
         docker::DockerContainerListRequest,
         port_forward::{
             PortForwardCreateRequest, PortForwardKind, PortForwardOrigin,
-            PortForwardProxyApplyScope, PortForwardPurpose, PortForwardStatus,
+            PortForwardProxyApplyScope, PortForwardStatus,
         },
         server_info::ServerInfoRequest,
         sftp::{
@@ -596,7 +596,6 @@ fn exercise_port_forward(state: &AppState) {
                 host_id: REAL_HOST_ID.to_owned(),
                 name: Some("real-host-60-core-smoke".to_owned()),
                 kind: PortForwardKind::Local,
-                purpose: PortForwardPurpose::Generic,
                 origin: PortForwardOrigin::User,
                 bind_host: Some("127.0.0.1".to_owned()),
                 local_bind_host: Some("127.0.0.1".to_owned()),
@@ -609,8 +608,6 @@ fn exercise_port_forward(state: &AppState) {
                 proxy_protocol: None,
                 remote_access_scope: None,
                 proxy_apply_scope: PortForwardProxyApplyScope::None,
-                shared_proxy_service_id: None,
-                local_proxy_entry_id: None,
             },
         )
         .expect("create local port forward to real-host SSH");

@@ -8,8 +8,8 @@ use kerminal_lib::{
     models::{
         agent_session::{AgentId, AgentSessionCreateRequest},
         port_forward::{
-            PortForwardOrigin, PortForwardProxyApplyScope, PortForwardProxyProtocol,
-            PortForwardPurpose, PortForwardRemoteAccessScope,
+            PortForwardKind, PortForwardOrigin, PortForwardProxyApplyScope,
+            PortForwardProxyProtocol, PortForwardRemoteAccessScope,
         },
         remote_host::{RemoteHostAuthType, RemoteHostCreateRequest},
         settings::{AppSettings, ExternalLaunchToolSetting},
@@ -36,28 +36,28 @@ use support::managed_ssh_runtime::{ssh_command_service_with_fake_runtime, FakeMa
 use tempfile::{tempdir, TempDir};
 
 #[test]
-fn parses_host_network_assist_http_arguments_for_mcp_tool_invocations() {
+fn parses_remote_dynamic_socks_arguments_for_mcp_tool_invocations() {
     let arguments = json!({
         "hostId": "host-a",
-        "kind": "remote",
-        "purpose": "hostNetworkAssist",
-        "proxyProtocol": "http",
+        "kind": "remoteDynamic",
+        "proxyProtocol": "socks5",
         "remoteBindHost": "0.0.0.0",
         "remoteAccessScope": "allInterfaces",
         "proxyApplyScope": "toolOnly",
-        "sourcePort": 18080,
-        "localProxyHost": "127.0.0.1",
-        "localProxyPort": 0
+        "sourcePort": 18080
     });
     let arguments = arguments.as_object().expect("object args");
 
     let request =
-        port_forward_create_request_from_arguments(arguments).expect("parse network assist");
+        port_forward_create_request_from_arguments(arguments).expect("parse remote SOCKS");
 
     assert_eq!(request.host_id, "host-a");
     assert_eq!(request.origin, PortForwardOrigin::McpTool);
-    assert_eq!(request.purpose, PortForwardPurpose::HostNetworkAssist);
-    assert_eq!(request.proxy_protocol, Some(PortForwardProxyProtocol::Http));
+    assert_eq!(request.kind, PortForwardKind::RemoteDynamic);
+    assert_eq!(
+        request.proxy_protocol,
+        Some(PortForwardProxyProtocol::Socks5)
+    );
     assert_eq!(
         request.remote_access_scope,
         Some(PortForwardRemoteAccessScope::AllInterfaces)
@@ -67,29 +67,15 @@ fn parses_host_network_assist_http_arguments_for_mcp_tool_invocations() {
         PortForwardProxyApplyScope::ToolOnly
     );
     assert_eq!(request.remote_bind_host.as_deref(), Some("0.0.0.0"));
-    assert_eq!(
-        request
-            .local_endpoint
-            .as_ref()
-            .map(|endpoint| endpoint.host.as_str()),
-        Some("127.0.0.1")
-    );
-    assert_eq!(
-        request
-            .local_endpoint
-            .as_ref()
-            .and_then(|endpoint| endpoint.port),
-        Some(0)
-    );
+    assert_eq!(request.local_endpoint, None);
 }
 
 #[test]
-fn rejects_invalid_network_assist_proxy_protocol() {
+fn rejects_removed_http_proxy_protocol() {
     let arguments = json!({
         "hostId": "host-a",
-        "kind": "remote",
-        "purpose": "hostNetworkAssist",
-        "proxyProtocol": "ftp",
+        "kind": "remoteDynamic",
+        "proxyProtocol": "http",
         "sourcePort": 18080
     });
     let arguments = arguments.as_object().expect("object args");
@@ -865,7 +851,6 @@ fn mcp_context_with_ssh_runtime<'a>(
         docker_hosts: state.docker_hosts(),
         external_launch_intake: state.external_launch_intake(),
         external_launch_tasks: state.external_launch_tasks(),
-        local_network_proxy: state.local_network_proxy(),
         paths: state.paths(),
         port_forwards: state.port_forwards(),
         remote_hosts: state.remote_hosts(),

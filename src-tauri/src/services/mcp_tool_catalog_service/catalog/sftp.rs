@@ -192,7 +192,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
         tool(
             "port_forward.create",
             "创建端口转发",
-            "创建 SSH 端口转发或主机网络助手。",
+            "创建 SSH 端口转发，包括本机和远端 SOCKS 转发。",
             ToolCategory::PortForward,
             ToolEffect::Remote,
             object_schema(vec![
@@ -202,19 +202,13 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
                     "kind",
                     "转发类型。",
                     true,
-                    vec!["local", "remote", "dynamic"],
-                ),
-                enum_field(
-                    "purpose",
-                    "转发用途；hostNetworkAssist 建受管代理隧道。",
-                    false,
-                    vec!["generic", "hostNetworkAssist"],
+                    vec!["local", "remote", "remoteDynamic", "dynamic"],
                 ),
                 enum_field(
                     "proxyProtocol",
-                    "网络助手代理协议。",
+                    "SOCKS 转发代理协议。",
                     false,
-                    vec!["http", "socks5"],
+                    vec!["socks5"],
                 ),
                 string_field("bindHost", "监听地址，默认 127.0.0.1。", false),
                 string_field("localBindHost", "本机侧监听地址或本机代理绑定地址。", false),
@@ -222,16 +216,6 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
                 number_field("sourcePort", "监听端口；remote 时为远端端口。", true),
                 string_field("targetHost", "目标主机；dynamic 转发可为空。", false),
                 number_field("targetPort", "目标端口；dynamic 转发可为空。", false),
-                string_field(
-                    "localProxyHost",
-                    "HTTP 助手本机代理地址；为空自动分配。",
-                    false,
-                ),
-                number_field(
-                    "localProxyPort",
-                    "HTTP 助手本机代理端口；为空自动分配。",
-                    false,
-                ),
                 enum_field(
                     "remoteAccessScope",
                     "远端监听范围；非 loopback 需 GatewayPorts。",

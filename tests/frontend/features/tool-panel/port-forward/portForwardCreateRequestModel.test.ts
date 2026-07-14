@@ -10,13 +10,10 @@ const baseInput = {
   hostTargetPort: "5432",
   localBindHost: "127.0.0.1",
   localListenPort: "15432",
-  localProxyHost: "127.0.0.1",
-  localProxyPort: "18081",
   localSocksPort: "1080",
   localTargetHost: "127.0.0.1",
   localTargetPort: "3000",
   name: "  Postgres  ",
-  proxyProtocol: "http",
   remoteBindHost: "127.0.0.1",
   remoteBindMode: "loopback",
   remoteListenPort: "18080",
@@ -42,21 +39,22 @@ describe("portForwardCreateRequestModel", () => {
     });
   });
 
-  it("builds network assist metadata from the create request", () => {
+  it("builds remote SOCKS metadata from the create request", () => {
     const request = buildPortForwardCreateRequest({
       ...baseInput,
-      name: "network",
+      name: "remote socks",
       remoteBindHost: "0.0.0.0",
       remoteBindMode: "all",
-      scenario: "hostNetwork",
+      scenario: "socksAdvanced",
+      socksMode: "remoteDynamic",
     });
 
     expect(request).toEqual({
       value: expect.objectContaining({
-        origin: "networkAssist",
-        proxyProtocol: "http",
-        proxyUrl: "http://127.0.0.1:18080",
-        purpose: "hostNetworkAssist",
+        kind: "remoteDynamic",
+        origin: "user",
+        proxyProtocol: "socks5",
+        proxyUrl: "socks5h://127.0.0.1:18080",
         remoteAccessScope: "allInterfaces",
       }),
     });
@@ -65,10 +63,9 @@ describe("portForwardCreateRequestModel", () => {
     }
     expect(metadataFromCreateRequest(request.value)).toEqual(
       expect.objectContaining({
-        origin: "networkAssist",
-        proxyProtocol: "http",
-        proxyUrl: "http://127.0.0.1:18080",
-        purpose: "hostNetworkAssist",
+        origin: "user",
+        proxyProtocol: "socks5",
+        proxyUrl: "socks5h://127.0.0.1:18080",
         remoteAccessScope: "allInterfaces",
       }),
     );

@@ -23,7 +23,6 @@ use crate::{
             ExternalLaunchIntake, ExternalLaunchPolicy, ExternalLaunchTaskRegistry,
             ExternalSessionMaterializer,
         },
-        local_network_proxy_service::LocalNetworkProxyService,
         mcp_streamable_http_server::McpStreamableHttpServerService,
         mcp_tool_catalog_service::McpToolCatalogService,
         mcp_tool_executor_service::McpToolExecutorService,
@@ -68,7 +67,6 @@ pub struct AppState {
     external_launch_intake: ExternalLaunchIntake,
     external_launch_tasks: ExternalLaunchTaskRegistry,
     external_session_materializer: ExternalSessionMaterializer,
-    local_network_proxy: LocalNetworkProxyService,
     mcp_http_server: McpStreamableHttpServerService,
     paths: KerminalPaths,
     port_forwards: PortForwardService,
@@ -152,7 +150,6 @@ impl AppState {
         let docker_hosts = DockerHostService::new();
         let external_launch_intake = ExternalLaunchIntake::new();
         let external_launch_tasks = ExternalLaunchTaskRegistry::new();
-        let local_network_proxy = LocalNetworkProxyService::new();
         let config_files = ConfigFileStore::new(paths.root.clone());
         let workspace_sync = WorkspaceSyncService::new(paths.clone());
         workspace_sync.ensure_bootstrap()?;
@@ -248,7 +245,6 @@ impl AppState {
             external_launch_intake,
             external_launch_tasks,
             external_session_materializer,
-            local_network_proxy,
             mcp_http_server,
             paths,
             port_forwards,
@@ -353,11 +349,6 @@ impl AppState {
     /// 返回外部 SSH 启动临时 target materializer。
     pub fn external_session_materializer(&self) -> &ExternalSessionMaterializer {
         &self.external_session_materializer
-    }
-
-    /// 返回本机共享网络代理服务。
-    pub fn local_network_proxy(&self) -> &LocalNetworkProxyService {
-        &self.local_network_proxy
     }
 
     /// 返回 Streamable HTTP MCP Server 生命周期服务。
