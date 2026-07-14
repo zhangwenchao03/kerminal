@@ -209,7 +209,7 @@
     },
     {
       "file": "src/features/machine-sidebar/MachineSidebar.parts.tsx",
-      "lines": 936,
+      "lines": 929,
       "deadline": "before TASK-080",
       "owner": "frontend-architecture",
       "targetTask": "TASK-070"
