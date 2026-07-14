@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type {
-  MachineSidebarMachineDragEvent,
-  MachineSidebarViewMode,
-} from "../features/machine-sidebar/MachineSidebar.shared";
+import type { MachineSidebarViewMode } from "../features/machine-sidebar/MachineSidebar.shared";
 import type {
   SettingsSaveState,
   SettingsSectionId,
@@ -11,14 +8,6 @@ import {
   resolveThemeMode,
   type AppSettings,
 } from "../features/settings/settingsModel";
-import type { TerminalSplitDropIndicator } from "../features/terminal/TerminalSplitDropOverlay";
-import {
-  resolveTerminalSplitDropZone,
-  terminalSplitDropZoneToDirection,
-  terminalSplitDropZoneToPlacement,
-  type TerminalSplitDropZone,
-} from "../features/terminal/terminalSplitDropZones";
-import { isTerminalSplitMachineKind } from "../features/terminal/terminalSplitTargets";
 import { writeBroadcastCommand } from "../features/terminal/terminalSessionRegistry";
 import { useWorkspaceStore } from "../features/workspace/workspaceStore";
 import {
@@ -45,7 +34,7 @@ import type {
   SftpTransferCreatedHostTarget,
   SftpTransferCreateHostRequest,
 } from "../features/sftp/SftpTransferWorkbench";
-import { isTerminalSessionTab, type ToolId } from "../features/workspace/types";
+import type { ToolId } from "../features/workspace/types";
 import { resolveWorkspaceTabCloseDecision } from "../features/workspace/workspaceTabCloseGuardModel";
 import {
   htmlLanguage,
@@ -69,10 +58,10 @@ import {
 } from "./configDirtyGuardModel";
 import { KerminalShellLayout } from "./KerminalShell.layout";
 import { useKerminalShellStartupSync } from "./useKerminalShellStartupSync";
+import { useKerminalShellTerminalDrop } from "./useKerminalShellTerminalDrop";
 import {
   isSftpCapableRemoteHost,
   shellQuote,
-  terminalSplitDropZoneLabel,
 } from "./KerminalShell.contextWorkspaceShellHelpers";
 import {
   SNIPPET_PANEL_OPEN_EVENT,
@@ -171,15 +160,12 @@ export function KerminalShell() {
     hostContainersInitialContainerId,
     setHostContainersInitialContainerId,
   ] = useState<string>();
-  const [terminalSplitDropIndicator, setTerminalSplitDropIndicator] =
-    useState<TerminalSplitDropIndicator | null>(null);
   const [pendingShellCloseTabIds, setPendingShellCloseTabIds] = useState<
     string[] | null
   >(null);
   const [pendingShellDirtyCloseTabIds, setPendingShellDirtyCloseTabIds] =
     useState<string[] | null>(null);
   const workspaceFrameRef = useRef<HTMLDivElement>(null);
-  const terminalSplitDropZoneRef = useRef<TerminalSplitDropZone | null>(null);
   const createdSftpHostSequenceRef = useRef(0);
   const settingsDialogDirtyRef = useRef(false);
   const settingsDialogOpenRef = useRef(settingsDialogOpen);
@@ -255,70 +241,17 @@ export function KerminalShell() {
       : 48
     : 0;
   const handleBroadcastCommand = useCallback(writeBroadcastCommand, []);
-  const resolveTerminalDropZone = useCallback(
-    (event: MachineSidebarMachineDragEvent) => {
-      const activeTab =
-        terminalTabs.find((tab) => tab.id === activeTabId) ?? terminalTabs[0];
-      if (
-        !activeTab ||
-        !isTerminalSessionTab(activeTab) ||
-        !focusedPaneId ||
-        !isTerminalSplitMachineKind(event.machine.kind) ||
-        typeof document === "undefined"
-      ) {
-        return null;
-      }
-      const terminalContent = document.querySelector<HTMLElement>(
-        "[data-terminal-workspace-content]",
-      );
-      if (!terminalContent) {
-        return null;
-      }
-      return resolveTerminalSplitDropZone(
-        terminalContent.getBoundingClientRect(),
-        event,
-      );
-    },
-    [activeTabId, focusedPaneId, terminalTabs],
-  );
-  const handleExternalMachineDrag = useCallback(
-    (event: MachineSidebarMachineDragEvent) => {
-      const zone = resolveTerminalDropZone(event);
-      terminalSplitDropZoneRef.current = zone;
-      if (!zone) {
-        setTerminalSplitDropIndicator(null);
-        return undefined;
-      }
-      setTerminalSplitDropIndicator((current) =>
-        current?.machineName === event.machine.name && current.zone === zone
-          ? current
-          : { machineName: event.machine.name, zone },
-      );
-      return {
-        hint: `松开分屏到${terminalSplitDropZoneLabel(zone)}`,
-      };
-    },
-    [resolveTerminalDropZone],
-  );
-  const handleExternalMachineDragEnd = useCallback(() => {
-    terminalSplitDropZoneRef.current = null;
-    setTerminalSplitDropIndicator(null);
-  }, []);
-  const handleExternalMachineDrop = useCallback(
-    (event: MachineSidebarMachineDragEvent) => {
-      const zone = resolveTerminalDropZone(event);
-      handleExternalMachineDragEnd();
-      if (!zone) {
-        return false;
-      }
-      splitFocusedPane(terminalSplitDropZoneToDirection(zone), {
-        placement: terminalSplitDropZoneToPlacement(zone),
-        targetMachineId: event.machine.id,
-      });
-      return true;
-    },
-    [handleExternalMachineDragEnd, resolveTerminalDropZone, splitFocusedPane],
-  );
+  const {
+    handleExternalMachineDrag,
+    handleExternalMachineDragEnd,
+    handleExternalMachineDrop,
+    terminalSplitDropIndicator,
+  } = useKerminalShellTerminalDrop({
+    activeTabId,
+    focusedPaneId,
+    splitFocusedPane,
+    terminalTabs,
+  });
   const openSettingsTool = useCallback(
     (sectionId: SettingsSectionId = DEFAULT_SETTINGS_SECTION_ID) => {
       settingsDialogDirtyRef.current = false;
