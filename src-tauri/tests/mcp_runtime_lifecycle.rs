@@ -118,3 +118,35 @@ async fn concurrent_start_stop_cycles_never_leave_a_listener_or_stale_status() {
         assert!(!service.status().expect("cycle status").running);
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn aborted_start_future_never_leaves_the_service_stuck_in_starting() {
+    let home = tempfile::tempdir().expect("temp home");
+    let state = AppState::initialize_with_paths(KerminalPaths::from_home_dir(home.path()))
+        .expect("initialize app state");
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .expect("build mock app");
+    let service = app.state::<AppState>().mcp_http_server().clone();
+
+    for _ in 0..32 {
+        let start_service = service.clone();
+        let app_handle = app.handle().clone();
+        let start = tokio::spawn(async move { start_service.start(app_handle, None).await });
+        tokio::task::yield_now().await;
+        start.abort();
+        let _ = start.await;
+        tokio::time::timeout(Duration::from_secs(2), service.stop_and_wait())
+            .await
+            .expect("aborted start must not strand lifecycle waiters")
+            .expect("settle aborted start");
+    }
+
+    let restarted = service
+        .start(app.handle().clone(), None)
+        .await
+        .expect("start after aborted futures");
+    assert!(restarted.running);
+    service.stop_and_wait().await.expect("final stop");
+}

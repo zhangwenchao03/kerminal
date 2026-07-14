@@ -92,6 +92,57 @@ enum McpStartDecision {
     },
 }
 
+struct McpStartGuard {
+    state: Arc<Mutex<McpStreamableHttpServerState>>,
+    generation: u64,
+    cancellation: CancellationToken,
+    completion: Arc<LifecycleCompletion>,
+    armed: bool,
+}
+
+impl McpStartGuard {
+    fn new(
+        state: Arc<Mutex<McpStreamableHttpServerState>>,
+        generation: u64,
+        cancellation: CancellationToken,
+        completion: Arc<LifecycleCompletion>,
+    ) -> Self {
+        Self {
+            state,
+            generation,
+            cancellation,
+            completion,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for McpStartGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        self.cancellation.cancel();
+        if let Ok(mut state) = self.state.lock() {
+            let owns_generation = match state.lifecycle {
+                McpStreamableHttpServerLifecycle::Starting { generation, .. }
+                | McpStreamableHttpServerLifecycle::Stopping { generation, .. } => {
+                    generation == self.generation
+                }
+                _ => false,
+            };
+            if owns_generation {
+                state.lifecycle = McpStreamableHttpServerLifecycle::Stopped;
+            }
+        }
+        self.completion.complete();
+    }
+}
+
 impl Default for McpStreamableHttpServerService {
     fn default() -> Self {
         Self {
@@ -140,12 +191,20 @@ impl McpStreamableHttpServerService {
                 } => break (generation, cancellation, completion),
             }
         };
+        let mut start_guard = McpStartGuard::new(
+            self.inner.clone(),
+            generation,
+            cancellation.clone(),
+            completion.clone(),
+        );
 
         let request = request.unwrap_or_default();
         let bind_address = match normalize_bind_address(request.host.as_deref()) {
             Ok(value) => value,
             Err(error) => {
-                self.finish_start(generation, &completion, None).await?;
+                let finish = self.finish_start(generation, &completion, None).await;
+                start_guard.disarm();
+                finish?;
                 return Err(error);
             }
         };
@@ -153,7 +212,9 @@ impl McpStreamableHttpServerService {
         let (listener, local_addr) = match bind_loopback_port_from(port).await {
             Ok(value) => value,
             Err(error) => {
-                self.finish_start(generation, &completion, None).await?;
+                let finish = self.finish_start(generation, &completion, None).await;
+                start_guard.disarm();
+                finish?;
                 return Err(error);
             }
         };
@@ -204,10 +265,11 @@ impl McpStreamableHttpServerService {
             task,
         };
         let status = status_from_handle(Some(&handle));
-        if self
+        let published = self
             .finish_start(generation, &completion, Some(handle))
-            .await?
-        {
+            .await;
+        start_guard.disarm();
+        if published? {
             Ok(status)
         } else {
             Ok(self.status()?)
