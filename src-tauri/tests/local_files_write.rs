@@ -102,6 +102,34 @@ async fn local_files_write_text_file_updates_existing_file_with_expected_revisio
 }
 
 #[tokio::test]
+async fn local_files_write_text_file_accepts_revision_from_truncated_read() {
+    let temp = tempdir().expect("temp dir");
+    let file = temp.path().join("large.txt");
+    fs::write(&file, "prefix\n".repeat(32)).expect("write source");
+
+    let read_response = local_files_read_text_file(LocalReadTextFileRequest {
+        max_bytes: Some(16),
+        path: path_string(&file),
+    })
+    .await
+    .expect("read truncated text file");
+    assert!(read_response.truncated);
+
+    local_files_write_text_file(LocalWriteTextFileRequest {
+        content: "replacement\n".to_owned(),
+        create: false,
+        encoding: "utf-8".to_owned(),
+        expected_revision: Some(read_response.revision),
+        overwrite_on_conflict: false,
+        path: path_string(&file),
+    })
+    .await
+    .expect("write without a false revision conflict");
+
+    assert_eq!(fs::read_to_string(&file).unwrap(), "replacement\n");
+}
+
+#[tokio::test]
 async fn local_files_write_text_file_rejects_revision_conflict() {
     let temp = tempdir().expect("temp dir");
     let file = temp.path().join("notes.txt");

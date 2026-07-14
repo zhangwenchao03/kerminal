@@ -392,7 +392,8 @@ fn read_text_file(request: LocalReadTextFileRequest) -> Result<LocalReadTextFile
         truncated,
         encoding: file_preview_response_encoding(binary).to_owned(),
         line_ending: detect_line_ending(&content),
-        revision: local_file_revision(&path, Some(sha256_hex(visible_bytes)))?,
+        // 保存冲突检测必须基于完整文件，而不是截断预览的可见片段。
+        revision: local_file_revision(&path, None)?,
         binary,
         readonly: binary || metadata.permissions().readonly(),
         content,
