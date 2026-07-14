@@ -6,10 +6,10 @@ use crate::{
     error::{AppError, AppResult},
     models::terminal::{
         TerminalAgentSignal, TerminalAgentSignalSummary, TerminalCreateRequest,
-        TerminalOutputEvent, TerminalOutputKind, TerminalOutputSnapshot,
-        TerminalPtyOutputPumpFlushReason, TerminalPtyOutputPumpStats, TerminalResizeRequest,
-        TerminalSecretInputPlan, TerminalSessionLogState, TerminalSessionReapDiagnostics,
-        TerminalSessionStatus, TerminalSessionSummary, TerminalShellIntegrationSummary,
+        TerminalOutputEvent, TerminalOutputSnapshot, TerminalPtyOutputPumpStats,
+        TerminalResizeRequest, TerminalSecretInputPlan, TerminalSessionLogState,
+        TerminalSessionReapDiagnostics, TerminalSessionStatus, TerminalSessionSummary,
+        TerminalShellIntegrationSummary,
     },
     services::{
         pty_process_guard::{
@@ -18,11 +18,11 @@ use crate::{
         ssh_runtime::ManagedSshShellSession,
         terminal_agent_signal_detector::TerminalAgentSignalDetector,
         terminal_escape_responder::TerminalEscapeResponder,
-        terminal_output_pump::{PtyOutputPump, PtyOutputPumpConfig, PtyOutputSink},
         terminal_shell_integration::build_terminal_shell_launch,
     },
 };
 mod managed_shell_channel;
+mod output_flusher;
 mod output_state;
 mod pump_metrics;
 mod secret_input;
@@ -34,9 +34,10 @@ mod transport;
 mod utf8_decoder;
 
 use managed_shell_channel::TERMINAL_WRITE_MAX_BYTES;
+use output_flusher::{spawn_output_flusher_thread, OutputFlusherState};
 use output_state::{ActiveTerminalLog, TerminalOutputBuffer};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
-use pump_metrics::{flush_metadata_since, publish_pump_stats, SharedPtyOutputPumpStats};
+use pump_metrics::SharedPtyOutputPumpStats;
 pub use secret_input::rules;
 use secret_input::TerminalSecretInputResponder;
 use session_handle::TerminalSessionHandle;
@@ -824,146 +825,6 @@ enum PtyOutputPumpMessage {
     Error(String),
 }
 
-struct OutputFlusherState {
-    output_buffer: Arc<Mutex<TerminalOutputBuffer>>,
-    log_sink: Arc<Mutex<Option<ActiveTerminalLog>>>,
-    latest_agent_signal: Arc<Mutex<Option<TerminalAgentSignalSummary>>>,
-    pump_stats: SharedPtyOutputPumpStats,
-}
-
-fn spawn_output_flusher_thread(
-    session_id: String,
-    agent_session_id: Option<String>,
-    receiver: mpsc::Receiver<PtyOutputPumpMessage>,
-    state: OutputFlusherState,
-    output: OutputEmitter,
-) {
-    thread::spawn(move || {
-        let OutputFlusherState {
-            output_buffer,
-            log_sink,
-            latest_agent_signal,
-            pump_stats,
-        } = state;
-        let mut pump = PtyOutputPump::new(session_id.clone(), terminal_output_pump_config());
-        let mut sink = TerminalOutputDeliverySink {
-            output_buffer,
-            log_sink,
-            output,
-        };
-        let mut first_pending_at: Option<Instant> = None;
-        let mut last_input_at: Option<Instant> = None;
-
-        loop {
-            match receive_pump_message(&receiver, first_pending_at, last_input_at) {
-                PumpReceiveResult::Message(PtyOutputPumpMessage::Data(data)) => {
-                    let now = Instant::now();
-                    let first_pending_started_at = first_pending_at.unwrap_or(now);
-                    let flush_count_before = pump.stats().flush_count;
-                    let accepted = pump.push_data(&data, &mut sink);
-                    let flush_metadata = flush_metadata_since(
-                        flush_count_before,
-                        &pump,
-                        first_pending_started_at,
-                        now,
-                    )
-                    .map(|interval_ms| (interval_ms, TerminalPtyOutputPumpFlushReason::Threshold));
-                    if pump.pending_bytes() == 0 {
-                        first_pending_at = None;
-                        last_input_at = None;
-                    } else {
-                        first_pending_at.get_or_insert(now);
-                        last_input_at = Some(now);
-                    }
-                    publish_pump_stats(&pump_stats, &session_id, &pump, flush_metadata, false);
-                    if !accepted {
-                        break;
-                    }
-                }
-                PumpReceiveResult::Message(PtyOutputPumpMessage::AgentSignal(signal)) => {
-                    let summary = TerminalAgentSignalSummary::new(
-                        &session_id,
-                        agent_session_id.as_deref(),
-                        signal,
-                    );
-                    if let Ok(mut latest_agent_signal) = latest_agent_signal.lock() {
-                        *latest_agent_signal = Some(summary.clone());
-                    }
-                    if !sink.on_terminal_output(TerminalOutputEvent::agent_signal(summary)) {
-                        break;
-                    }
-                }
-                PumpReceiveResult::Message(PtyOutputPumpMessage::Closed) => {
-                    let now = Instant::now();
-                    let first_pending_started_at = first_pending_at.unwrap_or(now);
-                    let flush_count_before = pump.stats().flush_count;
-                    let _ = pump.finish_closed(&mut sink);
-                    let flush_metadata = flush_metadata_since(
-                        flush_count_before,
-                        &pump,
-                        first_pending_started_at,
-                        now,
-                    )
-                    .map(|interval_ms| (interval_ms, TerminalPtyOutputPumpFlushReason::Closed));
-                    publish_pump_stats(&pump_stats, &session_id, &pump, flush_metadata, true);
-                    break;
-                }
-                PumpReceiveResult::Message(PtyOutputPumpMessage::Error(message)) => {
-                    let now = Instant::now();
-                    let first_pending_started_at = first_pending_at.unwrap_or(now);
-                    let flush_count_before = pump.stats().flush_count;
-                    let _ = pump.finish_error(message, &mut sink);
-                    let flush_metadata = flush_metadata_since(
-                        flush_count_before,
-                        &pump,
-                        first_pending_started_at,
-                        now,
-                    )
-                    .map(|interval_ms| (interval_ms, TerminalPtyOutputPumpFlushReason::Error));
-                    publish_pump_stats(&pump_stats, &session_id, &pump, flush_metadata, true);
-                    break;
-                }
-                PumpReceiveResult::Timeout => {
-                    let now = Instant::now();
-                    let first_pending_started_at = first_pending_at.unwrap_or(now);
-                    let flush_count_before = pump.stats().flush_count;
-                    let accepted = pump.flush(&mut sink);
-                    let flush_metadata = flush_metadata_since(
-                        flush_count_before,
-                        &pump,
-                        first_pending_started_at,
-                        now,
-                    )
-                    .map(|interval_ms| (interval_ms, TerminalPtyOutputPumpFlushReason::Idle));
-                    publish_pump_stats(&pump_stats, &session_id, &pump, flush_metadata, false);
-                    if !accepted {
-                        break;
-                    }
-                    first_pending_at = None;
-                    last_input_at = None;
-                }
-                PumpReceiveResult::Disconnected => {
-                    let now = Instant::now();
-                    let first_pending_started_at = first_pending_at.unwrap_or(now);
-                    let flush_count_before = pump.stats().flush_count;
-                    let _ = pump.flush(&mut sink);
-                    let flush_metadata = flush_metadata_since(
-                        flush_count_before,
-                        &pump,
-                        first_pending_started_at,
-                        now,
-                    )
-                    .map(|interval_ms| {
-                        (interval_ms, TerminalPtyOutputPumpFlushReason::Disconnected)
-                    });
-                    publish_pump_stats(&pump_stats, &session_id, &pump, flush_metadata, true);
-                    break;
-                }
-            }
-        }
-    });
-}
-
 fn spawn_child_exit_waiter_thread(
     session_id: String,
     child: SharedPtyChildHandle,
@@ -1015,74 +876,6 @@ fn spawn_child_exit_waiter_thread(
 
         thread::sleep(PTY_CHILD_EXIT_POLL_INTERVAL);
     });
-}
-
-enum PumpReceiveResult {
-    Message(PtyOutputPumpMessage),
-    Timeout,
-    Disconnected,
-}
-
-fn receive_pump_message(
-    receiver: &mpsc::Receiver<PtyOutputPumpMessage>,
-    first_pending_at: Option<Instant>,
-    last_input_at: Option<Instant>,
-) -> PumpReceiveResult {
-    let Some(timeout) = next_output_flush_timeout(first_pending_at, last_input_at) else {
-        return receiver
-            .recv()
-            .map(PumpReceiveResult::Message)
-            .unwrap_or(PumpReceiveResult::Disconnected);
-    };
-
-    match receiver.recv_timeout(timeout) {
-        Ok(message) => PumpReceiveResult::Message(message),
-        Err(mpsc::RecvTimeoutError::Timeout) => PumpReceiveResult::Timeout,
-        Err(mpsc::RecvTimeoutError::Disconnected) => PumpReceiveResult::Disconnected,
-    }
-}
-
-fn next_output_flush_timeout(
-    first_pending_at: Option<Instant>,
-    last_input_at: Option<Instant>,
-) -> Option<Duration> {
-    let first_pending_at = first_pending_at?;
-    let last_input_at = last_input_at.unwrap_or(first_pending_at);
-    let coalesce_due = last_input_at + PTY_OUTPUT_COALESCE;
-    let max_idle_due = first_pending_at + PTY_OUTPUT_MAX_IDLE;
-    let due = coalesce_due.min(max_idle_due);
-    let now = Instant::now();
-    Some(due.saturating_duration_since(now))
-}
-
-fn terminal_output_pump_config() -> PtyOutputPumpConfig {
-    PtyOutputPumpConfig {
-        flush_bytes: PTY_OUTPUT_FLUSH_BYTES,
-        max_pending_bytes: PTY_OUTPUT_MAX_PENDING_BYTES,
-        ..PtyOutputPumpConfig::default()
-    }
-}
-
-struct TerminalOutputDeliverySink {
-    output_buffer: Arc<Mutex<TerminalOutputBuffer>>,
-    log_sink: Arc<Mutex<Option<ActiveTerminalLog>>>,
-    output: OutputEmitter,
-}
-
-impl PtyOutputSink for TerminalOutputDeliverySink {
-    fn on_terminal_output(&mut self, event: TerminalOutputEvent) -> bool {
-        if event.kind == TerminalOutputKind::Data {
-            if let Ok(mut output_buffer) = self.output_buffer.lock() {
-                output_buffer.push(&event.data);
-            }
-            if let Ok(mut log_sink) = self.log_sink.lock() {
-                if let Some(active_log) = log_sink.as_mut() {
-                    let _ = active_log.append(&event.data);
-                }
-            }
-        }
-        (self.output)(event)
-    }
 }
 
 struct CleanupPathGuard {
