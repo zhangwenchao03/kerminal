@@ -74,51 +74,6 @@
       "targetTask": "TASK-071"
     },
     {
-      "file": "src/features/machine-sidebar/MachineSidebar.parts.tsx",
-      "name": "dragPreviewPosition",
-      "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/machine-sidebar/MachineSidebar.parts.tsx",
-      "name": "machineIcon",
-      "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/machine-sidebar/MachineSidebar.parts.tsx",
-      "name": "machineTitle",
-      "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/machine-sidebar/MachineSidebar.parts.tsx",
-      "name": "sidebarDisplayStatus",
-      "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/machine-sidebar/MachineSidebar.parts.tsx",
-      "name": "statusTitle",
-      "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
       "file": "src/features/machine-sidebar/MachineSidebarMachineRow.tsx",
       "name": "machineIcon",
       "type": "exports",

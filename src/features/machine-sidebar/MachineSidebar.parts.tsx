@@ -46,13 +46,6 @@ import {
   sidebarDisplayStatus,
 } from "./MachineSidebarMachineRow";
 
-export {
-  machineIcon,
-  machineTitle,
-  sidebarDisplayStatus,
-  statusTitle,
-} from "./MachineSidebarMachineRow";
-
 const collapsedPopoverSurfaceClassName =
   "kerminal-floating-surface kerminal-floating-enter kerminal-layer-popover fixed bottom-[84px] left-[72px] top-[56px] flex w-80 max-w-[calc(100vw-88px)] flex-col overflow-hidden rounded-[var(--radius-panel)] border text-[var(--text-primary)]";
 const sidebarPopoverHeaderClassName =
@@ -862,7 +855,7 @@ export function MachineDragPreviewCard({
   );
 }
 
-export function dragPreviewPosition(x: number, y: number) {
+function dragPreviewPosition(x: number, y: number) {
   const width = 264;
   const height = 96;
   if (typeof window === "undefined") {
