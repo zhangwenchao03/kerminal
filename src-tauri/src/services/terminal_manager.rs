@@ -15,13 +15,15 @@ use crate::{
         pty_process_guard::{
             with_conpty_lifecycle_lock, PtyMasterGuard, PtyProcessGuard, SharedPtyChildHandle,
         },
-        ssh_runtime::{ManagedSshShellSession, SshRuntimeShellEvent},
+        ssh_runtime::ManagedSshShellSession,
         terminal_agent_signal_detector::TerminalAgentSignalDetector,
         terminal_escape_responder::TerminalEscapeResponder,
         terminal_output_pump::{PtyOutputPump, PtyOutputPumpConfig, PtyOutputSink},
         terminal_shell_integration::build_terminal_shell_launch,
     },
 };
+mod managed_shell_channel;
+mod managed_shell_transport;
 mod output_state;
 mod pump_metrics;
 mod secret_input;
@@ -29,7 +31,10 @@ mod session_handle;
 #[path = "terminal_target_token.rs"]
 mod terminal_target_token;
 mod text;
+mod utf8_decoder;
 
+use managed_shell_channel::TERMINAL_WRITE_MAX_BYTES;
+use managed_shell_transport::spawn_managed_shell_io;
 use output_state::{ActiveTerminalLog, TerminalOutputBuffer};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use pump_metrics::{flush_metadata_since, publish_pump_stats, SharedPtyOutputPumpStats};
@@ -39,7 +44,7 @@ use session_handle::TerminalSessionHandle;
 use std::{
     collections::HashMap,
     fs,
-    io::{self, Read, Write},
+    io::{Read, Write},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -50,10 +55,15 @@ use std::{
 };
 pub use terminal_target_token::TerminalTargetTokenClaims;
 use terminal_target_token::{TerminalTargetCapability, TerminalTargetTokenSigner};
+use utf8_decoder::IncrementalUtf8Decoder;
 use uuid::Uuid;
 
 const READ_BUFFER_SIZE: usize = 16 * 1024;
 const PTY_OUTPUT_FLUSH_BYTES: usize = 64 * 1024;
+const PTY_OUTPUT_CHANNEL_DATA_BYTES: usize = PTY_OUTPUT_FLUSH_BYTES;
+const PTY_OUTPUT_CHANNEL_MAX_PENDING_BYTES: usize = 1024 * 1024;
+const PTY_OUTPUT_CHANNEL_CAPACITY: usize =
+    PTY_OUTPUT_CHANNEL_MAX_PENDING_BYTES / PTY_OUTPUT_CHANNEL_DATA_BYTES;
 const PTY_OUTPUT_MAX_PENDING_BYTES: usize = 4 * 1024 * 1024;
 const PTY_OUTPUT_COALESCE: Duration = Duration::from_millis(4);
 const PTY_OUTPUT_MAX_IDLE: Duration = Duration::from_millis(50);
@@ -67,6 +77,53 @@ type SharedWriterHandle = Arc<Mutex<WriterHandle>>;
 type SharedPtyMasterHandle = Arc<Mutex<PtyMasterGuard>>;
 type SharedTerminalTransportHandle = Arc<Mutex<Box<dyn TerminalSessionTransport>>>;
 type OutputEmitter = Box<dyn Fn(TerminalOutputEvent) -> bool + Send + 'static>;
+
+/// 固定容量 output channel 的同步发送端；首次进入背压时只记录脱敏容量信息。
+#[derive(Clone)]
+struct PtyOutputPumpSender {
+    backpressure_observed: Arc<AtomicBool>,
+    sender: mpsc::SyncSender<PtyOutputPumpMessage>,
+    session_id: Arc<str>,
+}
+
+impl PtyOutputPumpSender {
+    fn send(
+        &self,
+        message: PtyOutputPumpMessage,
+    ) -> Result<(), mpsc::SendError<PtyOutputPumpMessage>> {
+        match self.sender.try_send(message) {
+            Ok(()) => Ok(()),
+            Err(mpsc::TrySendError::Full(message)) => {
+                if !self.backpressure_observed.swap(true, Ordering::AcqRel) {
+                    tauri_plugin_log::log::warn!(
+                        target: "terminal.output",
+                        "event=queue.backpressure session_id={} capacity_messages={} max_data_bytes={} budget_bytes={}",
+                        self.session_id,
+                        PTY_OUTPUT_CHANNEL_CAPACITY,
+                        PTY_OUTPUT_CHANNEL_DATA_BYTES,
+                        PTY_OUTPUT_CHANNEL_MAX_PENDING_BYTES
+                    );
+                }
+                self.sender.send(message)
+            }
+            Err(mpsc::TrySendError::Disconnected(message)) => Err(mpsc::SendError(message)),
+        }
+    }
+}
+
+fn pty_output_channel(
+    session_id: &str,
+) -> (PtyOutputPumpSender, mpsc::Receiver<PtyOutputPumpMessage>) {
+    let (sender, receiver) = mpsc::sync_channel(PTY_OUTPUT_CHANNEL_CAPACITY);
+    (
+        PtyOutputPumpSender {
+            backpressure_observed: Arc::new(AtomicBool::new(false)),
+            sender,
+            session_id: Arc::from(session_id),
+        },
+        receiver,
+    )
+}
 
 /// 管理进程内所有本地终端会话。
 pub struct TerminalManager {
@@ -161,7 +218,7 @@ impl TerminalManager {
         let log_sink = Arc::new(Mutex::new(None));
         let latest_agent_signal = Arc::new(Mutex::new(None));
         let agent_detector = Arc::new(Mutex::new(TerminalAgentSignalDetector::new()));
-        let (pump_sender, pump_receiver) = mpsc::channel();
+        let (pump_sender, pump_receiver) = pty_output_channel(&session_id);
         let pump_stats = Arc::new(Mutex::new(TerminalPtyOutputPumpStats::new(
             session_id.clone(),
         )));
@@ -304,7 +361,7 @@ impl TerminalManager {
         let log_sink = Arc::new(Mutex::new(None));
         let latest_agent_signal = Arc::new(Mutex::new(None));
         let agent_detector = Arc::new(Mutex::new(TerminalAgentSignalDetector::new()));
-        let (pump_sender, pump_receiver) = mpsc::channel();
+        let (pump_sender, pump_receiver) = pty_output_channel(&session_id);
         let pump_stats = Arc::new(Mutex::new(TerminalPtyOutputPumpStats::new(
             session_id.clone(),
         )));
@@ -384,6 +441,13 @@ impl TerminalManager {
         }
 
         let handle = self.session_handle(session_id)?;
+        if data.len() > TERMINAL_WRITE_MAX_BYTES {
+            return Err(AppError::InvalidInput(format!(
+                "terminal input exceeds per-write limit: {} bytes > {} bytes",
+                data.len(),
+                TERMINAL_WRITE_MAX_BYTES
+            )));
+        }
         let result = handle
             .transport
             .lock()
@@ -665,320 +729,63 @@ impl TerminalSessionTransport for PtyTerminalTransport {
     }
 }
 
-enum ManagedSshShellCommand {
-    Write(Vec<u8>),
-    Resize { cols: u16, rows: u16 },
-    Close,
-}
-
-enum ManagedSshShellReaderMessage {
-    Data(Vec<u8>),
-    Error(String),
-    Closed,
-}
-
-struct ManagedSshShellTransport {
-    closed: Arc<AtomicBool>,
-    commands: tokio::sync::mpsc::UnboundedSender<ManagedSshShellCommand>,
-}
-
-impl TerminalSessionTransport for ManagedSshShellTransport {
-    fn status(&mut self) -> AppResult<TerminalSessionStatus> {
-        if self.closed.load(Ordering::SeqCst) {
-            Ok(TerminalSessionStatus::Exited)
-        } else {
-            Ok(TerminalSessionStatus::Running)
-        }
-    }
-
-    fn write(&mut self, data: &[u8]) -> AppResult<()> {
-        if self.closed.load(Ordering::SeqCst) {
-            return Err(AppError::Terminal(
-                "managed SSH shell channel is closed".to_owned(),
-            ));
-        }
-        self.commands
-            .send(ManagedSshShellCommand::Write(data.to_vec()))
-            .map_err(|_| AppError::Terminal("managed SSH shell channel is closed".to_owned()))
-    }
-
-    fn resize(&mut self, size: PtySize) -> AppResult<()> {
-        if self.closed.load(Ordering::SeqCst) {
-            return Err(AppError::Terminal(
-                "managed SSH shell channel is closed".to_owned(),
-            ));
-        }
-        self.commands
-            .send(ManagedSshShellCommand::Resize {
-                cols: size.cols,
-                rows: size.rows,
-            })
-            .map_err(|_| AppError::Terminal("managed SSH shell channel is closed".to_owned()))
-    }
-
-    fn close_detached(&mut self) {
-        if self.closed.swap(true, Ordering::SeqCst) {
-            return;
-        }
-        let _ = self.commands.send(ManagedSshShellCommand::Close);
-    }
-}
-
-struct ManagedSshShellWriter {
-    closed: Arc<AtomicBool>,
-    commands: tokio::sync::mpsc::UnboundedSender<ManagedSshShellCommand>,
-}
-
-impl Write for ManagedSshShellWriter {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if self.closed.load(Ordering::SeqCst) {
-            return Err(io::Error::new(
-                io::ErrorKind::BrokenPipe,
-                "managed SSH shell channel is closed",
-            ));
-        }
-        self.commands
-            .send(ManagedSshShellCommand::Write(buf.to_vec()))
-            .map_err(|_| {
-                io::Error::new(
-                    io::ErrorKind::BrokenPipe,
-                    "managed SSH shell channel is closed",
-                )
-            })?;
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-struct ManagedSshShellReader {
-    pending: Vec<u8>,
-    pending_offset: usize,
-    receiver: mpsc::Receiver<ManagedSshShellReaderMessage>,
-}
-
-impl Read for ManagedSshShellReader {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if buf.is_empty() {
-            return Ok(0);
-        }
-
-        loop {
-            if self.pending_offset < self.pending.len() {
-                let remaining = &self.pending[self.pending_offset..];
-                let bytes_to_copy = remaining.len().min(buf.len());
-                buf[..bytes_to_copy].copy_from_slice(&remaining[..bytes_to_copy]);
-                self.pending_offset += bytes_to_copy;
-                if self.pending_offset >= self.pending.len() {
-                    self.pending.clear();
-                    self.pending_offset = 0;
-                }
-                return Ok(bytes_to_copy);
-            }
-
-            match self.receiver.recv() {
-                Ok(ManagedSshShellReaderMessage::Data(data)) if data.is_empty() => {}
-                Ok(ManagedSshShellReaderMessage::Data(data)) => {
-                    self.pending = data;
-                    self.pending_offset = 0;
-                }
-                Ok(ManagedSshShellReaderMessage::Error(error)) => {
-                    return Err(io::Error::other(error));
-                }
-                Ok(ManagedSshShellReaderMessage::Closed) | Err(_) => return Ok(0),
-            }
-        }
-    }
-}
-
-fn spawn_managed_shell_io(
-    shell: TerminalManagedShellRuntime,
-    startup_input: Option<String>,
-) -> (
-    Box<dyn Read + Send>,
-    SharedWriterHandle,
-    SharedTerminalTransportHandle,
-) {
-    let (reader_sender, reader_receiver) = mpsc::channel();
-    let (command_sender, command_receiver) = tokio::sync::mpsc::unbounded_channel();
-    let closed = Arc::new(AtomicBool::new(false));
-
-    spawn_managed_shell_bridge(
-        shell,
-        startup_input,
-        reader_sender,
-        command_receiver,
-        Arc::clone(&closed),
-    );
-
-    let reader = Box::new(ManagedSshShellReader {
-        pending: Vec::new(),
-        pending_offset: 0,
-        receiver: reader_receiver,
-    });
-    let writer = Arc::new(Mutex::new(Box::new(ManagedSshShellWriter {
-        closed: Arc::clone(&closed),
-        commands: command_sender.clone(),
-    }) as WriterHandle));
-    let transport = Arc::new(Mutex::new(Box::new(ManagedSshShellTransport {
-        closed,
-        commands: command_sender,
-    }) as Box<dyn TerminalSessionTransport>));
-    (reader, writer, transport)
-}
-
-fn spawn_managed_shell_bridge(
-    shell: TerminalManagedShellRuntime,
-    startup_input: Option<String>,
-    reader_sender: mpsc::Sender<ManagedSshShellReaderMessage>,
-    mut command_receiver: tokio::sync::mpsc::UnboundedReceiver<ManagedSshShellCommand>,
-    closed: Arc<AtomicBool>,
-) {
-    thread::spawn(move || {
-        let TerminalManagedShellRuntime { mut shell, runtime } = shell;
-
-        runtime.block_on(async move {
-            if let Some(startup_input) = startup_input {
-                if let Err(error) = shell.write(startup_input.into_bytes()).await {
-                    let _ = reader_sender.send(ManagedSshShellReaderMessage::Error(error.to_string()));
-                    let _ = shell.close().await;
-                    closed.store(true, Ordering::SeqCst);
-                    let _ = reader_sender.send(ManagedSshShellReaderMessage::Closed);
-                    return;
-                }
-            }
-
-            loop {
-                tokio::select! {
-                    command = command_receiver.recv() => {
-                        match command {
-                            Some(ManagedSshShellCommand::Write(data)) => {
-                                if let Err(error) = shell.write(data).await {
-                                    let _ = reader_sender.send(ManagedSshShellReaderMessage::Error(error.to_string()));
-                                    break;
-                                }
-                            }
-                            Some(ManagedSshShellCommand::Resize { cols, rows }) => {
-                                if let Err(error) = shell.resize(cols, rows).await {
-                                    let _ = reader_sender.send(ManagedSshShellReaderMessage::Error(error.to_string()));
-                                    break;
-                                }
-                            }
-                            Some(ManagedSshShellCommand::Close) | None => break,
-                        }
-                    }
-                    event = shell.read_event() => {
-                        match event {
-                            Ok(SshRuntimeShellEvent::Data(data))
-                            | Ok(SshRuntimeShellEvent::ExtendedData { data, .. }) => {
-                                if reader_sender.send(ManagedSshShellReaderMessage::Data(data)).is_err() {
-                                    break;
-                                }
-                            }
-                            Ok(SshRuntimeShellEvent::Eof) | Ok(SshRuntimeShellEvent::Closed) => {
-                                break;
-                            }
-                            Ok(SshRuntimeShellEvent::ExitSignal { error_message, signal_name }) => {
-                                let message = if error_message.is_empty() {
-                                    format!("SSH shell exited by signal {signal_name}")
-                                } else {
-                                    format!("SSH shell exited by signal {signal_name}: {error_message}")
-                                };
-                                let _ = reader_sender.send(ManagedSshShellReaderMessage::Error(message));
-                                break;
-                            }
-                            Ok(SshRuntimeShellEvent::ExitStatus(status)) => {
-                                if status != 0 {
-                                    let _ = reader_sender.send(ManagedSshShellReaderMessage::Error(
-                                        format!("SSH shell exited with status {status}"),
-                                    ));
-                                }
-                                break;
-                            }
-                            Err(error) => {
-                                let _ = reader_sender.send(ManagedSshShellReaderMessage::Error(error.to_string()));
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            let _ = shell.close().await;
-            closed.store(true, Ordering::SeqCst);
-            let _ = reader_sender.send(ManagedSshShellReaderMessage::Closed);
-        });
-    });
-}
-
 fn spawn_reader_thread(
     mut reader: Box<dyn Read + Send>,
     cleanup_paths: Vec<PathBuf>,
     writer: SharedWriterHandle,
     secret_input_plan: Option<TerminalSecretInputPlan>,
-    pump_sender: mpsc::Sender<PtyOutputPumpMessage>,
+    pump_sender: PtyOutputPumpSender,
     agent_detector: Arc<Mutex<TerminalAgentSignalDetector>>,
 ) -> mpsc::Receiver<()> {
     let (reader_done_sender, reader_done_receiver) = mpsc::channel();
     thread::spawn(move || {
         let mut buffer = vec![0_u8; READ_BUFFER_SIZE];
+        let mut decoder = IncrementalUtf8Decoder::new();
         let mut escape_responder = TerminalEscapeResponder::new();
         let mut secret_responder = secret_input_plan.map(TerminalSecretInputResponder::new);
 
         loop {
             match reader.read(&mut buffer) {
                 Ok(0) => {
+                    if !forward_decoded_terminal_output(
+                        decoder.finish(),
+                        &mut escape_responder,
+                        &mut secret_responder,
+                        &writer,
+                        &pump_sender,
+                        &agent_detector,
+                    ) {
+                        break;
+                    }
                     send_finished_agent_signal(&agent_detector, &pump_sender);
                     let _ = pump_sender.send(PtyOutputPumpMessage::Closed);
                     break;
                 }
                 Ok(bytes_read) => {
-                    let mut data = String::from_utf8_lossy(&buffer[..bytes_read]).into_owned();
-                    let observation = escape_responder.observe(&data);
-                    if let Err(error) =
-                        write_terminal_escape_responses(&writer, &observation.responses)
-                    {
-                        let _ = pump_sender.send(PtyOutputPumpMessage::Error(error.to_string()));
-                        break;
-                    }
-                    data = observation.data;
-                    if let Some(responder) = secret_responder.as_mut() {
-                        responder.observe_and_maybe_respond(&data, &writer);
-                        data = responder.redact_output(&data);
-                    }
-                    let observed = match agent_detector.lock() {
-                        Ok(mut detector) => detector.observe_and_filter(&data),
-                        Err(_) => {
-                            let _ = pump_sender.send(PtyOutputPumpMessage::Error(
-                                "terminal agent signal detector lock poisoned".to_owned(),
-                            ));
-                            break;
-                        }
-                    };
-                    let mut signal_send_failed = false;
-                    for signal in observed.signals {
-                        if pump_sender
-                            .send(PtyOutputPumpMessage::AgentSignal(signal))
-                            .is_err()
-                        {
-                            signal_send_failed = true;
-                            break;
-                        }
-                    }
-                    if signal_send_failed {
-                        break;
-                    }
-                    if !observed.data.is_empty()
-                        && pump_sender
-                            .send(PtyOutputPumpMessage::Data(observed.data))
-                            .is_err()
-                    {
+                    let data = decoder.decode(&buffer[..bytes_read]);
+                    debug_assert!(decoder.pending_len() <= 3);
+                    if !forward_decoded_terminal_output(
+                        data,
+                        &mut escape_responder,
+                        &mut secret_responder,
+                        &writer,
+                        &pump_sender,
+                        &agent_detector,
+                    ) {
                         break;
                     }
                 }
                 Err(error) => {
+                    if !forward_decoded_terminal_output(
+                        decoder.finish(),
+                        &mut escape_responder,
+                        &mut secret_responder,
+                        &writer,
+                        &pump_sender,
+                        &agent_detector,
+                    ) {
+                        break;
+                    }
                     send_finished_agent_signal(&agent_detector, &pump_sender);
                     let _ = pump_sender.send(PtyOutputPumpMessage::Error(error.to_string()));
                     break;
@@ -989,6 +796,74 @@ fn spawn_reader_thread(
         cleanup_session_paths(&cleanup_paths);
     });
     reader_done_receiver
+}
+
+/// 让每个解码结果依次经过 escape、secret 和 agent 过滤，再进入有界 output queue。
+fn forward_decoded_terminal_output(
+    mut data: String,
+    escape_responder: &mut TerminalEscapeResponder,
+    secret_responder: &mut Option<TerminalSecretInputResponder>,
+    writer: &SharedWriterHandle,
+    pump_sender: &PtyOutputPumpSender,
+    agent_detector: &Arc<Mutex<TerminalAgentSignalDetector>>,
+) -> bool {
+    if data.is_empty() {
+        return true;
+    }
+
+    let observation = escape_responder.observe(&data);
+    if let Err(error) = write_terminal_escape_responses(writer, &observation.responses) {
+        let _ = pump_sender.send(PtyOutputPumpMessage::Error(error.to_string()));
+        return false;
+    }
+    data = observation.data;
+    if let Some(responder) = secret_responder.as_mut() {
+        responder.observe_and_maybe_respond(&data, writer);
+        data = responder.redact_output(&data);
+    }
+    let observed = match agent_detector.lock() {
+        Ok(mut detector) => detector.observe_and_filter(&data),
+        Err(_) => {
+            let _ = pump_sender.send(PtyOutputPumpMessage::Error(
+                "terminal agent signal detector lock poisoned".to_owned(),
+            ));
+            return false;
+        }
+    };
+    for signal in observed.signals {
+        if pump_sender
+            .send(PtyOutputPumpMessage::AgentSignal(signal))
+            .is_err()
+        {
+            return false;
+        }
+    }
+    send_bounded_output_data(pump_sender, &observed.data)
+}
+
+/// 在进入固定容量 channel 前按 UTF-8 边界切分，形成精确的队列字节上限。
+fn send_bounded_output_data(pump_sender: &PtyOutputPumpSender, data: &str) -> bool {
+    let mut start = 0;
+    while start < data.len() {
+        let mut end = (start + PTY_OUTPUT_CHANNEL_DATA_BYTES).min(data.len());
+        while end > start && !data.is_char_boundary(end) {
+            end -= 1;
+        }
+        if end == start {
+            end = data[start..]
+                .char_indices()
+                .nth(1)
+                .map_or(data.len(), |(offset, _)| start + offset);
+        }
+        if pump_sender
+            .send(PtyOutputPumpMessage::Data(data[start..end].to_owned()))
+            .is_err()
+        {
+            return false;
+        }
+        start = end;
+    }
+    true
 }
 
 fn write_terminal_escape_responses(
@@ -1159,7 +1034,7 @@ fn spawn_output_flusher_thread(
 fn spawn_child_exit_waiter_thread(
     session_id: String,
     child: SharedPtyChildHandle,
-    pump_sender: mpsc::Sender<PtyOutputPumpMessage>,
+    pump_sender: PtyOutputPumpSender,
     reader_done: mpsc::Receiver<()>,
     cleanup_paths: Vec<PathBuf>,
     agent_detector: Arc<Mutex<TerminalAgentSignalDetector>>,
@@ -1328,7 +1203,7 @@ fn normalize_size(rows: u16, cols: u16) -> AppResult<PtySize> {
 
 fn send_finished_agent_signal(
     agent_detector: &Arc<Mutex<TerminalAgentSignalDetector>>,
-    pump_sender: &mpsc::Sender<PtyOutputPumpMessage>,
+    pump_sender: &PtyOutputPumpSender,
 ) {
     let Some(signal) = agent_detector
         .lock()
