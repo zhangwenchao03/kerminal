@@ -4,7 +4,8 @@
 
 use kerminal_lib::services::compatibility_registry::{
     build_metric_snapshot, evaluate_activation, evaluate_retirement, registry_entries,
-    validate_registry, CompatibilityMetric, RetirementDecision, RetirementEvidence,
+    validate_registry, CompatibilityMetric, CompatibilityMetrics, RetirementDecision,
+    RetirementEvidence,
 };
 
 const EXPECTED_IDS: [&str; 11] = [
@@ -97,6 +98,32 @@ fn public_metric_snapshot_contains_only_stable_aggregates() {
         id: "unknown.compatibility".to_owned(),
     }])
     .is_err());
+}
+
+#[test]
+fn metric_collector_counts_allowed_denied_and_runtime_failures() {
+    let metrics = CompatibilityMetrics::default();
+    assert!(
+        metrics
+            .record_activation("terminal.gpu-fallback", "context-lost")
+            .unwrap()
+            .allowed
+    );
+    assert!(
+        !metrics
+            .record_activation("terminal.gpu-fallback", "unregistered-reason")
+            .unwrap()
+            .allowed
+    );
+    metrics.record_failure("terminal.gpu-fallback").unwrap();
+
+    let snapshot = metrics.snapshot().unwrap();
+    assert_eq!(snapshot.entries[0].activation_count, 1);
+    assert_eq!(snapshot.entries[0].failure_count, 2);
+    assert!(metrics
+        .record_activation("unknown.compatibility", "anything")
+        .is_err());
+    assert_eq!(metrics.snapshot().unwrap(), snapshot);
 }
 
 #[test]

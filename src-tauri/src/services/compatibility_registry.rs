@@ -5,7 +5,7 @@
 use std::{
     collections::{BTreeMap, HashSet},
     fmt,
-    sync::OnceLock,
+    sync::{Mutex, OnceLock},
 };
 
 use serde::{Deserialize, Serialize};
@@ -90,6 +90,65 @@ pub struct CompatibilityMetricSnapshotEntry {
     pub failure_count: u64,
     pub id: String,
     pub lifecycle: CompatibilityLifecycle,
+}
+
+/// 进程内兼容指标收集器；只接受 registry ID/reason 与计数，不保存任意标签。
+#[derive(Debug, Default)]
+pub struct CompatibilityMetrics {
+    counters: Mutex<BTreeMap<String, (u64, u64)>>,
+}
+
+impl CompatibilityMetrics {
+    /// 记录一次启用尝试。允许时增加 activation，拒绝时增加 failure。
+    pub fn record_activation(
+        &self,
+        id: &str,
+        reason: &str,
+    ) -> Result<ActivationDecision, RegistryError> {
+        let decision = evaluate_activation(id, reason)?;
+        let mut counters = self
+            .counters
+            .lock()
+            .map_err(|_| RegistryError("兼容指标状态不可用"))?;
+        let counter = counters.entry(id.to_owned()).or_default();
+        if decision.allowed {
+            counter.0 = counter.0.saturating_add(1);
+        } else {
+            counter.1 = counter.1.saturating_add(1);
+        }
+        Ok(decision)
+    }
+
+    /// 记录已进入兼容路径后的运行失败。
+    pub fn record_failure(&self, id: &str) -> Result<(), RegistryError> {
+        require_entry(id)?;
+        let mut counters = self
+            .counters
+            .lock()
+            .map_err(|_| RegistryError("兼容指标状态不可用"))?;
+        let counter = counters.entry(id.to_owned()).or_default();
+        counter.1 = counter.1.saturating_add(1);
+        Ok(())
+    }
+
+    /// 返回脱敏聚合快照，不暴露调用 reason、owner 或实现路径。
+    pub fn snapshot(&self) -> Result<CompatibilityMetricSnapshot, RegistryError> {
+        let counters = self
+            .counters
+            .lock()
+            .map_err(|_| RegistryError("兼容指标状态不可用"))?;
+        let metrics = counters
+            .iter()
+            .map(
+                |(id, (activation_count, failure_count))| CompatibilityMetric {
+                    activation_count: *activation_count,
+                    failure_count: *failure_count,
+                    id: id.clone(),
+                },
+            )
+            .collect::<Vec<_>>();
+        build_metric_snapshot(&metrics)
+    }
 }
 
 /// 启用决策只返回稳定 code，不回显调用方 reason。
