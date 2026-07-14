@@ -12,7 +12,6 @@ import {
   selectSaveFile,
 } from "../../../lib/fileDialogApi";
 import {
-  classifySftpLocalPaths,
   enqueueSftpClipboardDownload,
   readSftpLocalFileClipboard,
   type SftpEntry,
@@ -20,7 +19,6 @@ import {
   type SftpTransferKind,
   type SftpTransferSummary,
 } from "../../../lib/sftpApi";
-import { fileNameFromPath } from "../sftpFileUtils";
 import {
   buildSftpWorkbenchClipboardPastePlan,
   type SftpWorkbenchClipboard,
@@ -33,7 +31,6 @@ import {
   isFileManagerShortcut,
   writeClipboardText,
 } from "./sftpDragDropModel";
-import { isDownloadableFileEntry } from "./sftpEntryModel";
 import { errorMessage } from "./sftpPathModel";
 import {
   buildSftpClipboardPasteIntent,
@@ -49,10 +46,11 @@ import {
   SFTP_LOCAL_FILE_DRAG_PAYLOAD_MIME,
 } from "./sftpLocalUploadDropModel";
 import { sftpCannotDropStatus } from "./sftpDropReasonModel";
-import { buildSftpArchiveDownloadPlan, buildSftpArchiveDownloadPreparation, buildSftpArchiveUploadPlan, buildBatchDownloadTransferPlan, buildDirectoryDownloadTransferPlan, buildDirectoryUploadTransferPlan, buildDownloadSelectionPlan, buildDownloadTransferPlan, buildFileUploadTransferPlan, buildLocalPathBatchUploadPlan, buildSftpClipboardDownloadPlan, buildSftpLocalClipboardUploadPlan } from "./sftpTransferActionPlan";
+import { buildSftpArchiveDownloadPlan, buildSftpArchiveDownloadPreparation, buildSftpArchiveUploadPlan, buildBatchDownloadTransferPlan, buildSftpClipboardDownloadPlan, buildSftpLocalClipboardUploadPlan } from "./sftpTransferActionPlan";
 import { buildWorkbenchClipboardUploadItems, runSftpTransferActionItems, runSftpTransferBatchPlan } from "./sftpTransferActionRunner";
 import { withSftpTransferViewScope } from "./sftpTransferScopeModel";
 import { useSftpRemoteDownloadDragActions } from "./useSftpRemoteDownloadDragActions";
+import { useSftpLocalTransferCommands } from "./useSftpLocalTransferCommands";
 import { useSftpRemoteCopyTaskRunner } from "./useSftpRemoteCopyTaskRunner";
 import { useSftpTransferConflictPrompt } from "./useSftpTransferConflictPrompt";
 import { useSftpTransferTaskRunner } from "./useSftpTransferTaskRunner";
@@ -167,266 +165,24 @@ export function useSftpTransferActions({
     },
   });
 
-  const uploadLocalFile = async (targetRemotePath = currentPath) => {
-    if (!fileTarget) {
-      return;
-    }
-
-    setContextMenu(null);
-    setDialogAction(null);
-    setDialogStatus(null);
-    setOperationStatus(null);
-    try {
-      const localPath = await selectLocalFile();
-      if (!localPath) {
-        return;
-      }
-      const buildPlan = (conflictPolicy?: SftpTransferConflictPolicy) =>
-        buildFileUploadTransferPlan({
-          conflictPolicy,
-          hostId: fileTarget.hostId,
-          localPath,
-          targetRemotePath,
-        });
-      await runWithConflictPreflight({
-        input: buildPlan(),
-        run: async (conflictPolicy) => {
-          await runTransferTask(buildPlan(conflictPolicy));
-        },
-      });
-    } catch (nextError) {
-      setOperationStatus({
-        kind: "error",
-        message: errorMessage(nextError),
-      });
-    }
-  };
-
-  const uploadLocalDirectory = async (targetRemotePath = currentPath) => {
-    if (!fileTarget) {
-      return;
-    }
-
-    setContextMenu(null);
-    setDialogAction(null);
-    setDialogStatus(null);
-    setOperationStatus(null);
-    try {
-      const localPath = await selectLocalDirectory();
-      if (!localPath) {
-        return;
-      }
-      const buildPlan = (conflictPolicy?: SftpTransferConflictPolicy) =>
-        buildDirectoryUploadTransferPlan({
-          conflictPolicy,
-          hostId: fileTarget.hostId,
-          localPath,
-          targetRemotePath,
-        });
-      await runWithConflictPreflight({
-        input: buildPlan(),
-        run: async (conflictPolicy) => {
-          await runTransferTask(buildPlan(conflictPolicy));
-        },
-      });
-    } catch (nextError) {
-      setOperationStatus({
-        kind: "error",
-        message: errorMessage(nextError),
-      });
-    }
-  };
-
-  const uploadDroppedLocalPaths = useCallback(
-    async (paths: string[], targetRemotePath = currentPath) => {
-      if (
-        !fileTarget ||
-        paths.length === 0
-      ) {
-        return;
-      }
-
-      setContextMenu(null);
-      setDialogAction(null);
-      setDialogStatus(null);
-      setOperationStatus(null);
-      try {
-        const localPaths = await classifySftpLocalPaths({ paths });
-        const buildPlan = (conflictPolicy?: SftpTransferConflictPolicy) =>
-          buildLocalPathBatchUploadPlan({
-            conflictPolicy,
-            fileTargetKind: fileTarget.kind,
-            hostId: fileTarget.hostId,
-            localPaths,
-            sourceLabel: "拖拽",
-            targetRemotePath,
-          });
-        await runWithConflictPreflight({
-          errorMessagePrefix: "拖拽上传失败",
-          input: buildPlan(),
-          run: async (conflictPolicy) => {
-            const plan = buildPlan(conflictPolicy);
-            await runSftpTransferBatchPlan(plan, runTransferTask);
-            setOperationStatus(
-              visiblePostTransferStatus(plan.completionStatus),
-            );
-          },
-        });
-      } catch (nextError) {
-        setOperationStatus({
-          kind: "error",
-          message: `拖拽上传失败：${errorMessage(nextError)}`,
-        });
-      }
-    },
-    [currentPath, fileTarget, runTransferTask, runWithConflictPreflight],
-  );
-
-  const downloadEntry = async (entry: SftpEntry) => {
-    if (!fileTarget) {
-      return;
-    }
-
-    setContextMenu(null);
-    setDialogAction(null);
-    setDialogStatus(null);
-    setOperationStatus(null);
-    try {
-      if (entry.kind === "directory") {
-        const selectedDirectory = await selectLocalDirectory();
-        if (!selectedDirectory) {
-          return;
-        }
-        const plan = buildDirectoryDownloadTransferPlan({
-          entry,
-          hostId: fileTarget.hostId,
-          selectedDirectory,
-        });
-        if (plan) {
-          await runWithConflictPreflight({
-            input: plan,
-            localRootPath: selectedDirectory,
-            run: async (conflictPolicy) => {
-              const nextPlan = buildDirectoryDownloadTransferPlan({
-                conflictPolicy,
-                entry,
-                hostId: fileTarget.hostId,
-                selectedDirectory,
-              });
-              if (nextPlan) {
-                await runTransferTask(nextPlan);
-              }
-            },
-          });
-        }
-        return;
-      }
-
-      if (!isDownloadableFileEntry(entry)) {
-        setOperationStatus({
-          kind: "info",
-          message: "该类型暂不支持下载。",
-        });
-        return;
-      }
-
-      const localPath = await selectSaveFile(
-        entry.name || fileNameFromPath(entry.path),
-      );
-      if (!localPath) {
-        return;
-      }
-      const plan = buildDownloadTransferPlan({
-        entry,
-        hostId: fileTarget.hostId,
-        localPath,
-      });
-      if (plan) {
-        await runWithConflictPreflight({
-          input: plan,
-          run: async (conflictPolicy) => {
-            const nextPlan = buildDownloadTransferPlan({
-              conflictPolicy,
-              entry,
-              hostId: fileTarget.hostId,
-              localPath,
-            });
-            if (nextPlan) {
-              await runTransferTask(nextPlan);
-            }
-          },
-        });
-      }
-    } catch (nextError) {
-      setOperationStatus({
-        kind: "error",
-        message: errorMessage(nextError),
-      });
-    }
-  };
-
-  const downloadEntriesToLocalTarget = async (
-    entriesToDownload: SftpEntry[],
-    emptyMessage: string,
-  ) => {
-    if (!fileTarget) {
-      return;
-    }
-
-    const selectionPlan = buildDownloadSelectionPlan({
-      emptyMessage,
-      entries: entriesToDownload,
-    });
-    if (selectionPlan.kind === "empty") {
-      setOperationStatus(selectionPlan.status);
-      return;
-    }
-    if (selectionPlan.kind === "single") {
-      await downloadEntry(selectionPlan.entry);
-      return;
-    }
-
-    setContextMenu(null);
-    setDialogAction(null);
-    setDialogStatus(null);
-    setOperationStatus(null);
-    try {
-      const selectedDirectory = await selectLocalDirectory();
-      if (!selectedDirectory) {
-        return;
-      }
-      const buildPlan = (conflictPolicy?: SftpTransferConflictPolicy) =>
-        buildBatchDownloadTransferPlan({
-          conflictPolicy,
-          entries: selectionPlan.entries,
-          fileTargetKind: fileTarget.kind,
-          hostId: fileTarget.hostId,
-          selectedDirectory,
-        });
-      await runWithConflictPreflight({
-        errorMessagePrefix: "批量下载失败",
-        input: buildPlan(),
-        localRootPath: selectedDirectory,
-        run: async (conflictPolicy) => {
-          const plan = buildPlan(conflictPolicy);
-          await runSftpTransferBatchPlan(plan, runTransferTask);
-          setOperationStatus(visiblePostTransferStatus(plan.completionStatus));
-        },
-      });
-    } catch (nextError) {
-      setOperationStatus({
-        kind: "error",
-        message: `批量下载失败：${errorMessage(nextError)}`,
-      });
-    }
-  };
-
-  const downloadSelectedEntries = async () => {
-    await downloadEntriesToLocalTarget(
-      transferableSelectedEntries,
-      "请先选择可下载的远程项目。",
-    );
-  };
+  const {
+    downloadEntriesToLocalTarget,
+    downloadEntry,
+    downloadSelectedEntries,
+    uploadDroppedLocalPaths,
+    uploadLocalDirectory,
+    uploadLocalFile,
+  } = useSftpLocalTransferCommands({
+    currentPath,
+    fileTarget,
+    runTransferTask,
+    runWithConflictPreflight,
+    setContextMenu,
+    setDialogAction,
+    setDialogStatus,
+    setOperationStatus,
+    transferableSelectedEntries,
+  });
 
   const {
     finishRemoteEntryDrag,
