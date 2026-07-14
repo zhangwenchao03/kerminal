@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MachineSidebarViewMode } from "../features/machine-sidebar/MachineSidebar.shared";
-import type {
-  SettingsSaveState,
-  SettingsSectionId,
-} from "../features/settings/SettingsToolContent";
-import {
-  resolveThemeMode,
-  type AppSettings,
-} from "../features/settings/settingsModel";
+import { resolveThemeMode } from "../features/settings/settingsModel";
 import { writeBroadcastCommand } from "../features/terminal/terminalSessionRegistry";
 import { useWorkspaceStore } from "../features/workspace/workspaceStore";
 import { resolveDesktopPlatform } from "../lib/desktopPlatform";
@@ -39,10 +32,7 @@ import { useKerminalShellConfigRefresh } from "./useKerminalShellConfigRefresh";
 import { useKerminalShellPanelResize } from "./useKerminalShellPanelResize";
 import { useKerminalShellSettings } from "./useKerminalShellSettings";
 import { useKerminalShellTabClose } from "./useKerminalShellTabClose";
-import {
-  DEFAULT_REMOTE_GROUP_NAME,
-  DEFAULT_SETTINGS_SECTION_ID,
-} from "./KerminalShell.static";
+import { DEFAULT_REMOTE_GROUP_NAME } from "./KerminalShell.static";
 import {
   resolveConnectionEditConflict,
   resolveRemoteGroupEditConflict,
@@ -131,9 +121,6 @@ export function KerminalShell() {
   const settings = useWorkspaceStore((state) => state.settings);
   const setSettings = useWorkspaceStore((state) => state.setSettings);
   const viewportWidth = useViewportWidth();
-  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
-  const [settingsInitialSectionId, setSettingsInitialSectionId] =
-    useState<SettingsSectionId>(DEFAULT_SETTINGS_SECTION_ID);
   const [shellNoticeVisible, setShellNoticeVisible] = useState(false);
   const [pendingSftpHostTarget, setPendingSftpHostTarget] =
     useState<SftpTransferCreateHostRequest | null>(null);
@@ -150,17 +137,20 @@ export function KerminalShell() {
   ] = useState<string>();
   const workspaceFrameRef = useRef<HTMLDivElement>(null);
   const createdSftpHostSequenceRef = useRef(0);
-  const settingsDialogDirtyRef = useRef(false);
-  const settingsDialogOpenRef = useRef(settingsDialogOpen);
-  const settingsSaveStateRef = useRef<SettingsSaveState>("idle");
   const {
     handleSettingsChange,
+    handleSettingsDialogChange,
+    handleSettingsDialogClose,
+    openSettingsTool,
+    settingsDialogDirtyRef,
+    settingsDialogOpen,
+    settingsDialogOpenRef,
+    settingsInitialSectionId,
     settingsLoadError,
     settingsSaveError,
     settingsSaveState,
+    settingsSaveStateRef,
   } = useKerminalShellSettings({ setSettings });
-  settingsDialogOpenRef.current = settingsDialogOpen;
-  settingsSaveStateRef.current = settingsSaveState;
   const systemPrefersDark = useSystemThemePreference();
   const resolvedTheme = resolveThemeMode(settings.themeMode, systemPrefersDark);
   const desktopPlatform = resolveDesktopPlatform();
@@ -235,15 +225,6 @@ export function KerminalShell() {
     splitFocusedPane,
     terminalTabs,
   });
-  const openSettingsTool = useCallback(
-    (sectionId: SettingsSectionId = DEFAULT_SETTINGS_SECTION_ID) => {
-      settingsDialogDirtyRef.current = false;
-      settingsDialogOpenRef.current = true;
-      setSettingsInitialSectionId(sectionId);
-      setSettingsDialogOpen(true);
-    },
-    [],
-  );
   const {
     cancelDirtyFileTabs,
     cancelTerminalTabs,
@@ -380,18 +361,6 @@ export function KerminalShell() {
     settingsDialogOpenRef,
     settingsSaveStateRef,
   });
-  const handleSettingsDialogChange = useCallback(
-    (nextSettings: AppSettings) => {
-      settingsDialogDirtyRef.current = true;
-      handleSettingsChange(nextSettings);
-    },
-    [handleSettingsChange],
-  );
-  const handleSettingsDialogClose = useCallback(() => {
-    settingsDialogDirtyRef.current = false;
-    settingsDialogOpenRef.current = false;
-    setSettingsDialogOpen(false);
-  }, []);
   const connectionConfigConflict = useMemo(
     () =>
       resolveConnectionEditConflict({

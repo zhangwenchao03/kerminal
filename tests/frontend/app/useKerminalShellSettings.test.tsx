@@ -93,12 +93,40 @@ describe("useKerminalShellSettings", () => {
     );
     expect(screen.getByTestId("save-state")).toHaveTextContent("error");
   });
+
+  it("owns settings dialog section, dirty state and close lifecycle", async () => {
+    settingsApiMocks.getSettings.mockResolvedValue(defaultAppSettings);
+    settingsApiMocks.updateSettings.mockResolvedValue(defaultAppSettings);
+
+    render(<SettingsHarness />);
+    await waitFor(() => expect(settingsApiMocks.getSettings).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole("button", { name: "打开终端设置" }));
+    expect(screen.getByTestId("dialog-open")).toHaveTextContent("open");
+    expect(screen.getByTestId("dialog-section")).toHaveTextContent(
+      "settings-terminal",
+    );
+    expect(screen.getByTestId("dialog-dirty")).toHaveTextContent("clean");
+
+    fireEvent.click(screen.getByRole("button", { name: "修改对话框设置" }));
+    expect(screen.getByTestId("dialog-dirty")).toHaveTextContent("dirty");
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭设置" }));
+    expect(screen.getByTestId("dialog-open")).toHaveTextContent("closed");
+    expect(screen.getByTestId("dialog-dirty")).toHaveTextContent("clean");
+  });
 });
 
 function SettingsHarness() {
   const [settings, setSettings] = useState(defaultAppSettings);
   const {
     handleSettingsChange,
+    handleSettingsDialogChange,
+    handleSettingsDialogClose,
+    openSettingsTool,
+    settingsDialogDirtyRef,
+    settingsDialogOpen,
+    settingsInitialSectionId,
     settingsLoadError,
     settingsSaveError,
     settingsSaveState,
@@ -110,12 +138,28 @@ function SettingsHarness() {
       <div data-testid="load-error">{settingsLoadError}</div>
       <div data-testid="save-error">{settingsSaveError}</div>
       <div data-testid="save-state">{settingsSaveState}</div>
+      <div data-testid="dialog-open">
+        {settingsDialogOpen ? "open" : "closed"}
+      </div>
+      <div data-testid="dialog-section">{settingsInitialSectionId}</div>
+      <div data-testid="dialog-dirty">
+        {settingsDialogDirtyRef.current ? "dirty" : "clean"}
+      </div>
       <button onClick={() => handleSettingsChange(settingsFixture("light"))}>
         保存浅色
       </button>
       <button onClick={() => handleSettingsChange(settingsFixture("dark"))}>
         保存深色
       </button>
+      <button onClick={() => openSettingsTool("settings-terminal")}>
+        打开终端设置
+      </button>
+      <button
+        onClick={() => handleSettingsDialogChange(settingsFixture("light"))}
+      >
+        修改对话框设置
+      </button>
+      <button onClick={handleSettingsDialogClose}>关闭设置</button>
     </div>
   );
 }
