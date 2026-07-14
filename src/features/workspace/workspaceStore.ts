@@ -31,7 +31,6 @@ import type {
   TerminalSplitDirection,
   TerminalSplitLayoutSizes,
   TerminalTab,
-  TerminalTabGroupPreference,
   TerminalTabGroupPreferences,
   WorkspaceFileDirtyState,
   WorkspaceFileRevealRequest,
@@ -55,7 +54,6 @@ import {
 } from "./workspaceMachineState";
 import {
   closeTerminalPaneState,
-  closeTerminalTabState,
   focusTerminalPaneState,
   moveTerminalPaneState,
   paneIdPrefixForSplitMachine,
@@ -107,6 +105,10 @@ import {
   type WorkspaceTerminalOpenActions,
   type WorkspaceTerminalOpenCounterPort,
 } from "./workspaceTerminalOpenActions";
+import {
+  createWorkspaceTerminalTabActions,
+  type WorkspaceTerminalTabActions,
+} from "./workspaceTerminalTabActions";
 
 export type {
   AddDockerContainerOptions,
@@ -120,7 +122,8 @@ export type {
 
 export interface WorkspaceState
   extends WorkspaceShellInteractionSlice,
-    WorkspaceTerminalOpenActions {
+    WorkspaceTerminalOpenActions,
+    WorkspaceTerminalTabActions {
   profiles: TerminalProfile[];
   activeProfileId: string;
   machineGroups: MachineGroup[];
@@ -159,12 +162,6 @@ export interface WorkspaceState
   openWorkspaceFileTab: (options: OpenWorkspaceFileTabOptions) => void;
   revealWorkspaceFileInSftp: (tabId: string) => void;
   setWorkspaceFileTabDirty: (tabId: string, dirty: boolean) => void;
-  closeTerminalTab: (tabId: string) => void;
-  renameTerminalTab: (tabId: string, title: string) => void;
-  updateTerminalTabGroupPreference: (
-    groupId: string,
-    preference: TerminalTabGroupPreference,
-  ) => void;
   splitFocusedPane: (
     direction: TerminalSplitDirection,
     options?: SplitFocusedPaneOptions,
@@ -237,6 +234,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get, store) => (
   ...initialState,
   ...createWorkspaceShellInteractionSlice(set, get, store),
   ...createWorkspaceTerminalOpenActions(terminalOpenCounterPort)(set, get, store),
+  ...createWorkspaceTerminalTabActions(set, get, store),
   setProfiles: (profiles) =>
     set((state) => updateWorkspaceProfilesState(state, profiles)),
   setSettings: (settings) => set({ settings: normalizeAppSettings(settings) }),
@@ -442,50 +440,6 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get, store) => (
     set((state) =>
       revealWorkspaceFileInSftpState(state.terminalTabs, tabId, Date.now()),
     ),
-  closeTerminalTab: (tabId) =>
-    set((state) => {
-      const patch = closeTerminalTabState(state, tabId);
-      if (!(tabId in state.workspaceFileDirtyState)) {
-        return patch;
-      }
-      const { [tabId]: _removed, ...workspaceFileDirtyState } =
-        state.workspaceFileDirtyState;
-      return { ...patch, workspaceFileDirtyState };
-    }),
-  renameTerminalTab: (tabId, title) =>
-    set((state) => {
-      const trimmedTitle = title.trim();
-      if (!trimmedTitle) {
-        return {};
-      }
-
-      return {
-        terminalTabs: state.terminalTabs.map((tab) =>
-          tab.id === tabId ? { ...tab, title: trimmedTitle } : tab,
-        ),
-      };
-    }),
-  updateTerminalTabGroupPreference: (groupId, preference) =>
-    set((state) => {
-      const trimmedGroupId = groupId.trim();
-      if (!trimmedGroupId) {
-        return {};
-      }
-
-      const trimmedTitle = preference.title?.trim();
-      const nextPreference: TerminalTabGroupPreference = {
-        ...(preference.color ? { color: preference.color } : {}),
-        ...(trimmedTitle ? { title: trimmedTitle } : {}),
-      };
-      const nextPreferences = { ...state.terminalTabGroupPreferences };
-      if (Object.keys(nextPreference).length === 0) {
-        delete nextPreferences[trimmedGroupId];
-      } else {
-        nextPreferences[trimmedGroupId] = nextPreference;
-      }
-
-      return { terminalTabGroupPreferences: nextPreferences };
-    }),
   splitFocusedPane: (direction, options) =>
     set((state) => {
       const splitTarget = resolveFocusedPaneSplitTarget(
