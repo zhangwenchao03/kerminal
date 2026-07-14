@@ -411,13 +411,6 @@
       "targetTask": "TASK-070"
     },
     {
-      "file": "src/features/workspace/workspaceStore.ts",
-      "lines": 865,
-      "deadline": "before TASK-080",
-      "owner": "workspace-composition",
-      "targetTask": "TASK-030/TASK-031"
-    },
-    {
       "file": "src/lib/terminalSuggestionApi.ts",
       "lines": 980,
       "deadline": "before TASK-080",
