@@ -74,24 +74,6 @@
       "targetTask": "TASK-071"
     },
     {
-      "file": "src/features/agent-workflow/agentSendRequestStore.ts",
-      "name": "subscribeAgentSendRequest",
-      "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/agent-workflow/agentSendRequestStore.ts",
-      "name": "AgentSendRequestSource",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
       "file": "src/features/agent-workflow/agentWorkflowPorts.ts",
       "name": "AgentWorkflowPromptTransportContext",
       "type": "types",

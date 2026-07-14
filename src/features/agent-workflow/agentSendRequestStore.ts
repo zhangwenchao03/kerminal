@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-export type AgentSendRequestSource =
+type AgentSendRequestSource =
   | "commandBlock"
   | "context"
   | "selection";
@@ -57,7 +57,7 @@ export function consumeAgentSendRequest(requestId: number) {
   }
 }
 
-export function subscribeAgentSendRequest(listener: () => void) {
+function subscribeAgentSendRequest(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
