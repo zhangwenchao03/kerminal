@@ -74,15 +74,6 @@
       "targetTask": "TASK-071"
     },
     {
-      "file": "src/features/agent-workflow/agentWorkflowTypes.ts",
-      "name": "AgentWorkflowStatusSource",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
       "file": "src/features/machine-sidebar/host-containers/composeProjectModel.ts",
       "name": "readContainerComposeConfigPathResolution",
       "type": "exports",

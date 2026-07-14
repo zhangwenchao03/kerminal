@@ -14,7 +14,7 @@ import type {
 export type AgentWorkflowRuntimeStatus =
   "running" | "waitingForUser" | "failed" | "done" | "stale";
 
-export type AgentWorkflowStatusSource =
+type AgentWorkflowStatusSource =
   "repository" | "terminalSignal" | "promptTransport";
 
 /** 可丢弃的会话派生快照，正文和可变运行时对象不得进入该结构。 */

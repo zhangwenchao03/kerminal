@@ -221,7 +221,7 @@ export const contextWorkspaceProjection: WorkspaceContextProjection = {
   diagnostics: [],
 };
 
-export const emptyManagedSshSnapshot = {
+const emptyManagedSshSnapshot = {
   activeChannels: 0,
   activeSessions: 0,
   generatedAt: "1",
