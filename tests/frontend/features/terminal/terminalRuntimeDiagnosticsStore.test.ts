@@ -9,26 +9,26 @@ import {
 } from "../../../../src/features/terminal/terminalRuntimeDiagnostics";
 import { terminalSuggestionProbeScheduler } from "../../../../src/features/terminal/terminalSuggestionProbeScheduler";
 import {
-  resetSftpRuntimeDiagnosticsForTests,
-  updateSftpRuntimeDiagnosticsPreflight,
-  updateSftpRuntimeDiagnosticsTransfers,
+  createSftpRuntimeDiagnostics,
 } from "../../../../src/features/sftp/sftpRuntimeDiagnostics";
 import type { SftpTransferSummary } from "../../../../src/lib/sftpApi";
 import type { TerminalPtyOutputPumpStats } from "../../../../src/lib/terminalApi";
 
 describe("terminalRuntimeDiagnosticsStore", () => {
+  let sftpDiagnostics: ReturnType<typeof createSftpRuntimeDiagnostics>;
+
   beforeEach(() => {
     resetTerminalRuntimeDiagnosticsForTests();
-    resetSftpRuntimeDiagnosticsForTests();
+    sftpDiagnostics = createSftpRuntimeDiagnostics();
     terminalSuggestionProbeScheduler.reset();
   });
 
   it("collects non-sensitive runtime diagnostics from registered providers", async () => {
-    updateSftpRuntimeDiagnosticsTransfers([
+    sftpDiagnostics.updateTransfers([
       transfer({ id: "running", status: "running" }),
       transfer({ id: "failed", status: "failed" }),
     ]);
-    updateSftpRuntimeDiagnosticsPreflight({
+    sftpDiagnostics.updatePreflight({
       checked: 4,
       conflicts: 1,
       inFlight: 1,
@@ -127,6 +127,7 @@ describe("terminalRuntimeDiagnosticsStore", () => {
         ],
       }),
       readPtyPumpStats: async (sessionId) => ptyStats(sessionId),
+      readSftpSnapshot: sftpDiagnostics.getSnapshot,
     });
 
     expect(snapshot).toMatchObject({

@@ -1,24 +1,24 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { SftpTransferSummary } from "../../../../src/lib/sftpApi";
 import {
-  getSftpRuntimeDiagnosticsSnapshot,
-  resetSftpRuntimeDiagnosticsForTests,
-  updateSftpRuntimeDiagnosticsPreflight,
-  updateSftpRuntimeDiagnosticsTransfers,
+  createSftpRuntimeDiagnostics,
+  type SftpRuntimeDiagnostics,
 } from "../../../../src/features/sftp/sftpRuntimeDiagnostics";
 
 describe("sftpRuntimeDiagnostics", () => {
+  let diagnostics: SftpRuntimeDiagnostics;
+
   beforeEach(() => {
-    resetSftpRuntimeDiagnosticsForTests();
+    diagnostics = createSftpRuntimeDiagnostics();
   });
 
   it("summarizes transfer and preflight state without leaking paths", () => {
-    updateSftpRuntimeDiagnosticsTransfers([
+    diagnostics.updateTransfers([
       transfer({ id: "running", status: "running" }),
       transfer({ id: "done", status: "succeeded" }),
       transfer({ id: "failed", status: "failed" }),
     ]);
-    updateSftpRuntimeDiagnosticsPreflight({
+    diagnostics.updatePreflight({
       checked: 5,
       conflicts: 2,
       inFlight: 2,
@@ -26,7 +26,7 @@ describe("sftpRuntimeDiagnostics", () => {
       total: 10,
     });
 
-    const snapshot = getSftpRuntimeDiagnosticsSnapshot();
+    const snapshot = diagnostics.getSnapshot();
 
     expect(snapshot).toMatchObject({
       preflight: {
@@ -48,16 +48,16 @@ describe("sftpRuntimeDiagnostics", () => {
   });
 
   it("tracks completed retention drops as a pruned estimate", () => {
-    updateSftpRuntimeDiagnosticsTransfers([
+    diagnostics.updateTransfers([
       transfer({ id: "a", status: "succeeded" }),
       transfer({ id: "b", status: "failed" }),
       transfer({ id: "c", status: "running" }),
     ]);
-    updateSftpRuntimeDiagnosticsTransfers([
+    diagnostics.updateTransfers([
       transfer({ id: "c", status: "running" }),
     ]);
 
-    expect(getSftpRuntimeDiagnosticsSnapshot().transfers).toMatchObject({
+    expect(diagnostics.getSnapshot().transfers).toMatchObject({
       activeTransfers: 1,
       prunedCompleted: 2,
       recentCompleted: 0,
