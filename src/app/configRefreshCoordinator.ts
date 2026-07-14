@@ -7,7 +7,7 @@ import {
   type ConfigChangeStatus,
 } from "./configChangeNoticeModel";
 
-export type { ConfigChangeDomain, ConfigChangeNotice };
+export type { ConfigChangeNotice };
 
 interface ConfigChangeEventDiagnostic {
   domain?: ConfigChangeDomain;
