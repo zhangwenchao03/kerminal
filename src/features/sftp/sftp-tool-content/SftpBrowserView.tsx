@@ -1,20 +1,9 @@
 import {
-  ArrowLeft,
-  ArrowRight,
   Check,
-  ChevronUp,
-  CornerDownRight,
   Download,
-  Eye,
-  EyeOff,
-  FolderTree,
   FolderOpen,
-  FolderPlus,
-  List,
   PanelRight,
   RefreshCw,
-  Settings2,
-  Terminal,
   Upload,
 } from "lucide-react";
 import {
@@ -24,7 +13,6 @@ import {
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MutableRefObject,
-  type ReactNode,
   type RefObject,
   type SetStateAction,
 } from "react";
@@ -46,10 +34,10 @@ import type {
 import { FixedRowVirtualList } from "../FixedRowVirtualList";
 import { sanitizeSftpTransferSummary } from "../useSftpTransferQueueSync";
 import { SftpActionDialog, StatusMessage } from "./SftpActionDialog";
+import { SftpBrowserHeader } from "./SftpBrowserHeader";
 import { SftpContextMenu } from "./SftpContextMenu";
 import { SftpEntryRow } from "./SftpEntryRow";
 import { SftpTransferStatusBar } from "./SftpTransferStatusBar";
-import { ToolbarButton } from "./ToolbarButton";
 import { WorkspaceTreeRow } from "../RemoteWorkspaceEditorParts";
 import type { SftpBrowserMode } from "./sftpBrowserModeModel";
 import {
@@ -69,9 +57,6 @@ import type {
   SftpStatus,
   SftpTransferTarget,
 } from "./types";
-
-const sftpDividerClassName =
-  "mx-1 hidden h-5 w-px bg-[var(--border-subtle)] min-[420px]:block";
 
 const sftpUploadMenuItemClassName =
   "kerminal-focus-ring kerminal-pressable flex h-8 w-full items-center gap-2 rounded-[var(--radius-control)] px-2 text-left text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-zinc-50";
@@ -363,247 +348,53 @@ export function SftpBrowserView({
       className="flex h-full min-h-0 flex-col text-zinc-900 dark:text-zinc-100"
       onKeyDown={handleSftpKeyDown}
     >
-      <header
-        className={cn(
-          "kerminal-material-nav relative z-30 shrink-0 border-b",
+      <SftpBrowserHeader
+        actions={{
+          downloadSelectedEntries,
+          openNewDirectoryDialog,
+          setOperationStatus,
+          setShowHiddenFiles,
+          setUploadMenuOpen,
+          showHiddenFiles,
+          showLocalTransferActions,
+          transferableSelectionCount: transferableSelectedEntries.length,
+          transferSelectedEntriesToTarget,
+          transferTarget,
+          uploadMenuOpen,
+          uploadMenuRef,
+        }}
+        chrome={{
+          compact: compactChrome,
           headerPaddingClass,
-        )}
-      >
-        <div className={cn("kerminal-solid-surface border", pathSurfaceClass)}>
-          <form
-            className="flex min-w-0 items-center gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              submitPathDraft();
-            }}
-          >
-            <span className="shrink-0 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
-              {fileTarget.protocol}
-            </span>
-            <label className="sr-only" htmlFor={pathInputId}>
-              当前远程路径
-            </label>
-            <input
-              className={cn(
-                "kerminal-field-surface min-w-0 flex-1 rounded-lg border font-mono text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-50 dark:placeholder:text-zinc-600",
-                compactChrome ? "px-1.5 py-1 text-[13px]" : "px-2 py-1 text-sm",
-              )}
-              id={pathInputId}
-              onChange={(event) => setPathDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  setPathDraft(currentPath);
-                }
-              }}
-              spellCheck={false}
-              value={pathDraft}
-            />
-            <Button
-              aria-label="跳转远程路径"
-              className="kerminal-muted-surface h-8 w-8 rounded-lg border px-0 text-zinc-600 hover:bg-[var(--surface-hover)] dark:text-zinc-300"
-              disabled={loading}
-              size="sm"
-              title="跳转"
-              type="submit"
-              variant="ghost"
-            >
-              <CornerDownRight className="h-3.5 w-3.5" />
-            </Button>
-          </form>
-          {!compactChrome ? (
-            <div className="mt-2 truncate font-mono text-xs text-zinc-500 dark:text-zinc-400">
-              {fileTarget.summary}
-            </div>
-          ) : null}
-          {!compactChrome ? (
-            <div className="kerminal-muted-surface mt-3 flex items-center gap-2 rounded-[var(--radius-control)] border px-2 py-1.5">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-300">
-                <Terminal className="h-3.5 w-3.5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                    目录跟随
-                  </span>
-                  <span
-                    className={cn(
-                      "h-1.5 w-1.5 rounded-full",
-                      followTerminalDirectory
-                        ? "bg-emerald-400"
-                        : "bg-zinc-400 dark:bg-zinc-600",
-                    )}
-                  />
-                </div>
-                <div className="mt-0.5 truncate text-[11px] text-zinc-500 dark:text-zinc-400">
-                  {normalizedFollowedPath ? "已同步终端目录" : "等待终端目录"}
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                {supportsSftpAdvancedActions ? (
-                  <Button
-                    aria-label="自动设置 SFTP 目录跟随"
-                    className="kerminal-focus-ring kerminal-pressable h-7 w-7 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-0 text-emerald-700 hover:border-emerald-500/35 hover:bg-emerald-500/15 hover:text-emerald-800 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-300 dark:hover:border-emerald-300/35 dark:hover:bg-emerald-300/15 dark:hover:text-emerald-200"
-                    disabled={cwdTrackingSetupBusy}
-                    onClick={() => void setupRemoteCwdTracking()}
-                    size="sm"
-                    title="自动配置目录跟随"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <Settings2
-                      className={cn(
-                        "h-3.5 w-3.5",
-                        cwdTrackingSetupBusy && "animate-spin",
-                      )}
-                    />
-                  </Button>
-                ) : null}
-                <button
-                  aria-checked={followTerminalDirectory}
-                  aria-label="跟随终端目录"
-                  className={cn(
-                    "kerminal-focus-ring kerminal-pressable relative h-5 w-9 shrink-0 rounded-full border transition",
-                    followTerminalDirectory
-                      ? "border-emerald-400/50 bg-emerald-500"
-                      : "border-[var(--border-strong)] bg-[var(--surface-muted)]",
-                  )}
-                  onClick={() =>
-                    setFollowTerminalDirectory((current) => !current)
-                  }
-                  role="switch"
-                  type="button"
-                >
-                  <span
-                    className={cn(
-                      "absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-white shadow-sm transition",
-                      followTerminalDirectory ? "left-[1.125rem]" : "left-0.5",
-                    )}
-                  />
-                </button>
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        <div
-          className={cn(
-            "flex flex-wrap items-center justify-between gap-2",
-            compactChrome ? "mt-2" : "mt-3",
-          )}
-        >
-          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <ToolbarButton
-              ariaLabel="返回上级目录"
-              disabled={!listing?.parentPath || loading}
-              icon={<ChevronUp className="h-3.5 w-3.5" />}
-              label="上级"
-              onClick={() =>
-                listing?.parentPath && void loadDirectory(listing.parentPath)
-              }
-            />
-            <ToolbarButton
-              ariaLabel="刷新目录"
-              disabled={loading}
-              icon={
-                <RefreshCw
-                  className={cn("h-3.5 w-3.5", loading && "animate-spin")}
-                />
-              }
-              label="刷新"
-              onClick={() => {
-                setOperationStatus(null);
-                void loadDirectory(currentPath);
-              }}
-            />
-            <ToolbarButton
-              ariaLabel={showHiddenFiles ? "隐藏隐藏文件" : "显示隐藏文件"}
-              icon={
-                showHiddenFiles ? (
-                  <EyeOff className="h-3.5 w-3.5" />
-                ) : (
-                  <Eye className="h-3.5 w-3.5" />
-                )
-              }
-              label={showHiddenFiles ? "隐藏隐藏文件" : "显示隐藏文件"}
-              onClick={() => setShowHiddenFiles((current) => !current)}
-              pressed={showHiddenFiles}
-            />
-            <div className={sftpDividerClassName} />
-            {showLocalTransferActions ? (
-              <div className="relative" ref={uploadMenuRef}>
-                <ToolbarButton
-                  ariaExpanded={uploadMenuOpen}
-                  ariaHaspopup="menu"
-                  ariaLabel="上传"
-                  icon={<Upload className="h-3.5 w-3.5" />}
-                  label="上传"
-                  onClick={() => setUploadMenuOpen((current) => !current)}
-                  pressed={uploadMenuOpen}
-                />
-              </div>
-            ) : null}
-            <ToolbarButton
-              ariaLabel="新建目录"
-              icon={<FolderPlus className="h-3.5 w-3.5" />}
-              label="新建"
-              onClick={openNewDirectoryDialog}
-            />
-            {showLocalTransferActions ? (
-              <>
-                <div className={sftpDividerClassName} />
-                <ToolbarButton
-                  ariaLabel="下载选中项目"
-                  disabled={transferableSelectedEntries.length === 0}
-                  icon={<Download className="h-3.5 w-3.5" />}
-                  label={
-                    transferableSelectedEntries.length > 1
-                      ? `下载 ${transferableSelectedEntries.length} 项`
-                      : "下载"
-                  }
-                  onClick={() => void downloadSelectedEntries()}
-                />
-              </>
-            ) : transferTarget ? (
-              <>
-                <div className={sftpDividerClassName} />
-                <ToolbarButton
-                  ariaLabel={
-                    transferTarget.side === "right" ? "传到右侧" : "传到左侧"
-                  }
-                  disabled={transferableSelectedEntries.length === 0}
-                  icon={
-                    transferTarget.side === "right" ? (
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    ) : (
-                      <ArrowLeft className="h-3.5 w-3.5" />
-                    )
-                  }
-                  label={
-                    transferTarget.side === "right" ? "传到右侧" : "传到左侧"
-                  }
-                  onClick={() => void transferSelectedEntriesToTarget()}
-                />
-              </>
-            ) : null}
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <div className="max-w-40 truncate font-mono text-xs text-zinc-500 dark:text-zinc-400">
-              {loading
-                ? "刷新中"
-                : `${visibleEntries.length} / ${entries.length} 项${
-                    selectedEntries.length > 0
-                      ? ` / 已选 ${selectedEntries.length}`
-                      : ""
-                  }`}
-            </div>
-            <SftpBrowserModeToggle
-              mode={browserMode}
-              onModeChange={setBrowserMode}
-            />
-          </div>
-        </div>
-      </header>
+          pathSurfaceClass,
+        }}
+        follow={{
+          busy: cwdTrackingSetupBusy,
+          enabled: followTerminalDirectory,
+          normalizedPath: normalizedFollowedPath,
+          setEnabled: setFollowTerminalDirectory,
+          setup: setupRemoteCwdTracking,
+          supported: supportsSftpAdvancedActions,
+        }}
+        navigation={{
+          currentPath,
+          fileTarget,
+          listing,
+          loadDirectory,
+          loading,
+          pathDraft,
+          pathInputId,
+          setPathDraft,
+          submitPathDraft,
+        }}
+        summary={{
+          browserMode,
+          entryCount: entries.length,
+          selectedCount: selectedEntries.length,
+          setBrowserMode,
+          visibleEntryCount: visibleEntries.length,
+        }}
+      />
 
       <div className={cn("min-h-0 flex-1", bodyPaddingClass)}>
         <div
@@ -1012,59 +803,6 @@ export function SftpBrowserView({
           )
         : null}
     </section>
-  );
-}
-
-function SftpBrowserModeToggle({
-  mode,
-  onModeChange,
-}: {
-  mode: SftpBrowserMode;
-  onModeChange: Dispatch<SetStateAction<SftpBrowserMode>>;
-}) {
-  const items: Array<{
-    icon: ReactNode;
-    id: SftpBrowserMode;
-    label: string;
-  }> = [
-    { icon: <List className="h-3.5 w-3.5" />, id: "list", label: "列表模式" },
-    {
-      icon: <FolderTree className="h-3.5 w-3.5" />,
-      id: "tree",
-      label: "树形模式",
-    },
-    {
-      icon: <PanelRight className="h-3.5 w-3.5" />,
-      id: "workspace",
-      label: "工作区模式",
-    },
-  ];
-
-  return (
-    <div
-      aria-label="SFTP 浏览模式"
-      className="kerminal-muted-surface flex shrink-0 items-center gap-0.5 rounded-lg border p-0.5"
-      role="group"
-    >
-      {items.map((item) => (
-        <button
-          aria-label={item.label}
-          aria-pressed={mode === item.id}
-          className={cn(
-            "kerminal-focus-ring flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition hover:bg-[var(--surface-hover)] hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50",
-            mode === item.id &&
-              "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100",
-          )}
-          data-testid={`sftp-browser-mode-${item.id}`}
-          key={item.id}
-          onClick={() => onModeChange(item.id)}
-          title={item.label}
-          type="button"
-        >
-          {item.icon}
-        </button>
-      ))}
-    </div>
   );
 }
 
