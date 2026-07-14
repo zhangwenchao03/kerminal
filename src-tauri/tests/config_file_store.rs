@@ -318,6 +318,25 @@ fn remote_host_toml_rejects_secret_fields_in_public_host_file() {
         ));
 }
 
+#[test]
+fn remote_host_toml_rejects_plaintext_password_and_key_fields() {
+    for key in ["password", "inline_private_key", "key_passphrase"] {
+        let temp = tempdir().expect("temp dir");
+        let store = ConfigFileStore::new(temp.path());
+        fs::create_dir_all(temp.path().join("hosts")).expect("hosts dir");
+        fs::write(
+            temp.path().join("hosts/host-secret.toml"),
+            format!("schema_version = 1\nid = \"host-secret\"\n{key} = \"placeholder\"\n"),
+        )
+        .expect("write invalid host");
+
+        let error = store
+            .remote_host_by_id("host-secret")
+            .expect_err("plaintext secret must fail");
+        assert_eq!(parse_diagnostics(&error)[0].key.as_deref(), Some(key));
+    }
+}
+
 fn parse_diagnostics(
     error: &FileStoreError,
 ) -> &[kerminal_lib::storage::file_store::ParseDiagnostic] {

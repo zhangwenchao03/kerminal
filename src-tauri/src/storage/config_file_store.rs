@@ -804,28 +804,33 @@ fn toml_validation_error(error: crate::error::AppError) -> FileStoreError {
 }
 
 fn reject_secret_keys_in_host_toml(source: &str) -> Result<(), TomlParseError> {
+    const FORBIDDEN_KEYS: &[&str] = &[
+        "credential_secret",
+        "credentialSecret",
+        "password",
+        "inline_private_key",
+        "inlinePrivateKey",
+        "key_passphrase",
+        "keyPassphrase",
+        "key_passphrase_secret",
+        "keyPassphraseSecret",
+    ];
     for (line_index, line) in source.lines().enumerate() {
         let trimmed = line.trim_start();
         if trimmed.starts_with('#') {
             continue;
         }
-        if trimmed.starts_with("credential_secret")
-            || trimmed.starts_with("credentialSecret")
-            || trimmed.contains(".credential_secret")
-            || trimmed.contains(".credentialSecret")
+        if let Some(key) = FORBIDDEN_KEYS
+            .iter()
+            .find(|key| trimmed.starts_with(**key) || trimmed.contains(&format!(".{key}")))
         {
-            let key = if trimmed.contains("credentialSecret") {
-                "credentialSecret"
-            } else {
-                "credential_secret"
-            };
-            let column = line.find("credential").map(|index| index + 1).unwrap_or(1);
+            let column = line.find(key).map(|index| index + 1).unwrap_or(1);
             let diagnostic = ParseDiagnostic::new(
                 line_index + 1,
                 column,
                 "ordinary host config must not contain credential secret fields; save credentials through encrypted vault",
             )
-            .with_key(key)
+            .with_key(*key)
             .with_recovery(
                 "Remove the plaintext secret field and save credentials through the encrypted vault; host TOML may only keep secret_ref/key_passphrase_ref references.",
             );
