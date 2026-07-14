@@ -1,8 +1,5 @@
 import { useEffect, useState } from "react";
-import type {
-  PortForwardProxyProtocol,
-  PortForwardSummary,
-} from "../../../lib/portForwardApi";
+import type { PortForwardSummary } from "../../../lib/portForwardApi";
 import type {
   BindAddressMode,
   PortForwardScenario,
@@ -27,11 +24,7 @@ export function usePortForwardForm(hostId: string | undefined) {
   const [remoteListenPort, setRemoteListenPort] = useState("18080");
   const [localTargetHost, setLocalTargetHost] = useState("127.0.0.1");
   const [localTargetPort, setLocalTargetPort] = useState("3000");
-  const [localProxyHost, setLocalProxyHost] = useState("127.0.0.1");
-  const [localProxyPort, setLocalProxyPort] = useState("18081");
   const [localSocksPort, setLocalSocksPort] = useState("1080");
-  const [proxyProtocol, setProxyProtocol] =
-    useState<PortForwardProxyProtocol>("http");
   const [socksMode, setSocksMode] = useState<SocksAdvancedMode>("localDynamic");
 
   useEffect(() => {
@@ -47,10 +40,7 @@ export function usePortForwardForm(hostId: string | undefined) {
     setRemoteListenPort("18080");
     setLocalTargetHost("127.0.0.1");
     setLocalTargetPort("3000");
-    setLocalProxyHost("127.0.0.1");
-    setLocalProxyPort("18081");
     setLocalSocksPort("1080");
-    setProxyProtocol("http");
     setSocksMode("localDynamic");
   }, [hostId]);
 
@@ -81,25 +71,19 @@ export function usePortForwardForm(hostId: string | undefined) {
       setLocalSocksPort(String(session.sourcePort));
       return;
     }
-    if (session.purpose === "hostNetworkAssist") {
-      if (session.proxyProtocol === "socks5" && !session.targetHost) {
-        setScenario("socksAdvanced");
-        setSocksMode("remoteDynamic");
-      } else {
-        setScenario("hostNetwork");
-      }
-      setProxyProtocol(session.proxyProtocol ?? "http");
+    if (
+      session.kind === "remoteDynamic" ||
+      (session.kind === "remote" &&
+        session.proxyProtocol === "socks5" &&
+        !session.targetHost)
+    ) {
+      setScenario("socksAdvanced");
+      setSocksMode("remoteDynamic");
       setRemoteCustomBindHost(session.remoteBindHost ?? session.bindHost);
       setRemoteBindMode(
         bindModeFromHost(session.remoteBindHost ?? session.bindHost),
       );
       setRemoteListenPort(String(session.sourcePort));
-      setLocalProxyHost(
-        session.localEndpoint?.host ?? session.targetHost ?? "127.0.0.1",
-      );
-      setLocalProxyPort(
-        String(session.localEndpoint?.port ?? session.targetPort ?? 18081),
-      );
       return;
     }
     setScenario("localService");
@@ -123,13 +107,10 @@ export function usePortForwardForm(hostId: string | undefined) {
     localBindMode,
     localCustomBindHost,
     localListenPort,
-    localProxyHost,
-    localProxyPort,
     localSocksPort,
     localTargetHost,
     localTargetPort,
     name,
-    proxyProtocol,
     remoteBindMode,
     remoteCustomBindHost,
     remoteListenPort,
@@ -139,13 +120,10 @@ export function usePortForwardForm(hostId: string | undefined) {
     setLocalBindMode,
     setLocalCustomBindHost,
     setLocalListenPort,
-    setLocalProxyHost,
-    setLocalProxyPort,
     setLocalSocksPort,
     setLocalTargetHost,
     setLocalTargetPort,
     setName,
-    setProxyProtocol,
     setRemoteBindMode,
     setRemoteCustomBindHost,
     setRemoteListenPort,

@@ -5,7 +5,6 @@
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 use std::time::{SystemTime, UNIX_EPOCH};
-use uuid::Uuid;
 
 use crate::{
     error::{AppError, AppResult},
@@ -32,9 +31,9 @@ use crate::{
         },
         mcp_server::ToolDefinition,
         port_forward::{
-            PortForwardCreateRequest, PortForwardEndpoint, PortForwardKind, PortForwardOrigin,
-            PortForwardProxyApplyScope, PortForwardProxyProtocol, PortForwardPurpose,
-            PortForwardRemoteAccessScope, PortForwardStatus, PortForwardSummary,
+            PortForwardCreateRequest, PortForwardKind, PortForwardOrigin,
+            PortForwardProxyApplyScope, PortForwardProxyProtocol, PortForwardRemoteAccessScope,
+            PortForwardStatus, PortForwardSummary,
         },
         remote_host::{
             build_vault_secret_ref, parse_vault_secret_ref, RemoteHost, RemoteHostAuthType,
@@ -74,7 +73,6 @@ use crate::{
         docker_host_service::DockerHostService,
         encrypted_vault_service::EncryptedVaultService,
         external_launch::ExternalLaunchIntake,
-        local_network_proxy_service::{LocalNetworkProxyService, LocalProxyEntryRequest},
         port_forward_service::PortForwardService,
         remote_host_service::RemoteHostService,
         server_info_service::ServerInfoService,
@@ -258,8 +256,6 @@ pub struct McpToolExecutionContext<'a> {
     pub tmux: &'a TmuxService,
     /// SSH 端口转发服务。
     pub port_forwards: &'a PortForwardService,
-    /// 本机共享网络代理服务。
-    pub local_network_proxy: &'a LocalNetworkProxyService,
     /// SSH 非交互命令服务。
     pub ssh_commands: &'a SshCommandService,
     /// 受管 SSH 会话运行时。

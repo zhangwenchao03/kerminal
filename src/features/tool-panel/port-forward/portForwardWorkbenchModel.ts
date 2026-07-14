@@ -1,14 +1,11 @@
 import type {
   PortForwardOrigin,
-  PortForwardProxyProtocol,
-  PortForwardPurpose,
   PortForwardSummary,
 } from "../../../lib/portForwardApi";
 
 export type PortForwardScenario =
   | "hostService"
   | "localService"
-  | "hostNetwork"
   | "socksAdvanced";
 
 export type BindAddressMode = "loopback" | "all" | "custom";
@@ -42,15 +39,8 @@ export const portForwardScenarioOptions: PortForwardScenarioOption[] = [
     openssh: "-R",
   },
   {
-    description: "主机命令使用本机网络。",
-    flow: "让主机命令通过本机网络访问外部",
-    id: "hostNetwork",
-    label: "主机使用本机网络",
-    openssh: "-R + proxy",
-  },
-  {
-    description: "创建 SOCKS 代理。",
-    flow: "创建 SOCKS 代理入口",
+    description: "在本机或主机创建 SOCKS 代理。",
+    flow: "选择 SOCKS 代理方向",
     id: "socksAdvanced",
     label: "SOCKS / 高级",
     openssh: "-D / remote -R",
@@ -64,7 +54,7 @@ export function flowForScenario(
   if (scenario === "hostService") {
     return "本机 -> 主机";
   }
-  if (scenario === "localService" || scenario === "hostNetwork") {
+  if (scenario === "localService") {
     return "主机 -> 本机";
   }
   return socksMode === "remoteDynamic" ? "主机 -> 本机网络" : "本机 -> 主机网络";
@@ -79,9 +69,6 @@ export function opensshForScenario(
   }
   if (scenario === "localService") {
     return "-R";
-  }
-  if (scenario === "hostNetwork") {
-    return "-R + proxy";
   }
   return socksMode === "remoteDynamic" ? "remote -R SOCKS" : "-D";
 }
@@ -139,41 +126,25 @@ export function proxyHostForRemoteUse(bindHost: string): string {
 export function buildProxyUrl({
   bindHost,
   port,
-  protocol,
 }: {
   bindHost: string;
   port: number;
-  protocol: PortForwardProxyProtocol;
 }): string {
-  const scheme = protocol === "socks5" ? "socks5h" : "http";
-  return `${scheme}://${formatProxyHost(proxyHostForRemoteUse(bindHost))}:${port}`;
+  return `socks5h://${formatProxyHost(proxyHostForRemoteUse(bindHost))}:${port}`;
 }
 
-export function buildNetworkAssistCommand({
+export function buildRemoteSocksCommand({
   noProxy = "localhost,127.0.0.1",
-  protocol,
   proxyUrl,
 }: {
   noProxy?: string;
-  protocol: PortForwardProxyProtocol;
   proxyUrl: string;
 }): string {
   const quotedProxy = shellQuote(proxyUrl);
   const quotedNoProxy = shellQuote(noProxy);
-  if (protocol === "socks5") {
-    return [
-      `export ALL_PROXY=${quotedProxy}`,
-      `export all_proxy=${quotedProxy}`,
-      `export NO_PROXY=${quotedNoProxy}`,
-      `export no_proxy=${quotedNoProxy}`,
-    ].join("\n");
-  }
-
   return [
-    `export HTTP_PROXY=${quotedProxy}`,
-    `export HTTPS_PROXY=${quotedProxy}`,
-    `export http_proxy=${quotedProxy}`,
-    `export https_proxy=${quotedProxy}`,
+    `export ALL_PROXY=${quotedProxy}`,
+    `export all_proxy=${quotedProxy}`,
     `export NO_PROXY=${quotedNoProxy}`,
     `export no_proxy=${quotedNoProxy}`,
   ].join("\n");
@@ -191,17 +162,13 @@ export function buildUserProxySetupScript(
   const sessionSlug = shellSafeSlug(session.id);
   const quotedProxy = shellQuote(proxyUrl);
   const quotedNoProxy = shellQuote(noProxy);
-  const envExports = buildUserProxyEnvExports({
-    noProxy,
-    protocol: sessionProxyProtocol(session),
-    proxyUrl,
-  });
+  const envExports = buildUserProxyEnvExports({ noProxy, proxyUrl });
 
   return [
     "#!/bin/sh",
     "set -eu",
     "",
-    "# Kerminal network assist user-level setup.",
+    "# Kerminal remote SOCKS user-level setup.",
     "# Writes only under the current remote user's $HOME. No root required.",
     "# Review this script before running it on the remote host.",
     `KERM_PROXY_URL=${quotedProxy}`,
@@ -311,7 +278,7 @@ export function buildUserProxyUndoScript(
     "#!/bin/sh",
     "set -eu",
     "",
-    "# Kerminal network assist user-level undo.",
+    "# Kerminal remote SOCKS user-level undo.",
     "# Writes only under the current remote user's $HOME. No root required.",
     `KERM_ID=${shellQuote(sessionSlug)}`,
     'KERM_HOME="${HOME:?HOME is required}"',
@@ -394,46 +361,47 @@ export function buildUserProxyUndoScript(
   ].join("\n");
 }
 
-export function sessionPurpose(
+export function isRemoteDynamicSocks(session: PortForwardSummary): boolean {
+  return (
+    session.kind === "remoteDynamic" ||
+    (session.kind === "remote" &&
+      session.proxyProtocol === "socks5" &&
+      !session.targetHost &&
+      !session.targetPort)
+  );
+}
+
+export function isLegacyHttpNetworkAssist(
   session: PortForwardSummary,
-): PortForwardPurpose {
-  return session.purpose ?? (session.proxyUrl ? "hostNetworkAssist" : "generic");
+): boolean {
+  return (
+    session.kind === "remote" &&
+    session.proxyProtocol === "http" &&
+    session.origin === "networkAssist"
+  );
 }
 
 export function sessionOrigin(session: PortForwardSummary): PortForwardOrigin {
-  return session.origin ?? (sessionPurpose(session) === "hostNetworkAssist" ? "networkAssist" : "user");
-}
-
-export function sessionProxyProtocol(
-  session: PortForwardSummary,
-): PortForwardProxyProtocol {
-  if (session.proxyProtocol) {
-    return session.proxyProtocol;
-  }
-  if (session.proxyUrl?.startsWith("socks5h://")) {
-    return "socks5";
-  }
-  return "http";
+  return session.origin ?? "user";
 }
 
 export function proxyUrlForSession(
   session: PortForwardSummary,
 ): string | undefined {
-  if (session.proxyUrl) {
-    return session.proxyUrl;
-  }
-  if (sessionPurpose(session) !== "hostNetworkAssist") {
+  if (!isRemoteDynamicSocks(session)) {
     return undefined;
+  }
+  if (session.proxyUrl?.startsWith("socks5h://")) {
+    return session.proxyUrl;
   }
   return buildProxyUrl({
     bindHost: session.remoteBindHost ?? session.bindHost,
     port: session.sourcePort,
-    protocol: sessionProxyProtocol(session),
   });
 }
 
 export function sessionDirectionLabel(session: PortForwardSummary): string {
-  if (sessionPurpose(session) === "hostNetworkAssist") {
+  if (isRemoteDynamicSocks(session)) {
     return "主机 -> 本机网络";
   }
   if (session.kind === "remote") {
@@ -452,7 +420,7 @@ export function sessionHostEndpoint(session: PortForwardSummary): string {
       session.remoteEndpoint.port,
     );
   }
-  if (sessionPurpose(session) === "hostNetworkAssist") {
+  if (isRemoteDynamicSocks(session)) {
     return endpointToString(session.remoteBindHost ?? session.bindHost, session.sourcePort);
   }
   if (session.kind === "local") {
@@ -468,13 +436,8 @@ export function sessionLocalEndpoint(session: PortForwardSummary): string {
   if (session.localEndpoint?.host) {
     return endpointToString(session.localEndpoint.host, session.localEndpoint.port);
   }
-  if (sessionPurpose(session) === "hostNetworkAssist") {
-    return session.proxyProtocol === "socks5"
-      ? "OpenSSH 远端 SOCKS"
-      : endpointToString(
-          session.localBindHost ?? session.targetHost ?? "127.0.0.1",
-          session.targetPort,
-        );
+  if (isRemoteDynamicSocks(session)) {
+    return "Kerminal 本机网络出口";
   }
   if (session.kind === "remote") {
     return endpointToString(session.targetHost ?? "127.0.0.1", session.targetPort);
@@ -510,29 +473,14 @@ function shellSafeSlug(value: string): string {
 
 function buildUserProxyEnvExports({
   noProxy,
-  protocol,
   proxyUrl,
 }: {
   noProxy: string;
-  protocol: PortForwardProxyProtocol;
   proxyUrl: string;
 }): string {
   const quotedProxy = shellQuote(proxyUrl);
   const quotedNoProxy = shellQuote(noProxy);
-  if (protocol === "socks5") {
-    return [
-      `export ALL_PROXY=${quotedProxy}`,
-      `export all_proxy=${quotedProxy}`,
-      `export NO_PROXY=${quotedNoProxy}`,
-      `export no_proxy=${quotedNoProxy}`,
-    ].join("\n");
-  }
-
   return [
-    `export HTTP_PROXY=${quotedProxy}`,
-    `export HTTPS_PROXY=${quotedProxy}`,
-    `export http_proxy=${quotedProxy}`,
-    `export https_proxy=${quotedProxy}`,
     `export ALL_PROXY=${quotedProxy}`,
     `export all_proxy=${quotedProxy}`,
     `export NO_PROXY=${quotedNoProxy}`,

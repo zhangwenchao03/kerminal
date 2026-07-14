@@ -20,20 +20,20 @@ const terminalRegistryMocks = vi.hoisted(() => ({
 const proxyAutoInjectionMocks = vi.hoisted(() => {
   const state = new Map<string, { sessionId: string }>();
   return {
-    clearHostNetworkAssistAutoInjection: vi.fn(
+    clearRemoteSocksAutoInjection: vi.fn(
       (hostId: string, _sessionId?: string) => state.delete(hostId),
     ),
-    getHostNetworkAssistAutoInjection: vi.fn((hostId: string) =>
+    getRemoteSocksAutoInjection: vi.fn((hostId: string) =>
       state.get(hostId),
     ),
-    isHostNetworkAssistAutoInjectionEnabled: vi.fn(
+    isRemoteSocksAutoInjectionEnabled: vi.fn(
       ({ hostId, sessionId }: { hostId: string; sessionId: string }) =>
         state.get(hostId)?.sessionId === sessionId,
     ),
     reset: () => {
       state.clear();
     },
-    setHostNetworkAssistAutoInjection: vi.fn(
+    setRemoteSocksAutoInjection: vi.fn(
       (injection: { hostId: string; sessionId: string }) => {
         state.set(injection.hostId, injection);
       },
@@ -69,21 +69,21 @@ vi.mock("../../../../src/features/terminal/terminalSessionRegistry", () => ({
 }));
 
 vi.mock("../../../../src/features/terminal/terminalProxyAutoInjection", () => ({
-  clearHostNetworkAssistAutoInjection: (hostId: string, sessionId?: string) =>
-    proxyAutoInjectionMocks.clearHostNetworkAssistAutoInjection(
+  clearRemoteSocksAutoInjection: (hostId: string, sessionId?: string) =>
+    proxyAutoInjectionMocks.clearRemoteSocksAutoInjection(
       hostId,
       sessionId,
     ),
-  getHostNetworkAssistAutoInjection: (hostId: string) =>
-    proxyAutoInjectionMocks.getHostNetworkAssistAutoInjection(hostId),
-  isHostNetworkAssistAutoInjectionEnabled: (request: {
+  getRemoteSocksAutoInjection: (hostId: string) =>
+    proxyAutoInjectionMocks.getRemoteSocksAutoInjection(hostId),
+  isRemoteSocksAutoInjectionEnabled: (request: {
     hostId: string;
     sessionId: string;
-  }) => proxyAutoInjectionMocks.isHostNetworkAssistAutoInjectionEnabled(request),
-  setHostNetworkAssistAutoInjection: (injection: {
+  }) => proxyAutoInjectionMocks.isRemoteSocksAutoInjectionEnabled(request),
+  setRemoteSocksAutoInjection: (injection: {
     hostId: string;
     sessionId: string;
-  }) => proxyAutoInjectionMocks.setHostNetworkAssistAutoInjection(injection),
+  }) => proxyAutoInjectionMocks.setRemoteSocksAutoInjection(injection),
 }));
 
 const sshMachine: Machine = {
@@ -162,17 +162,14 @@ function networkAssistSession(
     hostId: "prod-api",
     hostName: "prod api",
     id: "forward-network",
-    kind: "remote",
-    name: "主机网络助手",
-    origin: "networkAssist",
-    proxyProtocol: "http",
-    proxyUrl: "http://127.0.0.1:18080",
-    purpose: "hostNetworkAssist",
+    kind: "remoteDynamic",
+    name: "远端 SOCKS",
+    origin: "user",
+    proxyProtocol: "socks5",
+    proxyUrl: "socks5h://127.0.0.1:18080",
     remoteBindHost: "127.0.0.1",
     sourcePort: 18080,
     status: "running",
-    targetHost: "127.0.0.1",
-    targetPort: 18081,
     ...overrides,
   };
 }
@@ -203,10 +200,10 @@ describe("PortForwardToolContent", () => {
       sent: true,
     });
     proxyAutoInjectionMocks.reset();
-    proxyAutoInjectionMocks.clearHostNetworkAssistAutoInjection.mockClear();
-    proxyAutoInjectionMocks.getHostNetworkAssistAutoInjection.mockClear();
-    proxyAutoInjectionMocks.isHostNetworkAssistAutoInjectionEnabled.mockClear();
-    proxyAutoInjectionMocks.setHostNetworkAssistAutoInjection.mockClear();
+    proxyAutoInjectionMocks.clearRemoteSocksAutoInjection.mockClear();
+    proxyAutoInjectionMocks.getRemoteSocksAutoInjection.mockClear();
+    proxyAutoInjectionMocks.isRemoteSocksAutoInjectionEnabled.mockClear();
+    proxyAutoInjectionMocks.setRemoteSocksAutoInjection.mockClear();
     desktopClipboardApiMocks.writeDesktopClipboardText.mockReset();
     desktopClipboardApiMocks.writeDesktopClipboardText.mockResolvedValue({
       ok: true,
@@ -242,13 +239,10 @@ describe("PortForwardToolContent", () => {
     expect(screen.getByLabelText("主机监听端口")).toBeInTheDocument();
     expect(screen.getByLabelText("本机目标地址")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /主机使用本机网络/ }));
+    await user.click(screen.getByRole("button", { name: /SOCKS \/ 高级/ }));
 
-    expect(
-      screen.getByRole("button", { name: "HTTP_PROXY" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("http://127.0.0.1:18080")).toBeInTheDocument();
-    expect(screen.getByText("网络助手注入命令")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "本机 -D" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "远端 SOCKS" })).toBeInTheDocument();
   });
 
   it("keeps raw tunnel failures collapsed behind a recovery message", async () => {
@@ -344,7 +338,7 @@ describe("PortForwardToolContent", () => {
     expect(screen.queryByText("Stage proxy")).not.toBeInTheDocument();
   });
 
-  it("copies network assist scripts through the desktop clipboard facade", async () => {
+  it("copies remote SOCKS scripts through the desktop clipboard facade", async () => {
     const user = userEvent.setup();
     portForwardApiMocks.listPortForwards.mockResolvedValue([
       networkAssistSession(),
@@ -358,11 +352,11 @@ describe("PortForwardToolContent", () => {
 
     expect(
       desktopClipboardApiMocks.writeDesktopClipboardText,
-    ).toHaveBeenCalledWith(expect.stringContaining("HTTP_PROXY"));
+    ).toHaveBeenCalledWith(expect.stringContaining("ALL_PROXY"));
     expect(screen.getByText("已复制地址。")).toBeInTheDocument();
   });
 
-  it("injects HTTP proxy exports into the focused same-host SSH pane", async () => {
+  it("injects SOCKS proxy exports into the focused same-host SSH pane", async () => {
     const user = userEvent.setup();
     portForwardApiMocks.listPortForwards.mockResolvedValue([
       networkAssistSession(),
@@ -379,7 +373,9 @@ describe("PortForwardToolContent", () => {
 
     await waitFor(() =>
       expect(terminalRegistryMocks.writePaneCommand).toHaveBeenCalledWith({
-        command: expect.stringContaining("HTTP_PROXY='http://127.0.0.1:18080'"),
+        command: expect.stringContaining(
+          "ALL_PROXY='socks5h://127.0.0.1:18080'",
+        ),
         paneId: "pane-prod",
         source: "tool",
       }),
@@ -421,11 +417,11 @@ describe("PortForwardToolContent", () => {
     await user.click(enableButton);
 
     expect(
-      proxyAutoInjectionMocks.setHostNetworkAssistAutoInjection,
+      proxyAutoInjectionMocks.setRemoteSocksAutoInjection,
     ).toHaveBeenCalledWith(
       expect.objectContaining({
         hostId: "prod-api",
-        proxyUrl: "http://127.0.0.1:18080",
+        proxyUrl: "socks5h://127.0.0.1:18080",
         sessionId: "forward-network",
       }),
     );
@@ -438,7 +434,7 @@ describe("PortForwardToolContent", () => {
     );
 
     expect(
-      proxyAutoInjectionMocks.clearHostNetworkAssistAutoInjection,
+      proxyAutoInjectionMocks.clearRemoteSocksAutoInjection,
     ).toHaveBeenCalledWith("prod-api", "forward-network");
   });
 
@@ -474,7 +470,7 @@ describe("PortForwardToolContent", () => {
     expect(portForwardApiMocks.startPortForward).toHaveBeenCalledWith(
       "forward-network",
     );
-    expect(await screen.findByText("主机网络助手 已启动。")).toBeInTheDocument();
+    expect(await screen.findByText("远端 SOCKS 已启动。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "停止隧道" })).toBeInTheDocument();
   });
 
@@ -497,11 +493,11 @@ describe("PortForwardToolContent", () => {
   });
 
   it("keeps restored auto-use until sessions finish loading", async () => {
-    proxyAutoInjectionMocks.setHostNetworkAssistAutoInjection({
+    proxyAutoInjectionMocks.setRemoteSocksAutoInjection({
       hostId: "prod-api",
       sessionId: "forward-network",
     });
-    proxyAutoInjectionMocks.setHostNetworkAssistAutoInjection.mockClear();
+    proxyAutoInjectionMocks.setRemoteSocksAutoInjection.mockClear();
     portForwardApiMocks.listPortForwards.mockResolvedValue([
       networkAssistSession(),
     ]);
@@ -512,16 +508,16 @@ describe("PortForwardToolContent", () => {
       await screen.findByRole("button", { name: "关闭新终端自动使用" }),
     ).toBeInTheDocument();
     expect(
-      proxyAutoInjectionMocks.clearHostNetworkAssistAutoInjection,
+      proxyAutoInjectionMocks.clearRemoteSocksAutoInjection,
     ).not.toHaveBeenCalled();
   });
 
   it("does not reuse restored auto-use when the persisted tunnel is exited", async () => {
-    proxyAutoInjectionMocks.setHostNetworkAssistAutoInjection({
+    proxyAutoInjectionMocks.setRemoteSocksAutoInjection({
       hostId: "prod-api",
       sessionId: "forward-network",
     });
-    proxyAutoInjectionMocks.setHostNetworkAssistAutoInjection.mockClear();
+    proxyAutoInjectionMocks.setRemoteSocksAutoInjection.mockClear();
     portForwardApiMocks.listPortForwards.mockResolvedValue([
       networkAssistSession({ status: "exited" }),
     ]);
@@ -536,7 +532,7 @@ describe("PortForwardToolContent", () => {
     expect(await screen.findByText("已退出")).toBeInTheDocument();
     await waitFor(() =>
       expect(
-        proxyAutoInjectionMocks.clearHostNetworkAssistAutoInjection,
+        proxyAutoInjectionMocks.clearRemoteSocksAutoInjection,
       ).toHaveBeenCalledWith("prod-api", "forward-network"),
     );
     expect(
@@ -592,7 +588,8 @@ describe("PortForwardToolContent", () => {
     render(<PortForwardToolContent selectedMachine={sshMachine} />);
 
     await user.click(await screen.findByRole("button", { name: "添加隧道" }));
-    await user.click(screen.getByRole("button", { name: /主机使用本机网络/ }));
+    await user.click(screen.getByRole("button", { name: /SOCKS \/ 高级/ }));
+    await user.click(screen.getByRole("button", { name: "远端 SOCKS" }));
     await user.click(screen.getByRole("combobox", { name: "主机监听范围" }));
     await user.click(screen.getByRole("option", { name: "全部接口 (0.0.0.0)" }));
 

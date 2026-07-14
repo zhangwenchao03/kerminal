@@ -140,7 +140,6 @@ pub(super) fn execute_kerminal_runtime_snapshot(
                 "hostName": summary.host_name,
                 "name": summary.name,
                 "kind": summary.kind,
-                "purpose": summary.purpose,
                 "origin": summary.origin,
                 "bindHost": summary.bind_host,
                 "sourcePort": summary.source_port,
@@ -153,17 +152,8 @@ pub(super) fn execute_kerminal_runtime_snapshot(
         })
         .collect::<Vec<_>>();
 
-    let local_proxy_entry_count = match context.local_network_proxy.active_entry_count() {
-        Ok(count) => count,
-        Err(error) => {
-            diagnostics.push(runtime_snapshot_diagnostic(
-                "local_network_proxy",
-                "localProxyUnavailable",
-                &error,
-            ));
-            0
-        }
-    };
+    // 兼容现有 runtime snapshot schema；本机 HTTP 代理服务已移除。
+    let local_proxy_entry_count = 0;
 
     let external_launch_intake = match context.external_launch_intake.snapshot() {
         Ok(snapshot) => Some(snapshot),
