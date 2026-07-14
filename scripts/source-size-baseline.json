@@ -159,13 +159,6 @@
       "targetTask": "TASK-072"
     },
     {
-      "file": "src-tauri/src/storage/config_file_store.rs",
-      "lines": 873,
-      "deadline": "before TASK-080",
-      "owner": "configuration-storage",
-      "targetTask": "TASK-060"
-    },
-    {
       "file": "src-tauri/tests/command_suggestion_service/remote_cache.rs",
       "lines": 865,
       "deadline": "before TASK-080",
