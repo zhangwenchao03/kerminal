@@ -2,9 +2,25 @@ import type { RemoteTargetRef } from "../../lib/targetModel";
 import type { TmuxPaneBinding } from "../../lib/tmuxApi";
 import type {
   TerminalSplitPlacement,
+  ToolId,
   WorkspaceFileAccess,
   WorkspaceFileSource,
 } from "./types";
+
+interface WorkspaceShellInteractionState {
+  activeTool: ToolId | null;
+  broadcastDraft: string;
+  machineSearch: string;
+}
+
+interface WorkspaceShellInteractionActions {
+  setActiveTool: (toolId: ToolId | null) => void;
+  setBroadcastDraft: (draft: string) => void;
+  setMachineSearch: (query: string) => void;
+}
+
+export type WorkspaceShellInteractionSlice = WorkspaceShellInteractionState &
+  WorkspaceShellInteractionActions;
 
 export interface AddTerminalTabOptions {
   title?: string;

@@ -45,12 +45,11 @@ import type {
   TerminalTab,
   TerminalTabGroupPreference,
   TerminalTabGroupPreferences,
-  ToolId,
   WorkspaceFileDirtyState,
   WorkspaceFileRevealRequest,
   WorkspaceFileTab,
 } from "./types";
-import { isToolId, isWorkspaceFileTab } from "./types";
+import { isWorkspaceFileTab } from "./types";
 import {
   addMachineToGroup,
   containerToMachine,
@@ -116,7 +115,12 @@ import type {
   OpenWorkspaceFileTabOptions,
   SplitFocusedPaneOptions,
   TmuxAttachPlacement,
+  WorkspaceShellInteractionSlice,
 } from "./workspaceStoreContract";
+import {
+  createWorkspaceShellInteractionSlice,
+  initialWorkspaceShellInteractionState,
+} from "./workspaceShellInteractionSlice";
 
 export type {
   AddDockerContainerOptions,
@@ -128,7 +132,7 @@ export type {
   TmuxAttachPlacement,
 } from "./workspaceStoreContract";
 
-export interface WorkspaceState {
+export interface WorkspaceState extends WorkspaceShellInteractionSlice {
   profiles: TerminalProfile[];
   activeProfileId: string;
   machineGroups: MachineGroup[];
@@ -139,9 +143,6 @@ export interface WorkspaceState {
   selectedMachineId: string;
   focusedPaneId: string;
   removedSidebarMachineIds: string[];
-  activeTool: ToolId | null;
-  machineSearch: string;
-  broadcastDraft: string;
   settings: AppSettings;
   workspaceFileDirtyState: WorkspaceFileDirtyState;
   workspaceFileRevealRequest: WorkspaceFileRevealRequest | null;
@@ -213,9 +214,6 @@ export interface WorkspaceState {
   ) => void;
   updatePaneStatus: (paneId: string, status: MachineStatus) => void;
   restoreWorkspaceSession: (session: WorkspaceSessionSnapshot) => void;
-  setActiveTool: (toolId: ToolId | null) => void;
-  setMachineSearch: (query: string) => void;
-  setBroadcastDraft: (draft: string) => void;
 }
 
 export {
@@ -235,9 +233,7 @@ const initialState = {
   selectedMachineId: "",
   focusedPaneId: "",
   removedSidebarMachineIds: [],
-  activeTool: null,
-  machineSearch: "",
-  broadcastDraft: "",
+  ...initialWorkspaceShellInteractionState,
   settings: defaultAppSettings,
   workspaceFileDirtyState: {},
   workspaceFileRevealRequest: null,
@@ -247,8 +243,9 @@ let generatedPaneCount = terminalPanes.length;
 let generatedTabCount = terminalTabs.length;
 let generatedSplitCount = 0;
 
-export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
+export const useWorkspaceStore = create<WorkspaceState>()((set, get, store) => ({
   ...initialState,
+  ...createWorkspaceShellInteractionSlice(set, get, store),
   setProfiles: (profiles) =>
     set((state) => updateWorkspaceProfilesState(state, profiles)),
   setSettings: (settings) => set({ settings: normalizeAppSettings(settings) }),
@@ -736,15 +733,6 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
       updateGeneratedCounters(normalized);
       return restoreWorkspaceSessionState(state, normalized);
     }),
-  setActiveTool: (activeTool) =>
-    set(() => {
-      if (activeTool === null) {
-        return { activeTool };
-      }
-      return isToolId(activeTool) ? { activeTool } : {};
-    }),
-  setMachineSearch: (machineSearch) => set({ machineSearch }),
-  setBroadcastDraft: (broadcastDraft) => set({ broadcastDraft }),
 }));
 
 export function resetWorkspaceStore() {
