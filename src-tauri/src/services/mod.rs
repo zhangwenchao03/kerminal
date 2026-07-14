@@ -9,6 +9,7 @@ pub mod agent_target_hydration_service;
 pub mod application_runtime;
 pub mod command_history_service;
 pub mod command_suggestion_service;
+pub mod compatibility_registry;
 pub mod config_change_observer_service;
 pub mod credential_service;
 pub mod diagnostics_service;
