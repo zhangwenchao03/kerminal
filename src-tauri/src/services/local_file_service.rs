@@ -75,6 +75,22 @@ pub struct LocalCopyPathOutcome {
     pub target_directory_path: PathBuf,
 }
 
+/// 本机重命名路径请求。
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalRenamePathRequest {
+    pub path: String,
+    pub name: String,
+    pub kind: String,
+    pub root_path: Option<String>,
+}
+
+/// 重命名完成后的父目录，用于 command adapter 刷新既有 listing DTO。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalRenamePathOutcome {
+    pub parent_path: PathBuf,
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalReadTextFileRequest {
@@ -245,6 +261,59 @@ pub fn copy_path(request: LocalCopyPathRequest) -> Result<LocalCopyPathOutcome, 
 
     Ok(LocalCopyPathOutcome {
         target_directory_path: target_directory,
+    })
+}
+
+/// 只允许同父目录改名，默认拒绝覆盖与越出 root scope。
+pub fn rename_path(request: LocalRenamePathRequest) -> Result<LocalRenamePathOutcome, String> {
+    let source = existing_path(&request.path, "源路径")?;
+    let name = validate_file_name(&request.name)?;
+    let source_parent = source
+        .parent()
+        .ok_or_else(|| format!("源路径缺少父目录: {}", source.display()))?
+        .to_path_buf();
+    if source.file_name().is_none() {
+        return Err(format!("不能重命名文件系统根路径: {}", source.display()));
+    }
+    let source_kind = local_file_kind(&source)?;
+    if request.kind != "file" && request.kind != "directory" {
+        return Err(format!("不支持重命名的本机路径类型: {}", request.kind));
+    }
+    if request.kind != source_kind {
+        return Err(format!(
+            "源路径类型不匹配: 请求为 {}，实际为 {}",
+            request.kind, source_kind
+        ));
+    }
+    let target = source_parent.join(name);
+    if path_entry_exists(&target) {
+        return Err(format!("目标已存在: {}", target.display()));
+    }
+    if let Some(root_path) = request.root_path.as_deref() {
+        if !root_path.trim().is_empty() {
+            let root = existing_directory(root_path, "根目录")?;
+            if source == root {
+                return Err(format!("不能重命名根目录本身: {}", root.display()));
+            }
+            if !source.starts_with(&root) || !target.starts_with(&root) {
+                return Err(format!(
+                    "重命名目标超出允许根目录: {} -> {}",
+                    source.display(),
+                    target.display()
+                ));
+            }
+        }
+    }
+    fs::rename(&source, &target).map_err(|error| {
+        format!(
+            "重命名本机路径失败 {} -> {}: {error}",
+            source.display(),
+            target.display()
+        )
+    })?;
+
+    Ok(LocalRenamePathOutcome {
+        parent_path: source_parent,
     })
 }
 

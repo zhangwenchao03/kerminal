@@ -4,10 +4,9 @@
 
 use std::{
     fs,
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
 };
 
-use serde::Deserialize;
 use tauri::State;
 
 use crate::{
@@ -19,19 +18,10 @@ use crate::{
 mod stat;
 pub use stat::{LocalPathStat, LocalStatPathRequest};
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct LocalRenamePathRequest {
-    pub path: String,
-    pub name: String,
-    pub kind: String,
-    pub root_path: Option<String>,
-}
-
 pub use crate::services::local_file_service::{
     LocalCopyPathRequest, LocalCreateDirectoryRequest, LocalDeletePathRequest,
-    LocalReadTextFileRequest, LocalReadTextFileResponse, LocalWriteTextFileRequest,
-    LocalWriteTextFileResponse,
+    LocalReadTextFileRequest, LocalReadTextFileResponse, LocalRenamePathRequest,
+    LocalWriteTextFileRequest, LocalWriteTextFileResponse,
 };
 
 /// 获取本机路径元信息，用于传输冲突预检；不存在不是错误。
@@ -75,9 +65,13 @@ pub async fn local_files_copy_path(
 pub async fn local_files_rename_path(
     request: LocalRenamePathRequest,
 ) -> Result<LocalDirectoryListing, String> {
-    tokio::task::spawn_blocking(move || rename_path(request))
-        .await
-        .map_err(|error| format!("重命名本机路径线程失败: {error}"))?
+    tokio::task::spawn_blocking(move || {
+        local_file_service::rename_path(request).and_then(|outcome| {
+            read_local_directory(Some(outcome.parent_path.to_string_lossy().as_ref()))
+        })
+    })
+    .await
+    .map_err(|error| format!("重命名本机路径线程失败: {error}"))?
 }
 
 /// 删除本机文件或目录；目录删除必须显式递归确认。
@@ -125,59 +119,6 @@ pub async fn local_files_write_text_file(
         .map_err(|error| format!("写入本机文本文件线程失败: {error}"))?
 }
 
-fn rename_path(request: LocalRenamePathRequest) -> Result<LocalDirectoryListing, String> {
-    let source = existing_path(&request.path, "源路径")?;
-    let name = validate_file_name(&request.name)?;
-    let source_parent = source
-        .parent()
-        .ok_or_else(|| format!("源路径缺少父目录: {}", source.display()))?
-        .to_path_buf();
-    if source.file_name().is_none() {
-        return Err(format!("不能重命名文件系统根路径: {}", source.display()));
-    }
-
-    let source_kind = local_file_kind(&source)?;
-    if request.kind != "file" && request.kind != "directory" {
-        return Err(format!("不支持重命名的本机路径类型: {}", request.kind));
-    }
-    if request.kind != source_kind {
-        return Err(format!(
-            "源路径类型不匹配: 请求为 {}，实际为 {}",
-            request.kind, source_kind
-        ));
-    }
-
-    let target = source_parent.join(name);
-    if path_entry_exists(&target) {
-        return Err(format!("目标已存在: {}", target.display()));
-    }
-
-    if let Some(root_path) = request.root_path.as_deref() {
-        if !root_path.trim().is_empty() {
-            let root = existing_directory(root_path, "根目录")?;
-            if source == root {
-                return Err(format!("不能重命名根目录本身: {}", root.display()));
-            }
-            if !source.starts_with(&root) || !target.starts_with(&root) {
-                return Err(format!(
-                    "重命名目标超出允许根目录: {} -> {}",
-                    source.display(),
-                    target.display()
-                ));
-            }
-        }
-    }
-
-    fs::rename(&source, &target).map_err(|error| {
-        format!(
-            "重命名本机路径失败 {} -> {}: {error}",
-            source.display(),
-            target.display()
-        )
-    })?;
-    read_local_directory(Some(source_parent.to_string_lossy().as_ref()))
-}
-
 fn existing_path(path: &str, label: &str) -> Result<PathBuf, String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
@@ -200,60 +141,8 @@ pub(super) fn existing_directory(path: &str, label: &str) -> Result<PathBuf, Str
     Ok(directory)
 }
 
-fn validate_file_name(name: &str) -> Result<&str, String> {
-    let trimmed = name.trim();
-    if trimmed.is_empty() {
-        return Err("文件名不能为空".to_owned());
-    }
-    if trimmed == "." || trimmed == ".." {
-        return Err("文件名不能是 . 或 ..".to_owned());
-    }
-    if contains_forbidden_path_char(trimmed)
-        || Path::new(trimmed).components().count() != 1
-        || matches!(
-            Path::new(trimmed).components().next(),
-            Some(Component::RootDir | Component::Prefix(_) | Component::ParentDir)
-        )
-    {
-        return Err("文件名不能包含路径分隔符或非法字符".to_owned());
-    }
-    if contains_windows_forbidden_file_name_char(trimmed) {
-        return Err("文件名包含 Windows 不允许的字符".to_owned());
-    }
-    if trimmed.ends_with(' ') || trimmed.ends_with('.') {
-        return Err("文件名不能以空格或点结尾".to_owned());
-    }
-    let reserved_name = trimmed
-        .split('.')
-        .next()
-        .unwrap_or_default()
-        .to_ascii_uppercase();
-    if is_windows_reserved_file_name(&reserved_name) {
-        return Err("文件名不能使用 Windows 保留名称".to_owned());
-    }
-    Ok(trimmed)
-}
-
 pub(super) fn contains_forbidden_path_char(value: &str) -> bool {
     value.contains('\0') || value.contains('\n') || value.contains('\r')
-}
-
-fn contains_windows_forbidden_file_name_char(value: &str) -> bool {
-    value.chars().any(|character| {
-        matches!(
-            character,
-            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
-        )
-    })
-}
-
-pub(super) fn is_windows_reserved_file_name(name: &str) -> bool {
-    matches!(name, "CON" | "PRN" | "AUX" | "NUL")
-        || (name.len() == 4
-            && (name.starts_with("COM") || name.starts_with("LPT"))
-            && name[3..]
-                .chars()
-                .all(|character| ('1'..='9').contains(&character)))
 }
 
 pub(super) fn path_entry_exists(path: &Path) -> bool {
