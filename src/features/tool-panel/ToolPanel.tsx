@@ -109,7 +109,7 @@ const SnippetToolContent = lazy(async () => ({
   default: (await import("../snippets/SnippetToolContent")).SnippetToolContent,
 }));
 const LogToolContent = lazy(async () => ({
-  default: (await import("../logs/LogToolContent")).LogToolContent,
+  default: (await import("../logs")).LogToolContent,
 }));
 const AgentLauncherToolContent = lazy(async () => ({
   default: (await import("./AgentLauncherToolContent"))

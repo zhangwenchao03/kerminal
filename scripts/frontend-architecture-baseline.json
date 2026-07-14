@@ -1531,17 +1531,6 @@
       "targetTask": "TASK-020"
     },
     {
-      "kind": "dynamic-import",
-      "rule": "cross-feature-private-import",
-      "runtime": true,
-      "source": "src/features/tool-panel/ToolPanel.tsx",
-      "specifier": "../logs/LogToolContent",
-      "target": "src/features/logs/LogToolContent.tsx",
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-020"
-    },
-    {
       "kind": "import",
       "rule": "cross-feature-private-import",
       "runtime": true,
