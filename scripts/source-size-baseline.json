@@ -180,13 +180,6 @@
       "targetTask": "TASK-071"
     },
     {
-      "file": "src-tauri/tests/mcp_tool_executor_service.rs",
-      "lines": 895,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
       "file": "src-tauri/tests/real_host_60_core_smoke.rs",
       "lines": 863,
       "deadline": "before TASK-080",
