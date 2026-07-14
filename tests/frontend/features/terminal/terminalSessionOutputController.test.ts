@@ -1,0 +1,147 @@
+import { describe, expect, it, vi } from "vitest";
+import { createTerminalSessionOutputController } from "../../../../src/features/terminal/terminalSessionOutputController";
+
+function createHarness(overrides: { current?: boolean; remote?: boolean } = {}) {
+  const order: string[] = [];
+  const onAgentSignal = vi.fn();
+  const onReadError = vi.fn();
+  const onSessionClosed = vi.fn();
+  const outputWriter = {
+    dispose: vi.fn(),
+    flush: vi.fn(),
+    pendingLength: vi.fn(() => 0),
+    setCadence: vi.fn((cadence: string) => order.push(`cadence:${cadence}`)),
+    stats: vi.fn(),
+    write: vi.fn((data: string) => order.push(`write:${data}`)),
+    writeNow: vi.fn((data: string) => order.push(`now:${data}`)),
+  };
+  const controller = createTerminalSessionOutputController({
+    activityRuntime: { markOutput: () => order.push("activity") },
+    artifactRuntime: { queueOutput: () => order.push("artifact") },
+    assistEnabled: true,
+    commandBlockRuntime: {
+      appendShellIntegrationCommandOutput: () => order.push("command"),
+    },
+    cwdTrackingBufferRef: { current: "" },
+    focusedRef: { current: true },
+    hasRemoteTerminalTarget: overrides.remote ?? true,
+    initialRemoteOutputGate: { shouldWriteNow: () => true },
+    instrumentation: null,
+    isCurrent: () => overrides.current ?? true,
+    isSshTerminalTarget: true,
+    onAgentSignal,
+    onCurrentCwd: vi.fn(),
+    onReadError,
+    onSessionClosed,
+    outputHistoryBuffer: {
+      append: () => order.push("history"),
+      dispose: vi.fn(),
+      flush: vi.fn(),
+      pendingFlush: vi.fn(() => false),
+      stats: vi.fn(),
+    },
+    outputWriter,
+    remoteCwdTracking: false,
+    sshFailureTracker: { append: () => order.push("ssh") },
+    transientStartupNoticeVisible: true,
+    visibleRef: { current: true },
+  });
+  return { controller, onAgentSignal, onReadError, onSessionClosed, order };
+}
+
+describe("terminalSessionOutputController", () => {
+  it("rejects stale-generation output before every side effect", () => {
+    const harness = createHarness({ current: false });
+
+    harness.controller({ data: "late", kind: "data", sessionId: "old" });
+
+    expect(harness.order).toEqual([]);
+  });
+
+  it("preserves startup-clear, output and history ordering", () => {
+    const harness = createHarness();
+
+    harness.controller({ data: "first", kind: "data", sessionId: "session-1" });
+    harness.controller({ data: "second", kind: "data", sessionId: "session-1" });
+
+    expect(harness.order).toEqual([
+      "artifact",
+      "activity",
+      "ssh",
+      "now:\x1b[1A\x1b[2K\r",
+      "command",
+      "now:first",
+      "history",
+      "artifact",
+      "activity",
+      "ssh",
+      "command",
+      "now:second",
+      "history",
+    ]);
+  });
+
+  it("uses hidden buffered cadence when the fast remote gate is inactive", () => {
+    const harness = createHarness({ remote: false });
+    const hiddenController = createTerminalSessionOutputController({
+      activityRuntime: { markOutput: vi.fn() },
+      artifactRuntime: { queueOutput: vi.fn() },
+      assistEnabled: false,
+      commandBlockRuntime: { appendShellIntegrationCommandOutput: vi.fn() },
+      cwdTrackingBufferRef: { current: "" },
+      focusedRef: { current: false },
+      hasRemoteTerminalTarget: false,
+      initialRemoteOutputGate: { shouldWriteNow: vi.fn(() => false) },
+      instrumentation: null,
+      isCurrent: () => true,
+      isSshTerminalTarget: false,
+      onAgentSignal: vi.fn(),
+      onCurrentCwd: vi.fn(),
+      onReadError: vi.fn(),
+      onSessionClosed: vi.fn(),
+      outputHistoryBuffer: {
+        append: vi.fn(),
+        dispose: vi.fn(),
+        flush: vi.fn(),
+        pendingFlush: vi.fn(() => false),
+        stats: vi.fn(),
+      },
+      outputWriter: {
+        dispose: vi.fn(),
+        flush: vi.fn(),
+        pendingLength: vi.fn(() => 0),
+        setCadence: (cadence) => harness.order.push(`cadence:${cadence}`),
+        stats: vi.fn(),
+        write: (data) => harness.order.push(`write:${data}`),
+        writeNow: vi.fn(),
+      },
+      remoteCwdTracking: false,
+      sshFailureTracker: { append: vi.fn() },
+      transientStartupNoticeVisible: false,
+      visibleRef: { current: false },
+    });
+
+    hiddenController({ data: "buffered", kind: "data", sessionId: "session-1" });
+
+    expect(harness.order).toEqual(["cadence:hidden", "write:buffered"]);
+  });
+
+  it("routes agent, closed and read-error events without cross-calling", () => {
+    const harness = createHarness();
+    const signal = {
+      agent: "codex" as const,
+      status: "working" as const,
+      terminalSessionId: "session-1",
+    };
+
+    harness.controller({ agentSignal: signal, data: "", kind: "agentSignal", sessionId: "session-1" });
+    harness.controller({ data: "", kind: "closed", sessionId: "session-1" });
+    harness.controller({ data: "failed", kind: "error", sessionId: "session-1" });
+
+    expect(harness.onAgentSignal).toHaveBeenCalledWith(signal);
+    expect(harness.onSessionClosed).toHaveBeenCalledWith("session-1");
+    expect(harness.onReadError).toHaveBeenCalledWith(
+      expect.objectContaining({ data: "failed", kind: "error" }),
+    );
+  });
+});

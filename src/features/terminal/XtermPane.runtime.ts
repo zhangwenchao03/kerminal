@@ -1,7 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { Terminal as XtermTerminal } from "@xterm/xterm";
-import { closeTerminal, getTerminalLogState, listTerminalSessions, resizeTerminal, type TerminalOutputEvent } from "../../lib/terminalApi";
+import { closeTerminal, getTerminalLogState, resizeTerminal } from "../../lib/terminalApi";
 import { closeExternalSshLaunch } from "../../lib/externalLaunchApi";
 import {
   markTerminalPaneSessionDisconnected,
@@ -35,8 +35,8 @@ import {
 } from "./terminalRendererSurfaceCoordinator";
 import type { TerminalRendererFallbackReason } from "./terminalRendererPolicy";
 import { createTerminalOutputInstrumentation, runTerminalOutputInstrumentationStep } from "./terminalOutputInstrumentation";
-import { collectCurrentDirOscSequences, errorMessage } from "./XtermPane.helpers";
-import { registerCommandBlockClearHandlers, terminalSessionFailureLabel, terminalSessionTargetKind } from "./XtermPane.runtime.helpers";
+import { errorMessage } from "./XtermPane.helpers";
+import { registerCommandBlockClearHandlers, terminalSessionFailureLabel, terminalSessionStartupNotice, terminalSessionTargetKind } from "./XtermPane.runtime.helpers";
 import { installShellIntegrationOscHandlers, isClearScreenCommand } from "./XtermPane.shellIntegration";
 import { KITTY_KEYBOARD_PROTOCOL_ENABLE, shouldEnableKittyKeyboardProtocol } from "./terminalKeyboardPolicy";
 import { createTerminalShellIntegrationState, reduceTerminalShellIntegrationState } from "./terminalShellIntegrationModel";
@@ -48,9 +48,10 @@ import { registerXtermPaneRuntimeEvents } from "./XtermPane.runtime.events";
 import { createXtermPaneArtifactRuntime } from "./XtermPane.artifacts";
 import { createInitialRemoteOutputGate } from "./terminalInitialRemoteOutputGate";
 import { createTerminalSurfaceEventController } from "./terminalSurfaceEventController";
+import { createTerminalSessionOutputController } from "./terminalSessionOutputController";
+import { createTerminalSessionStatusPollController } from "./terminalSessionStatusPollController";
 import type { InstallXtermPaneRuntimeParams } from "./XtermPane.runtime.types";
-const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000,
-  TERMINAL_SESSION_STATUS_POLL_MS = 2_000;
+const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000;
 const TERMINAL_RENDERER_FEATURE_GATES = resolveRuntimeTerminalRendererFeatureGates();
 export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
   const {
@@ -115,8 +116,7 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
   if (!container) {
     return undefined;
   }
-  let disposed = false,
-    sessionStatusPollTimer: number | null = null;
+  let disposed = false;
   let sessionRun = 0;
   let shellIntegrationState = createTerminalShellIntegrationState();
   const assistEnabled = shellAssistEnabled !== false;
@@ -476,12 +476,6 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     commandBlockRuntime.resetProtocolState();
     setLogState({ active: false, bytesWritten: 0 });
   };
-  const clearSessionStatusPollTimer = () => {
-    if (sessionStatusPollTimer !== null) {
-      window.clearTimeout(sessionStatusPollTimer);
-      sessionStatusPollTimer = null;
-    }
-  };
   const isSshTerminalTarget = () => Boolean(remoteHostId && target?.kind !== "dockerContainer" && target?.kind !== "telnet" && target?.kind !== "serial");
   const reconnectRuntime = createTerminalReconnectRuntime({
     isSshTerminalTarget,
@@ -509,32 +503,13 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
   const externalLaunchId = remoteHostId?.startsWith("external:")
     ? remoteHostId.slice("external:".length)
     : null;
-  let transientStartupNoticeVisible = false;
-  const startupNoticeFor = (reason: "initial" | "reconnect") => {
-    if (reason === "reconnect") {
-      return "\r\n正在重新连接...\r\n";
-    }
-    if (typeof startupMessage === "string") {
-      return startupMessage;
-    }
-    return target?.kind === "dockerContainer"
-      ? "正在进入容器...\r\n"
-      : target?.kind === "telnet"
-        ? "正在连接 Telnet 主机...\r\n"
-        : target?.kind === "serial"
-          ? "正在连接 Serial 设备...\r\n"
-          : remoteHostId
-            ? "正在连接 SSH 主机...\r\n"
-            : "正在启动本地终端...\r\n";
-  };
-
   const closeActiveSession = async () => {
     const sessionId = sessionIdRef.current;
     if (!sessionId) {
       return true;
     }
 
-    clearSessionStatusPollTimer();
+    sessionStatusPoll.clear();
     clearSessionState(sessionId);
     try {
       await closeTerminal(sessionId);
@@ -552,7 +527,7 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     if (disposed || sessionRun !== currentRun || sessionIdRef.current !== sessionId) {
       return;
     }
-    clearSessionStatusPollTimer();
+    sessionStatusPoll.clear();
     ghostSuggestions.clearGhostSuggestion();
     markTerminalPaneSessionDisconnected(paneId, sessionId);
     clearSessionState(sessionId);
@@ -566,32 +541,11 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     reconnectRuntime.scheduleReconnect();
   };
 
-  const scheduleSessionStatusPoll = (sessionId: string, sessionStartedAtMs: number, currentRun: number) => {
-    clearSessionStatusPollTimer();
-    sessionStatusPollTimer = window.setTimeout(() => {
-      sessionStatusPollTimer = null;
-      if (disposed || sessionRun !== currentRun || sessionIdRef.current !== sessionId) {
-        return;
-      }
-      void listTerminalSessions()
-        .then((sessions) => {
-          if (disposed || sessionRun !== currentRun || sessionIdRef.current !== sessionId) {
-            return;
-          }
-          const session = sessions.find((candidate) => candidate.id === sessionId);
-          if (!session || session.status === "exited") {
-            finishSessionClosed(sessionId, sessionStartedAtMs, currentRun, "\r\n会话已退出，可通过右键菜单重新连接。\r\n");
-            return;
-          }
-          scheduleSessionStatusPoll(sessionId, sessionStartedAtMs, currentRun);
-        })
-        .catch(() => {
-          if (!disposed && sessionRun === currentRun && sessionIdRef.current === sessionId) {
-            scheduleSessionStatusPoll(sessionId, sessionStartedAtMs, currentRun);
-          }
-        });
-    }, TERMINAL_SESSION_STATUS_POLL_MS);
-  };
+  const sessionStatusPoll = createTerminalSessionStatusPollController({
+    isCurrent: ({ currentRun, sessionId }) => !disposed && sessionRun === currentRun && sessionIdRef.current === sessionId,
+    onSessionClosed: ({ currentRun, sessionId, sessionStartedAtMs }, message) =>
+      finishSessionClosed(sessionId, sessionStartedAtMs, currentRun, message),
+  });
 
   const startSession = async (reason: "initial" | "reconnect") => {
     const currentRun = ++sessionRun;
@@ -612,79 +566,43 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     commandBlockRuntime.resetProtocolState();
     ghostSuggestions.clearGhostSuggestion();
     sshFailureTracker.reset();
-    const startupNotice = startupNoticeFor(reason);
-    transientStartupNoticeVisible = reason === "initial" && startupNotice.trim().length > 0 && (transientStartupMessage || hasRemoteTerminalTarget());
+    const startupNotice = terminalSessionStartupNotice(reason, target, remoteHostId, startupMessage);
+    const transientStartupNoticeVisible = reason === "initial" && startupNotice.trim().length > 0 && (transientStartupMessage || hasRemoteTerminalTarget());
     outputWriter.writeNow(startupNotice);
     const sessionStartedAtMs = Date.now();
     const initialRemoteOutputGate = createInitialRemoteOutputGate(sessionStartedAtMs);
 
-    const handleOutput = (event: TerminalOutputEvent) => {
-      if (disposed || sessionRun !== currentRun) {
-        return;
-      }
-
-      if (event.kind === "agentSignal") {
-        if (event.agentSignal) {
-          onAgentSignalRef?.current?.(event.agentSignal);
-        }
-        return;
-      }
-
-      if (event.kind === "data") {
-        artifactRuntime.queueOutput(event.data);
-        activityRuntime.markOutput();
-        if (isSshTerminalTarget()) {
-          sshFailureTracker.append(event.data);
-        }
-        if (transientStartupNoticeVisible) {
-          outputWriter.writeNow("\x1b[1A\x1b[2K\r");
-          transientStartupNoticeVisible = false;
-        }
-        if (remoteHostId || target?.kind === "dockerContainer") {
-          const tracked = runTerminalOutputInstrumentationStep(terminalOutputInstrumentation, "cwdOsc", event.data.length, () =>
-            collectCurrentDirOscSequences(cwdTrackingBufferRef.current, event.data),
-          );
-          cwdTrackingBufferRef.current = tracked.buffer;
-          for (const nextCwd of tracked.paths) {
-            updateCurrentCwdFromTerminal(nextCwd, {
-              prewarmRemoteSuggestions: true,
-            });
-          }
-        }
-        if (assistEnabled) {
-          runTerminalOutputInstrumentationStep(terminalOutputInstrumentation, "commandBlock", event.data.length, () => commandBlockRuntime.appendShellIntegrationCommandOutput(event.data));
-        }
-        runTerminalOutputInstrumentationStep(terminalOutputInstrumentation, "writer", event.data.length, () => {
-          if (
-            hasRemoteTerminalTarget() &&
-            initialRemoteOutputGate.shouldWriteNow(event.data)
-          ) {
-            outputWriter.writeNow(event.data);
-            return;
-          }
-          outputWriter.setCadence(
-            visibleRef?.current === false
-              ? "hidden"
-              : focusedRef.current
-                ? "focused"
-                : "visible",
-          );
-          outputWriter.write(event.data);
-        });
-        runTerminalOutputInstrumentationStep(terminalOutputInstrumentation, "history", event.data.length, () => outputHistoryBuffer.append(event.data));
-        return;
-      }
-      if (event.kind === "closed") {
-        finishSessionClosed(event.sessionId, sessionStartedAtMs, currentRun);
-        return;
-      }
-      ghostSuggestions.clearGhostSuggestion();
-      clearSessionStatusPollTimer();
-      markTerminalPaneSessionDisconnected(paneId, event.sessionId);
-      outputWriter.writeNow(`\r\n终端输出读取失败：${event.data}\r\n`);
-      setConnectionState("error");
-      reconnectRuntime.scheduleReconnect();
-    };
+    const handleOutput = createTerminalSessionOutputController({
+      activityRuntime,
+      artifactRuntime,
+      assistEnabled,
+      commandBlockRuntime,
+      cwdTrackingBufferRef,
+      focusedRef,
+      hasRemoteTerminalTarget: hasRemoteTerminalTarget(),
+      initialRemoteOutputGate,
+      instrumentation: terminalOutputInstrumentation,
+      isCurrent: () => !disposed && sessionRun === currentRun,
+      isSshTerminalTarget: isSshTerminalTarget(),
+      onAgentSignal: (signal) => onAgentSignalRef?.current?.(signal),
+      onCurrentCwd: (nextCwd) => updateCurrentCwdFromTerminal(nextCwd, { prewarmRemoteSuggestions: true }),
+      onReadError: (event) => {
+        ghostSuggestions.clearGhostSuggestion();
+        sessionStatusPoll.clear();
+        markTerminalPaneSessionDisconnected(paneId, event.sessionId);
+        outputWriter.writeNow(`\r\n终端输出读取失败：${event.data}\r\n`);
+        setConnectionState("error");
+        reconnectRuntime.scheduleReconnect();
+      },
+      onSessionClosed: (sessionId) =>
+        finishSessionClosed(sessionId, sessionStartedAtMs, currentRun),
+      outputHistoryBuffer,
+      outputWriter,
+      remoteCwdTracking: Boolean(remoteHostId || target?.kind === "dockerContainer"),
+      sshFailureTracker,
+      transientStartupNoticeVisible,
+      visibleRef,
+    });
 
     try {
       const requestedDimensions = {
@@ -734,7 +652,11 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
       }
       setConnectionState("connected");
       reconnectRuntime.resetSshReconnectAttempts();
-      scheduleSessionStatusPoll(session.id, sessionStartedAtMs, currentRun);
+      sessionStatusPoll.schedule({
+        currentRun,
+        sessionId: session.id,
+        sessionStartedAtMs,
+      });
       if (assistEnabled) {
         remoteSuggestionPrewarm.scheduleGit(currentCwdRef.current ?? cwd);
         remoteSuggestionPrewarm.scheduleRemoteCommand();
@@ -769,7 +691,7 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
   const disconnectSession = async () => {
     const currentRun = ++sessionRun;
     reconnectRuntime.clearReconnectTimer();
-    clearSessionStatusPollTimer();
+    sessionStatusPoll.clear();
     terminalSuggestionProbeScheduler.cancelOwner(paneId);
     const sessionId = sessionIdRef.current;
     if (!sessionId) {
@@ -816,7 +738,7 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
       terminalSurfaceCoordinatorRef.current = null;
     }
     reconnectRuntime.clearReconnectTimer();
-    clearSessionStatusPollTimer();
+    sessionStatusPoll.clear();
     terminalSuggestionProbeScheduler.cancelOwner(paneId);
     ghostSuggestions.dispose();
     suggestionMenuIntentRef.current = null;

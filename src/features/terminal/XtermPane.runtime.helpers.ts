@@ -91,6 +91,32 @@ export function terminalSessionFailureLabel(
   }
 }
 
+export function terminalSessionStartupNotice(
+  reason: "initial" | "reconnect",
+  target: RemoteTargetRef | undefined,
+  remoteHostId: string | undefined,
+  startupMessage: string | undefined,
+) {
+  if (reason === "reconnect") {
+    return "\r\n正在重新连接...\r\n";
+  }
+  if (typeof startupMessage === "string") {
+    return startupMessage;
+  }
+  switch (terminalSessionTargetKind(target, remoteHostId)) {
+    case "dockerContainer":
+      return "正在进入容器...\r\n";
+    case "telnet":
+      return "正在连接 Telnet 主机...\r\n";
+    case "serial":
+      return "正在连接 Serial 设备...\r\n";
+    case "ssh":
+      return "正在连接 SSH 主机...\r\n";
+    case "local":
+      return "正在启动本地终端...\r\n";
+  }
+}
+
 export function disposeCommandBlockMarkers(block: TerminalCommandBlock) {
   block.endMarker?.dispose();
   block.marker.dispose();
