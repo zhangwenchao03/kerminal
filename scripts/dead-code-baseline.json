@@ -74,60 +74,6 @@
       "targetTask": "TASK-071"
     },
     {
-      "file": "src/features/machine-sidebar/host-containers/composeProjectModel.ts",
-      "name": "readContainerComposeConfigPathResolution",
-      "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/machine-sidebar/host-containers/composeProjectModel.ts",
-      "name": "resolveComposeConfigPaths",
-      "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/machine-sidebar/host-containers/composeProjectModel.ts",
-      "name": "ComposeContainerView",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/machine-sidebar/host-containers/composeProjectModel.ts",
-      "name": "ComposeRuntimeFamily",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/machine-sidebar/host-containers/composeProjectModel.ts",
-      "name": "ComposeServiceView",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/machine-sidebar/host-containers/composeProjectModel.ts",
-      "name": "DockerComposeContainerMetadata",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
       "file": "src/features/machine-sidebar/MachineSidebar.parts.tsx",
       "name": "dragPreviewPosition",
       "type": "exports",

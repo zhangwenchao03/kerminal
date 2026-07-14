@@ -10,9 +10,9 @@ import type {
 } from "../../../lib/dockerApi";
 import type { ContainerRuntime } from "../../../lib/targetModel";
 
-export type ComposeRuntimeFamily = "docker" | "podman" | "unknown";
+type ComposeRuntimeFamily = "docker" | "podman" | "unknown";
 
-export interface DockerComposeContainerMetadata {
+interface DockerComposeContainerMetadata {
   project?: string | null;
   service?: string | null;
   workingDir?: string | null;
@@ -37,7 +37,7 @@ export interface ComposeConfigPathResolution {
   workingDir?: string;
 }
 
-export interface ComposeContainerView {
+interface ComposeContainerView {
   container: ComposeProjectContainerSummary;
   containerNumber?: string;
   id: string;
@@ -51,7 +51,7 @@ export interface ComposeContainerView {
   statusText: string;
 }
 
-export interface ComposeServiceView {
+interface ComposeServiceView {
   containers: ComposeContainerView[];
   errorCount: number;
   id: string;
@@ -199,7 +199,7 @@ export function readContainerComposeConfigPaths(
   return readContainerComposeConfigPathResolution(container).configPaths;
 }
 
-export function readContainerComposeConfigPathResolution(
+function readContainerComposeConfigPathResolution(
   container: ComposeProjectContainerSummary,
 ): ComposeConfigPathResolution {
   return resolveComposeConfigPaths({
@@ -211,7 +211,7 @@ export function readContainerComposeConfigPathResolution(
   });
 }
 
-export function resolveComposeConfigPaths({
+function resolveComposeConfigPaths({
   configFiles = [],
   configPaths = [],
   workingDir,
