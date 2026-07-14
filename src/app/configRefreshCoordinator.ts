@@ -9,7 +9,7 @@ import {
 
 export type { ConfigChangeDomain, ConfigChangeNotice };
 
-export interface ConfigChangeEventDiagnostic {
+interface ConfigChangeEventDiagnostic {
   domain?: ConfigChangeDomain;
   message: string;
   path?: string;
@@ -26,7 +26,7 @@ export interface ConfigChangeEvent {
   sourceHint: ConfigChangeSourceHint;
 }
 
-export type ConfigDomainRefreshers = Partial<
+type ConfigDomainRefreshers = Partial<
   Record<ConfigChangeDomain, () => Promise<void>>
 >;
 
