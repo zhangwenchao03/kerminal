@@ -16,7 +16,6 @@ use crate::{
         credential_service::CredentialService,
         diagnostics_service::DiagnosticsService,
         docker_host_service::DockerHostService,
-        external_agent_workspace::ExternalAgentWorkspaceService,
         external_launch::{
             ExternalLaunchIntake, ExternalLaunchPolicy, ExternalLaunchTaskRegistry,
             ExternalSessionMaterializer,
@@ -46,10 +45,12 @@ use crate::{
 };
 
 mod configuration_capabilities;
+mod operational_capabilities;
 mod remote_capabilities;
 mod startup_recovery;
 
 use configuration_capabilities::ConfigurationCapabilities;
+use operational_capabilities::OperationalCapabilities;
 use remote_capabilities::RemoteCapabilities;
 pub use startup_recovery::{StartupRecoveryDiagnostic, StartupRecoverySnapshot};
 
@@ -57,23 +58,9 @@ pub use startup_recovery::{StartupRecoveryDiagnostic, StartupRecoverySnapshot};
 #[derive(Debug)]
 pub struct AppState {
     application_runtime: ApplicationRuntime,
-    agent_context: AgentContextService,
-    agent_sessions: AgentSessionService,
-    mcp_tool_executor: McpToolExecutorService,
-    command_history: CommandHistoryService,
-    command_store: CommandSqliteStore,
-    command_suggestions: CommandSuggestionService,
-    credentials: CredentialService,
-    diagnostics: DiagnosticsService,
-    external_launch_intake: ExternalLaunchIntake,
-    external_launch_tasks: ExternalLaunchTaskRegistry,
-    mcp_http_server: McpStreamableHttpServerService,
     paths: KerminalPaths,
-    storage: RuntimeFileStore,
-    terminal_session_bindings: TerminalSessionBindingService,
-    terminals: TerminalManager,
     remote: RemoteCapabilities,
-    mcp_tool_catalog: McpToolCatalogService,
+    operations: OperationalCapabilities,
     configuration: ConfigurationCapabilities,
     startup_recovery: StartupRecoverySnapshot,
 }
@@ -86,54 +73,30 @@ impl AppState {
 
     /// 使用指定路径初始化应用状态，主要用于测试和未来 portable 模式。
     pub fn initialize_with_paths(paths: KerminalPaths) -> AppResult<Self> {
-        let storage = RuntimeFileStore::open(&paths)?;
-        let command_store = CommandSqliteStore::open(&paths)?;
-        ExternalAgentWorkspaceService::new(paths.root.clone(), None, false)
-            .ensure_default_agent_files()?;
-        let credentials = CredentialService::new();
-        let agent_context = AgentContextService::new();
-        let agent_sessions = AgentSessionService::new(paths.root.clone());
-        let mcp_tool_executor = McpToolExecutorService::new();
-        let command_history = CommandHistoryService::new();
-        let command_suggestions = CommandSuggestionService::new();
-        let mcp_http_server = McpStreamableHttpServerService::new();
-        let diagnostics = DiagnosticsService::new();
-        let external_launch_intake = ExternalLaunchIntake::new();
-        let external_launch_tasks = ExternalLaunchTaskRegistry::new();
+        let operations = OperationalCapabilities::initialize(&paths)?;
         let config_files = ConfigFileStore::new(paths.root.clone());
         let (configuration, persisted_settings, startup_recovery) =
             ConfigurationCapabilities::initialize(&paths, config_files.clone())?;
-        external_launch_intake.configure_policy(ExternalLaunchPolicy::from(
-            &persisted_settings.external_launch,
-        ))?;
-        let remote =
-            RemoteCapabilities::new(&paths, config_files.clone(), external_launch_intake.clone())?;
-        let mcp_tool_catalog = McpToolCatalogService::new();
+        operations
+            .external_launch_intake
+            .configure_policy(ExternalLaunchPolicy::from(
+                &persisted_settings.external_launch,
+            ))?;
+        let remote = RemoteCapabilities::new(
+            &paths,
+            config_files.clone(),
+            operations.external_launch_intake.clone(),
+        )?;
         let application_runtime = ApplicationRuntime::new(
             configuration.config_change_observer.clone(),
-            mcp_http_server.clone(),
+            operations.mcp_http_server.clone(),
         );
-        let shell_integration_cache = paths.cache.clone();
 
         Ok(Self {
             application_runtime,
-            agent_context,
-            agent_sessions,
-            mcp_tool_executor,
-            command_history,
-            command_store,
-            command_suggestions,
-            credentials,
-            diagnostics,
-            external_launch_intake,
-            external_launch_tasks,
-            mcp_http_server,
             paths,
-            storage,
-            terminal_session_bindings: TerminalSessionBindingService::default(),
-            terminals: TerminalManager::with_shell_integration_cache_dir(shell_integration_cache),
             remote,
-            mcp_tool_catalog,
+            operations,
             configuration,
             startup_recovery,
         })
@@ -156,32 +119,32 @@ impl AppState {
 
     /// 返回外部 Agent / MCP 上下文服务。
     pub fn agent_context(&self) -> &AgentContextService {
-        &self.agent_context
+        &self.operations.agent_context
     }
 
     /// 返回外部 Agent session 文件服务。
     pub fn agent_sessions(&self) -> &AgentSessionService {
-        &self.agent_sessions
+        &self.operations.agent_sessions
     }
 
     /// 返回 MCP tool 直接执行器。
     pub fn mcp_tool_executor(&self) -> &McpToolExecutorService {
-        &self.mcp_tool_executor
+        &self.operations.mcp_tool_executor
     }
 
     /// 返回命令历史服务。
     pub fn command_history(&self) -> &CommandHistoryService {
-        &self.command_history
+        &self.operations.command_history
     }
 
     /// 返回命令历史和命令建议专用 SQLite 存储。
     pub fn command_store(&self) -> &CommandSqliteStore {
-        &self.command_store
+        &self.operations.command_store
     }
 
     /// 返回命令建议服务。
     pub fn command_suggestions(&self) -> &CommandSuggestionService {
-        &self.command_suggestions
+        &self.operations.command_suggestions
     }
 
     /// 返回文件型配置变更观察服务。
@@ -191,12 +154,12 @@ impl AppState {
 
     /// 返回本地凭据服务。
     pub fn credentials(&self) -> &CredentialService {
-        &self.credentials
+        &self.operations.credentials
     }
 
     /// 返回诊断包服务。
     pub fn diagnostics(&self) -> &DiagnosticsService {
-        &self.diagnostics
+        &self.operations.diagnostics
     }
 
     /// 返回 SSH 宿主上的容器服务。
@@ -206,12 +169,12 @@ impl AppState {
 
     /// 返回外部 SSH 启动 intake 服务。
     pub fn external_launch_intake(&self) -> &ExternalLaunchIntake {
-        &self.external_launch_intake
+        &self.operations.external_launch_intake
     }
 
     /// 返回 external SSH 创建任务注册表。
     pub fn external_launch_tasks(&self) -> &ExternalLaunchTaskRegistry {
-        &self.external_launch_tasks
+        &self.operations.external_launch_tasks
     }
 
     /// 返回外部 SSH 启动临时 target materializer。
@@ -221,7 +184,7 @@ impl AppState {
 
     /// 返回 Streamable HTTP MCP Server 生命周期服务。
     pub fn mcp_http_server(&self) -> &McpStreamableHttpServerService {
-        &self.mcp_http_server
+        &self.operations.mcp_http_server
     }
 
     /// 返回 SSH 端口转发服务。
@@ -231,7 +194,7 @@ impl AppState {
 
     /// 返回运行态文件存储入口。
     pub fn storage(&self) -> &RuntimeFileStore {
-        &self.storage
+        &self.operations.storage
     }
 
     /// 返回终端 Profile 服务。
@@ -262,7 +225,8 @@ impl AppState {
     /// 更新应用设置并同步需要立即生效的运行态策略。
     pub fn update_settings(&self, request: AppSettings) -> AppResult<AppSettings> {
         let settings = self.configuration.settings.update_settings(request)?;
-        self.external_launch_intake
+        self.operations
+            .external_launch_intake
             .configure_policy(ExternalLaunchPolicy::from(&settings.external_launch))?;
         Ok(settings)
     }
@@ -304,12 +268,12 @@ impl AppState {
 
     /// 返回终端会话管理服务。
     pub fn terminals(&self) -> &TerminalManager {
-        &self.terminals
+        &self.operations.terminals
     }
 
     /// 返回终端 pane/session 绑定旁路服务。
     pub fn terminal_session_bindings(&self) -> &TerminalSessionBindingService {
-        &self.terminal_session_bindings
+        &self.operations.terminal_session_bindings
     }
 
     /// 返回 tmux 管理服务。
@@ -319,7 +283,7 @@ impl AppState {
 
     /// 返回 Kerminal MCP tool catalog。
     pub fn mcp_tool_catalog(&self) -> &McpToolCatalogService {
-        &self.mcp_tool_catalog
+        &self.operations.mcp_tool_catalog
     }
 
     /// 返回命令工作流服务。
