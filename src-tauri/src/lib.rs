@@ -36,9 +36,13 @@ pub fn run() {
 
     #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
     {
-        let desktop_log_dir = paths::KerminalPaths::from_environment_or_current_home()
-            .expect("failed to resolve Kerminal log directory")
-            .logs;
+        let desktop_log_dir = match paths::KerminalPaths::from_environment_or_current_home() {
+            Ok(paths) => paths.logs,
+            Err(_) => {
+                eprintln!("failed to resolve Kerminal log directory");
+                return;
+            }
+        };
         builder = desktop_plugins::apply_desktop_plugins(builder, desktop_log_dir);
     }
 
@@ -65,13 +69,21 @@ pub fn run() {
                 target: "desktop.lifecycle",
                 "starting Kerminal desktop setup"
             );
-            let app_state =
-                AppState::initialize().expect("failed to initialize Kerminal data stores");
-            assert!(
-                app.manage(app_state),
-                "AppState should only be managed once during Kerminal setup"
-            );
-            start_external_launch_bridge(app);
+            let app_state = AppState::initialize()?;
+            for diagnostic in &app_state.startup_recovery().diagnostics {
+                tauri_plugin_log::log::warn!(
+                    target: "desktop.startup_recovery",
+                    "config recovery domain={:?} path={} message={} recovery={}",
+                    diagnostic.domain,
+                    diagnostic.path,
+                    diagnostic.message,
+                    diagnostic.recovery
+                );
+            }
+            if !app.manage(app_state) {
+                return Err("AppState was already managed during Kerminal setup".into());
+            }
+            start_application_runtime(app)?;
             start_external_deep_link_handler(app);
             let cold_start_args = std::env::args().collect::<Vec<_>>();
             tauri_plugin_log::log::info!(
@@ -87,19 +99,6 @@ pub fn run() {
                 cwd,
                 services::external_launch::ExternalLaunchEntrypoint::DirectArgv,
             );
-            let config_observer = app.state::<AppState>().config_change_observer().clone();
-            if let Err(error) = config_observer.start(app.handle().clone()) {
-                eprintln!("config watcher failed to start: {error}");
-                tauri_plugin_log::log::warn!(
-                    target: "desktop.lifecycle",
-                    "config watcher failed to start"
-                );
-            } else {
-                tauri_plugin_log::log::info!(
-                    target: "desktop.lifecycle",
-                    "config watcher started"
-                );
-            }
             #[cfg(target_os = "windows")]
             window_frame::apply_windows_main_window_frame(app)?;
             app_tray::apply_default_window_icon(app)?;
@@ -113,9 +112,30 @@ pub fn run() {
             Ok(())
         });
 
-    commands::registry::register_kerminal_commands(builder)
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    let app = match commands::registry::register_kerminal_commands(builder)
+        .build(tauri::generate_context!())
+    {
+        Ok(app) => app,
+        Err(_) => {
+            eprintln!("failed to build Kerminal application");
+            return;
+        }
+    };
+    app.run(|app_handle, event| {
+        if matches!(event, tauri::RunEvent::Exit) {
+            let Some(state) = app_handle.try_state::<AppState>() else {
+                return;
+            };
+            if let Err(error) =
+                tauri::async_runtime::block_on(state.application_runtime().shutdown())
+            {
+                tauri_plugin_log::log::error!(
+                    target: "desktop.lifecycle",
+                    "application runtime shutdown failed: {error}"
+                );
+            }
+        }
+    });
 }
 
 #[cfg(not(test))]
@@ -165,7 +185,7 @@ pub(crate) fn dispatch_external_launch_args<R: tauri::Runtime>(
 }
 
 #[cfg(not(test))]
-fn start_external_launch_bridge<R: tauri::Runtime>(app: &tauri::App<R>) {
+fn start_application_runtime<R: tauri::Runtime>(app: &tauri::App<R>) -> error::AppResult<()> {
     let state = app.state::<AppState>();
     let endpoint = services::external_launch::external_launch_bridge_endpoint(&state.paths().root);
     let intake = state.external_launch_intake().clone();
@@ -182,18 +202,17 @@ fn start_external_launch_bridge<R: tauri::Runtime>(app: &tauri::App<R>) {
                 );
             }
         });
-    tauri::async_runtime::spawn(async move {
-        if let Err(error) = services::external_launch::run_external_launch_bridge_server(
-            endpoint, intake, event_sink,
-        )
-        .await
-        {
-            tauri_plugin_log::log::warn!(
-                target: "desktop.lifecycle",
-                "external SSH launch bridge server stopped: {error}"
-            );
-        }
-    });
+    let result =
+        state
+            .application_runtime()
+            .start(app.handle().clone(), endpoint, intake, event_sink);
+    if result.is_err() {
+        tauri_plugin_log::log::warn!(
+            target: "desktop.lifecycle",
+            "config watcher failed to start"
+        );
+    }
+    result
 }
 
 #[cfg(not(test))]

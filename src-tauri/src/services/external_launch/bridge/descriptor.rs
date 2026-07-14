@@ -77,6 +77,28 @@ pub(super) async fn load_bridge_descriptor(
     })
 }
 
+/// server 退出后删除本代际 descriptor 与 Unix socket；不存在时保持幂等。
+pub(super) async fn cleanup_server_endpoint(
+    endpoint: &ExternalLaunchBridgeEndpoint,
+) -> AppResult<()> {
+    #[cfg(unix)]
+    let active_endpoint = load_bridge_descriptor(endpoint).await.ok();
+    remove_file_if_present(Path::new(&endpoint.descriptor_path)).await?;
+    #[cfg(unix)]
+    if let Some(active_endpoint) = active_endpoint {
+        remove_file_if_present(Path::new(&active_endpoint.unix_socket_path)).await?;
+    }
+    Ok(())
+}
+
+async fn remove_file_if_present(path: &Path) -> AppResult<()> {
+    match tokio::fs::remove_file(path).await {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
 async fn write_bridge_descriptor(
     descriptor_path: &str,
     descriptor: &ExternalLaunchBridgeDescriptor,

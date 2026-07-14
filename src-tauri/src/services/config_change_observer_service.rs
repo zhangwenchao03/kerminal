@@ -45,6 +45,17 @@ type NativeDebouncer = Debouncer<notify::RecommendedWatcher, RecommendedCache>;
 pub struct ConfigChangeObserverService {
     store: ConfigFileStore,
     state: Arc<Mutex<ConfigChangeObserverState>>,
+    lifecycle: Arc<Mutex<()>>,
+    backend_preference: ConfigWatchBackendPreference,
+}
+
+/// watcher 后端选择策略；默认自动回退，显式策略用于平台诊断与确定性验证。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ConfigWatchBackendPreference {
+    #[default]
+    Automatic,
+    Native,
+    Polling,
 }
 
 impl fmt::Debug for ConfigChangeObserverService {
@@ -74,14 +85,24 @@ where
 impl ConfigChangeObserverService {
     /// 创建配置变更观察服务。
     pub fn new(store: ConfigFileStore) -> Self {
+        Self::with_backend_preference(store, ConfigWatchBackendPreference::Automatic)
+    }
+
+    /// 使用明确的后端策略创建 watcher；不改变配置文件或事件契约。
+    pub fn with_backend_preference(
+        store: ConfigFileStore,
+        backend_preference: ConfigWatchBackendPreference,
+    ) -> Self {
         Self {
             store,
             state: Arc::new(Mutex::new(ConfigChangeObserverState::new())),
+            lifecycle: Arc::new(Mutex::new(())),
+            backend_preference,
         }
     }
 
     /// 启动 watcher。重复调用是幂等操作。
-    pub fn start(&self, app: AppHandle) -> Result<(), String> {
+    pub fn start<R: tauri::Runtime>(&self, app: AppHandle<R>) -> Result<(), String> {
         self.start_with_emitter(move |batch: &ConfigChangeBatch| {
             app.emit(CONFIG_CHANGE_EVENT_NAME, batch)
                 .map_err(|error| error.to_string())
@@ -100,8 +121,16 @@ impl ConfigChangeObserverService {
         &self,
         emitter: Arc<dyn ConfigChangeEventEmitter>,
     ) -> Result<(), String> {
+        // watcher 构造包含线程和平台句柄，必须把“检查 + 创建 + 发布”作为单次生命周期操作。
+        let _lifecycle = self
+            .lifecycle
+            .lock()
+            .map_err(|_| "config watcher lifecycle state poisoned".to_owned())?;
         {
-            let state = self.state.lock().expect("config watcher state poisoned");
+            let state = self
+                .state
+                .lock()
+                .map_err(|_| "config watcher state poisoned".to_owned())?;
             if state.runtime.is_some() {
                 return Ok(());
             }
@@ -113,18 +142,30 @@ impl ConfigChangeObserverService {
         let worker =
             spawn_config_change_worker(emitter, self.store.clone(), self.state.clone(), event_rx)?;
 
-        let backend_result = build_native_backend(&watch_roots, event_tx.clone()).map_or_else(
-            |native_error| {
-                build_polling_backend(&watch_roots, event_tx.clone()).map(|backend| {
-                    (
-                        backend,
-                        ConfigWatchBackend::Polling,
-                        Some(format!("native watcher unavailable: {native_error}")),
-                    )
-                })
-            },
-            |backend| Ok((backend, ConfigWatchBackend::Native, None)),
-        );
+        let backend_result = match self.backend_preference {
+            ConfigWatchBackendPreference::Automatic => {
+                build_native_backend(&watch_roots, event_tx.clone()).map_or_else(
+                    |native_error| {
+                        build_polling_backend(&watch_roots, event_tx.clone()).map(|backend| {
+                            (
+                                backend,
+                                ConfigWatchBackend::Polling,
+                                Some(format!("native watcher unavailable: {native_error}")),
+                            )
+                        })
+                    },
+                    |backend| Ok((backend, ConfigWatchBackend::Native, None)),
+                )
+            }
+            ConfigWatchBackendPreference::Native => {
+                build_native_backend(&watch_roots, event_tx.clone())
+                    .map(|backend| (backend, ConfigWatchBackend::Native, None))
+            }
+            ConfigWatchBackendPreference::Polling => {
+                build_polling_backend(&watch_roots, event_tx.clone())
+                    .map(|backend| (backend, ConfigWatchBackend::Polling, None))
+            }
+        };
 
         let (backend, backend_kind, fallback_reason) = match backend_result {
             Ok(result) => result,
@@ -139,7 +180,10 @@ impl ConfigChangeObserverService {
             }
         };
 
-        let mut state = self.state.lock().expect("config watcher state poisoned");
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| "config watcher state poisoned".to_owned())?;
         state.snapshot.enabled = true;
         state.snapshot.backend = backend_kind;
         state.snapshot.watched_roots = watched_root_labels;
@@ -152,13 +196,33 @@ impl ConfigChangeObserverService {
         Ok(())
     }
 
+    /// 停止 watcher 并等待 worker 退出。重复调用保持幂等。
+    pub fn stop(&self) -> Result<(), String> {
+        let _lifecycle = self
+            .lifecycle
+            .lock()
+            .map_err(|_| "config watcher lifecycle state poisoned".to_owned())?;
+        let runtime = {
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| "config watcher state poisoned".to_owned())?;
+            state.snapshot.enabled = false;
+            state.snapshot.backend = ConfigWatchBackend::Unavailable;
+            state.snapshot.fallback_reason = None;
+            state.runtime.take()
+        };
+        // backend 必须先于 join 在状态锁外销毁，发送端关闭后 worker 才能结束 recv 循环。
+        drop(runtime);
+        Ok(())
+    }
+
     /// 返回 watcher 诊断状态。
     pub fn status(&self) -> ConfigWatchStatusSnapshot {
         self.state
             .lock()
-            .expect("config watcher state poisoned")
-            .snapshot
-            .clone()
+            .map(|state| state.snapshot.clone())
+            .unwrap_or_else(|_| ConfigChangeObserverState::new().snapshot)
     }
 
     /// 使用现有 typed reader 校验配置域。
@@ -171,7 +235,9 @@ impl ConfigChangeObserverService {
         watched_roots: Vec<String>,
         message: String,
     ) -> ConfigWatchStatusSnapshot {
-        let mut state = self.state.lock().expect("config watcher state poisoned");
+        let Ok(mut state) = self.state.lock() else {
+            return ConfigChangeObserverState::new().snapshot;
+        };
         let sequence = state.next_sequence();
         state.snapshot.enabled = true;
         state.snapshot.backend = ConfigWatchBackend::Unavailable;

@@ -33,7 +33,7 @@ mod descriptor;
 mod support;
 
 use codec::{read_bridge_frame, write_bridge_frame};
-use descriptor::{load_bridge_descriptor, prepare_server_endpoint};
+use descriptor::{cleanup_server_endpoint, load_bridge_descriptor, prepare_server_endpoint};
 use support::{
     direct_parent_command_line_for_args_bounded_impl, direct_parent_command_line_for_args_impl,
 };
@@ -360,6 +360,13 @@ pub async fn run_external_launch_bridge_server(
             }
         }
     }
+}
+
+/// 清理 bridge server 的本代际 descriptor 与平台 socket。
+pub(crate) async fn cleanup_external_launch_bridge_server(
+    endpoint: &ExternalLaunchBridgeEndpoint,
+) -> AppResult<()> {
+    cleanup_server_endpoint(endpoint).await
 }
 
 async fn send_envelope_over_stream<S>(
