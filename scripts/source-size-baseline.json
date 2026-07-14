@@ -335,7 +335,7 @@
     },
     {
       "file": "src/features/sftp/sftp-tool-content/SftpBrowserView.tsx",
-      "lines": 1218,
+      "lines": 1173,
       "deadline": "before TASK-080",
       "owner": "sftp-frontend",
       "targetTask": "TASK-040/TASK-041"
