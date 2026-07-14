@@ -149,7 +149,7 @@ export function sidebarDisplayStatus(
   return machine.kind === "local" ? "offline" : machine.status;
 }
 
-export function machineIcon(
+function machineIcon(
   machine: Machine,
   group: MachineGroup,
 ): LucideIcon {
@@ -168,13 +168,13 @@ export function machineIcon(
   return Server;
 }
 
-export function machineTitle(machine: Machine) {
+function machineTitle(machine: Machine) {
   return [machine.name, machine.description, ...machine.tags]
     .filter(Boolean)
     .join(" · ");
 }
 
-export function statusTitle(status: Machine["status"]) {
+function statusTitle(status: Machine["status"]) {
   if (status === "online") {
     return "已打开会话";
   }
