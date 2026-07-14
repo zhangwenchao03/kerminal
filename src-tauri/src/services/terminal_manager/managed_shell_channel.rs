@@ -51,6 +51,7 @@ pub(crate) enum ManagedShellQueueError {
 }
 
 impl ManagedShellQueueError {
+    /// 转换为 `Write` 调用方可识别的标准 I/O 错误种类。
     pub(crate) fn into_io_error(self) -> io::Error {
         let kind = match &self {
             Self::InputTooLarge { .. } => io::ErrorKind::InvalidInput,
@@ -154,6 +155,7 @@ pub(crate) struct QueuedManagedShellCommand {
 }
 
 impl QueuedManagedShellCommand {
+    /// 取出一次命令，同时让队列项继续持有写入字节许可。
     pub(crate) fn take_command(&mut self) -> ManagedShellCommand {
         self.command
             .take()
@@ -169,6 +171,7 @@ pub(crate) struct ManagedShellCommandSender {
 }
 
 impl ManagedShellCommandSender {
+    /// 非阻塞提交外部 terminal write；达到任一预算时返回显式背压错误。
     pub(crate) fn try_send_write(&self, data: Vec<u8>) -> Result<(), ManagedShellQueueError> {
         if data.len() > TERMINAL_WRITE_MAX_BYTES {
             return Err(ManagedShellQueueError::InputTooLarge {
@@ -187,6 +190,7 @@ impl ManagedShellCommandSender {
         })
     }
 
+    /// 非阻塞提交窗口调整；消息容量耗尽时同样返回背压错误。
     pub(crate) fn try_send_resize(
         &self,
         cols: u16,
@@ -198,6 +202,7 @@ impl ManagedShellCommandSender {
         })
     }
 
+    /// 返回排队和正在执行的 write 总字节数。
     pub(crate) fn pending_write_bytes(&self) -> usize {
         self.budget.bytes.load(Ordering::Acquire)
     }
@@ -240,6 +245,7 @@ impl ManagedShellCommandSender {
     }
 }
 
+/// 创建同时受消息数量和 write 字节高水位约束的 command channel。
 pub(crate) fn managed_shell_command_channel() -> (
     ManagedShellCommandSender,
     tokio::sync::mpsc::Receiver<QueuedManagedShellCommand>,
@@ -281,12 +287,14 @@ impl ManagedShellReaderSender {
         true
     }
 
+    /// 按 FIFO 提交读取错误。
     pub(crate) fn send_error(&self, error: String) -> bool {
         self.sender
             .send(ManagedShellReaderMessage::Error(error))
             .is_ok()
     }
 
+    /// 在全部先前数据后提交关闭标记。
     pub(crate) fn send_closed(&self) -> bool {
         self.sender.send(ManagedShellReaderMessage::Closed).is_ok()
     }
@@ -312,6 +320,7 @@ impl ManagedShellReaderSender {
     }
 }
 
+/// 创建按固定数据分片折算为 1 MiB 的 reader channel。
 pub(crate) fn managed_shell_reader_channel() -> (
     ManagedShellReaderSender,
     mpsc::Receiver<ManagedShellReaderMessage>,

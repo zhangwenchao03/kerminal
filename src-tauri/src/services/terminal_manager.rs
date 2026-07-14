@@ -1267,6 +1267,13 @@ fn normalize_startup_input(input: Option<String>) -> AppResult<Option<String>> {
                     "managed SSH shell startup input cannot contain NUL".to_owned(),
                 ));
             }
+            if value.len() > TERMINAL_WRITE_MAX_BYTES {
+                return Err(AppError::InvalidInput(format!(
+                    "managed SSH shell startup input exceeds per-write limit: {} bytes > {} bytes",
+                    value.len(),
+                    TERMINAL_WRITE_MAX_BYTES
+                )));
+            }
             Ok(value)
         })
         .transpose()
