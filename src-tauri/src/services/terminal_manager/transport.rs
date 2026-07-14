@@ -1,4 +1,4 @@
-//! Managed SSH shell 与同步 TerminalManager transport 的适配器。
+//! TerminalManager 的本地 PTY 与 managed SSH transport 适配器。
 //!
 //! @author kongweiguang
 
@@ -8,13 +8,15 @@ use super::{
         ManagedShellCommandSender, ManagedShellQueueError, ManagedShellReaderMessage,
         ManagedShellReaderSender, QueuedManagedShellCommand,
     },
-    SharedTerminalTransportHandle, SharedWriterHandle, TerminalManagedShellRuntime,
-    TerminalSessionTransport, WriterHandle,
+    TerminalManagedShellRuntime,
 };
 use crate::{
     error::{AppError, AppResult},
     models::terminal::TerminalSessionStatus,
-    services::ssh_runtime::{ManagedSshShellSession, SshRuntimeShellEvent},
+    services::{
+        pty_process_guard::{PtyMasterGuard, PtyProcessGuard},
+        ssh_runtime::{ManagedSshShellSession, SshRuntimeShellEvent},
+    },
 };
 use portable_pty::PtySize;
 use std::{
@@ -25,6 +27,87 @@ use std::{
     },
     thread,
 };
+
+type WriterHandle = Box<dyn Write + Send>;
+pub(super) type SharedWriterHandle = Arc<Mutex<WriterHandle>>;
+type SharedPtyMasterHandle = Arc<Mutex<PtyMasterGuard>>;
+pub(super) type SharedTerminalTransportHandle = Arc<Mutex<Box<dyn TerminalSessionTransport>>>;
+
+/// 统一终端会话对本地 PTY 与 managed SSH shell 的同步操作契约。
+pub(super) trait TerminalSessionTransport: Send {
+    fn status(&mut self) -> AppResult<TerminalSessionStatus>;
+
+    fn write(&mut self, data: &[u8]) -> AppResult<()>;
+
+    fn resize(&mut self, size: PtySize) -> AppResult<()>;
+
+    fn close_detached(&mut self);
+}
+
+struct PtyTerminalTransport {
+    process_guard: Option<PtyProcessGuard>,
+    master: SharedPtyMasterHandle,
+    writer: SharedWriterHandle,
+}
+
+impl TerminalSessionTransport for PtyTerminalTransport {
+    fn status(&mut self) -> AppResult<TerminalSessionStatus> {
+        let Some(process_guard) = self.process_guard.as_ref() else {
+            return Ok(TerminalSessionStatus::Exited);
+        };
+        let status = if process_guard.try_wait_status()?.is_some() {
+            TerminalSessionStatus::Exited
+        } else {
+            TerminalSessionStatus::Running
+        };
+        Ok(status)
+    }
+
+    fn write(&mut self, data: &[u8]) -> AppResult<()> {
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|_| AppError::StateLockPoisoned("terminal_writer"))?;
+        writer.write_all(data)?;
+        writer.flush()?;
+        Ok(())
+    }
+
+    fn resize(&mut self, size: PtySize) -> AppResult<()> {
+        let master = self
+            .master
+            .lock()
+            .map_err(|_| AppError::StateLockPoisoned("terminal_master"))?;
+        master
+            .resize(size)
+            .map_err(|error| AppError::Terminal(error.to_string()))
+    }
+
+    fn close_detached(&mut self) {
+        let Some(process_guard) = self.process_guard.take() else {
+            return;
+        };
+        thread::spawn(move || {
+            let _ = process_guard.best_effort_kill();
+        });
+    }
+}
+
+/// 构造本地 PTY transport，并共享同一个 writer 给输出响应链路。
+pub(super) fn create_pty_transport(
+    process_guard: PtyProcessGuard,
+    master: PtyMasterGuard,
+    writer: WriterHandle,
+) -> (SharedWriterHandle, SharedTerminalTransportHandle) {
+    let master = Arc::new(Mutex::new(master));
+    let writer = Arc::new(Mutex::new(writer));
+    let transport = Arc::new(Mutex::new(Box::new(PtyTerminalTransport {
+        process_guard: Some(process_guard),
+        master,
+        writer: Arc::clone(&writer),
+    }) as Box<dyn TerminalSessionTransport>));
+    (writer, transport)
+}
 
 fn managed_shell_queue_app_error(error: ManagedShellQueueError) -> AppError {
     let message = error.to_string();

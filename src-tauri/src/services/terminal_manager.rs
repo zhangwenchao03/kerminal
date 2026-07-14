@@ -23,7 +23,6 @@ use crate::{
     },
 };
 mod managed_shell_channel;
-mod managed_shell_transport;
 mod output_state;
 mod pump_metrics;
 mod secret_input;
@@ -31,10 +30,10 @@ mod session_handle;
 #[path = "terminal_target_token.rs"]
 mod terminal_target_token;
 mod text;
+mod transport;
 mod utf8_decoder;
 
 use managed_shell_channel::TERMINAL_WRITE_MAX_BYTES;
-use managed_shell_transport::spawn_managed_shell_io;
 use output_state::{ActiveTerminalLog, TerminalOutputBuffer};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use pump_metrics::{flush_metadata_since, publish_pump_stats, SharedPtyOutputPumpStats};
@@ -55,6 +54,9 @@ use std::{
 };
 pub use terminal_target_token::TerminalTargetTokenClaims;
 use terminal_target_token::{TerminalTargetCapability, TerminalTargetTokenSigner};
+use transport::{
+    create_pty_transport, spawn_managed_shell_io, SharedTerminalTransportHandle, SharedWriterHandle,
+};
 use utf8_decoder::IncrementalUtf8Decoder;
 use uuid::Uuid;
 
@@ -72,10 +74,6 @@ const PTY_READER_EOF_GRACE: Duration = Duration::from_millis(500);
 const TERMINAL_TARGET_TOKEN_TTL_MS: u64 = 5 * 60 * 1000;
 const KERMINAL_AGENT_SESSION_ID_ENV: &str = "KERMINAL_AGENT_SESSION_ID";
 
-type WriterHandle = Box<dyn Write + Send>;
-type SharedWriterHandle = Arc<Mutex<WriterHandle>>;
-type SharedPtyMasterHandle = Arc<Mutex<PtyMasterGuard>>;
-type SharedTerminalTransportHandle = Arc<Mutex<Box<dyn TerminalSessionTransport>>>;
 type OutputEmitter = Box<dyn Fn(TerminalOutputEvent) -> bool + Send + 'static>;
 
 /// 固定容量 output channel 的同步发送端；首次进入背压时只记录脱敏容量信息。
@@ -348,13 +346,7 @@ impl TerminalManager {
         let master = PtyMasterGuard::new(pair.master);
         let reader = master.try_clone_reader().map_err(AppError::Terminal)?;
         let writer = master.take_writer().map_err(AppError::Terminal)?;
-        let master = Arc::new(Mutex::new(master));
-        let writer = Arc::new(Mutex::new(writer));
-        let transport = Arc::new(Mutex::new(Box::new(PtyTerminalTransport {
-            process_guard: Some(process_guard),
-            master,
-            writer: writer.clone(),
-        }) as Box<dyn TerminalSessionTransport>));
+        let (writer, transport) = create_pty_transport(process_guard, master, writer);
 
         let session_id = Uuid::new_v4().to_string();
         let output_buffer = Arc::new(Mutex::new(TerminalOutputBuffer::default()));
@@ -667,65 +659,6 @@ impl TerminalSession {
         if let Ok(mut transport) = self.transport.lock() {
             transport.close_detached();
         }
-    }
-}
-
-trait TerminalSessionTransport: Send {
-    fn status(&mut self) -> AppResult<TerminalSessionStatus>;
-
-    fn write(&mut self, data: &[u8]) -> AppResult<()>;
-
-    fn resize(&mut self, size: PtySize) -> AppResult<()>;
-
-    fn close_detached(&mut self);
-}
-
-struct PtyTerminalTransport {
-    process_guard: Option<PtyProcessGuard>,
-    master: SharedPtyMasterHandle,
-    writer: SharedWriterHandle,
-}
-
-impl TerminalSessionTransport for PtyTerminalTransport {
-    fn status(&mut self) -> AppResult<TerminalSessionStatus> {
-        let Some(process_guard) = self.process_guard.as_ref() else {
-            return Ok(TerminalSessionStatus::Exited);
-        };
-        let status = if process_guard.try_wait_status()?.is_some() {
-            TerminalSessionStatus::Exited
-        } else {
-            TerminalSessionStatus::Running
-        };
-        Ok(status)
-    }
-
-    fn write(&mut self, data: &[u8]) -> AppResult<()> {
-        let mut writer = self
-            .writer
-            .lock()
-            .map_err(|_| AppError::StateLockPoisoned("terminal_writer"))?;
-        writer.write_all(data)?;
-        writer.flush()?;
-        Ok(())
-    }
-
-    fn resize(&mut self, size: PtySize) -> AppResult<()> {
-        let master = self
-            .master
-            .lock()
-            .map_err(|_| AppError::StateLockPoisoned("terminal_master"))?;
-        master
-            .resize(size)
-            .map_err(|error| AppError::Terminal(error.to_string()))
-    }
-
-    fn close_detached(&mut self) {
-        let Some(process_guard) = self.process_guard.take() else {
-            return;
-        };
-        thread::spawn(move || {
-            let _ = process_guard.best_effort_kill();
-        });
     }
 }
 
