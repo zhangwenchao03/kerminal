@@ -412,7 +412,7 @@
     },
     {
       "file": "src/features/workspace/workspaceStore.ts",
-      "lines": 1050,
+      "lines": 865,
       "deadline": "before TASK-080",
       "owner": "workspace-composition",
       "targetTask": "TASK-030/TASK-031"
