@@ -47,6 +47,7 @@ import { createXtermPaneActivityRuntime } from "./XtermPane.activityRuntime";
 import { registerXtermPaneRuntimeEvents } from "./XtermPane.runtime.events";
 import { createXtermPaneArtifactRuntime } from "./XtermPane.artifacts";
 import { createInitialRemoteOutputGate } from "./terminalInitialRemoteOutputGate";
+import { createTerminalSurfaceEventController } from "./terminalSurfaceEventController";
 import type { InstallXtermPaneRuntimeParams } from "./XtermPane.runtime.types";
 const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000,
   TERMINAL_SESSION_STATUS_POLL_MS = 2_000;
@@ -116,8 +117,6 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
   }
   let disposed = false,
     sessionStatusPollTimer: number | null = null;
-  let devicePixelRatioMediaQuery: MediaQueryList | null = null;
-  let resizeObserver: ResizeObserver | undefined;
   let sessionRun = 0;
   let shellIntegrationState = createTerminalShellIntegrationState();
   const assistEnabled = shellAssistEnabled !== false;
@@ -450,35 +449,20 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     };
   }
   const fitAndResize = () => rendererSurfaceCoordinator?.notify();
-  const handleDocumentVisibilityChange = () => {
-    if (document.visibilityState === "hidden") {
-      terminalRendererController.suspend();
-      terminalRendererRegistry.updatePaneVisibility(paneId, false);
-      rendererSurfaceCoordinator?.notify();
-      return;
-    }
-    rendererSurfaceCoordinator?.invalidate();
-  };
-  const handleWindowSurfaceChange = () =>
-    rendererSurfaceCoordinator?.invalidate();
-  const bindDevicePixelRatioListener = () => {
-    devicePixelRatioMediaQuery?.removeEventListener(
-      "change",
-      handleDevicePixelRatioChange,
-    );
-    devicePixelRatioMediaQuery =
-      typeof window.matchMedia === "function"
-        ? window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
-        : null;
-    devicePixelRatioMediaQuery?.addEventListener(
-      "change",
-      handleDevicePixelRatioChange,
-    );
-  };
-  function handleDevicePixelRatioChange() {
-    bindDevicePixelRatioListener();
-    rendererSurfaceCoordinator?.invalidate();
-  }
+  const surfaceEvents = createTerminalSurfaceEventController({
+    onDocumentVisibilityChange: (visibilityState) => {
+      if (visibilityState === "hidden") {
+        terminalRendererController.suspend();
+        terminalRendererRegistry.updatePaneVisibility(paneId, false);
+        rendererSurfaceCoordinator?.notify();
+        return;
+      }
+      rendererSurfaceCoordinator?.invalidate();
+    },
+    onResize: fitAndResize,
+    onSurfaceChange: () => rendererSurfaceCoordinator?.invalidate(),
+    resizeTarget: container,
+  });
   rendererSurfaceCoordinator.flush();
   reuseInitialSurfaceDimensions = false;
   const clearSessionState = (sessionId: string) => {
@@ -819,30 +803,11 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
   reconnectSessionRef.current = () => startSession("reconnect");
   disconnectSessionRef.current = disconnectSession;
   void startSession("initial");
-  if (typeof ResizeObserver !== "undefined") {
-    resizeObserver = new ResizeObserver(fitAndResize);
-    resizeObserver.observe(container);
-  }
-  document.addEventListener(
-    "visibilitychange",
-    handleDocumentVisibilityChange,
-  );
-  window.addEventListener("resize", handleWindowSurfaceChange);
-  bindDevicePixelRatioListener();
+  surfaceEvents.install();
   return () => {
     disposed = true;
     sessionRun += 1;
-    resizeObserver?.disconnect();
-    document.removeEventListener(
-      "visibilitychange",
-      handleDocumentVisibilityChange,
-    );
-    window.removeEventListener("resize", handleWindowSurfaceChange);
-    devicePixelRatioMediaQuery?.removeEventListener(
-      "change",
-      handleDevicePixelRatioChange,
-    );
-    devicePixelRatioMediaQuery = null;
+    surfaceEvents.dispose();
     rendererHealthWatchdog?.dispose();
     rendererHealthWatchdog = null;
     rendererSurfaceCoordinator?.dispose();
