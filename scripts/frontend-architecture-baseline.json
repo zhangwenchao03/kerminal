@@ -1938,12 +1938,12 @@
       "targetTask": "TASK-020"
     },
     {
-      "kind": "import",
+      "kind": "export",
       "rule": "lib-to-feature",
       "runtime": true,
       "source": "src/lib/settingsApi.ts",
-      "specifier": "../features/settings/settingsModel",
-      "target": "src/features/settings/settingsModel.ts",
+      "specifier": "../features/settings/settingsApi",
+      "target": "src/features/settings/settingsApi.ts",
       "deadline": "before TASK-080",
       "owner": "frontend-architecture",
       "targetTask": "TASK-020"
