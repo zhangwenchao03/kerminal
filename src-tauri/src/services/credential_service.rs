@@ -2,11 +2,7 @@
 //!
 //! @author kongweiguang
 
-use std::{
-    collections::HashMap,
-    fmt,
-    sync::{Arc, Mutex},
-};
+use std::{fmt, sync::Arc};
 
 use keyring::Entry;
 
@@ -104,55 +100,6 @@ impl CredentialVault for KeyringCredentialVault {
             .map_err(keyring_error)?
             .delete_credential()
             .map_err(keyring_error)
-    }
-}
-
-/// 内存凭据仓库，只用于测试。
-#[derive(Debug, Default)]
-pub struct MemoryCredentialVault {
-    secrets: Mutex<HashMap<String, String>>,
-}
-
-impl MemoryCredentialVault {
-    /// 创建空的内存凭据仓库。
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// 判断凭据是否存在。
-    pub fn contains(&self, credential_ref: &str) -> bool {
-        self.secrets
-            .lock()
-            .map(|secrets| secrets.contains_key(credential_ref))
-            .unwrap_or(false)
-    }
-}
-
-impl CredentialVault for MemoryCredentialVault {
-    fn set_secret(&self, credential_ref: &str, secret: &str) -> AppResult<()> {
-        let mut secrets = self
-            .secrets
-            .lock()
-            .map_err(|_| AppError::StateLockPoisoned("memory credential vault"))?;
-        secrets.insert(credential_ref.to_string(), secret.to_string());
-        Ok(())
-    }
-
-    fn get_secret(&self, credential_ref: &str) -> AppResult<Option<String>> {
-        let secrets = self
-            .secrets
-            .lock()
-            .map_err(|_| AppError::StateLockPoisoned("memory credential vault"))?;
-        Ok(secrets.get(credential_ref).cloned())
-    }
-
-    fn delete_secret(&self, credential_ref: &str) -> AppResult<()> {
-        let mut secrets = self
-            .secrets
-            .lock()
-            .map_err(|_| AppError::StateLockPoisoned("memory credential vault"))?;
-        secrets.remove(credential_ref);
-        Ok(())
     }
 }
 
