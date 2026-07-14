@@ -83,15 +83,6 @@
       "targetTask": "TASK-022/TASK-072"
     },
     {
-      "file": "src/features/command-palette/CommandPalette.tsx",
-      "name": "shouldCloseCommandPalette",
-      "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
       "file": "src/features/command-palette/index.ts",
       "name": "formatCommandPaletteEffect",
       "type": "exports",
