@@ -18,11 +18,8 @@ import {
   Upload,
 } from "lucide-react";
 import {
-  useCallback,
   useId,
-  useLayoutEffect,
   useMemo,
-  useState,
   type Dispatch,
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -59,6 +56,7 @@ import {
   treeNodeToSftpEntry,
   workspaceFileTabToSftpEntry,
 } from "./sftpWorkspaceTreeModel";
+import { useSftpUploadMenuPosition } from "./useSftpUploadMenuPosition";
 import { useSftpWorkspaceTreeController } from "./useSftpWorkspaceTreeController";
 import type {
   RemoteDirectoryListing,
@@ -77,14 +75,6 @@ const sftpDividerClassName =
 
 const sftpUploadMenuItemClassName =
   "kerminal-focus-ring kerminal-pressable flex h-8 w-full items-center gap-2 rounded-[var(--radius-control)] px-2 text-left text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-zinc-50";
-
-const SFTP_UPLOAD_MENU_WIDTH = 176;
-const SFTP_UPLOAD_MENU_VIEWPORT_GAP = 8;
-
-type SftpUploadMenuPosition = {
-  left: number;
-  top: number;
-};
 
 type SftpBrowserViewProps = {
   browserMode: SftpBrowserMode;
@@ -285,8 +275,10 @@ export function SftpBrowserView({
     : spaciousDensity
       ? "px-4 py-3"
       : "px-3 py-2.5";
-  const [uploadMenuPosition, setUploadMenuPosition] =
-    useState<SftpUploadMenuPosition | null>(null);
+  const uploadMenuPosition = useSftpUploadMenuPosition({
+    anchorRef: uploadMenuRef,
+    open: uploadMenuOpen,
+  });
   const {
     openTreePaths,
     toggleTreeDirectory,
@@ -338,43 +330,6 @@ export function SftpBrowserView({
     () => visibleTransfers.map(sanitizeSftpTransferSummary),
     [visibleTransfers],
   );
-
-  const updateUploadMenuPosition = useCallback(() => {
-    if (!uploadMenuOpen || typeof window === "undefined") {
-      return;
-    }
-    const anchor = uploadMenuRef.current;
-    if (!anchor) {
-      setUploadMenuPosition(null);
-      return;
-    }
-    const rect = anchor.getBoundingClientRect();
-    const viewportWidth =
-      window.innerWidth || rect.left + SFTP_UPLOAD_MENU_WIDTH;
-    const maxLeft =
-      viewportWidth - SFTP_UPLOAD_MENU_WIDTH - SFTP_UPLOAD_MENU_VIEWPORT_GAP;
-    setUploadMenuPosition({
-      left: Math.max(
-        SFTP_UPLOAD_MENU_VIEWPORT_GAP,
-        Math.min(rect.left, maxLeft),
-      ),
-      top: rect.bottom + 4,
-    });
-  }, [uploadMenuOpen, uploadMenuRef]);
-
-  useLayoutEffect(() => {
-    if (!uploadMenuOpen || typeof window === "undefined") {
-      setUploadMenuPosition(null);
-      return undefined;
-    }
-    updateUploadMenuPosition();
-    window.addEventListener("resize", updateUploadMenuPosition);
-    window.addEventListener("scroll", updateUploadMenuPosition, true);
-    return () => {
-      window.removeEventListener("resize", updateUploadMenuPosition);
-      window.removeEventListener("scroll", updateUploadMenuPosition, true);
-    };
-  }, [updateUploadMenuPosition, uploadMenuOpen]);
 
   if (!fileTarget) {
     return (
