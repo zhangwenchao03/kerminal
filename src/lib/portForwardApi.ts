@@ -8,8 +8,7 @@ export type PortForwardKind =
 
 export type PortForwardStatus = "running" | "exited";
 
-export type PortForwardProxyProtocol = "http" | "socks5";
-
+/** 端口转发仅支持 SOCKS 代理；HTTP network-assist 已退役。 */
 export type PortForwardRuntimeMode =
   | "unknown"
   | "managedSshRuntime"
@@ -86,7 +85,8 @@ export interface PortForwardSummary {
   localBindHost?: string;
   localEndpoint?: PortForwardEndpoint;
   origin?: PortForwardOrigin;
-  proxyProtocol?: PortForwardProxyProtocol;
+  // 仅用于读取和标识旧会话；新建请求只能传入 socks5。
+  proxyProtocol?: "http" | "socks5";
   proxyUrl?: string;
   remoteAccessScope?: PortForwardAccessScope;
   remoteBindHost?: string;
