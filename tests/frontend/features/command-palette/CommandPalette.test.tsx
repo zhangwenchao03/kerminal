@@ -98,6 +98,18 @@ describe("CommandPalette", () => {
     expect(screen.getByRole("status")).toHaveTextContent("工具已打开");
   });
 
+  it("closes after a completed action", async () => {
+    const executor: WorkspaceActionExecutor = {
+      execute: vi.fn().mockResolvedValue({ kind: "completed" }),
+    };
+    const { onClose } = renderPalette(executor);
+
+    fireEvent.click(screen.getByText("打开文件"));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("status")).toHaveTextContent("动作已完成");
+  });
+
   it("forwards protected actions to confirmation without executor access", async () => {
     const executor: WorkspaceActionExecutor = { execute: vi.fn() };
     const { onClose, onConfirmationRequired } = renderPalette(executor);

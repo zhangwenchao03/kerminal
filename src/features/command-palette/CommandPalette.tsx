@@ -43,7 +43,7 @@ export function resolveCommandPaletteFeedback(
 }
 
 /** 成功接管用户意图后关闭临时面板；可恢复错误保留结果供用户修正或重试。 */
-export function shouldCloseCommandPalette(
+function shouldCloseCommandPalette(
   result: WorkspaceActionInvocationResult,
 ): boolean {
   return (
