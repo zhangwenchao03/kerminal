@@ -3,8 +3,8 @@
 //! @author kongweiguang
 
 use crate::{
-    error::{AppError, AppResult},
-    models::{config_change::ConfigDomain, settings::AppSettings},
+    error::AppResult,
+    models::settings::AppSettings,
     paths::KerminalPaths,
     services::{
         agent_context_service::AgentContextService,
@@ -45,9 +45,11 @@ use crate::{
     storage::{config_file_store::ConfigFileStore, CommandSqliteStore, RuntimeFileStore},
 };
 
+mod configuration_capabilities;
 mod remote_capabilities;
 mod startup_recovery;
 
+use configuration_capabilities::ConfigurationCapabilities;
 use remote_capabilities::RemoteCapabilities;
 pub use startup_recovery::{StartupRecoveryDiagnostic, StartupRecoverySnapshot};
 
@@ -61,23 +63,18 @@ pub struct AppState {
     command_history: CommandHistoryService,
     command_store: CommandSqliteStore,
     command_suggestions: CommandSuggestionService,
-    config_change_observer: ConfigChangeObserverService,
     credentials: CredentialService,
     diagnostics: DiagnosticsService,
     external_launch_intake: ExternalLaunchIntake,
     external_launch_tasks: ExternalLaunchTaskRegistry,
     mcp_http_server: McpStreamableHttpServerService,
     paths: KerminalPaths,
-    profiles: ProfileService,
-    settings: SettingsService,
-    snippets: SnippetService,
     storage: RuntimeFileStore,
     terminal_session_bindings: TerminalSessionBindingService,
     terminals: TerminalManager,
     remote: RemoteCapabilities,
     mcp_tool_catalog: McpToolCatalogService,
-    workflows: WorkflowService,
-    workspace_sync: WorkspaceSyncService,
+    configuration: ConfigurationCapabilities,
     startup_recovery: StartupRecoverySnapshot,
 }
 
@@ -104,51 +101,18 @@ impl AppState {
         let external_launch_intake = ExternalLaunchIntake::new();
         let external_launch_tasks = ExternalLaunchTaskRegistry::new();
         let config_files = ConfigFileStore::new(paths.root.clone());
-        let workspace_sync = WorkspaceSyncService::new(paths.clone());
-        workspace_sync.ensure_bootstrap()?;
-        let mut startup_recovery = StartupRecoverySnapshot::default();
-        let settings = SettingsService::new(config_files.clone());
-        let persisted_settings = match settings
-            .ensure_seed_settings()
-            .and_then(|_| settings.load_settings())
-        {
-            Ok(settings) => settings,
-            Err(AppError::InvalidInput(_)) => {
-                startup_recovery.record_invalid(
-                    ConfigDomain::Settings,
-                    "settings.toml",
-                    "应用设置无效，已使用本次进程的安全默认值。",
-                );
-                let fallback = AppSettings::default();
-                settings.enter_read_only_recovery(fallback.clone())?;
-                fallback
-            }
-            Err(error) => return Err(error),
-        };
+        let (configuration, persisted_settings, startup_recovery) =
+            ConfigurationCapabilities::initialize(&paths, config_files.clone())?;
         external_launch_intake.configure_policy(ExternalLaunchPolicy::from(
             &persisted_settings.external_launch,
         ))?;
-        let profiles = ProfileService::new(config_files.clone());
-        match profiles.ensure_seed_profiles() {
-            Ok(()) => {}
-            Err(AppError::InvalidInput(_)) => {
-                startup_recovery.record_invalid(
-                    ConfigDomain::Profiles,
-                    "profiles/*.toml",
-                    "终端 Profile 无效，已进入只读恢复且保留原文件。",
-                );
-                profiles.enter_read_only_recovery()?;
-            }
-            Err(error) => return Err(error),
-        }
         let remote =
             RemoteCapabilities::new(&paths, config_files.clone(), external_launch_intake.clone())?;
-        let snippets = SnippetService::new(config_files.clone());
         let mcp_tool_catalog = McpToolCatalogService::new();
-        let workflows = WorkflowService::new(config_files.clone());
-        let config_change_observer = ConfigChangeObserverService::new(config_files);
-        let application_runtime =
-            ApplicationRuntime::new(config_change_observer.clone(), mcp_http_server.clone());
+        let application_runtime = ApplicationRuntime::new(
+            configuration.config_change_observer.clone(),
+            mcp_http_server.clone(),
+        );
         let shell_integration_cache = paths.cache.clone();
 
         Ok(Self {
@@ -159,23 +123,18 @@ impl AppState {
             command_history,
             command_store,
             command_suggestions,
-            config_change_observer,
             credentials,
             diagnostics,
             external_launch_intake,
             external_launch_tasks,
             mcp_http_server,
             paths,
-            profiles,
-            settings,
-            snippets,
             storage,
             terminal_session_bindings: TerminalSessionBindingService::default(),
             terminals: TerminalManager::with_shell_integration_cache_dir(shell_integration_cache),
             remote,
             mcp_tool_catalog,
-            workflows,
-            workspace_sync,
+            configuration,
             startup_recovery,
         })
     }
@@ -227,7 +186,7 @@ impl AppState {
 
     /// 返回文件型配置变更观察服务。
     pub fn config_change_observer(&self) -> &ConfigChangeObserverService {
-        &self.config_change_observer
+        &self.configuration.config_change_observer
     }
 
     /// 返回本地凭据服务。
@@ -277,7 +236,7 @@ impl AppState {
 
     /// 返回终端 Profile 服务。
     pub fn profiles(&self) -> &ProfileService {
-        &self.profiles
+        &self.configuration.profiles
     }
 
     /// 返回远程主机服务。
@@ -297,12 +256,12 @@ impl AppState {
 
     /// 返回应用设置服务。
     pub fn settings(&self) -> &SettingsService {
-        &self.settings
+        &self.configuration.settings
     }
 
     /// 更新应用设置并同步需要立即生效的运行态策略。
     pub fn update_settings(&self, request: AppSettings) -> AppResult<AppSettings> {
-        let settings = self.settings.update_settings(request)?;
+        let settings = self.configuration.settings.update_settings(request)?;
         self.external_launch_intake
             .configure_policy(ExternalLaunchPolicy::from(&settings.external_launch))?;
         Ok(settings)
@@ -315,7 +274,7 @@ impl AppState {
 
     /// 返回脚本片段服务。
     pub fn snippets(&self) -> &SnippetService {
-        &self.snippets
+        &self.configuration.snippets
     }
 
     /// 返回 SSH 认证 broker。
@@ -365,11 +324,11 @@ impl AppState {
 
     /// 返回命令工作流服务。
     pub fn workflows(&self) -> &WorkflowService {
-        &self.workflows
+        &self.configuration.workflows
     }
 
     /// 返回工作空间同步与 encrypted vault bootstrap 服务。
     pub fn workspace_sync(&self) -> &WorkspaceSyncService {
-        &self.workspace_sync
+        &self.configuration.workspace_sync
     }
 }
