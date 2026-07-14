@@ -5,7 +5,7 @@ export type ConfigChangeDomain =
   | "snippets"
   | "workflows";
 
-export type ConfigChangeNoticeLevel = "info" | "warning" | "error";
+type ConfigChangeNoticeLevel = "info" | "warning" | "error";
 
 export type ConfigChangeStatus =
   | "ready"
