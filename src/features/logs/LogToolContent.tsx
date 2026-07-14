@@ -33,8 +33,6 @@ import {
   getRuntimeHealthSnapshot,
   type RuntimeStorageHealth,
 } from "../../lib/diagnosticsApi";
-import type { TerminalPane } from "../workspace/types";
-
 const COMMAND_HISTORY_LIMIT = 100;
 const COMMAND_HISTORY_PAGE_SIZE = 8;
 const SOURCE_FILTER_OPTIONS: SelectOption[] = [
@@ -46,10 +44,19 @@ const SOURCE_FILTER_OPTIONS: SelectOption[] = [
   { label: "工具", value: "tool" },
 ];
 
+interface CommandHistoryPaneContext {
+  containerId?: string;
+  id: string;
+  machineId: string;
+  mode: "local" | "ssh" | "telnet" | "serial" | "container" | "preview";
+  remoteHostId?: string;
+  title: string;
+}
+
 interface LogToolContentProps {
   active?: boolean;
   diagnosticsBundleNotice?: ReactNode;
-  focusedPane?: TerminalPane;
+  focusedPane?: CommandHistoryPaneContext;
 }
 
 export function LogToolContent({
@@ -607,7 +614,7 @@ function buildHistoryStats(entries: CommandHistoryEntry[]) {
   );
 }
 
-function buildHistoryScope(focusedPane?: TerminalPane): {
+function buildHistoryScope(focusedPane?: CommandHistoryPaneContext): {
   bound: boolean;
   detail: string;
   label: string;
