@@ -6,6 +6,7 @@ pub mod agent_context_service;
 pub mod agent_session_file_store;
 pub mod agent_session_service;
 pub mod agent_target_hydration_service;
+pub mod application_runtime;
 pub mod command_history_service;
 pub mod command_suggestion_service;
 pub mod config_change_observer_service;

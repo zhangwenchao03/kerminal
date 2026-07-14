@@ -5,12 +5,13 @@
 use std::sync::Arc;
 
 use crate::{
-    error::AppResult,
-    models::settings::AppSettings,
+    error::{AppError, AppResult},
+    models::{config_change::ConfigDomain, settings::AppSettings},
     paths::KerminalPaths,
     services::{
         agent_context_service::AgentContextService,
         agent_session_service::AgentSessionService,
+        application_runtime::ApplicationRuntime,
         command_history_service::CommandHistoryService,
         command_suggestion_service::CommandSuggestionService,
         config_change_observer_service::ConfigChangeObserverService,
@@ -53,6 +54,7 @@ use crate::{
 /// Kerminal Rust 侧全局状态。
 #[derive(Debug)]
 pub struct AppState {
+    application_runtime: ApplicationRuntime,
     agent_context: AgentContextService,
     agent_sessions: AgentSessionService,
     mcp_tool_executor: McpToolExecutorService,
@@ -89,6 +91,42 @@ pub struct AppState {
     mcp_tool_catalog: McpToolCatalogService,
     workflows: WorkflowService,
     workspace_sync: WorkspaceSyncService,
+    startup_recovery: StartupRecoverySnapshot,
+}
+
+/// 启动阶段发现的只读配置恢复诊断；只保留固定相对路径和可操作说明。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StartupRecoverySnapshot {
+    /// 存在未修复配置时为 true，运行态使用内存默认值且不写回损坏文件。
+    pub read_only: bool,
+    /// 脱敏诊断列表，不包含本机绝对路径、原始 TOML 或字段值。
+    pub diagnostics: Vec<StartupRecoveryDiagnostic>,
+}
+
+/// 单个启动配置恢复诊断。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StartupRecoveryDiagnostic {
+    /// 配置所属领域。
+    pub domain: ConfigDomain,
+    /// 固定的安全相对路径标签。
+    pub path: String,
+    /// 不包含解析器原文的稳定错误说明。
+    pub message: String,
+    /// 用户修复配置后的恢复口径。
+    pub recovery: String,
+}
+
+impl StartupRecoverySnapshot {
+    fn record_invalid(&mut self, domain: ConfigDomain, path: &str, message: &str) {
+        self.read_only = true;
+        self.diagnostics.push(StartupRecoveryDiagnostic {
+            domain,
+            path: path.to_owned(),
+            message: message.to_owned(),
+            recovery: "read-only recovery: 修复原配置并重新启动；Kerminal 不会覆盖损坏文件。"
+                .to_owned(),
+        });
+    }
 }
 
 impl AppState {
@@ -118,14 +156,41 @@ impl AppState {
         let config_files = ConfigFileStore::new(paths.root.clone());
         let workspace_sync = WorkspaceSyncService::new(paths.clone());
         workspace_sync.ensure_bootstrap()?;
+        let mut startup_recovery = StartupRecoverySnapshot::default();
         let settings = SettingsService::new(config_files.clone());
-        settings.ensure_seed_settings()?;
-        let persisted_settings = settings.load_settings()?;
+        let persisted_settings = match settings
+            .ensure_seed_settings()
+            .and_then(|_| settings.load_settings())
+        {
+            Ok(settings) => settings,
+            Err(AppError::InvalidInput(_)) => {
+                startup_recovery.record_invalid(
+                    ConfigDomain::Settings,
+                    "settings.toml",
+                    "应用设置无效，已使用本次进程的安全默认值。",
+                );
+                let fallback = AppSettings::default();
+                settings.enter_read_only_recovery(fallback.clone())?;
+                fallback
+            }
+            Err(error) => return Err(error),
+        };
         external_launch_intake.configure_policy(ExternalLaunchPolicy::from(
             &persisted_settings.external_launch,
         ))?;
         let profiles = ProfileService::new(config_files.clone());
-        profiles.ensure_seed_profiles()?;
+        match profiles.ensure_seed_profiles() {
+            Ok(()) => {}
+            Err(AppError::InvalidInput(_)) => {
+                startup_recovery.record_invalid(
+                    ConfigDomain::Profiles,
+                    "profiles/*.toml",
+                    "终端 Profile 无效，已进入只读恢复且保留原文件。",
+                );
+                profiles.enter_read_only_recovery()?;
+            }
+            Err(error) => return Err(error),
+        }
         let remote_hosts = RemoteHostService::new(config_files.clone());
         let serial_terminals = SerialTerminalService::new();
         let ssh_auth_broker = SshAuthBroker::new();
@@ -164,9 +229,12 @@ impl AppState {
         let tmux = TmuxService::new();
         let workflows = WorkflowService::new(config_files.clone());
         let config_change_observer = ConfigChangeObserverService::new(config_files);
+        let application_runtime =
+            ApplicationRuntime::new(config_change_observer.clone(), mcp_http_server.clone());
         let shell_integration_cache = paths.cache.clone();
 
         Ok(Self {
+            application_runtime,
             agent_context,
             agent_sessions,
             mcp_tool_executor,
@@ -203,12 +271,23 @@ impl AppState {
             mcp_tool_catalog,
             workflows,
             workspace_sync,
+            startup_recovery,
         })
     }
 
     /// 返回本地数据目录集合。
     pub fn paths(&self) -> &KerminalPaths {
         &self.paths
+    }
+
+    /// 返回应用级长期任务生命周期 supervisor。
+    pub fn application_runtime(&self) -> &ApplicationRuntime {
+        &self.application_runtime
+    }
+
+    /// 返回启动阶段的脱敏只读恢复诊断。
+    pub fn startup_recovery(&self) -> &StartupRecoverySnapshot {
+        &self.startup_recovery
     }
 
     /// 返回外部 Agent / MCP 上下文服务。
