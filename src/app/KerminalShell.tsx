@@ -25,7 +25,6 @@ import type {
   SftpTransferCreateHostRequest,
 } from "../features/sftp/SftpTransferWorkbench";
 import type { ToolId } from "../features/workspace/types";
-import { resolveWorkspaceTabCloseDecision } from "../features/workspace/workspaceTabCloseGuardModel";
 import {
   htmlLanguage,
   isRealRemoteGroup,
@@ -39,6 +38,7 @@ import { useKerminalShellContainerActions } from "./useKerminalShellContainerAct
 import { useKerminalShellConfigRefresh } from "./useKerminalShellConfigRefresh";
 import { useKerminalShellPanelResize } from "./useKerminalShellPanelResize";
 import { useKerminalShellSettings } from "./useKerminalShellSettings";
+import { useKerminalShellTabClose } from "./useKerminalShellTabClose";
 import {
   DEFAULT_REMOTE_GROUP_NAME,
   DEFAULT_SETTINGS_SECTION_ID,
@@ -151,11 +151,6 @@ export function KerminalShell() {
     hostContainersInitialContainerId,
     setHostContainersInitialContainerId,
   ] = useState<string>();
-  const [pendingShellCloseTabIds, setPendingShellCloseTabIds] = useState<
-    string[] | null
-  >(null);
-  const [pendingShellDirtyCloseTabIds, setPendingShellDirtyCloseTabIds] =
-    useState<string[] | null>(null);
   const workspaceFrameRef = useRef<HTMLDivElement>(null);
   const createdSftpHostSequenceRef = useRef(0);
   const settingsDialogDirtyRef = useRef(false);
@@ -252,60 +247,27 @@ export function KerminalShell() {
     },
     [],
   );
-  const requestCloseTerminalTabs = useCallback(
-    (tabIds: string[], confirmedDirtyFiles = false) => {
-      const decision = resolveWorkspaceTabCloseDecision({
-        confirmTerminalClose: settings.terminal.confirmCloseTab,
-        confirmedDirtyFiles,
-        tabIds,
-        tabs: terminalTabs,
-        workspaceFileDirtyState,
-      });
-      if (decision.kind === "confirmDirtyFiles") {
-        setPendingShellDirtyCloseTabIds(decision.tabIds);
-        return;
-      }
-      if (decision.kind === "confirmTerminalTabs") {
-        setPendingShellCloseTabIds(decision.tabIds);
-        return;
-      }
-      for (const tabId of decision.tabIds) {
-        closeTerminalTab(tabId);
-      }
-    },
-    [
-      closeTerminalTab,
-      settings.terminal.confirmCloseTab,
-      terminalTabs,
-      workspaceFileDirtyState,
-    ],
-  );
-  const requestCloseTerminalTab = useCallback(
-    (tabId: string) => requestCloseTerminalTabs([tabId]),
-    [requestCloseTerminalTabs],
-  );
-  const confirmShellCloseTabs = useCallback(() => {
-    if (!pendingShellCloseTabIds) {
-      return;
-    }
-    for (const tabId of pendingShellCloseTabIds) {
-      closeTerminalTab(tabId);
-    }
-    setPendingShellCloseTabIds(null);
-  }, [closeTerminalTab, pendingShellCloseTabIds]);
-  const confirmShellDirtyCloseTabs = useCallback(() => {
-    if (!pendingShellDirtyCloseTabIds) {
-      return;
-    }
-    requestCloseTerminalTabs(pendingShellDirtyCloseTabIds, true);
-    setPendingShellDirtyCloseTabIds(null);
-  }, [pendingShellDirtyCloseTabIds, requestCloseTerminalTabs]);
+  const {
+    cancelDirtyFileTabs,
+    cancelTerminalTabs,
+    confirmDirtyFileTabs,
+    confirmTerminalTabs,
+    dirtyFileTabCount,
+    pendingDirtyFileTabCount,
+    pendingTerminalTabCount,
+    requestCloseTab,
+  } = useKerminalShellTabClose({
+    closeTerminalTab,
+    confirmTerminalClose: settings.terminal.confirmCloseTab,
+    terminalTabs,
+    workspaceFileDirtyState,
+  });
   const { activateTool, openLogsTool } = useKerminalShellCommands({
     activeTabId,
     activeTool,
     addTerminalTab,
     closePane,
-    closeTerminalTab: requestCloseTerminalTab,
+    closeTerminalTab: requestCloseTab,
     focusPane,
     focusedPaneId,
     keybindings: settings.keybindings,
@@ -666,8 +628,8 @@ export function KerminalShell() {
         rightToolRailTitleBarFillWidth, windowFrameState,
       }}
       tabsConfirmationProps={{
-        onClose: () => setPendingShellCloseTabIds(null),
-        onConfirm: confirmShellCloseTabs, tabCount: pendingShellCloseTabIds?.length ?? 0,
+        onClose: cancelTerminalTabs,
+        onConfirm: confirmTerminalTabs, tabCount: pendingTerminalTabCount,
       }}
       toolPanelProps={{
         activeTool, defaultRemoteGroupId, defaultRemoteHostId, machineGroups,
@@ -680,12 +642,10 @@ export function KerminalShell() {
         workflowConfigRevision: configCatalogRevisions.workflows,
       }}
       workspaceFileConfirmationProps={{
-        dirtyTabCount: pendingShellDirtyCloseTabIds?.filter(
-          (tabId) => workspaceFileDirtyState[tabId],
-        ).length ?? 0,
-        onClose: () => setPendingShellDirtyCloseTabIds(null),
-        onConfirm: confirmShellDirtyCloseTabs,
-        tabCount: pendingShellDirtyCloseTabIds?.length ?? 0,
+        dirtyTabCount: dirtyFileTabCount,
+        onClose: cancelDirtyFileTabs,
+        onConfirm: confirmDirtyFileTabs,
+        tabCount: pendingDirtyFileTabCount,
       }}
       workspaceTerminalProps={{
         contentRightInset: rightWorkspaceInset, createdSftpHostTarget,
