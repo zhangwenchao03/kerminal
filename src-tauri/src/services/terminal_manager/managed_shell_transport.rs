@@ -151,6 +151,7 @@ impl Read for ManagedSshShellReader {
     }
 }
 
+/// 把异步 managed SSH shell 适配为 TerminalManager 使用的同步 reader/writer/transport。
 pub(super) fn spawn_managed_shell_io(
     shell: TerminalManagedShellRuntime,
     startup_input: Option<String>,

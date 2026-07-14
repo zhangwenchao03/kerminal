@@ -11,6 +11,7 @@ pub(crate) struct IncrementalUtf8Decoder {
 }
 
 impl IncrementalUtf8Decoder {
+    /// 创建空解码状态。
     pub(crate) fn new() -> Self {
         Self::default()
     }
@@ -67,6 +68,7 @@ impl IncrementalUtf8Decoder {
         REPLACEMENT_CHARACTER.to_string()
     }
 
+    /// 返回当前保留的不完整 UTF-8 前缀长度。
     pub(crate) fn pending_len(&self) -> usize {
         self.pending.len()
     }
