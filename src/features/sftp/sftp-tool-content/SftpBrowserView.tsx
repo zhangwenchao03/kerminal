@@ -19,11 +19,9 @@ import {
 } from "lucide-react";
 import {
   useCallback,
-  useEffect,
   useId,
   useLayoutEffect,
   useMemo,
-  useRef,
   useState,
   type Dispatch,
   type DragEvent as ReactDragEvent,
@@ -56,22 +54,12 @@ import { SftpEntryRow } from "./SftpEntryRow";
 import { SftpTransferStatusBar } from "./SftpTransferStatusBar";
 import { ToolbarButton } from "./ToolbarButton";
 import { WorkspaceTreeRow } from "../RemoteWorkspaceEditorParts";
-import { listRemoteWorkspaceDirectory } from "../remoteWorkspaceEditorTransport";
-import {
-  createRootNode,
-  entryToTreeNode,
-  errorMessage,
-  normalizeRemotePath as normalizeWorkspaceRemotePath,
-  updateTreeNode,
-  type WorkspaceTreeNode,
-} from "../remoteWorkspaceEditorModel";
 import type { SftpBrowserMode } from "./sftpBrowserModeModel";
 import {
-  directTreeChildren,
-  flattenWorkspaceTreeRows,
   treeNodeToSftpEntry,
   workspaceFileTabToSftpEntry,
 } from "./sftpWorkspaceTreeModel";
+import { useSftpWorkspaceTreeController } from "./useSftpWorkspaceTreeController";
 import type {
   RemoteDirectoryListing,
   SftpContextMenuEvent,
@@ -299,122 +287,18 @@ export function SftpBrowserView({
       : "px-3 py-2.5";
   const [uploadMenuPosition, setUploadMenuPosition] =
     useState<SftpUploadMenuPosition | null>(null);
-  const treeRootPath = useMemo(
-    () => normalizeWorkspaceRemotePath(currentPath),
-    [currentPath],
-  );
-  const workspaceTargetKey = workspaceTarget
-    ? targetStableId(workspaceTarget)
-    : "none";
-  const treeScopeKey = `${workspaceTargetKey}|${treeRootPath}`;
-  const treeScopeKeyRef = useRef(treeScopeKey);
-  const [treeNodes, setTreeNodes] = useState<WorkspaceTreeNode[]>(() => [
-    createRootNode(treeRootPath),
-  ]);
-  const [openTreePaths, setOpenTreePaths] = useState<Set<string>>(
-    () => new Set([treeRootPath]),
-  );
-  const [treeStatus, setTreeStatus] = useState<SftpStatus | null>(null);
-  const loadTreeChildren = useCallback(
-    async (path: string, replaceRoot = false) => {
-      const normalizedPath = normalizeWorkspaceRemotePath(path);
-      setTreeStatus(null);
-      setOpenTreePaths((current) => {
-        if (current.has(normalizedPath)) {
-          return current;
-        }
-        const next = new Set(current);
-        next.add(normalizedPath);
-        return next;
-      });
-      setTreeNodes((current) =>
-        replaceRoot
-          ? [{ ...createRootNode(normalizedPath), loading: true }]
-          : updateTreeNode(current, normalizedPath, (node) => ({
-              ...node,
-              error: null,
-              loading: true,
-            })),
-      );
-
-      try {
-        const listing = await listRemoteWorkspaceDirectory(
-          workspaceTarget,
-          normalizedPath,
-        );
-        const children = directTreeChildren(
-          listing.entries,
-          normalizedPath,
-        ).map(entryToTreeNode);
-        setTreeNodes((current) =>
-          replaceRoot
-            ? [
-                {
-                  ...createRootNode(normalizedPath),
-                  children,
-                  loaded: true,
-                  loading: false,
-                },
-              ]
-            : updateTreeNode(current, normalizedPath, (node) => ({
-                ...node,
-                children,
-                error: null,
-                loaded: true,
-                loading: false,
-              })),
-        );
-      } catch (error) {
-        const message = errorMessage(error);
-        setTreeStatus({ kind: "error", message });
-        setTreeNodes((current) =>
-          replaceRoot
-            ? [
-                {
-                  ...createRootNode(normalizedPath),
-                  error: message,
-                  loaded: false,
-                  loading: false,
-                },
-              ]
-            : updateTreeNode(current, normalizedPath, (node) => ({
-                ...node,
-                error: message,
-                loading: false,
-              })),
-        );
-      }
-    },
-    [workspaceTarget],
-  );
-  const toggleTreeDirectory = useCallback(
-    (node: WorkspaceTreeNode) => {
-      const opening = !openTreePaths.has(node.path);
-      setOpenTreePaths((current) => {
-        const next = new Set(current);
-        if (next.has(node.path)) {
-          next.delete(node.path);
-        } else {
-          next.add(node.path);
-        }
-        return next;
-      });
-      if (opening && (!node.loaded || node.error) && !node.loading) {
-        void loadTreeChildren(node.path);
-      }
-    },
-    [loadTreeChildren, openTreePaths],
-  );
-  const visibleTreeRows = useMemo(
-    () =>
-      flattenWorkspaceTreeRows(
-        treeNodes,
-        openTreePaths,
-        0,
-        showHiddenFiles,
-      ),
-    [openTreePaths, showHiddenFiles, treeNodes],
-  );
+  const {
+    openTreePaths,
+    toggleTreeDirectory,
+    treeStatus,
+    visibleTreeRows,
+    workspaceTargetKey,
+  } = useSftpWorkspaceTreeController({
+    browserMode,
+    currentPath,
+    showHiddenFiles,
+    workspaceTarget,
+  });
   const openedWorkspaceFileTabs = useMemo(
     () =>
       workspaceFileTabs.filter(
@@ -455,29 +339,6 @@ export function SftpBrowserView({
     [visibleTransfers],
   );
 
-  useEffect(() => {
-    if (treeScopeKeyRef.current === treeScopeKey) {
-      return;
-    }
-    treeScopeKeyRef.current = treeScopeKey;
-    setOpenTreePaths(new Set([treeRootPath]));
-    setTreeNodes([createRootNode(treeRootPath)]);
-    setTreeStatus(null);
-  }, [treeRootPath, treeScopeKey]);
-
-  useEffect(() => {
-    if (browserMode !== "tree" || !workspaceTarget) {
-      return;
-    }
-    const rootNode = treeNodes[0];
-    if (!rootNode || rootNode.path !== treeRootPath) {
-      void loadTreeChildren(treeRootPath, true);
-      return;
-    }
-    if (!rootNode.loaded && !rootNode.loading) {
-      void loadTreeChildren(treeRootPath, true);
-    }
-  }, [browserMode, loadTreeChildren, treeNodes, treeRootPath, workspaceTarget]);
   const updateUploadMenuPosition = useCallback(() => {
     if (!uploadMenuOpen || typeof window === "undefined") {
       return;
