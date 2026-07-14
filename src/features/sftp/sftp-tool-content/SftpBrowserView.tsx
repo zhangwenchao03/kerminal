@@ -66,6 +66,12 @@ import {
   type WorkspaceTreeNode,
 } from "../remoteWorkspaceEditorModel";
 import type { SftpBrowserMode } from "./sftpBrowserModeModel";
+import {
+  directTreeChildren,
+  flattenWorkspaceTreeRows,
+  treeNodeToSftpEntry,
+  workspaceFileTabToSftpEntry,
+} from "./sftpWorkspaceTreeModel";
 import type {
   RemoteDirectoryListing,
   SftpContextMenuEvent,
@@ -1272,98 +1278,6 @@ function SftpWorkspaceMetric({
       </div>
     </div>
   );
-}
-
-type SftpTreeRenderRow = {
-  depth: number;
-  node: WorkspaceTreeNode;
-};
-
-function flattenWorkspaceTreeRows(
-  nodes: WorkspaceTreeNode[],
-  openPaths: Set<string>,
-  depth = 0,
-  showHiddenFiles = true,
-): SftpTreeRenderRow[] {
-  return nodes.flatMap((node) => {
-    // 根节点代表当前浏览路径，只有其后代参与隐藏文件过滤。
-    if (depth > 0 && !showHiddenFiles && node.name.startsWith(".")) {
-      return [];
-    }
-    const row = { depth, node };
-    const isRootRow = depth === 0;
-    if (
-      node.kind !== "directory" ||
-      (!isRootRow && !openPaths.has(node.path)) ||
-      !node.children?.length
-    ) {
-      return [row];
-    }
-    return [
-      row,
-      ...flattenWorkspaceTreeRows(
-        node.children,
-        openPaths,
-        depth + 1,
-        showHiddenFiles,
-      ),
-    ];
-  });
-}
-
-function directTreeChildren(
-  entries: SftpEntry[],
-  parentPath: string,
-): SftpEntry[] {
-  const normalizedParentPath = normalizeWorkspaceRemotePath(parentPath);
-  const seenPaths = new Set<string>();
-  return entries.filter((entry) => {
-    const normalizedEntryPath = normalizeWorkspaceRemotePath(entry.path);
-    if (seenPaths.has(normalizedEntryPath)) {
-      return false;
-    }
-    seenPaths.add(normalizedEntryPath);
-    return parentPathForTreeEntry(normalizedEntryPath) === normalizedParentPath;
-  });
-}
-
-function parentPathForTreeEntry(path: string): string | null {
-  const normalizedPath = normalizeWorkspaceRemotePath(path);
-  if (normalizedPath === "/") {
-    return null;
-  }
-  const lastSlashIndex = normalizedPath.lastIndexOf("/");
-  if (lastSlashIndex <= 0) {
-    return "/";
-  }
-  return normalizedPath.slice(0, lastSlashIndex);
-}
-
-function treeNodeToSftpEntry(node: WorkspaceTreeNode, path: string): SftpEntry {
-  return {
-    kind: node.kind,
-    modified: node.modified,
-    name: node.name,
-    path,
-    permissions: node.permissions,
-    raw: node.name,
-    size: node.size,
-  };
-}
-
-function workspaceFileTabToSftpEntry(tab: WorkspaceFileTab): SftpEntry {
-  return {
-    kind: "file",
-    name: basenameFromPath(tab.path) || tab.title,
-    path: tab.path,
-    raw: tab.title,
-  };
-}
-
-function basenameFromPath(path: string): string {
-  const normalized = path.replace(/\\/g, "/");
-  const segments = normalized.split("/").filter(Boolean);
-  return segments.length > 0 ? segments[segments.length - 1] : normalized;
 }
 
 function SftpOperationStatusBar({ status }: { status: SftpStatus | null }) {
