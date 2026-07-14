@@ -357,17 +357,6 @@
       "kind": "import",
       "rule": "cross-feature-private-import",
       "runtime": false,
-      "source": "src/features/sftp/sftp-tool-content/SftpBrowserView.tsx",
-      "specifier": "../../workspace/types",
-      "target": "src/features/workspace/types.ts",
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-020"
-    },
-    {
-      "kind": "import",
-      "rule": "cross-feature-private-import",
-      "runtime": false,
       "source": "src/features/sftp/sftp-tool-content/sftpFileTargetModel.ts",
       "specifier": "../../workspace/types",
       "target": "src/features/workspace/types.ts",
