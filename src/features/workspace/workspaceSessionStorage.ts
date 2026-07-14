@@ -5,7 +5,7 @@ import {
 import {
   loadWorkspaceSessionFile,
   saveWorkspaceSessionFile,
-} from "../../lib/workspaceSessionApi";
+} from "./workspaceSessionApi";
 
 export async function loadWorkspaceSession(): Promise<WorkspaceSessionSnapshot | null> {
   try {

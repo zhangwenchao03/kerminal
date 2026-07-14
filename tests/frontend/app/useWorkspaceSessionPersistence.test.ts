@@ -30,7 +30,10 @@ const workspaceSessionApiMocks = vi.hoisted(() => ({
   saveWorkspaceSessionFile: vi.fn(),
 }));
 
-vi.mock("../../../src/lib/workspaceSessionApi", () => workspaceSessionApiMocks);
+vi.mock(
+  "../../../src/features/workspace/workspaceSessionApi",
+  () => workspaceSessionApiMocks,
+);
 
 function createManualTimer() {
   const callbacks = new Map<

@@ -375,7 +375,7 @@ vi.mock("../../../../src/lib/terminalApi", () => ({
     mocks.terminalApi.writeTerminal(...args),
 }));
 
-vi.mock("../../../../src/lib/workspaceSessionApi", () => ({
+vi.mock("../../../../src/features/workspace/workspaceSessionApi", () => ({
   loadWorkspaceSessionFile: (...args: unknown[]) =>
     mocks.workspaceSessionApi.loadWorkspaceSessionFile(...args),
   saveWorkspaceSessionFile: (...args: unknown[]) =>
