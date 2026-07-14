@@ -201,7 +201,22 @@ fn managed_shell_session_uses_existing_output_pump_and_transport_controls() {
     assert_eq!(summary.pid, None);
     assert_eq!(summary.cwd.as_deref(), Some("/home/deploy"));
     assert_eq!(summary.target_ref.as_deref(), Some("ssh:managed-host"));
-    assert!(summary.target_token.is_some());
+    let target_token = summary
+        .target_token
+        .as_deref()
+        .expect("managed target token");
+    assert!(terminal_manager
+        .verify_target_token(&summary.id, target_token)
+        .expect("verify factory-created target token")
+        .is_some());
+    assert_eq!(
+        terminal_manager
+            .session_summary(&summary.id)
+            .expect("factory-created session registered")
+            .target_token
+            .as_deref(),
+        Some(target_token)
+    );
 
     let output = receiver
         .recv_timeout(Duration::from_secs(2))
