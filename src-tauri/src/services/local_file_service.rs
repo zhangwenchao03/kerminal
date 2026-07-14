@@ -59,6 +59,22 @@ pub struct LocalCreateDirectoryOutcome {
     pub parent_path: PathBuf,
 }
 
+/// 本机复制路径请求。
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalCopyPathRequest {
+    pub source_path: String,
+    pub target_directory_path: String,
+    pub kind: String,
+    pub root_path: Option<String>,
+}
+
+/// 复制完成后的目标目录，用于 command adapter 刷新既有 listing DTO。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalCopyPathOutcome {
+    pub target_directory_path: PathBuf,
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalReadTextFileRequest {
@@ -187,6 +203,48 @@ pub fn create_directory(
 
     Ok(LocalCreateDirectoryOutcome {
         parent_path: parent,
+    })
+}
+
+/// 校验作用域后复制文件或目录，默认拒绝覆盖与符号链接树。
+pub fn copy_path(request: LocalCopyPathRequest) -> Result<LocalCopyPathOutcome, String> {
+    let source = existing_path(&request.source_path, "源路径")?;
+    let target_directory = existing_directory(&request.target_directory_path, "目标目录")?;
+    let source_kind = local_file_kind(&source)?;
+    if request.kind != source_kind {
+        return Err(format!(
+            "源路径类型不匹配: 请求为 {}，实际为 {}",
+            request.kind, source_kind
+        ));
+    }
+    let file_name = source
+        .file_name()
+        .ok_or_else(|| format!("源路径缺少文件名: {}", source.display()))?;
+    let target = target_directory.join(file_name);
+    if let Some(root_path) = request.root_path.as_deref() {
+        if !root_path.trim().is_empty() {
+            let root = existing_directory(root_path, "根目录")?;
+            if !target_directory.starts_with(&root) || !target.starts_with(&root) {
+                return Err(format!("复制目标超出允许根目录: {}", target.display()));
+            }
+        }
+    }
+    if path_entry_exists(&target) {
+        return Err(format!("目标已存在: {}", target.display()));
+    }
+    match source_kind {
+        "directory" => {
+            reject_copy_into_self(&source, &target)?;
+            copy_directory_recursive(&source, &target)?;
+        }
+        "file" => fs::copy(&source, &target)
+            .map_err(|error| format!("复制文件失败 {}: {error}", source.display()))
+            .map(|_| ())?,
+        _ => return Err(format!("不支持复制的本机路径类型: {source_kind}")),
+    }
+
+    Ok(LocalCopyPathOutcome {
+        target_directory_path: target_directory,
     })
 }
 
@@ -433,6 +491,45 @@ fn local_file_kind(path: &Path) -> Result<&'static str, String> {
         return Ok("file");
     }
     Ok("other")
+}
+
+fn reject_copy_into_self(source: &Path, target: &Path) -> Result<(), String> {
+    if target.starts_with(source) {
+        return Err(format!(
+            "不能把目录复制到自身或子目录: {} -> {}",
+            source.display(),
+            target.display()
+        ));
+    }
+    Ok(())
+}
+
+fn copy_directory_recursive(source: &Path, target: &Path) -> Result<(), String> {
+    fs::create_dir(target)
+        .map_err(|error| format!("创建目标目录失败 {}: {error}", target.display()))?;
+    for entry in fs::read_dir(source)
+        .map_err(|error| format!("读取源目录失败 {}: {error}", source.display()))?
+    {
+        let entry =
+            entry.map_err(|error| format!("读取源目录项失败 {}: {error}", source.display()))?;
+        let source_child = entry.path();
+        reject_symlink(&source_child, "源目录项")?;
+        let target_child = target.join(entry.file_name());
+        match local_file_kind(&source_child)? {
+            "directory" => copy_directory_recursive(&source_child, &target_child)?,
+            "file" => fs::copy(&source_child, &target_child)
+                .map_err(|error| format!("复制文件失败 {}: {error}", source_child.display()))
+                .map(|_| ())?,
+            kind => {
+                return Err(format!(
+                    "不支持复制的本机路径类型: {} ({})",
+                    kind,
+                    source_child.display()
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn requested_confirm_name_matches(request: &LocalDeletePathRequest) -> bool {
