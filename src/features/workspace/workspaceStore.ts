@@ -53,15 +53,10 @@ import type {
 import { isToolId, isWorkspaceFileTab } from "./types";
 import {
   addMachineToGroup,
-  addPersistentSidebarMachines,
   containerToMachine,
-  dockerContainerMachinesFromSession,
   findMachine,
   isPersistedLocalProfile,
   localMachineIdForProfile,
-  localMachinesFromSession,
-  mergeSidebarMachines,
-  syncTerminalPaneProductionFlags,
 } from "./workspaceMachineModel";
 import {
   addDockerContainerState,
@@ -96,23 +91,23 @@ import {
   focusExistingMachineTabState,
 } from "./workspaceTerminalOpenState";
 import { openTmuxAttachTerminalState } from "./workspaceTmuxState";
-import {
-  restoredSelectedMachineId,
-  sanitizeRestoredSftpTransferTabs,
-  selectedMachineIdFromWorkspaceTab,
-} from "./workspaceSelectionModel";
+import { selectedMachineIdFromWorkspaceTab } from "./workspaceSelectionModel";
 import {
   updateRemoteHostTreeState,
   updateWorkspaceProfilesState,
 } from "./workspaceSidebarState";
 import {
   buildWorkspaceFileTabKey,
-  directoryForWorkspaceFilePath,
   normalizeWorkspaceFilePath,
   titleForWorkspaceFilePath,
   workspaceFileMachineId,
   workspaceFileTargetHostId,
 } from "./workspaceFileTabModel";
+import {
+  revealWorkspaceFileInSftpState,
+  setWorkspaceFileTabDirtyState,
+} from "./workspaceFileTabState";
+import { restoreWorkspaceSessionState } from "./workspaceRestoreState";
 import type {
   AddDockerContainerOptions,
   AddTerminalTabOptions,
@@ -454,53 +449,11 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
       };
     }),
   setWorkspaceFileTabDirty: (tabId, dirty) =>
-    set((state) => {
-      const tab = state.terminalTabs.find((item) => item.id === tabId);
-      if (!isWorkspaceFileTab(tab)) {
-        if (!(tabId in state.workspaceFileDirtyState)) {
-          return {};
-        }
-        const { [tabId]: _removed, ...workspaceFileDirtyState } =
-          state.workspaceFileDirtyState;
-        return { workspaceFileDirtyState };
-      }
-      if (dirty) {
-        if (state.workspaceFileDirtyState[tabId]) {
-          return {};
-        }
-        return {
-          workspaceFileDirtyState: {
-            ...state.workspaceFileDirtyState,
-            [tabId]: true,
-          },
-        };
-      }
-      if (!state.workspaceFileDirtyState[tabId]) {
-        return {};
-      }
-      const { [tabId]: _removed, ...workspaceFileDirtyState } =
-        state.workspaceFileDirtyState;
-      return { workspaceFileDirtyState };
-    }),
+    set((state) => setWorkspaceFileTabDirtyState(state, tabId, dirty)),
   revealWorkspaceFileInSftp: (tabId) =>
-    set((state) => {
-      const tab = state.terminalTabs.find((item) => item.id === tabId);
-      if (!isWorkspaceFileTab(tab)) {
-        return {};
-      }
-      return {
-        activeTabId: tab.id,
-        activeTool: "sftp",
-        focusedPaneId: "",
-        selectedMachineId: tab.machineId,
-        workspaceFileRevealRequest: {
-          directoryPath: directoryForWorkspaceFilePath(tab.path),
-          filePath: normalizeWorkspaceFilePath(tab.path),
-          id: Date.now(),
-          target: tab.target,
-        },
-      };
-    }),
+    set((state) =>
+      revealWorkspaceFileInSftpState(state.terminalTabs, tabId, Date.now()),
+    ),
   openLocalTerminal: (machineId) =>
     set((state) => {
       const machine = findMachine(state.machineGroups, machineId);
@@ -781,43 +734,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
     set((state) => {
       const normalized = normalizeWorkspaceSessionSnapshot(session);
       updateGeneratedCounters(normalized);
-      const removedSidebarMachineIds =
-        normalized.removedSidebarMachineIds ?? [];
-      const removedMachineIds = new Set(removedSidebarMachineIds);
-      const machineGroups = addPersistentSidebarMachines(
-        state.machineGroups,
-        mergeSidebarMachines(
-          localMachinesFromSession(normalized),
-          dockerContainerMachinesFromSession(normalized),
-          normalized.sidebarMachines,
-        ).filter((machine) => !removedMachineIds.has(machine.id)),
-      );
-
-      const terminalTabs = sanitizeRestoredSftpTransferTabs(
-        normalized.terminalTabs,
-        machineGroups,
-      );
-
-      return {
-        activeTabId: normalized.activeTabId,
-        focusedPaneId: normalized.focusedPaneId,
-        machineGroups,
-        removedSidebarMachineIds,
-        terminalPanes: syncTerminalPaneProductionFlags(
-          normalized.terminalPanes,
-          machineGroups,
-        ),
-        terminalTabGroupPreferences:
-          normalized.terminalTabGroupPreferences ?? {},
-        terminalTabs,
-        selectedMachineId: restoredSelectedMachineId({
-          activeTabId: normalized.activeTabId,
-          fallbackSelectedMachineId: state.selectedMachineId,
-          machineGroups,
-          selectedMachineId: normalized.selectedMachineId,
-          terminalTabs,
-        }),
-      };
+      return restoreWorkspaceSessionState(state, normalized);
     }),
   setActiveTool: (activeTool) =>
     set(() => {
