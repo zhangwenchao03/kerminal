@@ -100,11 +100,8 @@ pub async fn command_suggestion_refresh_remote_commands(
     request: CommandSuggestionRemoteCommandRefreshRequest,
 ) -> Result<CommandSuggestionRemoteCommandRefreshResult, String> {
     let inline_settings = state
-        .settings()
-        .load_settings()
-        .map_err(|error| error.to_string())?
-        .terminal
-        .inline_suggestion;
+        .terminal_inline_suggestion_settings()
+        .map_err(|error| error.to_string())?;
     state
         .command_suggestions()
         .refresh_remote_commands(
@@ -125,11 +122,8 @@ pub async fn command_suggestion_refresh_remote_history(
     request: CommandSuggestionRemoteHistoryRefreshRequest,
 ) -> Result<CommandSuggestionRemoteHistoryRefreshResult, String> {
     let inline_settings = state
-        .settings()
-        .load_settings()
-        .map_err(|error| error.to_string())?
-        .terminal
-        .inline_suggestion;
+        .terminal_inline_suggestion_settings()
+        .map_err(|error| error.to_string())?;
     state
         .command_suggestions()
         .refresh_remote_history(
@@ -150,11 +144,8 @@ pub async fn command_suggestion_refresh_git_refs(
     request: CommandSuggestionGitRefreshRequest,
 ) -> Result<CommandSuggestionGitRefreshResult, String> {
     let inline_settings = state
-        .settings()
-        .load_settings()
-        .map_err(|error| error.to_string())?
-        .terminal
-        .inline_suggestion;
+        .terminal_inline_suggestion_settings()
+        .map_err(|error| error.to_string())?;
     state
         .command_suggestions()
         .refresh_git_refs(
@@ -175,11 +166,8 @@ pub async fn command_suggestion_refresh_remote_paths(
     request: CommandSuggestionRemotePathRefreshRequest,
 ) -> Result<CommandSuggestionRemotePathRefreshResult, String> {
     let inline_settings = state
-        .settings()
-        .load_settings()
-        .map_err(|error| error.to_string())?
-        .terminal
-        .inline_suggestion;
+        .terminal_inline_suggestion_settings()
+        .map_err(|error| error.to_string())?;
     state
         .command_suggestions()
         .refresh_remote_paths(

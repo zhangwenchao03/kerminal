@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::{
     error::AppResult,
-    models::settings::AppSettings,
+    models::settings::{AppSettings, TerminalInlineSuggestionSettings},
     paths::KerminalPaths,
     services::{
         agent_context_service::AgentContextService,
@@ -305,6 +305,15 @@ impl AppState {
     /// 返回应用设置服务。
     pub fn settings(&self) -> &SettingsService {
         &self.configuration.settings
+    }
+
+    /// 返回远端命令建议刷新所需的终端策略快照。
+    ///
+    /// Tauri command 不直接读取文件型设置，避免把运行态配置选择散落在 IPC adapter 中。
+    pub fn terminal_inline_suggestion_settings(
+        &self,
+    ) -> AppResult<TerminalInlineSuggestionSettings> {
+        Ok(self.settings().load_settings()?.terminal.inline_suggestion)
     }
 
     /// 更新应用设置并同步需要立即生效的运行态策略。
