@@ -16,7 +16,7 @@ export interface AgentWorkflowTerminalSignalPort {
 }
 
 /** Prompt 传输的可选生命周期上下文；旧 adapter 可继续只接收 request。 */
-export interface AgentWorkflowPromptTransportContext {
+interface AgentWorkflowPromptTransportContext {
   signal?: AbortSignal;
 }
 
