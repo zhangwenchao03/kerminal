@@ -3,6 +3,10 @@
 //! @author kongweiguang
 
 use kerminal_lib::{
+    commands::connection::process::{
+        cleanup_stale_artifacts, run_bounded_process, shutdown_detached_clients,
+        supervise_detached_client, TemporaryArtifact,
+    },
     commands::connection::rules::{
         build_rdp_file_content, encrypted_rdp_password, format_rdp_full_address,
         remote_host_from_create_request, saved_rdp_password, test_tcp_endpoint,
@@ -18,8 +22,88 @@ use kerminal_lib::{
     services::encrypted_vault_service::EncryptedVaultService,
     state::AppState,
 };
+#[cfg(target_os = "windows")]
+use std::process::Command;
+use std::time::Duration;
 use tempfile::tempdir;
 use tokio::net::TcpListener;
+
+#[test]
+fn temporary_rdp_artifact_is_removed_on_drop() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("connection-owned.rdp");
+    {
+        let artifact = TemporaryArtifact::create(path.clone(), b"full address:s:test:3389")
+            .expect("create temporary artifact");
+        assert_eq!(artifact.path(), path);
+        assert!(path.exists());
+    }
+    assert!(!path.exists());
+}
+
+#[test]
+fn stale_cleanup_removes_only_managed_rdp_artifacts() {
+    let directory = tempdir().unwrap();
+    let managed = directory.path().join("connection-stale.rdp");
+    let unrelated = directory.path().join("user.rdp");
+    std::fs::write(&managed, "managed").unwrap();
+    std::fs::write(&unrelated, "user").unwrap();
+
+    let removed =
+        cleanup_stale_artifacts(directory.path(), "connection-", ".rdp", Duration::ZERO).unwrap();
+
+    assert_eq!(removed, 1);
+    assert!(!managed.exists());
+    assert!(unrelated.exists());
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn bounded_platform_process_is_killed_on_timeout_without_leaking_secret() {
+    let mut command = Command::new("powershell.exe");
+    command.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Start-Sleep -Seconds 30",
+    ]);
+    let started = std::time::Instant::now();
+    let error = run_bounded_process(
+        &mut command,
+        b"secret-must-not-appear",
+        Duration::from_millis(100),
+        "平台命令",
+    )
+    .expect_err("long-running process must time out");
+
+    let message = error.to_string();
+    assert!(message.contains("平台命令超时"));
+    assert!(!message.contains("secret-must-not-appear"));
+    assert!(started.elapsed() < Duration::from_secs(2));
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn detached_rdp_client_can_be_cancelled_and_joins_before_returning() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("connection-cancel.rdp");
+    let artifact = TemporaryArtifact::create(path.clone(), b"rdp").unwrap();
+    let child = Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "Start-Sleep -Seconds 30",
+        ])
+        .spawn()
+        .unwrap();
+    supervise_detached_client(child, artifact, Duration::from_secs(30)).unwrap();
+
+    let started = std::time::Instant::now();
+    assert_eq!(shutdown_detached_clients().unwrap(), 1);
+    assert!(started.elapsed() < Duration::from_secs(2));
+    assert!(!path.exists());
+}
 
 fn remote_host_request(tags: Vec<String>) -> RemoteHostCreateRequest {
     RemoteHostCreateRequest {
