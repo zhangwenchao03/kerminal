@@ -10,7 +10,6 @@ import {
 } from "../features/settings/settingsModel";
 import { writeBroadcastCommand } from "../features/terminal/terminalSessionRegistry";
 import { useWorkspaceStore } from "../features/workspace/workspaceStore";
-import type { DockerContainerSummary } from "../lib/dockerApi";
 import { resolveDesktopPlatform } from "../lib/desktopPlatform";
 import {
   createRemoteHostGroup,
@@ -35,6 +34,7 @@ import { useKerminalShellRemoteActions } from "./useKerminalShellRemoteActions";
 import { useKerminalShellBackgroundStyle } from "./useKerminalShellBackgroundStyle";
 import { useKerminalShellCommands } from "./useKerminalShellCommands";
 import { useKerminalShellContainerActions } from "./useKerminalShellContainerActions";
+import { useKerminalShellNavigation } from "./useKerminalShellNavigation";
 import { useKerminalShellConfigRefresh } from "./useKerminalShellConfigRefresh";
 import { useKerminalShellPanelResize } from "./useKerminalShellPanelResize";
 import { useKerminalShellSettings } from "./useKerminalShellSettings";
@@ -50,10 +50,7 @@ import {
 import { KerminalShellLayout } from "./KerminalShell.layout";
 import { useKerminalShellStartupSync } from "./useKerminalShellStartupSync";
 import { useKerminalShellTerminalDrop } from "./useKerminalShellTerminalDrop";
-import {
-  isSftpCapableRemoteHost,
-  shellQuote,
-} from "./KerminalShell.contextWorkspaceShellHelpers";
+import { isSftpCapableRemoteHost } from "./KerminalShell.contextWorkspaceShellHelpers";
 import {
   SNIPPET_PANEL_OPEN_EVENT,
   type SnippetPanelOpenRequest,
@@ -294,90 +291,26 @@ export function KerminalShell() {
     return () =>
       window.removeEventListener(SNIPPET_PANEL_OPEN_EVENT, handleSnippetPanelOpen);
   }, [activateShellTool, focusPane]);
-  const selectHostContainersHost = useCallback(
-    (machineId: string) => {
-      selectMachine(machineId);
-      setHostContainersHostId(machineId);
-      setHostContainersInitialContainerId(undefined);
-    },
-    [selectMachine],
-  );
-  const openSftpForMachine = useCallback(
-    (machineId: string) => {
-      selectMachine(machineId);
-      setActiveTool("sftp");
-    },
-    [selectMachine, setActiveTool],
-  );
-  const openSftpTransferWorkbench = useCallback(
-    (machineId?: string) => {
-      openSftpTransferTab(
-        machineId
-          ? {
-              rightHostId: machineId,
-            }
-          : undefined,
-      );
-      setActiveTool(null);
-    },
-    [openSftpTransferTab, setActiveTool],
-  );
-  const openHostContainersSidebar = useCallback(
-    (machineId: string, initialContainerId?: string) => {
-      selectMachine(machineId);
-      setHostContainersHostId(machineId);
-      setHostContainersInitialContainerId(initialContainerId);
-      setMachineSidebarView("containers");
-      if (activeTool === "containers") {
-        setActiveTool(null);
-      }
-    },
-    [activeTool, selectMachine, setActiveTool],
-  );
-  const openContainerDetails = useCallback(
-    (machineId: string) => {
-      const machine = machineGroups
-        .flatMap((group) => group.machines)
-        .find((candidate) => candidate.id === machineId);
-      if (
-        !machine ||
-        machine.kind !== "dockerContainer" ||
-        !machine.parentMachineId ||
-        !machine.containerId
-      ) {
-        return;
-      }
-
-      selectMachine(machine.parentMachineId);
-      setHostContainersHostId(machine.parentMachineId);
-      setHostContainersInitialContainerId(machine.containerId);
-      setMachineSidebarView("containers");
-      if (activeTool === "containers") {
-        setActiveTool(null);
-      }
-    },
-    [activeTool, machineGroups, selectMachine, setActiveTool],
-  );
-  const enterHostContainer = useCallback(
-    (container: DockerContainerSummary) => {
-      setActiveTool(null);
-      openDockerContainerTerminal(container);
-    },
-    [openDockerContainerTerminal, setActiveTool],
-  );
-  const openHostContainerLogs = useCallback(
-    (container: DockerContainerSummary) => {
-      const runtimeBin = container.runtime === "podman" ? "podman" : "docker";
-      openSshCommandTerminal(container.hostId, {
-        remoteCommand: `${runtimeBin} logs -f --tail 200 ${shellQuote(container.id)}`,
-        title: `${container.name} logs`,
-      });
-      setActiveTool(null);
-      setHostContainersHostId(null);
-      setHostContainersInitialContainerId(undefined);
-    },
-    [openSshCommandTerminal, setActiveTool],
-  );
+  const {
+    enterHostContainer,
+    openContainerDetails,
+    openHostContainerLogs,
+    openHostContainersSidebar,
+    openSftpForMachine,
+    openSftpTransferWorkbench,
+    selectHostContainersHost,
+  } = useKerminalShellNavigation({
+    activeTool,
+    machineGroups,
+    openDockerContainerTerminal,
+    openSftpTransferTab,
+    openSshCommandTerminal,
+    selectMachine,
+    setActiveTool,
+    setHostContainersHostId,
+    setHostContainersInitialContainerId,
+    setMachineSidebarView,
+  });
   const {
     closeConnectionDialog,
     closeRemoteGroupDialog,
