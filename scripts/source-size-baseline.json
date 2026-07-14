@@ -397,13 +397,6 @@
       "targetTask": "TASK-071"
     },
     {
-      "file": "tests/frontend/features/tool-panel/ToolPanel.test.tsx",
-      "lines": 1475,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
       "file": "tests/frontend/features/workspace/workspaceStore.test.ts",
       "lines": 1122,
       "deadline": "before TASK-080",
