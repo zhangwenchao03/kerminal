@@ -1949,12 +1949,12 @@
       "targetTask": "TASK-020"
     },
     {
-      "kind": "import",
+      "kind": "export",
       "rule": "lib-to-feature",
       "runtime": true,
       "source": "src/lib/workspaceSessionApi.ts",
-      "specifier": "../features/workspace/workspaceSession",
-      "target": "src/features/workspace/workspaceSession.ts",
+      "specifier": "../features/workspace/workspaceSessionApi",
+      "target": "src/features/workspace/workspaceSessionApi.ts",
       "deadline": "before TASK-080",
       "owner": "frontend-architecture",
       "targetTask": "TASK-020"
