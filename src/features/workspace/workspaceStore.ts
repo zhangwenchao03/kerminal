@@ -9,18 +9,7 @@ import {
   type TerminalProfile,
 } from "../../lib/profileApi";
 import type { DockerContainerSummary } from "../../lib/dockerApi";
-import { sshTarget } from "../../lib/targetModel";
-import type { TmuxAttachLaunch } from "../../lib/tmuxApi";
 import type { RemoteHostGroupWithHosts } from "../../lib/remoteHostApi";
-import {
-  externalSshLaunchAuthType,
-  externalSshLaunchDescription,
-  externalSshLaunchDisplayName,
-  externalSshLaunchMachineId,
-  externalSshLaunchProduction,
-  externalSshLaunchTags,
-  type ExternalSshLaunchResolvedRequest,
-} from "../external-launch";
 import {
   machineGroups,
   terminalPanes,
@@ -35,7 +24,6 @@ import {
   type WorkspaceSessionSnapshot,
 } from "./workspaceSession";
 import type {
-  Machine,
   MachineStatus,
   MachineGroup,
   SftpTransferWorkspaceTab,
@@ -51,7 +39,6 @@ import type {
 } from "./types";
 import { isWorkspaceFileTab } from "./types";
 import {
-  addMachineToGroup,
   containerToMachine,
   findMachine,
   isPersistedLocalProfile,
@@ -84,12 +71,8 @@ import {
 import {
   createContainerTerminalOpenState,
   createLocalTerminalOpenState,
-  createSerialTerminalOpenState,
-  createSshTerminalOpenState,
-  createTelnetTerminalOpenState,
   focusExistingMachineTabState,
 } from "./workspaceTerminalOpenState";
-import { openTmuxAttachTerminalState } from "./workspaceTmuxState";
 import { selectedMachineIdFromWorkspaceTab } from "./workspaceSelectionModel";
 import {
   updateRemoteHostTreeState,
@@ -111,16 +94,19 @@ import type {
   AddDockerContainerOptions,
   AddTerminalTabOptions,
   OpenSftpTransferTabOptions,
-  OpenSshCommandTerminalOptions,
   OpenWorkspaceFileTabOptions,
   SplitFocusedPaneOptions,
-  TmuxAttachPlacement,
   WorkspaceShellInteractionSlice,
 } from "./workspaceStoreContract";
 import {
   createWorkspaceShellInteractionSlice,
   initialWorkspaceShellInteractionState,
 } from "./workspaceShellInteractionSlice";
+import {
+  createWorkspaceTerminalOpenActions,
+  type WorkspaceTerminalOpenActions,
+  type WorkspaceTerminalOpenCounterPort,
+} from "./workspaceTerminalOpenActions";
 
 export type {
   AddDockerContainerOptions,
@@ -132,7 +118,9 @@ export type {
   TmuxAttachPlacement,
 } from "./workspaceStoreContract";
 
-export interface WorkspaceState extends WorkspaceShellInteractionSlice {
+export interface WorkspaceState
+  extends WorkspaceShellInteractionSlice,
+    WorkspaceTerminalOpenActions {
   profiles: TerminalProfile[];
   activeProfileId: string;
   machineGroups: MachineGroup[];
@@ -171,20 +159,6 @@ export interface WorkspaceState extends WorkspaceShellInteractionSlice {
   openWorkspaceFileTab: (options: OpenWorkspaceFileTabOptions) => void;
   revealWorkspaceFileInSftp: (tabId: string) => void;
   setWorkspaceFileTabDirty: (tabId: string, dirty: boolean) => void;
-  openLocalTerminal: (machineId: string) => void;
-  openSshTerminal: (hostId: string) => void;
-  openSshCommandTerminal: (
-    hostId: string,
-    options: OpenSshCommandTerminalOptions,
-  ) => void;
-  openExternalSshLaunch: (launch: ExternalSshLaunchResolvedRequest) => void;
-  openTmuxAttachTerminal: (
-    launch: TmuxAttachLaunch,
-    placement?: TmuxAttachPlacement,
-  ) => void;
-  openTelnetTerminal: (hostId: string) => void;
-  openSerialTerminal: (hostId: string) => void;
-  openContainerTerminal: (machineId: string) => void;
   closeTerminalTab: (tabId: string) => void;
   renameTerminalTab: (tabId: string, title: string) => void;
   updateTerminalTabGroupPreference: (
@@ -243,9 +217,26 @@ let generatedPaneCount = terminalPanes.length;
 let generatedTabCount = terminalTabs.length;
 let generatedSplitCount = 0;
 
+const terminalOpenCounterPort: WorkspaceTerminalOpenCounterPort = {
+  commitTmuxConsumption: ({ pane, split, tab }) => {
+    generatedPaneCount += pane ? 1 : 0;
+    generatedSplitCount += split ? 1 : 0;
+    generatedTabCount += tab ? 1 : 0;
+  },
+  nextPaneId: (prefix) => `${prefix}-${(generatedPaneCount += 1)}`,
+  nextTabId: (prefix) => `${prefix}-${(generatedTabCount += 1)}`,
+  previewTmuxIds: () => ({
+    localMachineId: `machine-tmux-local-${generatedTabCount + 1}`,
+    paneId: `pane-tmux-${generatedPaneCount + 1}`,
+    splitId: `split-${generatedSplitCount + 1}`,
+    tabId: `tab-tmux-${generatedTabCount + 1}`,
+  }),
+};
+
 export const useWorkspaceStore = create<WorkspaceState>()((set, get, store) => ({
   ...initialState,
   ...createWorkspaceShellInteractionSlice(set, get, store),
+  ...createWorkspaceTerminalOpenActions(terminalOpenCounterPort)(set, get, store),
   setProfiles: (profiles) =>
     set((state) => updateWorkspaceProfilesState(state, profiles)),
   setSettings: (settings) => set({ settings: normalizeAppSettings(settings) }),
@@ -451,166 +442,6 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get, store) => (
     set((state) =>
       revealWorkspaceFileInSftpState(state.terminalTabs, tabId, Date.now()),
     ),
-  openLocalTerminal: (machineId) =>
-    set((state) => {
-      const machine = findMachine(state.machineGroups, machineId);
-      if (!machine || machine.kind !== "local") {
-        return {};
-      }
-
-      const profile = machine.profileId
-        ? state.profiles.find((candidate) => candidate.id === machine.profileId)
-        : undefined;
-      generatedTabCount += 1;
-      generatedPaneCount += 1;
-      return createLocalTerminalOpenState(state, {
-        args: machine.args,
-        cwd: machine.cwd,
-        env: machine.env,
-        groupId: machine.remoteGroupId,
-        machineId: machine.id,
-        paneId: `pane-local-${generatedPaneCount}`,
-        profile,
-        shell: machine.shell,
-        tabId: `tab-local-${generatedTabCount}`,
-        title: machine.name,
-      });
-    }),
-  openSshTerminal: (hostId) =>
-    set((state) => {
-      const machine = findMachine(state.machineGroups, hostId);
-      if (!machine || machine.kind !== "ssh") {
-        return {};
-      }
-
-      generatedTabCount += 1;
-      generatedPaneCount += 1;
-      return createSshTerminalOpenState(state, machine, {
-        paneId: `pane-ssh-${generatedPaneCount}`,
-        tabId: `tab-ssh-${generatedTabCount}`,
-      });
-    }),
-  openSshCommandTerminal: (hostId, options) =>
-    set((state) => {
-      const machine = findMachine(state.machineGroups, hostId);
-      if (!machine || machine.kind !== "ssh") {
-        return {};
-      }
-
-      generatedTabCount += 1;
-      generatedPaneCount += 1;
-      return createSshTerminalOpenState(state, machine, {
-        cwd: options.cwd,
-        paneId: `pane-ssh-${generatedPaneCount}`,
-        remoteCommand: options.remoteCommand,
-        tabId: `tab-ssh-${generatedTabCount}`,
-        title: options.title,
-      });
-    }),
-  openExternalSshLaunch: (launch) =>
-    set((state) => {
-      const machineId = externalSshLaunchMachineId(launch);
-      const machine: Machine = {
-        authType: externalSshLaunchAuthType(launch),
-        description: externalSshLaunchDescription(launch),
-        host: launch.target.host,
-        id: machineId,
-        kind: "ssh",
-        name: externalSshLaunchDisplayName(launch),
-        port: launch.target.port,
-        production: externalSshLaunchProduction(launch),
-        status: "online",
-        tags: externalSshLaunchTags(launch),
-        target: sshTarget(machineId),
-        username: launch.target.username,
-      };
-      const machineGroups = addMachineToGroup(
-        state.machineGroups,
-        machine,
-        undefined,
-      );
-
-      generatedTabCount += 1;
-      generatedPaneCount += 1;
-      return {
-        ...createSshTerminalOpenState({ ...state, machineGroups }, machine, {
-          paneId: `pane-ssh-${generatedPaneCount}`,
-          remoteCommand: launch.options.remoteCommand,
-          tabId: `tab-ssh-${generatedTabCount}`,
-          title: machine.name,
-        }),
-        ...(launch.options.openSftp ? { activeTool: "sftp" as const } : {}),
-        machineGroups,
-      };
-    }),
-  openTmuxAttachTerminal: (launch, placement = "pane") =>
-    set((state) => {
-      const result = openTmuxAttachTerminalState(state, {
-        launch,
-        nextLocalMachineId: `machine-tmux-local-${generatedTabCount + 1}`,
-        nextPaneId: `pane-tmux-${generatedPaneCount + 1}`,
-        nextSplitId: `split-${generatedSplitCount + 1}`,
-        nextTabId: `tab-tmux-${generatedTabCount + 1}`,
-        placement,
-      });
-      if (result.consumedPane) {
-        generatedPaneCount += 1;
-      }
-      if (result.consumedSplit) {
-        generatedSplitCount += 1;
-      }
-      if (result.consumedTab) {
-        generatedTabCount += 1;
-      }
-      return result.patch;
-    }),
-  openTelnetTerminal: (hostId) =>
-    set((state) => {
-      const machine = findMachine(state.machineGroups, hostId);
-      if (!machine || machine.kind !== "telnet") {
-        return {};
-      }
-
-      generatedTabCount += 1;
-      generatedPaneCount += 1;
-      return createTelnetTerminalOpenState(state, machine, {
-        paneId: `pane-telnet-${generatedPaneCount}`,
-        tabId: `tab-telnet-${generatedTabCount}`,
-      });
-    }),
-  openSerialTerminal: (hostId) =>
-    set((state) => {
-      const machine = findMachine(state.machineGroups, hostId);
-      if (!machine || machine.kind !== "serial") {
-        return {};
-      }
-
-      generatedTabCount += 1;
-      generatedPaneCount += 1;
-      return createSerialTerminalOpenState(state, machine, {
-        paneId: `pane-serial-${generatedPaneCount}`,
-        tabId: `tab-serial-${generatedTabCount}`,
-      });
-    }),
-  openContainerTerminal: (machineId) =>
-    set((state) => {
-      const machine = findMachine(state.machineGroups, machineId);
-      if (!machine || machine.kind !== "dockerContainer" || !machine.target) {
-        return {};
-      }
-
-      const existingTabState = focusExistingMachineTabState(state, machine.id);
-      if (existingTabState) {
-        return existingTabState;
-      }
-
-      generatedTabCount += 1;
-      generatedPaneCount += 1;
-      return createContainerTerminalOpenState(state, machine, {
-        paneId: `pane-container-${generatedPaneCount}`,
-        tabId: `tab-container-${generatedTabCount}`,
-      });
-    }),
   closeTerminalTab: (tabId) =>
     set((state) => {
       const patch = closeTerminalTabState(state, tabId);
