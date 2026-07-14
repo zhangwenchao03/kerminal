@@ -21,14 +21,6 @@ pub use stat::{LocalPathStat, LocalStatPathRequest};
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct LocalCreateDirectoryRequest {
-    pub parent_path: String,
-    pub name: String,
-    pub root_path: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
 pub struct LocalCopyPathRequest {
     pub source_path: String,
     pub target_directory_path: String,
@@ -46,8 +38,8 @@ pub struct LocalRenamePathRequest {
 }
 
 pub use crate::services::local_file_service::{
-    LocalDeletePathRequest, LocalReadTextFileRequest, LocalReadTextFileResponse,
-    LocalWriteTextFileRequest, LocalWriteTextFileResponse,
+    LocalCreateDirectoryRequest, LocalDeletePathRequest, LocalReadTextFileRequest,
+    LocalReadTextFileResponse, LocalWriteTextFileRequest, LocalWriteTextFileResponse,
 };
 
 /// 获取本机路径元信息，用于传输冲突预检；不存在不是错误。
@@ -61,9 +53,13 @@ pub async fn local_files_stat_path(request: LocalStatPathRequest) -> Result<Loca
 pub async fn local_files_create_directory(
     request: LocalCreateDirectoryRequest,
 ) -> Result<LocalDirectoryListing, String> {
-    tokio::task::spawn_blocking(move || create_directory(request))
-        .await
-        .map_err(|error| format!("创建本机目录线程失败: {error}"))?
+    tokio::task::spawn_blocking(move || {
+        local_file_service::create_directory(request).and_then(|outcome| {
+            read_local_directory(Some(outcome.parent_path.to_string_lossy().as_ref()))
+        })
+    })
+    .await
+    .map_err(|error| format!("创建本机目录线程失败: {error}"))?
 }
 
 /// 本机到本机复制文件或目录，默认不覆盖已存在目标。
@@ -129,31 +125,6 @@ pub async fn local_files_write_text_file(
     tokio::task::spawn_blocking(move || local_file_service::write_text_file(request))
         .await
         .map_err(|error| format!("写入本机文本文件线程失败: {error}"))?
-}
-
-fn create_directory(request: LocalCreateDirectoryRequest) -> Result<LocalDirectoryListing, String> {
-    let parent = existing_directory(&request.parent_path, "父目录")?;
-    let name = validate_file_name(&request.name)?;
-    let target = parent.join(name);
-    if let Some(root_path) = request.root_path.as_deref() {
-        if !root_path.trim().is_empty() {
-            let root = existing_directory(root_path, "根目录")?;
-            if !parent.starts_with(&root) || !target.starts_with(&root) {
-                return Err(format!(
-                    "创建目标超出允许根目录: {} -> {}",
-                    parent.display(),
-                    target.display()
-                ));
-            }
-        }
-    }
-    if target.exists() {
-        return Err(format!("目标已存在: {}", target.display()));
-    }
-
-    fs::create_dir(&target)
-        .map_err(|error| format!("创建目录失败 {}: {error}", target.display()))?;
-    read_local_directory(Some(parent.to_string_lossy().as_ref()))
 }
 
 fn copy_path(request: LocalCopyPathRequest) -> Result<LocalDirectoryListing, String> {

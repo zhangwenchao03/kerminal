@@ -44,6 +44,21 @@ pub struct LocalDeletePathOutcome {
     pub parent_path: PathBuf,
 }
 
+/// 本机创建目录请求。
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalCreateDirectoryRequest {
+    pub parent_path: String,
+    pub name: String,
+    pub root_path: Option<String>,
+}
+
+/// 创建目录后的父目录，用于 command adapter 刷新既有 listing DTO。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalCreateDirectoryOutcome {
+    pub parent_path: PathBuf,
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalReadTextFileRequest {
@@ -142,6 +157,36 @@ pub fn delete_path(request: LocalDeletePathRequest) -> Result<LocalDeletePathOut
 
     Ok(LocalDeletePathOutcome {
         parent_path: source_parent,
+    })
+}
+
+/// 校验作用域后创建目录；不依赖 Tauri command 或目录 listing DTO。
+pub fn create_directory(
+    request: LocalCreateDirectoryRequest,
+) -> Result<LocalCreateDirectoryOutcome, String> {
+    let parent = existing_directory(&request.parent_path, "父目录")?;
+    let name = validate_file_name(&request.name)?;
+    let target = parent.join(name);
+    if let Some(root_path) = request.root_path.as_deref() {
+        if !root_path.trim().is_empty() {
+            let root = existing_directory(root_path, "根目录")?;
+            if !parent.starts_with(&root) || !target.starts_with(&root) {
+                return Err(format!(
+                    "创建目标超出允许根目录: {} -> {}",
+                    parent.display(),
+                    target.display()
+                ));
+            }
+        }
+    }
+    if path_entry_exists(&target) {
+        return Err(format!("目标已存在: {}", target.display()));
+    }
+    fs::create_dir(&target)
+        .map_err(|error| format!("创建目录失败 {}: {error}", target.display()))?;
+
+    Ok(LocalCreateDirectoryOutcome {
+        parent_path: parent,
     })
 }
 
@@ -414,6 +459,55 @@ fn reject_directory_tree_symlinks(directory: &Path) -> Result<(), String> {
 
 fn contains_forbidden_path_char(value: &str) -> bool {
     value.contains('\0') || value.contains('\n') || value.contains('\r')
+}
+
+fn validate_file_name(name: &str) -> Result<&str, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("文件名不能为空".to_owned());
+    }
+    if trimmed == "." || trimmed == ".." {
+        return Err("文件名不能是 . 或 ..".to_owned());
+    }
+    if contains_forbidden_path_char(trimmed)
+        || Path::new(trimmed).components().count() != 1
+        || matches!(
+            Path::new(trimmed).components().next(),
+            Some(
+                std::path::Component::RootDir
+                    | std::path::Component::Prefix(_)
+                    | std::path::Component::ParentDir
+            )
+        )
+    {
+        return Err("文件名不能包含路径分隔符或非法字符".to_owned());
+    }
+    if trimmed.chars().any(|character| {
+        matches!(
+            character,
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
+        )
+    }) {
+        return Err("文件名包含 Windows 不允许的字符".to_owned());
+    }
+    if trimmed.ends_with(' ') || trimmed.ends_with('.') {
+        return Err("文件名不能以空格或点结尾".to_owned());
+    }
+    let reserved_name = trimmed
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_uppercase();
+    if matches!(reserved_name.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (reserved_name.len() == 4
+            && (reserved_name.starts_with("COM") || reserved_name.starts_with("LPT"))
+            && reserved_name[3..]
+                .chars()
+                .all(|character| ('1'..='9').contains(&character)))
+    {
+        return Err("文件名不能使用 Windows 保留名称".to_owned());
+    }
+    Ok(trimmed)
 }
 fn validate_text_encoding(encoding: &str) -> Result<(), String> {
     match encoding {
