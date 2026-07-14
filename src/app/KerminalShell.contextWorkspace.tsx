@@ -80,7 +80,7 @@ export const KERMINAL_QUICK_OPEN_COPY = {
   placeholder: "搜索主机、终端、历史、片段、工作流或 Agent",
 } as const;
 
-export interface KerminalShellContextWorkspaceProps {
+interface KerminalShellContextWorkspaceProps {
   readonly activeTabId: string | null;
   readonly focusedPaneId: string | null;
   readonly keybindings: AppSettings["keybindings"];
@@ -347,7 +347,7 @@ function KerminalQuickOpenPalette({
 }
 
 /** KerminalShell 的 Context Workspace overlay 组合层。 */
-export function KerminalShellContextWorkspace(
+function KerminalShellContextWorkspace(
   props: KerminalShellContextWorkspaceProps,
 ) {
   const [openOverlay, setOpenOverlay] = useState<
