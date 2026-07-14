@@ -2,8 +2,6 @@
 //!
 //! @author kongweiguang
 
-use std::sync::Arc;
-
 use crate::{
     error::{AppError, AppResult},
     models::{config_change::ConfigDomain, settings::AppSettings},
@@ -35,10 +33,7 @@ use crate::{
         sftp_service::SftpService,
         snippet_service::SnippetService,
         ssh_command_service::SshCommandService,
-        ssh_runtime::{
-            auth_broker::SshAuthBroker, native_backend::NativeSshRuntimeBackend,
-            ManagedSshSessionManager,
-        },
+        ssh_runtime::{auth_broker::SshAuthBroker, ManagedSshSessionManager},
         ssh_terminal_service::SshTerminalService,
         telnet_terminal_service::TelnetTerminalService,
         terminal_manager::TerminalManager,
@@ -50,8 +45,10 @@ use crate::{
     storage::{config_file_store::ConfigFileStore, CommandSqliteStore, RuntimeFileStore},
 };
 
+mod remote_capabilities;
 mod startup_recovery;
 
+use remote_capabilities::RemoteCapabilities;
 pub use startup_recovery::{StartupRecoveryDiagnostic, StartupRecoverySnapshot};
 
 /// Kerminal Rust 侧全局状态。
@@ -67,29 +64,17 @@ pub struct AppState {
     config_change_observer: ConfigChangeObserverService,
     credentials: CredentialService,
     diagnostics: DiagnosticsService,
-    docker_hosts: DockerHostService,
     external_launch_intake: ExternalLaunchIntake,
     external_launch_tasks: ExternalLaunchTaskRegistry,
-    external_session_materializer: ExternalSessionMaterializer,
     mcp_http_server: McpStreamableHttpServerService,
     paths: KerminalPaths,
-    port_forwards: PortForwardService,
     profiles: ProfileService,
-    remote_hosts: RemoteHostService,
-    serial_terminals: SerialTerminalService,
-    server_info: ServerInfoService,
     settings: SettingsService,
-    sftp: SftpService,
     snippets: SnippetService,
-    ssh_auth_broker: SshAuthBroker,
-    ssh_commands: SshCommandService,
-    ssh_runtime: ManagedSshSessionManager,
-    ssh_terminals: SshTerminalService,
-    telnet_terminals: TelnetTerminalService,
     storage: RuntimeFileStore,
     terminal_session_bindings: TerminalSessionBindingService,
     terminals: TerminalManager,
-    tmux: TmuxService,
+    remote: RemoteCapabilities,
     mcp_tool_catalog: McpToolCatalogService,
     workflows: WorkflowService,
     workspace_sync: WorkspaceSyncService,
@@ -116,7 +101,6 @@ impl AppState {
         let command_suggestions = CommandSuggestionService::new();
         let mcp_http_server = McpStreamableHttpServerService::new();
         let diagnostics = DiagnosticsService::new();
-        let docker_hosts = DockerHostService::new();
         let external_launch_intake = ExternalLaunchIntake::new();
         let external_launch_tasks = ExternalLaunchTaskRegistry::new();
         let config_files = ConfigFileStore::new(paths.root.clone());
@@ -157,42 +141,10 @@ impl AppState {
             }
             Err(error) => return Err(error),
         }
-        let remote_hosts = RemoteHostService::new(config_files.clone());
-        let serial_terminals = SerialTerminalService::new();
-        let ssh_auth_broker = SshAuthBroker::new();
-        let ssh_runtime =
-            ManagedSshSessionManager::with_backend(Arc::new(NativeSshRuntimeBackend::new()));
-        let external_session_materializer = ExternalSessionMaterializer::with_remote_hosts(
-            external_launch_intake.clone(),
-            ssh_auth_broker.clone(),
-            remote_hosts.clone(),
-        );
-        let port_forwards = PortForwardService::with_ssh_runtime(
-            ssh_runtime.clone(),
-            ssh_auth_broker.clone(),
-            external_session_materializer.clone(),
-        );
-        let server_info = ServerInfoService::new();
-        let sftp = SftpService::with_ssh_runtime(
-            ssh_runtime.clone(),
-            ssh_auth_broker.clone(),
-            external_session_materializer.clone(),
-        );
+        let remote =
+            RemoteCapabilities::new(&paths, config_files.clone(), external_launch_intake.clone())?;
         let snippets = SnippetService::new(config_files.clone());
-        let ssh_commands = SshCommandService::with_ssh_runtime(
-            ssh_runtime.clone(),
-            ssh_auth_broker.clone(),
-            external_session_materializer.clone(),
-        );
-        let ssh_terminals = SshTerminalService::with_ssh_runtime(
-            ssh_runtime.clone(),
-            ssh_auth_broker.clone(),
-            external_session_materializer.clone(),
-        );
-        ssh_terminals.cleanup_temporary_identity_files(&paths)?;
-        let telnet_terminals = TelnetTerminalService::new();
         let mcp_tool_catalog = McpToolCatalogService::new();
-        let tmux = TmuxService::new();
         let workflows = WorkflowService::new(config_files.clone());
         let config_change_observer = ConfigChangeObserverService::new(config_files);
         let application_runtime =
@@ -210,29 +162,17 @@ impl AppState {
             config_change_observer,
             credentials,
             diagnostics,
-            docker_hosts,
             external_launch_intake,
             external_launch_tasks,
-            external_session_materializer,
             mcp_http_server,
             paths,
-            port_forwards,
             profiles,
-            remote_hosts,
-            serial_terminals,
-            server_info,
             settings,
-            sftp,
             snippets,
-            ssh_auth_broker,
-            ssh_commands,
-            ssh_runtime,
-            ssh_terminals,
-            telnet_terminals,
             storage,
             terminal_session_bindings: TerminalSessionBindingService::default(),
             terminals: TerminalManager::with_shell_integration_cache_dir(shell_integration_cache),
-            tmux,
+            remote,
             mcp_tool_catalog,
             workflows,
             workspace_sync,
@@ -302,7 +242,7 @@ impl AppState {
 
     /// 返回 SSH 宿主上的容器服务。
     pub fn docker_hosts(&self) -> &DockerHostService {
-        &self.docker_hosts
+        &self.remote.docker_hosts
     }
 
     /// 返回外部 SSH 启动 intake 服务。
@@ -317,7 +257,7 @@ impl AppState {
 
     /// 返回外部 SSH 启动临时 target materializer。
     pub fn external_session_materializer(&self) -> &ExternalSessionMaterializer {
-        &self.external_session_materializer
+        &self.remote.external_session_materializer
     }
 
     /// 返回 Streamable HTTP MCP Server 生命周期服务。
@@ -327,7 +267,7 @@ impl AppState {
 
     /// 返回 SSH 端口转发服务。
     pub fn port_forwards(&self) -> &PortForwardService {
-        &self.port_forwards
+        &self.remote.port_forwards
     }
 
     /// 返回运行态文件存储入口。
@@ -342,17 +282,17 @@ impl AppState {
 
     /// 返回远程主机服务。
     pub fn remote_hosts(&self) -> &RemoteHostService {
-        &self.remote_hosts
+        &self.remote.remote_hosts
     }
 
     /// 返回 Serial 串口终端服务。
     pub fn serial_terminals(&self) -> &SerialTerminalService {
-        &self.serial_terminals
+        &self.remote.serial_terminals
     }
 
     /// 返回服务器信息采集服务。
     pub fn server_info(&self) -> &ServerInfoService {
-        &self.server_info
+        &self.remote.server_info
     }
 
     /// 返回应用设置服务。
@@ -370,7 +310,7 @@ impl AppState {
 
     /// 返回 SFTP 文件工具服务。
     pub fn sftp(&self) -> &SftpService {
-        &self.sftp
+        &self.remote.sftp
     }
 
     /// 返回脚本片段服务。
@@ -380,27 +320,27 @@ impl AppState {
 
     /// 返回 SSH 认证 broker。
     pub fn ssh_auth_broker(&self) -> &SshAuthBroker {
-        &self.ssh_auth_broker
+        &self.remote.ssh_auth_broker
     }
 
     /// 返回 SSH 非交互命令服务。
     pub fn ssh_commands(&self) -> &SshCommandService {
-        &self.ssh_commands
+        &self.remote.ssh_commands
     }
 
     /// 返回受管 SSH 会话运行时。
     pub fn ssh_runtime(&self) -> &ManagedSshSessionManager {
-        &self.ssh_runtime
+        &self.remote.ssh_runtime
     }
 
     /// 返回 SSH 远程终端服务。
     pub fn ssh_terminals(&self) -> &SshTerminalService {
-        &self.ssh_terminals
+        &self.remote.ssh_terminals
     }
 
     /// 返回 Telnet 远程终端服务。
     pub fn telnet_terminals(&self) -> &TelnetTerminalService {
-        &self.telnet_terminals
+        &self.remote.telnet_terminals
     }
 
     /// 返回终端会话管理服务。
@@ -415,7 +355,7 @@ impl AppState {
 
     /// 返回 tmux 管理服务。
     pub fn tmux(&self) -> &TmuxService {
-        &self.tmux
+        &self.remote.tmux
     }
 
     /// 返回 Kerminal MCP tool catalog。
