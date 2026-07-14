@@ -12,9 +12,8 @@ import type { DockerContainerSummary } from "../../lib/dockerApi";
 import {
   localTarget,
   sshTarget,
-  type RemoteTargetRef,
 } from "../../lib/targetModel";
-import type { TmuxAttachLaunch, TmuxPaneBinding } from "../../lib/tmuxApi";
+import type { TmuxAttachLaunch } from "../../lib/tmuxApi";
 import type { RemoteHostGroupWithHosts } from "../../lib/remoteHostApi";
 import type { ExternalSshLaunchResolvedRequest } from "../external-launch/externalSshLaunchModel";
 import {
@@ -47,15 +46,12 @@ import type {
   TerminalPane,
   TerminalSplitDirection,
   TerminalSplitLayoutSizes,
-  TerminalSplitPlacement,
   TerminalTab,
   TerminalTabGroupPreference,
   TerminalTabGroupPreferences,
   ToolId,
-  WorkspaceFileAccess,
   WorkspaceFileDirtyState,
   WorkspaceFileRevealRequest,
-  WorkspaceFileSource,
   WorkspaceFileTab,
 } from "./types";
 import { isToolId, isWorkspaceFileTab } from "./types";
@@ -123,53 +119,25 @@ import {
   workspaceFileMachineId,
   workspaceFileTargetHostId,
 } from "./workspaceFileTabModel";
+import type {
+  AddDockerContainerOptions,
+  AddTerminalTabOptions,
+  OpenSftpTransferTabOptions,
+  OpenSshCommandTerminalOptions,
+  OpenWorkspaceFileTabOptions,
+  SplitFocusedPaneOptions,
+  TmuxAttachPlacement,
+} from "./workspaceStoreContract";
 
-export interface AddTerminalTabOptions {
-  title?: string;
-  profileId?: string;
-  groupId?: string;
-  shell?: string;
-  args?: string[];
-  cwd?: string;
-  env?: Record<string, string>;
-  tmuxBinding?: TmuxPaneBinding;
-}
-
-export interface AddDockerContainerOptions {
-  groupId?: string;
-  shell?: string;
-  user?: string;
-  workdir?: string;
-}
-
-export interface OpenSftpTransferTabOptions {
-  leftHostId?: string;
-  lockedLeftHostId?: string;
-  rightHostId?: string;
-}
-
-export interface OpenWorkspaceFileTabOptions {
-  access: WorkspaceFileAccess;
-  path: string;
-  rootPath?: string;
-  source: WorkspaceFileSource;
-  target: RemoteTargetRef;
-  title?: string;
-}
-
-export interface SplitFocusedPaneOptions {
-  placement?: TerminalSplitPlacement;
-  sourcePaneId?: string;
-  targetMachineId?: string;
-}
-
-export interface OpenSshCommandTerminalOptions {
-  cwd?: string;
-  remoteCommand: string;
-  title: string;
-}
-
-export type TmuxAttachPlacement = "pane" | "tab";
+export type {
+  AddDockerContainerOptions,
+  AddTerminalTabOptions,
+  OpenSftpTransferTabOptions,
+  OpenSshCommandTerminalOptions,
+  OpenWorkspaceFileTabOptions,
+  SplitFocusedPaneOptions,
+  TmuxAttachPlacement,
+} from "./workspaceStoreContract";
 
 export interface WorkspaceState {
   profiles: TerminalProfile[];
@@ -205,10 +173,7 @@ export interface WorkspaceState {
   pinMachineGroup: (groupId: string, pinned?: boolean) => void;
   removeSidebarMachine: (machineId: string) => void;
   renameMachineGroup: (groupId: string, title: string) => void;
-  updateLocalMachine: (
-    machineId: string,
-    options: AddTerminalTabOptions,
-  ) => void;
+  updateLocalMachine: (machineId: string, options: AddTerminalTabOptions) => void;
   selectMachine: (machineId: string) => void;
   selectTab: (tabId: string) => void;
   addTerminalTab: (options?: AddTerminalTabOptions) => void;
