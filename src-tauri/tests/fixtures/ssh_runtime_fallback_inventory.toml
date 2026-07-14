@@ -4,6 +4,7 @@ watched_files = [
   "src/services/sftp_service/backend.rs",
   "src/services/sftp_service/native_ssh.rs",
   "src/services/port_forward_service.rs",
+  "src/services/port_forward_service/summary.rs",
   "src/services/docker_host_service/transfer.rs",
 ]
 
@@ -177,14 +178,14 @@ diagnostics_evidence = "fallback_reason"
 
 [[fallback_markers]]
 capability = "port_forward"
-file = "src/services/port_forward_service.rs"
+file = "src/services/port_forward_service/summary.rs"
 marker = "OpenSshProcess"
 allowed_reason = "port forward runtime diagnostics mode"
 diagnostics_evidence = "fallback_reason"
 
 [[fallback_markers]]
 capability = "port_forward"
-file = "src/services/port_forward_service.rs"
+file = "src/services/port_forward_service/summary.rs"
 marker = "OpenSshPty"
 allowed_reason = "port forward runtime diagnostics mode"
 diagnostics_evidence = "fallback_reason"
