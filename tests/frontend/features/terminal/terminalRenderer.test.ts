@@ -349,7 +349,7 @@ describe("terminalRenderer", () => {
     );
   });
 
-  it("disposes the active WebGL renderer when switching to CPU", async () => {
+  it("disposes WebGL without clearing the atlas shared by sibling panes", async () => {
     const terminal = new FakeTerminal();
     const controller = createTerminalRendererController({
       loadWebglAddon: vi.fn().mockResolvedValue({ WebglAddon: FakeWebglAddon }),
@@ -363,12 +363,29 @@ describe("terminalRenderer", () => {
     controller.updateMode("cpu");
 
     expect(FakeWebglAddon.instances[0].dispose).toHaveBeenCalled();
+    expect(FakeWebglAddon.instances[0].clearTextureAtlas).not.toHaveBeenCalled();
     expect(controller.getState()).toEqual({
       backend: "cpu",
       canvasCount: 0,
       fallbackReason: undefined,
       mode: "cpu",
     });
+  });
+
+  it("releases a disposed controller without mutating the shared atlas", async () => {
+    const controller = createTerminalRendererController({
+      loadWebglAddon: vi.fn().mockResolvedValue({ WebglAddon: FakeWebglAddon }),
+      paneId: "pane-1",
+      rendererType: "auto",
+      terminal: new FakeTerminal(),
+    });
+
+    controller.attach();
+    await flushPromises();
+    controller.dispose();
+
+    expect(FakeWebglAddon.instances[0].dispose).toHaveBeenCalledTimes(1);
+    expect(FakeWebglAddon.instances[0].clearTextureAtlas).not.toHaveBeenCalled();
   });
 
   it("falls back on context loss and retries while GPU remains enabled", async () => {

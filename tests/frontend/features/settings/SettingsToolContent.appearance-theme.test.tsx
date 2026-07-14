@@ -295,6 +295,9 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     expect(
       screen.getByRole("button", { name: /保持默认渲染路径/ }),
     ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: /保持默认渲染路径/ }),
+    ).toHaveAttribute("aria-pressed", "true");
     await user.click(screen.getByRole("button", { name: /保持默认渲染路径/ }));
     expect(onSettingsChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -320,6 +323,7 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
   it("retries only renderer panes that entered fallback", async () => {
     const user = userEvent.setup();
     const retryGpu = vi.fn();
+    terminalRendererRegistry.updateMode("auto");
     const unregister = terminalRendererRegistry.registerPane({
       controller: {
         attach: vi.fn(),
@@ -358,12 +362,15 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
       expect(retryGpu).toHaveBeenCalledTimes(1);
     } finally {
       unregister();
+      terminalRendererRegistry.updateMode("gpu");
+      terminalRendererRegistry.updateMode("cpu");
     }
   });
 
   it("allows a global auto fallback to retry every GPU-capable pane", async () => {
     const user = userEvent.setup();
     const retryGpu = [vi.fn(), vi.fn(), vi.fn()];
+    terminalRendererRegistry.updateMode("auto");
     const unregister = retryGpu.map((retry, index) =>
       terminalRendererRegistry.registerPane({
         controller: {
@@ -413,7 +420,7 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     } finally {
       unregister.forEach((dispose) => dispose());
       terminalRendererRegistry.updateMode("gpu");
-      terminalRendererRegistry.updateMode("auto");
+      terminalRendererRegistry.updateMode("cpu");
     }
   });
 

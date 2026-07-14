@@ -9,6 +9,22 @@ import {
 } from "../../../../src/features/settings/settingsModel";
 
 describe("settingsModel", () => {
+  it("defaults terminal rendering to CPU without rewriting explicit modes", () => {
+    expect(defaultAppSettings.terminal.rendererType).toBe("cpu");
+    expect(normalizeAppSettings().terminal.rendererType).toBe("cpu");
+
+    for (const rendererType of ["auto", "cpu", "gpu"] as const) {
+      const settings = normalizeAppSettings({
+        terminal: {
+          ...defaultAppSettings.terminal,
+          rendererType,
+        },
+      });
+
+      expect(settings.terminal.rendererType).toBe(rendererType);
+    }
+  });
+
   it("normalizes invalid appearance values to safe defaults", () => {
     const settings = normalizeAppSettings({
       appearance: {

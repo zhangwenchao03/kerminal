@@ -52,7 +52,7 @@ export const defaultTerminalAppearance: TerminalAppearance = {
   lightColorScheme: "kerminal",
   lineHeight: 1.35,
   macOptionIsMeta: false,
-  rendererType: "auto",
+  rendererType: "cpu",
   rightClickBehavior: "menu",
   scrollback: 5000,
   selectionCopy: false,

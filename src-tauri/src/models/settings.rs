@@ -135,9 +135,9 @@ pub enum TerminalFontWeight {
 #[serde(rename_all = "camelCase")]
 pub enum TerminalRendererType {
     /// 自动优先使用 WebGL，失败时回退 xterm 默认渲染器。
-    #[default]
     Auto,
-    /// 强制使用 xterm 默认渲染器。
+    /// 使用 xterm 默认渲染器，作为兼容性最高的安全缺省。
+    #[default]
     Cpu,
     /// 强制尝试 WebGL，失败时仍回退 xterm 默认渲染器。
     Gpu,
@@ -372,7 +372,7 @@ impl Default for TerminalAppearance {
             font_size: 15,
             font_weight: TerminalFontWeight::Normal,
             mac_option_is_meta: false,
-            renderer_type: TerminalRendererType::Auto,
+            renderer_type: TerminalRendererType::Cpu,
             line_height: 1.35,
             cursor_style: TerminalCursorStyle::Block,
             cursor_blink: true,

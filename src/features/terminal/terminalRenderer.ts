@@ -283,10 +283,7 @@ export function createTerminalRendererController({
     emitStateChange();
   };
 
-  const disposeRendererResources = (
-    renderer: ActiveWebglRenderer,
-    options: { clearAtlas: boolean },
-  ) => {
+  const disposeRendererResources = (renderer: ActiveWebglRenderer) => {
     for (const disposable of renderer.disposables) {
       try {
         disposable.dispose();
@@ -294,29 +291,21 @@ export function createTerminalRendererController({
         logger.warn("[kerminal-terminal-renderer] dispose event failed", error);
       }
     }
-    if (options.clearAtlas) {
-      try {
-        renderer.addon.clearTextureAtlas?.();
-      } catch (error) {
-        logger.warn(
-          "[kerminal-terminal-renderer] WebGL texture atlas cleanup failed",
-          error,
-        );
-      }
-    }
+    // xterm 会让相同配置的终端共享 atlas；释放单个 pane 时清空它会让其它
+    // renderer 保留失效的纹理坐标，表现为选中或 resize 前持续乱码。
     compat.dispose({
       addon: renderer.addon,
       canvases: renderer.canvases,
     });
   };
 
-  const disposeActiveWebgl = (options: { clearAtlas: boolean }) => {
+  const disposeActiveWebgl = () => {
     const active = activeWebgl;
     if (!active) {
       return;
     }
     activeWebgl = null;
-    disposeRendererResources(active, options);
+    disposeRendererResources(active);
     telemetry.increment("rendererSwapCount");
     emitStateChange();
   };
@@ -326,10 +315,12 @@ export function createTerminalRendererController({
     canvases: Set<HTMLCanvasElement>,
     disposables: IDisposable[],
   ) => {
-    disposeRendererResources(
-      { addon, canvases, disposables, rendererCanvases: new Set() },
-      { clearAtlas: false },
-    );
+    disposeRendererResources({
+      addon,
+      canvases,
+      disposables,
+      rendererCanvases: new Set(),
+    });
   };
 
   const transitionToCpuReady = (
@@ -503,7 +494,7 @@ export function createTerminalRendererController({
     const lifecycleState = lifecycle.getSnapshot().state;
     if (lifecycleState === "suspended") {
       transitionToCpuReady("hidden-reaped");
-      disposeActiveWebgl({ clearAtlas: false });
+      disposeActiveWebgl();
       refreshTerminal(terminal, telemetry);
       return;
     }
@@ -514,7 +505,7 @@ export function createTerminalRendererController({
       reason: "gpu-fault",
       to: "recovering",
     });
-    disposeActiveWebgl({ clearAtlas: false });
+    disposeActiveWebgl();
     refreshTerminal(terminal, telemetry);
 
     if (!transition.accepted || !transition.generationToken) {
@@ -562,7 +553,7 @@ export function createTerminalRendererController({
     };
     fallbackReason = fallback;
     recoveryStartedAt = timestamp;
-    disposeActiveWebgl({ clearAtlas: false });
+    disposeActiveWebgl();
     refreshTerminal(terminal, telemetry);
     if (openHealthCircuit) {
       openCircuit(operation, "recovery-storm");
@@ -760,7 +751,7 @@ export function createTerminalRendererController({
       recoveryStartedAt = undefined;
       retryCount = 0;
       transitionToCpuReady("operation-cancelled");
-      disposeActiveWebgl({ clearAtlas: true });
+      disposeActiveWebgl();
       refreshTerminal(terminal, telemetry);
       emitStateChange();
       return;
@@ -771,7 +762,7 @@ export function createTerminalRendererController({
       recoveryStartedAt = undefined;
       retryCount = 0;
       transitionToCpuReady("mode-cpu");
-      disposeActiveWebgl({ clearAtlas: true });
+      disposeActiveWebgl();
       refreshTerminal(terminal, telemetry);
       emitStateChange();
       return;
@@ -886,7 +877,7 @@ export function createTerminalRendererController({
     disposed = true;
     clearTimers();
     lifecycle.dispose();
-    disposeActiveWebgl({ clearAtlas: true });
+    disposeActiveWebgl();
     emitStateChange();
   };
 

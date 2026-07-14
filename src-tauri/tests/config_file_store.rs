@@ -38,18 +38,31 @@ fn settings_toml_roundtrip_keeps_runtime_model() {
 }
 
 #[test]
-fn settings_toml_defaults_missing_terminal_renderer_type_to_auto() {
+fn settings_toml_defaults_missing_terminal_renderer_type_to_cpu() {
     let temp = tempdir().expect("temp dir");
     let store = ConfigFileStore::new(temp.path());
     let settings = AppSettings::default();
 
     store.write_settings(&settings).expect("write settings");
     let source = fs::read_to_string(temp.path().join("settings.toml")).expect("settings source");
-    let source_without_renderer = source.replace("rendererType = \"auto\"\n", "");
+    let source_without_renderer = source.replace("rendererType = \"cpu\"\n", "");
     fs::write(temp.path().join("settings.toml"), source_without_renderer)
         .expect("write legacy settings");
 
     let loaded = store.read_settings().expect("read legacy settings");
+
+    assert_eq!(loaded.terminal.renderer_type, TerminalRendererType::Cpu);
+}
+
+#[test]
+fn settings_toml_keeps_explicit_auto_renderer_mode() {
+    let temp = tempdir().expect("temp dir");
+    let store = ConfigFileStore::new(temp.path());
+    let mut settings = AppSettings::default();
+    settings.terminal.renderer_type = TerminalRendererType::Auto;
+
+    store.write_settings(&settings).expect("write settings");
+    let loaded = store.read_settings().expect("read settings");
 
     assert_eq!(loaded.terminal.renderer_type, TerminalRendererType::Auto);
 }

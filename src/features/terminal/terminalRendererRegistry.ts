@@ -589,5 +589,5 @@ export function createTerminalRendererRegistry({
 }
 
 export const terminalRendererRegistry = createTerminalRendererRegistry({
-  rendererType: "auto",
+  rendererType: "cpu",
 });
