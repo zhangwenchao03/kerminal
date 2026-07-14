@@ -13,6 +13,7 @@ import {
   type RuntimeDiagnosticsDegradeState,
   type RuntimePerformanceSnapshot,
   type RuntimePtyPumpSessionSnapshot,
+  type RuntimeSftpSnapshot,
   type RuntimeSuggestionSchedulerSnapshot,
   type RuntimeTerminalOutputPaneSnapshotInput,
 } from "./terminalRuntimeDiagnostics";
@@ -42,6 +43,7 @@ type ManagedSshSnapshotReader = () => Promise<
   ManagedSshRuntimeSnapshot | undefined
 >;
 type SuggestionSnapshotReader = () => Promise<RuntimeSuggestionSchedulerSnapshot>;
+type SftpSnapshotReader = () => RuntimeSftpSnapshot;
 
 const paneProviders = new Set<TerminalRuntimeDiagnosticsPaneProvider>();
 const listeners = new Set<() => void>();
@@ -72,11 +74,13 @@ export async function collectTerminalRuntimePerformanceSnapshot({
   generatedAt,
   readManagedSshSnapshot = readManagedSshRuntimeDiagnosticsSnapshot,
   readPtyPumpStats = getTerminalPtyOutputPumpStats,
+  readSftpSnapshot = getSftpRuntimeDiagnosticsSnapshot,
   readSuggestionSnapshot = readTerminalSuggestionDiagnosticsSnapshot,
 }: {
   generatedAt?: string;
   readManagedSshSnapshot?: ManagedSshSnapshotReader;
   readPtyPumpStats?: PtyPumpStatsReader;
+  readSftpSnapshot?: SftpSnapshotReader;
   readSuggestionSnapshot?: SuggestionSnapshotReader;
 } = {}): Promise<RuntimePerformanceSnapshot> {
   const paneSnapshots = Array.from(paneProviders, (provider) =>
@@ -104,7 +108,7 @@ export async function collectTerminalRuntimePerformanceSnapshot({
         0,
       ),
     },
-    sftp: getSftpRuntimeDiagnosticsSnapshot(),
+    sftp: readSftpSnapshot(),
     ssh: createSshRuntimeSnapshot(paneSnapshots),
     suggestions,
     terminalChromeActivity: terminalChromeRuntimeStore.diagnosticsSnapshot(),
