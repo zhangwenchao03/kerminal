@@ -50,7 +50,7 @@ interface ParsedTerminalWorkspaceSnapshotCache {
 let parsedTerminalWorkspaceSnapshotCache:
   ParsedTerminalWorkspaceSnapshotCache | undefined;
 
-export function collectOpenMachineIds({
+function collectOpenMachineIds({
   terminalPanes,
   terminalTabs,
 }: OpenMachineState): string[] {
