@@ -10,17 +10,7 @@ import {
 } from "../features/settings/settingsModel";
 import { writeBroadcastCommand } from "../features/terminal/terminalSessionRegistry";
 import { useWorkspaceStore } from "../features/workspace/workspaceStore";
-import {
-  fetchDockerContainerStats,
-  inspectDockerContainer,
-  listDockerContainers,
-  removeDockerContainer,
-  restartDockerContainer,
-  startDockerContainer,
-  stopDockerContainer,
-  type DockerContainerLifecycleAction,
-  type DockerContainerSummary,
-} from "../lib/dockerApi";
+import type { DockerContainerSummary } from "../lib/dockerApi";
 import { resolveDesktopPlatform } from "../lib/desktopPlatform";
 import {
   createRemoteHostGroup,
@@ -45,6 +35,7 @@ import {
 import { useKerminalShellRemoteActions } from "./useKerminalShellRemoteActions";
 import { useKerminalShellBackgroundStyle } from "./useKerminalShellBackgroundStyle";
 import { useKerminalShellCommands } from "./useKerminalShellCommands";
+import { useKerminalShellContainerActions } from "./useKerminalShellContainerActions";
 import { useKerminalShellConfigRefresh } from "./useKerminalShellConfigRefresh";
 import { useKerminalShellPanelResize } from "./useKerminalShellPanelResize";
 import { useKerminalShellSettings } from "./useKerminalShellSettings";
@@ -523,51 +514,18 @@ export function KerminalShell() {
       }),
     [editingRemoteGroup, machineGroups],
   );
-  const pinHostContainer = useCallback(
-    async (container: DockerContainerSummary) => {
-      const hostMachine = machineGroups
-        .flatMap((group) => group.machines)
-        .find((machine) => machine.id === container.hostId);
-      const groupId = await resolveTargetGroupId(
-        hostMachine?.remoteGroupId ?? defaultRemoteGroupId,
-      );
-      addDockerContainer(container, { groupId });
-    },
-    [
-      addDockerContainer,
-      defaultRemoteGroupId,
-      machineGroups,
-      resolveTargetGroupId,
-    ],
-  );
-  const runHostContainerLifecycleAction = useCallback(
-    async (
-      action: DockerContainerLifecycleAction,
-      container: DockerContainerSummary,
-      options?: { force?: boolean },
-    ) => {
-      const request = {
-        containerId: container.id,
-        force: options?.force,
-        hostId: container.hostId,
-        runtime: container.runtime,
-      };
-      if (action === "start") {
-        await startDockerContainer(request);
-        return;
-      }
-      if (action === "stop") {
-        await stopDockerContainer(request);
-        return;
-      }
-      if (action === "restart") {
-        await restartDockerContainer(request);
-        return;
-      }
-      await removeDockerContainer(request);
-    },
-    [],
-  );
+  const {
+    fetchContainerStats,
+    inspectContainer,
+    listDockerContainers: loadDockerContainers,
+    pinHostContainer,
+    runHostContainerLifecycleAction,
+  } = useKerminalShellContainerActions({
+    addDockerContainer,
+    defaultRemoteGroupId,
+    machineGroups,
+    resolveTargetGroupId,
+  });
   const shellNoticeMessage =
     profileLoadError ?? remoteHostLoadError ?? settingsLoadError;
   const openSftpTransferHostCreateDialog = useCallback(
@@ -649,8 +607,8 @@ export function KerminalShell() {
         onEnterContainer: enterHostContainer, onExternalMachineDrag: handleExternalMachineDrag,
         onExternalMachineDragEnd: handleExternalMachineDragEnd,
         onExternalMachineDrop: handleExternalMachineDrop,
-        onFetchContainerStats: fetchDockerContainerStats, onInspectContainer: inspectDockerContainer,
-        onLifecycleContainer: runHostContainerLifecycleAction, onListDockerContainers: listDockerContainers,
+        onFetchContainerStats: fetchContainerStats, onInspectContainer: inspectContainer,
+        onLifecycleContainer: runHostContainerLifecycleAction, onListDockerContainers: loadDockerContainers,
         onMoveMachine: (machineId, groupId) => void handleMoveMachineToGroup(machineId, groupId),
         onOpenContainerDetails: openContainerDetails,
         onOpenContainerLogs: openHostContainerLogs, onOpenContainerTerminal: openContainerTerminal,
