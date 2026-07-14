@@ -28,7 +28,7 @@ import {
 } from "./terminalRendererHealthWatchdog";
 import { createTerminalRendererPerformanceTelemetry } from "./terminalRendererPerformanceTelemetry";
 import { terminalRendererRegistry } from "./terminalRendererRegistry";
-import { createTerminalSessionResizeCoordinator } from "./terminalSessionResizeCoordinator";
+import { createTerminalPaneResizeController } from "./terminalPaneResizeController";
 import {
   createTerminalRendererSurfaceCoordinator,
   type TerminalRendererSurfaceCoordinator,
@@ -261,14 +261,18 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
   terminal.open(container);
   // 会话创建需要首个 cols/rows；后续所有 surface 变化统一交给 coordinator。
   fitAddon.fit();
-  let lastReportedSurfaceDimensions = {
+  const initialSurfaceDimensions = {
     cols: terminal.cols,
     rows: terminal.rows,
   };
   let reuseInitialSurfaceDimensions = true;
-  onTerminalDimensionsChangeRef.current?.(lastReportedSurfaceDimensions);
-  const sessionResizeCoordinator = createTerminalSessionResizeCoordinator({
-    resize: resizeTerminal,
+  const paneResizeController = createTerminalPaneResizeController({
+    initialDimensions: initialSurfaceDimensions,
+    onDimensionsChange: (dimensions) =>
+      onTerminalDimensionsChangeRef.current?.(dimensions),
+    onGhostSuggestionLayoutChange: () =>
+      ghostSuggestions.refreshGhostSuggestionLayout(),
+    resizeSession: resizeTerminal,
   });
   terminalRef.current = terminal;
   const activityRuntime = createXtermPaneActivityRuntime({
@@ -390,7 +394,7 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
   rendererSurfaceCoordinator = createTerminalRendererSurfaceCoordinator({
     fit: () => {
       if (reuseInitialSurfaceDimensions) {
-        return lastReportedSurfaceDimensions;
+        return initialSurfaceDimensions;
       }
       fitAddon.fit();
       return { cols: terminal.cols, rows: terminal.rows };
@@ -412,18 +416,7 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
         width: rect.width,
       };
     },
-    onDimensionsChange: (dimensions) => {
-      if (
-        dimensions.cols === lastReportedSurfaceDimensions.cols &&
-        dimensions.rows === lastReportedSurfaceDimensions.rows
-      ) {
-        return;
-      }
-      lastReportedSurfaceDimensions = dimensions;
-      onTerminalDimensionsChangeRef.current?.(dimensions);
-      sessionResizeCoordinator.request(dimensions);
-      ghostSuggestions.refreshGhostSuggestionLayout();
-    },
+    onDimensionsChange: paneResizeController.handleSurfaceDimensions,
     onStableSurface: () => {
       terminalRendererRegistry.updatePaneVisibility(paneId, true);
       terminalRendererController.resume();
@@ -469,7 +462,7 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     if (sessionIdRef.current === sessionId) {
       sessionIdRef.current = null;
     }
-    sessionResizeCoordinator.clearSession(sessionId);
+    paneResizeController.clearSession(sessionId);
     unregisterTerminalPaneSession(paneId, sessionId);
     shellIntegrationState = createTerminalShellIntegrationState();
     shellIntegrationCommandBlockProtocolRef.current = false;
@@ -635,7 +628,7 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
       });
       shellIntegrationCommandBlockProtocolRef.current = assistEnabled && shellIntegrationTrusted;
       sessionIdRef.current = session.id;
-      sessionResizeCoordinator.bindSession(session.id, requestedDimensions);
+      paneResizeController.bindSession(session.id, requestedDimensions);
       registerTerminalPaneSession(paneId, session.id, {
         containerId: target?.kind === "dockerContainer" ? target.containerId : undefined,
         containerRuntime: target?.kind === "dockerContainer" ? (target.runtime ?? "docker") : undefined,
@@ -674,7 +667,7 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
             setLogState({ active: false, bytesWritten: 0 });
           }
         });
-      sessionResizeCoordinator.request(lastReportedSurfaceDimensions);
+      paneResizeController.requestCurrentDimensions();
       fitAndResize();
       if (focusedRef.current) {
         terminal.focus();
@@ -754,7 +747,7 @@ export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
     terminalInlineSshAuthPrompt.finish(null);
     const sessionId = sessionIdRef.current;
     sessionIdRef.current = null;
-    sessionResizeCoordinator.dispose();
+    paneResizeController.dispose();
     shellIntegrationCommandBlockProtocolRef.current = false;
     commandBlockRuntime.resetProtocolState();
     reconnectSessionRef.current = null;
