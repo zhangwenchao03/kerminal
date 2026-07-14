@@ -229,13 +229,6 @@
       "targetTask": "TASK-071"
     },
     {
-      "file": "src-tauri/tests/ssh_command_service.rs",
-      "lines": 1614,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
       "file": "src-tauri/tests/ssh_terminal_service.rs",
       "lines": 1611,
       "deadline": "before TASK-080",
