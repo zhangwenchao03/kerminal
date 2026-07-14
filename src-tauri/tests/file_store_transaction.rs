@@ -61,6 +61,28 @@ fn read_only_transaction_does_not_create_manifest_entry() {
 }
 
 #[test]
+fn mapped_business_error_discards_staged_transaction_changes() {
+    let temp = tempdir().expect("temp dir");
+    let store = FileStore::new(temp.path());
+
+    let result = store.run_transaction_with(
+        "business-abort",
+        "2026-07-14T12:00:00+08:00",
+        |transaction| -> Result<(), String> {
+            transaction
+                .write("secrets/vault.toml", "staged")
+                .map_err(|error| error.to_string())?;
+            Err("业务校验失败".to_owned())
+        },
+        |error| error.to_string(),
+    );
+
+    assert_eq!(result, Err("业务校验失败".to_owned()));
+    assert!(!temp.path().join("secrets/vault.toml").exists());
+    assert!(!temp.path().join("storage-manifest.toml").exists());
+}
+
+#[test]
 fn external_edit_after_transaction_read_is_never_overwritten() {
     let temp = tempdir().expect("temp dir");
     let target = temp.path().join("settings.toml");

@@ -82,13 +82,6 @@
       "targetTask": "TASK-072"
     },
     {
-      "file": "src-tauri/src/services/remote_host_service.rs",
-      "lines": 880,
-      "deadline": "before TASK-080",
-      "owner": "architecture-governance",
-      "targetTask": "TASK-072"
-    },
-    {
       "file": "src-tauri/src/services/server_info_service.rs",
       "lines": 1055,
       "deadline": "before TASK-080",
@@ -174,7 +167,7 @@
     },
     {
       "file": "src-tauri/src/storage/config_file_store.rs",
-      "lines": 1018,
+      "lines": 994,
       "deadline": "before TASK-080",
       "owner": "configuration-storage",
       "targetTask": "TASK-060"

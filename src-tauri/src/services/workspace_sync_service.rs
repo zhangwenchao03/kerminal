@@ -18,6 +18,11 @@ use crate::{
 
 const REQUIRED_GITIGNORE_RULES: &[&str] = &[
     "secrets/vault-key.toml",
+    "secrets/vault-key.toml.bak.*",
+    ".storage-transactions/",
+    "backups/",
+    ".storage.lock",
+    "storage-manifest.toml",
     "logs/",
     "cache/",
     "temp/",

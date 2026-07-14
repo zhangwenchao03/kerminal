@@ -134,14 +134,34 @@ impl FileStore {
     where
         F: FnOnce(&mut DurableFileTransaction<'_>) -> FileStoreResult<T>,
     {
-        validate_change_set_id(id)?;
-        let _lock = self.acquire_transaction_lock()?;
-        recover_pending_locked(self)?;
+        self.run_transaction_with(id, timestamp, operation, std::convert::identity)
+    }
+
+    /// 允许上层领域在保留自身错误类型的同时使用同一文件事务。
+    ///
+    /// `map_storage_error` 只转换锁、恢复和持久化阶段的错误；业务闭包错误会原样返回，
+    /// 因而闭包失败时不会创建 journal，也不需要补偿式回滚。
+    pub fn run_transaction_with<T, E, F, M>(
+        &self,
+        id: &str,
+        timestamp: &str,
+        operation: F,
+        map_storage_error: M,
+    ) -> Result<T, E>
+    where
+        F: FnOnce(&mut DurableFileTransaction<'_>) -> Result<T, E>,
+        M: Fn(FileStoreError) -> E,
+    {
+        validate_change_set_id(id).map_err(&map_storage_error)?;
+        let _lock = self
+            .acquire_transaction_lock()
+            .map_err(&map_storage_error)?;
+        recover_pending_locked(self).map_err(&map_storage_error)?;
         let mut transaction = DurableFileTransaction::new(self);
         let result = operation(&mut transaction)?;
         let changes = transaction.into_changes();
         if !changes.is_empty() {
-            apply_changes_locked(self, id, timestamp, changes)?;
+            apply_changes_locked(self, id, timestamp, changes).map_err(map_storage_error)?;
         }
         Ok(result)
     }

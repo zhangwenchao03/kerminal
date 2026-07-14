@@ -579,30 +579,6 @@ impl ConfigFileStore {
         self.read_remote_host_metadata(host_id)
     }
 
-    fn read_remote_host_metadata(&self, host_id: &str) -> FileStoreResult<RemoteHost> {
-        let relative_path = remote_host_relative_path(host_id)?;
-        let document = self
-            .files
-            .read_toml::<RemoteHostTomlDocument>(&relative_path)?;
-        let host = with_error_path(document.into_host(), &relative_path)?;
-        if host.id != host_id {
-            return Err(FileStoreError::TomlParse(
-                TomlParseError::single(
-                    1,
-                    1,
-                    format!(
-                        "remote host file id mismatch: expected {host_id}, found {}",
-                        host.id
-                    ),
-                )
-                .with_path(relative_path)
-                .with_key("id")
-                .with_recovery("Make the host id match the hosts/<id>.toml file name."),
-            ));
-        }
-        Ok(host)
-    }
-
     fn read_snippet(&self, snippet_id: &str) -> FileStoreResult<CommandSnippet> {
         let relative_path = snippet_relative_path(snippet_id)?;
         let document = self

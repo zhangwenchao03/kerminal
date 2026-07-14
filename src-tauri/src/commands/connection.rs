@@ -27,7 +27,7 @@ use crate::{
             parse_vault_secret_ref, RemoteHost, RemoteHostAuthType, RemoteHostCreateRequest,
         },
     },
-    services::encrypted_vault_service::EncryptedVaultService,
+    services::encrypted_vault_service::{EncryptedVaultService, VaultKeyEntryReadError},
     state::AppState,
 };
 use tauri::State;
@@ -193,13 +193,17 @@ fn decrypt_vault_password_secret_ref(
             parsed.material
         )));
     }
-    let key = vault
-        .read_key()
-        .map_err(|_| AppError::Credential("RDP vault key is missing or unreadable".to_owned()))?;
     let entry_id = parsed.entry_id();
-    let entry = vault
-        .entry_by_id(&entry_id)?
-        .ok_or_else(|| AppError::Credential(format!("未找到 RDP vault 凭据: {entry_id}")))?;
+    let (key, entry) = vault
+        .read_key_and_entry(&entry_id)
+        .map_err(|error| match error {
+            VaultKeyEntryReadError::Key => {
+                AppError::Credential("RDP vault key is missing or unreadable".to_owned())
+            }
+            VaultKeyEntryReadError::Vault(error) => error,
+        })?;
+    let entry =
+        entry.ok_or_else(|| AppError::Credential(format!("未找到 RDP vault 凭据: {entry_id}")))?;
     let plaintext = vault
         .decrypt_secret(&key, &entry, secret_ref.as_bytes())
         .map_err(|_| AppError::Credential(format!("RDP vault 凭据无法解密: {entry_id}")))?;

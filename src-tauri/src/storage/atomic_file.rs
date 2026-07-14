@@ -152,41 +152,73 @@ fn persist_temp_file(temp_path: &Path, target_path: &Path) -> io::Result<()> {
 
 #[cfg(windows)]
 fn persist_temp_file(temp_path: &Path, target_path: &Path) -> io::Result<()> {
-    use std::{os::windows::ffi::OsStrExt, ptr};
-
-    use windows_sys::Win32::Storage::FileSystem::{
-        MoveFileExW, ReplaceFileW, MOVEFILE_WRITE_THROUGH, REPLACEFILE_WRITE_THROUGH,
+    use std::{
+        os::windows::ffi::OsStrExt,
+        ptr, thread,
+        time::{Duration, Instant},
     };
 
-    fn wide(path: &Path) -> Vec<u16> {
-        path.as_os_str().encode_wide().chain(Some(0)).collect()
-    }
+    const RETRY_WINDOW: Duration = Duration::from_secs(1);
+    const RETRY_INTERVAL: Duration = Duration::from_millis(10);
 
-    let temp = wide(temp_path);
-    let target = wide(target_path);
-    if target_path.exists() {
-        // SAFETY: 两个 UTF-16 缓冲区在调用期间保持有效并以 NUL 结尾；可选指针均为空。
-        let replaced = unsafe {
-            ReplaceFileW(
-                target.as_ptr(),
-                temp.as_ptr(),
-                ptr::null(),
-                REPLACEFILE_WRITE_THROUGH,
-                ptr::null(),
-                ptr::null(),
-            )
-        };
-        if replaced == 0 {
-            return Err(io::Error::last_os_error());
+    let deadline = Instant::now() + RETRY_WINDOW;
+    loop {
+        match persist_temp_file_once(temp_path, target_path) {
+            Ok(()) => return Ok(()),
+            Err(error)
+                if temp_path.is_file()
+                    && retryable_windows_replace_error(&error)
+                    && Instant::now() < deadline =>
+            {
+                thread::sleep(RETRY_INTERVAL);
+            }
+            Err(error) => return Err(error),
         }
-        return Ok(());
     }
 
-    // SAFETY: 两个 UTF-16 缓冲区在调用期间保持有效并以 NUL 结尾；目标当前不存在。
-    let moved = unsafe { MoveFileExW(temp.as_ptr(), target.as_ptr(), MOVEFILE_WRITE_THROUGH) };
-    if moved == 0 {
-        Err(io::Error::last_os_error())
-    } else {
-        Ok(())
+    fn retryable_windows_replace_error(error: &io::Error) -> bool {
+        // ACCESS_DENIED、SHARING_VIOLATION 与 ReplaceFileW 的三种暂态移动失败。
+        matches!(
+            error.raw_os_error(),
+            Some(5 | 32 | 33 | 80 | 183 | 1175 | 1176 | 1177)
+        )
+    }
+
+    fn persist_temp_file_once(temp_path: &Path, target_path: &Path) -> io::Result<()> {
+        use windows_sys::Win32::Storage::FileSystem::{
+            MoveFileExW, ReplaceFileW, MOVEFILE_WRITE_THROUGH, REPLACEFILE_WRITE_THROUGH,
+        };
+
+        fn wide(path: &Path) -> Vec<u16> {
+            path.as_os_str().encode_wide().chain(Some(0)).collect()
+        }
+
+        let temp = wide(temp_path);
+        let target = wide(target_path);
+        if target_path.exists() {
+            // SAFETY: 两个 UTF-16 缓冲区在调用期间保持有效并以 NUL 结尾；可选指针均为空。
+            let replaced = unsafe {
+                ReplaceFileW(
+                    target.as_ptr(),
+                    temp.as_ptr(),
+                    ptr::null(),
+                    REPLACEFILE_WRITE_THROUGH,
+                    ptr::null(),
+                    ptr::null(),
+                )
+            };
+            if replaced == 0 {
+                return Err(io::Error::last_os_error());
+            }
+            return Ok(());
+        }
+
+        // SAFETY: 两个 UTF-16 缓冲区在调用期间保持有效并以 NUL 结尾；目标当前不存在。
+        let moved = unsafe { MoveFileExW(temp.as_ptr(), target.as_ptr(), MOVEFILE_WRITE_THROUGH) };
+        if moved == 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
     }
 }

@@ -18,6 +18,7 @@ use kerminal_lib::{
     },
     paths::KerminalPaths,
     state::AppState,
+    storage::file_store::FileStore,
 };
 use tempfile::{tempdir, TempDir};
 
@@ -179,6 +180,21 @@ fn create_password_host_writes_encrypted_vault_ref() {
         .expect("read vault toml");
     assert!(vault_toml.contains("credential:kerminal:ssh-host"));
     assert!(!vault_toml.contains("s3cr3t"));
+
+    let manifest = FileStore::new(&config_root)
+        .read_storage_manifest()
+        .expect("read storage manifest");
+    let change_set = manifest
+        .last_applied_change_set_id
+        .as_deref()
+        .and_then(|id| manifest.change_set(id))
+        .expect("host credential change set");
+    assert!(change_set
+        .touched_files
+        .contains(&format!("hosts/{}.toml", host.id)));
+    assert!(change_set
+        .touched_files
+        .contains(&"secrets/vault.toml".to_owned()));
 }
 
 #[test]

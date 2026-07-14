@@ -2,26 +2,32 @@
 //!
 //! @author kongweiguang
 
-use std::{
-    collections::HashSet,
-    fs,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use uuid::Uuid;
+
+mod credential_persistence;
+mod normalization;
+
+use credential_persistence::{
+    password_required_message, persist_secret_ref, reusable_secret_ref_for_kind,
+    SecretPersistenceInput,
+};
+use normalization::{
+    allows_empty_username, has_tag, normalize_host, normalize_port, normalize_tags,
+};
 
 use crate::{
     error::{AppError, AppResult},
     models::remote_host::{
-        build_vault_secret_ref, parse_vault_secret_ref, RemoteHost, RemoteHostAuthType,
-        RemoteHostCreateRequest, RemoteHostCredentialReveal, RemoteHostCredentialRevealStatus,
-        RemoteHostCredentialStatus, RemoteHostGroup, RemoteHostGroupCreateRequest,
-        RemoteHostGroupUpdateRequest, RemoteHostGroupWithHosts, RemoteHostUpdateRequest,
-        SshJumpHostOptions, SshOptions, SshProxyProtocol, SshTunnelKind,
+        RemoteHost, RemoteHostAuthType, RemoteHostCreateRequest, RemoteHostCredentialReveal,
+        RemoteHostCredentialRevealStatus, RemoteHostCredentialStatus, RemoteHostGroup,
+        RemoteHostGroupCreateRequest, RemoteHostGroupUpdateRequest, RemoteHostGroupWithHosts,
+        RemoteHostUpdateRequest, SshJumpHostOptions, SshOptions, SshProxyProtocol, SshTunnelKind,
     },
     paths::KerminalPaths,
     services::{
-        encrypted_vault_service::{EncryptedVaultService, VaultFile},
+        encrypted_vault_service::{EncryptedVaultService, VaultUnitOfWork},
         ssh_credential_resolver::{ResolvedSshAuthMaterial, SshCredentialResolver},
     },
     storage::{config_file_store::ConfigFileStore, file_store::FileStoreError},
@@ -172,13 +178,14 @@ impl RemoteHostService {
             created_at: timestamp.clone(),
             updated_at: timestamp,
         };
-        let mut vault_snapshot = VaultSnapshotGuard::capture(&self.vault_service());
-        let host = self.persist_host_credentials(host, None)?;
-        self.config
-            .apply_remote_host_change_set(None, std::slice::from_ref(&host), &[])
-            .map_err(config_file_error)?;
-        vault_snapshot.commit();
-        Ok(host)
+        let vault = self.vault_service();
+        vault.run_unit_of_work("remote-host-create", |unit, transaction| {
+            let host = self.persist_host_credentials(&vault, unit, host, None)?;
+            self.config
+                .stage_remote_host_write(transaction, &host)
+                .map_err(config_file_error)?;
+            Ok(host)
+        })
     }
 
     /// 更新远程主机配置。
@@ -186,44 +193,52 @@ impl RemoteHostService {
         let group_id = normalize_optional_text(request.group_id);
         ensure_group_exists(self, group_id.as_deref())?;
         let id = normalize_required_text("主机 ID", request.id)?;
-        let existing = self
-            .host_by_id(&id)?
-            .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {id}")))?;
         let tags = normalize_tags(request.tags);
         let credential = normalize_ssh_credential(
             request.auth_type,
             request.credential_ref,
             request.credential_secret,
         )?;
-        let created_at = existing.created_at.clone();
-        let host = RemoteHost {
-            id,
-            group_id,
-            name: normalize_required_text("主机名称", request.name)?,
-            host: normalize_host(request.host)?,
-            port: normalize_port(request.port)?,
-            username: normalize_username(request.username, &tags)?,
-            auth_type: request.auth_type,
-            credential_ref: credential.credential_ref,
-            secret_ref: existing.secret_ref.clone(),
-            key_passphrase_ref: existing.key_passphrase_ref.clone(),
-            key_passphrase_secret: None,
-            credential_secret: credential.credential_secret,
-            credential_status: Default::default(),
-            tags,
-            production: request.production,
-            ssh_options: normalize_ssh_options(request.ssh_options)?,
-            sort_order: request.sort_order,
-            created_at,
-            updated_at: timestamp_now(),
-        };
-        let mut vault_snapshot = VaultSnapshotGuard::capture(&self.vault_service());
-        let host = self.persist_host_credentials(host, Some(&existing))?;
-        self.config
-            .apply_remote_host_change_set(None, std::slice::from_ref(&host), &[])
-            .map_err(config_file_error)?;
-        vault_snapshot.commit();
-        Ok(host)
+        let name = normalize_required_text("主机名称", request.name)?;
+        let host_address = normalize_host(request.host)?;
+        let port = normalize_port(request.port)?;
+        let username = normalize_username(request.username, &tags)?;
+        let ssh_options = normalize_ssh_options(request.ssh_options)?;
+        let vault = self.vault_service();
+        vault.run_unit_of_work("remote-host-update", |unit, transaction| {
+            // existing 必须在同一锁内读取，避免并发删除后被旧快照重新创建。
+            let existing = self
+                .config
+                .remote_host_by_id_in_transaction(transaction, &id)
+                .map_err(config_file_error)?
+                .ok_or_else(|| AppError::NotFound(format!("远程主机不存在: {id}")))?;
+            let host = RemoteHost {
+                id: id.clone(),
+                group_id,
+                name,
+                host: host_address,
+                port,
+                username,
+                auth_type: request.auth_type,
+                credential_ref: credential.credential_ref,
+                secret_ref: existing.secret_ref.clone(),
+                key_passphrase_ref: existing.key_passphrase_ref.clone(),
+                key_passphrase_secret: None,
+                credential_secret: credential.credential_secret,
+                credential_status: Default::default(),
+                tags,
+                production: request.production,
+                ssh_options,
+                sort_order: request.sort_order,
+                created_at: existing.created_at.clone(),
+                updated_at: timestamp_now(),
+            };
+            let host = self.persist_host_credentials(&vault, unit, host, Some(&existing))?;
+            self.config
+                .stage_remote_host_write(transaction, &host)
+                .map_err(config_file_error)?;
+            Ok(host)
+        })
     }
 
     /// 删除远程主机配置。
@@ -299,22 +314,26 @@ impl RemoteHostService {
 
     fn persist_host_credentials(
         &self,
+        vault: &EncryptedVaultService,
+        unit: &mut VaultUnitOfWork,
         host: RemoteHost,
         existing: Option<&RemoteHost>,
     ) -> AppResult<RemoteHost> {
-        self.persist_host_credentials_for_mode(host, existing)
+        self.persist_host_credentials_for_mode(vault, unit, host, existing)
     }
 
     fn persist_host_credentials_for_mode(
         &self,
+        vault: &EncryptedVaultService,
+        unit: &mut VaultUnitOfWork,
         mut host: RemoteHost,
         existing: Option<&RemoteHost>,
     ) -> AppResult<RemoteHost> {
-        let vault = self.vault_service();
         let primary_secret_kind = primary_credential_secret_kind(&host);
 
         let top_level = persist_primary_credential(
-            &vault,
+            vault,
+            unit,
             &host.id,
             PrimaryCredentialInput {
                 secret_kind: primary_secret_kind,
@@ -335,8 +354,14 @@ impl RemoteHostService {
         let mut jump_hosts = Vec::with_capacity(host.ssh_options.jump_hosts.len());
         for (index, jump_host) in host.ssh_options.jump_hosts.into_iter().enumerate() {
             let existing_jump = existing_jump_hosts.and_then(|items| items.get(index));
-            let persisted =
-                persist_jump_host_credential(&vault, &host.id, index, jump_host, existing_jump)?;
+            let persisted = persist_jump_host_credential(
+                vault,
+                unit,
+                &host.id,
+                index,
+                jump_host,
+                existing_jump,
+            )?;
             jump_hosts.push(persisted.jump_host);
         }
         host.ssh_options.jump_hosts = jump_hosts;
@@ -370,47 +395,6 @@ struct PrimaryCredentialInput<'a> {
 #[derive(Debug)]
 struct PersistedJumpHostCredential {
     jump_host: SshJumpHostOptions,
-}
-
-#[derive(Debug)]
-struct VaultSnapshotGuard {
-    vault: EncryptedVaultService,
-    existed: bool,
-    snapshot: VaultFile,
-    committed: bool,
-}
-
-impl VaultSnapshotGuard {
-    fn capture(vault: &EncryptedVaultService) -> Self {
-        let existed = vault.paths().vault_file().is_file();
-        let snapshot = vault.read_vault().unwrap_or(VaultFile {
-            schema_version: 1,
-            entries: Vec::new(),
-        });
-        Self {
-            vault: vault.clone(),
-            existed,
-            snapshot,
-            committed: false,
-        }
-    }
-
-    fn commit(&mut self) {
-        self.committed = true;
-    }
-}
-
-impl Drop for VaultSnapshotGuard {
-    fn drop(&mut self) {
-        if self.committed {
-            return;
-        }
-        if self.existed {
-            let _ = self.vault.write_vault(&self.snapshot);
-        } else if self.vault.paths().vault_file().is_file() {
-            let _ = fs::remove_file(self.vault.paths().vault_file());
-        }
-    }
 }
 
 fn ensure_group_exists(service: &RemoteHostService, group_id: Option<&str>) -> AppResult<()> {
@@ -524,6 +508,7 @@ fn normalize_ssh_credential(
 
 fn persist_primary_credential(
     vault: &EncryptedVaultService,
+    unit: &mut VaultUnitOfWork,
     host_id: &str,
     input: PrimaryCredentialInput<'_>,
 ) -> AppResult<PersistedPrimaryCredential> {
@@ -551,12 +536,15 @@ fn persist_primary_credential(
                 reusable_secret_ref_for_kind(secret_ref.or(existing_secret_ref), secret_kind);
             let persisted_secret_ref = persist_secret_ref(
                 vault,
-                host_id,
-                secret_kind,
-                "target",
-                "password",
-                normalized_secret,
-                reusable_secret_ref,
+                unit,
+                SecretPersistenceInput {
+                    host_id,
+                    kind: secret_kind,
+                    scope: "target".to_owned(),
+                    material: "password",
+                    plaintext: normalized_secret,
+                    existing_secret_ref: reusable_secret_ref,
+                },
             )?
             .ok_or_else(|| AppError::InvalidInput(password_required_message(secret_kind)))?;
             Ok(PersistedPrimaryCredential {
@@ -581,12 +569,15 @@ fn persist_primary_credential(
             }
             let persisted_secret_ref = persist_secret_ref(
                 vault,
-                host_id,
-                secret_kind,
-                "target",
-                "private-key",
-                normalized_secret,
-                secret_ref.or(existing_inline_secret_ref),
+                unit,
+                SecretPersistenceInput {
+                    host_id,
+                    kind: secret_kind,
+                    scope: "target".to_owned(),
+                    material: "private-key",
+                    plaintext: normalized_secret,
+                    existing_secret_ref: secret_ref.or(existing_inline_secret_ref),
+                },
             )?
             .ok_or_else(|| {
                 AppError::InvalidInput("密钥认证需要填写私钥路径或直接粘贴私钥内容".to_owned())
@@ -609,24 +600,9 @@ fn primary_credential_secret_kind(host: &RemoteHost) -> &'static str {
     }
 }
 
-fn password_required_message(secret_kind: &str) -> String {
-    if secret_kind == "rdp-host" {
-        "RDP 密码认证需要填写明文密码".to_owned()
-    } else {
-        "密码认证需要填写明文 SSH 密码".to_owned()
-    }
-}
-
-fn reusable_secret_ref_for_kind(secret_ref: Option<String>, expected_kind: &str) -> Option<String> {
-    let secret_ref = secret_ref?;
-    match parse_vault_secret_ref(&secret_ref) {
-        Ok(parsed) if parsed.kind == expected_kind => Some(secret_ref),
-        Ok(_) | Err(_) => None,
-    }
-}
-
 fn persist_jump_host_credential(
     vault: &EncryptedVaultService,
+    unit: &mut VaultUnitOfWork,
     host_id: &str,
     index: usize,
     mut jump_host: SshJumpHostOptions,
@@ -650,12 +626,15 @@ fn persist_jump_host_credential(
             jump_host.secret_ref = Some(
                 persist_secret_ref(
                     vault,
-                    host_id,
-                    "jump-host",
-                    &format!("jump-{index}"),
-                    "password",
-                    incoming_secret,
-                    jump_host.secret_ref.or(existing_secret_ref),
+                    unit,
+                    SecretPersistenceInput {
+                        host_id,
+                        kind: "jump-host",
+                        scope: format!("jump-{index}"),
+                        material: "password",
+                        plaintext: incoming_secret,
+                        existing_secret_ref: jump_host.secret_ref.or(existing_secret_ref),
+                    },
                 )?
                 .ok_or_else(|| {
                     AppError::InvalidInput("跳板机密码认证需要填写明文 SSH 密码".to_owned())
@@ -679,12 +658,15 @@ fn persist_jump_host_credential(
             jump_host.secret_ref = Some(
                 persist_secret_ref(
                     vault,
-                    host_id,
-                    "jump-host",
-                    &format!("jump-{index}"),
-                    "private-key",
-                    incoming_secret,
-                    jump_host.secret_ref.or(existing_inline_secret_ref),
+                    unit,
+                    SecretPersistenceInput {
+                        host_id,
+                        kind: "jump-host",
+                        scope: format!("jump-{index}"),
+                        material: "private-key",
+                        plaintext: incoming_secret,
+                        existing_secret_ref: jump_host.secret_ref.or(existing_inline_secret_ref),
+                    },
                 )?
                 .ok_or_else(|| {
                     AppError::InvalidInput(
@@ -698,72 +680,6 @@ fn persist_jump_host_credential(
             Ok(PersistedJumpHostCredential { jump_host })
         }
     }
-}
-
-fn persist_secret_ref(
-    vault: &EncryptedVaultService,
-    host_id: &str,
-    kind: &str,
-    scope: &str,
-    material: &str,
-    plaintext: Option<String>,
-    existing_secret_ref: Option<String>,
-) -> AppResult<Option<String>> {
-    let existing_secret_ref = existing_secret_ref.filter(|value| !value.trim().is_empty());
-    let secret_ref = existing_secret_ref
-        .clone()
-        .unwrap_or_else(|| build_vault_secret_ref(kind, host_id, scope, material));
-    let Some(plaintext) = normalize_optional_text(plaintext) else {
-        return Ok(existing_secret_ref);
-    };
-    vault.upsert_secret(
-        &secret_ref,
-        kind,
-        secret_ref.as_bytes(),
-        plaintext.as_bytes(),
-    )?;
-    Ok(Some(secret_ref))
-}
-
-fn normalize_host(value: String) -> AppResult<String> {
-    let host = normalize_required_text("主机地址", value)?;
-    if host.chars().any(char::is_whitespace) {
-        return Err(AppError::InvalidInput(
-            "主机地址不能包含空白字符".to_owned(),
-        ));
-    }
-    Ok(host)
-}
-
-fn normalize_port(port: u16) -> AppResult<u16> {
-    if port == 0 {
-        return Err(AppError::InvalidInput("SSH 端口必须大于 0".to_owned()));
-    }
-    Ok(port)
-}
-
-fn normalize_tags(tags: Vec<String>) -> Vec<String> {
-    let mut seen = HashSet::new();
-    let mut normalized = Vec::new();
-
-    for tag in tags {
-        let tag = tag.trim().to_owned();
-        if tag.is_empty() || !seen.insert(tag.to_lowercase()) {
-            continue;
-        }
-        normalized.push(tag);
-    }
-
-    normalized
-}
-
-fn allows_empty_username(tags: &[String]) -> bool {
-    has_tag(tags, "telnet") || has_tag(tags, "serial")
-}
-
-fn has_tag(tags: &[String], expected: &str) -> bool {
-    tags.iter()
-        .any(|tag| tag.trim().eq_ignore_ascii_case(expected))
 }
 
 fn config_file_error(error: FileStoreError) -> AppError {
