@@ -19,7 +19,7 @@ import {
 import {
   KERMINAL_TEXT_EDIT_COMMAND_EVENT,
   type KerminalTextEditCommandEventDetail,
-} from "../../app/appKeybindingPolicy";
+} from "../../contracts/textEditCommands";
 import { Button } from "../../components/ui/button";
 import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
