@@ -19,7 +19,7 @@ import { createTerminalInputModelState } from "./terminalInputModel";
 import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeScheduler";
 import { createTerminalRemoteSuggestionPrewarm } from "./terminalRemoteSuggestionPrewarm";
 import { createTerminalOutputHistoryBuffer } from "./terminalOutputHistoryBuffer";
-import { terminalRendererFallbackReasonFromState } from "./terminalGpuRenderRecoveryRuntime";
+import { terminalRendererFallbackReasonFromState } from "./terminalRendererPolicy";
 import { createTerminalRendererController } from "./terminalRenderer";
 import { resolveRuntimeTerminalRendererFeatureGates } from "./terminalRendererFeatureGates";
 import {

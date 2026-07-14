@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveContextLossRetryDelay,
   resolveTerminalRendererPolicy,
+  terminalRendererFallbackReasonFromState,
   type TerminalRendererPanePolicyInput,
 } from "../../../../src/features/terminal/terminalRendererPolicy";
 
@@ -273,5 +274,19 @@ describe("terminalRendererPolicy", () => {
     expect(resolveContextLossRetryDelay(0)).toBe(250);
     expect(resolveContextLossRetryDelay(3)).toBe(30_000);
     expect(resolveContextLossRetryDelay(99)).toBeUndefined();
+  });
+
+  it("accepts only renderer failures that the runtime can record", () => {
+    expect(terminalRendererFallbackReasonFromState("context-lost")).toBe(
+      "context-lost",
+    );
+    expect(terminalRendererFallbackReasonFromState("atlas-clear-failed")).toBe(
+      "atlas-clear-failed",
+    );
+    expect(terminalRendererFallbackReasonFromState("load-failed")).toBe(
+      "load-failed",
+    );
+    expect(terminalRendererFallbackReasonFromState("software-gpu")).toBeUndefined();
+    expect(terminalRendererFallbackReasonFromState(null)).toBeUndefined();
   });
 });

@@ -26,9 +26,6 @@ const testFiles = [
   "tests/frontend/features/terminal/terminalRendererPolicy.test.ts",
   "tests/frontend/features/terminal/terminalRendererPlatform.test.ts",
   "tests/frontend/features/terminal/terminalRendererRegistry.test.ts",
-  "tests/frontend/features/terminal/terminalGpuRenderRecovery.test.ts",
-  "tests/frontend/features/terminal/terminalGpuRenderRecoveryPolicy.test.ts",
-  "tests/frontend/features/terminal/terminalGpuRenderRecoveryRuntime.test.ts",
   "tests/frontend/features/terminal/terminalRendererSurfaceCoordinator.test.ts",
 ];
 

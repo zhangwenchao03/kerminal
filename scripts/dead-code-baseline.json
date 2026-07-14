@@ -1199,33 +1199,6 @@
       "targetTask": "TASK-022/TASK-072"
     },
     {
-      "file": "src/features/terminal/terminalGpuRenderRecovery.ts",
-      "name": "TerminalGpuRenderRecoveryEvent",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/terminal/terminalGpuRenderRecoveryPolicy.ts",
-      "name": "resolveTerminalGpuRenderRecoveryConfig",
-      "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/terminal/terminalGpuRenderRecoveryPolicy.ts",
-      "name": "TERMINAL_GPU_RENDER_RECOVERY_DEFAULT_CONFIG",
-      "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
       "file": "src/features/terminal/terminalInputModel.ts",
       "name": "terminalInputSuffix",
       "type": "exports",
