@@ -6,10 +6,14 @@ import {
 } from "../../../lib/fileDialogApi";
 import {
   classifySftpLocalPaths,
+  enqueueSftpClipboardDownload,
   type SftpEntry,
   type SftpTransferConflictPolicy,
+  type SftpTransferKind,
+  type SftpTransferSummary,
 } from "../../../lib/sftpApi";
 import { fileNameFromPath } from "../sftpFileUtils";
+import { mergeTransferSnapshot } from "../sftpTransferModel";
 import { isDownloadableFileEntry } from "./sftpEntryModel";
 import { errorMessage } from "./sftpPathModel";
 import {
@@ -20,11 +24,21 @@ import {
   buildDownloadTransferPlan,
   buildFileUploadTransferPlan,
   buildLocalPathBatchUploadPlan,
+  buildSftpArchiveDownloadPlan,
+  buildSftpArchiveDownloadPreparation,
+  buildSftpArchiveUploadPlan,
+  buildSftpClipboardDownloadPlan,
   type SftpTransferActionItem,
 } from "./sftpTransferActionPlan";
 import { runSftpTransferBatchPlan } from "./sftpTransferActionRunner";
 import type { SftpTransferConflictPreflightInput } from "./sftpTransferConflictPreflight";
-import { visiblePostTransferStatus } from "./useSftpTransferActions.helpers";
+import { sanitizeSftpTransferSummary } from "../useSftpTransferQueueSync";
+import { withSftpTransferViewScope } from "./sftpTransferScopeModel";
+import {
+  runSftpArchiveDownloadPlanWithPreflight,
+  runSftpArchiveUploadPlanWithPreflight,
+  visiblePostTransferStatus,
+} from "./useSftpTransferActions.helpers";
 import type {
   SftpContextMenuState,
   SftpDialogAction,
@@ -46,11 +60,14 @@ interface UseSftpLocalTransferCommandsArgs {
   fileTarget: SftpFileTarget | null;
   runTransferTask: RunTransferTask;
   runWithConflictPreflight: RunWithConflictPreflight;
+  refreshTransfers: () => Promise<void>;
   setContextMenu: Dispatch<SetStateAction<SftpContextMenuState | null>>;
   setDialogAction: Dispatch<SetStateAction<SftpDialogAction | null>>;
   setDialogStatus: Dispatch<SetStateAction<SftpStatus | null>>;
   setOperationStatus: Dispatch<SetStateAction<SftpStatus | null>>;
+  setTransfers: Dispatch<SetStateAction<SftpTransferSummary[]>>;
   transferableSelectedEntries: SftpEntry[];
+  viewScope?: string | null;
 }
 
 /**
@@ -62,11 +79,14 @@ export function useSftpLocalTransferCommands({
   fileTarget,
   runTransferTask,
   runWithConflictPreflight,
+  refreshTransfers,
   setContextMenu,
   setDialogAction,
   setDialogStatus,
   setOperationStatus,
+  setTransfers,
   transferableSelectedEntries,
+  viewScope,
 }: UseSftpLocalTransferCommandsArgs) {
   const clearTransientState = useCallback(() => {
     setContextMenu(null);
@@ -259,6 +279,87 @@ export function useSftpLocalTransferCommands({
     }
   };
 
+  const downloadEntryAsArchive = async (entry: SftpEntry) => {
+    if (!fileTarget || fileTarget.kind !== "ssh") {
+      return;
+    }
+
+    const preparation = buildSftpArchiveDownloadPreparation(entry);
+    if (preparation.kind === "unsupported") {
+      setOperationStatus(preparation.status);
+      return;
+    }
+
+    clearTransientState();
+    let errorMessagePrefix = "下载为 ZIP 失败";
+    try {
+      const targetLocalPath = await selectSaveFile(
+        preparation.defaultLocalFileName,
+      );
+      if (!targetLocalPath) {
+        return;
+      }
+      const buildPlan = (conflictPolicy?: SftpTransferConflictPolicy) =>
+        buildSftpArchiveDownloadPlan({
+          conflictPolicy,
+          entry,
+          hostId: fileTarget.hostId,
+          targetLocalPath,
+        });
+      const plan = buildPlan();
+      if (plan.kind === "unsupported") {
+        setOperationStatus(plan.status);
+        return;
+      }
+      errorMessagePrefix = plan.errorMessagePrefix;
+      await runSftpArchiveDownloadPlanWithPreflight({
+        buildPlan,
+        refreshTransfers,
+        runWithConflictPreflight,
+        setOperationStatus,
+        setTransfers,
+        viewScope,
+      });
+    } catch (nextError) {
+      setOperationStatus({
+        kind: "error",
+        message: `${errorMessagePrefix}：${errorMessage(nextError)}`,
+      });
+    }
+  };
+
+  const downloadEntryToLocalClipboard = async (entry: SftpEntry) => {
+    if (!fileTarget || fileTarget.kind !== "ssh") {
+      return;
+    }
+
+    const plan = buildSftpClipboardDownloadPlan({
+      entry,
+      hostId: fileTarget.hostId,
+    });
+    if (plan.kind === "unsupported") {
+      setOperationStatus(plan.status);
+      return;
+    }
+
+    clearTransientState();
+    try {
+      const summary = await enqueueSftpClipboardDownload(
+        withSftpTransferViewScope(plan.request, viewScope),
+      );
+      setTransfers((current) =>
+        mergeTransferSnapshot(current, sanitizeSftpTransferSummary(summary)),
+      );
+      setOperationStatus(null);
+      void refreshTransfers();
+    } catch (nextError) {
+      setOperationStatus({
+        kind: "error",
+        message: `${plan.errorMessagePrefix}：${errorMessage(nextError)}`,
+      });
+    }
+  };
+
   const downloadEntriesToLocalTarget = async (
     entriesToDownload: SftpEntry[],
     emptyMessage: string,
@@ -319,12 +420,59 @@ export function useSftpLocalTransferCommands({
     );
   };
 
+  const uploadLocalArchive = async (
+    kind: SftpTransferKind,
+    destinationRemotePath = currentPath,
+  ) => {
+    if (!fileTarget || fileTarget.kind !== "ssh") {
+      return;
+    }
+
+    clearTransientState();
+    let errorMessagePrefix = "上传为 ZIP 失败";
+    try {
+      const sourceLocalPath =
+        kind === "directory"
+          ? await selectLocalDirectory()
+          : await selectLocalFile();
+      if (!sourceLocalPath) {
+        return;
+      }
+      const buildPlan = (conflictPolicy?: SftpTransferConflictPolicy) =>
+        buildSftpArchiveUploadPlan({
+          conflictPolicy,
+          destinationRemotePath,
+          hostId: fileTarget.hostId,
+          kind,
+          sourceLocalPath,
+        });
+      const plan = buildPlan();
+      errorMessagePrefix = plan.errorMessagePrefix;
+      await runSftpArchiveUploadPlanWithPreflight({
+        buildPlan,
+        refreshTransfers,
+        runWithConflictPreflight,
+        setOperationStatus,
+        setTransfers,
+        viewScope,
+      });
+    } catch (nextError) {
+      setOperationStatus({
+        kind: "error",
+        message: `${errorMessagePrefix}：${errorMessage(nextError)}`,
+      });
+    }
+  };
+
   return {
     downloadEntriesToLocalTarget,
+    downloadEntryAsArchive,
+    downloadEntryToLocalClipboard,
     downloadEntry,
     downloadSelectedEntries,
     uploadDroppedLocalPaths,
     uploadLocalDirectory,
+    uploadLocalArchive,
     uploadLocalFile,
   };
 }
