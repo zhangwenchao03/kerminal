@@ -1937,25 +1937,7 @@
       "targetTask": "TASK-022/TASK-072"
     },
     {
-      "file": "src/features/terminal/XtermPane.search.ts",
-      "name": "XtermPaneSearchResults",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
       "file": "src/features/terminal/XtermPane.tsx",
-      "name": "XtermPaneSessionFinishedEvent",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/terminal/XtermPane.types.ts",
       "name": "XtermPaneSessionFinishedEvent",
       "type": "types",
       "count": 1,

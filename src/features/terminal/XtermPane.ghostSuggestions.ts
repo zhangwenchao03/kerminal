@@ -107,7 +107,7 @@ export function createXtermPaneGhostSuggestions({
   assistEnabled: boolean;
   canScheduleSuggestion?: () => boolean;
   container: HTMLDivElement;
-  currentCwdRef: MutableRefObject<string | null>;
+  currentCwdRef: MutableRefObject<string | undefined>;
   cwd?: string;
   ghostSuggestionRef: MutableRefObject<TerminalGhostSuggestion | null>;
   inputBufferRef: MutableRefObject<string>;
