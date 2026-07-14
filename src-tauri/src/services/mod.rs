@@ -17,6 +17,7 @@ pub mod docker_host_service;
 pub mod encrypted_vault_service;
 pub mod external_agent_workspace;
 pub mod external_launch;
+pub mod local_file_service;
 pub mod mcp_streamable_http_server;
 pub mod mcp_tool_catalog_service;
 pub mod mcp_tool_executor_service;
