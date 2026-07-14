@@ -83,6 +83,13 @@ pub fn run() {
             if !app.manage(app_state) {
                 return Err("AppState was already managed during Kerminal setup".into());
             }
+            if commands::connection::cleanup_stale_rdp_artifacts().is_err() {
+                // 清扫失败不阻断主窗口；日志只记录固定诊断，避免暴露本机临时路径。
+                tauri_plugin_log::log::warn!(
+                    target: "desktop.lifecycle",
+                    "failed to clean stale managed RDP artifacts"
+                );
+            }
             start_application_runtime(app)?;
             start_external_deep_link_handler(app);
             let cold_start_args = std::env::args().collect::<Vec<_>>();
@@ -132,6 +139,13 @@ pub fn run() {
                 tauri_plugin_log::log::error!(
                     target: "desktop.lifecycle",
                     "application runtime shutdown failed: {error}"
+                );
+            }
+            if commands::connection::process::shutdown_detached_clients().is_err() {
+                // 子进程回收错误可能包含平台路径，退出日志保持脱敏固定文案。
+                tauri_plugin_log::log::error!(
+                    target: "desktop.lifecycle",
+                    "managed RDP client shutdown failed"
                 );
             }
         }
