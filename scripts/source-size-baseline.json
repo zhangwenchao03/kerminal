@@ -271,13 +271,6 @@
       "targetTask": "TASK-073"
     },
     {
-      "file": "src/app/KerminalShell.tsx",
-      "lines": 814,
-      "deadline": "before TASK-080",
-      "owner": "workspace-composition",
-      "targetTask": "TASK-030/TASK-031"
-    },
-    {
       "file": "src/app/useKerminalShellRemoteActions.ts",
       "lines": 823,
       "deadline": "before TASK-080",
