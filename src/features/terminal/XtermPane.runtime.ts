@@ -47,11 +47,11 @@ import { createXtermPaneActivityRuntime } from "./XtermPane.activityRuntime";
 import { registerXtermPaneRuntimeEvents } from "./XtermPane.runtime.events";
 import { createXtermPaneArtifactRuntime } from "./XtermPane.artifacts";
 import { createInitialRemoteOutputGate } from "./terminalInitialRemoteOutputGate";
+import type { InstallXtermPaneRuntimeParams } from "./XtermPane.runtime.types";
 const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000,
   TERMINAL_SESSION_STATUS_POLL_MS = 2_000;
-const TERMINAL_RENDERER_FEATURE_GATES =
-  resolveRuntimeTerminalRendererFeatureGates();
-export function installXtermPaneRuntime(params: any) {
+const TERMINAL_RENDERER_FEATURE_GATES = resolveRuntimeTerminalRendererFeatureGates();
+export function installXtermPaneRuntime(params: InstallXtermPaneRuntimeParams) {
   const {
     activityRuntimeRef,
     args,
@@ -199,7 +199,7 @@ export function installXtermPaneRuntime(params: any) {
     terminal,
     terminalAppearanceRef,
   });
-  suggestionMenuIntentRef.current = (intent: any) => (sessionIdRef.current ? ghostSuggestions.handleMenuIntent(intent, sessionIdRef.current) : false);
+  suggestionMenuIntentRef.current = (intent) => (sessionIdRef.current ? ghostSuggestions.handleMenuIntent(intent, sessionIdRef.current) : false);
   const shouldPreserveCommandBlockForOriginEraseBelow = () => {
     if (!assistEnabled) {
       return false;
