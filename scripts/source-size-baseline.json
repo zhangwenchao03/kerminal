@@ -159,13 +159,6 @@
       "targetTask": "TASK-071"
     },
     {
-      "file": "src-tauri/tests/external_launch_intake.rs",
-      "lines": 979,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
       "file": "src-tauri/tests/external_launch_materializer.rs",
       "lines": 832,
       "deadline": "before TASK-080",
