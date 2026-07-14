@@ -17,6 +17,22 @@ export type TerminalRendererFallbackReason =
   | "retry-exhausted"
   | "software-gpu";
 
+/** 将 renderer 状态中的未知失败值收窄为可登记的稳定原因。 */
+export function terminalRendererFallbackReasonFromState(
+  value: unknown,
+): TerminalRendererFallbackReason | undefined {
+  switch (value) {
+    case "atlas-clear-failed":
+    case "context-lost":
+    case "import-failed":
+    case "load-failed":
+    case "recovery-storm":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
 export interface TerminalRendererPolicyConfig {
   autoFailureCooldownMs: number;
   contextLossRetryDelaysMs: readonly number[];

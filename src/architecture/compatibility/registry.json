@@ -86,7 +86,7 @@
       "lifecycle": "supported-mode",
       "owner": "terminal-renderer",
       "allowedReasons": ["atlas-clear-failed", "context-lost", "recovery-storm", "software-gpu"],
-      "implementationRefs": ["src/features/terminal/terminalGpuRenderRecoveryPolicy.ts"]
+      "implementationRefs": ["src/features/terminal/terminalRendererPolicy.ts"]
     },
     {
       "id": "terminal.xterm-webview-patch",
