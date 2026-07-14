@@ -83,51 +83,6 @@
       "targetTask": "TASK-022/TASK-072"
     },
     {
-      "file": "src/features/command-palette/index.ts",
-      "name": "formatCommandPaletteEffect",
-      "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/command-palette/index.ts",
-      "name": "CommandPaletteActionItem",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/command-palette/index.ts",
-      "name": "CommandPaletteActionPresentation",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/command-palette/index.ts",
-      "name": "CommandPaletteExecutionFeedback",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/command-palette/index.ts",
-      "name": "CommandPaletteProps",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
       "file": "src/features/machine-sidebar/host-containers/composeProjectModel.ts",
       "name": "readContainerComposeConfigPathResolution",
       "type": "exports",
