@@ -46,12 +46,9 @@ import { registerTerminalRuntimeDiagnosticsPane } from "./terminalRuntimeDiagnos
 import { createXtermPaneActivityRuntime } from "./XtermPane.activityRuntime";
 import { registerXtermPaneRuntimeEvents } from "./XtermPane.runtime.events";
 import { createXtermPaneArtifactRuntime } from "./XtermPane.artifacts";
+import { createInitialRemoteOutputGate } from "./terminalInitialRemoteOutputGate";
 const ORIGIN_ERASE_BELOW_COMMAND_BLOCK_GRACE_MS = 1_000,
-  INITIAL_REMOTE_OUTPUT_FAST_BATCH_LIMIT = 8,
-  INITIAL_REMOTE_OUTPUT_FAST_BYTE_LIMIT = 128 * 1024,
-  INITIAL_REMOTE_OUTPUT_FAST_WINDOW_MS = 2_000,
   TERMINAL_SESSION_STATUS_POLL_MS = 2_000;
-const TERMINAL_OUTPUT_UTF8_ENCODER = new TextEncoder();
 const TERMINAL_RENDERER_FEATURE_GATES =
   resolveRuntimeTerminalRendererFeatureGates();
 export function installXtermPaneRuntime(params: any) {
@@ -635,8 +632,7 @@ export function installXtermPaneRuntime(params: any) {
     transientStartupNoticeVisible = reason === "initial" && startupNotice.trim().length > 0 && (transientStartupMessage || hasRemoteTerminalTarget());
     outputWriter.writeNow(startupNotice);
     const sessionStartedAtMs = Date.now();
-    let initialRemoteFastBatches = 0;
-    let initialRemoteFastBytes = 0;
+    const initialRemoteOutputGate = createInitialRemoteOutputGate(sessionStartedAtMs);
 
     const handleOutput = (event: TerminalOutputEvent) => {
       if (disposed || sessionRun !== currentRun) {
@@ -675,21 +671,10 @@ export function installXtermPaneRuntime(params: any) {
           runTerminalOutputInstrumentationStep(terminalOutputInstrumentation, "commandBlock", event.data.length, () => commandBlockRuntime.appendShellIntegrationCommandOutput(event.data));
         }
         runTerminalOutputInstrumentationStep(terminalOutputInstrumentation, "writer", event.data.length, () => {
-          const initialRemoteCandidate =
+          if (
             hasRemoteTerminalTarget() &&
-            Date.now() - sessionStartedAtMs <=
-              INITIAL_REMOTE_OUTPUT_FAST_WINDOW_MS &&
-            initialRemoteFastBatches < INITIAL_REMOTE_OUTPUT_FAST_BATCH_LIMIT;
-          const eventBytes = initialRemoteCandidate
-            ? TERMINAL_OUTPUT_UTF8_ENCODER.encode(event.data).byteLength
-            : 0;
-          const initialRemoteOutput =
-            initialRemoteCandidate &&
-            initialRemoteFastBytes + eventBytes <=
-              INITIAL_REMOTE_OUTPUT_FAST_BYTE_LIMIT;
-          if (initialRemoteOutput) {
-            initialRemoteFastBatches += 1;
-            initialRemoteFastBytes += eventBytes;
+            initialRemoteOutputGate.shouldWriteNow(event.data)
+          ) {
             outputWriter.writeNow(event.data);
             return;
           }
