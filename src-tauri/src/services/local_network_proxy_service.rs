@@ -6,7 +6,7 @@ use std::{
     collections::HashMap,
     net::{SocketAddr, ToSocketAddrs},
     sync::{Arc, Mutex},
-    thread,
+    thread::{self, JoinHandle},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -110,8 +110,14 @@ struct LocalProxyEntry {
     port: u16,
     session_id: String,
     tag: Option<String>,
-    shutdown: Option<oneshot::Sender<()>>,
+    runtime: Option<LocalProxyEntryRuntime>,
     stats: Arc<Mutex<LocalProxyEntryStats>>,
+}
+
+#[derive(Debug)]
+struct LocalProxyEntryRuntime {
+    shutdown: Option<oneshot::Sender<()>>,
+    worker: Option<JoinHandle<()>>,
 }
 
 #[derive(Debug)]
@@ -166,7 +172,8 @@ impl LocalNetworkProxyService {
         let entry_id = Uuid::new_v4().to_string();
         let stats = Arc::new(Mutex::new(LocalProxyEntryStats::default()));
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
-        spawn_entry_listener(entry_id.clone(), listener, shutdown_rx, Arc::clone(&stats));
+        let worker =
+            spawn_entry_listener(entry_id.clone(), listener, shutdown_rx, Arc::clone(&stats))?;
 
         let entry = LocalProxyEntry {
             bind_host: bind_host.clone(),
@@ -175,7 +182,10 @@ impl LocalNetworkProxyService {
             port: local_addr.port(),
             session_id: request.session_id,
             tag: request.tag,
-            shutdown: Some(shutdown_tx),
+            runtime: Some(LocalProxyEntryRuntime {
+                shutdown: Some(shutdown_tx),
+                worker: Some(worker),
+            }),
             stats,
         };
         let summary = entry.to_summary(&self.service_id, &entry_id)?;
@@ -188,8 +198,8 @@ impl LocalNetworkProxyService {
         let Some(mut entry) = self.entries()?.remove(entry_id) else {
             return Ok(false);
         };
-        if let Some(shutdown) = entry.shutdown.take() {
-            let _ = shutdown.send(());
+        if let Some(runtime) = entry.runtime.take() {
+            runtime.shutdown_and_join();
         }
         Ok(true)
     }
@@ -199,8 +209,8 @@ impl LocalNetworkProxyService {
         let mut entries = self.entries()?;
         let had_entries = !entries.is_empty();
         for (_, mut entry) in entries.drain() {
-            if let Some(shutdown) = entry.shutdown.take() {
-                let _ = shutdown.send(());
+            if let Some(runtime) = entry.runtime.take() {
+                runtime.shutdown_and_join();
             }
         }
         Ok(had_entries)
@@ -259,6 +269,40 @@ impl LocalNetworkProxyService {
     }
 }
 
+impl Drop for LocalNetworkProxyService {
+    fn drop(&mut self) {
+        let entries = self
+            .entries
+            .get_mut()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        for (_, mut entry) in entries.drain() {
+            if let Some(runtime) = entry.runtime.take() {
+                runtime.shutdown_and_join();
+            }
+        }
+    }
+}
+
+impl Drop for LocalProxyEntry {
+    fn drop(&mut self) {
+        if let Some(runtime) = self.runtime.take() {
+            runtime.shutdown_and_join();
+        }
+    }
+}
+
+impl LocalProxyEntryRuntime {
+    /// 关闭监听循环并等待线程退出，保证端口在返回前已经释放。
+    fn shutdown_and_join(mut self) {
+        if let Some(shutdown) = self.shutdown.take() {
+            let _ = shutdown.send(());
+        }
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
+
 impl LocalProxyEntry {
     fn to_summary(&self, service_id: &str, entry_id: &str) -> AppResult<LocalProxyEntrySummary> {
         let stats = self
@@ -292,46 +336,49 @@ fn spawn_entry_listener(
     listener: TcpListener,
     mut shutdown: oneshot::Receiver<()>,
     stats: Arc<Mutex<LocalProxyEntryStats>>,
-) {
+) -> AppResult<JoinHandle<()>> {
     let thread_name = format!("kerminal-local-proxy-{entry_id}");
-    let _ = thread::Builder::new().name(thread_name).spawn(move || {
-        let runtime = match tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-        {
-            Ok(runtime) => runtime,
-            Err(error) => {
-                set_last_error(&stats, format!("无法启动本机代理运行时: {error}"));
-                return;
-            }
-        };
+    thread::Builder::new()
+        .name(thread_name)
+        .spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    set_last_error(&stats, format!("无法启动本机代理运行时: {error}"));
+                    return;
+                }
+            };
 
-        runtime.block_on(async move {
-            loop {
-                tokio::select! {
-                    _ = &mut shutdown => {
-                        break;
-                    }
-                    accepted = listener.accept() => {
-                        match accepted {
-                            Ok((stream, _peer)) => {
-                                increment_accepted(&stats);
-                                let stats = Arc::clone(&stats);
-                                tokio::spawn(async move {
-                                    handle_proxy_connection(stream, Arc::clone(&stats)).await;
-                                    decrement_active(&stats);
-                                });
-                            }
-                            Err(error) => {
-                                set_last_error(&stats, format!("代理入口 {entry_id} 接受连接失败: {error}"));
-                                break;
+            runtime.block_on(async move {
+                loop {
+                    tokio::select! {
+                        _ = &mut shutdown => {
+                            break;
+                        }
+                        accepted = listener.accept() => {
+                            match accepted {
+                                Ok((stream, _peer)) => {
+                                    increment_accepted(&stats);
+                                    let stats = Arc::clone(&stats);
+                                    tokio::spawn(async move {
+                                        handle_proxy_connection(stream, Arc::clone(&stats)).await;
+                                        decrement_active(&stats);
+                                    });
+                                }
+                                Err(error) => {
+                                    set_last_error(&stats, format!("代理入口 {entry_id} 接受连接失败: {error}"));
+                                    break;
+                                }
                             }
                         }
                     }
                 }
-            }
-        });
-    });
+            });
+        })
+        .map_err(|error| AppError::PortForward(format!("无法启动本机代理监听线程: {error}")))
 }
 
 async fn handle_proxy_connection(mut client: TcpStream, stats: Arc<Mutex<LocalProxyEntryStats>>) {

@@ -168,6 +168,20 @@ async fn release_entry_stops_listener_and_releases_port() {
 }
 
 #[tokio::test]
+async fn dropping_service_joins_listener_and_releases_port() {
+    let (bind_host, port) = {
+        let service = LocalNetworkProxyService::new();
+        let entry = service
+            .acquire_entry(entry_request("host-a", "session-a"))
+            .expect("start proxy entry");
+        (entry.bind_host, entry.port)
+    };
+
+    std::net::TcpListener::bind((bind_host.as_str(), port))
+        .expect("service drop must synchronously release listener port");
+}
+
+#[tokio::test]
 async fn invalid_bind_and_target_fail_with_friendly_errors() {
     let service = LocalNetworkProxyService::new();
     let invalid_bind_error = service

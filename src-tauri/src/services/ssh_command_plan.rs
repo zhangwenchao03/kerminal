@@ -123,6 +123,38 @@ pub fn cleanup_paths(paths: &[PathBuf]) {
     }
 }
 
+/// 临时认证文件集合的 RAII owner。
+///
+/// 调用方应在子进程完成后显式 `cleanup_now`；异常返回或 owner 被丢弃时仍会兜底删除。
+#[derive(Debug, Default)]
+pub struct CleanupPathOwner {
+    paths: Vec<PathBuf>,
+}
+
+impl CleanupPathOwner {
+    /// 接管已经物化的临时文件路径。
+    pub fn new(paths: Vec<PathBuf>) -> Self {
+        Self { paths }
+    }
+
+    /// 返回当前受管路径，仅用于既有诊断和测试契约。
+    pub fn paths(&self) -> &[PathBuf] {
+        &self.paths
+    }
+
+    /// 删除全部临时文件并清空 owner，允许多次调用。
+    pub fn cleanup_now(&mut self) {
+        cleanup_paths(&self.paths);
+        self.paths.clear();
+    }
+}
+
+impl Drop for CleanupPathOwner {
+    fn drop(&mut self) {
+        self.cleanup_now();
+    }
+}
+
 fn resolve_key_auth_plan(
     host: &RemoteHost,
     paths: Option<&KerminalPaths>,

@@ -5,23 +5,20 @@
 use std::{
     collections::{HashMap, HashSet},
     io::{Read, Write},
-    path::PathBuf,
-    process::{Child, Stdio},
+    process::Stdio,
     sync::Mutex,
     thread,
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use portable_pty::{native_pty_system, Child as PtyChild, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use uuid::Uuid;
 
 use crate::{
     error::{AppError, AppResult},
     models::{
         port_forward::{
-            PortForwardCreateRequest, PortForwardKind, PortForwardProxyProtocol,
-            PortForwardPurpose, PortForwardRuntimeDiagnostics, PortForwardRuntimeMode,
-            PortForwardStatus, PortForwardSummary,
+            PortForwardCreateRequest, PortForwardKind, PortForwardStatus, PortForwardSummary,
         },
         terminal::TerminalSecretInputPlan,
     },
@@ -44,9 +41,9 @@ use crate::{
                 runtime_host_key_policy_for_host_id, SshRuntimeCapability,
             },
             session_key::ssh_session_key_for_route,
-            ManagedSshForwardTunnel, ManagedSshSessionManager, SshRuntimeConnectRequest,
-            SshRuntimeDynamicForwardRequest, SshRuntimeLocalForwardRequest,
-            SshRuntimeRemoteDynamicForwardRequest, SshRuntimeRemoteForwardRequest,
+            ManagedSshSessionManager, SshRuntimeConnectRequest, SshRuntimeDynamicForwardRequest,
+            SshRuntimeLocalForwardRequest, SshRuntimeRemoteDynamicForwardRequest,
+            SshRuntimeRemoteForwardRequest,
         },
     },
     storage::RuntimeFileStore,
@@ -54,14 +51,19 @@ use crate::{
 
 use self::{
     plan::{build_forward_plan, build_managed_forward_plan, ForwardCommandPlan},
+    runtime_process::{ManagedForwardProcess, PortForwardSession, PtyForwardProcess},
     secret_input::ForwardSecretInputResponder,
+    summary::{
+        is_managed_forward_candidate, is_remote_dynamic_forward_request,
+        mark_summary_runtime_cleanup, restored_summary, runtime_diagnostics_for_process,
+        stopped_summary, tunnel_kind_for_kind,
+    },
 };
 
 pub mod plan;
+mod runtime_process;
 mod secret_input;
-
-type PtyChildHandle = Box<dyn PtyChild + Send + Sync>;
-type PtyMasterHandle = Box<dyn MasterPty + Send>;
+mod summary;
 const LEGACY_FALLBACK_PORT_FORWARD_OPENSSH: &str = "managed-port-forward-openssh-fallback";
 
 /// SSH 端口转发业务入口。
@@ -71,122 +73,6 @@ pub struct PortForwardService {
     external_targets: Option<ExternalSessionMaterializer>,
     managed_runtime: Option<ManagedSshSessionManager>,
     sessions: Mutex<HashMap<String, PortForwardSession>>,
-}
-
-#[derive(Debug)]
-struct PortForwardSession {
-    process: ManagedForwardProcess,
-    cleanup_paths: Vec<PathBuf>,
-    summary: PortForwardSummary,
-}
-
-enum ManagedForwardProcess {
-    Managed(Box<Option<ManagedSshForwardTunnel>>),
-    Process(Box<Child>),
-    Pty(Box<PtyForwardProcess>),
-}
-
-struct PtyForwardProcess {
-    child: PtyChildHandle,
-    _master: PtyMasterHandle,
-    pid: Option<u32>,
-}
-
-impl std::fmt::Debug for ManagedForwardProcess {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Managed(tunnel) => formatter
-                .debug_struct("Managed")
-                .field(
-                    "id",
-                    &tunnel.as_ref().as_ref().and_then(|tunnel| tunnel.id()),
-                )
-                .finish(),
-            Self::Process(child) => formatter
-                .debug_struct("Process")
-                .field("pid", &child.id())
-                .finish(),
-            Self::Pty(process) => formatter
-                .debug_struct("Pty")
-                .field("pid", &process.pid)
-                .finish(),
-        }
-    }
-}
-
-impl ManagedForwardProcess {
-    fn id(&self) -> Option<u32> {
-        match self {
-            Self::Managed(_tunnel) => None,
-            Self::Process(child) => Some(child.id()),
-            Self::Pty(process) => process.pid,
-        }
-    }
-
-    fn try_wait(&mut self) -> AppResult<Option<String>> {
-        match self {
-            Self::Managed(tunnel) => {
-                let Some(tunnel) = tunnel.as_mut() else {
-                    return Ok(Some("受管 SSH 端口转发已退出".to_owned()));
-                };
-                match tunnel.try_wait()? {
-                    Some(status) => {
-                        *self = Self::Managed(Box::new(None));
-                        Ok(Some(status))
-                    }
-                    None => Ok(None),
-                }
-            }
-            Self::Process(child) => child
-                .try_wait()
-                .map(|status| status.map(|status| status.to_string()))
-                .map_err(|error| AppError::PortForward(format!("无法读取端口转发状态: {error}"))),
-            Self::Pty(process) => process
-                .child
-                .try_wait()
-                .map(|status| {
-                    status.map(|status| match status.signal() {
-                        Some(signal) => format!("signal {signal}"),
-                        None => format!("exit code {}", status.exit_code()),
-                    })
-                })
-                .map_err(|error| AppError::PortForward(format!("无法读取端口转发状态: {error}"))),
-        }
-    }
-
-    fn kill(&mut self) -> AppResult<()> {
-        match self {
-            Self::Managed(tunnel) => {
-                if let Some(tunnel) = tunnel.as_mut() {
-                    tunnel.kill()?;
-                }
-                Ok(())
-            }
-            Self::Process(child) => child
-                .kill()
-                .map_err(|error| AppError::PortForward(format!("无法停止端口转发: {error}"))),
-            Self::Pty(process) => process
-                .child
-                .kill()
-                .map_err(|error| AppError::PortForward(format!("无法停止端口转发: {error}"))),
-        }
-    }
-
-    fn wait(&mut self) {
-        match self {
-            Self::Managed(tunnel) => {
-                if let Some(mut tunnel) = tunnel.take() {
-                    tunnel.wait();
-                }
-            }
-            Self::Process(child) => {
-                let _ = child.wait();
-            }
-            Self::Pty(process) => {
-                let _ = process.child.wait();
-            }
-        }
-    }
 }
 
 impl PortForwardService {
@@ -297,8 +183,7 @@ impl PortForwardService {
                     session.summary.pid = None;
                     session.summary.shared_proxy_service_id = None;
                     session.summary.local_proxy_entry_id = None;
-                    cleanup_paths(&session.cleanup_paths);
-                    session.cleanup_paths.clear();
+                    session.cleanup_paths.cleanup_now();
                     exited_updates.push(session.summary.clone());
                 }
             }
@@ -377,11 +262,12 @@ impl PortForwardService {
         let exited = session.process.try_wait()?;
         let last_error = exited.map(|status| format!("SSH 端口转发进程已退出，退出码: {status}"));
         if last_error.is_none() {
-            session.process.kill()?;
+            session.process.terminate()?;
+        } else {
+            session.process.wait();
         }
-        session.process.wait();
-        cleanup_paths(&session.cleanup_paths);
-        let summary = stopped_summary(session.summary, last_error);
+        session.cleanup_paths.cleanup_now();
+        let summary = stopped_summary(session.summary.clone(), last_error);
         storage.upsert_port_forward_summary(&summary)?;
         Ok(true)
     }
@@ -396,11 +282,8 @@ impl PortForwardService {
             return storage.delete_port_forward_summary(forward_id);
         };
 
-        if session.process.try_wait()?.is_none() {
-            session.process.kill()?;
-        }
-        session.process.wait();
-        cleanup_paths(&session.cleanup_paths);
+        session.process.terminate()?;
+        session.cleanup_paths.cleanup_now();
         storage.delete_port_forward_summary(forward_id)?;
         Ok(true)
     }
@@ -482,7 +365,9 @@ impl PortForwardService {
             summary.id.clone(),
             PortForwardSession {
                 process,
-                cleanup_paths: plan.cleanup_paths,
+                cleanup_paths: crate::services::ssh_command_plan::CleanupPathOwner::new(
+                    plan.cleanup_paths,
+                ),
                 summary: summary.clone(),
             },
         );
@@ -655,8 +540,8 @@ impl PortForwardService {
         {
             return Err(AppError::InvalidInput("端口转发已在运行".to_owned()));
         }
-        if let Some(session) = sessions.remove(forward_id) {
-            cleanup_paths(&session.cleanup_paths);
+        if let Some(mut session) = sessions.remove(forward_id) {
+            session.cleanup_paths.cleanup_now();
         }
         Ok(())
     }
@@ -668,173 +553,6 @@ impl PortForwardService {
             .lock()
             .map_err(|_| AppError::StateLockPoisoned("port forward sessions"))
     }
-}
-
-fn restored_summary(mut summary: PortForwardSummary) -> PortForwardSummary {
-    if summary.status != PortForwardStatus::Running {
-        return summary;
-    }
-
-    summary.last_error = Some(
-        summary
-            .last_error
-            .unwrap_or_else(|| "应用重启后隧道不会自动重连。".to_owned()),
-    );
-    let mut summary = stopped_summary(summary, None);
-    mark_summary_runtime_restored(&mut summary);
-    summary
-}
-
-fn stopped_summary(
-    mut summary: PortForwardSummary,
-    last_error: Option<String>,
-) -> PortForwardSummary {
-    if let Some(last_error) = last_error {
-        summary.last_error = Some(last_error.clone());
-        mark_summary_runtime_cleanup(&mut summary, "stopped", Some(last_error));
-    } else {
-        mark_summary_runtime_cleanup(&mut summary, "stopped", None);
-    }
-    summary.status = PortForwardStatus::Exited;
-    summary.pid = None;
-    summary.shared_proxy_service_id = None;
-    summary.local_proxy_entry_id = None;
-    summary
-}
-
-fn runtime_diagnostics_for_process(
-    process: &ManagedForwardProcess,
-    request: &PortForwardCreateRequest,
-    fallback_reason: Option<String>,
-) -> PortForwardRuntimeDiagnostics {
-    match process {
-        ManagedForwardProcess::Managed(tunnel) => {
-            let mut diagnostics = PortForwardRuntimeDiagnostics {
-                backend: "native-russh".to_owned(),
-                cleanup_status: "active".to_owned(),
-                mode: PortForwardRuntimeMode::ManagedSshRuntime,
-                tunnel_kind: tunnel_kind_for_request(request),
-                ..Default::default()
-            };
-            if let Some(tunnel) = tunnel.as_ref().as_ref() {
-                diagnostics.managed_session_id = Some(tunnel.session_id().to_owned());
-                diagnostics.managed_channel_kind = Some(tunnel.kind().as_str().to_owned());
-                diagnostics.managed_tunnel_id = tunnel.id();
-            }
-            diagnostics
-        }
-        ManagedForwardProcess::Process(_) => PortForwardRuntimeDiagnostics {
-            backend: "openssh".to_owned(),
-            cleanup_status: "active".to_owned(),
-            fallback_reason,
-            mode: PortForwardRuntimeMode::OpenSshProcess,
-            tunnel_kind: tunnel_kind_for_request(request),
-            ..Default::default()
-        },
-        ManagedForwardProcess::Pty(_) => PortForwardRuntimeDiagnostics {
-            backend: "openssh".to_owned(),
-            cleanup_status: "active".to_owned(),
-            fallback_reason,
-            mode: PortForwardRuntimeMode::OpenSshPty,
-            tunnel_kind: tunnel_kind_for_request(request),
-            ..Default::default()
-        },
-    }
-}
-
-fn mark_summary_runtime_cleanup(
-    summary: &mut PortForwardSummary,
-    cleanup_status: &str,
-    recent_failure: Option<String>,
-) {
-    if let Some(runtime) = &mut summary.runtime {
-        runtime.cleanup_status = cleanup_status.to_owned();
-        if let Some(recent_failure) = recent_failure {
-            runtime.recent_failure = Some(recent_failure);
-        }
-    }
-}
-
-fn mark_summary_runtime_restored(summary: &mut PortForwardSummary) {
-    let recent_failure = summary.last_error.clone();
-    if let Some(runtime) = &mut summary.runtime {
-        runtime.cleanup_status = "restoredAfterAppRestart".to_owned();
-        runtime.mode = PortForwardRuntimeMode::Restored;
-        runtime.recent_failure = recent_failure;
-        return;
-    }
-
-    summary.runtime = Some(PortForwardRuntimeDiagnostics {
-        backend: "restored".to_owned(),
-        cleanup_status: "restoredAfterAppRestart".to_owned(),
-        mode: PortForwardRuntimeMode::Restored,
-        recent_failure,
-        tunnel_kind: tunnel_kind_for_summary(summary),
-        ..Default::default()
-    });
-}
-
-fn tunnel_kind_for_request(request: &PortForwardCreateRequest) -> String {
-    if request.purpose == PortForwardPurpose::HostNetworkAssist {
-        return match request
-            .proxy_protocol
-            .unwrap_or(PortForwardProxyProtocol::Http)
-        {
-            PortForwardProxyProtocol::Http => "hostNetworkAssistHttp",
-            PortForwardProxyProtocol::Socks5 => "hostNetworkAssistSocks5",
-        }
-        .to_owned();
-    }
-    tunnel_kind_for_kind(request.kind, request.proxy_protocol)
-}
-
-fn tunnel_kind_for_summary(summary: &PortForwardSummary) -> String {
-    if summary.purpose == PortForwardPurpose::HostNetworkAssist {
-        return match summary
-            .proxy_protocol
-            .unwrap_or(PortForwardProxyProtocol::Http)
-        {
-            PortForwardProxyProtocol::Http => "hostNetworkAssistHttp",
-            PortForwardProxyProtocol::Socks5 => "hostNetworkAssistSocks5",
-        }
-        .to_owned();
-    }
-    tunnel_kind_for_kind(summary.kind, summary.proxy_protocol)
-}
-
-fn tunnel_kind_for_kind(
-    kind: PortForwardKind,
-    proxy_protocol: Option<PortForwardProxyProtocol>,
-) -> String {
-    match kind {
-        PortForwardKind::Local => "local",
-        PortForwardKind::Remote if proxy_protocol == Some(PortForwardProxyProtocol::Socks5) => {
-            "remoteDynamic"
-        }
-        PortForwardKind::Remote => "remote",
-        PortForwardKind::Dynamic => "dynamic",
-    }
-    .to_owned()
-}
-
-fn is_managed_forward_candidate(request: &PortForwardCreateRequest) -> bool {
-    match request.purpose {
-        PortForwardPurpose::Generic => true,
-        PortForwardPurpose::HostNetworkAssist => {
-            request.kind == PortForwardKind::Remote
-                && matches!(
-                    request
-                        .proxy_protocol
-                        .unwrap_or(PortForwardProxyProtocol::Http),
-                    PortForwardProxyProtocol::Http | PortForwardProxyProtocol::Socks5
-                )
-        }
-    }
-}
-
-fn is_remote_dynamic_forward_request(request: &PortForwardCreateRequest) -> bool {
-    request.kind == PortForwardKind::Remote
-        && request.proxy_protocol == Some(PortForwardProxyProtocol::Socks5)
 }
 
 fn prompt_required_forward_error(prompt_plan: SshAuthPromptPlan) -> AppError {
