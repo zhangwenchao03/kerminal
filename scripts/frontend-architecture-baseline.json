@@ -4,17 +4,6 @@
     {
       "kind": "import",
       "rule": "cross-feature-private-import",
-      "runtime": false,
-      "source": "src/features/agent-workflow/agentWorkflowModel.ts",
-      "specifier": "../tool-panel/agent-launcher/agentPromptQueueModel",
-      "target": "src/features/tool-panel/agent-launcher/agentPromptQueueModel.ts",
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-020"
-    },
-    {
-      "kind": "import",
-      "rule": "cross-feature-private-import",
       "runtime": true,
       "source": "src/features/external-launch/ExternalLaunchHost.tsx",
       "specifier": "../workspace/workspaceStore",

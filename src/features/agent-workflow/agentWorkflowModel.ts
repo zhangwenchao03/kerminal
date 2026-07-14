@@ -1,10 +1,6 @@
 import type { AgentSessionRecord } from "../../lib/agentLauncherApi";
 import type { TerminalAgentSignal } from "../../lib/terminalApi";
 import type {
-  AgentPromptHistoryItem,
-  AgentPromptQueueItem,
-} from "../tool-panel/agent-launcher/agentPromptQueueModel";
-import type {
   AgentWorkflowBadgeModel,
   AgentWorkflowHistoryMetadata,
   AgentWorkflowQueueMetadata,
@@ -13,6 +9,18 @@ import type {
   AgentWorkflowSessionSnapshot,
   AgentWorkflowSourceInput,
 } from "./agentWorkflowTypes";
+
+/** agent queue 的领域适配输入，避免 workflow 反向依赖 tool-panel 私有模型。 */
+interface AgentWorkflowPromptQueueSource {
+  createdAt: string;
+  id: string;
+  submit: boolean;
+  text: string;
+}
+
+/** history 适配只要求 queue 字段和 workflow 已定义的 action 契约。 */
+type AgentWorkflowPromptHistorySource = AgentWorkflowPromptQueueSource &
+  Pick<AgentWorkflowHistoryMetadata, "action">;
 
 export const AGENT_WORKFLOW_PREVIEW_MAX_BYTES = 32 * 1024;
 export const AGENT_WORKFLOW_PREVIEW_TTL_MS = 60_000;
@@ -107,7 +115,7 @@ export function resolveAgentWorkflowBadge(
 /** 将既有 queue item 收窄为无正文 metadata，避免 controller 持久保存 item.text。 */
 export function adaptAgentPromptQueueMetadata(
   sessionId: string,
-  item: AgentPromptQueueItem,
+  item: AgentWorkflowPromptQueueSource,
 ): AgentWorkflowQueueMetadata {
   return {
     createdAt: item.createdAt,
@@ -121,7 +129,7 @@ export function adaptAgentPromptQueueMetadata(
 /** 将既有 history item 收窄为无正文 metadata；outcome 由调用路径明确提供。 */
 export function adaptAgentPromptHistoryMetadata(
   sessionId: string,
-  item: AgentPromptHistoryItem,
+  item: AgentWorkflowPromptHistorySource,
   outcome: AgentWorkflowHistoryMetadata["outcome"],
 ): AgentWorkflowHistoryMetadata {
   return {
