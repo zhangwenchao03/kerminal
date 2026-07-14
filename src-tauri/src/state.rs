@@ -2,6 +2,8 @@
 //!
 //! @author kongweiguang
 
+use std::sync::Arc;
+
 use crate::{
     error::AppResult,
     models::settings::AppSettings,
@@ -72,17 +74,66 @@ pub struct AppState {
 #[derive(Debug)]
 pub struct AppStateBuilder {
     paths: KerminalPaths,
+    build_observer: Arc<dyn AppStateBuildObserver>,
+}
+
+/// AppState 组合过程中的稳定阶段标识。
+///
+/// 该枚举只描述本地组合顺序，不能据此改变 Tauri command、运行时服务或配置语义。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppStateBuildPhase {
+    /// 初始化本地运行时、命令 SQLite 与 Agent workspace。
+    Operations,
+    /// 初始化文件化配置、工作空间 bootstrap 与配置观察服务。
+    Configuration,
+    /// 根据已加载设置配置外部启动策略。
+    ExternalLaunchPolicy,
+    /// 创建 SSH runtime 及其依赖的远程服务。
+    Remote,
+    /// 组合长期任务生命周期 supervisor。
+    ApplicationRuntime,
+}
+
+/// AppState 组合的可注入观察端口。
+///
+/// 测试或 portable 宿主可在阶段开始前记录或拒绝装配；默认实现不产生额外行为。
+/// 返回错误会停止后续 capability 的创建，已构造但未交给 `AppState` 的值由 Rust
+/// 自动析构，避免把半初始化状态暴露给调用方。
+pub trait AppStateBuildObserver: std::fmt::Debug + Send + Sync {
+    /// 某个能力组合阶段开始前调用。
+    fn before_phase(&self, phase: AppStateBuildPhase) -> AppResult<()>;
+}
+
+#[derive(Debug)]
+struct NoopAppStateBuildObserver;
+
+impl AppStateBuildObserver for NoopAppStateBuildObserver {
+    fn before_phase(&self, _phase: AppStateBuildPhase) -> AppResult<()> {
+        Ok(())
+    }
 }
 
 impl AppStateBuilder {
     /// 以已解析的数据目录创建组合入口。
     pub fn with_paths(paths: KerminalPaths) -> Self {
-        Self { paths }
+        Self {
+            paths,
+            build_observer: Arc::new(NoopAppStateBuildObserver),
+        }
+    }
+
+    /// 使用组合阶段观察端口创建入口。
+    ///
+    /// 该入口用于 portable 宿主和集成测试验证阶段性失败；观察端口不能直接取得
+    /// capability 实例，因此不会扩大运行时服务的可变访问面。
+    pub fn with_build_observer(mut self, build_observer: Arc<dyn AppStateBuildObserver>) -> Self {
+        self.build_observer = build_observer;
+        self
     }
 
     /// 构造应用状态；初始化失败时不会返回半初始化的 AppState。
     pub fn build(self) -> AppResult<AppState> {
-        AppState::build_from_paths(self.paths)
+        AppState::build_from_paths(self.paths, self.build_observer)
     }
 }
 
@@ -98,21 +149,29 @@ impl AppState {
     }
 
     /// 由 builder 调用的实际构造过程，保证所有入口共享同一初始化顺序。
-    fn build_from_paths(paths: KerminalPaths) -> AppResult<Self> {
+    fn build_from_paths(
+        paths: KerminalPaths,
+        build_observer: Arc<dyn AppStateBuildObserver>,
+    ) -> AppResult<Self> {
+        build_observer.before_phase(AppStateBuildPhase::Operations)?;
         let operations = OperationalCapabilities::initialize(&paths)?;
         let config_files = ConfigFileStore::new(paths.root.clone());
+        build_observer.before_phase(AppStateBuildPhase::Configuration)?;
         let (configuration, persisted_settings, startup_recovery) =
             ConfigurationCapabilities::initialize(&paths, config_files.clone())?;
+        build_observer.before_phase(AppStateBuildPhase::ExternalLaunchPolicy)?;
         operations
             .external_launch_intake
             .configure_policy(ExternalLaunchPolicy::from(
                 &persisted_settings.external_launch,
             ))?;
+        build_observer.before_phase(AppStateBuildPhase::Remote)?;
         let remote = RemoteCapabilities::new(
             &paths,
             config_files.clone(),
             operations.external_launch_intake.clone(),
         )?;
+        build_observer.before_phase(AppStateBuildPhase::ApplicationRuntime)?;
         let application_runtime = ApplicationRuntime::new(
             configuration.config_change_observer.clone(),
             operations.mcp_http_server.clone(),

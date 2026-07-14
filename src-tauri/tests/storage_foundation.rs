@@ -5,7 +5,7 @@
 use std::{
     collections::BTreeSet,
     ffi::{OsStr, OsString},
-    sync::{Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use kerminal_lib::{
@@ -14,7 +14,7 @@ use kerminal_lib::{
         expand_home_relative_path, KerminalPaths, COMMAND_DATABASE_FILE_NAME,
         KERMINAL_CONFIG_ROOT_ENV, KERMINAL_DIR_NAME,
     },
-    state::{AppState, AppStateBuilder},
+    state::{AppState, AppStateBuildObserver, AppStateBuildPhase, AppStateBuilder},
     storage::{
         command_migrations::{self, CURRENT_COMMAND_SCHEMA_VERSION},
         local_file_operations::LocalFileOperationAuditWrite,
@@ -53,6 +53,34 @@ fn app_state_builder_initializes_explicit_paths() {
 
     assert_eq!(state.paths(), &paths);
     assert!(paths.command_database_file.exists());
+}
+
+#[test]
+fn app_state_builder_stops_after_an_injected_configuration_failure() {
+    let home = tempdir().expect("create temp home");
+    let paths = KerminalPaths::from_home_dir(home.path());
+    let observer = Arc::new(FailingBuildObserver::new(AppStateBuildPhase::Configuration));
+
+    let error = AppStateBuilder::with_paths(paths.clone())
+        .with_build_observer(observer.clone())
+        .build()
+        .expect_err("configuration observer should stop initialization");
+
+    assert!(
+        matches!(error, AppError::InvalidInput(message) if message == "injected build failure")
+    );
+    assert_eq!(
+        observer.seen(),
+        vec![
+            AppStateBuildPhase::Operations,
+            AppStateBuildPhase::Configuration
+        ]
+    );
+    assert!(paths.command_database_file.is_file());
+    assert!(
+        !paths.root.join("settings.toml").exists(),
+        "configuration seed must not run after its phase was rejected"
+    );
 }
 
 #[test]
@@ -303,6 +331,35 @@ fn env_lock() -> &'static Mutex<()> {
 struct ScopedEnvVar {
     key: &'static str,
     previous: Option<OsString>,
+}
+
+#[derive(Debug)]
+struct FailingBuildObserver {
+    fail_at: AppStateBuildPhase,
+    seen: Mutex<Vec<AppStateBuildPhase>>,
+}
+
+impl FailingBuildObserver {
+    fn new(fail_at: AppStateBuildPhase) -> Self {
+        Self {
+            fail_at,
+            seen: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn seen(&self) -> Vec<AppStateBuildPhase> {
+        self.seen.lock().expect("read observed phases").clone()
+    }
+}
+
+impl AppStateBuildObserver for FailingBuildObserver {
+    fn before_phase(&self, phase: AppStateBuildPhase) -> Result<(), AppError> {
+        self.seen.lock().expect("record observed phase").push(phase);
+        if phase == self.fail_at {
+            return Err(AppError::InvalidInput("injected build failure".to_owned()));
+        }
+        Ok(())
+    }
 }
 
 impl ScopedEnvVar {
