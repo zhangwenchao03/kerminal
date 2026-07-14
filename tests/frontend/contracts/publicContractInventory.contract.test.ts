@@ -1,9 +1,12 @@
 // @author kongweiguang
 
+// 项目测试 tsconfig 不加载 Node 类型；Vitest 运行时仍提供该内置模块。
+// @ts-expect-error Node 内置模块由 Vitest 的 Node 运行时提供。
 import fs from "node:fs";
-import path from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+
+declare const process: { cwd(): string };
 
 interface ContractInventory {
   tauri: {
@@ -16,15 +19,15 @@ interface ContractInventory {
 
 describe("公共契约 inventory", () => {
   it("前端 literal invoke 与后端注册命令保持双向可审计", () => {
-    const root = process.cwd();
+    const root = process.cwd().replace(/\\/g, "/");
     const inventory = JSON.parse(
       fs.readFileSync(
-        path.join(root, "tests/fixtures/contracts/public-contract-inventory.json"),
+        `${root}/tests/fixtures/contracts/public-contract-inventory.json`,
         "utf8",
       ),
     ) as ContractInventory;
     const registry = fs.readFileSync(
-      path.join(root, "src-tauri/src/commands/registry.rs"),
+      `${root}/src-tauri/src/commands/registry.rs`,
       "utf8",
     );
     const backendCommands = new Set(
@@ -35,7 +38,7 @@ describe("公共契约 inventory", () => {
     expect(backendCommands.size).toBe(inventory.tauri.commandCount);
 
     const invokes = new Set<string>();
-    for (const file of sourceFiles(path.join(root, "src"))) {
+    for (const file of sourceFiles(`${root}/src`)) {
       const source = ts.createSourceFile(
         file,
         fs.readFileSync(file, "utf8"),
@@ -67,15 +70,15 @@ describe("公共契约 inventory", () => {
   });
 
   it("workspace snapshot 由前端规范化为 v2", () => {
-    const root = process.cwd();
+    const root = process.cwd().replace(/\\/g, "/");
     const inventory = JSON.parse(
       fs.readFileSync(
-        path.join(root, "tests/fixtures/contracts/public-contract-inventory.json"),
+        `${root}/tests/fixtures/contracts/public-contract-inventory.json`,
         "utf8",
       ),
     ) as ContractInventory;
     const source = fs.readFileSync(
-      path.join(root, "src/features/workspace/workspaceSession.ts"),
+      `${root}/src/features/workspace/workspaceSession.ts`,
       "utf8",
     );
 
@@ -86,8 +89,11 @@ describe("公共契约 inventory", () => {
 });
 
 function sourceFiles(directory: string): string[] {
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const target = path.join(directory, entry.name);
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry: {
+    isDirectory(): boolean;
+    name: string;
+  }) => {
+    const target = `${directory}/${entry.name}`;
     if (entry.isDirectory()) return sourceFiles(target);
     return /\.tsx?$/.test(entry.name) ? [target] : [];
   });
@@ -95,7 +101,7 @@ function sourceFiles(directory: string): string[] {
 
 function fingerprint(value: string): string {
   let hash = 0xcbf29ce484222325n;
-  for (const byte of Buffer.from(value)) {
+  for (const byte of new TextEncoder().encode(value)) {
     hash ^= BigInt(byte);
     hash = BigInt.asUintN(64, hash * 0x100000001b3n);
   }
