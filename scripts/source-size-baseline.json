@@ -75,13 +75,6 @@
       "targetTask": "TASK-072"
     },
     {
-      "file": "src/App.css",
-      "lines": 893,
-      "deadline": "before TASK-080",
-      "owner": "ui-unification",
-      "targetTask": "TASK-073"
-    },
-    {
       "file": "src/app/useKerminalShellRemoteActions.ts",
       "lines": 823,
       "deadline": "before TASK-080",

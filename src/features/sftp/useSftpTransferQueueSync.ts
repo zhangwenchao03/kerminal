@@ -22,6 +22,7 @@ import {
   technicalDetailFromUnknown,
   type UserFacingMessage,
 } from "../../lib/userFacingMessage";
+import { runtimeCompatibilityDiagnostics } from "../../platform/runtime/compatibilityDiagnostics";
 import { updateSftpRuntimeDiagnosticsTransfers } from "./sftpRuntimeDiagnostics";
 import { sftpTransferMatchesViewScope } from "./sftp-tool-content/sftpTransferSyncModel";
 import { mergeTransferSnapshot, replaceTransferQueue } from "./sftpTransferModel";
@@ -189,6 +190,20 @@ export function useSftpTransferQueueSync({
         return;
       }
       pollInFlight = true;
+      const eventChannelHealthy =
+        eventChannelAvailable() &&
+        sftpTransferEventChannelHealthy({
+          eventHealthWindowMs,
+          lastEventAt: lastEventAtRef.current,
+          now: Date.now(),
+        });
+      runtimeCompatibilityDiagnostics.recordActivation(
+        "sftp.transfer-polling",
+        resolveSftpPollingCompatibilityReason({
+          documentVisible: documentVisible(),
+          eventChannelHealthy,
+        }),
+      );
       try {
         await loadTransfers();
       } finally {
@@ -345,4 +360,20 @@ export function sftpTransferQueuePollDelay({
   return documentVisible
     ? visibleDelay
     : Math.max(visibleDelay, hiddenPollIntervalMs);
+}
+
+function resolveSftpPollingCompatibilityReason({
+  documentVisible,
+  eventChannelHealthy,
+}: {
+  documentVisible: boolean;
+  eventChannelHealthy: boolean;
+}) {
+  if (!documentVisible) {
+    return "document-hidden";
+  }
+  if (eventChannelHealthy) {
+    return "event-channel-healthy-safety-poll";
+  }
+  return "event-channel-unavailable";
 }

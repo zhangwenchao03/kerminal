@@ -11,7 +11,7 @@ import {
   type CompatibilityMetricSnapshot,
 } from "../../architecture/compatibility/compatibilityRegistry";
 
-export interface CompatibilityActivationDecision {
+interface CompatibilityActivationDecision {
   readonly allowed: boolean;
   readonly code: "allowed-by-registry" | "reason-not-registered";
 }
@@ -32,7 +32,7 @@ interface MutableCompatibilityMetric {
 }
 
 /** 创建实例级收集器，隔离窗口生命周期并保持计数输入有界。 */
-export function createRuntimeCompatibilityDiagnostics(): RuntimeCompatibilityDiagnostics {
+function createRuntimeCompatibilityDiagnostics(): RuntimeCompatibilityDiagnostics {
   const metrics = new Map<string, MutableCompatibilityMetric>(
     compatibilityRegistry.map((entry) => [
       entry.id,
