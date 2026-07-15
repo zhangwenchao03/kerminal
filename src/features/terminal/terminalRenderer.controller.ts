@@ -1,93 +1,57 @@
-import type { IDisposable, ITerminalAddon } from "@xterm/xterm";
 import type { TerminalRendererType } from "../settings/contracts/index";
 import {
   createXtermWebglCompatibilityAdapter,
   VERIFIED_XTERM_WEBGL_COMPATIBILITY_VERSIONS,
-  type XtermWebglCompatibilityAdapter,
-  type XtermWebglCompatibilityCapabilityGate,
 } from "./terminalRendererCompatibility";
 import {
   createTerminalRendererLifecycle,
   type TerminalRendererGenerationToken,
-  type TerminalRendererLifecycleSnapshot,
-  type TerminalRendererTransitionLedgerEntry,
 } from "./terminalRendererLifecycle";
-import {
-  createTerminalRendererHealthController,
-  type TerminalRendererHealthDecision,
-  type TerminalRendererHealthObservation,
-  type TerminalRendererHealthSnapshot,
-} from "./terminalRendererHealth";
+import { createTerminalRendererHealthController, type TerminalRendererHealthObservation } from "./terminalRendererHealth";
 import {
   createTerminalRendererPerformanceTelemetry,
-  type TerminalRendererPerformanceSnapshot,
   type TerminalRendererPerformanceTelemetry,
 } from "./terminalRendererPerformanceTelemetry";
-import type {
-  TerminalRendererBackend,
-  TerminalRendererFallbackReason,
-} from "./terminalRendererPolicy";
+import type { TerminalRendererFallbackReason } from "./terminalRendererPolicy";
+import { detectTerminalGpuPlatform, shouldUseAutoGpuRenderer } from "./terminalRendererPlatform";
 import {
-  detectTerminalGpuPlatform,
-  shouldUseAutoGpuRenderer,
-  type TerminalGpuPlatformClass,
-} from "./terminalRendererPlatform";
+  DEFAULT_ATTACH_TIMEOUT_MS,
+  DEFAULT_CONTEXT_LOSS_WINDOW_MS,
+  DEFAULT_MAX_RECOVERY_ATTEMPTS,
+  DEFAULT_MAX_RECOVERY_ELAPSED_MS,
+  DEFAULT_RECOVERY_JITTER_RATIO,
+  DEFAULT_RECOVERY_RETRY_DELAYS_MS,
+  jitterDelay,
+  normalizeRetryDelays,
+  validatePositiveDuration,
+  validatePositiveInteger,
+  validateRatio,
+} from "./terminalRenderer.controller.config";
+import type {
+  CreateTerminalRendererControllerOptions,
+  TerminalRendererController,
+  TerminalRendererDiagnostics,
+  TerminalRendererState,
+  TerminalRendererTerminal,
+  TerminalRendererTimerHandle,
+} from "./terminalRenderer.controller.contracts";
+import {
+  createWebglRendererCandidate,
+  loadWebglRendererCandidate,
+  type ActiveWebglRenderer,
+  type WebglAddonLike,
+} from "./terminalRenderer.webglResources";
 
-export interface TerminalRendererState {
-  backend: TerminalRendererBackend;
-  canvasCount: number;
-  fallbackReason?: TerminalRendererFallbackReason;
-  mode: TerminalRendererType;
-}
+export type {
+  TerminalRendererController,
+  TerminalRendererDiagnostics,
+  TerminalRendererLogger,
+  TerminalRendererState,
+  TerminalRendererTerminal,
+} from "./terminalRenderer.controller.contracts";
 
-export interface TerminalRendererDiagnostics {
-  activeTimerCount: number;
-  circuitOpen: boolean;
-  contextLossCount: number;
-  gpuPlatformClass: TerminalGpuPlatformClass;
-  health: TerminalRendererHealthSnapshot;
-  lifecycle: TerminalRendererLifecycleSnapshot;
-  retryCount: number;
-  telemetry: TerminalRendererPerformanceSnapshot;
-  transitions: readonly TerminalRendererTransitionLedgerEntry[];
-}
-
-export interface TerminalRendererTerminal {
-  element?: HTMLElement | null;
-  loadAddon(addon: ITerminalAddon): void;
-  refresh?(start: number, end: number): void;
-  rows: number;
-}
-
-export interface TerminalRendererLogger {
-  warn(message: string, error?: unknown): void;
-}
-
-interface WebglAddonLike extends ITerminalAddon {
-  clearTextureAtlas?: () => void;
-  onAddTextureAtlasCanvas?: (
-    listener: (canvas: HTMLCanvasElement) => void,
-  ) => IDisposable;
-  onChangeTextureAtlas?: (
-    listener: (canvas: HTMLCanvasElement) => void,
-  ) => IDisposable;
-  onContextLoss: (listener: () => void) => IDisposable;
-  onRemoveTextureAtlasCanvas?: (
-    listener: (canvas: HTMLCanvasElement) => void,
-  ) => IDisposable;
-  textureAtlas?: HTMLCanvasElement;
-}
-
-type WebglAddonConstructor = new () => WebglAddonLike;
-type TimerHandle = ReturnType<typeof window.setTimeout>;
+type TimerHandle = TerminalRendererTimerHandle;
 type GpuOperationKind = "attach" | "recovery";
-
-interface ActiveWebglRenderer {
-  addon: WebglAddonLike;
-  canvases: Set<HTMLCanvasElement>;
-  disposables: IDisposable[];
-  rendererCanvases: Set<HTMLCanvasElement>;
-}
 
 interface GpuOperation {
   attempt: number;
@@ -95,60 +59,6 @@ interface GpuOperation {
   startedAt: number;
   token: TerminalRendererGenerationToken;
 }
-
-export interface TerminalRendererController {
-  attach(): void;
-  /** 返回当前灰度配置是否允许发起 GPU attach。 */
-  canAttemptGpu(): boolean;
-  clearTextureAtlas(): void;
-  dispose(): void;
-  getDiagnostics(): TerminalRendererDiagnostics;
-  /** 返回主 WebGL renderer canvas，不包含 texture atlas 等辅助 canvas。 */
-  getTrackedRendererCanvases(): readonly HTMLCanvasElement[];
-  getState(): TerminalRendererState;
-  reportHealth(
-    observation: Omit<TerminalRendererHealthObservation, "backend">,
-  ): TerminalRendererHealthDecision;
-  resume(): void;
-  retryGpu(): void;
-  suspend(): void;
-  updateMode(mode: TerminalRendererType): void;
-}
-
-interface CreateTerminalRendererControllerOptions {
-  attachTimeoutMs?: number;
-  cancelRetry?: (handle: TimerHandle) => void;
-  compatibilityAdapter?: XtermWebglCompatibilityAdapter;
-  compatibilityGate?: XtermWebglCompatibilityCapabilityGate;
-  contextLossCircuitThreshold?: number;
-  contextLossWindowMs?: number;
-  healthWatchdogEnabled?: boolean;
-  gpuPlatformClass?: TerminalGpuPlatformClass;
-  lifecycleV2Enabled?: boolean;
-  loadWebglAddon?: () => Promise<{ WebglAddon: WebglAddonConstructor }>;
-  logger?: TerminalRendererLogger;
-  maxRecoveryAttempts?: number;
-  maxRecoveryElapsedMs?: number;
-  now?: () => number;
-  onStateChange?: (state: TerminalRendererState) => void;
-  shouldUseAutoGpu?: (platformClass: TerminalGpuPlatformClass) => boolean;
-  paneId: string;
-  random?: () => number;
-  recoveryJitterRatio?: number;
-  rendererType: TerminalRendererType;
-  retryDelayMs?: number;
-  retryDelaysMs?: readonly number[];
-  scheduleRetry?: (callback: () => void, delayMs: number) => TimerHandle;
-  telemetry?: TerminalRendererPerformanceTelemetry;
-  terminal: TerminalRendererTerminal;
-}
-
-const DEFAULT_ATTACH_TIMEOUT_MS = 5_000;
-const DEFAULT_CONTEXT_LOSS_WINDOW_MS = 30_000;
-const DEFAULT_MAX_RECOVERY_ATTEMPTS = 3;
-const DEFAULT_MAX_RECOVERY_ELAPSED_MS = 30_000;
-const DEFAULT_RECOVERY_RETRY_DELAYS_MS = [250, 1_000, 5_000] as const;
-const DEFAULT_RECOVERY_JITTER_RATIO = 0.1;
 
 /**
  * 创建 pane 级 renderer controller。
@@ -310,17 +220,8 @@ export function createTerminalRendererController({
     emitStateChange();
   };
 
-  const disposeCandidate = (
-    addon: WebglAddonLike,
-    canvases: Set<HTMLCanvasElement>,
-    disposables: IDisposable[],
-  ) => {
-    disposeRendererResources({
-      addon,
-      canvases,
-      disposables,
-      rendererCanvases: new Set(),
-    });
+  const disposeCandidate = (renderer: ActiveWebglRenderer) => {
+    disposeRendererResources(renderer);
   };
 
   const transitionToCpuReady = (
@@ -600,65 +501,24 @@ export function createTerminalRendererController({
           return;
         }
 
-        const canvases = new Set<HTMLCanvasElement>();
-        const rendererCanvases = new Set<HTMLCanvasElement>();
-        const textureAtlasCanvases = new Set<HTMLCanvasElement>();
-        const disposables: IDisposable[] = [];
-        const before = new Set(
-          element.querySelectorAll<HTMLCanvasElement>("canvas"),
-        );
-        const trackTextureAtlasCanvas = (canvas: HTMLCanvasElement) => {
-          textureAtlasCanvases.add(canvas);
-          rendererCanvases.delete(canvas);
-          canvases.add(canvas);
-          emitStateChange();
-        };
+        const candidate = createWebglRendererCandidate(addon);
         try {
-          disposables.push(addon.onContextLoss(() => handleContextLoss(addon)));
-          if (addon.onAddTextureAtlasCanvas) {
-            disposables.push(
-              addon.onAddTextureAtlasCanvas(trackTextureAtlasCanvas),
-            );
-          }
-          if (addon.onChangeTextureAtlas) {
-            disposables.push(
-              addon.onChangeTextureAtlas(trackTextureAtlasCanvas),
-            );
-          }
-          if (addon.onRemoveTextureAtlasCanvas) {
-            disposables.push(
-              addon.onRemoveTextureAtlasCanvas((canvas) => {
-                textureAtlasCanvases.delete(canvas);
-                rendererCanvases.delete(canvas);
-                canvases.delete(canvas);
-                emitStateChange();
-              }),
-            );
-          }
-          terminal.loadAddon(addon);
+          loadWebglRendererCandidate({
+            element,
+            onContextLoss: () => handleContextLoss(addon),
+            onResourcesChanged: emitStateChange,
+            renderer: candidate,
+            terminal,
+          });
         } catch (error) {
-          disposeCandidate(addon, canvases, disposables);
+          disposeCandidate(candidate);
           handleOperationFailure(operation, "load-failed", error);
           return;
         }
 
-        for (const canvas of element.querySelectorAll<HTMLCanvasElement>(
-          "canvas",
-        )) {
-          if (!before.has(canvas)) {
-            canvases.add(canvas);
-            if (!textureAtlasCanvases.has(canvas)) {
-              rendererCanvases.add(canvas);
-            }
-          }
-        }
-        if (addon.textureAtlas) {
-          trackTextureAtlasCanvas(addon.textureAtlas);
-        }
-
         clearAttachTimeout();
         if (!canCommit(operation.token) || disposed) {
-          disposeCandidate(addon, canvases, disposables);
+          disposeCandidate(candidate);
           return;
         }
 
@@ -674,11 +534,11 @@ export function createTerminalRendererController({
         });
         if (!transition.accepted) {
           recordStaleCommit();
-          disposeCandidate(addon, canvases, disposables);
+          disposeCandidate(candidate);
           return;
         }
 
-        activeWebgl = { addon, canvases, disposables, rendererCanvases };
+        activeWebgl = candidate;
         fallbackReason = undefined;
         recoveryStartedAt = undefined;
         retryCount = 0;
@@ -932,46 +792,5 @@ function refreshTerminal(
     telemetry.increment("fullRefreshCount");
   } catch {
     // CPU fallback 必须继续完成，refresh 失败不能破坏 renderer 状态。
-  }
-}
-
-function normalizeRetryDelays(delays: readonly number[]) {
-  if (delays.length === 0) {
-    return [0];
-  }
-  return delays.map((delay, index) => {
-    if (!Number.isFinite(delay) || delay < 0) {
-      throw new RangeError(`retryDelaysMs[${index}] must be non-negative`);
-    }
-    return delay;
-  });
-}
-
-function jitterDelay(baseDelay: number, ratio: number, random: () => number) {
-  if (baseDelay === 0 || ratio === 0) {
-    return baseDelay;
-  }
-  const normalizedRandom = Math.min(1, Math.max(0, random()));
-  return Math.max(
-    0,
-    Math.round(baseDelay * (1 + (normalizedRandom * 2 - 1) * ratio)),
-  );
-}
-
-function validatePositiveDuration(name: string, value: number) {
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new RangeError(`${name} must be a positive finite number`);
-  }
-}
-
-function validatePositiveInteger(name: string, value: number) {
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new RangeError(`${name} must be a positive integer`);
-  }
-}
-
-function validateRatio(name: string, value: number) {
-  if (!Number.isFinite(value) || value < 0 || value > 1) {
-    throw new RangeError(`${name} must be between 0 and 1`);
   }
 }

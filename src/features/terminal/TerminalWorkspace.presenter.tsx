@@ -9,7 +9,6 @@ import {
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
-  type WheelEvent as ReactWheelEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
@@ -56,6 +55,7 @@ import type { TerminalSplitDropIndicator } from "./TerminalSplitDropOverlay";
 import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";
 import type { ConnectionState } from "./XtermPane.helpers";
 import { useTerminalBroadcastTargets } from "./useTerminalBroadcastTargets";
+import { useTerminalTabOverview } from "./TerminalWorkspace.tabOverview";
 import {
   buildTerminalTabGroups,
   clampContextMenuPosition,
@@ -71,7 +71,6 @@ import {
 
 const terminalContextMenuPanelClassName =
   "kerminal-context-menu kerminal-floating-enter kerminal-layer-popover fixed w-56";
-const TAB_OVERVIEW_OVERFLOW_TOLERANCE = 1;
 const EMPTY_PANE_CHROME_SNAPSHOTS: ReturnType<
   typeof terminalChromeRuntimeStore.getSnapshots
 > = Object.freeze([]);
@@ -207,16 +206,6 @@ export function TerminalWorkspace({
     useState<TerminalTabGroup | null>(null);
   const [renamingTab, setRenamingTab] = useState<TerminalTab | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
-  const tabListRef = useRef<HTMLDivElement>(null);
-  const tabOverviewButtonRef = useRef<HTMLButtonElement>(null);
-  const tabOverviewMenuRef = useRef<HTMLDivElement>(null);
-  const [tabOverviewOpen, setTabOverviewOpen] = useState(false);
-  const [tabOverviewAvailable, setTabOverviewAvailable] = useState(false);
-  const tabOverviewAvailableRef = useRef(false);
-  const [tabOverviewPosition, setTabOverviewPosition] = useState({
-    x: 0,
-    y: 0,
-  });
   const panesById = useMemo(
     () => new Map(panes.map((pane) => [pane.id, pane])),
     [panes],
@@ -321,35 +310,22 @@ export function TerminalWorkspace({
     leftTitleBarInset > 0
       ? ({ paddingLeft: leftTitleBarInset } satisfies CSSProperties)
       : undefined;
-  const shouldShowTabOverview = tabs.length > 1 && tabOverviewAvailable;
-  const tabOverviewMeasurementKey = useMemo(
-    () =>
-      tabGroups
-        .map((group) =>
-          [
-            group.id,
-            group.title,
-            group.grouped ? "grouped" : "single",
-            collapsedTabGroupIds.has(group.id) ? "collapsed" : "expanded",
-            group.tabs.map((tab) => tab.id).join(","),
-          ].join(":"),
-        )
-        .join("|"),
-    [collapsedTabGroupIds, tabGroups],
-  );
-
-  const updateTabOverviewAvailability = useCallback(() => {
-    const tabList = tabListRef.current;
-    const hasHorizontalOverflow = tabList
-      ? tabList.scrollWidth - tabList.clientWidth >
-        TAB_OVERVIEW_OVERFLOW_TOLERANCE
-      : false;
-    if (tabOverviewAvailableRef.current === hasHorizontalOverflow) {
-      return;
-    }
-    tabOverviewAvailableRef.current = hasHorizontalOverflow;
-    setTabOverviewAvailable(hasHorizontalOverflow);
-  }, []);
+  const {
+    handleTabListWheel,
+    selectTabFromOverview,
+    shouldShowTabOverview,
+    tabListRef,
+    tabOverviewButtonRef,
+    tabOverviewMenuRef,
+    tabOverviewOpen,
+    tabOverviewPosition,
+    toggleTabOverview,
+  } = useTerminalTabOverview({
+    collapsedTabGroupIds,
+    onSelectTab,
+    tabCount: tabs.length,
+    tabGroups,
+  });
 
   useEffect(() => {
     setCollapsedTabGroupIds((current) => {
@@ -363,45 +339,6 @@ export function TerminalWorkspace({
       return next;
     });
   }, [tabGroups]);
-
-  useEffect(() => {
-    updateTabOverviewAvailability();
-    const frameId =
-      typeof window.requestAnimationFrame === "function"
-        ? window.requestAnimationFrame(updateTabOverviewAvailability)
-        : undefined;
-    const tabList = tabListRef.current;
-
-    window.addEventListener("resize", updateTabOverviewAvailability);
-    if (!tabList || typeof ResizeObserver === "undefined") {
-      return () => {
-        if (frameId !== undefined) {
-          window.cancelAnimationFrame(frameId);
-        }
-        window.removeEventListener("resize", updateTabOverviewAvailability);
-      };
-    }
-
-    const resizeObserver = new ResizeObserver(updateTabOverviewAvailability);
-    resizeObserver.observe(tabList);
-    for (const child of Array.from(tabList.children)) {
-      resizeObserver.observe(child);
-    }
-
-    return () => {
-      if (frameId !== undefined) {
-        window.cancelAnimationFrame(frameId);
-      }
-      window.removeEventListener("resize", updateTabOverviewAvailability);
-      resizeObserver.disconnect();
-    };
-  }, [tabOverviewMeasurementKey, updateTabOverviewAvailability]);
-
-  useEffect(() => {
-    if (!shouldShowTabOverview && tabOverviewOpen) {
-      setTabOverviewOpen(false);
-    }
-  }, [shouldShowTabOverview, tabOverviewOpen]);
 
   useEffect(() => {
     if (hasActiveSplit) {
@@ -432,40 +369,6 @@ export function TerminalWorkspace({
       window.removeEventListener("resize", close);
     };
   }, [contextMenu]);
-
-  useEffect(() => {
-    if (!tabOverviewOpen) {
-      return undefined;
-    }
-
-    const closeOnPointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) {
-        return;
-      }
-      if (
-        tabOverviewMenuRef.current?.contains(target) ||
-        tabOverviewButtonRef.current?.contains(target)
-      ) {
-        return;
-      }
-      setTabOverviewOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setTabOverviewOpen(false);
-      }
-    };
-    const closeOnResize = () => setTabOverviewOpen(false);
-    window.addEventListener("pointerdown", closeOnPointerDown);
-    window.addEventListener("keydown", closeOnEscape);
-    window.addEventListener("resize", closeOnResize);
-    return () => {
-      window.removeEventListener("pointerdown", closeOnPointerDown);
-      window.removeEventListener("keydown", closeOnEscape);
-      window.removeEventListener("resize", closeOnResize);
-    };
-  }, [tabOverviewOpen]);
 
   useEffect(() => {
     if (!editingTabGroup) {
@@ -519,32 +422,6 @@ export function TerminalWorkspace({
       current === contextMenu ? { ...current, ...nextPosition } : current,
     );
   }, [contextMenu]);
-
-  useLayoutEffect(() => {
-    if (!tabOverviewOpen) {
-      return;
-    }
-
-    const triggerElement = tabOverviewButtonRef.current;
-    const menuElement = tabOverviewMenuRef.current;
-    if (!triggerElement || !menuElement) {
-      return;
-    }
-
-    const triggerRect = triggerElement.getBoundingClientRect();
-    const menuRect = menuElement.getBoundingClientRect();
-    const nextPosition = clampContextMenuPosition(
-      triggerRect.right - menuRect.width,
-      triggerRect.bottom + 6,
-      menuRect.width,
-      menuRect.height,
-    );
-    setTabOverviewPosition((current) =>
-      current.x === nextPosition.x && current.y === nextPosition.y
-        ? current
-        : nextPosition,
-    );
-  }, [tabGroups, tabOverviewOpen]);
 
   const executeBroadcast = useCallback(
     async (analysis: BroadcastCommandAnalysis) => {
@@ -633,51 +510,6 @@ export function TerminalWorkspace({
     setContextMenu(null);
     action?.();
   }, []);
-  const handleTabListWheel = useCallback(
-    (event: ReactWheelEvent<HTMLDivElement>) => {
-      const target = event.currentTarget;
-      if (target.scrollTop !== 0) {
-        target.scrollTop = 0;
-      }
-
-      const maxScrollLeft = target.scrollWidth - target.clientWidth;
-      if (maxScrollLeft <= 1) {
-        return;
-      }
-
-      const wheelDelta =
-        Math.abs(event.deltaX) > Math.abs(event.deltaY)
-          ? event.deltaX
-          : event.deltaY;
-      if (wheelDelta === 0) {
-        return;
-      }
-
-      event.preventDefault();
-      target.scrollLeft = Math.min(
-        maxScrollLeft,
-        Math.max(0, target.scrollLeft + wheelDelta),
-      );
-    },
-    [],
-  );
-  const toggleTabOverview = useCallback((event: ReactMouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const rect = event.currentTarget.getBoundingClientRect();
-    setTabOverviewPosition({
-      x: Math.round(rect.right - 288),
-      y: Math.round(rect.bottom + 6),
-    });
-    setTabOverviewOpen((open) => !open);
-  }, []);
-  const selectTabFromOverview = useCallback(
-    (tabId: string) => {
-      setTabOverviewOpen(false);
-      onSelectTab(tabId);
-    },
-    [onSelectTab],
-  );
   const requestCloseTabs = useCallback(
     (tabIds: string[], confirmedDirtyFiles = false) => {
       const decision = resolveWorkspaceTabCloseDecision({
