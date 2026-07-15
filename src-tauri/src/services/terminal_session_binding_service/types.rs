@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::normalize_optional_string;
+use super::state::normalize_optional_string;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
