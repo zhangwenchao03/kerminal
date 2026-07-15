@@ -1,0 +1,39 @@
+/* 终端表面沿用文档根节点上的浅色与深色主题变量。 */
+.kerminal-terminal-surface {
+  background: rgb(
+    var(--surface-terminal-rgb) / var(--app-terminal-surface-opacity)
+  );
+  background-clip: padding-box;
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-terminal);
+  position: relative;
+  backdrop-filter: blur(14px) saturate(128%);
+  -webkit-backdrop-filter: blur(14px) saturate(128%);
+}
+
+.dark .kerminal-terminal-surface {
+  background: rgb(
+    var(--surface-terminal-rgb) / var(--app-terminal-surface-opacity)
+  );
+}
+
+.kerminal-terminal-surface[data-focused="true"] {
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-terminal);
+}
+
+.kerminal-terminal-header {
+  background: var(--surface-terminal-header);
+  background-clip: padding-box;
+  border-color: var(--border-subtle);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+
+.kerminal-terminal-preview {
+  background: rgb(var(--surface-terminal-rgb) / 0.72);
+}
+
+.dark .kerminal-terminal-preview {
+  background: rgb(18 18 20 / 0.72);
+}
