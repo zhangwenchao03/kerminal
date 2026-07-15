@@ -19,20 +19,6 @@
   ],
   "entries": [
     {
-      "file": "src-tauri/src/services/docker_host_service.rs",
-      "lines": 946,
-      "deadline": "before TASK-080",
-      "owner": "architecture-governance",
-      "targetTask": "TASK-072"
-    },
-    {
-      "file": "src-tauri/src/services/external_launch/intake.rs",
-      "lines": 808,
-      "deadline": "before TASK-080",
-      "owner": "architecture-governance",
-      "targetTask": "TASK-072"
-    },
-    {
       "file": "src-tauri/src/services/mcp_tool_executor_service/container_tools.rs",
       "lines": 801,
       "deadline": "before TASK-080",
