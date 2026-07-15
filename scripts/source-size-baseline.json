@@ -229,13 +229,6 @@
       "targetTask": "TASK-070"
     },
     {
-      "file": "src/features/sftp/LocalTransferPane.tsx",
-      "lines": 1022,
-      "deadline": "before TASK-080",
-      "owner": "sftp-frontend",
-      "targetTask": "TASK-040/TASK-041"
-    },
-    {
       "file": "src/features/sftp/RemoteWorkspaceEditor.tsx",
       "lines": 974,
       "deadline": "before TASK-080",
@@ -245,13 +238,6 @@
     {
       "file": "src/features/sftp/SftpToolContent.tsx",
       "lines": 970,
-      "deadline": "before TASK-080",
-      "owner": "sftp-frontend",
-      "targetTask": "TASK-040/TASK-041"
-    },
-    {
-      "file": "src/features/sftp/SftpTransferWorkbench.tsx",
-      "lines": 977,
       "deadline": "before TASK-080",
       "owner": "sftp-frontend",
       "targetTask": "TASK-040/TASK-041"

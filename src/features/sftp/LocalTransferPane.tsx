@@ -10,25 +10,15 @@ import {
   useReducer,
   useRef,
   useState,
-  type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
-import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 import {
-  listLocalDirectory,
-  openLocalDirectory,
-  selectLocalDirectory,
   type LocalDirectoryEntry,
 } from "../../lib/fileDialogApi";
-import {
-  copyLocalPath,
-  createLocalDirectory,
-  deleteLocalPath,
-  renameLocalPath,
-} from "../../lib/localFilesApi";
+import { copyLocalPath } from "../../lib/localFilesApi";
 import {
   enqueueSftpTransfer,
   type SftpManagedTransferRequest,
@@ -41,7 +31,6 @@ import {
   initialLocalTransferPaneState,
   localDirectorySummary,
   localTransferPaneReducer,
-  nextLocalDirectoryRequestId,
   normalizeLocalTransferError,
   visibleLocalDirectoryListing,
   type LocalDirectoryEntryFilter,
@@ -63,7 +52,6 @@ import {
   isEditableLocalKeyboardTarget,
   isLocalCopyShortcut,
   isLocalPasteShortcut,
-  parentLocalPath,
 } from "./LocalTransferPaneKeyboard";
 import {
   LocalTransferPaneContextMenu,
@@ -73,16 +61,9 @@ import { LocalTransferPaneDialogs } from "./LocalTransferPaneDialogs";
 import { LocalTransferPaneListView } from "./LocalTransferPaneListView";
 import { LocalTransferPaneTargetFooter } from "./LocalTransferPaneTargetFooter";
 import {
-  SFTP_REMOTE_DRAG_PAYLOAD_MIME,
-  hasSftpRemoteDragPayloadType,
   parseSftpRemoteDragPayload,
   remoteDragPayloadEntriesToSftpEntries,
 } from "./sftp-tool-content/sftpRemoteTransferModel";
-import {
-  SFTP_LOCAL_FILE_DRAG_PAYLOAD_MIME,
-  parseSftpLocalFileDragPayload,
-  resolveSftpLocalPaneDropTarget,
-} from "./sftp-tool-content/sftpLocalUploadDropModel";
 import { buildBatchDownloadTransferPlan } from "./sftp-tool-content/sftpTransferActionPlan";
 import { withSftpTransferViewScope } from "./sftp-tool-content/sftpTransferScopeModel";
 import {
@@ -90,6 +71,8 @@ import {
   type ResolvedTransferPlan,
 } from "./sftpTransferResolver";
 import { resolveSftpFileRowHeight } from "./sftpDensityModel";
+import { useLocalTransferPaneFileActions } from "./useLocalTransferPaneFileActions";
+import { useLocalTransferPaneDropHandlers } from "./useLocalTransferPaneDropHandlers";
 
 const DEFAULT_TRANSFER_CONFLICT_POLICY: SftpTransferConflictPolicy = "overwrite";
 
@@ -181,31 +164,28 @@ export function LocalTransferPane({
     : spaciousDensity
       ? "px-4 py-2.5"
       : "px-3 py-2";
-  const loadDirectory = useCallback(
-    async (path?: string | null) => {
-      if (!active) {
-        return;
-      }
-      const requestId = nextLocalDirectoryRequestId(requestIdRef.current);
-      requestIdRef.current = requestId;
-      dispatchLocalState({ requestId, type: "load-started" });
-      try {
-        const nextListing = await listLocalDirectory(path);
-        dispatchLocalState({
-          listing: nextListing,
-          requestId,
-          type: "load-succeeded",
-        });
-      } catch (nextError) {
-        dispatchLocalState({
-          error: normalizeLocalTransferError(nextError),
-          requestId,
-          type: "load-failed",
-        });
-      }
-    },
-    [active],
-  );
+  const {
+    chooseDirectory,
+    copyEntryPath,
+    createDirectoryInCurrentDirectory,
+    deleteLocalEntry,
+    loadDirectory,
+    openCreateDirectoryDialog,
+    openCurrentDirectory,
+    openEntryInFileManager,
+    renameLocalEntry,
+  } = useLocalTransferPaneFileActions({
+    active,
+    dispatch: dispatchLocalState,
+    listing,
+    loading,
+    requestIdRef,
+    setCreateDirectoryDialogOpen,
+    setCreateDirectoryNameDraft,
+    setDeleteEntry,
+    setRenameEntry,
+    setSelectedEntryPaths,
+  });
 
   useEffect(() => {
     if (!active) {
@@ -249,145 +229,6 @@ export function LocalTransferPane({
       window.removeEventListener("resize", close);
     };
   }, [contextMenu]);
-
-  const chooseDirectory = async () => {
-    try {
-      const selected = await selectLocalDirectory();
-      if (selected) {
-        await loadDirectory(selected);
-      }
-    } catch (nextError) {
-      dispatchLocalState({
-        error: normalizeLocalTransferError(nextError),
-        type: "error-reported",
-      });
-    }
-  };
-
-  const openCurrentDirectory = async () => {
-    if (!listing) {
-      return;
-    }
-    try {
-      await openLocalDirectory(listing.path);
-    } catch (nextError) {
-      dispatchLocalState({
-        error: normalizeLocalTransferError(nextError),
-        type: "error-reported",
-      });
-    }
-  };
-
-  const openCreateDirectoryDialog = () => {
-    if (!listing || loading) {
-      return;
-    }
-    setCreateDirectoryNameDraft("");
-    setCreateDirectoryDialogOpen(true);
-  };
-
-  const createDirectoryInCurrentDirectory = async (name: string) => {
-    if (!listing) {
-      return;
-    }
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      return;
-    }
-    setCreateDirectoryDialogOpen(false);
-
-    const requestId = nextLocalDirectoryRequestId(requestIdRef.current);
-    requestIdRef.current = requestId;
-    dispatchLocalState({ requestId, type: "load-started" });
-    try {
-      const nextListing = await createLocalDirectory({
-        name: trimmedName,
-        parentPath: listing.path,
-        rootPath: listing.path,
-      });
-      dispatchLocalState({
-        listing: nextListing,
-        requestId,
-        type: "load-succeeded",
-      });
-    } catch (nextError) {
-      dispatchLocalState({
-        error: normalizeLocalTransferError(nextError),
-        requestId,
-        type: "load-failed",
-      });
-    }
-  };
-
-  const renameLocalEntry = async (entry: LocalDirectoryEntry, name: string) => {
-    if (!listing || (entry.kind !== "file" && entry.kind !== "directory")) {
-      return;
-    }
-    const trimmedName = name.trim();
-    if (!trimmedName || trimmedName === entry.name) {
-      return;
-    }
-
-    const requestId = nextLocalDirectoryRequestId(requestIdRef.current);
-    requestIdRef.current = requestId;
-    dispatchLocalState({ requestId, type: "load-started" });
-    try {
-      const nextListing = await renameLocalPath({
-        kind: entry.kind,
-        name: trimmedName,
-        path: entry.path,
-        rootPath: listing.path,
-      });
-      setRenameEntry(null);
-      setSelectedEntryPaths(new Set());
-      dispatchLocalState({
-        listing: nextListing,
-        requestId,
-        type: "load-succeeded",
-      });
-    } catch (nextError) {
-      dispatchLocalState({
-        error: normalizeLocalTransferError(nextError),
-        requestId,
-        type: "load-failed",
-      });
-    }
-  };
-
-  const deleteLocalEntry = async (
-    entry: LocalDirectoryEntry,
-    confirmName: string,
-  ) => {
-    if (!listing || (entry.kind !== "file" && entry.kind !== "directory")) {
-      return;
-    }
-
-    const requestId = nextLocalDirectoryRequestId(requestIdRef.current);
-    requestIdRef.current = requestId;
-    dispatchLocalState({ requestId, type: "load-started" });
-    try {
-      const nextListing = await deleteLocalPath({
-        confirmName,
-        kind: entry.kind,
-        path: entry.path,
-        recursive: entry.kind === "directory",
-        rootPath: listing.path,
-      });
-      setDeleteEntry(null);
-      setSelectedEntryPaths(new Set());
-      dispatchLocalState({
-        listing: nextListing,
-        requestId,
-        type: "load-succeeded",
-      });
-    } catch (nextError) {
-      dispatchLocalState({
-        error: normalizeLocalTransferError(nextError),
-        requestId,
-        type: "load-failed",
-      });
-    }
-  };
 
   const enqueueUploadPlan = useCallback(
     async (
@@ -562,126 +403,21 @@ export function LocalTransferPane({
     },
     [listing?.path, loadDirectory],
   );
-
-  const handleRemoteDragEnter = (event: ReactDragEvent<HTMLElement>) => {
-    if (!listing) {
-      return;
-    }
-    const decision = resolveSftpLocalPaneDropTarget({
-      hasLocalPayload: event.dataTransfer.types.includes(SFTP_LOCAL_FILE_DRAG_PAYLOAD_MIME),
-      hasRemotePayload: hasSftpRemoteDragPayloadType(event.dataTransfer.types),
-      type: "enter",
-    });
-    if (decision.kind === "ignore") {
-      return;
-    }
-    event.preventDefault();
-    if (decision.kind === "copy-hover") {
-      setDropRejectedActive(false);
-      setRemoteDropActive(decision.active);
-      return;
-    }
-    if (decision.kind === "download-hover") {
-      setDropRejectedActive(false);
-      setRemoteDropActive(true);
-    }
-  };
-
-  const handleRemoteDragOver = (event: ReactDragEvent<HTMLElement>) => {
-    if (!listing) {
-      return;
-    }
-    const decision = resolveSftpLocalPaneDropTarget({
-      hasLocalPayload: event.dataTransfer.types.includes(SFTP_LOCAL_FILE_DRAG_PAYLOAD_MIME),
-      hasRemotePayload: hasSftpRemoteDragPayloadType(event.dataTransfer.types),
-      type: "over",
-    });
-    if (decision.kind === "ignore") {
-      return;
-    }
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-    if (decision.kind === "copy-hover") {
-      setDropRejectedActive(false);
-      setRemoteDropActive(decision.active);
-      return;
-    }
-    setDropRejectedActive(false);
-    setRemoteDropActive(true);
-  };
-
-  const handleRemoteDragLeave = (event: ReactDragEvent<HTMLElement>) => {
-    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-      setRemoteDropActive(false);
-      setDropRejectedActive(false);
-    }
-  };
-
-  const handleRemoteDrop = (event: ReactDragEvent<HTMLElement>) => {
-    if (!listing) {
-      return;
-    }
-    const decision = resolveSftpLocalPaneDropTarget({
-      hasLocalPayload: event.dataTransfer.types.includes(SFTP_LOCAL_FILE_DRAG_PAYLOAD_MIME),
-      hasRemotePayload: hasSftpRemoteDragPayloadType(event.dataTransfer.types),
-      type: "drop",
-    });
-    if (decision.kind === "ignore") {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    setContextMenu(null);
-    setRemoteDropActive(false);
-    setDropRejectedActive(false);
-    if (decision.kind === "copy") {
-      const payload = parseSftpLocalFileDragPayload(
-        event.dataTransfer.getData(SFTP_LOCAL_FILE_DRAG_PAYLOAD_MIME),
-      );
-      if (!payload) {
-        dispatchLocalState({
-          error: "无法识别拖拽的本机文件。",
-          type: "error-reported",
-        });
-        return;
-      }
-      void copyLocalEntriesToCurrentDirectory(payload.entries, listing.path);
-      return;
-    }
-    if (decision.kind === "download") {
-      void downloadRemotePayloadToCurrentDirectory(
-        event.dataTransfer.getData(SFTP_REMOTE_DRAG_PAYLOAD_MIME),
-      );
-      return;
-    }
-  };
-
-  const openEntryInFileManager = async (entry: LocalDirectoryEntry) => {
-    try {
-      await openLocalDirectory(
-        entry.kind === "directory" ? entry.path : parentLocalPath(entry.path),
-      );
-    } catch (nextError) {
-      dispatchLocalState({
-        error: normalizeLocalTransferError(nextError),
-        type: "error-reported",
-      });
-    }
-  };
-
-  const copyEntryPath = async (entry: LocalDirectoryEntry) => {
-    try {
-      const result = await writeDesktopClipboardText(entry.path);
-      if (!result.ok) {
-        throw new Error("当前环境不支持复制到剪贴板。");
-      }
-    } catch (nextError) {
-      dispatchLocalState({
-        error: normalizeLocalTransferError(nextError),
-        type: "error-reported",
-      });
-    }
-  };
+  const {
+    handleRemoteDragEnter,
+    handleRemoteDragLeave,
+    handleRemoteDragOver,
+    handleRemoteDrop,
+  } = useLocalTransferPaneDropHandlers({
+    closeContextMenu: () => setContextMenu(null),
+    copyLocalEntries: copyLocalEntriesToCurrentDirectory,
+    downloadRemotePayload: downloadRemotePayloadToCurrentDirectory,
+    listing,
+    reportError: (nextError) =>
+      dispatchLocalState({ error: nextError, type: "error-reported" }),
+    setDropRejectedActive,
+    setRemoteDropActive,
+  });
 
   const openContextMenu = (
     event: ReactMouseEvent,
