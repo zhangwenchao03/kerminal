@@ -1,15 +1,15 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
-export type PortForwardKind =
+type PortForwardKind =
   | "local"
   | "remote"
   | "dynamic"
   | "remoteDynamic";
 
-export type PortForwardStatus = "running" | "exited";
+type PortForwardStatus = "running" | "exited";
 
 /** 端口转发仅支持 SOCKS 代理；HTTP network-assist 已退役。 */
-export type PortForwardRuntimeMode =
+type PortForwardRuntimeMode =
   | "unknown"
   | "managedSshRuntime"
   | "openSshProcess"
@@ -22,13 +22,13 @@ export type PortForwardOrigin =
   | "networkAssist"
   | "hostPreset";
 
-export type PortForwardAccessScope =
+type PortForwardAccessScope =
   | "loopback"
   | "privateNetwork"
   | "allInterfaces"
   | "custom";
 
-export interface PortForwardEndpoint {
+interface PortForwardEndpoint {
   host: string;
   label?: string;
   port?: number;
@@ -36,7 +36,7 @@ export interface PortForwardEndpoint {
   side?: "host" | "local";
 }
 
-export interface PortForwardRuntimeDiagnostics {
+interface PortForwardRuntimeDiagnostics {
   backend: string;
   cleanupStatus: string;
   fallbackReason?: string;
@@ -140,10 +140,6 @@ export async function listPortForwards(): Promise<PortForwardSummary[]> {
   }
 
   return invoke<PortForwardSummary[]>("port_forward_list");
-}
-
-export async function closePortForward(forwardId: string): Promise<boolean> {
-  return stopPortForward(forwardId);
 }
 
 export async function startPortForward(

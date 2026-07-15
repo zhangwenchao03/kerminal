@@ -137,7 +137,7 @@ export type SftpTransferOperation =
   | "archiveDownload"
   | "archiveUpload"
   | "clipboardDownload";
-export type SftpTransferTransportMode =
+type SftpTransferTransportMode =
   | "singleHostSftp"
   | "clientBridge"
   | "localStage";
@@ -186,7 +186,7 @@ export interface SftpTransferScopeRequest {
   viewScope?: string | null;
 }
 
-export type SftpLocalPathKind = "file" | "directory";
+type SftpLocalPathKind = "file" | "directory";
 
 export interface SftpClassifyLocalPathsRequest {
   paths: string[];

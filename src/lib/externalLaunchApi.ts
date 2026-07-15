@@ -2,9 +2,8 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export const EXTERNAL_SSH_LAUNCH_EVENT = "kerminal-external-ssh-launch";
-export const EXTERNAL_TARGET_PREFIX = "external:";
 
-export type ExternalLaunchSourceTool =
+type ExternalLaunchSourceTool =
   | "putty"
   | "mobaxterm"
   | "xshell"
@@ -12,32 +11,32 @@ export type ExternalLaunchSourceTool =
   | "openssh"
   | "kerminal-native";
 
-export type ExternalLaunchEntrypoint =
+type ExternalLaunchEntrypoint =
   "direct-argv" | "single-instance" | "shim-ipc" | "protocol" | "session-file";
 
-export type ExternalLaunchEventKind = "queued" | "rejected";
+type ExternalLaunchEventKind = "queued" | "rejected";
 
-export interface ExternalLaunchSource {
+interface ExternalLaunchSource {
   tool: ExternalLaunchSourceTool;
   entrypoint: ExternalLaunchEntrypoint;
   persona?: string;
   argv0?: string;
 }
 
-export interface ExternalSshRouteHop {
+interface ExternalSshRouteHop {
   host: string;
   port: number;
   username?: string;
 }
 
-export interface ExternalSshTarget {
+interface ExternalSshTarget {
   host: string;
   port: number;
   username?: string;
   route: ExternalSshRouteHop[];
 }
 
-export interface ExternalSshAuthMetadata {
+interface ExternalSshAuthMetadata {
   hasPassword: boolean;
   hasKeyPassphrase: boolean;
   identityFile?: string;
@@ -45,7 +44,7 @@ export interface ExternalSshAuthMetadata {
   agent: boolean;
 }
 
-export interface ExternalSshLaunchOptions {
+interface ExternalSshLaunchOptions {
   displayName?: string;
   remoteCommand?: string;
   remoteCommandFile?: string;
@@ -53,7 +52,7 @@ export interface ExternalSshLaunchOptions {
   sessionName?: string;
 }
 
-export interface ExternalLaunchRequestDiagnostics {
+interface ExternalLaunchRequestDiagnostics {
   parser: string;
   argvRedacted: string[];
   rawHash: string;
@@ -96,7 +95,7 @@ export interface ExternalHostKeyInspection {
   status: "known" | "unknown" | "changed";
 }
 
-export interface ExternalLaunchTargetSummary {
+interface ExternalLaunchTargetSummary {
   host: string;
   port: number;
   username?: string;
@@ -113,7 +112,7 @@ export interface ExternalLaunchEventPayload {
   message?: string;
 }
 
-export interface ExternalLaunchPolicySnapshot {
+interface ExternalLaunchPolicySnapshot {
   enabled: boolean;
   acceptVendorArgs: boolean;
   shimBridgeEnabled: boolean;
@@ -123,7 +122,7 @@ export interface ExternalLaunchPolicySnapshot {
   claimLeaseMs: number;
 }
 
-export interface ExternalLaunchIntakeSnapshot {
+interface ExternalLaunchIntakeSnapshot {
   pendingCount: number;
   pendingRequestHashes: string[];
   claimedCount: number;
@@ -143,7 +142,7 @@ export interface ExternalLaunchIntakeSnapshot {
   health: ExternalLaunchRuntimeHealthSnapshot;
 }
 
-export interface ExternalLaunchRuntimeHealthSnapshot {
+interface ExternalLaunchRuntimeHealthSnapshot {
   bridgeListening: boolean;
   bridgeGenerationTag?: string;
   bridgeRestartCount: number;
@@ -156,7 +155,7 @@ export interface ExternalLaunchRuntimeHealthSnapshot {
   lastIntakeLatencyMs?: number;
 }
 
-export interface ExternalLaunchTaskSnapshot {
+interface ExternalLaunchTaskSnapshot {
   queuedCount: number;
   inFlightCount: number;
   connectedCount: number;
@@ -168,7 +167,7 @@ export interface ExternalLaunchTaskSnapshot {
   lastConnectLatencyMs?: number;
 }
 
-export interface ExternalLaunchSecretSnapshot {
+interface ExternalLaunchSecretSnapshot {
   activeSecretCount: number;
   requestHashes: string[];
 }
@@ -179,20 +178,20 @@ export interface ExternalLaunchSnapshot {
   tasks: ExternalLaunchTaskSnapshot;
 }
 
-export type ExternalLaunchAliasTool = Exclude<
+type ExternalLaunchAliasTool = Exclude<
   ExternalLaunchSourceTool,
   "kerminal-native"
 >;
 
-export type ExternalLaunchAliasState =
+type ExternalLaunchAliasState =
   | "missing"
   | "managed"
   | "blockedNonKerminal"
   | "staleMarker";
 
-export type ExternalLaunchAliasInstallMode = "hardLink" | "copy";
+type ExternalLaunchAliasInstallMode = "hardLink" | "copy";
 
-export interface ExternalLaunchAliasInspection {
+interface ExternalLaunchAliasInspection {
   tool: ExternalLaunchAliasTool;
   aliasPath: string;
   markerPath: string;
@@ -232,7 +231,7 @@ export interface ExternalLaunchAliasRemoval {
   removedMarker: boolean;
 }
 
-export const externalLaunchAliasTools: ExternalLaunchAliasTool[] = [
+const externalLaunchAliasTools: ExternalLaunchAliasTool[] = [
   "putty",
   "mobaxterm",
   "xshell",

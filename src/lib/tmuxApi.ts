@@ -22,7 +22,7 @@ export interface TmuxCapabilityStatus {
   socketPath?: string;
 }
 
-export type TmuxSessionStatus = "running" | "stale";
+type TmuxSessionStatus = "running" | "stale";
 
 export interface TmuxSessionSummary {
   id: string;
@@ -35,37 +35,6 @@ export interface TmuxSessionSummary {
   activityAt?: number;
   targetRef: string;
   status: TmuxSessionStatus;
-}
-
-export interface TmuxWindowSummary {
-  id: string;
-  sessionId: string;
-  index: number;
-  name: string;
-  active: boolean;
-  panes: number;
-  layout?: string;
-  flags?: string;
-}
-
-export interface TmuxPaneSummary {
-  id: string;
-  windowId: string;
-  index: number;
-  active: boolean;
-  currentPath?: string;
-  currentCommand?: string;
-  title?: string;
-  width: number;
-  height: number;
-  dead: boolean;
-}
-
-export interface TmuxPaneCapture {
-  paneId: string;
-  text: string;
-  lines: number;
-  truncated: boolean;
 }
 
 export interface TmuxCreateSessionRequest {
@@ -83,22 +52,6 @@ export interface TmuxRenameSessionRequest {
 export interface TmuxKillSessionRequest {
   target: TmuxTargetRef;
   sessionId: string;
-}
-
-export interface TmuxListWindowsRequest {
-  target: TmuxTargetRef;
-  sessionId: string;
-}
-
-export interface TmuxListPanesRequest {
-  target: TmuxTargetRef;
-  targetId: string;
-}
-
-export interface TmuxCapturePaneRequest {
-  target: TmuxTargetRef;
-  paneId: string;
-  lines?: number;
 }
 
 export interface TmuxAttachSessionRequest {
@@ -267,61 +220,6 @@ export async function tmuxKillSession(
     return sessions.some((session) => session.id === request.sessionId);
   }
   return invoke<boolean>("tmux_kill_session", { request });
-}
-
-export async function tmuxListWindows(
-  request: TmuxListWindowsRequest,
-): Promise<TmuxWindowSummary[]> {
-  if (!isTauri()) {
-    return [
-      {
-        active: true,
-        id: "@0",
-        index: 0,
-        layout: "preview-layout",
-        name: "shell",
-        panes: 1,
-        sessionId: request.sessionId,
-      },
-    ];
-  }
-  return invoke<TmuxWindowSummary[]>("tmux_list_windows", { request });
-}
-
-export async function tmuxListPanes(
-  request: TmuxListPanesRequest,
-): Promise<TmuxPaneSummary[]> {
-  if (!isTauri()) {
-    return [
-      {
-        active: true,
-        currentCommand: "shell",
-        currentPath: "/workspace",
-        dead: false,
-        height: 24,
-        id: "%0",
-        index: 0,
-        title: "preview",
-        width: 80,
-        windowId: request.targetId.startsWith("@") ? request.targetId : "@0",
-      },
-    ];
-  }
-  return invoke<TmuxPaneSummary[]>("tmux_list_panes", { request });
-}
-
-export async function tmuxCapturePane(
-  request: TmuxCapturePaneRequest,
-): Promise<TmuxPaneCapture> {
-  if (!isTauri()) {
-    return {
-      lines: request.lines ?? 200,
-      paneId: request.paneId,
-      text: "Kerminal tmux preview\n真实 pane 输出仅在桌面应用中捕获。",
-      truncated: false,
-    };
-  }
-  return invoke<TmuxPaneCapture>("tmux_capture_pane", { request });
 }
 
 export async function tmuxDetachCurrent(paneId: string): Promise<boolean> {

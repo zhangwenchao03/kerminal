@@ -3,10 +3,10 @@ import { readDesktopClipboardText } from "./desktopClipboardApi";
 import type { SshAuthPromptPlan } from "./sshAuthApi";
 import type { ContainerRuntime } from "./targetModel";
 
-export type TerminalOutputKind = "data" | "agentSignal" | "closed" | "error";
+type TerminalOutputKind = "data" | "agentSignal" | "closed" | "error";
 
-export type TerminalSessionStatus = "running" | "exited";
-export type TerminalShellIntegrationStatus = "enabled" | "disabled";
+type TerminalSessionStatus = "running" | "exited";
+type TerminalShellIntegrationStatus = "enabled" | "disabled";
 export type TerminalAgentKind = "codex" | "claude" | "gemini";
 export type TerminalAgentStatus =
   | "working"
@@ -82,7 +82,7 @@ export interface TerminalSessionSummary {
   agentSignal?: TerminalAgentSignal;
 }
 
-export interface TerminalShellIntegrationSummary {
+interface TerminalShellIntegrationSummary {
   status: TerminalShellIntegrationStatus;
   shell?: string;
   scriptPath?: string;
@@ -102,7 +102,7 @@ export interface TerminalSessionReapDiagnostics {
   elapsedMs: number;
 }
 
-export type TerminalPtyOutputPumpFlushReason =
+type TerminalPtyOutputPumpFlushReason =
   | "threshold"
   | "idle"
   | "closed"
@@ -131,7 +131,7 @@ export interface TerminalPtyOutputPumpStats {
   sessionId: string;
 }
 
-export type TerminalErrorClass =
+type TerminalErrorClass =
   | "sshAuthRequired"
   | "spawnFailed"
   | "ptyReadFailed"
@@ -147,13 +147,13 @@ export type TerminalErrorClass =
   | "dependencyMissing"
   | "unknown";
 
-export type TerminalErrorRecovery =
+type TerminalErrorRecovery =
   | "retryable"
   | "userActionRequired"
   | "notRetryable"
   | "internal";
 
-export type TerminalErrorOperation =
+type TerminalErrorOperation =
   | "createSession"
   | "readOutput"
   | "write"

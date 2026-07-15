@@ -6,13 +6,10 @@ import { TmuxToolContent } from "../../../../src/features/tool-panel/TmuxToolCon
 
 const tmuxApiMocks = vi.hoisted(() => ({
   tmuxAttachSession: vi.fn(),
-  tmuxCapturePane: vi.fn(),
   tmuxCreateSession: vi.fn(),
   tmuxDetachCurrent: vi.fn(),
   tmuxKillSession: vi.fn(),
-  tmuxListPanes: vi.fn(),
   tmuxListSessions: vi.fn(),
-  tmuxListWindows: vi.fn(),
   tmuxProbe: vi.fn(),
   tmuxRenameSession: vi.fn(),
 }));
@@ -33,18 +30,13 @@ const terminalSessionRegistryMocks = vi.hoisted(() => ({
 vi.mock("../../../../src/lib/tmuxApi", () => ({
   tmuxAttachSession: (...args: unknown[]) =>
     tmuxApiMocks.tmuxAttachSession(...args),
-  tmuxCapturePane: (...args: unknown[]) =>
-    tmuxApiMocks.tmuxCapturePane(...args),
   tmuxCreateSession: (...args: unknown[]) =>
     tmuxApiMocks.tmuxCreateSession(...args),
   tmuxDetachCurrent: (...args: unknown[]) =>
     tmuxApiMocks.tmuxDetachCurrent(...args),
   tmuxKillSession: (...args: unknown[]) => tmuxApiMocks.tmuxKillSession(...args),
-  tmuxListPanes: (...args: unknown[]) => tmuxApiMocks.tmuxListPanes(...args),
   tmuxListSessions: (...args: unknown[]) =>
     tmuxApiMocks.tmuxListSessions(...args),
-  tmuxListWindows: (...args: unknown[]) =>
-    tmuxApiMocks.tmuxListWindows(...args),
   tmuxProbe: (...args: unknown[]) => tmuxApiMocks.tmuxProbe(...args),
   tmuxRenameSession: (...args: unknown[]) =>
     tmuxApiMocks.tmuxRenameSession(...args),
@@ -146,36 +138,6 @@ describe("TmuxToolContent", () => {
       version: "tmux 3.4",
     });
     tmuxApiMocks.tmuxListSessions.mockResolvedValue([session]);
-    tmuxApiMocks.tmuxListWindows.mockResolvedValue([
-      {
-        active: true,
-        id: "@0",
-        index: 0,
-        layout: "layout",
-        name: "shell",
-        panes: 1,
-        sessionId: "$0",
-      },
-    ]);
-    tmuxApiMocks.tmuxListPanes.mockResolvedValue([
-      {
-        active: true,
-        currentCommand: "bash",
-        currentPath: "/srv/api",
-        dead: false,
-        height: 24,
-        id: "%0",
-        index: 0,
-        width: 80,
-        windowId: "@0",
-      },
-    ]);
-    tmuxApiMocks.tmuxCapturePane.mockResolvedValue({
-      lines: 120,
-      paneId: "%0",
-      text: "npm run dev",
-      truncated: false,
-    });
   });
 
   it("renders tmux sessions with details and quick commands collapsed by default", async () => {
@@ -203,9 +165,6 @@ describe("TmuxToolContent", () => {
     expect(tmuxApiMocks.tmuxProbe).toHaveBeenCalledWith({
       target: { target: { hostId: "prod-api", kind: "ssh" } },
     });
-    expect(tmuxApiMocks.tmuxListWindows).not.toHaveBeenCalled();
-    expect(tmuxApiMocks.tmuxListPanes).not.toHaveBeenCalled();
-    expect(tmuxApiMocks.tmuxCapturePane).not.toHaveBeenCalled();
   });
 
   it("keeps target B sessions when target A list resolves later", async () => {

@@ -4,7 +4,7 @@ export type RemoteHostAuthType = "password" | "key" | "agent";
 export type SshProxyProtocol = "none" | "http" | "socks5";
 export type SshTunnelKind = "local" | "remote" | "dynamic";
 
-export interface SshProxyOptions {
+interface SshProxyOptions {
   protocol: SshProxyProtocol;
   host?: string;
   port?: number;
@@ -31,7 +31,7 @@ export interface SshJumpHostOptions {
   credentialSecret?: string;
 }
 
-export interface SshTerminalOptions {
+interface SshTerminalOptions {
   encoding: string;
   terminalType: string;
   keyboardProfile: string;
@@ -45,7 +45,7 @@ export interface SshTerminalOptions {
   loginScript: string;
 }
 
-export interface SshTransferOptions {
+interface SshTransferOptions {
   enabled: boolean;
   remoteStartDirectory: string;
   localStartDirectory: string;
@@ -91,12 +91,12 @@ export interface RemoteHost {
   updatedAt: string;
 }
 
-export type RemoteHostCredentialStatus =
+type RemoteHostCredentialStatus =
   | "missing"
   | "vault"
   | "agent";
 
-export type RemoteHostCredentialRevealStatus =
+type RemoteHostCredentialRevealStatus =
   | "available"
   | "agent"
   | "configPath"
@@ -157,7 +157,7 @@ interface NormalizedRemoteHostUpdateRequest
   sortOrder: number;
 }
 
-export const browserPreviewRemoteHostTree: RemoteHostGroupWithHosts[] =
+const browserPreviewRemoteHostTree: RemoteHostGroupWithHosts[] =
   browserPreviewMode() === "system-info"
     ? [
         {
@@ -238,22 +238,6 @@ export async function listRemoteHostTree(): Promise<RemoteHostGroupWithHosts[]> 
   }
 
   return invoke<RemoteHostGroupWithHosts[]>("remote_host_tree");
-}
-
-export async function listRemoteHostGroups(): Promise<RemoteHostGroup[]> {
-  if (!isTauri()) {
-    return cloneRemoteHostTree(browserPreviewRemoteHostState)
-      .filter((group) => group.id !== UNGROUPED_REMOTE_HOST_GROUP_ID)
-      .map((group) => ({
-        createdAt: group.createdAt,
-        id: group.id,
-        name: group.name,
-        sortOrder: group.sortOrder,
-        updatedAt: group.updatedAt,
-      }));
-  }
-
-  return invoke<RemoteHostGroup[]>("remote_host_group_list");
 }
 
 export async function createRemoteHostGroup(

@@ -21,22 +21,6 @@ export interface DockerContainerDirectoryListing {
   entries: SftpEntry[];
 }
 
-export interface DockerContainerPreviewRequest
-  extends DockerContainerPathRequest {
-  maxBytes?: number;
-}
-
-export interface DockerContainerFilePreview {
-  hostId: string;
-  containerId: string;
-  path: string;
-  content: string;
-  bytesRead: number;
-  maxBytes: number;
-  truncated: boolean;
-  encoding: string;
-}
-
 export interface DockerContainerReadTextFileRequest
   extends DockerContainerPathRequest {
   maxBytes?: number;
@@ -112,22 +96,6 @@ export async function listDockerContainerDirectory(
   }
 
   return invoke<DockerContainerDirectoryListing>("docker_list_directory", {
-    request: normalized,
-  });
-}
-
-export async function previewDockerContainerFile(
-  request: DockerContainerPreviewRequest,
-): Promise<DockerContainerFilePreview> {
-  const normalized = {
-    ...normalizePathRequest(request),
-    maxBytes: request.maxBytes,
-  };
-  if (!isTauri()) {
-    return browserPreviewFile(normalized);
-  }
-
-  return invoke<DockerContainerFilePreview>("docker_preview_file", {
     request: normalized,
   });
 }
@@ -276,7 +244,7 @@ function normalizeTransferRequest(
   };
 }
 
-export function normalizeRemotePath(path: string) {
+function normalizeRemotePath(path: string) {
   const normalized = path.trim().replace(/\\/g, "/").replace(/\/+/g, "/");
   const withLeadingSlash = normalized.startsWith("/")
     ? normalized
@@ -286,7 +254,7 @@ export function normalizeRemotePath(path: string) {
     : withLeadingSlash || "/";
 }
 
-export function joinRemotePath(basePath: string, childPath: string) {
+function joinRemotePath(basePath: string, childPath: string) {
   const child = childPath.trim().replace(/^\/+/g, "");
   if (!child) {
     return normalizeRemotePath(basePath);
@@ -294,18 +262,13 @@ export function joinRemotePath(basePath: string, childPath: string) {
   return normalizeRemotePath(basePath === "/" ? `/${child}` : `${basePath}/${child}`);
 }
 
-export function parentRemotePath(path: string) {
+function parentRemotePath(path: string) {
   const normalized = normalizeRemotePath(path);
   if (normalized === "/") {
     return null;
   }
   const parent = normalized.slice(0, normalized.lastIndexOf("/")) || "/";
   return parent;
-}
-
-export function fileNameFromPath(path: string, fallback = "download") {
-  const name = normalizeRemotePath(path).split("/").filter(Boolean).pop();
-  return name?.trim() || fallback;
 }
 
 function browserPreviewListing(
@@ -333,23 +296,6 @@ function browserPreviewListing(
     hostId: request.hostId,
     parentPath: parentRemotePath(path),
     path,
-  };
-}
-
-function browserPreviewFile(
-  request: Required<DockerContainerPathRequest> & { maxBytes?: number },
-): DockerContainerFilePreview {
-  const content = browserFileContent(request.path);
-  const maxBytes = request.maxBytes ?? 64 * 1024;
-  return {
-    bytesRead: content.length,
-    containerId: request.containerId,
-    content,
-    encoding: "utf-8-lossy",
-    hostId: request.hostId,
-    maxBytes,
-    path: request.path,
-    truncated: false,
   };
 }
 

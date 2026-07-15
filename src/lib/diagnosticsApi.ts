@@ -50,7 +50,7 @@ export interface ManagedSshSessionSnapshot {
   state: "ready" | "closing" | "failed";
 }
 
-export interface ManagedSshSessionKeySummary {
+interface ManagedSshSessionKeySummary {
   jumps: string[];
   knownHostsProfile: string;
   proxyProfile?: string | null;
@@ -58,16 +58,16 @@ export interface ManagedSshSessionKeySummary {
   target: string;
 }
 
-export type ConfigWatchBackend = "native" | "polling" | "unavailable";
+type ConfigWatchBackend = "native" | "polling" | "unavailable";
 
-export type ConfigWatchDomain =
+type ConfigWatchDomain =
   | "settings"
   | "profiles"
   | "hosts"
   | "snippets"
   | "workflows";
 
-export type ConfigWatchStatus = "ready" | "invalid" | "watcher-unavailable";
+type ConfigWatchStatus = "ready" | "invalid" | "watcher-unavailable";
 
 export interface ConfigWatchStatusSnapshot {
   enabled: boolean;
@@ -82,7 +82,7 @@ export interface ConfigWatchStatusSnapshot {
   fallbackReason?: string | null;
 }
 
-export interface RuntimeProcessHealth {
+interface RuntimeProcessHealth {
   pid: number;
   name: string;
   memoryBytes: number;
@@ -94,7 +94,7 @@ export interface RuntimeProcessHealth {
   diskWrittenBytes: number;
 }
 
-export interface RuntimeSystemHealth {
+interface RuntimeSystemHealth {
   os: string;
   arch: string;
   hostName?: string | null;
@@ -136,7 +136,7 @@ export interface RuntimeStorageHealth {
   appLogRotationKeepFiles: number;
 }
 
-export interface RuntimeSamplingInfo {
+interface RuntimeSamplingInfo {
   source: string;
   cpuSampleIntervalMs: number;
   cpuRefreshedTwice: boolean;

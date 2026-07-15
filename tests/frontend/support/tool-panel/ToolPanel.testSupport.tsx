@@ -5,7 +5,6 @@ import type { WorkspaceContextProjection } from "../../../../src/features/worksp
 import { consumePendingAgentSendRequest } from "../agentSendRequestStore.testSupport";
 
 const portForwardApiMocks = vi.hoisted(() => ({
-  closePortForward: vi.fn(),
   createPortForward: vi.fn(),
   listPortForwards: vi.fn(),
   stopPortForward: vi.fn(),
@@ -21,13 +20,10 @@ const diagnosticsApiMocks = vi.hoisted(() => ({
 }));
 const tmuxApiMocks = vi.hoisted(() => ({
   tmuxAttachSession: vi.fn(),
-  tmuxCapturePane: vi.fn(),
   tmuxCreateSession: vi.fn(),
   tmuxDetachCurrent: vi.fn(),
   tmuxKillSession: vi.fn(),
-  tmuxListPanes: vi.fn(),
   tmuxListSessions: vi.fn(),
-  tmuxListWindows: vi.fn(),
   tmuxProbe: vi.fn(),
   tmuxRenameSession: vi.fn(),
 }));
@@ -40,8 +36,6 @@ export {
 };
 
 vi.mock("../../../../src/lib/portForwardApi", () => ({
-  closePortForward: (...args: unknown[]) =>
-    portForwardApiMocks.closePortForward(...args),
   createPortForward: (...args: unknown[]) =>
     portForwardApiMocks.createPortForward(...args),
   listPortForwards: (...args: unknown[]) =>
@@ -65,19 +59,14 @@ vi.mock("../../../../src/lib/diagnosticsApi", () => ({
 vi.mock("../../../../src/lib/tmuxApi", () => ({
   tmuxAttachSession: (...args: unknown[]) =>
     tmuxApiMocks.tmuxAttachSession(...args),
-  tmuxCapturePane: (...args: unknown[]) =>
-    tmuxApiMocks.tmuxCapturePane(...args),
   tmuxCreateSession: (...args: unknown[]) =>
     tmuxApiMocks.tmuxCreateSession(...args),
   tmuxDetachCurrent: (...args: unknown[]) =>
     tmuxApiMocks.tmuxDetachCurrent(...args),
   tmuxKillSession: (...args: unknown[]) =>
     tmuxApiMocks.tmuxKillSession(...args),
-  tmuxListPanes: (...args: unknown[]) => tmuxApiMocks.tmuxListPanes(...args),
   tmuxListSessions: (...args: unknown[]) =>
     tmuxApiMocks.tmuxListSessions(...args),
-  tmuxListWindows: (...args: unknown[]) =>
-    tmuxApiMocks.tmuxListWindows(...args),
   tmuxProbe: (...args: unknown[]) => tmuxApiMocks.tmuxProbe(...args),
   tmuxRenameSession: (...args: unknown[]) =>
     tmuxApiMocks.tmuxRenameSession(...args),
@@ -306,7 +295,6 @@ export function assertNoManagedSshAvailabilityNotice() {
 
   beforeEach(() => {
     consumePendingAgentSendRequest();
-    portForwardApiMocks.closePortForward.mockReset();
     portForwardApiMocks.createPortForward.mockReset();
     portForwardApiMocks.listPortForwards.mockReset();
     portForwardApiMocks.stopPortForward.mockReset();
@@ -324,7 +312,6 @@ export function assertNoManagedSshAvailabilityNotice() {
       targetHost: "127.0.0.1",
       targetPort: 5432,
     });
-    portForwardApiMocks.closePortForward.mockResolvedValue(true);
     portForwardApiMocks.stopPortForward.mockResolvedValue(true);
     serverInfoApiMocks.getServerInfoSnapshot.mockReset();
     serverInfoApiMocks.getServerInfoSnapshot.mockResolvedValue({
@@ -479,17 +466,6 @@ export function assertNoManagedSshAvailabilityNotice() {
     });
     tmuxApiMocks.tmuxListSessions.mockReset();
     tmuxApiMocks.tmuxListSessions.mockResolvedValue([]);
-    tmuxApiMocks.tmuxListWindows.mockReset();
-    tmuxApiMocks.tmuxListWindows.mockResolvedValue([]);
-    tmuxApiMocks.tmuxListPanes.mockReset();
-    tmuxApiMocks.tmuxListPanes.mockResolvedValue([]);
-    tmuxApiMocks.tmuxCapturePane.mockReset();
-    tmuxApiMocks.tmuxCapturePane.mockResolvedValue({
-      lines: 0,
-      paneId: "%0",
-      text: "",
-      truncated: false,
-    });
     tmuxApiMocks.tmuxAttachSession.mockReset();
     tmuxApiMocks.tmuxCreateSession.mockReset();
     tmuxApiMocks.tmuxDetachCurrent.mockReset();
