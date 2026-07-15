@@ -474,7 +474,8 @@ const renamedFileListing: LocalDirectoryListing = {
       />,
     );
 
-    const pane = await screen.findByLabelText("本地目录面板");
+    await screen.findByRole("button", { name: /notes.md/ });
+    const pane = screen.getByLabelText("本地目录面板");
     fireEvent.drop(pane, { dataTransfer });
 
     expect(
