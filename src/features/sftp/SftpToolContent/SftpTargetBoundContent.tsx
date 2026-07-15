@@ -70,6 +70,8 @@ import {
   useTransientSftpErrorStatus,
 } from "./useSftpTransientUiEffects";
 
+const EMPTY_SFTP_ENTRIES: SftpEntry[] = [];
+
 /** 承载单个目标代次内的目录、对话框、设置和传输副作用。 */
 export function SftpTargetBoundContent({
   active,
@@ -180,7 +182,7 @@ export function SftpTargetBoundContent({
   const currentPath = listing?.path ?? "/";
   const normalizedFollowedPath =
     normalizeFollowedRemotePath(followedRemotePath);
-  const entries = listing?.entries ?? [];
+  const entries = listing?.entries ?? EMPTY_SFTP_ENTRIES;
   const visibleEntries = useMemo(
     () =>
       showHiddenFiles
@@ -364,7 +366,12 @@ export function SftpTargetBoundContent({
         void loadDirectory(decision.loadPath);
       }
     },
-    [fileTarget, loadDirectory, normalizedFollowedPath],
+    [
+      fileTarget,
+      loadDirectory,
+      normalizedFollowedPath,
+      setFollowTerminalDirectory,
+    ],
   );
 
   useEffect(() => {
@@ -422,6 +429,7 @@ export function SftpTargetBoundContent({
   }, [
     active,
     loadDirectory,
+    setFollowTerminalDirectory,
     setSelectedEntryPath,
     setSelectedEntryPaths,
     sftpRevealRequest,

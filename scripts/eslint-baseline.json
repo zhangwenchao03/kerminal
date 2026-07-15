@@ -119,33 +119,6 @@
       "targetTask": "TASK-070"
     },
     {
-      "file": "src/features/sftp/SftpToolContent.tsx",
-      "message": "React Hook useCallback has a missing dependency: 'setFollowTerminalDirectory'. Either include it or remove the dependency array. If 'setFollowTerminalDirectory' changes too often, find the parent component that defines it and wrap that definition in useCallback.",
-      "rule": "react-hooks/exhaustive-deps",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-react",
-      "targetTask": "TASK-070"
-    },
-    {
-      "file": "src/features/sftp/SftpToolContent.tsx",
-      "message": "React Hook useEffect has a missing dependency: 'setFollowTerminalDirectory'. Either include it or remove the dependency array. If 'setFollowTerminalDirectory' changes too often, find the parent component that defines it and wrap that definition in useCallback.",
-      "rule": "react-hooks/exhaustive-deps",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-react",
-      "targetTask": "TASK-070"
-    },
-    {
-      "file": "src/features/sftp/SftpToolContent.tsx",
-      "message": "The 'entries' logical expression could make the dependencies of useMemo Hook (at line 263) change on every render. To fix this, wrap the initialization of 'entries' in its own useMemo() Hook.",
-      "rule": "react-hooks/exhaustive-deps",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-react",
-      "targetTask": "TASK-070"
-    },
-    {
       "file": "src/features/sftp/SftpTransferWorkbench.tsx",
       "message": "React Hook useEffect has missing dependencies: 'addLeftHostTab' and 'addRightHostTab'. Either include them or remove the dependency array.",
       "rule": "react-hooks/exhaustive-deps",
