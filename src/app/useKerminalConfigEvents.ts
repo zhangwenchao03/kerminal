@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { desktopRuntime } from "../lib/desktopRuntimeApi";
 
 import {
   type ConfigChangeEvent,
@@ -20,12 +21,10 @@ export function useKerminalConfigEvents({
     let disposed = false;
     let unlisten: (() => void) | undefined;
 
-    import("@tauri-apps/api/event")
-      .then(({ listen }) =>
-        listen<ConfigChangeEvent>(CONFIG_CHANGE_EVENT_NAME, (event) => {
-          void coordinator.handleEvent(event.payload);
-        }),
-      )
+    desktopRuntime
+      .listen<ConfigChangeEvent>(CONFIG_CHANGE_EVENT_NAME, (payload) => {
+        void coordinator.handleEvent(payload);
+      })
       .then((nextUnlisten) => {
         if (disposed) {
           nextUnlisten();

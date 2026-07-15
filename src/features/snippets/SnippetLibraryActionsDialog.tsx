@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 import { Clipboard, FolderOpen, History, ListRestart, ShieldCheck } from "lucide-react";
-import { isTauri } from "@tauri-apps/api/core";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
 import { getExternalAgentWorkspaceStatus } from "../../lib/agentLauncherApi";
@@ -14,6 +12,7 @@ import {
   clearSnippetUsage,
   listSnippetDocuments,
 } from "../../lib/snippetApi";
+import { desktopRuntime } from "../../lib/desktopRuntimeApi";
 
 interface SnippetLibraryActionsDialogProps {
   focusedPaneId?: string;
@@ -103,13 +102,16 @@ export function SnippetLibraryActionsDialog({
                 disabled={!snippetsDirectory || busy}
                 onClick={() => {
                   if (!snippetsDirectory) return;
-                  if (!isTauri()) {
-                    onStatus("请在桌面应用中打开片段配置目录。");
-                    return;
-                  }
                   setBusy(true);
-                  void openPath(snippetsDirectory)
-                    .then(() => onStatus("已打开片段配置目录"))
+                  void desktopRuntime
+                    .openPath(snippetsDirectory)
+                    .then((result) =>
+                      onStatus(
+                        result === "opened"
+                          ? "已打开片段配置目录"
+                          : "请在桌面应用中打开片段配置目录。",
+                      ),
+                    )
                     .catch(() => onStatus("配置目录暂时无法打开。"))
                     .finally(() => setBusy(false));
                 }}

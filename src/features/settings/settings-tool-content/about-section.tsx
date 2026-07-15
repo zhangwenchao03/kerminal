@@ -1,5 +1,3 @@
-import { isTauri } from "@tauri-apps/api/core";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { useRef, useState, type ReactNode } from "react";
 import {
   Download,
@@ -33,6 +31,7 @@ import {
   type UserFacingMessage,
 } from "../../../lib/userFacingMessage";
 import type { DesktopNotificationSettings } from "../settingsModel";
+import { desktopRuntime } from "../../../lib/desktopRuntimeApi";
 
 const githubRepositoryUrl = "https://github.com/kongweiguang/kerminal";
 const appVersion = `v${packageJson.version}`;
@@ -416,10 +415,5 @@ function versionLabel(version: string) {
 }
 
 async function openExternalUrl(url: string) {
-  if (isTauri()) {
-    await openUrl(url);
-    return;
-  }
-
-  window.open(url, "_blank", "noopener,noreferrer");
+  await desktopRuntime.openUrl(url);
 }

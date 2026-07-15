@@ -5,7 +5,6 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
-import { convertFileSrc, isTauri } from "@tauri-apps/api/core";
 import { Button } from "../components/ui/button";
 import { UserFacingNotice } from "../components/ui/user-facing-notice";
 import {
@@ -19,6 +18,7 @@ import type { AppSettings } from "../features/settings/settingsModel";
 import type { Machine, MachineGroup } from "../features/workspace/types";
 import type { TerminalProfile } from "../lib/profileApi";
 import type { UserFacingMessage } from "../lib/userFacingMessage";
+import { desktopRuntime } from "../lib/desktopRuntimeApi";
 import {
   createDefaultSshOptions,
   UNGROUPED_REMOTE_HOST_GROUP_ID,
@@ -433,12 +433,13 @@ function localPathToCssUrl(path: string) {
   if (/^(https?|asset|data|blob):/i.test(path)) {
     return path.replace(/"/g, "%22");
   }
-  if (isTauri()) {
-    try {
-      return convertFileSrc(path).replace(/"/g, "%22");
-    } catch {
-      // Fall through to browser-friendly URL handling for tests and dev preview.
+  try {
+    const desktopUrl = desktopRuntime.convertLocalFileSrc(path);
+    if (desktopUrl) {
+      return desktopUrl.replace(/"/g, "%22");
     }
+  } catch {
+    // Fall through to browser-friendly URL handling for invalid local paths.
   }
   if (/^file:/i.test(path)) {
     return path.replace(/"/g, "%22");
