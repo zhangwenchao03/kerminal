@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { MachineSidebarViewMode } from "../features/machine-sidebar/MachineSidebar.shared";
 import { resolveThemeMode } from "../features/settings/settingsModel";
 import { writeBroadcastCommand } from "../features/terminal/terminalSessionRegistry";
@@ -11,10 +11,8 @@ import {
 import { useDocumentTheme } from "../lib/useDocumentTheme";
 import { useTauriWindowFrameState } from "../lib/useTauriWindowFrameState";
 import { resolveWindowChromeModel } from "../lib/windowChromeModel";
-import type { ToolId } from "../features/workspace/types";
 import {
   htmlLanguage,
-  isRealRemoteGroup,
   useSystemThemePreference,
   useViewportWidth,
 } from "./KerminalShell.helpers";
@@ -28,18 +26,14 @@ import { useKerminalShellPanelResize } from "./useKerminalShellPanelResize";
 import { useKerminalShellSettings } from "./useKerminalShellSettings";
 import { useKerminalShellSftpHostCreate } from "./useKerminalShellSftpHostCreate";
 import { useKerminalShellTabClose } from "./useKerminalShellTabClose";
-import { DEFAULT_REMOTE_GROUP_NAME } from "./KerminalShell.static";
-import {
-  resolveConnectionEditConflict,
-  resolveRemoteGroupEditConflict,
-} from "./configDirtyGuardModel";
 import { KerminalShellLayout } from "./KerminalShell.layout";
-import { useKerminalShellStartupSync } from "./useKerminalShellStartupSync";
-import { useKerminalShellTerminalDrop } from "./useKerminalShellTerminalDrop";
 import {
-  SNIPPET_PANEL_OPEN_EVENT,
-  type SnippetPanelOpenRequest,
-} from "../features/snippets/snippetPanelEvents";
+  useKerminalShellRemoteTargetModel,
+  useKerminalShellViewModel,
+} from "./kerminalShellViewModel";
+import { useKerminalShellStartupSync } from "./useKerminalShellStartupSync";
+import { useKerminalShellSnippetBridge } from "./useKerminalShellSnippetBridge";
+import { useKerminalShellTerminalDrop } from "./useKerminalShellTerminalDrop";
 
 export function KerminalShell() {
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
@@ -149,7 +143,6 @@ export function KerminalShell() {
     frameState: windowFrameState,
     platform: desktopPlatform,
   });
-  const reserveRightTitleBarControls = windowChrome.controlMode === "custom";
   useDocumentTheme({
     density: settings.interfaceDensity,
     desktopPlatform,
@@ -177,33 +170,12 @@ export function KerminalShell() {
     viewportWidth,
     workspaceFrameRef,
   });
-  const rightToolRailTitleBarFillWidth =
-    activeTool === null || compactShell
-      ? 44
-      : settings.interfaceDensity === "spacious"
-        ? 56
-        : settings.interfaceDensity === "compact"
-          ? 44
-          : 48;
   const workspaceBackgroundStyle = useKerminalShellBackgroundStyle({
     resolvedTheme,
     settings,
   });
-  const defaultRemoteGroupId =
-    machineGroups.find(
-      (group) =>
-        isRealRemoteGroup(group) &&
-        group.title.trim() === DEFAULT_REMOTE_GROUP_NAME,
-    )?.id ?? machineGroups.find(isRealRemoteGroup)?.id;
-  const defaultRemoteHostId = machineGroups
-    .find((group) => group.id !== "local")
-    ?.machines.find((machine) => machine.kind === "ssh")?.id;
-  const leftTitleBarInset = effectiveLeftPanelCollapsed
-    ? windowChrome.reserveTrafficLightInset
-      ? 112
-      : 48
-    : 0;
-  const handleBroadcastCommand = useCallback(writeBroadcastCommand, []);
+  const { defaultRemoteGroupId, defaultRemoteHostId } =
+    useKerminalShellRemoteTargetModel(machineGroups);
   const {
     handleExternalMachineDrag,
     handleExternalMachineDragEnd,
@@ -245,23 +217,7 @@ export function KerminalShell() {
     splitFocusedPane,
     terminalTabs,
   });
-  const activateShellTool = useCallback(
-    (toolId: ToolId) => {
-      activateTool(toolId);
-    },
-    [activateTool],
-  );
-  useEffect(() => {
-    const handleSnippetPanelOpen = (event: Event) => {
-      const request = (event as CustomEvent<SnippetPanelOpenRequest>).detail;
-      if (!request?.snippetId) return;
-      if (request.paneId) focusPane(request.paneId);
-      activateShellTool("snippets");
-    };
-    window.addEventListener(SNIPPET_PANEL_OPEN_EVENT, handleSnippetPanelOpen);
-    return () =>
-      window.removeEventListener(SNIPPET_PANEL_OPEN_EVENT, handleSnippetPanelOpen);
-  }, [activateShellTool, focusPane]);
+  useKerminalShellSnippetBridge({ activateTool, focusPane });
   const {
     enterHostContainer,
     openContainerDetails,
@@ -351,23 +307,6 @@ export function KerminalShell() {
     settingsDialogOpenRef,
     settingsSaveStateRef,
   });
-  const connectionConfigConflict = useMemo(
-    () =>
-      resolveConnectionEditConflict({
-        editingHost: editingRemoteHost,
-        editingLocalMachine,
-        groups: machineGroups,
-      }),
-    [editingLocalMachine, editingRemoteHost, machineGroups],
-  );
-  const remoteGroupConfigConflict = useMemo(
-    () =>
-      resolveRemoteGroupEditConflict({
-        group: editingRemoteGroup,
-        groups: machineGroups,
-      }),
-    [editingRemoteGroup, machineGroups],
-  );
   const {
     fetchContainerStats,
     inspectContainer,
@@ -380,8 +319,27 @@ export function KerminalShell() {
     machineGroups,
     resolveTargetGroupId,
   });
-  const shellNoticeMessage =
-    profileLoadError ?? remoteHostLoadError ?? settingsLoadError;
+  const {
+    connectionConfigConflict,
+    leftTitleBarInset,
+    remoteGroupConfigConflict,
+    reserveRightTitleBarControls,
+    rightToolRailTitleBarFillWidth,
+    shellNoticeMessage,
+  } = useKerminalShellViewModel({
+    activeTool,
+    compactShell,
+    editingLocalMachine,
+    editingRemoteGroup,
+    editingRemoteHost,
+    effectiveLeftPanelCollapsed,
+    interfaceDensity: settings.interfaceDensity,
+    machineGroups,
+    profileLoadError,
+    remoteHostLoadError,
+    settingsLoadError,
+    windowChrome,
+  });
   const {
     createdSftpHostTarget,
     handleConnectionDialogClose,
@@ -464,7 +422,7 @@ export function KerminalShell() {
         onConfigNoticeDismiss: () => setConfigNotice(null),
         onShellNoticeDismiss: () => setShellNoticeVisible(false),
       }}
-      onActiveToolChange={activateShellTool}
+      onActiveToolChange={activateTool}
       onCloseToolPanel={() => setActiveTool(null)}
       remoteGroupDialogProps={remoteGroupDialogOpen ? {
         externalConfigConflict: remoteGroupConfigConflict?.message, group: editingRemoteGroup,
@@ -505,7 +463,7 @@ export function KerminalShell() {
       }}
       toolPanelProps={{
         activeTool, defaultRemoteGroupId, defaultRemoteHostId, machineGroups,
-        onActiveToolChange: activateShellTool, onCreateTerminal: addTerminalTab,
+        onActiveToolChange: activateTool, onCreateTerminal: addTerminalTab,
         onFocusTab: selectTab, onOpenSettingsSection: openSettingsTool,
         onOpenSshTerminal: openSshTerminal, onRemoteHostCreated: refreshRemoteHostTree,
         onSettingsChange: handleSettingsChange, onSplitPane: splitFocusedPane,
@@ -523,7 +481,7 @@ export function KerminalShell() {
         contentRightInset: rightWorkspaceInset, createdSftpHostTarget,
         desktopNotifications: settings.desktopNotifications,
         interfaceDensity: settings.interfaceDensity, leftTitleBarInset,
-        machineGroups, onBroadcastCommand: handleBroadcastCommand,
+        machineGroups, onBroadcastCommand: writeBroadcastCommand,
         onCreateSftpHost: openSftpTransferHostCreateDialog,
         onOpenAgentTool: () => setActiveTool("agentLauncher"),
         onOpenConnection: () => openConnectionDialog({ mode: "ssh" }),
