@@ -41,6 +41,7 @@ const config = {
     // Tailwind v4 is loaded from src/App.css; Knip intentionally does not parse CSS imports.
     "tailwindcss",
   ],
+  ignoreBinaries: ["rustc", "ssh-keygen.exe", "ssh.exe", "wsl.exe"],
   treatConfigHintsAsErrors: true,
   treatTagHintsAsErrors: true,
 };
