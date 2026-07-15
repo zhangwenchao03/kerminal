@@ -44,7 +44,7 @@ export function buildLocalShellPresets(
   return presets;
 }
 
-export function addLocalShellPreset(
+function addLocalShellPreset(
   presets: LocalShellPreset[],
   preset: LocalShellPreset,
 ) {
@@ -60,7 +60,7 @@ export function addLocalShellPreset(
   }
 }
 
-export function normalizeShellPresetValue(value: string) {
+function normalizeShellPresetValue(value: string) {
   return value.trim().toLowerCase();
 }
 
@@ -125,14 +125,14 @@ includeEmptyValues = false,
   return { options: hasOverrides ? options : undefined };
 }
 
-export function parseLocalArgs(value: string) {
+function parseLocalArgs(value: string) {
   return value
     .split(/\r?\n/)
     .map((item) => item.trim())
     .filter(Boolean);
 }
 
-export function parseLocalEnv(value: string): {
+function parseLocalEnv(value: string): {
   env: Record<string, string>;
   error?: string;
 } {
