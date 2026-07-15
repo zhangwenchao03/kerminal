@@ -4,168 +4,171 @@
 
 use super::*;
 
-pub(super) fn example_arguments_for(tool_id: &str) -> Option<Value> {
+pub(super) fn example_arguments_for(tool_id: ToolId) -> Option<Value> {
     match tool_id {
-        "kerminal.capabilities" | "kerminal.runtime_snapshot" | "terminal.list" => Some(json!({})),
-        "kerminal.operation_guide" => Some(json!({
+        ToolId::KerminalCapabilities | ToolId::KerminalRuntimeSnapshot | ToolId::TerminalList => {
+            Some(json!({}))
+        }
+        ToolId::KerminalOperationGuide => Some(json!({
             "intent": "session-terminal",
             "goal": "Inspect and operate the currently bound Kerminal target safely."
         })),
-        "kerminal.tool_help" => Some(json!({
+        ToolId::KerminalToolHelp => Some(json!({
             "toolId": "terminal.write",
             "includeSchemas": true
         })),
-        "kerminal.agent.current_session" => Some(json!({
+        ToolId::KerminalAgentCurrentSession => Some(json!({
             "agentSessionId": "<agent-session-id-from-context/mcp-endpoint.json>"
         })),
-        "kerminal.agent.target_context" => Some(json!({
+        ToolId::KerminalAgentTargetContext => Some(json!({
             "agentSessionId": "<agent-session-id-from-context/mcp-endpoint.json>",
             "maxBytes": 24576
         })),
-        "terminal.resolve_agent_target" => Some(json!({
+        ToolId::TerminalResolveAgentTarget => Some(json!({
             "agentSessionId": "<agent-session-id-from-context/mcp-endpoint.json>"
         })),
-        "terminal.snapshot" => Some(json!({
+        ToolId::TerminalSnapshot => Some(json!({
             "agentSessionId": "<agent-session-id>",
             "maxBytes": 24576
         })),
-        "terminal.write" => Some(json!({
+        ToolId::TerminalWrite => Some(json!({
             "agentSessionId": "<agent-session-id>",
             "bindingGeneration": 7,
             "data": "pwd\n"
         })),
-        "terminal.resize" => Some(json!({
+        ToolId::TerminalResize => Some(json!({
             "sessionId": "<terminal-session-id>",
             "cols": 120,
             "rows": 32
         })),
-        "terminal.close" | "terminal.log.start" | "terminal.log.stop" | "terminal.log.state" => {
-            Some(json!({
-                "sessionId": "<terminal-session-id>"
-            }))
-        }
-        "ssh.command_on_resolved_host" => Some(json!({
+        ToolId::TerminalClose
+        | ToolId::TerminalLogStart
+        | ToolId::TerminalLogStop
+        | ToolId::TerminalLogState => Some(json!({
+            "sessionId": "<terminal-session-id>"
+        })),
+        ToolId::SshCommandOnResolvedHost => Some(json!({
             "hostId": "<host-id-from-hosts-toml-or-bound-target>",
             "command": "uname -a"
         })),
-        "ssh.command" => Some(json!({
+        ToolId::SshCommand => Some(json!({
             "hostId": "<host-id>",
             "command": "uptime"
         })),
-        "sftp.list" | "sftp.preview" => Some(json!({
+        ToolId::SftpList | ToolId::SftpPreview => Some(json!({
             "hostId": "<host-id>",
             "path": "/srv/app"
         })),
-        "sftp.create_directory" => Some(json!({
+        ToolId::SftpCreateDirectory => Some(json!({
             "hostId": "<host-id>",
             "path": "/srv/app/new-directory"
         })),
-        "sftp.rename" => Some(json!({
+        ToolId::SftpRename => Some(json!({
             "hostId": "<host-id>",
             "fromPath": "/srv/app/old-name.txt",
             "toPath": "/srv/app/new-name.txt"
         })),
-        "sftp.move" => Some(json!({
+        ToolId::SftpMove => Some(json!({
             "hostId": "<host-id>",
             "fromPath": "/srv/app/source.txt",
             "toPath": "/srv/app/archive/source.txt"
         })),
-        "sftp.chmod" => Some(json!({
+        ToolId::SftpChmod => Some(json!({
             "hostId": "<host-id>",
             "path": "/srv/app/script.sh",
             "mode": "0755"
         })),
-        "sftp.delete" => Some(json!({
+        ToolId::SftpDelete => Some(json!({
             "hostId": "<host-id>",
             "path": "/srv/app/obsolete.txt",
             "directory": false
         })),
-        "sftp.upload" | "sftp.upload_directory" => Some(json!({
+        ToolId::SftpUpload | ToolId::SftpUploadDirectory => Some(json!({
             "hostId": "<host-id>",
             "localPath": "C:/path/to/local/file-or-directory",
             "remotePath": "/srv/app/file-or-directory"
         })),
-        "sftp.download" | "sftp.download_directory" => Some(json!({
+        ToolId::SftpDownload | ToolId::SftpDownloadDirectory => Some(json!({
             "hostId": "<host-id>",
             "remotePath": "/srv/app/file-or-directory",
             "localPath": "C:/path/to/local/file-or-directory"
         })),
-        "sftp.transfer.enqueue" => Some(json!({
+        ToolId::SftpTransferEnqueue => Some(json!({
             "hostId": "<host-id>",
             "remotePath": "/srv/app/archive.tar.gz",
             "localPath": "C:/path/to/archive.tar.gz",
             "direction": "download",
             "kind": "file"
         })),
-        "sftp.transfer.cancel" => Some(json!({
+        ToolId::SftpTransferCancel => Some(json!({
             "transferId": "<transfer-id-from-sftp.transfer.list>"
         })),
-        "sftp.transfer.list" | "sftp.transfer.clear_completed" => Some(json!({})),
-        "tmux.probe" | "tmux.list_sessions" => Some(json!({
+        ToolId::SftpTransferList | ToolId::SftpTransferClearCompleted => Some(json!({})),
+        ToolId::TmuxProbe | ToolId::TmuxListSessions => Some(json!({
             "targetKind": "ssh",
             "hostId": "<host-id>"
         })),
-        "tmux.create_session" => Some(json!({
+        ToolId::TmuxCreateSession => Some(json!({
             "targetKind": "ssh",
             "hostId": "<host-id>",
             "name": "work"
         })),
-        "tmux.rename_session" => Some(json!({
+        ToolId::TmuxRenameSession => Some(json!({
             "targetKind": "ssh",
             "hostId": "<host-id>",
             "sessionId": "old-name",
             "name": "new-name"
         })),
-        "tmux.kill_session" | "tmux.list_windows" | "tmux.attach_plan" => Some(json!({
+        ToolId::TmuxKillSession | ToolId::TmuxListWindows | ToolId::TmuxAttachPlan => Some(json!({
             "targetKind": "ssh",
             "hostId": "<host-id>",
             "sessionId": "work"
         })),
-        "tmux.list_panes" => Some(json!({
+        ToolId::TmuxListPanes => Some(json!({
             "targetKind": "ssh",
             "hostId": "<host-id>",
             "targetId": "work:0"
         })),
-        "tmux.capture_pane" => Some(json!({
+        ToolId::TmuxCapturePane => Some(json!({
             "targetKind": "ssh",
             "hostId": "<host-id>",
             "paneId": "%1",
             "lines": 200
         })),
-        "container.list" => Some(json!({
+        ToolId::ContainerList => Some(json!({
             "hostId": "<host-id>",
             "runtime": "docker",
             "includeStopped": false
         })),
-        "container.inspect" | "container.stats" => Some(json!({
+        ToolId::ContainerInspect | ToolId::ContainerStats => Some(json!({
             "hostId": "<host-id>",
             "containerId": "<container-id-or-name>",
             "runtime": "docker"
         })),
-        "container.logs.tail" => Some(json!({
+        ToolId::ContainerLogsTail => Some(json!({
             "hostId": "<host-id>",
             "containerId": "<container-id-or-name>",
             "runtime": "docker",
             "tail": 120
         })),
-        "container.start" | "container.stop" | "container.restart" => Some(json!({
+        ToolId::ContainerStart | ToolId::ContainerStop | ToolId::ContainerRestart => Some(json!({
             "hostId": "<host-id>",
             "containerId": "<container-id-or-name>",
             "runtime": "docker"
         })),
-        "container.remove" => Some(json!({
+        ToolId::ContainerRemove => Some(json!({
             "hostId": "<host-id>",
             "containerId": "<container-id-or-name>",
             "runtime": "docker",
             "force": false
         })),
-        "container.files.list" | "container.files.preview" => Some(json!({
+        ToolId::ContainerFilesList | ToolId::ContainerFilesPreview => Some(json!({
             "hostId": "<host-id>",
             "containerId": "<container-id-or-name>",
             "runtime": "docker",
             "path": "/app"
         })),
-        "container.files.write_text" => Some(json!({
+        ToolId::ContainerFilesWriteText => Some(json!({
             "hostId": "<host-id>",
             "containerId": "<container-id-or-name>",
             "runtime": "docker",
@@ -175,27 +178,27 @@ pub(super) fn example_arguments_for(tool_id: &str) -> Option<Value> {
             "create": true,
             "overwriteOnConflict": false
         })),
-        "container.files.create_directory" => Some(json!({
+        ToolId::ContainerFilesCreateDirectory => Some(json!({
             "hostId": "<host-id>",
             "containerId": "<container-id-or-name>",
             "runtime": "docker",
             "path": "/app/new-directory"
         })),
-        "container.files.rename" => Some(json!({
+        ToolId::ContainerFilesRename => Some(json!({
             "hostId": "<host-id>",
             "containerId": "<container-id-or-name>",
             "runtime": "docker",
             "fromPath": "/app/old-name.txt",
             "toPath": "/app/new-name.txt"
         })),
-        "container.files.chmod" => Some(json!({
+        ToolId::ContainerFilesChmod => Some(json!({
             "hostId": "<host-id>",
             "containerId": "<container-id-or-name>",
             "runtime": "docker",
             "path": "/app/script.sh",
             "mode": "0755"
         })),
-        "container.files.upload" | "container.files.download" => Some(json!({
+        ToolId::ContainerFilesUpload | ToolId::ContainerFilesDownload => Some(json!({
             "hostId": "<host-id>",
             "containerId": "<container-id-or-name>",
             "runtime": "docker",
@@ -203,15 +206,15 @@ pub(super) fn example_arguments_for(tool_id: &str) -> Option<Value> {
             "remotePath": "/app/file-or-directory",
             "kind": "file"
         })),
-        "container.files.delete" => Some(json!({
+        ToolId::ContainerFilesDelete => Some(json!({
             "hostId": "<host-id>",
             "containerId": "<container-id-or-name>",
             "runtime": "docker",
             "path": "/app/obsolete.txt",
             "directory": false
         })),
-        "port_forward.list" => Some(json!({})),
-        "port_forward.create" => Some(json!({
+        ToolId::PortForwardList => Some(json!({})),
+        ToolId::PortForwardCreate => Some(json!({
             "hostId": "<host-id>",
             "kind": "local",
             "bindHost": "127.0.0.1",
@@ -219,24 +222,24 @@ pub(super) fn example_arguments_for(tool_id: &str) -> Option<Value> {
             "targetHost": "127.0.0.1",
             "targetPort": 5432
         })),
-        "port_forward.close" => Some(json!({
+        ToolId::PortForwardClose => Some(json!({
             "forwardId": "<port-forward-id-from-port_forward.list>"
         })),
-        "server_info.snapshot" => Some(json!({
+        ToolId::ServerInfoSnapshot => Some(json!({
             "hostId": "<host-id>"
         })),
-        "history.search" => Some(json!({
+        ToolId::HistorySearch => Some(json!({
             "query": "docker compose",
             "limit": 20
         })),
-        "kerminal.app_guide"
-        | "kerminal.config_guide"
-        | "diagnostics.runtime_health"
-        | "diagnostics.create_bundle" => Some(json!({})),
-        "kerminal.config.validate" => Some(json!({
+        ToolId::KerminalAppGuide
+        | ToolId::KerminalConfigGuide
+        | ToolId::DiagnosticsRuntimeHealth
+        | ToolId::DiagnosticsCreateBundle => Some(json!({})),
+        ToolId::KerminalConfigValidate => Some(json!({
             "scope": "all"
         })),
-        "kerminal.host.upsert_with_credential" => Some(json!({
+        ToolId::KerminalHostUpsertWithCredential => Some(json!({
             "id": "<optional-host-id>",
             "name": "staging-web",
             "host": "staging.example.internal",
@@ -245,13 +248,12 @@ pub(super) fn example_arguments_for(tool_id: &str) -> Option<Value> {
             "production": false,
             "password": "<credential-provided-by-user-for-this-save-only>"
         })),
-        "kerminal.vault.encrypt_secret" => Some(json!({
+        ToolId::KerminalVaultEncryptSecret => Some(json!({
             "kind": "ssh-host",
             "hostId": "<host-id>",
             "scope": "target",
             "material": "password",
             "plaintext": "<credential-provided-by-user-for-this-save-only>"
         })),
-        _ => None,
     }
 }

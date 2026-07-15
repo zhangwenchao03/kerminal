@@ -59,7 +59,7 @@ pub(super) fn tool_references(tools: &[&ToolDefinition], tool_ids: &[&str]) -> V
                             "openWorldHint": tool.annotations.open_world_hint
                         },
                         "inputSchema": tool.input_schema.clone(),
-                        "exampleArguments": example_arguments_for(tool.id.as_str())
+                        "exampleArguments": ToolId::parse(tool.id.as_str()).and_then(example_arguments_for)
                     })
                 })
         })

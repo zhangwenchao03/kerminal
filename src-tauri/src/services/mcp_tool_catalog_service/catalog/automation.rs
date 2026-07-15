@@ -2,16 +2,19 @@
 //!
 //! @author kongweiguang
 
-use crate::models::mcp_server::{ToolCategory, ToolDefinition};
+use crate::{
+    models::mcp_server::ToolCategory,
+    services::mcp_tool_catalog_service::{ToolDescriptor, ToolId},
+};
 
 use super::super::schema::{
     enum_field, number_field, object_schema, string_field, tool, ToolEffect,
 };
 
-pub(super) fn automation_tools() -> Vec<ToolDefinition> {
+pub(super) fn automation_tools() -> Vec<ToolDescriptor> {
     vec![
         tool(
-            "history.search",
+            ToolId::HistorySearch,
             "搜索命令历史",
             "读取本地命令历史摘要；不会执行命令。",
             ToolCategory::History,
@@ -32,7 +35,7 @@ pub(super) fn automation_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "diagnostics.runtime_health",
+            ToolId::DiagnosticsRuntimeHealth,
             "读取运行体检",
             "读取进程、资源和数据目录体检摘要。",
             ToolCategory::Diagnostics,
@@ -40,7 +43,7 @@ pub(super) fn automation_tools() -> Vec<ToolDefinition> {
             object_schema(vec![]),
         ),
         tool(
-            "diagnostics.create_bundle",
+            ToolId::DiagnosticsCreateBundle,
             "生成诊断包",
             "生成本地脱敏诊断包，不上传。",
             ToolCategory::Diagnostics,

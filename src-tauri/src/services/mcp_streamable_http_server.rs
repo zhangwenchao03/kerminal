@@ -25,8 +25,11 @@ use tauri::Manager;
 use crate::{
     error::{AppError, AppResult},
     models::{agent_session::AgentSessionId, mcp_server::ToolDefinition},
-    services::mcp_tool_executor_service::{
-        McpToolExecutionContext, McpToolExecutionOutput, McpToolExecutionStatus,
+    services::{
+        mcp_tool_catalog_service::ToolId,
+        mcp_tool_executor_service::{
+            McpToolExecutionContext, McpToolExecutionOutput, McpToolExecutionStatus,
+        },
     },
     state::AppState,
 };
@@ -197,8 +200,11 @@ impl<R: tauri::Runtime> KerminalMcpServer<R> {
             ));
         }
 
+        let typed_tool_id = ToolId::parse(&tool_id).ok_or_else(|| {
+            McpError::invalid_params(format!("工具未登记到 typed catalog: {tool_id}"), None)
+        })?;
         let arguments = scoped_tool_arguments(
-            &tool_id,
+            typed_tool_id,
             request.arguments.unwrap_or_default(),
             scoped_agent_session_id_from_request_context(&context).as_deref(),
         )?;
@@ -252,7 +258,7 @@ fn externally_callable_tool_definitions(state: &AppState) -> Result<Vec<ToolDefi
 }
 
 fn scoped_tool_arguments(
-    tool_id: &str,
+    tool_id: ToolId,
     mut arguments: serde_json::Map<String, Value>,
     scoped_agent_session_id: Option<&str>,
 ) -> Result<serde_json::Map<String, Value>, McpError> {
@@ -282,14 +288,14 @@ fn scoped_tool_arguments(
     Ok(arguments)
 }
 
-fn accepts_scoped_agent_session_id(tool_id: &str) -> bool {
+fn accepts_scoped_agent_session_id(tool_id: ToolId) -> bool {
     matches!(
         tool_id,
-        "kerminal.agent.current_session"
-            | "kerminal.agent.target_context"
-            | "terminal.resolve_agent_target"
-            | "terminal.snapshot"
-            | "terminal.write"
+        ToolId::KerminalAgentCurrentSession
+            | ToolId::KerminalAgentTargetContext
+            | ToolId::TerminalResolveAgentTarget
+            | ToolId::TerminalSnapshot
+            | ToolId::TerminalWrite
     )
 }
 

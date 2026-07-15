@@ -2,16 +2,19 @@
 //!
 //! @author kongweiguang
 
-use crate::models::mcp_server::{ToolCategory, ToolDefinition};
+use crate::{
+    models::mcp_server::ToolCategory,
+    services::mcp_tool_catalog_service::{ToolDescriptor, ToolId},
+};
 
 use super::super::schema::{
     boolean_field, enum_field, number_field, object_schema, string_field, tool, ToolEffect,
 };
 
-pub(super) fn credential_tools() -> Vec<ToolDefinition> {
+pub(super) fn credential_tools() -> Vec<ToolDescriptor> {
     vec![
         tool(
-            "kerminal.host.upsert_with_credential",
+            ToolId::KerminalHostUpsertWithCredential,
             "保存主机和凭据",
             "创建或更新 SSH password 主机，并把明文密码写入 Kerminal encrypted vault；公开 hosts/*.toml 只保存 secret_ref。调用前确认由 MCP host 负责。",
             ToolCategory::Ssh,
@@ -28,7 +31,7 @@ pub(super) fn credential_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "kerminal.vault.encrypt_secret",
+            ToolId::KerminalVaultEncryptSecret,
             "加密保存凭据",
             "把授权提供的明文凭据加密写入 Kerminal encrypted vault，并返回可写入 host metadata 的 secret_ref。",
             ToolCategory::Ssh,

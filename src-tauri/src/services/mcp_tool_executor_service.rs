@@ -73,6 +73,7 @@ use crate::{
         docker_host_service::DockerHostService,
         encrypted_vault_service::EncryptedVaultService,
         external_launch::ExternalLaunchIntake,
+        mcp_tool_catalog_service::ToolId,
         port_forward_service::PortForwardService,
         remote_host_service::RemoteHostService,
         server_info_service::ServerInfoService,
@@ -288,7 +289,10 @@ impl McpToolExecutorService {
         let tool = find_enabled_tool(tools, tool_id)?;
         let arguments = normalized_arguments(arguments)?;
         validate_required_arguments(&tool, &arguments)?;
-        let result = execute_tool(&context, tools, &tool.id, &arguments).await;
+        let typed_tool_id = ToolId::parse(&tool.id).ok_or_else(|| {
+            AppError::InvalidInput(format!("工具未登记到 typed catalog: {}", tool.id))
+        })?;
+        let result = execute_tool(&context, tools, typed_tool_id, &arguments).await;
         append_agent_mcp_call_log(&context, &tool.id, &arguments, &result);
         Ok(result.into())
     }

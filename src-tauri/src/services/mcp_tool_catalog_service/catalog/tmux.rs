@@ -2,16 +2,19 @@
 //!
 //! @author kongweiguang
 
-use crate::models::mcp_server::{ToolCategory, ToolDefinition};
+use crate::{
+    models::mcp_server::ToolCategory,
+    services::mcp_tool_catalog_service::{ToolDescriptor, ToolId},
+};
 
 use super::super::schema::{
     enum_field, number_field, object_schema, string_field, tool, FieldSchema, ToolEffect,
 };
 
-pub(super) fn tmux_tools() -> Vec<ToolDefinition> {
+pub(super) fn tmux_tools() -> Vec<ToolDescriptor> {
     vec![
         tool(
-            "tmux.probe",
+            ToolId::TmuxProbe,
             "探测 tmux",
             "探测本地或已保存 SSH 主机上的 tmux 是否可用。",
             ToolCategory::Tmux,
@@ -19,7 +22,7 @@ pub(super) fn tmux_tools() -> Vec<ToolDefinition> {
             tmux_schema(vec![]),
         ),
         tool(
-            "tmux.list_sessions",
+            ToolId::TmuxListSessions,
             "列出 tmux sessions",
             "读取本地或已保存 SSH 主机上的 tmux session 列表。",
             ToolCategory::Tmux,
@@ -27,7 +30,7 @@ pub(super) fn tmux_tools() -> Vec<ToolDefinition> {
             tmux_schema(vec![]),
         ),
         tool(
-            "tmux.create_session",
+            ToolId::TmuxCreateSession,
             "创建 tmux session",
             "创建 detached tmux session；调用前确认由 MCP host 负责。",
             ToolCategory::Tmux,
@@ -38,7 +41,7 @@ pub(super) fn tmux_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "tmux.rename_session",
+            ToolId::TmuxRenameSession,
             "重命名 tmux session",
             "重命名 tmux session；调用前确认由 MCP host 负责。",
             ToolCategory::Tmux,
@@ -49,7 +52,7 @@ pub(super) fn tmux_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "tmux.kill_session",
+            ToolId::TmuxKillSession,
             "结束 tmux session",
             "结束指定 tmux session；调用前确认由 MCP host 负责。",
             ToolCategory::Tmux,
@@ -57,7 +60,7 @@ pub(super) fn tmux_tools() -> Vec<ToolDefinition> {
             tmux_schema(vec![string_field("sessionId", "session id 或名称。", true)]),
         ),
         tool(
-            "tmux.list_windows",
+            ToolId::TmuxListWindows,
             "列出 tmux windows",
             "读取指定 tmux session 下的 window 列表。",
             ToolCategory::Tmux,
@@ -65,7 +68,7 @@ pub(super) fn tmux_tools() -> Vec<ToolDefinition> {
             tmux_schema(vec![string_field("sessionId", "session id 或名称。", true)]),
         ),
         tool(
-            "tmux.list_panes",
+            ToolId::TmuxListPanes,
             "列出 tmux panes",
             "读取指定 tmux session、window 或 pane 下的 pane 列表。",
             ToolCategory::Tmux,
@@ -77,7 +80,7 @@ pub(super) fn tmux_tools() -> Vec<ToolDefinition> {
             )]),
         ),
         tool(
-            "tmux.capture_pane",
+            ToolId::TmuxCapturePane,
             "捕获 tmux pane 输出",
             "读取指定 tmux pane 的最近输出并脱敏。",
             ToolCategory::Tmux,
@@ -88,7 +91,7 @@ pub(super) fn tmux_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "tmux.attach_plan",
+            ToolId::TmuxAttachPlan,
             "生成 tmux attach 启动规格",
             "生成 attach 到指定 tmux session 的终端启动规格；不会创建 Kerminal pane。",
             ToolCategory::Tmux,

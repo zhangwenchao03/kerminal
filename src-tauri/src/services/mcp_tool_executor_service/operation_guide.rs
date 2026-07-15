@@ -761,7 +761,7 @@ fn guide_step(
         "action": action,
         "requires": requires,
         "safety": safety,
-        "exampleArguments": tool_id.and_then(example_arguments_for)
+        "exampleArguments": tool_id.and_then(ToolId::parse).and_then(example_arguments_for)
     })
 }
 
