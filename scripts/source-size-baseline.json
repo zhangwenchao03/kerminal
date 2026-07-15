@@ -82,27 +82,6 @@
       "targetTask": "TASK-072"
     },
     {
-      "file": "src-tauri/src/services/sftp_service.rs",
-      "lines": 857,
-      "deadline": "before TASK-080",
-      "owner": "sftp-rust",
-      "targetTask": "TASK-042"
-    },
-    {
-      "file": "src-tauri/src/services/sftp_service/backend.rs",
-      "lines": 1048,
-      "deadline": "before TASK-080",
-      "owner": "sftp-rust",
-      "targetTask": "TASK-042"
-    },
-    {
-      "file": "src-tauri/src/services/sftp_service/transfer_io.rs",
-      "lines": 1092,
-      "deadline": "before TASK-080",
-      "owner": "sftp-rust",
-      "targetTask": "TASK-042"
-    },
-    {
       "file": "src-tauri/src/services/ssh_command_service/native.rs",
       "lines": 814,
       "deadline": "before TASK-080",
