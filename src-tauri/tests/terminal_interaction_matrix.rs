@@ -8,10 +8,11 @@ use kerminal_lib::{
     },
     services::terminal_manager::TerminalManager,
 };
+#[cfg(target_os = "windows")]
+use std::process::{Command, Stdio};
 use std::{
     env, fs,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
     sync::mpsc,
     time::{Duration, Instant},
 };
@@ -522,6 +523,7 @@ fn find_git_bash() -> Option<PathBuf> {
     candidates.into_iter().find(|path| path.is_file())
 }
 
+#[cfg(target_os = "windows")]
 fn command_status_success(command: &mut Command) -> bool {
     command
         .stdout(Stdio::null())
@@ -550,10 +552,10 @@ fn find_executable(program: &str) -> Option<PathBuf> {
     None
 }
 
-fn executable_extensions(program: &str) -> Vec<String> {
+fn executable_extensions(_program: &str) -> Vec<String> {
     #[cfg(target_os = "windows")]
     {
-        if Path::new(program).extension().is_some() {
+        if Path::new(_program).extension().is_some() {
             return vec![String::new()];
         }
         let pathext = env::var_os("PATHEXT")

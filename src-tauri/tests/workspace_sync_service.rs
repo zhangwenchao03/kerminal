@@ -18,13 +18,15 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(windows)]
+use kerminal_lib::storage::storage_manifest::ChangeSetStatus;
 use kerminal_lib::{
     paths::KerminalPaths,
     services::{
         encrypted_vault_service::{write_toml_atomically, EncryptedVaultService, VaultFile},
         workspace_sync_service::{WorkspaceSyncRunStatus, WorkspaceSyncService},
     },
-    storage::{file_store::FileStore, storage_manifest::ChangeSetStatus},
+    storage::file_store::FileStore,
 };
 
 #[test]
