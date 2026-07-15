@@ -8,17 +8,17 @@ export type CommandSuggestionProvider =
   | "snippet"
   | "spec";
 
-export type CommandSuggestionSensitivity = "normal" | "sensitive" | "dangerous";
-export type CommandSuggestionFeedbackAction = "accepted" | "dismissed";
+type CommandSuggestionSensitivity = "normal" | "sensitive" | "dangerous";
+type CommandSuggestionFeedbackAction = "accepted" | "dismissed";
 export type CommandSuggestionQueryMode = "inline" | "menu";
 export type CommandSuggestionPresentation = "inline" | "menu";
-export type CommandSuggestionCandidateKind = "command" | "snippet";
-export type CommandSuggestionActivation = "insert" | "openSnippetPanel";
-export type CommandSuggestionAuditEventKind =
+type CommandSuggestionCandidateKind = "command" | "snippet";
+type CommandSuggestionActivation = "insert" | "openSnippetPanel";
+type CommandSuggestionAuditEventKind =
   | "feedback"
   | "remoteProbeRefresh"
   | "remoteProbeSchedule";
-export type CommandSuggestionAuditDecision =
+type CommandSuggestionAuditDecision =
   | "allowed"
   | "failed"
   | "recorded"
@@ -142,7 +142,7 @@ export interface NormalizedCommandSuggestionFeedbackRecordRequest {
   sourceId?: string;
 }
 
-export interface CommandSuggestionProviderTelemetry {
+interface CommandSuggestionProviderTelemetry {
   provider: CommandSuggestionProvider;
   queryCount: number;
   candidateCount: number;
@@ -202,7 +202,7 @@ export interface CommandSuggestionDiagnosticsCleanupResult {
   telemetryRowsDeleted: number;
 }
 
-export interface CommandSuggestionAuditEvent {
+interface CommandSuggestionAuditEvent {
   id: string;
   eventKind: CommandSuggestionAuditEventKind;
   provider?: CommandSuggestionProvider;
