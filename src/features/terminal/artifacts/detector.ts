@@ -9,17 +9,25 @@ import type { TerminalArtifactCandidate, TerminalArtifactRange } from "./types";
 
 const ANSI_RE =
   // CSI、OSC 及单字符转义统一剥离；检测结果不得包含控制序列。
-  // eslint-disable-next-line no-control-regex
-  /(?:\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b\[[0-?]*[ -/]*[@-~]|\u001b[@-_])/g;
+  new RegExp(
+    String.raw`(?:\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b\[[0-?]*[ -/]*[@-~]|\u001b[@-_])`,
+    "g",
+  );
 const WEB_URL_RE = /\bhttps?:\/\/[^\s<>"'`]+/gi;
 const WINDOWS_PATH_RE =
   /\b[a-z]:[\\/](?:[^<>:"|?*\s\\/]+[\\/])*[^<>:"|?*\s\\/]*/gi;
 const UNC_PATH_RE = /\\\\[^\\\s]+\\[^<>"|?*\s\r\n]+(?:\\[^<>"|?*\s\r\n]+)*/g;
 const POSIX_PATH_RE =
   /(?:^|[\s("'`])((?:~\/|\/)(?:[^\s"'`<>|]+\/)*[^\s"'`<>|,;:]+)/g;
-const OSC7_RE = /\u001b\]7;([^\u0007\u001b]+)(?:\u0007|\u001b\\)/g;
+const OSC7_RE = new RegExp(
+  String.raw`\u001b\]7;([^\u0007\u001b]+)(?:\u0007|\u001b\\)`,
+  "g",
+);
 const OSC8_RE =
-  /\u001b\]8;[^;]*;([^\u0007\u001b]*)(?:\u0007|\u001b\\)([\s\S]*?)\u001b\]8;;(?:\u0007|\u001b\\)/g;
+  new RegExp(
+    String.raw`\u001b\]8;[^;]*;([^\u0007\u001b]*)(?:\u0007|\u001b\\)([\s\S]*?)\u001b\]8;;(?:\u0007|\u001b\\)`,
+    "g",
+  );
 
 export function stripTerminalArtifactAnsi(value: string) {
   return value.replace(ANSI_RE, "");

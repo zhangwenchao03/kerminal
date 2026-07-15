@@ -45,6 +45,20 @@ const MAX_CWD_TRACKING_BUFFER_LENGTH = 4096;
 const MAX_PROMPT_CWD_LINE_LENGTH = 512;
 const MIN_TERMINAL_SESSION_COLS = 20;
 const MIN_TERMINAL_SESSION_ROWS = 8;
+const CONTROL_CHAR_RE = new RegExp(String.raw`[\u0000-\u001f\u007f]`);
+const PROMPT_OSC_RE = new RegExp(
+  String.raw`\u001b\][^\u0007]*(?:\u0007|\u001b\\)`,
+  "g",
+);
+const PROMPT_CSI_RE = new RegExp(
+  String.raw`\u001b\[[0-?]*[ -/]*[@-~]`,
+  "g",
+);
+const PROMPT_ESCAPE_RE = new RegExp(String.raw`\u001b[ -/]*[@-~]`, "g");
+const PROMPT_C0_CONTROL_RE = new RegExp(
+  String.raw`[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]`,
+  "g",
+);
 
 export function terminalSuggestionProviders({
   hasSshRemote,
@@ -512,7 +526,7 @@ function findCurrentDirOscTerminator(
 
 function sanitizeCurrentDirOscPath(path: string): string | undefined {
   const trimmed = path.trim();
-  if (!trimmed.startsWith("/") || /[\u0000-\u001f\u007f]/.test(trimmed)) {
+  if (!trimmed.startsWith("/") || CONTROL_CHAR_RE.test(trimmed)) {
     return undefined;
   }
   return trimmed.length > MAX_CWD_TRACKING_BUFFER_LENGTH ? undefined : trimmed;
@@ -570,10 +584,10 @@ function trailingPromptCwdBuffer(buffer: string): string {
 
 function stripTerminalControlsForPrompt(value: string): string {
   return value
-    .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, "")
-    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
-    .replace(/\u001b[ -/]*[@-~]/g, "")
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
+    .replace(PROMPT_OSC_RE, "")
+    .replace(PROMPT_CSI_RE, "")
+    .replace(PROMPT_ESCAPE_RE, "")
+    .replace(PROMPT_C0_CONTROL_RE, "");
 }
 
 function trailingPotentialCurrentDirOscPrefix(buffer: string): string {

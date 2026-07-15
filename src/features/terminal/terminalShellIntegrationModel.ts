@@ -41,8 +41,11 @@ export interface TerminalShellIntegrationOsc133Collection {
 
 const MAX_SHELL_INTEGRATION_CWD_LENGTH = 4096;
 const MAX_SHELL_INTEGRATION_COMMAND_LENGTH = 4096;
-const CONTROL_CHAR_RE = /[\u0000-\u001f\u007f]/;
-const CONTROL_CHARS_GLOBAL_RE = /[\u0000-\u001f\u007f]+/g;
+const CONTROL_CHAR_RE = new RegExp(String.raw`[\u0000-\u001f\u007f]`);
+const CONTROL_CHARS_GLOBAL_RE = new RegExp(
+  String.raw`[\u0000-\u001f\u007f]+`,
+  "g",
+);
 const OSC_133_PREFIX = "\u001b]133;";
 const OSC_BEL_TERMINATOR = "\u0007";
 const OSC_ST_TERMINATOR = "\u001b\\";

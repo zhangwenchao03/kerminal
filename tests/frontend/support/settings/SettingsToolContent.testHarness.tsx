@@ -1,7 +1,7 @@
 // @author kongweiguang
 import { render, screen } from "@testing-library/react";
 import type { RenderResult } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import type userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, vi } from "vitest";
 import { SettingsToolContent } from "../../../../src/features/settings/SettingsToolContent";

@@ -135,7 +135,6 @@ export function createXtermPaneGhostSuggestions({
   let inputBurstCount = 0;
   let lastInputAt: number | undefined;
   let lastSuggestionDurationMs: number | undefined;
-  let lastSuggestionFailureAt: number | undefined;
   let menuRequested = false;
   let menuState = createTerminalSuggestionMenuState();
   let latestLifecycle: TerminalSuggestionLifecycle = {
@@ -320,7 +319,7 @@ export function createXtermPaneGhostSuggestions({
     const policy = resolveTerminalSuggestionProbePolicy({
       consecutiveFailures: consecutiveSuggestionFailures,
       inputBurstCount,
-      lastFailureAt: lastSuggestionFailureAt,
+      lastFailureAt: undefined,
       lastInputAt,
       lastProbeDurationMs: lastSuggestionDurationMs,
       lifecycleEnabled: canScheduleSuggestion(),

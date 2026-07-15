@@ -35,7 +35,13 @@ export async function createSshTerminalSessionWithAuthRecovery(
         promptForSecret,
       );
       if (!completed) {
-        throw new Error("SSH 认证已取消。");
+        const cancellationError = new Error("SSH 认证已取消。");
+        Object.defineProperty(cancellationError, "cause", {
+          configurable: true,
+          value: error,
+          writable: true,
+        });
+        throw cancellationError;
       }
     }
   }
