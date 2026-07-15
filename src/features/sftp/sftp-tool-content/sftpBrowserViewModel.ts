@@ -37,7 +37,7 @@ import type {
 } from "./types";
 
 /** 路径、浏览模式和终端目录跟随合同。 */
-export interface SftpBrowserNavigation {
+interface SftpBrowserNavigation {
   browserMode: SftpBrowserMode;
   currentPath: string;
   fileTarget: SftpFileTarget | null;
@@ -54,7 +54,7 @@ export interface SftpBrowserNavigation {
 }
 
 /** 当前目录的可见项目与多选状态合同。 */
-export interface SftpBrowserSelection {
+interface SftpBrowserSelection {
   entries: SftpEntry[];
   hiddenEntryCount: number;
   selectEntry: (entry: SftpEntry, event?: SftpSelectionEvent) => void;
@@ -68,7 +68,7 @@ export interface SftpBrowserSelection {
 }
 
 /** 文件操作、拖放和浏览器级输入命令合同。 */
-export interface SftpBrowserOperations {
+interface SftpBrowserOperations {
   downloadSelectedEntries: () => Promise<void>;
   dragDropActive: boolean;
   dropZoneRef: RefObject<HTMLDivElement | null>;
@@ -98,7 +98,7 @@ export interface SftpBrowserOperations {
 }
 
 /** 上传、下载和传输队列合同。 */
-export interface SftpBrowserTransfers {
+interface SftpBrowserTransfers {
   cancelTransfer: (transferId: string) => Promise<void>;
   clearFinishedTransfers: () => Promise<void>;
   retryTransfer: (transfer: SftpTransferSummary) => Promise<void>;
@@ -113,7 +113,7 @@ export interface SftpBrowserTransfers {
 }
 
 /** 模态对话框与上下文菜单合同。 */
-export interface SftpBrowserDialogs {
+interface SftpBrowserDialogs {
   contextMenu: SftpContextMenuState | null;
   dialogAction: SftpDialogAction | null;
   dialogBusy: boolean;
@@ -126,7 +126,7 @@ export interface SftpBrowserDialogs {
 }
 
 /** 由当前目标和宿主界面决定的能力合同。 */
-export interface SftpBrowserCapabilities {
+interface SftpBrowserCapabilities {
   compactHeader: boolean;
   cwdTrackingSetupBusy: boolean;
   fileRowHeight: number;
@@ -179,6 +179,9 @@ export interface SftpBrowserViewModel {
   visibleTreeRows: SftpTreeRenderRow[];
 }
 
+const EMPTY_WORKSPACE_FILE_TABS: WorkspaceFileTab[] = [];
+const EMPTY_WORKSPACE_FILE_DIRTY_STATE: WorkspaceFileDirtyState = {};
+
 /** 将 controller 状态投影为不包含业务副作用的稳定浏览器视图模型。 */
 export function useSftpBrowserViewModel({
   capabilities,
@@ -202,8 +205,10 @@ export function useSftpBrowserViewModel({
     showHiddenFiles: selection.showHiddenFiles,
     workspaceTarget: capabilities.workspaceTarget,
   });
-  const workspaceFileTabs = capabilities.workspaceFileTabs ?? [];
-  const workspaceFileDirtyState = capabilities.workspaceFileDirtyState ?? {};
+  const workspaceFileTabs =
+    capabilities.workspaceFileTabs ?? EMPTY_WORKSPACE_FILE_TABS;
+  const workspaceFileDirtyState =
+    capabilities.workspaceFileDirtyState ?? EMPTY_WORKSPACE_FILE_DIRTY_STATE;
   const openedWorkspaceFileTabs = useMemo(
     () =>
       workspaceFileTabs.filter(
