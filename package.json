@@ -19,7 +19,7 @@
     "test:terminal-ghost": "vitest run tests/frontend/features/terminal/terminalInputModel.test.ts tests/frontend/features/terminal/XtermPane.test.tsx tests/frontend/lib/terminalSuggestionApi.test.ts",
     "test:terminal-renderer-lifecycle": "vitest run tests/frontend/features/terminal/terminalRendererLifecycle.test.ts tests/frontend/features/terminal/terminalRenderer.test.ts tests/frontend/features/terminal/terminalRendererHealth.test.ts",
     "test:rust": "cd src-tauri && cargo test",
-    "test:quality-gates": "node --test tests/scripts/check-frontend-architecture.test.mjs tests/scripts/check-eslint.test.mjs tests/scripts/check-dead-code.test.mjs",
+    "test:quality-gates": "node --test tests/scripts/check-frontend-architecture.test.mjs tests/scripts/check-eslint.test.mjs tests/scripts/check-dead-code.test.mjs tests/scripts/public-contract-inventory.test.mjs",
     "test:source-size": "node --test tests/scripts/check-source-size.test.mjs",
     "test:launch-shim-package-contract": "node --test tests/scripts/launch-shim-package-contract.test.mjs",
     "test:external-launch-windows-package": "node --test tests/scripts/external-launch-windows-package.test.mjs",
