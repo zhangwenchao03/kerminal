@@ -61,13 +61,6 @@
       "targetTask": "TASK-072"
     },
     {
-      "file": "src/app/useKerminalShellRemoteActions.ts",
-      "lines": 823,
-      "deadline": "before TASK-080",
-      "owner": "workspace-composition",
-      "targetTask": "TASK-030/TASK-031"
-    },
-    {
       "file": "src/features/terminal/terminalRenderer.ts",
       "lines": 978,
       "deadline": "before TASK-080",
@@ -87,13 +80,6 @@
       "deadline": "before TASK-080",
       "owner": "terminal-runtime",
       "targetTask": "TASK-050/TASK-052"
-    },
-    {
-      "file": "src/lib/terminalSuggestionApi.ts",
-      "lines": 980,
-      "deadline": "before TASK-080",
-      "owner": "architecture-governance",
-      "targetTask": "TASK-072"
     }
   ]
 }

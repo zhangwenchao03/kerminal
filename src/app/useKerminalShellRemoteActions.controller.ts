@@ -1,10 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import type { ConnectionOpenOptions } from "../features/machine-sidebar/MachineSidebar";
 import type { LocalTerminalCreateOptions } from "../features/machine-sidebar/RemoteHostCreateDialog";
-import {
-  findMachine,
-  localMachineIdForProfile,
-} from "../features/workspace/workspaceStore";
+import { findMachine, localMachineIdForProfile } from "../features/workspace/workspaceStore";
 import type { Machine, MachineGroup } from "../features/workspace/types";
 import { externalSshLaunchIdFromMachineId } from "../features/external-launch/externalSshLaunchModel";
 import {

@@ -3008,7 +3008,7 @@
       "targetTask": "TASK-022/TASK-072"
     },
     {
-      "file": "src/lib/terminalSuggestionApi.ts",
+      "file": "src/lib/terminalSuggestionApi.types.ts",
       "name": "CommandSuggestionActivation",
       "type": "types",
       "count": 1,
@@ -3017,7 +3017,7 @@
       "targetTask": "TASK-022/TASK-072"
     },
     {
-      "file": "src/lib/terminalSuggestionApi.ts",
+      "file": "src/lib/terminalSuggestionApi.types.ts",
       "name": "CommandSuggestionAuditDecision",
       "type": "types",
       "count": 1,
@@ -3026,7 +3026,7 @@
       "targetTask": "TASK-022/TASK-072"
     },
     {
-      "file": "src/lib/terminalSuggestionApi.ts",
+      "file": "src/lib/terminalSuggestionApi.types.ts",
       "name": "CommandSuggestionAuditEvent",
       "type": "types",
       "count": 1,
@@ -3035,7 +3035,7 @@
       "targetTask": "TASK-022/TASK-072"
     },
     {
-      "file": "src/lib/terminalSuggestionApi.ts",
+      "file": "src/lib/terminalSuggestionApi.types.ts",
       "name": "CommandSuggestionAuditEventKind",
       "type": "types",
       "count": 1,
@@ -3044,7 +3044,7 @@
       "targetTask": "TASK-022/TASK-072"
     },
     {
-      "file": "src/lib/terminalSuggestionApi.ts",
+      "file": "src/lib/terminalSuggestionApi.types.ts",
       "name": "CommandSuggestionCandidateKind",
       "type": "types",
       "count": 1,
@@ -3053,16 +3053,7 @@
       "targetTask": "TASK-022/TASK-072"
     },
     {
-      "file": "src/lib/terminalSuggestionApi.ts",
-      "name": "CommandSuggestionCandidatePayload",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/lib/terminalSuggestionApi.ts",
+      "file": "src/lib/terminalSuggestionApi.types.ts",
       "name": "CommandSuggestionFeedbackAction",
       "type": "types",
       "count": 1,
@@ -3071,16 +3062,7 @@
       "targetTask": "TASK-022/TASK-072"
     },
     {
-      "file": "src/lib/terminalSuggestionApi.ts",
-      "name": "CommandSuggestionPresentation",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/lib/terminalSuggestionApi.ts",
+      "file": "src/lib/terminalSuggestionApi.types.ts",
       "name": "CommandSuggestionProviderTelemetry",
       "type": "types",
       "count": 1,
@@ -3089,80 +3071,8 @@
       "targetTask": "TASK-022/TASK-072"
     },
     {
-      "file": "src/lib/terminalSuggestionApi.ts",
-      "name": "CommandSuggestionReplacementRange",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/lib/terminalSuggestionApi.ts",
+      "file": "src/lib/terminalSuggestionApi.types.ts",
       "name": "CommandSuggestionSensitivity",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/lib/terminalSuggestionApi.ts",
-      "name": "NormalizedCommandSuggestionDiagnosticsCleanupRequest",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/lib/terminalSuggestionApi.ts",
-      "name": "NormalizedCommandSuggestionFeedbackRecordRequest",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/lib/terminalSuggestionApi.ts",
-      "name": "NormalizedCommandSuggestionGitRefreshRequest",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/lib/terminalSuggestionApi.ts",
-      "name": "NormalizedCommandSuggestionRemoteCommandRefreshRequest",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/lib/terminalSuggestionApi.ts",
-      "name": "NormalizedCommandSuggestionRemoteHistoryRefreshRequest",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/lib/terminalSuggestionApi.ts",
-      "name": "NormalizedCommandSuggestionRemotePathRefreshRequest",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/lib/terminalSuggestionApi.ts",
-      "name": "NormalizedCommandSuggestionRequest",
       "type": "types",
       "count": 1,
       "deadline": "before TASK-080",
