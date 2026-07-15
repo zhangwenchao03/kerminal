@@ -369,13 +369,6 @@
       "targetTask": "TASK-071"
     },
     {
-      "file": "tests/frontend/features/terminal/XtermPane.test.tsx",
-      "lines": 1862,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
       "file": "tests/frontend/features/tool-panel/AgentLauncherToolContent.test.tsx",
       "lines": 1329,
       "deadline": "before TASK-080",
@@ -385,13 +378,6 @@
     {
       "file": "tests/frontend/features/workspace/workspaceStore.test.ts",
       "lines": 1122,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "tests/frontend/support/terminal/XtermPane.testSupport.tsx",
-      "lines": 814,
       "deadline": "before TASK-080",
       "owner": "test-architecture",
       "targetTask": "TASK-071"
