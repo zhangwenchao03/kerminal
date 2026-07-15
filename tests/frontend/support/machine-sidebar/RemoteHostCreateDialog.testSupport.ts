@@ -1,11 +1,9 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { DockerContainerSummary } from "../../../../src/lib/dockerApi";
 import {
   createDefaultSshOptions,
   type RemoteHost,
 } from "../../../../src/lib/remoteHostApi";
-import { dockerContainerTarget } from "../../../../src/lib/targetModel";
 import type { MachineGroup } from "../../../../src/features/workspace/types";
 
 export const groups: MachineGroup[] = [
@@ -78,34 +76,6 @@ export const groupsWithSsh: MachineGroup[] = [
     title: "开发主机",
   },
 ];
-
-const apiContainerTarget = dockerContainerTarget({
-  containerId: "c0ffee1234567890",
-  containerName: "api",
-  hostId: "host-1",
-});
-
-export const apiContainer: DockerContainerSummary = {
-  capabilities: {
-    download: true,
-    exec: true,
-    files: true,
-    ports: false,
-    terminal: true,
-    upload: true,
-  },
-  hostId: "host-1",
-  id: "c0ffee1234567890",
-  image: "kerminal/api:latest",
-  name: "api",
-  ports: ["0.0.0.0:8080->80/tcp"],
-  runtime: "docker",
-  shortId: "c0ffee123456",
-  state: "running",
-  status: "running",
-  statusText: "Up 12 minutes",
-  target: apiContainerTarget,
-};
 
 export async function chooseSelectOption(
   user: ReturnType<typeof userEvent.setup>,
