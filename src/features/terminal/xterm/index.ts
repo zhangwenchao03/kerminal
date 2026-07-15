@@ -1,4 +1,7 @@
-// Xterm pane 及其易失查询能力的公开入口。
-export * from "../XtermPane";
-export * from "../XtermPane.artifactsRegistry";
-export * from "../XtermPane.promptSourceRegistry";
+// Xterm pane 的懒加载公开入口；轻量 registry 使用独立 capability 入口。
+export {
+  XtermPane,
+  type XtermPaneDimensions,
+  type XtermPaneInputRequest,
+  type XtermPaneSessionFinishedEvent,
+} from "../XtermPane";

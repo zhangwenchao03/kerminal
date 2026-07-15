@@ -5,7 +5,7 @@ import { ChevronRight, Sparkles } from "lucide-react";
 import {
   getXtermPaneArtifactSnapshot,
   subscribeXtermPaneArtifactSnapshot,
-} from "../../terminal/xterm/index";
+} from "../../terminal/xterm/artifacts/index";
 import {
   TerminalArtifactList,
   type TerminalArtifactActionRequest,

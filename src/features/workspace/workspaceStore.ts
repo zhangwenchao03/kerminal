@@ -17,7 +17,7 @@ import {
   tools,
 } from "./workspaceData";
 import type { TerminalPaneMovePlacement } from "./workspaceLayout";
-import type { TerminalPaneMoveScope } from "../terminal/runtime/index";
+import type { TerminalPaneMoveScope } from "../terminal/runtime/move/index";
 import {
   maxGeneratedTerminalCounters,
   normalizeWorkspaceSessionSnapshot,

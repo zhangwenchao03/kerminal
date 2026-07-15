@@ -24,7 +24,7 @@ import {
   isRemoteSocksAutoInjectionEnabled,
   setRemoteSocksAutoInjection,
   type RemoteSocksAutoInjection,
-} from "../terminal/runtime/index";
+} from "../terminal/runtime/proxy/index";
 import type { Machine, TerminalPane } from "../workspace/contracts/index";
 import {
   BindAddressControl,

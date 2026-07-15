@@ -42,7 +42,7 @@ import type {
 import type { WorkspaceContextProjection } from "../workspace/context";
 import type { TerminalArtifactActionRequest } from "../terminal/artifacts/public/index";
 import type { TmuxAttachLaunch } from "../../lib/tmuxApi";
-import { sftpSidebarTransferViewScope } from "../sftp/tool/index";
+import { sftpSidebarTransferViewScope } from "../sftp/tool/scope/index";
 import {
   claimAgentSendRequestAutoOpen,
   useAgentSendRequestSnapshot,
@@ -97,7 +97,7 @@ const toolIcons: Partial<Record<ToolId, typeof Bot>> = {
 };
 
 const SftpToolContent = lazy(async () => ({
-  default: (await import("../sftp/tool/index")).SftpToolContent,
+  default: (await import("../sftp/tool/view/index")).SftpToolContent,
 }));
 const ServerInfoToolContent = lazy(async () => ({
   default: (await import("./ServerInfoToolContent")).ServerInfoToolContent,

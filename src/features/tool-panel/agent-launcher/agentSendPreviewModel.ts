@@ -6,7 +6,7 @@ import type { TerminalPane, TerminalTab } from "../../workspace/contracts/index"
 import {
   readXtermPanePromptSource,
   type XtermPanePromptSourceSnapshot,
-} from "../../terminal/xterm/index";
+} from "../../terminal/xterm/prompt/index";
 import {
   buildAgentTerminalCommandBlockPrompt,
   buildAgentTerminalContextPrompt,
