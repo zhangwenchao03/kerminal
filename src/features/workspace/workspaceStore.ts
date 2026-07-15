@@ -3,7 +3,7 @@ import {
   defaultAppSettings,
   normalizeAppSettings,
   type AppSettings,
-} from "../settings/settingsModel";
+} from "../settings/contracts/index";
 import {
   browserPreviewProfiles,
   type TerminalProfile,
@@ -17,7 +17,7 @@ import {
   tools,
 } from "./workspaceData";
 import type { TerminalPaneMovePlacement } from "./workspaceLayout";
-import type { TerminalPaneMoveScope } from "../terminal/terminalPaneMoveDropZones";
+import type { TerminalPaneMoveScope } from "../terminal/runtime/index";
 import {
   maxGeneratedTerminalCounters,
   normalizeWorkspaceSessionSnapshot,

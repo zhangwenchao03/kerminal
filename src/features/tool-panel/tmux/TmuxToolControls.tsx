@@ -8,7 +8,7 @@ import {
 import { useState } from "react";
 import { IconAction } from "../../../components/ui/icon-action";
 import { cn } from "../../../lib/cn";
-import type { TerminalPane } from "../../workspace/types";
+import type { TerminalPane } from "../../workspace/contracts/index";
 import {
   COMMON_TMUX_COMMANDS,
   COMMON_TMUX_SHORTCUTS,

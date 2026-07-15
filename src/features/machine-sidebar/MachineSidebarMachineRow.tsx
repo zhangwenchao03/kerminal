@@ -12,7 +12,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { cn } from "../../lib/cn";
-import type { Machine, MachineGroup, MachineStatus } from "../workspace/types";
+import type { Machine, MachineGroup, MachineStatus } from "../workspace/contracts/index";
 import { statusClasses } from "./MachineSidebar.shared";
 
 const sidebarMachineButtonBaseClassName =

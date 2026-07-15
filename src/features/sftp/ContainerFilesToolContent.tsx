@@ -42,7 +42,7 @@ import {
 } from "../../lib/fileDialogApi";
 import type { SftpEntry, SftpTransferKind } from "../../lib/sftpApi";
 import type { RemoteTargetRef } from "../../lib/targetModel";
-import type { Machine } from "../workspace/types";
+import type { Machine } from "../workspace/contracts/index";
 
 const LazyRemoteFilePreviewEditor = lazy(async () => {
   const module = await import("./RemoteFilePreviewEditor");

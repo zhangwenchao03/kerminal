@@ -19,9 +19,9 @@ import {
   type SnippetDocumentSnapshot,
   type SnippetDeleteReceipt,
 } from "../../lib/snippetApi";
-import type { TerminalPane } from "../workspace/types";
-import { FixedRowVirtualList } from "../sftp/FixedRowVirtualList";
-import { getTerminalPaneSessionRecord } from "../terminal/terminalSessionRegistry";
+import type { TerminalPane } from "../workspace/contracts/index";
+import { FixedRowVirtualList } from "../sftp/ui/index";
+import { getTerminalPaneSessionRecord } from "../terminal/session/index";
 import {
   acknowledgeSnippetPanelOpenRequest,
   consumePendingSnippetPanelOpenRequest,

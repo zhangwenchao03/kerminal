@@ -2,11 +2,11 @@ import type {
   AgentWorkflowPreviewKind,
   AgentWorkflowSendPreview,
 } from "../../agent-workflow";
-import type { TerminalPane, TerminalTab } from "../../workspace/types";
+import type { TerminalPane, TerminalTab } from "../../workspace/contracts/index";
 import {
   readXtermPanePromptSource,
   type XtermPanePromptSourceSnapshot,
-} from "../../terminal/XtermPane.promptSourceRegistry";
+} from "../../terminal/xterm/index";
 import {
   buildAgentTerminalCommandBlockPrompt,
   buildAgentTerminalContextPrompt,

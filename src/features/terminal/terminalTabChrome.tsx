@@ -25,8 +25,8 @@ import {
   type TerminalTabGroupPreference,
   type TerminalTabGroupPreferences,
   type WorkspaceFileTab,
-} from "../workspace/types";
-import { collectPaneIds } from "../workspace/workspaceLayout";
+} from "../workspace/contracts/index";
+import { collectPaneIds } from "../workspace/contracts/index";
 import {
   resolveTerminalTabIdentityAccent,
   resolveTerminalTabIdentityPaletteToken,

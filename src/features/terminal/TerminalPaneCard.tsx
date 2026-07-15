@@ -5,12 +5,12 @@ import { cn } from "../../lib/cn";
 import type {
   ResolvedTheme,
   TerminalAppearance,
-} from "../settings/settingsModel";
+} from "../settings/contracts/index";
 import type {
   MachineGroup,
   TerminalPane,
   TerminalSplitDirection,
-} from "../workspace/types";
+} from "../workspace/contracts/index";
 import { XtermPane } from "./XtermPane";
 import { TerminalSplitTargetSelector } from "./TerminalSplitTargetSelector";
 import { buildTerminalPaneCardModel } from "./terminalPaneCardModel";

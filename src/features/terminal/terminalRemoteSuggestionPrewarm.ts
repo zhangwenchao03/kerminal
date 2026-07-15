@@ -4,7 +4,7 @@ import {
   type CommandSuggestionAuditRecordRequest,
   type CommandSuggestionProvider,
 } from "../../lib/terminalSuggestionApi";
-import type { TerminalAppearance } from "../settings/settingsModel";
+import type { TerminalAppearance } from "../settings/contracts/index";
 import { remoteSuggestionHostId } from "./XtermPane.runtime.helpers";
 import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeScheduler";
 

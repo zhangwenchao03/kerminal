@@ -13,16 +13,16 @@ import { createPortal } from "react-dom";
 import type {
   ResolvedTheme,
   TerminalAppearance,
-} from "../settings/settingsModel";
+} from "../settings/contracts/index";
 import type {
   MachineGroup,
   TerminalPane,
   TerminalTab,
   TerminalSplitDirection,
   TerminalSplitLayoutSizes,
-} from "../workspace/types";
-import { isTerminalSessionTab } from "../workspace/types";
-import { collectPaneIds } from "../workspace/workspaceLayout";
+} from "../workspace/contracts/index";
+import { isTerminalSessionTab } from "../workspace/contracts/index";
+import { collectPaneIds } from "../workspace/contracts/index";
 import { cn } from "../../lib/cn";
 import { TerminalEmptyState } from "./TerminalEmptyState";
 import {

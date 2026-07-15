@@ -12,7 +12,7 @@ import { cn } from "../../lib/cn";
 import type {
   MachineGroup,
   TerminalSplitDirection,
-} from "../workspace/types";
+} from "../workspace/contracts/index";
 import {
   createSplitTargetOptions,
   type SplitTargetOption,

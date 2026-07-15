@@ -19,7 +19,7 @@ import {
   buildUserFacingError,
   type UserFacingMessage,
 } from "../../../lib/userFacingMessage";
-import type { InterfaceDensity } from "../../settings/settingsModel";
+import type { InterfaceDensity } from "../../settings/contracts/index";
 import type {
   WorkspaceFileDirtyState,
   WorkspaceFileTab,

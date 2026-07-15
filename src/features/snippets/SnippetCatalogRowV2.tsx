@@ -23,8 +23,8 @@ import {
   getTerminalPaneSessionRecord,
   runSnippetCommand,
   writeSnippetCommand,
-} from "../terminal/terminalSessionRegistry";
-import type { TerminalPane } from "../workspace/types";
+} from "../terminal/session/index";
+import type { TerminalPane } from "../workspace/contracts/index";
 import {
   createSnippetTargetSnapshot,
   isSnippetTargetSnapshotCurrent,

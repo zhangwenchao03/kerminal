@@ -3,9 +3,9 @@ import type {
   ManagedSshRuntimeSnapshot,
   ManagedSshSessionSnapshot,
 } from "../../lib/diagnosticsApi";
-import type { SshTerminalFailure } from "../terminal/terminalSshFailurePolicy";
-import { classifySshTerminalFailure } from "../terminal/terminalSshFailurePolicy";
-import type { Machine, TerminalPane } from "../workspace/types";
+import type { SshTerminalFailure } from "../terminal/ssh/index";
+import { classifySshTerminalFailure } from "../terminal/ssh/index";
+import type { Machine, TerminalPane } from "../workspace/contracts/index";
 
 export type ManagedSshToolCapability = "shell" | "sftp" | "exec" | "forward";
 

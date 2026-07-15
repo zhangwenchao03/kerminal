@@ -20,7 +20,7 @@ import type {
   SshProxyProtocol,
   SshTunnelKind,
 } from "../../../lib/remoteHostApi";
-import type { Machine, MachineGroup } from "../../workspace/types";
+import type { Machine, MachineGroup } from "../../workspace/contracts/index";
 
 export interface RemoteHostCreateDialogProps {
   defaultGroupId?: string;

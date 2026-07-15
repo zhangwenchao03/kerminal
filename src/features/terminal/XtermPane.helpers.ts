@@ -12,8 +12,8 @@ import type {
 import {
   resolveRuntimeSnippetFeatureGates,
   snippetV2NavigationEnabled,
-} from "../snippets/snippetFeatureGates";
-import type { TerminalAppearance } from "../settings/settingsModel";
+} from "../snippets/contracts/index";
+import type { TerminalAppearance } from "../settings/contracts/index";
 import type { TerminalCommandBlockView } from "./terminalCommandBlocks";
 import {
   applyTerminalInputData,

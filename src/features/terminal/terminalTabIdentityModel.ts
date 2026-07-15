@@ -2,7 +2,7 @@ import {
   terminalTabGroupColorIds,
   type TerminalTabGroupColor,
   type TerminalTabGroupPreference,
-} from "../workspace/types";
+} from "../workspace/contracts/index";
 
 /**
  * 身份 accent 的来源。已保存颜色属于显式选择，缺少颜色时始终按 groupId 自动派生。

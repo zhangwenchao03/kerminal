@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   KERMINAL_TEXT_EDIT_COMMAND_EVENT,
   type KerminalTextEditCommandEventDetail,
-} from "../../../../src/app/appKeybindingPolicy";
+} from "../../../../src/contracts/textEditCommands";
 import { RemoteWorkspaceEditor } from "../../../../src/features/sftp/RemoteWorkspaceEditor";
 
 const sftpApiMocks = vi.hoisted(() => ({

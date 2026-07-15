@@ -3,7 +3,7 @@
 import { useId, useMemo, useState, type FocusEvent } from "react";
 import { Search } from "lucide-react";
 import { cn } from "../../lib/cn";
-import type { Machine, MachineGroup } from "../workspace/types";
+import type { Machine, MachineGroup } from "../workspace/contracts/index";
 import {
   HostContainersToolContent,
   type HostContainersToolContentProps,

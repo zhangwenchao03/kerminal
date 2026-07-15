@@ -1,4 +1,4 @@
-import type { TerminalRendererType } from "../settings/settingsModel";
+import type { TerminalRendererType } from "../settings/contracts/index";
 import type { RuntimeDiagnosticsWorkMode } from "./terminalRuntimeDiagnostics";
 
 export type TerminalPaneRuntimeWorkMode = RuntimeDiagnosticsWorkMode;

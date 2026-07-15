@@ -1,7 +1,7 @@
 import type { DockerContainerDirectoryListing } from "../../../lib/containerFilesApi";
 import type { SftpDirectoryListing } from "../../../lib/sftpApi";
 import type { RemoteTargetRef } from "../../../lib/targetModel";
-import type { Machine } from "../../workspace/types";
+import type { Machine } from "../../workspace/contracts/index";
 import { normalizeRemotePath } from "./sftpPathModel";
 import type {
   DockerContainerTargetRef,

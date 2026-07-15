@@ -2,11 +2,11 @@ import { Check, Layers2 } from "lucide-react";
 import type { RefObject } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
-import type { TerminalAppearance } from "../settings/settingsModel";
+import type { TerminalAppearance } from "../settings/contracts/index";
 import type {
   MachineStatus,
   TerminalTab,
-} from "../workspace/types";
+} from "../workspace/contracts/index";
 import {
   terminalTabStatusDotClassName,
   type TerminalTabGroup,

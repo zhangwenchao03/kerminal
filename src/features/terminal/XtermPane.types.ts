@@ -4,8 +4,8 @@ import type {
   ResolvedTheme,
   TerminalAppearance,
   TerminalColorScheme,
-} from "../settings/settingsModel";
-import type { TerminalSplitDirection } from "../workspace/types";
+} from "../settings/contracts/index";
+import type { TerminalSplitDirection } from "../workspace/contracts/index";
 import type { ConnectionState } from "./XtermPane.helpers";
 import type { TerminalInputCompatibilityMode } from "./terminalKeyboardPolicy";
 

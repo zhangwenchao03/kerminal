@@ -12,8 +12,8 @@ import type {
   TerminalPane,
   TerminalTab,
   ToolId,
-} from "../workspace/types";
-import { isWorkspaceFileTab } from "../workspace/types";
+} from "../workspace/contracts/index";
+import { isWorkspaceFileTab } from "../workspace/contracts/index";
 import type { WorkspaceContextRevision } from "../workspace/context";
 
 /** 右栏能力拥有的上下文层级；读写动作只能使用对应层级生成的 binding。 */

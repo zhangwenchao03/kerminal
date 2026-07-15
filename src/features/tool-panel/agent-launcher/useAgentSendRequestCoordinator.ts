@@ -2,8 +2,8 @@ import { useEffect } from "react";
 import {
   consumeAgentSendRequest,
   type AgentSendRequest,
-} from "../../agent-workflow/agentSendRequestStore";
-import type { TerminalPane, TerminalTab } from "../../workspace/types";
+} from "../../agent-workflow/state/index";
+import type { TerminalPane, TerminalTab } from "../../workspace/contracts/index";
 import type { UserFacingMessage } from "../../../lib/userFacingMessage";
 import type { AgentTerminalSession } from "./AgentTerminalView";
 import type { AgentSendPreviewSource } from "./agentSendPreviewModel";

@@ -1,7 +1,7 @@
 import { FolderPlus, Pencil, Pin, Plus, Trash2 } from "lucide-react";
 import type { RefObject } from "react";
 import { createPortal } from "react-dom";
-import type { Machine, MachineGroup } from "../workspace/types";
+import type { Machine, MachineGroup } from "../workspace/contracts/index";
 import type {
   MachineSidebarProps,
   SidebarContextMenu,

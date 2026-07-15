@@ -21,8 +21,8 @@ import {
   type TmuxCapabilityStatus,
   type TmuxSessionSummary,
 } from "../../lib/tmuxApi";
-import { writePaneCommand } from "../terminal/terminalSessionRegistry";
-import type { Machine, TerminalPane, TerminalTab } from "../workspace/types";
+import { writePaneCommand } from "../terminal/session/index";
+import type { Machine, TerminalPane, TerminalTab } from "../workspace/contracts/index";
 import {
   buildTmuxAttachCommand,
   writeTmuxDetachShortcut,

@@ -23,9 +23,9 @@ import { cn } from "../../../lib/cn";
 import type {
   ResolvedTheme,
   TerminalAppearance,
-} from "../../settings/settingsModel";
-import { XtermPane } from "../../terminal/XtermPane";
-import type { XtermPaneInputRequest } from "../../terminal/XtermPane";
+} from "../../settings/contracts/index";
+import { XtermPane } from "../../terminal/xterm/index";
+import type { XtermPaneInputRequest } from "../../terminal/xterm/index";
 import type {
   AgentWorkflowSendPreview,
   AgentWorkflowPreviewResolution,

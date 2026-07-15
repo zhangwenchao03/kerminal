@@ -29,15 +29,15 @@ import {
   buildUserFacingError,
   type UserFacingMessage,
 } from "../../lib/userFacingMessage";
-import { defaultTerminalAppearance } from "../settings/settingsDefaults";
+import { defaultTerminalAppearance } from "../settings/defaults/index";
 import {
   terminalFontWeightValue,
   type TerminalAppearance,
-} from "../settings/settingsModel";
+} from "../settings/contracts/index";
 import {
   MonacoTextEditor,
   type MonacoTextEditorMountHandler,
-} from "../sftp/MonacoTextEditor";
+} from "../sftp/editor/index";
 import {
   activeTabStatus,
   applyReloadError,
@@ -54,30 +54,30 @@ import {
   startSavingTab,
   type OpenFileTab,
   type RemoteWorkspaceStatus,
-} from "../sftp/remoteWorkspaceEditorModel";
+} from "../sftp/editor/index";
 import {
   buildRemoteWorkspaceEditorCommandGroups,
   isRemoteWorkspaceEditorCommandEnabled,
   resolveRemoteWorkspaceEditorContextMenuPosition,
   type RemoteWorkspaceEditorCommandId,
-} from "../sftp/remoteWorkspaceEditorCommandModel";
+} from "../sftp/editor/index";
 import {
   editorShouldHandleNativeTextEdit,
   registerRemoteWorkspaceEditorKeybindings,
   runRemoteWorkspaceEditorMonacoCommand,
-} from "../sftp/remoteWorkspaceEditorCommandRuntime";
-import { RemoteWorkspaceEditorContextMenu } from "../sftp/RemoteWorkspaceEditorContextMenu";
+} from "../sftp/editor/index";
+import { RemoteWorkspaceEditorContextMenu } from "../sftp/editor/index";
 import {
   isRemoteWorkspaceBinaryFileReadError,
   readRemoteWorkspaceTextFile,
   writeRemoteWorkspaceTextFile,
   type RemoteWorkspaceReadTextFileResponse,
-} from "../sftp/remoteWorkspaceEditorTransport";
-import { resolveWorkspaceFilePreviewPolicy } from "../sftp/workspaceFilePreviewPolicy";
+} from "../sftp/editor/index";
+import { resolveWorkspaceFilePreviewPolicy } from "../sftp/editor/index";
 import {
   BINARY_WORKSPACE_FILE_PREVIEW_NOTICE,
   buildWorkspaceFilePreviewUnsupportedNotice,
-} from "../sftp/workspaceFilePreviewPresentation";
+} from "../sftp/editor/index";
 import {
   WORKSPACE_FILE_TAB_COMMAND_EVENT,
   type WorkspaceFileTabCommandEventDetail,

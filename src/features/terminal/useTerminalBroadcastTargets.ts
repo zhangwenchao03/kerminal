@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { isBroadcastCommandTargetMode } from "./broadcastCommandPolicy";
-import type { TerminalPane } from "../workspace/types";
+import type { TerminalPane } from "../workspace/contracts/index";
 import {
   countProductionTargets,
   createBroadcastTargetOption,

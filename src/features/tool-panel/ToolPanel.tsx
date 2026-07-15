@@ -22,8 +22,8 @@ import {
   type AppSettings,
   type ResolvedTheme,
   type TerminalAppearance,
-} from "../settings/settingsModel";
-import type { SettingsSectionId } from "../settings/SettingsToolContent";
+} from "../settings/contracts/index";
+import type { SettingsSectionId } from "../settings/view/index";
 import type {
   Machine,
   TerminalPane,
@@ -32,21 +32,21 @@ import type {
   ToolSummary,
   WorkspaceFileDirtyState,
   WorkspaceFileRevealRequest,
-} from "../workspace/types";
-import { isWorkspaceFileTab } from "../workspace/types";
+} from "../workspace/contracts/index";
+import { isWorkspaceFileTab } from "../workspace/contracts/index";
 import type {
   AddTerminalTabOptions,
   OpenWorkspaceFileTabOptions,
   TmuxAttachPlacement,
-} from "../workspace/workspaceStore";
+} from "../workspace/state/index";
 import type { WorkspaceContextProjection } from "../workspace/context";
-import type { TerminalArtifactActionRequest } from "../terminal/artifacts/public";
+import type { TerminalArtifactActionRequest } from "../terminal/artifacts/public/index";
 import type { TmuxAttachLaunch } from "../../lib/tmuxApi";
-import { sftpSidebarTransferViewScope } from "../sftp/sftp-tool-content/sftpTransferScopeModel";
+import { sftpSidebarTransferViewScope } from "../sftp/tool/index";
 import {
   claimAgentSendRequestAutoOpen,
   useAgentSendRequestSnapshot,
-} from "../agent-workflow/agentSendRequestStore";
+} from "../agent-workflow/state/index";
 import { resolveToolPanelBinding } from "./toolPanelContextModel";
 
 interface ToolPanelProps {
@@ -97,7 +97,7 @@ const toolIcons: Partial<Record<ToolId, typeof Bot>> = {
 };
 
 const SftpToolContent = lazy(async () => ({
-  default: (await import("../sftp/SftpToolContent")).SftpToolContent,
+  default: (await import("../sftp/tool/index")).SftpToolContent,
 }));
 const ServerInfoToolContent = lazy(async () => ({
   default: (await import("./ServerInfoToolContent")).ServerInfoToolContent,
@@ -106,7 +106,7 @@ const PortForwardToolContent = lazy(async () => ({
   default: (await import("./PortForwardToolContent")).PortForwardToolContent,
 }));
 const SnippetToolContent = lazy(async () => ({
-  default: (await import("../snippets/SnippetToolContent")).SnippetToolContent,
+  default: (await import("../snippets/view/index")).SnippetToolContent,
 }));
 const LogToolContent = lazy(async () => ({
   default: (await import("../logs")).LogToolContent,

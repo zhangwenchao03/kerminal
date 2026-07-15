@@ -29,12 +29,12 @@ import {
   defaultTerminalAppearance,
   type ResolvedTheme,
   type TerminalAppearance,
-} from "../settings/settingsModel";
+} from "../settings/contracts/index";
 import {
   isTerminalSessionTab,
   type TerminalPane,
   type TerminalTab,
-} from "../workspace/types";
+} from "../workspace/contracts/index";
 import {
   agentLaunchDisplayCommand,
   applyAgentLaunchPermissionMode,
@@ -71,7 +71,7 @@ import { useAgentSendPreview } from "./agent-launcher/useAgentSendPreview";
 import { useAgentSessionDelete } from "./agent-launcher/useAgentSessionDelete";
 import { useAgentSessionTitleRename } from "./agent-launcher/useAgentSessionTitleRename";
 import { useAgentSendRequestCoordinator } from "./agent-launcher/useAgentSendRequestCoordinator";
-import { useAgentSendRequestSnapshot } from "../agent-workflow/agentSendRequestStore";
+import { useAgentSendRequestSnapshot } from "../agent-workflow/state/index";
 import { createAgentSessionForLaunch } from "./agent-launcher/agentSessionLaunchFactory";
 
 interface AgentLauncherToolContentProps {

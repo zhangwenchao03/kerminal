@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   KERMINAL_TEXT_EDIT_COMMAND_EVENT,
   type KerminalTextEditCommandEventDetail,
-} from "../../../../src/app/appKeybindingPolicy";
+} from "../../../../src/contracts/textEditCommands";
 import { WorkspaceFileTabSurface } from "../../../../src/features/workspace/WorkspaceFileTabSurface";
 import type { WorkspaceFileTab } from "../../../../src/features/workspace/types";
 

@@ -16,11 +16,11 @@ import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
 import { cn } from "../../lib/cn";
 import { targetStableId, type RemoteTargetRef } from "../../lib/targetModel";
-import { defaultTerminalAppearance } from "../settings/settingsDefaults";
+import { defaultTerminalAppearance } from "../settings/defaults/index";
 import {
   terminalFontWeightValue,
   type TerminalAppearance,
-} from "../settings/settingsModel";
+} from "../settings/contracts/index";
 import type { MonacoTextEditorMountHandler } from "./MonacoTextEditor";
 import { RemoteWorkspaceEditorContextMenu } from "./RemoteWorkspaceEditorContextMenu";
 import {

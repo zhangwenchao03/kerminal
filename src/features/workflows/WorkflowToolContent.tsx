@@ -24,8 +24,8 @@ import {
   type CommandWorkflow,
   type WorkflowScope,
 } from "../../lib/workflowApi";
-import { writeWorkflowCommand } from "../terminal/terminalSessionRegistry";
-import type { TerminalPane } from "../workspace/types";
+import { writeWorkflowCommand } from "../terminal/session/index";
+import type { TerminalPane } from "../workspace/contracts/index";
 import {
   buildWorkflowRunState,
   completeWorkflowStepExecution,

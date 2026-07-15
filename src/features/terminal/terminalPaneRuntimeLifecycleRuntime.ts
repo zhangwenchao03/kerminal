@@ -1,4 +1,4 @@
-import type { TerminalRendererType } from "../settings/settingsModel";
+import type { TerminalRendererType } from "../settings/contracts/index";
 import {
   resolveTerminalPaneRuntimeLifecycle,
   type TerminalPaneRuntimeLifecycleDecision,

@@ -2,7 +2,7 @@ import type {
   AgentWorkflowPromptRequest,
   AgentWorkflowPromptTransportPort,
 } from "../../agent-workflow";
-import type { XtermPaneInputRequest } from "../../terminal/XtermPane";
+import type { XtermPaneInputRequest } from "../../terminal/xterm/index";
 
 interface AgentPromptTerminalEndpoint {
   paneId: string;

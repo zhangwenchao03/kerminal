@@ -28,7 +28,7 @@ import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
-import type { Machine, MachineGroup } from "../workspace/types";
+import type { Machine, MachineGroup } from "../workspace/contracts/index";
 import {
   CONTEXT_MENU_MARGIN,
   statusClasses,

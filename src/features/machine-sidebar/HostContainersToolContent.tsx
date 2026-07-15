@@ -33,8 +33,8 @@ import {
   buildUserFacingError,
   type UserFacingMessage,
 } from "../../lib/userFacingMessage";
-import type { Machine } from "../workspace/types";
-import type { OpenWorkspaceFileTabOptions } from "../workspace/workspaceStore";
+import type { Machine } from "../workspace/contracts/index";
+import type { OpenWorkspaceFileTabOptions } from "../workspace/state/index";
 import { buildComposeProjectViews } from "./host-containers/composeProjectModel";
 import {
   ComposeProjectInspector,

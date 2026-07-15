@@ -1,7 +1,7 @@
 import { useId, useMemo, useState, type FocusEvent } from "react";
 import { Search } from "lucide-react";
 import { cn } from "../../../lib/cn";
-import type { Machine } from "../../workspace/types";
+import type { Machine } from "../../workspace/contracts/index";
 
 export function SearchableHostSelect({
   ariaLabel,

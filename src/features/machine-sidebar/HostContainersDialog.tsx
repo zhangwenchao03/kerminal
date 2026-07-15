@@ -15,7 +15,7 @@ import type {
 } from "../../lib/dockerApi";
 import type { ContainerRuntime } from "../../lib/targetModel";
 import { cn } from "../../lib/cn";
-import type { Machine } from "../workspace/types";
+import type { Machine } from "../workspace/contracts/index";
 import { buildComposeProjectViews } from "./host-containers/composeProjectModel";
 import {
   ComposeProjectInspector,

@@ -4,7 +4,7 @@ import {
   createAgentSession,
   type ExternalAgentId,
 } from "../../../lib/agentLauncherApi";
-import type { TerminalPane, TerminalTab } from "../../workspace/types";
+import type { TerminalPane, TerminalTab } from "../../workspace/contracts/index";
 import type { AgentLaunchTargetMode } from "./AgentLaunchControls";
 import { buildAgentSessionTitle } from "./agentLauncherModel";
 import {

@@ -10,8 +10,8 @@ import {
   type TerminalSessionLogState,
 } from "../../lib/terminalApi";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
-import { terminalColorSchemeForTheme, terminalFontWeightValue } from "../settings/settingsModel";
-import { xtermThemeFor } from "../settings/terminalTheme";
+import { terminalColorSchemeForTheme, terminalFontWeightValue } from "../settings/contracts/index";
+import { xtermThemeFor } from "../settings/contracts/index";
 import type { TerminalCommandBlockAction } from "./TerminalCommandBlockRail";
 import {
   splitDirectionForMenuAction,
@@ -67,7 +67,7 @@ import { terminalSuggestionProbeScheduler } from "./terminalSuggestionProbeSched
 import { useTransientTerminalNotice } from "./useTransientTerminalNotice";
 import { useXtermPaneSuggestionMenu } from "./useXtermPaneSuggestionMenu";
 import { useXtermPaneSearch } from "./XtermPane.search";
-import { requestAgentSend } from "../agent-workflow/agentSendRequestStore";
+import { requestAgentSend } from "../agent-workflow/state/index";
 import { updateTerminalPaneRuntimeContext } from "./terminalSessionRegistry";
 import {
   XtermPaneView,

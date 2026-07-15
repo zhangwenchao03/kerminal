@@ -4,7 +4,7 @@ import type {
   MachineKind,
   MachineStatus,
   TerminalSplitPlacement,
-} from "../workspace/types";
+} from "../workspace/contracts/index";
 
 const terminalSplitMachineKinds = [
   "local",

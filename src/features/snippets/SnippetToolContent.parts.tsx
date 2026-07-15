@@ -7,7 +7,7 @@ import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
 import type { CommandSnippet, SnippetScope } from "../../lib/snippetApi";
 import type { UserFacingMessage } from "../../lib/userFacingMessage";
-import type { TerminalPane } from "../workspace/types";
+import type { TerminalPane } from "../workspace/contracts/index";
 import {
   extractSnippetVariables,
   renderSnippetCommand,

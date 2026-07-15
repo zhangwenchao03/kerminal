@@ -4,7 +4,7 @@
  * @author kongweiguang
  */
 
-import type { MachineGroup } from "../workspace/types";
+import type { MachineGroup } from "../workspace/contracts/index";
 
 export type SftpTransferHostSide = "left" | "right";
 

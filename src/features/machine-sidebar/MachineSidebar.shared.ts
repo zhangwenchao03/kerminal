@@ -1,5 +1,5 @@
 import type { HostContainersToolContentProps } from "./HostContainersToolContent";
-import type { Machine, MachineGroup } from "../workspace/types";
+import type { Machine, MachineGroup } from "../workspace/contracts/index";
 
 export type MachineSidebarViewMode = "hosts" | "containers";
 

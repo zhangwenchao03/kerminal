@@ -17,10 +17,10 @@ import type {
   WorkspaceFileDirtyState,
   WorkspaceFileRevealRequest,
   WorkspaceFileTab,
-} from "../workspace/types";
-import type { OpenWorkspaceFileTabOptions } from "../workspace/workspaceStore";
+} from "../workspace/contracts/index";
+import type { OpenWorkspaceFileTabOptions } from "../workspace/state/index";
 import { SftpTransferConflictDialog } from "./SftpTransferConflictDialog";
-import type { InterfaceDensity } from "../settings/settingsModel";
+import type { InterfaceDensity } from "../settings/contracts/index";
 import { resolveSftpFileRowHeight } from "./sftpDensityModel";
 import { LocalTransferPane } from "./LocalTransferPane";
 import { SftpBrowserView } from "./sftp-tool-content/SftpBrowserView";

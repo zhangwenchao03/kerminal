@@ -17,15 +17,15 @@ import {
   buildUserFacingError,
   type UserFacingMessage,
 } from "../../lib/userFacingMessage";
-import { writePaneCommand } from "../terminal/terminalSessionRegistry";
+import { writePaneCommand } from "../terminal/session/index";
 import {
   clearRemoteSocksAutoInjection,
   getRemoteSocksAutoInjection,
   isRemoteSocksAutoInjectionEnabled,
   setRemoteSocksAutoInjection,
   type RemoteSocksAutoInjection,
-} from "../terminal/terminalProxyAutoInjection";
-import type { Machine, TerminalPane } from "../workspace/types";
+} from "../terminal/runtime/index";
+import type { Machine, TerminalPane } from "../workspace/contracts/index";
 import {
   BindAddressControl,
   EndpointHeader,

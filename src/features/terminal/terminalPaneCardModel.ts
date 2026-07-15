@@ -1,5 +1,5 @@
 // @author kongweiguang
-import type { TerminalPane } from "../workspace/types";
+import type { TerminalPane } from "../workspace/contracts/index";
 
 export type TerminalRuntimePaneMode = Extract<
   TerminalPane["mode"],

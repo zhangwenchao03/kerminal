@@ -17,13 +17,13 @@ import type {
   InterfaceDensity,
   ResolvedTheme,
   TerminalAppearance,
-} from "../settings/settingsModel";
+} from "../settings/contracts/index";
 import {
   analyzeBroadcastCommand,
   canBroadcastCommand,
   type BroadcastCommandAnalysis,
 } from "./broadcastCommandPolicy";
-import { collectPaneIds } from "../workspace/workspaceLayout";
+import { collectPaneIds } from "../workspace/contracts/index";
 import {
   isTerminalSessionTab,
   type MachineStatus,
@@ -35,9 +35,9 @@ import {
   type TerminalTabGroupPreference,
   type TerminalTabGroupPreferences,
   type WorkspaceFileDirtyState,
-} from "../workspace/types";
-import { dispatchWorkspaceFileTabCommand } from "../workspace/workspaceFileTabActions";
-import { resolveWorkspaceTabCloseDecision } from "../workspace/workspaceTabCloseGuardModel";
+} from "../workspace/contracts/index";
+import { dispatchWorkspaceFileTabCommand } from "../workspace/contracts/index";
+import { resolveWorkspaceTabCloseDecision } from "../workspace/contracts/index";
 import { TerminalBroadcastBar } from "./TerminalBroadcastBar";
 import { TerminalTabOverviewMenu } from "./TerminalTabOverviewMenu";
 import { TerminalTabGroupEditDialog } from "./TerminalTabGroupEditDialog";

@@ -4,7 +4,7 @@ import type {
   AgentWorkflowPreviewResolution,
   AgentWorkflowSendPreview,
 } from "../../agent-workflow";
-import type { TerminalPane, TerminalTab } from "../../workspace/types";
+import type { TerminalPane, TerminalTab } from "../../workspace/contracts/index";
 import type { UserFacingMessage } from "../../../lib/userFacingMessage";
 import type { AgentTerminalSession } from "./AgentTerminalView";
 import {

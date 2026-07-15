@@ -7,8 +7,8 @@ import {
   buildUserFacingError,
   type UserFacingMessage,
 } from "../../lib/userFacingMessage";
-import { extractSnippetVariables, renderSnippetCommand } from "../snippets/snippetVariables";
-import type { TerminalPane } from "../workspace/types";
+import { extractSnippetVariables, renderSnippetCommand } from "../snippets/contracts/index";
+import type { TerminalPane } from "../workspace/contracts/index";
 
 export interface WorkflowRunState {
   confirmedStepId: string | null;

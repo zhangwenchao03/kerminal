@@ -8,9 +8,9 @@ import {
 } from "../../lib/terminalSuggestionApi";
 import type { CommandHistoryTarget } from "../../lib/commandHistoryApi";
 import { writeTerminal } from "../../lib/terminalApi";
-import type { AppSettings } from "../settings/settingsModel";
-import type { TerminalPane } from "../workspace/types";
-import { requestSnippetPanelOpen } from "../snippets/snippetPanelEvents";
+import type { AppSettings } from "../settings/contracts/index";
+import type { TerminalPane } from "../workspace/contracts/index";
+import { requestSnippetPanelOpen } from "../snippets/contracts/index";
 import {
   applyTerminalInputData,
   terminalSuggestionEligibility,

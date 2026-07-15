@@ -11,7 +11,7 @@ import {
   buildUserFacingError,
   type UserFacingMessage,
 } from "../../lib/userFacingMessage";
-import type { MachineGroup } from "../workspace/types";
+import type { MachineGroup } from "../workspace/contracts/index";
 
 interface RemoteHostGroupCreateDialogProps {
   externalConfigConflict?: string;

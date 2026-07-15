@@ -24,7 +24,7 @@ import {
 import { createPortal } from "react-dom";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
-import type { Machine } from "../workspace/types";
+import type { Machine } from "../workspace/contracts/index";
 import {
   POINTER_DRAG_THRESHOLD_PX,
   SIDEBAR_GROUP_DROP_TARGET_ATTRIBUTE,

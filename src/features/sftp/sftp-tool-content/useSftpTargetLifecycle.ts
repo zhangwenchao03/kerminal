@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Machine } from "../../workspace/types";
+import type { Machine } from "../../workspace/contracts/index";
 import type { SftpBrowserMode } from "./sftpBrowserModeModel";
 import { resolveFileTarget } from "./sftpFileTargetModel";
 import type { SftpClipboard, SftpFileTarget } from "./types";

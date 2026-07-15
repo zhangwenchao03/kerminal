@@ -10,7 +10,7 @@ import {
   type SshAuthPromptPlan,
   type SshAuthPromptRequest,
 } from "../../lib/sshAuthApi";
-import { requestSshAuthPrompt } from "../ssh-auth/sshAuthPromptStore";
+import { requestSshAuthPrompt } from "../ssh-auth/state/index";
 
 const SSH_AUTH_TERMINAL_PROMPT_MAX_RETRIES = 1;
 

@@ -1,4 +1,4 @@
-import { isExternalSshMachineId } from "../../external-launch/externalSshLaunchModel";
+import { isExternalSshMachineId } from "../../external-launch/index";
 import { targetStableId, type RemoteTargetRef } from "../../../lib/targetModel";
 import {
   isSftpTransferWorkspaceTab,

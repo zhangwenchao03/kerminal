@@ -1,5 +1,5 @@
 import type { AgentSessionTargetRequest } from "../../../lib/agentLauncherApi";
-import type { TerminalPane, TerminalTab } from "../../workspace/types";
+import type { TerminalPane, TerminalTab } from "../../workspace/contracts/index";
 
 export const AGENT_TERMINAL_CONTEXT_OUTPUT_MAX_CHARS = 6_000;
 export const AGENT_TERMINAL_SELECTION_MAX_CHARS = 8_000;

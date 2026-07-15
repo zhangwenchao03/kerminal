@@ -34,8 +34,8 @@ import {
   type SftpManagedTransferRequest,
   type SftpTransferConflictPolicy,
 } from "../../lib/sftpApi";
-import type { InterfaceDensity } from "../settings/settingsModel";
-import type { Machine } from "../workspace/types";
+import type { InterfaceDensity } from "../settings/contracts/index";
+import type { Machine } from "../workspace/contracts/index";
 import {
   filterLocalDirectoryEntries,
   initialLocalTransferPaneState,

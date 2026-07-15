@@ -23,8 +23,8 @@ import {
   type UserFacingMessage,
 } from "../../lib/userFacingMessage";
 import { createWorkflow, type WorkflowScope } from "../../lib/workflowApi";
-import { runSnippetCommand } from "../terminal/terminalSessionRegistry";
-import type { TerminalPane } from "../workspace/types";
+import { runSnippetCommand } from "../terminal/session/index";
+import type { TerminalPane } from "../workspace/contracts/index";
 import {
   extractSnippetVariables,
   renderSnippetCommand,

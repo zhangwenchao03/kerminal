@@ -18,7 +18,7 @@ import {
   buildUserFacingError,
   type UserFacingMessage,
 } from "../../lib/userFacingMessage";
-import { useWorkspaceStore } from "../workspace/workspaceStore";
+import { useWorkspaceStore } from "../workspace/state/index";
 import { ExternalLaunchResolutionDialog } from "./ExternalLaunchResolutionDialog";
 import {
   applyExternalSshLaunchMaterializedTarget,

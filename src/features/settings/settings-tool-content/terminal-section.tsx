@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { Select } from "../../../components/ui/select";
 import { cn } from "../../../lib/cn";
-import { terminalRendererRegistry } from "../../terminal/terminalRendererRegistry";
+import { terminalRendererRegistry } from "../../terminal/runtime/index";
 import {
   terminalCursorStyleOptions,
   terminalFontOptions,

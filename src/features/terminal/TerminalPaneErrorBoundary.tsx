@@ -1,7 +1,7 @@
 import { AlertTriangle, FileText, RotateCcw } from "lucide-react";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 import { Button } from "../../components/ui/button";
-import type { TerminalPane } from "../workspace/types";
+import type { TerminalPane } from "../workspace/contracts/index";
 
 interface TerminalPaneErrorBoundaryProps {
   children: React.ReactNode;

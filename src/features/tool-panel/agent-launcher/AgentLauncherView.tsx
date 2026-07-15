@@ -17,7 +17,7 @@ import type {
   ExternalAgentId,
 } from "../../../lib/agentLauncherApi";
 import type { UserFacingMessage } from "../../../lib/userFacingMessage";
-import type { AgentSendRequest } from "../../agent-workflow/agentSendRequestStore";
+import type { AgentSendRequest } from "../../agent-workflow/state/index";
 import type {
   AgentActionViewModel,
   AgentLaunchPermissionMode,

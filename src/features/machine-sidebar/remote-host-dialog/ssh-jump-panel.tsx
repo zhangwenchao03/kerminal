@@ -7,7 +7,7 @@ import type {
   SshJumpHostOptions,
   SshOptions,
 } from "../../../lib/remoteHostApi";
-import type { Machine } from "../../workspace/types";
+import type { Machine } from "../../workspace/contracts/index";
 import { authOptions } from "./model";
 import {
   moveAt,

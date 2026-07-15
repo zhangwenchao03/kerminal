@@ -18,12 +18,12 @@ import {
 import { Button } from "../../components/ui/button";
 import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
-import { defaultDesktopNotificationSettings } from "../settings/settingsDefaults";
+import { defaultDesktopNotificationSettings } from "../settings/defaults/index";
 import type {
   DesktopNotificationSettings,
   InterfaceDensity,
-} from "../settings/settingsModel";
-import type { Machine, MachineGroup } from "../workspace/types";
+} from "../settings/contracts/index";
+import type { Machine, MachineGroup } from "../workspace/contracts/index";
 import { LocalTransferPane } from "./LocalTransferPane";
 import { SftpToolContent, type SftpClipboard } from "./SftpToolContent";
 import { SftpTransferQueuePanel } from "./SftpTransferQueuePanel";

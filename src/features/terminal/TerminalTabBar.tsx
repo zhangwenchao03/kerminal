@@ -6,12 +6,12 @@ import type {
   WheelEvent as ReactWheelEvent,
 } from "react";
 import { cn } from "../../lib/cn";
-import type { TerminalAppearance } from "../settings/settingsModel";
+import type { TerminalAppearance } from "../settings/contracts/index";
 import type {
   MachineStatus,
   TerminalTab,
   WorkspaceFileDirtyState,
-} from "../workspace/types";
+} from "../workspace/contracts/index";
 import {
   TerminalTabButton,
   TerminalTabGroupHeader,

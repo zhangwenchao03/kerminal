@@ -4,7 +4,7 @@ import {
 } from "../../lib/diagnosticsApi";
 import type { TerminalPtyOutputPumpStats } from "../../lib/terminalApi";
 import { getTerminalPtyOutputPumpStats } from "../../lib/terminalApi";
-import { getSftpRuntimeDiagnosticsSnapshot } from "../sftp/sftpRuntimeDiagnostics";
+import { getSftpRuntimeDiagnosticsSnapshot } from "../sftp/runtime/index";
 import { terminalRendererRegistry } from "./terminalRendererRegistry";
 import { terminalChromeRuntimeStore } from "./terminalChromeRuntimeStore";
 import {

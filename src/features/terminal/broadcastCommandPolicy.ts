@@ -1,4 +1,4 @@
-import type { TerminalPane } from "../workspace/types";
+import type { TerminalPane } from "../workspace/contracts/index";
 
 export type BroadcastRisk = "batch" | "remote" | "destructive";
 

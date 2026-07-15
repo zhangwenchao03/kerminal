@@ -1,5 +1,5 @@
 import type { IDisposable, ITerminalAddon } from "@xterm/xterm";
-import type { TerminalRendererType } from "../settings/settingsModel";
+import type { TerminalRendererType } from "../settings/contracts/index";
 import {
   createXtermWebglCompatibilityAdapter,
   VERIFIED_XTERM_WEBGL_COMPATIBILITY_VERSIONS,

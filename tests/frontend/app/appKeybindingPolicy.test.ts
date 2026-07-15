@@ -5,7 +5,7 @@ import {
   isTerminalKeyEventTarget,
   KERMINAL_TEXT_EDIT_COMMAND_EVENT,
   shouldAppHandleKeybinding,
-} from "../../../src/app/appKeybindingPolicy";
+} from "../../../src/contracts/textEditCommands";
 
 describe("appKeybindingPolicy", () => {
   it("lets focused xterm DOM receive keydown before app keybindings", () => {

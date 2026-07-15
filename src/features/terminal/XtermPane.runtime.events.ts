@@ -14,7 +14,7 @@ import { isRightArrowInput } from "./XtermPane.helpers";
 import type { createTerminalInlineSshAuthPrompt } from "./XtermPane.inlineSshAuthPrompt";
 import type { TerminalPaneRuntimeLifecycleRuntime } from "./terminalPaneRuntimeLifecycleRuntime";
 import type { RemoteTargetRef } from "../../lib/targetModel";
-import type { TerminalAppearance } from "../settings/settingsModel";
+import type { TerminalAppearance } from "../settings/contracts/index";
 import { updateTerminalPaneRuntimeContext } from "./terminalSessionRegistry";
 
 type CommandBlockRuntime = ReturnType<typeof createXtermPaneCommandBlockRuntime>;

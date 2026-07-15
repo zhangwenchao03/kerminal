@@ -5,12 +5,12 @@ import { targetStableId } from "../../../lib/targetModel";
 import {
   getTerminalPaneSessionRecord,
   type PaneSessionRecord,
-} from "../../terminal/terminalSessionRegistry";
+} from "../../terminal/session/index";
 import {
   isTerminalSessionTab,
   type TerminalPane,
   type TerminalTab,
-} from "../../workspace/types";
+} from "../../workspace/contracts/index";
 
 export function buildAgentSessionTarget(
   focusedPane?: TerminalPane,

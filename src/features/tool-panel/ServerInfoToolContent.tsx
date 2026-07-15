@@ -15,7 +15,7 @@ import { Select } from "../../components/ui/select";
 import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
 import type { ServerInfoSnapshot } from "../../lib/serverInfoApi";
-import type { Machine } from "../workspace/types";
+import type { Machine } from "../workspace/contracts/index";
 import { RuntimeHealthCard } from "./RuntimeHealthCard";
 import {
   filterNetworkInterfaces,

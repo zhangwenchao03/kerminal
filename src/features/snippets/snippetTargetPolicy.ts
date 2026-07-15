@@ -1,4 +1,4 @@
-import type { PaneSessionRecord } from "../terminal/terminalSessionRegistry";
+import type { PaneSessionRecord } from "../terminal/session/index";
 
 export type SnippetShell = "posix" | "powershell" | "cmd" | "unknown";
 export type SnippetRisk = "inspect" | "change" | "destructive" | "unknown";

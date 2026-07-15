@@ -1,6 +1,6 @@
 import type { MouseEvent, ReactNode, RefObject } from "react";
 import type { Terminal as XtermTerminal } from "@xterm/xterm";
-import type { TerminalAppearance } from "../settings/settingsModel";
+import type { TerminalAppearance } from "../settings/contracts/index";
 import { TerminalCommandBlockRail, type TerminalCommandBlockAction } from "./TerminalCommandBlockRail";
 import {
   TerminalContextMenu,

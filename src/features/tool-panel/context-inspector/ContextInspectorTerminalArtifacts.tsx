@@ -5,11 +5,11 @@ import { ChevronRight, Sparkles } from "lucide-react";
 import {
   getXtermPaneArtifactSnapshot,
   subscribeXtermPaneArtifactSnapshot,
-} from "../../terminal/XtermPane.artifactsRegistry";
+} from "../../terminal/xterm/index";
 import {
   TerminalArtifactList,
   type TerminalArtifactActionRequest,
-} from "../../terminal/artifacts/public";
+} from "../../terminal/artifacts/public/index";
 
 interface ContextInspectorTerminalArtifactsProps {
   readonly onActionRequest?: (request: TerminalArtifactActionRequest) => void;

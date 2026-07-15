@@ -1,4 +1,4 @@
-import type { TerminalSplitDirection } from "../workspace/types";
+import type { TerminalSplitDirection } from "../workspace/contracts/index";
 
 export type TerminalContextMenuAction =
   | "copy"

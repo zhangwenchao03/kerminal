@@ -4,8 +4,8 @@ import type {
   TmuxSessionSummary,
   TmuxTargetRef,
 } from "../../../lib/tmuxApi";
-import type { Machine, TerminalPane, TerminalTab } from "../../workspace/types";
-import { isTerminalSessionTab } from "../../workspace/types";
+import type { Machine, TerminalPane, TerminalTab } from "../../workspace/contracts/index";
+import { isTerminalSessionTab } from "../../workspace/contracts/index";
 
 export type TmuxTargetResolution =
   | {

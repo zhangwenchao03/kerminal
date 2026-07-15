@@ -6,7 +6,7 @@ import { cn } from "../../lib/cn";
 import type {
   TerminalTabGroupColor,
   TerminalTabGroupPreference,
-} from "../workspace/types";
+} from "../workspace/contracts/index";
 import type { TerminalTabGroup } from "./terminalTabChrome";
 import {
   normalizeTerminalTabGroupPreference,

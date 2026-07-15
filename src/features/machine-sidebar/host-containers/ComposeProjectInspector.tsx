@@ -15,13 +15,13 @@ import {
   buildUserFacingError,
   type UserFacingMessage,
 } from "../../../lib/userFacingMessage";
-import { MonacoTextEditor } from "../../sftp/MonacoTextEditor";
-import { languageForPath } from "../../sftp/remoteWorkspaceEditorModel";
+import { MonacoTextEditor } from "../../sftp/editor/index";
+import { languageForPath } from "../../sftp/editor/index";
 import {
   readRemoteWorkspaceTextFile,
   type RemoteWorkspaceReadTextFileResponse,
-} from "../../sftp/remoteWorkspaceEditorTransport";
-import type { OpenWorkspaceFileTabOptions } from "../../workspace/workspaceStore";
+} from "../../sftp/editor/index";
+import type { OpenWorkspaceFileTabOptions } from "../../workspace/state/index";
 import type { ComposeProjectView } from "./composeProjectModel";
 import {
   canEnterHostContainer,
