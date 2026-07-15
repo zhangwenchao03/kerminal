@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
-import { FitAddon } from "@xterm/addon-fit";
-import { SearchAddon } from "@xterm/addon-search";
-import { Terminal as XtermTerminal } from "@xterm/xterm";
+import type { FitAddon } from "@xterm/addon-fit";
+import type { SearchAddon } from "@xterm/addon-search";
+import type { Terminal as XtermTerminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import {
   startTerminalLog,
@@ -10,7 +10,7 @@ import {
   type TerminalSessionLogState,
 } from "../../lib/terminalApi";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
-import { terminalColorSchemeForTheme, terminalFontWeightValue } from "../settings/contracts/index";
+import { terminalFontWeightValue } from "../settings/contracts/index";
 import { xtermThemeFor } from "../settings/contracts/index";
 import type { TerminalCommandBlockAction } from "./TerminalCommandBlockRail";
 import {
@@ -175,6 +175,9 @@ export function XtermPane({
     useState<TerminalGhostSuggestion | null>(null);
   const suggestionMenuRuntime = useXtermPaneSuggestionMenu();
   const search = useXtermPaneSearch({ searchAddonRef, terminalRef });
+  const { setSuggestionMenu, suggestionMenuIntentRef } = suggestionMenuRuntime.runtimeParams;
+  const openSearch = search.openSearch;
+  const setSearchResults = search.setResults;
   const subscribePaneActivity = useCallback(
     (listener: () => void) =>
       terminalChromeRuntimeStore.subscribe(paneId, listener),
@@ -194,7 +197,7 @@ export function XtermPane({
       xtermThemeFor(
         resolvedTheme,
         terminalColorSchemeOverride ??
-          terminalColorSchemeForTheme(terminalAppearance, resolvedTheme),
+          (resolvedTheme === "light" ? terminalAppearance.lightColorScheme : terminalAppearance.darkColorScheme),
       ),
     [
       resolvedTheme,
@@ -217,6 +220,8 @@ export function XtermPane({
     () => stableJsonDependencyKey(target),
     [target],
   );
+  const runtimeInstallParamsRef = useRef({ args, env, target, terminalAppearance, terminalFontWeight, terminalTheme });
+  runtimeInstallParamsRef.current = { args, env, target, terminalAppearance, terminalFontWeight, terminalTheme };
 
   const syncCommandBlockViews = useCallback(() => {
     if (!shellAssistEnabled) {
@@ -274,7 +279,7 @@ export function XtermPane({
     setCommandBlockViews((current) =>
       commandBlockViewsEqual(current, nextViews) ? current : nextViews,
     );
-  }, [shellAssistEnabled]);
+  }, [paneId, shellAssistEnabled]);
 
   const scheduleCommandBlockViewsSync = useCallback(() => {
     if (manualClearSyncFrameRef.current !== null) {
@@ -317,7 +322,7 @@ export function XtermPane({
     } finally {
       suppressCommandBlockSyncRef.current = false;
     }
-  }, []);
+  }, [setCommandBlockNotice]);
 
   useEffect(() => { currentCwdRef.current = currentCwd ?? cwd; }, [currentCwd, cwd]);
   useEffect(() => { onAgentSignalRef.current = onAgentSignal; }, [onAgentSignal]);
@@ -351,7 +356,7 @@ export function XtermPane({
   useEffect(
     () =>
       installXtermPaneRuntime({
-        args,
+        args: runtimeInstallParamsRef.current.args,
         activityRuntimeRef,
         commandBlockCounterRef,
         commandBlocksRef,
@@ -360,7 +365,7 @@ export function XtermPane({
         cwdTrackingBufferRef,
         currentCwdRef,
         disconnectSessionRef,
-        env,
+        env: runtimeInstallParamsRef.current.env,
         fitAddonRef,
         focusedRef,
         ghostSuggestionRef,
@@ -389,22 +394,23 @@ export function XtermPane({
         shellAssistEnabled,
         setLogNotice,
         setLogState,
-        setSearchResults: search.setResults,
+        setSearchResults,
         shellIntegrationCommandBlockProtocolRef,
         shell,
         startupMessage,
-        ...suggestionMenuRuntime.runtimeParams,
+        setSuggestionMenu,
+        suggestionMenuIntentRef,
         syncCommandBlockViews,
-        target,
-        terminalAppearance,
+        target: runtimeInstallParamsRef.current.target,
+        terminalAppearance: runtimeInstallParamsRef.current.terminalAppearance,
         terminalAppearanceRef,
-        terminalFontWeight,
+        terminalFontWeight: runtimeInstallParamsRef.current.terminalFontWeight,
         terminalRef,
         terminalRendererControllerRef,
         terminalRuntimeLifecycleControllerRef,
         terminalRuntimeLifecycleRef,
         terminalSurfaceCoordinatorRef,
-        terminalTheme,
+        terminalTheme: runtimeInstallParamsRef.current.terminalTheme,
         transientStartupMessage,
         visibleRef,
       }),
@@ -420,9 +426,14 @@ export function XtermPane({
       remoteHostProduction,
       shell,
       shellAssistEnabled,
+      setCommandBlockNotice,
+      setSearchResults,
+      setSuggestionMenu,
       startupMessage,
+      suggestionMenuIntentRef,
       syncCommandBlockViews,
       targetDependencyKey,
+      terminalRuntimeLifecycleRef,
       transientStartupMessage,
     ],
   );
@@ -621,7 +632,7 @@ export function XtermPane({
           }
         }
       } else if (action === "search") {
-        search.openSearch();
+        openSearch();
       } else if (action === "startLog") {
         void startLogging();
       } else if (action === "stopLog") {
@@ -652,7 +663,7 @@ export function XtermPane({
       stopLogging,
       clearCommandBlocks,
       scheduleCommandBlockViewsSync,
-      search.openSearch,
+      openSearch,
       setCommandBlockNotice,
     ],
   );
@@ -692,7 +703,7 @@ export function XtermPane({
     };
     setContextMenu(menuState);
     terminal?.focus();
-  }, [enableAgentSendActions]);
+  }, [enableAgentSendActions, paneId]);
 
   const executeCommandBlockAction = useCallback(
     (blockId: string, action: TerminalCommandBlockAction) => {
@@ -754,7 +765,7 @@ export function XtermPane({
         });
       terminalRef.current?.focus();
     },
-    [paneId, resolvedTheme, syncCommandBlockViews, tabId],
+    [paneId, resolvedTheme, setCommandBlockNotice, syncCommandBlockViews, tabId],
   );
 
   return (

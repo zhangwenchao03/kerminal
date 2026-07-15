@@ -36,6 +36,7 @@ const ACTION_ICONS = {
   reveal: FolderSearch,
   "send-to-agent": Bot,
 } as const;
+const EMPTY_ARTIFACTS: readonly TerminalArtifact[] = [];
 
 export function TerminalArtifactList({
   artifacts,
@@ -45,7 +46,7 @@ export function TerminalArtifactList({
   snapshot,
   status = "ready",
 }: TerminalArtifactListProps) {
-  const items = artifacts ?? snapshot?.artifacts ?? [];
+  const items = artifacts ?? snapshot?.artifacts ?? EMPTY_ARTIFACTS;
   const viewModels = useMemo(
     () => items.map(createTerminalArtifactViewModel),
     [items],

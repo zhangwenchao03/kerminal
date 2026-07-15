@@ -47,6 +47,8 @@ export function TerminalSuggestionMenu({
   const listboxId = useId();
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [position, setPosition] = useState(initialPosition);
+  const { height: anchorHeight, x: anchorX, y: anchorY } = anchor;
+  const { height: paneHeight, width: paneWidth } = paneSize;
 
   useLayoutEffect(() => {
     const menu = menuRef.current;
@@ -55,7 +57,7 @@ export function TerminalSuggestionMenu({
     }
     const rect = menu.getBoundingClientRect();
     const next = resolveTerminalSuggestionMenuPosition({
-      anchor,
+      anchor: { height: anchorHeight, x: anchorX, y: anchorY },
       devicePixelRatio:
         devicePixelRatio ??
         (typeof window === "undefined" ? 1 : window.devicePixelRatio),
@@ -63,18 +65,18 @@ export function TerminalSuggestionMenu({
         height: menu.scrollHeight || menu.offsetHeight || rect.height,
         width: menu.offsetWidth || rect.width || initialPosition.width,
       },
-      paneSize,
+      paneSize: { height: paneHeight, width: paneWidth },
     });
     setPosition((current) =>
       samePosition(current, next) ? current : next,
     );
   }, [
-    anchor.height,
-    anchor.x,
-    anchor.y,
+    anchorHeight,
+    anchorX,
+    anchorY,
     devicePixelRatio,
-    paneSize.height,
-    paneSize.width,
+    paneHeight,
+    paneWidth,
     state.candidates.length,
     state.open,
   ]);
