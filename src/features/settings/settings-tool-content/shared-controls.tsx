@@ -6,54 +6,6 @@ import { buildUserFacingError } from "../../../lib/userFacingMessage";
 import type { KeybindingScope } from "../settingsModel";
 import type { SettingsSaveState } from "./types";
 
-export function TextSetting({
-  label,
-  onChange,
-  value,
-}: {
-  label: string;
-  onChange: (value: string) => void;
-  value: string;
-}) {
-  return (
-    <label className="block">
-      <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-        {label}
-      </span>
-      <input
-        aria-label={label}
-        className="kerminal-field-surface mt-1 h-9 w-full rounded-[var(--radius-control)] border px-3 text-sm text-[var(--text-primary)] placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
-        onChange={(event) => onChange(event.currentTarget.value)}
-        value={value}
-      />
-    </label>
-  );
-}
-
-export function TextAreaSetting({
-  label,
-  onChange,
-  value,
-}: {
-  label: string;
-  onChange: (value: string) => void;
-  value: string;
-}) {
-  return (
-    <label className="mt-3 block">
-      <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-        {label}
-      </span>
-      <textarea
-        aria-label={label}
-        className="kerminal-field-surface mt-1 min-h-20 w-full resize-y rounded-[var(--radius-control)] border px-3 py-2 text-sm leading-6 text-[var(--text-primary)] placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
-        onChange={(event) => onChange(event.currentTarget.value)}
-        value={value}
-      />
-    </label>
-  );
-}
-
 /**
  * 设置页的本地渐进披露容器；搜索命中时可展开，但不改变配置状态。
  */

@@ -7,7 +7,7 @@ export interface AgentPromptQueueItem {
 
 export type AgentWorkflowStatus = "running" | "waitingForUser";
 
-export type AgentPromptHistoryAction =
+type AgentPromptHistoryAction =
   | "branch"
   | "commandBlock"
   | "context"
@@ -48,7 +48,7 @@ export interface AgentWorkflowStatusView {
   tone: "running" | "waiting";
 }
 
-export const AGENT_PROMPT_HISTORY_LIMIT = 20;
+const AGENT_PROMPT_HISTORY_LIMIT = 20;
 
 export function canSendAgentPrompt(text: string) {
   return text.trim().length > 0;

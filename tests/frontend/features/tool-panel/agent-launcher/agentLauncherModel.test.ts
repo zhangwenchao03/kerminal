@@ -13,8 +13,8 @@ import {
   buildAgentConfigSnippet,
   buildAgentLauncherViewModel,
   getMcpStatusView,
-  parseAgentCommandLine,
 } from "../../../../../src/features/tool-panel/agent-launcher/agentLauncherModel";
+import { parseAgentCommandLine } from "../../../../../src/lib/agentCommandLine";
 
 const readyCodex: ExternalAgentStatus = {
   cliCommand: "codex",

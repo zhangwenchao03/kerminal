@@ -34,7 +34,7 @@ export function classifyNetworkInterface(
   return { ...networkInterface, role };
 }
 
-export function classifiedNetworkInterfaces(
+function classifiedNetworkInterfaces(
   interfaces: NetworkInterfaceTraffic[],
 ) {
   return interfaces.map(classifyNetworkInterface);

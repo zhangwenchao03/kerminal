@@ -25,7 +25,7 @@ export type ToolPanelBindingScope =
   | "target"
   | "host";
 
-export type ToolPanelBindingSource =
+type ToolPanelBindingSource =
   | "global"
   | "workspace"
   | "focusedPane"

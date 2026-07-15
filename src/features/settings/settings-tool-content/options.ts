@@ -15,7 +15,6 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
-import type { CommandSuggestionProvider } from "../../../lib/terminalSuggestionApi";
 import type {
   KeybindingPlatform,
   TerminalInlineSuggestionAcceptKey,
@@ -73,15 +72,6 @@ export const inlineSuggestionProviderOptions: Array<{
   { icon: GitBranch, key: "git", label: "Git" },
   { icon: Wrench, key: "spec", label: "CLI Spec" },
 ];
-
-export const commandSuggestionProviderLabels: Record<CommandSuggestionProvider, string> = {
-  git: "Git",
-  history: "历史",
-  remoteCommand: "远端命令",
-  remotePath: "远端路径",
-  snippet: "片段",
-  spec: "CLI Spec",
-};
 
 export const settingsSections: Array<{
   description: string;

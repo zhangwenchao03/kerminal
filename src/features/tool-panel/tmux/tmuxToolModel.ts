@@ -97,20 +97,6 @@ export function tmuxSessionMatchesBinding(
   );
 }
 
-export function tmuxPaneBindingMatches(
-  left: TmuxPaneBinding | undefined,
-  right: TmuxPaneBinding | undefined,
-) {
-  return Boolean(
-    left &&
-      right &&
-      left.targetRef === right.targetRef &&
-      left.sessionId === right.sessionId &&
-      left.socketName === right.socketName &&
-      left.socketPath === right.socketPath,
-  );
-}
-
 export function findTmuxAttachPane(
   panes: TerminalPane[] | undefined,
   session: TmuxSessionSummary,

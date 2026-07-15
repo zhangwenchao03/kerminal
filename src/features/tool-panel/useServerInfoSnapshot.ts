@@ -35,7 +35,7 @@ const defaultServerInfoSnapshotRuntime = createServerInfoSnapshotRuntime();
 const DEFAULT_REFRESH_INTERVAL_MS = 3_000;
 const DEFAULT_HIDDEN_REFRESH_INTERVAL_MS = 30_000;
 
-export type VisibilityChangeSubscriber = (onChange: () => void) => () => void;
+type VisibilityChangeSubscriber = (onChange: () => void) => () => void;
 
 export const serverInfoRefreshOptions = [
   { label: "手动", value: 0 },

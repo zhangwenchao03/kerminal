@@ -4,24 +4,16 @@ import type {
   ExternalAgentStatus,
   ExternalAgentWorkspaceStatus,
 } from "../../../lib/agentLauncherApi";
-export type { ParsedAgentCommand } from "../../../lib/agentCommandLine";
-export { parseAgentCommandLine } from "../../../lib/agentCommandLine";
-
-export const EXTERNAL_AGENT_IDS: ExternalAgentId[] = [
+const EXTERNAL_AGENT_IDS: ExternalAgentId[] = [
   "codex",
   "claude",
   "custom",
 ];
-export const EXTERNAL_AGENT_WORKSPACE_FILE_AGENT_IDS: ExternalAgentId[] = [
-  "codex",
-  "claude",
-];
-
-export type AgentLauncherTone = "ready" | "warning" | "danger" | "muted";
+type AgentLauncherTone = "ready" | "warning" | "danger" | "muted";
 export type AgentLaunchPermissionMode = "default" | "skipPermissions";
-export type AgentAvailabilityLabel = "可用" | "需安装" | "需设置";
+type AgentAvailabilityLabel = "可用" | "需安装" | "需设置";
 
-export function agentTitle(agentId: ExternalAgentId): string {
+function agentTitle(agentId: ExternalAgentId): string {
   if (agentId === "claude") {
     return "Claude";
   }
@@ -180,10 +172,6 @@ export function buildAgentConfigSnippet(
       2,
     ),
   ].join("\n");
-}
-
-export function formatAgentLauncherPath(path: string): string {
-  return path.trim() || "Not generated";
 }
 
 export function agentSupportsPermissionSkip(agentId: ExternalAgentId): boolean {

@@ -1,4 +1,4 @@
-export type ServerInfoHealthStatus =
+type ServerInfoHealthStatus =
   | "baseline"
   | "error"
   | "idle"

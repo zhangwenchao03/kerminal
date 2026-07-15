@@ -20,8 +20,8 @@ export interface PortForwardScenarioOption {
   openssh: string;
 }
 
-export const LOOPBACK_BIND_HOST = "127.0.0.1";
-export const ALL_INTERFACES_BIND_HOST = "0.0.0.0";
+const LOOPBACK_BIND_HOST = "127.0.0.1";
+const ALL_INTERFACES_BIND_HOST = "0.0.0.0";
 
 export const portForwardScenarioOptions: PortForwardScenarioOption[] = [
   {
@@ -97,7 +97,7 @@ export function resolveBindHost(
   return LOOPBACK_BIND_HOST;
 }
 
-export function isLoopbackBindHost(host: string | undefined): boolean {
+function isLoopbackBindHost(host: string | undefined): boolean {
   const normalized = (host ?? "").trim().toLowerCase();
   return (
     normalized === "" ||
@@ -112,7 +112,7 @@ export function isNonLoopbackBindHost(host: string | undefined): boolean {
   return !isLoopbackBindHost(host);
 }
 
-export function proxyHostForRemoteUse(bindHost: string): string {
+function proxyHostForRemoteUse(bindHost: string): string {
   const normalized = bindHost.trim();
   if (!normalized || normalized === ALL_INTERFACES_BIND_HOST) {
     return LOOPBACK_BIND_HOST;

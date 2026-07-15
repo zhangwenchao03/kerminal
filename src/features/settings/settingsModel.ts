@@ -23,34 +23,21 @@ import {
 } from "./settingsLimits";
 
 export {
-  defaultAppearanceSettings,
   defaultAppSettings,
-  defaultDesktopNotificationSettings,
-  defaultExternalLaunchSettings,
   defaultKeybindings,
-  defaultSftpPerformanceSettings,
   defaultTerminalAppearance,
 } from "./settingsDefaults";
 export {
-  SFTP_GLOBAL_TRANSFERS_DEFAULT,
   SFTP_GLOBAL_TRANSFERS_MAX,
   SFTP_GLOBAL_TRANSFERS_MIN,
-  SFTP_HOST_TRANSFERS_DEFAULT,
   SFTP_HOST_TRANSFERS_MAX,
   SFTP_HOST_TRANSFERS_MIN,
-  SFTP_PACKET_BYTES_DEFAULT,
   SFTP_PACKET_BYTES_MAX,
   SFTP_PACKET_BYTES_MIN,
-  SFTP_PIPELINE_DEPTH_DEFAULT,
   SFTP_PIPELINE_DEPTH_MAX,
   SFTP_PIPELINE_DEPTH_MIN,
-  SFTP_TIMEOUT_SECONDS_DEFAULT,
   SFTP_TIMEOUT_SECONDS_MAX,
   SFTP_TIMEOUT_SECONDS_MIN,
-  TERMINAL_INLINE_SUGGESTION_AUDIT_RETENTION_DAYS_DEFAULT,
-  TERMINAL_INLINE_SUGGESTION_FEEDBACK_RETENTION_DAYS_DEFAULT,
-  TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS_MAX,
-  TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS_MIN,
 } from "./settingsLimits";
 
 export {
@@ -86,7 +73,7 @@ export type TerminalCommandSuggestionPresentation =
   | "inline"
   | "inlineAndMenu"
   | "off";
-export type TerminalCommandSuggestionMenuShortcut = "ctrlSpace";
+type TerminalCommandSuggestionMenuShortcut = "ctrlSpace";
 export type TerminalCommandSuggestionRemoteRefresh = "off" | "safe";
 export type TerminalInlineSuggestionProductionHostPolicy =
   | "normal"
@@ -171,7 +158,7 @@ export interface DesktopNotificationSettings {
   throttleMs: number;
 }
 
-export interface ExternalLaunchShimBridgeSettings {
+interface ExternalLaunchShimBridgeSettings {
   enabled: boolean;
 }
 

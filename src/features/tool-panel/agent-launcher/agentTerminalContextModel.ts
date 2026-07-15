@@ -1,10 +1,10 @@
 import type { AgentSessionTargetRequest } from "../../../lib/agentLauncherApi";
 import type { TerminalPane, TerminalTab } from "../../workspace/contracts/index";
 
-export const AGENT_TERMINAL_CONTEXT_OUTPUT_MAX_CHARS = 6_000;
-export const AGENT_TERMINAL_SELECTION_MAX_CHARS = 8_000;
-export const AGENT_TERMINAL_COMMAND_BLOCK_MAX_CHARS = 10_000;
-export const AGENT_TERMINAL_BRANCH_NAME_MAX_CHARS = 80;
+const AGENT_TERMINAL_CONTEXT_OUTPUT_MAX_CHARS = 6_000;
+const AGENT_TERMINAL_SELECTION_MAX_CHARS = 8_000;
+const AGENT_TERMINAL_COMMAND_BLOCK_MAX_CHARS = 10_000;
+const AGENT_TERMINAL_BRANCH_NAME_MAX_CHARS = 80;
 
 export interface AgentTerminalContextSession {
   agentSessionId?: string;
@@ -34,7 +34,7 @@ export interface BuildAgentTerminalContextPromptInput {
   session: AgentTerminalContextSession;
 }
 
-export interface AgentTerminalRuntimeContext {
+interface AgentTerminalRuntimeContext {
   commandBlockText?: string;
   paneId: string;
   selectedText?: string;

@@ -296,31 +296,6 @@ function networkSampleDurationMs(
     : undefined;
 }
 
-export function networkCardHelper(traffic: NetworkTrafficSnapshot) {
-  const interfaceCount = traffic.interfaces.length;
-  if (traffic.topInterface) {
-    const sample = traffic.sampleDurationMs
-      ? ` · ${formatSampleDuration(traffic.sampleDurationMs)}采样`
-      : " · 等待下一次采样";
-    return `流量排行 ${traffic.topInterface.name} · ${interfaceCount} 个接口${sample}`;
-  }
-  return "等待网络采样";
-}
-
-export function formatNetworkSample(traffic: NetworkTrafficSnapshot) {
-  if (!traffic.sampleDurationMs) {
-    return "等待下一次采集";
-  }
-  return `${formatSampleDuration(traffic.sampleDurationMs)}窗口`;
-}
-
-function formatSampleDuration(sampleDurationMs: number) {
-  if (sampleDurationMs < 1000) {
-    return `${sampleDurationMs}ms`;
-  }
-  return `${(sampleDurationMs / 1000).toFixed(1)}s`;
-}
-
 export function formatTrafficRate(value?: number, emptyLabel = "-") {
   if (value === undefined || Number.isNaN(value)) {
     return emptyLabel;
@@ -359,13 +334,6 @@ export function gpuMemoryLabel(gpu: ServerGpuInfo) {
     return `总计 ${formatBytes(gpu.memoryTotalBytes)}`;
   }
   return "-";
-}
-
-export function formatTemperature(value?: number | null) {
-  if (value === undefined || value === null || Number.isNaN(value)) {
-    return "-";
-  }
-  return `${value.toFixed(0)} °C`;
 }
 
 function primaryGpuPercent(gpus: ServerGpuInfo[]) {
@@ -417,23 +385,6 @@ export function gpuCardHelper(
   return `${gpus.length} 张显卡`;
 }
 
-export function gpuMissingMessage(status?: string | null) {
-  switch (status) {
-    case "nvidia_smi_no_devices":
-      return "nvidia-smi 未返回可用 NVIDIA GPU。";
-    case "nvidia_smi_list":
-      return "nvidia-smi 仅返回设备列表。";
-    case "lspci_no_devices":
-      return "lspci 未发现 GPU 控制器。";
-    case "no_probe_command":
-      return "缺少 nvidia-smi 或 lspci。";
-    case "lspci":
-      return "仅有 lspci 静态信息。";
-    default:
-      return "未返回 GPU 数据。";
-  }
-}
-
 export function formatTimestamp(value?: string | null) {
   if (!value) {
     return "-";
@@ -461,9 +412,4 @@ export function formatUptime(seconds?: number | null) {
     return `${hours} 小时 ${minutes} 分钟`;
   }
   return `${minutes} 分钟`;
-}
-
-export function joinDefined(parts: Array<string | null | undefined>) {
-  const values = parts.filter(Boolean);
-  return values.length > 0 ? values.join(" · ") : undefined;
 }

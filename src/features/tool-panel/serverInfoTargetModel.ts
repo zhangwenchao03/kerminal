@@ -2,7 +2,7 @@ import { targetStableId, type RemoteTargetRef } from "../../lib/targetModel";
 import type { Machine } from "../workspace/contracts/index";
 
 /** 系统信息面板当前支持的本机、SSH 主机和容器目标。 */
-export type ServerInfoTargetRef =
+type ServerInfoTargetRef =
   | Extract<RemoteTargetRef, { kind: "local" }>
   | Extract<RemoteTargetRef, { kind: "ssh" }>
   | Extract<RemoteTargetRef, { kind: "dockerContainer" }>;
