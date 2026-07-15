@@ -24,9 +24,7 @@ export type DockerContainerLifecycleAction =
   | "restart"
   | "remove";
 
-export type DockerComposeRuntimeFamily = "dockerCompose" | "podmanCompose";
-
-export interface DockerComposeMetadata {
+interface DockerComposeMetadata {
   project?: string | null;
   service?: string | null;
   workingDir?: string | null;

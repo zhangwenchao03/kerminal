@@ -32,7 +32,7 @@ export interface WorkflowListRequest {
   tag?: string;
 }
 
-export interface WorkflowStepInput {
+interface WorkflowStepInput {
   id?: string;
   title: string;
   command: string;
@@ -49,23 +49,12 @@ export interface WorkflowCreateRequest {
   steps: WorkflowStepInput[];
 }
 
-export interface WorkflowUpdateRequest extends WorkflowCreateRequest {
-  id: string;
-  sortOrder: number;
-}
-
 interface NormalizedWorkflowCreateRequest {
   title: string;
   description?: string;
   tags: string[];
   scope: WorkflowScope;
   steps: NormalizedWorkflowStepInput[];
-}
-
-interface NormalizedWorkflowUpdateRequest
-  extends NormalizedWorkflowCreateRequest {
-  id: string;
-  sortOrder: number;
 }
 
 interface NormalizedWorkflowStepInput {
@@ -158,32 +147,6 @@ export async function createWorkflow(
   return invoke<CommandWorkflow>("workflow_create", { request: normalized });
 }
 
-export async function updateWorkflow(
-  request: WorkflowUpdateRequest,
-): Promise<CommandWorkflow> {
-  const normalized = normalizeUpdateRequest(request);
-
-  if (!isTauri()) {
-    const existing = browserPreviewWorkflows.get(normalized.id);
-    const workflow = previewWorkflow({
-      ...(existing ?? { id: normalized.id }),
-      ...normalized,
-      steps: normalized.steps.map((step, index) => ({
-        ...step,
-        id:
-          step.id ??
-          existing?.steps[index]?.id ??
-          `workflow-preview-step-${Date.now().toString(36)}-${index}`,
-      })),
-      updatedAt: new Date().toISOString(),
-    });
-    browserPreviewWorkflows.set(workflow.id, workflow);
-    return workflow;
-  }
-
-  return invoke<CommandWorkflow>("workflow_update", { request: normalized });
-}
-
 export async function deleteWorkflow(workflowId: string): Promise<boolean> {
   if (!isTauri()) {
     return browserPreviewWorkflows.delete(workflowId);
@@ -211,16 +174,6 @@ function normalizeCreateRequest(
     steps: normalizeSteps(request.steps),
     tags: normalizeTags(request.tags ?? []),
     title: request.title,
-  };
-}
-
-function normalizeUpdateRequest(
-  request: WorkflowUpdateRequest,
-): NormalizedWorkflowUpdateRequest {
-  return {
-    ...normalizeCreateRequest(request),
-    id: request.id,
-    sortOrder: request.sortOrder,
   };
 }
 

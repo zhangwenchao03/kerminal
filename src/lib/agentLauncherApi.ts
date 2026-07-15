@@ -30,7 +30,7 @@ export interface PrepareExternalAgentWorkspaceRequest {
   overwritePolicy?: ExternalAgentOverwritePolicy;
 }
 
-export type ExternalAgentOverwritePolicy =
+type ExternalAgentOverwritePolicy =
   | "backupAndReplaceInvalid"
   | "preserveUserContent";
 
@@ -58,14 +58,14 @@ export type ExternalAgentSessionStatus =
 
 export type AgentSessionRecordStatus = "active" | "archived" | "stale";
 
-export interface ExternalAgentValidatorStatus {
+interface ExternalAgentValidatorStatus {
   available: boolean;
   command: string;
   detail: string;
   status: string;
 }
 
-export interface ExternalAgentFileOperation {
+interface ExternalAgentFileOperation {
   path: string;
   action: "created" | "updated" | "unchanged";
   changed: boolean;
@@ -91,7 +91,7 @@ export interface AgentSessionTargetRequest {
   lastSeenAt?: string;
 }
 
-export interface AgentSessionTargetRecord extends AgentSessionTargetRequest {
+interface AgentSessionTargetRecord extends AgentSessionTargetRequest {
   binding_id?: string;
   binding_generation?: number;
   pane_id?: string;
@@ -203,24 +203,6 @@ export function archiveAgentSession(
 
   return invoke<AgentSessionRecord>("agent_session_archive", {
     agentSessionId,
-  });
-}
-
-export function rebindAgentSessionTarget(
-  agentSessionId: string,
-  target: AgentSessionTargetRequest,
-): Promise<AgentSessionRecord> {
-  if (!isTauri()) {
-    return Promise.resolve(previewAgentSessionRecord({
-      agentId: "custom",
-      target,
-      title: "Custom",
-    }));
-  }
-
-  return invoke<AgentSessionRecord>("agent_session_rebind_target", {
-    agentSessionId,
-    target,
   });
 }
 

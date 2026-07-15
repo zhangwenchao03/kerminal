@@ -2,10 +2,10 @@ import type { DesktopPlatform } from "./desktopPlatform";
 import type { WindowFrameState } from "./useTauriWindowFrameState";
 
 /** 窗口控制按钮由系统、应用或预览环境中的哪一层负责。 */
-export type WindowControlMode = "native" | "custom" | "none";
+type WindowControlMode = "native" | "custom" | "none";
 
 /** 应用内容外框圆角由原生窗口负责，或使用正常态圆角/无圆角裁切。 */
-export type WindowFrameRadiusMode = "native" | "rounded" | "square";
+type WindowFrameRadiusMode = "native" | "rounded" | "square";
 
 /**
  * 窗口镶边纯模型，供标题栏、根布局和 overlay 共享同一套平台与窗口状态决策。

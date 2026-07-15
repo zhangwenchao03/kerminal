@@ -44,7 +44,7 @@ interface NormalizedProfileUpdateRequest extends NormalizedProfileRequest {
   sortOrder: number;
 }
 
-export type ShellCandidateSource =
+type ShellCandidateSource =
   | "environment"
   | "path"
   | "commonPath"
@@ -155,10 +155,6 @@ export async function updateProfile(
   return invoke<TerminalProfile>("profile_update", {
     request: normalizeUpdateRequest(request),
   });
-}
-
-export async function deleteProfile(profileId: string): Promise<boolean> {
-  return invoke<boolean>("profile_delete", { profileId });
 }
 
 function normalizeCreateRequest(

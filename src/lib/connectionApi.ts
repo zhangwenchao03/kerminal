@@ -1,7 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { RemoteHostCreateRequest } from "./remoteHostApi";
 
-export type ConnectionTestMode = "ssh" | "rdp" | "telnet" | "serial";
+type ConnectionTestMode = "ssh" | "rdp" | "telnet" | "serial";
 
 export type ConnectionTestRequest =
   | { host: RemoteHostCreateRequest; mode: "ssh" }
@@ -16,7 +16,7 @@ export interface ConnectionTestResult {
   mode: ConnectionTestMode;
 }
 
-export interface RdpOpenRequest {
+interface RdpOpenRequest {
   name: string;
   host: string;
   port: number;
@@ -32,22 +32,6 @@ export interface RdpOpenResult {
   launched: boolean;
   message: string;
   filePath?: string;
-}
-
-export async function openRdpConnection(
-  request: RdpOpenRequest,
-): Promise<RdpOpenResult> {
-  const normalized = normalizeRdpOpenRequest(request);
-
-  if (!isTauri()) {
-    return {
-      filePath: "browser-preview.rdp",
-      launched: true,
-      message: "浏览器预览：已模拟启动系统 RDP 客户端。",
-    };
-  }
-
-  return invoke<RdpOpenResult>("connection_rdp_open", { request: normalized });
 }
 
 export async function openSavedRdpConnection(
@@ -80,18 +64,4 @@ export async function testRemoteConnection(
   }
 
   return invoke<ConnectionTestResult>("connection_test", { request });
-}
-
-function normalizeRdpOpenRequest(request: RdpOpenRequest): RdpOpenRequest {
-  return {
-    desktopHeight: request.desktopHeight,
-    desktopWidth: request.desktopWidth,
-    fullscreen: request.fullscreen ?? false,
-    host: request.host.trim(),
-    name: request.name.trim() || request.host.trim(),
-    note: request.note?.trim() || undefined,
-    password: request.password?.trim() || undefined,
-    port: request.port,
-    username: request.username?.trim() || undefined,
-  };
 }

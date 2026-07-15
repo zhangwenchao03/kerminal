@@ -146,7 +146,7 @@ export interface SnippetCreateRequest {
   scope?: SnippetScope;
 }
 
-export interface SnippetUpdateRequest extends SnippetCreateRequest {
+interface SnippetUpdateRequest extends SnippetCreateRequest {
   id: string;
   sortOrder: number;
 }
@@ -356,7 +356,7 @@ export async function importSnippets(
   return invoke<CommandSnippet[]>("snippet_import", { candidates });
 }
 
-export async function updateSnippet(
+async function updateSnippet(
   request: SnippetUpdateRequest,
 ): Promise<CommandSnippet> {
   const normalized = normalizeUpdateRequest(request);

@@ -1,11 +1,4 @@
-export type DesktopNotificationEventKind =
-  | "agent.process.finished"
-  | "mcp.server.failed"
-  | "sftp.batch.completed"
-  | "sftp.transfer.failed"
-  | "updater.available";
-
-export type DesktopNotificationImportance = "low" | "normal" | "high";
+type DesktopNotificationImportance = "low" | "normal" | "high";
 
 export type DesktopNotificationPermission =
   | "default"
@@ -182,7 +175,7 @@ export function buildDesktopNotificationPayload(
   };
 }
 
-export function notificationKeyForEvent(
+function notificationKeyForEvent(
   event: DesktopNotificationEvent,
 ): string {
   if (event.notificationKey) {

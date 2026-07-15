@@ -14,7 +14,7 @@ export interface PaneSessionBindingTraceRequest {
   targetToken?: string;
 }
 
-export interface PaneSessionBindingMetadata {
+interface PaneSessionBindingMetadata {
   cwd?: string;
   profileId?: string;
   remoteHostId?: string;

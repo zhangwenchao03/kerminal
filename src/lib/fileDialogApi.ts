@@ -25,14 +25,6 @@ export async function selectLocalFile(): Promise<string | null> {
   return invoke<string | null>("file_dialog_select_local_file");
 }
 
-export async function selectLocalImage(): Promise<string | null> {
-  if (!isTauri()) {
-    return null;
-  }
-
-  return invoke<string | null>("file_dialog_select_local_image");
-}
-
 export async function selectLocalDirectory(): Promise<string | null> {
   if (!isTauri()) {
     return null;
