@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { localMachineIdForProfile, resetWorkspaceStore, useWorkspaceStore } from "../../../../src/features/workspace/workspaceStore";
-import { apiContainer, bashProfile, pwshProfile, remoteHostTree, remoteHostTreeWithTools } from "../../support/workspace/workspaceStore.testSupport";
+import { localMachineIdForProfile, useWorkspaceStore } from "../../../../src/features/workspace/workspaceStore";
+import { apiContainer, bashProfile, pwshProfile, remoteHostTree, remoteHostTreeWithTools, resetWorkspaceStore } from "../../support/workspace/workspaceStore.testSupport";
 
 describe("workspaceStore", () => {
   beforeEach(() => {

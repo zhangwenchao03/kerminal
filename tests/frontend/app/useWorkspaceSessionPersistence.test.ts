@@ -15,9 +15,9 @@ import {
   type WorkspaceSessionSnapshot,
 } from "../../../src/features/workspace/workspaceSession";
 import {
-  resetWorkspaceStore,
   useWorkspaceStore,
 } from "../../../src/features/workspace/workspaceStore";
+import { resetWorkspaceStore } from "../support/workspace/workspaceStore.testSupport";
 import type {
   Machine,
   MachineGroup,

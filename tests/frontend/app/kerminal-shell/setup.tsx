@@ -9,7 +9,7 @@ import { vi } from "vitest";
 import type { TerminalOutputEvent } from "../../../../src/lib/terminalApi";
 import { defaultAppSettings } from "../../../../src/features/settings/settingsModel";
 import { consumePendingAgentSendRequest } from "../../support/agentSendRequestStore.testSupport";
-import { resetWorkspaceStore } from "../../../../src/features/workspace/workspaceStore";
+import { resetWorkspaceStore } from "../../support/workspace/workspaceStore.testSupport";
 import {
   getKerminalShellTestMocks,
   remoteHostTree,

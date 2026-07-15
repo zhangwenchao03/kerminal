@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TerminalOutputEvent } from "../../../src/lib/terminalApi";
 import { defaultAppSettings } from "../../../src/features/settings/settingsModel";
 import {
-  resetWorkspaceStore,
   useWorkspaceStore,
 } from "../../../src/features/workspace/workspaceStore";
+import { resetWorkspaceStore } from "../support/workspace/workspaceStore.testSupport";
 import {
   getKerminalShellTestMocks,
   mockElementFromPoint,

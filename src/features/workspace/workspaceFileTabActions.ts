@@ -1,6 +1,6 @@
 // @author kongweiguang
 
-export type WorkspaceFileTabCommand = "reload";
+type WorkspaceFileTabCommand = "reload";
 
 export interface WorkspaceFileTabCommandEventDetail {
   command: WorkspaceFileTabCommand;

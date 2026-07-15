@@ -8,7 +8,7 @@ import type {
   WorkspaceFileRevealRequest,
 } from "../types";
 
-export type WorkspaceContextSource =
+type WorkspaceContextSource =
   | "workspace"
   | "terminal"
   | "sftp"
@@ -22,7 +22,7 @@ export type WorkspaceContextSource =
  */
 export type WorkspaceContextRevision = string | number;
 
-export type WorkspaceContextSourceStatus =
+type WorkspaceContextSourceStatus =
   "available" | "loading" | "stale" | "unavailable" | "error";
 
 /**
@@ -42,7 +42,7 @@ export interface WorkspaceContextFreshness {
   readonly sources: readonly WorkspaceContextSourceState[];
 }
 
-export type WorkspaceContextDiagnosticSeverity = "info" | "warning" | "error";
+type WorkspaceContextDiagnosticSeverity = "info" | "warning" | "error";
 
 /**
  * 可展示、可定位但不包含敏感正文的投影诊断。
@@ -109,7 +109,7 @@ export interface WorkspaceContextSubject {
   readonly filePath?: string;
 }
 
-export interface WorkspaceContextPaneRef {
+interface WorkspaceContextPaneRef {
   readonly id: string;
   readonly title: string;
   readonly machineId: string;
@@ -118,14 +118,14 @@ export interface WorkspaceContextPaneRef {
   readonly focused: boolean;
 }
 
-export interface WorkspaceContextTabRef {
+interface WorkspaceContextTabRef {
   readonly id: string;
   readonly title: string;
   readonly kind: "terminal" | "sftpTransfer" | "workspaceFile";
   readonly active: boolean;
 }
 
-export interface WorkspaceContextResources {
+interface WorkspaceContextResources {
   readonly tabs: readonly WorkspaceContextTabRef[];
   readonly panes: readonly WorkspaceContextPaneRef[];
   readonly activeTabPaneIds: readonly string[];
@@ -134,7 +134,7 @@ export interface WorkspaceContextResources {
   readonly sftpRevealRequest: WorkspaceFileRevealRequest | null;
 }
 
-export interface WorkspaceContextRuntime {
+interface WorkspaceContextRuntime {
   readonly connectionStatus:
     TerminalPane["status"] | Machine["status"] | "unknown";
   readonly paneMode: TerminalPane["mode"] | null;

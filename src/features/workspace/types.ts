@@ -188,7 +188,7 @@ export interface TerminalPane {
   outputHistory?: string;
 }
 
-export const toolIds = [
+const toolIds = [
   "agentLauncher",
   "context",
   "system",

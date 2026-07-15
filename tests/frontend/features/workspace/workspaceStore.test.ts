@@ -4,13 +4,13 @@ import { browserPreviewProfiles } from "../../../../src/lib/profileApi";
 import { dockerContainerTarget } from "../../../../src/lib/targetModel";
 import {
   localMachineIdForProfile,
-  resetWorkspaceStore,
   useWorkspaceStore,
 } from "../../../../src/features/workspace/workspaceStore";
 import {
   apiContainer,
   bashProfile,
   pwshProfile,
+  resetWorkspaceStore,
   remoteHostTree,
   remoteHostTreeWithRdp,
   remoteHostTreeWithTerminalTransports,

@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { collectPaneIds } from "../../../../src/features/workspace/workspaceLayout";
-import { resetWorkspaceStore, useWorkspaceStore } from "../../../../src/features/workspace/workspaceStore";
+import { useWorkspaceStore } from "../../../../src/features/workspace/workspaceStore";
 import {
   apiContainer,
   remoteHostTree,
+  resetWorkspaceStore,
   remoteHostTreeWithTerminalTransports,
 } from "../../support/workspace/workspaceStore.testSupport";
 import {

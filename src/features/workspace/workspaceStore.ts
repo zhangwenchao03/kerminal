@@ -55,12 +55,8 @@ import {
 } from "./workspaceTabSlice";
 
 export type {
-  AddDockerContainerOptions,
   AddTerminalTabOptions,
-  OpenSftpTransferTabOptions,
-  OpenSshCommandTerminalOptions,
   OpenWorkspaceFileTabOptions,
-  SplitFocusedPaneOptions,
   TmuxAttachPlacement,
 } from "./workspaceStoreContract";
 
@@ -125,9 +121,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get, store) => (
   ...createWorkspaceTerminalTabActions(set, get, store),
 }));
 
-export function resetWorkspaceStore() {
-  workspaceCounters.reset();
-  useWorkspaceStore.setState(initialState);
-}
+useWorkspaceStore.subscribe((state) => {
+  if (state === useWorkspaceStore.getInitialState()) workspaceCounters.reset();
+});
 
-export { machineGroups, terminalPanes, terminalTabs, tools };
+export { tools };

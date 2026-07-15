@@ -2,7 +2,7 @@ import { render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { KerminalShell } from "../../../src/app/KerminalShell";
 import { defaultAppSettings } from "../../../src/features/settings/settingsModel";
-import { resetWorkspaceStore } from "../../../src/features/workspace/workspaceStore";
+import { resetWorkspaceStore } from "../support/workspace/workspaceStore.testSupport";
 import type { TerminalOutputEvent } from "../../../src/lib/terminalApi";
 import {
   getKerminalShellTestMocks,

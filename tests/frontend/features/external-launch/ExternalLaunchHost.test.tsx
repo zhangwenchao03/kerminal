@@ -10,9 +10,9 @@ import type {
 } from "../../../../src/lib/externalLaunchApi";
 import { ExternalLaunchHost } from "../../../../src/features/external-launch/ExternalLaunchHost";
 import {
-  resetWorkspaceStore,
   useWorkspaceStore,
 } from "../../../../src/features/workspace/workspaceStore";
+import { resetWorkspaceStore } from "../../support/workspace/workspaceStore.testSupport";
 
 const apiMocks = vi.hoisted(() => ({
   ackExternalSshLaunch: vi.fn(),
