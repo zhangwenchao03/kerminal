@@ -17,27 +17,5 @@
     ".ts",
     ".tsx"
   ],
-  "entries": [
-    {
-      "file": "src-tauri/src/services/mcp_tool_executor_service/container_tools.rs",
-      "lines": 801,
-      "deadline": "before TASK-080",
-      "owner": "architecture-governance",
-      "targetTask": "TASK-072"
-    },
-    {
-      "file": "src-tauri/src/services/ssh_command_service/native.rs",
-      "lines": 814,
-      "deadline": "before TASK-080",
-      "owner": "architecture-governance",
-      "targetTask": "TASK-072"
-    },
-    {
-      "file": "src-tauri/src/services/ssh_runtime/native_backend/forward.rs",
-      "lines": 958,
-      "deadline": "before TASK-080",
-      "owner": "terminal-runtime",
-      "targetTask": "TASK-050/TASK-052"
-    }
-  ]
+  "entries": []
 }
