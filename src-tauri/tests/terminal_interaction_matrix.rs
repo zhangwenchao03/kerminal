@@ -609,17 +609,13 @@ paste_ok=0
 unicode_ok=0
 ctrl_c_ok=0
 trap 'if [ "$ctrl_c_ok" -eq 0 ]; then printf "matrix-ctrl-c-ok\n"; ctrl_c_ok=1; fi' INT
-end=$((SECONDS + 8))
-while [ "$SECONDS" -lt "$end" ]; do
-  ch=""
-  if ! IFS= read -r -s -n 1 ch; then
-    if [ "$paste_ok" -eq 1 ] && [ "$unicode_ok" -eq 1 ] && [ "$ctrl_c_ok" -eq 1 ]; then
-      printf 'matrix-ctrl-d-ok\n'
-      break
-    fi
+attempt=0
+while [ "$attempt" -lt 80 ]; do
+  attempt=$((attempt + 1))
+  ch="$(dd bs=1 count=1 2>/dev/null)"
+  if [ -z "$ch" ]; then
     continue
   fi
-  [ -z "$ch" ] && continue
   case "$ch" in
     "$ctrl_c")
       if [ "$ctrl_c_ok" -eq 0 ]; then printf 'matrix-ctrl-c-ok\n'; ctrl_c_ok=1; fi
