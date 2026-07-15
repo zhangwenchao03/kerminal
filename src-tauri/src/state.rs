@@ -34,7 +34,10 @@ use crate::{
         sftp_service::SftpService,
         snippet_service::SnippetService,
         ssh_command_service::SshCommandService,
-        ssh_runtime::{auth_broker::SshAuthBroker, ManagedSshSessionManager},
+        ssh_runtime::{
+            auth_broker::SshAuthBroker, native_backend::NativeSshRuntimeBackend,
+            ManagedSshSessionManager,
+        },
         ssh_terminal_service::SshTerminalService,
         telnet_terminal_service::TelnetTerminalService,
         terminal_manager::TerminalManager,
@@ -46,23 +49,36 @@ use crate::{
     storage::{config_file_store::ConfigFileStore, CommandSqliteStore, RuntimeFileStore},
 };
 
+mod agent_capabilities;
 mod configuration_capabilities;
+mod file_capabilities;
+mod mcp_capabilities;
 mod operational_capabilities;
 mod remote_capabilities;
 mod startup_recovery;
+mod terminal_capabilities;
 
+use crate::services::external_agent_workspace::ExternalAgentWorkspaceService;
+use agent_capabilities::AgentCapabilities;
 use configuration_capabilities::ConfigurationCapabilities;
+use file_capabilities::FileCapabilities;
+use mcp_capabilities::McpCapabilities;
 use operational_capabilities::OperationalCapabilities;
 use remote_capabilities::RemoteCapabilities;
 pub use startup_recovery::{StartupRecoveryDiagnostic, StartupRecoverySnapshot};
+use terminal_capabilities::TerminalCapabilities;
 
 /// Kerminal Rust 侧全局状态。
 #[derive(Debug)]
 pub struct AppState {
+    agent: AgentCapabilities,
     application_runtime: ApplicationRuntime,
+    files: FileCapabilities,
+    mcp: McpCapabilities,
     paths: KerminalPaths,
     remote: RemoteCapabilities,
     operations: OperationalCapabilities,
+    terminal: TerminalCapabilities,
     configuration: ConfigurationCapabilities,
     startup_recovery: StartupRecoverySnapshot,
 }
@@ -75,6 +91,7 @@ pub struct AppState {
 pub struct AppStateBuilder {
     paths: KerminalPaths,
     build_observer: Arc<dyn AppStateBuildObserver>,
+    external_ports: Arc<dyn AppStateExternalPorts>,
 }
 
 /// AppState 组合过程中的稳定阶段标识。
@@ -104,12 +121,40 @@ pub trait AppStateBuildObserver: std::fmt::Debug + Send + Sync {
     fn before_phase(&self, phase: AppStateBuildPhase) -> AppResult<()>;
 }
 
+/// AppState 构造时可替换的外部副作用端口。
+///
+/// 端口只覆盖 workspace 文件准备和 SSH runtime 创建，不暴露 capability 内部可变状态；
+/// 测试可据此稳定注入失败，生产默认实现仍使用原有 service constructor。
+pub trait AppStateExternalPorts: std::fmt::Debug + Send + Sync {
+    /// 确保外部 Agent 所需的默认 workspace 文件存在。
+    fn prepare_agent_workspace(&self, paths: &KerminalPaths) -> AppResult<()>;
+
+    /// 创建远程能力共享的 SSH runtime。
+    fn create_ssh_runtime(&self) -> AppResult<ManagedSshSessionManager>;
+}
+
 #[derive(Debug)]
 struct NoopAppStateBuildObserver;
+
+#[derive(Debug)]
+struct ProductionAppStateExternalPorts;
 
 impl AppStateBuildObserver for NoopAppStateBuildObserver {
     fn before_phase(&self, _phase: AppStateBuildPhase) -> AppResult<()> {
         Ok(())
+    }
+}
+
+impl AppStateExternalPorts for ProductionAppStateExternalPorts {
+    fn prepare_agent_workspace(&self, paths: &KerminalPaths) -> AppResult<()> {
+        ExternalAgentWorkspaceService::new(paths.root.clone(), None, false)
+            .ensure_default_agent_files()
+    }
+
+    fn create_ssh_runtime(&self) -> AppResult<ManagedSshSessionManager> {
+        Ok(ManagedSshSessionManager::with_backend(Arc::new(
+            NativeSshRuntimeBackend::new(),
+        )))
     }
 }
 
@@ -119,6 +164,7 @@ impl AppStateBuilder {
         Self {
             paths,
             build_observer: Arc::new(NoopAppStateBuildObserver),
+            external_ports: Arc::new(ProductionAppStateExternalPorts),
         }
     }
 
@@ -131,9 +177,18 @@ impl AppStateBuilder {
         self
     }
 
+    /// 替换 AppState 构造时使用的外部副作用端口。
+    ///
+    /// 该入口面向集成测试和 portable 宿主；返回错误会终止后续 bundle 创建，已经创建的
+    /// 进程内能力按 Rust 所有权规则析构，不会返回半初始化状态。
+    pub fn with_external_ports(mut self, external_ports: Arc<dyn AppStateExternalPorts>) -> Self {
+        self.external_ports = external_ports;
+        self
+    }
+
     /// 构造应用状态；初始化失败时不会返回半初始化的 AppState。
     pub fn build(self) -> AppResult<AppState> {
-        AppState::build_from_paths(self.paths, self.build_observer)
+        AppState::build_from_paths(self.paths, self.build_observer, self.external_ports)
     }
 }
 
@@ -152,9 +207,14 @@ impl AppState {
     fn build_from_paths(
         paths: KerminalPaths,
         build_observer: Arc<dyn AppStateBuildObserver>,
+        external_ports: Arc<dyn AppStateExternalPorts>,
     ) -> AppResult<Self> {
         build_observer.before_phase(AppStateBuildPhase::Operations)?;
-        let operations = OperationalCapabilities::initialize(&paths)?;
+        let files = FileCapabilities::initialize(&paths)?;
+        let agent = AgentCapabilities::initialize(&paths, external_ports.as_ref())?;
+        let operations = OperationalCapabilities::new();
+        let mcp = McpCapabilities::new();
+        let terminal = TerminalCapabilities::new(&paths);
         let config_files = ConfigFileStore::new(paths.root.clone());
         build_observer.before_phase(AppStateBuildPhase::Configuration)?;
         let (configuration, persisted_settings, startup_recovery) =
@@ -170,18 +230,23 @@ impl AppState {
             &paths,
             config_files.clone(),
             operations.external_launch_intake.clone(),
+            external_ports.as_ref(),
         )?;
         build_observer.before_phase(AppStateBuildPhase::ApplicationRuntime)?;
         let application_runtime = ApplicationRuntime::new(
             configuration.config_change_observer.clone(),
-            operations.mcp_http_server.clone(),
+            mcp.http_server.clone(),
         );
 
         Ok(Self {
+            agent,
             application_runtime,
+            files,
+            mcp,
             paths,
             remote,
             operations,
+            terminal,
             configuration,
             startup_recovery,
         })
@@ -204,32 +269,32 @@ impl AppState {
 
     /// 返回外部 Agent / MCP 上下文服务。
     pub fn agent_context(&self) -> &AgentContextService {
-        &self.operations.agent_context
+        &self.agent.agent_context
     }
 
     /// 返回外部 Agent session 文件服务。
     pub fn agent_sessions(&self) -> &AgentSessionService {
-        &self.operations.agent_sessions
+        &self.agent.agent_sessions
     }
 
     /// 返回 MCP tool 直接执行器。
     pub fn mcp_tool_executor(&self) -> &McpToolExecutorService {
-        &self.operations.mcp_tool_executor
+        &self.mcp.tool_executor
     }
 
     /// 返回命令历史服务。
     pub fn command_history(&self) -> &CommandHistoryService {
-        &self.operations.command_history
+        &self.agent.command_history
     }
 
     /// 返回命令历史和命令建议专用 SQLite 存储。
     pub fn command_store(&self) -> &CommandSqliteStore {
-        &self.operations.command_store
+        &self.files.command_store
     }
 
     /// 返回命令建议服务。
     pub fn command_suggestions(&self) -> &CommandSuggestionService {
-        &self.operations.command_suggestions
+        &self.agent.command_suggestions
     }
 
     /// 返回文件型配置变更观察服务。
@@ -239,12 +304,12 @@ impl AppState {
 
     /// 返回本地凭据服务。
     pub fn credentials(&self) -> &CredentialService {
-        &self.operations.credentials
+        &self.files.credentials
     }
 
     /// 返回诊断包服务。
     pub fn diagnostics(&self) -> &DiagnosticsService {
-        &self.operations.diagnostics
+        &self.files.diagnostics
     }
 
     /// 返回 SSH 宿主上的容器服务。
@@ -269,7 +334,7 @@ impl AppState {
 
     /// 返回 Streamable HTTP MCP Server 生命周期服务。
     pub fn mcp_http_server(&self) -> &McpStreamableHttpServerService {
-        &self.operations.mcp_http_server
+        &self.mcp.http_server
     }
 
     /// 返回 SSH 端口转发服务。
@@ -279,7 +344,7 @@ impl AppState {
 
     /// 返回运行态文件存储入口。
     pub fn storage(&self) -> &RuntimeFileStore {
-        &self.operations.storage
+        &self.files.storage
     }
 
     /// 返回终端 Profile 服务。
@@ -362,12 +427,12 @@ impl AppState {
 
     /// 返回终端会话管理服务。
     pub fn terminals(&self) -> &TerminalManager {
-        &self.operations.terminals
+        &self.terminal.terminals
     }
 
     /// 返回终端 pane/session 绑定旁路服务。
     pub fn terminal_session_bindings(&self) -> &TerminalSessionBindingService {
-        &self.operations.terminal_session_bindings
+        &self.terminal.session_bindings
     }
 
     /// 返回 tmux 管理服务。
@@ -377,7 +442,7 @@ impl AppState {
 
     /// 返回 Kerminal MCP tool catalog。
     pub fn mcp_tool_catalog(&self) -> &McpToolCatalogService {
-        &self.operations.mcp_tool_catalog
+        &self.mcp.tool_catalog
     }
 
     /// 返回命令工作流服务。

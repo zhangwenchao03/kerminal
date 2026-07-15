@@ -5,8 +5,6 @@
 //!
 //! @author kongweiguang
 
-use std::sync::Arc;
-
 use crate::{
     error::AppResult,
     paths::KerminalPaths,
@@ -19,16 +17,15 @@ use crate::{
         server_info_service::ServerInfoService,
         sftp_service::SftpService,
         ssh_command_service::SshCommandService,
-        ssh_runtime::{
-            auth_broker::SshAuthBroker, native_backend::NativeSshRuntimeBackend,
-            ManagedSshSessionManager,
-        },
+        ssh_runtime::{auth_broker::SshAuthBroker, ManagedSshSessionManager},
         ssh_terminal_service::SshTerminalService,
         telnet_terminal_service::TelnetTerminalService,
         tmux_service::TmuxService,
     },
     storage::config_file_store::ConfigFileStore,
 };
+
+use super::AppStateExternalPorts;
 
 /// 共用 SSH runtime 的远程服务集合。
 #[derive(Debug)]
@@ -54,11 +51,11 @@ impl RemoteCapabilities {
         paths: &KerminalPaths,
         config_files: ConfigFileStore,
         external_launch_intake: ExternalLaunchIntake,
+        external_ports: &dyn AppStateExternalPorts,
     ) -> AppResult<Self> {
         let remote_hosts = RemoteHostService::new(config_files);
         let ssh_auth_broker = SshAuthBroker::new();
-        let ssh_runtime =
-            ManagedSshSessionManager::with_backend(Arc::new(NativeSshRuntimeBackend::new()));
+        let ssh_runtime = external_ports.create_ssh_runtime()?;
         let external_session_materializer = ExternalSessionMaterializer::with_remote_hosts(
             external_launch_intake,
             ssh_auth_broker.clone(),
