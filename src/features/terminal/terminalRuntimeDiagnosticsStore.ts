@@ -18,6 +18,7 @@ import {
   type RuntimeTerminalOutputPaneSnapshotInput,
 } from "./terminalRuntimeDiagnostics";
 import type { SshTerminalFailure } from "./terminalSshFailurePolicy";
+import { runtimeCompatibilityDiagnostics } from "../../platform/runtime/compatibilityDiagnostics";
 
 export interface TerminalReconnectRuntimeDiagnostics {
   reconnecting: boolean;
@@ -133,6 +134,7 @@ async function collectTerminalRuntimePerformanceSnapshotFrom(
   const degraded = collectDegradedStates(paneSnapshots, suggestions);
 
   return createRuntimePerformanceSnapshot({
+    compatibility: runtimeCompatibilityDiagnostics.getSnapshot(),
     degraded,
     generatedAt,
     managedSsh,

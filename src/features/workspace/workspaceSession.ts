@@ -29,6 +29,7 @@ import {
   workspaceFileMachineId,
   workspaceFileTargetHostId,
 } from "./workspaceFileTabModel";
+import { runtimeCompatibilityDiagnostics } from "../../platform/runtime/compatibilityDiagnostics";
 
 export const WORKSPACE_SESSION_VERSION = 2;
 export const TERMINAL_OUTPUT_HISTORY_MAX_CHARS = 128 * 1024;
@@ -151,6 +152,12 @@ export function decodeWorkspaceSessionSnapshot(
     normalized.sidebarMachines.length === 0
   ) {
     return null;
+  }
+  if (version === undefined || version === 1) {
+    runtimeCompatibilityDiagnostics.recordActivation(
+      "workspace.schema-v1-migration",
+      version === 1 ? "schema-v1" : "unversioned-session",
+    );
   }
   return normalized;
 }

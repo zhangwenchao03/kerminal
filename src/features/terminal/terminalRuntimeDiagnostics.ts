@@ -1,3 +1,4 @@
+import type { CompatibilityMetricSnapshot } from "../../architecture/compatibility/compatibilityRegistry";
 import type { ManagedSshRuntimeSnapshot } from "../../lib/diagnosticsApi";
 import type { TerminalRendererRegistrySnapshot } from "./terminalRendererRegistry";
 import type { TerminalOutputHistoryBufferStats } from "./terminalOutputHistoryBuffer";
@@ -172,6 +173,7 @@ export interface RuntimeConfigWatcherSnapshot {
 }
 
 export interface RuntimePerformanceSnapshot {
+  compatibility?: CompatibilityMetricSnapshot;
   configWatcher?: RuntimeConfigWatcherSnapshot;
   degraded?: RuntimeDiagnosticsDegradeState[];
   generatedAt: string;

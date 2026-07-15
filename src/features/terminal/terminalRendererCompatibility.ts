@@ -1,4 +1,6 @@
 /** 已验证可使用 xterm WebGL 私有兼容清理的精确依赖版本。 */
+import { runtimeCompatibilityDiagnostics } from "../../platform/runtime/compatibilityDiagnostics";
+
 export const VERIFIED_XTERM_WEBGL_COMPATIBILITY_VERSIONS = Object.freeze({
   webglAddon: "0.19.0",
   xterm: "6.0.0",
@@ -89,9 +91,19 @@ export function createXtermWebglCompatibilityAdapter({
       );
 
       if (capabilities.forceContextLoss) {
+        runtimeCompatibilityDiagnostics.recordActivation(
+          "terminal.xterm-webview-patch",
+          "tauri-webview",
+        );
         releaseKnownCanvasContexts(canvases, logger);
       }
       if (capabilities.privateRendererCleanup) {
+        if (!capabilities.forceContextLoss) {
+          runtimeCompatibilityDiagnostics.recordActivation(
+            "terminal.xterm-webview-patch",
+            "tauri-webview",
+          );
+        }
         clearKnownPrivateRendererReferences(addon, logger);
       }
     },
@@ -112,6 +124,9 @@ function releaseKnownCanvasContexts(
       releaseCanvasContext(canvas, logger);
     }
   } catch (error) {
+    runtimeCompatibilityDiagnostics.recordFailure(
+      "terminal.xterm-webview-patch",
+    );
     warnSafely(
       logger,
       "[kerminal-terminal-renderer] WebGL canvas enumeration failed",
@@ -138,6 +153,7 @@ function releaseCanvasContext(
     },
     logger,
     "[kerminal-terminal-renderer] forced WebGL context loss failed",
+    true,
   );
   runBestEffort(
     () => {
@@ -146,6 +162,7 @@ function releaseCanvasContext(
     },
     logger,
     "[kerminal-terminal-renderer] WebGL canvas reset failed",
+    true,
   );
 }
 
@@ -158,11 +175,17 @@ function resolveWebglContext(
       return webgl2;
     }
   } catch {
+    runtimeCompatibilityDiagnostics.recordFailure(
+      "terminal.xterm-webview-patch",
+    );
     // canvas 可能已绑定其它 context，继续尝试 WebGL 1。
   }
   try {
     return canvas.getContext("webgl");
   } catch {
+    runtimeCompatibilityDiagnostics.recordFailure(
+      "terminal.xterm-webview-patch",
+    );
     return null;
   }
 }
@@ -182,6 +205,9 @@ function clearKnownPrivateRendererReferences(
     try {
       candidate = root[key];
     } catch (error) {
+      runtimeCompatibilityDiagnostics.recordFailure(
+        "terminal.xterm-webview-patch",
+      );
       warnSafely(
         logger,
         "[kerminal-terminal-renderer] WebGL private renderer lookup failed",
@@ -215,6 +241,9 @@ function clearRendererReferences(
         renderer[key] = undefined;
       }
     } catch (error) {
+      runtimeCompatibilityDiagnostics.recordFailure(
+        "terminal.xterm-webview-patch",
+      );
       warnSafely(
         logger,
         "[kerminal-terminal-renderer] WebGL private reference cleanup failed",
@@ -228,10 +257,16 @@ function runBestEffort(
   action: () => void,
   logger: XtermWebglCompatibilityLogger,
   message: string,
+  compatibilityPath = false,
 ) {
   try {
     action();
   } catch (error) {
+    if (compatibilityPath) {
+      runtimeCompatibilityDiagnostics.recordFailure(
+        "terminal.xterm-webview-patch",
+      );
+    }
     warnSafely(logger, message, error);
   }
 }

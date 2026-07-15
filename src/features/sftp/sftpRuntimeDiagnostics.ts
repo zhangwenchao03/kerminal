@@ -4,6 +4,7 @@ import {
   type SftpTransferConflictPreflightProgress,
 } from "./sftp-tool-content/sftpTransferConflictPreflight";
 import { resolveSftpTransferRetry } from "./sftpTransferRetryPolicy";
+import { runtimeCompatibilityDiagnostics } from "../../platform/runtime/compatibilityDiagnostics";
 
 /** SFTP 特性对外提供的运行时诊断摘要。 */
 interface SftpRuntimeSnapshot {
@@ -92,6 +93,13 @@ export const updateSftpRuntimeDiagnosticsTransfers =
 export const updateSftpRuntimeDiagnosticsPreflight =
   sftpRuntimeDiagnostics.updatePreflight;
 export const getSftpRuntimeDiagnosticsSnapshot = sftpRuntimeDiagnostics.getSnapshot;
+/** polling 调用方必须先通过 registry allow-list，deny 不改变主路径。 */
+export function recordSftpPollingCompatibilityActivation(reason: string) {
+  return runtimeCompatibilityDiagnostics.recordActivation(
+    "sftp.transfer-polling",
+    reason,
+  ).allowed;
+}
 
 function isCompletedTransfer(transfer: SftpTransferSummary) {
   return (
