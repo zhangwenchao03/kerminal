@@ -4,7 +4,7 @@ import type {
   SettingsSectionId,
 } from "../features/settings/SettingsToolContent";
 import type { AppSettings } from "../features/settings/settingsModel";
-import { getSettings, updateSettings } from "../lib/settingsApi";
+import { getSettings, updateSettings } from "../features/settings/settingsApi";
 import { DEFAULT_SETTINGS_SECTION_ID } from "./KerminalShell.static";
 
 interface UseKerminalShellSettingsOptions {

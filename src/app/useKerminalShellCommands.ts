@@ -5,7 +5,7 @@ import {
   dispatchKerminalTextEditCommand,
   shouldAppHandleKeybinding,
   type KerminalTextEditCommand,
-} from "./appKeybindingPolicy";
+} from "../contracts/textEditCommands";
 import {
   keybindingMatchesEvent,
   shortcutPlatform,

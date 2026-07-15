@@ -138,7 +138,7 @@
     },
     {
       "file": "src/features/sftp/SftpToolContent.tsx",
-      "message": "The 'entries' logical expression could make the dependencies of useMemo Hook (at line 264) change on every render. To fix this, wrap the initialization of 'entries' in its own useMemo() Hook.",
+      "message": "The 'entries' logical expression could make the dependencies of useMemo Hook (at line 263) change on every render. To fix this, wrap the initialization of 'entries' in its own useMemo() Hook.",
       "rule": "react-hooks/exhaustive-deps",
       "count": 1,
       "deadline": "before TASK-080",

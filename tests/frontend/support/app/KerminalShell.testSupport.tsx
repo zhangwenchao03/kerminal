@@ -349,7 +349,7 @@ vi.mock("../../../../src/lib/serverInfoApi", () => ({
     mocks.serverInfoApi.getServerInfoSnapshot(...args),
 }));
 
-vi.mock("../../../../src/lib/settingsApi", () => ({
+vi.mock("../../../../src/features/settings/settingsApi", () => ({
   getSettings: (...args: unknown[]) => mocks.settingsApi.getSettings(...args),
   updateSettings: (...args: unknown[]) =>
     mocks.settingsApi.updateSettings(...args),

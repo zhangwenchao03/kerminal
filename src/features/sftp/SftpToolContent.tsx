@@ -80,7 +80,6 @@ import { TRANSIENT_ERROR_STATUS_MS } from "./sftp-tool-content/types";
 
 export type {
   SftpClipboard,
-  SftpClipboardEntry,
 } from "./sftp-tool-content/types";
 
 type SftpToolContentProps = {

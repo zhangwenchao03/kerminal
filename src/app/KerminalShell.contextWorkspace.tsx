@@ -38,7 +38,7 @@ import {
   type ToolId,
 } from "../features/workspace/types";
 import { useWorkspaceStore } from "../features/workspace/workspaceStore";
-import { shouldAppHandleKeybinding } from "./appKeybindingPolicy";
+import { shouldAppHandleKeybinding } from "../contracts/textEditCommands";
 import {
   createKerminalQuickOpenRegistry,
   resolveKerminalQuickOpenReference,

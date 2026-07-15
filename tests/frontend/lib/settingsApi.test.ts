@@ -21,7 +21,7 @@ describe("settingsApi", () => {
       ...defaultAppSettings,
       themeMode: "light",
     });
-    const { getSettings } = await import("../../../src/lib/settingsApi");
+    const { getSettings } = await import("../../../src/features/settings/settingsApi");
 
     const settings = await getSettings();
 
@@ -32,7 +32,7 @@ describe("settingsApi", () => {
   it("normalizes and updates settings through Tauri", async () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockImplementation(async (_command, payload) => payload.request);
-    const { updateSettings } = await import("../../../src/lib/settingsApi");
+    const { updateSettings } = await import("../../../src/features/settings/settingsApi");
 
     const settings = await updateSettings({
       ...defaultAppSettings,
@@ -70,7 +70,7 @@ describe("settingsApi", () => {
 
   it("uses default settings outside Tauri", async () => {
     isTauriMock.mockReturnValue(false);
-    const { getSettings, updateSettings } = await import("../../../src/lib/settingsApi");
+    const { getSettings, updateSettings } = await import("../../../src/features/settings/settingsApi");
 
     await expect(getSettings()).resolves.toEqual(defaultAppSettings);
     await expect(

@@ -13,7 +13,7 @@ const settingsApiMocks = vi.hoisted(() => ({
   updateSettings: vi.fn(),
 }));
 
-vi.mock("../../../src/lib/settingsApi", () => ({
+vi.mock("../../../src/features/settings/settingsApi", () => ({
   getSettings: (...args: unknown[]) => settingsApiMocks.getSettings(...args),
   updateSettings: (...args: unknown[]) =>
     settingsApiMocks.updateSettings(...args),

@@ -13,7 +13,7 @@ import type {
 } from "../features/settings/SettingsToolContent";
 import type { AppSettings } from "../features/settings/settingsModel";
 import type { MachineGroup } from "../features/workspace/types";
-import { getSettings } from "../lib/settingsApi";
+import { getSettings } from "../features/settings/settingsApi";
 import { listProfiles } from "../lib/profileApi";
 import { listSnippets } from "../lib/snippetApi";
 import { listWorkflows } from "../lib/workflowApi";
