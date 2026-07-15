@@ -4,13 +4,10 @@
 //! backend truth without changing AI chat routing or exposing new commands.
 
 use crate::error::{AppError, AppResult};
-use std::{
-    sync::Mutex,
-    time::Duration,
-};
+use std::{sync::Mutex, time::Duration};
 
-mod types;
 mod state;
+mod types;
 
 use state::*;
 

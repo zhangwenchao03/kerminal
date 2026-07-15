@@ -8,8 +8,8 @@ use crate::error::{AppError, AppResult};
 use super::{
     AgentTargetBindingRequest, AgentTargetBindingSnapshot, AgentTargetBindingStatus,
     TerminalSessionBindingCapabilityUse, TerminalSessionBindingEvent,
-    TerminalSessionBindingEventKind, TerminalSessionBindingSnapshot,
-    TerminalSessionBindingStatus, TerminalSessionSnapshotStatus,
+    TerminalSessionBindingEventKind, TerminalSessionBindingSnapshot, TerminalSessionBindingStatus,
+    TerminalSessionSnapshotStatus,
 };
 
 impl TerminalSessionBindingCapabilityUse {

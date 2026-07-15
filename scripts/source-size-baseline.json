@@ -54,20 +54,6 @@
       "targetTask": "TASK-072"
     },
     {
-      "file": "src-tauri/src/services/ssh_route_plan.rs",
-      "lines": 937,
-      "deadline": "before TASK-080",
-      "owner": "architecture-governance",
-      "targetTask": "TASK-072"
-    },
-    {
-      "file": "src-tauri/src/services/ssh_runtime/mod.rs",
-      "lines": 999,
-      "deadline": "before TASK-080",
-      "owner": "terminal-runtime",
-      "targetTask": "TASK-050/TASK-052"
-    },
-    {
       "file": "src-tauri/src/services/ssh_runtime/native_backend/forward.rs",
       "lines": 958,
       "deadline": "before TASK-080",
@@ -77,13 +63,6 @@
     {
       "file": "src-tauri/src/services/ssh_terminal_service.rs",
       "lines": 850,
-      "deadline": "before TASK-080",
-      "owner": "architecture-governance",
-      "targetTask": "TASK-072"
-    },
-    {
-      "file": "src-tauri/src/services/terminal_session_binding_service.rs",
-      "lines": 960,
       "deadline": "before TASK-080",
       "owner": "architecture-governance",
       "targetTask": "TASK-072"

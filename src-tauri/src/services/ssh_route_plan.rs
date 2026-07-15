@@ -3,8 +3,7 @@
 //! @author kongweiguang
 
 use std::{
-    fmt,
-    fs,
+    fmt, fs,
     path::{Path, PathBuf},
 };
 use uuid::Uuid;
