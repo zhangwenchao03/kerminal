@@ -26,7 +26,6 @@ const EXPLICIT_PLATFORM_ADAPTERS = new Set([
   "src/lib/appLog.ts",
   "src/lib/desktopPlatform.ts",
   "src/lib/nativeContextMenu.ts",
-  "src/lib/nativePopupMenu.ts",
   "src/lib/useTauriWindowFrameState.ts",
   "src/lib/windowActions.ts",
 ]);

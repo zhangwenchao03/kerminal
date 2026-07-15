@@ -659,15 +659,6 @@
       "targetTask": "TASK-022/TASK-072"
     },
     {
-      "file": "src/features/terminal/TerminalBroadcastConfirmation.tsx",
-      "name": "src/features/terminal/TerminalBroadcastConfirmation.tsx",
-      "type": "files",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
       "file": "src/features/terminal/terminalChromeRuntimeStore.ts",
       "name": "TerminalChromeActivityDiagnosticsSnapshot",
       "type": "types",
@@ -959,15 +950,6 @@
       "file": "src/features/terminal/terminalRendererCompatibility.ts",
       "name": "XtermWebglDisposeTarget",
       "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/terminal/terminalRendererDimensions.ts",
-      "name": "src/features/terminal/terminalRendererDimensions.ts",
-      "type": "files",
       "count": 1,
       "deadline": "before TASK-080",
       "owner": "frontend-architecture",
@@ -2444,15 +2426,6 @@
       "file": "src/lib/nativeMenuApi.ts",
       "name": "NativeMenuActionPayload",
       "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/lib/nativePopupMenu.ts",
-      "name": "src/lib/nativePopupMenu.ts",
-      "type": "files",
       "count": 1,
       "deadline": "before TASK-080",
       "owner": "frontend-architecture",
