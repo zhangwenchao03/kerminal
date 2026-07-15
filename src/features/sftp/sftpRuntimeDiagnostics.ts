@@ -6,7 +6,7 @@ import {
 import { resolveSftpTransferRetry } from "./sftpTransferRetryPolicy";
 
 /** SFTP 特性对外提供的运行时诊断摘要。 */
-export interface SftpRuntimeSnapshot {
+interface SftpRuntimeSnapshot {
   preflight?: {
     active: number;
     cancelRequested: boolean;
@@ -61,23 +61,24 @@ export function createSftpRuntimeDiagnostics(): SftpRuntimeDiagnostics {
       );
 
       return {
-    preflight: latestPreflight
-      ? {
-          active: latestPreflight.inFlight,
-          cancelRequested: false,
-          completed: latestPreflight.checked,
-          concurrencyLimit: DEFAULT_SFTP_TRANSFER_CONFLICT_PREFLIGHT_CONCURRENCY,
-          failed: 0,
-          queued: latestPreflight.queued,
-        }
-      : undefined,
-    transfers: {
-      activeTransfers: activeTransfers.length,
-      failedRecent: failedRecent.length,
-      prunedCompleted: prunedCompletedEstimate,
-      recentCompleted: completedTransfers.length,
-      retryableFailedRecent: retryableFailed.length,
-    },
+        preflight: latestPreflight
+          ? {
+              active: latestPreflight.inFlight,
+              cancelRequested: false,
+              completed: latestPreflight.checked,
+              concurrencyLimit:
+                DEFAULT_SFTP_TRANSFER_CONFLICT_PREFLIGHT_CONCURRENCY,
+              failed: 0,
+              queued: latestPreflight.queued,
+            }
+          : undefined,
+        transfers: {
+          activeTransfers: activeTransfers.length,
+          failedRecent: failedRecent.length,
+          prunedCompleted: prunedCompletedEstimate,
+          recentCompleted: completedTransfers.length,
+          retryableFailedRecent: retryableFailed.length,
+        },
       };
     },
   };

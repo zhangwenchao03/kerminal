@@ -235,17 +235,6 @@
     {
       "kind": "import",
       "rule": "cross-feature-private-import",
-      "runtime": false,
-      "source": "src/features/settings/settings-tool-content/terminal-renderer-status.ts",
-      "specifier": "../../terminal/terminalRendererRegistry",
-      "target": "src/features/terminal/terminalRendererRegistry.ts",
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-020"
-    },
-    {
-      "kind": "import",
-      "rule": "cross-feature-private-import",
       "runtime": true,
       "source": "src/features/settings/settings-tool-content/terminal-section.tsx",
       "specifier": "../../terminal/terminalRendererRegistry",
@@ -379,17 +368,6 @@
       "kind": "import",
       "rule": "cross-feature-private-import",
       "runtime": false,
-      "source": "src/features/sftp/sftpRuntimeDiagnostics.ts",
-      "specifier": "../terminal/terminalRuntimeDiagnostics",
-      "target": "src/features/terminal/terminalRuntimeDiagnostics.ts",
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-020"
-    },
-    {
-      "kind": "import",
-      "rule": "cross-feature-private-import",
-      "runtime": false,
       "source": "src/features/sftp/SftpToolContent.tsx",
       "specifier": "../settings/settingsModel",
       "target": "src/features/settings/settingsModel.ts",
@@ -479,17 +457,6 @@
       "rule": "cross-feature-private-import",
       "runtime": false,
       "source": "src/features/sftp/sftpTransferWorkbenchModel.ts",
-      "specifier": "../workspace/types",
-      "target": "src/features/workspace/types.ts",
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-020"
-    },
-    {
-      "kind": "import",
-      "rule": "cross-feature-private-import",
-      "runtime": false,
-      "source": "src/features/snippets/snippetCatalogModel.ts",
       "specifier": "../workspace/types",
       "target": "src/features/workspace/types.ts",
       "deadline": "before TASK-080",
