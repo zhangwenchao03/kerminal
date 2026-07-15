@@ -4,13 +4,13 @@
  * @author kongweiguang
  */
 
-import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   useEffect,
   type Dispatch,
   type RefObject,
   type SetStateAction,
 } from "react";
+import { desktopRuntime } from "../../../lib/desktopRuntimeApi";
 import { isRunningInTauriWebview } from "./sftpDragDropModel";
 import { resolveSftpLocalUploadDropEvent } from "./sftpLocalUploadDropModel";
 import { errorMessage } from "./sftpPathModel";
@@ -45,8 +45,8 @@ export function useSftpLocalUploadDropActions({
 
     let disposed = false;
     let unlisten: (() => void) | undefined;
-    void getCurrentWebview()
-      .onDragDropEvent((event) => {
+    void desktopRuntime
+      .listenToDragDrop((event) => {
         if (disposed) {
           return;
         }

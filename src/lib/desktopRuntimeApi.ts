@@ -5,9 +5,22 @@ export interface DesktopRuntimePort {
   readonly mode: "desktop" | "preview";
   convertLocalFileSrc(path: string): string | undefined;
   listen<T>(eventName: string, handler: (payload: T) => void): Promise<() => void>;
+  listenToDragDrop(
+    handler: (event: DesktopDragDropEvent) => void,
+  ): Promise<() => void>;
   openPath(path: string): Promise<"opened" | "unsupported">;
   openUrl(url: string): Promise<void>;
 }
+
+/** 桌面 WebView 向 feature 暴露的最小拖放契约。 */
+export type DesktopDragDropEvent =
+  | {
+      paths: string[];
+      position: { x: number; y: number };
+      type: "enter" | "drop";
+    }
+  | { position: { x: number; y: number }; type: "over" }
+  | { type: "leave" };
 
 const desktopRuntimePort: DesktopRuntimePort = {
   mode: "desktop",
@@ -17,6 +30,12 @@ const desktopRuntimePort: DesktopRuntimePort = {
   async listen<T>(eventName: string, handler: (payload: T) => void) {
     const { listen } = await import("@tauri-apps/api/event");
     return listen<T>(eventName, (event) => handler(event.payload));
+  },
+  async listenToDragDrop(handler) {
+    const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+    return getCurrentWebview().onDragDropEvent((event) => {
+      handler(event.payload as DesktopDragDropEvent);
+    });
   },
   async openPath(path) {
     await openPath(path);
@@ -33,6 +52,9 @@ const previewRuntimePort: DesktopRuntimePort = {
     return undefined;
   },
   async listen() {
+    return () => undefined;
+  },
+  async listenToDragDrop() {
     return () => undefined;
   },
   async openPath() {
@@ -64,6 +86,9 @@ export const desktopRuntime: DesktopRuntimePort = {
   },
   listen<T>(eventName: string, handler: (payload: T) => void) {
     return createDesktopRuntimePort().listen(eventName, handler);
+  },
+  listenToDragDrop(handler) {
+    return createDesktopRuntimePort().listenToDragDrop(handler);
   },
   openPath(path) {
     return createDesktopRuntimePort().openPath(path);

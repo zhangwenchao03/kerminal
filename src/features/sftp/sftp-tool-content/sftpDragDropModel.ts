@@ -1,6 +1,6 @@
-import { isTauri } from "@tauri-apps/api/core";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { writeDesktopClipboardText } from "../../../lib/desktopClipboardApi";
+import { desktopRuntime } from "../../../lib/desktopRuntimeApi";
 import type {
   SftpDragDropPayload,
   SftpSelectionEvent,
@@ -20,7 +20,7 @@ export function clampContextMenuPosition(x: number, y: number) {
 
 export const isRunningInTauriWebview = () => {
   return (
-    isTauri() ||
+    desktopRuntime.mode === "desktop" ||
     Boolean(
       (window as Window & { __TAURI_INTERNALS__?: unknown })
         .__TAURI_INTERNALS__,
@@ -29,6 +29,9 @@ export const isRunningInTauriWebview = () => {
 };
 
 export const unwrapDragDropPayload = (event: unknown): SftpDragDropPayload => {
+  if (isDragDropPayload(event)) {
+    return event;
+  }
   const payload = (event as { payload?: unknown }).payload;
   if (isDragDropPayload(payload)) {
     return payload;

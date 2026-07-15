@@ -4,7 +4,6 @@
  * @author kongweiguang
  */
 
-import { isTauri } from "@tauri-apps/api/core";
 import {
   useCallback,
   useEffect,
@@ -13,6 +12,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
+import { desktopRuntime } from "../../lib/desktopRuntimeApi";
 import {
   listSftpTransfers,
   type SftpTransferSummary,
@@ -60,7 +60,7 @@ export interface SftpTransferQueueSyncState {
   transfers: SftpTransferSummary[];
 }
 
-const defaultEventChannelAvailable = () => isTauri();
+const defaultEventChannelAvailable = () => desktopRuntime.mode === "desktop";
 const defaultDocumentVisible = () =>
   typeof document === "undefined" || document.visibilityState === "visible";
 const defaultSubscribeToVisibilityChange: VisibilityChangeSubscriber = (
@@ -74,10 +74,10 @@ const defaultSubscribeToVisibilityChange: VisibilityChangeSubscriber = (
 };
 
 const defaultListenToUpdates: SftpTransferUpdateListener = async (onUpdate) => {
-  const { listen } = await import("@tauri-apps/api/event");
-  return listen<SftpTransferSummary>(SFTP_TRANSFER_UPDATED_EVENT, (event) => {
-    onUpdate(event.payload);
-  });
+  return desktopRuntime.listen<SftpTransferSummary>(
+    SFTP_TRANSFER_UPDATED_EVENT,
+    onUpdate,
+  );
 };
 
 export function useSftpTransferQueueSync({

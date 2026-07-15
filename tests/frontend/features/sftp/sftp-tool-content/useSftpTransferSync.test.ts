@@ -42,8 +42,10 @@ vi.mock("../../../../../src/features/sftp/sftp-tool-content/sftpDragDropModel", 
   };
 });
 
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: eventApiMock.listen,
+vi.mock("../../../../../src/lib/desktopRuntimeApi", () => ({
+  desktopRuntime: {
+    listen: eventApiMock.listen,
+  },
 }));
 
 describe("useSftpTransferSync", () => {
@@ -187,7 +189,7 @@ describe("useSftpTransferSync", () => {
     dragDropModelMock.isRunningInTauriWebview.mockReturnValue(true);
     const unlisten = vi.fn();
     let eventHandler:
-      | ((event: { payload: SftpTransferSummary }) => void)
+      | ((transfer: SftpTransferSummary) => void)
       | undefined;
     eventApiMock.listen.mockImplementation(async (_eventName, handler) => {
       eventHandler = handler;
@@ -213,32 +215,30 @@ describe("useSftpTransferSync", () => {
     });
 
     act(() => {
-      eventHandler?.({
-        payload: transferSummary({ hostId: "host-b", id: "other-host" }),
-      });
+      eventHandler?.(transferSummary({ hostId: "host-b", id: "other-host" }));
     });
     expect(result.current.transfers).toEqual([]);
 
     act(() => {
-      eventHandler?.({
-        payload: transferSummary({
+      eventHandler?.(
+        transferSummary({
           hostId: "host-a",
           id: "other-scope",
           viewScope: "sftp-workbench:tab-b",
         }),
-      });
+      );
     });
     expect(result.current.transfers).toEqual([]);
 
     act(() => {
-      eventHandler?.({
-        payload: transferSummary({
+      eventHandler?.(
+        transferSummary({
           hostId: "host-a",
           id: "active-host",
           updatedAt: 10,
           viewScope: "sftp-workbench:tab-a",
         }),
-      });
+      );
     });
 
     expect(result.current.transfers.map((transfer) => transfer.id)).toEqual([

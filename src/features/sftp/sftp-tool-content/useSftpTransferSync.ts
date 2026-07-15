@@ -3,6 +3,7 @@ import {
   listSftpTransfers,
   type SftpTransferSummary,
 } from "../../../lib/sftpApi";
+import { desktopRuntime } from "../../../lib/desktopRuntimeApi";
 import { replaceTransferQueue } from "../sftpTransferModel";
 import { dockerContainerTransferHostId } from "./sftpDockerDirectTransferModel";
 import { isRunningInTauriWebview } from "./sftpDragDropModel";
@@ -102,22 +103,20 @@ export function useSftpTransferSync({
 
     let disposed = false;
     let unlisten: (() => void) | undefined;
-    void import("@tauri-apps/api/event")
-      .then(({ listen }) =>
-        listen<SftpTransferSummary>(SFTP_TRANSFER_UPDATED_EVENT, (event) => {
-          if (disposed) {
-            return;
-          }
-          setTransfers((current) =>
-            mergeSftpTransferUpdateForHost({
-              hostId: syncHostId,
-              transfer: event.payload,
-              transfers: current,
-              viewScope,
-            }),
-          );
-        }),
-      )
+    void desktopRuntime
+      .listen<SftpTransferSummary>(SFTP_TRANSFER_UPDATED_EVENT, (transfer) => {
+        if (disposed) {
+          return;
+        }
+        setTransfers((current) =>
+          mergeSftpTransferUpdateForHost({
+            hostId: syncHostId,
+            transfer,
+            transfers: current,
+            viewScope,
+          }),
+        );
+      })
       .then((nextUnlisten) => {
         if (disposed) {
           nextUnlisten();
