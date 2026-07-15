@@ -193,7 +193,7 @@ it("does not show managed SSH availability notices for SSH right-side tools", as
   ).not.toHaveBeenCalled();
 
   view.unmount();
-  view = render(
+  render(
     <ToolPanel
       activeTool="tmux"
       activeMachine={sshMachine}

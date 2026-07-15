@@ -38,15 +38,6 @@
       "targetTask": "TASK-070"
     },
     {
-      "file": "src/features/logs/LogToolContent.tsx",
-      "message": "The 'visibleEntries' conditional could make the dependencies of useMemo Hook (at line 210) change on every render. To fix this, wrap the initialization of 'visibleEntries' in its own useMemo() Hook.",
-      "rule": "react-hooks/exhaustive-deps",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-react",
-      "targetTask": "TASK-070"
-    },
-    {
       "file": "src/features/machine-sidebar/host-containers/ComposeProjectInspector.tsx",
       "message": "React Hook useEffect has a missing dependency: 'project?.configPaths'. Either include it or remove the dependency array. If 'setSelectedPath' needs the current value of 'project.configPaths', you can also switch to useReducer instead of useState and read 'project.configPaths' in the reducer.",
       "rule": "react-hooks/exhaustive-deps",
@@ -455,15 +446,6 @@
       "file": "tests/frontend/features/terminal/XtermPane.realXtermCompatibility.test.ts",
       "message": "'disposable' is never reassigned. Use 'const' instead.",
       "rule": "prefer-const",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "tests/frontend/features/tool-panel/ToolPanel.test.tsx",
-      "message": "The value assigned to 'view' is not used in subsequent statements.",
-      "rule": "no-useless-assignment",
       "count": 1,
       "deadline": "before TASK-080",
       "owner": "test-architecture",

@@ -97,7 +97,10 @@ export function LogToolContent({
   activeRef.current = active;
   historyBindingKeyRef.current = historyBindingKey;
   const historyStateCurrent = historyStateBindingKey === historyBindingKey;
-  const visibleEntries = historyStateCurrent ? entries : [];
+  const visibleEntries = useMemo(
+    () => (historyStateCurrent ? entries : []),
+    [entries, historyStateCurrent],
+  );
   const visibleError = historyStateCurrent ? error : null;
   const visibleLoading = historyStateCurrent
     ? loading
