@@ -26,13 +26,6 @@
       "targetTask": "TASK-072"
     },
     {
-      "file": "src-tauri/src/services/server_info_service.rs",
-      "lines": 1055,
-      "deadline": "before TASK-080",
-      "owner": "architecture-governance",
-      "targetTask": "TASK-072"
-    },
-    {
       "file": "src-tauri/src/services/ssh_command_service/native.rs",
       "lines": 814,
       "deadline": "before TASK-080",
@@ -45,20 +38,6 @@
       "deadline": "before TASK-080",
       "owner": "terminal-runtime",
       "targetTask": "TASK-050/TASK-052"
-    },
-    {
-      "file": "src-tauri/src/services/ssh_terminal_service.rs",
-      "lines": 850,
-      "deadline": "before TASK-080",
-      "owner": "architecture-governance",
-      "targetTask": "TASK-072"
-    },
-    {
-      "file": "src-tauri/src/services/terminal_shell_integration.rs",
-      "lines": 802,
-      "deadline": "before TASK-080",
-      "owner": "architecture-governance",
-      "targetTask": "TASK-072"
     },
     {
       "file": "src/features/terminal/terminalRenderer.ts",
