@@ -9,7 +9,7 @@ import { describe,
   expect,
   it } from "vitest";
 import {  createSftpTransferSummary,
-  eventMocks,
+  desktopRuntimeMocks,
   openCurrentDirectoryContextMenu,
   sftpApiMocks,
   sshMachine,
@@ -29,15 +29,15 @@ describe("SftpToolContent events and dialogs", () => {
 
     await screen.findByText("var");
     await waitFor(() =>
-      expect(eventMocks.listen).toHaveBeenCalledWith(
+      expect(desktopRuntimeMocks.listen).toHaveBeenCalledWith(
         "sftp-transfer-updated",
         expect.any(Function),
       ),
     );
 
     act(() => {
-      eventMocks.transferHandler?.({
-        payload: createSftpTransferSummary({
+      desktopRuntimeMocks.transferHandler?.(
+        createSftpTransferSummary({
           bytesTransferred: 512,
           cancelRequested: false,
           createdAt: 10,
@@ -52,7 +52,7 @@ describe("SftpToolContent events and dialogs", () => {
           updatedAt: 11,
           viewScope: sidebarViewScope,
         }),
-      });
+      );
     });
 
     expect(await screen.findByText("SFTP 传输队列")).toBeInTheDocument();
@@ -62,8 +62,8 @@ describe("SftpToolContent events and dialogs", () => {
     ).toHaveAttribute("aria-valuenow", "50");
 
     act(() => {
-      eventMocks.transferHandler?.({
-        payload: createSftpTransferSummary({
+      desktopRuntimeMocks.transferHandler?.(
+        createSftpTransferSummary({
           bytesTransferred: 512,
           cancelRequested: false,
           createdAt: 10,
@@ -79,7 +79,7 @@ describe("SftpToolContent events and dialogs", () => {
           updatedAt: 12,
           viewScope: sidebarViewScope,
         }),
-      });
+      );
     });
 
     expect(await screen.findByText("失败")).toBeInTheDocument();

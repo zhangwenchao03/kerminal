@@ -6,32 +6,30 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import {
+  desktopRuntimeMocks,
   sftpApiMocks,
   sshMachine,
-  webviewMocks,
 } from "../../support/sftp/SftpToolContent.testSupport.tsx";
 import { SftpToolContent } from "../../../../src/features/sftp/SftpToolContent";
 
 describe("SftpToolContent local upload drop observer", () => {
   it("ignores local file drops outside the SFTP drop zone", async () => {
-    const dragDropHandlers: Array<(event: { payload: unknown }) => void> = [];
+    const dragDropHandlers: Array<(payload: unknown) => void> = [];
     mockTauriDropObserver(dragDropHandlers);
 
     render(<SftpToolContent selectedMachine={sshMachine} />);
 
     await screen.findByText("var");
     await waitFor(() =>
-      expect(webviewMocks.onDragDropEvent).toHaveBeenCalled(),
+      expect(desktopRuntimeMocks.listenToDragDrop).toHaveBeenCalled(),
     );
     const dropZone = screen.getByTestId("sftp-drop-zone");
     setDropZoneRect(dropZone);
 
     dragDropHandlers[0]({
-      payload: {
-        paths: ["C:/tmp/release.tgz"],
-        position: { x: 500, y: 500 },
-        type: "drop",
-      },
+      paths: ["C:/tmp/release.tgz"],
+      position: { x: 500, y: 500 },
+      type: "drop",
     });
 
     expect(sftpApiMocks.classifySftpLocalPaths).not.toHaveBeenCalled();
@@ -42,7 +40,7 @@ describe("SftpToolContent local upload drop observer", () => {
   it("shows a recoverable summary when local drop listener registration fails", async () => {
     const user = userEvent.setup();
     mockTauriEnvironment();
-    webviewMocks.onDragDropEvent.mockRejectedValue(
+    desktopRuntimeMocks.listenToDragDrop.mockRejectedValue(
       new Error(
         "blocked token=drop-secret path=C:\\runtime\\webview-listener.json",
       ),
@@ -71,11 +69,11 @@ describe("SftpToolContent local upload drop observer", () => {
 });
 
 function mockTauriDropObserver(
-  dragDropHandlers: Array<(event: { payload: unknown }) => void>,
+  dragDropHandlers: Array<(payload: unknown) => void>,
 ) {
   mockTauriEnvironment();
-  webviewMocks.onDragDropEvent.mockImplementation(
-    async (handler: (event: { payload: unknown }) => void) => {
+  desktopRuntimeMocks.listenToDragDrop.mockImplementation(
+    async (handler: (payload: unknown) => void) => {
       dragDropHandlers.push(handler);
       return () => undefined;
     },

@@ -53,26 +53,26 @@ const sshCommandApiMocks = vi.hoisted(() => ({
   executeSshCommand: vi.fn(),
 }));
 
-const webviewMocks = vi.hoisted(() => ({
-  onDragDropEvent: vi.fn(),
-}));
-
-const eventMocks = vi.hoisted(() => ({
+const desktopRuntimeMocks = vi.hoisted(() => ({
   listen: vi.fn(),
+  listenToDragDrop: vi.fn(),
   transferHandler: undefined as
-    | ((event: { payload: unknown }) => void)
+    | ((payload: SftpTransferSummary) => void)
     | undefined,
 }));
 
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: (...args: unknown[]) => eventMocks.listen(...args),
-}));
-
-vi.mock("@tauri-apps/api/webview", () => ({
-  getCurrentWebview: () => ({
-    onDragDropEvent: (...args: unknown[]) =>
-      webviewMocks.onDragDropEvent(...args),
-  }),
+vi.mock("../../../../src/lib/desktopRuntimeApi", () => ({
+  desktopRuntime: {
+    get mode() {
+      return (window as Window & { __TAURI_INTERNALS__?: unknown })
+        .__TAURI_INTERNALS__
+        ? "desktop"
+        : "preview";
+    },
+    listen: (...args: unknown[]) => desktopRuntimeMocks.listen(...args),
+    listenToDragDrop: (...args: unknown[]) =>
+      desktopRuntimeMocks.listenToDragDrop(...args),
+  },
 }));
 
 vi.mock("../../../../src/features/sftp/RemoteWorkspaceEditor", () => ({
@@ -374,9 +374,9 @@ beforeEach(() => {
   fileDialogMocks.selectSaveFile.mockReset();
   localFilesApiMocks.statLocalPath.mockReset();
   sshCommandApiMocks.executeSshCommand.mockReset();
-  eventMocks.listen.mockReset();
-  eventMocks.transferHandler = undefined;
-  webviewMocks.onDragDropEvent.mockReset();
+  desktopRuntimeMocks.listen.mockReset();
+  desktopRuntimeMocks.listenToDragDrop.mockReset();
+  desktopRuntimeMocks.transferHandler = undefined;
   Reflect.deleteProperty(
     window as Window & { __TAURI_INTERNALS__?: unknown },
     "__TAURI_INTERNALS__",
@@ -528,8 +528,9 @@ beforeEach(() => {
   })),
   );
   sftpApiMocks.listSftpTransfers.mockResolvedValue([]);
-  eventMocks.listen.mockImplementation(async (_eventName, handler) => {
-    eventMocks.transferHandler = handler as typeof eventMocks.transferHandler;
+  desktopRuntimeMocks.listen.mockImplementation(async (_eventName, handler) => {
+    desktopRuntimeMocks.transferHandler =
+      handler as typeof desktopRuntimeMocks.transferHandler;
     return vi.fn();
   });
   sftpApiMocks.readSftpLocalFileClipboard.mockResolvedValue([]);
@@ -599,7 +600,7 @@ beforeEach(() => {
       };
     },
   );
-  webviewMocks.onDragDropEvent.mockResolvedValue(() => undefined);
+  desktopRuntimeMocks.listenToDragDrop.mockResolvedValue(() => undefined);
   fileDialogMocks.selectLocalDirectory.mockResolvedValue(
     "/Users/me/Downloads",
   );
@@ -787,9 +788,8 @@ beforeEach(() => {
 
 export {
   containerFilesApiMocks,
-  eventMocks,
+  desktopRuntimeMocks,
   fileDialogMocks,
   sftpApiMocks,
   sshCommandApiMocks,
-  webviewMocks,
 };
