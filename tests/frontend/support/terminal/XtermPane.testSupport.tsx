@@ -2,7 +2,9 @@ import { afterEach, beforeEach, vi } from "vitest";
 import { defaultAppSettings } from "../../../../src/features/settings/settingsModel";
 import { terminalSuggestionProbeScheduler } from "../../../../src/features/terminal/terminalSuggestionProbeScheduler";
 import type { TerminalOutputEvent } from "../../../../src/lib/terminalApi";
+import type { FitAddon as BrowserSmokeFitAddon, Terminal as BrowserSmokeTerminal, WebglAddon as BrowserSmokeWebglAddon, createTerminalOutputWriter as browserSmokeCreateTerminalOutputWriter, createTerminalRendererController as browserSmokeCreateTerminalRendererController, createTerminalRendererRegistry as browserSmokeCreateTerminalRendererRegistry, createTerminalRendererSurfaceCoordinator as browserSmokeCreateTerminalRendererSurfaceCoordinator } from "./terminalRendererBrowserSmokeBridge";
 
+type BrowserSmokeBridgeContract = { FitAddon: typeof BrowserSmokeFitAddon; Terminal: typeof BrowserSmokeTerminal; WebglAddon: typeof BrowserSmokeWebglAddon; createTerminalOutputWriter: typeof browserSmokeCreateTerminalOutputWriter; createTerminalRendererController: typeof browserSmokeCreateTerminalRendererController; createTerminalRendererRegistry: typeof browserSmokeCreateTerminalRendererRegistry; createTerminalRendererSurfaceCoordinator: typeof browserSmokeCreateTerminalRendererSurfaceCoordinator };
 const mocks = vi.hoisted(() => {
   const terminalInstances: MockTerminal[] = [];
   const fitInstances: MockFitAddon[] = [];
@@ -349,7 +351,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@xterm/xterm", () => ({
-  Terminal: mocks.MockTerminal,
+  Terminal: mocks.MockTerminal as unknown as BrowserSmokeBridgeContract["Terminal"],
 }));
 
 vi.mock("@xterm/addon-fit", () => ({
@@ -788,7 +790,6 @@ afterEach(() => {
 
 
 export {
-  defaultAppSettings,
   installClipboardMock,
   mockElementBox,
   mocks,
