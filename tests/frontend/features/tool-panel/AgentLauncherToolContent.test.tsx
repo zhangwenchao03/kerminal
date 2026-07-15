@@ -7,8 +7,8 @@ import type {
 } from "../../../../src/lib/agentLauncherApi";
 import {
   registerTerminalPaneSession,
-  resetTerminalPaneSessionsForTests,
 } from "../../../../src/features/terminal/terminalSessionRegistry";
+import { unregisterTestTerminalPaneSessions } from "../../support/terminalSessionRegistry.testSupport";
 import { tools } from "../../../../src/features/workspace/workspaceData";
 import { AgentLauncherToolContent } from "../../../../src/features/tool-panel/AgentLauncherToolContent";
 import { ToolPanel } from "../../../../src/features/tool-panel/ToolPanel";
@@ -132,7 +132,7 @@ describe("AgentLauncherToolContent", () => {
       requestedPermission: false,
       sent: true,
     });
-    resetTerminalPaneSessionsForTests();
+    unregisterTestTerminalPaneSessions();
     apiMocks.getExternalAgentWorkspaceStatus.mockResolvedValue(workspaceStatus());
     apiMocks.listAgentSessions.mockResolvedValue({
       diagnostics: [],

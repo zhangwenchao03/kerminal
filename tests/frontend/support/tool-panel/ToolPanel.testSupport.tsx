@@ -2,8 +2,7 @@ import { screen } from "@testing-library/react";
 import { beforeEach, expect, vi } from "vitest";
 import type { Machine, TerminalTab } from "../../../../src/features/workspace/types";
 import type { WorkspaceContextProjection } from "../../../../src/features/workspace/context";
-import { clearServerInfoSnapshotCacheForTest } from "../../../../src/features/tool-panel/ServerInfoToolContent";
-import { resetAgentSendRequestStoreForTests } from "../../../../src/features/agent-workflow/agentSendRequestStore";
+import { consumePendingAgentSendRequest } from "../agentSendRequestStore.testSupport";
 
 const portForwardApiMocks = vi.hoisted(() => ({
   closePortForward: vi.fn(),
@@ -306,8 +305,7 @@ export function assertNoManagedSshAvailabilityNotice() {
 }
 
   beforeEach(() => {
-    clearServerInfoSnapshotCacheForTest();
-    resetAgentSendRequestStoreForTests();
+    consumePendingAgentSendRequest();
     portForwardApiMocks.closePortForward.mockReset();
     portForwardApiMocks.createPortForward.mockReset();
     portForwardApiMocks.listPortForwards.mockReset();

@@ -5,7 +5,6 @@ import {
   markTerminalPaneSessionDisconnected,
   markTerminalPaneSessionReconnected,
   registerTerminalPaneSession,
-  resetTerminalPaneSessionsForTests,
   runSnippetCommand,
   updateTerminalPaneSessionCwd,
   unregisterTerminalPaneSession,
@@ -18,6 +17,7 @@ import {
   clearRemoteSocksAutoInjection,
   setRemoteSocksAutoInjection,
 } from "../../../../src/features/terminal/terminalProxyAutoInjection";
+import { unregisterTestTerminalPaneSessions } from "../../support/terminalSessionRegistry.testSupport";
 
 const writeTerminalMock = vi.hoisted(() => vi.fn());
 const recordCommandHistoryMock = vi.hoisted(() => vi.fn());
@@ -48,7 +48,7 @@ vi.mock("../../../../src/lib/paneSessionTraceApi", () => ({
 
 describe("terminalSessionRegistry", () => {
   beforeEach(() => {
-    resetTerminalPaneSessionsForTests();
+    unregisterTestTerminalPaneSessions();
     writeTerminalMock.mockReset();
     recordCommandHistoryMock.mockReset();
     closeTerminalSessionBindingMock.mockReset();

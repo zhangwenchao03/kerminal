@@ -13,7 +13,6 @@ import {
 } from "../../lib/paneSessionTraceApi";
 import {
   getRemoteSocksAutoInjection,
-  resetRemoteSocksAutoInjectionForTests,
 } from "./terminalProxyAutoInjection";
 
 export interface PaneSessionRecord {
@@ -195,13 +194,6 @@ export function markTerminalPaneSessionReconnected(
     return;
   }
   reportTerminalSessionRegistered(paneId, currentSession);
-}
-
-export function resetTerminalPaneSessionsForTests() {
-  paneSessions.clear();
-  paneConnectionGenerations.clear();
-  remoteSocksInjectionTasks.clear();
-  resetRemoteSocksAutoInjectionForTests();
 }
 
 function reportTerminalSessionRegistered(

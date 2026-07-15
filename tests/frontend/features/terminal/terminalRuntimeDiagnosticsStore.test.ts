@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  collectTerminalRuntimePerformanceSnapshot,
-  registerTerminalRuntimeDiagnosticsPane,
-  resetTerminalRuntimeDiagnosticsForTests,
-} from "../../../../src/features/terminal/terminalRuntimeDiagnosticsStore";
+import { createTerminalRuntimeDiagnosticsStore } from "../../../../src/features/terminal/terminalRuntimeDiagnosticsStore";
 import {
   findRuntimePerformanceSnapshotSensitiveKeys,
 } from "../../../../src/features/terminal/terminalRuntimeDiagnostics";
@@ -16,9 +12,10 @@ import type { TerminalPtyOutputPumpStats } from "../../../../src/lib/terminalApi
 
 describe("terminalRuntimeDiagnosticsStore", () => {
   let sftpDiagnostics: ReturnType<typeof createSftpRuntimeDiagnostics>;
+  let diagnosticsStore: ReturnType<typeof createTerminalRuntimeDiagnosticsStore>;
 
   beforeEach(() => {
-    resetTerminalRuntimeDiagnosticsForTests();
+    diagnosticsStore = createTerminalRuntimeDiagnosticsStore();
     sftpDiagnostics = createSftpRuntimeDiagnostics();
     terminalSuggestionProbeScheduler.reset();
   });
@@ -35,7 +32,7 @@ describe("terminalRuntimeDiagnosticsStore", () => {
       queued: 3,
       total: 8,
     });
-    const unregister = registerTerminalRuntimeDiagnosticsPane({
+    const unregister = diagnosticsStore.register({
       getSnapshot: () => ({
         focused: false,
         historyStats: {
@@ -93,7 +90,7 @@ describe("terminalRuntimeDiagnosticsStore", () => {
       }),
     });
 
-    const snapshot = await collectTerminalRuntimePerformanceSnapshot({
+    const snapshot = await diagnosticsStore.collect({
       generatedAt: "2026-07-02T03:40:00.000Z",
       readManagedSshSnapshot: async () => ({
         activeChannels: 2,

@@ -8,7 +8,7 @@ import {
 import { vi } from "vitest";
 import type { TerminalOutputEvent } from "../../../../src/lib/terminalApi";
 import { defaultAppSettings } from "../../../../src/features/settings/settingsModel";
-import { resetAgentSendRequestStoreForTests } from "../../../../src/features/agent-workflow/agentSendRequestStore";
+import { consumePendingAgentSendRequest } from "../../support/agentSendRequestStore.testSupport";
 import { resetWorkspaceStore } from "../../../../src/features/workspace/workspaceStore";
 import {
   getKerminalShellTestMocks,
@@ -68,7 +68,7 @@ export function resetKerminalShellTestState() {
   document.documentElement.removeAttribute("lang");
   window.localStorage.clear();
   resetWorkspaceStore();
-  resetAgentSendRequestStoreForTests();
+  consumePendingAgentSendRequest();
   windowChromeMocks.frameState = "normal";
   windowChromeMocks.platform = "browser";
   mocks.workspaceSessionApi.loadWorkspaceSessionFile.mockReset();

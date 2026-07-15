@@ -19,6 +19,7 @@ interface UseAgentSendRequestCoordinatorInput {
       session?: AgentTerminalSession;
     },
   ) => boolean;
+  consumeRequest?: (requestId: number) => void;
   onActivateSession: (tabId: string, agentSessionId: string) => void;
   preferredSessionId?: string;
   request: AgentSendRequest | null;
@@ -32,6 +33,7 @@ export function useAgentSendRequestCoordinator({
   activeTab,
   agentScopeId,
   createPreview,
+  consumeRequest = consumeAgentSendRequest,
   onActivateSession,
   preferredSessionId,
   request,
@@ -45,11 +47,11 @@ export function useAgentSendRequestCoordinator({
     }
     const clearDelay = Math.max(0, request.expiresAt - Date.now());
     const clearTimer = window.setTimeout(
-      () => consumeAgentSendRequest(request.id),
+      () => consumeRequest(request.id),
       clearDelay,
     );
     if (!targetPane || targetPane.id !== request.paneId) {
-      consumeAgentSendRequest(request.id);
+      consumeRequest(request.id);
       setActionError({
         recoveryAction: "请回到原终端重新选择要发送的内容。",
         severity: "warning",
@@ -58,7 +60,7 @@ export function useAgentSendRequestCoordinator({
       return () => window.clearTimeout(clearTimer);
     }
     if (request.tabId && activeTab?.id !== request.tabId) {
-      consumeAgentSendRequest(request.id);
+      consumeRequest(request.id);
       setActionError({
         recoveryAction: "请回到原终端标签，重新选择需要发送的内容。",
         severity: "warning",
@@ -87,7 +89,7 @@ export function useAgentSendRequestCoordinator({
       focusedPane: targetPane,
       session,
     });
-    consumeAgentSendRequest(request.id);
+    consumeRequest(request.id);
     if (!created) {
       return () => window.clearTimeout(clearTimer);
     }
@@ -98,6 +100,7 @@ export function useAgentSendRequestCoordinator({
     activeTab,
     agentScopeId,
     createPreview,
+    consumeRequest,
     onActivateSession,
     preferredSessionId,
     request,

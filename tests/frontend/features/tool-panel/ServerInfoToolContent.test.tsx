@@ -2,15 +2,14 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ServerInfoToolContent } from "../../../../src/features/tool-panel/ServerInfoToolContent";
 import {
-  clearServerInfoHistoryStoreForTest,
-  serverInfoHistoryForTarget,
+  createServerInfoHistoryStore,
 } from "../../../../src/features/tool-panel/serverInfoHistoryModel";
 import type { Machine } from "../../../../src/features/workspace/types";
 import type {
   ServerInfoRequest,
   ServerInfoSnapshot,
 } from "../../../../src/lib/serverInfoApi";
-import { clearServerInfoSnapshotCacheForTest } from "../../../../src/features/tool-panel/useServerInfoSnapshot";
+import { createServerInfoSnapshotRuntime } from "../../../../src/features/tool-panel/useServerInfoSnapshot";
 
 const serverInfoApiMock = vi.hoisted(() => ({
   getServerInfoSnapshot: vi.fn(),
@@ -40,17 +39,35 @@ vi.mock("../../../../src/lib/diagnosticsApi", async () => {
 });
 
 describe("ServerInfoToolContent target lifecycle", () => {
+  let historyStore: ReturnType<typeof createServerInfoHistoryStore>;
+  let snapshotRuntime: ReturnType<typeof createServerInfoSnapshotRuntime>;
+
+  function TestServerInfoToolContent({
+    active,
+    selectedMachine,
+  }: {
+    active?: boolean;
+    selectedMachine?: Machine;
+  }) {
+    return (
+      <ServerInfoToolContent
+        active={active}
+        historyStore={historyStore}
+        selectedMachine={selectedMachine}
+        snapshotRuntime={snapshotRuntime}
+      />
+    );
+  }
+
   beforeEach(() => {
-    clearServerInfoSnapshotCacheForTest();
-    clearServerInfoHistoryStoreForTest();
+    historyStore = createServerInfoHistoryStore();
+    snapshotRuntime = createServerInfoSnapshotRuntime();
     serverInfoApiMock.getServerInfoSnapshot.mockReset();
     diagnosticsApiMock.getRuntimeHealthSnapshot.mockReset();
   });
 
   afterEach(() => {
     vi.useRealTimers();
-    clearServerInfoSnapshotCacheForTest();
-    clearServerInfoHistoryStoreForTest();
   });
 
   it("does not write the previous target snapshot into the next target history", async () => {
@@ -63,15 +80,15 @@ describe("ServerInfoToolContent target lifecycle", () => {
     );
 
     const { rerender } = render(
-      <ServerInfoToolContent active selectedMachine={machineA} />,
+      <TestServerInfoToolContent active selectedMachine={machineA} />,
     );
 
     expect(await screen.findByText("host-a")).toBeInTheDocument();
     await waitFor(() => {
-      expect(serverInfoHistoryForTarget("ssh:host-a")).toHaveLength(1);
+      expect(historyStore.forTarget("ssh:host-a")).toHaveLength(1);
     });
 
-    rerender(<ServerInfoToolContent active selectedMachine={machineB} />);
+    rerender(<TestServerInfoToolContent active selectedMachine={machineB} />);
 
     await waitFor(() => {
       expect(serverInfoApiMock.getServerInfoSnapshot).toHaveBeenCalledWith({
@@ -80,7 +97,7 @@ describe("ServerInfoToolContent target lifecycle", () => {
       });
     });
     expect(screen.queryByText("host-a")).not.toBeInTheDocument();
-    expect(serverInfoHistoryForTarget("ssh:host-b")).toEqual([]);
+    expect(historyStore.forTarget("ssh:host-b")).toEqual([]);
 
     await act(async () => {
       targetB.resolve(serverSnapshot(machineB, "2", "host-b"));
@@ -90,7 +107,7 @@ describe("ServerInfoToolContent target lifecycle", () => {
     expect(await screen.findByText("host-b")).toBeInTheDocument();
     await waitFor(() => {
       expect(
-        serverInfoHistoryForTarget("ssh:host-b").map(
+        historyStore.forTarget("ssh:host-b").map(
           (point) => point.capturedAtMs,
         ),
       ).toEqual([2_000]);
@@ -106,7 +123,7 @@ describe("ServerInfoToolContent target lifecycle", () => {
     );
 
     const { rerender } = render(
-      <ServerInfoToolContent active selectedMachine={machineA} />,
+      <TestServerInfoToolContent active selectedMachine={machineA} />,
     );
     await waitFor(() => {
       expect(serverInfoApiMock.getServerInfoSnapshot).toHaveBeenCalledWith({
@@ -115,7 +132,7 @@ describe("ServerInfoToolContent target lifecycle", () => {
       });
     });
 
-    rerender(<ServerInfoToolContent active selectedMachine={machineB} />);
+    rerender(<TestServerInfoToolContent active selectedMachine={machineB} />);
     await waitFor(() => {
       expect(serverInfoApiMock.getServerInfoSnapshot).toHaveBeenCalledWith({
         hostId: machineB.id,
@@ -137,11 +154,11 @@ describe("ServerInfoToolContent target lifecycle", () => {
     expect(screen.queryByText("host-a")).not.toBeInTheDocument();
     expect(screen.getByText("host-b")).toBeInTheDocument();
     expect(
-      serverInfoHistoryForTarget("ssh:host-b").map(
+      historyStore.forTarget("ssh:host-b").map(
         (point) => point.capturedAtMs,
       ),
     ).toEqual([20_000]);
-    expect(serverInfoHistoryForTarget("ssh:host-a")).toEqual([]);
+    expect(historyStore.forTarget("ssh:host-a")).toEqual([]);
   });
 
   it("pauses remote collection while inactive and refreshes the current target on reopen", async () => {
@@ -158,16 +175,16 @@ describe("ServerInfoToolContent target lifecycle", () => {
     );
 
     const { rerender } = render(
-      <ServerInfoToolContent active={false} selectedMachine={machineA} />,
+      <TestServerInfoToolContent active={false} selectedMachine={machineA} />,
     );
     await flushEffects();
     rerender(
-      <ServerInfoToolContent active={false} selectedMachine={machineB} />,
+      <TestServerInfoToolContent active={false} selectedMachine={machineB} />,
     );
     await flushEffects();
     expect(serverInfoApiMock.getServerInfoSnapshot).not.toHaveBeenCalled();
 
-    rerender(<ServerInfoToolContent active selectedMachine={machineB} />);
+    rerender(<TestServerInfoToolContent active selectedMachine={machineB} />);
     await flushEffects();
     expect(serverInfoApiMock.getServerInfoSnapshot).toHaveBeenCalledTimes(1);
     expect(serverInfoApiMock.getServerInfoSnapshot).toHaveBeenLastCalledWith({
@@ -176,7 +193,7 @@ describe("ServerInfoToolContent target lifecycle", () => {
     });
 
     rerender(
-      <ServerInfoToolContent active={false} selectedMachine={machineA} />,
+      <TestServerInfoToolContent active={false} selectedMachine={machineA} />,
     );
     await flushEffects();
     await act(async () => {
@@ -184,7 +201,7 @@ describe("ServerInfoToolContent target lifecycle", () => {
     });
     expect(serverInfoApiMock.getServerInfoSnapshot).toHaveBeenCalledTimes(1);
 
-    rerender(<ServerInfoToolContent active selectedMachine={machineA} />);
+    rerender(<TestServerInfoToolContent active selectedMachine={machineA} />);
     await flushEffects();
     expect(serverInfoApiMock.getServerInfoSnapshot).toHaveBeenCalledTimes(2);
     expect(serverInfoApiMock.getServerInfoSnapshot).toHaveBeenLastCalledWith({
@@ -199,20 +216,20 @@ describe("ServerInfoToolContent target lifecycle", () => {
       () => new Promise(() => {}),
     );
 
-    const { rerender } = render(<ServerInfoToolContent active={false} />);
+    const { rerender } = render(<TestServerInfoToolContent active={false} />);
     await flushEffects();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(9_000);
     });
     expect(diagnosticsApiMock.getRuntimeHealthSnapshot).not.toHaveBeenCalled();
 
-    rerender(<ServerInfoToolContent active />);
+    rerender(<TestServerInfoToolContent active />);
     await flushEffects();
     expect(diagnosticsApiMock.getRuntimeHealthSnapshot).toHaveBeenCalledTimes(
       1,
     );
 
-    rerender(<ServerInfoToolContent active={false} />);
+    rerender(<TestServerInfoToolContent active={false} />);
     await flushEffects();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(9_000);
@@ -221,7 +238,7 @@ describe("ServerInfoToolContent target lifecycle", () => {
       1,
     );
 
-    rerender(<ServerInfoToolContent active />);
+    rerender(<TestServerInfoToolContent active />);
     await flushEffects();
     expect(diagnosticsApiMock.getRuntimeHealthSnapshot).toHaveBeenCalledTimes(
       2,

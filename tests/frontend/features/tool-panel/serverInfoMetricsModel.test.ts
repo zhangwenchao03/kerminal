@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ServerInfoSnapshot } from "../../../../src/lib/serverInfoApi";
 import {
-  cachedNetworkTraffic,
-  clearServerInfoMetricsCacheForTest,
+  createServerInfoMetricsCache,
   coreUsages,
   formatBytes,
   formatTrafficRate,
@@ -11,7 +10,6 @@ import {
   gpuMemoryLabel,
   networkTrafficFromSnapshot,
   serverGpuSummaryValue,
-  updateNetworkTrafficCache,
 } from "../../../../src/features/tool-panel/serverInfoMetricsModel";
 
 function snapshot(
@@ -84,10 +82,10 @@ describe("serverInfoMetricsModel", () => {
     });
   });
 
-  it("updates and clears cached network traffic by target key", () => {
-    clearServerInfoMetricsCacheForTest();
+  it("isolates cached network traffic by cache instance", () => {
+    const cache = createServerInfoMetricsCache();
 
-    updateNetworkTrafficCache(
+    cache.update(
       "prod-api",
       snapshot({
         capturedAt: "10",
@@ -95,7 +93,7 @@ describe("serverInfoMetricsModel", () => {
         networkTxBytes: 200,
       }),
     );
-    const traffic = updateNetworkTrafficCache(
+    const traffic = cache.update(
       "prod-api",
       snapshot({
         capturedAt: "12",
@@ -107,10 +105,9 @@ describe("serverInfoMetricsModel", () => {
     expect(traffic.sampleDurationMs).toBe(2_000);
     expect(traffic.totalRxBytesPerSecond).toBe(100);
     expect(traffic.totalTxBytesPerSecond).toBe(30);
-    expect(cachedNetworkTraffic("prod-api")?.totalRxBytesPerSecond).toBe(100);
+    expect(cache.cached("prod-api")?.totalRxBytesPerSecond).toBe(100);
 
-    clearServerInfoMetricsCacheForTest();
-    expect(cachedNetworkTraffic("prod-api")).toBeNull();
+    expect(createServerInfoMetricsCache().cached("prod-api")).toBeNull();
   });
 
   it("formats byte, rate, uptime, cpu and gpu summaries", () => {

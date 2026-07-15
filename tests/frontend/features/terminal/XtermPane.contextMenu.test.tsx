@@ -10,12 +10,13 @@ import {
 import { XtermPane } from "../../../../src/features/terminal/XtermPane";
 import {
   getAgentSendRequestSnapshot,
-  resetAgentSendRequestStoreForTests,
+  consumeAgentSendRequest,
 } from "../../../../src/features/agent-workflow/agentSendRequestStore";
 
 describe("XtermPane context menu search and logging", () => {
   beforeEach(() => {
-    resetAgentSendRequestStoreForTests();
+    const pendingRequest = getAgentSendRequestSnapshot().request;
+    if (pendingRequest) consumeAgentSendRequest(pendingRequest.id);
   });
 
   it("opens a context menu and copies the current selection", async () => {
@@ -107,7 +108,8 @@ describe("XtermPane context menu search and logging", () => {
       screen.getByText("已将选中内容交给 Agent，等待发送预览"),
     ).toBeInTheDocument();
 
-    resetAgentSendRequestStoreForTests();
+    const pendingRequest = getAgentSendRequestSnapshot().request;
+    if (pendingRequest) consumeAgentSendRequest(pendingRequest.id);
     rerender(
       <XtermPane
         focused

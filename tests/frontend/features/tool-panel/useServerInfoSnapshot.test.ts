@@ -3,8 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServerInfoSnapshot } from "../../../../src/lib/serverInfoApi";
 import type { ServerInfoTargetContext } from "../../../../src/features/tool-panel/serverInfoTargetModel";
 import {
-  clearServerInfoSnapshotCacheForTest,
-  peekServerInfoSnapshot,
+  createServerInfoSnapshotRuntime,
   resolveServerInfoRefreshDelay,
   useServerInfoSnapshot,
 } from "../../../../src/features/tool-panel/useServerInfoSnapshot";
@@ -37,8 +36,10 @@ vi.mock("../../../../src/lib/diagnosticsApi", async () => {
 });
 
 describe("useServerInfoSnapshot", () => {
+  let runtime: ReturnType<typeof createServerInfoSnapshotRuntime>;
+
   beforeEach(() => {
-    clearServerInfoSnapshotCacheForTest();
+    runtime = createServerInfoSnapshotRuntime();
     diagnosticsApiMock.getRuntimeHealthSnapshot.mockReset();
     diagnosticsApiMock.getRuntimeHealthSnapshot.mockResolvedValue(
       runtimeHealthSnapshot(),
@@ -49,11 +50,12 @@ describe("useServerInfoSnapshot", () => {
 
   afterEach(() => {
     vi.useRealTimers();
-    clearServerInfoSnapshotCacheForTest();
   });
 
   it("loads the first snapshot for the selected target", async () => {
-    const { result } = renderHook(() => useServerInfoSnapshot(targetContext));
+    const { result } = renderHook(() =>
+      useServerInfoSnapshot(targetContext, { runtime }),
+    );
 
     await waitFor(() => {
       expect(result.current.snapshot?.hostname).toBe("prod-api-01");
@@ -64,13 +66,13 @@ describe("useServerInfoSnapshot", () => {
       target: { hostId: "prod-api", kind: "ssh" },
     });
     expect(result.current.error).toBeNull();
-    expect(peekServerInfoSnapshot(targetContext.target)?.os).toBe("Linux");
+    expect(runtime.snapshots.get(targetContext.cacheKey)?.os).toBe("Linux");
     expect(serverInfoApiMock.getServerInfoSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it("loads local targets from the runtime health API", async () => {
     const { result } = renderHook(() =>
-      useServerInfoSnapshot(localTargetContext),
+      useServerInfoSnapshot(localTargetContext, { runtime }),
     );
 
     await waitFor(() => {
@@ -103,6 +105,7 @@ describe("useServerInfoSnapshot", () => {
       useServerInfoSnapshot(targetContext, {
         documentVisible,
         hiddenRefreshIntervalMs: 1_000,
+        runtime,
         subscribeToVisibilityChange,
       }),
     );
@@ -132,7 +135,9 @@ describe("useServerInfoSnapshot", () => {
       .mockResolvedValueOnce(serverSnapshot({ capturedAt: "1" }))
       .mockResolvedValueOnce(serverSnapshot({ capturedAt: "manual" }));
 
-    const { result } = renderHook(() => useServerInfoSnapshot(targetContext));
+    const { result } = renderHook(() =>
+      useServerInfoSnapshot(targetContext, { runtime }),
+    );
 
     await waitFor(() => {
       expect(result.current.snapshot?.capturedAt).toBe("1");
@@ -158,7 +163,9 @@ describe("useServerInfoSnapshot", () => {
       new Error("runtime request failed: password=super-secret"),
     );
 
-    const { result } = renderHook(() => useServerInfoSnapshot(targetContext));
+    const { result } = renderHook(() =>
+      useServerInfoSnapshot(targetContext, { runtime }),
+    );
 
     await waitFor(() => {
       expect(result.current.error?.title).toBe("无法读取服务器信息");

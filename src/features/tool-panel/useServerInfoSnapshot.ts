@@ -9,17 +9,29 @@ import {
   type UserFacingMessage,
 } from "../../lib/userFacingMessage";
 import {
-  cachedNetworkTraffic,
-  clearServerInfoMetricsCacheForTest,
+  createServerInfoMetricsCache,
+  type ServerInfoMetricsCache,
   type NetworkTrafficSnapshot,
-  updateNetworkTrafficCache,
 } from "./serverInfoMetricsModel";
 import { localServerInfoSnapshot } from "./localServerInfoModel";
 import type { ServerInfoTargetContext } from "./serverInfoTargetModel";
-import { targetStableId, type RemoteTargetRef } from "../../lib/targetModel";
 
-const serverInfoSnapshotCache = new Map<string, ServerInfoSnapshot>();
-const serverInfoInFlight = new Map<string, Promise<ServerInfoSnapshot>>();
+export interface ServerInfoSnapshotRuntime {
+  inFlight: Map<string, Promise<ServerInfoSnapshot>>;
+  metrics: ServerInfoMetricsCache;
+  snapshots: Map<string, ServerInfoSnapshot>;
+}
+
+/** 创建实例级采集缓存，测试与独立窗口无需清理进程级单例。 */
+export function createServerInfoSnapshotRuntime(): ServerInfoSnapshotRuntime {
+  return {
+    inFlight: new Map(),
+    metrics: createServerInfoMetricsCache(),
+    snapshots: new Map(),
+  };
+}
+
+const defaultServerInfoSnapshotRuntime = createServerInfoSnapshotRuntime();
 const DEFAULT_REFRESH_INTERVAL_MS = 3_000;
 const DEFAULT_HIDDEN_REFRESH_INTERVAL_MS = 30_000;
 
@@ -36,15 +48,10 @@ export const serverInfoRefreshOptions = [
   { label: "5min", value: 300_000 },
 ];
 
-export function clearServerInfoSnapshotCacheForTest() {
-  serverInfoSnapshotCache.clear();
-  serverInfoInFlight.clear();
-  clearServerInfoMetricsCacheForTest();
-}
-
 export interface UseServerInfoSnapshotOptions {
   documentVisible?: () => boolean;
   hiddenRefreshIntervalMs?: number;
+  runtime?: ServerInfoSnapshotRuntime;
   subscribeToVisibilityChange?: VisibilityChangeSubscriber;
 }
 
@@ -66,6 +73,7 @@ export function useServerInfoSnapshot(
   {
     documentVisible = defaultDocumentVisible,
     hiddenRefreshIntervalMs = DEFAULT_HIDDEN_REFRESH_INTERVAL_MS,
+    runtime = defaultServerInfoSnapshotRuntime,
     subscribeToVisibilityChange = defaultSubscribeToVisibilityChange,
   }: UseServerInfoSnapshotOptions = {},
 ) {
@@ -77,15 +85,15 @@ export function useServerInfoSnapshot(
   );
   const [snapshot, setSnapshot] = useState<ServerInfoSnapshot | null>(() =>
     selectedTargetKey
-      ? (serverInfoSnapshotCache.get(selectedTargetKey) ?? null)
+      ? (runtime.snapshots.get(selectedTargetKey) ?? null)
       : null,
   );
   const [networkTraffic, setNetworkTraffic] =
     useState<NetworkTrafficSnapshot | null>(() =>
       selectedTargetKey
-        ? cachedNetworkTraffic(
+        ? runtime.metrics.cached(
             selectedTargetKey,
-            serverInfoSnapshotCache.get(selectedTargetKey),
+            runtime.snapshots.get(selectedTargetKey),
           )
         : null,
     );
@@ -103,11 +111,11 @@ export function useServerInfoSnapshot(
       if (loadingRef.current) {
         return;
       }
-      const cachedSnapshot = serverInfoSnapshotCache.get(targetContext.cacheKey);
+      const cachedSnapshot = runtime.snapshots.get(targetContext.cacheKey);
       if (cachedSnapshot && !options?.force) {
         setSnapshot(cachedSnapshot);
         setNetworkTraffic(
-          cachedNetworkTraffic(targetContext.cacheKey, cachedSnapshot),
+          runtime.metrics.cached(targetContext.cacheKey, cachedSnapshot),
         );
         return;
       }
@@ -118,20 +126,20 @@ export function useServerInfoSnapshot(
       setLoading(true);
       setError(null);
       try {
-        let snapshotRequest = serverInfoInFlight.get(targetContext.cacheKey);
+        let snapshotRequest = runtime.inFlight.get(targetContext.cacheKey);
         if (!snapshotRequest) {
           snapshotRequest = loadTargetSnapshot(targetContext).finally(() => {
-            serverInfoInFlight.delete(targetContext.cacheKey);
+            runtime.inFlight.delete(targetContext.cacheKey);
           });
-          serverInfoInFlight.set(targetContext.cacheKey, snapshotRequest);
+          runtime.inFlight.set(targetContext.cacheKey, snapshotRequest);
         }
         const nextSnapshot = await snapshotRequest;
         if (requestIdRef.current === requestId) {
-          const nextNetworkTraffic = updateNetworkTrafficCache(
+          const nextNetworkTraffic = runtime.metrics.update(
             targetContext.cacheKey,
             nextSnapshot,
           );
-          serverInfoSnapshotCache.set(targetContext.cacheKey, nextSnapshot);
+          runtime.snapshots.set(targetContext.cacheKey, nextSnapshot);
           setSnapshot(nextSnapshot);
           setNetworkTraffic(nextNetworkTraffic);
         }
@@ -156,16 +164,16 @@ export function useServerInfoSnapshot(
         }
       }
     },
-    [targetContext],
+    [runtime, targetContext],
   );
 
   useEffect(() => {
     setError(null);
     if (selectedTargetKey) {
-      const cachedSnapshot = serverInfoSnapshotCache.get(selectedTargetKey) ?? null;
+      const cachedSnapshot = runtime.snapshots.get(selectedTargetKey) ?? null;
       setSnapshot(cachedSnapshot);
       setNetworkTraffic(
-        cachedNetworkTraffic(selectedTargetKey, cachedSnapshot ?? undefined),
+        runtime.metrics.cached(selectedTargetKey, cachedSnapshot ?? undefined),
       );
       setLoading(false);
       if (!cachedSnapshot) {
@@ -180,7 +188,7 @@ export function useServerInfoSnapshot(
       requestIdRef.current += 1;
       loadingRef.current = false;
     };
-  }, [refresh, selectedTargetKey]);
+  }, [refresh, runtime, selectedTargetKey]);
 
   useEffect(() => {
     if (!selectedTargetKey || refreshIntervalMs <= 0) {
@@ -263,17 +271,6 @@ export function useServerInfoSnapshot(
     setRefreshIntervalMs,
     snapshot,
   };
-}
-
-/**
- * 只读查看其它工具已经采集的目标信息；不会创建请求或触发远程探测。
- */
-export function peekServerInfoSnapshot(
-  target: RemoteTargetRef | undefined,
-): ServerInfoSnapshot | null {
-  return target
-    ? (serverInfoSnapshotCache.get(targetStableId(target)) ?? null)
-    : null;
 }
 
 /** 按目标边界选择只读采集源，本机不经过只支持 SSH/容器的远程 IPC。 */

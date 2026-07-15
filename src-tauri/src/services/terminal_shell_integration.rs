@@ -135,7 +135,8 @@ impl ShellIntegrationCatalog {
         }
     }
 
-    pub fn for_test(platform: ShellIntegrationPlatform, entries: Vec<AllowedShell>) -> Self {
+    /// 从显式平台与允许列表构造目录，供受控运行时和集成测试注入发现结果。
+    pub fn new(platform: ShellIntegrationPlatform, entries: Vec<AllowedShell>) -> Self {
         Self { platform, entries }
     }
 

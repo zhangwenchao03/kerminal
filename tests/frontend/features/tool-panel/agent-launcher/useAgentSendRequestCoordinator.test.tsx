@@ -1,9 +1,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  getAgentSendRequestSnapshot,
-  requestAgentSend,
-  resetAgentSendRequestStoreForTests,
+  createAgentSendRequestStore,
+  type AgentSendRequestStore,
   useAgentSendRequestSnapshot,
 } from "../../../../../src/features/agent-workflow/agentSendRequestStore";
 import { useAgentSendRequestCoordinator } from "../../../../../src/features/tool-panel/agent-launcher/useAgentSendRequestCoordinator";
@@ -39,8 +38,10 @@ const session: AgentTerminalSession = {
 };
 
 describe("useAgentSendRequestCoordinator", () => {
+  let store: AgentSendRequestStore;
+
   beforeEach(() => {
-    resetAgentSendRequestStoreForTests();
+    store = createAgentSendRequestStore();
   });
 
   it("activates the matching session and creates a preview", async () => {
@@ -49,11 +50,12 @@ describe("useAgentSendRequestCoordinator", () => {
     const setActionError = vi.fn();
 
     renderHook(() => {
-      const request = useAgentSendRequestSnapshot().request;
+      const request = useAgentSendRequestSnapshot(store).request;
       useAgentSendRequestCoordinator({
         activeTab,
         agentScopeId: "tab-1",
         createPreview,
+        consumeRequest: store.consume,
         onActivateSession,
         request,
         sessions: [session],
@@ -63,7 +65,7 @@ describe("useAgentSendRequestCoordinator", () => {
     });
 
     act(() => {
-      requestAgentSend({
+      store.request({
         paneId: "pane-1",
         source: "selection",
         tabId: "tab-1",
@@ -81,7 +83,7 @@ describe("useAgentSendRequestCoordinator", () => {
       "tab-1",
       "agent-session-1",
     );
-    expect(getAgentSendRequestSnapshot().request).toBeNull();
+    expect(store.getSnapshot().request).toBeNull();
   });
 
   it("优先把内容发送到当前正在查看的 Agent 会话", async () => {
@@ -97,11 +99,12 @@ describe("useAgentSendRequestCoordinator", () => {
     const onActivateSession = vi.fn();
 
     renderHook(() => {
-      const request = useAgentSendRequestSnapshot().request;
+      const request = useAgentSendRequestSnapshot(store).request;
       useAgentSendRequestCoordinator({
         activeTab,
         agentScopeId: "tab-1",
         createPreview,
+        consumeRequest: store.consume,
         onActivateSession,
         preferredSessionId: currentSession.agentSessionId,
         request,
@@ -112,7 +115,7 @@ describe("useAgentSendRequestCoordinator", () => {
     });
 
     act(() => {
-      requestAgentSend({
+      store.request({
         paneId: "pane-1",
         source: "selection",
         tabId: "tab-1",
@@ -136,11 +139,12 @@ describe("useAgentSendRequestCoordinator", () => {
     const onActivateSession = vi.fn();
 
     renderHook(() => {
-      const request = useAgentSendRequestSnapshot().request;
+      const request = useAgentSendRequestSnapshot(store).request;
       useAgentSendRequestCoordinator({
         activeTab,
         agentScopeId: "tab-1",
         createPreview,
+        consumeRequest: store.consume,
         onActivateSession,
         request,
         sessions: [
@@ -153,7 +157,7 @@ describe("useAgentSendRequestCoordinator", () => {
     });
 
     act(() => {
-      requestAgentSend({
+      store.request({
         paneId: "pane-1",
         source: "context",
         tabId: "tab-1",
@@ -161,7 +165,7 @@ describe("useAgentSendRequestCoordinator", () => {
     });
 
     await waitFor(() =>
-      expect(getAgentSendRequestSnapshot().request).not.toBeNull(),
+      expect(store.getSnapshot().request).not.toBeNull(),
     );
     expect(createPreview).not.toHaveBeenCalled();
     expect(onActivateSession).not.toHaveBeenCalled();
@@ -171,11 +175,12 @@ describe("useAgentSendRequestCoordinator", () => {
     const setActionError = vi.fn();
 
     renderHook(() => {
-      const request = useAgentSendRequestSnapshot().request;
+      const request = useAgentSendRequestSnapshot(store).request;
       useAgentSendRequestCoordinator({
         activeTab,
         agentScopeId: "tab-1",
         createPreview: vi.fn(() => true),
+        consumeRequest: store.consume,
         onActivateSession: vi.fn(),
         request,
         sessions: [],
@@ -185,7 +190,7 @@ describe("useAgentSendRequestCoordinator", () => {
     });
 
     act(() => {
-      requestAgentSend({
+      store.request({
         paneId: "pane-1",
         source: "context",
         tabId: "tab-1",
@@ -193,7 +198,7 @@ describe("useAgentSendRequestCoordinator", () => {
     });
 
     await waitFor(() => expect(setActionError).toHaveBeenCalledWith(null));
-    expect(getAgentSendRequestSnapshot().request).toMatchObject({
+    expect(store.getSnapshot().request).toMatchObject({
       paneId: "pane-1",
       source: "context",
       tabId: "tab-1",
@@ -211,11 +216,12 @@ describe("useAgentSendRequestCoordinator", () => {
     };
 
     renderHook(() => {
-      const request = useAgentSendRequestSnapshot().request;
+      const request = useAgentSendRequestSnapshot(store).request;
       useAgentSendRequestCoordinator({
         activeTab,
         agentScopeId: "tab-1",
         createPreview,
+        consumeRequest: store.consume,
         onActivateSession,
         request,
         sessions: [unboundSession],
@@ -225,7 +231,7 @@ describe("useAgentSendRequestCoordinator", () => {
     });
 
     act(() => {
-      requestAgentSend({
+      store.request({
         paneId: "pane-1",
         source: "selection",
         tabId: "tab-1",
@@ -235,7 +241,7 @@ describe("useAgentSendRequestCoordinator", () => {
     await waitFor(() => expect(setActionError).toHaveBeenCalledWith(null));
     expect(createPreview).not.toHaveBeenCalled();
     expect(onActivateSession).not.toHaveBeenCalled();
-    expect(getAgentSendRequestSnapshot().request).not.toBeNull();
+    expect(store.getSnapshot().request).not.toBeNull();
   });
 
   it("cancels the request when the user leaves its source tab", async () => {
@@ -245,11 +251,12 @@ describe("useAgentSendRequestCoordinator", () => {
     const otherTab = { id: "tab-2", title: "其他终端" } as TerminalTab;
 
     renderHook(() => {
-      const request = useAgentSendRequestSnapshot().request;
+      const request = useAgentSendRequestSnapshot(store).request;
       useAgentSendRequestCoordinator({
         activeTab: otherTab,
         agentScopeId: "tab-2",
         createPreview,
+        consumeRequest: store.consume,
         onActivateSession,
         request,
         sessions: [session],
@@ -259,7 +266,7 @@ describe("useAgentSendRequestCoordinator", () => {
     });
 
     act(() => {
-      requestAgentSend({
+      store.request({
         paneId: "pane-1",
         source: "context",
         tabId: "tab-1",
@@ -275,7 +282,7 @@ describe("useAgentSendRequestCoordinator", () => {
     });
     expect(createPreview).not.toHaveBeenCalled();
     expect(onActivateSession).not.toHaveBeenCalled();
-    expect(getAgentSendRequestSnapshot().request).toBeNull();
+    expect(store.getSnapshot().request).toBeNull();
   });
 
   it("keeps preview failures visible instead of opening the terminal view", async () => {
@@ -283,11 +290,12 @@ describe("useAgentSendRequestCoordinator", () => {
     const onActivateSession = vi.fn();
 
     renderHook(() => {
-      const request = useAgentSendRequestSnapshot().request;
+      const request = useAgentSendRequestSnapshot(store).request;
       useAgentSendRequestCoordinator({
         activeTab,
         agentScopeId: "tab-1",
         createPreview,
+        consumeRequest: store.consume,
         onActivateSession,
         request,
         sessions: [session],
@@ -297,7 +305,7 @@ describe("useAgentSendRequestCoordinator", () => {
     });
 
     act(() => {
-      requestAgentSend({
+      store.request({
         paneId: "pane-1",
         source: "selection",
         tabId: "tab-1",
@@ -308,6 +316,6 @@ describe("useAgentSendRequestCoordinator", () => {
       expect(createPreview).toHaveBeenCalled();
     });
     expect(onActivateSession).not.toHaveBeenCalled();
-    expect(getAgentSendRequestSnapshot().request).toBeNull();
+    expect(store.getSnapshot().request).toBeNull();
   });
 });

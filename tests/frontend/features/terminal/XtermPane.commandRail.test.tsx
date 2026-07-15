@@ -10,14 +10,15 @@ import { mocks, setTerminalBufferLines } from "../../support/terminal/XtermPane.
 import { XtermPane } from "../../../../src/features/terminal/XtermPane";
 import {
   getAgentSendRequestSnapshot,
-  resetAgentSendRequestStoreForTests,
+  consumeAgentSendRequest,
 } from "../../../../src/features/agent-workflow/agentSendRequestStore";
 import { getTerminalPaneSessionRecord } from "../../../../src/features/terminal/terminalSessionRegistry";
 import { readXtermPanePromptSource } from "../../../../src/features/terminal/XtermPane.promptSourceRegistry";
 
 describe("XtermPane command rail boundaries", () => {
   beforeEach(() => {
-    resetAgentSendRequestStoreForTests();
+    const pendingRequest = getAgentSendRequestSnapshot().request;
+    if (pendingRequest) consumeAgentSendRequest(pendingRequest.id);
   });
 
   it("copies command block text through the desktop clipboard facade", async () => {

@@ -26,12 +26,45 @@ export interface NetworkTrafficSnapshot {
   totalTxBytesPerSecond?: number;
 }
 
-const serverInfoNetworkSampleCache = new Map<string, NetworkTrafficSample>();
-const serverInfoNetworkRateCache = new Map<string, NetworkTrafficSnapshot>();
+export interface ServerInfoMetricsCache {
+  cached(
+    targetKey: string,
+    cachedSnapshot?: ServerInfoSnapshot,
+  ): NetworkTrafficSnapshot | null;
+  update(
+    targetKey: string,
+    snapshot: ServerInfoSnapshot,
+  ): NetworkTrafficSnapshot;
+}
 
-export function clearServerInfoMetricsCacheForTest() {
-  serverInfoNetworkSampleCache.clear();
-  serverInfoNetworkRateCache.clear();
+/** 创建实例级网络指标缓存，隔离窗口、目标和测试生命周期。 */
+export function createServerInfoMetricsCache(): ServerInfoMetricsCache {
+  const sampleCache = new Map<string, NetworkTrafficSample>();
+  const rateCache = new Map<string, NetworkTrafficSnapshot>();
+  return {
+    cached(targetKey, cachedSnapshot) {
+      return (
+        rateCache.get(targetKey) ??
+        (cachedSnapshot ? networkTrafficFromSnapshot(cachedSnapshot) : null)
+      );
+    },
+    update(targetKey, snapshot) {
+      const receivedAtMs = Date.now();
+      const capturedAtMs = capturedAtMilliseconds(snapshot);
+      const previous = sampleCache.get(targetKey);
+      const sampleDurationMs = previous
+        ? networkSampleDurationMs(previous, capturedAtMs, receivedAtMs)
+        : undefined;
+      const traffic = networkTrafficFromSnapshot(
+        snapshot,
+        previous?.snapshot,
+        sampleDurationMs,
+      );
+      sampleCache.set(targetKey, { capturedAtMs, receivedAtMs, snapshot });
+      rateCache.set(targetKey, traffic);
+      return traffic;
+    },
+  };
 }
 
 export function coreUsages(snapshot: ServerInfoSnapshot) {
@@ -82,42 +115,6 @@ export function percentOf(used?: number | null, total?: number | null) {
     return undefined;
   }
   return (used / total) * 100;
-}
-
-export function cachedNetworkTraffic(
-  targetKey: string,
-  cachedSnapshot?: ServerInfoSnapshot,
-) {
-  const cachedTraffic = serverInfoNetworkRateCache.get(targetKey);
-  if (cachedTraffic) {
-    return cachedTraffic;
-  }
-  return cachedSnapshot ? networkTrafficFromSnapshot(cachedSnapshot) : null;
-}
-
-export function updateNetworkTrafficCache(
-  targetKey: string,
-  snapshot: ServerInfoSnapshot,
-) {
-  const receivedAtMs = Date.now();
-  const capturedAtMs = capturedAtMilliseconds(snapshot);
-  const previous = serverInfoNetworkSampleCache.get(targetKey);
-  const sampleDurationMs = previous
-    ? networkSampleDurationMs(previous, capturedAtMs, receivedAtMs)
-    : undefined;
-  const traffic = networkTrafficFromSnapshot(
-    snapshot,
-    previous?.snapshot,
-    sampleDurationMs,
-  );
-
-  serverInfoNetworkSampleCache.set(targetKey, {
-    capturedAtMs,
-    receivedAtMs,
-    snapshot,
-  });
-  serverInfoNetworkRateCache.set(targetKey, traffic);
-  return traffic;
 }
 
 export function networkTrafficFromSnapshot(

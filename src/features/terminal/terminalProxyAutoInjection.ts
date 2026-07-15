@@ -44,11 +44,6 @@ export function clearRemoteSocksAutoInjection(
   return true;
 }
 
-export function resetRemoteSocksAutoInjectionForTests() {
-  injectionsByHost.clear();
-  clearPersistedInjections();
-}
-
 function loadPersistedInjections() {
   const map = new Map<string, RemoteSocksAutoInjection>();
   const storage = resolveStorage();
@@ -91,19 +86,6 @@ function persistInjections() {
     );
   } catch {
     // Persistence is best-effort. The in-memory toggle still works for this run.
-  }
-}
-
-function clearPersistedInjections() {
-  const storage = resolveStorage();
-  if (!storage) {
-    return;
-  }
-
-  try {
-    storage.removeItem(STORAGE_KEY);
-  } catch {
-    // Ignore unavailable or blocked storage in tests and restricted webviews.
   }
 }
 

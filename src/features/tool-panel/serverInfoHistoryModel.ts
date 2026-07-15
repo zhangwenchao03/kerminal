@@ -12,43 +12,46 @@ export interface ServerInfoHistoryPoint {
 
 const MAX_HISTORY_POINTS = 60;
 const MAX_HISTORY_TARGETS = 8;
-const targetHistoryStore = new Map<string, ServerInfoHistoryPoint[]>();
 
-/** 返回目标最近一次保留的历史，并将其提升为最近使用项。 */
-export function serverInfoHistoryForTarget(targetKey: string) {
-  const history = targetHistoryStore.get(targetKey) ?? [];
-  if (targetHistoryStore.has(targetKey)) {
-    targetHistoryStore.delete(targetKey);
-    targetHistoryStore.set(targetKey, history);
-  }
-  return history;
+export interface ServerInfoHistoryStore {
+  append(
+    targetKey: string,
+    snapshot: ServerInfoSnapshot,
+    networkTraffic: NetworkTrafficSnapshot | null,
+  ): ServerInfoHistoryPoint[];
+  forTarget(targetKey: string): ServerInfoHistoryPoint[];
 }
 
-/** 追加目标历史并按 LRU 限制目标数量，切换服务器后仍可恢复趋势。 */
-export function appendServerInfoTargetHistory(
-  targetKey: string,
-  snapshot: ServerInfoSnapshot,
-  networkTraffic: NetworkTrafficSnapshot | null,
-) {
-  const history = appendServerInfoHistory(
-    serverInfoHistoryForTarget(targetKey),
-    snapshot,
-    networkTraffic,
-  );
-  targetHistoryStore.delete(targetKey);
-  targetHistoryStore.set(targetKey, history);
-  while (targetHistoryStore.size > MAX_HISTORY_TARGETS) {
-    const oldestKey = targetHistoryStore.keys().next().value;
-    if (oldestKey === undefined) {
-      break;
+/** 创建实例级历史仓储，使窗口与测试按生命周期隔离趋势数据。 */
+export function createServerInfoHistoryStore(): ServerInfoHistoryStore {
+  const historyByTarget = new Map<string, ServerInfoHistoryPoint[]>();
+  const forTarget = (targetKey: string) => {
+    const history = historyByTarget.get(targetKey) ?? [];
+    if (historyByTarget.has(targetKey)) {
+      historyByTarget.delete(targetKey);
+      historyByTarget.set(targetKey, history);
     }
-    targetHistoryStore.delete(oldestKey);
-  }
-  return history;
-}
+    return history;
+  };
 
-export function clearServerInfoHistoryStoreForTest() {
-  targetHistoryStore.clear();
+  return {
+    append(targetKey, snapshot, networkTraffic) {
+      const history = appendServerInfoHistory(
+        forTarget(targetKey),
+        snapshot,
+        networkTraffic,
+      );
+      historyByTarget.delete(targetKey);
+      historyByTarget.set(targetKey, history);
+      while (historyByTarget.size > MAX_HISTORY_TARGETS) {
+        const oldestKey = historyByTarget.keys().next().value;
+        if (oldestKey === undefined) break;
+        historyByTarget.delete(oldestKey);
+      }
+      return history;
+    },
+    forTarget,
+  };
 }
 
 /**

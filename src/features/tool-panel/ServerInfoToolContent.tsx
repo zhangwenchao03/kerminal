@@ -24,9 +24,9 @@ import {
   type NetworkInterfaceFilter,
 } from "./serverInfoDashboardModel";
 import {
-  appendServerInfoTargetHistory,
+  createServerInfoHistoryStore,
   historySeries,
-  serverInfoHistoryForTarget,
+  type ServerInfoHistoryStore,
   type ServerInfoHistoryPoint,
 } from "./serverInfoHistoryModel";
 import { resolveServerInfoHealth } from "./serverInfoHealthPolicy";
@@ -50,13 +50,14 @@ import {
 import { serverInfoTargetContext } from "./serverInfoTargetModel";
 import {
   serverInfoRefreshOptions,
+  type ServerInfoSnapshotRuntime,
   useServerInfoSnapshot,
 } from "./useServerInfoSnapshot";
 
-export { clearServerInfoSnapshotCacheForTest } from "./useServerInfoSnapshot";
-
 interface ServerInfoToolContentProps {
   active?: boolean;
+  historyStore?: ServerInfoHistoryStore;
+  snapshotRuntime?: ServerInfoSnapshotRuntime;
   selectedMachine?: Machine;
 }
 
@@ -74,8 +75,12 @@ const views: Array<{ id: MonitorView; label: string }> = [
   { id: "processes", label: "进程" },
 ];
 
+const defaultHistoryStore = createServerInfoHistoryStore();
+
 export function ServerInfoToolContent({
   active = true,
+  historyStore = defaultHistoryStore,
+  snapshotRuntime,
   selectedMachine,
 }: ServerInfoToolContentProps) {
   const targetContext = useMemo(
@@ -87,7 +92,7 @@ export function ServerInfoToolContent({
   const [activeView, setActiveView] = useState<MonitorView>("overview");
   const [snapshotTargetKey, setSnapshotTargetKey] = useState(activeTargetKey);
   const [historyState, setHistoryState] = useState<TargetHistoryState>(() => ({
-    points: activeTargetKey ? serverInfoHistoryForTarget(activeTargetKey) : [],
+    points: activeTargetKey ? historyStore.forTarget(activeTargetKey) : [],
     targetKey: activeTargetKey,
   }));
   const {
@@ -98,7 +103,7 @@ export function ServerInfoToolContent({
     refreshIntervalMs,
     setRefreshIntervalMs,
     snapshot: sourceSnapshot,
-  } = useServerInfoSnapshot(activeTargetContext);
+  } = useServerInfoSnapshot(activeTargetContext, { runtime: snapshotRuntime });
 
   // hook 的目标切换依赖 effect，切换后的首个 render 仍可能带着旧目标 state。
   // 只有 hook 已完成目标交接后，才允许快照、网络速率和错误进入当前视图。
@@ -126,25 +131,25 @@ export function ServerInfoToolContent({
   useEffect(() => {
     setHistoryState({
       points: activeTargetKey
-        ? serverInfoHistoryForTarget(activeTargetKey)
+        ? historyStore.forTarget(activeTargetKey)
         : [],
       targetKey: activeTargetKey,
     });
-  }, [activeTargetKey]);
+  }, [activeTargetKey, historyStore]);
 
   useEffect(() => {
     if (!snapshot || !activeTargetKey) {
       return;
     }
     setHistoryState({
-      points: appendServerInfoTargetHistory(
+      points: historyStore.append(
         activeTargetKey,
         snapshot,
         networkTraffic,
       ),
       targetKey: activeTargetKey,
     });
-  }, [activeTargetKey, networkTraffic, snapshot]);
+  }, [activeTargetKey, historyStore, networkTraffic, snapshot]);
 
   if (!active) {
     return null;

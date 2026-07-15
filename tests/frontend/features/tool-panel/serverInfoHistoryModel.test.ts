@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { ServerInfoSnapshot } from "../../../../src/lib/serverInfoApi";
 import {
-  appendServerInfoTargetHistory,
   appendServerInfoHistory,
-  clearServerInfoHistoryStoreForTest,
+  createServerInfoHistoryStore,
   historySeries,
-  serverInfoHistoryForTarget,
 } from "../../../../src/features/tool-panel/serverInfoHistoryModel";
 
 const snapshot = (
@@ -23,18 +21,18 @@ const snapshot = (
 
 describe("serverInfoHistoryModel", () => {
   it("preserves histories per target and evicts least recently used targets", () => {
-    clearServerInfoHistoryStoreForTest();
-    appendServerInfoTargetHistory("host-a", snapshot("1"), null);
+    const store = createServerInfoHistoryStore();
+    store.append("host-a", snapshot("1"), null);
     for (let index = 0; index < 8; index += 1) {
-      appendServerInfoTargetHistory(
+      store.append(
         `host-${index}`,
         snapshot(String(index + 2)),
         null,
       );
     }
 
-    expect(serverInfoHistoryForTarget("host-a")).toEqual([]);
-    expect(serverInfoHistoryForTarget("host-7")).toHaveLength(1);
+    expect(store.forTarget("host-a")).toEqual([]);
+    expect(store.forTarget("host-7")).toHaveLength(1);
   });
   it("deduplicates samples and keeps a bounded chronological history", () => {
     let history = appendServerInfoHistory(
