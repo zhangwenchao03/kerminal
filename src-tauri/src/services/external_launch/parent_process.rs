@@ -2,8 +2,11 @@
 //!
 //! @author kongweiguang
 
-use std::{path::Path, time::Duration};
+#[cfg(windows)]
+use std::path::Path;
+use std::time::Duration;
 
+#[cfg(windows)]
 const PARENT_DISCOVERY_TIMEOUT: Duration = Duration::from_millis(1_500);
 const PARENT_WORKER_TIMEOUT: Duration = Duration::from_secs(4);
 
@@ -138,6 +141,7 @@ fn looks_like_bhost_command_line(value: &str) -> bool {
         .contains("bhmultauth.exe")
 }
 
+#[cfg(windows)]
 fn powershell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
