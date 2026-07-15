@@ -1289,24 +1289,6 @@
       "targetTask": "TASK-022/TASK-072"
     },
     {
-      "file": "src/features/terminal/terminalSessionRegistry.ts",
-      "name": "listTerminalPaneSessionRecords",
-      "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/terminal/terminalSessionRegistry.ts",
-      "name": "PaneSessionListRecord",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
       "file": "src/features/terminal/terminalSessionResizeCoordinator.ts",
       "name": "TerminalSessionDimensions",
       "type": "types",
