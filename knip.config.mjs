@@ -7,6 +7,7 @@ const config = {
     "src/**/*.test.{ts,tsx}",
     "tests/frontend/setup.ts",
     "tests/frontend/**/*.test.{ts,tsx}",
+    "tests/frontend/support/terminal/terminalRendererBrowserSmokeBridge.ts",
     "tests/scripts/*.test.mjs",
     "scripts/*.mjs",
     "eslint.config.mjs",
