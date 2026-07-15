@@ -222,7 +222,6 @@ export function XtermPane({
   );
   const runtimeInstallParamsRef = useRef({ args, env, target, terminalAppearance, terminalFontWeight, terminalTheme });
   runtimeInstallParamsRef.current = { args, env, target, terminalAppearance, terminalFontWeight, terminalTheme };
-
   const syncCommandBlockViews = useCallback(() => {
     if (!shellAssistEnabled) {
       setCommandBlockViews((current) => (current.length === 0 ? current : []));
@@ -332,14 +331,12 @@ export function XtermPane({
   useEffect(() => { onOutputHistoryChangeRef.current = onOutputHistoryChange; }, [onOutputHistoryChange]);
   useEffect(() => { onSessionFinishedRef.current = onSessionFinished; }, [onSessionFinished]);
   useEffect(() => { onTerminalDimensionsChangeRef.current = onTerminalDimensionsChange; }, [onTerminalDimensionsChange]);
-
   useEffect(() => {
     if (resolveInitialOutputHistory) {
       return;
     }
     outputHistoryRef.current = outputHistory;
   }, [outputHistory, resolveInitialOutputHistory]);
-
   useXtermPanePromptBridge({
     commandBlocksRef,
     connectionState,
@@ -348,11 +345,9 @@ export function XtermPane({
     sessionIdRef,
     terminalRef,
   });
-
   useEffect(() => {
     ghostSuggestionRef.current = ghostSuggestion;
   }, [ghostSuggestion]);
-
   useEffect(
     () =>
       installXtermPaneRuntime({
