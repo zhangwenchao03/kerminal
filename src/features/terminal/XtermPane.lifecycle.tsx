@@ -46,10 +46,6 @@ import {
   type ConnectionState,
   type TerminalGhostSuggestion,
 } from "./XtermPane.helpers";
-export {
-  collectCurrentDirOscSequences,
-  collectSubmittedCommands,
-} from "./XtermPane.helpers";
 import { installXtermPaneRuntime } from "./XtermPane.runtime";
 import { type XtermPaneActivityRuntime } from "./XtermPane.activityRuntime";
 import {
@@ -74,11 +70,6 @@ import {
 } from "./XtermPane.view";
 import type { XtermPaneProps } from "./XtermPane.types";
 
-export type {
-  XtermPaneDimensions,
-  XtermPaneInputRequest,
-  XtermPaneSessionFinishedEvent,
-} from "./XtermPane.types";
 const TERMINAL_CLEAR_SCREEN_INPUT = "\x0c";
 const TERMINAL_FRONTEND_CLEAR_SCREEN_SEQUENCE = "\x1b[H\x1b[2J\x1b[3J";
 export function XtermPane({

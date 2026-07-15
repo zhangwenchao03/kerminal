@@ -5,6 +5,10 @@ export const DEFAULT_MAX_RECOVERY_ELAPSED_MS = 30_000;
 export const DEFAULT_RECOVERY_RETRY_DELAYS_MS = [250, 1_000, 5_000] as const;
 export const DEFAULT_RECOVERY_JITTER_RATIO = 0.1;
 
+export function shouldAttemptGpuRenderer(mode: TerminalRendererType): boolean {
+  return mode === "auto" || mode === "gpu";
+}
+
 export function normalizeRetryDelays(delays: readonly number[]) {
   if (delays.length === 0) {
     return [0];
@@ -49,3 +53,4 @@ export function validateRatio(name: string, value: number) {
     throw new RangeError(`${name} must be between 0 and 1`);
   }
 }
+import type { TerminalRendererType } from "../settings/contracts/index";

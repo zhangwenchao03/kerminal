@@ -1,8 +1,11 @@
 export {
   XtermPane,
+} from "./XtermPane.lifecycle";
+export {
   collectCurrentDirOscSequences,
   collectSubmittedCommands,
-  type XtermPaneDimensions,
-  type XtermPaneInputRequest,
-  type XtermPaneSessionFinishedEvent,
-} from "./XtermPane.lifecycle";
+} from "./XtermPane.helpers";
+export type {
+  XtermPaneDimensions,
+  XtermPaneInputRequest,
+} from "./XtermPane.types";

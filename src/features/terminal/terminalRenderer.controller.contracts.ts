@@ -52,7 +52,7 @@ export interface TerminalRendererTerminal {
   rows: number;
 }
 
-export interface TerminalRendererLogger {
+interface TerminalRendererLogger {
   warn(message: string, error?: unknown): void;
 }
 

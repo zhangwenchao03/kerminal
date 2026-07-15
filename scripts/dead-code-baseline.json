@@ -911,15 +911,6 @@
       "targetTask": "TASK-022/TASK-072"
     },
     {
-      "file": "src/features/terminal/terminalRenderer.ts",
-      "name": "TerminalRendererLogger",
-      "type": "types",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
       "file": "src/features/terminal/terminalRendererCompatibility.ts",
       "name": "XtermWebglCompatibilityCapabilities",
       "type": "types",
@@ -1418,15 +1409,6 @@
       "file": "src/features/terminal/XtermPane.helpers.ts",
       "name": "terminalInlineSuggestionAllowsRemoteProbe",
       "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/terminal/XtermPane.tsx",
-      "name": "XtermPaneSessionFinishedEvent",
-      "type": "types",
       "count": 1,
       "deadline": "before TASK-080",
       "owner": "frontend-architecture",

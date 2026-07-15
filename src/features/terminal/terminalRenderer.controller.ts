@@ -23,6 +23,7 @@ import {
   DEFAULT_RECOVERY_RETRY_DELAYS_MS,
   jitterDelay,
   normalizeRetryDelays,
+  shouldAttemptGpuRenderer,
   validatePositiveDuration,
   validatePositiveInteger,
   validateRatio,
@@ -41,14 +42,6 @@ import {
   type ActiveWebglRenderer,
   type WebglAddonLike,
 } from "./terminalRenderer.webglResources";
-
-export type {
-  TerminalRendererController,
-  TerminalRendererDiagnostics,
-  TerminalRendererLogger,
-  TerminalRendererState,
-  TerminalRendererTerminal,
-} from "./terminalRenderer.controller.contracts";
 
 type TimerHandle = TerminalRendererTimerHandle;
 type GpuOperationKind = "attach" | "recovery";
@@ -302,8 +295,6 @@ export function createTerminalRendererController({
     setFallbackReason(reason);
   };
 
-  let runGpuOperation: (operation: GpuOperation) => void;
-
   const scheduleRecoveryAttempt = (
     operation: GpuOperation | undefined,
     attempt: number,
@@ -463,7 +454,7 @@ export function createTerminalRendererController({
     scheduleRecoveryAttempt(operation, 1);
   };
 
-  runGpuOperation = (operation) => {
+  function runGpuOperation(operation: GpuOperation) {
     if (!canCommit(operation.token) || disposed) {
       return;
     }
@@ -552,7 +543,7 @@ export function createTerminalRendererController({
         }
         handleOperationFailure(operation, "import-failed", error);
       });
-  };
+  }
 
   const beginAttach = (
     reason: "manual-retry" | "request-gpu",
@@ -770,10 +761,6 @@ export function createTerminalRendererController({
     suspend,
     updateMode,
   };
-}
-
-export function shouldAttemptGpuRenderer(mode: TerminalRendererType): boolean {
-  return mode === "auto" || mode === "gpu";
 }
 
 async function defaultLoadWebglAddon() {
