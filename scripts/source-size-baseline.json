@@ -244,7 +244,7 @@
     },
     {
       "file": "src/features/sftp/SftpToolContent.tsx",
-      "lines": 971,
+      "lines": 970,
       "deadline": "before TASK-080",
       "owner": "sftp-frontend",
       "targetTask": "TASK-040/TASK-041"
