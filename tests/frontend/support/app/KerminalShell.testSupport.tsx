@@ -173,6 +173,7 @@ const mocks = vi.hoisted(() => {
       createSshTerminalSession: vi.fn(),
       createTerminalSession: vi.fn(),
       getTerminalLogState: vi.fn(),
+      listTerminalSessions: vi.fn(),
       reapOrphanTerminalSessions: vi.fn(),
       resizeTerminal: vi.fn(),
       startTerminalLog: vi.fn(),
@@ -363,6 +364,8 @@ vi.mock("../../../../src/lib/terminalApi", () => ({
     mocks.terminalApi.createTerminalSession(...args),
   getTerminalLogState: (...args: unknown[]) =>
     mocks.terminalApi.getTerminalLogState(...args),
+  listTerminalSessions: (...args: unknown[]) =>
+    mocks.terminalApi.listTerminalSessions(...args),
   reapOrphanTerminalSessions: (...args: unknown[]) =>
     mocks.terminalApi.reapOrphanTerminalSessions(...args),
   resizeTerminal: (...args: unknown[]) =>

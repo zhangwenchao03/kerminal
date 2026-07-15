@@ -250,6 +250,7 @@ export function resetKerminalShellTestState() {
     active: false,
     bytesWritten: 0,
   });
+  mocks.terminalApi.listTerminalSessions.mockResolvedValue([]);
   mocks.terminalApi.closeTerminal.mockResolvedValue(undefined);
   mocks.terminalApi.reapOrphanTerminalSessions.mockResolvedValue({
     elapsedMs: 0,

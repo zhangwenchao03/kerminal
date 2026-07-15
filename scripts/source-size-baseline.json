@@ -306,13 +306,6 @@
       "targetTask": "TASK-072"
     },
     {
-      "file": "tests/frontend/app/KerminalShell.test.tsx",
-      "lines": 1882,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
       "file": "tests/frontend/features/machine-sidebar/HostContainersDialog.test.tsx",
       "lines": 809,
       "deadline": "before TASK-080",
@@ -364,13 +357,6 @@
     {
       "file": "tests/frontend/features/terminal/terminalRenderer.test.ts",
       "lines": 872,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "tests/frontend/features/terminal/TerminalWorkspace.test.tsx",
-      "lines": 1633,
       "deadline": "before TASK-080",
       "owner": "test-architecture",
       "targetTask": "TASK-071"
