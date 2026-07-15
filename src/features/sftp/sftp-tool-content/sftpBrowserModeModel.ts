@@ -1,4 +1,4 @@
-export const sftpBrowserModes = ["list", "tree", "workspace"] as const;
+const sftpBrowserModes = ["list", "tree", "workspace"] as const;
 
 export type SftpBrowserMode = (typeof sftpBrowserModes)[number];
 

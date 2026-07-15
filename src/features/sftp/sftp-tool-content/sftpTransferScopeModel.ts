@@ -14,10 +14,6 @@ export function withSftpTransferViewScope<TRequest extends { viewScope?: string 
   return { ...request, viewScope };
 }
 
-export function defaultSftpSidebarTransferViewScope(hostId: string | undefined) {
-  return hostId ? `sftp-sidebar:${hostId}` : undefined;
-}
-
 export function sftpSidebarTransferViewScope({
   hostId,
   tabId,

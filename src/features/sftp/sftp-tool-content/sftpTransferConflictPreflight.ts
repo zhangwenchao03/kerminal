@@ -9,7 +9,7 @@ import {
 import type { SftpRemoteCopyPlan } from "./sftpRemoteTransferModel";
 import type { SftpTransferActionBatchPlan } from "./sftpTransferActionPlan";
 
-export type SftpTransferConflictPreflightItem =
+type SftpTransferConflictPreflightItem =
   | SftpArchiveDownloadRequest
   | SftpArchiveUploadRequest
   | SftpManagedTransferRequest
@@ -24,7 +24,7 @@ export type SftpTransferConflictPreflightInput =
   | SftpRemoteCopyPlan
   | SftpTransferActionBatchPlan;
 
-export type SftpTransferConflictPreflightStats = {
+type SftpTransferConflictPreflightStats = {
   statLocalPath?: typeof statLocalPath;
   statSftpPath?: typeof statSftpPath;
 };
@@ -46,9 +46,9 @@ export type SftpTransferConflictPreflightOptions = {
 };
 
 export const DEFAULT_SFTP_TRANSFER_CONFLICT_PREFLIGHT_CONCURRENCY = 8;
-export const MAX_SFTP_TRANSFER_CONFLICT_PREFLIGHT_CONCURRENCY = 16;
+const MAX_SFTP_TRANSFER_CONFLICT_PREFLIGHT_CONCURRENCY = 16;
 
-export class SftpTransferConflictPreflightCanceledError extends Error {
+class SftpTransferConflictPreflightCanceledError extends Error {
   constructor() {
     super("SFTP 传输冲突预检已取消");
     this.name = "AbortError";
@@ -139,7 +139,7 @@ export async function countSftpTransferConflicts(
   return conflicts;
 }
 
-export function transferRequestsFromPreflightInput(
+function transferRequestsFromPreflightInput(
   input: SftpTransferConflictPreflightInput,
 ): Array<
   | SftpArchiveDownloadRequest
@@ -211,7 +211,7 @@ async function transferRequestConflicts(
   }
 }
 
-export function isSftpTransferStatNotFoundError(error: unknown): boolean {
+function isSftpTransferStatNotFoundError(error: unknown): boolean {
   const message = statErrorMessage(error).toLowerCase();
   if (!message) {
     return false;

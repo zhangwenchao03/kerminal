@@ -33,9 +33,9 @@ const DEFAULT_EVENT_HEALTHY_POLL_INTERVAL_MS = 10_000;
 const DEFAULT_EVENT_HEALTH_WINDOW_MS = 30_000;
 const DEFAULT_HIDDEN_POLL_INTERVAL_MS = 10_000;
 
-export type VisibilityChangeSubscriber = (onChange: () => void) => () => void;
+type VisibilityChangeSubscriber = (onChange: () => void) => () => void;
 
-export type SftpTransferUpdateListener = (
+type SftpTransferUpdateListener = (
   onUpdate: (transfer: SftpTransferSummary) => void,
 ) => Promise<() => void>;
 

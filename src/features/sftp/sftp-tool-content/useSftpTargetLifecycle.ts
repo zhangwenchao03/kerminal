@@ -60,7 +60,7 @@ export function createSftpTargetBindingSnapshot(
 }
 
 /** 目标或 active 状态变化时更换会话实例，确保内部冲突预检也同步释放。 */
-export function sftpTargetSessionKey({
+function sftpTargetSessionKey({
   active,
   fallbackTargetKey,
   target,

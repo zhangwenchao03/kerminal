@@ -13,7 +13,7 @@ import {
   type ResolvedTransferPlan,
 } from "./sftpTransferResolver";
 
-export type SftpWorkbenchLocalClipboardEntry = {
+type SftpWorkbenchLocalClipboardEntry = {
   kind: "directory" | "file";
   name: string;
   path: string;
@@ -26,7 +26,7 @@ export type SftpWorkbenchLocalClipboard = {
   sourcePath: string;
 };
 
-export type SftpWorkbenchRemoteClipboard = {
+type SftpWorkbenchRemoteClipboard = {
   clipboard: SftpClipboard;
   kind: "remote";
 };

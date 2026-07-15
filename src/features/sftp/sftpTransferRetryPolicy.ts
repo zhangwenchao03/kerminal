@@ -84,7 +84,3 @@ export function resolveSftpTransferRetry(
       "已重新加入传输队列；将优先尝试断点续传。",
   };
 }
-
-export function canRetrySftpTransfer(transfer: SftpTransferSummary) {
-  return resolveSftpTransferRetry(transfer).canRetry;
-}

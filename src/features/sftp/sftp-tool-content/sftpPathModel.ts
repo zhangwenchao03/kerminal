@@ -42,11 +42,6 @@ export function isFollowableRemotePath(path: string | undefined): path is string
   return Boolean(path?.trim().startsWith("/"));
 }
 
-export function defaultRenamePath(entry: SftpEntry) {
-  const parent = parentRemotePath(entry.path);
-  return joinRemotePath(parent, `${entry.name}.renamed`);
-}
-
 export function defaultUploadRemotePath(
   currentPath: string,
   localPath: string,
@@ -90,7 +85,7 @@ export function defaultPastedRemotePath(
   return targetPath;
 }
 
-export function duplicateRemotePath(path: string) {
+function duplicateRemotePath(path: string) {
   const parent = parentRemotePath(path);
   const name = fileNameFromPath(path, "copy");
   const dotIndex = name.lastIndexOf(".");

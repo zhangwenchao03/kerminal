@@ -5,7 +5,7 @@
  */
 
 /** 已知不可由文本编辑器直接预览的文件类别。 */
-export type WorkspaceFilePreviewUnsupportedCategory =
+type WorkspaceFilePreviewUnsupportedCategory =
   | "archive"
   | "audioVideo"
   | "binaryData"

@@ -120,7 +120,7 @@ export function WorkspaceTreeRow({
   );
 }
 
-export function EditorToolbarButton({
+function EditorToolbarButton({
   disabled,
   icon,
   label,
