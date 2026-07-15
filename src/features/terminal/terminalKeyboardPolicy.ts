@@ -1,4 +1,4 @@
-export type TerminalKeyboardCaseId =
+type TerminalKeyboardCaseId =
   | "enter"
   | "shiftEnter"
   | "ctrlJ"
@@ -24,7 +24,7 @@ export interface TerminalKeyboardEventDescriptor {
   shiftKey?: boolean;
 }
 
-export type TerminalKeyboardHandlingIntent = "sendData" | "nativePaste";
+type TerminalKeyboardHandlingIntent = "sendData" | "nativePaste";
 
 export interface TerminalKeyboardCompatibilityCase {
   agentTuiTargetData: string | null;

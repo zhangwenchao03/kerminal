@@ -158,7 +158,7 @@ export function TerminalPaneMoveDragPreview({
   );
 }
 
-export function terminalPaneMovePreviewPosition(x: number, y: number) {
+function terminalPaneMovePreviewPosition(x: number, y: number) {
   const width = 288;
   const height = 180;
   if (typeof window === "undefined") {

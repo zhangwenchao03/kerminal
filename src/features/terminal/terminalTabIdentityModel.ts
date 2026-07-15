@@ -7,7 +7,7 @@ import {
 /**
  * 身份 accent 的来源。已保存颜色属于显式选择，缺少颜色时始终按 groupId 自动派生。
  */
-export type TerminalTabIdentityAccentSource = "automatic" | "explicit";
+type TerminalTabIdentityAccentSource = "automatic" | "explicit";
 
 /**
  * 单个身份色 token。该模型只提供静态 accent，不承担选中态、容器、标题或阴影样式。

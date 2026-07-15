@@ -22,12 +22,12 @@ export interface TerminalContextMenuPosition {
   y: number;
 }
 
-export interface TerminalContextMenuSize {
+interface TerminalContextMenuSize {
   height: number;
   width: number;
 }
 
-export interface TerminalContextMenuViewport {
+interface TerminalContextMenuViewport {
   height: number;
   width: number;
 }

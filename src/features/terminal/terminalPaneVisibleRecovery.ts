@@ -8,7 +8,6 @@ interface TerminalPaneVisibleRecoveryTerminal {
   refresh?(start: number, end: number): void;
   rows: number;
 }
-
 interface TerminalPaneVisibleRecoveryFitAddon {
   fit(): void;
 }
@@ -114,28 +113,4 @@ export function runTerminalPaneVisibleRecovery({
   onSuggestionsRestored?.(decision);
 
   return { dimensionsChanged, recovered: true };
-}
-
-export function createWindowVisibleRecoveryScheduler(
-  targetWindow: Pick<
-    Window,
-    "cancelAnimationFrame" | "clearTimeout" | "requestAnimationFrame" | "setTimeout"
-  >,
-): TerminalPaneVisibleRecoveryScheduler {
-  const hasAnimationFrame =
-    typeof targetWindow.requestAnimationFrame === "function" &&
-    typeof targetWindow.cancelAnimationFrame === "function";
-
-  if (hasAnimationFrame) {
-    return {
-      cancelFrame: targetWindow.cancelAnimationFrame.bind(targetWindow),
-      scheduleFrame: targetWindow.requestAnimationFrame.bind(targetWindow),
-    };
-  }
-
-  return {
-    cancelFrame: targetWindow.clearTimeout.bind(targetWindow),
-    scheduleFrame: (callback) =>
-      targetWindow.setTimeout(() => callback(performance.now()), 16),
-  };
 }

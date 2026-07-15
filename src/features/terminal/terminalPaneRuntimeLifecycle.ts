@@ -1,9 +1,9 @@
 import type { TerminalRendererType } from "../settings/contracts/index";
 import type { RuntimeDiagnosticsWorkMode } from "./terminalRuntimeDiagnostics";
 
-export type TerminalPaneRuntimeWorkMode = RuntimeDiagnosticsWorkMode;
+type TerminalPaneRuntimeWorkMode = RuntimeDiagnosticsWorkMode;
 
-export type TerminalPaneRuntimeLifecycleReason =
+type TerminalPaneRuntimeLifecycleReason =
   | "focused-visible"
   | "hidden"
   | "hidden-stale"
@@ -11,18 +11,18 @@ export type TerminalPaneRuntimeLifecycleReason =
   | "inactive-tab"
   | "visible-unfocused";
 
-export type TerminalPaneRendererResourceMode =
+type TerminalPaneRendererResourceMode =
   | "active"
   | "cpu-only"
   | "parked"
   | "release-webgl";
 
-export type TerminalPaneSuggestionWorkMode =
+type TerminalPaneSuggestionWorkMode =
   | "active"
   | "deferred"
   | "paused";
 
-export type TerminalPaneOutputHistoryWorkMode =
+type TerminalPaneOutputHistoryWorkMode =
   | "live"
   | "tail-only"
   | "throttled";
@@ -65,7 +65,7 @@ export interface TerminalPaneRuntimeLifecycleDecision {
   workMode: TerminalPaneRuntimeWorkMode;
 }
 
-export const TERMINAL_PANE_RUNTIME_LIFECYCLE_DEFAULT_CONFIG: TerminalPaneRuntimeLifecycleConfig =
+const TERMINAL_PANE_RUNTIME_LIFECYCLE_DEFAULT_CONFIG: TerminalPaneRuntimeLifecycleConfig =
   {
     fullOutputHistoryFlushMs: 100,
     hiddenTailFlushMs: 2_000,

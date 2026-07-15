@@ -2,7 +2,7 @@
 
 import { TERMINAL_OUTPUT_HISTORY_MAX_CHARS } from "../workspace/contracts/index";
 
-export interface TerminalRuntimeOutputBufferSnapshot {
+interface TerminalRuntimeOutputBufferSnapshot {
   text: string | undefined;
   truncated: boolean;
 }

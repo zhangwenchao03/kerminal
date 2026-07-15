@@ -8,7 +8,7 @@ export type TerminalOutputInstrumentationStep =
   | "remotePrewarmPath"
   | "writer";
 
-export interface TerminalOutputInstrumentationBucket {
+interface TerminalOutputInstrumentationBucket {
   count: number;
   maxMs: number;
   totalChars: number;

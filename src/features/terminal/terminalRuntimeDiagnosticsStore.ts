@@ -20,12 +20,12 @@ import {
 import type { SshTerminalFailure } from "./terminalSshFailurePolicy";
 import { runtimeCompatibilityDiagnostics } from "../../platform/runtime/compatibilityDiagnostics";
 
-export interface TerminalReconnectRuntimeDiagnostics {
+interface TerminalReconnectRuntimeDiagnostics {
   reconnecting: boolean;
   sshReconnectAttempt: number;
 }
 
-export interface TerminalRuntimeDiagnosticsPaneProviderSnapshot
+interface TerminalRuntimeDiagnosticsPaneProviderSnapshot
   extends RuntimeTerminalOutputPaneSnapshotInput {
   sessionId?: string;
   sshFailure?: SshTerminalFailure;
@@ -99,14 +99,6 @@ export function registerTerminalRuntimeDiagnosticsPane(
   provider: TerminalRuntimeDiagnosticsPaneProvider,
 ) {
   return defaultTerminalRuntimeDiagnosticsStore.register(provider);
-}
-
-export function subscribeTerminalRuntimeDiagnostics(listener: () => void) {
-  return defaultTerminalRuntimeDiagnosticsStore.subscribe(listener);
-}
-
-export function getTerminalRuntimeDiagnosticsProviderCount() {
-  return defaultTerminalRuntimeDiagnosticsStore.getProviderCount();
 }
 
 async function collectTerminalRuntimePerformanceSnapshotFrom(

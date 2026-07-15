@@ -19,23 +19,23 @@ export interface XtermWebglCompatibilityCapabilityGate {
 }
 
 /** adapter 最终解析出的可用兼容能力。 */
-export interface XtermWebglCompatibilityCapabilities {
+interface XtermWebglCompatibilityCapabilities {
   forceContextLoss: boolean;
   privateRendererCleanup: boolean;
 }
 
 /** compatibility adapter 使用的最小日志接口。 */
-export interface XtermWebglCompatibilityLogger {
+interface XtermWebglCompatibilityLogger {
   warn(message: string, error?: unknown): void;
 }
 
 /** 公开 dispose 路径所需的最小 WebGL addon 契约。 */
-export interface XtermWebglDisposableAddon {
+interface XtermWebglDisposableAddon {
   dispose(): void;
 }
 
 /** controller 交给 adapter 释放的 addon 与已知 WebGL canvas。 */
-export interface XtermWebglDisposeTarget {
+interface XtermWebglDisposeTarget {
   addon: XtermWebglDisposableAddon;
   canvases?: Iterable<HTMLCanvasElement>;
 }

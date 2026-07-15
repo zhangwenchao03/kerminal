@@ -11,7 +11,7 @@ import type {
 } from "./types";
 
 /** Xterm 侧只需投递这些结构化事件；adapter 不持有 terminal 或输出正文。 */
-export type TerminalArtifactEvent =
+type TerminalArtifactEvent =
   | { data: string; range?: TerminalArtifactRange; type: "output" }
   | { label?: string; range?: TerminalArtifactRange; type: "link"; uri: string }
   | { command: string; id: string; range?: TerminalArtifactRange; type: "command-block" }

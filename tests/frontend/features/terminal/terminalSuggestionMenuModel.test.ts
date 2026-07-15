@@ -5,7 +5,6 @@ import {
   reduceTerminalSuggestionMenuState,
   resolveTerminalSuggestionMenuKeyIntent,
   TERMINAL_SUGGESTION_MENU_MAX_ITEMS,
-  TERMINAL_SUGGESTION_MENU_REQUEST_LIMIT,
   terminalSuggestionMenuCandidateView,
 } from "../../../../src/features/terminal/terminalSuggestionMenuModel";
 
@@ -22,7 +21,6 @@ describe("terminalSuggestionMenuModel", () => {
       open: true,
     });
 
-    expect(TERMINAL_SUGGESTION_MENU_REQUEST_LIMIT).toBe(8);
     expect(state.candidates).toHaveLength(TERMINAL_SUGGESTION_MENU_MAX_ITEMS);
     expect(state.candidates[0]?.id).toBe("menu-0");
     expect(state.open).toBe(true);

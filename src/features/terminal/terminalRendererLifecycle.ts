@@ -36,7 +36,7 @@ export type TerminalRendererTransitionReason =
   | "dispose-requested"
   | "dispose-completed";
 
-export type TerminalRendererTransitionRejection =
+type TerminalRendererTransitionRejection =
   "illegal-transition" | "generation-token-required" | "stale-generation";
 
 const OPERATION_STATES = new Set<TerminalRendererLifecycleState>([
@@ -47,19 +47,6 @@ const OPERATION_STATES = new Set<TerminalRendererLifecycleState>([
 const GENERATION_COMMIT_STATES = new Set<TerminalRendererLifecycleState>([
   "gpu-ready",
   "cpu-cooldown",
-]);
-
-export const TERMINAL_RENDERER_LIFECYCLE_STATES = Object.freeze<
-  TerminalRendererLifecycleState[]
->([
-  "cpu-ready",
-  "gpu-attaching",
-  "gpu-ready",
-  "suspended",
-  "recovering",
-  "cpu-cooldown",
-  "disposing",
-  "disposed",
 ]);
 
 const lifecycleTargets = (
@@ -146,7 +133,7 @@ export interface TerminalRendererTransitionLedgerEntry {
   readonly to: TerminalRendererLifecycleState;
 }
 
-export interface TerminalRendererTransitionRequest {
+interface TerminalRendererTransitionRequest {
   readonly attempt?: number;
   readonly durationMs?: number;
   readonly fallbackReason?: TerminalRendererFallbackReason;
@@ -163,7 +150,7 @@ export interface TerminalRendererAcceptedTransition {
   readonly transition: TerminalRendererTransitionLedgerEntry;
 }
 
-export interface TerminalRendererRejectedTransition {
+interface TerminalRendererRejectedTransition {
   readonly accepted: false;
   readonly rejection: TerminalRendererTransitionRejection;
   readonly snapshot: TerminalRendererLifecycleSnapshot;
@@ -173,7 +160,7 @@ export interface TerminalRendererRejectedTransition {
 export type TerminalRendererTransitionResult =
   TerminalRendererAcceptedTransition | TerminalRendererRejectedTransition;
 
-export interface TerminalRendererDisposeResult {
+interface TerminalRendererDisposeResult {
   readonly snapshot: TerminalRendererLifecycleSnapshot;
   readonly transitions: readonly TerminalRendererTransitionLedgerEntry[];
 }

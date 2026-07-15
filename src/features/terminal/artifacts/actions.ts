@@ -8,10 +8,10 @@ import type {
   TerminalArtifactSource,
 } from "./types";
 
-export type TerminalArtifactUiActionId =
+type TerminalArtifactUiActionId =
   "copy" | "open" | "reveal" | "send-to-agent";
 
-export type TerminalArtifactActionRoute =
+type TerminalArtifactActionRoute =
   "execute" | "confirmation" | "preview";
 
 /** UI 和菜单共享的动作描述；不携带执行函数，避免展示层绕过确认策略。 */

@@ -2,7 +2,7 @@
 export type TerminalPaneBufferType = "normal" | "alternate";
 
 /** 终端连接事实；connecting/reconnecting 只作为低干扰状态展示。 */
-export type TerminalPaneConnectionState =
+type TerminalPaneConnectionState =
   | "connecting"
   | "connected"
   | "reconnecting"
@@ -49,7 +49,7 @@ export type TerminalPaneActivityEvent =
   | { type: "jumpToBottom" }
   | { type: "acknowledgeBell" };
 
-export const DEFAULT_TERMINAL_PANE_ACTIVITY_STATE: Readonly<TerminalPaneActivityState> =
+const DEFAULT_TERMINAL_PANE_ACTIVITY_STATE: Readonly<TerminalPaneActivityState> =
   Object.freeze({
     applicationActive: true,
     atBottom: true,

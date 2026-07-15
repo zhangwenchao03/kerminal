@@ -9,7 +9,7 @@ export const COMMAND_BLOCKS_MAX_COUNT = 240;
 const INTERACTIVE_TUI_COMMAND_RE =
   /(?:^|[/\\\s])(codex|claude|vim|nvim|vi|nano|less|more|man|top|htop|btop|tmux)(?:\.(?:cmd|exe|ps1))?(?:\s|$)/i;
 
-export type TerminalBufferKind = "normal" | "alternate";
+type TerminalBufferKind = "normal" | "alternate";
 
 export interface TerminalCommandBlock {
   collapsed: boolean;
@@ -235,7 +235,7 @@ export function buildTerminalCommandBlockViews(
   return views.filter((view) => view.top + view.height > 0);
 }
 
-export function hasRunningInteractiveTuiCommand(
+function hasRunningInteractiveTuiCommand(
   blocks: TerminalCommandBlock[],
 ): boolean {
   let hasSeenInteractiveTuiCommand = false;

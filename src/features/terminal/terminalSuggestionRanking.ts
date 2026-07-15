@@ -57,7 +57,7 @@ export function rankTerminalSuggestions(
   return Array.from(deduped.values()).sort(compareRanked).slice(0, limit);
 }
 
-export function adaptCandidateForQuery(
+function adaptCandidateForQuery(
   candidate: CommandSuggestionCandidate,
   query: Pick<
     TerminalSuggestionQuery,

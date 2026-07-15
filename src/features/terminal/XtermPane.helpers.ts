@@ -88,7 +88,7 @@ export function terminalSuggestionProviders({
   return providers;
 }
 
-export function terminalInlineSuggestionAllowsRemoteProbe({
+function terminalInlineSuggestionAllowsRemoteProbe({
   inlineSuggestion,
   remoteHostProduction,
 }: {

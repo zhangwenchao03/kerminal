@@ -6,7 +6,7 @@ export interface TerminalRendererSurfaceMeasurement {
   width: number;
 }
 
-export interface TerminalRendererSurfaceDimensions {
+interface TerminalRendererSurfaceDimensions {
   cols: number;
   rows: number;
 }

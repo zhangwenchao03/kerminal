@@ -9,7 +9,7 @@ export type TerminalRendererHealthSignal =
   | "frame-stale"
   | "cell-metric-mismatch";
 
-export type TerminalRendererHealthAction =
+type TerminalRendererHealthAction =
   | "none"
   | "wait-for-stable-surface"
   | "refresh"
@@ -17,7 +17,7 @@ export type TerminalRendererHealthAction =
   | "rebuild-renderer"
   | "fallback-cpu";
 
-export type TerminalRendererHealthLevel = 0 | 1 | 2 | 3;
+type TerminalRendererHealthLevel = 0 | 1 | 2 | 3;
 
 export interface TerminalRendererHealthObservation {
   backend: TerminalRendererBackend;

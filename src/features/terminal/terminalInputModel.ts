@@ -1,6 +1,6 @@
 export type TerminalInputBufferKind = "normal" | "alternate";
 
-export type TerminalInputHideReason =
+type TerminalInputHideReason =
   | "alternate-buffer"
   | "cancelled"
   | "cursor-not-at-end"
@@ -230,10 +230,6 @@ export function terminalSuggestionEligibility(
   return { eligible: true };
 }
 
-export function terminalInputSuffix(state: TerminalInputModelState) {
-  return sliceInput(state.command, state.cursor);
-}
-
 function applyEscapeToken(
   state: TerminalInputModelState,
   token: EscapeToken,
@@ -454,10 +450,6 @@ function isPasteLikeInput(data: string) {
 
 function inputLength(value: string) {
   return inputChars(value).length;
-}
-
-function sliceInput(value: string, start: number) {
-  return inputChars(value).slice(start).join("");
 }
 
 function inputChars(value: string) {

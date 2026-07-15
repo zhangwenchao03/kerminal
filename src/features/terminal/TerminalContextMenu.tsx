@@ -10,11 +10,9 @@ import {
 
 export {
   splitDirectionForMenuAction,
-  terminalContextMenuGroups,
 } from "./terminalContextMenuModel";
 export type {
   TerminalContextMenuAction,
-  TerminalContextMenuItemModel,
   TerminalContextMenuPosition,
 } from "./terminalContextMenuModel";
 

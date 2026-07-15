@@ -9,8 +9,8 @@ export interface TerminalOutputScheduler {
   request(callback: () => void, delayMs?: number): number;
 }
 
-export type TerminalOutputCadence = "focused" | "visible" | "hidden";
-export type TerminalOutputCallbackMode = "auto" | "required" | "unsupported";
+type TerminalOutputCadence = "focused" | "visible" | "hidden";
+type TerminalOutputCallbackMode = "auto" | "required" | "unsupported";
 
 interface TerminalOutputWriterOptions {
   adaptive?: boolean;

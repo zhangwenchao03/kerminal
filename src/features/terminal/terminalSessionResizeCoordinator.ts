@@ -1,9 +1,9 @@
-export interface TerminalSessionDimensions {
+interface TerminalSessionDimensions {
   cols: number;
   rows: number;
 }
 
-export interface TerminalSessionResizeScheduler {
+interface TerminalSessionResizeScheduler {
   cancel(handle: number): void;
   schedule(callback: () => void, delayMs: number): number;
 }

@@ -22,7 +22,7 @@ export interface TerminalShellIntegrationCwdResult {
   state: TerminalShellIntegrationState;
 }
 
-export type TerminalShellIntegrationOsc133Marker = "A" | "B" | "C" | "D";
+type TerminalShellIntegrationOsc133Marker = "A" | "B" | "C" | "D";
 
 export interface TerminalShellIntegrationOsc133Event {
   command?: string;
@@ -30,7 +30,7 @@ export interface TerminalShellIntegrationOsc133Event {
   marker: TerminalShellIntegrationOsc133Marker;
 }
 
-export type TerminalShellIntegrationOsc133Segment =
+type TerminalShellIntegrationOsc133Segment =
   | { data: string; type: "data" }
   | { event: TerminalShellIntegrationOsc133Event; type: "osc133" };
 

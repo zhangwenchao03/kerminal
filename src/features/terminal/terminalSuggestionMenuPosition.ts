@@ -1,6 +1,6 @@
 // @author kongweiguang
 
-export type TerminalSuggestionMenuPlacement = "above" | "below";
+type TerminalSuggestionMenuPlacement = "above" | "below";
 
 export interface TerminalSuggestionMenuAnchor {
   height: number;
@@ -8,7 +8,7 @@ export interface TerminalSuggestionMenuAnchor {
   y: number;
 }
 
-export interface TerminalSuggestionMenuSize {
+interface TerminalSuggestionMenuSize {
   height: number;
   width: number;
 }

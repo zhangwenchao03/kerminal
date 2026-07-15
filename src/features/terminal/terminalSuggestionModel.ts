@@ -17,7 +17,7 @@ export type TerminalSuggestionPhase =
   | "requesting"
   | "scheduled";
 
-export type TerminalSuggestionFeedbackKind = "all" | "dismissed" | "partial";
+type TerminalSuggestionFeedbackKind = "all" | "dismissed" | "partial";
 
 export interface TerminalSuggestionLifecycle {
   alternateScreen: boolean;

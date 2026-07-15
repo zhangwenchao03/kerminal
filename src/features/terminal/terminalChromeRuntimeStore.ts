@@ -31,7 +31,7 @@ export interface TerminalChromeRuntimeStore {
 }
 
 /** Chrome activity 转换诊断，只保留计数，不包含终端文本或用户输入。 */
-export interface TerminalChromeActivityDiagnosticsSnapshot {
+interface TerminalChromeActivityDiagnosticsSnapshot {
   publishedTransitions: number;
   registeredPanes: number;
   suppressedTransitions: number;

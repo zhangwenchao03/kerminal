@@ -17,7 +17,7 @@ import {
 import type { TerminalArtifact, TerminalArtifactIndexSnapshot } from "../types";
 import { resolveTerminalArtifactListKeyboardCommand } from "./terminalArtifactListModel";
 
-export type TerminalArtifactListStatus = "ready" | "partial";
+type TerminalArtifactListStatus = "ready" | "partial";
 
 /** Terminal Artifacts 独立列表入口；调用方负责动作执行、确认和 Agent preview。 */
 export interface TerminalArtifactListProps {

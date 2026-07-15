@@ -1,4 +1,4 @@
-export type SshTerminalFailureClass =
+type SshTerminalFailureClass =
   | "authCanceled"
   | "badCredential"
   | "keyPassphraseMissing"

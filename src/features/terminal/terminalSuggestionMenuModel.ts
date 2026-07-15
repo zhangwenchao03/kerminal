@@ -5,12 +5,8 @@ import type {
   CommandSuggestionProvider,
 } from "../../lib/terminalSuggestionApi";
 
-export const TERMINAL_SUGGESTION_MENU_MIN_ITEMS = 5;
 export const TERMINAL_SUGGESTION_MENU_MAX_ITEMS = 8;
-export const TERMINAL_SUGGESTION_MENU_REQUEST_LIMIT =
-  TERMINAL_SUGGESTION_MENU_MAX_ITEMS;
 
-export type TerminalSuggestionMenuAcceptKey = "Enter" | "ArrowRight";
 export type TerminalSuggestionMenuIntent =
   | { type: "close" }
   | { candidate: CommandSuggestionCandidate; type: "accept" }
@@ -188,7 +184,7 @@ export function terminalSuggestionMenuCandidateView(
   };
 }
 
-export function terminalSuggestionProviderLabel(
+function terminalSuggestionProviderLabel(
   provider: CommandSuggestionProvider,
 ): string {
   switch (provider) {

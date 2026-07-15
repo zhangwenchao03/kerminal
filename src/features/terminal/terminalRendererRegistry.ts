@@ -29,7 +29,7 @@ export interface TerminalRendererRegistryController {
   updateMode(mode: TerminalRendererType): void;
 }
 
-export interface RegisterTerminalRendererPaneOptions {
+interface RegisterTerminalRendererPaneOptions {
   controller: TerminalRendererRegistryController;
   focused?: boolean;
   paneId: string;
@@ -49,7 +49,7 @@ export interface TerminalRendererRegistrySnapshot {
   webglCanvasCount: number;
 }
 
-export interface TerminalRendererPaneSnapshot {
+interface TerminalRendererPaneSnapshot {
   backend: TerminalRendererBackend;
   canvasCount: number;
   circuitOpen?: boolean;

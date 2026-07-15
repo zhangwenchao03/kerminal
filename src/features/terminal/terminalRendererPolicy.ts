@@ -176,7 +176,7 @@ export function resolveTerminalRendererPolicy({
   };
 }
 
-export function resolveTerminalRendererPolicyConfig(
+function resolveTerminalRendererPolicyConfig(
   config: Partial<TerminalRendererPolicyConfig> = {},
 ): TerminalRendererPolicyConfig {
   return {
@@ -194,7 +194,7 @@ export function resolveContextLossRetryDelay(
   return contextLossRetryDelaysMs[retryCount];
 }
 
-export function resolveSuggestedRendererFallback({
+function resolveSuggestedRendererFallback({
   config = TERMINAL_RENDERER_DEFAULT_POLICY,
   failureEvents,
   now,

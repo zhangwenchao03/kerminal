@@ -1,14 +1,14 @@
-export type TerminalRendererDurationMetric =
+type TerminalRendererDurationMetric =
   "drainMs" | "frameGapMs" | "inputEchoMs" | "writeCallbackMs";
 
-export type TerminalRendererCounterMetric =
+type TerminalRendererCounterMetric =
   | "atlasClearCount"
   | "fullRefreshCount"
   | "rendererRebuildCount"
   | "rendererSwapCount"
   | "staleCommitRejectedCount";
 
-export interface TerminalRendererDurationSummary {
+interface TerminalRendererDurationSummary {
   count: number;
   max: number;
   p50: number;
@@ -16,7 +16,7 @@ export interface TerminalRendererDurationSummary {
   p99: number;
 }
 
-export interface TerminalRendererResourceSnapshot {
+interface TerminalRendererResourceSnapshot {
   activeCanvases: number;
   activeContexts: number;
   activeGpuPanes: number;

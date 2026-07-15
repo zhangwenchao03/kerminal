@@ -35,7 +35,7 @@ import {
   createTerminalSuggestionMenuState,
   reduceTerminalSuggestionMenuState,
   resolveTerminalSuggestionMenuKeyIntent,
-  TERMINAL_SUGGESTION_MENU_REQUEST_LIMIT,
+  TERMINAL_SUGGESTION_MENU_MAX_ITEMS,
   type TerminalSuggestionMenuIntent,
   type TerminalSuggestionMenuState,
 } from "./terminalSuggestionMenuModel";
@@ -460,7 +460,7 @@ export function createXtermPaneGhostSuggestions({
         mode: "menu",
         request: {
           cwd: currentCwdRef.current ?? cwd,
-          limit: TERMINAL_SUGGESTION_MENU_REQUEST_LIMIT,
+          limit: TERMINAL_SUGGESTION_MENU_MAX_ITEMS,
           profileId,
           providers,
           remoteHostId: suggestionTarget.remoteHostId,
