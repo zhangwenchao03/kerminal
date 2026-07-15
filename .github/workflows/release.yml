@@ -219,10 +219,11 @@ jobs:
         with:
           args: ${{ matrix.args }}
           releaseBody: |
-            - 重构系统信息与实时资源监控：采用 fast/slow/static 分层采样、single-flight 和目标 LRU 历史，提升多目标环境下的实时性与稳定性。
-            - 优化 Context Workspace 的工作流交互：改进 Agent 会话、终端对象级发送和相关工具面板反馈。
-            - 终端内容发送至 Agent 时，发送预览覆盖内容区而不重建或压缩已挂载终端，并提供 Escape 取消操作。
-            - 支持归档 Kerminal 本地 Agent 会话记录：删除前明确确认，同时清理关联预览、运行态映射和本地终端会话；外部 Agent 服务商的历史不受影响。
+            - 全局界面统一为克制的 Apple 启发式视觉体系，完善浅色、深色、跟随系统主题和窄窗口适配。
+            - 强化终端渲染与生命周期：新安装默认使用 CPU 渲染，保留显式 Auto/GPU 选择，并改善输出、重连、尺寸同步和故障隔离。
+            - 扩展右栏工作流：新增版本化命令片段目录，完善 Context、SFTP、tmux、端口转发、系统信息和 Agent 会话的目标绑定与交互。
+            - 加固外部启动、配置工作区和 MCP 运行态契约，补齐凭据生命周期、幂等交付、诊断与跨平台打包门禁。
+            - 完成前后端模块边界治理，加入 source-size、架构、公共契约、dead-code 和 ESLint 质量门禁，降低后续演进风险。
 
             macOS `.app` / `.dmg` 未使用 Apple Developer ID 签名，也未经过 Apple 公证；首次启动可能出现 Gatekeeper 提示，请按组织或个人环境自行处理。
           releaseDraft: true
