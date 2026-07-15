@@ -90,7 +90,6 @@ export interface WorkspaceState
 export {
   findMachine,
   localMachineIdForProfile,
-  sidebarMachinesForWorkspaceSession,
 } from "./workspaceMachineModel";
 
 const initialState = {
