@@ -3,6 +3,7 @@ import {
   saveWorkspaceSessionPayload,
 } from "../../lib/workspaceSessionApi.tauri";
 import {
+  decodeWorkspaceSessionSnapshot,
   normalizeWorkspaceSessionSnapshot,
   WORKSPACE_SESSION_VERSION,
   type WorkspaceSessionSnapshot,
@@ -16,7 +17,7 @@ import {
  */
 export async function loadWorkspaceSessionFile(): Promise<WorkspaceSessionSnapshot | null> {
   const payload = await loadWorkspaceSessionPayload();
-  return payload === null ? null : normalizeWorkspaceSessionSnapshot(payload);
+  return payload === null ? null : decodeWorkspaceSessionSnapshot(payload);
 }
 
 /** 保存已归一化的 workspace session，保持既有空快照 no-op 语义。 */

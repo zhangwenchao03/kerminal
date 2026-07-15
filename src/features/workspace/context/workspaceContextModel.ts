@@ -2,14 +2,15 @@ import { isExternalSshMachineId } from "../../external-launch/index";
 import { targetStableId, type RemoteTargetRef } from "../../../lib/targetModel";
 import {
   isSftpTransferWorkspaceTab,
-  isTerminalSessionTab,
   isWorkspaceFileTab,
   type Machine,
-  type MachineGroup,
-  type TerminalLayoutNode,
   type TerminalPane,
   type TerminalTab,
 } from "../types";
+import {
+  resolveWorkspaceTargetSelection,
+  type WorkspaceTargetSelectionIssue,
+} from "../workspaceTargetSelection";
 import {
   buildSourceDiagnostics,
   resolveWorkspaceContextFreshness,
@@ -128,124 +129,57 @@ export function buildWorkspaceContextProjection(
 function resolveProjection(
   input: WorkspaceContextProjectionInput,
 ): ProjectionResolution {
-  const diagnostics: WorkspaceContextDiagnostic[] = [];
-  const machineLookup = buildMachineLookup(input.machineGroups);
-  const requestedActiveTabId = normalizeId(input.activeTabId);
-  const requestedFocusedPaneId = normalizeId(input.focusedPaneId);
-  const requestedSelectedMachineId = normalizeId(input.selectedMachineId);
-  const activeTab = input.terminalTabs.find(
-    (tab) => tab.id === requestedActiveTabId,
-  );
-  let focusedPane = input.terminalPanes.find(
-    (pane) => pane.id === requestedFocusedPaneId,
-  );
-
-  if (requestedActiveTabId && !activeTab) {
-    diagnostics.push(
-      referenceDiagnostic(
-        "active-tab-missing",
-        "活动页签已不存在，当前上下文已降级。",
-      ),
-    );
-  }
-  if (requestedFocusedPaneId && !focusedPane) {
-    diagnostics.push(
-      referenceDiagnostic(
-        "focused-pane-missing",
-        "焦点终端已不存在，当前上下文已降级。",
-      ),
-    );
-  }
-
-  const activeTabPaneIds =
-    activeTab && isTerminalSessionTab(activeTab)
-      ? collectPaneIds(activeTab.layout)
-      : [];
-  const firstLiveActiveTabPane =
-    activeTab && isTerminalSessionTab(activeTab)
-      ? activeTabPaneIds
-          .map((paneId) =>
-            input.terminalPanes.find((pane) => pane.id === paneId),
-          )
-          .find((pane): pane is TerminalPane => Boolean(pane))
-      : undefined;
-  if (activeTab && !isTerminalSessionTab(activeTab)) {
-    focusedPane = undefined;
-  }
-  if (activeTab && isTerminalSessionTab(activeTab) && !focusedPane) {
-    focusedPane = firstLiveActiveTabPane;
-  }
-  if (
-    focusedPane &&
-    activeTab &&
-    isTerminalSessionTab(activeTab) &&
-    !activeTabPaneIds.includes(focusedPane.id)
-  ) {
-    diagnostics.push(
-      referenceDiagnostic(
-        "pane-outside-active-tab",
-        "焦点终端不属于活动页签，已改用活动页签中的终端。",
-      ),
-    );
-    focusedPane = firstLiveActiveTabPane;
-  }
-
-  const subjectMachineId =
-    activeTab && !isTerminalSessionTab(activeTab)
-      ? activeTab.machineId
-      : (focusedPane?.machineId ??
-        activeTab?.machineId ??
-        requestedSelectedMachineId);
-  let machineValue = subjectMachineId
-    ? machineLookup.get(subjectMachineId)
+  const selection = resolveWorkspaceTargetSelection({
+    activeTabId: normalizeId(input.activeTabId) ?? "",
+    focusedPaneId: normalizeId(input.focusedPaneId) ?? "",
+    machineGroups: input.machineGroups,
+    selectedMachineId: normalizeId(input.selectedMachineId) ?? "",
+    terminalPanes: input.terminalPanes,
+    terminalTabs: input.terminalTabs,
+  });
+  const machine =
+    selection.activeMachine ??
+    (!selection.activeTab ? selection.selectedMachine : undefined);
+  const machineValue = machine
+    ? {
+        groupId:
+          input.machineGroups.find((group) =>
+            group.machines.some((candidate) => candidate.id === machine.id),
+          )?.id ??
+          machine.remoteGroupId ??
+          "runtime",
+        machine,
+      }
     : undefined;
-
-  if (focusedPane?.machineId && !machineValue) {
-    diagnostics.push(
-      referenceDiagnostic(
-        "pane-machine-missing",
-        "当前终端引用的机器已不存在，保留终端身份并降级机器信息。",
-      ),
-    );
-  }
-  if (!machineValue && requestedSelectedMachineId) {
-    machineValue = machineLookup.get(requestedSelectedMachineId);
-    if (!machineValue) {
-      diagnostics.push(
-        referenceDiagnostic(
-          "selected-machine-missing",
-          "选中的机器已不存在，当前上下文已降级。",
-        ),
-      );
-    }
-  }
+  const diagnostics = selection.issues
+    .filter(
+      (issue) =>
+        issue !== "selected-machine-missing" || !selection.activeMachine,
+    )
+    .map(diagnosticForSelectionIssue);
 
   return {
-    activeTab,
-    activeTabPaneIds,
+    activeTab: selection.activeTab,
+    activeTabPaneIds: selection.activeTabPaneIds,
     diagnostics,
-    focusedPane,
+    focusedPane: selection.focusedPane,
     machineValue,
   };
 }
 
-function buildMachineLookup(
-  groups: readonly MachineGroup[],
-): Map<string, MachineLookupValue> {
-  const lookup = new Map<string, MachineLookupValue>();
-  for (const group of groups) {
-    for (const machine of group.machines) {
-      lookup.set(machine.id, { groupId: group.id, machine });
-    }
-  }
-  return lookup;
-}
-
-function collectPaneIds(node: TerminalLayoutNode): string[] {
-  if (node.type === "pane") {
-    return [node.paneId];
-  }
-  return node.children.flatMap(collectPaneIds);
+function diagnosticForSelectionIssue(
+  issue: WorkspaceTargetSelectionIssue,
+): WorkspaceContextDiagnostic {
+  const messages: Record<WorkspaceTargetSelectionIssue, string> = {
+    "active-tab-missing": "活动页签已不存在，当前上下文已降级。",
+    "focused-pane-missing": "焦点终端已不存在，当前上下文已降级。",
+    "pane-machine-missing":
+      "当前终端引用的机器已不存在，保留终端身份并降级机器信息。",
+    "pane-outside-active-tab":
+      "焦点终端不属于活动页签，已改用活动页签中的终端。",
+    "selected-machine-missing": "选中的机器已不存在，当前上下文已降级。",
+  };
+  return referenceDiagnostic(issue, messages[issue]);
 }
 
 function resolveTarget(
