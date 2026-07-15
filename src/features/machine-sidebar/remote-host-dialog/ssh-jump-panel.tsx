@@ -278,12 +278,6 @@ export function SshJumpPanel({
   );
 }
 
-export function formatSshMachineDescription(machine: Machine) {
-  const username = trimText(machine.username) || "未设置用户";
-  const host = trimText(machine.host) || machine.description;
-  const port = machine.port ?? 22;
-  return `${username}@${host}:${port}`;
-}
 
 export function jumpHostDraftFromMachine(machine: Machine): SshJumpHostOptions {
   const authType = machine.authType ?? "agent";

@@ -122,7 +122,7 @@ export function SshPropertiesPanel({
   );
 }
 
-export function SshAuthFields({
+function SshAuthFields({
   authType,
   credentialRef,
   credentialSecret,

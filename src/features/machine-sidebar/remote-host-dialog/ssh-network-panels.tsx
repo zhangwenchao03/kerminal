@@ -250,7 +250,7 @@ export function SshTunnelPanel({
   );
 }
 
-export function SshTunnelList({
+function SshTunnelList({
   options,
   setOptions,
 }: {

@@ -119,7 +119,7 @@ export function SearchableHostSelect({
   );
 }
 
-export function formatHostIdentity(machine: Machine) {
+function formatHostIdentity(machine: Machine) {
   if (machine.kind !== "ssh") {
     return machine.description;
   }

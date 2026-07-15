@@ -213,7 +213,7 @@ export const terminalTypeOptions = [
   "linux",
 ];
 
-export const DEFAULT_GROUP_LABEL = "默认分组";
+const DEFAULT_GROUP_LABEL = "默认分组";
 
 export function buildGroupOptions(groups: MachineGroup[]) {
   const options = groups.map((group) => ({

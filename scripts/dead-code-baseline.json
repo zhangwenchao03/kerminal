@@ -74,51 +74,6 @@
       "targetTask": "TASK-071"
     },
     {
-      "file": "src/features/machine-sidebar/remote-host-dialog/model.tsx",
-      "name": "DEFAULT_GROUP_LABEL",
-      "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/machine-sidebar/remote-host-dialog/searchable-host-select.tsx",
-      "name": "formatHostIdentity",
-      "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/machine-sidebar/remote-host-dialog/ssh-jump-panel.tsx",
-      "name": "formatSshMachineDescription",
-      "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/machine-sidebar/remote-host-dialog/ssh-network-panels.tsx",
-      "name": "SshTunnelList",
-      "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
-      "file": "src/features/machine-sidebar/remote-host-dialog/ssh-properties-panel.tsx",
-      "name": "SshAuthFields",
-      "type": "exports",
-      "count": 1,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-022/TASK-072"
-    },
-    {
       "file": "src/features/quick-open/scoring.ts",
       "name": "scoreQuickOpenCandidate",
       "type": "exports",
