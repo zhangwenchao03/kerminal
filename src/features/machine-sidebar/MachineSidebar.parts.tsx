@@ -45,7 +45,6 @@ import {
 export {
   MachineDragPreviewCard,
   ContextMenuItem,
-  PinnedGroupBadge,
   clampContextMenuPosition,
   isPinnedMachineGroup,
 } from "./MachineSidebar.primitives";

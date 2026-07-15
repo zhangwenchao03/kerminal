@@ -110,48 +110,6 @@
       "targetTask": "TASK-030/TASK-031"
     },
     {
-      "file": "src/features/machine-sidebar/host-containers/ComposeProjectInspector.tsx",
-      "lines": 827,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-070"
-    },
-    {
-      "file": "src/features/machine-sidebar/HostContainersDialog.tsx",
-      "lines": 893,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-070"
-    },
-    {
-      "file": "src/features/machine-sidebar/HostContainersToolContent.tsx",
-      "lines": 966,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-070"
-    },
-    {
-      "file": "src/features/machine-sidebar/MachineSidebar.parts.tsx",
-      "lines": 929,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-070"
-    },
-    {
-      "file": "src/features/machine-sidebar/MachineSidebar.tsx",
-      "lines": 973,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-070"
-    },
-    {
-      "file": "src/features/machine-sidebar/RemoteHostCreateDialog.tsx",
-      "lines": 973,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-070"
-    },
-    {
       "file": "src/features/sftp/RemoteWorkspaceEditor.tsx",
       "lines": 974,
       "deadline": "before TASK-080",
@@ -185,20 +143,6 @@
       "deadline": "before TASK-080",
       "owner": "terminal-runtime",
       "targetTask": "TASK-050/TASK-052"
-    },
-    {
-      "file": "src/features/tool-panel/PortForwardToolContent.tsx",
-      "lines": 863,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-070"
-    },
-    {
-      "file": "src/features/tool-panel/TmuxToolContent.tsx",
-      "lines": 833,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-070"
     },
     {
       "file": "src/lib/terminalSuggestionApi.ts",
