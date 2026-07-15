@@ -1,6 +1,10 @@
 import type { CommandHistoryTarget } from "../../lib/commandHistoryApi";
 import type { CommandSnippet, SnippetScope } from "../../lib/snippetApi";
-import type { TerminalPane } from "../workspace/types";
+
+/** 片段发送策略识别终端目标所需的最小分屏契约。 */
+export interface SnippetTerminalTarget {
+  mode: string;
+}
 
 export type SnippetCatalogMode = "mine" | "preset";
 
@@ -423,7 +427,7 @@ export function buildSnippetVariableValues(
 
 export function getSnippetSendBlocker(
   snippet: CommandSnippet,
-  focusedPane?: TerminalPane,
+  focusedPane?: SnippetTerminalTarget,
 ) {
   const target = getPaneCommandTarget(focusedPane);
   if (!target) {
@@ -438,7 +442,7 @@ export function getSnippetSendBlocker(
 }
 
 export function getPaneCommandTarget(
-  focusedPane?: TerminalPane,
+  focusedPane?: SnippetTerminalTarget,
 ): CommandHistoryTarget | null {
   if (focusedPane?.mode === "local") {
     return "local";

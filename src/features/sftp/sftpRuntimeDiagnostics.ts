@@ -1,4 +1,3 @@
-import type { RuntimeSftpSnapshot } from "../terminal/terminalRuntimeDiagnostics";
 import type { SftpTransferSummary } from "../../lib/sftpApi";
 import {
   DEFAULT_SFTP_TRANSFER_CONFLICT_PREFLIGHT_CONCURRENCY,
@@ -6,8 +5,27 @@ import {
 } from "./sftp-tool-content/sftpTransferConflictPreflight";
 import { resolveSftpTransferRetry } from "./sftpTransferRetryPolicy";
 
+/** SFTP 特性对外提供的运行时诊断摘要。 */
+export interface SftpRuntimeSnapshot {
+  preflight?: {
+    active: number;
+    cancelRequested: boolean;
+    completed: number;
+    concurrencyLimit: number;
+    failed: number;
+    queued: number;
+  };
+  transfers: {
+    activeTransfers: number;
+    failedRecent: number;
+    prunedCompleted: number;
+    recentCompleted: number;
+    retryableFailedRecent?: number;
+  };
+}
+
 export interface SftpRuntimeDiagnostics {
-  getSnapshot(): RuntimeSftpSnapshot;
+  getSnapshot(): SftpRuntimeSnapshot;
   updatePreflight(progress: SftpTransferConflictPreflightProgress | null): void;
   updateTransfers(transfers: SftpTransferSummary[]): void;
 }

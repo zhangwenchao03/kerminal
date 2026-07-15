@@ -1,4 +1,11 @@
-import type { TerminalRendererRegistrySnapshot } from "../../terminal/terminalRendererRegistry";
+/** 设置页展示 renderer 状态所需的最小诊断契约。 */
+export interface TerminalRendererStatusSnapshot {
+  atlasEpoch: number;
+  effectiveGpuPanes: number;
+  panes: Array<{ fallbackReason?: string }>;
+  recoveryCount: number;
+  suggestedFallback?: "cpu";
+}
 
 export interface TerminalRendererStatusView {
   badgeLabel: string;
@@ -13,7 +20,7 @@ export function isRetryableRendererFallback(
 }
 
 export function buildTerminalRendererStatusView(
-  snapshot: TerminalRendererRegistrySnapshot,
+  snapshot: TerminalRendererStatusSnapshot,
 ): TerminalRendererStatusView {
   const failedPane = snapshot.panes.find((pane) =>
     isRetryableRendererFallback(pane.fallbackReason),
