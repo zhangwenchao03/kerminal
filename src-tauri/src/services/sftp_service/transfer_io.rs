@@ -188,6 +188,19 @@ pub(super) async fn download_file(
     set_total: bool,
 ) -> AppResult<()> {
     progress.ensure_not_cancelled()?;
+    if set_total {
+        if let Some(directory_path) = resolve_file_request_directory(sftp, remote_path).await {
+            return Box::pin(download_directory(
+                sftp,
+                &directory_path,
+                local_path,
+                progress,
+                settings,
+                conflict_policy,
+            ))
+            .await;
+        }
+    }
     if let Some(parent) = local_path.parent() {
         fs::create_dir_all(parent).await?;
     }
@@ -266,6 +279,18 @@ async fn resolve_remote_read_fallback(
         return Some(RemoteReadFallback::Directory(directory_path));
     }
     Some(RemoteReadFallback::File(target_path))
+}
+
+/// 顶层文件请求先用 STAT 识别目录，兼容允许 OPEN 目录句柄的 SFTP 服务端。
+async fn resolve_file_request_directory(sftp: &SftpSession, remote_path: &str) -> Option<String> {
+    let metadata = sftp.metadata(remote_path.to_owned()).await.ok()?;
+    if !metadata.is_dir() {
+        return None;
+    }
+
+    resolve_remote_directory_path(sftp, remote_path)
+        .await
+        .or_else(|| Some(remote_path.to_owned()))
 }
 
 async fn resolve_remote_directory_path(sftp: &SftpSession, remote_path: &str) -> Option<String> {
@@ -392,6 +417,22 @@ pub(super) async fn copy_remote_file_between_sessions(
     set_total: bool,
 ) -> AppResult<()> {
     progress.ensure_not_cancelled()?;
+    if set_total {
+        if let Some(directory_path) =
+            resolve_file_request_directory(source_sftp, source_remote_path).await
+        {
+            return Box::pin(copy_remote_directory_between_sessions(
+                source_sftp,
+                &directory_path,
+                target_sftp,
+                target_remote_path,
+                progress,
+                settings,
+                conflict_policy,
+            ))
+            .await;
+        }
+    }
     let mut source_file = match source_sftp.open(source_remote_path).await {
         Ok(source_file) => source_file,
         Err(open_error) => {
