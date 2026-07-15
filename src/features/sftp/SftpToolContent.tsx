@@ -1,6 +1,5 @@
 import {
   type Dispatch,
-  type KeyboardEvent as ReactKeyboardEvent,
   type SetStateAction,
   useCallback,
   useEffect,
@@ -23,7 +22,7 @@ import { SftpTransferConflictDialog } from "./SftpTransferConflictDialog";
 import type { InterfaceDensity } from "../settings/contracts/index";
 import { resolveSftpFileRowHeight } from "./sftpDensityModel";
 import { LocalTransferPane } from "./LocalTransferPane";
-import { SftpBrowserView } from "./sftp-tool-content/SftpBrowserView";
+import { SftpBrowserPresenter } from "./sftp-tool-content/SftpBrowserPresenter";
 import { useSftpTransferActions } from "./sftp-tool-content/useSftpTransferActions";
 import { useSftpContextMenuActions } from "./sftp-tool-content/useSftpContextMenuActions";
 import { useSftpLocalUploadDropActions } from "./sftp-tool-content/useSftpLocalUploadDropActions";
@@ -31,6 +30,7 @@ import { useSftpDialogActions } from "./sftp-tool-content/useSftpDialogActions";
 import { useSftpRemoteSetupActions } from "./sftp-tool-content/useSftpRemoteSetupActions";
 import { useSftpTransferSync } from "./sftp-tool-content/useSftpTransferSync";
 import { useSftpWorkspaceDialogActions } from "./sftp-tool-content/useSftpWorkspaceDialogActions";
+import { useSftpBrowserCommands } from "./sftp-tool-content/useSftpBrowserCommands";
 import { clampContextMenuPosition } from "./sftp-tool-content/sftpDragDropModel";
 import {
   isHiddenEntry,
@@ -263,10 +263,6 @@ function SftpTargetBoundContent({
     [entries, showHiddenFiles],
   );
   const hiddenEntryCount = entries.length - visibleEntries.length;
-  const directoryCount = visibleEntries.filter(
-    (entry) => entry.kind === "directory",
-  ).length;
-  const fileCount = visibleEntries.length - directoryCount;
   const selectedEntries = useMemo(
     () => visibleEntries.filter((entry) => selectedEntryPaths.has(entry.path)),
     [selectedEntryPaths, visibleEntries],
@@ -782,34 +778,12 @@ function SftpTargetBoundContent({
     uploadLocalFile,
   });
 
-  const handleSftpKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLElement>) => {
-      handleSftpTransferKeyDown(event);
-      if (
-        event.defaultPrevented ||
-        isSftpEditableKeyboardTarget(event.target)
-      ) {
-        return;
-      }
-
-      if (event.key === "Delete" && selectedEntries.length > 0) {
-        event.preventDefault();
-        openDeleteDialog(selectedEntries);
-        return;
-      }
-
-      if (event.key === "F2" && selectedEntries.length === 1) {
-        event.preventDefault();
-        openRenameDialog(selectedEntries[0]);
-      }
-    },
-    [
-      handleSftpTransferKeyDown,
-      openDeleteDialog,
-      openRenameDialog,
-      selectedEntries,
-    ],
-  );
+  const { handleKeyDown } = useSftpBrowserCommands({
+    handleTransferKeyDown: handleSftpTransferKeyDown,
+    openDeleteDialog,
+    openRenameDialog,
+    selectedEntries,
+  });
 
   if (selectedMachine?.kind === "local") {
     return (
@@ -839,85 +813,95 @@ function SftpTargetBoundContent({
 
   return (
     <>
-      <SftpBrowserView
-        browserMode={browserMode}
-        cancelTransfer={cancelTransfer}
-        clearFinishedTransfers={clearFinishedTransfers}
-        compactHeader={compactHeader}
-        contextMenu={contextMenu}
-        currentPath={currentPath}
-        cwdTrackingSetupBusy={cwdTrackingSetupBusy}
-        dialogAction={dialogAction}
-        dialogBusy={dialogBusy}
-        dialogStatus={dialogStatus}
-        directoryCount={directoryCount}
-        downloadSelectedEntries={downloadSelectedEntries}
-        dragDropActive={dragDropActive}
-        dropZoneRef={dropZoneRef}
-        entries={entries}
-        error={error}
-        executeContextMenuAction={executeContextMenuAction}
-        fileCount={fileCount}
-        fileRowHeight={fileRowHeight}
-        fileTarget={fileTarget}
-        finishRemoteEntryDrag={finishRemoteEntryDrag}
-        followTerminalDirectory={followTerminalDirectory}
-        handleRemoteDownloadDragEnter={handleRemoteDownloadDragEnter}
-        handleRemoteDownloadDragLeave={handleRemoteDownloadDragLeave}
-        handleRemoteDownloadDragOver={handleRemoteDownloadDragOver}
-        handleRemoteDownloadDrop={handleRemoteDownloadDrop}
-        handleSftpKeyDown={handleSftpKeyDown}
-        hiddenEntryCount={hiddenEntryCount}
-        hostKeyTrustBusy={hostKeyTrustBusy}
-        interfaceDensity={interfaceDensity}
-        listing={listing}
-        loadDirectory={loadDirectory}
-        loading={loading}
-        normalizedFollowedPath={normalizedFollowedPath}
-        openContextMenu={openContextMenu}
-        openContextMenuFromPress={openContextMenuFromPress}
-        openEditorEntry={openEditorEntry}
-        openNewDirectoryDialog={openNewDirectoryDialog}
-        operationStatus={operationStatus}
-        pathDraft={pathDraft}
-        remoteDownloadDragActive={remoteDownloadDragActive}
-        remoteDownloadDropActive={remoteDownloadDropActive}
-        remoteDragEntriesRef={remoteDragEntriesRef}
-        retryTransfer={retryTransfer}
-        selectEntry={selectEntry}
-        selectedEntries={selectedEntries}
-        selectedEntryPath={selectedEntryPath}
-        selectedEntryPaths={selectedEntryPaths}
-        setBrowserMode={setBrowserMode}
-        setContextMenu={setContextMenu}
-        setDialogAction={setDialogAction}
-        setDialogStatus={setDialogStatus}
-        setFollowTerminalDirectory={setFollowTerminalDirectoryFromView}
-        setOperationStatus={setOperationStatus}
-        setPathDraft={setPathDraft}
-        setShowHiddenFiles={setShowHiddenFiles}
-        setUploadMenuOpen={setUploadMenuOpen}
-        setupRemoteCwdTracking={setupRemoteCwdTracking}
-        showHiddenFiles={showHiddenFiles}
-        showLocalTransferActions={showLocalTransferActions}
-        showTransferStatusBar={showTransferStatusBar}
-        startRemoteEntryDrag={startRemoteEntryDrag}
-        submitDialogAction={submitDialogAction}
-        submitPathDraft={submitPathDraft}
-        supportsSftpAdvancedActions={supportsSftpAdvancedActions}
-        transferableSelectedEntries={transferableSelectedEntries}
-        transferSelectedEntriesToTarget={transferSelectedEntriesToTarget}
-        transferTarget={transferTarget}
-        trustHostKey={trustHostKey}
-        uploadLocalDirectory={uploadLocalDirectory}
-        uploadLocalFile={uploadLocalFile}
-        uploadMenuOpen={uploadMenuOpen}
-        uploadMenuRef={uploadMenuRef}
-        visibleEntries={visibleEntries}
-        visibleTransfers={visibleTransfers}
-        workspaceFileDirtyState={workspaceFileDirtyState}
-        workspaceFileTabs={workspaceFileTabs}
-        workspaceTarget={workspaceTarget}
+      <SftpBrowserPresenter
+        capabilities={{
+          compactHeader,
+          cwdTrackingSetupBusy,
+          fileRowHeight,
+          hostKeyTrustBusy,
+          interfaceDensity,
+          setupRemoteCwdTracking,
+          showLocalTransferActions,
+          showTransferStatusBar,
+          supportsSftpAdvancedActions,
+          trustHostKey,
+          workspaceFileDirtyState,
+          workspaceFileTabs,
+          workspaceTarget,
+        }}
+        dialogs={{
+          contextMenu,
+          dialogAction,
+          dialogBusy,
+          dialogStatus,
+          executeContextMenuAction,
+          setContextMenu,
+          setDialogAction,
+          setDialogStatus,
+          submitDialogAction,
+        }}
+        navigation={{
+          browserMode,
+          currentPath,
+          fileTarget,
+          followTerminalDirectory,
+          listing,
+          loadDirectory,
+          loading,
+          normalizedFollowedPath,
+          pathDraft,
+          setBrowserMode,
+          setFollowTerminalDirectory: setFollowTerminalDirectoryFromView,
+          setPathDraft,
+          submitPathDraft,
+        }}
+        operations={{
+          downloadSelectedEntries,
+          dragDropActive,
+          dropZoneRef,
+          error,
+          finishRemoteEntryDrag,
+          handleKeyDown,
+          handleRemoteDownloadDragEnter,
+          handleRemoteDownloadDragLeave,
+          handleRemoteDownloadDragOver,
+          handleRemoteDownloadDrop,
+          openContextMenu,
+          openContextMenuFromPress,
+          openEditorEntry,
+          openNewDirectoryDialog,
+          operationStatus,
+          remoteDownloadDragActive,
+          remoteDownloadDropActive,
+          remoteDragEntriesRef,
+          setOperationStatus,
+          startRemoteEntryDrag,
+        }}
+        selection={{
+          entries,
+          hiddenEntryCount,
+          selectEntry,
+          selectedEntries,
+          selectedEntryPath,
+          selectedEntryPaths,
+          setShowHiddenFiles,
+          showHiddenFiles,
+          transferableSelectedEntries,
+          visibleEntries,
+        }}
+        transfers={{
+          cancelTransfer,
+          clearFinishedTransfers,
+          retryTransfer,
+          setUploadMenuOpen,
+          transferSelectedEntriesToTarget,
+          transferTarget,
+          uploadLocalDirectory,
+          uploadLocalFile,
+          uploadMenuOpen,
+          uploadMenuRef,
+          visibleTransfers,
+        }}
       />
       <SftpTransferConflictDialog
         conflictCount={pendingTransferConflict?.conflictCount ?? 0}
@@ -955,15 +939,4 @@ function buildSftpContextMenuScope({
     return { entry, kind: "entry" };
   }
   return { kind: "directory" };
-}
-
-function isSftpEditableKeyboardTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-  return Boolean(
-    target.closest(
-      "input, textarea, select, [contenteditable='true'], [contenteditable='']",
-    ),
-  );
 }
