@@ -5,12 +5,11 @@ use std::{sync::MutexGuard, time::Instant};
 use crate::error::{AppError, AppResult};
 
 use super::{
-    apply_policy_options, health, log_external_launch_queued, prune_delivery_history,
-    sanitize_error_message, ExternalLaunchAcceptOutcome, ExternalLaunchArgSummary,
-    ExternalLaunchDedupRecord, ExternalLaunchEntrypoint, ExternalLaunchIntake,
-    ExternalLaunchIntakeState, ExternalLaunchPolicy, ExternalLaunchQueued, ExternalLaunchRejected,
-    ExternalLaunchSourceTool, ExternalLaunchTargetSummary, ExternalSshLaunchRequest,
-    EXTERNAL_LAUNCH_DEDUP_TTL,
+    apply_policy_options, health, log_external_launch_queued, sanitize_error_message,
+    ExternalLaunchAcceptOutcome, ExternalLaunchArgSummary, ExternalLaunchEntrypoint,
+    ExternalLaunchIntake, ExternalLaunchIntakeState, ExternalLaunchPolicy, ExternalLaunchQueued,
+    ExternalLaunchRejected, ExternalLaunchSourceTool, ExternalLaunchTargetSummary,
+    ExternalSshLaunchRequest,
 };
 
 impl ExternalLaunchIntake {
@@ -20,7 +19,6 @@ impl ExternalLaunchIntake {
         mut request: ExternalSshLaunchRequest,
         policy: ExternalLaunchPolicy,
         entrypoint: ExternalLaunchEntrypoint,
-        request_id: Option<String>,
         summary: ExternalLaunchArgSummary,
     ) -> AppResult<ExternalLaunchAcceptOutcome> {
         apply_policy_options(&policy, &mut request);
@@ -34,39 +32,7 @@ impl ExternalLaunchIntake {
             }
         };
         log_external_launch_queued(entrypoint, &request);
-        self.enqueue_request(request, entrypoint, request_id, summary)
-    }
-
-    pub(super) fn duplicate_bridge_request(
-        &self,
-        request_id: &str,
-        raw_hash: &str,
-        now: Instant,
-    ) -> AppResult<Option<ExternalLaunchQueued>> {
-        if request_id.is_empty() {
-            return Err(AppError::InvalidInput(
-                "external launch bridge request id must not be empty".to_owned(),
-            ));
-        }
-        let mut state = self.state()?;
-        prune_delivery_history(&mut state, now);
-        let pending_count = state.pending.len();
-        let Some(record) = state.request_dedup.get_mut(request_id) else {
-            return Ok(None);
-        };
-        if record.raw_hash != raw_hash {
-            return Err(AppError::InvalidInput(
-                "external launch bridge request id was reused for another payload".to_owned(),
-            ));
-        }
-        record.last_seen_at = now;
-        record.expires_at = now.checked_add(EXTERNAL_LAUNCH_DEDUP_TTL).unwrap_or(now);
-        let mut queued = record.queued.clone();
-        queued.pending_count = pending_count;
-        drop(state);
-        let mut health = self.health()?;
-        health.snapshot.dedup_count = health.snapshot.dedup_count.saturating_add(1);
-        Ok(Some(queued))
+        self.enqueue_request(request, entrypoint, summary)
     }
 
     /// 原子检查总在途容量并入队，超限时立即释放刚保护的 session secret。
@@ -74,35 +40,11 @@ impl ExternalLaunchIntake {
         &self,
         request: ExternalSshLaunchRequest,
         entrypoint: ExternalLaunchEntrypoint,
-        request_id: Option<String>,
         summary: ExternalLaunchArgSummary,
     ) -> AppResult<ExternalLaunchAcceptOutcome> {
         let policy = self.policy_snapshot()?;
         let now = Instant::now();
-        let request_raw_hash = summary.raw_hash.clone();
         let mut state = self.state()?;
-        prune_delivery_history(&mut state, now);
-        if let Some(request_id) = request_id.as_deref() {
-            if let Some(record) = state.request_dedup.get_mut(request_id) {
-                if record.raw_hash != request_raw_hash {
-                    drop(state);
-                    self.inner.secrets.cancel_launch(&request.id)?;
-                    return Err(AppError::InvalidInput(
-                        "external launch bridge request id was reused for another payload"
-                            .to_owned(),
-                    ));
-                }
-                record.last_seen_at = now;
-                record.expires_at = now.checked_add(EXTERNAL_LAUNCH_DEDUP_TTL).unwrap_or(now);
-                let mut queued = record.queued.clone();
-                queued.pending_count = state.pending.len();
-                drop(state);
-                self.inner.secrets.cancel_launch(&request.id)?;
-                let mut health = self.health()?;
-                health.snapshot.dedup_count = health.snapshot.dedup_count.saturating_add(1);
-                return Ok(ExternalLaunchAcceptOutcome::Queued(queued));
-            }
-        }
         if state.pending.len().saturating_add(state.active.len()) >= policy.pending_capacity {
             drop(state);
             self.inner.secrets.cancel_launch(&request.id)?;
@@ -127,18 +69,6 @@ impl ExternalLaunchIntake {
             target: ExternalLaunchTargetSummary::from_target(&request.target),
             pending_count: state.pending.len(),
         };
-        if let Some(request_id) = request_id {
-            state.request_dedup.insert(
-                request_id,
-                ExternalLaunchDedupRecord {
-                    queued: queued.clone(),
-                    raw_hash: request_raw_hash,
-                    expires_at: now.checked_add(EXTERNAL_LAUNCH_DEDUP_TTL).unwrap_or(now),
-                    last_seen_at: now,
-                },
-            );
-            prune_delivery_history(&mut state, now);
-        }
         Ok(ExternalLaunchAcceptOutcome::Queued(queued))
     }
 

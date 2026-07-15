@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "pnpm run dev",
     "devUrl": "http://localhost:1425",
-    "beforeBuildCommand": "pnpm run build && pnpm run prepare:launch-shim-sidecar",
+    "beforeBuildCommand": "pnpm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -44,9 +44,6 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
-    "externalBin": [
-      "binaries/kerminal-launch-shim-sidecar"
-    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -56,7 +53,6 @@
     ],
     "windows": {
       "nsis": {
-        "installerHooks": "../scripts/kerminal-launch-shim-nsis-hooks.nsh",
         "installerIcon": "icons/icon.ico",
         "uninstallerIcon": "icons/icon.ico"
       }

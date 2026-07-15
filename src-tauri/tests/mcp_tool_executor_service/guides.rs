@@ -7,7 +7,6 @@ async fn mcp_runtime_snapshot_reports_external_launch_policy_without_secrets() {
     let mut settings = AppSettings::default();
     settings.external_launch.enabled = false;
     settings.external_launch.accept_vendor_args = false;
-    settings.external_launch.shim_bridge.enabled = false;
     settings.external_launch.auto_open_sftp = true;
     settings.external_launch.disabled_tools = vec![ExternalLaunchToolSetting::Putty];
     state
@@ -32,10 +31,6 @@ async fn mcp_runtime_snapshot_reports_external_launch_policy_without_secrets() {
     );
     assert_eq!(
         output.data["externalLaunch"]["intake"]["policy"]["acceptVendorArgs"],
-        false
-    );
-    assert_eq!(
-        output.data["externalLaunch"]["intake"]["policy"]["shimBridgeEnabled"],
         false
     );
     assert_eq!(

@@ -21,13 +21,8 @@ const ALLOWED_SOURCE_TOOLS: &[&str] = &[
     "openssh",
     "kerminal-native",
 ];
-const ALLOWED_ENTRYPOINTS: &[&str] = &[
-    "direct-argv",
-    "single-instance",
-    "shim-ipc",
-    "protocol",
-    "session-file",
-];
+const ALLOWED_ENTRYPOINTS: &[&str] =
+    &["direct-argv", "single-instance", "protocol", "session-file"];
 const FIXTURE_SECRET_MARKER: &str = "KERM_FIXTURE_";
 
 #[test]

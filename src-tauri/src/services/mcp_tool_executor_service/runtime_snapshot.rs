@@ -413,11 +413,6 @@ fn external_launch_snapshot_json(
                 "lastRejection": snapshot.last_rejection.as_ref().map(external_launch_rejection_json),
                 "policy": &snapshot.policy,
                 "health": {
-                    "bridgeListening": snapshot.health.bridge_listening,
-                    "bridgeGenerationTag": snapshot.health.bridge_generation_tag,
-                    "bridgeRestartCount": snapshot.health.bridge_restart_count,
-                    "bridgeActiveClients": snapshot.health.bridge_active_clients,
-                    "dedupCount": snapshot.health.dedup_count,
                     "backpressureCount": snapshot.health.backpressure_count,
                     "expiryCount": snapshot.health.expiry_count,
                     "cancelCount": snapshot.health.cancel_count,

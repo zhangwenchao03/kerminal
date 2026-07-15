@@ -1,4 +1,4 @@
-//! Bridge 的父进程发现辅助函数。
+//! 主程序直接启动时的父进程发现辅助函数。
 //!
 //! @author kongweiguang
 
@@ -7,23 +7,13 @@ use std::{path::Path, time::Duration};
 const PARENT_DISCOVERY_TIMEOUT: Duration = Duration::from_millis(1_500);
 const PARENT_WORKER_TIMEOUT: Duration = Duration::from_secs(4);
 
-pub(super) fn direct_parent_command_line_for_args_impl(argv: &[String]) -> Option<String> {
-    if !should_capture_direct_parent_command_line(argv) {
-        return None;
-    }
-    discover_parent_command_line()
-        .filter(|value| looks_like_bhost_command_line(value))
-        .or_else(|| discover_bhost_parent_command_line_for_args(argv))
-}
-
-pub(super) async fn direct_parent_command_line_for_args_bounded_impl(
+pub(super) async fn direct_parent_command_line_for_args_bounded(
     argv: Vec<String>,
 ) -> Option<String> {
     if !should_capture_direct_parent_command_line(&argv) {
         return None;
     }
-    let worker =
-        tokio::task::spawn_blocking(move || direct_parent_command_line_for_args_impl(&argv));
+    let worker = tokio::task::spawn_blocking(move || direct_parent_command_line_for_args(&argv));
     match tokio::time::timeout(PARENT_WORKER_TIMEOUT, worker).await {
         Ok(Ok(value)) => value,
         Ok(Err(error)) => {
@@ -41,6 +31,15 @@ pub(super) async fn direct_parent_command_line_for_args_bounded_impl(
             None
         }
     }
+}
+
+fn direct_parent_command_line_for_args(argv: &[String]) -> Option<String> {
+    if !should_capture_direct_parent_command_line(argv) {
+        return None;
+    }
+    discover_parent_command_line()
+        .filter(|value| looks_like_bhost_command_line(value))
+        .or_else(|| discover_bhost_parent_command_line_for_args(argv))
 }
 
 fn should_capture_direct_parent_command_line(argv: &[String]) -> bool {

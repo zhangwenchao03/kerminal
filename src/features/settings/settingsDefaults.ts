@@ -81,9 +81,6 @@ export const defaultExternalLaunchSettings: ExternalLaunchSettings = {
   autoOpenSftp: false,
   disabledTools: [],
   enabled: true,
-  shimBridge: {
-    enabled: true,
-  },
 };
 
 export const defaultKeybindings: KeybindingSetting[] = [

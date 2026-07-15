@@ -2,29 +2,18 @@
 //!
 //! @author kongweiguang
 
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
-};
-
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 use tauri_plugin_deep_link::DeepLinkExt;
 
 use crate::{
     models::remote_host::RemoteHostAuthType,
-    paths::KerminalPaths,
     services::external_launch::{
-        default_external_launch_alias_directory, delete_external_launch_aliases,
-        external_target_id, generate_external_launch_aliases, inspect_external_host_key,
-        inspect_external_launch_alias, trust_external_host_key, ExternalLaunchAliasGenerateRequest,
-        ExternalLaunchAliasInspection, ExternalLaunchAliasInstallMode, ExternalLaunchAliasRemoval,
-        ExternalLaunchAliasState, ExternalLaunchAliasSummary, ExternalLaunchEntrypoint,
-        ExternalLaunchIntakeSnapshot, ExternalLaunchRequestDiagnostics,
+        external_target_id, inspect_external_host_key, trust_external_host_key,
+        ExternalLaunchEntrypoint, ExternalLaunchIntakeSnapshot, ExternalLaunchRequestDiagnostics,
         ExternalLaunchSecretBrokerSnapshot, ExternalLaunchSource, ExternalLaunchSourceTool,
         ExternalSshAuth, ExternalSshLaunchOptions, ExternalSshLaunchRequest, ExternalSshRouteHop,
-        ExternalSshTarget, ExternalTargetSafety, EXTERNAL_LAUNCH_ALIAS_TOOLS,
-        EXTERNAL_LAUNCH_DEEP_LINK_SCHEME,
+        ExternalSshTarget, ExternalTargetSafety, EXTERNAL_LAUNCH_DEEP_LINK_SCHEME,
     },
     state::AppState,
 };
@@ -255,52 +244,6 @@ pub fn external_launch_snapshot(
     Ok(external_launch_snapshot_to_dto(intake, secrets, tasks))
 }
 
-/// Return the current compatibility alias installation status.
-#[tauri::command]
-pub fn external_launch_alias_status(
-    state: State<'_, AppState>,
-) -> Result<ExternalLaunchAliasStatusDto, String> {
-    let current_exe = env::current_exe().map_err(|error| error.to_string())?;
-    external_launch_alias_status_for_paths(state.paths(), current_exe)
-        .map_err(|error| error.to_string())
-}
-
-/// Generate opt-in compatibility aliases such as `putty.exe` or `MobaXterm.exe`.
-#[tauri::command]
-pub fn external_launch_alias_generate(
-    state: State<'_, AppState>,
-    request: ExternalLaunchAliasCommandRequestDto,
-) -> Result<Vec<ExternalLaunchAliasSummaryDto>, String> {
-    let current_exe = env::current_exe().map_err(|error| error.to_string())?;
-    external_launch_alias_generate_for_paths(state.paths(), current_exe, request)
-        .map_err(|error| error.to_string())
-}
-
-/// Delete Kerminal-managed compatibility aliases.
-#[tauri::command]
-pub fn external_launch_alias_delete(
-    state: State<'_, AppState>,
-    request: ExternalLaunchAliasCommandRequestDto,
-) -> Result<Vec<ExternalLaunchAliasRemovalDto>, String> {
-    let current_exe = env::current_exe().map_err(|error| error.to_string())?;
-    external_launch_alias_delete_for_paths(state.paths(), current_exe, request)
-        .map_err(|error| error.to_string())
-}
-
-/// Open the compatibility alias directory, creating it when needed.
-#[tauri::command]
-pub async fn external_launch_alias_open_directory(
-    state: State<'_, AppState>,
-    alias_directory: Option<String>,
-) -> Result<String, String> {
-    let alias_directory =
-        resolve_alias_directory(state.paths(), alias_directory.map(PathBuf::from));
-    let alias_directory_text = path_to_string(&alias_directory);
-    crate::commands::file_dialog::file_dialog_open_local_directory(alias_directory_text.clone())
-        .await?;
-    Ok(alias_directory_text)
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExternalLaunchMaterializeRequestDto {
@@ -456,11 +399,6 @@ pub struct ExternalLaunchIntakeSnapshotDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExternalLaunchRuntimeHealthSnapshotDto {
-    pub bridge_listening: bool,
-    pub bridge_generation_tag: Option<String>,
-    pub bridge_restart_count: u64,
-    pub bridge_active_clients: usize,
-    pub dedup_count: u64,
     pub backpressure_count: u64,
     pub expiry_count: u64,
     pub cancel_count: u64,
@@ -498,60 +436,6 @@ pub struct ExternalLaunchRejectedDto {
 pub struct ExternalLaunchSecretSnapshotDto {
     pub active_secret_count: usize,
     pub request_hashes: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExternalLaunchAliasStatusDto {
-    pub install_directory: Option<String>,
-    pub kerminal_executable: String,
-    pub shim_executable: String,
-    pub shim_available: bool,
-    pub alias_directory: String,
-    pub aliases: Vec<ExternalLaunchAliasInspectionDto>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExternalLaunchAliasCommandRequestDto {
-    #[serde(default)]
-    pub tools: Option<Vec<ExternalLaunchSourceTool>>,
-    #[serde(default)]
-    pub alias_directory: Option<String>,
-    #[serde(default)]
-    pub shim_executable: Option<String>,
-    #[serde(default)]
-    pub prefer_hard_link: Option<bool>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExternalLaunchAliasInspectionDto {
-    pub tool: ExternalLaunchSourceTool,
-    pub alias_path: String,
-    pub marker_path: String,
-    pub state: ExternalLaunchAliasState,
-    pub marker_present: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExternalLaunchAliasSummaryDto {
-    pub tool: ExternalLaunchSourceTool,
-    pub alias_path: String,
-    pub marker_path: String,
-    pub state: ExternalLaunchAliasState,
-    pub install_mode: Option<ExternalLaunchAliasInstallMode>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExternalLaunchAliasRemovalDto {
-    pub tool: ExternalLaunchSourceTool,
-    pub alias_path: String,
-    pub marker_path: String,
-    pub removed_alias: bool,
-    pub removed_marker: bool,
 }
 
 fn source_to_dto(source: ExternalLaunchSource) -> ExternalLaunchSourceDto {
@@ -603,11 +487,6 @@ fn intake_snapshot_to_dto(
         noop_count: snapshot.noop_count,
         policy: snapshot.policy,
         health: ExternalLaunchRuntimeHealthSnapshotDto {
-            bridge_listening: snapshot.health.bridge_listening,
-            bridge_generation_tag: snapshot.health.bridge_generation_tag,
-            bridge_restart_count: snapshot.health.bridge_restart_count,
-            bridge_active_clients: snapshot.health.bridge_active_clients,
-            dedup_count: snapshot.health.dedup_count,
             backpressure_count: snapshot.health.backpressure_count,
             expiry_count: snapshot.health.expiry_count,
             cancel_count: snapshot.health.cancel_count,
@@ -625,128 +504,4 @@ fn intake_snapshot_to_dto(
                 cwd_present: rejection.cwd_present,
             }),
     }
-}
-
-#[doc(hidden)]
-pub fn external_launch_alias_status_for_paths(
-    paths: &KerminalPaths,
-    current_exe: PathBuf,
-) -> crate::error::AppResult<ExternalLaunchAliasStatusDto> {
-    let alias_directory = default_external_launch_alias_directory(paths);
-    let shim_executable = default_shim_executable(&current_exe);
-    let aliases = EXTERNAL_LAUNCH_ALIAS_TOOLS
-        .iter()
-        .copied()
-        .map(|tool| {
-            inspect_external_launch_alias(&alias_directory, tool).map(alias_inspection_to_dto)
-        })
-        .collect::<crate::error::AppResult<Vec<_>>>()?;
-
-    Ok(ExternalLaunchAliasStatusDto {
-        install_directory: current_exe.parent().map(path_to_string),
-        kerminal_executable: path_to_string(current_exe),
-        shim_available: fs::metadata(&shim_executable).is_ok_and(|metadata| metadata.is_file()),
-        shim_executable: path_to_string(shim_executable),
-        alias_directory: path_to_string(alias_directory),
-        aliases,
-    })
-}
-
-#[doc(hidden)]
-pub fn external_launch_alias_generate_for_paths(
-    paths: &KerminalPaths,
-    current_exe: PathBuf,
-    request: ExternalLaunchAliasCommandRequestDto,
-) -> crate::error::AppResult<Vec<ExternalLaunchAliasSummaryDto>> {
-    let alias_directory = resolve_alias_directory(paths, optional_path(request.alias_directory));
-    let shim_executable =
-        resolve_shim_executable(&current_exe, optional_path(request.shim_executable));
-    let mut generate_request = ExternalLaunchAliasGenerateRequest::new(
-        shim_executable,
-        alias_directory,
-        request.tools.unwrap_or_default(),
-    );
-    if let Some(prefer_hard_link) = request.prefer_hard_link {
-        generate_request.prefer_hard_link = prefer_hard_link;
-    }
-    generate_external_launch_aliases(generate_request)
-        .map(|summaries| summaries.into_iter().map(alias_summary_to_dto).collect())
-}
-
-#[doc(hidden)]
-pub fn external_launch_alias_delete_for_paths(
-    paths: &KerminalPaths,
-    _current_exe: PathBuf,
-    request: ExternalLaunchAliasCommandRequestDto,
-) -> crate::error::AppResult<Vec<ExternalLaunchAliasRemovalDto>> {
-    let alias_directory = resolve_alias_directory(paths, optional_path(request.alias_directory));
-    let tools = request.tools.unwrap_or_default();
-    delete_external_launch_aliases(alias_directory, &tools)
-        .map(|removals| removals.into_iter().map(alias_removal_to_dto).collect())
-}
-
-fn alias_inspection_to_dto(
-    inspection: ExternalLaunchAliasInspection,
-) -> ExternalLaunchAliasInspectionDto {
-    ExternalLaunchAliasInspectionDto {
-        tool: inspection.tool,
-        alias_path: path_to_string(inspection.alias_path),
-        marker_path: path_to_string(inspection.marker_path),
-        state: inspection.state,
-        marker_present: inspection.marker_present,
-    }
-}
-
-fn alias_summary_to_dto(summary: ExternalLaunchAliasSummary) -> ExternalLaunchAliasSummaryDto {
-    ExternalLaunchAliasSummaryDto {
-        tool: summary.tool,
-        alias_path: path_to_string(summary.alias_path),
-        marker_path: path_to_string(summary.marker_path),
-        state: summary.state,
-        install_mode: summary.install_mode,
-    }
-}
-
-fn alias_removal_to_dto(removal: ExternalLaunchAliasRemoval) -> ExternalLaunchAliasRemovalDto {
-    ExternalLaunchAliasRemovalDto {
-        tool: removal.tool,
-        alias_path: path_to_string(removal.alias_path),
-        marker_path: path_to_string(removal.marker_path),
-        removed_alias: removal.removed_alias,
-        removed_marker: removal.removed_marker,
-    }
-}
-
-fn optional_path(value: Option<String>) -> Option<PathBuf> {
-    value
-        .map(|value| value.trim().to_owned())
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-}
-
-fn resolve_alias_directory(paths: &KerminalPaths, alias_directory: Option<PathBuf>) -> PathBuf {
-    alias_directory.unwrap_or_else(|| default_external_launch_alias_directory(paths))
-}
-
-fn resolve_shim_executable(current_exe: &Path, shim_executable: Option<PathBuf>) -> PathBuf {
-    shim_executable.unwrap_or_else(|| default_shim_executable(current_exe))
-}
-
-fn default_shim_executable(current_exe: &Path) -> PathBuf {
-    current_exe
-        .parent()
-        .map(|parent| parent.join(default_shim_executable_file_name()))
-        .unwrap_or_else(|| PathBuf::from(default_shim_executable_file_name()))
-}
-
-fn default_shim_executable_file_name() -> &'static str {
-    if cfg!(windows) {
-        "kerminal-launch-shim.exe"
-    } else {
-        "kerminal-launch-shim"
-    }
-}
-
-fn path_to_string(path: impl AsRef<Path>) -> String {
-    path.as_ref().to_string_lossy().into_owned()
 }

@@ -47,9 +47,6 @@ describe("settingsModel", () => {
         autoOpenSftp: true,
         disabledTools: ["putty", "unknown", "putty", "kerminal-native"],
         enabled: false,
-        shimBridge: {
-          enabled: false,
-        },
       },
       interfaceDensity: "tiny",
       terminal: {
@@ -118,9 +115,6 @@ describe("settingsModel", () => {
       autoOpenSftp: true,
       disabledTools: ["putty", "kerminal-native"],
       enabled: false,
-      shimBridge: {
-        enabled: false,
-      },
     });
     expect(settings.terminal).toMatchObject({
       autoReconnect: false,

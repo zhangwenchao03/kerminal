@@ -485,21 +485,6 @@ pub enum ExternalLaunchToolSetting {
     KerminalNative,
 }
 
-/// External launch shim bridge settings.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct ExternalLaunchShimBridgeSettings {
-    /// Whether local compatibility shims may deliver launch envelopes to the app.
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-}
-
-impl Default for ExternalLaunchShimBridgeSettings {
-    fn default() -> Self {
-        Self { enabled: true }
-    }
-}
-
 /// External SSH launch compatibility settings.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -510,9 +495,6 @@ pub struct ExternalLaunchSettings {
     /// Whether third-party terminal argument formats are accepted.
     #[serde(default = "default_true")]
     pub accept_vendor_args: bool,
-    /// Local compatibility shim bridge settings.
-    #[serde(default)]
-    pub shim_bridge: ExternalLaunchShimBridgeSettings,
     /// Whether accepted external launches should open SFTP automatically.
     #[serde(default)]
     pub auto_open_sftp: bool,
@@ -526,7 +508,6 @@ impl Default for ExternalLaunchSettings {
         Self {
             enabled: true,
             accept_vendor_args: true,
-            shim_bridge: ExternalLaunchShimBridgeSettings::default(),
             auto_open_sftp: false,
             disabled_tools: Vec::new(),
         }

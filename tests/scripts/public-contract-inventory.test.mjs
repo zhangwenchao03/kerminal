@@ -58,6 +58,15 @@ test("frontend literal invoke contract remains auditable against command registr
     sortedInvokes.filter((command) => !backendCommands.has(command)),
     [],
   );
+  for (const removedCommand of [
+    "external_launch_alias_status",
+    "external_launch_alias_generate",
+    "external_launch_alias_delete",
+    "external_launch_alias_open_directory",
+  ]) {
+    assert.equal(backendCommands.has(removedCommand), false);
+    assert.equal(invokes.has(removedCommand), false);
+  }
 });
 
 test("workspace session remains normalized to version 2", () => {

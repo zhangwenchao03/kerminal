@@ -31,26 +31,26 @@ import {
 const launchExamples = [
   {
     command:
-      'putty.exe -ssh ${USER}@${HOST} -P ${PORT} -pw "<PASSWORD_FROM_PLATFORM>"',
-    label: "PuTTY",
+      'kerminal.exe -ssh ${USER}@${HOST} -P ${PORT} -pw "<PASSWORD_FROM_PLATFORM>"',
+    label: "PuTTY 参数",
   },
   {
-    command: 'MobaXterm.exe -newtab "ssh -p ${PORT} ${USER}@${HOST}"',
-    label: "MobaXterm",
-  },
-  {
-    command:
-      'Xshell.exe -url "ssh://${USER}:<PASSWORD_FROM_PLATFORM>@${HOST}:${PORT}"',
-    label: "Xshell",
+    command: 'kerminal.exe -newtab "ssh -p ${PORT} ${USER}@${HOST}"',
+    label: "MobaXterm 参数",
   },
   {
     command:
-      'SecureCRT.exe /SSH2 /L ${USER} /P ${PORT} /PASSWORD "<PASSWORD_FROM_PLATFORM>" ${HOST}',
-    label: "SecureCRT",
+      'kerminal.exe -url "ssh://${USER}:<PASSWORD_FROM_PLATFORM>@${HOST}:${PORT}"',
+    label: "Xshell 参数",
   },
   {
-    command: "ssh -p ${PORT} -l ${USER} ${HOST}",
-    label: "OpenSSH",
+    command:
+      'kerminal.exe /SSH2 /L ${USER} /P ${PORT} /PASSWORD "<PASSWORD_FROM_PLATFORM>" ${HOST}',
+    label: "SecureCRT 参数",
+  },
+  {
+    command: "kerminal.exe -p ${PORT} -l ${USER} ${HOST}",
+    label: "OpenSSH 参数",
   },
   {
     command:
@@ -252,7 +252,7 @@ export function ExternalLaunchSettingsSection({
           reveal={revealCompatibility}
           summary={`${externalLaunchSourceTools.length - disabledToolCount} 个来源`}
           targetId="settings-external-launch-compatibility"
-          title="兼容性详情"
+          title="参数兼容性"
         >
           <div className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
             <Ban className="h-4 w-4 text-zinc-400" />

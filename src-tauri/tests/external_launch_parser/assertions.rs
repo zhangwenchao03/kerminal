@@ -23,7 +23,6 @@ fn fixture_parse_input(
     let entrypoint = match case.get("entrypoint").and_then(Value::as_str) {
         Some("protocol") => ExternalLaunchEntrypoint::Protocol,
         Some("session-file") => ExternalLaunchEntrypoint::SessionFile,
-        Some("shim-ipc") => ExternalLaunchEntrypoint::ShimIpc,
         Some("single-instance") => ExternalLaunchEntrypoint::SingleInstance,
         _ => ExternalLaunchEntrypoint::DirectArgv,
     };

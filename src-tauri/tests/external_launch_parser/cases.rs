@@ -435,7 +435,7 @@ fn mobaxterm_moba_session_file_uses_bhost_parent_b64_target() {
             path.to_string_lossy().into_owned(),
         ],
         Some(
-            "\"C:\\Users\\Public\\Documents\\BHost\\bhmultauth.exe\" 33 \"C:/Program Files/Kerminal/kerminal-launch-shim.exe\" \"172.21.195.223\" \"222\" \"b64>>d2VuOjMwMTI1OTY5NDQ4OTVAcm9vdEAxMC4xMS4wLjc1OjIyOlNTSDI=\" \"en::6d49b3b3fb5721e430d82ae005431d2a\" \"root_10.11.0.75\"".to_owned(),
+            "\"C:\\Users\\Public\\Documents\\BHost\\bhmultauth.exe\" 33 \"C:/Program Files/Kerminal/kerminal.exe\" \"172.21.195.223\" \"222\" \"b64>>d2VuOjMwMTI1OTY5NDQ4OTVAcm9vdEAxMC4xMS4wLjc1OjIyOlNTSDI=\" \"en::6d49b3b3fb5721e430d82ae005431d2a\" \"root_10.11.0.75\"".to_owned(),
         ),
     );
     let request = registry

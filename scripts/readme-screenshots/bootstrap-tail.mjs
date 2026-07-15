@@ -270,34 +270,6 @@ export function browserBootstrapScriptTail() {
         ];
       }
 
-      function externalLaunchAliasStatus() {
-        const aliasDirectory = "C:/Users/kong/AppData/Local/Kerminal/ExternalLaunch";
-        const tools = ["putty", "mobaxterm", "xshell", "securecrt", "openssh"];
-        return {
-          aliasDirectory,
-          aliases: tools.map((tool) => ({
-            aliasPath: aliasDirectory + "/" + externalLaunchAliasFileName(tool),
-            markerPath: aliasDirectory + "/" + externalLaunchAliasFileName(tool) + ".kerminal.json",
-            markerPresent: true,
-            state: tool === "securecrt" ? "missing" : "managed",
-            tool,
-          })),
-          kerminalExecutable: "C:/Program Files/Kerminal/kerminal.exe",
-          shimAvailable: true,
-          shimExecutable: "C:/Program Files/Kerminal/kerminal-launch-shim.exe",
-        };
-      }
-
-      function externalLaunchAliasFileName(tool) {
-        return {
-          mobaxterm: "MobaXterm.exe",
-          openssh: "ssh.exe",
-          putty: "putty.exe",
-          securecrt: "SecureCRT.exe",
-          xshell: "Xshell.exe",
-        }[tool] ?? tool + ".exe";
-      }
-
       function externalAgentWorkspaceStatus() {
         const workspaceDir = "C:/Users/kong/.kerminal";
         const mcpEndpoint = "http://127.0.0.1:37657/mcp";

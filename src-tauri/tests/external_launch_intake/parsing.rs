@@ -1,7 +1,6 @@
 use kerminal_lib::services::external_launch::{
-    build_external_launch_shim_envelope, ExternalLaunchAcceptOutcome, ExternalLaunchEntrypoint,
-    ExternalLaunchEventKind, ExternalLaunchIntake, ExternalLaunchPolicy, ExternalLaunchSourceTool,
-    ExternalSecretSlot,
+    ExternalLaunchAcceptOutcome, ExternalLaunchEntrypoint, ExternalLaunchEventKind,
+    ExternalLaunchIntake, ExternalLaunchPolicy, ExternalLaunchSourceTool, ExternalSecretSlot,
 };
 
 #[test]
@@ -527,42 +526,6 @@ fn policy_rejects_vendor_args_without_secret_leak() {
     assert_eq!(snapshot.rejected_count, 1);
     assert!(!snapshot.policy.accept_vendor_args);
     assert!(!format!("{snapshot:?}").contains("KERM_POLICY_VENDOR_SECRET_DO_NOT_USE"));
-}
-
-#[test]
-fn policy_rejects_disabled_shim_bridge_before_parsing() {
-    let intake = ExternalLaunchIntake::with_policy(ExternalLaunchPolicy {
-        shim_bridge_enabled: false,
-        ..ExternalLaunchPolicy::default()
-    });
-    let envelope = build_external_launch_shim_envelope(
-        vec![
-            "putty.exe".to_owned(),
-            "-ssh".to_owned(),
-            "ops@shim-policy.example.internal".to_owned(),
-            "-pw".to_owned(),
-            "KERM_POLICY_SHIM_SECRET_DO_NOT_USE".to_owned(),
-        ],
-        None,
-        None,
-    )
-    .expect("build shim envelope");
-
-    let outcome = intake
-        .accept_bridge_envelope(envelope)
-        .expect("accept policy rejected envelope");
-
-    let rejected = match outcome {
-        ExternalLaunchAcceptOutcome::Rejected(rejected) => rejected,
-        other => panic!("expected rejected outcome, got {other:?}"),
-    };
-    assert_eq!(rejected.source_tool, Some(ExternalLaunchSourceTool::Putty));
-    assert_eq!(
-        rejected.message,
-        "external SSH shim bridge disabled by policy"
-    );
-    assert_eq!(intake.take_pending().expect("take pending").len(), 0);
-    assert!(!format!("{intake:?}").contains("KERM_POLICY_SHIM_SECRET_DO_NOT_USE"));
 }
 
 #[test]

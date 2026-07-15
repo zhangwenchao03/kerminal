@@ -18,41 +18,14 @@ impl ExternalLaunchArgSummary {
             cwd_present: cwd.is_some_and(|value| !value.trim().is_empty()),
         }
     }
-
-    /// Bridge requestId 必须绑定完整 envelope，不能只绑定 argv 而忽略 persona/cwd/父命令。
-    pub(super) fn for_bridge(envelope: &ExternalLaunchBridgeEnvelope) -> Self {
-        let mut hasher = Sha256::new();
-        hash_field(&mut hasher, &envelope.schema_version.to_be_bytes());
-        hash_field(&mut hasher, envelope.app_generation.as_bytes());
-        hash_field(&mut hasher, envelope.nonce.as_bytes());
-        hash_field(&mut hasher, &envelope.timestamp_ms.to_be_bytes());
-        hash_field(&mut hasher, envelope.persona.as_str().as_bytes());
-        for argument in &envelope.argv {
-            hash_field(&mut hasher, argument.as_bytes());
-        }
-        hash_optional_field(&mut hasher, envelope.cwd.as_deref());
-        hash_optional_field(&mut hasher, envelope.parent_command_line.as_deref());
-        Self {
-            arg_count: envelope.argv.len(),
-            raw_hash: hex_digest(hasher.finalize()),
-            cwd_present: envelope
-                .cwd
-                .as_ref()
-                .is_some_and(|value| !value.trim().is_empty()),
-        }
-    }
 }
 
 pub(super) fn policy_rejection_message(
     policy: &ExternalLaunchPolicy,
-    entrypoint: ExternalLaunchEntrypoint,
     source_tool: ExternalLaunchSourceTool,
 ) -> Option<&'static str> {
     if !policy.enabled {
         return Some("external SSH launch disabled by policy");
-    }
-    if entrypoint == ExternalLaunchEntrypoint::ShimIpc && !policy.shim_bridge_enabled {
-        return Some("external SSH shim bridge disabled by policy");
     }
     if source_tool != ExternalLaunchSourceTool::KerminalNative && !policy.accept_vendor_args {
         return Some("external SSH vendor argument launch disabled by policy");
@@ -162,9 +135,6 @@ pub(super) fn requeue_expired_claims(state: &mut ExternalLaunchIntakeState, now:
 /// 清理只用于幂等响应的短期历史，不保留启动参数或 secret。
 pub(super) fn prune_delivery_history(state: &mut ExternalLaunchIntakeState, now: Instant) {
     state.acknowledged.retain(|_, expires_at| *expires_at > now);
-    state
-        .request_dedup
-        .retain(|_, record| record.expires_at > now);
     while state.acknowledged.len() > EXTERNAL_LAUNCH_DELIVERY_HISTORY_CAPACITY {
         let Some(oldest) = state
             .acknowledged
@@ -176,17 +146,6 @@ pub(super) fn prune_delivery_history(state: &mut ExternalLaunchIntakeState, now:
         };
         state.acknowledged.remove(&oldest);
     }
-    while state.request_dedup.len() > EXTERNAL_LAUNCH_DELIVERY_HISTORY_CAPACITY {
-        let Some(oldest) = state
-            .request_dedup
-            .iter()
-            .min_by_key(|(_, record)| record.last_seen_at)
-            .map(|(id, _)| id.clone())
-        else {
-            break;
-        };
-        state.request_dedup.remove(&oldest);
-    }
 }
 
 fn raw_hash(argv: &[String]) -> String {
@@ -195,16 +154,6 @@ fn raw_hash(argv: &[String]) -> String {
         hash_field(&mut hasher, arg.as_bytes());
     }
     hex_digest(hasher.finalize())
-}
-
-fn hash_optional_field(hasher: &mut Sha256, value: Option<&str>) {
-    match value {
-        Some(value) => {
-            hasher.update([1]);
-            hash_field(hasher, value.as_bytes());
-        }
-        None => hasher.update([0]),
-    }
 }
 
 fn hash_field(hasher: &mut Sha256, value: &[u8]) {

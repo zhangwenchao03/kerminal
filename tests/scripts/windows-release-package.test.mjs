@@ -9,12 +9,12 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const verifier = path.join(repoRoot, "scripts", "verify-external-launch-windows-package.mjs");
+const verifier = path.join(repoRoot, "scripts", "verify-windows-release-package.mjs");
 
-test("当前仓库通过 Windows 外部启动包发布前检查", () => {
+test("未提供安装包时通过发布前脚本检查", () => {
   const result = run([]);
   assert.equal(result.status, 0, result.output);
-  assert.match(result.output, /sidecarSha256/);
+  assert.match(result.output, /"bundleInspection": "deferred"/);
 });
 
 test("缺少 NSIS 目录时拒绝包验证", () => {
@@ -34,7 +34,7 @@ test("伪造的小型 setup 可执行文件不能通过", (context) => {
   assert.match(result.output, /unexpectedly small/);
 });
 
-test("没有 7-Zip 时可校验刚生成的 NSIS 脚本", (context) => {
+test("没有 7-Zip 时可校验包含主程序的 NSIS 脚本", (context) => {
   const fixture = createNsisFixture(context);
   const result = run([
     "--bundle-dir",
@@ -67,13 +67,7 @@ function createNsisFixture(context) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "kerminal-nsis-fixture-"));
   context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const script = path.join(directory, "installer.nsi");
-  fs.writeFileSync(
-    script,
-    [
-      'File /a "/oname=kerminal-launch-shim-sidecar.exe" "sidecar.exe"',
-      'File /a "/oname=kerminal-launch-shim.exe" "shim.exe"',
-    ].join("\n"),
-  );
+  fs.writeFileSync(script, 'File /a "/oname=kerminal.exe" "kerminal.exe"\n');
   const installer = path.join(directory, "kerminal_0.0.0_x64-setup.exe");
   const contents = Buffer.alloc(1024 * 1024 + 1);
   contents.write("MZ", 0, "ascii");

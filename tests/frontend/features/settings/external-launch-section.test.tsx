@@ -23,7 +23,6 @@ const settings = {
   autoOpenSftp: false,
   disabledTools: [],
   enabled: true,
-  shimBridge: { enabled: true },
 };
 
 describe("ExternalLaunchSettingsSection deep link", () => {

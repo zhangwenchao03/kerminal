@@ -2,13 +2,8 @@
 //!
 //! @author kongweiguang
 
-use std::{fs, sync::Arc, time::Duration};
-
 use kerminal_lib::{
-    models::mcp_server::McpHttpServerStartRequest,
-    paths::KerminalPaths,
-    services::external_launch::{external_launch_bridge_endpoint, ExternalLaunchBridgeEventSink},
-    state::AppState,
+    models::mcp_server::McpHttpServerStartRequest, paths::KerminalPaths, state::AppState,
 };
 use tauri::Manager;
 use tokio::net::TcpListener;
@@ -23,37 +18,16 @@ async fn shutdown_joins_long_running_services_and_releases_resources() {
         .build(tauri::test::mock_context(tauri::test::noop_assets()))
         .expect("build mock app");
     let state = app.state::<AppState>();
-    let endpoint = external_launch_bridge_endpoint(&paths.root);
-    let sink: ExternalLaunchBridgeEventSink = Arc::new(|_| {});
-
     state
         .application_runtime()
-        .start(
-            app.handle().clone(),
-            endpoint.clone(),
-            state.external_launch_intake().clone(),
-            sink.clone(),
-        )
+        .start(app.handle().clone())
         .expect("start application runtime");
     state
         .application_runtime()
-        .start(
-            app.handle().clone(),
-            endpoint.clone(),
-            state.external_launch_intake().clone(),
-            sink,
-        )
+        .start(app.handle().clone())
         .expect("repeat application runtime start");
-    assert!(
-        state
-            .application_runtime()
-            .snapshot()
-            .expect("runtime snapshot")
-            .bridge_running
-    );
     assert!(state.config_change_observer().status().enabled);
 
-    wait_for_file(&endpoint.descriptor_path).await;
     let mcp = state
         .mcp_http_server()
         .start(
@@ -86,7 +60,7 @@ async fn shutdown_joins_long_running_services_and_releases_resources() {
             .application_runtime()
             .snapshot()
             .expect("stopped snapshot")
-            .bridge_running
+            .shutting_down
     );
     assert!(!state.config_change_observer().status().enabled);
     assert!(
@@ -96,19 +70,7 @@ async fn shutdown_joins_long_running_services_and_releases_resources() {
             .expect("MCP stopped status")
             .running
     );
-    assert!(!std::path::Path::new(&endpoint.descriptor_path).exists());
     TcpListener::bind(("127.0.0.1", port))
         .await
         .expect("MCP port released after runtime shutdown");
-}
-
-async fn wait_for_file(path: &str) {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-    while tokio::time::Instant::now() < deadline {
-        if fs::metadata(path).is_ok() {
-            return;
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
-    panic!("timed out waiting for bridge descriptor");
 }

@@ -83,10 +83,6 @@ export function createSettingsDraftController(
           ...normalized.externalLaunch,
           ...patch,
           disabledTools: patch.disabledTools ?? normalized.externalLaunch.disabledTools,
-          shimBridge: {
-            ...normalized.externalLaunch.shimBridge,
-            ...(patch.shimBridge ?? {}),
-          },
         },
       });
     },

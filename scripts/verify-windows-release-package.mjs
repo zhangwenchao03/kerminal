@@ -16,41 +16,12 @@ const requireArchiveInspection = process.argv.includes("--require-archive-inspec
 
 main();
 
-// 无 bundle 参数时执行可跨平台的发布前检查；CI 产包后再验证真实 NSIS 内容。
+// 无 bundle 参数时仅验证脚本可运行；CI 产包后再检查真实 NSIS 和 updater 签名。
 function main() {
-  runContractVerifier();
-  const sidecarPath = configuredWindowsSidecar();
-  assertPortableExecutable(sidecarPath, "launch shim sidecar");
-
-  const report = {
-    sidecar: relative(sidecarPath),
-    sidecarSha256: sha256(sidecarPath),
-  };
-  if (bundleDir) {
-    Object.assign(report, verifyNsisBundle(path.resolve(repoRoot, bundleDir)));
-  }
-  console.log(`External launch Windows package verified.\n${JSON.stringify(report, null, 2)}`);
-}
-
-function runContractVerifier() {
-  const verifier = path.join(repoRoot, "scripts", "verify-launch-shim-package-contract.mjs");
-  const result = spawnSync(process.execPath, [verifier, "--repo-root", repoRoot], {
-    encoding: "utf8",
-  });
-  if (result.status !== 0) {
-    fail(`${result.stdout ?? ""}${result.stderr ?? ""}`.trim());
-  }
-}
-
-function configuredWindowsSidecar() {
-  const binaries = path.join(repoRoot, "src-tauri", "binaries");
-  const candidates = fs
-    .readdirSync(binaries)
-    .filter((name) => /^kerminal-launch-shim-sidecar-.*windows.*\.exe$/i.test(name));
-  if (candidates.length !== 1) {
-    fail(`expected exactly one tracked Windows launch shim sidecar, got ${candidates.length}`);
-  }
-  return path.join(binaries, candidates[0]);
+  const report = bundleDir
+    ? verifyNsisBundle(path.resolve(repoRoot, bundleDir))
+    : { bundleInspection: "deferred" };
+  console.log(`Windows release package verified.\n${JSON.stringify(report, null, 2)}`);
 }
 
 function verifyNsisBundle(directory) {
@@ -98,18 +69,13 @@ function listArchive(installer) {
 }
 
 function verifyArchiveListing(listing) {
-  for (const file of [
-    "kerminal-launch-shim-sidecar.exe",
-    "kerminal-launch-shim.exe",
-  ]) {
-    if (!listing.toLowerCase().includes(file.toLowerCase())) {
-      fail(`NSIS installer does not contain ${file}`);
-    }
+  if (!listing.toLowerCase().includes("kerminal.exe")) {
+    fail("NSIS installer does not contain kerminal.exe");
   }
   return "archive";
 }
 
-// 本地环境没有 7-Zip 时只验证 Tauri 刚生成并用于该安装包的 NSIS 输入；发布 CI 禁止此降级。
+// 本地没有 7-Zip 时检查 Tauri 生成的 NSIS 输入；发布 CI 禁止该降级。
 function verifyGeneratedNsisScript(installer) {
   const configured = readOption("--generated-nsis-script");
   const script = path.resolve(
@@ -123,14 +89,8 @@ function verifyGeneratedNsisScript(installer) {
     fail("NSIS installer is older than the generated installer script");
   }
   const source = fs.readFileSync(script, "utf8");
-  for (const file of [
-    "kerminal-launch-shim-sidecar.exe",
-    "kerminal-launch-shim.exe",
-  ]) {
-    const escaped = file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (!new RegExp(`File\\s+/a\\s+[^\\r\\n]*${escaped}`, "i").test(source)) {
-      fail(`generated NSIS script does not package ${file}`);
-    }
+  if (!/File\s+\/a\s+[^\r\n]*kerminal\.exe/i.test(source)) {
+    fail("generated NSIS script does not package kerminal.exe");
   }
   return "generated-nsis-script";
 }

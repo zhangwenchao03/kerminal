@@ -12,7 +12,7 @@ type ExternalLaunchSourceTool =
   | "kerminal-native";
 
 type ExternalLaunchEntrypoint =
-  "direct-argv" | "single-instance" | "shim-ipc" | "protocol" | "session-file";
+  "direct-argv" | "single-instance" | "protocol" | "session-file";
 
 type ExternalLaunchEventKind = "queued" | "rejected";
 
@@ -22,7 +22,6 @@ interface ExternalLaunchSource {
   persona?: string;
   argv0?: string;
 }
-
 interface ExternalSshRouteHop {
   host: string;
   port: number;
@@ -115,7 +114,6 @@ export interface ExternalLaunchEventPayload {
 interface ExternalLaunchPolicySnapshot {
   enabled: boolean;
   acceptVendorArgs: boolean;
-  shimBridgeEnabled: boolean;
   autoOpenSftp: boolean;
   disabledTools: ExternalLaunchSourceTool[];
   pendingCapacity: number;
@@ -143,11 +141,6 @@ interface ExternalLaunchIntakeSnapshot {
 }
 
 interface ExternalLaunchRuntimeHealthSnapshot {
-  bridgeListening: boolean;
-  bridgeGenerationTag?: string;
-  bridgeRestartCount: number;
-  bridgeActiveClients: number;
-  dedupCount: number;
   backpressureCount: number;
   expiryCount: number;
   cancelCount: number;
@@ -177,67 +170,6 @@ export interface ExternalLaunchSnapshot {
   secrets: ExternalLaunchSecretSnapshot;
   tasks: ExternalLaunchTaskSnapshot;
 }
-
-type ExternalLaunchAliasTool = Exclude<
-  ExternalLaunchSourceTool,
-  "kerminal-native"
->;
-
-type ExternalLaunchAliasState =
-  | "missing"
-  | "managed"
-  | "blockedNonKerminal"
-  | "staleMarker";
-
-type ExternalLaunchAliasInstallMode = "hardLink" | "copy";
-
-interface ExternalLaunchAliasInspection {
-  tool: ExternalLaunchAliasTool;
-  aliasPath: string;
-  markerPath: string;
-  state: ExternalLaunchAliasState;
-  markerPresent: boolean;
-}
-
-export interface ExternalLaunchAliasStatus {
-  installDirectory?: string;
-  kerminalExecutable: string;
-  shimExecutable: string;
-  shimAvailable: boolean;
-  aliasDirectory: string;
-  aliases: ExternalLaunchAliasInspection[];
-}
-
-export interface ExternalLaunchAliasCommandRequest {
-  tools?: ExternalLaunchAliasTool[];
-  aliasDirectory?: string;
-  shimExecutable?: string;
-  preferHardLink?: boolean;
-}
-
-export interface ExternalLaunchAliasSummary {
-  tool: ExternalLaunchAliasTool;
-  aliasPath: string;
-  markerPath: string;
-  state: ExternalLaunchAliasState;
-  installMode?: ExternalLaunchAliasInstallMode;
-}
-
-export interface ExternalLaunchAliasRemoval {
-  tool: ExternalLaunchAliasTool;
-  aliasPath: string;
-  markerPath: string;
-  removedAlias: boolean;
-  removedMarker: boolean;
-}
-
-const externalLaunchAliasTools: ExternalLaunchAliasTool[] = [
-  "putty",
-  "mobaxterm",
-  "xshell",
-  "securecrt",
-  "openssh",
-];
 
 export async function takePendingExternalSshLaunches(): Promise<
   ExternalSshLaunchRequest[]
@@ -358,11 +290,7 @@ export async function getExternalLaunchSnapshot(): Promise<ExternalLaunchSnapsho
       pendingRequestHashes: [],
       health: {
         backpressureCount: 0,
-        bridgeActiveClients: 0,
-        bridgeListening: false,
-        bridgeRestartCount: 0,
         cancelCount: 0,
-        dedupCount: 0,
         expiryCount: 0,
         oldestLaunchAgeMs: 0,
       },
@@ -371,7 +299,6 @@ export async function getExternalLaunchSnapshot(): Promise<ExternalLaunchSnapsho
         autoOpenSftp: false,
         disabledTools: [],
         enabled: true,
-        shimBridgeEnabled: true,
         pendingCapacity: 128,
         claimLeaseMs: 30_000,
       },
@@ -415,65 +342,6 @@ export async function unregisterExternalLaunchDeepLink(): Promise<ExternalLaunch
   return { registered: false, scheme: "kerminal", supported: false };
 }
 
-export async function getExternalLaunchAliasStatus(): Promise<ExternalLaunchAliasStatus> {
-  if (isTauri()) {
-    return invoke<ExternalLaunchAliasStatus>("external_launch_alias_status");
-  }
-  return browserPreviewExternalLaunchAliasStatus();
-}
-
-export async function generateExternalLaunchAliases(
-  request: ExternalLaunchAliasCommandRequest = {},
-): Promise<ExternalLaunchAliasSummary[]> {
-  if (isTauri()) {
-    return invoke<ExternalLaunchAliasSummary[]>("external_launch_alias_generate", {
-      request,
-    });
-  }
-  return browserPreviewExternalLaunchAliasStatus(request.aliasDirectory).aliases
-    .filter((alias) => (request.tools ?? externalLaunchAliasTools).includes(alias.tool))
-    .map((alias) => ({
-      aliasPath: alias.aliasPath,
-      installMode: "copy",
-      markerPath: alias.markerPath,
-      state: "managed",
-      tool: alias.tool,
-    }));
-}
-
-export async function deleteExternalLaunchAliases(
-  request: ExternalLaunchAliasCommandRequest = {},
-): Promise<ExternalLaunchAliasRemoval[]> {
-  if (isTauri()) {
-    return invoke<ExternalLaunchAliasRemoval[]>("external_launch_alias_delete", {
-      request,
-    });
-  }
-  return browserPreviewExternalLaunchAliasStatus(request.aliasDirectory).aliases
-    .filter((alias) => (request.tools ?? externalLaunchAliasTools).includes(alias.tool))
-    .map((alias) => ({
-      aliasPath: alias.aliasPath,
-      markerPath: alias.markerPath,
-      removedAlias: alias.state === "managed",
-      removedMarker: alias.markerPresent,
-      tool: alias.tool,
-    }));
-}
-
-export async function openExternalLaunchAliasDirectory(
-  aliasDirectory?: string,
-): Promise<string> {
-  const resolvedPath =
-    aliasDirectory?.trim() ||
-    browserPreviewExternalLaunchAliasStatus().aliasDirectory;
-  if (isTauri()) {
-    return invoke<string>("external_launch_alias_open_directory", {
-      aliasDirectory: resolvedPath,
-    });
-  }
-  return resolvedPath;
-}
-
 export async function listenExternalSshLaunches(
   handler: (payload: ExternalLaunchEventPayload) => void,
 ): Promise<UnlistenFn> {
@@ -510,44 +378,5 @@ function validateBrowserPreviewLaunchId(launchId: string) {
   }
   if (launchId.includes("\n") || launchId.includes("\r")) {
     throw new Error("External SSH launch id cannot contain newline");
-  }
-}
-
-function browserPreviewExternalLaunchAliasStatus(
-  aliasDirectory = "C:\\Users\\kerminal\\.kerminal\\external-launch\\compatibility-aliases",
-): ExternalLaunchAliasStatus {
-  const installDirectory = "C:\\Program Files\\Kerminal";
-  const shimExecutable = `${installDirectory}\\kerminal-launch-shim.exe`;
-  return {
-    aliasDirectory,
-    aliases: externalLaunchAliasTools.map((tool) => {
-      const aliasPath = `${aliasDirectory}\\${externalLaunchAliasFileName(tool)}`;
-      return {
-        aliasPath,
-        markerPath: `${aliasPath}.kerminal-alias.json`,
-        markerPresent: false,
-        state: "missing",
-        tool,
-      };
-    }),
-    installDirectory,
-    kerminalExecutable: `${installDirectory}\\kerminal.exe`,
-    shimAvailable: false,
-    shimExecutable,
-  };
-}
-
-function externalLaunchAliasFileName(tool: ExternalLaunchAliasTool): string {
-  switch (tool) {
-    case "mobaxterm":
-      return "MobaXterm.exe";
-    case "openssh":
-      return "ssh.exe";
-    case "putty":
-      return "putty.exe";
-    case "securecrt":
-      return "SecureCRT.exe";
-    case "xshell":
-      return "Xshell.exe";
   }
 }

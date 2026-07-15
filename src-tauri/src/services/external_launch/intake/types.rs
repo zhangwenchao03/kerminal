@@ -93,7 +93,6 @@ pub struct ExternalLaunchIntakeSnapshot {
 pub struct ExternalLaunchPolicy {
     pub enabled: bool,
     pub accept_vendor_args: bool,
-    pub shim_bridge_enabled: bool,
     pub auto_open_sftp: bool,
     #[serde(default)]
     pub disabled_tools: Vec<ExternalLaunchSourceTool>,
@@ -108,7 +107,6 @@ impl Default for ExternalLaunchPolicy {
         Self {
             enabled: true,
             accept_vendor_args: true,
-            shim_bridge_enabled: true,
             auto_open_sftp: false,
             disabled_tools: Vec::new(),
             pending_capacity: EXTERNAL_LAUNCH_PENDING_CAPACITY,
@@ -122,7 +120,6 @@ impl From<&ExternalLaunchSettings> for ExternalLaunchPolicy {
         Self {
             enabled: settings.enabled,
             accept_vendor_args: settings.accept_vendor_args,
-            shim_bridge_enabled: settings.shim_bridge.enabled,
             auto_open_sftp: settings.auto_open_sftp,
             disabled_tools: settings
                 .disabled_tools

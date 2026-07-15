@@ -96,7 +96,6 @@ fn settings_service_persists_settings_in_toml() {
         settings.desktop_notifications.min_duration_ms = 25_000;
         settings.desktop_notifications.throttle_ms = 60_000;
         settings.external_launch.accept_vendor_args = false;
-        settings.external_launch.shim_bridge.enabled = false;
         settings.external_launch.auto_open_sftp = true;
         settings.external_launch.disabled_tools = vec![
             ExternalLaunchToolSetting::Putty,
@@ -133,7 +132,6 @@ fn settings_service_persists_settings_in_toml() {
         assert_eq!(stored.desktop_notifications.min_duration_ms, 25_000);
         assert_eq!(stored.desktop_notifications.throttle_ms, 60_000);
         assert!(!stored.external_launch.accept_vendor_args);
-        assert!(!stored.external_launch.shim_bridge.enabled);
         assert!(stored.external_launch.auto_open_sftp);
         assert_eq!(
             stored.external_launch.disabled_tools,
@@ -228,7 +226,6 @@ fn settings_service_persists_settings_in_toml() {
     assert_eq!(settings.desktop_notifications.min_duration_ms, 25_000);
     assert_eq!(settings.desktop_notifications.throttle_ms, 60_000);
     assert!(!settings.external_launch.accept_vendor_args);
-    assert!(!settings.external_launch.shim_bridge.enabled);
     assert!(settings.external_launch.auto_open_sftp);
     assert_eq!(
         settings.external_launch.disabled_tools,
@@ -260,7 +257,7 @@ fn settings_service_persists_settings_in_toml() {
             .collect::<Vec<_>>(),
         vec!["putty", "kerminal-native"]
     );
-    assert!(settings_source.contains("[externalLaunch.shimBridge]"));
+    assert!(!settings_source.contains("shimBridge"));
 }
 
 #[test]
@@ -330,7 +327,6 @@ fn app_state_syncs_external_launch_policy_from_settings() {
         let mut settings = AppSettings::default();
         settings.external_launch.enabled = false;
         settings.external_launch.accept_vendor_args = false;
-        settings.external_launch.shim_bridge.enabled = false;
         settings.external_launch.auto_open_sftp = true;
         settings.external_launch.disabled_tools = vec![ExternalLaunchToolSetting::Putty];
 
@@ -344,7 +340,6 @@ fn app_state_syncs_external_launch_policy_from_settings() {
             .expect("external launch policy");
         assert!(!policy.enabled);
         assert!(!policy.accept_vendor_args);
-        assert!(!policy.shim_bridge_enabled);
         assert!(policy.auto_open_sftp);
         assert_eq!(
             serde_json::to_value(&policy.disabled_tools).expect("disabled tools"),
@@ -359,7 +354,6 @@ fn app_state_syncs_external_launch_policy_from_settings() {
         .expect("reloaded external launch policy");
     assert!(!policy.enabled);
     assert!(!policy.accept_vendor_args);
-    assert!(!policy.shim_bridge_enabled);
     assert!(policy.auto_open_sftp);
     assert_eq!(
         serde_json::to_value(&policy.disabled_tools).expect("disabled tools"),

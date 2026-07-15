@@ -13,7 +13,6 @@ use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
 
 use super::{
-    bridge::{ExternalLaunchBridgeEnvelope, EXTERNAL_LAUNCH_BRIDGE_SCHEMA_VERSION},
     classifier::infer_source_tool_from_args,
     model::{
         ExternalLaunchEntrypoint, ExternalLaunchParseInput, ExternalLaunchSourceTool,
@@ -63,7 +62,6 @@ struct ExternalLaunchIntakeState {
     pending: VecDeque<ExternalSshLaunchRequest>,
     active: HashMap<String, ExternalLaunchClaim>,
     acknowledged: HashMap<String, Instant>,
-    request_dedup: HashMap<String, ExternalLaunchDedupRecord>,
     queued_at: HashMap<String, Instant>,
     claim_sequence: u64,
     accepted_count: u64,
@@ -77,14 +75,6 @@ struct ExternalLaunchClaim {
     request: ExternalSshLaunchRequest,
     lease_expires_at: Instant,
     sequence: u64,
-}
-
-#[derive(Debug, Clone)]
-struct ExternalLaunchDedupRecord {
-    queued: ExternalLaunchQueued,
-    raw_hash: String,
-    expires_at: Instant,
-    last_seen_at: Instant,
 }
 
 impl Default for ExternalLaunchIntake {
@@ -176,7 +166,7 @@ impl ExternalLaunchIntake {
             return Ok(outcome);
         };
         let policy = self.policy_snapshot()?;
-        if let Some(message) = policy_rejection_message(&policy, entrypoint, source_tool) {
+        if let Some(message) = policy_rejection_message(&policy, source_tool) {
             let rejected =
                 self.record_policy_rejection(entrypoint, Some(source_tool), message, summary)?;
             return Ok(ExternalLaunchAcceptOutcome::Rejected(rejected));
@@ -207,7 +197,7 @@ impl ExternalLaunchIntake {
                     }
                 };
                 log_external_launch_queued(entrypoint, &request);
-                self.enqueue_request(request, entrypoint, None, summary)
+                self.enqueue_request(request, entrypoint, summary)
             }
             Err(error) => {
                 tauri_plugin_log::log::warn!(
@@ -232,7 +222,7 @@ impl ExternalLaunchIntake {
         entrypoint: ExternalLaunchEntrypoint,
     ) -> AppResult<ExternalLaunchAcceptOutcome> {
         let parent_command_line =
-            super::bridge::direct_parent_command_line_for_args_bounded(argv.clone()).await;
+            super::parent_process::direct_parent_command_line_for_args_bounded(argv.clone()).await;
         self.accept_args_with_parent_command_line_bounded(
             argv,
             cwd,
@@ -264,7 +254,7 @@ impl ExternalLaunchIntake {
             return Ok(outcome);
         };
         let policy = self.policy_snapshot()?;
-        if let Some(message) = policy_rejection_message(&policy, entrypoint, source_tool) {
+        if let Some(message) = policy_rejection_message(&policy, source_tool) {
             let rejected =
                 self.record_policy_rejection(entrypoint, Some(source_tool), message, summary)?;
             return Ok(ExternalLaunchAcceptOutcome::Rejected(rejected));
@@ -284,157 +274,7 @@ impl ExternalLaunchIntake {
                 return Ok(ExternalLaunchAcceptOutcome::Rejected(rejected));
             }
         };
-        let outcome = self.finish_prepared_request(request, policy, entrypoint, None, summary);
-        self.record_intake_latency(intake_started_at);
-        outcome
-    }
-
-    pub fn accept_bridge_envelope(
-        &self,
-        envelope: ExternalLaunchBridgeEnvelope,
-    ) -> AppResult<ExternalLaunchAcceptOutcome> {
-        let request_id = envelope.request_id.trim().to_owned();
-        let summary = ExternalLaunchArgSummary::for_bridge(&envelope);
-        log_external_launch_args(
-            ExternalLaunchEntrypoint::ShimIpc,
-            "shim",
-            Some(envelope.persona),
-            &summary,
-        );
-        let policy = self.policy_snapshot()?;
-        if let Some(message) =
-            policy_rejection_message(&policy, ExternalLaunchEntrypoint::ShimIpc, envelope.persona)
-        {
-            let rejected = self.record_policy_rejection(
-                ExternalLaunchEntrypoint::ShimIpc,
-                Some(envelope.persona),
-                message,
-                summary,
-            )?;
-            return Ok(ExternalLaunchAcceptOutcome::Rejected(rejected));
-        }
-        if envelope.schema_version != EXTERNAL_LAUNCH_BRIDGE_SCHEMA_VERSION {
-            let rejected = self.record_rejection(
-                ExternalLaunchEntrypoint::ShimIpc,
-                Some(envelope.persona),
-                AppError::InvalidInput(
-                    "external launch bridge envelope schema version is unsupported".to_owned(),
-                ),
-                summary,
-            )?;
-            return Ok(ExternalLaunchAcceptOutcome::Rejected(rejected));
-        }
-        if let Some(queued) =
-            self.duplicate_bridge_request(&request_id, &summary.raw_hash, Instant::now())?
-        {
-            return Ok(ExternalLaunchAcceptOutcome::Queued(queued));
-        }
-
-        let source_tool = envelope.persona;
-        match self.inner.parser.parse(&envelope.parse_input()) {
-            Ok(mut request) => {
-                apply_policy_options(&policy, &mut request);
-                let request = match self.inner.secrets.protect_request(request) {
-                    Ok(request) => request,
-                    Err(error) => {
-                        let rejected = self.record_rejection(
-                            ExternalLaunchEntrypoint::ShimIpc,
-                            Some(source_tool),
-                            error,
-                            summary,
-                        )?;
-                        return Ok(ExternalLaunchAcceptOutcome::Rejected(rejected));
-                    }
-                };
-                log_external_launch_queued(ExternalLaunchEntrypoint::ShimIpc, &request);
-                self.enqueue_request(
-                    request,
-                    ExternalLaunchEntrypoint::ShimIpc,
-                    Some(request_id),
-                    summary,
-                )
-            }
-            Err(error) => {
-                tauri_plugin_log::log::warn!(
-                    target: "external_launch.intake",
-                    "rejected entrypoint=ShimIpc source_tool={source_tool:?} arg_count={} raw_hash={} cwd_present={} reason=parse",
-                    summary.arg_count,
-                    summary.raw_hash,
-                    summary.cwd_present
-                );
-                let rejected = self.record_rejection(
-                    ExternalLaunchEntrypoint::ShimIpc,
-                    Some(source_tool),
-                    error,
-                    summary,
-                )?;
-                Ok(ExternalLaunchAcceptOutcome::Rejected(rejected))
-            }
-        }
-    }
-
-    /// Bridge handler 专用的异步入口，保证 session/password 文件不会阻塞 async executor。
-    pub async fn accept_bridge_envelope_bounded(
-        &self,
-        envelope: ExternalLaunchBridgeEnvelope,
-    ) -> AppResult<ExternalLaunchAcceptOutcome> {
-        let intake_started_at = Instant::now();
-        let request_id = envelope.request_id.trim().to_owned();
-        let summary = ExternalLaunchArgSummary::for_bridge(&envelope);
-        log_external_launch_args(
-            ExternalLaunchEntrypoint::ShimIpc,
-            "shim",
-            Some(envelope.persona),
-            &summary,
-        );
-        let policy = self.policy_snapshot()?;
-        if let Some(message) =
-            policy_rejection_message(&policy, ExternalLaunchEntrypoint::ShimIpc, envelope.persona)
-        {
-            let rejected = self.record_policy_rejection(
-                ExternalLaunchEntrypoint::ShimIpc,
-                Some(envelope.persona),
-                message,
-                summary,
-            )?;
-            return Ok(ExternalLaunchAcceptOutcome::Rejected(rejected));
-        }
-        if envelope.schema_version != EXTERNAL_LAUNCH_BRIDGE_SCHEMA_VERSION {
-            let rejected = self.record_rejection(
-                ExternalLaunchEntrypoint::ShimIpc,
-                Some(envelope.persona),
-                AppError::InvalidInput(
-                    "external launch bridge envelope schema version is unsupported".to_owned(),
-                ),
-                summary,
-            )?;
-            return Ok(ExternalLaunchAcceptOutcome::Rejected(rejected));
-        }
-        if let Some(queued) =
-            self.duplicate_bridge_request(&request_id, &summary.raw_hash, Instant::now())?
-        {
-            return Ok(ExternalLaunchAcceptOutcome::Queued(queued));
-        }
-        let source_tool = envelope.persona;
-        let request = match parse_request_bounded(envelope.parse_input()).await {
-            Ok(request) => request,
-            Err(error) => {
-                let rejected = self.record_rejection(
-                    ExternalLaunchEntrypoint::ShimIpc,
-                    Some(source_tool),
-                    error,
-                    summary,
-                )?;
-                return Ok(ExternalLaunchAcceptOutcome::Rejected(rejected));
-            }
-        };
-        let outcome = self.finish_prepared_request(
-            request,
-            policy,
-            ExternalLaunchEntrypoint::ShimIpc,
-            Some(request_id),
-            summary,
-        );
+        let outcome = self.finish_prepared_request(request, policy, entrypoint, summary);
         self.record_intake_latency(intake_started_at);
         outcome
     }

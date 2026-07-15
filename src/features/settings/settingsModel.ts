@@ -158,14 +158,9 @@ export interface DesktopNotificationSettings {
   throttleMs: number;
 }
 
-interface ExternalLaunchShimBridgeSettings {
-  enabled: boolean;
-}
-
 export interface ExternalLaunchSettings {
   enabled: boolean;
   acceptVendorArgs: boolean;
-  shimBridge: ExternalLaunchShimBridgeSettings;
   autoOpenSftp: boolean;
   disabledTools: ExternalLaunchSourceTool[];
 }
@@ -412,15 +407,9 @@ function normalizeKeybindings(
   ];
 }
 
-type ExternalLaunchSettingsInput = Partial<ExternalLaunchSettings> & {
-  shimBridgeEnabled?: unknown;
-};
-
 function normalizeExternalLaunch(
-  settings: ExternalLaunchSettingsInput | undefined,
+  settings: Partial<ExternalLaunchSettings> | undefined,
 ): ExternalLaunchSettings {
-  const shimBridge: Partial<ExternalLaunchShimBridgeSettings> =
-    settings?.shimBridge ?? {};
   return {
     acceptVendorArgs: readBoolean(
       settings?.acceptVendorArgs,
@@ -437,15 +426,6 @@ function normalizeExternalLaunch(
       settings?.enabled,
       defaultExternalLaunchSettings.enabled,
     ),
-    shimBridge: {
-      enabled: readBoolean(
-        shimBridge.enabled,
-        readBoolean(
-          settings?.shimBridgeEnabled,
-          defaultExternalLaunchSettings.shimBridge.enabled,
-        ),
-      ),
-    },
   };
 }
 

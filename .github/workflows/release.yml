@@ -42,9 +42,6 @@ jobs:
         with:
           node-version: 20
 
-      - name: Verify launch shim package contract
-        run: pnpm run test:launch-shim-package-contract
-
       - name: Verify release tag and versions
         id: release
         shell: bash
@@ -201,9 +198,6 @@ jobs:
       - name: Install project dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify external launch release contract
-        run: pnpm run test:launch-shim-package-contract
-
       - name: Verify external launch security and responsiveness gates
         if: runner.os == 'Windows'
         run: |
@@ -232,6 +226,6 @@ jobs:
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
 
-      - name: Verify Windows external launch package contents
+      - name: Verify Windows release package
         if: runner.os == 'Windows'
-        run: pnpm run verify:external-launch-windows-package -- --bundle-dir src-tauri/target/release/bundle/nsis --require-updater-signature --require-archive-inspection
+        run: pnpm run verify:windows-release-package -- --bundle-dir src-tauri/target/release/bundle/nsis --require-updater-signature --require-archive-inspection

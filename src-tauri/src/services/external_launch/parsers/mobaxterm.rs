@@ -522,8 +522,6 @@ fn is_kerminal_program_token(value: &str) -> bool {
         .unwrap_or(value)
         .to_ascii_lowercase();
     program == "kerminal.exe"
-        || program == "kerminal-launch-shim.exe"
-        || program.starts_with("kerminal-launch-shim")
 }
 
 fn options_with_display_name(display_name: Option<String>) -> ExternalSshLaunchOptions {

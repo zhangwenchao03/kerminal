@@ -10,12 +10,6 @@ const fileDialogMock = vi.hoisted(() => ({
   openLocalDirectory: vi.fn(),
   selectLocalFile: vi.fn(),
 }));
-const externalLaunchApiMock = vi.hoisted(() => ({
-  deleteExternalLaunchAliases: vi.fn(),
-  generateExternalLaunchAliases: vi.fn(),
-  getExternalLaunchAliasStatus: vi.fn(),
-  openExternalLaunchAliasDirectory: vi.fn(),
-}));
 const diagnosticsApiMock = vi.hoisted(() => ({
   getManagedSshRuntimeSnapshot: vi.fn(),
 }));
@@ -46,19 +40,6 @@ vi.mock("../../../../src/lib/fileDialogApi", () => ({
   openLocalDirectory: fileDialogMock.openLocalDirectory,
   selectLocalFile: fileDialogMock.selectLocalFile,
 }));
-vi.mock("../../../../src/lib/externalLaunchApi", async () => {
-  const actual = await vi.importActual("../../../../src/lib/externalLaunchApi");
-  return {
-    ...actual,
-    deleteExternalLaunchAliases: externalLaunchApiMock.deleteExternalLaunchAliases,
-    generateExternalLaunchAliases:
-      externalLaunchApiMock.generateExternalLaunchAliases,
-    getExternalLaunchAliasStatus:
-      externalLaunchApiMock.getExternalLaunchAliasStatus,
-    openExternalLaunchAliasDirectory:
-      externalLaunchApiMock.openExternalLaunchAliasDirectory,
-  };
-});
 vi.mock("../../../../src/lib/diagnosticsApi", async () => {
   const actual = await vi.importActual("../../../../src/lib/diagnosticsApi");
   return {
@@ -80,22 +61,6 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     fileDialogMock.openLocalDirectory.mockResolvedValue(undefined);
     fileDialogMock.selectLocalFile.mockReset();
     fileDialogMock.selectLocalFile.mockResolvedValue(null);
-    externalLaunchApiMock.deleteExternalLaunchAliases.mockReset();
-    externalLaunchApiMock.deleteExternalLaunchAliases.mockResolvedValue([
-      { removedAlias: true, tool: "putty" },
-    ]);
-    externalLaunchApiMock.generateExternalLaunchAliases.mockReset();
-    externalLaunchApiMock.generateExternalLaunchAliases.mockResolvedValue([
-      { installMode: "copy", state: "managed", tool: "putty" },
-    ]);
-    externalLaunchApiMock.getExternalLaunchAliasStatus.mockReset();
-    externalLaunchApiMock.getExternalLaunchAliasStatus.mockResolvedValue(
-      externalLaunchAliasStatus(),
-    );
-    externalLaunchApiMock.openExternalLaunchAliasDirectory.mockReset();
-    externalLaunchApiMock.openExternalLaunchAliasDirectory.mockResolvedValue(
-      "C:\\Kerminal\\compat",
-    );
     diagnosticsApiMock.getManagedSshRuntimeSnapshot.mockReset();
     diagnosticsApiMock.getManagedSshRuntimeSnapshot.mockResolvedValue(
       managedSshRuntimeSnapshot(),
@@ -490,7 +455,7 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     expect(
       screen.getAllByText(/<PASSWORD_FROM_PLATFORM>/).length,
     ).toBeGreaterThan(0);
-    expect(screen.getByText(/putty\.exe -ssh/)).toHaveClass(
+    expect(screen.getByText(/kerminal\.exe -ssh/)).toHaveClass(
       "whitespace-pre-wrap",
       "break-all",
     );
@@ -505,14 +470,6 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
       screen.queryByRole("switch", { name: "启用本地 shim bridge" }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "允许 PuTTY" })).toBeVisible();
-    expect(
-      externalLaunchApiMock.getExternalLaunchAliasStatus,
-    ).not.toHaveBeenCalled();
-    expect(
-      externalLaunchApiMock.generateExternalLaunchAliases,
-    ).not.toHaveBeenCalled();
-    expect(externalLaunchApiMock.deleteExternalLaunchAliases).not.toHaveBeenCalled();
-    expect(externalLaunchApiMock.openExternalLaunchAliasDirectory).not.toHaveBeenCalled();
   });
 
   it("updates external launch policy controls without exposing shim controls", async () => {
@@ -567,7 +524,7 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
       }),
     );
 
-    await user.click(screen.getByText("兼容性详情"));
+    await user.click(screen.getByText("参数兼容性"));
 
     const puttyPersonaSwitch = screen.getByRole("switch", {
       name: "允许 PuTTY",
@@ -583,7 +540,6 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
         }),
       }),
     );
-    expect(externalLaunchApiMock.getExternalLaunchAliasStatus).not.toHaveBeenCalled();
   });
 });
 
@@ -599,7 +555,6 @@ function systemThemeSettings(): AppSettings {
     themeMode: "system",
   };
 }
-
 function mockPrefersDark(matches: boolean) {
   vi.stubGlobal("matchMedia", (query: string) => ({
     addEventListener: vi.fn(),
@@ -612,53 +567,6 @@ function mockPrefersDark(matches: boolean) {
     removeListener: vi.fn(),
 	  }));
 	}
-
-function externalLaunchAliasStatus() {
-  return {
-    aliasDirectory: "C:\\Kerminal\\compat",
-    aliases: [
-      {
-        aliasPath: "C:\\Kerminal\\compat\\putty.exe",
-        markerPath: "C:\\Kerminal\\compat\\putty.exe.kerminal-alias.json",
-        markerPresent: true,
-        state: "managed",
-        tool: "putty",
-      },
-      {
-        aliasPath: "C:\\Kerminal\\compat\\MobaXterm.exe",
-        markerPath: "C:\\Kerminal\\compat\\MobaXterm.exe.kerminal-alias.json",
-        markerPresent: false,
-        state: "missing",
-        tool: "mobaxterm",
-      },
-      {
-        aliasPath: "C:\\Kerminal\\compat\\Xshell.exe",
-        markerPath: "C:\\Kerminal\\compat\\Xshell.exe.kerminal-alias.json",
-        markerPresent: false,
-        state: "missing",
-        tool: "xshell",
-      },
-      {
-        aliasPath: "C:\\Kerminal\\compat\\SecureCRT.exe",
-        markerPath: "C:\\Kerminal\\compat\\SecureCRT.exe.kerminal-alias.json",
-        markerPresent: false,
-        state: "missing",
-        tool: "securecrt",
-      },
-      {
-        aliasPath: "C:\\Kerminal\\compat\\ssh.exe",
-        markerPath: "C:\\Kerminal\\compat\\ssh.exe.kerminal-alias.json",
-        markerPresent: false,
-        state: "missing",
-        tool: "openssh",
-      },
-    ],
-    installDirectory: "C:\\Kerminal",
-    kerminalExecutable: "C:\\Kerminal\\kerminal.exe",
-    shimAvailable: true,
-    shimExecutable: "C:\\Kerminal\\kerminal-launch-shim.exe",
-  };
-}
 
 function runtimePerformanceSnapshot() {
   return {

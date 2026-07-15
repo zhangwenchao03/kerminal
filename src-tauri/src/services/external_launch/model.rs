@@ -58,7 +58,6 @@ impl ExternalLaunchSourceTool {
 pub enum ExternalLaunchEntrypoint {
     DirectArgv,
     SingleInstance,
-    ShimIpc,
     Protocol,
     SessionFile,
 }

@@ -23,9 +23,7 @@ pub mod window_management;
 #[cfg(not(test))]
 use state::AppState;
 #[cfg(not(test))]
-use std::sync::Arc;
-#[cfg(not(test))]
-use tauri::{webview::PageLoadEvent, Emitter, Manager};
+use tauri::{webview::PageLoadEvent, Manager};
 #[cfg(not(test))]
 use tauri_plugin_deep_link::DeepLinkExt;
 
@@ -201,25 +199,7 @@ pub(crate) fn dispatch_external_launch_args<R: tauri::Runtime>(
 #[cfg(not(test))]
 fn start_application_runtime<R: tauri::Runtime>(app: &tauri::App<R>) -> error::AppResult<()> {
     let state = app.state::<AppState>();
-    let endpoint = services::external_launch::external_launch_bridge_endpoint(&state.paths().root);
-    let intake = state.external_launch_intake().clone();
-    let app_handle = app.handle().clone();
-    let event_sink: services::external_launch::ExternalLaunchBridgeEventSink =
-        Arc::new(move |payload| {
-            if let Err(error) = app_handle.emit(
-                services::external_launch::EXTERNAL_SSH_LAUNCH_EVENT,
-                payload,
-            ) {
-                tauri_plugin_log::log::warn!(
-                    target: "desktop.lifecycle",
-                    "failed to emit external SSH launch bridge event: {error}"
-                );
-            }
-        });
-    match state
-        .application_runtime()
-        .start(app.handle().clone(), endpoint, intake, event_sink)
-    {
+    match state.application_runtime().start(app.handle().clone()) {
         Ok(outcome) => {
             if !outcome.config_observer_started {
                 tauri_plugin_log::log::warn!(

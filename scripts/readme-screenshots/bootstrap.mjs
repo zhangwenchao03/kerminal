@@ -308,34 +308,6 @@ export function browserBootstrapScript() {
               }));
             case "external_launch_take_pending":
               return [];
-            case "external_launch_alias_status":
-              return externalLaunchAliasStatus();
-            case "external_launch_alias_generate":
-              return externalLaunchAliasStatus().aliases
-                .filter((alias) =>
-                  (args.request?.tools ?? ["putty", "mobaxterm", "xshell", "securecrt", "openssh"]).includes(alias.tool),
-                )
-                .map((alias) => ({
-                  aliasPath: alias.aliasPath,
-                  installMode: "copy",
-                  markerPath: alias.markerPath,
-                  state: "managed",
-                  tool: alias.tool,
-                }));
-            case "external_launch_alias_delete":
-              return externalLaunchAliasStatus().aliases
-                .filter((alias) =>
-                  (args.request?.tools ?? ["putty", "mobaxterm", "xshell", "securecrt", "openssh"]).includes(alias.tool),
-                )
-                .map((alias) => ({
-                  aliasPath: alias.aliasPath,
-                  markerPath: alias.markerPath,
-                  removedAlias: alias.state === "managed",
-                  removedMarker: alias.markerPresent,
-                  tool: alias.tool,
-                }));
-            case "external_launch_alias_open_directory":
-              return args.aliasDirectory ?? externalLaunchAliasStatus().aliasDirectory;
             case "terminal_log_state":
             case "terminal_stop_log":
               return { active: false, bytesWritten: 0 };
