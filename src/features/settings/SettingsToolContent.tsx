@@ -4,18 +4,11 @@ import { cn } from "../../lib/cn";
 import { selectLocalFile } from "../../lib/fileDialogApi";
 import {
   normalizeAppSettings,
-  type AppearanceSettings,
-  type AppSettings,
-  type DesktopNotificationSettings,
-  type ExternalLaunchSettings,
   type KeybindingPlatform,
   type ResolvedTheme,
-  type SftpPerformanceSettings,
-  type TerminalAppearance,
-  type TerminalInlineSuggestionProviderSettings,
-  type TerminalInlineSuggestionSettings,
   type ThemeMode,
 } from "./settingsModel";
+import { createSettingsDraftController } from "./settingsDraftController";
 import { shortcutPlatform } from "./keybindingUtils";
 import { AboutSettingsSection } from "./settings-tool-content/about-section";
 import { AppearanceSettingsSection } from "./settings-tool-content/appearance-section";
@@ -78,6 +71,10 @@ export function SettingsToolContent({
     () => searchSettings(trimmedSettingsSearchQuery),
     [trimmedSettingsSearchQuery],
   );
+  const draftController = createSettingsDraftController(
+    normalizedSettings,
+    onSettingsChange,
+  );
 
   useEffect(() => {
     setActiveSectionId(resolvedInitialSectionId);
@@ -114,56 +111,16 @@ export function SettingsToolContent({
     return () => window.cancelAnimationFrame(frame);
   }, [activeSectionId, pendingSearchTargetId]);
 
-  const updateSettings = (next: AppSettings) => {
-    onSettingsChange(normalizeAppSettings(next));
-  };
-
-  const updateAppearance = (appearance: Partial<AppearanceSettings>) => {
-    updateSettings({
-      ...normalizedSettings,
-      appearance: {
-        ...normalizedSettings.appearance,
-        ...appearance,
-      },
-    });
-  };
-
-  const updateTerminal = (terminal: Partial<TerminalAppearance>) => {
-    updateSettings({
-      ...normalizedSettings,
-      terminal: {
-        ...normalizedSettings.terminal,
-        ...terminal,
-      },
-    });
-  };
-
-  const updateTerminalInlineSuggestion = (
-    inlineSuggestion: Partial<TerminalInlineSuggestionSettings>,
-  ) => {
-    updateTerminal({
-      inlineSuggestion: {
-        ...normalizedSettings.terminal.inlineSuggestion,
-        ...inlineSuggestion,
-        providers: {
-          ...normalizedSettings.terminal.inlineSuggestion.providers,
-          ...(inlineSuggestion.providers ?? {}),
-        },
-      },
-    });
-  };
-
-  const updateTerminalInlineSuggestionProvider = (
-    provider: keyof TerminalInlineSuggestionProviderSettings,
-    enabled: boolean,
-  ) => {
-    updateTerminalInlineSuggestion({
-      providers: {
-        ...normalizedSettings.terminal.inlineSuggestion.providers,
-        [provider]: enabled,
-      },
-    });
-  };
+  const {
+    replace: updateSettings,
+    updateAppearance,
+    updateDesktopNotifications,
+    updateExternalLaunch,
+    updateSftp,
+    updateTerminal,
+    updateTerminalInlineSuggestion,
+    updateTerminalInlineSuggestionProvider,
+  } = draftController;
 
   const chooseBackgroundImage = () => {
     void selectLocalFile().then((backgroundImagePath) => {
@@ -174,47 +131,6 @@ export function SettingsToolContent({
         backgroundEnabled: true,
         backgroundImagePath,
       });
-    });
-  };
-
-  const updateSftp = (sftp: Partial<SftpPerformanceSettings>) => {
-    updateSettings({
-      ...normalizedSettings,
-      sftp: {
-        ...normalizedSettings.sftp,
-        ...sftp,
-      },
-    });
-  };
-
-  const updateDesktopNotifications = (
-    desktopNotifications: Partial<DesktopNotificationSettings>,
-  ) => {
-    updateSettings({
-      ...normalizedSettings,
-      desktopNotifications: {
-        ...normalizedSettings.desktopNotifications,
-        ...desktopNotifications,
-      },
-    });
-  };
-
-  const updateExternalLaunch = (
-    externalLaunch: Partial<ExternalLaunchSettings>,
-  ) => {
-    updateSettings({
-      ...normalizedSettings,
-      externalLaunch: {
-        ...normalizedSettings.externalLaunch,
-        ...externalLaunch,
-        disabledTools:
-          externalLaunch.disabledTools ??
-          normalizedSettings.externalLaunch.disabledTools,
-        shimBridge: {
-          ...normalizedSettings.externalLaunch.shimBridge,
-          ...(externalLaunch.shimBridge ?? {}),
-        },
-      },
     });
   };
 

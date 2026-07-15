@@ -37,67 +37,30 @@ import {
   updateWorkflowRunVariable,
   type WorkflowRunState,
 } from "./workflowRunModel";
+import {
+  initialDraftWorkflowSteps,
+  presentDraftWorkflowSteps,
+  reduceDraftWorkflowSteps,
+  type DraftWorkflowStep,
+} from "./workflowDraftModel";
+import {
+  workflowInputClassName,
+  workflowMonoInputClassName,
+  workflowMutedPanelClassName,
+  workflowNoticeClassName,
+  workflowPanelClassName,
+  workflowScopeFilterOptions,
+  workflowScopeLabel,
+  workflowScopeOptions,
+  workflowSearchInputClassName,
+  workflowStepScopeOptions,
+  workflowTextareaClassName,
+} from "./workflowPresenter";
 
 interface WorkflowToolContentProps {
   activeTabId?: string;
   configRevision?: number;
   focusedPane?: TerminalPane;
-}
-
-interface DraftWorkflowStep {
-  id: string;
-  command: string;
-  description: string;
-  requiresConfirmation: boolean;
-  scope: WorkflowScope | "";
-  title: string;
-}
-
-const workflowScopeFilterOptions = [
-  { label: "全部", value: "" },
-  { label: "通用", value: "any" },
-  { label: "本地", value: "local" },
-  { label: "SSH", value: "ssh" },
-];
-
-const workflowScopeOptions = workflowScopeFilterOptions.slice(1);
-
-const workflowStepScopeOptions = [
-  { label: "继承", value: "" },
-  ...workflowScopeOptions,
-];
-
-const workflowPanelClassName = "kerminal-solid-surface rounded-[var(--radius-card)] border p-4";
-
-const workflowMutedPanelClassName =
-  "rounded-[var(--radius-card)] border border-[var(--border-subtle)] p-4 text-sm text-zinc-500 dark:text-zinc-400";
-
-const workflowInputClassName =
-  "kerminal-field-surface h-9 w-full rounded-xl border px-3 text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
-
-const workflowSearchInputClassName =
-  "kerminal-field-surface h-9 w-full rounded-xl border pl-9 pr-3 text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
-
-const workflowMonoInputClassName =
-  "kerminal-field-surface h-9 w-full rounded-xl border px-3 font-mono text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
-
-const workflowTextareaClassName =
-  "kerminal-field-surface min-h-20 w-full resize-y rounded-xl border px-3 py-2 font-mono text-xs leading-5 text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
-
-function workflowNoticeClassName(
-  kind: "error" | "success" | "warning",
-  className?: string,
-) {
-  return cn(
-    "rounded-xl border px-3 py-2 text-sm",
-    kind === "error" &&
-      "border-rose-300/25 bg-rose-500/10 text-rose-700 dark:text-rose-100",
-    kind === "success" &&
-      "border-emerald-300/20 bg-emerald-400/10 text-emerald-700 dark:text-emerald-100",
-    kind === "warning" &&
-      "border-amber-300/20 bg-amber-400/10 text-amber-700 dark:text-amber-100",
-    className,
-  );
 }
 
 export function WorkflowToolContent({
@@ -111,7 +74,7 @@ export function WorkflowToolContent({
   );
   const [draftTouched, setDraftTouched] = useState(false);
   const [draftSteps, setDraftSteps] = useState<DraftWorkflowStep[]>(
-    initialDraftSteps,
+    initialDraftWorkflowSteps,
   );
   const [error, setError] = useState<UserFacingMessage | string | null>(null);
   const [filterScope, setFilterScope] = useState<WorkflowScope | "">("");
@@ -182,15 +145,7 @@ export function WorkflowToolContent({
   }, [configDraftNotice]);
 
   const createCurrentWorkflow = async () => {
-    const steps = draftSteps
-      .map((step) => ({
-        command: step.command,
-        description: step.description || undefined,
-        requiresConfirmation: step.requiresConfirmation,
-        scope: step.scope || undefined,
-        title: step.title,
-      }))
-      .filter((step) => step.title.trim() || step.command.trim());
+    const steps = presentDraftWorkflowSteps(draftSteps);
 
     if (steps.length === 0) {
       setError("工作流至少需要一个命令步骤。");
@@ -253,29 +208,24 @@ export function WorkflowToolContent({
   ) => {
     setDraftTouched(true);
     setDraftSteps((current) =>
-      current.map((step) => (step.id === stepId ? { ...step, ...patch } : step)),
+      reduceDraftWorkflowSteps(current, { kind: "update", patch, stepId }),
     );
   };
 
   const addDraftStep = () => {
     setDraftTouched(true);
-    setDraftSteps((current) => [
-      ...current,
-      {
-        command: "",
-        description: "",
+    setDraftSteps((current) =>
+      reduceDraftWorkflowSteps(current, {
         id: `draft-step-${Date.now().toString(36)}`,
-        requiresConfirmation: false,
-        scope: "",
-        title: `步骤 ${current.length + 1}`,
-      },
-    ]);
+        kind: "add",
+      }),
+    );
   };
 
   const removeDraftStep = (stepId: string) => {
     setDraftTouched(true);
     setDraftSteps((current) =>
-      current.length <= 1 ? current : current.filter((step) => step.id !== stepId),
+      reduceDraftWorkflowSteps(current, { kind: "remove", stepId }),
     );
   };
 
@@ -646,7 +596,7 @@ function WorkflowCard({
             {workflow.title}
           </h3>
           <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-            {scopeLabel(workflow.scope)}
+            {workflowScopeLabel(workflow.scope)}
             {workflow.description ? ` · ${workflow.description}` : ""}
           </p>
         </div>
@@ -667,7 +617,7 @@ function WorkflowCard({
                   {index + 1}. {step.title}
                 </div>
                 <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                  {scopeLabel(step.scope ?? workflow.scope)}
+                  {workflowScopeLabel(step.scope ?? workflow.scope)}
                   {step.requiresConfirmation ? " · 需要确认" : ""}
                 </div>
               </div>
@@ -821,34 +771,4 @@ function WorkflowCard({
       ) : null}
     </article>
   );
-}
-
-function scopeLabel(scope: WorkflowScope) {
-  const labels: Record<WorkflowScope, string> = {
-    any: "通用",
-    local: "本地终端",
-    ssh: "SSH 远程",
-  };
-  return labels[scope];
-}
-
-function initialDraftSteps(): DraftWorkflowStep[] {
-  return [
-    {
-      command: "git status --short",
-      description: "确认仓库状态",
-      id: "draft-step-1",
-      requiresConfirmation: false,
-      scope: "",
-      title: "检查仓库状态",
-    },
-    {
-      command: "npm run check",
-      description: "运行完整质量门禁",
-      id: "draft-step-2",
-      requiresConfirmation: true,
-      scope: "",
-      title: "运行质量门禁",
-    },
-  ];
 }
