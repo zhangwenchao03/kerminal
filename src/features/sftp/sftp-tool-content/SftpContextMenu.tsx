@@ -6,7 +6,6 @@ import {
   Eye,
   EyeOff,
   FileSearch,
-  FileText,
   FolderOpen,
   FolderPlus,
   Pencil,
@@ -14,6 +13,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useEffect } from "react";
 import { cn } from "../../../lib/cn";
 import type { SftpEntry } from "../../../lib/sftpApi";
@@ -28,7 +28,7 @@ import {
 } from "./sftpEntryModel";
 import type { SftpContextMenuScope, SftpMenuAction } from "./types";
 
-const CONTEXT_MENU_ICONS: Record<SftpContextMenuIcon, typeof FileText> = {
+const CONTEXT_MENU_ICONS: Record<SftpContextMenuIcon, LucideIcon> = {
   clipboardPaste: ClipboardPaste,
   copy: Copy,
   download: Download,

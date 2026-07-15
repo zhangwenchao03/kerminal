@@ -188,6 +188,7 @@ export function LogToolContent({
     }
   }, [
     historyBindingKey,
+    historyScope.bound,
     historyScope.request,
     isCurrentHistoryRequest,
     query,

@@ -119,6 +119,8 @@ export function HostContainersDialog({
           (container) => container.id === selection.containerId,
         )
       : undefined;
+  const selectedContainerHostId = selectedContainer?.hostId;
+  const selectedContainerRuntime = selectedContainer?.runtime;
   const selectedProject =
     groupMode === "compose" && selection?.kind === "project"
       ? composeViewModel.projects.find(
@@ -321,20 +323,13 @@ export function HostContainersDialog({
   );
 
   const loadInspector = useCallback(
-    async (
-      tab: HostContainerInspectorTab,
-      container: HostContainerMetadata,
-    ) => {
+    async (tab: HostContainerInspectorTab, container: Pick<HostContainerMetadata, "id" | "hostId" | "runtime">) => {
       if (!open) {
         return;
       }
       const requestId = inspectorSequenceRef.current + 1;
       inspectorSequenceRef.current = requestId;
-      const request = {
-        containerId: container.id,
-        hostId: container.hostId,
-        runtime: container.runtime,
-      };
+      const request = { containerId: container.id, hostId: container.hostId, runtime: container.runtime };
       setInspectorLoading(true);
       setInspectorError(null);
       try {
@@ -369,7 +364,11 @@ export function HostContainersDialog({
       selectContainer(container.id);
       setInspectorTab(tab);
       if (selectedContainer?.id === container.id && inspectorTab === tab) {
-        void loadInspector(tab, container);
+        void loadInspector(tab, {
+          id: container.id,
+          hostId: container.hostId,
+          runtime: container.runtime,
+        });
       }
     },
     [inspectorTab, loadInspector, selectContainer, selectedContainer?.id],
@@ -394,17 +393,27 @@ export function HostContainersDialog({
   }, [pendingLifecycleAction, runLifecycleAction]);
 
   useEffect(() => {
-    if (!open || !selectedContainer) {
+    if (
+      !open ||
+      !selectedContainerId ||
+      !selectedContainerHostId ||
+      !selectedContainerRuntime
+    ) {
       return;
     }
     setInspectorError(null);
-    void loadInspector(inspectorTab, selectedContainer);
+    void loadInspector(inspectorTab, {
+      id: selectedContainerId,
+      hostId: selectedContainerHostId,
+      runtime: selectedContainerRuntime,
+    });
   }, [
     inspectorTab,
     loadInspector,
     open,
-    selectedContainer?.id,
-    selectedContainer?.runtime,
+    selectedContainerHostId,
+    selectedContainerId,
+    selectedContainerRuntime,
   ]);
 
   useEffect(() => {

@@ -198,7 +198,7 @@ function normalizePanelWidthProperty<
   value: unknown,
   key: Key,
   bounds: { max: number; min: number },
-): Pick<WorkspaceShellLayout, Key> | {} {
+): Partial<Pick<WorkspaceShellLayout, Key>> {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return {};
   }

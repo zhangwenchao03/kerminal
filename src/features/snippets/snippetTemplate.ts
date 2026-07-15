@@ -106,7 +106,7 @@ function validateValue(variable: SnippetVariableDefinition, value: string): void
   if (value.length > MAX_VARIABLE_VALUE_CHARS || /[\0\r\n]/u.test(value)) {
     throw new SnippetVariableError(variable.name, "invalid");
   }
-  let valid = true;
+  let valid: boolean;
   switch (variable.kind) {
     case "port": {
       const port = Number(value);

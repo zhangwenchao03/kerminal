@@ -50,7 +50,7 @@ export function RemoteWorkspaceEditorContextMenu({
   useLayoutEffect(() => {
     const menu = menuRef.current;
     if (!menu || typeof window === "undefined") {
-      setResolvedPosition(position);
+      setResolvedPosition({ x: position.x, y: position.y });
       return;
     }
 

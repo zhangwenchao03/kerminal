@@ -1,6 +1,6 @@
 import { availableWorkspaceAction } from "./availabilityPolicy";
 import { classifyWorkspaceActionError } from "./errorClassification";
-import { WorkspaceActionRegistry } from "./registry";
+import type { WorkspaceActionRegistry } from "./registry";
 import type {
   WorkspaceActionCatalog,
   WorkspaceActionExecutor,

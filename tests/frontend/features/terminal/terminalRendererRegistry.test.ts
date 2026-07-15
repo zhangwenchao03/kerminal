@@ -192,7 +192,7 @@ describe("terminalRendererRegistry", () => {
   it("schedules and cancels hidden pane reapers", () => {
     const cancelTimer = vi.fn();
     const callbacks: Array<() => void> = [];
-    let now = 20_000;
+    const now = 20_000;
     const registry = createTerminalRendererRegistry({
       cancelTimer,
       now: () => now,

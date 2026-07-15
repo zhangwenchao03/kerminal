@@ -198,7 +198,12 @@ export function WorkspaceFileTabSurface({
         setContentUnsupportedNotice(BINARY_WORKSPACE_FILE_PREVIEW_NOTICE);
         return;
       }
-      setFileTab(createWorkspaceLoadedTab(tab, response));
+      setFileTab(
+        createWorkspaceLoadedTab(
+          { access: tab.access, path: tab.path },
+          response,
+        ),
+      );
     } catch (error) {
       if (requestIdRef.current !== requestId) {
         return;
@@ -222,7 +227,7 @@ export function WorkspaceFileTabSurface({
       setStatus({ kind: "error", message: notice.title });
       setReadFailureNotice(notice);
     }
-  }, [pathPreviewDecision.kind, tab.path, tab.target]);
+  }, [pathPreviewDecision.kind, tab.access, tab.path, tab.target]);
 
   const saveFile = useCallback(
     async (overwriteOnConflict = false) => {
@@ -760,7 +765,7 @@ function labelForWorkspaceFileTarget(target: RemoteTargetRef): string {
 }
 
 function createWorkspaceLoadedTab(
-  workspaceTab: WorkspaceFileTab,
+  workspaceTab: Pick<WorkspaceFileTab, "access" | "path">,
   response: RemoteWorkspaceReadTextFileResponse,
 ) {
   return normalizeLoadedAccess(
@@ -770,7 +775,7 @@ function createWorkspaceLoadedTab(
 }
 
 function normalizeLoadedAccess(
-  workspaceTab: WorkspaceFileTab,
+  workspaceTab: Pick<WorkspaceFileTab, "access">,
   fileTab: OpenFileTab,
 ): OpenFileTab {
   if (workspaceTab.access === "editable") {

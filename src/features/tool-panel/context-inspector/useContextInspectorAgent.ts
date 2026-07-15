@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { listAgentSessions } from "../../../lib/agentLauncherApi";
 import {
   resolveWorkspaceContextAgent,
@@ -17,6 +17,14 @@ export function useContextInspectorAgent(
   active = true,
 ): WorkspaceContextAgent {
   const [agent, setAgent] = useState<WorkspaceContextAgent>(context.agent);
+  const contextAgent = useMemo<WorkspaceContextAgent>(
+    () => ({
+      sessionId: context.agent.sessionId,
+      status: context.agent.status,
+      title: context.agent.title,
+    }),
+    [context.agent.sessionId, context.agent.status, context.agent.title],
+  );
 
   useEffect(() => {
     if (!active) {
@@ -50,8 +58,8 @@ export function useContextInspectorAgent(
     };
 
     setAgent(
-      context.agent.sessionId
-        ? context.agent
+      contextAgent.sessionId
+        ? contextAgent
         : { sessionId: null, status: "loading" },
     );
     void refresh();
@@ -65,9 +73,7 @@ export function useContextInspectorAgent(
   }, [
     active,
     context.activeTabId,
-    context.agent.sessionId,
-    context.agent.status,
-    context.agent.title,
+    contextAgent,
     context.focusedPaneId,
     context.target?.id,
   ]);

@@ -63,21 +63,22 @@ describe("prepareXtermWebviewCompatibility", () => {
     `;
 
     let unpatchedThrew = false;
-    let patchedResult = "";
-    try {
+    const patchedResult = (() => {
       try {
-        Function(source)();
-      } catch {
-        unpatchedThrew = true;
+        try {
+          Function(source)();
+        } catch {
+          unpatchedThrew = true;
+        }
+        return Function(patchXtermWebviewNamespace(source))();
+      } finally {
+        Object.defineProperty(
+          Object.prototype,
+          "toString",
+          originalToStringDescriptor,
+        );
       }
-      patchedResult = Function(patchXtermWebviewNamespace(source))();
-    } finally {
-      Object.defineProperty(
-        Object.prototype,
-        "toString",
-        originalToStringDescriptor,
-      );
-    }
+    })();
 
     expect(unpatchedThrew).toBe(true);
     expect(patchedResult).toBe("patched");

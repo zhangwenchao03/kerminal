@@ -14,7 +14,7 @@ import type {
 import type { AppSettings } from "../features/settings/settingsModel";
 import type { MachineGroup } from "../features/workspace/types";
 import { getSettings } from "../features/settings/settingsApi";
-import { listProfiles } from "../lib/profileApi";
+import type { listProfiles } from "../lib/profileApi";
 import { listSnippets } from "../lib/snippetApi";
 import { listWorkflows } from "../lib/workflowApi";
 import {

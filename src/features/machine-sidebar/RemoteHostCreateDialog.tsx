@@ -159,6 +159,13 @@ export function RemoteHostCreateDialog({
     : editingHost
       ? `host:${editingHost.id}`
       : `create:${defaultMode}`;
+  const credentialHostId = editingHost?.id;
+  const credentialAuthType = editingHost?.authType;
+  const persistedCredentialRef = editingHost?.credentialRef;
+  const persistedCredentialSecret = editingHost?.credentialSecret;
+  const credentialHostUsesRdp = editingHost
+    ? isRdpRemoteHost(editingHost)
+    : false;
 
   useEffect(() => {
     if (!open) {
@@ -266,23 +273,25 @@ export function RemoteHostCreateDialog({
     setUsername(editingHost?.username ?? "");
   }, [
     defaultMode,
+    defaultGroupId,
     editingHost,
     editingLocalMachine,
     formTargetKey,
     open,
+    setError,
     targetGroups,
   ]);
 
   useEffect(() => {
-    if (!open || !editingHost) {
+    if (!open || !credentialHostId) {
       return undefined;
     }
-    if (editingHost.credentialSecret?.trim()) {
+    if (persistedCredentialSecret?.trim()) {
       return undefined;
     }
     const shouldReveal =
-      editingHost.authType === "password" ||
-      (editingHost.authType === "key" && !editingHost.credentialRef?.trim());
+      credentialAuthType === "password" ||
+      (credentialAuthType === "key" && !persistedCredentialRef?.trim());
     if (!shouldReveal) {
       return undefined;
     }
@@ -291,14 +300,14 @@ export function RemoteHostCreateDialog({
     const requestId = credentialRevealRequestRef.current + 1;
     credentialRevealRequestRef.current = requestId;
 
-    revealRemoteHostCredential(editingHost.id)
+    revealRemoteHostCredential(credentialHostId)
       .then((result) => {
         if (disposed || credentialRevealRequestRef.current !== requestId) {
           return;
         }
         if (result.status === "available" && result.credentialSecret) {
           setCredentialSecret(result.credentialSecret);
-          if (isRdpRemoteHost(editingHost)) {
+          if (credentialHostUsesRdp) {
             setRdpPassword(result.credentialSecret);
           }
           return;
@@ -325,11 +334,13 @@ export function RemoteHostCreateDialog({
       disposed = true;
     };
   }, [
-    editingHost?.authType,
-    editingHost?.credentialRef,
-    editingHost?.credentialSecret,
-    editingHost?.id,
+    credentialAuthType,
+    credentialHostId,
+    credentialHostUsesRdp,
     open,
+    persistedCredentialRef,
+    persistedCredentialSecret,
+    setError,
   ]);
 
   useEffect(() => {

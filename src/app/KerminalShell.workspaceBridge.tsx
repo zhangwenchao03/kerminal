@@ -284,11 +284,13 @@ export function ToolPanelStoreBridge({
     getToolPanelWorkspaceSnapshot,
   );
   const workspaceContext = useMemo(
-    () =>
-      buildToolPanelWorkspaceContext(
+    () => {
+      void toolPanelWorkspaceSnapshot;
+      return buildToolPanelWorkspaceContext(
         useWorkspaceStore.getState(),
         machineGroups,
-      ),
+      );
+    },
     [machineGroups, toolPanelWorkspaceSnapshot],
   );
   const closePane = useWorkspaceStore((state) => state.closePane);

@@ -20,7 +20,7 @@ async function findExpandedSidebarMachine(name: RegExp) {
   const sidebar = screen.getByRole("complementary", { name: "主机侧边栏" });
   await screen.findByRole("button", { name: /bwy/i });
 
-  let machineButton = within(sidebar).queryByRole("button", { name });
+  const machineButton = within(sidebar).queryByRole("button", { name });
   if (machineButton) {
     return machineButton;
   }

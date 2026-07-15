@@ -378,7 +378,12 @@ function KerminalShellContextWorkspace(
     ],
   );
   const quickOpenRegistry = useMemo(
-    () => createKerminalQuickOpenRegistry(props),
+    () =>
+      createKerminalQuickOpenRegistry({
+        machineGroups: props.machineGroups,
+        terminalPanes: props.terminalPanes,
+        terminalTabs: props.terminalTabs,
+      }),
     [props.machineGroups, props.terminalPanes, props.terminalTabs],
   );
   const quickOpenCoordinator = useMemo(

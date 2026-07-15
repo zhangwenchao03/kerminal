@@ -108,8 +108,9 @@ export function ComposeProjectInspector({
   tab: ComposeProjectInspectorTab;
 }) {
   const configPathKey = project?.configPaths.join("\n") ?? "";
+  const firstConfigPath = project?.configPaths[0];
   const [selectedPath, setSelectedPath] = useState<string | undefined>(
-    project?.configPaths[0],
+    firstConfigPath,
   );
   const [yamlState, setYamlState] = useState<YamlPreviewState>({
     content: "",
@@ -121,14 +122,14 @@ export function ComposeProjectInspector({
 
   useEffect(() => {
     yamlRequestSequenceRef.current += 1;
-    setSelectedPath(project?.configPaths[0]);
+    setSelectedPath(firstConfigPath);
     setYamlState({
       content: "",
       error: null,
       loading: false,
       truncated: false,
     });
-  }, [project?.id, configPathKey]);
+  }, [configPathKey, firstConfigPath, project?.id]);
 
   const loadYaml = useCallback(async () => {
     if (!project || !selectedPath) {

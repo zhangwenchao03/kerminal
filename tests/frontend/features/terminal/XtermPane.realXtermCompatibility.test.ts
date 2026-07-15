@@ -90,8 +90,9 @@ describe("real xterm compatibility", () => {
       );
 
       const rawData = harness.data.join("");
-      expect(rawData).toMatch(/\x1b\[<0;\d+;\d+M/);
-      expect(rawData).toMatch(/\x1b\[<0;\d+;\d+m/);
+      const sgrMousePrefix = `${String.fromCharCode(27)}\\[<0;`;
+      expect(rawData).toMatch(new RegExp(`${sgrMousePrefix}\\d+;\\d+M`, "u"));
+      expect(rawData).toMatch(new RegExp(`${sgrMousePrefix}\\d+;\\d+m`, "u"));
     } finally {
       harness.dispose();
     }
@@ -220,9 +221,9 @@ function waitForNextParsedWrite(
   terminal: Awaited<ReturnType<typeof createRealXtermHarness>>["terminal"],
 ) {
   return new Promise<void>((resolve) => {
-    let disposable: { dispose: () => void } | undefined;
-    disposable = terminal.onWriteParsed(() => {
-      disposable?.dispose();
+    const subscription: { disposable?: { dispose: () => void } } = {};
+    subscription.disposable = terminal.onWriteParsed(() => {
+      subscription.disposable?.dispose();
       resolve();
     });
   });

@@ -197,15 +197,18 @@ export function SftpTransferWorkbench({
     setRightCurrentPaths((current) => pruneHostTabPaths(current, rightTabs));
   }, [rightTabs]);
 
-  const addLeftHostTab = (hostId: string) => {
-    const machine = machinesById.get(hostId);
-    if (!machine) {
-      return;
-    }
-    const nextTab = createHostTab("left", hostId);
-    setLeftTabs((current) => [...current, nextTab]);
-    setActiveLeftTabId(nextTab.id);
-  };
+  const addLeftHostTab = useCallback(
+    (hostId: string) => {
+      const machine = machinesById.get(hostId);
+      if (!machine) {
+        return;
+      }
+      const nextTab = createHostTab("left", hostId);
+      setLeftTabs((current) => [...current, nextTab]);
+      setActiveLeftTabId(nextTab.id);
+    },
+    [machinesById],
+  );
 
   const closeLeftHostTab = (tabId: string) => {
     setLeftTabs((current) => current.filter((tab) => tab.id !== tabId));
@@ -214,15 +217,18 @@ export function SftpTransferWorkbench({
     );
   };
 
-  const addRightHostTab = (hostId: string) => {
-    const machine = machinesById.get(hostId);
-    if (!machine) {
-      return;
-    }
-    const nextTab = createHostTab("right", hostId);
-    setRightTabs((current) => [...current, nextTab]);
-    setActiveRightTabId(nextTab.id);
-  };
+  const addRightHostTab = useCallback(
+    (hostId: string) => {
+      const machine = machinesById.get(hostId);
+      if (!machine) {
+        return;
+      }
+      const nextTab = createHostTab("right", hostId);
+      setRightTabs((current) => [...current, nextTab]);
+      setActiveRightTabId(nextTab.id);
+    },
+    [machinesById],
+  );
 
   const closeRightHostTab = (tabId: string) => {
     setRightTabs((current) => current.filter((tab) => tab.id !== tabId));
@@ -244,7 +250,13 @@ export function SftpTransferWorkbench({
       return;
     }
     addRightHostTab(createdHostTarget.hostId);
-  }, [createdHostTarget, machinesById, workspaceTabId]);
+  }, [
+    addLeftHostTab,
+    addRightHostTab,
+    createdHostTarget,
+    machinesById,
+    workspaceTabId,
+  ]);
 
   const { cancelTransfer, clearFinishedTransfers, retryTransfer } =
     useSftpManagedTransferQueue({

@@ -202,13 +202,14 @@ export function AgentLauncherToolContent({
 
   useEffect(() => {
     const generation = ++workflowMountGenerationRef.current;
+    const disposeIfCurrent = () => {
+      if (workflowMountGenerationRef.current === generation) {
+        workflowController.dispose();
+      }
+    };
     void workflowController.refresh();
     return () => {
-      queueMicrotask(() => {
-        if (workflowMountGenerationRef.current === generation) {
-          workflowController.dispose();
-        }
-      });
+      queueMicrotask(disposeIfCurrent);
     };
   }, [workflowController]);
   const agentActions = useMemo(
