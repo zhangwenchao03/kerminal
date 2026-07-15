@@ -201,13 +201,6 @@
       "targetTask": "TASK-070"
     },
     {
-      "file": "src/features/workflows/WorkflowToolContent.tsx",
-      "lines": 855,
-      "deadline": "before TASK-080",
-      "owner": "frontend-architecture",
-      "targetTask": "TASK-070"
-    },
-    {
       "file": "src/lib/terminalSuggestionApi.ts",
       "lines": 980,
       "deadline": "before TASK-080",
