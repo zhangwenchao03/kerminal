@@ -4,7 +4,7 @@ import type { UserFacingMessage } from "../../lib/userFacingMessage";
 export type WorkspaceActionRevision = string | number;
 
 /** Workspace Action 对外声明的副作用等级。 */
-export type WorkspaceActionEffect =
+type WorkspaceActionEffect =
   "read" | "local" | "write" | "remote" | "destructive";
 
 /** 动作执行所依赖的最小上下文投影，避免 registry 成为第二套状态源。 */

@@ -255,7 +255,7 @@ export function failWorkflowStepExecution(
   };
 }
 
-export function extractWorkflowVariables(workflow: CommandWorkflow) {
+function extractWorkflowVariables(workflow: CommandWorkflow) {
   const variables = new Set<string>();
   for (const step of workflow.steps) {
     for (const variable of extractSnippetVariables(step.command)) {
@@ -265,7 +265,7 @@ export function extractWorkflowVariables(workflow: CommandWorkflow) {
   return Array.from(variables);
 }
 
-export function buildWorkflowVariableValues(
+function buildWorkflowVariableValues(
   variables: string[],
   values: Record<string, string> = {},
 ) {

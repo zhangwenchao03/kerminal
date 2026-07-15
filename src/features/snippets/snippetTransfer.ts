@@ -11,7 +11,7 @@ import { isSafeValidationPattern } from "./snippetTemplate";
 
 const MAX_IMPORT_ITEMS = 500;
 
-export interface SnippetTransferCandidate {
+interface SnippetTransferCandidate {
   title: string;
   command: string;
   description: string;

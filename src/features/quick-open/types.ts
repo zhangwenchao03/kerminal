@@ -58,7 +58,7 @@ export interface QuickOpenResult extends QuickOpenCandidate {
   readonly score: number;
 }
 
-export type QuickOpenSearchStatus =
+type QuickOpenSearchStatus =
   | "idle"
   | "loading"
   | "partial"

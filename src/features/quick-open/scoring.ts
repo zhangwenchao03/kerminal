@@ -39,7 +39,7 @@ function fuzzyScore(value: string, query: string): number {
 /**
  * 排序首先尊重当前目标，再比较文本相关性，避免同名对象跨机器误选。
  */
-export function scoreQuickOpenCandidate(
+function scoreQuickOpenCandidate(
   candidate: QuickOpenCandidate,
   query: string,
   activeTargetId?: string,

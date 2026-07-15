@@ -2,11 +2,6 @@ import { buildUserFacingError } from "../../lib/userFacingMessage";
 import { WorkspaceActionNotFoundError } from "./registry";
 import type { WorkspaceActionExecutionResult } from "./types";
 
-export type WorkspaceActionErrorKind =
-  | "not-found"
-  | "aborted"
-  | "execution-failed";
-
 /** 将未知 executor 异常转换为稳定、脱敏的用户可见失败结果。 */
 export function classifyWorkspaceActionError(
   error: unknown,

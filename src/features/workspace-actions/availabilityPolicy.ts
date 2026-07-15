@@ -30,18 +30,3 @@ export function requireWorkspaceCapabilities<TPayload>(
   };
 }
 
-/** 组合多个策略，按顺序返回第一个不可用原因。 */
-export function allWorkspaceActionPolicies<TPayload>(
-  ...policies: readonly WorkspaceActionAvailabilityPolicy<TPayload>[]
-): WorkspaceActionAvailabilityPolicy<TPayload> {
-  return (context, payload) => {
-    for (const policy of policies) {
-      const result = policy(context, payload);
-      if (!result.available) {
-        return result;
-      }
-    }
-    return AVAILABLE;
-  };
-}
-

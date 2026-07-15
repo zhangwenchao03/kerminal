@@ -1,6 +1,6 @@
 import type { SnippetShell } from "./snippetTargetPolicy";
 
-export type SnippetVariableKind =
+type SnippetVariableKind =
   | "text"
   | "path"
   | "port"
@@ -12,7 +12,7 @@ export type SnippetVariableKind =
   | "enum"
   | "secret"
   | "raw";
-export type SnippetRenderStrategy = "shellArg" | "validatedRaw" | "literal";
+type SnippetRenderStrategy = "shellArg" | "validatedRaw" | "literal";
 
 export interface SnippetVariableDefinition {
   name: string;
