@@ -25,6 +25,13 @@ pub struct ApplicationRuntimeSnapshot {
     pub shutting_down: bool,
 }
 
+/// 应用长期任务启动结果；配置观察器失败时 bridge 仍保持可用。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ApplicationRuntimeStartOutcome {
+    /// `true` 表示配置观察器已启用；`false` 不影响其它长期任务启动。
+    pub config_observer_started: bool,
+}
+
 /// MCP、配置观察器和外部启动 bridge 的统一生命周期 supervisor。
 #[derive(Debug, Clone)]
 pub struct ApplicationRuntime {
@@ -69,7 +76,7 @@ impl ApplicationRuntime {
         bridge_endpoint: ExternalLaunchBridgeEndpoint,
         intake: ExternalLaunchIntake,
         event_sink: ExternalLaunchBridgeEventSink,
-    ) -> AppResult<()> {
+    ) -> AppResult<ApplicationRuntimeStartOutcome> {
         let _lifecycle = self
             .lifecycle
             .lock()
@@ -85,9 +92,10 @@ impl ApplicationRuntime {
                 ));
             }
         }
-        self.config_observer
-            .start(app)
-            .map_err(AppError::InvalidInput)?;
+        // 配置观察器是可降级能力；启动失败不能阻断外部启动 bridge 或整个桌面应用。
+        let outcome = ApplicationRuntimeStartOutcome {
+            config_observer_started: self.config_observer.start(app).is_ok(),
+        };
 
         let mut state = self
             .state
@@ -98,7 +106,7 @@ impl ApplicationRuntime {
             .as_ref()
             .is_some_and(|runtime| !runtime.task.inner().is_finished())
         {
-            return Ok(());
+            return Ok(outcome);
         }
         state.bridge.take();
 
@@ -126,7 +134,7 @@ impl ApplicationRuntime {
             }
         });
         state.bridge = Some(BridgeRuntime { cancellation, task });
-        Ok(())
+        Ok(outcome)
     }
 
     /// 返回不含敏感信息的生命周期快照。

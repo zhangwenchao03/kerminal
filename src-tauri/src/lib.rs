@@ -216,17 +216,27 @@ fn start_application_runtime<R: tauri::Runtime>(app: &tauri::App<R>) -> error::A
                 );
             }
         });
-    let result =
-        state
-            .application_runtime()
-            .start(app.handle().clone(), endpoint, intake, event_sink);
-    if result.is_err() {
-        tauri_plugin_log::log::warn!(
-            target: "desktop.lifecycle",
-            "config watcher failed to start"
-        );
+    match state
+        .application_runtime()
+        .start(app.handle().clone(), endpoint, intake, event_sink)
+    {
+        Ok(outcome) => {
+            if !outcome.config_observer_started {
+                tauri_plugin_log::log::warn!(
+                    target: "desktop.lifecycle",
+                    "config watcher failed to start"
+                );
+            }
+            Ok(())
+        }
+        Err(error) => {
+            tauri_plugin_log::log::warn!(
+                target: "desktop.lifecycle",
+                "application runtime failed to start"
+            );
+            Err(error)
+        }
     }
-    result
 }
 
 #[cfg(not(test))]
