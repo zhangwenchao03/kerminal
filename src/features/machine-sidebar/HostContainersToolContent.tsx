@@ -5,26 +5,17 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileCode2, Pin, Play, RefreshCw, Search, Terminal } from "lucide-react";
+import { FileCode2, Pin, Play, RefreshCw, Terminal } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { PromptDialog } from "../../components/ui/prompt-dialog";
-import { Select } from "../../components/ui/select";
-import { Switch } from "../../components/ui/switch";
 import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
 import {
   fetchDockerContainerStats,
   inspectDockerContainer,
   listDockerContainers,
-  removeDockerContainer,
-  restartDockerContainer,
-  startDockerContainer,
-  stopDockerContainer,
-  type DockerContainerInfoRequest,
   type DockerContainerInspectSummary,
   type DockerContainerLifecycleAction,
-  type DockerContainerListRequest,
-  type DockerContainerStatsRequest,
   type DockerContainerStatsResult,
   type DockerContainerSummary,
 } from "../../lib/dockerApi";
@@ -33,8 +24,6 @@ import {
   buildUserFacingError,
   type UserFacingMessage,
 } from "../../lib/userFacingMessage";
-import type { Machine } from "../workspace/contracts/index";
-import type { OpenWorkspaceFileTabOptions } from "../workspace/state/index";
 import { buildComposeProjectViews } from "./host-containers/composeProjectModel";
 import {
   ComposeProjectInspector,
@@ -54,42 +43,19 @@ import {
   type HostContainerMetadata,
   type HostContainerSelection,
 } from "./host-containers/hostContainerDialogModel";
+import {
+  HostContainersStateMessage as StateMessage,
+  HostContainersToolbar,
+  composeYamlRootPath,
+  containerLifecycleActionText as lifecycleActionText,
+} from "./host-containers/hostContainersPresenter";
+import {
+  presentContainerSummary,
+  runDefaultLifecycleAction,
+  type HostContainersToolContentProps,
+} from "./host-containers/hostContainersToolAdapter";
 
-export interface HostContainersToolContentProps {
-  initialContainerId?: string;
-  onEnterContainer?: (container: DockerContainerSummary) => void;
-  onFetchContainerStats?: (
-    request: DockerContainerStatsRequest,
-  ) => Promise<DockerContainerStatsResult>;
-  onInspectContainer?: (
-    request: DockerContainerInfoRequest,
-  ) => Promise<DockerContainerInspectSummary>;
-  onLifecycleContainer?: (
-    action: DockerContainerLifecycleAction,
-    container: DockerContainerSummary,
-    options?: { force?: boolean },
-  ) => void | Promise<void>;
-  onListDockerContainers?: (
-    request: DockerContainerListRequest,
-  ) => Promise<DockerContainerSummary[]>;
-  onOpenContainerLogs?: (container: DockerContainerSummary) => void;
-  onOpenWorkspaceFileTab?: (options: OpenWorkspaceFileTabOptions) => void;
-  onPinContainer?: (container: DockerContainerSummary) => void | Promise<void>;
-  presentation?: "default" | "sidebar";
-  refreshRequestId?: number;
-  selectedMachine?: Machine;
-}
-
-const runtimeOptions = [
-  { label: "Docker", value: "docker" },
-  { label: "Podman", value: "podman" },
-];
-
-const groupModeOptions = [
-  { label: "Compose", value: "compose" },
-  { label: "状态", value: "status" },
-  { label: "平铺", value: "flat" },
-];
+export type { HostContainersToolContentProps } from "./host-containers/hostContainersToolAdapter";
 
 export function HostContainersToolContent({
   initialContainerId,
@@ -491,25 +457,15 @@ export function HostContainersToolContent({
     selectedContainer?.runtime,
   ]);
 
-  const stoppedCount = Math.max(
-    0,
-    viewModel.totalCount - viewModel.runningCount,
-  );
-  const containerSummary = loading
-    ? "正在检查容器"
-    : loadError
-      ? "容器读取失败"
-      : [
-          `${viewModel.runningCount} 运行`,
-          `${stoppedCount} 停止`,
-          `${composeViewModel.projects.length} Compose`,
-          `${composeViewModel.standaloneContainers.length} 独立`,
-          composeViewModel.errorCount > 0
-            ? `${composeViewModel.errorCount} 异常`
-            : null,
-        ]
-          .filter(Boolean)
-          .join(" · ");
+  const containerSummary = presentContainerSummary({
+    composeErrors: composeViewModel.errorCount,
+    composeProjects: composeViewModel.projects.length,
+    loadError,
+    loading,
+    running: viewModel.runningCount,
+    standalone: composeViewModel.standaloneContainers.length,
+    total: viewModel.totalCount,
+  });
 
   const lifecycleDialogCopy = pendingLifecycleAction
     ? hostContainerLifecycleDialogCopy(
@@ -540,93 +496,21 @@ export function HostContainersToolContent({
         className="grid min-w-0 max-w-full gap-3"
         data-testid="host-containers-tool-content"
       >
-        <section
-          className={cn(
-            "min-w-0 overflow-hidden border border-[var(--border-subtle)] bg-[var(--surface-solid)]/78 shadow-sm shadow-black/5 dark:shadow-black/20",
-            sidebar ? "rounded-[var(--radius-control)] p-2.5" : "rounded-[var(--radius-card)] p-3",
-          )}
-        >
-          {sidebar ? null : (
-            <div className="flex min-w-0 items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-                  {host.name}
-                </div>
-                <div className="mt-0.5 truncate font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
-                  {formatHostIdentity(host)}
-                </div>
-              </div>
-              <Button
-                aria-label="刷新容器列表"
-                className="h-8 w-8 rounded-lg"
-                disabled={loading}
-                onClick={() => void loadContainers()}
-                size="icon"
-                title="刷新容器列表"
-                type="button"
-                variant="ghost"
-              >
-                <RefreshCw
-                  className={cn("h-4 w-4", loading && "animate-spin")}
-                />
-              </Button>
-            </div>
-          )}
-          <div
-            className={cn(
-              "truncate rounded-lg bg-black/[0.025] text-xs text-zinc-600 dark:bg-white/[0.045] dark:text-zinc-300",
-              sidebar ? "px-2 py-1.5" : "mt-3 px-3 py-2",
-            )}
-            data-testid="host-container-summary"
-            role="status"
-            title={containerSummary}
-          >
-            {containerSummary}
-          </div>
-        </section>
-
-        <section className="grid min-w-0 gap-2">
-          <label className="relative min-w-0">
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
-              strokeWidth={1.8}
-            />
-            <input
-              aria-label="搜索容器"
-              className="kerminal-field-surface kerminal-focus-ring h-9 w-full rounded-xl border pl-9 pr-3 text-sm text-zinc-950 outline-none placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600"
-              onChange={(event) => setQuery(event.currentTarget.value)}
-              placeholder="搜索应用、服务、镜像、端口或 ID"
-              value={query}
-            />
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            <Select
-              aria-label="容器运行时"
-              onValueChange={(value) => setRuntime(value as ContainerRuntime)}
-              options={runtimeOptions}
-              size="sm"
-              value={runtime}
-            />
-            <Select
-              aria-label="容器分组方式"
-              onValueChange={(value) =>
-                setGroupMode(value as HostContainerGroupMode)
-              }
-              options={groupModeOptions}
-              size="sm"
-              value={groupMode}
-            />
-          </div>
-          <div className="kerminal-field-surface flex h-9 items-center justify-between gap-2 rounded-xl border px-3 text-xs text-zinc-600 dark:text-zinc-300">
-            <span>包含停止容器</span>
-            <Switch
-              aria-label="包含停止容器"
-              checked={includeStopped}
-              onCheckedChange={setIncludeStopped}
-            />
-          </div>
-        </section>
+        <HostContainersToolbar
+          groupMode={groupMode}
+          host={host}
+          includeStopped={includeStopped}
+          loading={loading}
+          onGroupModeChange={setGroupMode}
+          onIncludeStoppedChange={setIncludeStopped}
+          onQueryChange={setQuery}
+          onRefresh={() => void loadContainers()}
+          onRuntimeChange={setRuntime}
+          query={query}
+          runtime={runtime}
+          sidebar={sidebar}
+          summary={containerSummary}
+        />
 
         <section
           className={cn(
@@ -879,87 +763,4 @@ export function HostContainersToolContent({
       ) : null}
     </>
   );
-}
-
-function StateMessage({
-  children,
-  tone = "muted",
-}: {
-  children: string;
-  tone?: "danger" | "muted";
-}) {
-  return (
-    <div
-      className={cn(
-        "flex min-h-32 items-center justify-center rounded-[var(--radius-card)] border px-4 py-8 text-center text-sm",
-        tone === "danger"
-          ? "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-200"
-          : "border-dashed border-[var(--border-subtle)] text-zinc-500 dark:text-zinc-400",
-      )}
-    >
-      {children}
-    </div>
-  );
-}
-
-async function runDefaultLifecycleAction(
-  action: DockerContainerLifecycleAction,
-  container: DockerContainerSummary,
-  options?: { force?: boolean },
-) {
-  const request = {
-    containerId: container.id,
-    force: options?.force,
-    hostId: container.hostId,
-    runtime: container.runtime,
-  };
-  if (action === "start") {
-    await startDockerContainer(request);
-    return;
-  }
-  if (action === "stop") {
-    await stopDockerContainer(request);
-    return;
-  }
-  if (action === "restart") {
-    await restartDockerContainer(request);
-    return;
-  }
-  await removeDockerContainer(request);
-}
-
-function formatHostIdentity(host: Machine) {
-  const endpoint = host.host
-    ? `${host.username ? `${host.username}@` : ""}${host.host}${
-        host.port ? `:${host.port}` : ""
-      }`
-    : host.description;
-  return `${endpoint} · ${host.production ? "production" : "workspace"} · SSH`;
-}
-
-function composeYamlRootPath(workingDir: string | undefined, path: string) {
-  if (workingDir) {
-    return workingDir;
-  }
-  const normalizedPath = path.replace(/\\/g, "/");
-  const slashIndex = normalizedPath.lastIndexOf("/");
-  if (slashIndex <= 0) {
-    return "/";
-  }
-  return normalizedPath.slice(0, slashIndex);
-}
-
-function lifecycleActionText(action: DockerContainerLifecycleAction) {
-  switch (action) {
-    case "start":
-      return "启动";
-    case "stop":
-      return "停止";
-    case "restart":
-      return "重启";
-    case "remove":
-      return "删除";
-    default:
-      return "处理";
-  }
 }

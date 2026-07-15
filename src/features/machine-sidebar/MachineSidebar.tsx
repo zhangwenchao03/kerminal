@@ -1,14 +1,7 @@
 import {
-  ArrowLeftRight,
-  Box,
-  ChevronDown,
-  ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
   Plus,
-  RefreshCw,
-  Search,
-  Server,
   Settings,
 } from "lucide-react";
 import {
@@ -37,12 +30,12 @@ import {
 } from "./MachineSidebar.shared";
 import { MachineSidebarContainersView } from "./MachineSidebarContainersView";
 import { MachineSidebarContextMenuPortal } from "./MachineSidebarContextMenuPortal";
-import { MachineSidebarMachineRow } from "./MachineSidebarMachineRow";
+import { MachineSidebarHostList } from "./MachineSidebarHostList";
+import { MachineSidebarHeader } from "./MachineSidebarHeader";
 import {
   CollapsedHostPopover,
   CollapsedMachineSidebar,
   MachineDragPreviewCard,
-  PinnedGroupBadge,
   clampContextMenuPosition,
   isPinnedMachineGroup,
 } from "./MachineSidebar.parts";
@@ -50,18 +43,6 @@ import { buildVisibleMachineGroups } from "./machineSidebarVisibilityModel";
 
 export type { ConnectionOpenOptions } from "./MachineSidebar.shared";
 
-const sidebarAccentIconButtonClassName =
-  "kerminal-pressable h-8 w-8 rounded-lg text-sky-600 hover:bg-[var(--surface-hover)] dark:text-sky-300";
-const sidebarIconButtonClassName =
-  "kerminal-pressable h-8 w-8 rounded-lg text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50";
-const sidebarSearchInputClassName =
-  "kerminal-sidebar-search kerminal-field-surface w-full rounded-xl border pl-9 pr-3 text-sm text-zinc-950 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600";
-const sidebarGroupButtonClassName =
-  "kerminal-focus-ring kerminal-pressable mb-1 flex h-8 w-full items-center justify-between rounded-lg px-2 text-left text-xs font-medium text-zinc-500 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-100";
-const sidebarCountBadgeClassName =
-  "rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[11px] text-zinc-500 dark:text-zinc-400";
-const sidebarEmptyStateClassName =
-  "flex flex-col items-center rounded-[var(--radius-card)] border border-dashed border-[var(--border-subtle)] px-3 py-6 text-center text-sm text-zinc-500";
 const sidebarFooterClassName =
   "kerminal-sidebar-footer flex items-center justify-between border-t border-[var(--border-subtle)]";
 const sidebarSettingsSelectedClassName =
@@ -709,103 +690,18 @@ export function MachineSidebar({
       className="kerminal-material-nav kerminal-shell-sidebar relative flex h-full w-full min-w-[220px] flex-col border-r"
       onContextMenu={(event) => openContextMenu(event, { type: "root" })}
     >
-      <div
-        className="kerminal-sidebar-header flex flex-col"
-        data-tauri-drag-region
-      >
-        <div className="flex items-center gap-2">
-          <div
-            aria-label="左栏视图"
-            className="grid min-w-0 flex-1 grid-cols-2 gap-1 rounded-xl border border-[var(--border-subtle)] bg-black/[0.025] p-1 dark:bg-white/[0.045]"
-            role="group"
-          >
-            <button
-              aria-pressed={activeView === "hosts"}
-              className={cn(
-                "kerminal-focus-ring kerminal-pressable flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg text-xs font-medium text-zinc-500 transition hover:bg-[var(--surface-hover)] dark:text-zinc-400",
-                activeView === "hosts" &&
-                  "bg-[var(--surface-selected)] text-zinc-950 shadow-sm dark:text-zinc-50",
-              )}
-              onClick={() => switchSidebarView("hosts")}
-              type="button"
-            >
-              <Server className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">主机</span>
-            </button>
-            <button
-              aria-pressed={activeView === "containers"}
-              className={cn(
-                "kerminal-focus-ring kerminal-pressable flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg text-xs font-medium text-zinc-500 transition hover:bg-[var(--surface-hover)] dark:text-zinc-400",
-                activeView === "containers" &&
-                  "bg-[var(--surface-selected)] text-zinc-950 shadow-sm dark:text-zinc-50",
-              )}
-              onClick={() => switchSidebarView("containers")}
-              type="button"
-            >
-              <Box className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">容器</span>
-            </button>
-          </div>
-          <div className="flex w-[68px] shrink-0 items-center gap-1">
-            <Button
-              aria-label="打开 SFTP 传输工作台"
-              className={sidebarAccentIconButtonClassName}
-              disabled={!onOpenTransferWorkbench}
-              onClick={onOpenTransferWorkbench}
-              size="icon"
-              title="SFTP 传输"
-              type="button"
-              variant="ghost"
-            >
-              <ArrowLeftRight className="h-4 w-4" />
-            </Button>
-            {activeView === "hosts" ? (
-                <Button
-                  aria-label={groupToggleLabel}
-                  aria-pressed={allGroupsCollapsed}
-                  className={sidebarIconButtonClassName}
-                  disabled={groups.length === 0}
-                  onClick={toggleAllGroups}
-                  size="icon"
-                  title={groupToggleLabel}
-                  type="button"
-                  variant="ghost"
-                >
-                  <GroupToggleIcon className="h-4 w-4" />
-                </Button>
-            ) : (
-              <Button
-                aria-label="刷新容器列表"
-                className={sidebarIconButtonClassName}
-                onClick={() =>
-                  setContainerRefreshRequestId((requestId) => requestId + 1)
-                }
-                size="icon"
-                title="刷新容器列表"
-                type="button"
-                variant="ghost"
-              >
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-        </div>
-        {activeView === "hosts" && groups.length > 0 ? (
-          <label className="relative block">
-            <span className="sr-only">搜索主机</span>
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500"
-            />
-            <input
-              className={sidebarSearchInputClassName}
-              onChange={(event) => onSearchChange(event.currentTarget.value)}
-              placeholder="搜索"
-              value={search}
-            />
-          </label>
-        ) : null}
-      </div>
+      <MachineSidebarHeader
+        activeView={activeView}
+        allGroupsCollapsed={allGroupsCollapsed}
+        groupCount={groups.length}
+        groupToggleLabel={groupToggleLabel}
+        onOpenTransferWorkbench={onOpenTransferWorkbench}
+        onRefreshContainers={() => setContainerRefreshRequestId((requestId) => requestId + 1)}
+        onSearchChange={onSearchChange}
+        onToggleAllGroups={toggleAllGroups}
+        onViewChange={switchSidebarView}
+        search={search}
+      />
 
       {activeView === "containers" ? (
         <MachineSidebarContainersView
@@ -825,113 +721,25 @@ export function MachineSidebar({
           selectedMachineId={selectedMachineId}
         />
       ) : (
-        <div className="kerminal-sidebar-list scrollbar-none flex min-h-0 flex-1 flex-col overflow-y-auto">
-        {visibleGroups.map((group) => {
-          const collapsed = !hasSearch && collapsedGroupIds.has(group.id);
-
-          return (
-            <section
-              aria-label={group.title}
-              className={cn(
-                "rounded-xl transition",
-                dragOverGroupId === group.id &&
-                  "bg-sky-500/12 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.26)] ring-2 ring-sky-400/70 dark:bg-sky-400/14",
-              )}
-              key={group.id}
-              data-machine-sidebar-group-id={group.id}
-              onContextMenu={(event) =>
-                openContextMenu(event, { groupId: group.id, type: "group" })
-              }
-            >
-              <button
-                aria-expanded={!collapsed}
-                className={sidebarGroupButtonClassName}
-                onClick={() => toggleGroup(group.id)}
-                type="button"
-              >
-                <span className="flex min-w-0 items-center gap-1.5">
-                  {collapsed ? (
-                    <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                  ) : (
-                    <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-                  )}
-                  <span className="truncate">{group.title}</span>
-                  {isPinnedMachineGroup(group) ? <PinnedGroupBadge /> : null}
-                </span>
-                <span className="flex shrink-0 items-center gap-1.5">
-                  {dragOverGroupId === group.id ? (
-                    <span className="rounded-full bg-sky-500/12 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:bg-sky-400/16 dark:text-sky-200">
-                      松开移入
-                    </span>
-                  ) : null}
-                  <span className={sidebarCountBadgeClassName}>
-                    {group.machines.length}
-                  </span>
-                </span>
-              </button>
-              {!collapsed ? (
-                <div className="space-y-1">
-                  {group.machines.map((machine) => {
-                    const selected = machine.id === selectedMachineId;
-
-                    return (
-                      <MachineSidebarMachineRow
-                        canMove={Boolean(onMoveMachine)}
-                        dragging={draggingMachineId === machine.id}
-                        group={group}
-                        hasOpenTerminalSession={openMachineIdSet.has(machine.id)}
-                        key={machine.id}
-                        machine={machine}
-                        onClick={() => handleMachineClick(machine)}
-                        onContextMenu={(event) => {
-                          onSelectMachine(machine.id);
-                          openContextMenu(event, {
-                            groupId: group.id,
-                            machineId: machine.id,
-                            type: "machine",
-                          });
-                        }}
-                        onDoubleClick={
-                          machine.kind === "dockerContainer"
-                            ? undefined
-                            : () => openMachineSession(machine)
-                        }
-                        onPointerDown={(event) =>
-                          startPointerMachineDrag(event, machine)
-                        }
-                        rdpOpening={rdpOpeningMachineIdSet.has(machine.id)}
-                        selected={selected}
-                        showLatency
-                      />
-                    );
-                  })}
-                </div>
-              ) : null}
-            </section>
-          );
-        })}
-
-        {hasSearch && visibleGroups.length === 0 ? (
-          <div className={sidebarEmptyStateClassName}>
-            没有结果
-          </div>
-        ) : groups.length === 0 ? (
-          <div className={sidebarEmptyStateClassName}>
-            <Server aria-hidden="true" className="mb-2 h-5 w-5 text-zinc-400" />
-            <span>暂无连接</span>
-            <Button
-              className="mt-3"
-              disabled={!onAddConnection}
-              onClick={() => onAddConnection?.({ mode: "ssh" })}
-              size="sm"
-              type="button"
-            >
-              <Plus className="h-4 w-4" />
-              添加连接
-            </Button>
-          </div>
-        ) : null}
-        </div>
+        <MachineSidebarHostList
+          collapsedGroupIds={collapsedGroupIds}
+          dragOverGroupId={dragOverGroupId}
+          draggingMachineId={draggingMachineId}
+          groups={groups}
+          hasSearch={hasSearch}
+          onAddConnection={onAddConnection}
+          onMachineClick={handleMachineClick}
+          onMoveMachine={onMoveMachine}
+          onOpenContextMenu={openContextMenu}
+          onOpenMachineSession={openMachineSession}
+          onSelectMachine={onSelectMachine}
+          onStartPointerDrag={startPointerMachineDrag}
+          onToggleGroup={toggleGroup}
+          openMachineIdSet={openMachineIdSet}
+          rdpOpeningMachineIdSet={rdpOpeningMachineIdSet}
+          selectedMachineId={selectedMachineId}
+          visibleGroups={visibleGroups}
+        />
       )}
 
       <div className={sidebarFooterClassName}>

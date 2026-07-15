@@ -6,16 +6,12 @@ import { PromptDialog } from "../../components/ui/prompt-dialog";
 import { Select } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
 import type {
-  DockerContainerInfoRequest,
   DockerContainerInspectSummary,
-  DockerContainerListRequest,
-  DockerContainerStatsRequest,
   DockerContainerStatsResult,
   DockerContainerSummary,
 } from "../../lib/dockerApi";
 import type { ContainerRuntime } from "../../lib/targetModel";
 import { cn } from "../../lib/cn";
-import type { Machine } from "../workspace/contracts/index";
 import { buildComposeProjectViews } from "./host-containers/composeProjectModel";
 import {
   ComposeProjectInspector,
@@ -35,41 +31,17 @@ import {
   type HostContainerMetadata,
   type HostContainerSelection,
 } from "./host-containers/hostContainerDialogModel";
-
-interface HostContainersDialogProps {
-  host: Machine;
-  initialContainerId?: string;
-  onClose: () => void;
-  onEnterContainer: (container: DockerContainerSummary) => void;
-  onFetchContainerStats: (
-    request: DockerContainerStatsRequest,
-  ) => Promise<DockerContainerStatsResult>;
-  onInspectContainer: (
-    request: DockerContainerInfoRequest,
-  ) => Promise<DockerContainerInspectSummary>;
-  onLifecycleContainer: (
-    action: HostContainerLifecycleAction,
-    container: DockerContainerSummary,
-    options?: { force?: boolean },
-  ) => void | Promise<void>;
-  onListDockerContainers: (
-    request: DockerContainerListRequest,
-  ) => Promise<DockerContainerSummary[]>;
-  onOpenContainerLogs: (container: DockerContainerSummary) => void;
-  onPinContainer: (container: DockerContainerSummary) => void | Promise<void>;
-  open: boolean;
-}
-
-const runtimeOptions = [
-  { label: "Docker", value: "docker" },
-  { label: "Podman", value: "podman" },
-];
-
-const groupModeOptions = [
-  { label: "Compose", value: "compose" },
-  { label: "状态", value: "status" },
-  { label: "平铺", value: "flat" },
-];
+import {
+  HostContainersStateMessage as StateMessage,
+  SummaryMetric,
+  containerGroupModeOptions as groupModeOptions,
+  containerLifecycleActionText as lifecycleActionText,
+  containerRuntimeOptions as runtimeOptions,
+  errorMessage,
+  formatHostIdentity,
+  isTypingTarget,
+} from "./host-containers/hostContainersPresenter";
+import type { HostContainersDialogProps } from "./host-containers/hostContainersDialogContracts";
 
 export function HostContainersDialog({
   host,
@@ -813,80 +785,5 @@ export function HostContainersDialog({
         />
       ) : null}
     </>
-  );
-}
-
-function SummaryMetric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="border-r border-[var(--border-subtle)] px-3 py-2 last:border-r-0">
-      <div className="font-mono text-lg font-semibold leading-6 text-zinc-950 dark:text-zinc-50">
-        {value}
-      </div>
-      <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
-        {label}
-      </div>
-    </div>
-  );
-}
-
-function StateMessage({
-  children,
-  tone = "muted",
-}: {
-  children: string;
-  tone?: "danger" | "muted";
-}) {
-  return (
-    <div
-      className={cn(
-        "flex min-h-32 items-center justify-center rounded-[var(--radius-card)] border px-4 py-8 text-center text-sm",
-        tone === "danger"
-          ? "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-200"
-          : "border-dashed border-[var(--border-subtle)] text-zinc-500 dark:text-zinc-400",
-      )}
-    >
-      {children}
-    </div>
-  );
-}
-
-function formatHostIdentity(host: Machine) {
-  const endpoint = host.host
-    ? `${host.username ? `${host.username}@` : ""}${host.host}${
-        host.port ? `:${host.port}` : ""
-      }`
-    : host.description;
-  return `${endpoint} · ${host.production ? "production" : "workspace"} · SSH`;
-}
-
-function errorMessage(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
-
-function lifecycleActionText(action: HostContainerLifecycleAction) {
-  switch (action) {
-    case "start":
-      return "启动";
-    case "stop":
-      return "停止";
-    case "restart":
-      return "重启";
-    case "remove":
-      return "删除";
-    default:
-      return "处理";
-  }
-}
-
-function isTypingTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-  const tagName = target.tagName.toLowerCase();
-  return (
-    tagName === "input" || tagName === "textarea" || target.isContentEditable
   );
 }

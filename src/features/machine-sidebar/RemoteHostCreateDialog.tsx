@@ -28,7 +28,6 @@ import {
 import { evaluateConnectionCheck } from "./remote-host-dialog/connection-check";
 import {
   buildLocalShellPresets,
-  buildLocalTerminalOptions,
   formatLocalArgs,
   formatLocalEnv,
 } from "./remote-host-dialog/local-form";
@@ -44,19 +43,11 @@ import {
   sectionTabsByMode,
 } from "./remote-host-dialog/model";
 import {
-  buildRdpHostRequest,
-  buildSerialHostRequest,
-  buildSshRequest,
-  buildTelnetHostRequest,
   isRdpRemoteHost,
   isSerialRemoteHost,
   isTelnetRemoteHost,
   normalizeSshOptionsForForm,
   readSerialTagValue,
-  validateRdpHostRequest,
-  validateSerialHostRequest,
-  validateSshRequest,
-  validateTelnetHostRequest,
 } from "./remote-host-dialog/request-builders";
 import { RemoteHostDialogSectionContent } from "./remote-host-dialog/section-content";
 import {
@@ -64,6 +55,7 @@ import {
   sectionButtonClassName,
 } from "./remote-host-dialog/shared-ui";
 import { RemoteHostGroupCreateDialog } from "./RemoteHostGroupCreateDialog";
+import { executeRemoteHostConfirm } from "./remote-host-dialog/confirm-controller";
 
 export type {
   LocalTerminalCreateOptions,
@@ -371,272 +363,16 @@ export function RemoteHostCreateDialog({
 
   const confirm = async () => {
     setConnectionTestFeedback(null);
-    if ((editingHost || editingLocalMachine) && externalConfigConflict) {
-      setError(externalConfigConflict);
-      return;
-    }
-    if (mode === "local") {
-      const localOptionsResult = buildLocalTerminalOptions(
-        {
-          args: localArgs,
-          cwd: localCwd,
-          env: localEnv,
-          groupId,
-          shell: localShell,
-          title: localTitle,
-        },
-        Boolean(editingLocalMachine),
-      );
-      if (localOptionsResult.error) {
-        setError(localOptionsResult.error);
-        return;
-      }
-
-      if (editingLocalMachine) {
-        if (!onUpdateLocal || !localOptionsResult.options) {
-          setError("当前运行环境不支持更新本地会话。");
-          return;
-        }
-        if (
-          editingLocalMachine.profileId &&
-          !localOptionsResult.options.shell?.trim()
-        ) {
-          setError("编辑已保存的本地终端需要指定 Shell。");
-          return;
-        }
-
-        setSavingAction("confirm");
-        setError(null);
-        try {
-          await onUpdateLocal(
-            editingLocalMachine.id,
-            localOptionsResult.options,
-          );
-          onClose();
-        } catch (caught) {
-          setOperationError(
-            buildUserFacingError(caught, {
-              detail: "本地会话修改尚未保存。",
-              recoveryAction: "请检查 Shell 和工作目录后重试。",
-              title: "无法更新本地会话",
-            }),
-          );
-        } finally {
-          setSavingAction(null);
-        }
-        return;
-      }
-
-      if (!onCreateLocal) {
-        setError("当前运行环境不支持创建本地会话。");
-        return;
-      }
-
-      setSavingAction("confirm");
-      setError(null);
-      try {
-        await onCreateLocal(localOptionsResult.options);
-        onClose();
-      } catch (caught) {
-        setOperationError(
-          buildUserFacingError(caught, {
-            detail: "本地会话尚未创建。",
-            recoveryAction: "请检查 Shell 和工作目录后重试。",
-            title: "无法创建本地会话",
-          }),
-        );
-      } finally {
-        setSavingAction(null);
-      }
-      return;
-    }
-
-    if (mode === "rdp") {
-      const request = buildRdpHostRequest({
-        existingAuthType:
-          editingHost && isRdpRemoteHost(editingHost)
-            ? editingHost.authType
-            : undefined,
-        groupId,
-        host,
-        name,
-        password: rdpPassword,
-        port,
-        production,
-        tags,
-        username: rdpUsername,
-      });
-      const validationError = validateRdpHostRequest(request);
-      if (validationError) {
-        setError(validationError);
-        return;
-      }
-
-      setSavingAction("confirm");
-      setError(null);
-      try {
-        const saved =
-          editingHost && onUpdateHost
-            ? await onUpdateHost({
-                ...request,
-                id: editingHost.id,
-                sortOrder: editingHost.sortOrder,
-              })
-            : await onCreateHost(request);
-        await onCreated?.(saved);
-        onClose();
-      } catch (caught) {
-        setOperationError(
-          buildUserFacingError(caught, {
-            detail: "当前 RDP 连接配置尚未保存。",
-            recoveryAction: "请检查地址、网络和认证信息后重试。",
-            title: editingHost ? "无法更新 RDP 连接" : "无法创建 RDP 连接",
-          }),
-        );
-      } finally {
-        setSavingAction(null);
-      }
-      return;
-    }
-
-    if (mode === "telnet") {
-      const request = buildTelnetHostRequest({
-        groupId,
-        host,
-        name,
-        port,
-        production,
-        tags,
-      });
-      const validationError = validateTelnetHostRequest(request);
-      if (validationError) {
-        setError(validationError);
-        return;
-      }
-
-      setSavingAction("confirm");
-      setError(null);
-      try {
-        const saved =
-          editingHost && onUpdateHost
-            ? await onUpdateHost({
-                ...request,
-                id: editingHost.id,
-                sortOrder: editingHost.sortOrder,
-              })
-            : await onCreateHost(request);
-        await onCreated?.(saved);
-        onClose();
-      } catch (caught) {
-        setOperationError(
-          buildUserFacingError(caught, {
-            detail: "当前 Telnet 连接配置尚未保存。",
-            recoveryAction: "请检查地址和网络后重试。",
-            title: editingHost
-              ? "无法更新 Telnet 连接"
-              : "无法创建 Telnet 连接",
-          }),
-        );
-      } finally {
-        setSavingAction(null);
-      }
-      return;
-    }
-
-    if (mode === "serial") {
-      const request = buildSerialHostRequest({
-        groupId,
-        name,
-        production,
-        serialBaud,
-        serialDataBits,
-        serialFlow,
-        serialParity,
-        serialPort,
-        serialStopBits,
-        tags,
-      });
-      const validationError = validateSerialHostRequest(request);
-      if (validationError) {
-        setError(validationError);
-        return;
-      }
-
-      setSavingAction("confirm");
-      setError(null);
-      try {
-        const saved =
-          editingHost && onUpdateHost
-            ? await onUpdateHost({
-                ...request,
-                id: editingHost.id,
-                sortOrder: editingHost.sortOrder,
-              })
-            : await onCreateHost(request);
-        await onCreated?.(saved);
-        onClose();
-      } catch (caught) {
-        setOperationError(
-          buildUserFacingError(caught, {
-            detail: "当前串口连接配置尚未保存。",
-            recoveryAction: "请检查串口设备和通信参数后重试。",
-            title: editingHost ? "无法更新串口连接" : "无法创建串口连接",
-          }),
-        );
-      } finally {
-        setSavingAction(null);
-      }
-      return;
-    }
-
-    if (mode !== "ssh") {
-      setError(`${selectedProtocolLabel} 暂未支持创建。`);
-      return;
-    }
-
-    const request = buildSshRequest({
-      authType,
-      credentialRef,
-      credentialSecret,
-      groupId,
-      host,
-      name,
-      port,
-      production,
-      sshOptions,
-      tags,
-      username,
+    await executeRemoteHostConfirm({
+      authType, credentialRef, credentialSecret, editingHost,
+      editingLocalMachine, externalConfigConflict, groupId, host,
+      localArgs, localCwd, localEnv, localShell, localTitle, mode, name,
+      onClose, onCreateHost, onCreateLocal, onCreated, onUpdateHost,
+      onUpdateLocal, port, production, rdpPassword, rdpUsername,
+      selectedProtocolLabel, serialBaud, serialDataBits, serialFlow,
+      serialParity, serialPort, serialStopBits, setError,
+      setOperationError, setSavingAction, sshOptions, tags, username,
     });
-    const validationError = validateSshRequest(request);
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
-
-    setSavingAction("confirm");
-    setError(null);
-    try {
-      const saved =
-        editingHost && onUpdateHost
-          ? await onUpdateHost({
-              ...request,
-              id: editingHost.id,
-              sortOrder: editingHost.sortOrder,
-            })
-          : await onCreateHost(request);
-      await onCreated?.(saved);
-      onClose();
-    } catch (caught) {
-      setOperationError(
-        buildUserFacingError(caught, {
-          detail: "当前 SSH 连接配置尚未保存。",
-          recoveryAction: "请检查地址、网络和认证信息后重试。",
-          title: editingHost ? "无法更新 SSH 连接" : "无法创建 SSH 连接",
-        }),
-      );
-    } finally {
-      setSavingAction(null);
-    }
   };
 
   const testConnection = async () => {
