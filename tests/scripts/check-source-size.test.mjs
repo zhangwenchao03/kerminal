@@ -185,6 +185,8 @@ function writeBaselineValue(root, value) {
 }
 
 function runVerifier(root, args = []) {
+  const environment = { ...process.env };
+  delete environment.KERMINAL_SOURCE_SIZE_REFERENCE_BASELINE;
   const result = spawnSync(
     process.execPath,
     [
@@ -195,7 +197,7 @@ function runVerifier(root, args = []) {
       baselineRelativePath,
       ...args,
     ],
-    { encoding: "utf8" },
+    { encoding: "utf8", env: environment },
   );
   return {
     output: `${result.stdout ?? ""}${result.stderr ?? ""}`,
