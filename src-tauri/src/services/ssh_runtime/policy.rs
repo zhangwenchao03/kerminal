@@ -78,29 +78,36 @@ pub fn known_hosts_revokes_key(key: &PublicKey, known_hosts_path: &Path) -> bool
 
 /// Whether a managed runtime backend is not connected yet.
 pub fn is_managed_runtime_unwired(error: &AppError) -> bool {
-    matches!(error, AppError::SshCommand(message) if message.contains(MANAGED_RUNTIME_UNWIRED))
+    matches!(error, AppError::SshCommand(message) if message == MANAGED_RUNTIME_UNWIRED)
 }
 
 /// Whether a managed runtime capability is unsupported by the active backend.
 pub fn is_capability_unsupported(error: &AppError, capability: SshRuntimeCapability) -> bool {
+    let Some(message) = managed_capability_error_message(error) else {
+        return false;
+    };
     match capability {
-        SshRuntimeCapability::Shell => {
-            matches!(error, AppError::SshCommand(message) if message == MANAGED_SSH_SHELL_UNSUPPORTED)
-        }
-        SshRuntimeCapability::Exec => {
-            matches!(error, AppError::SshCommand(message) if message == MANAGED_SSH_EXEC_UNSUPPORTED)
-        }
-        SshRuntimeCapability::StreamingExec => {
-            matches!(error, AppError::SshCommand(message) if message == MANAGED_SSH_STREAMING_EXEC_UNSUPPORTED)
-        }
-        SshRuntimeCapability::Sftp => error.to_string().contains(MANAGED_SSH_SFTP_UNSUPPORTED),
-        SshRuntimeCapability::Forward => {
-            let message = error.to_string();
-            message.contains(MANAGED_SSH_LOCAL_FORWARD_UNSUPPORTED)
-                || message.contains(MANAGED_SSH_REMOTE_FORWARD_UNSUPPORTED)
-                || message.contains(MANAGED_SSH_DYNAMIC_FORWARD_UNSUPPORTED)
-                || message.contains(MANAGED_SSH_REMOTE_DYNAMIC_FORWARD_UNSUPPORTED)
-        }
+        SshRuntimeCapability::Shell => message == MANAGED_SSH_SHELL_UNSUPPORTED,
+        SshRuntimeCapability::Exec => message == MANAGED_SSH_EXEC_UNSUPPORTED,
+        SshRuntimeCapability::StreamingExec => message == MANAGED_SSH_STREAMING_EXEC_UNSUPPORTED,
+        SshRuntimeCapability::Sftp => message == MANAGED_SSH_SFTP_UNSUPPORTED,
+        SshRuntimeCapability::Forward => matches!(
+            message,
+            MANAGED_SSH_LOCAL_FORWARD_UNSUPPORTED
+                | MANAGED_SSH_REMOTE_FORWARD_UNSUPPORTED
+                | MANAGED_SSH_DYNAMIC_FORWARD_UNSUPPORTED
+                | MANAGED_SSH_REMOTE_DYNAMIC_FORWARD_UNSUPPORTED
+        ),
+    }
+}
+
+fn managed_capability_error_message(error: &AppError) -> Option<&str> {
+    match error {
+        AppError::SshCommand(message) => Some(message),
+        AppError::Sftp(message) => message
+            .strip_prefix("受管 SSH SFTP channel 失败: ")
+            .or_else(|| message.strip_prefix("受管 SSH exec channel 失败: ")),
+        _ => None,
     }
 }
 

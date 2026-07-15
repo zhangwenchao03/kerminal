@@ -186,6 +186,19 @@ fn runtime_policy_centralizes_host_key_external_target_and_fallback_rules() {
         )),
         SshRuntimeCapability::Sftp
     ));
+    assert!(!is_managed_runtime_unwired(&AppError::SshCommand(
+        "authentication failed after managed SSH runtime backend is not wired yet".to_owned()
+    )));
+    assert!(!is_capability_unsupported(
+        &AppError::SshCommand(format!(
+            "authentication failed: {MANAGED_SSH_EXEC_UNSUPPORTED}"
+        )),
+        SshRuntimeCapability::Exec
+    ));
+    assert!(!is_capability_unsupported(
+        &AppError::Sftp(format!("远端返回未知错误: {MANAGED_SSH_SFTP_UNSUPPORTED}")),
+        SshRuntimeCapability::Sftp
+    ));
 }
 
 #[test]
