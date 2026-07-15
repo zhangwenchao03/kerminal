@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -118,6 +118,10 @@ describe("SettingsToolContent sync page", () => {
     render(<ControlledSyncSettings />);
 
     const keyInput = await screen.findByLabelText("密钥文件内容");
+    await waitFor(() => {
+      expect(keyInput).toBeEnabled();
+      expect(keyInput).toHaveValue(sampleKeyToml());
+    });
     await user.clear(keyInput);
     await user.type(keyInput, editedKeyToml());
     await user.click(screen.getByRole("button", { name: /^保存$/ }));
@@ -131,6 +135,10 @@ describe("SettingsToolContent sync page", () => {
     render(<ControlledSyncSettings />);
 
     const keyInput = await screen.findByLabelText("密钥文件内容");
+    await waitFor(() => {
+      expect(keyInput).toBeEnabled();
+      expect(keyInput).toHaveValue(sampleKeyToml());
+    });
     await user.clear(keyInput);
     await user.click(screen.getByRole("button", { name: /^保存$/ }));
 
