@@ -40,6 +40,8 @@ const config = {
   ignoreDependencies: [
     // Tailwind v4 is loaded from src/App.css; Knip intentionally does not parse CSS imports.
     "tailwindcss",
+    // Window-state is a Rust-managed desktop plugin but remains a tested package contract.
+    "@tauri-apps/plugin-window-state",
   ],
   ignoreBinaries: ["rustc", "ssh-keygen.exe", "ssh.exe", "wsl.exe"],
   treatConfigHintsAsErrors: true,
