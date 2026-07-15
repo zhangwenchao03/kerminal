@@ -2,11 +2,12 @@
 //!
 //! @author kongweiguang
 
+#[cfg(target_os = "windows")]
+use kerminal_lib::commands::connection::process::{
+    run_bounded_process, shutdown_detached_clients, supervise_detached_client,
+};
 use kerminal_lib::{
-    commands::connection::process::{
-        cleanup_stale_artifacts, run_bounded_process, shutdown_detached_clients,
-        supervise_detached_client, TemporaryArtifact,
-    },
+    commands::connection::process::{cleanup_stale_artifacts, TemporaryArtifact},
     commands::connection::rules::{
         build_rdp_file_content, encrypted_rdp_password, format_rdp_full_address,
         remote_host_from_create_request, saved_rdp_password, test_tcp_endpoint,
