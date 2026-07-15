@@ -8,10 +8,7 @@ import {
   mocks,
 } from "../../support/terminal/XtermPane.testSupport.tsx";
 import { XtermPane } from "../../../../src/features/terminal/XtermPane";
-import {
-  getAgentSendRequestSnapshot,
-  consumeAgentSendRequest,
-} from "../../../../src/features/agent-workflow/agentSendRequestStore";
+import { consumeAgentSendRequest, getAgentSendRequestSnapshot } from "../../../../src/features/agent-workflow/agentSendRequestStore";
 
 describe("XtermPane context menu search and logging", () => {
   beforeEach(() => {

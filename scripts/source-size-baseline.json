@@ -363,7 +363,7 @@
     },
     {
       "file": "tests/frontend/features/terminal/XtermPane.contextMenu.test.tsx",
-      "lines": 836,
+      "lines": 835,
       "deadline": "before TASK-080",
       "owner": "test-architecture",
       "targetTask": "TASK-071"
