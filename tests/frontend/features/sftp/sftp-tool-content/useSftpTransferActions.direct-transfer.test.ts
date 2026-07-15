@@ -7,7 +7,7 @@ import { act, renderHook } from "@testing-library/react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SftpEntry, SftpTransferSummary } from "../../../../../src/lib/sftpApi";
-import type { SftpClipboard, SftpContextMenuState, SftpDialogAction, SftpFileTarget, SftpLocalTransferTarget, SftpRemoteTransferTarget, SftpStatus, SftpTransferTarget } from "../../../../../src/features/sftp/sftp-tool-content/types";
+import type { SftpClipboard, SftpContextMenuState, SftpDialogAction, SftpFileTarget, SftpStatus, SftpTransferTarget } from "../../../../../src/features/sftp/sftp-tool-content/types";
 import { useSftpTransferActions } from "../../../../../src/features/sftp/sftp-tool-content/useSftpTransferActions";
 
 type SetterMock<T> = ReturnType<typeof vi.fn> &
@@ -105,216 +105,19 @@ describe("useSftpTransferActions", () => {
     transferTaskRunnerMock.runTransferTask.mockResolvedValue(undefined);
   });
 
-  it("does not transfer selected entries without an SSH source target or transfer target", async () => {
-    const selectedEntry = remoteEntry();
-
-    const noFileTarget = renderTransferActionsHook({
-      fileTarget: null,
-      transferableSelectedEntries: [selectedEntry],
-      transferTarget: transferTarget(),
-    });
-    await act(async () => {
-      await noFileTarget.result.current.transferSelectedEntriesToTarget();
-    });
-
-    const dockerSource = renderTransferActionsHook({
-      fileTarget: dockerFileTarget(),
-      transferableSelectedEntries: [selectedEntry],
-      transferTarget: transferTarget(),
-    });
-    await act(async () => {
-      await dockerSource.result.current.transferSelectedEntriesToTarget();
-    });
-
-    const noTransferTarget = renderTransferActionsHook({
-      fileTarget: sshFileTarget(),
-      transferableSelectedEntries: [selectedEntry],
-      transferTarget: undefined,
-    });
-    await act(async () => {
-      await noTransferTarget.result.current.transferSelectedEntriesToTarget();
-    });
-
-    expect(remoteCopyTaskRunnerMock.runRemoteCopyTask).not.toHaveBeenCalled();
-    expect(transferTaskRunnerMock.runTransferTask).not.toHaveBeenCalled();
-    expect(noFileTarget.setters.setOperationStatus).not.toHaveBeenCalled();
-    expect(dockerSource.setters.setContextMenu).not.toHaveBeenCalled();
-    expect(noTransferTarget.setters.setContextMenu).not.toHaveBeenCalled();
-    expectNoPickerOrArchiveSideEffects();
-  });
-
-  it("reports an empty transfer selection without closing transient UI", async () => {
-    const { result, setters } = renderTransferActionsHook({
-      transferableSelectedEntries: [],
-      transferTarget: transferTarget(),
-    });
-
-    await act(async () => {
-      await result.current.transferSelectedEntriesToTarget();
-    });
-
-    expect(setters.setOperationStatus).toHaveBeenCalledWith({
-      kind: "info",
-      message: "请先选择要传输的远程项目。",
-    });
-    expect(setters.setContextMenu).not.toHaveBeenCalled();
-    expect(remoteCopyTaskRunnerMock.runRemoteCopyTask).not.toHaveBeenCalled();
-    expect(transferTaskRunnerMock.runTransferTask).not.toHaveBeenCalled();
-    expectNoPickerOrArchiveSideEffects();
-  });
-
-  it("clears transient UI before queueing selected entries for the transfer target", async () => {
+  it("uploads a selected local file through the transfer runner", async () => {
     const calls: string[] = [];
-    remoteCopyTaskRunnerMock.runRemoteCopyTask.mockImplementation(async () => {
-      calls.push("runRemoteCopyTask");
-    });
-    const appLog = remoteEntry({
-      name: "app.log",
-      path: "/srv/app.log",
-    });
-    const confDirectory = remoteEntry({
-      kind: "directory",
-      name: "conf",
-      path: "/srv/conf",
-    });
-    const { result } = renderTransferActionsHook({
-      calls,
-      fileTarget: sshFileTarget({ hostId: "host-left" }),
-      transferableSelectedEntries: [appLog, confDirectory],
-      transferTarget: transferTarget({
-        hostId: "host-right",
-        hostLabel: "Right Host",
-        remotePath: "/backup//",
-      }),
-    });
-
-    await act(async () => {
-      await result.current.transferSelectedEntriesToTarget();
-    });
-
-    expect(calls).toEqual([
-      "setContextMenu:null",
-      "setOperationStatus:null",
-      "runRemoteCopyTask",
-    ]);
-    expect(remoteCopyTaskRunnerMock.runRemoteCopyTask).toHaveBeenCalledWith({
-      destinationRemotePath: "/backup",
-      requests: [
-        {
-          conflictPolicy: "overwrite",
-          kind: "file",
-          sourceHostId: "host-left",
-          sourceRemotePath: "/srv/app.log",
-          targetHostId: "host-right",
-          targetRemotePath: "/backup/app.log",
-        },
-        {
-          conflictPolicy: "overwrite",
-          kind: "directory",
-          sourceHostId: "host-left",
-          sourceRemotePath: "/srv/conf",
-          targetHostId: "host-right",
-          targetRemotePath: "/backup/conf",
-        },
-      ],
-      statusMessage: "已加入传输队列：app.log、conf -> Right Host /backup",
-      targetDescription: "传输",
-    });
-    expect(transferTaskRunnerMock.runTransferTask).not.toHaveBeenCalled();
-    expectNoPickerOrArchiveSideEffects();
-  });
-
-  it("downloads selected entries directly into a local transfer target", async () => {
-    const calls: string[] = [];
+    fileDialogApiMock.selectLocalFile.mockResolvedValue("C:/tmp/release.tgz");
     transferTaskRunnerMock.runTransferTask.mockImplementation(async () => {
       calls.push("runTransferTask");
     });
-    const appLog = remoteEntry({
-      name: "app.log",
-      path: "/srv/app.log",
-    });
-    const confDirectory = remoteEntry({
-      kind: "directory",
-      name: "conf",
-      path: "/srv/conf",
-      raw: "drwxr-xr-x 2 root root 4096 Jun 21 10:00 conf",
-      size: 0,
-    });
     const { result } = renderTransferActionsHook({
       calls,
       fileTarget: sshFileTarget({ hostId: "host-left" }),
-      transferableSelectedEntries: [appLog, confDirectory],
-      transferTarget: localTransferTarget({ localPath: "C:/Users/24052" }),
     });
 
     await act(async () => {
-      await result.current.transferSelectedEntriesToTarget();
-    });
-
-    expect(calls).toEqual([
-      "setContextMenu:null",
-      "setOperationStatus:null",
-      "runTransferTask",
-      "runTransferTask",
-      "setOperationStatus:null",
-    ]);
-    expect(transferTaskRunnerMock.runTransferTask).toHaveBeenNthCalledWith(1, {
-      queuedStatus: {
-        kind: "info",
-        message: "已加入下载队列：/srv/app.log",
-      },
-      request: {
-       conflictPolicy: "overwrite",
-        direction: "download",
-        hostId: "host-left",
-        kind: "file",
-        localPath: "C:/Users/24052/app.log",
-        remotePath: "/srv/app.log",
-      },
-    });
-    expect(transferTaskRunnerMock.runTransferTask).toHaveBeenNthCalledWith(2, {
-      queuedStatus: {
-        kind: "info",
-        message: "已加入文件夹下载队列：/srv/conf",
-      },
-      request: {
-       conflictPolicy: "overwrite",
-        direction: "download",
-        hostId: "host-left",
-        kind: "directory",
-        localPath: "C:/Users/24052/conf",
-        remotePath: "/srv/conf",
-      },
-    });
-    expect(remoteCopyTaskRunnerMock.runRemoteCopyTask).not.toHaveBeenCalled();
-    expectNoPickerOrArchiveSideEffects();
-  });
-
-  it("downloads selected entries as a batch through the transfer runner", async () => {
-    const calls: string[] = [];
-    fileDialogApiMock.selectLocalDirectory.mockResolvedValue("C:/downloads");
-    transferTaskRunnerMock.runTransferTask.mockImplementation(async () => {
-      calls.push("runTransferTask");
-    });
-    const appLog = remoteEntry({
-      name: "app.log",
-      path: "/srv/app.log",
-    });
-    const confDirectory = remoteEntry({
-      kind: "directory",
-      name: "conf",
-      path: "/srv/conf",
-      raw: "drwxr-xr-x 2 root root 4096 Jun 21 10:00 conf",
-      size: 0,
-    });
-    const { result } = renderTransferActionsHook({
-      calls,
-      fileTarget: sshFileTarget({ hostId: "host-left" }),
-      transferableSelectedEntries: [appLog, confDirectory],
-    });
-
-    await act(async () => {
-      await result.current.downloadSelectedEntries();
+      await result.current.uploadLocalFile();
     });
 
     expect(calls).toEqual([
@@ -323,36 +126,69 @@ describe("useSftpTransferActions", () => {
       "setDialogStatus:null",
       "setOperationStatus:null",
       "runTransferTask",
-      "runTransferTask",
-      "setOperationStatus:null",
     ]);
-    expect(fileDialogApiMock.selectLocalDirectory).toHaveBeenCalledTimes(1);
-    expect(transferTaskRunnerMock.runTransferTask).toHaveBeenNthCalledWith(1, {
+    expect(fileDialogApiMock.selectLocalFile).toHaveBeenCalledTimes(1);
+    expect(transferTaskRunnerMock.runTransferTask).toHaveBeenCalledWith({
       queuedStatus: {
         kind: "info",
-        message: "已加入下载队列：/srv/app.log",
+        message: "已加入上传队列：release.tgz",
       },
       request: {
        conflictPolicy: "overwrite",
-        direction: "download",
+        direction: "upload",
         hostId: "host-left",
         kind: "file",
-        localPath: "C:/downloads/app.log",
-        remotePath: "/srv/app.log",
+        localPath: "C:/tmp/release.tgz",
+        remotePath: "/srv/release.tgz",
       },
     });
-    expect(transferTaskRunnerMock.runTransferTask).toHaveBeenNthCalledWith(2, {
+    expect(remoteCopyTaskRunnerMock.runRemoteCopyTask).not.toHaveBeenCalled();
+    expect(fileDialogApiMock.selectLocalDirectory).not.toHaveBeenCalled();
+    expect(fileDialogApiMock.selectSaveFile).not.toHaveBeenCalled();
+    expect(sftpApiMock.classifySftpLocalPaths).not.toHaveBeenCalled();
+    expect(sftpApiMock.enqueueSftpArchiveDownload).not.toHaveBeenCalled();
+    expect(sftpApiMock.enqueueSftpArchiveUpload).not.toHaveBeenCalled();
+    expect(sftpApiMock.enqueueSftpClipboardDownload).not.toHaveBeenCalled();
+    expect(sftpApiMock.readSftpLocalFileClipboard).not.toHaveBeenCalled();
+  });
+
+  it("uploads a selected local directory through the transfer runner", async () => {
+    const calls: string[] = [];
+    fileDialogApiMock.selectLocalDirectory.mockResolvedValue(
+      "C:/tmp/release-dir",
+    );
+    transferTaskRunnerMock.runTransferTask.mockImplementation(async () => {
+      calls.push("runTransferTask");
+    });
+    const { result } = renderTransferActionsHook({
+      calls,
+      fileTarget: sshFileTarget({ hostId: "host-left" }),
+    });
+
+    await act(async () => {
+      await result.current.uploadLocalDirectory("/opt/releases");
+    });
+
+    expect(calls).toEqual([
+      "setContextMenu:null",
+      "setDialogAction:null",
+      "setDialogStatus:null",
+      "setOperationStatus:null",
+      "runTransferTask",
+    ]);
+    expect(fileDialogApiMock.selectLocalDirectory).toHaveBeenCalledTimes(1);
+    expect(transferTaskRunnerMock.runTransferTask).toHaveBeenCalledWith({
       queuedStatus: {
         kind: "info",
-        message: "已加入文件夹下载队列：/srv/conf",
+        message: "已加入文件夹上传队列：release-dir",
       },
       request: {
        conflictPolicy: "overwrite",
-        direction: "download",
+        direction: "upload",
         hostId: "host-left",
         kind: "directory",
-        localPath: "C:/downloads/conf",
-        remotePath: "/srv/conf",
+        localPath: "C:/tmp/release-dir",
+        remotePath: "/opt/releases/release-dir",
       },
     });
     expect(remoteCopyTaskRunnerMock.runRemoteCopyTask).not.toHaveBeenCalled();
@@ -364,6 +200,90 @@ describe("useSftpTransferActions", () => {
     expect(sftpApiMock.enqueueSftpClipboardDownload).not.toHaveBeenCalled();
     expect(sftpApiMock.readSftpLocalFileClipboard).not.toHaveBeenCalled();
   });
+
+  it("injects the active view scope into direct archive and clipboard queue requests", async () => {
+    fileDialogApiMock.selectSaveFile.mockResolvedValue(
+      "C:/downloads/app.log.zip",
+    );
+    fileDialogApiMock.selectLocalFile.mockResolvedValue("C:/tmp/release.tgz");
+    sftpApiMock.enqueueSftpArchiveDownload.mockResolvedValue(
+      transferSummary({ id: "archive-download" }),
+    );
+    sftpApiMock.enqueueSftpClipboardDownload.mockResolvedValue(
+      transferSummary({ id: "clipboard-download" }),
+    );
+    sftpApiMock.enqueueSftpArchiveUpload.mockResolvedValue(
+      transferSummary({ id: "archive-upload" }),
+    );
+    const { result } = renderTransferActionsHook({
+      fileTarget: sshFileTarget({ hostId: "host-left" }),
+      viewScope: "sftp-workbench:tab-a",
+    });
+
+    await act(async () => {
+      await result.current.downloadEntryAsArchive(
+        remoteEntry({ name: "app.log", path: "/srv/app.log" }),
+      );
+      await result.current.downloadEntryToLocalClipboard(
+        remoteEntry({ name: "app.log", path: "/srv/app.log" }),
+      );
+      await result.current.uploadLocalArchive("file", "/srv/releases");
+    });
+
+    expect(sftpApiMock.enqueueSftpArchiveDownload).toHaveBeenCalledWith({
+      conflictPolicy: "overwrite",
+      hostId: "host-left",
+      kind: "file",
+      sourceRemotePath: "/srv/app.log",
+      targetLocalPath: "C:/downloads/app.log.zip",
+      viewScope: "sftp-workbench:tab-a",
+    });
+    expect(sftpApiMock.enqueueSftpClipboardDownload).toHaveBeenCalledWith({
+      hostId: "host-left",
+      kind: "file",
+      sourceRemotePath: "/srv/app.log",
+      viewScope: "sftp-workbench:tab-a",
+    });
+    expect(sftpApiMock.enqueueSftpArchiveUpload).toHaveBeenCalledWith({
+     conflictPolicy: "overwrite",
+      hostId: "host-left",
+      kind: "file",
+      sourceLocalPath: "C:/tmp/release.tgz",
+      targetRemotePath: "/srv/releases/release.tgz.zip",
+      viewScope: "sftp-workbench:tab-a",
+    });
+  });
+
+  it("sanitizes clipboard transfer failures before storing them", async () => {
+    sftpApiMock.enqueueSftpClipboardDownload.mockResolvedValue(
+      transferSummary({
+        error: "secret=clipboard-summary-secret",
+        id: "clipboard-failed",
+        status: "failed",
+      }),
+    );
+    const { result, setters } = renderTransferActionsHook({
+      fileTarget: sshFileTarget({ hostId: "host-left" }),
+    });
+
+    await act(async () => {
+      await result.current.downloadEntryToLocalClipboard(
+        remoteEntry({ name: "app.log", path: "/srv/app.log" }),
+      );
+    });
+
+    const update =
+      setters.setTransfers.mock.calls[
+        setters.setTransfers.mock.calls.length - 1
+      ]?.[0] as
+      | SetStateAction<SftpTransferSummary[]>
+      | undefined;
+    const transfers =
+      typeof update === "function" ? update([]) : (update ?? []);
+    expect(transfers[0]?.error).toContain('secret="[已隐藏]"');
+    expect(transfers[0]?.error).not.toContain("clipboard-summary-secret");
+  });
+
 
 
 });
@@ -473,24 +393,7 @@ function createSetter<T>(
   return vi.fn((value: SetStateAction<T>) => {
     calls.push(`${name}:${value === null ? "null" : "value"}`);
   }) as unknown as SetterMock<T>;
-}
-
-function expectNoPickerOrArchiveSideEffects({
-  allowClipboardDownload = false,
-}: { allowClipboardDownload?: boolean } = {}) {
-  expect(fileDialogApiMock.selectLocalDirectory).not.toHaveBeenCalled();
-  expect(fileDialogApiMock.selectLocalFile).not.toHaveBeenCalled();
-  expect(fileDialogApiMock.selectSaveFile).not.toHaveBeenCalled();
-  expect(sftpApiMock.classifySftpLocalPaths).not.toHaveBeenCalled();
-  expect(sftpApiMock.enqueueSftpArchiveDownload).not.toHaveBeenCalled();
-  expect(sftpApiMock.enqueueSftpArchiveUpload).not.toHaveBeenCalled();
-  if (!allowClipboardDownload) {
-    expect(sftpApiMock.enqueueSftpClipboardDownload).not.toHaveBeenCalled();
-  }
-  expect(sftpApiMock.readSftpLocalFileClipboard).not.toHaveBeenCalled();
-}
-
-function sshFileTarget(
+}function sshFileTarget(
   overrides: Partial<Extract<SftpFileTarget, { kind: "ssh" }>> = {},
 ): Extract<SftpFileTarget, { kind: "ssh" }> {
   return {
@@ -503,45 +406,38 @@ function sshFileTarget(
   };
 }
 
-function dockerFileTarget(
-  overrides: Partial<Extract<SftpFileTarget, { kind: "dockerContainer" }>> = {},
-): Extract<SftpFileTarget, { kind: "dockerContainer" }> {
+function transferSummary(
+  overrides: Partial<SftpTransferSummary> = {},
+): SftpTransferSummary {
   return {
-    containerId: "container-api",
-    containerName: "api",
+    bytesTransferred: 0,
+    cancelRequested: false,
+    createdAt: 1,
+    direction: "download",
     hostId: "host-left",
-    initialPath: "/srv",
-    kind: "dockerContainer",
-    protocol: "container://",
-    runtime: "docker",
-    summary: "docker:api",
+    id: "transfer-1",
+    kind: "file",
+    localPath: "C:/downloads/app.log",
+    operation: "download",
+    remotePath: "/srv/app.log",
+    source: {
+      hostId: "host-left",
+      hostLabel: "host-left",
+      kind: "remote",
+      path: "/srv/app.log",
+    },
+    status: "queued",
+    target: {
+      kind: "local",
+      path: "C:/downloads/app.log",
+    },
+    transportMode: "singleHostSftp",
+    updatedAt: 1,
     ...overrides,
   };
 }
 
-function transferTarget(
-  overrides: Partial<SftpRemoteTransferTarget> = {},
-): SftpRemoteTransferTarget {
-  return {
-    kind: "remote",
-    hostId: "host-right",
-    hostLabel: "Right Host",
-    remotePath: "/backup",
-    side: "right",
-    ...overrides,
-  };
-}
-
-function localTransferTarget(
-  overrides: Partial<SftpLocalTransferTarget> = {},
-): SftpLocalTransferTarget {
-  return {
-    kind: "local",
-    localPath: "C:/downloads",
-    side: "left",
-    ...overrides,
-  };
-}function remoteEntry(overrides: Partial<SftpEntry> = {}): SftpEntry {
+function remoteEntry(overrides: Partial<SftpEntry> = {}): SftpEntry {
   return {
     kind: "file",
     modified: "2026-06-21T10:00:00Z",

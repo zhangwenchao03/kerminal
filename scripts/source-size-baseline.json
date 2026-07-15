@@ -19,41 +19,6 @@
   ],
   "entries": [
     {
-      "file": "scripts/readme-screenshots/bootstrap.mjs",
-      "lines": 1235,
-      "deadline": "before TASK-080",
-      "owner": "quality-governance",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "scripts/verify-managed-ssh-hitl.mjs",
-      "lines": 1463,
-      "deadline": "before TASK-080",
-      "owner": "quality-governance",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "scripts/verify-terminal-command-block-rail.mjs",
-      "lines": 895,
-      "deadline": "before TASK-080",
-      "owner": "quality-governance",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "scripts/verify-terminal-ghost-app.mjs",
-      "lines": 1133,
-      "deadline": "before TASK-080",
-      "owner": "quality-governance",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "scripts/verify-terminal-gpu-recovery-smoke.mjs",
-      "lines": 999,
-      "deadline": "before TASK-080",
-      "owner": "quality-governance",
-      "targetTask": "TASK-071"
-    },
-    {
       "file": "src-tauri/src/services/docker_host_service.rs",
       "lines": 946,
       "deadline": "before TASK-080",
@@ -129,27 +94,6 @@
       "deadline": "before TASK-080",
       "owner": "architecture-governance",
       "targetTask": "TASK-072"
-    },
-    {
-      "file": "src-tauri/tests/command_suggestion_service/remote_cache.rs",
-      "lines": 865,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "src-tauri/tests/external_launch_parser.rs",
-      "lines": 988,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "src-tauri/tests/support/ssh_terminal_smoke.rs",
-      "lines": 1128,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
     },
     {
       "file": "src/App.css",
@@ -269,83 +213,6 @@
       "deadline": "before TASK-080",
       "owner": "architecture-governance",
       "targetTask": "TASK-072"
-    },
-    {
-      "file": "tests/frontend/features/machine-sidebar/HostContainersDialog.test.tsx",
-      "lines": 809,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "tests/frontend/features/machine-sidebar/MachineSidebar.test.tsx",
-      "lines": 1199,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "tests/frontend/features/machine-sidebar/RemoteHostCreateDialog.test.tsx",
-      "lines": 1312,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "tests/frontend/features/sftp/LocalTransferPane.test.tsx",
-      "lines": 1032,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "tests/frontend/features/sftp/sftp-tool-content/useSftpTransferActions.test.ts",
-      "lines": 1173,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "tests/frontend/features/sftp/SftpTransferWorkbench.test.tsx",
-      "lines": 943,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "tests/frontend/features/terminal/terminalCommandBlocks.test.ts",
-      "lines": 809,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "tests/frontend/features/terminal/terminalRenderer.test.ts",
-      "lines": 872,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "tests/frontend/features/terminal/XtermPane.contextMenu.test.tsx",
-      "lines": 835,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "tests/frontend/features/tool-panel/AgentLauncherToolContent.test.tsx",
-      "lines": 1329,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
-    },
-    {
-      "file": "tests/frontend/features/workspace/workspaceStore.test.ts",
-      "lines": 1122,
-      "deadline": "before TASK-080",
-      "owner": "test-architecture",
-      "targetTask": "TASK-071"
     }
   ]
 }
