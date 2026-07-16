@@ -164,7 +164,7 @@ Minimal example:
 ```toml
 schema_version = 1
 themeMode = "dark"
-interfaceDensity = "comfortable"
+interfaceDensity = "compact"
 ```
 
 Known settings groups:
@@ -328,10 +328,10 @@ Purpose: encrypted credentials for saved SSH hosts, jump hosts, inline private k
 Rules:
 
 - `secrets/vault.toml` stores encrypted entries referenced by `secret_ref` / `key_passphrase_ref` in host TOML.
-- `secrets/vault-key.toml` is the local workspace key and must stay out of Git.
-- Do not hand-write ciphertext, keys, passwords, or private key bodies in these files. Use the UI save flow or Kerminal credential tools.
-- Do not copy secret values into chat, docs, logs, tests, or ordinary config files.
-- Ensure `.gitignore` keeps `secrets/vault-key.toml` local before syncing a Kerminal workspace.
+- `secrets/vault-key.toml` and `secrets/vault-key.toml.bak.*` contain local workspace keys and must stay out of Git.
+- `.storage-transactions/`, `backups/`, `.storage.lock`, and `storage-manifest.toml` are local recovery state; they must not be synchronized because transaction copies can contain key material.
+- Do not hand-write ciphertext, keys, passwords, or private key bodies; use the UI or credential tools, and never copy secret values into chat, docs, logs, tests, or ordinary config files.
+- Ensure `.gitignore` keeps all key and recovery paths above local before syncing a Kerminal workspace; Workspace Sync also removes them from its staged set.
 
 ## snippets/*.toml
 

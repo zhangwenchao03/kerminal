@@ -72,13 +72,12 @@ pub(super) fn log_external_sftp_event(
         return;
     }
     match error {
-        Some(error) => tauri_plugin_log::log::warn!(
+        Some(_) => tauri_plugin_log::log::warn!(
             target: "sftp.external",
-            "event={} target={} path_present={} error={}",
+            "event={} target={} path_present={} failed=true",
             event,
             sftp_host_label(&endpoint.host),
-            path.is_some_and(|value| !value.trim().is_empty()),
-            error
+            path.is_some_and(|value| !value.trim().is_empty())
         ),
         None => tauri_plugin_log::log::info!(
             target: "sftp.external",
@@ -369,6 +368,12 @@ fn remote_child_path(parent: &str, name: &str) -> String {
 }
 
 pub(super) fn sftp_host_label(host: &RemoteHost) -> String {
+    if let Some(launch_id) = host.id.strip_prefix("external:") {
+        return format!(
+            "external:request_hash={}",
+            crate::services::external_launch::redaction::opaque_id_hash(launch_id)
+        );
+    }
     format!(
         "{}@{}:{}",
         redacted_sftp_username(&host.username),

@@ -1,4 +1,6 @@
+use super::spec_registry::{self, StaticSpecItem, StaticSpecSensitivity};
 use super::*;
+use crate::models::command_suggestion::SuggestionPresentation;
 
 pub(super) fn spec_candidates(
     request: &NormalizedSuggestionRequest,
@@ -9,10 +11,11 @@ pub(super) fn spec_candidates(
     let items = spec_items_for_token(&token);
     let mut candidates = Vec::new();
     for (index, item) in items.iter().enumerate() {
-        if !item.starts_with(&token.name) || item == &token.name {
+        if !item.name.starts_with(&token.name) || item.name == token.name.as_str() {
             continue;
         }
-        let replacement_text = format!("{}{}", char_prefix(&request.prefix, token.start), item);
+        let replacement_text =
+            format!("{}{}", char_prefix(&request.prefix, token.start), item.name);
         if !replacement_text.starts_with(&request.prefix) {
             continue;
         }
@@ -27,8 +30,26 @@ pub(super) fn spec_candidates(
         );
         metadata.insert("source".to_owned(), "bundled".to_owned());
 
+        let sensitivity = match item.sensitivity {
+            StaticSpecSensitivity::Normal => CommandSuggestionSensitivity::Normal,
+            StaticSpecSensitivity::Dangerous => CommandSuggestionSensitivity::Dangerous,
+            StaticSpecSensitivity::Sensitive => CommandSuggestionSensitivity::Sensitive,
+        };
+        let mut allowed_presentations = CommandSuggestionCandidate::presentations_for(sensitivity);
+        if !item.allow_inline {
+            allowed_presentations
+                .retain(|presentation| *presentation != SuggestionPresentation::Inline);
+        }
+
         candidates.push(CommandSuggestionCandidate {
-            id: format!("spec:{}:{}", token.completed_words.join(":"), item),
+            activation: CommandSuggestionActivation::Insert,
+            candidate_kind: CommandSuggestionCandidateKind::Command,
+            merged_source_explanations: Vec::new(),
+            source_explanation: None,
+            accept_boundaries: Vec::new(),
+            allowed_presentations,
+            context_key: request.context_key.clone(),
+            id: format!("spec:{}:{}", token.completed_words.join(":"), item.name),
             provider: SuggestionProviderKind::Spec,
             display_text: replacement_text.clone(),
             replacement_text,
@@ -37,10 +58,10 @@ pub(super) fn spec_candidates(
                 end: request.cursor,
             },
             suffix,
-            score: spec_score(&token, item, index),
-            sensitivity: CommandSuggestionSensitivity::Normal,
-            description: Some("离线 CLI spec".to_owned()),
-            source_id: Some((*item).to_owned()),
+            score: spec_score(&token, item.name, index),
+            sensitivity,
+            description: Some(item.description.to_owned()),
+            source_id: Some(item.name.to_owned()),
             metadata: Some(metadata),
         });
         if candidates.len() >= request.limit {
@@ -85,10 +106,10 @@ pub(super) fn spec_suggestion_token(prefix: &str) -> Option<SpecSuggestionToken>
     })
 }
 
-pub(super) fn spec_items_for_token(token: &SpecSuggestionToken) -> &'static [&'static str] {
+pub(super) fn spec_items_for_token(token: &SpecSuggestionToken) -> &'static [StaticSpecItem] {
     let words = normalized_spec_words(&token.completed_words);
     if words.is_empty() {
-        return SPEC_COMMANDS;
+        return spec_registry::root_items();
     }
     if token.name.starts_with('-') {
         return spec_options_for_path(&words);
@@ -120,41 +141,18 @@ pub(super) fn spec_command_name(token: &SpecSuggestionToken) -> Option<String> {
         })
 }
 
-pub(super) fn spec_subcommands_for_path(words: &[String]) -> &'static [&'static str] {
-    match words {
-        [command] if command == "cargo" => SPEC_CARGO_SUBCOMMANDS,
-        [command] if command == "docker" => SPEC_DOCKER_SUBCOMMANDS,
-        [command, subcommand] if command == "docker" && subcommand == "compose" => {
-            SPEC_DOCKER_COMPOSE_SUBCOMMANDS
-        }
-        [command] if command == "git" => SPEC_GIT_SUBCOMMANDS,
-        [command] if command == "kubectl" => SPEC_KUBECTL_SUBCOMMANDS,
-        [command, subcommand]
-            if command == "kubectl"
-                && matches!(
-                    subcommand.as_str(),
-                    "delete" | "describe" | "exec" | "get" | "logs"
-                ) =>
-        {
-            SPEC_KUBECTL_RESOURCES
-        }
-        [command] if command == "npm" => SPEC_NPM_SUBCOMMANDS,
-        [command] if command == "systemctl" => SPEC_SYSTEMCTL_SUBCOMMANDS,
-        _ => &[],
-    }
+pub(super) fn spec_subcommands_for_path(words: &[String]) -> &'static [StaticSpecItem] {
+    let Some((command, path)) = words.split_first() else {
+        return &[];
+    };
+    spec_registry::subcommand_items(command, path)
 }
 
-pub(super) fn spec_options_for_path(words: &[String]) -> &'static [&'static str] {
-    match words {
-        [command, ..] if command == "cargo" => SPEC_CARGO_OPTIONS,
-        [command, ..] if command == "docker" => SPEC_DOCKER_OPTIONS,
-        [command, ..] if command == "git" => SPEC_GIT_OPTIONS,
-        [command, ..] if command == "kubectl" => SPEC_KUBECTL_OPTIONS,
-        [command, ..] if command == "npm" => SPEC_NPM_OPTIONS,
-        [command, ..] if command == "ssh" => SPEC_SSH_OPTIONS,
-        [command, ..] if command == "systemctl" => SPEC_SYSTEMCTL_OPTIONS,
-        _ => &[],
-    }
+pub(super) fn spec_options_for_path(words: &[String]) -> &'static [StaticSpecItem] {
+    let Some((command, path)) = words.split_first() else {
+        return &[];
+    };
+    spec_registry::option_items(command, path)
 }
 
 pub(super) fn spec_score(token: &SpecSuggestionToken, item: &str, index: usize) -> f64 {

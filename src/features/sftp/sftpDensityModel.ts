@@ -4,7 +4,7 @@
  * @author kongweiguang
  */
 
-import type { InterfaceDensity } from "../settings/settingsModel";
+import type { InterfaceDensity } from "../settings/contracts/index";
 import { FIXED_ROW_VIRTUAL_LIST_ROW_HEIGHT } from "./virtualFixedListModel";
 
 const SFTP_COMPACT_ROW_HEIGHT = 36;

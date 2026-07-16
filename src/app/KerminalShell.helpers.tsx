@@ -5,15 +5,20 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
-import { convertFileSrc, isTauri } from "@tauri-apps/api/core";
 import { Button } from "../components/ui/button";
-import { ModalShell } from "../components/ui/modal-shell";
+import { UserFacingNotice } from "../components/ui/user-facing-notice";
+import {
+  ModalShell,
+  WindowDragStrip,
+} from "../components/ui/modal-shell";
 import { cn } from "../lib/cn";
 import { TOOL_RAIL_WIDTH } from "./KerminalShell.static";
 import type { LocalTerminalCreateOptions } from "../features/machine-sidebar/RemoteHostCreateDialog";
 import type { AppSettings } from "../features/settings/settingsModel";
 import type { Machine, MachineGroup } from "../features/workspace/types";
 import type { TerminalProfile } from "../lib/profileApi";
+import type { UserFacingMessage } from "../lib/userFacingMessage";
+import { desktopRuntime } from "../lib/desktopRuntimeApi";
 import {
   createDefaultSshOptions,
   UNGROUPED_REMOTE_HOST_GROUP_ID,
@@ -75,10 +80,11 @@ export function DialogLazyFallback() {
   return (
     <div
       aria-label="正在加载弹窗"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/30 p-4 text-zinc-950 backdrop-blur-md dark:bg-black/48 dark:text-zinc-50"
+      className="kerminal-layer-dialog fixed inset-0 flex items-center justify-center bg-zinc-950/30 p-4 text-[var(--text-primary)] backdrop-blur-md dark:bg-black/48"
       role="status"
     >
-      <div className="kerminal-floating-enter rounded-[1.5rem] border border-[var(--border-subtle)] bg-[var(--surface-overlay)] px-5 py-4 text-sm shadow-2xl shadow-black/20 backdrop-blur-xl dark:shadow-black/50">
+      <WindowDragStrip />
+      <div className="kerminal-floating-enter rounded-[1.5rem] border border-[var(--border-subtle)] bg-[var(--surface-overlay)] px-5 py-4 text-sm shadow-lg shadow-black/12 backdrop-blur-xl dark:shadow-black/35">
         正在加载...
       </div>
     </div>
@@ -299,7 +305,7 @@ export function DeleteConfirmationDialog({
   onConfirm,
   pendingDelete,
 }: {
-  deleteError: string | null;
+  deleteError: UserFacingMessage | null;
   deleting: boolean;
   onClose: () => void;
   onConfirm: () => void;
@@ -346,9 +352,7 @@ export function DeleteConfirmationDialog({
             <p>包含 {pendingDelete.machineCount} 台主机，将移到默认分组。</p>
           ) : null}
           {deleteError ? (
-            <p className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-red-600 dark:text-red-300">
-              {deleteError}
-            </p>
+            <UserFacingNotice compact message={deleteError} />
           ) : null}
         </div>
       ) : null}
@@ -439,12 +443,13 @@ function localPathToCssUrl(path: string) {
   if (/^(https?|asset|data|blob):/i.test(path)) {
     return path.replace(/"/g, "%22");
   }
-  if (isTauri()) {
-    try {
-      return convertFileSrc(path).replace(/"/g, "%22");
-    } catch {
-      // Fall through to browser-friendly URL handling for tests and dev preview.
+  try {
+    const desktopUrl = desktopRuntime.convertLocalFileSrc(path);
+    if (desktopUrl) {
+      return desktopUrl.replace(/"/g, "%22");
     }
+  } catch {
+    // Fall through to browser-friendly URL handling for invalid local paths.
   }
   if (/^file:/i.test(path)) {
     return path.replace(/"/g, "%22");

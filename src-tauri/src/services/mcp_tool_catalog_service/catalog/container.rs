@@ -2,17 +2,20 @@
 //!
 //! @author kongweiguang
 
-use crate::models::mcp_server::{ToolCategory, ToolDefinition};
+use crate::{
+    models::mcp_server::ToolCategory,
+    services::mcp_tool_catalog_service::{ToolDescriptor, ToolId},
+};
 
 use super::super::schema::{
     boolean_field, enum_field, number_field, object_field, object_schema, string_field, tool,
     ToolEffect,
 };
 
-pub(super) fn container_tools() -> Vec<ToolDefinition> {
+pub(super) fn container_tools() -> Vec<ToolDescriptor> {
     vec![
         tool(
-            "container.list",
+            ToolId::ContainerList,
             "列出容器",
             "读取 Docker/Podman 容器列表。",
             ToolCategory::Container,
@@ -24,7 +27,7 @@ pub(super) fn container_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "container.inspect",
+            ToolId::ContainerInspect,
             "读取容器详情",
             "读取 Docker/Podman inspect 精简摘要。",
             ToolCategory::Container,
@@ -32,7 +35,7 @@ pub(super) fn container_tools() -> Vec<ToolDefinition> {
             container_info_schema(),
         ),
         tool(
-            "container.logs.tail",
+            ToolId::ContainerLogsTail,
             "读取容器日志",
             "读取容器最近日志；tail 会被服务端限制在安全范围内。",
             ToolCategory::Container,
@@ -45,7 +48,7 @@ pub(super) fn container_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "container.stats",
+            ToolId::ContainerStats,
             "读取容器监控",
             "读取一次性 no-stream stats 摘要。",
             ToolCategory::Container,
@@ -53,7 +56,7 @@ pub(super) fn container_tools() -> Vec<ToolDefinition> {
             container_info_schema(),
         ),
         tool(
-            "container.start",
+            ToolId::ContainerStart,
             "启动容器",
             "启动指定 Docker/Podman 容器。",
             ToolCategory::Container,
@@ -61,7 +64,7 @@ pub(super) fn container_tools() -> Vec<ToolDefinition> {
             container_lifecycle_schema(false),
         ),
         tool(
-            "container.stop",
+            ToolId::ContainerStop,
             "停止容器",
             "停止指定 Docker/Podman 容器。",
             ToolCategory::Container,
@@ -69,7 +72,7 @@ pub(super) fn container_tools() -> Vec<ToolDefinition> {
             container_lifecycle_schema(false),
         ),
         tool(
-            "container.restart",
+            ToolId::ContainerRestart,
             "重启容器",
             "重启指定 Docker/Podman 容器。",
             ToolCategory::Container,
@@ -77,7 +80,7 @@ pub(super) fn container_tools() -> Vec<ToolDefinition> {
             container_lifecycle_schema(false),
         ),
         tool(
-            "container.remove",
+            ToolId::ContainerRemove,
             "删除容器",
             "删除指定 Docker/Podman 容器；force=true 会强制删除运行中容器。",
             ToolCategory::Container,
@@ -85,7 +88,7 @@ pub(super) fn container_tools() -> Vec<ToolDefinition> {
             container_lifecycle_schema(true),
         ),
         tool(
-            "container.files.list",
+            ToolId::ContainerFilesList,
             "列出容器目录",
             "读取容器目录。",
             ToolCategory::Container,
@@ -98,7 +101,7 @@ pub(super) fn container_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "container.files.preview",
+            ToolId::ContainerFilesPreview,
             "预览容器文件",
             "读取容器文本文件预览。",
             ToolCategory::Container,
@@ -112,7 +115,7 @@ pub(super) fn container_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "container.files.write_text",
+            ToolId::ContainerFilesWriteText,
             "写入容器文本文件",
             "写入容器内 UTF-8 文本文件；expectedRevision 可用于保存前冲突检测。",
             ToolCategory::Container,
@@ -120,7 +123,7 @@ pub(super) fn container_tools() -> Vec<ToolDefinition> {
             container_write_text_schema(),
         ),
         tool(
-            "container.files.create_directory",
+            ToolId::ContainerFilesCreateDirectory,
             "创建容器目录",
             "创建容器内目录；调用前确认由 MCP host 负责。",
             ToolCategory::Container,
@@ -133,7 +136,7 @@ pub(super) fn container_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "container.files.rename",
+            ToolId::ContainerFilesRename,
             "重命名容器路径",
             "重命名容器内文件或目录；调用前确认由 MCP host 负责。",
             ToolCategory::Container,
@@ -147,7 +150,7 @@ pub(super) fn container_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "container.files.chmod",
+            ToolId::ContainerFilesChmod,
             "修改容器路径权限",
             "修改容器内路径权限；调用前确认由 MCP host 负责。",
             ToolCategory::Container,
@@ -161,7 +164,7 @@ pub(super) fn container_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "container.files.upload",
+            ToolId::ContainerFilesUpload,
             "上传到容器",
             "上传本地文件或目录到容器；调用前确认由 MCP host 负责。",
             ToolCategory::Container,
@@ -169,7 +172,7 @@ pub(super) fn container_tools() -> Vec<ToolDefinition> {
             container_transfer_schema(),
         ),
         tool(
-            "container.files.download",
+            ToolId::ContainerFilesDownload,
             "从容器下载",
             "下载容器内文件或目录到本地；调用前确认由 MCP host 负责。",
             ToolCategory::Container,
@@ -177,7 +180,7 @@ pub(super) fn container_tools() -> Vec<ToolDefinition> {
             container_transfer_schema(),
         ),
         tool(
-            "container.files.delete",
+            ToolId::ContainerFilesDelete,
             "删除容器路径",
             "删除容器内文件或目录；directory=true 会递归删除目录。",
             ToolCategory::Container,

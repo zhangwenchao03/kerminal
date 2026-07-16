@@ -5,7 +5,7 @@
  */
 
 import { cn } from "../../lib/cn";
-import type { Machine } from "../workspace/types";
+import type { Machine } from "../workspace/contracts/index";
 
 export function LocalTransferPaneTargetFooter({
   chromePaddingClass,

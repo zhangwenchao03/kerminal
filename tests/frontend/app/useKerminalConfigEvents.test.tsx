@@ -12,8 +12,17 @@ const eventApiMock = vi.hoisted(() => ({
   unlisten: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: eventApiMock.listen,
+vi.mock("../../../src/lib/desktopRuntimeApi", () => ({
+  desktopRuntime: {
+    listen: (
+      eventName: string,
+      handler: (payload: ConfigChangeEvent) => void,
+    ) =>
+      eventApiMock.listen(
+        eventName,
+        (event: { payload: ConfigChangeEvent }) => handler(event.payload),
+      ),
+  },
 }));
 
 describe("useKerminalConfigEvents", () => {

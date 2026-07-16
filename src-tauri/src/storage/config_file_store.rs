@@ -10,12 +10,22 @@ use std::{
 };
 
 mod documents;
+mod profiles;
+mod remote_host_repository;
+mod settings;
+mod snippet_document;
+mod snippets;
+mod workflows;
+
+pub use snippet_document::{
+    SnippetDocumentList, SnippetDocumentPatch, SnippetDocumentSnapshot, SnippetDocumentWarning,
+};
 
 use documents::{
     ProfileTomlDocument, RemoteHostGroupsTomlDocument, RemoteHostTomlDocument,
     SettingsTomlDocument, SnippetTomlDocument, WorkflowTomlDocument,
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
@@ -37,6 +47,14 @@ use crate::{
 
 /// Kerminal file-backed config schema version.
 pub const CONFIG_FILE_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SnippetDeleteReceipt {
+    pub change_set_id: String,
+    pub snippet_id: String,
+    pub expires_at_unix_ms: u128,
+}
 const SETTINGS_RELATIVE_PATH: &str = "settings.toml";
 const PROFILES_RELATIVE_DIR: &str = "profiles";
 const HOSTS_RELATIVE_DIR: &str = "hosts";
@@ -63,293 +81,6 @@ impl ConfigFileStore {
     /// Return the root directory used by this repository.
     pub fn root(&self) -> &Path {
         self.files.root()
-    }
-
-    /// Read `settings.toml` and validate it into the runtime settings model.
-    pub fn read_settings(&self) -> FileStoreResult<AppSettings> {
-        let document = self
-            .files
-            .read_toml::<SettingsTomlDocument>(SETTINGS_RELATIVE_PATH)?;
-        with_error_path(document.into_settings(), Path::new(SETTINGS_RELATIVE_PATH))
-    }
-
-    /// Read `settings.toml`, returning defaults when the file is not initialized yet.
-    pub fn read_settings_or_default(&self) -> FileStoreResult<AppSettings> {
-        match self.read_settings() {
-            Ok(settings) => Ok(settings),
-            Err(FileStoreError::Io(error)) if error.kind() == ErrorKind::NotFound => {
-                Ok(AppSettings::default())
-            }
-            Err(error) => Err(error),
-        }
-    }
-
-    /// Write runtime settings to `settings.toml`.
-    pub fn write_settings(&self, settings: &AppSettings) -> FileStoreResult<PathBuf> {
-        let document = SettingsTomlDocument::from_settings(settings.clone())?;
-        self.files.write_toml(SETTINGS_RELATIVE_PATH, &document)
-    }
-
-    /// Read a profile from `profiles/<profile-id>.toml`.
-    pub fn read_profile(&self, profile_id: &str) -> FileStoreResult<TerminalProfile> {
-        let relative_path = profile_relative_path(profile_id)?;
-        let document = self
-            .files
-            .read_toml::<ProfileTomlDocument>(&relative_path)?;
-        let profile = with_error_path(document.into_profile(), &relative_path)?;
-        if profile.id != profile_id {
-            return Err(FileStoreError::TomlParse(
-                TomlParseError::single(
-                    1,
-                    1,
-                    format!(
-                        "profile file id mismatch: expected {profile_id}, found {}",
-                        profile.id
-                    ),
-                )
-                .with_path(relative_path)
-                .with_key("id")
-                .with_recovery("Make the profile id match the profiles/<id>.toml file name."),
-            ));
-        }
-        Ok(profile)
-    }
-
-    /// Read all profile TOML files ordered by sort order and name.
-    pub fn list_profiles(&self) -> FileStoreResult<Vec<TerminalProfile>> {
-        let profiles_dir = self.files.path_for(PROFILES_RELATIVE_DIR)?;
-        let entries = match fs::read_dir(&profiles_dir) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(error) => return Err(error.into()),
-        };
-
-        let mut profiles = Vec::new();
-        for entry in entries {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
-            if !file_type.is_file() {
-                continue;
-            }
-            let path = entry.path();
-            if path.extension().and_then(|value| value.to_str()) != Some("toml") {
-                continue;
-            }
-            let Some(profile_id) = path.file_stem().and_then(|value| value.to_str()) else {
-                continue;
-            };
-            profiles.push(self.read_profile(profile_id)?);
-        }
-
-        profiles.sort_by(|left, right| {
-            left.sort_order
-                .cmp(&right.sort_order)
-                .then_with(|| left.name.cmp(&right.name))
-        });
-        Ok(profiles)
-    }
-
-    /// Read one profile, returning `None` when the profile file does not exist.
-    pub fn profile_by_id(&self, profile_id: &str) -> FileStoreResult<Option<TerminalProfile>> {
-        match self.read_profile(profile_id) {
-            Ok(profile) => Ok(Some(profile)),
-            Err(FileStoreError::Io(error)) if error.kind() == ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(error),
-        }
-    }
-
-    /// Write a profile to `profiles/<profile-id>.toml`.
-    pub fn write_profile(&self, profile: &TerminalProfile) -> FileStoreResult<PathBuf> {
-        let relative_path = profile_relative_path(&profile.id)?;
-        let document = ProfileTomlDocument::from_profile(profile.clone());
-        self.files.write_toml(relative_path, &document)
-    }
-
-    /// Apply profile writes/deletes as a single recoverable change set.
-    pub fn apply_profile_change_set(
-        &self,
-        profiles_to_write: &[TerminalProfile],
-        profile_ids_to_delete: &[String],
-    ) -> FileStoreResult<()> {
-        let timestamp = timestamp_now();
-        let change_set_id = format!("profiles-{}", Uuid::new_v4());
-        let mut changes = Vec::with_capacity(profiles_to_write.len() + profile_ids_to_delete.len());
-
-        for profile in profiles_to_write {
-            let relative_path = profile_relative_path(&profile.id)?;
-            let document = ProfileTomlDocument::from_profile(profile.clone());
-            changes.push(FileStoreChange::new(
-                relative_path,
-                document.encode_toml()?.into_bytes(),
-            )?);
-        }
-
-        for profile_id in profile_ids_to_delete {
-            changes.push(FileStoreChange::delete(profile_relative_path(profile_id)?)?);
-        }
-
-        self.files
-            .apply_change_set(&change_set_id, &timestamp, changes)?;
-        Ok(())
-    }
-
-    /// Read all snippet TOML files ordered by sort order and title.
-    pub fn list_snippets(&self) -> FileStoreResult<Vec<CommandSnippet>> {
-        let snippets_dir = self.files.path_for(SNIPPETS_RELATIVE_DIR)?;
-        let entries = match fs::read_dir(&snippets_dir) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(error) => return Err(error.into()),
-        };
-
-        let mut snippets = Vec::new();
-        for entry in entries {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
-            if !file_type.is_file() {
-                continue;
-            }
-            let path = entry.path();
-            if path.extension().and_then(|value| value.to_str()) != Some("toml") {
-                continue;
-            }
-            let Some(snippet_id) = path.file_stem().and_then(|value| value.to_str()) else {
-                continue;
-            };
-            snippets.push(self.read_snippet(snippet_id)?);
-        }
-
-        sort_snippets(&mut snippets);
-        Ok(snippets)
-    }
-
-    /// Read one command snippet by id.
-    pub fn snippet_by_id(&self, snippet_id: &str) -> FileStoreResult<Option<CommandSnippet>> {
-        match self.read_snippet(snippet_id) {
-            Ok(snippet) => Ok(Some(snippet)),
-            Err(FileStoreError::Io(error)) if error.kind() == ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(error),
-        }
-    }
-
-    /// Return the next snippet sort order.
-    pub fn next_snippet_sort_order(&self) -> FileStoreResult<i64> {
-        Ok(self
-            .list_snippets()?
-            .into_iter()
-            .map(|snippet| snippet.sort_order)
-            .max()
-            .unwrap_or(0)
-            + 10)
-    }
-
-    /// Apply snippet writes/deletes as one recoverable change set.
-    pub fn apply_snippet_change_set(
-        &self,
-        snippets_to_write: &[CommandSnippet],
-        snippet_ids_to_delete: &[String],
-    ) -> FileStoreResult<()> {
-        let timestamp = timestamp_now();
-        let change_set_id = format!("snippets-{}", Uuid::new_v4());
-        let mut changes = Vec::with_capacity(snippets_to_write.len() + snippet_ids_to_delete.len());
-
-        for snippet in snippets_to_write {
-            let relative_path = snippet_relative_path(&snippet.id)?;
-            let document = SnippetTomlDocument::from_snippet(snippet.clone());
-            changes.push(FileStoreChange::new(
-                relative_path,
-                document.encode_toml()?.into_bytes(),
-            )?);
-        }
-
-        for snippet_id in snippet_ids_to_delete {
-            changes.push(FileStoreChange::delete(snippet_relative_path(snippet_id)?)?);
-        }
-
-        self.files
-            .apply_change_set(&change_set_id, &timestamp, changes)?;
-        Ok(())
-    }
-
-    /// Read all workflow TOML files ordered by sort order and title.
-    pub fn list_workflows(&self) -> FileStoreResult<Vec<CommandWorkflow>> {
-        let workflows_dir = self.files.path_for(WORKFLOWS_RELATIVE_DIR)?;
-        let entries = match fs::read_dir(&workflows_dir) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(error) => return Err(error.into()),
-        };
-
-        let mut workflows = Vec::new();
-        for entry in entries {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
-            if !file_type.is_file() {
-                continue;
-            }
-            let path = entry.path();
-            if path.extension().and_then(|value| value.to_str()) != Some("toml") {
-                continue;
-            }
-            let Some(workflow_id) = path.file_stem().and_then(|value| value.to_str()) else {
-                continue;
-            };
-            workflows.push(self.read_workflow(workflow_id)?);
-        }
-
-        sort_workflows(&mut workflows);
-        Ok(workflows)
-    }
-
-    /// Read one command workflow by id.
-    pub fn workflow_by_id(&self, workflow_id: &str) -> FileStoreResult<Option<CommandWorkflow>> {
-        match self.read_workflow(workflow_id) {
-            Ok(workflow) => Ok(Some(workflow)),
-            Err(FileStoreError::Io(error)) if error.kind() == ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(error),
-        }
-    }
-
-    /// Return the next workflow sort order.
-    pub fn next_workflow_sort_order(&self) -> FileStoreResult<i64> {
-        Ok(self
-            .list_workflows()?
-            .into_iter()
-            .map(|workflow| workflow.sort_order)
-            .max()
-            .unwrap_or(0)
-            + 10)
-    }
-
-    /// Apply workflow writes/deletes as one recoverable change set.
-    pub fn apply_workflow_change_set(
-        &self,
-        workflows_to_write: &[CommandWorkflow],
-        workflow_ids_to_delete: &[String],
-    ) -> FileStoreResult<()> {
-        let timestamp = timestamp_now();
-        let change_set_id = format!("workflows-{}", Uuid::new_v4());
-        let mut changes =
-            Vec::with_capacity(workflows_to_write.len() + workflow_ids_to_delete.len());
-
-        for workflow in workflows_to_write {
-            let relative_path = workflow_relative_path(&workflow.id)?;
-            let document = WorkflowTomlDocument::from_workflow(workflow.clone());
-            changes.push(FileStoreChange::new(
-                relative_path,
-                document.encode_toml()?.into_bytes(),
-            )?);
-        }
-
-        for workflow_id in workflow_ids_to_delete {
-            changes.push(FileStoreChange::delete(workflow_relative_path(
-                workflow_id,
-            )?)?);
-        }
-
-        self.files
-            .apply_change_set(&change_set_id, &timestamp, changes)?;
-        Ok(())
     }
 
     /// Read all remote host groups from `hosts/groups.toml`.
@@ -471,17 +202,6 @@ impl ConfigFileStore {
         Ok(tree)
     }
 
-    /// Return the next group sort order.
-    pub fn next_remote_host_group_sort_order(&self) -> FileStoreResult<i64> {
-        Ok(self
-            .list_remote_host_groups()?
-            .into_iter()
-            .map(|group| group.sort_order)
-            .max()
-            .unwrap_or(0)
-            + 10)
-    }
-
     /// Return the next host sort order within a group or ungrouped area.
     pub fn next_remote_host_sort_order(&self, group_id: Option<&str>) -> FileStoreResult<i64> {
         Ok(self
@@ -537,36 +257,25 @@ impl ConfigFileStore {
         self.read_remote_host_metadata(host_id)
     }
 
-    fn read_remote_host_metadata(&self, host_id: &str) -> FileStoreResult<RemoteHost> {
-        let relative_path = remote_host_relative_path(host_id)?;
-        let document = self
-            .files
-            .read_toml::<RemoteHostTomlDocument>(&relative_path)?;
-        let host = with_error_path(document.into_host(), &relative_path)?;
-        if host.id != host_id {
-            return Err(FileStoreError::TomlParse(
-                TomlParseError::single(
-                    1,
-                    1,
-                    format!(
-                        "remote host file id mismatch: expected {host_id}, found {}",
-                        host.id
-                    ),
-                )
-                .with_path(relative_path)
-                .with_key("id")
-                .with_recovery("Make the host id match the hosts/<id>.toml file name."),
-            ));
-        }
-        Ok(host)
-    }
-
     fn read_snippet(&self, snippet_id: &str) -> FileStoreResult<CommandSnippet> {
         let relative_path = snippet_relative_path(snippet_id)?;
         let document = self
             .files
             .read_toml::<SnippetTomlDocument>(&relative_path)?;
         let snippet = with_error_path(document.into_snippet(), &relative_path)?;
+        crate::models::snippet::validate_snippet_metadata_contract(
+            snippet.risk.as_deref(),
+            snippet.default_action.as_deref(),
+            &snippet.variables,
+            &snippet.context_bindings,
+        )
+        .map_err(|message| {
+            FileStoreError::TomlParse(
+                TomlParseError::single(1, 1, message)
+                    .with_path(relative_path.clone())
+                    .with_recovery("修正 snippets/<id>.toml 中的可选元数据字段。"),
+            )
+        })?;
         if snippet.id != snippet_id {
             return Err(FileStoreError::TomlParse(
                 TomlParseError::single(
@@ -583,30 +292,6 @@ impl ConfigFileStore {
             ));
         }
         Ok(snippet)
-    }
-
-    fn read_workflow(&self, workflow_id: &str) -> FileStoreResult<CommandWorkflow> {
-        let relative_path = workflow_relative_path(workflow_id)?;
-        let document = self
-            .files
-            .read_toml::<WorkflowTomlDocument>(&relative_path)?;
-        let workflow = with_error_path(document.into_workflow(), &relative_path)?;
-        if workflow.id != workflow_id {
-            return Err(FileStoreError::TomlParse(
-                TomlParseError::single(
-                    1,
-                    1,
-                    format!(
-                        "workflow file id mismatch: expected {workflow_id}, found {}",
-                        workflow.id
-                    ),
-                )
-                .with_path(relative_path)
-                .with_key("id")
-                .with_recovery("Make the workflow id match the workflows/<id>.toml file name."),
-            ));
-        }
-        Ok(workflow)
     }
 }
 
@@ -746,6 +431,13 @@ fn timestamp_now() -> String {
         .unwrap_or_else(|_| "0".to_owned())
 }
 
+fn unix_time_millis() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default()
+}
+
 fn encode_toml<T: Serialize>(value: &T) -> FileStoreResult<String> {
     toml::to_string_pretty(value).map_err(|error| FileStoreError::TomlEncode(error.to_string()))
 }
@@ -766,28 +458,33 @@ fn toml_validation_error(error: crate::error::AppError) -> FileStoreError {
 }
 
 fn reject_secret_keys_in_host_toml(source: &str) -> Result<(), TomlParseError> {
+    const FORBIDDEN_KEYS: &[&str] = &[
+        "credential_secret",
+        "credentialSecret",
+        "password",
+        "inline_private_key",
+        "inlinePrivateKey",
+        "key_passphrase",
+        "keyPassphrase",
+        "key_passphrase_secret",
+        "keyPassphraseSecret",
+    ];
     for (line_index, line) in source.lines().enumerate() {
         let trimmed = line.trim_start();
         if trimmed.starts_with('#') {
             continue;
         }
-        if trimmed.starts_with("credential_secret")
-            || trimmed.starts_with("credentialSecret")
-            || trimmed.contains(".credential_secret")
-            || trimmed.contains(".credentialSecret")
+        if let Some(key) = FORBIDDEN_KEYS
+            .iter()
+            .find(|key| trimmed.starts_with(**key) || trimmed.contains(&format!(".{key}")))
         {
-            let key = if trimmed.contains("credentialSecret") {
-                "credentialSecret"
-            } else {
-                "credential_secret"
-            };
-            let column = line.find("credential").map(|index| index + 1).unwrap_or(1);
+            let column = line.find(key).map(|index| index + 1).unwrap_or(1);
             let diagnostic = ParseDiagnostic::new(
                 line_index + 1,
                 column,
                 "ordinary host config must not contain credential secret fields; save credentials through encrypted vault",
             )
-            .with_key(key)
+            .with_key(*key)
             .with_recovery(
                 "Remove the plaintext secret field and save credentials through the encrypted vault; host TOML may only keep secret_ref/key_passphrase_ref references.",
             );

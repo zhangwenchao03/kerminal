@@ -1,7 +1,7 @@
 import type {
   TerminalSplitDirection,
   TerminalSplitPlacement,
-} from "../workspace/types";
+} from "../workspace/contracts/index";
 
 export type TerminalSplitDropZone = "left" | "right" | "top" | "bottom";
 

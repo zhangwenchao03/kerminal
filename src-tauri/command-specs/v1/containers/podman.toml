@@ -1,0 +1,50 @@
+schema_version = 1
+command = "podman"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell"]
+description = "Manage OCI containers and images"
+tested_version = "Podman 5"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "Podman command reference"
+url = "https://docs.podman.io/en/latest/Commands.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "build"
+description = "Build an image"
+
+[[subcommands]]
+name = "exec"
+description = "Run a command in a container"
+
+[[subcommands]]
+name = "logs"
+description = "Display container logs"
+
+[[subcommands]]
+name = "ps"
+description = "List containers"
+
+[[subcommands]]
+name = "rm"
+description = "Remove containers"
+
+[subcommands.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "Removing containers can discard container state"
+
+[[subcommands]]
+name = "run"
+description = "Run a command in a new container"
+
+[[options]]
+name = "--remote"
+description = "Use a remote Podman service"

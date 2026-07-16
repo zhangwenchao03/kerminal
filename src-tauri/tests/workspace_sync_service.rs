@@ -2,14 +2,31 @@
 //!
 //! @author kongweiguang
 
-use std::{ffi::OsStr, fs, path::Path, process::Command};
+use std::{
+    ffi::OsStr,
+    fs,
+    path::Path,
+    process::Command,
+    sync::{Arc, Barrier},
+    thread,
+};
 
+#[cfg(windows)]
+use std::{
+    env,
+    process::Stdio,
+    time::{Duration, Instant},
+};
+
+#[cfg(windows)]
+use kerminal_lib::storage::storage_manifest::ChangeSetStatus;
 use kerminal_lib::{
     paths::KerminalPaths,
     services::{
         encrypted_vault_service::{write_toml_atomically, EncryptedVaultService, VaultFile},
         workspace_sync_service::{WorkspaceSyncRunStatus, WorkspaceSyncService},
     },
+    storage::file_store::FileStore,
 };
 
 #[test]
@@ -64,6 +81,26 @@ fn workspace_sync_does_not_create_new_key_over_existing_vault() {
 }
 
 #[test]
+fn workspace_sync_never_treats_corrupt_key_as_missing() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let paths = KerminalPaths::from_root(temp.path());
+    fs::create_dir_all(&paths.secrets).expect("create secrets");
+    let corrupt_source = "not valid vault key toml\n";
+    fs::write(paths.vault_key_file(), corrupt_source).expect("seed corrupt key");
+    let service = EncryptedVaultService::new(paths.clone());
+
+    let error = service
+        .ensure_workspace_key_if_safe()
+        .expect_err("corrupt key must fail closed");
+
+    assert!(error.to_string().contains("vault"));
+    assert_eq!(
+        fs::read_to_string(paths.vault_key_file()).expect("read corrupt key"),
+        corrupt_source
+    );
+}
+
+#[test]
 fn encrypted_vault_roundtrip_requires_matching_associated_data() {
     let temp = tempfile::tempdir().expect("tempdir");
     let service = EncryptedVaultService::new(KerminalPaths::from_root(temp.path()));
@@ -94,6 +131,44 @@ fn encrypted_vault_roundtrip_requires_matching_associated_data() {
         .decrypt_secret(&key, &invalid_nonce, b"host:test")
         .expect_err("invalid nonce length must fail without panic");
     assert!(error.to_string().contains("vault nonce"));
+}
+
+#[test]
+fn concurrent_vault_upserts_preserve_every_entry() {
+    const WORKERS: usize = 16;
+    let temp = tempfile::tempdir().expect("tempdir");
+    let service = EncryptedVaultService::new(KerminalPaths::from_root(temp.path()));
+    service.create_workspace_key().expect("create key");
+    let barrier = Arc::new(Barrier::new(WORKERS));
+    let workers = (0..WORKERS)
+        .map(|index| {
+            let service = service.clone();
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                let entry_id = format!("credential:kerminal:ssh-host:{index}:target:password:v1");
+                barrier.wait();
+                service
+                    .upsert_secret(
+                        &entry_id,
+                        "ssh-host",
+                        entry_id.as_bytes(),
+                        format!("secret-{index}").as_bytes(),
+                    )
+                    .expect("upsert vault entry")
+            })
+        })
+        .collect::<Vec<_>>();
+
+    for worker in workers {
+        worker.join().expect("join vault worker");
+    }
+    let vault = service.read_vault().expect("read vault");
+
+    assert_eq!(vault.entries.len(), WORKERS);
+    for index in 0..WORKERS {
+        let entry_id = format!("credential:kerminal:ssh-host:{index}:target:password:v1");
+        assert!(vault.entries.iter().any(|entry| entry.id == entry_id));
+    }
 }
 
 #[test]
@@ -193,6 +268,75 @@ fn workspace_sync_run_commits_local_changes_without_remote() {
     assert!(files.contains("settings.toml"));
     assert!(files.contains(".gitignore"));
     assert!(!files.contains("secrets/vault-key.toml"));
+}
+
+#[test]
+fn workspace_sync_never_commits_vault_recovery_artifacts() {
+    if which::which("git").is_err() {
+        return;
+    }
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let paths = KerminalPaths::from_root(temp.path());
+    let sync = WorkspaceSyncService::new(paths.clone());
+    sync.ensure_bootstrap().expect("bootstrap");
+    configure_test_git(&paths.root);
+    let vault = EncryptedVaultService::new(paths.clone());
+    let old_key = vault.read_key().expect("old key");
+    vault
+        .upsert_secret(
+            "credential:kerminal:ssh-host:sync-safety:target:password:v1",
+            "ssh-host",
+            b"credential:kerminal:ssh-host:sync-safety:target:password:v1",
+            b"synthetic-sync-secret",
+        )
+        .expect("write synthetic entry");
+    sync.rotate_vault_key(false).expect("rotate key");
+    let next_key = vault.read_key().expect("next key");
+    git(
+        &paths.root,
+        [
+            "add",
+            "--force",
+            "--",
+            "secrets/vault-key.toml.bak.*",
+            ".storage-transactions/",
+            "backups/",
+            "storage-manifest.toml",
+        ],
+    );
+    fs::write(paths.root.join("settings.toml"), "theme_mode = \"dark\"\n").expect("write settings");
+
+    let result = sync.run_sync().expect("run sync");
+
+    assert!(result.committed);
+    let tracked = git(&paths.root, ["ls-files"]);
+    for forbidden in [
+        "secrets/vault-key.toml",
+        "secrets/vault-key.toml.bak.",
+        ".storage-transactions/",
+        "backups/",
+        ".storage.lock",
+        "storage-manifest.toml",
+    ] {
+        assert!(
+            !tracked.contains(forbidden),
+            "tracked local-only path: {forbidden}"
+        );
+    }
+    let commit = git(&paths.root, ["show", "--format=fuller", "HEAD"]);
+    assert!(!commit.contains(&old_key.master_key));
+    assert!(!commit.contains(&next_key.master_key));
+    let gitignore = fs::read_to_string(paths.gitignore_file()).expect("read gitignore");
+    for rule in [
+        "secrets/vault-key.toml.bak.*",
+        ".storage-transactions/",
+        "backups/",
+        ".storage.lock",
+        "storage-manifest.toml",
+    ] {
+        assert!(gitignore.contains(rule));
+    }
 }
 
 #[test]
@@ -299,6 +443,28 @@ fn vault_key_rotation_reencrypts_entries_and_keeps_backup() {
     let rotated = sync.rotate_vault_key(false).expect("rotate");
     assert!(!rotated.dry_run);
     assert!(rotated.backup_created);
+    let manifest = FileStore::new(&paths.root)
+        .read_storage_manifest()
+        .expect("read rotation manifest");
+    let rotation_change_set = manifest
+        .last_applied_change_set_id
+        .as_deref()
+        .and_then(|id| manifest.change_set(id))
+        .expect("rotation change set");
+    assert!(rotation_change_set
+        .touched_files
+        .contains(&"secrets/vault-key.toml".to_owned()));
+    assert!(rotation_change_set
+        .touched_files
+        .contains(&"secrets/vault.toml".to_owned()));
+    assert!(rotation_change_set
+        .touched_files
+        .iter()
+        .any(|path| path.starts_with("secrets/vault-key.toml.bak.")));
+    assert!(rotation_change_set
+        .touched_files
+        .iter()
+        .any(|path| path.starts_with("secrets/vault.toml.bak.")));
     let next_key = service.read_key().expect("new key");
     assert_ne!(next_key.master_key, old_key.master_key);
     let next_vault = service.read_vault().expect("new vault");
@@ -317,6 +483,152 @@ fn vault_key_rotation_reencrypts_entries_and_keeps_backup() {
         .filter(|entry| entry.file_name().to_string_lossy().contains(".bak."))
         .count();
     assert!(backup_count >= 2);
+}
+
+#[test]
+fn consecutive_vault_rotations_keep_distinct_key_backups() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let paths = KerminalPaths::from_root(temp.path());
+    let service = EncryptedVaultService::new(paths.clone());
+    service.create_workspace_key().expect("create key");
+    service
+        .upsert_secret(
+            "credential:kerminal:ssh-host:backup-uniqueness:target:password:v1",
+            "ssh-host",
+            b"credential:kerminal:ssh-host:backup-uniqueness:target:password:v1",
+            b"synthetic-backup-secret",
+        )
+        .expect("seed vault");
+
+    service.rotate_workspace_key(false).expect("first rotation");
+    service
+        .rotate_workspace_key(false)
+        .expect("second rotation");
+
+    let key_backups = fs::read_dir(&paths.secrets)
+        .expect("read secrets")
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with("vault-key.toml.bak."))
+        .collect::<Vec<_>>();
+    assert_eq!(key_backups.len(), 2);
+    assert_ne!(key_backups[0], key_backups[1]);
+}
+
+#[cfg(windows)]
+#[test]
+fn killed_vault_rotation_recovers_key_and_vault_on_restart() {
+    const ENTRY_COUNT: usize = 64;
+    const SECRET_BYTES: usize = 512 * 1024;
+    const CHILD_ROOT_ENV: &str = "KERMINAL_VAULT_ROTATION_CHILD_ROOT";
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let paths = KerminalPaths::from_root(temp.path());
+    let service = EncryptedVaultService::new(paths.clone());
+    let old_key = service.create_workspace_key().expect("create old key");
+    let plaintext = vec![b'v'; SECRET_BYTES];
+    let entries = (0..ENTRY_COUNT)
+        .map(|index| {
+            let id = format!("credential:kerminal:ssh-host:recovery-{index}:target:password:v1");
+            service
+                .encrypt_secret(&old_key, &id, "ssh-host", id.as_bytes(), &plaintext)
+                .expect("seed encrypted entry")
+        })
+        .collect::<Vec<_>>();
+    write_toml_atomically(
+        &paths.vault_file(),
+        &VaultFile {
+            schema_version: 1,
+            entries,
+        },
+    )
+    .expect("write original vault");
+
+    let executable = env::current_exe().expect("current test executable");
+    let mut child = Command::new(executable)
+        .args([
+            "--exact",
+            "vault_rotation_child_process",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(CHILD_ROOT_ENV, &paths.root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn vault rotation child");
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let transaction_id = loop {
+        if let Some(id) = applying_vault_rotation_transaction(&paths.root) {
+            break id;
+        }
+        if let Some(status) = child.try_wait().expect("poll vault rotation child") {
+            panic!("vault rotation child exited before interruption: {status}");
+        }
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for vault rotation journal"
+        );
+        thread::sleep(Duration::from_millis(1));
+    };
+
+    child.kill().expect("kill vault rotation child");
+    assert!(!child.wait().expect("wait killed child").success());
+    let store = FileStore::new(&paths.root);
+    store
+        .recover_pending_transactions()
+        .expect("recover interrupted vault rotation");
+
+    let recovered_key = service.read_key().expect("read recovered key");
+    let recovered_vault = service.read_vault().expect("read recovered vault");
+    assert_eq!(recovered_key, old_key);
+    assert_eq!(recovered_vault.entries.len(), ENTRY_COUNT);
+    for entry in [
+        recovered_vault.entries.first().expect("first entry"),
+        recovered_vault.entries.last().expect("last entry"),
+    ] {
+        let decrypted = service
+            .decrypt_secret(&recovered_key, entry, entry.id.as_bytes())
+            .expect("decrypt recovered entry");
+        assert_eq!(decrypted, plaintext);
+    }
+    let manifest = store.read_storage_manifest().expect("read manifest");
+    assert_eq!(
+        manifest
+            .change_set(&transaction_id)
+            .expect("recovered rotation change set")
+            .status,
+        ChangeSetStatus::Repaired
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn vault_rotation_child_process() {
+    const CHILD_ROOT_ENV: &str = "KERMINAL_VAULT_ROTATION_CHILD_ROOT";
+    let Some(root) = env::var_os(CHILD_ROOT_ENV) else {
+        return;
+    };
+    WorkspaceSyncService::new(KerminalPaths::from_root(root))
+        .rotate_vault_key(false)
+        .expect("rotate vault in child");
+}
+
+#[cfg(windows)]
+fn applying_vault_rotation_transaction(root: &Path) -> Option<String> {
+    let transaction_root = root.join(".storage-transactions");
+    for entry in fs::read_dir(transaction_root).ok()?.filter_map(Result::ok) {
+        let id = entry.file_name().to_string_lossy().into_owned();
+        if !id.starts_with("vault-key-rotate-") {
+            continue;
+        }
+        let source = fs::read_to_string(entry.path().join("pending.toml")).ok()?;
+        if source.contains("phase = \"applying\"") {
+            return Some(id);
+        }
+    }
+    None
 }
 
 fn configure_test_git(root: &Path) {

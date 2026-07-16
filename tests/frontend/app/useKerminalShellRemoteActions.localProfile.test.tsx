@@ -50,7 +50,6 @@ vi.mock("../../../src/lib/profileApi", () => ({
 vi.mock("../../../src/lib/externalLaunchApi", () => ({
   closeExternalSshLaunch: (...args: unknown[]) =>
     externalLaunchApiMock.closeExternalSshLaunch(...args),
-  EXTERNAL_TARGET_PREFIX: "external:",
 }));
 
 vi.mock("../../../src/lib/remoteHostApi", () => ({

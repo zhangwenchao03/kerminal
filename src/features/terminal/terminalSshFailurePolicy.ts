@@ -1,4 +1,4 @@
-export type SshTerminalFailureClass =
+type SshTerminalFailureClass =
   | "authCanceled"
   | "badCredential"
   | "keyPassphraseMissing"
@@ -427,5 +427,8 @@ function sshFailureForClass(
 }
 
 function stripAnsi(value: string) {
-  return value.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
+  return value.replace(
+    new RegExp(String.raw`\u001b\[[0-?]*[ -/]*[@-~]`, "g"),
+    "",
+  );
 }

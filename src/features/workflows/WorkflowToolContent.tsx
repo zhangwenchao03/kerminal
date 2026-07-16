@@ -11,7 +11,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Select } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../lib/userFacingMessage";
 import {
   createWorkflow,
   deleteWorkflow,
@@ -19,8 +24,8 @@ import {
   type CommandWorkflow,
   type WorkflowScope,
 } from "../../lib/workflowApi";
-import { writeWorkflowCommand } from "../terminal/terminalSessionRegistry";
-import type { TerminalPane } from "../workspace/types";
+import { writeWorkflowCommand } from "../terminal/session/index";
+import type { TerminalPane } from "../workspace/contracts/index";
 import {
   buildWorkflowRunState,
   completeWorkflowStepExecution,
@@ -32,67 +37,30 @@ import {
   updateWorkflowRunVariable,
   type WorkflowRunState,
 } from "./workflowRunModel";
+import {
+  initialDraftWorkflowSteps,
+  presentDraftWorkflowSteps,
+  reduceDraftWorkflowSteps,
+  type DraftWorkflowStep,
+} from "./workflowDraftModel";
+import {
+  workflowInputClassName,
+  workflowMonoInputClassName,
+  workflowMutedPanelClassName,
+  workflowNoticeClassName,
+  workflowPanelClassName,
+  workflowScopeFilterOptions,
+  workflowScopeLabel,
+  workflowScopeOptions,
+  workflowSearchInputClassName,
+  workflowStepScopeOptions,
+  workflowTextareaClassName,
+} from "./workflowPresenter";
 
 interface WorkflowToolContentProps {
   activeTabId?: string;
   configRevision?: number;
   focusedPane?: TerminalPane;
-}
-
-interface DraftWorkflowStep {
-  id: string;
-  command: string;
-  description: string;
-  requiresConfirmation: boolean;
-  scope: WorkflowScope | "";
-  title: string;
-}
-
-const workflowScopeFilterOptions = [
-  { label: "全部", value: "" },
-  { label: "通用", value: "any" },
-  { label: "本地", value: "local" },
-  { label: "SSH", value: "ssh" },
-];
-
-const workflowScopeOptions = workflowScopeFilterOptions.slice(1);
-
-const workflowStepScopeOptions = [
-  { label: "继承", value: "" },
-  ...workflowScopeOptions,
-];
-
-const workflowPanelClassName = "kerminal-solid-surface rounded-2xl border p-4";
-
-const workflowMutedPanelClassName =
-  "kerminal-muted-surface rounded-2xl border p-4 text-sm text-zinc-500 dark:text-zinc-400";
-
-const workflowInputClassName =
-  "kerminal-field-surface h-9 w-full rounded-xl border px-3 text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
-
-const workflowSearchInputClassName =
-  "kerminal-field-surface h-9 w-full rounded-xl border pl-9 pr-3 text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
-
-const workflowMonoInputClassName =
-  "kerminal-field-surface h-9 w-full rounded-xl border px-3 font-mono text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
-
-const workflowTextareaClassName =
-  "kerminal-field-surface min-h-20 w-full resize-y rounded-xl border px-3 py-2 font-mono text-xs leading-5 text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
-
-function workflowNoticeClassName(
-  kind: "error" | "success" | "warning",
-  className?: string,
-) {
-  return cn(
-    "rounded-xl border px-3 py-2 text-sm",
-    kind === "error" &&
-      "border-rose-300/25 bg-rose-500/10 text-rose-700 dark:text-rose-100",
-    kind === "success" &&
-      "border-emerald-300/20 bg-emerald-400/10 text-emerald-700 dark:text-emerald-100",
-    kind === "warning" &&
-      "border-amber-300/20 bg-amber-400/10 text-amber-700 dark:text-amber-100",
-    className,
-  );
 }
 
 export function WorkflowToolContent({
@@ -106,9 +74,9 @@ export function WorkflowToolContent({
   );
   const [draftTouched, setDraftTouched] = useState(false);
   const [draftSteps, setDraftSteps] = useState<DraftWorkflowStep[]>(
-    initialDraftSteps,
+    initialDraftWorkflowSteps,
   );
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserFacingMessage | string | null>(null);
   const [filterScope, setFilterScope] = useState<WorkflowScope | "">("");
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
@@ -133,7 +101,13 @@ export function WorkflowToolContent({
       });
       setWorkflows(nextWorkflows);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
+      setError(
+        buildUserFacingError(nextError, {
+          detail: "命令工作流暂时无法加载。",
+          recoveryAction: "请稍后重试。",
+          title: "加载工作流失败",
+        }),
+      );
     } finally {
       setLoading(false);
     }
@@ -156,7 +130,7 @@ export function WorkflowToolContent({
     }
     lastConfigRevisionRef.current = configRevision;
     if (draftTouched || runState) {
-      setConfigDraftNotice("cfg: workflows reloaded; draft kept");
+      setConfigDraftNotice("工作流已更新，当前编辑内容已保留。");
     }
   }, [configRevision, draftTouched, runState]);
 
@@ -171,15 +145,7 @@ export function WorkflowToolContent({
   }, [configDraftNotice]);
 
   const createCurrentWorkflow = async () => {
-    const steps = draftSteps
-      .map((step) => ({
-        command: step.command,
-        description: step.description || undefined,
-        requiresConfirmation: step.requiresConfirmation,
-        scope: step.scope || undefined,
-        title: step.title,
-      }))
-      .filter((step) => step.title.trim() || step.command.trim());
+    const steps = presentDraftWorkflowSteps(draftSteps);
 
     if (steps.length === 0) {
       setError("工作流至少需要一个命令步骤。");
@@ -202,7 +168,13 @@ export function WorkflowToolContent({
       await loadWorkflows();
       setDraftTouched(false);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
+      setError(
+        buildUserFacingError(nextError, {
+          detail: "工作流尚未保存。",
+          recoveryAction: "请检查步骤内容后重试。",
+          title: "工作流未保存",
+        }),
+      );
     } finally {
       setLoading(false);
     }
@@ -218,7 +190,13 @@ export function WorkflowToolContent({
       );
       await loadWorkflows();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
+      setError(
+        buildUserFacingError(nextError, {
+          detail: "工作流仍保留在列表中。",
+          recoveryAction: "请稍后重试。",
+          title: "工作流未删除",
+        }),
+      );
     } finally {
       setLoading(false);
     }
@@ -230,29 +208,24 @@ export function WorkflowToolContent({
   ) => {
     setDraftTouched(true);
     setDraftSteps((current) =>
-      current.map((step) => (step.id === stepId ? { ...step, ...patch } : step)),
+      reduceDraftWorkflowSteps(current, { kind: "update", patch, stepId }),
     );
   };
 
   const addDraftStep = () => {
     setDraftTouched(true);
-    setDraftSteps((current) => [
-      ...current,
-      {
-        command: "",
-        description: "",
+    setDraftSteps((current) =>
+      reduceDraftWorkflowSteps(current, {
         id: `draft-step-${Date.now().toString(36)}`,
-        requiresConfirmation: false,
-        scope: "",
-        title: `步骤 ${current.length + 1}`,
-      },
-    ]);
+        kind: "add",
+      }),
+    );
   };
 
   const removeDraftStep = (stepId: string) => {
     setDraftTouched(true);
     setDraftSteps((current) =>
-      current.length <= 1 ? current : current.filter((step) => step.id !== stepId),
+      reduceDraftWorkflowSteps(current, { kind: "remove", stepId }),
     );
   };
 
@@ -437,16 +410,20 @@ export function WorkflowToolContent({
       </div>
 
       {error ? (
-        <div
-          className={workflowNoticeClassName("error", "rounded-2xl p-4")}
-          role="alert"
-        >
-          {error}
-        </div>
+        typeof error === "string" ? (
+          <div
+            className={workflowNoticeClassName("error", "rounded-[var(--radius-card)] p-4")}
+            role="alert"
+          >
+            {error}
+          </div>
+        ) : (
+          <UserFacingNotice message={error} />
+        )
       ) : null}
       {configDraftNotice ? (
         <div
-          className={workflowNoticeClassName("warning", "rounded-2xl p-3 font-mono text-xs")}
+          className={workflowNoticeClassName("warning", "rounded-[var(--radius-card)] p-3 font-mono text-xs")}
           role="status"
         >
           {configDraftNotice}
@@ -500,7 +477,7 @@ function DraftStepEditor({
   const stepNumber = index + 1;
 
   return (
-    <div className="kerminal-muted-surface rounded-2xl border p-3">
+    <div className="rounded-[var(--radius-card)] border border-[var(--border-subtle)] p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
           步骤 {stepNumber}
@@ -619,7 +596,7 @@ function WorkflowCard({
             {workflow.title}
           </h3>
           <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-            {scopeLabel(workflow.scope)}
+            {workflowScopeLabel(workflow.scope)}
             {workflow.description ? ` · ${workflow.description}` : ""}
           </p>
         </div>
@@ -640,7 +617,7 @@ function WorkflowCard({
                   {index + 1}. {step.title}
                 </div>
                 <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                  {scopeLabel(step.scope ?? workflow.scope)}
+                  {workflowScopeLabel(step.scope ?? workflow.scope)}
                   {step.requiresConfirmation ? " · 需要确认" : ""}
                 </div>
               </div>
@@ -688,7 +665,7 @@ function WorkflowCard({
       </div>
 
       {runState ? (
-        <div className="kerminal-muted-surface kerminal-floating-enter mt-3 rounded-2xl border p-3">
+        <div className="kerminal-floating-enter mt-3 rounded-[var(--radius-card)] border border-[var(--border-subtle)] p-3">
           {variables.length > 0 ? (
             <div className="space-y-2">
               {variables.map((name) => (
@@ -756,12 +733,20 @@ function WorkflowCard({
             </p>
           ) : null}
           {runState.error ? (
-            <div
-              className={workflowNoticeClassName("error", "mt-3")}
-              role="alert"
-            >
-              {runState.error}
-            </div>
+            typeof runState.error === "string" ? (
+              <div
+                className={workflowNoticeClassName("error", "mt-3")}
+                role="alert"
+              >
+                {runState.error}
+              </div>
+            ) : (
+              <UserFacingNotice
+                className="mt-3"
+                compact
+                message={runState.error}
+              />
+            )
           ) : null}
           {runState.status ? (
             <div
@@ -786,34 +771,4 @@ function WorkflowCard({
       ) : null}
     </article>
   );
-}
-
-function scopeLabel(scope: WorkflowScope) {
-  const labels: Record<WorkflowScope, string> = {
-    any: "通用",
-    local: "本地终端",
-    ssh: "SSH 远程",
-  };
-  return labels[scope];
-}
-
-function initialDraftSteps(): DraftWorkflowStep[] {
-  return [
-    {
-      command: "git status --short",
-      description: "确认仓库状态",
-      id: "draft-step-1",
-      requiresConfirmation: false,
-      scope: "",
-      title: "检查仓库状态",
-    },
-    {
-      command: "npm run check",
-      description: "运行完整质量门禁",
-      id: "draft-step-2",
-      requiresConfirmation: true,
-      scope: "",
-      title: "运行质量门禁",
-    },
-  ];
 }

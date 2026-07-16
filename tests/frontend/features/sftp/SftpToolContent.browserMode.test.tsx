@@ -21,6 +21,7 @@ describe("SftpToolContent browser modes", () => {
       "aria-pressed",
       "true",
     );
+    expect(screen.queryByText("远程目录")).not.toBeInTheDocument();
 
     await user.click(screen.getByTestId("sftp-browser-mode-tree"));
 
@@ -30,6 +31,7 @@ describe("SftpToolContent browser modes", () => {
     expect(
       screen.getByRole("tree", { name: "SFTP 目录树" }),
     ).toBeInTheDocument();
+    expect(screen.getByText("目录树")).toBeInTheDocument();
     expect(screen.getByTestId("sftp-browser-mode-tree")).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -54,6 +56,7 @@ describe("SftpToolContent browser modes", () => {
       "aria-pressed",
       "true",
     );
+    expect(screen.queryByText("远程目录")).not.toBeInTheDocument();
   });
 
   it("preserves expanded tree directories when switching browser modes", async () => {
@@ -79,6 +82,34 @@ describe("SftpToolContent browser modes", () => {
       await screen.findByRole("treeitem", { name: "var" }),
     ).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("treeitem", { name: "log" })).toBeInTheDocument();
+  });
+
+  it("applies the hidden-file toggle to tree nodes without reloading the tree", async () => {
+    const user = userEvent.setup();
+
+    render(<SftpToolContent selectedMachine={sshMachine} />);
+
+    await screen.findByTestId("sftp-remote-entry-list");
+    await user.click(screen.getByTestId("sftp-browser-mode-tree"));
+
+    expect(
+      await screen.findByRole("treeitem", { name: ".env" }),
+    ).toBeInTheDocument();
+    const listCallCount = sftpApiMocks.listSftpDirectory.mock.calls.length;
+
+    await user.click(screen.getByRole("button", { name: "隐藏隐藏文件" }));
+
+    expect(
+      screen.queryByRole("treeitem", { name: ".env" }),
+    ).not.toBeInTheDocument();
+    expect(sftpApiMocks.listSftpDirectory).toHaveBeenCalledTimes(listCallCount);
+
+    await user.click(screen.getByRole("button", { name: "显示隐藏文件" }));
+
+    expect(
+      screen.getByRole("treeitem", { name: ".env" }),
+    ).toBeInTheDocument();
+    expect(sftpApiMocks.listSftpDirectory).toHaveBeenCalledTimes(listCallCount);
   });
 
   it("uploads files into the directory selected from the tree context menu", async () => {

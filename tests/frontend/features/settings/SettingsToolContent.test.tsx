@@ -20,6 +20,9 @@ describe("SettingsToolContent", () => {
       screen.getByRole("navigation", { name: "设置分类" }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("搜索设置")).toBeInTheDocument();
+    expect(screen.queryByText("功能分类")).not.toBeInTheDocument();
+    expect(screen.queryByText("主题、语言和背景")).not.toBeInTheDocument();
+    expect(screen.queryByText("字体、渲染和交互")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /界面外观/ }),
     ).toBeInTheDocument();
@@ -59,21 +62,28 @@ describe("SettingsToolContent", () => {
     await user.click(screen.getByRole("button", { name: /MCP/ }));
 
     expect(await screen.findByRole("heading", { name: "MCP" })).toBeInTheDocument();
-    expect(screen.getByText("状态")).toBeInTheDocument();
-    expect(screen.getByText("endpoint")).toBeInTheDocument();
-    expect(screen.getByText("JSON")).toBeInTheDocument();
     expect(await screen.findByText("运行中")).toBeInTheDocument();
-    expect(screen.getByText(AGENT_MCP_ENDPOINT)).toBeInTheDocument();
+    expect(screen.getByText("endpoint")).not.toBeVisible();
+    expect(screen.getByText("JSON")).not.toBeVisible();
+    expect(screen.getByText(AGENT_MCP_ENDPOINT)).not.toBeVisible();
+    expect(screen.getByLabelText("MCP JSON 配置")).not.toBeVisible();
+    expect(screen.getByRole("button", { name: "停止" })).toBeEnabled();
+    expect(
+      screen.queryByRole("button", { name: "启动" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "复制 JSON" })).not.toBeVisible();
+
+    await user.click(screen.getByText("连接信息"));
+
+    expect(screen.getByText("endpoint")).toBeVisible();
+    expect(screen.getByText("JSON")).toBeVisible();
+    expect(screen.getByText(AGENT_MCP_ENDPOINT)).toBeVisible();
     expect(screen.getByLabelText("MCP JSON 配置")).toHaveTextContent(
       '"mcpServers"',
     );
     expect(screen.getByLabelText("MCP JSON 配置")).toHaveTextContent(
       AGENT_MCP_ENDPOINT,
     );
-    expect(screen.getByRole("button", { name: "停止" })).toBeEnabled();
-    expect(
-      screen.queryByRole("button", { name: "启动" }),
-    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "复制 JSON" })).toBeEnabled();
     expect(screen.queryByText("外部 Agent 工作目录")).not.toBeInTheDocument();
     expect(screen.queryByText("Codex 配置")).not.toBeInTheDocument();
@@ -104,7 +114,9 @@ describe("SettingsToolContent", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "MCP" })).toBeInTheDocument();
-    expect(await screen.findByText(AGENT_MCP_ENDPOINT)).toBeInTheDocument();
+    expect(await screen.findByText("运行中")).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByText("连接信息"));
+    expect(screen.getByText(AGENT_MCP_ENDPOINT)).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "复制 JSON" }));
     await waitFor(() =>
@@ -142,9 +154,6 @@ describe("SettingsToolContent", () => {
     await user.click(screen.getByRole("tab", { name: "macOS" }));
     expect(screen.getByLabelText("打开设置 macOS 快捷键")).toHaveValue("Cmd+,");
     expect(screen.queryByText("Ctrl+Alt+S")).not.toBeInTheDocument();
-    expect(screen.getByText("IntelliJ IDEA")).toBeInTheDocument();
-    expect(screen.getByText("默认沿用 IntelliJ IDEA。")).toBeInTheDocument();
-    expect(screen.getByText("可编辑")).toBeInTheDocument();
     expect(screen.queryByText("基础外观")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /MCP/ }));
@@ -233,5 +242,17 @@ describe("SettingsToolContent", () => {
     renderSettingsToolContent({ saveState: "saved" });
 
     expect(screen.getByRole("status")).toHaveTextContent("设置已保存");
+  });
+
+  it("keeps settings save errors behind technical details", () => {
+    renderSettingsToolContent({
+      saveError: "write failed: password=hunter2",
+      saveState: "error",
+    });
+
+    expect(screen.getByText("设置未保存")).toBeVisible();
+    const technicalDetail = screen.getByText(/write failed/);
+    expect(technicalDetail).not.toBeVisible();
+    expect(technicalDetail).not.toHaveTextContent("hunter2");
   });
 });

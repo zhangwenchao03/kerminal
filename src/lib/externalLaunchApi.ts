@@ -2,9 +2,8 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export const EXTERNAL_SSH_LAUNCH_EVENT = "kerminal-external-ssh-launch";
-export const EXTERNAL_TARGET_PREFIX = "external:";
 
-export type ExternalLaunchSourceTool =
+type ExternalLaunchSourceTool =
   | "putty"
   | "mobaxterm"
   | "xshell"
@@ -12,32 +11,31 @@ export type ExternalLaunchSourceTool =
   | "openssh"
   | "kerminal-native";
 
-export type ExternalLaunchEntrypoint =
-  "direct-argv" | "single-instance" | "shim-ipc" | "protocol" | "session-file";
+type ExternalLaunchEntrypoint =
+  "direct-argv" | "single-instance" | "protocol" | "session-file";
 
-export type ExternalLaunchEventKind = "queued" | "rejected";
+type ExternalLaunchEventKind = "queued" | "rejected";
 
-export interface ExternalLaunchSource {
+interface ExternalLaunchSource {
   tool: ExternalLaunchSourceTool;
   entrypoint: ExternalLaunchEntrypoint;
   persona?: string;
   argv0?: string;
 }
-
-export interface ExternalSshRouteHop {
+interface ExternalSshRouteHop {
   host: string;
   port: number;
   username?: string;
 }
 
-export interface ExternalSshTarget {
+interface ExternalSshTarget {
   host: string;
   port: number;
   username?: string;
   route: ExternalSshRouteHop[];
 }
 
-export interface ExternalSshAuthMetadata {
+interface ExternalSshAuthMetadata {
   hasPassword: boolean;
   hasKeyPassphrase: boolean;
   identityFile?: string;
@@ -45,7 +43,7 @@ export interface ExternalSshAuthMetadata {
   agent: boolean;
 }
 
-export interface ExternalSshLaunchOptions {
+interface ExternalSshLaunchOptions {
   displayName?: string;
   remoteCommand?: string;
   remoteCommandFile?: string;
@@ -53,7 +51,7 @@ export interface ExternalSshLaunchOptions {
   sessionName?: string;
 }
 
-export interface ExternalLaunchRequestDiagnostics {
+interface ExternalLaunchRequestDiagnostics {
   parser: string;
   argvRedacted: string[];
   rawHash: string;
@@ -83,9 +81,20 @@ export interface ExternalLaunchMaterializedTarget {
   port: number;
   username: string;
   authType: "password" | "key" | "agent";
+  production: boolean;
+  safety: "restricted-unknown" | "known-non-production" | "production";
 }
 
-export interface ExternalLaunchTargetSummary {
+export interface ExternalHostKeyInspection {
+  algorithm: string;
+  fingerprint: string;
+  host: string;
+  launchId: string;
+  port: number;
+  status: "known" | "unknown" | "changed";
+}
+
+interface ExternalLaunchTargetSummary {
   host: string;
   port: number;
   username?: string;
@@ -102,17 +111,20 @@ export interface ExternalLaunchEventPayload {
   message?: string;
 }
 
-export interface ExternalLaunchPolicySnapshot {
+interface ExternalLaunchPolicySnapshot {
   enabled: boolean;
   acceptVendorArgs: boolean;
-  shimBridgeEnabled: boolean;
   autoOpenSftp: boolean;
   disabledTools: ExternalLaunchSourceTool[];
+  pendingCapacity: number;
+  claimLeaseMs: number;
 }
 
-export interface ExternalLaunchIntakeSnapshot {
+interface ExternalLaunchIntakeSnapshot {
   pendingCount: number;
-  pendingLaunchIds: string[];
+  pendingRequestHashes: string[];
+  claimedCount: number;
+  claimedRequestHashes: string[];
   acceptedCount: number;
   rejectedCount: number;
   noopCount: number;
@@ -125,78 +137,39 @@ export interface ExternalLaunchIntakeSnapshot {
     rawHash: string;
     cwdPresent: boolean;
   };
+  health: ExternalLaunchRuntimeHealthSnapshot;
 }
 
-export interface ExternalLaunchSecretSnapshot {
+interface ExternalLaunchRuntimeHealthSnapshot {
+  backpressureCount: number;
+  expiryCount: number;
+  cancelCount: number;
+  oldestLaunchAgeMs: number;
+  lastIntakeLatencyMs?: number;
+}
+
+interface ExternalLaunchTaskSnapshot {
+  queuedCount: number;
+  inFlightCount: number;
+  connectedCount: number;
+  cancelledCount: number;
+  deadlineCount: number;
+  lateCleanupCount: number;
+  completedCount: number;
+  oldestTaskAgeMs: number;
+  lastConnectLatencyMs?: number;
+}
+
+interface ExternalLaunchSecretSnapshot {
   activeSecretCount: number;
-  launchIds: string[];
+  requestHashes: string[];
 }
 
 export interface ExternalLaunchSnapshot {
   intake: ExternalLaunchIntakeSnapshot;
   secrets: ExternalLaunchSecretSnapshot;
+  tasks: ExternalLaunchTaskSnapshot;
 }
-
-export type ExternalLaunchAliasTool = Exclude<
-  ExternalLaunchSourceTool,
-  "kerminal-native"
->;
-
-export type ExternalLaunchAliasState =
-  | "missing"
-  | "managed"
-  | "blockedNonKerminal"
-  | "staleMarker";
-
-export type ExternalLaunchAliasInstallMode = "hardLink" | "copy";
-
-export interface ExternalLaunchAliasInspection {
-  tool: ExternalLaunchAliasTool;
-  aliasPath: string;
-  markerPath: string;
-  state: ExternalLaunchAliasState;
-  markerPresent: boolean;
-}
-
-export interface ExternalLaunchAliasStatus {
-  installDirectory?: string;
-  kerminalExecutable: string;
-  shimExecutable: string;
-  shimAvailable: boolean;
-  aliasDirectory: string;
-  aliases: ExternalLaunchAliasInspection[];
-}
-
-export interface ExternalLaunchAliasCommandRequest {
-  tools?: ExternalLaunchAliasTool[];
-  aliasDirectory?: string;
-  shimExecutable?: string;
-  preferHardLink?: boolean;
-}
-
-export interface ExternalLaunchAliasSummary {
-  tool: ExternalLaunchAliasTool;
-  aliasPath: string;
-  markerPath: string;
-  state: ExternalLaunchAliasState;
-  installMode?: ExternalLaunchAliasInstallMode;
-}
-
-export interface ExternalLaunchAliasRemoval {
-  tool: ExternalLaunchAliasTool;
-  aliasPath: string;
-  markerPath: string;
-  removedAlias: boolean;
-  removedMarker: boolean;
-}
-
-export const externalLaunchAliasTools: ExternalLaunchAliasTool[] = [
-  "putty",
-  "mobaxterm",
-  "xshell",
-  "securecrt",
-  "openssh",
-];
 
 export async function takePendingExternalSshLaunches(): Promise<
   ExternalSshLaunchRequest[]
@@ -230,8 +203,56 @@ export async function materializeExternalSshLaunch(
     host: "preview.invalid",
     launchId: request.launchId,
     port: 22,
+    production: true,
+    safety: "restricted-unknown",
     targetId: `external:${request.launchId}`,
     username: request.username ?? "preview",
+  };
+}
+
+export interface ExternalLaunchDeepLinkStatus {
+  registered: boolean;
+  scheme: string;
+  supported: boolean;
+}
+
+export async function inspectExternalLaunchHostKey(
+  launchId: string,
+): Promise<ExternalHostKeyInspection> {
+  validateBrowserPreviewLaunchId(launchId);
+  if (isTauri()) {
+    return invoke<ExternalHostKeyInspection>("external_launch_host_key_inspect", {
+      launchId,
+    });
+  }
+  return {
+    algorithm: "ssh-ed25519",
+    fingerprint: "SHA256:browser-preview",
+    host: "preview.invalid",
+    launchId,
+    port: 22,
+    status: "known",
+  };
+}
+
+export async function trustExternalLaunchHostKey(
+  launchId: string,
+  expectedFingerprint: string,
+): Promise<ExternalHostKeyInspection> {
+  validateBrowserPreviewLaunchId(launchId);
+  if (isTauri()) {
+    return invoke<ExternalHostKeyInspection>("external_launch_host_key_trust", {
+      expectedFingerprint,
+      launchId,
+    });
+  }
+  return {
+    algorithm: "ssh-ed25519",
+    fingerprint: expectedFingerprint,
+    host: "preview.invalid",
+    launchId,
+    port: 22,
+    status: "known",
   };
 }
 
@@ -262,82 +283,63 @@ export async function getExternalLaunchSnapshot(): Promise<ExternalLaunchSnapsho
   return {
     intake: {
       acceptedCount: 0,
+      claimedCount: 0,
+      claimedRequestHashes: [],
       noopCount: 0,
       pendingCount: 0,
-      pendingLaunchIds: [],
+      pendingRequestHashes: [],
+      health: {
+        backpressureCount: 0,
+        cancelCount: 0,
+        expiryCount: 0,
+        oldestLaunchAgeMs: 0,
+      },
       policy: {
         acceptVendorArgs: true,
         autoOpenSftp: false,
         disabledTools: [],
         enabled: true,
-        shimBridgeEnabled: true,
+        pendingCapacity: 128,
+        claimLeaseMs: 30_000,
       },
       rejectedCount: 0,
     },
     secrets: {
       activeSecretCount: 0,
-      launchIds: [],
+      requestHashes: [],
+    },
+    tasks: {
+      cancelledCount: 0,
+      completedCount: 0,
+      connectedCount: 0,
+      deadlineCount: 0,
+      inFlightCount: 0,
+      lateCleanupCount: 0,
+      oldestTaskAgeMs: 0,
+      queuedCount: 0,
     },
   };
 }
 
-export async function getExternalLaunchAliasStatus(): Promise<ExternalLaunchAliasStatus> {
+export async function getExternalLaunchDeepLinkStatus(): Promise<ExternalLaunchDeepLinkStatus> {
   if (isTauri()) {
-    return invoke<ExternalLaunchAliasStatus>("external_launch_alias_status");
+    return invoke<ExternalLaunchDeepLinkStatus>("external_launch_deep_link_status");
   }
-  return browserPreviewExternalLaunchAliasStatus();
+  return { registered: false, scheme: "kerminal", supported: false };
 }
 
-export async function generateExternalLaunchAliases(
-  request: ExternalLaunchAliasCommandRequest = {},
-): Promise<ExternalLaunchAliasSummary[]> {
+export async function registerExternalLaunchDeepLink(): Promise<ExternalLaunchDeepLinkStatus> {
   if (isTauri()) {
-    return invoke<ExternalLaunchAliasSummary[]>("external_launch_alias_generate", {
-      request,
-    });
+    return invoke<ExternalLaunchDeepLinkStatus>("external_launch_deep_link_register");
   }
-  return browserPreviewExternalLaunchAliasStatus(request.aliasDirectory).aliases
-    .filter((alias) => (request.tools ?? externalLaunchAliasTools).includes(alias.tool))
-    .map((alias) => ({
-      aliasPath: alias.aliasPath,
-      installMode: "copy",
-      markerPath: alias.markerPath,
-      state: "managed",
-      tool: alias.tool,
-    }));
+  return { registered: false, scheme: "kerminal", supported: false };
 }
 
-export async function deleteExternalLaunchAliases(
-  request: ExternalLaunchAliasCommandRequest = {},
-): Promise<ExternalLaunchAliasRemoval[]> {
+export async function unregisterExternalLaunchDeepLink(): Promise<ExternalLaunchDeepLinkStatus> {
   if (isTauri()) {
-    return invoke<ExternalLaunchAliasRemoval[]>("external_launch_alias_delete", {
-      request,
-    });
+    return invoke<ExternalLaunchDeepLinkStatus>("external_launch_deep_link_unregister");
   }
-  return browserPreviewExternalLaunchAliasStatus(request.aliasDirectory).aliases
-    .filter((alias) => (request.tools ?? externalLaunchAliasTools).includes(alias.tool))
-    .map((alias) => ({
-      aliasPath: alias.aliasPath,
-      markerPath: alias.markerPath,
-      removedAlias: alias.state === "managed",
-      removedMarker: alias.markerPresent,
-      tool: alias.tool,
-    }));
-}
-
-export async function openExternalLaunchAliasDirectory(
-  aliasDirectory?: string,
-): Promise<string> {
-  const resolvedPath =
-    aliasDirectory?.trim() ||
-    browserPreviewExternalLaunchAliasStatus().aliasDirectory;
-  if (isTauri()) {
-    return invoke<string>("external_launch_alias_open_directory", {
-      aliasDirectory: resolvedPath,
-    });
-  }
-  return resolvedPath;
+  return { registered: false, scheme: "kerminal", supported: false };
 }
 
 export async function listenExternalSshLaunches(
@@ -376,44 +378,5 @@ function validateBrowserPreviewLaunchId(launchId: string) {
   }
   if (launchId.includes("\n") || launchId.includes("\r")) {
     throw new Error("External SSH launch id cannot contain newline");
-  }
-}
-
-function browserPreviewExternalLaunchAliasStatus(
-  aliasDirectory = "C:\\Users\\kerminal\\.kerminal\\external-launch\\compatibility-aliases",
-): ExternalLaunchAliasStatus {
-  const installDirectory = "C:\\Program Files\\Kerminal";
-  const shimExecutable = `${installDirectory}\\kerminal-launch-shim.exe`;
-  return {
-    aliasDirectory,
-    aliases: externalLaunchAliasTools.map((tool) => {
-      const aliasPath = `${aliasDirectory}\\${externalLaunchAliasFileName(tool)}`;
-      return {
-        aliasPath,
-        markerPath: `${aliasPath}.kerminal-alias.json`,
-        markerPresent: false,
-        state: "missing",
-        tool,
-      };
-    }),
-    installDirectory,
-    kerminalExecutable: `${installDirectory}\\kerminal.exe`,
-    shimAvailable: false,
-    shimExecutable,
-  };
-}
-
-function externalLaunchAliasFileName(tool: ExternalLaunchAliasTool): string {
-  switch (tool) {
-    case "mobaxterm":
-      return "MobaXterm.exe";
-    case "openssh":
-      return "ssh.exe";
-    case "putty":
-      return "putty.exe";
-    case "securecrt":
-      return "SecureCRT.exe";
-    case "xshell":
-      return "Xshell.exe";
   }
 }

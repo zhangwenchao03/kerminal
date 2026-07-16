@@ -1,0 +1,43 @@
+schema_version = 1
+command = "find"
+aliases = []
+platforms = ["macos", "linux"]
+shells = ["bash", "zsh", "fish"]
+description = "Search directory trees"
+tested_version = "GNU findutils 4.10"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "GNU Findutils manual"
+url = "https://www.gnu.org/software/findutils/manual/html_mono/find.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "-name"
+description = "Match a file name pattern"
+
+[options.argument]
+kind = "string"
+placeholder = "PATTERN"
+
+[[options]]
+name = "-type"
+description = "Match an entry type"
+
+[options.argument]
+kind = "enum"
+placeholder = "TYPE"
+values = ["f", "d", "l"]
+
+[[options]]
+name = "-delete"
+description = "Delete matched entries"
+
+[options.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "This action deletes every matched entry"

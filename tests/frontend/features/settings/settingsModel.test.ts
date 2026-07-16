@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import {
   defaultAppSettings,
@@ -9,6 +11,24 @@ import {
 } from "../../../../src/features/settings/settingsModel";
 
 describe("settingsModel", () => {
+  it("defaults terminal rendering to CPU without rewriting explicit modes", () => {
+    expect(defaultAppSettings.interfaceDensity).toBe("compact");
+    expect(normalizeAppSettings().interfaceDensity).toBe("compact");
+    expect(defaultAppSettings.terminal.rendererType).toBe("cpu");
+    expect(normalizeAppSettings().terminal.rendererType).toBe("cpu");
+
+    for (const rendererType of ["auto", "cpu", "gpu"] as const) {
+      const settings = normalizeAppSettings({
+        terminal: {
+          ...defaultAppSettings.terminal,
+          rendererType,
+        },
+      });
+
+      expect(settings.terminal.rendererType).toBe(rendererType);
+    }
+  });
+
   it("normalizes invalid appearance values to safe defaults", () => {
     const settings = normalizeAppSettings({
       appearance: {
@@ -31,9 +51,6 @@ describe("settingsModel", () => {
         autoOpenSftp: true,
         disabledTools: ["putty", "unknown", "putty", "kerminal-native"],
         enabled: false,
-        shimBridge: {
-          enabled: false,
-        },
       },
       interfaceDensity: "tiny",
       terminal: {
@@ -102,9 +119,6 @@ describe("settingsModel", () => {
       autoOpenSftp: true,
       disabledTools: ["putty", "kerminal-native"],
       enabled: false,
-      shimBridge: {
-        enabled: false,
-      },
     });
     expect(settings.terminal).toMatchObject({
       autoReconnect: false,
@@ -162,6 +176,43 @@ describe("settingsModel", () => {
 
     expect(settings.sftp.globalTransfers).toBe(2);
     expect(settings.sftp.hostTransfers).toBe(2);
+  });
+
+  it("migrates legacy command suggestion switches to the governed settings", () => {
+    const disabled = normalizeAppSettings({
+      terminal: {
+        inlineSuggestion: {
+          enabled: false,
+          remoteProbeEnabled: false,
+        },
+      },
+    } as Partial<typeof defaultAppSettings>);
+
+    expect(disabled.terminal.inlineSuggestion).toMatchObject({
+      enabled: false,
+      presentation: "off",
+      menuShortcut: "ctrlSpace",
+      tabOpensMenu: false,
+      partialAccept: true,
+      remoteProbeEnabled: false,
+      remoteRefresh: "off",
+    });
+
+    const legacyDefaults = normalizeAppSettings({
+      terminal: {
+        inlineSuggestion: {
+          enabled: true,
+          remoteProbeEnabled: true,
+        },
+      },
+    } as Partial<typeof defaultAppSettings>);
+
+    expect(legacyDefaults.terminal.inlineSuggestion).toMatchObject({
+      enabled: true,
+      presentation: "inlineAndMenu",
+      remoteProbeEnabled: true,
+      remoteRefresh: "safe",
+    });
   });
 
   it("maps terminal font weight choices to xterm values", () => {

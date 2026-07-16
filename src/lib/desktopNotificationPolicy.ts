@@ -1,11 +1,4 @@
-export type DesktopNotificationEventKind =
-  | "agent.process.finished"
-  | "mcp.server.failed"
-  | "sftp.batch.completed"
-  | "sftp.transfer.failed"
-  | "updater.available";
-
-export type DesktopNotificationImportance = "low" | "normal" | "high";
+type DesktopNotificationImportance = "low" | "normal" | "high";
 
 export type DesktopNotificationPermission =
   | "default"
@@ -182,7 +175,7 @@ export function buildDesktopNotificationPayload(
   };
 }
 
-export function notificationKeyForEvent(
+function notificationKeyForEvent(
   event: DesktopNotificationEvent,
 ): string {
   if (event.notificationKey) {
@@ -273,9 +266,7 @@ function buildRawPayload(
       };
     case "mcp.server.failed":
       return {
-        body: `Local MCP server failed${event.port ? ` on port ${event.port}` : ""}${
-          event.reason ? `: ${event.reason}` : "."
-        }`,
+        body: `Local MCP server failed${event.port ? ` on port ${event.port}` : ""}. Open Kerminal to review details.`,
         title: "MCP server failed",
       };
   }

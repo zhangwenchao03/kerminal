@@ -3,7 +3,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { ChevronDown, ChevronRight, Copy, ImageDown } from "lucide-react";
+import { Bot, ChevronDown, ChevronRight, Copy, ImageDown } from "lucide-react";
 import { cn } from "../../lib/cn";
 import type { TerminalCommandBlockView } from "./terminalCommandBlocks";
 import {
@@ -15,14 +15,19 @@ import {
 const commandBlockFoldSummaryClassName =
   "rounded-full border border-[var(--border-subtle)] bg-[var(--surface-overlay)] px-2 py-0.5 text-[11px] font-medium text-zinc-500 shadow-sm backdrop-blur-xl dark:text-zinc-300";
 const commandBlockMenuSurfaceClassName =
-  "kerminal-context-menu kerminal-floating-enter fixed z-[1000] w-44";
+  "kerminal-context-menu kerminal-floating-enter kerminal-layer-popover fixed w-44";
 const commandBlockMenuItemClassName =
   "kerminal-context-menu-item";
 
-export type TerminalCommandBlockAction = "copyImage" | "copyText" | "toggle";
+export type TerminalCommandBlockAction =
+  | "copyImage"
+  | "copyText"
+  | "sendToAgent"
+  | "toggle";
 
 interface TerminalCommandBlockRailProps {
   blocks: TerminalCommandBlockView[];
+  canSendToAgent?: boolean;
   onAction: (blockId: string, action: TerminalCommandBlockAction) => void;
 }
 
@@ -36,6 +41,7 @@ interface CommandBlockMenuState {
 
 export function TerminalCommandBlockRail({
   blocks,
+  canSendToAgent = true,
   onAction,
 }: TerminalCommandBlockRailProps) {
   const [menu, setMenu] = useState<CommandBlockMenuState | null>(null);
@@ -109,6 +115,7 @@ export function TerminalCommandBlockRail({
       {menu ? (
         <TerminalCommandBlockContextMenu
           block={menu.block}
+          canSendToAgent={canSendToAgent}
           onAction={executeMenuAction}
           position={menu.position}
         />
@@ -211,10 +218,12 @@ function TerminalCommandBlockMarker({
 
 function TerminalCommandBlockContextMenu({
   block,
+  canSendToAgent,
   onAction,
   position,
 }: {
   block: TerminalCommandBlockView;
+  canSendToAgent: boolean;
   onAction: (action: Exclude<TerminalCommandBlockAction, "toggle">) => void;
   position: {
     x: number;
@@ -261,6 +270,22 @@ function TerminalCommandBlockContextMenu({
             <ImageDown />
           </span>
           <span className="kerminal-context-menu-label">复制图片</span>
+        </button>
+      </div>
+      <div className="kerminal-context-menu-group">
+        <button
+          aria-label={`发送命令块 ${commandLabel} 到 Agent`}
+          className={commandBlockMenuItemClassName}
+          disabled={!canSendToAgent}
+          onClick={() => onAction("sendToAgent")}
+          role="menuitem"
+          title="发送该命令块到 Agent"
+          type="button"
+        >
+          <span className="kerminal-context-menu-icon">
+            <Bot />
+          </span>
+          <span className="kerminal-context-menu-label">发送到 Agent</span>
         </button>
       </div>
     </div>

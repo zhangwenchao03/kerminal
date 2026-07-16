@@ -159,8 +159,22 @@ pub(super) fn remote_path_candidate(
         unix_time_millis(cache_entry.cached_at).to_string(),
     );
     metadata.insert("ttlSeconds".to_owned(), cache_entry.ttl_seconds.to_string());
+    insert_provider_cache_freshness_metadata(
+        &mut metadata,
+        cache_entry.expires_at,
+        SystemTime::now(),
+    );
 
     Some(CommandSuggestionCandidate {
+        activation: CommandSuggestionActivation::Insert,
+        candidate_kind: CommandSuggestionCandidateKind::Command,
+        merged_source_explanations: Vec::new(),
+        source_explanation: None,
+        accept_boundaries: Vec::new(),
+        allowed_presentations: CommandSuggestionCandidate::presentations_for(
+            CommandSuggestionSensitivity::Normal,
+        ),
+        context_key: request.context_key.clone(),
         id: format!(
             "remotePath:{}:{}:{}",
             request.remote_host_id.as_deref().unwrap_or_default(),

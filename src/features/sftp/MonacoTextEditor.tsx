@@ -52,13 +52,14 @@ export function MonacoTextEditor({
 
   useEffect(() => {
     const container = containerRef.current;
+    const models = modelsRef.current;
     if (!container) {
       return;
     }
 
     beforeMount?.(monaco);
     const hoverPlacementDisposable = installMonacoHoverPlacementGuard(container);
-    const model = getOrCreateModel(modelsRef.current, path, language, value);
+    const model = getOrCreateModel(models, path, language, value);
     let editor: Monaco.editor.IStandaloneCodeEditor;
     try {
       editor = monaco.editor.create(container, {
@@ -85,10 +86,10 @@ export function MonacoTextEditor({
       hoverGuardDisposable.dispose();
       hoverPlacementDisposable.dispose();
       editor.dispose();
-      for (const textModel of modelsRef.current.values()) {
+      for (const textModel of models.values()) {
         textModel.dispose();
       }
-      modelsRef.current.clear();
+      models.clear();
       editorRef.current = null;
     };
     // The Monaco editor instance is intentionally created once per wrapper mount.

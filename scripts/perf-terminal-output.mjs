@@ -35,7 +35,7 @@ if (!chromePath) {
 }
 
 if (!existsSync(xtermModulePath) || !existsSync(xtermCssPath)) {
-  console.error("@xterm/xterm browser assets not found. Run npm install first.");
+  console.error("@xterm/xterm browser assets not found. Run pnpm install first.");
   process.exit(1);
 }
 

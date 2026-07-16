@@ -207,7 +207,10 @@ describe("SettingsToolContent controls", () => {
     expect(onSettingsChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
         terminal: expect.objectContaining({
-          inlineSuggestion: expect.objectContaining({ enabled: false }),
+          inlineSuggestion: expect.objectContaining({
+            enabled: false,
+            presentation: "off",
+          }),
         }),
       }),
     );
@@ -218,6 +221,41 @@ describe("SettingsToolContent controls", () => {
         terminal: expect.objectContaining({
           inlineSuggestion: expect.objectContaining({
             remoteProbeEnabled: false,
+            remoteRefresh: "off",
+          }),
+        }),
+      }),
+    );
+
+    await chooseSelectOption(user, "命令建议展示方式", "仅灰色提示");
+    expect(onSettingsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        terminal: expect.objectContaining({
+          inlineSuggestion: expect.objectContaining({
+            enabled: true,
+            presentation: "inline",
+          }),
+        }),
+      }),
+    );
+
+    await user.click(screen.getByLabelText("允许分段接受命令建议"));
+    expect(onSettingsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        terminal: expect.objectContaining({
+          inlineSuggestion: expect.objectContaining({
+            partialAccept: false,
+          }),
+        }),
+      }),
+    );
+
+    await user.click(screen.getByLabelText("允许 Tab 打开命令建议列表"));
+    expect(onSettingsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        terminal: expect.objectContaining({
+          inlineSuggestion: expect.objectContaining({
+            tabOpensMenu: true,
           }),
         }),
       }),

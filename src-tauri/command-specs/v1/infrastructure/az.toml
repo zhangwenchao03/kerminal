@@ -1,0 +1,59 @@
+schema_version = 1
+command = "az"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Manage Microsoft Azure resources"
+tested_version = "Azure CLI 2.74"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "Azure CLI reference"
+url = "https://learn.microsoft.com/cli/azure/reference-index"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "account"
+description = "Manage subscriptions and account context"
+
+[[subcommands]]
+name = "aks"
+description = "Manage Azure Kubernetes Service"
+
+[[subcommands]]
+name = "group"
+description = "Manage resource groups"
+
+[[subcommands]]
+name = "login"
+description = "Authenticate to Azure"
+
+[[subcommands]]
+name = "storage"
+description = "Manage Azure Storage"
+
+[[subcommands]]
+name = "vm"
+description = "Manage virtual machines"
+
+[[options]]
+name = "--output"
+aliases = ["-o"]
+description = "Select the output format"
+
+[options.argument]
+kind = "enum"
+placeholder = "FORMAT"
+values = ["json", "jsonc", "table", "tsv", "yaml"]
+
+[[options]]
+name = "--subscription"
+description = "Select an Azure subscription"
+
+[options.argument]
+kind = "string"
+placeholder = "SUBSCRIPTION"

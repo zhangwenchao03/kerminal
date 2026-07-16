@@ -93,6 +93,38 @@ describe("SftpTransferStatusBar", () => {
     expect(onClearCompleted).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps transfer metadata collapsed until the focused detail action is opened", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <SftpTransferStatusBar
+        onCancel={vi.fn()}
+        onClearCompleted={vi.fn()}
+        onRetry={vi.fn()}
+        transfers={[transfer()]}
+      />,
+    );
+
+    expect(
+      screen.queryByText(
+        "prod-api:/var/log/app.log -> /Users/me/Downloads/app.log",
+      ),
+    ).not.toBeInTheDocument();
+
+    const detailButton = screen.getByRole("button", {
+      name: "查看传输详情 app.log",
+    });
+    detailButton.focus();
+    await user.keyboard("{Enter}");
+
+    expect(detailButton).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByText(
+        "prod-api:/var/log/app.log -> /Users/me/Downloads/app.log",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("keeps long transfer history compact and expandable", async () => {
     const user = userEvent.setup();
 
@@ -186,7 +218,9 @@ describe("SftpTransferStatusBar", () => {
     expect(onRetry).toHaveBeenCalledWith(canceledTransfer);
   });
 
-  it("explains why failed transfers without retry metadata cannot be retried", () => {
+  it("explains why failed transfers without retry metadata cannot be retried", async () => {
+    const user = userEvent.setup();
+
     render(
       <SftpTransferStatusBar
         onCancel={vi.fn()}
@@ -201,6 +235,12 @@ describe("SftpTransferStatusBar", () => {
       />,
     );
 
+    expect(
+      screen.queryByText("不能安全重试：该传输类型暂不支持安全重试。"),
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "查看传输详情 app.log" }),
+    );
     expect(
       screen.getByText("不能安全重试：该传输类型暂不支持安全重试。"),
     ).toBeInTheDocument();

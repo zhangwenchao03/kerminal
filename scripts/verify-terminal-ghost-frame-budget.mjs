@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+/**
+ * 终端 ghost overlay 帧预算基线。
+ *
+ * @author kongweiguang
+ */
+
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -66,6 +72,7 @@ async function main() {
     const client = await CdpClient.connect(target.webSocketDebuggerUrl);
     await client.send("Runtime.enable");
     await client.send("Page.enable");
+    const browserVersion = await client.send("Browser.getVersion");
     await client.send("Emulation.setDeviceMetricsOverride", {
       deviceScaleFactor: 1,
       height: 720,
@@ -88,11 +95,28 @@ async function main() {
     if (!value) {
       throw new Error("Benchmark returned no value");
     }
+    const report = {
+      schemaVersion: 1,
+      benchmark: "terminal-ghost-frame-budget",
+      environment: {
+        architecture: process.arch,
+        chrome: browserVersion.product,
+        chromeJavaScriptVersion: browserVersion.jsVersion,
+        node: process.version,
+        platform: process.platform,
+        viewport: {
+          deviceScaleFactor: 1,
+          height: 720,
+          width: 1280,
+        },
+      },
+      ...value,
+    };
     mkdirSync(path.dirname(outputPath), { recursive: true });
-    writeFileSync(outputPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+    writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 
-    console.log(JSON.stringify(value, null, 2));
-    if (!value.pass) {
+    console.log(JSON.stringify(report, null, 2));
+    if (!report.pass) {
       process.exitCode = 1;
     }
   } catch (error) {
@@ -367,12 +391,37 @@ function benchmarkHtml() {
 
   window.runTerminalGhostFrameBudget = () =>
     new Promise((resolve) => {
-      const warmupFrames = 20;
-      const targetFrames = 220;
-      const deltas = [];
+      const coldFrameCount = 20;
+      const warmFrameCount = 220;
+      const coldDeltas = [];
+      const warmDeltas = [];
       let lastTime = performance.now();
       let frameIndex = 0;
       commitGhost(resolveLayout());
+
+      function percentile(sorted, ratio) {
+        if (sorted.length === 0) {
+          return 0;
+        }
+        const index = Math.min(
+          sorted.length - 1,
+          Math.ceil(sorted.length * ratio) - 1,
+        );
+        return sorted[index];
+      }
+
+      function summarize(samples) {
+        const sorted = [...samples].sort((left, right) => left - right);
+        const total = sorted.reduce((sum, value) => sum + value, 0);
+        return {
+          avgMs: Number((total / sorted.length).toFixed(3)),
+          maxMs: Number(sorted[sorted.length - 1].toFixed(3)),
+          p50Ms: Number(percentile(sorted, 0.5).toFixed(3)),
+          p95Ms: Number(percentile(sorted, 0.95).toFixed(3)),
+          p99Ms: Number(percentile(sorted, 0.99).toFixed(3)),
+          sampleCount: sorted.length,
+        };
+      }
 
       function tick(now) {
         const delta = now - lastTime;
@@ -380,25 +429,39 @@ function benchmarkHtml() {
         for (let index = 0; index < 8; index += 1) {
           commitGhost(resolveLayout());
         }
-        if (frameIndex >= warmupFrames) {
-          deltas.push(delta);
+        if (frameIndex < coldFrameCount) {
+          coldDeltas.push(delta);
+        } else {
+          warmDeltas.push(delta);
         }
         frameIndex += 1;
-        if (deltas.length >= targetFrames) {
-          deltas.sort((left, right) => left - right);
-          const sum = deltas.reduce((total, value) => total + value, 0);
-          const avg = sum / deltas.length;
-          const p95 = deltas[Math.floor(deltas.length * 0.95)];
-          const max = deltas[deltas.length - 1];
-          const overBudgetFrames = deltas.filter((value) => value > 16.7).length;
+        if (warmDeltas.length >= warmFrameCount) {
+          const cold = summarize(coldDeltas);
+          const warm = summarize(warmDeltas);
+          const overBudgetFrames = warmDeltas.filter(
+            (value) => value > 16.7,
+          ).length;
           const result = {
-            avgFrameMs: Number(avg.toFixed(3)),
+            avgFrameMs: warm.avgMs,
             domWrites: state.writes,
-            frames: deltas.length,
-            maxFrameMs: Number(max.toFixed(3)),
+            frames: warm.sampleCount,
+            maxFrameMs: warm.maxMs,
+            metrics: {
+              cold,
+              warm,
+            },
             overBudgetFrames,
-            p95FrameMs: Number(p95.toFixed(3)),
-            pass: p95 <= 20 && max <= 50 && state.writes <= 1,
+            p50FrameMs: warm.p50Ms,
+            p95FrameMs: warm.p95Ms,
+            p99FrameMs: warm.p99Ms,
+            pass:
+              warm.p95Ms <= 20 &&
+              warm.maxMs <= 50 &&
+              state.writes <= 1,
+            sampleCount: {
+              cold: cold.sampleCount,
+              warm: warm.sampleCount,
+            },
             threshold: {
               maxFrameMs: 50,
               maxStableDomWrites: 1,

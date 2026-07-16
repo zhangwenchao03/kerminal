@@ -4,7 +4,6 @@
  * @author kongweiguang
  */
 
-import { isTauri } from "@tauri-apps/api/core";
 import {
   useCallback,
   useEffect,
@@ -13,10 +12,17 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
+import { desktopRuntime } from "../../lib/desktopRuntimeApi";
 import {
   listSftpTransfers,
   type SftpTransferSummary,
 } from "../../lib/sftpApi";
+import {
+  buildUserFacingError,
+  technicalDetailFromUnknown,
+  type UserFacingMessage,
+} from "../../lib/userFacingMessage";
+import { runtimeCompatibilityDiagnostics } from "../../platform/runtime/compatibilityDiagnostics";
 import { updateSftpRuntimeDiagnosticsTransfers } from "./sftpRuntimeDiagnostics";
 import { sftpTransferMatchesViewScope } from "./sftp-tool-content/sftpTransferSyncModel";
 import { mergeTransferSnapshot, replaceTransferQueue } from "./sftpTransferModel";
@@ -27,9 +33,9 @@ const DEFAULT_EVENT_HEALTHY_POLL_INTERVAL_MS = 10_000;
 const DEFAULT_EVENT_HEALTH_WINDOW_MS = 30_000;
 const DEFAULT_HIDDEN_POLL_INTERVAL_MS = 10_000;
 
-export type VisibilityChangeSubscriber = (onChange: () => void) => () => void;
+type VisibilityChangeSubscriber = (onChange: () => void) => () => void;
 
-export type SftpTransferUpdateListener = (
+type SftpTransferUpdateListener = (
   onUpdate: (transfer: SftpTransferSummary) => void,
 ) => Promise<() => void>;
 
@@ -48,14 +54,14 @@ export interface UseSftpTransferQueueSyncOptions {
 
 export interface SftpTransferQueueSyncState {
   clearQueueError: () => void;
-  queueError: string | null;
+  queueError: UserFacingMessage | null;
   refreshTransfers: () => Promise<void>;
-  setQueueError: Dispatch<SetStateAction<string | null>>;
+  setQueueError: Dispatch<SetStateAction<UserFacingMessage | null>>;
   setTransfers: Dispatch<SetStateAction<SftpTransferSummary[]>>;
   transfers: SftpTransferSummary[];
 }
 
-const defaultEventChannelAvailable = () => isTauri();
+const defaultEventChannelAvailable = () => desktopRuntime.mode === "desktop";
 const defaultDocumentVisible = () =>
   typeof document === "undefined" || document.visibilityState === "visible";
 const defaultSubscribeToVisibilityChange: VisibilityChangeSubscriber = (
@@ -69,10 +75,10 @@ const defaultSubscribeToVisibilityChange: VisibilityChangeSubscriber = (
 };
 
 const defaultListenToUpdates: SftpTransferUpdateListener = async (onUpdate) => {
-  const { listen } = await import("@tauri-apps/api/event");
-  return listen<SftpTransferSummary>(SFTP_TRANSFER_UPDATED_EVENT, (event) => {
-    onUpdate(event.payload);
-  });
+  return desktopRuntime.listen<SftpTransferSummary>(
+    SFTP_TRANSFER_UPDATED_EVENT,
+    onUpdate,
+  );
 };
 
 export function useSftpTransferQueueSync({
@@ -88,7 +94,7 @@ export function useSftpTransferQueueSync({
   viewScope,
 }: UseSftpTransferQueueSyncOptions): SftpTransferQueueSyncState {
   const [transfers, setTransfers] = useState<SftpTransferSummary[]>([]);
-  const [queueError, setQueueError] = useState<string | null>(null);
+  const [queueError, setQueueError] = useState<UserFacingMessage | null>(null);
   const lastEventAtRef = useRef<number | null>(null);
   const reschedulePollRef = useRef<(() => void) | null>(null);
 
@@ -106,12 +112,18 @@ export function useSftpTransferQueueSync({
     }
 
     try {
-      setTransfers(replaceTransferQueue(await listSftpTransfers(
-        viewScope === undefined ? undefined : { viewScope },
-      )));
+      setTransfers(
+        replaceTransferQueue(
+          sanitizeSftpTransferSummaries(
+            await listSftpTransfers(
+              viewScope === undefined ? undefined : { viewScope },
+            ),
+          ),
+        ),
+      );
       setQueueError(null);
     } catch (error) {
-      setQueueError(errorMessage(error));
+      setQueueError(buildSftpTransferQueueError(error));
     }
   }, [active, viewScope]);
 
@@ -126,8 +138,10 @@ export function useSftpTransferQueueSync({
     lastEventAtRef.current = null;
     const loadTransfers = async () => {
       try {
-        const nextTransfers = await listSftpTransfers(
-          viewScope === undefined ? undefined : { viewScope },
+        const nextTransfers = sanitizeSftpTransferSummaries(
+          await listSftpTransfers(
+            viewScope === undefined ? undefined : { viewScope },
+          ),
         );
         if (!disposed) {
           setTransfers(replaceTransferQueue(nextTransfers));
@@ -135,7 +149,7 @@ export function useSftpTransferQueueSync({
         }
       } catch (error) {
         if (!disposed) {
-          setQueueError(errorMessage(error));
+          setQueueError(buildSftpTransferQueueError(error));
         }
       }
     };
@@ -176,6 +190,20 @@ export function useSftpTransferQueueSync({
         return;
       }
       pollInFlight = true;
+      const eventChannelHealthy =
+        eventChannelAvailable() &&
+        sftpTransferEventChannelHealthy({
+          eventHealthWindowMs,
+          lastEventAt: lastEventAtRef.current,
+          now: Date.now(),
+        });
+      runtimeCompatibilityDiagnostics.recordActivation(
+        "sftp.transfer-polling",
+        resolveSftpPollingCompatibilityReason({
+          documentVisible: documentVisible(),
+          eventChannelHealthy,
+        }),
+      );
       try {
         await loadTransfers();
       } finally {
@@ -231,7 +259,9 @@ export function useSftpTransferQueueSync({
         return;
       }
       lastEventAtRef.current = Date.now();
-      setTransfers((current) => mergeTransferSnapshot(current, transfer));
+      setTransfers((current) =>
+        mergeTransferSnapshot(current, sanitizeSftpTransferSummary(transfer)),
+      );
       reschedulePollRef.current?.();
     })
       .then((nextUnlisten) => {
@@ -261,8 +291,36 @@ export function useSftpTransferQueueSync({
   };
 }
 
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
+/**
+ * 为普通工作台构建稳定摘要，原始异常只保留在脱敏后的技术详情中。
+ */
+export function buildSftpTransferQueueError(error: unknown): UserFacingMessage {
+  return buildUserFacingError(error, {
+    detail: "现有传输记录已保留。",
+    recoveryAction: "检查连接后刷新传输队列。",
+    title: "无法同步传输队列",
+  });
+}
+
+/**
+ * 后端传输失败原因进入可展开详情前必须先脱敏。
+ */
+export function sanitizeSftpTransferSummary(
+  transfer: SftpTransferSummary,
+): SftpTransferSummary {
+  if (!transfer.error) {
+    return transfer;
+  }
+  return {
+    ...transfer,
+    error: technicalDetailFromUnknown(transfer.error),
+  };
+}
+
+function sanitizeSftpTransferSummaries(
+  transfers: SftpTransferSummary[],
+): SftpTransferSummary[] {
+  return transfers.map(sanitizeSftpTransferSummary);
 }
 
 export function sftpTransferEventChannelHealthy({
@@ -302,4 +360,20 @@ export function sftpTransferQueuePollDelay({
   return documentVisible
     ? visibleDelay
     : Math.max(visibleDelay, hiddenPollIntervalMs);
+}
+
+function resolveSftpPollingCompatibilityReason({
+  documentVisible,
+  eventChannelHealthy,
+}: {
+  documentVisible: boolean;
+  eventChannelHealthy: boolean;
+}) {
+  if (!documentVisible) {
+    return "document-hidden";
+  }
+  if (eventChannelHealthy) {
+    return "event-channel-healthy-safety-poll";
+  }
+  return "event-channel-unavailable";
 }

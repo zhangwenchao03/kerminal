@@ -83,7 +83,9 @@ function editableTab(overrides: Partial<OpenFileTab> = {}): OpenFileTab {
 
 describe("remoteWorkspaceEditorModel", () => {
   it("normalizes remote paths and derives names", () => {
-    expect(normalizeRemotePath(" \\\\var\\\\log//nginx/// ")).toBe("/var/log/nginx");
+    expect(normalizeRemotePath(" \\\\var\\\\log//nginx/// ")).toBe(
+      "/var/log/nginx",
+    );
     expect(normalizeRemotePath("////")).toBe("/");
     expect(fileNameFromPath("/var/log/nginx/access.log")).toBe("access.log");
     expect(createRootNode("/var/log/")).toMatchObject({
@@ -150,7 +152,7 @@ describe("remoteWorkspaceEditorModel", () => {
     expect(activeTabStatus(tab)).toBeNull();
   });
 
-  it("creates loaded tabs from read responses and marks unsafe content readonly", () => {
+  it("keeps binary response metadata but never exposes its content to the editor", () => {
     const tab = createLoadedTab(
       "/workspace/README.md",
       readResponse({
@@ -164,16 +166,20 @@ describe("remoteWorkspaceEditorModel", () => {
     );
 
     expect(tab).toMatchObject({
-      content: "# title",
+      binary: true,
+      content: "",
       language: "markdown",
       loading: false,
       name: "README.md",
       readonly: true,
-      savedContent: "# title",
+      savedContent: "",
       saving: false,
       truncated: false,
     });
     expect(tab.revision).toEqual(revision(7));
+  });
+
+  it("marks truncated text readonly without changing normal content", () => {
     expect(
       createLoadedTab(
         "/workspace/src/App.tsx",
@@ -202,7 +208,9 @@ describe("remoteWorkspaceEditorModel", () => {
       message: "当前文件没有未保存修改。",
     });
     expect(cleanSaveStatus(cleanTab, true)).toBeNull();
-    expect(cleanSaveStatus({ ...cleanTab, content: "changed" }, false)).toBeNull();
+    expect(
+      cleanSaveStatus({ ...cleanTab, content: "changed" }, false),
+    ).toBeNull();
   });
 
   it("transitions save state for start, success, and error outcomes", () => {
@@ -234,7 +242,9 @@ describe("remoteWorkspaceEditorModel", () => {
       saving: false,
     });
     expect(saved.revision).toEqual(revision(99));
-    expect(applySaveError({ ...dirtyTab, saving: true }, "conflict")).toMatchObject({
+    expect(
+      applySaveError({ ...dirtyTab, saving: true }, "conflict"),
+    ).toMatchObject({
       error: "conflict",
       saving: false,
       savedContent: "original",
@@ -275,7 +285,9 @@ describe("remoteWorkspaceEditorModel", () => {
       truncated: false,
     });
     expect(reloaded.revision).toEqual(revision(30));
-    expect(applyReloadError({ ...dirtyTab, loading: true }, "offline")).toMatchObject({
+    expect(
+      applyReloadError({ ...dirtyTab, loading: true }, "offline"),
+    ).toMatchObject({
       content: "local edits",
       error: "offline",
       loading: false,
@@ -318,9 +330,7 @@ describe("remoteWorkspaceEditorModel", () => {
     expect(languageForPath("/etc/app/config.cfg")).toBe("ini");
     expect(languageForPath("/etc/app/server.config")).toBe("ini");
     expect(languageForPath("/workspace/application.properties")).toBe("ini");
-    expect(languageForPath("/etc/systemd/system/kerminal.service")).toBe(
-      "ini",
-    );
+    expect(languageForPath("/etc/systemd/system/kerminal.service")).toBe("ini");
     expect(languageForPath("/home/user/.config/kubeconfig")).toBe("yaml");
     expect(languageForPath("/home/user/.envrc")).toBe("shell");
     expect(languageForPath("/etc/ssh/sshd_config")).toBe("ini");

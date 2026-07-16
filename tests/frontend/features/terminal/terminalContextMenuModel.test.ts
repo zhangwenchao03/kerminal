@@ -48,6 +48,18 @@ describe("terminalContextMenuModel", () => {
       ],
       [
         {
+          action: "sendSelectionToAgent",
+          disabled: true,
+          label: "发送选中内容到 Agent",
+        },
+        {
+          action: "sendContextToAgent",
+          disabled: false,
+          label: "发送当前终端上下文到 Agent",
+        },
+      ],
+      [
+        {
           action: "reconnect",
           disabled: false,
           label: "重新连接",
@@ -85,6 +97,8 @@ describe("terminalContextMenuModel", () => {
       canCopySessionId: false,
       canDisconnect: false,
       canReconnect: false,
+      canSendSelectionToAgent: false,
+      canSendToAgent: false,
     });
 
     expect(groups.flat()).toEqual(
@@ -93,6 +107,14 @@ describe("terminalContextMenuModel", () => {
         expect.objectContaining({ action: "copySessionId", disabled: true }),
         expect.objectContaining({ action: "disconnect", disabled: true }),
         expect.objectContaining({ action: "reconnect", disabled: true }),
+        expect.objectContaining({
+          action: "sendSelectionToAgent",
+          disabled: true,
+        }),
+        expect.objectContaining({
+          action: "sendContextToAgent",
+          disabled: true,
+        }),
       ]),
     );
   });
@@ -142,6 +164,8 @@ describe("terminalContextMenuModel", () => {
     const nonSplitActions: TerminalContextMenuAction[] = [
       "copy",
       "copySessionId",
+      "sendSelectionToAgent",
+      "sendContextToAgent",
       "paste",
       "selectAll",
       "search",

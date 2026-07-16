@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, vi } from "vitest";
 import { defaultAppSettings } from "../../../../src/features/settings/settingsModel";
-import type { TerminalOutputEvent } from "../../../../src/lib/terminalApi";
 import { terminalSuggestionProbeScheduler } from "../../../../src/features/terminal/terminalSuggestionProbeScheduler";
+import type { TerminalOutputEvent } from "../../../../src/lib/terminalApi";
 
 const mocks = vi.hoisted(() => {
   const terminalInstances: MockTerminal[] = [];
   const fitInstances: MockFitAddon[] = [];
   const searchInstances: MockSearchAddon[] = [];
   const api = {
+    closeExternalSshLaunch: vi.fn(),
     closeTerminal: vi.fn(),
     createSerialTerminalSession: vi.fn(),
     createSshTerminalSession: vi.fn(),
@@ -37,7 +38,6 @@ const mocks = vi.hoisted(() => {
     writeTerminal: vi.fn(),
   };
   let latestOutputHandler: ((event: TerminalOutputEvent) => void) | undefined;
-
   class MockTerminal {
     buffer: {
       active: {
@@ -114,9 +114,7 @@ const mocks = vi.hoisted(() => {
     refresh = vi.fn();
     private nextMarkerId = 1;
     selectAll = vi.fn();
-    write = vi.fn((_data: string, callback?: () => void) => {
-      callback?.();
-    });
+    write = vi.fn((_data: string) => undefined);
 
     constructor(options: Record<string, unknown>) {
       this.options = options;
@@ -196,33 +194,26 @@ const mocks = vi.hoisted(() => {
       };
       terminalInstances.push(this);
     }
-
     attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean) {
       this.customKeyEventHandler = handler;
     }
-
     onData(callback: (data: string) => void) {
       this.onDataCallback = callback;
       return { dispose: vi.fn() };
     }
-
     onSelectionChange(callback: () => void) {
       this.onSelectionChangeCallback = callback;
       return { dispose: vi.fn() };
     }
-
     onBufferChangeCallback: (() => void) | undefined;
-
     onScroll(callback: (viewportY: number) => void) {
       this.onScrollCallback = callback;
       return { dispose: vi.fn() };
     }
-
     onWriteParsed(callback: () => void) {
       this.onWriteParsedCallback = callback;
       return { dispose: vi.fn() };
     }
-
     registerMarker(cursorYOffset = 0) {
       const activeBuffer = this.buffer.active;
       const line = Math.max(
@@ -265,11 +256,9 @@ const mocks = vi.hoisted(() => {
       );
       return marker;
     }
-
     triggerEsc(final: string) {
       return this.parser.escHandlers.get(final)?.();
     }
-
     triggerCsi(
       final: string,
       params: Array<number | number[]> = [0],
@@ -277,15 +266,12 @@ const mocks = vi.hoisted(() => {
     ) {
       return this.parser.csiHandlers.get(`${prefix}${final}`)?.(params);
     }
-
     triggerOsc(identifier: number, data: string) {
       return this.parser.oscHandlers.get(identifier)?.(data);
     }
-
     emitSelectionChange() {
       this.onSelectionChangeCallback?.();
     }
-
     triggerCustomKeyEvent(init: KeyboardEventInit) {
       const event = new KeyboardEvent("keydown", {
         bubbles: true,
@@ -299,14 +285,11 @@ const mocks = vi.hoisted(() => {
       };
     }
   }
-
   class MockFitAddon {
     private terminal: MockTerminal | null = null;
-
     activate(terminal: MockTerminal) {
       this.terminal = terminal;
     }
-
     dispose = vi.fn();
     fit = vi.fn(() => {
       const dimensions = this.proposeDimensions();
@@ -405,6 +388,11 @@ vi.mock("../../../../src/lib/terminalApi", () => ({
   startTerminalLog: (...args: unknown[]) => mocks.api.startTerminalLog(...args),
   stopTerminalLog: (...args: unknown[]) => mocks.api.stopTerminalLog(...args),
   writeTerminal: (...args: unknown[]) => mocks.api.writeTerminal(...args),
+}));
+
+vi.mock("../../../../src/lib/externalLaunchApi", () => ({
+  closeExternalSshLaunch: (...args: unknown[]) =>
+    mocks.api.closeExternalSshLaunch(...args),
 }));
 
 vi.mock("../../../../src/features/ssh-auth/sshAuthPromptStore", () => ({
@@ -573,6 +561,7 @@ beforeEach(() => {
   mocks.fitInstances.length = 0;
   mocks.searchInstances.length = 0;
   mocks.setLatestOutputHandler(undefined);
+  mocks.api.closeExternalSshLaunch.mockReset();
   mocks.api.createSerialTerminalSession.mockReset();
   mocks.api.createSshTerminalSession.mockReset();
   mocks.api.createTelnetTerminalSession.mockReset();
@@ -721,6 +710,7 @@ beforeEach(() => {
   mocks.api.writeTerminal.mockResolvedValue(undefined);
   mocks.api.resizeTerminal.mockResolvedValue(undefined);
   mocks.api.closeTerminal.mockResolvedValue(undefined);
+  mocks.api.closeExternalSshLaunch.mockResolvedValue(undefined);
   mocks.api.getTerminalLogState.mockResolvedValue({
     active: false,
     bytesWritten: 0,
@@ -798,7 +788,6 @@ afterEach(() => {
 
 
 export {
-  defaultAppSettings,
   installClipboardMock,
   mockElementBox,
   mocks,

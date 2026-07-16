@@ -56,6 +56,19 @@ pub(crate) struct CommandHistoryListFilter<'a> {
     pub limit: usize,
 }
 
+/// command_history 删除范围；字段全部为空时匹配全部历史。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CommandHistoryClearFilter<'a> {
+    /// 目标类型过滤。
+    pub target: Option<CommandHistoryTarget>,
+    /// 前端 pane id 过滤。
+    pub pane_id: Option<&'a str>,
+    /// SSH 主机过滤。
+    pub remote_host_id: Option<&'a str>,
+    /// 终端 session 过滤。
+    pub session_id: Option<&'a str>,
+}
+
 impl CommandSqliteStore {
     /// 返回全部命令历史，按最新优先排序。
     pub fn list_command_history(&self) -> AppResult<Vec<CommandHistoryEntry>> {
@@ -80,6 +93,18 @@ impl CommandSqliteStore {
     ) -> AppResult<Vec<CommandHistoryEntry>> {
         self.with_connection(|conn| {
             list_history_by_command_prefix(conn, target, remote_host_id, command_prefix, limit)
+        })
+    }
+
+    /// 为候选菜单返回有界最近历史；调用方在内存中执行词级匹配。
+    pub(crate) fn list_recent_command_history_for_suggestions(
+        &self,
+        target: CommandHistoryTarget,
+        remote_host_id: Option<&str>,
+        limit: usize,
+    ) -> AppResult<Vec<CommandHistoryEntry>> {
+        self.with_connection(|conn| {
+            list_recent_history_for_suggestions(conn, target, remote_host_id, limit)
         })
     }
 
@@ -132,6 +157,30 @@ impl CommandSqliteStore {
     /// 清空命令历史。
     pub fn clear_command_history(&self) -> AppResult<usize> {
         self.with_connection_mut(|conn| Ok(conn.execute("DELETE FROM command_history", [])?))
+    }
+
+    /// 按 pane/目标/主机/session 范围删除命令历史。
+    pub(crate) fn clear_command_history_filtered(
+        &self,
+        filter: &CommandHistoryClearFilter<'_>,
+    ) -> AppResult<usize> {
+        self.with_connection_mut(|conn| {
+            Ok(conn.execute(
+                "
+                DELETE FROM command_history
+                WHERE (?1 IS NULL OR target = ?1)
+                  AND (?2 IS NULL OR pane_id = ?2)
+                  AND (?3 IS NULL OR remote_host_id = ?3)
+                  AND (?4 IS NULL OR session_id = ?4)
+                ",
+                params![
+                    filter.target.map(CommandHistoryTarget::as_str),
+                    filter.pane_id,
+                    filter.remote_host_id,
+                    filter.session_id,
+                ],
+            )?)
+        })
     }
 }
 
@@ -224,6 +273,51 @@ fn list_history_by_command_prefix(
         }
     }
 
+    Ok(entries)
+}
+
+fn list_recent_history_for_suggestions(
+    conn: &Connection,
+    target: CommandHistoryTarget,
+    remote_host_id: Option<&str>,
+    limit: usize,
+) -> AppResult<Vec<CommandHistoryEntry>> {
+    let limit = i64::try_from(limit.max(1)).unwrap_or(i64::MAX);
+    let entries = if let Some(remote_host_id) = remote_host_id {
+        let mut stmt = conn.prepare(
+            "
+            SELECT id, command, source, target, session_id, pane_id, tab_id,
+                   profile_id, remote_host_id, cwd, shell, created_at
+            FROM command_history NOT INDEXED
+            WHERE target = ?1
+              AND remote_host_id = ?2
+            ORDER BY rowid DESC
+            LIMIT ?3
+            ",
+        )?;
+        let rows = stmt
+            .query_map(
+                params![target.as_str(), remote_host_id, limit],
+                history_from_row,
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    } else {
+        let mut stmt = conn.prepare(
+            "
+            SELECT id, command, source, target, session_id, pane_id, tab_id,
+                   profile_id, remote_host_id, cwd, shell, created_at
+            FROM command_history NOT INDEXED
+            WHERE target = ?1
+            ORDER BY rowid DESC
+            LIMIT ?2
+            ",
+        )?;
+        let rows = stmt
+            .query_map(params![target.as_str(), limit], history_from_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    };
     Ok(entries)
 }
 

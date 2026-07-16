@@ -13,19 +13,10 @@ pub enum PortForwardKind {
     Local,
     /// 远程转发，对应 OpenSSH `-R`。
     Remote,
+    /// 远程动态 SOCKS 转发，对应 OpenSSH `-R [bind_address:]port`。
+    RemoteDynamic,
     /// 动态 SOCKS 转发，对应 OpenSSH `-D`。
     Dynamic,
-}
-
-/// 端口转发用途。
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "camelCase")]
-pub enum PortForwardPurpose {
-    /// 普通 SSH 端口转发。
-    #[default]
-    Generic,
-    /// 主机使用本机网络助手。
-    HostNetworkAssist,
 }
 
 /// 端口转发来源。
@@ -47,7 +38,7 @@ pub enum PortForwardOrigin {
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum PortForwardProxyProtocol {
-    /// HTTP/HTTPS 代理，通常由本机受管 HTTP CONNECT proxy 提供。
+    /// 已移除的旧 HTTP 网络助手，仅用于读取和清理历史记录。
     Http,
     /// SOCKS5 代理。
     Socks5,
@@ -171,9 +162,6 @@ pub struct PortForwardCreateRequest {
     pub name: Option<String>,
     /// 转发类型。
     pub kind: PortForwardKind,
-    /// 创建用途；缺省为普通端口转发。
-    #[serde(default)]
-    pub purpose: PortForwardPurpose,
     /// 创建来源；缺省为用户手动创建。
     #[serde(default)]
     pub origin: PortForwardOrigin,
@@ -197,7 +185,7 @@ pub struct PortForwardCreateRequest {
     /// 远端端点；网络助手用来表达远端代理监听地址。
     #[serde(default)]
     pub remote_endpoint: Option<PortForwardEndpoint>,
-    /// 主机网络助手代理协议。
+    /// SOCKS 转发协议；`Http` 仅用于识别旧记录。
     #[serde(default)]
     pub proxy_protocol: Option<PortForwardProxyProtocol>,
     /// 远端监听可见范围。
@@ -206,12 +194,6 @@ pub struct PortForwardCreateRequest {
     /// 代理应用范围。
     #[serde(default)]
     pub proxy_apply_scope: PortForwardProxyApplyScope,
-    /// 共享本机代理服务 id；LocalNetworkProxyService 集成后填充。
-    #[serde(default)]
-    pub shared_proxy_service_id: Option<String>,
-    /// 共享本机代理服务内的逻辑入口 id。
-    #[serde(default)]
-    pub local_proxy_entry_id: Option<String>,
 }
 
 impl Default for PortForwardCreateRequest {
@@ -220,7 +202,6 @@ impl Default for PortForwardCreateRequest {
             host_id: String::new(),
             name: None,
             kind: PortForwardKind::Local,
-            purpose: PortForwardPurpose::Generic,
             origin: PortForwardOrigin::User,
             bind_host: None,
             local_bind_host: None,
@@ -233,8 +214,6 @@ impl Default for PortForwardCreateRequest {
             proxy_protocol: None,
             remote_access_scope: None,
             proxy_apply_scope: PortForwardProxyApplyScope::None,
-            shared_proxy_service_id: None,
-            local_proxy_entry_id: None,
         }
     }
 }
@@ -253,9 +232,6 @@ pub struct PortForwardSummary {
     pub name: String,
     /// 转发类型。
     pub kind: PortForwardKind,
-    /// 创建用途。
-    #[serde(default)]
-    pub purpose: PortForwardPurpose,
     /// 创建来源。
     #[serde(default)]
     pub origin: PortForwardOrigin,
@@ -279,7 +255,7 @@ pub struct PortForwardSummary {
     /// 远端侧端点。
     #[serde(default)]
     pub remote_endpoint: Option<PortForwardEndpoint>,
-    /// 主机网络助手代理协议。
+    /// SOCKS 转发协议；`Http` 仅用于识别旧记录。
     #[serde(default)]
     pub proxy_protocol: Option<PortForwardProxyProtocol>,
     /// 远端监听可见范围。
@@ -291,12 +267,6 @@ pub struct PortForwardSummary {
     /// 代理应用范围。
     #[serde(default)]
     pub proxy_apply_scope: PortForwardProxyApplyScope,
-    /// 共享本机代理服务 id。
-    #[serde(default)]
-    pub shared_proxy_service_id: Option<String>,
-    /// 共享本机代理服务逻辑入口 id。
-    #[serde(default)]
-    pub local_proxy_entry_id: Option<String>,
     /// 脱敏后的 OpenSSH 命令预览。
     #[serde(default)]
     pub command_preview: String,

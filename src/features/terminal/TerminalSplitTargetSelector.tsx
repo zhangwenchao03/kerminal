@@ -12,7 +12,7 @@ import { cn } from "../../lib/cn";
 import type {
   MachineGroup,
   TerminalSplitDirection,
-} from "../workspace/types";
+} from "../workspace/contracts/index";
 import {
   createSplitTargetOptions,
   type SplitTargetOption,
@@ -243,7 +243,7 @@ export function TerminalSplitTargetSelector({
         ? createPortal(
             <div
               aria-label={`${splitLabel}目标选择`}
-              className="kerminal-floating-enter fixed z-[1100] w-[22rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] p-2 text-sm shadow-2xl shadow-black/20 backdrop-blur-xl dark:shadow-black/50"
+              className="kerminal-floating-surface kerminal-floating-enter kerminal-layer-overlay fixed w-[22rem] max-w-[calc(100vw-2rem)] rounded-[var(--radius-card)] border p-2 text-[13px]"
               ref={menuRef}
               role="menu"
               style={menuPosition}

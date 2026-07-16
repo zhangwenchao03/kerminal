@@ -1,13 +1,3 @@
-import {
-  AlertTriangle,
-  FileText,
-  FolderOpen,
-  RefreshCw,
-  RotateCcw,
-  Save,
-  Search,
-  X,
-} from "lucide-react";
 import type * as Monaco from "monaco-editor";
 import {
   useCallback,
@@ -20,29 +10,16 @@ import {
 import {
   KERMINAL_TEXT_EDIT_COMMAND_EVENT,
   type KerminalTextEditCommandEventDetail,
-} from "../../app/appKeybindingPolicy";
-import { Button } from "../../components/ui/button";
-import { ModalShell } from "../../components/ui/modal-shell";
-import { cn } from "../../lib/cn";
-import { configureKerminalMonaco } from "../../lib/monacoTheme";
+} from "../../contracts/textEditCommands";
 import { targetStableId, type RemoteTargetRef } from "../../lib/targetModel";
-import { defaultTerminalAppearance } from "../settings/settingsDefaults";
+import { defaultTerminalAppearance } from "../settings/defaults/index";
 import {
   terminalFontWeightValue,
   type TerminalAppearance,
-} from "../settings/settingsModel";
+} from "../settings/contracts/index";
+import type { MonacoTextEditorMountHandler } from "./MonacoTextEditor";
+import { RemoteWorkspaceEditorView } from "./RemoteWorkspaceEditor/RemoteWorkspaceEditorView";
 import {
-  MonacoTextEditor,
-  type MonacoTextEditorMountHandler,
-} from "./MonacoTextEditor";
-import { RemoteWorkspaceEditorContextMenu } from "./RemoteWorkspaceEditorContextMenu";
-import {
-  EditorToolbarButton,
-  WorkspaceInlineStatus,
-  WorkspaceTreeRow,
-} from "./RemoteWorkspaceEditorParts";
-import {
-  activeTabStatus,
   applyOpenTabError,
   applyReloadError,
   applyReloadSuccess,
@@ -61,7 +38,6 @@ import {
   resolveWorkspaceTarget,
   startReloadingTab,
   startSavingTab,
-  treeFileCount,
   updateTreeNode,
   type OpenFileTab,
   type RemoteWorkspaceStatus,
@@ -80,10 +56,16 @@ import {
   runRemoteWorkspaceEditorMonacoCommand,
 } from "./remoteWorkspaceEditorCommandRuntime";
 import {
+  isRemoteWorkspaceBinaryFileReadError,
   listRemoteWorkspaceDirectory,
   readRemoteWorkspaceTextFile,
   writeRemoteWorkspaceTextFile,
 } from "./remoteWorkspaceEditorTransport";
+import { resolveWorkspaceFilePreviewPolicy } from "./workspaceFilePreviewPolicy";
+import {
+  BINARY_WORKSPACE_FILE_PREVIEW_NOTICE,
+  buildWorkspaceFilePreviewUnsupportedNotice,
+} from "./workspaceFilePreviewPresentation";
 
 const MAX_EDITOR_BYTES = 10 * 1024 * 1024;
 
@@ -134,12 +116,16 @@ export function RemoteWorkspaceEditor({
         targetKind === "dockerContainer" && targetHostId && targetContainerId
           ? {
               containerId: targetContainerId,
-              ...(targetContainerName ? { containerName: targetContainerName } : {}),
+              ...(targetContainerName
+                ? { containerName: targetContainerName }
+                : {}),
               hostId: targetHostId,
               kind: "dockerContainer",
               runtime: targetContainerRuntime,
               ...(targetContainerUser ? { user: targetContainerUser } : {}),
-              ...(targetContainerWorkdir ? { workdir: targetContainerWorkdir } : {}),
+              ...(targetContainerWorkdir
+                ? { workdir: targetContainerWorkdir }
+                : {}),
             }
           : targetKind === "ssh" && targetHostId
             ? { hostId: targetHostId, kind: "ssh" }
@@ -177,11 +163,14 @@ export function RemoteWorkspaceEditor({
   const [openTreePaths, setOpenTreePaths] = useState<Set<string>>(
     () => new Set([normalizedRootPath]),
   );
-  const editorRef =
-    useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
-  const runEditorCommandRef =
-    useRef<(command: RemoteWorkspaceEditorCommandId) => void>(() => undefined);
+  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+  const runEditorCommandRef = useRef<
+    (command: RemoteWorkspaceEditorCommandId) => void
+  >(() => undefined);
   const tabsRef = useRef<OpenFileTab[]>([]);
+  // 每条文件路径只允许最新一代读取回写，避免关闭、重开或切换目标后的旧响应污染当前 Tab。
+  const fileRequestSequenceRef = useRef(0);
+  const activeFileRequestByPathRef = useRef(new Map<string, number>());
   const [editorContextMenu, setEditorContextMenu] = useState<{
     x: number;
     y: number;
@@ -199,16 +188,28 @@ export function RemoteWorkspaceEditor({
   const hasConflict =
     activeTab?.error?.includes("远端文件已变更") ||
     activeTab?.error?.includes("conflict");
+  const pathUnsupportedNotice = useMemo(() => {
+    if (!activeTab) {
+      return null;
+    }
+    const decision = resolveWorkspaceFilePreviewPolicy(activeTab.path);
+    return decision.kind === "unsupported"
+      ? buildWorkspaceFilePreviewUnsupportedNotice(decision)
+      : null;
+  }, [activeTab]);
+  const unsupportedNotice =
+    pathUnsupportedNotice ??
+    (activeTab?.binary ? BINARY_WORKSPACE_FILE_PREVIEW_NOTICE : null);
   const editorCommandState = useMemo<RemoteWorkspaceEditorCommandState>(
     () => ({
       dirty: activeTab ? isDirtyTab(activeTab) : false,
       hasConflict: Boolean(hasConflict),
-      hasEditor: Boolean(activeTab && !activeTab.loading),
+      hasEditor: Boolean(activeTab && !activeTab.loading && !unsupportedNotice),
       loading: Boolean(activeTab?.loading),
       readOnly: Boolean(activeTab?.readonly),
       saving: Boolean(activeTab?.saving),
     }),
-    [activeTab, hasConflict],
+    [activeTab, hasConflict, unsupportedNotice],
   );
   const editorCommandGroups = useMemo(
     () => buildRemoteWorkspaceEditorCommandGroups(editorCommandState),
@@ -218,7 +219,9 @@ export function RemoteWorkspaceEditor({
     () => ({
       fontFamily: terminalAppearance.fontFamily,
       fontSize: terminalAppearance.fontSize,
-      fontWeight: String(terminalFontWeightValue(terminalAppearance.fontWeight)),
+      fontWeight: String(
+        terminalFontWeightValue(terminalAppearance.fontWeight),
+      ),
     }),
     [
       terminalAppearance.fontFamily,
@@ -233,6 +236,19 @@ export function RemoteWorkspaceEditor({
         current.map((tab) => (tab.path === path ? updater(tab) : tab)),
       );
     },
+    [],
+  );
+
+  const beginFileRequest = useCallback((path: string) => {
+    const requestId = fileRequestSequenceRef.current + 1;
+    fileRequestSequenceRef.current = requestId;
+    activeFileRequestByPathRef.current.set(path, requestId);
+    return requestId;
+  }, []);
+
+  const isCurrentFileRequest = useCallback(
+    (path: string, requestId: number) =>
+      activeFileRequestByPathRef.current.get(path) === requestId,
     [],
   );
 
@@ -323,23 +339,40 @@ export function RemoteWorkspaceEditor({
   }, [loadChildren, normalizedRootPath, workspaceTargetKey]);
 
   useEffect(() => {
+    activeFileRequestByPathRef.current.clear();
     setTabs([]);
     setActivePath(null);
+    editorRef.current = null;
   }, [workspaceTargetKey]);
 
   const openFile = useCallback(
     async (path: string) => {
       const normalizedPath = normalizeRemotePath(path);
       setActivePath(normalizedPath);
-      if (tabsRef.current.some((tab) => tab.path === normalizedPath)) {
+      if (
+        tabsRef.current.some((tab) => tab.path === normalizedPath) ||
+        activeFileRequestByPathRef.current.has(normalizedPath)
+      ) {
         return;
       }
+      const requestId = beginFileRequest(normalizedPath);
+      const previewDecision = resolveWorkspaceFilePreviewPolicy(normalizedPath);
       setTabs((current) => {
         if (current.some((tab) => tab.path === normalizedPath)) {
           return current;
         }
-        return [...current, createLoadingTab(normalizedPath)];
+        return [
+          ...current,
+          previewDecision.kind === "unsupported"
+            ? applyUnsupportedPreview(createLoadingTab(normalizedPath))
+            : createLoadingTab(normalizedPath),
+        ];
       });
+
+      if (previewDecision.kind === "unsupported") {
+        onStatus?.({ kind: "info", message: previewDecision.message });
+        return;
+      }
 
       try {
         const response = await readRemoteWorkspaceTextFile({
@@ -347,29 +380,46 @@ export function RemoteWorkspaceEditor({
           path: normalizedPath,
           target: workspaceTarget,
         });
+        if (!isCurrentFileRequest(normalizedPath, requestId)) {
+          return;
+        }
         const nextTab = createLoadedTab(normalizedPath, response);
         setTabs((current) =>
-          current.map((tab) =>
-            tab.path === normalizedPath ? nextTab : tab,
-          ),
+          current.map((tab) => (tab.path === normalizedPath ? nextTab : tab)),
         );
-        onStatus?.({
-          kind: "info",
-          message: `已打开远程文件：${normalizedPath}`,
-        });
+        onStatus?.(
+          response.binary
+            ? {
+                kind: "info",
+                message: BINARY_WORKSPACE_FILE_PREVIEW_NOTICE.detail,
+              }
+            : {
+                kind: "info",
+                message: `已打开远程文件：${normalizedPath}`,
+              },
+        );
       } catch (error) {
+        if (!isCurrentFileRequest(normalizedPath, requestId)) {
+          return;
+        }
+        if (isRemoteWorkspaceBinaryFileReadError(error)) {
+          setTab(normalizedPath, applyUnsupportedPreview);
+          onStatus?.({
+            kind: "info",
+            message: BINARY_WORKSPACE_FILE_PREVIEW_NOTICE.detail,
+          });
+          return;
+        }
         const message = errorMessage(error);
         setTabs((current) =>
           current.map((tab) =>
-            tab.path === normalizedPath
-              ? applyOpenTabError(tab, message)
-              : tab,
+            tab.path === normalizedPath ? applyOpenTabError(tab, message) : tab,
           ),
         );
         onStatus?.({ kind: "error", message });
       }
     },
-    [onStatus, workspaceTarget],
+    [beginFileRequest, isCurrentFileRequest, onStatus, setTab, workspaceTarget],
   );
 
   useEffect(() => {
@@ -424,6 +474,17 @@ export function RemoteWorkspaceEditor({
 
   const reloadFile = useCallback(
     async (path: string) => {
+      const currentTab = tabsRef.current.find((tab) => tab.path === path);
+      if (
+        !currentTab ||
+        currentTab.binary ||
+        currentTab.loading ||
+        currentTab.saving ||
+        resolveWorkspaceFilePreviewPolicy(path).kind === "unsupported"
+      ) {
+        return;
+      }
+      const requestId = beginFileRequest(path);
       setTab(path, startReloadingTab);
       try {
         const response = await readRemoteWorkspaceTextFile({
@@ -431,19 +492,41 @@ export function RemoteWorkspaceEditor({
           path,
           target: workspaceTarget,
         });
+        if (!isCurrentFileRequest(path, requestId)) {
+          return;
+        }
         setTab(path, (tab) => applyReloadSuccess(tab, response));
-        onStatus?.({ kind: "info", message: `已重新加载：${path}` });
+        onStatus?.(
+          response.binary
+            ? {
+                kind: "info",
+                message: BINARY_WORKSPACE_FILE_PREVIEW_NOTICE.detail,
+              }
+            : { kind: "info", message: `已重新加载：${path}` },
+        );
       } catch (error) {
+        if (!isCurrentFileRequest(path, requestId)) {
+          return;
+        }
+        if (isRemoteWorkspaceBinaryFileReadError(error)) {
+          setTab(path, applyUnsupportedPreview);
+          onStatus?.({
+            kind: "info",
+            message: BINARY_WORKSPACE_FILE_PREVIEW_NOTICE.detail,
+          });
+          return;
+        }
         const message = errorMessage(error);
         setTab(path, (tab) => applyReloadError(tab, message));
         onStatus?.({ kind: "error", message });
       }
     },
-    [onStatus, setTab, workspaceTarget],
+    [beginFileRequest, isCurrentFileRequest, onStatus, setTab, workspaceTarget],
   );
 
   const closeTabNow = useCallback(
     (path: string) => {
+      activeFileRequestByPathRef.current.delete(path);
       setTabs((current) => {
         const nextState = closeFileTabState(current, activePath, path);
         setActivePath(nextState.activePath);
@@ -474,11 +557,6 @@ export function RemoteWorkspaceEditor({
     await loadChildren(nextRoot, true);
   }, [loadChildren, onOpenDirectory, rootDraft]);
 
-  const visibleTreeRows = useMemo(
-    () => flattenWorkspaceTreeRows(treeNodes, openTreePaths),
-    [openTreePaths, treeNodes],
-  );
-
   const toggleTreeDirectory = useCallback(
     (item: WorkspaceTreeNode) => {
       const opening = !openTreePaths.has(item.path);
@@ -507,9 +585,7 @@ export function RemoteWorkspaceEditor({
   const runWorkspaceEditorCommand = useCallback(
     async (command: RemoteWorkspaceEditorCommandId) => {
       setEditorContextMenu(null);
-      if (
-        !isRemoteWorkspaceEditorCommandEnabled(command, editorCommandState)
-      ) {
+      if (!isRemoteWorkspaceEditorCommandEnabled(command, editorCommandState)) {
         return;
       }
 
@@ -528,13 +604,7 @@ export function RemoteWorkspaceEditor({
 
       await runRemoteWorkspaceEditorMonacoCommand(editorRef.current, command);
     },
-    [
-      activePath,
-      editorCommandState,
-      hasConflict,
-      reloadFile,
-      saveFile,
-    ],
+    [activePath, editorCommandState, hasConflict, reloadFile, saveFile],
   );
 
   useEffect(() => {
@@ -554,6 +624,13 @@ export function RemoteWorkspaceEditor({
     },
     [],
   );
+
+  useEffect(() => {
+    if (!activeTab || activeTab.loading || unsupportedNotice) {
+      editorRef.current = null;
+      setEditorContextMenu(null);
+    }
+  }, [activeTab, unsupportedNotice]);
 
   useEffect(() => {
     const handleTextEditCommand = (event: Event) => {
@@ -581,7 +658,7 @@ export function RemoteWorkspaceEditor({
 
   const openEditorContextMenu = useCallback(
     (event: MouseEvent<HTMLDivElement>) => {
-      if (!activeTab || activeTab.loading) {
+      if (!activeTab || activeTab.loading || unsupportedNotice) {
         return;
       }
       event.preventDefault();
@@ -594,379 +671,61 @@ export function RemoteWorkspaceEditor({
       });
       setEditorContextMenu(position);
     },
-    [activeTab],
+    [activeTab, unsupportedNotice],
   );
 
   return (
-    <>
-    <section
-      className={cn(
-        "kerminal-solid-surface overflow-hidden rounded-2xl border",
-        expanded && "flex h-full min-h-0 flex-col rounded-xl",
-      )}
-    >
-      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-2.5">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <FolderOpen className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-300" />
-          <span className="shrink-0 text-xs font-medium text-zinc-500 dark:text-zinc-400">
-            工作区
-          </span>
-          <input
-            aria-label="远程工作区路径"
-            className="kerminal-field-surface h-8 min-w-0 flex-1 rounded-lg border px-2 font-mono text-xs text-zinc-900 dark:text-zinc-100"
-            onChange={(event) => setRootDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void openWorkspaceFolder();
-              }
-            }}
-            spellCheck={false}
-            value={rootDraft}
-          />
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Button
-            className="h-8 rounded-md px-2 text-xs"
-            onClick={() => void openWorkspaceFolder()}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <FolderOpen className="h-3.5 w-3.5" />
-            打开文件夹
-          </Button>
-          <Button
-            aria-label="刷新工作区树"
-            className="h-8 w-8 rounded-md px-0"
-            onClick={() => void loadChildren(workspaceRoot, true)}
-            size="sm"
-            title="刷新工作区树"
-            type="button"
-            variant="ghost"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
-
-      <div
-          className={cn(
-            "grid grid-cols-1 lg:grid-cols-[18rem_minmax(0,1fr)]",
-            expanded ? "min-h-0 flex-1" : "min-h-[560px]",
-          )}
-      >
-        <aside
-          className={cn(
-            "kerminal-muted-surface min-h-0 border-b border-[var(--border-subtle)] lg:border-b-0 lg:border-r",
-            expanded && "flex flex-col",
-          )}
-        >
-          <div className="flex h-9 items-center justify-between border-b border-[var(--border-subtle)] px-3 text-xs text-zinc-500 dark:text-zinc-400">
-            <span className="truncate font-mono">{workspaceRoot}</span>
-            <span>{treeFileCount(treeNodes)} 文件</span>
-          </div>
-          <div
-            className={cn(
-              "overflow-y-auto py-1",
-              expanded ? "min-h-0 flex-1" : "h-[460px]",
-            )}
-            role="tree"
-            aria-label="远程工作区树"
-          >
-            {visibleTreeRows.map(({ depth, node }) => (
-              <WorkspaceTreeRow
-                activePath={activePath}
-                depth={depth}
-                isOpen={depth === 0 || openTreePaths.has(node.path)}
-                key={node.path}
-                node={node}
-                onOpenFile={(path) => void openFile(path)}
-                onToggleDirectory={toggleTreeDirectory}
-              />
-            ))}
-          </div>
-          <WorkspaceInlineStatus status={treeStatus} />
-        </aside>
-
-        <div className="flex min-h-0 flex-col">
-          <div className="flex min-h-10 items-center gap-1 overflow-x-auto border-b border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2">
-            {tabs.length === 0 ? (
-              <div className="px-2 text-xs text-zinc-500 dark:text-zinc-400">
-                未打开文件
-              </div>
-            ) : (
-              tabs.map((tab) => (
-                <button
-                  className={cn(
-                    "kerminal-focus-ring kerminal-pressable flex h-8 max-w-56 shrink-0 items-center gap-1.5 rounded-lg border px-2 text-xs transition",
-                    activePath === tab.path
-                      ? "border-sky-400/35 bg-[var(--surface-selected)] text-sky-800 dark:text-sky-100"
-                      : "border-transparent text-zinc-600 hover:border-[var(--border-subtle)] hover:bg-[var(--surface-hover)] dark:text-zinc-300",
-                  )}
-                  key={tab.path}
-                  onClick={() => setActivePath(tab.path)}
-                  title={tab.path}
-                  type="button"
-                >
-                  <FileText className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{tab.name}</span>
-                  {isDirtyTab(tab) ? (
-                    <span
-                      aria-label={`${tab.name} 未保存`}
-                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
-                    />
-                  ) : null}
-                  <span
-                    aria-label={`关闭 ${tab.name}`}
-                    className="kerminal-focus-ring kerminal-pressable rounded p-0.5 text-zinc-400 hover:bg-[var(--surface-hover)] hover:text-zinc-900 dark:hover:text-zinc-100"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      requestCloseTab(tab.path);
-                    }}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <X className="h-3 w-3" />
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-2">
-            <div className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-500 dark:text-zinc-400">
-              {activeTab?.path ?? workspaceProtocol}
-            </div>
-            <EditorToolbarButton
-              disabled={!activeTab}
-              icon={<Search className="h-3.5 w-3.5" />}
-              label="查找"
-              onClick={() => runEditorAction("actions.find")}
-            />
-            <EditorToolbarButton
-              disabled={!activeTab}
-              icon={<Search className="h-3.5 w-3.5" />}
-              label="替换"
-              onClick={() =>
-                runEditorAction("editor.action.startFindReplaceAction")
-              }
-            />
-            <EditorToolbarButton
-              disabled={!activeTab || activeTab.loading}
-              icon={<RotateCcw className="h-3.5 w-3.5" />}
-              label="重新加载"
-              onClick={() => activePath && void reloadFile(activePath)}
-            />
-            {hasConflict ? (
-              <EditorToolbarButton
-                disabled={!activeTab?.error || activeTab.saving}
-                icon={<AlertTriangle className="h-3.5 w-3.5" />}
-                label="覆盖保存"
-                onClick={() => activePath && void saveFile(activePath, true)}
-              />
-            ) : null}
-            <Button
-              className="h-8 rounded-md px-2 text-xs"
-              disabled={
-                !activeTab ||
-                activeTab.loading ||
-                activeTab.saving ||
-                activeTab.readonly ||
-                !isDirtyTab(activeTab)
-              }
-              onClick={() => activePath && void saveFile(activePath)}
-              size="sm"
-              type="button"
-              variant="primary"
-            >
-              {activeTab?.saving ? (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Save className="h-3.5 w-3.5" />
-              )}
-              保存
-            </Button>
-          </div>
-
-          <div
-            className="min-h-0 flex-1 bg-zinc-950"
-            data-kerminal-text-editor
-            onContextMenu={openEditorContextMenu}
-          >
-            {activeTab ? (
-              activeTab.loading ? (
-                <div
-                  className={cn(
-                    "flex items-center justify-center text-sm text-zinc-400",
-                    expanded ? "h-full min-h-[360px]" : "h-[460px]",
-                  )}
-                >
-                  正在打开 {activeTab.name}...
-                </div>
-              ) : (
-                <MonacoTextEditor
-                  beforeMount={configureKerminalMonaco}
-                  height={expanded ? "100%" : "460px"}
-                  language={activeTab.language}
-                  onChange={(value) => {
-                    if (!activePath) {
-                      return;
-                    }
-                    setTab(activePath, (tab) => ({
-                      ...tab,
-                      content: value ?? "",
-                      error: null,
-                    }));
-                  }}
-                  onMount={handleEditorMount}
-                  options={{
-                    automaticLayout: true,
-                    contextmenu: false,
-                    fontFamily: editorFontOptions.fontFamily,
-                    fontSize: editorFontOptions.fontSize,
-                    fontWeight: editorFontOptions.fontWeight,
-                    minimap: { enabled: true },
-                    padding: { bottom: 12, top: 12 },
-                    readOnly: activeTab.readonly,
-                    renderLineHighlight: "all",
-                    renderWhitespace: "selection",
-                    scrollBeyondLastLine: false,
-                    smoothScrolling: true,
-                    tabSize: 2,
-                    wordWrap: "on",
-                  }}
-                  path={activeTab.path}
-                  theme="kerminal-dark"
-                  value={activeTab.content}
-                />
-              )
-            ) : (
-              <div
-                className={cn(
-                  "flex items-center justify-center text-sm text-zinc-400",
-                  expanded ? "h-full min-h-[360px]" : "h-[460px]",
-                )}
-              >
-                从左侧选择文件
-              </div>
-            )}
-          </div>
-
-          <div className="flex min-h-9 flex-wrap items-center gap-2 border-t border-[var(--border-subtle)] px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
-            <span>{tabs.length} 标签</span>
-            <span>{dirtyTabCount} 未保存</span>
-            {activeTab ? (
-              <>
-                <span>{activeTab.language}</span>
-                <span>{activeTab.lineEnding}</span>
-                <span>{activeTab.encoding}</span>
-                {activeTab.readonly ? (
-                  <span className="text-amber-600 dark:text-amber-300">
-                    只读
-                  </span>
-                ) : null}
-              </>
-            ) : null}
-            <WorkspaceInlineStatus status={activeTabStatus(activeTab)} />
-          </div>
-        </div>
-      </div>
-    </section>
-
-    {editorContextMenu && activeTab ? (
-      <RemoteWorkspaceEditorContextMenu
-        groups={editorCommandGroups}
-        onAction={(command) => {
-          void runWorkspaceEditorCommand(command);
-        }}
-        onClose={() => setEditorContextMenu(null)}
-        position={editorContextMenu}
-        title={activeTab.name}
-      />
-    ) : null}
-
-    <ModalShell
-      description={pendingCloseTab?.path}
-      footer={
-        <>
-          <Button
-            onClick={() => setPendingClosePath(null)}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            取消
-          </Button>
-          <Button
-            onClick={() => {
-              if (pendingClosePath) {
-                closeTabNow(pendingClosePath);
-              }
-              setPendingClosePath(null);
-            }}
-            size="sm"
-            type="button"
-            variant="danger"
-          >
-            放弃修改
-          </Button>
-          <Button
-            onClick={async () => {
-              if (!pendingClosePath) {
-                return;
-              }
-              const saved = await saveFile(pendingClosePath);
-              if (saved) {
-                closeTabNow(pendingClosePath);
-                setPendingClosePath(null);
-              }
-            }}
-            size="sm"
-            type="button"
-            variant="primary"
-          >
-            <Save className="h-4 w-4" />
-            保存后关闭
-          </Button>
-        </>
-      }
-      onClose={() => setPendingClosePath(null)}
-      open={Boolean(pendingCloseTab)}
-      size="small"
-      title="关闭未保存文件"
-    >
-      <div className="rounded-xl border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-100">
-        当前文件有未保存修改。
-      </div>
-    </ModalShell>
-    </>
+    <RemoteWorkspaceEditorView
+      activePath={activePath}
+      activeTab={activeTab}
+      closeTabNow={closeTabNow}
+      dirtyTabCount={dirtyTabCount}
+      editorCommandGroups={editorCommandGroups}
+      editorContextMenu={editorContextMenu}
+      editorFontOptions={editorFontOptions}
+      expanded={expanded}
+      handleEditorMount={handleEditorMount}
+      hasConflict={Boolean(hasConflict)}
+      loadChildren={loadChildren}
+      onEditorContextMenu={openEditorContextMenu}
+      openFile={openFile}
+      openTreePaths={openTreePaths}
+      openWorkspaceFolder={openWorkspaceFolder}
+      pendingClosePath={pendingClosePath}
+      pendingCloseTab={pendingCloseTab}
+      reloadFile={reloadFile}
+      requestCloseTab={requestCloseTab}
+      rootDraft={rootDraft}
+      runEditorAction={runEditorAction}
+      runWorkspaceEditorCommand={runWorkspaceEditorCommand}
+      saveFile={saveFile}
+      setActivePath={setActivePath}
+      setEditorContextMenu={setEditorContextMenu}
+      setPendingClosePath={setPendingClosePath}
+      setRootDraft={setRootDraft}
+      setTab={setTab}
+      tabs={tabs}
+      toggleTreeDirectory={toggleTreeDirectory}
+      treeNodes={treeNodes}
+      treeStatus={treeStatus}
+      unsupportedNotice={unsupportedNotice}
+      workspaceProtocol={workspaceProtocol}
+      workspaceRoot={workspaceRoot}
+    />
   );
 }
 
-type WorkspaceTreeRenderRow = {
-  depth: number;
-  node: WorkspaceTreeNode;
-};
-
-function flattenWorkspaceTreeRows(
-  nodes: WorkspaceTreeNode[],
-  openPaths: Set<string>,
-  depth = 0,
-): WorkspaceTreeRenderRow[] {
-  return nodes.flatMap((node) => {
-    const row = { depth, node };
-    const isRootRow = depth === 0;
-    if (
-      node.kind !== "directory" ||
-      (!isRootRow && !openPaths.has(node.path)) ||
-      !node.children?.length
-    ) {
-      return [row];
-    }
-    return [
-      row,
-      ...flattenWorkspaceTreeRows(node.children, openPaths, depth + 1),
-    ];
-  });
+/** 把已知不支持类型或旧后端二进制错误收敛为不可编辑、无正文的稳定 Tab 状态。 */
+function applyUnsupportedPreview(tab: OpenFileTab): OpenFileTab {
+  return {
+    ...tab,
+    binary: true,
+    content: "",
+    encoding: "binary",
+    error: null,
+    loading: false,
+    readonly: true,
+    savedContent: "",
+    saving: false,
+  };
 }

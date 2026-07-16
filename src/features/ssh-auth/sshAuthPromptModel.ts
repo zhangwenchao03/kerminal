@@ -4,7 +4,7 @@ import type {
   SshAuthSecretKind,
 } from "../../lib/sshAuthApi";
 
-export type SshAuthPromptFieldKind = "password" | "textarea";
+type SshAuthPromptFieldKind = "password" | "textarea";
 
 export interface SshAuthPromptViewModel {
   canPersist: boolean;
@@ -81,7 +81,7 @@ export function canPersistSshAuthPrompt(
   );
 }
 
-export function sshAuthPromptFieldKind(
+function sshAuthPromptFieldKind(
   secretKind: SshAuthSecretKind,
 ): SshAuthPromptFieldKind {
   return secretKind === "privateKey" ? "textarea" : "password";

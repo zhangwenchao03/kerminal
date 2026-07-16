@@ -1,3 +1,7 @@
+/**
+ * @author kongweiguang
+ */
+
 import { render, screen, waitFor } from "@testing-library/react";
 import { defaultAppSettings } from "../../../../src/features/settings/settingsModel";
 import { describe, expect, it, vi } from "vitest";
@@ -74,9 +78,45 @@ describe("XtermPane session targets and appearance", () => {
 
     state = collectCurrentDirOscSequences("", "\r\nroot@pkuai01:~# ");
     expect(state).toEqual({ buffer: "", paths: [] });
+
+    state = collectCurrentDirOscSequences(
+      "",
+      "\u001b]7;file://prod.internal/srv/release%20candidate\u0007",
+    );
+    expect(state).toEqual({
+      buffer: "",
+      paths: ["/srv/release candidate"],
+    });
+
+    state = collectCurrentDirOscSequences("", "\u001b]7;file://prod.internal/srv");
+    expect(state.paths).toEqual([]);
+    state = collectCurrentDirOscSequences(
+      state.buffer,
+      "/split-path\u001b\\",
+    );
+    expect(state).toEqual({ buffer: "", paths: ["/srv/split-path"] });
+
+    expect(
+      collectCurrentDirOscSequences(
+        "",
+        "\u001b]7;https://prod.internal/srv/app\u0007",
+      ).paths,
+    ).toEqual([]);
+    expect(
+      collectCurrentDirOscSequences(
+        "",
+        "\u001b]7;file://prod.internal/srv/app?token=secret\u0007",
+      ).paths,
+    ).toEqual([]);
+
+    state = collectCurrentDirOscSequences(
+      "",
+      "\u001b]7;file://prod.internal/srv/release\u0007\r\nroot@prod.internal:/stale# ",
+    );
+    expect(state).toEqual({ buffer: "", paths: ["/srv/release"] });
   });
 
-  it("reports SSH cwd changes from OSC output sequences and shell prompts", async () => {
+  it("keeps SSH protocol cwd after prompt fallback text appears", async () => {
     const onCurrentCwdChange = vi.fn();
 
     render(
@@ -114,7 +154,8 @@ describe("XtermPane session targets and appearance", () => {
       kind: "data",
       sessionId: "ssh-session-1",
     });
-    expect(onCurrentCwdChange).toHaveBeenLastCalledWith("/dev");
+    expect(onCurrentCwdChange).toHaveBeenCalledTimes(2);
+    expect(onCurrentCwdChange).toHaveBeenLastCalledWith("/srv/app");
   });
 
   it("trusts OSC 7 cwd updates only for local shell integration enabled sessions", async () => {
@@ -381,6 +422,35 @@ describe("XtermPane session targets and appearance", () => {
     });
   });
 
+  it("releases an external SSH launch when its terminal pane unmounts", async () => {
+    const view = render(
+      <XtermPane
+        focused
+        paneId="pane-external-ssh"
+        remoteHostId="external:launch-reconnect"
+        resolvedTheme="dark"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="external server"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mocks.api.createSshTerminalSession).toHaveBeenCalledWith(
+        { cols: 100, hostId: "external:launch-reconnect", rows: 30 },
+        expect.any(Function),
+      );
+    });
+
+    view.unmount();
+
+    await waitFor(() => {
+      expect(mocks.api.closeTerminal).toHaveBeenCalledWith("ssh-session-1");
+      expect(mocks.api.closeExternalSshLaunch).toHaveBeenCalledWith(
+        "launch-reconnect",
+      );
+    });
+  });
+
   it("clears the default SSH startup notice before redacted auth output", async () => {
     mocks.api.createSshTerminalSession.mockImplementationOnce(
       async (_request, onOutput) => {
@@ -638,7 +708,8 @@ describe("XtermPane session targets and appearance", () => {
     expect(terminalElement).toHaveStyle({
       fontFamily: "JetBrains Mono, monospace",
     });
-    expect(terminal.refresh).toHaveBeenCalledWith(0, 29);
+    expect(terminal.refresh).not.toHaveBeenCalled();
+    expect(mocks.fitInstances[0].fit).toHaveBeenCalled();
     expect(mocks.terminalInstances).toHaveLength(1);
   });
 

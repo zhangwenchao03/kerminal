@@ -4,16 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsToolContent } from "../../../../src/features/settings/SettingsToolContent";
 import { defaultAppSettings, type AppSettings } from "../../../../src/features/settings/settingsModel";
 import { xtermThemeFor } from "../../../../src/features/settings/terminalTheme";
+import { terminalRendererRegistry } from "../../../../src/features/terminal/terminalRendererRegistry";
 
 const fileDialogMock = vi.hoisted(() => ({
   openLocalDirectory: vi.fn(),
   selectLocalFile: vi.fn(),
-}));
-const externalLaunchApiMock = vi.hoisted(() => ({
-  deleteExternalLaunchAliases: vi.fn(),
-  generateExternalLaunchAliases: vi.fn(),
-  getExternalLaunchAliasStatus: vi.fn(),
-  openExternalLaunchAliasDirectory: vi.fn(),
 }));
 const diagnosticsApiMock = vi.hoisted(() => ({
   getManagedSshRuntimeSnapshot: vi.fn(),
@@ -45,19 +40,6 @@ vi.mock("../../../../src/lib/fileDialogApi", () => ({
   openLocalDirectory: fileDialogMock.openLocalDirectory,
   selectLocalFile: fileDialogMock.selectLocalFile,
 }));
-vi.mock("../../../../src/lib/externalLaunchApi", async () => {
-  const actual = await vi.importActual("../../../../src/lib/externalLaunchApi");
-  return {
-    ...actual,
-    deleteExternalLaunchAliases: externalLaunchApiMock.deleteExternalLaunchAliases,
-    generateExternalLaunchAliases:
-      externalLaunchApiMock.generateExternalLaunchAliases,
-    getExternalLaunchAliasStatus:
-      externalLaunchApiMock.getExternalLaunchAliasStatus,
-    openExternalLaunchAliasDirectory:
-      externalLaunchApiMock.openExternalLaunchAliasDirectory,
-  };
-});
 vi.mock("../../../../src/lib/diagnosticsApi", async () => {
   const actual = await vi.importActual("../../../../src/lib/diagnosticsApi");
   return {
@@ -79,22 +61,6 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     fileDialogMock.openLocalDirectory.mockResolvedValue(undefined);
     fileDialogMock.selectLocalFile.mockReset();
     fileDialogMock.selectLocalFile.mockResolvedValue(null);
-    externalLaunchApiMock.deleteExternalLaunchAliases.mockReset();
-    externalLaunchApiMock.deleteExternalLaunchAliases.mockResolvedValue([
-      { removedAlias: true, tool: "putty" },
-    ]);
-    externalLaunchApiMock.generateExternalLaunchAliases.mockReset();
-    externalLaunchApiMock.generateExternalLaunchAliases.mockResolvedValue([
-      { installMode: "copy", state: "managed", tool: "putty" },
-    ]);
-    externalLaunchApiMock.getExternalLaunchAliasStatus.mockReset();
-    externalLaunchApiMock.getExternalLaunchAliasStatus.mockResolvedValue(
-      externalLaunchAliasStatus(),
-    );
-    externalLaunchApiMock.openExternalLaunchAliasDirectory.mockReset();
-    externalLaunchApiMock.openExternalLaunchAliasDirectory.mockResolvedValue(
-      "C:\\Kerminal\\compat",
-    );
     diagnosticsApiMock.getManagedSshRuntimeSnapshot.mockReset();
     diagnosticsApiMock.getManagedSshRuntimeSnapshot.mockResolvedValue(
       managedSshRuntimeSnapshot(),
@@ -285,7 +251,18 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     expect(screen.queryByText("Managed sessions")).not.toBeInTheDocument();
     expect(screen.queryByText("Fallback reasons")).not.toBeInTheDocument();
     expect(screen.queryByText("runtime-unwired")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /保持默认渲染路径/ }),
+    ).not.toBeVisible();
 
+    await user.click(screen.getByText("终端渲染"));
+
+    expect(
+      screen.getByRole("button", { name: /保持默认渲染路径/ }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: /保持默认渲染路径/ }),
+    ).toHaveAttribute("aria-pressed", "true");
     await user.click(screen.getByRole("button", { name: /保持默认渲染路径/ }));
     expect(onSettingsChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -306,6 +283,110 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
         terminal: expect.objectContaining({ rendererType: "auto" }),
       }),
     );
+  });
+
+  it("retries only renderer panes that entered fallback", async () => {
+    const user = userEvent.setup();
+    const retryGpu = vi.fn();
+    terminalRendererRegistry.updateMode("auto");
+    const unregister = terminalRendererRegistry.registerPane({
+      controller: {
+        attach: vi.fn(),
+        dispose: vi.fn(),
+        getState: () => ({
+          backend: "cpu",
+          fallbackReason: "context-lost",
+          mode: "auto",
+        }),
+        retryGpu,
+        updateMode: vi.fn(),
+      },
+      focused: true,
+      paneId: "settings-retry-pane",
+      visible: true,
+    });
+
+    try {
+      terminalRendererRegistry.recordPaneFailure(
+        "settings-retry-pane",
+        "context-lost",
+      );
+      render(
+        <SettingsToolContent
+          initialSectionId="settings-terminal"
+          onSettingsChange={vi.fn()}
+          settings={systemThemeSettings()}
+        />,
+      );
+
+      await user.click(screen.getByText("终端渲染"));
+      await user.click(
+        screen.getByRole("button", { name: "重新尝试 GPU" }),
+      );
+
+      expect(retryGpu).toHaveBeenCalledTimes(1);
+    } finally {
+      unregister();
+      terminalRendererRegistry.updateMode("gpu");
+      terminalRendererRegistry.updateMode("cpu");
+    }
+  });
+
+  it("allows a global auto fallback to retry every GPU-capable pane", async () => {
+    const user = userEvent.setup();
+    const retryGpu = [vi.fn(), vi.fn(), vi.fn()];
+    terminalRendererRegistry.updateMode("auto");
+    const unregister = retryGpu.map((retry, index) =>
+      terminalRendererRegistry.registerPane({
+        controller: {
+          attach: vi.fn(),
+          canAttemptGpu: () => true,
+          dispose: vi.fn(),
+          getState: () => ({
+            backend: "cpu",
+            mode: "auto",
+          }),
+          retryGpu: retry,
+          updateMode: vi.fn(),
+        },
+        paneId: `settings-global-retry-${index}`,
+      }),
+    );
+
+    try {
+      for (let index = 0; index < retryGpu.length; index += 1) {
+        terminalRendererRegistry.recordPaneFailure(
+          `settings-global-retry-${index}`,
+          "load-failed",
+        );
+      }
+      expect(terminalRendererRegistry.getSnapshot().suggestedFallback).toBe(
+        "cpu",
+      );
+      render(
+        <SettingsToolContent
+          initialSectionId="settings-terminal"
+          onSettingsChange={vi.fn()}
+          settings={systemThemeSettings()}
+        />,
+      );
+
+      await user.click(screen.getByText("终端渲染"));
+      await user.click(
+        screen.getByRole("button", { name: "重新尝试 GPU" }),
+      );
+
+      for (const retry of retryGpu) {
+        expect(retry).toHaveBeenCalledTimes(1);
+      }
+      expect(
+        terminalRendererRegistry.getSnapshot().suggestedFallback,
+      ).toBeUndefined();
+    } finally {
+      unregister.forEach((dispose) => dispose());
+      terminalRendererRegistry.updateMode("gpu");
+      terminalRendererRegistry.updateMode("cpu");
+    }
   });
 
   it("searches settings and opens the matching section", async () => {
@@ -374,7 +455,7 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     expect(
       screen.getAllByText(/<PASSWORD_FROM_PLATFORM>/).length,
     ).toBeGreaterThan(0);
-    expect(screen.getByText(/putty\.exe -ssh/)).toHaveClass(
+    expect(screen.getByText(/kerminal\.exe -ssh/)).toHaveClass(
       "whitespace-pre-wrap",
       "break-all",
     );
@@ -388,14 +469,7 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     expect(
       screen.queryByRole("switch", { name: "启用本地 shim bridge" }),
     ).not.toBeInTheDocument();
-    expect(
-      externalLaunchApiMock.getExternalLaunchAliasStatus,
-    ).not.toHaveBeenCalled();
-    expect(
-      externalLaunchApiMock.generateExternalLaunchAliases,
-    ).not.toHaveBeenCalled();
-    expect(externalLaunchApiMock.deleteExternalLaunchAliases).not.toHaveBeenCalled();
-    expect(externalLaunchApiMock.openExternalLaunchAliasDirectory).not.toHaveBeenCalled();
+    expect(screen.getByRole("switch", { name: "允许 PuTTY" })).toBeVisible();
   });
 
   it("updates external launch policy controls without exposing shim controls", async () => {
@@ -415,6 +489,7 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
     expect(
       screen.queryByRole("switch", { name: "启用本地 shim bridge" }),
     ).not.toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "允许 PuTTY" })).not.toBeVisible();
 
     await user.click(
       screen.getByRole("switch", { name: "启用外部 SSH 启动" }),
@@ -449,9 +524,12 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
       }),
     );
 
+    await user.click(screen.getByText("参数兼容性"));
+
     const puttyPersonaSwitch = screen.getByRole("switch", {
       name: "允许 PuTTY",
     });
+    expect(puttyPersonaSwitch).toBeVisible();
     expect(puttyPersonaSwitch).toHaveAttribute("data-state", "checked");
 
     await user.click(puttyPersonaSwitch);
@@ -462,7 +540,6 @@ describe("SettingsToolContent appearance preview theme resolution", () => {
         }),
       }),
     );
-    expect(externalLaunchApiMock.getExternalLaunchAliasStatus).not.toHaveBeenCalled();
   });
 });
 
@@ -478,7 +555,6 @@ function systemThemeSettings(): AppSettings {
     themeMode: "system",
   };
 }
-
 function mockPrefersDark(matches: boolean) {
   vi.stubGlobal("matchMedia", (query: string) => ({
     addEventListener: vi.fn(),
@@ -491,53 +567,6 @@ function mockPrefersDark(matches: boolean) {
     removeListener: vi.fn(),
 	  }));
 	}
-
-function externalLaunchAliasStatus() {
-  return {
-    aliasDirectory: "C:\\Kerminal\\compat",
-    aliases: [
-      {
-        aliasPath: "C:\\Kerminal\\compat\\putty.exe",
-        markerPath: "C:\\Kerminal\\compat\\putty.exe.kerminal-alias.json",
-        markerPresent: true,
-        state: "managed",
-        tool: "putty",
-      },
-      {
-        aliasPath: "C:\\Kerminal\\compat\\MobaXterm.exe",
-        markerPath: "C:\\Kerminal\\compat\\MobaXterm.exe.kerminal-alias.json",
-        markerPresent: false,
-        state: "missing",
-        tool: "mobaxterm",
-      },
-      {
-        aliasPath: "C:\\Kerminal\\compat\\Xshell.exe",
-        markerPath: "C:\\Kerminal\\compat\\Xshell.exe.kerminal-alias.json",
-        markerPresent: false,
-        state: "missing",
-        tool: "xshell",
-      },
-      {
-        aliasPath: "C:\\Kerminal\\compat\\SecureCRT.exe",
-        markerPath: "C:\\Kerminal\\compat\\SecureCRT.exe.kerminal-alias.json",
-        markerPresent: false,
-        state: "missing",
-        tool: "securecrt",
-      },
-      {
-        aliasPath: "C:\\Kerminal\\compat\\ssh.exe",
-        markerPath: "C:\\Kerminal\\compat\\ssh.exe.kerminal-alias.json",
-        markerPresent: false,
-        state: "missing",
-        tool: "openssh",
-      },
-    ],
-    installDirectory: "C:\\Kerminal",
-    kerminalExecutable: "C:\\Kerminal\\kerminal.exe",
-    shimAvailable: true,
-    shimExecutable: "C:\\Kerminal\\kerminal-launch-shim.exe",
-  };
-}
 
 function runtimePerformanceSnapshot() {
   return {

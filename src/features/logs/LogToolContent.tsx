@@ -14,6 +14,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { Button } from "../../components/ui/button";
@@ -32,8 +33,6 @@ import {
   getRuntimeHealthSnapshot,
   type RuntimeStorageHealth,
 } from "../../lib/diagnosticsApi";
-import type { TerminalPane } from "../workspace/types";
-
 const COMMAND_HISTORY_LIMIT = 100;
 const COMMAND_HISTORY_PAGE_SIZE = 8;
 const SOURCE_FILTER_OPTIONS: SelectOption[] = [
@@ -45,12 +44,23 @@ const SOURCE_FILTER_OPTIONS: SelectOption[] = [
   { label: "工具", value: "tool" },
 ];
 
+interface CommandHistoryPaneContext {
+  containerId?: string;
+  id: string;
+  machineId: string;
+  mode: "local" | "ssh" | "telnet" | "serial" | "container" | "preview";
+  remoteHostId?: string;
+  title: string;
+}
+
 interface LogToolContentProps {
+  active?: boolean;
   diagnosticsBundleNotice?: ReactNode;
-  focusedPane?: TerminalPane;
+  focusedPane?: CommandHistoryPaneContext;
 }
 
 export function LogToolContent({
+  active = true,
   diagnosticsBundleNotice,
   focusedPane,
 }: LogToolContentProps) {
@@ -69,27 +79,90 @@ export function LogToolContent({
     () => buildHistoryScope(focusedPane),
     [focusedPane],
   );
+  const historyBindingKey = useMemo(
+    () =>
+      [
+        historyScope.request.target ?? "none",
+        historyScope.request.paneId ?? "none",
+        historyScope.request.remoteHostId ?? "none",
+      ].join(":"),
+    [historyScope.request],
+  );
+  const activeRef = useRef(active);
+  const historyBindingKeyRef = useRef(historyBindingKey);
+  const historyRequestIdRef = useRef(0);
+  const logStorageRequestIdRef = useRef(0);
+  const [historyStateBindingKey, setHistoryStateBindingKey] =
+    useState(historyBindingKey);
+  activeRef.current = active;
+  historyBindingKeyRef.current = historyBindingKey;
+  const historyStateCurrent = historyStateBindingKey === historyBindingKey;
+  const visibleEntries = useMemo(
+    () => (historyStateCurrent ? entries : []),
+    [entries, historyStateCurrent],
+  );
+  const visibleError = historyStateCurrent ? error : null;
+  const visibleLoading = historyStateCurrent
+    ? loading
+    : active && historyScope.bound;
+
+  // 请求完成时同时核对代次与绑定 key，隐藏或切换 pane 后的旧结果不得回写。
+  const isCurrentHistoryRequest = useCallback(
+    (requestId: number, bindingKey: string) =>
+      activeRef.current &&
+      historyBindingKeyRef.current === bindingKey &&
+      historyRequestIdRef.current === requestId,
+    [],
+  );
+  const isCurrentLogStorageRequest = useCallback(
+    (requestId: number) =>
+      activeRef.current && logStorageRequestIdRef.current === requestId,
+    [],
+  );
 
   const loadLogStorage = useCallback(async () => {
+    if (!activeRef.current) {
+      return;
+    }
+    const requestId = ++logStorageRequestIdRef.current;
     setLogStorageLoading(true);
     setLogStorageError(null);
     try {
       const snapshot = await getRuntimeHealthSnapshot();
-      setLogStorage(snapshot.storage);
+      if (isCurrentLogStorageRequest(requestId)) {
+        setLogStorage(snapshot.storage);
+      }
     } catch (nextError) {
-      setLogStorageError(
-        nextError instanceof Error ? nextError.message : String(nextError),
-      );
+      if (isCurrentLogStorageRequest(requestId)) {
+        setLogStorageError(
+          nextError instanceof Error ? nextError.message : String(nextError),
+        );
+      }
     } finally {
-      setLogStorageLoading(false);
+      if (isCurrentLogStorageRequest(requestId)) {
+        setLogStorageLoading(false);
+      }
     }
-  }, []);
+  }, [isCurrentLogStorageRequest]);
 
   useEffect(() => {
+    if (!active) {
+      logStorageRequestIdRef.current += 1;
+      setLogStorageLoading(false);
+      return undefined;
+    }
     void loadLogStorage();
-  }, [loadLogStorage]);
+    return () => {
+      logStorageRequestIdRef.current += 1;
+    };
+  }, [active, loadLogStorage]);
 
   const loadHistory = useCallback(async () => {
+    if (!activeRef.current || !historyScope.bound) {
+      return;
+    }
+    const requestId = ++historyRequestIdRef.current;
+    const bindingKey = historyBindingKey;
     setLoading(true);
     setError(null);
     try {
@@ -99,34 +172,67 @@ export function LogToolContent({
         query: query || undefined,
         source: source || undefined,
       });
-      setEntries(nextEntries);
+      if (isCurrentHistoryRequest(requestId, bindingKey)) {
+        setEntries(nextEntries);
+      }
     } catch (nextError) {
-      setError(
-        nextError instanceof Error ? nextError.message : String(nextError),
-      );
+      if (isCurrentHistoryRequest(requestId, bindingKey)) {
+        setError(
+          nextError instanceof Error ? nextError.message : String(nextError),
+        );
+      }
     } finally {
-      setLoading(false);
+      if (isCurrentHistoryRequest(requestId, bindingKey)) {
+        setLoading(false);
+      }
     }
-  }, [historyScope.request, query, source]);
+  }, [
+    historyBindingKey,
+    historyScope.bound,
+    historyScope.request,
+    isCurrentHistoryRequest,
+    query,
+    source,
+  ]);
 
   useEffect(() => {
-    void loadHistory();
-  }, [loadHistory]);
+    historyRequestIdRef.current += 1;
+    setHistoryStateBindingKey(historyBindingKey);
+    setEntries([]);
+    setError(null);
+    setLoading(false);
+    setPage(1);
+  }, [historyBindingKey]);
 
-  const historyStats = useMemo(() => buildHistoryStats(entries), [entries]);
+  useEffect(() => {
+    if (!active) {
+      historyRequestIdRef.current += 1;
+      setLoading(false);
+      return undefined;
+    }
+    void loadHistory();
+    return () => {
+      historyRequestIdRef.current += 1;
+    };
+  }, [active, loadHistory]);
+
+  const historyStats = useMemo(
+    () => buildHistoryStats(visibleEntries),
+    [visibleEntries],
+  );
   const totalPages = Math.max(
     1,
-    Math.ceil(entries.length / COMMAND_HISTORY_PAGE_SIZE),
+    Math.ceil(visibleEntries.length / COMMAND_HISTORY_PAGE_SIZE),
   );
   const activePage = Math.min(page, totalPages);
   const pageStart = (activePage - 1) * COMMAND_HISTORY_PAGE_SIZE;
-  const pageEntries = entries.slice(
+  const pageEntries = visibleEntries.slice(
     pageStart,
     pageStart + COMMAND_HISTORY_PAGE_SIZE,
   );
-  const pageRangeStart = entries.length === 0 ? 0 : pageStart + 1;
+  const pageRangeStart = visibleEntries.length === 0 ? 0 : pageStart + 1;
   const pageRangeEnd = Math.min(
-    entries.length,
+    visibleEntries.length,
     pageStart + COMMAND_HISTORY_PAGE_SIZE,
   );
 
@@ -145,33 +251,65 @@ export function LogToolContent({
   };
 
   const deleteEntry = async (entryId: string) => {
+    if (
+      !activeRef.current ||
+      !historyScope.bound ||
+      !historyStateCurrent ||
+      !visibleEntries.some((entry) => entry.id === entryId)
+    ) {
+      return;
+    }
+    const bindingKey = historyBindingKey;
     setLoading(true);
     setError(null);
     try {
       await deleteCommandHistory(entryId);
+      if (!activeRef.current || historyBindingKeyRef.current !== bindingKey) {
+        return;
+      }
       await loadHistory();
     } catch (nextError) {
-      setError(
-        nextError instanceof Error ? nextError.message : String(nextError),
-      );
+      if (activeRef.current && historyBindingKeyRef.current === bindingKey) {
+        setError(
+          nextError instanceof Error ? nextError.message : String(nextError),
+        );
+      }
     } finally {
-      setLoading(false);
+      if (activeRef.current && historyBindingKeyRef.current === bindingKey) {
+        setLoading(false);
+      }
     }
   };
 
   const clearEntries = async () => {
+    if (
+      !activeRef.current ||
+      !historyScope.bound ||
+      !historyStateCurrent
+    ) {
+      return;
+    }
+    const bindingKey = historyBindingKey;
+    const scopeRequest = historyScope.request;
     setLoading(true);
     setError(null);
     try {
-      await clearCommandHistory();
+      await clearCommandHistory(scopeRequest);
+      if (!activeRef.current || historyBindingKeyRef.current !== bindingKey) {
+        return;
+      }
       setPage(1);
       await loadHistory();
     } catch (nextError) {
-      setError(
-        nextError instanceof Error ? nextError.message : String(nextError),
-      );
+      if (activeRef.current && historyBindingKeyRef.current === bindingKey) {
+        setError(
+          nextError instanceof Error ? nextError.message : String(nextError),
+        );
+      }
     } finally {
-      setLoading(false);
+      if (activeRef.current && historyBindingKeyRef.current === bindingKey) {
+        setLoading(false);
+      }
     }
   };
 
@@ -179,11 +317,11 @@ export function LogToolContent({
     <section className="space-y-3">
       {diagnosticsBundleNotice}
 
-      <section className="kerminal-solid-surface rounded-lg border p-3">
+      <section className="border-b border-[var(--border-subtle)] pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-              <FileText className="h-4 w-4 text-emerald-500 dark:text-emerald-300" />
+              <FileText className="h-4 w-4 text-[rgb(var(--app-accent))]" />
               应用日志
             </div>
             <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
@@ -247,11 +385,11 @@ export function LogToolContent({
         ) : null}
       </section>
 
-      <section className="kerminal-solid-surface rounded-lg border p-3">
+      <section className="border-b border-[var(--border-subtle)] pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-              <History className="h-4 w-4 text-sky-500 dark:text-sky-300" />
+              <History className="h-4 w-4 text-[rgb(var(--app-accent))]" />
               命令历史
             </div>
             <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
@@ -261,17 +399,23 @@ export function LogToolContent({
           <div className="flex shrink-0 items-center gap-1">
             <Button
               aria-label="刷新命令历史"
-              disabled={loading}
+              disabled={visibleLoading || !historyScope.bound}
               onClick={() => void loadHistory()}
               size="icon"
               title="刷新命令历史"
               variant="ghost"
             >
-              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+              <RefreshCw
+                className={cn("h-4 w-4", visibleLoading && "animate-spin")}
+              />
             </Button>
             <Button
               aria-label="清空命令历史"
-              disabled={loading || entries.length === 0}
+              disabled={
+                visibleLoading ||
+                !historyScope.bound ||
+                visibleEntries.length === 0
+              }
               onClick={() => void clearEntries()}
               size="icon"
               title="清空命令历史"
@@ -333,39 +477,39 @@ export function LogToolContent({
         </div>
       </section>
 
-      {error ? (
+      {visibleError ? (
         <div
           className="rounded-lg border border-rose-300/25 bg-rose-500/10 p-3 text-sm text-rose-700 dark:text-rose-100"
           role="alert"
         >
-          {error}
+          {visibleError}
         </div>
       ) : null}
 
-      <section className="kerminal-solid-surface overflow-hidden rounded-lg border">
+      <section className="kerminal-solid-surface overflow-hidden rounded-[var(--radius-card)] border">
         <div className="flex items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-3 py-2">
           <div className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
             最近记录
           </div>
           <div className="text-xs text-zinc-500 dark:text-zinc-400">
-            {entries.length > 0
-              ? `${pageRangeStart}-${pageRangeEnd} / ${entries.length}`
+            {visibleEntries.length > 0
+              ? `${pageRangeStart}-${pageRangeEnd} / ${visibleEntries.length}`
               : "0 / 0"}
           </div>
         </div>
 
-        {loading && entries.length === 0 ? (
+        {visibleLoading && visibleEntries.length === 0 ? (
           <div className="px-4 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
             正在加载命令历史...
           </div>
         ) : null}
-        {!loading && entries.length === 0 ? (
+        {!visibleLoading && visibleEntries.length === 0 ? (
           <div className="px-4 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
             暂无命令历史。
           </div>
         ) : null}
 
-        {entries.length > 0 ? (
+        {visibleEntries.length > 0 ? (
           <>
             <div className="overflow-x-auto">
               <div className="kerminal-muted-surface grid min-w-[760px] grid-cols-[92px_minmax(180px,1fr)_160px_120px_40px] gap-3 border-b px-3 py-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
@@ -375,7 +519,7 @@ export function LogToolContent({
                 <span>时间</span>
                 <span className="text-right">操作</span>
               </div>
-              <div className="divide-y divide-black/8 dark:divide-white/[0.08]">
+              <div className="divide-y divide-[var(--border-subtle)]">
                 {pageEntries.map((entry) => (
                   <div
                     className="grid min-w-[760px] grid-cols-[92px_minmax(180px,1fr)_160px_120px_40px] items-center gap-3 px-3 py-2 text-sm"
@@ -409,7 +553,7 @@ export function LogToolContent({
                     </span>
                     <Button
                       aria-label={`删除历史 ${entry.command}`}
-                      disabled={loading}
+                      disabled={visibleLoading}
                       onClick={() => void deleteEntry(entry.id)}
                       size="icon"
                       title={`删除历史 ${entry.command}`}
@@ -474,7 +618,8 @@ function buildHistoryStats(entries: CommandHistoryEntry[]) {
   );
 }
 
-function buildHistoryScope(focusedPane?: TerminalPane): {
+function buildHistoryScope(focusedPane?: CommandHistoryPaneContext): {
+  bound: boolean;
   detail: string;
   label: string;
   request: Pick<
@@ -484,6 +629,7 @@ function buildHistoryScope(focusedPane?: TerminalPane): {
 } {
   if (!focusedPane) {
     return {
+      bound: false,
       detail: "未聚焦终端",
       label: "当前终端",
       request: {},
@@ -493,6 +639,7 @@ function buildHistoryScope(focusedPane?: TerminalPane): {
   if (focusedPane.mode === "ssh") {
     const remoteHostId = focusedPane.remoteHostId ?? focusedPane.machineId;
     return {
+      bound: true,
       detail: remoteHostId,
       label: "SSH",
       request: {
@@ -505,6 +652,7 @@ function buildHistoryScope(focusedPane?: TerminalPane): {
 
   if (focusedPane.mode === "container") {
     return {
+      bound: true,
       detail: focusedPane.containerId ?? focusedPane.title,
       label: "容器",
       request: {
@@ -514,7 +662,22 @@ function buildHistoryScope(focusedPane?: TerminalPane): {
     };
   }
 
+  if (focusedPane.mode === "telnet" || focusedPane.mode === "serial") {
+    const targetId = focusedPane.remoteHostId ?? focusedPane.machineId;
+    return {
+      bound: true,
+      detail: targetId,
+      label: focusedPane.mode === "telnet" ? "Telnet" : "Serial",
+      request: {
+        paneId: focusedPane.id,
+        remoteHostId: targetId,
+        target: focusedPane.mode,
+      },
+    };
+  }
+
   return {
+    bound: true,
     detail: focusedPane.title,
     label: "本地",
     request: {

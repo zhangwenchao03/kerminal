@@ -1,27 +1,27 @@
-export interface HostNetworkAssistAutoInjection {
+export interface RemoteSocksAutoInjection {
   command: string;
   hostId: string;
-  protocol: "http" | "socks5";
+  protocol: "socks5";
   proxyUrl: string;
   sessionId: string;
 }
 
-const STORAGE_KEY = "kerminal.hostNetworkAssistAutoInjection.v1";
+const STORAGE_KEY = "kerminal.remoteSocksAutoInjection.v1";
 
 const injectionsByHost = loadPersistedInjections();
 
-export function setHostNetworkAssistAutoInjection(
-  injection: HostNetworkAssistAutoInjection,
+export function setRemoteSocksAutoInjection(
+  injection: RemoteSocksAutoInjection,
 ) {
   injectionsByHost.set(injection.hostId, injection);
   persistInjections();
 }
 
-export function getHostNetworkAssistAutoInjection(hostId: string) {
+export function getRemoteSocksAutoInjection(hostId: string) {
   return injectionsByHost.get(hostId);
 }
 
-export function isHostNetworkAssistAutoInjectionEnabled({
+export function isRemoteSocksAutoInjectionEnabled({
   hostId,
   sessionId,
 }: {
@@ -31,7 +31,7 @@ export function isHostNetworkAssistAutoInjectionEnabled({
   return injectionsByHost.get(hostId)?.sessionId === sessionId;
 }
 
-export function clearHostNetworkAssistAutoInjection(
+export function clearRemoteSocksAutoInjection(
   hostId: string,
   sessionId?: string,
 ) {
@@ -44,13 +44,8 @@ export function clearHostNetworkAssistAutoInjection(
   return true;
 }
 
-export function resetHostNetworkAssistAutoInjectionForTests() {
-  injectionsByHost.clear();
-  clearPersistedInjections();
-}
-
 function loadPersistedInjections() {
-  const map = new Map<string, HostNetworkAssistAutoInjection>();
+  const map = new Map<string, RemoteSocksAutoInjection>();
   const storage = resolveStorage();
   if (!storage) {
     return map;
@@ -94,26 +89,13 @@ function persistInjections() {
   }
 }
 
-function clearPersistedInjections() {
-  const storage = resolveStorage();
-  if (!storage) {
-    return;
-  }
-
-  try {
-    storage.removeItem(STORAGE_KEY);
-  } catch {
-    // Ignore unavailable or blocked storage in tests and restricted webviews.
-  }
-}
-
 function normalizeInjection(
   value: unknown,
-): HostNetworkAssistAutoInjection | undefined {
+): RemoteSocksAutoInjection | undefined {
   if (!value || typeof value !== "object") {
     return undefined;
   }
-  const source = value as Partial<HostNetworkAssistAutoInjection>;
+  const source = value as Partial<RemoteSocksAutoInjection>;
   if (
     typeof source.command !== "string" ||
     typeof source.hostId !== "string" ||
@@ -123,7 +105,7 @@ function normalizeInjection(
     !source.hostId.trim() ||
     !source.proxyUrl.trim() ||
     !source.sessionId.trim() ||
-    (source.protocol !== "http" && source.protocol !== "socks5")
+    source.protocol !== "socks5"
   ) {
     return undefined;
   }

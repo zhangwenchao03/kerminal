@@ -5,7 +5,7 @@
 use std::{
     collections::BTreeSet,
     ffi::{OsStr, OsString},
-    sync::{Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use kerminal_lib::{
@@ -14,9 +14,9 @@ use kerminal_lib::{
         expand_home_relative_path, KerminalPaths, COMMAND_DATABASE_FILE_NAME,
         KERMINAL_CONFIG_ROOT_ENV, KERMINAL_DIR_NAME,
     },
-    state::AppState,
+    state::{AppState, AppStateBuildObserver, AppStateBuildPhase, AppStateBuilder},
     storage::{
-        command_migrations::CURRENT_COMMAND_SCHEMA_VERSION,
+        command_migrations::{self, CURRENT_COMMAND_SCHEMA_VERSION},
         local_file_operations::LocalFileOperationAuditWrite,
     },
 };
@@ -41,6 +41,46 @@ fn resolves_kerminal_paths_under_home_directory() {
     assert_eq!(paths.exports, paths.root.join("exports"));
     assert_eq!(paths.temp, paths.root.join("temp"));
     assert_eq!(paths.diagnostics, paths.root.join("diagnostics"));
+}
+
+#[test]
+fn app_state_builder_initializes_explicit_paths() {
+    let home = tempdir().expect("create temp home");
+    let paths = KerminalPaths::from_home_dir(home.path());
+    let state = AppStateBuilder::with_paths(paths.clone())
+        .build()
+        .expect("build app state");
+
+    assert_eq!(state.paths(), &paths);
+    assert!(paths.command_database_file.exists());
+}
+
+#[test]
+fn app_state_builder_stops_after_an_injected_configuration_failure() {
+    let home = tempdir().expect("create temp home");
+    let paths = KerminalPaths::from_home_dir(home.path());
+    let observer = Arc::new(FailingBuildObserver::new(AppStateBuildPhase::Configuration));
+
+    let error = AppStateBuilder::with_paths(paths.clone())
+        .with_build_observer(observer.clone())
+        .build()
+        .expect_err("configuration observer should stop initialization");
+
+    assert!(
+        matches!(error, AppError::InvalidInput(message) if message == "injected build failure")
+    );
+    assert_eq!(
+        observer.seen(),
+        vec![
+            AppStateBuildPhase::Operations,
+            AppStateBuildPhase::Configuration
+        ]
+    );
+    assert!(paths.command_database_file.is_file());
+    assert!(
+        !paths.root.join("settings.toml").exists(),
+        "configuration seed must not run after its phase was rejected"
+    );
 }
 
 #[test]
@@ -150,6 +190,8 @@ fn command_sqlite_creates_only_command_domain_tables() {
             "command_suggestion_feedback".to_owned(),
             "command_suggestion_provider_cache".to_owned(),
             "command_suggestion_telemetry".to_owned(),
+            "snippet_preferences".to_owned(),
+            "snippet_usage_receipts".to_owned(),
         ])
     );
 }
@@ -224,6 +266,55 @@ fn command_database_rejects_future_schema_version() {
 }
 
 #[test]
+fn command_schema_upgrade_preserves_v1_rows_and_accepts_snippet_provider() {
+    let mut conn = Connection::open_in_memory().expect("open command database");
+    command_migrations::migrate(&mut conn).expect("create current schema");
+    conn.execute(
+        "INSERT INTO command_suggestion_feedback (id, action, provider, replacement_text, input, created_at_unix_ms) VALUES ('old', 'accepted', 'history', 'pwd', 'pw', 1)",
+        [],
+    )
+    .expect("seed existing feedback");
+    conn.pragma_update(None, "user_version", 1)
+        .expect("simulate v1 database");
+
+    command_migrations::migrate(&mut conn).expect("migrate v1 database");
+
+    let preserved: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM command_suggestion_feedback WHERE id = 'old'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read preserved feedback");
+    assert_eq!(preserved, 1);
+    assert_eq!(
+        command_migrations::schema_version(&conn).expect("read migrated version"),
+        CURRENT_COMMAND_SCHEMA_VERSION
+    );
+
+    conn.execute(
+        "INSERT INTO command_suggestion_provider_cache (provider, host_id, scope_key, payload_json, cached_at_unix_ms, expires_at_unix_ms, ttl_seconds) VALUES ('snippet', 'local', 'catalog', '[]', 1, 2, 1)",
+        [],
+    )
+    .expect("insert snippet cache");
+    conn.execute(
+        "INSERT INTO command_suggestion_feedback (id, action, provider, replacement_text, input, created_at_unix_ms) VALUES ('snippet-feedback', 'accepted', 'snippet', 'systemctl status nginx', 'system', 2)",
+        [],
+    )
+    .expect("insert snippet feedback");
+    conn.execute(
+        "INSERT INTO command_suggestion_telemetry (provider, first_event_unix_ms, last_event_unix_ms) VALUES ('snippet', 1, 2)",
+        [],
+    )
+    .expect("insert snippet telemetry");
+    conn.execute(
+        "INSERT INTO command_suggestion_audit_events (id, event_kind, provider, decision, created_at_unix_ms) VALUES ('snippet-audit', 'feedback', 'snippet', 'recorded', 2)",
+        [],
+    )
+    .expect("insert snippet audit");
+}
+
+#[test]
 fn initialization_fails_when_root_path_is_an_existing_file() {
     let file = tempfile::NamedTempFile::new().expect("create temp file");
     let paths = KerminalPaths::from_root(file.path());
@@ -240,6 +331,35 @@ fn env_lock() -> &'static Mutex<()> {
 struct ScopedEnvVar {
     key: &'static str,
     previous: Option<OsString>,
+}
+
+#[derive(Debug)]
+struct FailingBuildObserver {
+    fail_at: AppStateBuildPhase,
+    seen: Mutex<Vec<AppStateBuildPhase>>,
+}
+
+impl FailingBuildObserver {
+    fn new(fail_at: AppStateBuildPhase) -> Self {
+        Self {
+            fail_at,
+            seen: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn seen(&self) -> Vec<AppStateBuildPhase> {
+        self.seen.lock().expect("read observed phases").clone()
+    }
+}
+
+impl AppStateBuildObserver for FailingBuildObserver {
+    fn before_phase(&self, phase: AppStateBuildPhase) -> Result<(), AppError> {
+        self.seen.lock().expect("record observed phase").push(phase);
+        if phase == self.fail_at {
+            return Err(AppError::InvalidInput("injected build failure".to_owned()));
+        }
+        Ok(())
+    }
 }
 
 impl ScopedEnvVar {

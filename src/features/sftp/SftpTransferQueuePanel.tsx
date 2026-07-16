@@ -5,32 +5,26 @@ import {
   CircleAlert,
   Clock3,
   Loader2,
-  X,
 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
 import type { SftpTransferSummary } from "../../lib/sftpApi";
+import { SftpTransferQueueRow } from "./SftpTransferQueueRow";
 import {
-  canCancelTransfer,
-  formatTransferBytes,
-  transferMethodLabel,
-  transferPathSummary,
-  transferPercentLabel,
-  transferProgressPercent,
-  transferStatusClassName,
-  transferStatusLabel,
-  transferTitle,
-} from "./sftpTransferModel";
-import { buildSftpTransferQueuePanelModel } from "./sftpTransferQueuePanelModel";
+  buildSftpTransferQueuePanelModel,
+  formatSftpTransferQueueCounts,
+} from "./sftpTransferQueuePanelModel";
 
 export function SftpTransferQueuePanel({
   error,
   onCancel,
+  onRetry,
   transfers,
 }: {
   error: string | null;
   onCancel: (transferId: string) => void;
+  onRetry: (transfer: SftpTransferSummary) => void;
   transfers: SftpTransferSummary[];
 }) {
   const historyListId = useId();
@@ -40,7 +34,7 @@ export function SftpTransferQueuePanel({
     failedCount,
     hasOverflowHistory,
     hiddenTransferCount,
-    totalCount,
+    historyCount,
     visibleTransfers,
   } = buildSftpTransferQueuePanelModel({ historyExpanded, transfers });
   const HistoryToggleIcon = historyExpanded ? ChevronUp : ChevronDown;
@@ -57,19 +51,13 @@ export function SftpTransferQueuePanel({
         <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-100">
           <QueueIcon activeCount={activeCount} error={error} transfers={transfers} />
           <span className="truncate">传输队列</span>
-          <span className="rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-            {totalCount} 记录
+          <span className="truncate text-xs font-normal text-zinc-500 dark:text-zinc-400">
+            {formatSftpTransferQueueCounts({
+              activeCount,
+              failedCount,
+              historyCount,
+            })}
           </span>
-          {activeCount > 0 ? (
-            <span className="shrink-0 rounded-full border border-sky-300/35 bg-sky-500/10 px-2 py-0.5 text-[11px] text-sky-700 dark:text-sky-100">
-              {activeCount} 活动
-            </span>
-          ) : null}
-          {failedCount > 0 ? (
-            <span className="shrink-0 rounded-full border border-rose-300/35 bg-rose-500/10 px-2 py-0.5 text-[11px] text-rose-700 dark:text-rose-100">
-              {failedCount} 失败
-            </span>
-          ) : null}
         </div>
         {error ? (
           <div className="truncate text-xs text-rose-600 dark:text-rose-300" role="alert">
@@ -92,9 +80,10 @@ export function SftpTransferQueuePanel({
           >
             <div className="space-y-1.5 pr-1">
               {visibleTransfers.map((transfer) => (
-                <TransferQueueRow
+                <SftpTransferQueueRow
                   key={transfer.id}
                   onCancel={onCancel}
+                  onRetry={onRetry}
                   transfer={transfer}
                 />
               ))}
@@ -124,93 +113,7 @@ export function SftpTransferQueuePanel({
             </div>
           ) : null}
         </>
-      ) : (
-        <div className="px-4 pb-3 text-xs text-zinc-500 dark:text-zinc-400">
-          暂无后台传输任务。
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TransferQueueRow({
-  onCancel,
-  transfer,
-}: {
-  onCancel: (transferId: string) => void;
-  transfer: SftpTransferSummary;
-}) {
-  const progress = transferProgressPercent(transfer);
-  const canCancel = canCancelTransfer(transfer);
-
-  return (
-    <div className="kerminal-muted-surface rounded-lg border px-3 py-2">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-2">
-            <span
-              className={cn(
-                "shrink-0 rounded-full border px-2 py-0.5 text-[11px]",
-                transferStatusClassName(transfer.status),
-              )}
-            >
-              {transferStatusLabel(transfer.status, transfer.phase)}
-            </span>
-            <span className="shrink-0 rounded-full border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 py-0.5 text-[11px] text-zinc-500 dark:text-zinc-300">
-              {transferMethodLabel(transfer)}
-            </span>
-            <span className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">
-              {transferTitle(transfer)}
-            </span>
-          </div>
-          <div className="mt-1 truncate font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
-            {transferPathSummary(transfer)}
-          </div>
-          {transfer.error ? (
-            <div className="mt-1 truncate text-xs text-rose-600 dark:text-rose-300">
-              {transfer.error}
-            </div>
-          ) : null}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="text-xs text-zinc-500 dark:text-zinc-400">
-            {transferPercentLabel(transfer)}
-          </span>
-          {canCancel ? (
-            <Button
-              aria-label="取消传输"
-              className="h-7 w-7 rounded-lg"
-              onClick={() => onCancel(transfer.id)}
-              size="icon"
-              type="button"
-              variant="ghost"
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          ) : null}
-        </div>
-      </div>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--surface-hover)]">
-        <div
-          aria-label="传输进度"
-          aria-valuemax={100}
-          aria-valuemin={0}
-          aria-valuenow={Math.round(progress)}
-          className={cn(
-            "h-full rounded-full transition-all",
-            transfer.status === "failed"
-              ? "bg-rose-500"
-              : transfer.status === "canceled"
-                ? "bg-zinc-400"
-                : "bg-sky-500",
-          )}
-          role="progressbar"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
-      <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
-        {formatTransferBytes(transfer)}
-      </div>
+      ) : null}
     </div>
   );
 }

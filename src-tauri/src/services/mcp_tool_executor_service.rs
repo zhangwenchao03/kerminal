@@ -5,7 +5,6 @@
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 use std::time::{SystemTime, UNIX_EPOCH};
-use uuid::Uuid;
 
 use crate::{
     error::{AppError, AppResult},
@@ -32,9 +31,9 @@ use crate::{
         },
         mcp_server::ToolDefinition,
         port_forward::{
-            PortForwardCreateRequest, PortForwardEndpoint, PortForwardKind, PortForwardOrigin,
-            PortForwardProxyApplyScope, PortForwardProxyProtocol, PortForwardPurpose,
-            PortForwardRemoteAccessScope, PortForwardStatus, PortForwardSummary,
+            PortForwardCreateRequest, PortForwardKind, PortForwardOrigin,
+            PortForwardProxyApplyScope, PortForwardProxyProtocol, PortForwardRemoteAccessScope,
+            PortForwardStatus, PortForwardSummary,
         },
         remote_host::{
             build_vault_secret_ref, parse_vault_secret_ref, RemoteHost, RemoteHostAuthType,
@@ -74,7 +73,7 @@ use crate::{
         docker_host_service::DockerHostService,
         encrypted_vault_service::EncryptedVaultService,
         external_launch::ExternalLaunchIntake,
-        local_network_proxy_service::{LocalNetworkProxyService, LocalProxyEntryRequest},
+        mcp_tool_catalog_service::ToolId,
         port_forward_service::PortForwardService,
         remote_host_service::RemoteHostService,
         server_info_service::ServerInfoService,
@@ -252,12 +251,12 @@ pub struct McpToolExecutionContext<'a> {
     pub docker_hosts: &'a DockerHostService,
     /// 外部 SSH 启动 intake 服务。
     pub external_launch_intake: &'a ExternalLaunchIntake,
+    /// 外部 SSH 创建任务运行态注册表。
+    pub external_launch_tasks: &'a crate::services::external_launch::ExternalLaunchTaskRegistry,
     /// tmux 会话管理服务。
     pub tmux: &'a TmuxService,
     /// SSH 端口转发服务。
     pub port_forwards: &'a PortForwardService,
-    /// 本机共享网络代理服务。
-    pub local_network_proxy: &'a LocalNetworkProxyService,
     /// SSH 非交互命令服务。
     pub ssh_commands: &'a SshCommandService,
     /// 受管 SSH 会话运行时。
@@ -290,7 +289,10 @@ impl McpToolExecutorService {
         let tool = find_enabled_tool(tools, tool_id)?;
         let arguments = normalized_arguments(arguments)?;
         validate_required_arguments(&tool, &arguments)?;
-        let result = execute_tool(&context, tools, &tool.id, &arguments).await;
+        let typed_tool_id = ToolId::parse(&tool.id).ok_or_else(|| {
+            AppError::InvalidInput(format!("工具未登记到 typed catalog: {}", tool.id))
+        })?;
+        let result = execute_tool(&context, tools, typed_tool_id, &arguments).await;
         append_agent_mcp_call_log(&context, &tool.id, &arguments, &result);
         Ok(result.into())
     }

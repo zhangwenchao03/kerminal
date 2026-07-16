@@ -134,3 +134,29 @@ pub(crate) fn raw_hash(argv: &[String]) -> String {
     let digest = hasher.finalize();
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
+
+/// 对运行态对象标识生成不可逆短标签；诊断面不得返回可用于操作请求的原始 ID。
+pub(crate) fn opaque_id_hash(value: &str) -> String {
+    let digest = Sha256::digest(value.as_bytes());
+    digest[..6]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// 公开诊断只保留参数形状；host、user、path、command 与附着值都不能离开解析边界。
+pub(crate) fn public_argv_shape(argv: &[String]) -> Vec<String> {
+    argv.iter()
+        .enumerate()
+        .map(|(index, value)| {
+            if index == 0 {
+                "<executable>"
+            } else if value.starts_with('-') || value.starts_with('/') {
+                "<option>"
+            } else {
+                "<argument>"
+            }
+            .to_owned()
+        })
+        .collect()
+}

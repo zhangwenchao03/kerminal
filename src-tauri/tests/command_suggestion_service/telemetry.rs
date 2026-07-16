@@ -11,6 +11,9 @@ fn telemetry_tracks_provider_queries_cache_and_feedback() {
             state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
+                context_key: None,
+                generation: None,
+                mode: Default::default(),
                 input: "gi".to_owned(),
                 cursor: "gi".chars().count(),
                 target: CommandHistoryTarget::Ssh,
@@ -80,6 +83,9 @@ fn telemetry_tracks_remote_cache_misses() {
             state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
+                context_key: None,
+                generation: None,
+                mode: Default::default(),
                 input: "git checkout fe".to_owned(),
                 cursor: "git checkout fe".chars().count(),
                 target: CommandHistoryTarget::Ssh,
@@ -123,6 +129,9 @@ fn telemetry_export_persists_across_app_state_reopen() {
             state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
+                context_key: None,
+                generation: None,
+                mode: Default::default(),
                 input: "gi".to_owned(),
                 cursor: "gi".chars().count(),
                 target: CommandHistoryTarget::Ssh,

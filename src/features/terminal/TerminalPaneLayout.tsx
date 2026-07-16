@@ -8,13 +8,13 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import type {
   ResolvedTheme,
   TerminalAppearance,
-} from "../settings/settingsModel";
+} from "../settings/contracts/index";
 import type {
   MachineGroup,
   TerminalLayoutNode,
   TerminalPane,
   TerminalSplitDirection,
-} from "../workspace/types";
+} from "../workspace/contracts/index";
 import { TerminalPaneErrorBoundary } from "./TerminalPaneErrorBoundary";
 import { TerminalPaneCard } from "./TerminalPaneCard";
 import type { TerminalSplitPaneOptions } from "./terminalSplitTargets";

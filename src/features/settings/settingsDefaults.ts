@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type {
   AppearanceSettings,
   AppSettings,
@@ -31,6 +33,11 @@ export const defaultTerminalAppearance: TerminalAppearance = {
   inlineSuggestion: {
     acceptKey: "rightArrow",
     enabled: true,
+    presentation: "inlineAndMenu",
+    menuShortcut: "ctrlSpace",
+    tabOpensMenu: false,
+    partialAccept: true,
+    remoteRefresh: "safe",
     productionHostPolicy: "restricted",
     providers: {
       git: true,
@@ -47,7 +54,7 @@ export const defaultTerminalAppearance: TerminalAppearance = {
   lightColorScheme: "kerminal",
   lineHeight: 1.35,
   macOptionIsMeta: false,
-  rendererType: "auto",
+  rendererType: "cpu",
   rightClickBehavior: "menu",
   scrollback: 5000,
   selectionCopy: false,
@@ -76,9 +83,6 @@ export const defaultExternalLaunchSettings: ExternalLaunchSettings = {
   autoOpenSftp: false,
   disabledTools: [],
   enabled: true,
-  shimBridge: {
-    enabled: true,
-  },
 };
 
 export const defaultKeybindings: KeybindingSetting[] = [
@@ -256,7 +260,7 @@ export const defaultAppSettings: AppSettings = {
   appearance: defaultAppearanceSettings,
   desktopNotifications: defaultDesktopNotificationSettings,
   externalLaunch: defaultExternalLaunchSettings,
-  interfaceDensity: "comfortable",
+  interfaceDensity: "compact",
   keybindings: defaultKeybindings,
   sftp: defaultSftpPerformanceSettings,
   terminal: defaultTerminalAppearance,

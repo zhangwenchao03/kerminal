@@ -55,9 +55,9 @@ pub enum ThemeMode {
 #[serde(rename_all = "camelCase")]
 pub enum InterfaceDensity {
     /// 更紧凑的标签栏和终端间距。
-    Compact,
-    /// 默认舒适密度。
     #[default]
+    Compact,
+    /// 舒适密度。
     Comfortable,
     /// 更宽松的阅读密度。
     Spacious,
@@ -135,9 +135,9 @@ pub enum TerminalFontWeight {
 #[serde(rename_all = "camelCase")]
 pub enum TerminalRendererType {
     /// 自动优先使用 WebGL，失败时回退 xterm 默认渲染器。
-    #[default]
     Auto,
-    /// 强制使用 xterm 默认渲染器。
+    /// 使用 xterm 默认渲染器，作为兼容性最高的安全缺省。
+    #[default]
     Cpu,
     /// 强制尝试 WebGL，失败时仍回退 xterm 默认渲染器。
     Gpu,
@@ -165,6 +165,39 @@ pub enum TerminalInlineSuggestionAcceptKey {
     /// 使用右方向键接受灰色后缀。
     #[default]
     RightArrow,
+}
+
+/// 终端命令建议展示模式。
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalCommandSuggestionPresentation {
+    /// 关闭命令建议。
+    Off,
+    /// 仅显示 inline 灰色提示。
+    Inline,
+    /// 显示 inline 提示，并允许主动打开候选菜单。
+    #[default]
+    InlineAndMenu,
+}
+
+/// 终端命令建议菜单快捷键。
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalCommandSuggestionMenuShortcut {
+    /// 使用 Ctrl+Space 打开候选菜单。
+    #[default]
+    CtrlSpace,
+}
+
+/// 终端命令建议远端刷新策略。
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalCommandSuggestionRemoteRefresh {
+    /// 禁止主动刷新，只读取已有缓存。
+    Off,
+    /// 使用生产主机门禁、限流和退避的安全刷新。
+    #[default]
+    Safe,
 }
 
 /// 生产主机 inline suggestion 策略。
@@ -221,6 +254,21 @@ pub struct TerminalInlineSuggestionSettings {
     /// 接受建议的按键。
     #[serde(default)]
     pub accept_key: TerminalInlineSuggestionAcceptKey,
+    /// 建议展示模式。
+    #[serde(default)]
+    pub presentation: TerminalCommandSuggestionPresentation,
+    /// 菜单快捷键。
+    #[serde(default)]
+    pub menu_shortcut: TerminalCommandSuggestionMenuShortcut,
+    /// 是否允许 Tab 主动打开菜单；默认让行给 shell。
+    #[serde(default)]
+    pub tab_opens_menu: bool,
+    /// 是否允许 Alt+Right 分段接受。
+    #[serde(default = "default_true")]
+    pub partial_accept: bool,
+    /// 远端缓存刷新策略。
+    #[serde(default)]
+    pub remote_refresh: TerminalCommandSuggestionRemoteRefresh,
     /// provider 开关。
     #[serde(default)]
     pub providers: TerminalInlineSuggestionProviderSettings,
@@ -243,6 +291,11 @@ impl Default for TerminalInlineSuggestionSettings {
         Self {
             enabled: true,
             accept_key: TerminalInlineSuggestionAcceptKey::RightArrow,
+            presentation: TerminalCommandSuggestionPresentation::InlineAndMenu,
+            menu_shortcut: TerminalCommandSuggestionMenuShortcut::CtrlSpace,
+            tab_opens_menu: false,
+            partial_accept: true,
+            remote_refresh: TerminalCommandSuggestionRemoteRefresh::Safe,
             providers: TerminalInlineSuggestionProviderSettings::default(),
             remote_probe_enabled: true,
             production_host_policy: TerminalInlineSuggestionProductionHostPolicy::Restricted,
@@ -319,7 +372,7 @@ impl Default for TerminalAppearance {
             font_size: 15,
             font_weight: TerminalFontWeight::Normal,
             mac_option_is_meta: false,
-            renderer_type: TerminalRendererType::Auto,
+            renderer_type: TerminalRendererType::Cpu,
             line_height: 1.35,
             cursor_style: TerminalCursorStyle::Block,
             cursor_blink: true,
@@ -432,21 +485,6 @@ pub enum ExternalLaunchToolSetting {
     KerminalNative,
 }
 
-/// External launch shim bridge settings.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct ExternalLaunchShimBridgeSettings {
-    /// Whether local compatibility shims may deliver launch envelopes to the app.
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-}
-
-impl Default for ExternalLaunchShimBridgeSettings {
-    fn default() -> Self {
-        Self { enabled: true }
-    }
-}
-
 /// External SSH launch compatibility settings.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -457,9 +495,6 @@ pub struct ExternalLaunchSettings {
     /// Whether third-party terminal argument formats are accepted.
     #[serde(default = "default_true")]
     pub accept_vendor_args: bool,
-    /// Local compatibility shim bridge settings.
-    #[serde(default)]
-    pub shim_bridge: ExternalLaunchShimBridgeSettings,
     /// Whether accepted external launches should open SFTP automatically.
     #[serde(default)]
     pub auto_open_sftp: bool,
@@ -473,7 +508,6 @@ impl Default for ExternalLaunchSettings {
         Self {
             enabled: true,
             accept_vendor_args: true,
-            shim_bridge: ExternalLaunchShimBridgeSettings::default(),
             auto_open_sftp: false,
             disabled_tools: Vec::new(),
         }
@@ -566,7 +600,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             appearance: AppearanceSettings::default(),
-            interface_density: InterfaceDensity::Comfortable,
+            interface_density: InterfaceDensity::default(),
             theme_mode: ThemeMode::Dark,
             terminal: TerminalAppearance::default(),
             keybindings: default_keybindings(),
@@ -625,6 +659,24 @@ impl AppSettings {
                 MIN_TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS,
                 MAX_TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS,
             );
+        if !self.terminal.inline_suggestion.enabled {
+            self.terminal.inline_suggestion.presentation =
+                TerminalCommandSuggestionPresentation::Off;
+        }
+        if self.terminal.inline_suggestion.presentation
+            == TerminalCommandSuggestionPresentation::Off
+        {
+            self.terminal.inline_suggestion.enabled = false;
+        }
+        if !self.terminal.inline_suggestion.remote_probe_enabled {
+            self.terminal.inline_suggestion.remote_refresh =
+                TerminalCommandSuggestionRemoteRefresh::Off;
+        }
+        if self.terminal.inline_suggestion.remote_refresh
+            == TerminalCommandSuggestionRemoteRefresh::Off
+        {
+            self.terminal.inline_suggestion.remote_probe_enabled = false;
+        }
 
         if self.keybindings.is_empty() {
             self.keybindings = default_keybindings();

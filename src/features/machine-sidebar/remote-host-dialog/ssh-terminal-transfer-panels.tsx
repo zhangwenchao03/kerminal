@@ -1,4 +1,3 @@
-import { Folder } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Select } from "../../../components/ui/select";
 import { Switch } from "../../../components/ui/switch";
@@ -7,7 +6,7 @@ import type { SshOptions } from "../../../lib/remoteHostApi";
 import { terminalTypeOptions } from "./model";
 import { optionalNumber } from "./request-builders";
 import type { SshOptionsSetter } from "./ssh-network-panels";
-import { FieldRow, HelpCard, inputClassName, ToggleRow } from "./shared-ui";
+import { FieldRow, inputClassName, ToggleRow } from "./shared-ui";
 
 export function SshTerminalPanel({
   options,
@@ -32,7 +31,7 @@ export function SshTerminalPanel({
       <FieldRow label="TERM">
         <Select
           aria-label="SSH TERM"
-          buttonClassName="h-10"
+          buttonClassName="h-9"
           onValueChange={(value) => updateTerminal({ terminalType: value })}
           options={terminalTypeOptions.map((value) => ({ label: value, value }))}
           value={terminal.terminalType}
@@ -116,7 +115,7 @@ export function SshTransferPanel({
   return (
     <div className="grid gap-3">
       <FieldRow label="SFTP">
-        <div className="kerminal-field-surface flex h-10 items-center justify-between gap-3 rounded-xl border px-3 text-sm text-zinc-600 dark:text-zinc-300">
+        <div className="kerminal-field-surface flex min-h-9 items-center justify-between gap-3 rounded-[var(--radius-control)] border px-3 py-1.5 text-[13px] text-[var(--text-secondary)]">
           <span>启用文件传输</span>
           <Switch
             aria-label="启用 SFTP"
@@ -193,10 +192,6 @@ export function SshTransferPanel({
           />
         </div>
       </FieldRow>
-      <HelpCard
-        icon={<Folder className="mt-0.5 h-4 w-4 text-sky-500 dark:text-sky-300" />}
-        text="随主机保存，SFTP 面板可复用。"
-      />
     </div>
   );
 }

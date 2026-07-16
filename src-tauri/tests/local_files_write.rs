@@ -102,6 +102,34 @@ async fn local_files_write_text_file_updates_existing_file_with_expected_revisio
 }
 
 #[tokio::test]
+async fn local_files_write_text_file_accepts_revision_from_truncated_read() {
+    let temp = tempdir().expect("temp dir");
+    let file = temp.path().join("large.txt");
+    fs::write(&file, "prefix\n".repeat(32)).expect("write source");
+
+    let read_response = local_files_read_text_file(LocalReadTextFileRequest {
+        max_bytes: Some(16),
+        path: path_string(&file),
+    })
+    .await
+    .expect("read truncated text file");
+    assert!(read_response.truncated);
+
+    local_files_write_text_file(LocalWriteTextFileRequest {
+        content: "replacement\n".to_owned(),
+        create: false,
+        encoding: "utf-8".to_owned(),
+        expected_revision: Some(read_response.revision),
+        overwrite_on_conflict: false,
+        path: path_string(&file),
+    })
+    .await
+    .expect("write without a false revision conflict");
+
+    assert_eq!(fs::read_to_string(&file).unwrap(), "replacement\n");
+}
+
+#[tokio::test]
 async fn local_files_write_text_file_rejects_revision_conflict() {
     let temp = tempdir().expect("temp dir");
     let file = temp.path().join("notes.txt");
@@ -133,19 +161,28 @@ async fn local_files_write_text_file_rejects_revision_conflict() {
 }
 
 #[tokio::test]
-async fn local_files_read_text_file_rejects_binary_content() {
+async fn local_files_read_text_file_returns_binary_safety_response() {
     let temp = tempdir().expect("temp dir");
-    let file = temp.path().join("archive.bin");
-    fs::write(&file, b"hello\0world").expect("write source");
+    let file = temp.path().join("document.pdf");
+    let binary_content = b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n";
+    fs::write(&file, binary_content).expect("write source");
 
-    let error = local_files_read_text_file(LocalReadTextFileRequest {
+    let response = local_files_read_text_file(LocalReadTextFileRequest {
         max_bytes: Some(1024),
         path: path_string(&file),
     })
     .await
-    .expect_err("reject binary");
+    .expect("return binary safety response");
 
-    assert!(error.contains("二进制内容"));
+    assert!(response.binary);
+    assert!(response.readonly);
+    assert!(response.content.is_empty());
+    assert_eq!(response.bytes_read, 0);
+    assert_eq!(response.encoding, "binary");
+    assert_eq!(response.line_ending, "lf");
+    assert_eq!(response.revision.size, binary_content.len() as u64);
+    assert!(response.revision.content_sha256.is_some());
+    assert!(!response.truncated);
 }
 
 #[tokio::test]

@@ -195,7 +195,7 @@
       "diagnostics": {
         "redactedArgv": [
           "MobaXterm.exe",
-          "<path:fingerprint>"
+          "<moba-session-file>"
         ],
         "redactedNotContains": []
       }
@@ -319,18 +319,18 @@
     "id": "securecrt-session-profile",
     "priority": "P1",
     "sourceTool": "securecrt",
-    "entrypoint": "session-file",
+    "entrypoint": "direct-argv",
     "argv": [
       "SecureCRT.exe",
-      "/S",
-      "Prod/App"
+      "/SSH2",
+      "/L",
+      "ops",
+      "/P",
+      "22",
+      "/I",
+      "C:\\Users\\alice\\.ssh\\securecrt_id_ed25519",
+      "secure-app.internal"
     ],
-    "sessionProfile": {
-      "hostname": "secure-app.internal",
-      "port": 22,
-      "username": "ops",
-      "identityFile": "C:\\Users\\alice\\.ssh\\securecrt_id_ed25519"
-    },
     "expected": {
       "target": {
         "host": "secure-app.internal",
@@ -341,13 +341,19 @@
         "identityFile": "C:\\Users\\alice\\.ssh\\securecrt_id_ed25519"
       },
       "options": {
-        "displayName": "Prod/App"
+        "displayName": "ops@secure-app.internal"
       },
       "diagnostics": {
         "redactedArgv": [
           "SecureCRT.exe",
-          "/S",
-          "Prod/App"
+          "/SSH2",
+          "/L",
+          "ops",
+          "/P",
+          "22",
+          "/I",
+          "<path:fingerprint>",
+          "secure-app.internal"
         ],
         "redactedNotContains": []
       }
@@ -392,7 +398,7 @@
           "-i",
           "<path:fingerprint>",
           "core.internal",
-          "uptime"
+          "<remote-command>"
         ],
         "redactedNotContains": []
       }
@@ -506,7 +512,7 @@
         "redactedArgv": [
           "kerminal.exe",
           "--external-ssh-json",
-          "{\"host\":\"json.internal\",\"port\":22,\"username\":\"json\",\"password\":\"<redacted>\"}"
+          "{\"host\":\"json.internal\",\"password\":\"<redacted>\",\"port\":22,\"username\":\"json\"}"
         ],
         "redactedNotContains": [
           "KERM_FIXTURE_JSON_PASSWORD_DO_NOT_USE"

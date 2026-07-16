@@ -1,0 +1,59 @@
+schema_version = 1
+command = "terraform"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Provision and manage infrastructure as code"
+tested_version = "Terraform 1.12"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "Terraform CLI documentation"
+url = "https://developer.hashicorp.com/terraform/cli/commands"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "apply"
+description = "Apply an infrastructure plan"
+
+[subcommands.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "Applying a plan changes managed infrastructure"
+
+[[subcommands]]
+name = "destroy"
+description = "Destroy managed infrastructure"
+
+[subcommands.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "Destroy removes managed infrastructure"
+
+[[subcommands]]
+name = "fmt"
+description = "Format configuration files"
+
+[[subcommands]]
+name = "init"
+description = "Initialize a working directory"
+
+[[subcommands]]
+name = "plan"
+description = "Preview infrastructure changes"
+
+[[subcommands]]
+name = "validate"
+description = "Validate configuration files"
+
+[[options]]
+name = "-chdir"
+description = "Run from another working directory"
+
+[options.argument]
+kind = "directory"
+placeholder = "DIR"

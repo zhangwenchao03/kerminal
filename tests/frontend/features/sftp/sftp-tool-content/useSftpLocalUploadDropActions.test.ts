@@ -17,14 +17,16 @@ type UploadDroppedLocalPaths = (
 ) => Promise<void>;
 
 const webviewMock = vi.hoisted(() => ({
-  getCurrentWebview: vi.fn(),
   listener: undefined as DragDropListener | undefined,
   onDragDropEvent: vi.fn(),
   unlisten: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/api/webview", () => ({
-  getCurrentWebview: webviewMock.getCurrentWebview,
+vi.mock("../../../../../src/lib/desktopRuntimeApi", () => ({
+  desktopRuntime: {
+    mode: "preview",
+    listenToDragDrop: webviewMock.onDragDropEvent,
+  },
 }));
 
 describe("useSftpLocalUploadDropActions", () => {
@@ -38,9 +40,6 @@ describe("useSftpLocalUploadDropActions", () => {
         return Promise.resolve(webviewMock.unlisten);
       },
     );
-    webviewMock.getCurrentWebview.mockReturnValue({
-      onDragDropEvent: webviewMock.onDragDropEvent,
-    });
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,
       value: {},
@@ -55,13 +54,13 @@ describe("useSftpLocalUploadDropActions", () => {
   it("does not subscribe when the panel is inactive or outside Tauri", () => {
     renderLocalDropHook({ active: false });
 
-    expect(webviewMock.getCurrentWebview).not.toHaveBeenCalled();
+    expect(webviewMock.onDragDropEvent).not.toHaveBeenCalled();
 
     delete (window as Window & { __TAURI_INTERNALS__?: unknown })
       .__TAURI_INTERNALS__;
     renderLocalDropHook();
 
-    expect(webviewMock.getCurrentWebview).not.toHaveBeenCalled();
+    expect(webviewMock.onDragDropEvent).not.toHaveBeenCalled();
   });
 
   it("tracks hover state from Tauri drag enter, over, and leave events", async () => {
@@ -70,12 +69,14 @@ describe("useSftpLocalUploadDropActions", () => {
 
     act(() => {
       emitDragDrop({
-        payload: { position: { x: 24, y: 48 }, type: "enter" },
+        position: { x: 24, y: 48 },
+        type: "enter",
       });
       emitDragDrop({
-        payload: { position: { x: 500, y: 500 }, type: "over" },
+        position: { x: 500, y: 500 },
+        type: "over",
       });
-      emitDragDrop({ payload: { type: "leave" } });
+      emitDragDrop({ type: "leave" });
     });
 
     expect(setters.setDragDropActive).toHaveBeenNthCalledWith(1, true);
@@ -91,11 +92,9 @@ describe("useSftpLocalUploadDropActions", () => {
 
     act(() => {
       emitDragDrop({
-        payload: {
-          paths: ["C:/tmp/release.tgz", "C:/tmp/dist"],
-          position: { x: 24, y: 48 },
-          type: "drop",
-        },
+        paths: ["C:/tmp/release.tgz", "C:/tmp/dist"],
+        position: { x: 24, y: 48 },
+        type: "drop",
       });
     });
 
@@ -112,11 +111,9 @@ describe("useSftpLocalUploadDropActions", () => {
 
     act(() => {
       emitDragDrop({
-        payload: {
-          paths: ["C:/tmp/release.tgz"],
-          position: { x: 500, y: 500 },
-          type: "drop",
-        },
+        paths: ["C:/tmp/release.tgz"],
+        position: { x: 500, y: 500 },
+        type: "drop",
       });
     });
 
@@ -126,7 +123,7 @@ describe("useSftpLocalUploadDropActions", () => {
 
   it("reports listener setup failures as operation status errors", async () => {
     webviewMock.onDragDropEvent.mockRejectedValueOnce(
-      new Error("permission denied"),
+      new Error("permission denied password=drop-hook-secret"),
     );
     const { setters } = renderLocalDropHook();
 
@@ -134,9 +131,17 @@ describe("useSftpLocalUploadDropActions", () => {
       expect(setters.setDragDropActive).toHaveBeenCalledWith(false);
       expect(setters.setOperationStatus).toHaveBeenCalledWith({
         kind: "error",
-        message: "拖拽上传监听失败：permission denied",
+        message: expect.stringContaining("拖放上传初始化失败："),
       });
     });
+    const status =
+      setters.setOperationStatus.mock.calls[
+        setters.setOperationStatus.mock.calls.length - 1
+      ]?.[0] as
+      | SftpStatus
+      | null;
+    expect(status?.message).toContain('password="[已隐藏]"');
+    expect(status?.message).not.toContain("drop-hook-secret");
   });
 
   it("clears drag state and releases late subscriptions on cleanup", async () => {

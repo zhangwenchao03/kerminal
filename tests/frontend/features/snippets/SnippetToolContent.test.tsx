@@ -1,8 +1,19 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TerminalPane, TerminalTab } from "../../../../src/features/workspace/types";
+import type {
+  TerminalPane,
+  TerminalTab,
+} from "../../../../src/features/workspace/types";
 import { SnippetToolContent } from "../../../../src/features/snippets/SnippetToolContent";
+
+vi.mock("../../../../src/features/snippets/snippetFeatureGates", () => ({
+  resolveRuntimeSnippetFeatureGates: () => ({
+    snippetCatalogV2: false,
+    snippetPanelV2: false,
+  }),
+  snippetV2NavigationEnabled: () => false,
+}));
 
 const snippetApiMocks = vi.hoisted(() => ({
   createSnippet: vi.fn(),
@@ -18,7 +29,7 @@ const workflowApiMocks = vi.hoisted(() => ({
 
 const terminalSessionRegistryMocks = vi.hoisted(() => ({
   getTerminalPaneSession: vi.fn(),
-  writeSnippetCommand: vi.fn(),
+  runSnippetCommand: vi.fn(),
   writeWorkflowCommand: vi.fn(),
 }));
 
@@ -46,7 +57,10 @@ vi.mock("../../../../src/lib/workflowApi", () => ({
     workflowApiMocks.listWorkflows(...args),
 }));
 
-vi.mock("../../../../src/features/terminal/terminalSessionRegistry", () => terminalSessionRegistryMocks);
+vi.mock(
+  "../../../../src/features/terminal/terminalSessionRegistry",
+  () => terminalSessionRegistryMocks,
+);
 
 const localPane: TerminalPane = {
   id: "pane-1",
@@ -96,8 +110,8 @@ describe("SnippetToolContent", () => {
     terminalSessionRegistryMocks.getTerminalPaneSession.mockReturnValue(
       "session-1",
     );
-    terminalSessionRegistryMocks.writeSnippetCommand.mockReset();
-    terminalSessionRegistryMocks.writeSnippetCommand.mockResolvedValue({
+    terminalSessionRegistryMocks.runSnippetCommand.mockReset();
+    terminalSessionRegistryMocks.runSnippetCommand.mockResolvedValue({
       paneId: "pane-1",
       sent: true,
       sessionId: "session-1",
@@ -186,20 +200,25 @@ describe("SnippetToolContent", () => {
       <SnippetToolContent activeTabId={activeTab.id} focusedPane={localPane} />,
     );
 
-    expect(await screen.findByText("empty snippets")).toBeInTheDocument();
+    expect(await screen.findByText("暂无命令片段")).toBeInTheDocument();
     expect(screen.queryByText("Git 状态")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "预设命令 38" }));
 
     expect(await screen.findByText("Git 状态")).toBeInTheDocument();
-    expect(screen.getByText(/预设 \//)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "预设命令 38" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(
       screen.queryByRole("button", { name: "删除片段 Git 状态" }),
     ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "运行片段 Git 状态" }));
 
-    expect(terminalSessionRegistryMocks.writeSnippetCommand).toHaveBeenCalledWith({
+    expect(
+      terminalSessionRegistryMocks.runSnippetCommand,
+    ).toHaveBeenCalledWith({
       command: "git status --short\ngit branch --show-current",
       paneId: "pane-1",
       tabId: "tab-1",
@@ -278,6 +297,22 @@ describe("SnippetToolContent", () => {
     expect(await screen.findByText("一键检查")).toBeInTheDocument();
   });
 
+  it("keeps raw snippet load failures collapsed", async () => {
+    snippetApiMocks.listSnippets.mockRejectedValueOnce(
+      new Error("snippet_list_failed token=snippet-internal-secret"),
+    );
+
+    render(<SnippetToolContent />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("加载片段失败");
+    expect(screen.getByText("请稍后重试。")).toBeVisible();
+    const technicalDetail = screen.getByText(/snippet_list_failed/);
+    expect(technicalDetail.closest("details")).not.toHaveAttribute("open");
+    expect(
+      screen.queryByText(/snippet-internal-secret/),
+    ).not.toBeInTheDocument();
+  });
+
   it("copies snippet commands through the desktop clipboard facade", async () => {
     const user = userEvent.setup();
     render(<SnippetToolContent />);
@@ -287,9 +322,9 @@ describe("SnippetToolContent", () => {
       screen.getByRole("button", { name: "复制片段 检查 Git 状态" }),
     );
 
-    expect(desktopClipboardApiMocks.writeDesktopClipboardText).toHaveBeenCalledWith(
-      "git status --short",
-    );
+    expect(
+      desktopClipboardApiMocks.writeDesktopClipboardText,
+    ).toHaveBeenCalledWith("git status --short");
   });
 
   it("keeps the create draft when snippets reload from external config", async () => {
@@ -306,7 +341,7 @@ describe("SnippetToolContent", () => {
     expect(screen.getByLabelText("标题")).toHaveValue("外部刷新草稿");
     expect(screen.getByLabelText("脚本内容")).toHaveValue("npm run test");
     expect(
-      await screen.findByText("cfg: snippets reloaded; draft kept"),
+      await screen.findByText("命令片段已更新，当前编辑内容已保留。"),
     ).toBeInTheDocument();
   });
 
@@ -337,12 +372,16 @@ describe("SnippetToolContent", () => {
     expect(screen.getByText("echo Kerminal")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "发送到当前分屏" }));
 
-    expect(terminalSessionRegistryMocks.writeSnippetCommand).toHaveBeenCalledWith({
+    expect(
+      terminalSessionRegistryMocks.runSnippetCommand,
+    ).toHaveBeenCalledWith({
       command: "echo Kerminal",
       paneId: "pane-1",
       tabId: "tab-1",
     });
-    expect(await screen.findByText("已发送到 本地 PowerShell。")).toBeInTheDocument();
+    expect(
+      await screen.findByText("已发送到 本地 PowerShell。"),
+    ).toBeInTheDocument();
   });
 
   it("blocks snippets whose scope does not match the focused pane", async () => {
@@ -366,12 +405,14 @@ describe("SnippetToolContent", () => {
     expect(
       screen.getByRole("button", { name: "运行片段 查看服务日志" }),
     ).toBeDisabled();
-    expect(terminalSessionRegistryMocks.writeSnippetCommand).not.toHaveBeenCalled();
+    expect(
+      terminalSessionRegistryMocks.runSnippetCommand,
+    ).not.toHaveBeenCalled();
   });
 
   it("shows an error when the focused pane session is not connected", async () => {
     const user = userEvent.setup();
-    terminalSessionRegistryMocks.writeSnippetCommand.mockResolvedValueOnce({
+    terminalSessionRegistryMocks.runSnippetCommand.mockResolvedValueOnce({
       paneId: "pane-1",
       reason: "missing-session",
       sent: false,
@@ -404,7 +445,7 @@ describe("SnippetToolContent", () => {
     expect(await screen.findByText("检查 Git 状态")).toBeInTheDocument();
     expect(screen.queryByText("新建工作流")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "添加脚本片段" }));
-    await user.click(screen.getByRole("button", { name: "workflow" }));
+    await user.click(screen.getByRole("button", { name: "工作流" }));
     await user.type(screen.getByLabelText("标题"), "两步检查");
     await user.type(screen.getByLabelText("脚本内容"), "echo one");
     await user.type(screen.getByLabelText("说明"), "两步检查");

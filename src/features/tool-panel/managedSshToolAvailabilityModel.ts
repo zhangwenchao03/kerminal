@@ -3,13 +3,13 @@ import type {
   ManagedSshRuntimeSnapshot,
   ManagedSshSessionSnapshot,
 } from "../../lib/diagnosticsApi";
-import type { SshTerminalFailure } from "../terminal/terminalSshFailurePolicy";
-import { classifySshTerminalFailure } from "../terminal/terminalSshFailurePolicy";
-import type { Machine, TerminalPane } from "../workspace/types";
+import type { SshTerminalFailure } from "../terminal/ssh/index";
+import { classifySshTerminalFailure } from "../terminal/ssh/index";
+import type { Machine, TerminalPane } from "../workspace/contracts/index";
 
-export type ManagedSshToolCapability = "shell" | "sftp" | "exec" | "forward";
+type ManagedSshToolCapability = "shell" | "sftp" | "exec" | "forward";
 
-export type ManagedSshToolAvailabilityKind =
+type ManagedSshToolAvailabilityKind =
   | "managed-reusable"
   | "legacy-terminal-only"
   | "auth-required"
@@ -55,7 +55,7 @@ export function resolveManagedSshToolAvailability({
       canUseConnectedSession: false,
       detail: "没有选中的目标主机。",
       kind: "no-target",
-      label: "No target",
+      label: "未选择主机",
     };
   }
 
@@ -63,9 +63,9 @@ export function resolveManagedSshToolAvailability({
     return {
       canAttemptConnection: false,
       canUseConnectedSession: false,
-      detail: "当前目标不是 SSH 主机，不能复用 managed SSH runtime。",
+      detail: "当前目标不是 SSH 主机，无法使用此工具。",
       kind: "unsupported",
-      label: "Unsupported",
+      label: "当前不可用",
       targetLabel: selectedMachine.name,
     };
   }
@@ -89,9 +89,9 @@ export function resolveManagedSshToolAvailability({
     return {
       canAttemptConnection: false,
       canUseConnectedSession: false,
-      detail: diagnosticFailure.userMessage,
+      detail: availabilityFailureDetail(diagnosticFailure),
       kind: "host-key-required",
-      label: "Host key required",
+      label: "需确认主机",
       legacyFallback: relevantFallback,
       session,
       targetLabel,
@@ -105,9 +105,9 @@ export function resolveManagedSshToolAvailability({
     return {
       canAttemptConnection: false,
       canUseConnectedSession: false,
-      detail: diagnosticFailure.userMessage,
+      detail: availabilityFailureDetail(diagnosticFailure),
       kind: "auth-required",
-      label: "Auth required",
+      label: "需认证",
       legacyFallback: relevantFallback,
       session,
       targetLabel,
@@ -124,10 +124,11 @@ export function resolveManagedSshToolAvailability({
       canAttemptConnection: false,
       canUseConnectedSession: false,
       detail:
-        diagnosticFailure?.userMessage ??
-        "该能力当前只命中 unsupported/unwired legacy fallback。下一步：切换 backend 或显式使用兼容模式。",
+        diagnosticFailure
+          ? availabilityFailureDetail(diagnosticFailure)
+          : "当前主机不支持此操作，可更换主机或使用其它方式完成。",
       kind: "unsupported",
-      label: "Unsupported",
+      label: "当前不可用",
       legacyFallback: relevantFallback,
       session,
       targetLabel,
@@ -138,9 +139,9 @@ export function resolveManagedSshToolAvailability({
     return {
       canAttemptConnection: diagnosticFailure.retryable,
       canUseConnectedSession: false,
-      detail: diagnosticFailure.userMessage,
+      detail: availabilityFailureDetail(diagnosticFailure),
       kind: "action-required",
-      label: "Action required",
+      label: "需处理",
       legacyFallback: relevantFallback,
       session,
       targetLabel,
@@ -151,9 +152,9 @@ export function resolveManagedSshToolAvailability({
     return {
       canAttemptConnection: true,
       canUseConnectedSession: true,
-      detail: "当前 SSH 目标已有 ready managed session，可按能力打开独立 channel。",
+      detail: "已连接到当前 SSH 主机，可以直接使用此工具。",
       kind: "managed-reusable",
-      label: "Managed reusable",
+      label: "已连接",
       session,
       targetLabel,
     };
@@ -163,10 +164,9 @@ export function resolveManagedSshToolAvailability({
     return {
       canAttemptConnection: true,
       canUseConnectedSession: false,
-      detail:
-        "当前终端属于该 SSH 主机，但没有可观测 managed session；右侧工具不能把 PTY 连接当作可复用 runtime。",
+      detail: "当前终端已连接到该主机，使用此工具时会建立单独连接。",
       kind: "legacy-terminal-only",
-      label: "Legacy terminal only",
+      label: "需连接",
       legacyFallback: relevantFallback,
       targetLabel,
     };
@@ -175,9 +175,9 @@ export function resolveManagedSshToolAvailability({
   return {
     canAttemptConnection: true,
     canUseConnectedSession: false,
-    detail: "该 SSH 目标还没有 ready managed session，需要通过 SshAuthBroker 建立或恢复认证。",
+    detail: "使用此工具前需要连接并完成 SSH 认证。",
     kind: "auth-required",
-    label: "Auth required",
+    label: "需认证",
     legacyFallback: relevantFallback,
     session,
     targetLabel,
@@ -264,6 +264,43 @@ function classifyAvailabilityFailure(
     }
   }
   return undefined;
+}
+
+function availabilityFailureDetail(failure: SshTerminalFailure): string {
+  switch (failure.class) {
+    case "authCanceled":
+      return "认证已取消，请重新连接并完成认证。";
+    case "badCredential":
+      return "认证失败，请检查用户名、密码或密钥后重试。";
+    case "keyPassphraseMissing":
+      return "私钥需要解锁密码，请输入后重试。";
+    case "unknownHostKey":
+      return "需要先确认主机身份后才能继续。";
+    case "hostKeyChanged":
+      return "主机身份信息已变化，请核对后重新连接。";
+    case "jumpFailed":
+      return "跳板机连接失败，请检查相关设置后重试。";
+    case "timeout":
+      return "连接或操作超时，请检查网络后重试。";
+    case "channelUnsupported":
+      return "当前主机不支持此操作，可更换主机或使用其它方式完成。";
+    case "permissionDenied":
+      return "当前凭据或文件权限不足，请检查后重试。";
+    case "remoteExit":
+      return "远程操作已结束，请重新执行。";
+    case "canceled":
+      return "操作已取消。";
+    case "cleanupFailed":
+      return "连接已结束，但部分资源未能正常关闭；可重试或重新连接。";
+    case "networkUnreachable":
+      return "无法连接主机，请检查地址和网络。";
+    case "remoteShellStartup":
+      return "远程终端无法启动，请检查默认终端或工作目录。";
+    case "disconnect":
+      return "连接已断开，请重新连接。";
+    case "unknown":
+      return "当前无法使用此操作，请稍后重试。";
+  }
 }
 
 function isHostKeyFailureClass(failureClass: SshTerminalFailure["class"]) {

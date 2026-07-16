@@ -1,6 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 
-export interface DesktopClipboardTextTransport {
+interface DesktopClipboardTextTransport {
   readText: () => Promise<string | null>;
   writeText: (text: string) => Promise<void>;
 }

@@ -127,6 +127,12 @@ export function externalSshLaunchAuthType(
   return "agent";
 }
 
+export function externalSshLaunchProduction(
+  launch: ExternalSshLaunchRequest | ExternalSshLaunchResolvedRequest,
+): boolean {
+  return materializedTarget(launch)?.production ?? true;
+}
+
 export function externalSshLaunchMachineId(
   launch: ExternalSshLaunchRequest | ExternalSshLaunchResolvedRequest,
 ) {
@@ -138,10 +144,6 @@ export function externalSshLaunchMachineId(
 
 export function externalSshLaunchTags(launch: ExternalSshLaunchRequest) {
   return ["external", launch.source.tool];
-}
-
-export function formatExternalSshLaunchError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function materializedTarget(

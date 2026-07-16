@@ -1,5 +1,5 @@
 import type { HostContainersToolContentProps } from "./HostContainersToolContent";
-import type { Machine, MachineGroup } from "../workspace/types";
+import type { Machine, MachineGroup } from "../workspace/contracts/index";
 
 export type MachineSidebarViewMode = "hosts" | "containers";
 
@@ -16,6 +16,7 @@ export interface MachineSidebarProps {
   containerInitialContainerId?: string;
   groups: MachineGroup[];
   openMachineIds?: readonly string[];
+  rdpOpeningMachineIds?: readonly string[];
   selectedMachineId: string;
   search: string;
   settingsSelected?: boolean;

@@ -1,9 +1,7 @@
 import {
   ArrowLeftRight,
   HardDrive,
-  Plus,
   RefreshCw,
-  Search,
   Trash2,
 } from "lucide-react";
 import {
@@ -13,32 +11,33 @@ import {
   useMemo,
   useRef,
   useState,
-  type FocusEvent,
 } from "react";
 import { Button } from "../../components/ui/button";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
-import { defaultDesktopNotificationSettings } from "../settings/settingsDefaults";
+import { defaultDesktopNotificationSettings } from "../settings/defaults/index";
 import type {
   DesktopNotificationSettings,
   InterfaceDensity,
-} from "../settings/settingsModel";
-import type { Machine, MachineGroup } from "../workspace/types";
+} from "../settings/contracts/index";
+import type { Machine, MachineGroup } from "../workspace/contracts/index";
 import { LocalTransferPane } from "./LocalTransferPane";
-import { SftpToolContent, type SftpClipboard } from "./SftpToolContent";
+import type { SftpClipboard } from "./SftpToolContent";
 import { SftpTransferQueuePanel } from "./SftpTransferQueuePanel";
 import { HostTabButton } from "./SftpTransferWorkbench.parts";
+import {
+  RemoteHostPaneBody,
+  SearchableSftpHostSelect,
+} from "./SftpTransferWorkbenchHostViews";
 import type { SftpTransferTarget } from "./sftp-tool-content/types";
 import { sftpWorkbenchTransferViewScope } from "./sftp-tool-content/sftpTransferScopeModel";
 import {
-  remoteClipboardFromWorkbenchClipboard,
   wrapRemoteWorkbenchClipboard,
   type SftpWorkbenchClipboard,
   type SftpWorkbenchLocalClipboard,
 } from "./sftpTransferClipboardModel";
 import {
-  activeTransferCount,
   canClearFinishedTransfers,
-  isFinishedTransfer,
 } from "./sftpTransferModel";
 import {
   collectSshMachines,
@@ -54,30 +53,10 @@ import {
 } from "./sftpTransferWorkbenchModel";
 import { useSftpManagedTransferQueue } from "./useSftpManagedTransferQueue";
 import { useSftpTransferNotifications } from "./useSftpTransferNotifications";
-import { useSftpTransferQueueSync } from "./useSftpTransferQueueSync";
-
-function hostIdentity(machine: Machine) {
-  if (machine.kind !== "ssh") {
-    return machine.description;
-  }
-  const username = machine.username ?? "ssh";
-  const host = machine.host ?? machine.name;
-  return `${username}@${host}:${machine.port ?? 22}`;
-}
-
-function hostSearchText(machine: Machine) {
-  return [
-    machine.name,
-    machine.description,
-    machine.kind === "ssh" ? machine.host : "",
-    machine.kind === "ssh" ? machine.username : "",
-    hostIdentity(machine),
-    ...machine.tags,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-}
+import {
+  buildSftpTransferQueueError,
+  useSftpTransferQueueSync,
+} from "./useSftpTransferQueueSync";
 
 export interface SftpTransferWorkbenchProps {
   active?: boolean;
@@ -90,7 +69,6 @@ export interface SftpTransferWorkbenchProps {
   onCreateSshHost?: (request: SftpTransferCreateHostRequest) => void;
   workspaceTabId?: string;
 }
-
 export interface SftpTransferCreateHostRequest {
   side: SftpTransferHostSide;
   workspaceTabId?: string;
@@ -219,15 +197,18 @@ export function SftpTransferWorkbench({
     setRightCurrentPaths((current) => pruneHostTabPaths(current, rightTabs));
   }, [rightTabs]);
 
-  const addLeftHostTab = (hostId: string) => {
-    const machine = machinesById.get(hostId);
-    if (!machine) {
-      return;
-    }
-    const nextTab = createHostTab("left", hostId);
-    setLeftTabs((current) => [...current, nextTab]);
-    setActiveLeftTabId(nextTab.id);
-  };
+  const addLeftHostTab = useCallback(
+    (hostId: string) => {
+      const machine = machinesById.get(hostId);
+      if (!machine) {
+        return;
+      }
+      const nextTab = createHostTab("left", hostId);
+      setLeftTabs((current) => [...current, nextTab]);
+      setActiveLeftTabId(nextTab.id);
+    },
+    [machinesById],
+  );
 
   const closeLeftHostTab = (tabId: string) => {
     setLeftTabs((current) => current.filter((tab) => tab.id !== tabId));
@@ -236,15 +217,18 @@ export function SftpTransferWorkbench({
     );
   };
 
-  const addRightHostTab = (hostId: string) => {
-    const machine = machinesById.get(hostId);
-    if (!machine) {
-      return;
-    }
-    const nextTab = createHostTab("right", hostId);
-    setRightTabs((current) => [...current, nextTab]);
-    setActiveRightTabId(nextTab.id);
-  };
+  const addRightHostTab = useCallback(
+    (hostId: string) => {
+      const machine = machinesById.get(hostId);
+      if (!machine) {
+        return;
+      }
+      const nextTab = createHostTab("right", hostId);
+      setRightTabs((current) => [...current, nextTab]);
+      setActiveRightTabId(nextTab.id);
+    },
+    [machinesById],
+  );
 
   const closeRightHostTab = (tabId: string) => {
     setRightTabs((current) => current.filter((tab) => tab.id !== tabId));
@@ -266,16 +250,26 @@ export function SftpTransferWorkbench({
       return;
     }
     addRightHostTab(createdHostTarget.hostId);
-  }, [createdHostTarget, machinesById, workspaceTabId]);
+  }, [
+    addLeftHostTab,
+    addRightHostTab,
+    createdHostTarget,
+    machinesById,
+    workspaceTabId,
+  ]);
 
-  const { cancelTransfer, clearFinishedTransfers } = useSftpManagedTransferQueue({
-    onCancelSuccess: clearQueueError,
-    onClearSuccess: clearQueueError,
-    onError: (error) =>
-      setQueueError(error instanceof Error ? error.message : String(error)),
-    setTransfers,
-    viewScope: transferViewScope,
-  });
+  const { cancelTransfer, clearFinishedTransfers, retryTransfer } =
+    useSftpManagedTransferQueue({
+      onCancelSuccess: clearQueueError,
+      onClearSuccess: clearQueueError,
+      onError: (error) => setQueueError(buildSftpTransferQueueError(error)),
+      onRetrySuccess: clearQueueError,
+      onRetryUnavailable: (message) =>
+        setQueueError(buildSftpTransferQueueError(message)),
+      refreshTransfers,
+      setTransfers,
+      viewScope: transferViewScope,
+    });
 
   const updateRightPath = useCallback((tabId: string, path: string) => {
     setRightCurrentPaths((current) =>
@@ -357,8 +351,6 @@ export function SftpTransferWorkbench({
         : undefined,
     [rightCurrentPath, rightMachine],
   );
-  const activeCount = activeTransferCount(transfers);
-  const finishedCount = transfers.filter(isFinishedTransfer).length;
   const canClearTransfers = canClearFinishedTransfers(transfers);
   const compactDensity = interfaceDensity === "compact";
   const spaciousDensity = interfaceDensity === "spacious";
@@ -373,16 +365,20 @@ export function SftpTransferWorkbench({
       ? "grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]"
       : "grid min-h-0 flex-1 grid-cols-1 gap-3 p-3 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]";
   const headerIconClass = compactDensity
-    ? "h-8 w-8 rounded-lg"
+    ? "h-8 w-8 rounded-[var(--radius-control)]"
     : spaciousDensity
-      ? "h-10 w-10 rounded-2xl"
-      : "h-9 w-9 rounded-xl";
-  const headerButtonClass = compactDensity ? "h-8 rounded-lg px-2 text-xs" : "";
+      ? "h-10 w-10 rounded-[var(--radius-control)]"
+      : "h-9 w-9 rounded-[var(--radius-control)]";
+  const headerActionClass = compactDensity
+    ? "h-8 w-8 rounded-[var(--radius-control)]"
+    : spaciousDensity
+      ? "h-10 w-10 rounded-[var(--radius-control)]"
+      : "h-9 w-9 rounded-[var(--radius-control)]";
 
   return (
     <section
       aria-label="SFTP 传输工作台"
-      className="kerminal-solid-surface flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border"
+      className="kerminal-solid-surface flex h-full min-h-0 flex-col overflow-hidden rounded-[var(--radius-card)] border"
     >
       <header
         className={cn(
@@ -399,36 +395,33 @@ export function SftpTransferWorkbench({
           >
             <ArrowLeftRight className="h-4 w-4" />
           </span>
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-              SFTP 传输
-            </h2>
-            <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
-              {activeCount} 项进行中 / {finishedCount} 项已结束
-            </p>
-          </div>
+          <h2 className="truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+            SFTP 传输
+          </h2>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button
-            className={headerButtonClass}
+            aria-label="刷新传输队列"
+            className={headerActionClass}
             onClick={refreshTransfers}
-            size="sm"
+            size="icon"
+            title="刷新传输队列"
             type="button"
             variant="ghost"
           >
             <RefreshCw className="h-4 w-4" />
-            刷新
           </Button>
           <Button
-            className={headerButtonClass}
+            aria-label="清理完成的传输"
+            className={headerActionClass}
             disabled={!canClearTransfers}
             onClick={() => void clearFinishedTransfers()}
-            size="sm"
+            size="icon"
+            title="清理完成的传输"
             type="button"
             variant="ghost"
           >
             <Trash2 className="h-4 w-4" />
-            清理
           </Button>
         </div>
       </header>
@@ -481,9 +474,15 @@ export function SftpTransferWorkbench({
         />
       </div>
 
+      {queueError ? (
+        <div className="shrink-0 border-t border-[var(--border-subtle)] p-3">
+          <UserFacingNotice compact message={queueError} />
+        </div>
+      ) : null}
       <SftpTransferQueuePanel
-        error={queueError}
+        error={null}
         onCancel={(transferId) => void cancelTransfer(transferId)}
+        onRetry={(transfer) => void retryTransfer(transfer)}
         transfers={transfers}
       />
     </section>
@@ -541,47 +540,54 @@ function LeftPane({
 }) {
   const compactDensity = interfaceDensity === "compact";
   const spaciousDensity = interfaceDensity === "spacious";
-  const paneGapClass = compactDensity
-    ? "gap-1.5"
-    : spaciousDensity
-      ? "gap-3"
-      : "gap-2";
-  const paneHeaderPaddingClass = compactDensity
+  const targetBarPaddingClass = compactDensity
     ? "px-2.5 py-1.5"
     : spaciousDensity
-      ? "px-4 py-3"
-      : "px-3 py-2";
-  const tabStripPaddingClass = compactDensity
-    ? "px-1.5 py-1"
-    : spaciousDensity
       ? "px-3 py-2"
-      : "px-2 py-1.5";
+      : "px-3 py-2";
   const localTabButtonClass = compactDensity
-    ? "h-7 rounded-lg px-2"
+    ? "h-7 rounded-[var(--radius-control)] px-2"
     : spaciousDensity
-      ? "h-9 rounded-xl px-2.5"
-      : "h-8 rounded-lg px-2";
+      ? "h-9 rounded-[var(--radius-control)] px-2.5"
+      : "h-8 rounded-[var(--radius-control)] px-2";
 
   return (
-    <div
-      className={cn(
-        "flex h-full min-h-0 flex-col overflow-hidden",
-        paneGapClass,
-      )}
-    >
+    <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
       <div
+        aria-label="左侧目标"
         className={cn(
-          "kerminal-muted-surface flex shrink-0 items-center justify-between gap-2 rounded-xl border",
-          paneHeaderPaddingClass,
+          "kerminal-muted-surface flex shrink-0 items-center gap-2 rounded-[var(--radius-control)] border",
+          targetBarPaddingClass,
         )}
       >
-        <div className="min-w-0">
-          <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">
-            左侧目标
-          </div>
-          <div className="truncate text-[11px] text-zinc-500 dark:text-zinc-400">
-            本机或 SSH 服务器
-          </div>
+        <div className="scrollbar-none flex min-w-0 flex-1 gap-1 overflow-x-auto">
+          <button
+            aria-pressed={localActive}
+            className={cn(
+              "kerminal-focus-ring kerminal-pressable flex max-w-[180px] items-center gap-1.5 text-xs transition",
+              localTabButtonClass,
+              localActive
+                ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
+                : "text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-100",
+            )}
+            onClick={onActivateLocal}
+            title="本机"
+            type="button"
+          >
+            <HardDrive className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">本机</span>
+          </button>
+          {hostTabs.map((tab) => (
+            <HostTabButton
+              active={tab.id === activeTabId}
+              interfaceDensity={interfaceDensity}
+              key={tab.id}
+              machine={machinesById.get(tab.hostId)}
+              onActivate={() => onActiveTabChange(tab.id)}
+              onClose={() => onCloseTab(tab.id)}
+              tab={tab}
+            />
+          ))}
         </div>
         <SearchableSftpHostSelect
           ariaLabel="添加左侧服务器"
@@ -593,41 +599,6 @@ function LeftPane({
           onCreateSshHost={onCreateSshHost}
           side="left"
         />
-      </div>
-
-      <div
-        className={cn(
-          "kerminal-muted-surface scrollbar-none flex shrink-0 gap-1 overflow-x-auto rounded-xl border",
-          tabStripPaddingClass,
-        )}
-      >
-        <button
-          aria-pressed={localActive}
-          className={cn(
-            "kerminal-focus-ring kerminal-pressable flex max-w-[180px] items-center gap-1.5 text-xs transition",
-            localTabButtonClass,
-            localActive
-              ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
-              : "text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-100",
-          )}
-          onClick={onActivateLocal}
-          title="本机"
-          type="button"
-        >
-          <HardDrive className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">本机</span>
-        </button>
-        {hostTabs.map((tab) => (
-          <HostTabButton
-            active={tab.id === activeTabId}
-            interfaceDensity={interfaceDensity}
-            key={tab.id}
-            machine={machinesById.get(tab.hostId)}
-            onActivate={() => onActiveTabChange(tab.id)}
-            onClose={() => onCloseTab(tab.id)}
-            tab={tab}
-          />
-        ))}
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden">
@@ -643,7 +614,7 @@ function LeftPane({
             transferViewScope={transferViewScope}
           />
         ) : (
-          <div className="kerminal-muted-surface flex h-full min-h-0 flex-col overflow-hidden rounded-xl border">
+          <div className="kerminal-muted-surface flex h-full min-h-0 flex-col overflow-hidden rounded-[var(--radius-card)] border">
             <RemoteHostPaneBody
               active={active}
               activeTab={activeTab}
@@ -663,7 +634,6 @@ function LeftPane({
     </div>
   );
 }
-
 function HostPane({
   active,
   activeTab,
@@ -703,36 +673,36 @@ function HostPane({
   transferTarget?: SftpTransferTarget;
   transferViewScope: string;
 }) {
-  const selectedMachine = activeTab ? machinesById.get(activeTab.hostId) : undefined;
   const availableMachines = machines;
   const compactDensity = interfaceDensity === "compact";
   const spaciousDensity = interfaceDensity === "spacious";
-  const paneHeaderPaddingClass = compactDensity
+  const targetBarPaddingClass = compactDensity
     ? "px-2.5 py-1.5"
     : spaciousDensity
-      ? "px-4 py-3"
-      : "px-3 py-2";
-  const tabStripPaddingClass = compactDensity
-    ? "px-1.5 py-1"
-    : spaciousDensity
       ? "px-3 py-2"
-      : "px-2 py-1.5";
+      : "px-3 py-2";
 
   return (
-    <div className="kerminal-muted-surface flex min-h-0 flex-col overflow-hidden rounded-xl border">
+    <div className="kerminal-muted-surface flex min-h-0 flex-col overflow-hidden rounded-[var(--radius-card)] border">
       <div
+        aria-label={title}
         className={cn(
-          "flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border-subtle)]",
-          paneHeaderPaddingClass,
+          "flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)]",
+          targetBarPaddingClass,
         )}
       >
-        <div className="min-w-0">
-          <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">
-            {title}
-          </div>
-          <div className="truncate text-[11px] text-zinc-500 dark:text-zinc-400">
-            {selectedMachine?.description ?? "未选择主机"}
-          </div>
+        <div className="scrollbar-none flex min-w-0 flex-1 gap-1 overflow-x-auto">
+          {hostTabs.map((tab) => (
+            <HostTabButton
+              active={tab.id === activeTabId}
+              interfaceDensity={interfaceDensity}
+              key={tab.id}
+              machine={machinesById.get(tab.hostId)}
+              onActivate={() => onActiveTabChange(tab.id)}
+              onClose={() => onCloseTab(tab.id)}
+              tab={tab}
+            />
+          ))}
         </div>
         <SearchableSftpHostSelect
           ariaLabel={`添加${title}`}
@@ -744,25 +714,6 @@ function HostPane({
           onCreateSshHost={onCreateSshHost}
           side={side}
         />
-      </div>
-
-      <div
-        className={cn(
-          "scrollbar-none flex shrink-0 gap-1 overflow-x-auto border-b border-[var(--border-subtle)]",
-          tabStripPaddingClass,
-        )}
-      >
-        {hostTabs.map((tab) => (
-          <HostTabButton
-            active={tab.id === activeTabId}
-            interfaceDensity={interfaceDensity}
-            key={tab.id}
-            machine={machinesById.get(tab.hostId)}
-            onActivate={() => onActiveTabChange(tab.id)}
-            onClose={() => onCloseTab(tab.id)}
-            tab={tab}
-          />
-        ))}
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden">
@@ -781,232 +732,5 @@ function HostPane({
         />
       </div>
     </div>
-  );
-}
-
-function SearchableSftpHostSelect({
-  ariaLabel,
-  createDescription,
-  disabled,
-  interfaceDensity,
-  machines,
-  onAddHost,
-  onCreateSshHost,
-  side,
-}: {
-  ariaLabel: string;
-  createDescription: string;
-  disabled: boolean;
-  interfaceDensity: InterfaceDensity;
-  machines: Machine[];
-  onAddHost: (hostId: string) => void;
-  onCreateSshHost?: (request: SftpTransferCreateHostRequest) => void;
-  side: SftpTransferHostSide;
-}) {
-  const listboxId = useId();
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const compactDensity = interfaceDensity === "compact";
-  const spaciousDensity = interfaceDensity === "spacious";
-  const normalizedSearch = search.trim().toLowerCase();
-  const filteredMachines = useMemo(
-    () =>
-      normalizedSearch
-        ? machines.filter((machine) =>
-            hostSearchText(machine).includes(normalizedSearch),
-          )
-        : machines,
-    [machines, normalizedSearch],
-  );
-  const inputClass = compactDensity
-    ? "h-7 rounded-lg pl-7 pr-3 text-xs"
-    : spaciousDensity
-      ? "h-9 rounded-xl pl-8 pr-3 text-xs"
-      : "h-8 rounded-lg pl-7 pr-3 text-xs";
-
-  const closeDropdown = () => {
-    setOpen(false);
-    setSearch("");
-  };
-  const handleBlur = (event: FocusEvent<HTMLDivElement>) => {
-    const nextTarget = event.relatedTarget;
-    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
-      return;
-    }
-    closeDropdown();
-  };
-  const selectHost = (hostId: string) => {
-    onAddHost(hostId);
-    closeDropdown();
-  };
-  const createSshHost = () => {
-    onCreateSshHost?.({ side });
-    closeDropdown();
-  };
-
-  return (
-    <div
-      className="relative w-[168px] max-w-[42vw] shrink-0"
-      onBlur={handleBlur}
-    >
-      <label className="relative block min-w-0">
-        <span className="sr-only">{ariaLabel}</span>
-        <Search
-          aria-hidden="true"
-          className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500"
-          strokeWidth={1.8}
-        />
-        <input
-          aria-controls={open ? listboxId : undefined}
-          aria-expanded={open}
-          aria-haspopup="listbox"
-          aria-label={ariaLabel}
-          className={cn(
-            "kerminal-field-surface kerminal-focus-ring w-full border text-zinc-700 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-200 dark:placeholder:text-zinc-600",
-            inputClass,
-          )}
-          disabled={disabled}
-          onChange={(event) => {
-            setOpen(true);
-            setSearch(event.currentTarget.value);
-          }}
-          onClick={() => {
-            setOpen(true);
-            setSearch("");
-          }}
-          onFocus={() => {
-            setOpen(true);
-            setSearch("");
-          }}
-          placeholder="搜索主机..."
-          role="combobox"
-          value={search}
-        />
-      </label>
-      {open ? (
-        <div
-          className="kerminal-floating-surface kerminal-floating-enter absolute right-0 top-[calc(100%+0.375rem)] z-50 w-56 overflow-hidden rounded-2xl border p-1 text-sm text-zinc-950 dark:text-zinc-100"
-          id={listboxId}
-          role="listbox"
-        >
-          <div className="scrollbar-none grid max-h-64 gap-1 overflow-y-auto">
-            {filteredMachines.length > 0 ? (
-              filteredMachines.map((machine) => (
-                <button
-                  aria-selected={false}
-                  className="kerminal-focus-ring kerminal-pressable grid min-w-0 gap-0.5 rounded-xl px-2.5 py-2 text-left text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50"
-                  key={machine.id}
-                  onClick={() => selectHost(machine.id)}
-                  role="option"
-                  type="button"
-                >
-                  <span className="truncate text-sm font-medium">
-                    {machine.name}
-                  </span>
-                  <span
-                    aria-hidden="true"
-                    className="truncate font-mono text-[11px] text-zinc-500 dark:text-zinc-400"
-                  >
-                    {hostIdentity(machine)}
-                  </span>
-                </button>
-              ))
-            ) : (
-              <div className="rounded-lg border border-dashed border-[var(--border-subtle)] px-3 py-4 text-center text-xs text-zinc-500 dark:text-zinc-400">
-                没有匹配的主机。
-              </div>
-            )}
-          </div>
-          {onCreateSshHost ? (
-            <button
-              aria-selected={false}
-              className="kerminal-focus-ring kerminal-pressable mt-1 flex w-full items-start gap-2 rounded-xl border-t border-[var(--border-subtle)] px-2.5 py-2 text-left text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50"
-              onClick={createSshHost}
-              role="option"
-              type="button"
-            >
-              <Plus
-                aria-hidden="true"
-                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500"
-              />
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-medium">
-                  新建 SSH 主机...
-                </span>
-                <span
-                  aria-hidden="true"
-                  className="mt-0.5 block text-xs leading-4 text-zinc-500 dark:text-zinc-400"
-                >
-                  {createDescription}
-                </span>
-              </span>
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function RemoteHostPaneBody({
-  active,
-  activeTab,
-  availableMachineCount,
-  clipboard,
-  emptyLabel,
-  interfaceDensity,
-  machinesById,
-  onClipboardChange,
-  onPathChange,
-  transferTarget,
-  transferViewScope,
-}: {
-  active: boolean;
-  activeTab: SftpTransferHostTab | undefined;
-  availableMachineCount: number;
-  clipboard: SftpWorkbenchClipboard | null;
-  emptyLabel: string;
-  interfaceDensity: InterfaceDensity;
-  machinesById: Map<string, Machine>;
-  onClipboardChange: (clipboard: SftpClipboard | null) => void;
-  onPathChange: (tabId: string, path: string) => void;
-  transferTarget?: SftpTransferTarget;
-  transferViewScope: string;
-}) {
-  const selectedMachine = activeTab ? machinesById.get(activeTab.hostId) : undefined;
-  const reportCurrentPath = useCallback(
-    (path: string) => {
-      if (activeTab) {
-        onPathChange(activeTab.id, path);
-      }
-    },
-    [activeTab, onPathChange],
-  );
-
-  if (!selectedMachine) {
-    return (
-      <div className="flex h-full items-center justify-center p-5 text-center text-sm text-zinc-500 dark:text-zinc-400">
-        {availableMachineCount === 0
-          ? "没有可用于 SFTP 的 SSH 服务器。"
-          : emptyLabel}
-      </div>
-    );
-  }
-
-  return (
-    <SftpToolContent
-      active={active}
-      compactHeader
-      interfaceDensity={interfaceDensity}
-      onCurrentPathChange={reportCurrentPath}
-      onSftpClipboardChange={onClipboardChange}
-      selectedMachine={selectedMachine}
-      showLocalTransferActions={!transferTarget}
-      showTransferStatusBar={false}
-      sftpClipboard={remoteClipboardFromWorkbenchClipboard(clipboard)}
-      transferTarget={transferTarget}
-      transferViewScope={transferViewScope}
-      workbenchClipboard={clipboard}
-    />
   );
 }

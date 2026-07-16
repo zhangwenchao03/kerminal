@@ -8,8 +8,13 @@ import type {
 } from "../features/workspace/types";
 import { isTerminalSessionTab } from "../features/workspace/types";
 import type { WorkspaceState } from "../features/workspace/workspaceStore";
+import { buildWorkspaceContextProjection } from "../features/workspace/context";
+import type { WorkspaceContextProjection } from "../features/workspace/context";
 import { findMachine } from "../features/workspace/workspaceMachineModel";
-import { targetStableId } from "../lib/targetModel";
+import {
+  resolveWorkspaceTabPaneSelection,
+  resolveWorkspaceTargetSelection,
+} from "../features/workspace/workspaceTargetSelection";
 
 interface OpenMachineState {
   terminalPanes: TerminalPane[];
@@ -24,6 +29,7 @@ export interface ToolPanelWorkspaceContext {
   sftpRevealRequest: WorkspaceFileRevealRequest | null;
   terminalPanes: TerminalPane[];
   terminalTabs: TerminalTab[];
+  projection: WorkspaceContextProjection;
 }
 
 export interface SidebarFilePanelWorkspaceContext {
@@ -55,7 +61,7 @@ interface ParsedTerminalWorkspaceSnapshotCache {
 let parsedTerminalWorkspaceSnapshotCache:
   ParsedTerminalWorkspaceSnapshotCache | undefined;
 
-export function collectOpenMachineIds({
+function collectOpenMachineIds({
   terminalPanes,
   terminalTabs,
 }: OpenMachineState): string[] {
@@ -83,16 +89,19 @@ export function parseOpenMachineIdsSnapshot(snapshot: string): string[] {
 }
 
 export function buildToolPanelWorkspaceSnapshot(state: WorkspaceState): string {
-  const focusedPane = state.terminalPanes.find(
-    (pane) => pane.id === state.focusedPaneId,
-  );
+  const { activeTab, focusedPane } = resolveWorkspaceTabPaneSelection({
+    activeTabId: state.activeTabId,
+    focusedPaneId: state.focusedPaneId,
+    terminalPanes: state.terminalPanes,
+    terminalTabs: state.terminalTabs,
+  });
 
   return JSON.stringify({
-    activeTabId: state.activeTabId,
+    activeTabId: activeTab?.id ?? "",
     focusedPane: focusedPane
       ? terminalPaneWithoutHighFrequencyOutput(focusedPane)
       : null,
-    focusedPaneId: state.focusedPaneId,
+    focusedPaneId: focusedPane?.id ?? "",
     selectedMachineId: state.selectedMachineId,
     sftpRevealRequest: state.workspaceFileRevealRequest,
     terminalPanes: state.terminalPanes.map(
@@ -155,19 +164,19 @@ export function buildToolPanelWorkspaceContext(
   state: WorkspaceState,
   machineGroups: MachineGroup[],
 ): ToolPanelWorkspaceContext {
-  const activeTab = state.terminalTabs.find(
-    (tab) => tab.id === state.activeTabId,
-  );
-  const focusedPane = state.terminalPanes.find(
-    (pane) => pane.id === state.focusedPaneId,
-  );
-  const activeMachine = resolveActiveToolPanelMachine(
-    focusedPane,
+  const {
+    activeMachine,
     activeTab,
+    focusedPane,
+    selectedMachine,
+  } = resolveWorkspaceTargetSelection({
+    activeTabId: state.activeTabId,
+    focusedPaneId: state.focusedPaneId,
     machineGroups,
-  );
-  const selectedMachine =
-    findMachine(machineGroups, state.selectedMachineId) ?? activeMachine;
+    selectedMachineId: state.selectedMachineId,
+    terminalPanes: state.terminalPanes,
+    terminalTabs: state.terminalTabs,
+  });
 
   return {
     activeMachine,
@@ -179,6 +188,18 @@ export function buildToolPanelWorkspaceContext(
       terminalPaneWithoutHighFrequencyOutput,
     ),
     terminalTabs: state.terminalTabs,
+    projection: buildWorkspaceContextProjection({
+      activeTabId: state.activeTabId,
+      focusedPaneId: state.focusedPaneId,
+      generatedAt: new Date().toISOString(),
+      machineGroups,
+      revision: workspaceContextRevision(state),
+      selectedMachineId: state.selectedMachineId,
+      terminalPanes: state.terminalPanes,
+      terminalTabs: state.terminalTabs,
+      workspaceFileDirtyState: state.workspaceFileDirtyState,
+      workspaceFileRevealRequest: state.workspaceFileRevealRequest,
+    }),
   };
 }
 
@@ -222,76 +243,14 @@ export function buildSidebarFilePanelWorkspaceContext(
   };
 }
 
-function resolveActiveToolPanelMachine(
-  focusedPane: TerminalPane | undefined,
-  activeTab: TerminalTab | undefined,
-  machineGroups: MachineGroup[],
-): Machine | undefined {
-  const containerMachine = machineFromContainerPane(focusedPane, machineGroups);
-  if (containerMachine) {
-    return containerMachine;
+function workspaceContextRevision(state: WorkspaceState): number {
+  const snapshot = buildToolPanelWorkspaceSnapshot(state);
+  let hash = 2166136261;
+  for (let index = 0; index < snapshot.length; index += 1) {
+    hash ^= snapshot.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
   }
-
-  const activeTerminalMachineId =
-    focusedPane?.mode === "container"
-      ? focusedPane.machineId
-      : (focusedPane?.remoteHostId ??
-        focusedPane?.machineId ??
-        activeTab?.machineId);
-
-  return activeTerminalMachineId
-    ? findMachine(machineGroups, activeTerminalMachineId)
-    : undefined;
-}
-
-function machineFromContainerPane(
-  pane: TerminalPane | undefined,
-  machineGroups: MachineGroup[],
-): Machine | undefined {
-  const target =
-    pane?.target?.kind === "dockerContainer" ? pane.target : undefined;
-  if (!pane || !target) {
-    return undefined;
-  }
-
-  const existingMachine = findMachine(machineGroups, pane.machineId);
-  if (existingMachine?.kind === "dockerContainer") {
-    return existingMachine;
-  }
-
-  const hostMachine = findMachine(machineGroups, target.hostId);
-  const runtime = target.runtime ?? "docker";
-  const containerName =
-    target.containerName ?? pane.title ?? target.containerId.slice(0, 12);
-  const workdir = pane.currentCwd?.trim() || target.workdir;
-  const activeTarget = {
-    ...target,
-    ...(containerName ? { containerName } : {}),
-    ...(workdir ? { workdir } : {}),
-    runtime,
-  };
-
-  return {
-    containerId: target.containerId,
-    containerName,
-    description: hostMachine
-      ? `${hostMachine.name} / ${containerName}`
-      : `${runtime} container`,
-    host: hostMachine?.host,
-    id: targetStableId(activeTarget),
-    kind: "dockerContainer",
-    name: containerName,
-    parentMachineId: target.hostId,
-    production: pane.remoteHostProduction ?? hostMachine?.production,
-    remoteGroupId: hostMachine?.remoteGroupId,
-    runtime,
-    status: pane.status,
-    tags: ["container", runtime],
-    target: activeTarget,
-    user: target.user,
-    username: hostMachine?.username,
-    workdir,
-  };
+  return hash >>> 0;
 }
 
 function terminalPaneWithoutHighFrequencyOutput(pane: TerminalPane) {

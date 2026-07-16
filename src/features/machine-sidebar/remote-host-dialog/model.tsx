@@ -20,7 +20,7 @@ import type {
   SshProxyProtocol,
   SshTunnelKind,
 } from "../../../lib/remoteHostApi";
-import type { Machine, MachineGroup } from "../../workspace/types";
+import type { Machine, MachineGroup } from "../../workspace/contracts/index";
 
 export interface RemoteHostCreateDialogProps {
   defaultGroupId?: string;
@@ -174,21 +174,17 @@ export const serialFlowOptions: SelectOption[] = [
 
 export const authOptions: Array<{
   label: string;
-  helper: string;
   value: RemoteHostAuthType;
 }> = [
   {
-    helper: "密码明文保存，编辑时显示。",
     label: "密码",
     value: "password",
   },
   {
-    helper: "使用私钥路径或明文私钥。",
     label: "密钥",
     value: "key",
   },
   {
-    helper: "使用系统 ssh-agent。",
     label: "SSH Agent",
     value: "agent",
   },
@@ -217,7 +213,7 @@ export const terminalTypeOptions = [
   "linux",
 ];
 
-export const DEFAULT_GROUP_LABEL = "默认分组";
+const DEFAULT_GROUP_LABEL = "默认分组";
 
 export function buildGroupOptions(groups: MachineGroup[]) {
   const options = groups.map((group) => ({

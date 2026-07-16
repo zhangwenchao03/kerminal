@@ -7,9 +7,9 @@ import {
   type ConfigChangeStatus,
 } from "./configChangeNoticeModel";
 
-export type { ConfigChangeDomain, ConfigChangeNotice };
+export type { ConfigChangeNotice };
 
-export interface ConfigChangeEventDiagnostic {
+interface ConfigChangeEventDiagnostic {
   domain?: ConfigChangeDomain;
   message: string;
   path?: string;
@@ -26,7 +26,7 @@ export interface ConfigChangeEvent {
   sourceHint: ConfigChangeSourceHint;
 }
 
-export type ConfigDomainRefreshers = Partial<
+type ConfigDomainRefreshers = Partial<
   Record<ConfigChangeDomain, () => Promise<void>>
 >;
 
@@ -90,7 +90,7 @@ export function createConfigRefreshCoordinator({
         domains: domainsToRefresh,
         id: `${event.batchId}:${event.sequence}:refresh-failed`,
         level: "warning",
-        text: "cfg: refresh failed, kept last-known-good",
+        text: "配置更新失败，Kerminal 已继续使用上次有效数据。",
         ttlMs: 3000,
       });
       return;

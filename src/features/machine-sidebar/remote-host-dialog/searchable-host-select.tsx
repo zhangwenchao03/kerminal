@@ -1,7 +1,7 @@
 import { useId, useMemo, useState, type FocusEvent } from "react";
 import { Search } from "lucide-react";
 import { cn } from "../../../lib/cn";
-import type { Machine } from "../../workspace/types";
+import type { Machine } from "../../workspace/contracts/index";
 
 export function SearchableHostSelect({
   ariaLabel,
@@ -60,7 +60,7 @@ export function SearchableHostSelect({
           aria-expanded={open}
           aria-haspopup="listbox"
           aria-label={ariaLabel}
-          className="kerminal-field-surface kerminal-focus-ring h-10 w-full rounded-xl border pl-9 pr-3 text-sm text-zinc-950 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-100 dark:placeholder:text-zinc-600"
+          className="kerminal-field-surface kerminal-focus-ring h-9 w-full rounded-[var(--radius-control)] border pl-9 pr-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-50 dark:placeholder:text-zinc-600"
           disabled={disabled}
           onChange={(event) => {
             setOpen(true);
@@ -81,7 +81,7 @@ export function SearchableHostSelect({
       </label>
       {open ? (
         <div
-          className="kerminal-floating-surface kerminal-floating-enter absolute left-0 right-0 top-[calc(100%+0.375rem)] z-50 overflow-hidden rounded-2xl border p-1 text-sm text-zinc-950 dark:text-zinc-100"
+          className="kerminal-floating-surface kerminal-floating-enter kerminal-layer-popover absolute left-0 right-0 top-[calc(100%+0.375rem)] overflow-hidden rounded-[var(--radius-card)] border p-1 text-[13px] text-[var(--text-primary)]"
           id={listboxId}
           role="listbox"
         >
@@ -91,8 +91,8 @@ export function SearchableHostSelect({
                 <button
                   aria-selected={false}
                   className={cn(
-                    "kerminal-focus-ring kerminal-pressable grid min-w-0 gap-0.5 rounded-xl px-2.5 py-2 text-left transition",
-                    "text-zinc-700 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50",
+                    "kerminal-focus-ring kerminal-pressable grid min-w-0 gap-0.5 rounded-[var(--radius-control)] px-2.5 py-2 text-left transition",
+                    "text-[var(--text-primary)] hover:bg-[var(--surface-hover)]",
                   )}
                   key={machine.id}
                   onClick={() => selectHost(machine.id)}
@@ -108,7 +108,7 @@ export function SearchableHostSelect({
                 </button>
               ))
             ) : (
-              <div className="rounded-lg border border-dashed border-[var(--border-subtle)] px-3 py-4 text-center text-xs text-zinc-500 dark:text-zinc-400">
+              <div className="rounded-[var(--radius-control)] border border-dashed border-[var(--border-subtle)] px-3 py-4 text-center text-xs text-[var(--text-secondary)]">
                 没有匹配的主机。
               </div>
             )}
@@ -119,7 +119,7 @@ export function SearchableHostSelect({
   );
 }
 
-export function formatHostIdentity(machine: Machine) {
+function formatHostIdentity(machine: Machine) {
   if (machine.kind !== "ssh") {
     return machine.description;
   }

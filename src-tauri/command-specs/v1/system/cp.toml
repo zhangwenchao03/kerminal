@@ -1,0 +1,37 @@
+schema_version = 1
+command = "cp"
+aliases = []
+platforms = ["macos", "linux"]
+shells = ["bash", "zsh", "fish"]
+description = "Copy files and directories"
+tested_version = "GNU coreutils 9.7"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "GNU Coreutils cp manual"
+url = "https://www.gnu.org/software/coreutils/manual/html_node/cp-invocation.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "--archive"
+aliases = ["-a"]
+description = "Preserve structure and attributes recursively"
+
+[[options]]
+name = "--recursive"
+aliases = ["-R"]
+description = "Copy directories recursively"
+
+[[options]]
+name = "--force"
+aliases = ["-f"]
+description = "Overwrite destination files without prompting"
+
+[options.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "This option can overwrite destination files"

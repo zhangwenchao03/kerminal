@@ -31,6 +31,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Verify release tag and versions
         id: release
         shell: bash
@@ -86,9 +97,18 @@ jobs:
 
           echo "release_tag=${tag}" >> "${GITHUB_OUTPUT}"
 
+  quality:
+    name: Release quality gate
+    needs: preflight
+    uses: ./.github/workflows/quality.yml
+    with:
+      ref: ${{ needs.preflight.outputs.release_tag }}
+
   publish-tauri:
     name: Build ${{ matrix.name }}
-    needs: preflight
+    needs:
+      - preflight
+      - quality
     runs-on: ${{ matrix.platform }}
     env:
       NODE_OPTIONS: --max-old-space-size=4096
@@ -126,11 +146,18 @@ jobs:
           ref: ${{ needs.preflight.outputs.release_tag }}
           fetch-depth: 1
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+          run_install: false
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Setup Rust
         if: matrix.target == ''
@@ -170,7 +197,13 @@ jobs:
             wget
 
       - name: Install project dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify external launch security and responsiveness gates
+        if: runner.os == 'Windows'
+        run: |
+          pnpm run verify:external-launch-security
+          pnpm run verify:external-launch-responsiveness
 
       - name: Build and publish signed Tauri release
         if: env.HAS_TAURI_SIGNING_KEY == 'true'
@@ -181,7 +214,14 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: ${{ matrix.args }}
-          releaseBody: "Kerminal release build."
+          releaseBody: |
+            - 新安装默认使用紧凑界面密度，在保持浅色、深色和跟随系统主题可读性的同时提升终端与工具面板的信息密度。
+            - 空工作区不再恢复陈旧的主机选择，Context Inspector 与右栏工具只展示当前真实终端目标。
+            - SFTP 传输工作台隐藏没有终端上下文的目录跟随入口；终端右栏继续保留紧凑控制和目标绑定能力。
+            - SSH 目录跟随新增标准 OSC 7、pane 初始目录和来源优先级兜底，协议目录建立后不再被 prompt 猜测覆盖。
+            - 修正 MCP HTTP 生命周期回归测试对临时端口回退契约的错误假设，降低 Windows 发布门禁的偶发失败。
+
+            macOS `.app` / `.dmg` 未使用 Apple Developer ID 签名，也未经过 Apple 公证；首次启动可能出现 Gatekeeper 提示，请按组织或个人环境自行处理。
           releaseDraft: true
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}
@@ -200,6 +240,14 @@ jobs:
           releaseName: "Kerminal ${{ env.RELEASE_TAG }}"
           tagName: ${{ env.RELEASE_TAG }}
           includeUpdaterJson: false
+
+      - name: Verify Windows release package
+        if: runner.os == 'Windows' && env.HAS_TAURI_SIGNING_KEY == 'true'
+        run: pnpm run verify:windows-release-package -- --bundle-dir src-tauri/target/release/bundle/nsis --require-updater-signature --require-archive-inspection
+
+      - name: Verify unsigned Windows release package
+        if: runner.os == 'Windows' && env.HAS_TAURI_SIGNING_KEY != 'true'
+        run: pnpm run verify:windows-release-package -- --bundle-dir src-tauri/target/release/bundle/nsis --require-archive-inspection
 
   publish-release:
     name: Publish GitHub release

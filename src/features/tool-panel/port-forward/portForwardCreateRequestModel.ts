@@ -1,10 +1,9 @@
 import type {
   PortForwardCreateRequest,
-  PortForwardProxyProtocol,
   PortForwardSummary,
 } from "../../../lib/portForwardApi";
 import {
-  buildNetworkAssistCommand,
+  buildRemoteSocksCommand,
   buildProxyUrl,
   parsePort,
   type BindAddressMode,
@@ -20,7 +19,6 @@ export type PortForwardSessionMetadata = Pick<
   | "origin"
   | "proxyProtocol"
   | "proxyUrl"
-  | "purpose"
   | "remoteAccessScope"
   | "remoteBindHost"
   | "remoteEndpoint"
@@ -32,13 +30,10 @@ export interface BuildPortForwardCreateRequestInput {
   hostTargetPort: string;
   localBindHost: string;
   localListenPort: string;
-  localProxyHost: string;
-  localProxyPort: string;
   localSocksPort: string;
   localTargetHost: string;
   localTargetPort: string;
   name: string;
-  proxyProtocol: PortForwardProxyProtocol;
   remoteBindHost: string;
   remoteBindMode: BindAddressMode;
   remoteListenPort: string;
@@ -52,13 +47,10 @@ export function buildPortForwardCreateRequest({
   hostTargetPort,
   localBindHost,
   localListenPort,
-  localProxyHost,
-  localProxyPort,
   localSocksPort,
   localTargetHost,
   localTargetPort,
   name,
-  proxyProtocol,
   remoteBindHost,
   remoteBindMode,
   remoteListenPort,
@@ -143,65 +135,6 @@ export function buildPortForwardCreateRequest({
     };
   }
 
-  if (scenario === "hostNetwork") {
-    const sourcePort = parsePort(remoteListenPort, "主机代理端口");
-    if (!sourcePort.ok) {
-      return { error: sourcePort.error };
-    }
-    const proxyUrl = buildProxyUrl({
-      bindHost: remoteBindHost,
-      port: sourcePort.port,
-      protocol: proxyProtocol,
-    });
-    const commandPreview = buildNetworkAssistCommand({
-      protocol: proxyProtocol,
-      proxyUrl,
-    });
-    const request: PortForwardCreateRequest = {
-      bindHost: remoteBindHost,
-      commandPreview,
-      remoteEndpoint: {
-        host: remoteBindHost,
-        label: proxyProtocol === "http" ? "主机 HTTP 代理" : "主机 SOCKS 代理",
-        port: sourcePort.port,
-        protocol: proxyProtocol === "http" ? "http" : "socks5",
-        side: "host",
-      },
-      hostId,
-      kind: "remote",
-      localEndpoint: {
-        host:
-          proxyProtocol === "http"
-            ? localProxyHost.trim() || "127.0.0.1"
-            : "OpenSSH remote dynamic",
-        label: proxyProtocol === "http" ? "本机受管代理入口" : "远端动态 SOCKS",
-        port: proxyProtocol === "http" ? Number(localProxyPort) : undefined,
-        protocol: proxyProtocol === "http" ? "http" : "socks5",
-        side: "local",
-      },
-      name: trimmedName,
-      origin: "networkAssist",
-      proxyProtocol,
-      proxyUrl,
-      purpose: "hostNetworkAssist",
-      remoteAccessScope: remoteBindMode === "all" ? "allInterfaces" : remoteBindMode,
-      remoteBindHost,
-      sourcePort: sourcePort.port,
-    };
-
-    if (proxyProtocol === "http") {
-      const targetPort = parsePort(localProxyPort, "本机受管代理端口");
-      if (!targetPort.ok) {
-        return { error: targetPort.error };
-      }
-      request.localBindHost = localProxyHost.trim() || "127.0.0.1";
-      request.targetHost = localProxyHost.trim() || "127.0.0.1";
-      request.targetPort = targetPort.port;
-    }
-
-    return { value: request };
-  }
-
   if (socksMode === "remoteDynamic") {
     const sourcePort = parsePort(remoteListenPort, "主机 SOCKS 端口");
     if (!sourcePort.ok) {
@@ -210,15 +143,11 @@ export function buildPortForwardCreateRequest({
     const proxyUrl = buildProxyUrl({
       bindHost: remoteBindHost,
       port: sourcePort.port,
-      protocol: "socks5",
     });
     return {
       value: {
         bindHost: remoteBindHost,
-        commandPreview: buildNetworkAssistCommand({
-          protocol: "socks5",
-          proxyUrl,
-        }),
+        commandPreview: buildRemoteSocksCommand({ proxyUrl }),
         remoteEndpoint: {
           host: remoteBindHost,
           label: "主机 SOCKS",
@@ -227,7 +156,7 @@ export function buildPortForwardCreateRequest({
           side: "host",
         },
         hostId,
-        kind: "remote",
+        kind: "remoteDynamic",
         localEndpoint: {
           host: "OpenSSH remote dynamic",
           label: "远端动态 SOCKS",
@@ -238,7 +167,6 @@ export function buildPortForwardCreateRequest({
         origin: "user",
         proxyProtocol: "socks5",
         proxyUrl,
-        purpose: "hostNetworkAssist",
         remoteAccessScope:
           remoteBindMode === "all" ? "allInterfaces" : remoteBindMode,
         remoteBindHost,
@@ -286,7 +214,6 @@ export function metadataFromCreateRequest(
     origin: request.origin,
     proxyProtocol: request.proxyProtocol,
     proxyUrl: request.proxyUrl,
-    purpose: request.purpose,
     remoteAccessScope: request.remoteAccessScope,
     remoteBindHost: request.remoteBindHost,
     remoteEndpoint: request.remoteEndpoint,

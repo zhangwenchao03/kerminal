@@ -4,12 +4,23 @@
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultAppSettings } from "../../../../src/features/settings/settingsModel";
 import { mocks, setTerminalBufferLines } from "../../support/terminal/XtermPane.testSupport.tsx";
 import { XtermPane } from "../../../../src/features/terminal/XtermPane";
+import {
+  getAgentSendRequestSnapshot,
+  consumeAgentSendRequest,
+} from "../../../../src/features/agent-workflow/agentSendRequestStore";
+import { getTerminalPaneSessionRecord } from "../../../../src/features/terminal/terminalSessionRegistry";
+import { readXtermPanePromptSource } from "../../../../src/features/terminal/XtermPane.promptSourceRegistry";
 
 describe("XtermPane command rail boundaries", () => {
+  beforeEach(() => {
+    const pendingRequest = getAgentSendRequestSnapshot().request;
+    if (pendingRequest) consumeAgentSendRequest(pendingRequest.id);
+  });
+
   it("copies command block text through the desktop clipboard facade", async () => {
     const user = userEvent.setup();
 
@@ -70,6 +81,100 @@ describe("XtermPane command rail boundaries", () => {
     expect(mocks.api.writeDesktopClipboardText).toHaveBeenCalledWith(
       expect.stringContaining("C:\\Users\\24052"),
     );
+  });
+
+  it("routes the clicked command block to Agent instead of using an unrelated block", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <XtermPane
+        focused
+        paneId="pane-local"
+        resolvedTheme="dark"
+        tabId="tab-local"
+        terminalAppearance={defaultAppSettings.terminal}
+        title="本地 PowerShell"
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText("已连接")).toBeInTheDocument();
+    });
+
+    const terminal = mocks.terminalInstances[0];
+    setTerminalBufferLines(
+      terminal,
+      {
+        0: "PS C:\\\\Users\\\\24052> pwd",
+      },
+      0,
+    );
+    act(() => {
+      terminal.onDataCallback?.("pwd\r");
+      mocks.getLatestOutputHandler()?.({
+        data: "C:\\\\Users\\\\24052\r\nPS C:\\\\Users\\\\24052>",
+        kind: "data",
+        sessionId: "session-1",
+      });
+    });
+    setTerminalBufferLines(
+      terminal,
+      {
+        0: "PS C:\\\\Users\\\\24052> pwd",
+        1: "C:\\\\Users\\\\24052",
+        2: "PS C:\\\\Users\\\\24052>",
+      },
+      2,
+    );
+    act(() => {
+      terminal.onWriteParsedCallback?.();
+    });
+
+    act(() => {
+      terminal.onDataCallback?.("whoami\r");
+      mocks.getLatestOutputHandler()?.({
+        data: "kong\r\nPS C:\\\\Users\\\\24052>",
+        kind: "data",
+        sessionId: "session-1",
+      });
+    });
+    setTerminalBufferLines(
+      terminal,
+      {
+        0: "PS C:\\\\Users\\\\24052> pwd",
+        1: "C:\\\\Users\\\\24052",
+        2: "PS C:\\\\Users\\\\24052> whoami",
+        3: "kong",
+        4: "PS C:\\\\Users\\\\24052>",
+      },
+      4,
+    );
+    act(() => {
+      terminal.onWriteParsedCallback?.();
+    });
+    await screen.findByLabelText("折叠命令块 whoami");
+
+    fireEvent.contextMenu(await screen.findByLabelText("折叠命令块 pwd"));
+    await user.click(
+      screen.getByRole("menuitem", { name: "发送命令块 pwd 到 Agent" }),
+    );
+
+    expect(getAgentSendRequestSnapshot().request).toMatchObject({
+      paneId: "pane-local",
+      source: "commandBlock",
+      tabId: "tab-local",
+    });
+    expect(getTerminalPaneSessionRecord("pane-local")?.commandBlockText).toContain(
+      "$ pwd",
+    );
+    expect(getTerminalPaneSessionRecord("pane-local")?.commandBlockText).toContain(
+      "C:\\\\Users\\\\24052",
+    );
+    expect(readXtermPanePromptSource("pane-local")?.commandBlockText).toContain(
+      "$ pwd",
+    );
+    expect(
+      readXtermPanePromptSource("pane-local")?.commandBlockText,
+    ).not.toContain("$ whoami");
   });
 
   it("keeps the current prompt rail aligned after the context-menu clear action", async () => {

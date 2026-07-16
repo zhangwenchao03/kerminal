@@ -31,7 +31,7 @@ export function localMachineIdForProfile(profileId: string) {
 }
 
 export function findMachine(
-  groups: MachineGroup[],
+  groups: readonly MachineGroup[],
   machineId: string,
 ): Machine | undefined {
   for (const group of groups) {

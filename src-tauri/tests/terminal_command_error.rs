@@ -96,3 +96,33 @@ fn terminal_output_error_event_carries_typed_pty_read_error_without_losing_messa
     assert_eq!(serialized["error"]["class"], "ptyReadFailed");
     assert_eq!(serialized["data"], "read failed");
 }
+
+#[test]
+fn terminal_command_error_distinguishes_input_limit_from_retryable_backpressure() {
+    let input_error = TerminalCommandError::from_app_error(
+        TerminalErrorOperation::Write,
+        &AppError::InvalidInput(
+            "terminal input exceeds per-write limit: 1048577 bytes > 1048576 bytes".to_owned(),
+        ),
+    );
+    let backpressure_error = TerminalCommandError::from_app_error(
+        TerminalErrorOperation::Write,
+        &AppError::Terminal(
+            "managed SSH shell input backpressure: 1048576 pending bytes reached the 1048576-byte high-water mark"
+                .to_owned(),
+        ),
+    );
+
+    assert_eq!(input_error.class, TerminalErrorClass::InvalidInput);
+    assert_eq!(
+        input_error.recovery,
+        TerminalErrorRecovery::UserActionRequired
+    );
+    assert!(!input_error.retryable);
+    assert_eq!(backpressure_error.class, TerminalErrorClass::PtyWriteFailed);
+    assert_eq!(
+        backpressure_error.recovery,
+        TerminalErrorRecovery::Retryable
+    );
+    assert!(backpressure_error.retryable);
+}

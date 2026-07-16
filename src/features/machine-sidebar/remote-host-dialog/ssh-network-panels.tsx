@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Cable, Plus, Waypoints } from "lucide-react";
+import { Cable, Plus } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Select } from "../../../components/ui/select";
 import type {
@@ -20,7 +20,6 @@ import {
   ConfigListItem,
   EmptyConfigState,
   FieldRow,
-  HelpCard,
   inputClassName,
   ListReorderActions,
 } from "./shared-ui";
@@ -53,7 +52,7 @@ export function SshProxyPanel({
       <FieldRow label="协议">
         <Select
           aria-label="代理协议"
-          buttonClassName="h-10"
+          buttonClassName="h-9"
           onValueChange={(value) => {
             const protocol = value as SshProxyProtocol;
             updateProxy(
@@ -107,10 +106,6 @@ export function SshProxyPanel({
           value={proxy.username ?? ""}
         />
       </FieldRow>
-      <HelpCard
-        icon={<Waypoints className="mt-0.5 h-4 w-4 text-sky-500 dark:text-sky-300" />}
-        text="仅保存协议、地址、端口和用户名。"
-      />
     </div>
   );
 }
@@ -153,7 +148,7 @@ export function SshTunnelPanel({
         <FieldRow label="类型">
           <Select
             aria-label="隧道类型"
-            buttonClassName="h-10"
+            buttonClassName="h-9"
             onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
@@ -245,7 +240,7 @@ export function SshTunnelPanel({
           </Button>
         </div>
         {draftError ? (
-          <p className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
+          <p className="rounded-[var(--radius-control)] border border-red-500/20 bg-red-500/10 px-3 py-2 text-[13px] leading-5 text-red-600 dark:text-red-300">
             {draftError}
           </p>
         ) : null}
@@ -255,7 +250,7 @@ export function SshTunnelPanel({
   );
 }
 
-export function SshTunnelList({
+function SshTunnelList({
   options,
   setOptions,
 }: {

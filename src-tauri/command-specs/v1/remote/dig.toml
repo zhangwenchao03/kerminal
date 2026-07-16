@@ -1,0 +1,37 @@
+schema_version = 1
+command = "dig"
+aliases = []
+platforms = ["macos", "linux"]
+shells = ["bash", "zsh", "fish"]
+description = "Query DNS name servers"
+tested_version = "BIND 9.20"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "BIND dig manual"
+url = "https://bind9.readthedocs.io/en/stable/manpages.html#dig-dns-lookup-utility"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "-x"
+description = "Perform a reverse lookup"
+
+[[options]]
+name = "-t"
+description = "Select the DNS record type"
+
+[options.argument]
+kind = "string"
+placeholder = "TYPE"
+
+[[options]]
+name = "-p"
+description = "Select the DNS server port"
+
+[options.argument]
+kind = "integer"
+placeholder = "PORT"

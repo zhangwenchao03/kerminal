@@ -1,0 +1,32 @@
+schema_version = 1
+command = "netstat"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Display network connections and routing information"
+tested_version = "net-tools 2.10 / Windows 11"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "net-tools netstat manual"
+url = "https://man7.org/linux/man-pages/man8/netstat.8.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "--all"
+aliases = ["-a"]
+description = "Display all sockets"
+
+[[options]]
+name = "--listening"
+aliases = ["-l"]
+description = "Display listening sockets"
+
+[[options]]
+name = "--numeric"
+aliases = ["-n"]
+description = "Do not resolve service or host names"

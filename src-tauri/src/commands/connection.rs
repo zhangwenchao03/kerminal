@@ -2,19 +2,22 @@
 //!
 //! @author kongweiguang
 
-use std::{
-    fs,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use std::process::Command;
-#[cfg(target_os = "windows")]
-use std::process::Stdio;
-#[cfg(target_os = "windows")]
-use std::{io::Write, os::windows::process::CommandExt};
 
 use uuid::Uuid;
+
+pub mod process;
+
+#[cfg(target_os = "windows")]
+use process::run_bounded_process;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+use process::supervise_detached_client;
+use process::{cleanup_stale_artifacts, TemporaryArtifact};
 
 use crate::{
     error::{AppError, AppResult},
@@ -27,7 +30,7 @@ use crate::{
             parse_vault_secret_ref, RemoteHost, RemoteHostAuthType, RemoteHostCreateRequest,
         },
     },
-    services::encrypted_vault_service::EncryptedVaultService,
+    services::encrypted_vault_service::{EncryptedVaultService, VaultKeyEntryReadError},
     state::AppState,
 };
 use tauri::State;
@@ -35,6 +38,13 @@ use tokio::net::TcpStream;
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+const RDP_ARTIFACT_DIRECTORY: &str = "kerminal-rdp";
+const RDP_ARTIFACT_PREFIX: &str = "connection-";
+const RDP_ARTIFACT_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+const RDP_CLIENT_MAX_LIFETIME: Duration = Duration::from_secs(24 * 60 * 60);
+#[cfg(target_os = "windows")]
+const POWERSHELL_ENCRYPT_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[doc(hidden)]
 pub mod rules {
@@ -110,20 +120,28 @@ pub(crate) fn open_rdp_connection(request: RdpOpenRequest) -> AppResult<RdpOpenR
     validate_rdp_request(&request)?;
     let password_blob = encrypted_rdp_password(request.password.as_deref())?;
     let rdp_content = build_rdp_file_content(&request, password_blob.as_deref());
-    let file_path = std::env::temp_dir().join(format!(
-        "kerminal-{}-{}.rdp",
-        sanitize_file_token(&request.name),
-        Uuid::new_v4()
-    ));
-    fs::write(&file_path, rdp_content)?;
+    cleanup_stale_rdp_artifacts()?;
+    let directory = std::env::temp_dir().join(RDP_ARTIFACT_DIRECTORY);
+    let file_path = directory.join(format!("{RDP_ARTIFACT_PREFIX}{}.rdp", Uuid::new_v4()));
+    let artifact = TemporaryArtifact::create(file_path.clone(), rdp_content.as_bytes())?;
 
-    launch_system_rdp_client(&file_path)?;
+    launch_system_rdp_client(artifact)?;
 
     Ok(RdpOpenResult {
         launched: true,
         message: "已请求系统 RDP 客户端启动。".to_string(),
         file_path: Some(file_path.to_string_lossy().into_owned()),
     })
+}
+
+/// 清理上次异常退出遗留的 RDP 临时连接文件。
+pub fn cleanup_stale_rdp_artifacts() -> AppResult<usize> {
+    cleanup_stale_artifacts(
+        &std::env::temp_dir().join(RDP_ARTIFACT_DIRECTORY),
+        RDP_ARTIFACT_PREFIX,
+        ".rdp",
+        RDP_ARTIFACT_MAX_AGE,
+    )
 }
 
 fn open_saved_rdp_connection(state: &AppState, host_id: &str) -> AppResult<RdpOpenResult> {
@@ -193,13 +211,17 @@ fn decrypt_vault_password_secret_ref(
             parsed.material
         )));
     }
-    let key = vault
-        .read_key()
-        .map_err(|_| AppError::Credential("RDP vault key is missing or unreadable".to_owned()))?;
     let entry_id = parsed.entry_id();
-    let entry = vault
-        .entry_by_id(&entry_id)?
-        .ok_or_else(|| AppError::Credential(format!("未找到 RDP vault 凭据: {entry_id}")))?;
+    let (key, entry) = vault
+        .read_key_and_entry(&entry_id)
+        .map_err(|error| match error {
+            VaultKeyEntryReadError::Key => {
+                AppError::Credential("RDP vault key is missing or unreadable".to_owned())
+            }
+            VaultKeyEntryReadError::Vault(error) => error,
+        })?;
+    let entry =
+        entry.ok_or_else(|| AppError::Credential(format!("未找到 RDP vault 凭据: {entry_id}")))?;
     let plaintext = vault
         .decrypt_secret(&key, &entry, secret_ref.as_bytes())
         .map_err(|_| AppError::Credential(format!("RDP vault 凭据无法解密: {entry_id}")))?;
@@ -496,9 +518,6 @@ fn encrypted_rdp_password(password: Option<&str>) -> AppResult<Option<String>> {
                 "-Command",
                 "[Console]::In.ReadToEnd() | ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString",
             ])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
             .creation_flags(CREATE_NO_WINDOW);
         // Avoid Windows PowerShell autoloading incompatible PowerShell 7 modules
         // inherited from shells that prepend pwsh module paths.
@@ -506,18 +525,14 @@ fn encrypted_rdp_password(password: Option<&str>) -> AppResult<Option<String>> {
             command.env("PSModulePath", module_path);
         }
 
-        let mut child = command.spawn().map_err(AppError::Io)?;
-
-        if let Some(stdin) = child.stdin.as_mut() {
-            stdin.write_all(password.as_bytes()).map_err(AppError::Io)?;
-        }
-
-        let output = child.wait_with_output().map_err(AppError::Io)?;
+        let output = run_bounded_process(
+            &mut command,
+            password.as_bytes(),
+            POWERSHELL_ENCRYPT_TIMEOUT,
+            "RDP 密码加密",
+        )?;
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            return Err(AppError::InvalidInput(format!(
-                "RDP 密码加密失败: {stderr}"
-            )));
+            return Err(AppError::InvalidInput("RDP 密码加密失败".to_owned()));
         }
 
         Ok(Some(
@@ -550,50 +565,31 @@ fn windows_powershell_module_path() -> Option<String> {
     Some(paths.join(";"))
 }
 
-fn launch_system_rdp_client(file_path: &std::path::Path) -> AppResult<()> {
+fn launch_system_rdp_client(artifact: TemporaryArtifact) -> AppResult<()> {
     #[cfg(target_os = "windows")]
     {
-        Command::new("mstsc")
-            .arg(file_path)
+        let child = Command::new("mstsc")
+            .arg(artifact.path())
             .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map_err(AppError::Io)?;
-        Ok(())
+        supervise_detached_client(child, artifact, RDP_CLIENT_MAX_LIFETIME)
     }
 
     #[cfg(target_os = "macos")]
     {
-        Command::new("open")
-            .arg(file_path)
+        let child = Command::new("open")
+            .arg(artifact.path())
             .spawn()
             .map_err(AppError::Io)?;
-        Ok(())
+        supervise_detached_client(child, artifact, RDP_CLIENT_MAX_LIFETIME)
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
-        let _ = file_path;
+        let _ = artifact;
         Err(AppError::InvalidInput(
             "当前平台暂不支持通过系统客户端启动 RDP".to_string(),
         ))
-    }
-}
-
-fn sanitize_file_token(value: &str) -> String {
-    let token: String = value
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
-                ch
-            } else {
-                '-'
-            }
-        })
-        .collect();
-    let trimmed = token.trim_matches('-');
-    if trimmed.is_empty() {
-        "rdp".to_string()
-    } else {
-        trimmed.chars().take(32).collect()
     }
 }

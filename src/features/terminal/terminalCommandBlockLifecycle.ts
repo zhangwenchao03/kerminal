@@ -225,7 +225,7 @@ export function syncTerminalCommandProtocolPromptBlock({
   );
 }
 
-export function collectTrailingEmptyPromptLines(
+function collectTrailingEmptyPromptLines(
   terminal: XtermTerminal,
   promptLine: number,
 ) {

@@ -201,7 +201,22 @@ fn managed_shell_session_uses_existing_output_pump_and_transport_controls() {
     assert_eq!(summary.pid, None);
     assert_eq!(summary.cwd.as_deref(), Some("/home/deploy"));
     assert_eq!(summary.target_ref.as_deref(), Some("ssh:managed-host"));
-    assert!(summary.target_token.is_some());
+    let target_token = summary
+        .target_token
+        .as_deref()
+        .expect("managed target token");
+    assert!(terminal_manager
+        .verify_target_token(&summary.id, target_token)
+        .expect("verify factory-created target token")
+        .is_some());
+    assert_eq!(
+        terminal_manager
+            .session_summary(&summary.id)
+            .expect("factory-created session registered")
+            .target_token
+            .as_deref(),
+        Some(target_token)
+    );
 
     let output = receiver
         .recv_timeout(Duration::from_secs(2))
@@ -235,6 +250,42 @@ fn managed_shell_session_uses_existing_output_pump_and_transport_controls() {
         .expect("close managed shell");
     wait_until(Duration::from_secs(2), || backend.close_count() == 1);
     assert!(terminal_manager.session_summary(&summary.id).is_err());
+}
+
+#[test]
+fn managed_shell_session_rejects_oversized_startup_input_before_bridge_start() {
+    let backend = Arc::new(FakeShellBackend::default());
+    let runtime_manager = ManagedSshSessionManager::with_backend(Arc::clone(&backend));
+    let session = runtime_manager
+        .acquire_session(fake_session_key())
+        .expect("managed session");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime");
+    let shell = runtime
+        .block_on(session.open_shell(SshRuntimeShellRequest::new("xterm-256color", 80, 24)))
+        .expect("managed shell");
+    let terminal_manager = TerminalManager::new();
+
+    let error = terminal_manager
+        .create_managed_shell_session(
+            TerminalManagedShellCreateRequest {
+                shell: "ssh:managed-host".to_owned(),
+                cwd: None,
+                startup_input: Some("x".repeat(1024 * 1024 + 1)),
+                cols: 80,
+                rows: 24,
+                target_ref: Some("ssh:managed-host".to_owned()),
+            },
+            TerminalManagedShellRuntime { shell, runtime },
+            |_| true,
+        )
+        .expect_err("oversized startup input must be rejected");
+
+    assert!(error.to_string().contains("exceeds per-write limit"));
+    assert_eq!(backend.write_count(), 0);
+    assert!(terminal_manager.list_sessions().unwrap().is_empty());
 }
 
 #[test]

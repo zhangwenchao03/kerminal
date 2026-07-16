@@ -8,7 +8,7 @@ use tauri::{
     App, AppHandle, Manager, Runtime, WindowEvent,
 };
 
-use crate::app_menu::MAIN_WINDOW_LABEL;
+use crate::{app_menu::MAIN_WINDOW_LABEL, window_management};
 
 pub const TRAY_ID: &str = "kerminal:tray";
 
@@ -90,6 +90,7 @@ pub fn setup_close_to_tray<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
                     "main window close intercepted; hiding to tray"
                 );
                 api.prevent_close();
+                window_management::cancel_main_window_activation(window_to_hide.app_handle());
                 let _ = window_to_hide.hide();
             }
         });
@@ -158,6 +159,7 @@ fn handle_tray_menu_action<R: Runtime>(app: &AppHandle<R>, action: TrayMenuActio
     match action {
         TrayMenuAction::Show => show_main_window(app),
         TrayMenuAction::Hide => {
+            window_management::cancel_main_window_activation(app);
             if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
                 tauri_plugin_log::log::info!(
                     target: "desktop.window",
@@ -190,18 +192,9 @@ fn tray_icon_event_should_show_window(event: &TrayIconEvent) -> bool {
 }
 
 pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
-    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-        tauri_plugin_log::log::info!(
-            target: "desktop.window",
-            "main window show and focus requested"
-        );
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
-    } else {
-        tauri_plugin_log::log::warn!(
-            target: "desktop.window",
-            "main window show requested but window was unavailable"
-        );
-    }
+    tauri_plugin_log::log::info!(
+        target: "desktop.window",
+        "main window show and focus requested"
+    );
+    window_management::request_main_window_activation(app);
 }

@@ -1,0 +1,33 @@
+schema_version = 1
+command = "ping"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Test network reachability with ICMP echo requests"
+tested_version = "iputils 20250605 / Windows 11"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "iputils ping manual"
+url = "https://man7.org/linux/man-pages/man8/ping.8.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "-c"
+description = "Stop after sending a number of requests"
+
+[options.argument]
+kind = "integer"
+placeholder = "COUNT"
+
+[[options]]
+name = "-W"
+description = "Set the reply timeout"
+
+[options.argument]
+kind = "integer"
+placeholder = "TIMEOUT"

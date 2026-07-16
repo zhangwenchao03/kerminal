@@ -13,8 +13,8 @@ import type {
 } from "../features/settings/SettingsToolContent";
 import type { AppSettings } from "../features/settings/settingsModel";
 import type { MachineGroup } from "../features/workspace/types";
-import { getSettings } from "../lib/settingsApi";
-import { listProfiles } from "../lib/profileApi";
+import { getSettings } from "../features/settings/settingsApi";
+import type { listProfiles } from "../lib/profileApi";
 import { listSnippets } from "../lib/snippetApi";
 import { listWorkflows } from "../lib/workflowApi";
 import {
@@ -120,7 +120,7 @@ export function useKerminalShellConfigRefresh({
         domains: ["settings"],
         id: `settings-editor-draft:${Date.now()}`,
         level: "warning",
-        text: "cfg: settings changed externally; editor draft kept",
+        text: "设置已在外部更新，当前编辑内容已保留。",
         ttlMs: 3500,
       });
       return;

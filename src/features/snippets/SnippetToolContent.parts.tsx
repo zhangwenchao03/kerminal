@@ -3,9 +3,11 @@ import { useId, type FormEvent } from "react";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
 import { Select } from "../../components/ui/select";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
 import type { CommandSnippet, SnippetScope } from "../../lib/snippetApi";
-import type { TerminalPane } from "../workspace/types";
+import type { UserFacingMessage } from "../../lib/userFacingMessage";
+import type { TerminalPane } from "../workspace/contracts/index";
 import {
   extractSnippetVariables,
   renderSnippetCommand,
@@ -22,7 +24,7 @@ import {
 } from "./snippetCatalogModel";
 
 export interface SnippetRunState {
-  error: string | null;
+  error: UserFacingMessage | string | null;
   sending: boolean;
   snippetId: string;
   status: string | null;
@@ -32,20 +34,20 @@ export interface SnippetRunState {
 export type AddItemType = "snippet" | "workflow";
 
 export const snippetSearchInputClassName =
-  "kerminal-field-surface h-9 w-full rounded-xl border pl-9 pr-3 font-mono text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
+  "kerminal-field-surface h-9 w-full rounded-[var(--radius-control)] border pl-9 pr-3 text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
 
 const snippetFieldClassName =
-  "kerminal-field-surface mt-1 h-9 w-full rounded-xl border px-3 text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
+  "kerminal-field-surface mt-1 h-9 w-full rounded-[var(--radius-control)] border px-3 text-sm text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
 
 const snippetTextareaClassName =
-  "kerminal-field-surface mt-1 min-h-40 w-full resize-y rounded-2xl border px-3 py-2 font-mono text-xs leading-5 text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
+  "kerminal-field-surface mt-1 min-h-40 w-full resize-y rounded-[var(--radius-card)] border px-3 py-2 font-mono text-xs leading-5 text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
 
 const snippetLabelClassName =
   "text-xs font-medium text-zinc-500 dark:text-zinc-400";
 
 export function snippetFilterButtonClassName(selected: boolean) {
   return cn(
-    "kerminal-focus-ring kerminal-pressable inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border px-2.5 font-mono text-[11px]",
+    "kerminal-focus-ring kerminal-pressable inline-flex h-7 shrink-0 items-center gap-1 rounded-[var(--radius-control)] border px-2.5 text-[11px]",
     selected
       ? "border-sky-400/25 bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
       : "border-transparent text-zinc-500 hover:border-[var(--border-subtle)] hover:bg-[var(--surface-hover)] hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100",
@@ -54,9 +56,9 @@ export function snippetFilterButtonClassName(selected: boolean) {
 
 export function snippetSegmentButtonClassName(selected: boolean) {
   return cn(
-    "kerminal-focus-ring kerminal-pressable inline-flex h-8 items-center justify-center gap-1.5 rounded-lg font-mono text-[11px]",
+    "kerminal-focus-ring kerminal-pressable inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--radius-control)] text-[11px]",
     selected
-      ? "bg-[var(--surface-selected)] text-zinc-950 shadow-sm shadow-sky-950/5 dark:text-zinc-50 dark:shadow-black/20"
+      ? "bg-[var(--surface-selected)] text-zinc-950 dark:text-zinc-50"
       : "text-zinc-500 hover:bg-[var(--surface-hover)] hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100",
   );
 }
@@ -112,12 +114,12 @@ export function SnippetRow({
             <span className="font-mono text-xs text-sky-600 dark:text-sky-300">
               $
             </span>
-            <h3 className="min-w-0 truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+            <h3 className="min-w-0 truncate text-xs font-medium text-zinc-950 dark:text-zinc-50">
               {snippet.title}
             </h3>
             <span
               className={cn(
-                "shrink-0 rounded-md border px-1.5 py-0.5 font-mono text-[10px]",
+                "shrink-0 rounded-md border px-1.5 py-0.5 text-[10px]",
                 scopeBadgeClassName(snippet.scope),
               )}
             >
@@ -126,13 +128,13 @@ export function SnippetRow({
           </div>
           <div className="mt-1 flex min-w-0 items-center gap-2">
             <code className="min-w-0 truncate font-mono text-[11px] leading-4 text-zinc-500 dark:text-zinc-400">
-              {firstLine || "empty command"}
+              {firstLine || "空命令"}
             </code>
           </div>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {displayedTags.map((tag) => (
               <span
-                className="kerminal-muted-surface rounded-md border px-1.5 py-0.5 font-mono text-[10px] text-zinc-500 dark:text-zinc-400"
+                className="kerminal-muted-surface rounded-md border px-1.5 py-0.5 text-[10px] text-zinc-500 dark:text-zinc-400"
                 key={tag}
               >
                 #{tag}
@@ -184,13 +186,13 @@ export function SnippetRow({
       </div>
 
       {runState ? (
-        <div className="kerminal-muted-surface kerminal-floating-enter mt-2 rounded-xl border p-2">
+        <div className="kerminal-floating-enter mt-2 border-t border-[var(--border-subtle)] bg-[var(--surface-muted)] p-2">
           {hasVariables ? (
             <div className="space-y-2">
               {variables.map((name) => (
                 <label className="block" key={name}>
                   <span className="font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
-                    var.{name}
+                    变量 {name}
                   </span>
                   <input
                     aria-label={`变量 ${name}`}
@@ -208,16 +210,24 @@ export function SnippetRow({
               ))}
             </div>
           ) : null}
-          <pre className="kerminal-solid-surface mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded-lg border p-2 font-mono text-[11px] leading-4 text-zinc-800 dark:text-zinc-200">
-            {renderedCommand || "waiting for vars"}
+          <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words border-l-2 border-[rgb(var(--app-accent))] pl-2 font-mono text-[11px] leading-4 text-zinc-800 dark:text-zinc-200">
+            {renderedCommand || "等待变量"}
           </pre>
           {runState.error ? (
-            <div
-              className="mt-2 rounded-lg border border-rose-300/25 bg-rose-500/10 px-2 py-1 text-xs text-rose-700 dark:text-rose-100"
-              role="alert"
-            >
-              {runState.error}
-            </div>
+            typeof runState.error === "string" ? (
+              <div
+                className="mt-2 rounded-lg border border-rose-300/25 bg-rose-500/10 px-2 py-1 text-xs text-rose-700 dark:text-rose-100"
+                role="alert"
+              >
+                {runState.error}
+              </div>
+            ) : (
+              <UserFacingNotice
+                className="mt-2"
+                compact
+                message={runState.error}
+              />
+            )
           ) : null}
           {runState.status ? (
             <div
@@ -246,7 +256,7 @@ export function SnippetRow({
 interface SnippetCreateDialogProps {
   command: string;
   description: string;
-  error: string | null;
+  error: UserFacingMessage | string | null;
   itemType: AddItemType;
   open: boolean;
   saving: boolean;
@@ -286,7 +296,6 @@ export function SnippetCreateDialog({
 
   return (
     <ModalShell
-      description="保存脚本或 workflow。"
       footer={
         <>
           <Button onClick={onClose} type="button" variant="ghost">
@@ -314,7 +323,7 @@ export function SnippetCreateDialog({
       title="添加"
     >
       <form className="space-y-4" id={formId} onSubmit={onSubmit}>
-        <div className="kerminal-muted-surface grid grid-cols-2 rounded-xl border p-1">
+        <div className="kerminal-muted-surface grid grid-cols-2 rounded-[var(--radius-control)] border p-1">
           {(["snippet", "workflow"] as AddItemType[]).map((type) => (
             <button
               aria-pressed={itemType === type}
@@ -323,7 +332,7 @@ export function SnippetCreateDialog({
               onClick={() => onItemTypeChange(type)}
               type="button"
             >
-              {type === "snippet" ? "command" : "workflow"}
+              {type === "snippet" ? "命令" : "工作流"}
             </button>
           ))}
         </div>
@@ -391,12 +400,16 @@ export function SnippetCreateDialog({
         </div>
 
         {error ? (
-          <div
-            className="rounded-xl border border-rose-300/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100"
-            role="alert"
-          >
-            {error}
-          </div>
+          typeof error === "string" ? (
+            <div
+              className="rounded-[var(--radius-control)] border border-rose-300/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100"
+              role="alert"
+            >
+              {error}
+            </div>
+          ) : (
+            <UserFacingNotice compact message={error} />
+          )
         ) : null}
       </form>
     </ModalShell>
@@ -413,13 +426,13 @@ export function SnippetEmptyState({
   onAdd?: () => void;
 }) {
   return (
-    <div className="kerminal-muted-surface m-3 rounded-xl border border-dashed px-3 py-8 text-center">
-      <div className="font-mono text-xs text-zinc-500 dark:text-zinc-400">
+    <div className="px-3 py-8 text-center">
+      <div className="text-xs text-zinc-500 dark:text-zinc-400">
         {filtered
-          ? "no matches"
+          ? "没有匹配项"
           : mode === "preset"
-            ? "empty presets"
-            : "empty snippets"}
+            ? "暂无预设命令"
+            : "暂无命令片段"}
       </div>
       {onAdd ? (
         <Button className="mt-3" onClick={onAdd} size="sm" type="button">

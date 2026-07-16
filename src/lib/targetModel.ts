@@ -43,20 +43,12 @@ export interface TargetCapabilities {
   ports: boolean;
 }
 
-export interface TargetDescriptor {
-  id: string;
-  name: string;
-  description: string;
-  target: RemoteTargetRef;
-  capabilities: TargetCapabilities;
-}
-
 export interface FileLocation {
   target: RemoteTargetRef;
   path: string;
 }
 
-export const localTargetCapabilities: TargetCapabilities = {
+const localTargetCapabilities: TargetCapabilities = {
   download: false,
   exec: true,
   files: false,
@@ -65,7 +57,7 @@ export const localTargetCapabilities: TargetCapabilities = {
   upload: false,
 };
 
-export const sshTargetCapabilities: TargetCapabilities = {
+const sshTargetCapabilities: TargetCapabilities = {
   download: true,
   exec: true,
   files: true,
@@ -83,7 +75,7 @@ export const dockerContainerTargetCapabilities: TargetCapabilities = {
   upload: true,
 };
 
-export const telnetTargetCapabilities: TargetCapabilities = {
+const telnetTargetCapabilities: TargetCapabilities = {
   download: false,
   exec: false,
   files: false,
@@ -92,7 +84,7 @@ export const telnetTargetCapabilities: TargetCapabilities = {
   upload: false,
 };
 
-export const serialTargetCapabilities: TargetCapabilities = {
+const serialTargetCapabilities: TargetCapabilities = {
   download: false,
   exec: false,
   files: false,
@@ -158,13 +150,6 @@ export function targetHostId(target: RemoteTargetRef): string | undefined {
   return target.kind === "local" ? undefined : target.hostId;
 }
 
-export function isSameTarget(
-  left: RemoteTargetRef | undefined,
-  right: RemoteTargetRef | undefined,
-) {
-  return Boolean(left && right && targetStableId(left) === targetStableId(right));
-}
-
 export function fileLocation(
   target: RemoteTargetRef,
   path: string,
@@ -175,7 +160,7 @@ export function fileLocation(
   };
 }
 
-export function normalizeRemotePath(path: string | undefined): string {
+function normalizeRemotePath(path: string | undefined): string {
   const normalized = (path ?? "").trim().replace(/\\/g, "/");
   if (!normalized) {
     return "/";

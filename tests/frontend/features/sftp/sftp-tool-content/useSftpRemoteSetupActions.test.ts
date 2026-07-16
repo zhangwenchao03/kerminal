@@ -109,7 +109,9 @@ describe("useSftpRemoteSetupActions", () => {
 
   it("reports host key trust failures without refreshing the directory", async () => {
     sftpApiMocks.trustSftpHostKey.mockRejectedValueOnce(
-      new Error("known_hosts is read-only"),
+      new Error(
+        "known_hosts is read-only password=remote-setup-host-secret",
+      ),
     );
     const { result, setters } = renderRemoteSetupHook();
 
@@ -120,8 +122,16 @@ describe("useSftpRemoteSetupActions", () => {
     expect(setters.loadDirectory).not.toHaveBeenCalled();
     expect(setters.setOperationStatus).toHaveBeenLastCalledWith({
       kind: "error",
-      message: "信任主机密钥失败：known_hosts is read-only",
+      message: expect.stringContaining("主机密钥信任失败："),
     });
+    const status =
+      setters.setOperationStatus.mock.calls[
+        setters.setOperationStatus.mock.calls.length - 1
+      ]?.[0] as
+      | SftpStatus
+      | null;
+    expect(status?.message).toContain('password="[已隐藏]"');
+    expect(status?.message).not.toContain("remote-setup-host-secret");
     expect(result.current.hostKeyTrustBusy).toBe(false);
   });
 
@@ -153,7 +163,7 @@ describe("useSftpRemoteSetupActions", () => {
       "setContextMenu:null",
       "setDialogAction:null",
       "setDialogStatus:null",
-      "setOperationStatus:info:正在写入远端 shell 配置...",
+      "setOperationStatus:info:正在配置目录跟随...",
     ]);
 
     await act(async () => {
@@ -165,8 +175,8 @@ describe("useSftpRemoteSetupActions", () => {
       "setContextMenu:null",
       "setDialogAction:null",
       "setDialogStatus:null",
-      "setOperationStatus:info:正在写入远端 shell 配置...",
-      "setOperationStatus:success:已写入远端配置。重新登录或 source 对应 shell 配置后生效。",
+      "setOperationStatus:info:正在配置目录跟随...",
+      "setOperationStatus:success:目录跟随已配置。重新连接后生效。",
     ]);
     expect(result.current.cwdTrackingSetupBusy).toBe(false);
   });
@@ -187,12 +197,12 @@ describe("useSftpRemoteSetupActions", () => {
 
     expect(failedOutput.setters.setOperationStatus).toHaveBeenLastCalledWith({
       kind: "error",
-      message: "自动设置失败：permission denied",
+      message: "目录跟随配置失败：permission denied",
     });
     expect(failedOutput.result.current.cwdTrackingSetupBusy).toBe(false);
 
     sshCommandApiMocks.executeSshCommand.mockRejectedValueOnce(
-      new Error("ssh timeout"),
+      new Error("ssh timeout token=remote-setup-cwd-secret"),
     );
     const rejected = renderRemoteSetupHook();
 
@@ -202,8 +212,16 @@ describe("useSftpRemoteSetupActions", () => {
 
     expect(rejected.setters.setOperationStatus).toHaveBeenLastCalledWith({
       kind: "error",
-      message: "自动设置失败：ssh timeout",
+      message: expect.stringContaining("目录跟随配置失败："),
     });
+    const rejectedStatus =
+      rejected.setters.setOperationStatus.mock.calls[
+        rejected.setters.setOperationStatus.mock.calls.length - 1
+      ]?.[0] as SftpStatus | null;
+    expect(rejectedStatus?.message).toContain('token="[已隐藏]"');
+    expect(rejectedStatus?.message).not.toContain(
+      "remote-setup-cwd-secret",
+    );
     expect(rejected.result.current.cwdTrackingSetupBusy).toBe(false);
   });
 

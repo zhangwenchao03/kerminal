@@ -1,7 +1,7 @@
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import type { SftpEntry } from "../../../lib/sftpApi";
 import type { RemoteTargetRef } from "../../../lib/targetModel";
-import type { OpenWorkspaceFileTabOptions } from "../../workspace/workspaceStore";
+import type { OpenWorkspaceFileTabOptions } from "../../workspace/state/index";
 import {
   buildOpenWorkspaceEditorDialog,
 } from "./sftpWorkspaceDialogModel";

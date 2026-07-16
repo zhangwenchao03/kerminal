@@ -3,10 +3,10 @@ import { readDesktopClipboardText } from "./desktopClipboardApi";
 import type { SshAuthPromptPlan } from "./sshAuthApi";
 import type { ContainerRuntime } from "./targetModel";
 
-export type TerminalOutputKind = "data" | "agentSignal" | "closed" | "error";
+type TerminalOutputKind = "data" | "agentSignal" | "closed" | "error";
 
-export type TerminalSessionStatus = "running" | "exited";
-export type TerminalShellIntegrationStatus = "enabled" | "disabled";
+type TerminalSessionStatus = "running" | "exited";
+type TerminalShellIntegrationStatus = "enabled" | "disabled";
 export type TerminalAgentKind = "codex" | "claude" | "gemini";
 export type TerminalAgentStatus =
   | "working"
@@ -82,7 +82,7 @@ export interface TerminalSessionSummary {
   agentSignal?: TerminalAgentSignal;
 }
 
-export interface TerminalShellIntegrationSummary {
+interface TerminalShellIntegrationSummary {
   status: TerminalShellIntegrationStatus;
   shell?: string;
   scriptPath?: string;
@@ -102,7 +102,7 @@ export interface TerminalSessionReapDiagnostics {
   elapsedMs: number;
 }
 
-export type TerminalPtyOutputPumpFlushReason =
+type TerminalPtyOutputPumpFlushReason =
   | "threshold"
   | "idle"
   | "closed"
@@ -131,7 +131,7 @@ export interface TerminalPtyOutputPumpStats {
   sessionId: string;
 }
 
-export type TerminalErrorClass =
+type TerminalErrorClass =
   | "sshAuthRequired"
   | "spawnFailed"
   | "ptyReadFailed"
@@ -147,13 +147,13 @@ export type TerminalErrorClass =
   | "dependencyMissing"
   | "unknown";
 
-export type TerminalErrorRecovery =
+type TerminalErrorRecovery =
   | "retryable"
   | "userActionRequired"
   | "notRetryable"
   | "internal";
 
-export type TerminalErrorOperation =
+type TerminalErrorOperation =
   | "createSession"
   | "readOutput"
   | "write"
@@ -276,7 +276,7 @@ export async function createTerminalSession(
     return createBrowserPreviewSession(request, onOutput);
   }
 
-  const output = new Channel<TerminalOutputEvent>((event) => onOutput(event));
+  const output = createTerminalOutputChannel(onOutput);
   return invokeTerminalCommand<TerminalSessionSummary>("terminal_create_session", {
     output,
     request: normalizeCreateRequest(request),
@@ -302,7 +302,7 @@ export async function createSshTerminalSession(
     );
   }
 
-  const output = new Channel<TerminalOutputEvent>((event) => onOutput(event));
+  const output = createTerminalOutputChannel(onOutput);
   return invokeTerminalCommand<TerminalSessionSummary>("ssh_create_session", {
     output,
     request,
@@ -325,7 +325,7 @@ export async function createTelnetTerminalSession(
     );
   }
 
-  const output = new Channel<TerminalOutputEvent>((event) => onOutput(event));
+  const output = createTerminalOutputChannel(onOutput);
   return invokeTerminalCommand<TerminalSessionSummary>("telnet_create_session", {
     output,
     request,
@@ -348,7 +348,7 @@ export async function createSerialTerminalSession(
     );
   }
 
-  const output = new Channel<TerminalOutputEvent>((event) => onOutput(event));
+  const output = createTerminalOutputChannel(onOutput);
   return invokeTerminalCommand<TerminalSessionSummary>("serial_create_session", {
     output,
     request,
@@ -371,7 +371,7 @@ export async function createDockerContainerTerminalSession(
     );
   }
 
-  const output = new Channel<TerminalOutputEvent>((event) => onOutput(event));
+  const output = createTerminalOutputChannel(onOutput);
   return invokeTerminalCommand<TerminalSessionSummary>(
     "docker_create_container_session",
     {
@@ -379,6 +379,17 @@ export async function createDockerContainerTerminalSession(
       request: normalizeDockerContainerCreateRequest(request),
     },
   );
+}
+
+function createTerminalOutputChannel(onOutput: TerminalOutputHandler) {
+  return new Channel<TerminalOutputEvent>((event) => {
+    try {
+      onOutput(event);
+    } catch (error: unknown) {
+      // 输出回调失败属于前端渲染/解析问题，不能让 Tauri Channel 失效并误伤后端会话。
+      console.error("terminal output handler failed", error);
+    }
+  });
 }
 
 export async function writeTerminal(

@@ -80,10 +80,13 @@ describe("sftpRemoteSetupModel", () => {
       kind: "success",
       message: "已信任主机密钥：prod.internal:22",
     });
-    expect(statusForHostKeyTrustError(new Error("denied"))).toEqual({
-      kind: "error",
-      message: "信任主机密钥失败：denied",
-    });
+    const failure = statusForHostKeyTrustError(
+      new Error("denied password=host-key-secret"),
+    );
+    expect(failure.kind).toBe("error");
+    expect(failure.message).toContain("主机密钥信任失败：");
+    expect(failure.message).toContain('password="[已隐藏]"');
+    expect(failure.message).not.toContain("host-key-secret");
   });
 
   it("builds cwd tracking setup command only for SSH targets", () => {
@@ -101,7 +104,7 @@ describe("sftpRemoteSetupModel", () => {
     expect(plan.request.command).toContain("add-zsh-hook precmd __kerminal_cwd");
     expect(plan.startStatus).toEqual({
       kind: "info",
-      message: "正在写入远端 shell 配置...",
+      message: "正在配置目录跟随...",
     });
 
     expect(buildSftpCwdTrackingSetupPlan(dockerTarget)).toEqual({
@@ -114,7 +117,7 @@ describe("sftpRemoteSetupModel", () => {
       kind: "success",
       status: {
         kind: "success",
-        message: "已写入远端配置。重新登录或 source 对应 shell 配置后生效。",
+        message: "目录跟随已配置。重新连接后生效。",
       },
     });
 
@@ -130,7 +133,7 @@ describe("sftpRemoteSetupModel", () => {
       kind: "failed",
       status: {
         kind: "error",
-        message: "自动设置失败：permission denied",
+        message: "目录跟随配置失败：permission denied",
       },
     });
   });
@@ -148,7 +151,7 @@ describe("sftpRemoteSetupModel", () => {
       kind: "failed",
       status: {
         kind: "error",
-        message: "自动设置失败：readonly file",
+        message: "目录跟随配置失败：readonly file",
       },
     });
 
@@ -163,12 +166,15 @@ describe("sftpRemoteSetupModel", () => {
       kind: "failed",
       status: {
         kind: "error",
-        message: "自动设置失败：远端命令退出码：未知",
+        message: "目录跟随配置失败：远端命令退出码：未知",
       },
     });
-    expect(statusForSftpCwdTrackingSetupError(new Error("network"))).toEqual({
-      kind: "error",
-      message: "自动设置失败：network",
-    });
+    const failure = statusForSftpCwdTrackingSetupError(
+      new Error("network token=cwd-model-secret"),
+    );
+    expect(failure.kind).toBe("error");
+    expect(failure.message).toContain("目录跟随配置失败：");
+    expect(failure.message).toContain('token="[已隐藏]"');
+    expect(failure.message).not.toContain("cwd-model-secret");
   });
 });

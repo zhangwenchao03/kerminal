@@ -2,7 +2,11 @@
 //!
 //! @author kongweiguang
 
-use std::fs;
+use std::{
+    fs,
+    sync::{Arc, Barrier},
+    thread,
+};
 
 use kerminal_lib::{
     error::AppError,
@@ -14,6 +18,7 @@ use kerminal_lib::{
     },
     paths::KerminalPaths,
     state::AppState,
+    storage::file_store::FileStore,
 };
 use tempfile::{tempdir, TempDir};
 
@@ -24,6 +29,50 @@ fn initialization_starts_without_remote_host_groups() {
     let tree = state.remote_hosts().list_tree().expect("list host tree");
 
     assert!(tree.is_empty());
+}
+
+#[test]
+fn concurrent_group_creates_do_not_lose_updates() {
+    const WORKERS: usize = 8;
+    let (_home, state) = test_state();
+    let service = state.remote_hosts().clone();
+    let barrier = Arc::new(Barrier::new(WORKERS));
+    let workers = (0..WORKERS)
+        .map(|index| {
+            let service = service.clone();
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                service
+                    .create_group(RemoteHostGroupCreateRequest {
+                        name: format!("并发分组-{index}"),
+                    })
+                    .expect("create group")
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let mut created = workers
+        .into_iter()
+        .map(|worker| worker.join().expect("join group worker"))
+        .collect::<Vec<_>>();
+    created.sort_by_key(|group| group.sort_order);
+    let persisted = service.list_groups().expect("list persisted groups");
+
+    assert_eq!(created.len(), WORKERS);
+    assert_eq!(persisted.len(), WORKERS);
+    assert_eq!(
+        created
+            .iter()
+            .map(|group| group.sort_order)
+            .collect::<Vec<_>>(),
+        (1..=WORKERS)
+            .map(|index| (index as i64) * 10)
+            .collect::<Vec<_>>()
+    );
+    for group in created {
+        assert!(persisted.iter().any(|candidate| candidate.id == group.id));
+    }
 }
 
 #[test]
@@ -131,6 +180,21 @@ fn create_password_host_writes_encrypted_vault_ref() {
         .expect("read vault toml");
     assert!(vault_toml.contains("credential:kerminal:ssh-host"));
     assert!(!vault_toml.contains("s3cr3t"));
+
+    let manifest = FileStore::new(&config_root)
+        .read_storage_manifest()
+        .expect("read storage manifest");
+    let change_set = manifest
+        .last_applied_change_set_id
+        .as_deref()
+        .and_then(|id| manifest.change_set(id))
+        .expect("host credential change set");
+    assert!(change_set
+        .touched_files
+        .contains(&format!("hosts/{}.toml", host.id)));
+    assert!(change_set
+        .touched_files
+        .contains(&"secrets/vault.toml".to_owned()));
 }
 
 #[test]

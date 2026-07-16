@@ -3,7 +3,7 @@
 import { useId, useMemo, useState, type FocusEvent } from "react";
 import { Search } from "lucide-react";
 import { cn } from "../../lib/cn";
-import type { Machine, MachineGroup } from "../workspace/types";
+import type { Machine, MachineGroup } from "../workspace/contracts/index";
 import {
   HostContainersToolContent,
   type HostContainersToolContentProps,
@@ -23,6 +23,7 @@ interface MachineSidebarContainersViewProps {
   onOpenContainerLogs?: HostContainersToolContentProps["onOpenContainerLogs"];
   onOpenWorkspaceFileTab?: HostContainersToolContentProps["onOpenWorkspaceFileTab"];
   onPinContainer?: HostContainersToolContentProps["onPinContainer"];
+  refreshRequestId?: number;
 }
 
 function sshHostsFromGroups(groups: MachineGroup[]): Machine[] {
@@ -67,6 +68,7 @@ export function MachineSidebarContainersView({
   onOpenContainerLogs,
   onOpenWorkspaceFileTab,
   onPinContainer,
+  refreshRequestId,
   selectedMachineId,
 }: MachineSidebarContainersViewProps) {
   const hostListboxId = useId();
@@ -92,7 +94,7 @@ export function MachineSidebarContainersView({
   if (!selectedHost) {
     return (
       <div className="kerminal-sidebar-list scrollbar-none flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto p-3">
-        <div className="kerminal-muted-surface rounded-2xl border border-dashed px-3 py-6 text-center text-sm text-zinc-500">
+        <div className="rounded-[var(--radius-card)] border border-dashed border-[var(--border-subtle)] px-3 py-6 text-center text-sm text-zinc-500">
           添加 SSH 主机后，可在这里查看 Docker、Podman 和 Compose。
         </div>
       </div>
@@ -113,6 +115,13 @@ export function MachineSidebarContainersView({
   const selectHost = (machine: Machine) => {
     onHostChange?.(machine.id);
     closeHostDropdown();
+  };
+  const enterContainer: NonNullable<
+    HostContainersToolContentProps["onEnterContainer"]
+  > = (container) => {
+    // 进入终端会把 selected machine 切成容器；先固化宿主机，避免左栏退回第一台 SSH 主机。
+    onHostChange?.(container.hostId);
+    onEnterContainer?.(container);
   };
 
   return (
@@ -198,7 +207,7 @@ export function MachineSidebarContainersView({
         initialContainerId={
           hostId && hostId === selectedHost.id ? initialContainerId : undefined
         }
-        onEnterContainer={onEnterContainer}
+        onEnterContainer={enterContainer}
         onFetchContainerStats={onFetchContainerStats}
         onInspectContainer={onInspectContainer}
         onLifecycleContainer={onLifecycleContainer}
@@ -207,6 +216,7 @@ export function MachineSidebarContainersView({
         onOpenWorkspaceFileTab={onOpenWorkspaceFileTab}
         onPinContainer={onPinContainer}
         presentation="sidebar"
+        refreshRequestId={refreshRequestId}
         selectedMachine={selectedHost}
       />
     </div>

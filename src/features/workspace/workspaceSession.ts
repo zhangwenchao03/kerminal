@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   collectPaneIds,
   findFirstPaneId,
@@ -29,6 +31,7 @@ import {
   workspaceFileMachineId,
   workspaceFileTargetHostId,
 } from "./workspaceFileTabModel";
+import { runtimeCompatibilityDiagnostics } from "../../platform/runtime/compatibilityDiagnostics";
 
 export const WORKSPACE_SESSION_VERSION = 2;
 export const TERMINAL_OUTPUT_HISTORY_MAX_CHARS = 128 * 1024;
@@ -112,6 +115,56 @@ export function normalizeWorkspaceSessionSnapshot(
   };
 }
 
+/**
+ * 解码文件 transport 返回的 workspace session。
+ *
+ * normalizer 继续隔离单个坏条目；根结构、未来版本或全部 tab 都损坏时拒绝
+ * 恢复，避免把不可读的用户 session 归一化为空快照后覆盖原文件。
+ */
+export function decodeWorkspaceSessionSnapshot(
+  value: unknown,
+): WorkspaceSessionSnapshot | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const version = value.version;
+  if (
+    version !== undefined &&
+    (typeof version !== "number" ||
+      !Number.isInteger(version) ||
+      version < 1 ||
+      version > WORKSPACE_SESSION_VERSION)
+  ) {
+    return null;
+  }
+  if (
+    !Array.isArray(value.sidebarMachines) ||
+    !Array.isArray(value.terminalPanes) ||
+    !Array.isArray(value.terminalTabs)
+  ) {
+    return null;
+  }
+
+  const normalized = normalizeWorkspaceSessionSnapshot(value);
+  if (value.terminalTabs.length > 0 && normalized.terminalTabs.length === 0) {
+    return null;
+  }
+  if (
+    value.terminalTabs.length === 0 &&
+    value.sidebarMachines.length > 0 &&
+    normalized.sidebarMachines.length === 0
+  ) {
+    return null;
+  }
+  if (version === undefined || version === 1) {
+    runtimeCompatibilityDiagnostics.recordActivation(
+      "workspace.schema-v1-migration",
+      version === 1 ? "schema-v1" : "unversioned-session",
+    );
+  }
+  return normalized;
+}
+
 function normalizeWorkspaceShellLayout(
   value: unknown,
 ): WorkspaceShellLayout | undefined {
@@ -156,7 +209,7 @@ function normalizePanelWidthProperty<
   value: unknown,
   key: Key,
   bounds: { max: number; min: number },
-): Pick<WorkspaceShellLayout, Key> | {} {
+): Partial<Pick<WorkspaceShellLayout, Key>> {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return {};
   }
@@ -537,7 +590,8 @@ function resolveWorkspaceSessionSelection({
     return {
       activeTabId: "",
       focusedPaneId: "",
-      selectedMachineId,
+      // 空工作区没有当前目标，避免持久化的最近主机污染 Context Inspector。
+      selectedMachineId: "",
     };
   }
 

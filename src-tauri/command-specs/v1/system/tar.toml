@@ -1,0 +1,36 @@
+schema_version = 1
+command = "tar"
+aliases = []
+platforms = ["macos", "linux"]
+shells = ["bash", "zsh", "fish"]
+description = "Create and extract archive files"
+tested_version = "GNU tar 1.35"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "GNU tar manual"
+url = "https://www.gnu.org/software/tar/manual/tar.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "--create"
+aliases = ["-c"]
+description = "Create a new archive"
+
+[[options]]
+name = "--extract"
+aliases = ["-x"]
+description = "Extract files from an archive"
+
+[[options]]
+name = "--file"
+aliases = ["-f"]
+description = "Select the archive file"
+
+[options.argument]
+kind = "file"
+placeholder = "ARCHIVE"

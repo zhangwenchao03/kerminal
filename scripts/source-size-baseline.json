@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "targetHardLimit": 800,
+  "warningLimit": 500,
+  "scanRoots": [
+    "src",
+    "src-tauri/src",
+    "tests/frontend",
+    "tests/scripts",
+    "src-tauri/tests",
+    "scripts"
+  ],
+  "sourceExtensions": [
+    ".css",
+    ".mjs",
+    ".rs",
+    ".ts",
+    ".tsx"
+  ],
+  "entries": []
+}

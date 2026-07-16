@@ -1,8 +1,8 @@
-import type { DragDropEvent } from "@tauri-apps/api/webview";
 import type {
   MouseEvent,
   PointerEvent as ReactPointerEvent,
 } from "react";
+import type { DesktopDragDropEvent } from "../../../lib/desktopRuntimeApi";
 import type { SftpEntry, SftpTransferKind } from "../../../lib/sftpApi";
 import type { ContainerRuntime, RemoteTargetRef } from "../../../lib/targetModel";
 import type { RemoteWorkspaceOpenCommand } from "../RemoteWorkspaceEditor";
@@ -84,7 +84,7 @@ export type SftpSelectionEvent = Pick<
   MouseEvent<HTMLElement>,
   "ctrlKey" | "metaKey" | "shiftKey"
 >;
-export type SftpDragDropPayload = DragDropEvent;
+export type SftpDragDropPayload = DesktopDragDropEvent;
 
 export type SftpClipboardEntry = {
   kind: SftpTransferKind;

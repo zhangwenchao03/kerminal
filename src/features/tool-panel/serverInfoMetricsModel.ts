@@ -18,6 +18,7 @@ export interface NetworkInterfaceTraffic {
 }
 
 export interface NetworkTrafficSnapshot {
+  counterReset?: boolean;
   interfaces: NetworkInterfaceTraffic[];
   sampleDurationMs?: number;
   topInterface?: NetworkInterfaceTraffic;
@@ -25,12 +26,45 @@ export interface NetworkTrafficSnapshot {
   totalTxBytesPerSecond?: number;
 }
 
-const serverInfoNetworkSampleCache = new Map<string, NetworkTrafficSample>();
-const serverInfoNetworkRateCache = new Map<string, NetworkTrafficSnapshot>();
+export interface ServerInfoMetricsCache {
+  cached(
+    targetKey: string,
+    cachedSnapshot?: ServerInfoSnapshot,
+  ): NetworkTrafficSnapshot | null;
+  update(
+    targetKey: string,
+    snapshot: ServerInfoSnapshot,
+  ): NetworkTrafficSnapshot;
+}
 
-export function clearServerInfoMetricsCacheForTest() {
-  serverInfoNetworkSampleCache.clear();
-  serverInfoNetworkRateCache.clear();
+/** 创建实例级网络指标缓存，隔离窗口、目标和测试生命周期。 */
+export function createServerInfoMetricsCache(): ServerInfoMetricsCache {
+  const sampleCache = new Map<string, NetworkTrafficSample>();
+  const rateCache = new Map<string, NetworkTrafficSnapshot>();
+  return {
+    cached(targetKey, cachedSnapshot) {
+      return (
+        rateCache.get(targetKey) ??
+        (cachedSnapshot ? networkTrafficFromSnapshot(cachedSnapshot) : null)
+      );
+    },
+    update(targetKey, snapshot) {
+      const receivedAtMs = Date.now();
+      const capturedAtMs = capturedAtMilliseconds(snapshot);
+      const previous = sampleCache.get(targetKey);
+      const sampleDurationMs = previous
+        ? networkSampleDurationMs(previous, capturedAtMs, receivedAtMs)
+        : undefined;
+      const traffic = networkTrafficFromSnapshot(
+        snapshot,
+        previous?.snapshot,
+        sampleDurationMs,
+      );
+      sampleCache.set(targetKey, { capturedAtMs, receivedAtMs, snapshot });
+      rateCache.set(targetKey, traffic);
+      return traffic;
+    },
+  };
 }
 
 export function coreUsages(snapshot: ServerInfoSnapshot) {
@@ -83,42 +117,6 @@ export function percentOf(used?: number | null, total?: number | null) {
   return (used / total) * 100;
 }
 
-export function cachedNetworkTraffic(
-  targetKey: string,
-  cachedSnapshot?: ServerInfoSnapshot,
-) {
-  const cachedTraffic = serverInfoNetworkRateCache.get(targetKey);
-  if (cachedTraffic) {
-    return cachedTraffic;
-  }
-  return cachedSnapshot ? networkTrafficFromSnapshot(cachedSnapshot) : null;
-}
-
-export function updateNetworkTrafficCache(
-  targetKey: string,
-  snapshot: ServerInfoSnapshot,
-) {
-  const receivedAtMs = Date.now();
-  const capturedAtMs = capturedAtMilliseconds(snapshot);
-  const previous = serverInfoNetworkSampleCache.get(targetKey);
-  const sampleDurationMs = previous
-    ? networkSampleDurationMs(previous, capturedAtMs, receivedAtMs)
-    : undefined;
-  const traffic = networkTrafficFromSnapshot(
-    snapshot,
-    previous?.snapshot,
-    sampleDurationMs,
-  );
-
-  serverInfoNetworkSampleCache.set(targetKey, {
-    capturedAtMs,
-    receivedAtMs,
-    snapshot,
-  });
-  serverInfoNetworkRateCache.set(targetKey, traffic);
-  return traffic;
-}
-
 export function networkTrafficFromSnapshot(
   snapshot: ServerInfoSnapshot,
   previousSnapshot?: ServerInfoSnapshot,
@@ -135,6 +133,13 @@ export function networkTrafficFromSnapshot(
     sampleDurationMs && sampleDurationMs > 0
       ? sampleDurationMs / 1000
       : undefined;
+  const counterReset = currentInterfaces.some((networkInterface) => {
+    const previous = previousInterfaces.get(networkInterface.name);
+    return (
+      counterDecreased(networkInterface.rxBytes, previous?.rxBytes) ||
+      counterDecreased(networkInterface.txBytes, previous?.txBytes)
+    );
+  });
   const unsortedInterfaces = currentInterfaces.map((networkInterface) => {
     const previous = previousInterfaces.get(networkInterface.name);
     return {
@@ -172,12 +177,17 @@ export function networkTrafficFromSnapshot(
     );
 
   return {
+    counterReset,
     interfaces,
     sampleDurationMs: sampleSeconds ? sampleDurationMs : undefined,
     topInterface: interfaces[0],
     totalRxBytesPerSecond,
     totalTxBytesPerSecond,
   };
+}
+
+function counterDecreased(current?: number | null, previous?: number | null) {
+  return current != null && previous != null && current < previous;
 }
 
 function normalizedNetworkInterfaces(
@@ -286,31 +296,6 @@ function networkSampleDurationMs(
     : undefined;
 }
 
-export function networkCardHelper(traffic: NetworkTrafficSnapshot) {
-  const interfaceCount = traffic.interfaces.length;
-  if (traffic.topInterface) {
-    const sample = traffic.sampleDurationMs
-      ? ` · ${formatSampleDuration(traffic.sampleDurationMs)}采样`
-      : " · 等待下一次采样";
-    return `流量排行 ${traffic.topInterface.name} · ${interfaceCount} 个接口${sample}`;
-  }
-  return "等待网络采样";
-}
-
-export function formatNetworkSample(traffic: NetworkTrafficSnapshot) {
-  if (!traffic.sampleDurationMs) {
-    return "等待下一次采集";
-  }
-  return `${formatSampleDuration(traffic.sampleDurationMs)}窗口`;
-}
-
-function formatSampleDuration(sampleDurationMs: number) {
-  if (sampleDurationMs < 1000) {
-    return `${sampleDurationMs}ms`;
-  }
-  return `${(sampleDurationMs / 1000).toFixed(1)}s`;
-}
-
 export function formatTrafficRate(value?: number, emptyLabel = "-") {
   if (value === undefined || Number.isNaN(value)) {
     return emptyLabel;
@@ -349,13 +334,6 @@ export function gpuMemoryLabel(gpu: ServerGpuInfo) {
     return `总计 ${formatBytes(gpu.memoryTotalBytes)}`;
   }
   return "-";
-}
-
-export function formatTemperature(value?: number | null) {
-  if (value === undefined || value === null || Number.isNaN(value)) {
-    return "-";
-  }
-  return `${value.toFixed(0)} °C`;
 }
 
 function primaryGpuPercent(gpus: ServerGpuInfo[]) {
@@ -407,23 +385,6 @@ export function gpuCardHelper(
   return `${gpus.length} 张显卡`;
 }
 
-export function gpuMissingMessage(status?: string | null) {
-  switch (status) {
-    case "nvidia_smi_no_devices":
-      return "nvidia-smi 未返回可用 NVIDIA GPU。";
-    case "nvidia_smi_list":
-      return "nvidia-smi 仅返回设备列表。";
-    case "lspci_no_devices":
-      return "lspci 未发现 GPU 控制器。";
-    case "no_probe_command":
-      return "缺少 nvidia-smi 或 lspci。";
-    case "lspci":
-      return "仅有 lspci 静态信息。";
-    default:
-      return "未返回 GPU 数据。";
-  }
-}
-
 export function formatTimestamp(value?: string | null) {
   if (!value) {
     return "-";
@@ -451,9 +412,4 @@ export function formatUptime(seconds?: number | null) {
     return `${hours} 小时 ${minutes} 分钟`;
   }
   return `${minutes} 分钟`;
-}
-
-export function joinDefined(parts: Array<string | null | undefined>) {
-  const values = parts.filter(Boolean);
-  return values.length > 0 ? values.join(" · ") : undefined;
 }

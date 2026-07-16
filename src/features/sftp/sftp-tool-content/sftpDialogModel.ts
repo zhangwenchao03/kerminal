@@ -144,7 +144,7 @@ export function getDialogActionBlocker(action: SftpDialogAction, currentPath: st
   return null;
 }
 
-export function getNonRootRemotePathBlocker(path: string, label: string) {
+function getNonRootRemotePathBlocker(path: string, label: string) {
   if (!path.trim()) {
     return `请填写${label}。`;
   }
@@ -157,7 +157,7 @@ export function getNonRootRemotePathBlocker(path: string, label: string) {
   return null;
 }
 
-export function getChmodModeBlocker(mode: string) {
+function getChmodModeBlocker(mode: string) {
   const trimmed = mode.trim();
   if (!trimmed) {
     return "请填写权限模式。";
@@ -168,7 +168,7 @@ export function getChmodModeBlocker(mode: string) {
   return null;
 }
 
-export function getRenameNameBlocker(name: string) {
+function getRenameNameBlocker(name: string) {
   const trimmed = name.trim();
   if (!trimmed) {
     return "请填写新名称。";
@@ -270,7 +270,7 @@ export function dedupeDeleteEntries(
   return result;
 }
 
-export function renameTargetPath(entryPath: string, newName: string) {
+function renameTargetPath(entryPath: string, newName: string) {
   return joinRemotePath(parentRemotePath(entryPath), newName.trim());
 }
 

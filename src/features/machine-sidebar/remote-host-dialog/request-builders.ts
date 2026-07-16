@@ -69,7 +69,7 @@ export function normalizeSshOptionsForForm(options: SshOptions | undefined): Ssh
   };
 }
 
-export function normalizeSshOptionsForRequest(options: SshOptions): SshOptions {
+function normalizeSshOptionsForRequest(options: SshOptions): SshOptions {
   const normalized = normalizeSshOptionsForForm(options);
   const proxy =
     normalized.proxy.protocol === "none"
@@ -141,7 +141,7 @@ export function trimOptional(value: string | undefined) {
   return trimmed || undefined;
 }
 
-export function normalizePrivateKeyPath(value: string | undefined) {
+function normalizePrivateKeyPath(value: string | undefined) {
   const trimmed = trimOptional(value);
   return trimmed?.startsWith("credential:") ? undefined : trimmed;
 }
@@ -386,7 +386,7 @@ export function validateSshRequest(request: RemoteHostCreateRequest) {
   return validatePort(request.port) ?? validateSshOptions(request.sshOptions);
 }
 
-export function validateSshOptions(options: SshOptions | undefined) {
+function validateSshOptions(options: SshOptions | undefined) {
   const sshOptions = normalizeSshOptionsForRequest(options ?? createDefaultSshOptions());
   if (sshOptions.proxy.protocol !== "none") {
     if (!sshOptions.proxy.host) {
@@ -543,7 +543,7 @@ export function validateRdpRequest(request: ReturnType<typeof buildRdpRequest>) 
   return null;
 }
 
-export function validatePort(port: number | undefined) {
+function validatePort(port: number | undefined) {
   if (
     typeof port !== "number" ||
     Number.isNaN(port) ||
@@ -556,7 +556,7 @@ export function validatePort(port: number | undefined) {
   return null;
 }
 
-export function parseTags(value: string) {
+function parseTags(value: string) {
   return Array.from(
     new Set(
       value
@@ -567,14 +567,14 @@ export function parseTags(value: string) {
   );
 }
 
-export function ensureTag(tags: string[], tag: string) {
+function ensureTag(tags: string[], tag: string) {
   if (tags.some((candidate) => candidate.toLowerCase() === tag.toLowerCase())) {
     return tags;
   }
   return [tag, ...tags];
 }
 
-export function buildSerialTags(
+function buildSerialTags(
   tags: string[],
   options: {
     baud: string;
@@ -612,7 +612,7 @@ export function readSerialTagValue(host: RemoteHost | undefined, key: string) {
   return host ? readSerialTag(host.tags, key) : undefined;
 }
 
-export function readSerialTag(tags: string[], key: string) {
+function readSerialTag(tags: string[], key: string) {
   const prefix = `serial-${key}:`;
   const match = tags.find((tag) =>
     tag.trim().toLowerCase().startsWith(prefix.toLowerCase()),

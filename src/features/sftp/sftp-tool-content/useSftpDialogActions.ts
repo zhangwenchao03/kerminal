@@ -23,6 +23,11 @@ import {
   joinRemotePath,
   modeFromPermissions,
 } from "./sftpPathModel";
+import {
+  createSftpTargetBindingSnapshot,
+  type SftpTargetBindingToken,
+  type SftpTargetBoundDirectoryLoader,
+} from "./useSftpTargetLifecycle";
 import type {
   SftpContextMenuState,
   SftpDialogAction,
@@ -31,10 +36,14 @@ import type {
 } from "./types";
 
 type UseSftpDialogActionsArgs = {
+  captureTarget?: (
+    expectedTarget?: SftpFileTarget | null,
+  ) => SftpTargetBindingToken | null;
   currentPath: string;
   dialogAction: SftpDialogAction | null;
   fileTarget: SftpFileTarget | null;
-  loadDirectory: (path: string) => Promise<void>;
+  isTargetBindingCurrent?: (binding: SftpTargetBindingToken | null) => boolean;
+  loadDirectory: SftpTargetBoundDirectoryLoader;
   setContextMenu: Dispatch<SetStateAction<SftpContextMenuState | null>>;
   setDialogAction: Dispatch<SetStateAction<SftpDialogAction | null>>;
   setDialogBusy: Dispatch<SetStateAction<boolean>>;
@@ -42,10 +51,13 @@ type UseSftpDialogActionsArgs = {
   setOperationStatus: Dispatch<SetStateAction<SftpStatus | null>>;
 };
 
+/** 冻结提交时的远端目标，并阻止旧目标操作完成后回写当前界面。 */
 export function useSftpDialogActions({
+  captureTarget,
   currentPath,
   dialogAction,
   fileTarget,
+  isTargetBindingCurrent,
   loadDirectory,
   setContextMenu,
   setDialogAction,
@@ -86,13 +98,28 @@ export function useSftpDialogActions({
     await deleteDockerContainerPath(operation.request);
   };
 
+  const captureDialogTarget = () => {
+    if (captureTarget) {
+      return captureTarget(fileTarget);
+    }
+    return fileTarget ? createSftpTargetBindingSnapshot(fileTarget) : null;
+  };
+
+  const bindingIsCurrent = (binding: SftpTargetBindingToken | null) =>
+    isTargetBindingCurrent ? isTargetBindingCurrent(binding) : Boolean(binding);
+
+  const reloadDirectory = (path: string, binding: SftpTargetBindingToken) =>
+    captureTarget ? loadDirectory(path, binding) : loadDirectory(path);
+
   const runDialogOperations = async (operations: SftpDialogOperation[]) => {
     const failures: string[] = [];
     for (const operation of operations) {
       try {
         await runDialogOperation(operation);
       } catch (nextError) {
-        failures.push(`${dialogOperationPath(operation)}：${errorMessage(nextError)}`);
+        failures.push(
+          `${dialogOperationPath(operation)}：${errorMessage(nextError)}`,
+        );
       }
     }
     return failures;
@@ -131,7 +158,10 @@ export function useSftpDialogActions({
     setContextMenu(null);
     setDialogStatus(null);
     if (entries.length === 0) {
-      setOperationStatus({ kind: "info", message: "请先选择要删除的远程项目。" });
+      setOperationStatus({
+        kind: "info",
+        message: "请先选择要删除的远程项目。",
+      });
       return;
     }
     setDialogAction({
@@ -141,11 +171,15 @@ export function useSftpDialogActions({
   };
 
   const submitDialogAction = async () => {
-    if (!dialogAction || !fileTarget) {
+    const binding = captureDialogTarget();
+    if (!dialogAction || !binding) {
       return;
     }
 
-    const blocker = getDialogActionBlocker(dialogAction, currentPath);
+    // 对话框可能跨越多个 await，动作、路径和目标必须在提交瞬间一起冻结。
+    const action = dialogAction;
+    const operationPath = currentPath;
+    const blocker = getDialogActionBlocker(action, operationPath);
     if (blocker) {
       setDialogStatus({ kind: "error", message: blocker });
       return;
@@ -156,35 +190,54 @@ export function useSftpDialogActions({
     setOperationStatus(null);
     try {
       const plan = buildSftpDialogActionPlan({
-        action: dialogAction,
-        currentPath,
-        fileTarget,
+        action,
+        currentPath: operationPath,
+        fileTarget: binding.target,
       });
       const failures = await runDialogOperations(plan.operations);
+      if (!bindingIsCurrent(binding)) {
+        return;
+      }
       if (failures.length > 0) {
         const successCount = plan.operations.length - failures.length;
+        setOperationStatus({
+          kind: "error",
+          message: failures.join("\n"),
+        });
         setDialogStatus({
           kind: "error",
           message:
             successCount > 0
-              ? `已完成 ${successCount} 项，${failures.length} 项失败：${failures[0]}`
-              : `操作失败：${failures[0]}`,
+              ? `已完成 ${successCount} 项，${failures.length} 项未处理。请检查权限或目标位置后重试。`
+              : "文件操作未完成。请检查名称、权限或目标位置后重试。",
         });
         if (successCount > 0) {
-          await loadDirectory(plan.reloadPath);
+          await reloadDirectory(plan.reloadPath, binding);
         }
         return;
       }
-      await loadDirectory(plan.reloadPath);
+      await reloadDirectory(plan.reloadPath, binding);
+      if (!bindingIsCurrent(binding)) {
+        return;
+      }
       setOperationStatus(plan.successStatus);
       setDialogAction(null);
     } catch (nextError) {
-      setDialogStatus({
+      if (!bindingIsCurrent(binding)) {
+        return;
+      }
+      setOperationStatus({
         kind: "error",
         message: errorMessage(nextError),
       });
+      setDialogStatus({
+        kind: "error",
+        message: "文件操作未完成。请检查名称、权限或目标位置后重试。",
+      });
     } finally {
-      setDialogBusy(false);
+      if (bindingIsCurrent(binding)) {
+        setDialogBusy(false);
+      }
     }
   };
 

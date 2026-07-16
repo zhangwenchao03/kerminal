@@ -9,7 +9,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { UserFacingNotice } from "../../../components/ui/user-facing-notice";
 import { cn } from "../../../lib/cn";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+  type UserFacingMessageSeverity,
+} from "../../../lib/userFacingMessage";
 import {
   getWorkspaceSyncStatus,
   readVaultKeyContent,
@@ -21,16 +27,11 @@ import {
 
 type SyncSettingsLoadState = "idle" | "loading" | "syncing" | "saving" | "error";
 
-type SyncNotice = {
-  message: string;
-  tone: "success" | "warning" | "error";
-};
-
 export function SyncSettingsSection() {
   const [status, setStatus] = useState<WorkspaceSyncStatus | null>(null);
   const [keyToml, setKeyToml] = useState("");
   const [loadState, setLoadState] = useState<SyncSettingsLoadState>("idle");
-  const [notice, setNotice] = useState<SyncNotice | null>(null);
+  const [notice, setNotice] = useState<UserFacingMessage | null>(null);
   const [lastSyncResult, setLastSyncResult] =
     useState<WorkspaceSyncRunResult | null>(null);
 
@@ -50,10 +51,7 @@ export function SyncSettingsSection() {
       setLoadState("idle");
     } catch (nextError) {
       setLoadState("error");
-      setNotice({
-        message: formatSyncError(nextError, "读取同步设置失败"),
-        tone: "error",
-      });
+      setNotice(syncFailure(nextError, "读取同步设置失败"));
     }
   };
 
@@ -65,23 +63,24 @@ export function SyncSettingsSection() {
       setLastSyncResult(result);
       setStatus(await getWorkspaceSyncStatus());
       setNotice({
-        message: result.message,
-        tone: noticeToneFromSyncResult(result),
+        severity: noticeSeverityFromSyncResult(result),
+        title: result.message,
       });
       setLoadState("idle");
     } catch (nextError) {
       setLoadState("error");
-      setNotice({
-        message: formatSyncError(nextError, "同步失败"),
-        tone: "error",
-      });
+      setNotice(syncFailure(nextError, "同步失败"));
     }
   };
 
   const saveKey = async () => {
     if (!keyToml.trim()) {
       setLoadState("error");
-      setNotice({ message: "密钥内容不能为空。", tone: "error" });
+      setNotice({
+        recoveryAction: "请输入完整的 vault-key.toml 内容后重试。",
+        severity: "error",
+        title: "密钥内容不能为空。",
+      });
       return;
     }
     setLoadState("saving");
@@ -90,18 +89,15 @@ export function SyncSettingsSection() {
       const result = await saveVaultKeyContent(keyToml);
       setStatus(await getWorkspaceSyncStatus());
       setNotice({
-        message: result.backupCreated
+        severity: "success",
+        title: result.backupCreated
           ? "密钥已保存，并已为旧文件创建备份。"
           : "密钥已保存。",
-        tone: "success",
       });
       setLoadState("idle");
     } catch (nextError) {
       setLoadState("error");
-      setNotice({
-        message: formatSyncError(nextError, "保存密钥失败"),
-        tone: "error",
-      });
+      setNotice(syncFailure(nextError, "保存密钥失败"));
     }
   };
 
@@ -111,7 +107,7 @@ export function SyncSettingsSection() {
 
   return (
     <div className="space-y-4 text-zinc-950 dark:text-zinc-50" id="settings-sync-panel">
-      <section className="kerminal-solid-surface overflow-hidden rounded-2xl border">
+      <section className="kerminal-solid-surface overflow-hidden rounded-[var(--radius-panel)] border">
         <div className="border-b border-[var(--border-subtle)] px-5 py-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
@@ -126,7 +122,7 @@ export function SyncSettingsSection() {
 
             {viewModel.canSync ? (
               <button
-                className="kerminal-focus-ring kerminal-pressable inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl bg-sky-600 px-3.5 text-sm font-semibold text-white shadow-sm shadow-sky-600/15 transition hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-sky-500 dark:hover:bg-sky-400"
+                className="kerminal-focus-ring kerminal-pressable inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-[var(--radius-control)] bg-[rgb(var(--app-accent))] px-3.5 text-[13px] font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={busy}
                 onClick={() => void syncWorkspace()}
                 type="button"
@@ -162,7 +158,7 @@ export function SyncSettingsSection() {
         ) : null}
       </section>
 
-      <section className="kerminal-solid-surface overflow-hidden rounded-2xl border">
+      <section className="kerminal-solid-surface overflow-hidden rounded-[var(--radius-panel)] border">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border-subtle)] px-5 py-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -178,7 +174,7 @@ export function SyncSettingsSection() {
           </div>
 
           <button
-            className="kerminal-focus-ring kerminal-pressable inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-field)] px-3.5 text-sm font-semibold text-zinc-700 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-100"
+            className="kerminal-focus-ring kerminal-pressable inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-field)] px-3.5 text-[13px] font-semibold text-[var(--text-primary)] transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60"
             disabled={busy}
             onClick={() => void saveKey()}
             type="button"
@@ -191,7 +187,7 @@ export function SyncSettingsSection() {
         <div className="space-y-3 p-4">
           <textarea
             aria-label="密钥文件内容"
-            className="kerminal-focus-ring min-h-64 w-full resize-y rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-field)] p-4 font-mono text-xs leading-5 text-zinc-800 outline-none shadow-inner shadow-black/[0.02] placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+            className="kerminal-focus-ring min-h-64 w-full resize-y rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-field)] p-3 font-mono text-xs leading-5 text-zinc-800 outline-none placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500"
             disabled={loadState === "loading"}
             onChange={(event) => setKeyToml(event.currentTarget.value)}
             placeholder="schema_version = 1"
@@ -204,7 +200,7 @@ export function SyncSettingsSection() {
         </div>
       </section>
 
-      {notice ? <SyncNoticeMessage notice={notice} /> : null}
+      {notice ? <UserFacingNotice message={notice} /> : null}
     </div>
   );
 }
@@ -240,7 +236,7 @@ function StatusIcon({ state }: { state: StatusTone }) {
   return (
     <span
       className={cn(
-        "flex h-7 w-7 shrink-0 items-center justify-center rounded-xl",
+        "flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-control)]",
         toneClassName(state, "background"),
       )}
     >
@@ -262,7 +258,7 @@ function InfoRow({
 }) {
   return (
     <div className="flex min-w-0 items-center gap-3 border-t border-[var(--border-subtle)] px-5 py-3.5 md:border-r md:last:border-r-0">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-muted)] text-zinc-500 dark:text-zinc-400">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--surface-muted)] text-zinc-500 dark:text-zinc-400">
         <Icon className="h-4 w-4" />
       </span>
       <div className="min-w-0">
@@ -275,25 +271,9 @@ function InfoRow({
   );
 }
 
-function SyncNoticeMessage({ notice }: { notice: SyncNotice }) {
-  return (
-    <div
-      className={cn(
-        "rounded-2xl border px-4 py-3 text-sm leading-5",
-        notice.tone === "success"
-          ? "border-emerald-300/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-100"
-          : notice.tone === "warning"
-            ? "border-amber-300/25 bg-amber-500/10 text-amber-700 dark:text-amber-100"
-            : "border-rose-300/25 bg-rose-500/10 text-rose-700 dark:text-rose-100",
-      )}
-      role={notice.tone === "error" ? "alert" : "status"}
-    >
-      {notice.message}
-    </div>
-  );
-}
-
-function noticeToneFromSyncResult(result: WorkspaceSyncRunResult): SyncNotice["tone"] {
+function noticeSeverityFromSyncResult(
+  result: WorkspaceSyncRunResult,
+): UserFacingMessageSeverity {
   if (result.status === "success") {
     return "success";
   }
@@ -303,7 +283,14 @@ function noticeToneFromSyncResult(result: WorkspaceSyncRunResult): SyncNotice["t
   return "error";
 }
 
-function formatSyncError(error: unknown, fallback: string) {
+function syncFailure(error: unknown, fallback: string): UserFacingMessage {
+  return buildUserFacingError(error, {
+    recoveryAction: "请检查同步配置后重试。",
+    title: syncErrorTitle(error, fallback),
+  });
+}
+
+function syncErrorTitle(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("vault key TOML parse failed") || message.includes("vault TOML parse failed")) {
     return "密钥 TOML 格式不正确，请检查后再保存。";
@@ -317,7 +304,7 @@ function formatSyncError(error: unknown, fallback: string) {
   if (message.includes("vault key must be")) {
     return "密钥 master_key 长度不正确。";
   }
-  return `${fallback}：${message}`;
+  return fallback;
 }
 
 function toneClassName(tone: StatusTone, part: "background" | "text") {

@@ -1,3 +1,7 @@
+/**
+ * @author kongweiguang
+ */
+
 import type { ISearchOptions } from "@xterm/addon-search";
 import type { Terminal as XtermTerminal } from "@xterm/xterm";
 import type { TerminalCreateRequest } from "../../lib/terminalApi";
@@ -9,16 +13,22 @@ import type {
   CommandSuggestionCandidate,
   CommandSuggestionProvider,
 } from "../../lib/terminalSuggestionApi";
-import type { TerminalAppearance } from "../settings/settingsModel";
+import {
+  resolveRuntimeSnippetFeatureGates,
+  snippetV2NavigationEnabled,
+} from "../snippets/contracts/index";
+import type { TerminalAppearance } from "../settings/contracts/index";
 import type { TerminalCommandBlockView } from "./terminalCommandBlocks";
 import {
   applyTerminalInputData,
   createTerminalInputModelState,
   type TerminalInputModelState,
 } from "./terminalInputModel";
+import { parseTerminalShellIntegrationCwd } from "./terminalShellIntegrationModel";
 
 export type ConnectionState =
   | "connecting"
+  | "reconnecting"
   | "connected"
   | "disconnected"
   | "closed"
@@ -33,13 +43,28 @@ export interface TerminalGhostSuggestion {
   top: number;
 }
 
-const CURRENT_DIR_OSC_PREFIX = "\u001b]1337;CurrentDir=";
+const CURRENT_DIR_OSC_1337_PREFIX = "\u001b]1337;CurrentDir=";
+const CURRENT_DIR_OSC_7_PREFIX = "\u001b]7;";
 const OSC_BEL_TERMINATOR = "\u0007";
 const OSC_ST_TERMINATOR = "\u001b\\";
 const MAX_CWD_TRACKING_BUFFER_LENGTH = 4096;
 const MAX_PROMPT_CWD_LINE_LENGTH = 512;
 const MIN_TERMINAL_SESSION_COLS = 20;
 const MIN_TERMINAL_SESSION_ROWS = 8;
+const CONTROL_CHAR_RE = new RegExp(String.raw`[\u0000-\u001f\u007f]`);
+const PROMPT_OSC_RE = new RegExp(
+  String.raw`\u001b\][^\u0007]*(?:\u0007|\u001b\\)`,
+  "g",
+);
+const PROMPT_CSI_RE = new RegExp(
+  String.raw`\u001b\[[0-?]*[ -/]*[@-~]`,
+  "g",
+);
+const PROMPT_ESCAPE_RE = new RegExp(String.raw`\u001b[ -/]*[@-~]`, "g");
+const PROMPT_C0_CONTROL_RE = new RegExp(
+  String.raw`[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]`,
+  "g",
+);
 
 export function terminalSuggestionProviders({
   hasSshRemote,
@@ -77,10 +102,13 @@ export function terminalSuggestionProviders({
   if (inlineSuggestion.providers.spec) {
     providers.push("spec");
   }
+  if (snippetV2NavigationEnabled(resolveRuntimeSnippetFeatureGates())) {
+    providers.push("snippet");
+  }
   return providers;
 }
 
-export function terminalInlineSuggestionAllowsRemoteProbe({
+function terminalInlineSuggestionAllowsRemoteProbe({
   inlineSuggestion,
   remoteHostProduction,
 }: {
@@ -448,43 +476,94 @@ export function collectCurrentDirOscSequences(
   currentBuffer: string,
   data: string,
 ): { buffer: string; paths: string[] } {
+  const state = collectCurrentDirObservations(currentBuffer, data);
+  return {
+    buffer: state.buffer,
+    paths: state.observations.map(({ path }) => path),
+  };
+}
+
+export type TerminalCwdObservation = {
+  path: string;
+  source: "osc7" | "osc1337" | "prompt";
+};
+
+/** 按来源保留远端目录观测，供会话优先使用协议结果而非提示符猜测。 */
+export function collectCurrentDirObservations(
+  currentBuffer: string,
+  data: string,
+): { buffer: string; observations: TerminalCwdObservation[] } {
   const combinedBuffer = limitCwdTrackingBuffer(currentBuffer + data);
   const promptState = collectCurrentDirPromptPaths(combinedBuffer);
-  const paths: string[] = [];
+  const observations: TerminalCwdObservation[] = [];
   let buffer = combinedBuffer;
 
   while (buffer) {
-    const startIndex = buffer.indexOf(CURRENT_DIR_OSC_PREFIX);
-    if (startIndex === -1) {
+    const nextOsc = findNextCurrentDirOsc(buffer);
+    if (!nextOsc) {
       return {
         buffer: nextCwdTrackingBuffer(combinedBuffer, promptState.buffer),
-        paths: [...paths, ...promptState.paths],
+        observations:
+          observations.length > 0
+            ? observations
+            : promptState.paths.map((path) => ({ path, source: "prompt" })),
       };
     }
 
-    if (startIndex > 0) {
-      buffer = buffer.slice(startIndex);
+    if (nextOsc.index > 0) {
+      buffer = buffer.slice(nextOsc.index);
     }
 
-    const payloadStart = CURRENT_DIR_OSC_PREFIX.length;
+    const payloadStart = nextOsc.prefix.length;
     const terminator = findCurrentDirOscTerminator(buffer, payloadStart);
     if (!terminator) {
       return {
         buffer: limitCwdTrackingBuffer(buffer),
-        paths,
+        observations,
       };
     }
 
-    const path = sanitizeCurrentDirOscPath(
-      buffer.slice(payloadStart, terminator.index),
-    );
+    const payload = buffer.slice(payloadStart, terminator.index);
+    const path =
+      nextOsc.protocol === "osc7"
+        ? sanitizeCurrentDirOscPath(
+            parseTerminalShellIntegrationCwd(payload) ?? "",
+          )
+        : sanitizeCurrentDirOscPath(payload);
     if (path) {
-      paths.push(path);
+      observations.push({ path, source: nextOsc.protocol });
     }
     buffer = buffer.slice(terminator.index + terminator.length);
   }
 
-  return { buffer: promptState.buffer, paths: [...paths, ...promptState.paths] };
+  return {
+    buffer: promptState.buffer,
+    observations:
+      observations.length > 0
+        ? observations
+        : promptState.paths.map((path) => ({ path, source: "prompt" })),
+  };
+}
+
+function findNextCurrentDirOsc(buffer: string): {
+  index: number;
+  prefix: string;
+  protocol: "osc7" | "osc1337";
+} | null {
+  const candidates = [
+    { prefix: CURRENT_DIR_OSC_1337_PREFIX, protocol: "osc1337" as const },
+    { prefix: CURRENT_DIR_OSC_7_PREFIX, protocol: "osc7" as const },
+  ];
+  let next:
+    | { index: number; prefix: string; protocol: "osc7" | "osc1337" }
+    | undefined;
+  for (const candidate of candidates) {
+    const index = buffer.indexOf(candidate.prefix);
+    if (index >= 0 && (!next || index < next.index)) {
+      next = { ...candidate, index };
+    }
+  }
+  return next ?? null;
 }
 
 function findCurrentDirOscTerminator(
@@ -504,7 +583,7 @@ function findCurrentDirOscTerminator(
 
 function sanitizeCurrentDirOscPath(path: string): string | undefined {
   const trimmed = path.trim();
-  if (!trimmed.startsWith("/") || /[\u0000-\u001f\u007f]/.test(trimmed)) {
+  if (!trimmed.startsWith("/") || CONTROL_CHAR_RE.test(trimmed)) {
     return undefined;
   }
   return trimmed.length > MAX_CWD_TRACKING_BUFFER_LENGTH ? undefined : trimmed;
@@ -562,21 +641,25 @@ function trailingPromptCwdBuffer(buffer: string): string {
 
 function stripTerminalControlsForPrompt(value: string): string {
   return value
-    .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, "")
-    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
-    .replace(/\u001b[ -/]*[@-~]/g, "")
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
+    .replace(PROMPT_OSC_RE, "")
+    .replace(PROMPT_CSI_RE, "")
+    .replace(PROMPT_ESCAPE_RE, "")
+    .replace(PROMPT_C0_CONTROL_RE, "");
 }
 
 function trailingPotentialCurrentDirOscPrefix(buffer: string): string {
-  const maxLength = Math.min(buffer.length, CURRENT_DIR_OSC_PREFIX.length - 1);
-  for (let length = maxLength; length > 0; length -= 1) {
-    const tail = buffer.slice(-length);
-    if (CURRENT_DIR_OSC_PREFIX.startsWith(tail)) {
-      return tail;
+  let longest = "";
+  for (const prefix of [CURRENT_DIR_OSC_1337_PREFIX, CURRENT_DIR_OSC_7_PREFIX]) {
+    const maxLength = Math.min(buffer.length, prefix.length - 1);
+    for (let length = maxLength; length > longest.length; length -= 1) {
+      const tail = buffer.slice(-length);
+      if (prefix.startsWith(tail)) {
+        longest = tail;
+        break;
+      }
     }
   }
-  return "";
+  return longest;
 }
 
 function nextCwdTrackingBuffer(buffer: string, promptBuffer: string): string {
@@ -604,7 +687,29 @@ export function stateLabel(state: ConnectionState) {
   if (state === "error") {
     return "异常";
   }
+  if (state === "reconnecting") {
+    return "重新连接中";
+  }
   return "连接中";
+}
+
+/** 为 effect 的结构化依赖生成键序稳定的 JSON。 */
+export function stableJsonDependencyKey(value: unknown): string {
+  return JSON.stringify(sortJsonValue(value));
+}
+
+function sortJsonValue(value: unknown): unknown {
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(sortJsonValue);
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entryValue]) => [key, sortJsonValue(entryValue)]),
+  );
 }
 
 export function buildTerminalCreateRequest(

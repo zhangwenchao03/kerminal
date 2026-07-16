@@ -34,7 +34,7 @@ export function resolveConnectionEditConflict({
     const currentMachine = findMachine(groups, editingLocalMachine.id);
     if (!currentMachine) {
       return {
-        message: "cfg: local profile deleted externally; close + reopen",
+        message: "当前本地配置已在外部删除，请关闭后重新打开。",
       };
     }
     if (
@@ -44,7 +44,7 @@ export function resolveConnectionEditConflict({
       )
     ) {
       return {
-        message: "cfg: local profile changed externally; close + reopen",
+        message: "当前本地配置已在外部更新，请关闭后重新打开。",
       };
     }
     if (
@@ -52,7 +52,7 @@ export function resolveConnectionEditConflict({
       localMachineFingerprint(editingLocalMachine)
     ) {
       return {
-        message: "cfg: local profile changed externally; close + reopen",
+        message: "当前本地配置已在外部更新，请关闭后重新打开。",
       };
     }
     return null;
@@ -65,12 +65,12 @@ export function resolveConnectionEditConflict({
   const currentMachine = findMachine(groups, editingHost.id);
   if (!currentMachine) {
     return {
-      message: "cfg: host deleted externally; close + reopen",
+      message: "当前主机已在外部删除，请关闭后重新打开。",
     };
   }
   if (comparableRevisionChanged(editingHost.updatedAt, currentMachine.updatedAt)) {
     return {
-      message: "cfg: host changed externally; close + reopen",
+      message: "当前主机已在外部更新，请关闭后重新打开。",
     };
   }
   if (
@@ -78,7 +78,7 @@ export function resolveConnectionEditConflict({
     remoteHostFingerprint(editingHost)
   ) {
     return {
-      message: "cfg: host changed externally; close + reopen",
+      message: "当前主机已在外部更新，请关闭后重新打开。",
     };
   }
   return null;
@@ -98,17 +98,17 @@ export function resolveRemoteGroupEditConflict({
   const currentGroup = groups.find((candidate) => candidate.id === group.id);
   if (!currentGroup) {
     return {
-      message: "cfg: group deleted externally; close + reopen",
+      message: "当前主机分组已在外部删除，请关闭后重新打开。",
     };
   }
   if (comparableRevisionChanged(group.updatedAt, currentGroup.updatedAt)) {
     return {
-      message: "cfg: group changed externally; close + reopen",
+      message: "当前主机分组已在外部更新，请关闭后重新打开。",
     };
   }
   if (groupFingerprint(currentGroup) !== groupFingerprint(group)) {
     return {
-      message: "cfg: group changed externally; close + reopen",
+      message: "当前主机分组已在外部更新，请关闭后重新打开。",
     };
   }
   return null;

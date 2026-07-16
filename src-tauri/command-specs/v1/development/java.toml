@@ -1,0 +1,38 @@
+schema_version = 1
+command = "java"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Launch a Java application"
+tested_version = "OpenJDK 24"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "Java launcher documentation"
+url = "https://docs.oracle.com/en/java/javase/24/docs/specs/man/java.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "-jar"
+description = "Launch an executable JAR file"
+
+[options.argument]
+kind = "file"
+placeholder = "JAR"
+
+[[options]]
+name = "--class-path"
+aliases = ["-classpath", "-cp"]
+description = "Specify the class search path"
+
+[options.argument]
+kind = "string"
+placeholder = "PATH"
+
+[[options]]
+name = "--version"
+description = "Print the Java version"

@@ -8,7 +8,7 @@ export type FileTransferEndpoint =
   | { kind: "local"; path: string }
   | { kind: "remote"; hostId: string; hostLabel?: string; path: string };
 
-export type FileTransferEntryKind = "file" | "directory" | "symlink";
+type FileTransferEntryKind = "file" | "directory" | "symlink";
 
 export type FileTransferEntry = {
   name: string;
@@ -32,13 +32,13 @@ export type TransferIntent = {
   conflictPolicy: TransferConflictPolicy;
 };
 
-export type TransferOperation =
+type TransferOperation =
   | "upload"
   | "download"
   | "remoteCopy"
   | "localCopy";
 
-export type ResolvedTransferTask = {
+type ResolvedTransferTask = {
   sourceEntryPath: string;
   targetEntryPath: string;
   targetPath: string;

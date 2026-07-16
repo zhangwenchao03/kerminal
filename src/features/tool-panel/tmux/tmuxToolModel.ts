@@ -4,8 +4,8 @@ import type {
   TmuxSessionSummary,
   TmuxTargetRef,
 } from "../../../lib/tmuxApi";
-import type { Machine, TerminalPane, TerminalTab } from "../../workspace/types";
-import { isTerminalSessionTab } from "../../workspace/types";
+import type { Machine, TerminalPane, TerminalTab } from "../../workspace/contracts/index";
+import { isTerminalSessionTab } from "../../workspace/contracts/index";
 
 export type TmuxTargetResolution =
   | {
@@ -97,20 +97,6 @@ export function tmuxSessionMatchesBinding(
   );
 }
 
-export function tmuxPaneBindingMatches(
-  left: TmuxPaneBinding | undefined,
-  right: TmuxPaneBinding | undefined,
-) {
-  return Boolean(
-    left &&
-      right &&
-      left.targetRef === right.targetRef &&
-      left.sessionId === right.sessionId &&
-      left.socketName === right.socketName &&
-      left.socketPath === right.socketPath,
-  );
-}
-
 export function findTmuxAttachPane(
   panes: TerminalPane[] | undefined,
   session: TmuxSessionSummary,
@@ -141,6 +127,29 @@ export function defaultTmuxSessionName({
     String(now.getSeconds()).padStart(2, "0"),
   ].join("");
   return `${base}-${timestamp}`;
+}
+
+/** 对齐 tmux session 目标语法；`.` 和 `:` 会被 tmux 自身改写为 `_`。 */
+export function normalizeTmuxSessionName(value: string) {
+  return value.trim().replace(/[.:]/g, "_");
+}
+
+/** 按稳定 id 或目标内规范化名称幂等写入创建结果。 */
+export function upsertTmuxSession(
+  sessions: readonly TmuxSessionSummary[],
+  next: TmuxSessionSummary,
+) {
+  const existingIndex = sessions.findIndex(
+    (session) =>
+      session.targetRef === next.targetRef &&
+      (session.id === next.id || session.name === next.name),
+  );
+  if (existingIndex < 0) {
+    return [...sessions, next];
+  }
+  return sessions.map((session, index) =>
+    index === existingIndex ? next : session,
+  );
 }
 
 export function tmuxStatusLabel(session: TmuxSessionSummary, current: boolean) {
@@ -260,9 +269,8 @@ function basename(path: string | undefined) {
 
 function sanitizeSessionName(value: string) {
   return (
-    value
-      .trim()
-      .replace(/[^A-Za-z0-9_.-]+/g, "-")
+    normalizeTmuxSessionName(value)
+      .replace(/[^A-Za-z0-9_-]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .slice(0, 32) || "kerminal"
   );

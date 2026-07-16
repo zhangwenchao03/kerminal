@@ -14,13 +14,13 @@ export function DeferredSection({
 }) {
   const Icon = section?.Icon ?? Settings;
   return (
-    <div className="kerminal-muted-surface flex min-h-[320px] items-center justify-center rounded-2xl border border-dashed p-6 text-center">
+    <div className="flex min-h-[320px] items-center justify-center rounded-[var(--radius-card)] border border-dashed border-[var(--border-subtle)] bg-[var(--surface-content)] p-6 text-center">
       <div className="max-w-sm">
         <Icon className="mx-auto h-8 w-8 text-zinc-400" />
         <h3 className="mt-3 text-sm font-semibold">
           {section?.label ?? "配置"}后续接入
         </h3>
-        <p className="mt-2 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
+        <p className="mt-2 text-[13px] leading-6 text-[var(--text-secondary)]">
           {section?.description ??
             `${modeLabel} 高级配置后续接入。`}
         </p>
@@ -32,7 +32,7 @@ export function DeferredSection({
 export function FieldRow({ children, label }: { children: ReactNode; label: string }) {
   return (
     <div className="grid gap-2 md:grid-cols-[84px_minmax(0,1fr)] md:items-start">
-      <span className="pt-2 text-sm font-medium text-zinc-600 dark:text-zinc-300">
+      <span className="pt-2 text-[13px] font-medium text-[var(--text-secondary)]">
         {label}:
       </span>
       <div className="min-w-0">{children}</div>
@@ -53,10 +53,10 @@ export function GroupSelectRow({
 }) {
   return (
     <FieldRow label="分组">
-      <div className={onCreateGroupClick ? "grid grid-cols-[minmax(0,1fr)_40px] gap-2" : ""}>
+      <div className={onCreateGroupClick ? "grid grid-cols-[minmax(0,1fr)_36px] gap-2" : ""}>
         <Select
           aria-label="分组"
-          buttonClassName="h-10"
+          buttonClassName="h-9"
           onValueChange={setGroupId}
           options={groupOptions}
           value={groupId}
@@ -64,7 +64,7 @@ export function GroupSelectRow({
         {onCreateGroupClick ? (
           <Button
             aria-label="新建分组"
-            className="h-10 w-10"
+            className="h-9 w-9"
             onClick={onCreateGroupClick}
             size="icon"
             title="新建分组"
@@ -80,18 +80,7 @@ export function GroupSelectRow({
 }
 
 export const inputClassName =
-  "kerminal-field-surface h-10 w-full rounded-xl border px-3 text-sm text-zinc-950 placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-100 dark:placeholder:text-zinc-600";
-
-export function HelpCard({ icon, text }: { icon: ReactNode; text: string }) {
-  return (
-    <div className="kerminal-solid-surface rounded-2xl border p-4">
-      <div className="flex items-start gap-3 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-        {icon}
-        <p className="min-w-0 flex-1">{text}</p>
-      </div>
-    </div>
-  );
-}
+  "kerminal-field-surface h-9 w-full rounded-[var(--radius-control)] border px-3 text-sm text-[var(--text-primary)] placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-50 dark:placeholder:text-zinc-600";
 
 export function ToggleRow({
   checked,
@@ -105,7 +94,7 @@ export function ToggleRow({
   onCheckedChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="kerminal-field-surface flex h-10 items-center justify-between gap-3 rounded-xl border px-3 text-sm text-zinc-600 dark:text-zinc-300">
+    <div className="kerminal-field-surface flex min-h-9 items-center justify-between gap-3 rounded-[var(--radius-control)] border px-3 py-1.5 text-[13px] text-[var(--text-secondary)]">
       <span className="truncate">{label}</span>
       <Switch
         aria-label={label}
@@ -119,8 +108,8 @@ export function ToggleRow({
 
 export function EmptyConfigState({ icon, text }: { icon: ReactNode; text: string }) {
   return (
-    <div className="kerminal-muted-surface flex items-center gap-3 rounded-2xl border border-dashed px-4 py-5 text-sm text-zinc-500 dark:text-zinc-400">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-hover)] text-zinc-500 dark:text-zinc-300">
+    <div className="flex items-center gap-3 rounded-[var(--radius-card)] border border-dashed border-[var(--border-subtle)] bg-[var(--surface-content)] px-3 py-4 text-[13px] text-[var(--text-secondary)]">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--surface-muted)] text-[var(--text-secondary)]">
         {icon}
       </div>
       <p className="min-w-0 flex-1 leading-6">{text}</p>
@@ -129,7 +118,11 @@ export function EmptyConfigState({ icon, text }: { icon: ReactNode; text: string
 }
 
 export function ConfigList({ children }: { children: ReactNode }) {
-  return <div className="grid gap-2">{children}</div>;
+  return (
+    <div className="divide-y divide-[var(--border-subtle)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-content)]">
+      {children}
+    </div>
+  );
 }
 
 export function ConfigListItem({
@@ -142,12 +135,12 @@ export function ConfigListItem({
   title: string;
 }) {
   return (
-    <div className="kerminal-solid-surface grid gap-3 rounded-2xl border p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <div className="grid gap-3 px-3 py-2.5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <div className="min-w-0">
-        <p className="truncate text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+        <p className="truncate text-[13px] font-semibold text-[var(--text-primary)]">
           {title}
         </p>
-        <p className="mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 truncate text-xs text-[var(--text-secondary)]">
           {meta}
         </p>
       </div>
@@ -206,19 +199,19 @@ export function ListReorderActions({
 
 export function protocolButtonClassName(selected: boolean, disabled: boolean) {
   return [
-    "flex h-16 min-w-[72px] flex-col items-center justify-center gap-1 rounded-xl px-3 text-sm font-medium transition",
+    "kerminal-focus-ring kerminal-pressable flex h-10 min-w-[76px] items-center justify-center gap-2 rounded-[var(--radius-control)] px-3 text-[13px] font-medium transition",
     selected
-      ? "bg-[var(--surface-selected)] text-sky-700 shadow-sm dark:text-sky-100"
-      : "text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50",
+      ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
+      : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]",
     disabled ? "cursor-not-allowed opacity-42 hover:bg-transparent" : "",
   ].join(" ");
 }
 
 export function sectionButtonClassName(selected: boolean) {
   return [
-    "flex h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-sm transition",
+    "kerminal-focus-ring kerminal-pressable flex min-h-10 w-full items-center gap-2.5 rounded-[var(--radius-control)] px-2 py-1.5 text-left text-[13px] transition",
     selected
       ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
-      : "text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50",
+      : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]",
   ].join(" ");
 }

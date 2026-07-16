@@ -1,9 +1,13 @@
 import type { SftpEntry } from "../../../lib/sftpApi";
+import { technicalDetailFromUnknown } from "../../../lib/userFacingMessage";
 import { fileNameFromPath } from "../sftpFileUtils";
 import type { SftpClipboardEntry } from "./types";
 
+/**
+ * 把 SFTP 异常转换为可进入技术详情的脱敏文本。
+ */
 export function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
+  return technicalDetailFromUnknown(error) ?? "未知错误";
 }
 
 export function resolveRemoteInputPath(currentPath: string, value: string) {
@@ -36,11 +40,6 @@ export function normalizeRemotePath(path: string) {
 
 export function isFollowableRemotePath(path: string | undefined): path is string {
   return Boolean(path?.trim().startsWith("/"));
-}
-
-export function defaultRenamePath(entry: SftpEntry) {
-  const parent = parentRemotePath(entry.path);
-  return joinRemotePath(parent, `${entry.name}.renamed`);
 }
 
 export function defaultUploadRemotePath(
@@ -86,7 +85,7 @@ export function defaultPastedRemotePath(
   return targetPath;
 }
 
-export function duplicateRemotePath(path: string) {
+function duplicateRemotePath(path: string) {
   const parent = parentRemotePath(path);
   const name = fileNameFromPath(path, "copy");
   const dotIndex = name.lastIndexOf(".");

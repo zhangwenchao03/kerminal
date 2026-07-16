@@ -1,3 +1,4 @@
+import type { CompatibilityMetricSnapshot } from "../../architecture/compatibility/compatibilityRegistry";
 import type { ManagedSshRuntimeSnapshot } from "../../lib/diagnosticsApi";
 import type { TerminalRendererRegistrySnapshot } from "./terminalRendererRegistry";
 import type { TerminalOutputHistoryBufferStats } from "./terminalOutputHistoryBuffer";
@@ -11,7 +12,7 @@ export type RuntimeDiagnosticsWorkMode =
   | "hidden-tail-only"
   | "suspended-renderer";
 
-export type RuntimeDiagnosticsSystem =
+type RuntimeDiagnosticsSystem =
   | "renderer"
   | "terminal-output"
   | "output-history"
@@ -22,7 +23,7 @@ export type RuntimeDiagnosticsSystem =
   | "managed-ssh"
   | "config-watcher";
 
-export type RuntimeDiagnosticsSeverity = "info" | "warning" | "error";
+type RuntimeDiagnosticsSeverity = "info" | "warning" | "error";
 
 export interface RuntimeDiagnosticsDegradeState {
   disabledReason?: string;
@@ -58,13 +59,21 @@ export interface RuntimeTerminalOutputPaneSnapshot {
   writerFlushCount?: number;
   writerLastFlushMs?: number;
   writerSlowFlushCount?: number;
+  writerWriteErrorCount?: number;
 }
 
-export interface RuntimeTerminalOutputSnapshot {
+interface RuntimeTerminalOutputSnapshot {
   panes: RuntimeTerminalOutputPaneSnapshot[];
   storeUpdateCount?: number;
   totalColdSnapshotChars: number;
   totalPendingBytes: number;
+}
+
+/** 终端 Tab chrome activity 的低频转换摘要。 */
+interface RuntimeTerminalChromeActivitySnapshot {
+  publishedTransitions: number;
+  registeredPanes: number;
+  suppressedTransitions: number;
 }
 
 export interface RuntimePtyPumpSessionSnapshot {
@@ -80,18 +89,18 @@ export interface RuntimePtyPumpSessionSnapshot {
   sessionId: string;
 }
 
-export interface RuntimePtyPumpSnapshot {
+interface RuntimePtyPumpSnapshot {
   sessions: RuntimePtyPumpSessionSnapshot[];
   totalPendingBytes: number;
 }
 
-export type RuntimeSuggestionProbeKind =
+type RuntimeSuggestionProbeKind =
   | "git"
   | "remoteCommand"
   | "remoteHistory"
   | "remotePath";
 
-export interface RuntimeSuggestionProbeSnapshot {
+interface RuntimeSuggestionProbeSnapshot {
   failureCount: number;
   inFlight: boolean;
   kind: RuntimeSuggestionProbeKind;
@@ -111,7 +120,7 @@ export interface RuntimeSuggestionSchedulerSnapshot {
   tasks?: RuntimeSuggestionProbeSnapshot[];
 }
 
-export interface RuntimeSftpPreflightSnapshot {
+interface RuntimeSftpPreflightSnapshot {
   active: number;
   cancelRequested: boolean;
   completed: number;
@@ -120,7 +129,7 @@ export interface RuntimeSftpPreflightSnapshot {
   queued: number;
 }
 
-export interface RuntimeSftpTransferSnapshot {
+interface RuntimeSftpTransferSnapshot {
   activeTransfers: number;
   failedRecent: number;
   prunedCompleted: number;
@@ -133,14 +142,14 @@ export interface RuntimeSftpSnapshot {
   transfers: RuntimeSftpTransferSnapshot;
 }
 
-export interface RuntimeSshSnapshot {
+interface RuntimeSshSnapshot {
   activeConnections: number;
   errorClasses: Record<string, number>;
   failedRecent: number;
   reconnecting: number;
 }
 
-export interface RuntimeConfigDiagnosticSnapshot {
+interface RuntimeConfigDiagnosticSnapshot {
   column?: number;
   fileKind:
     | "settings"
@@ -156,7 +165,7 @@ export interface RuntimeConfigDiagnosticSnapshot {
   severity: RuntimeDiagnosticsSeverity;
 }
 
-export interface RuntimeConfigWatcherSnapshot {
+interface RuntimeConfigWatcherSnapshot {
   diagnostics: RuntimeConfigDiagnosticSnapshot[];
   invalidFileCount: number;
   lastInvalidAt?: number;
@@ -164,6 +173,7 @@ export interface RuntimeConfigWatcherSnapshot {
 }
 
 export interface RuntimePerformanceSnapshot {
+  compatibility?: CompatibilityMetricSnapshot;
   configWatcher?: RuntimeConfigWatcherSnapshot;
   degraded?: RuntimeDiagnosticsDegradeState[];
   generatedAt: string;
@@ -173,16 +183,17 @@ export interface RuntimePerformanceSnapshot {
   sftp?: RuntimeSftpSnapshot;
   ssh?: RuntimeSshSnapshot;
   suggestions?: RuntimeSuggestionSchedulerSnapshot;
+  terminalChromeActivity?: RuntimeTerminalChromeActivitySnapshot;
   terminalOutput?: RuntimeTerminalOutputSnapshot;
   terminalRenderer?: TerminalRendererRegistrySnapshot;
 }
 
-export type RuntimeProductionReadinessGateIssueKind =
+type RuntimeProductionReadinessGateIssueKind =
   | "legacy-fallback"
   | "missing-diagnostics"
   | "unknown-error-class";
 
-export interface RuntimeProductionReadinessGateIssue {
+interface RuntimeProductionReadinessGateIssue {
   count: number;
   kind: RuntimeProductionReadinessGateIssueKind;
   message: string;
@@ -336,6 +347,11 @@ export function createRuntimeTerminalOutputPaneSnapshot({
     snapshot,
     "writerSlowFlushCount",
     writerSlowFlushCount,
+  );
+  assignOptionalNumber(
+    snapshot,
+    "writerWriteErrorCount",
+    writerStats?.writeErrorCount,
   );
 
   return snapshot;

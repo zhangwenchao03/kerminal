@@ -2,17 +2,20 @@
 //!
 //! @author kongweiguang
 
-use crate::models::mcp_server::{ToolCategory, ToolDefinition};
+use crate::{
+    models::mcp_server::ToolCategory,
+    services::mcp_tool_catalog_service::{ToolDescriptor, ToolId},
+};
 
 use super::super::schema::{
     boolean_field, enum_field, number_field, object_schema, string_field, tool, tool_with_exposure,
     ToolEffect,
 };
 
-pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
+pub(super) fn foundation_tools() -> Vec<ToolDescriptor> {
     vec![
         tool(
-            "kerminal.capabilities",
+            ToolId::KerminalCapabilities,
             "读取 Kerminal MCP 能力指南",
             "返回外部 Agent 使用 Kerminal MCP 的结构化能力地图、推荐起步工具、会话上下文文件、文件型配置边界和故意不提供的 MCP CRUD/UI 编排工具族。",
             ToolCategory::Diagnostics,
@@ -20,7 +23,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
             object_schema(vec![]),
         ),
         tool(
-            "kerminal.app_guide",
+            ToolId::KerminalAppGuide,
             "读取 Kerminal 应用导航指南",
             "返回面向外部 Agent 的 Kerminal 产品结构地图：左栏主机、中间终端工作区、右栏工具、Agent 会话、文件型配置和对应 MCP 工具族；不执行 UI 编排。",
             ToolCategory::Diagnostics,
@@ -28,7 +31,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
             object_schema(vec![]),
         ),
         tool(
-            "kerminal.config_guide",
+            ToolId::KerminalConfigGuide,
             "读取 Kerminal 配置指南",
             "返回与工作空间 kerminal-config.md 同源的文件型配置规则正文、可编辑文件、受保护路径、验证入口和 secret 边界；只读，不做配置 CRUD。",
             ToolCategory::Diagnostics,
@@ -36,7 +39,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
             object_schema(vec![]),
         ),
         tool(
-            "kerminal.tool_help",
+            ToolId::KerminalToolHelp,
             "读取 Kerminal 工具帮助",
             "按 toolId、family 或 query 返回当前暴露 MCP tool 的 schema、示例参数和安全标注，并说明故意缺席的配置 CRUD/UI 编排/历史写入工具族；只读，不执行动作。",
             ToolCategory::Diagnostics,
@@ -72,7 +75,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "kerminal.operation_guide",
+            ToolId::KerminalOperationGuide,
             "读取 Kerminal 操作指南",
             "按任务意图返回外部 Agent 操作 Kerminal 的推荐 MCP 调用顺序、文件优先配置边界、安全停顿条件和缺席工具说明；不读取 secrets，不执行动作。",
             ToolCategory::Diagnostics,
@@ -102,7 +105,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "kerminal.runtime_snapshot",
+            ToolId::KerminalRuntimeSnapshot,
             "读取 Kerminal 运行态快照",
             "返回当前 Kerminal 运行态摘要：终端、Agent session、端口转发、本机代理入口和 MCP 工具数量；不读取 secrets，不提供文件型配置 CRUD。",
             ToolCategory::Diagnostics,
@@ -110,7 +113,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
             object_schema(vec![]),
         ),
         tool(
-            "terminal.write",
+            ToolId::TerminalWrite,
             "写入终端",
             "向指定既有 session 写入原始输入；在 session-scoped Agent endpoint 中必须通过 agentSessionId 和 bindingGeneration 写入当前 Agent 绑定目标，不能显式指定 sessionId。调用前确认由 MCP host 负责。",
             ToolCategory::Terminal,
@@ -131,7 +134,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "terminal.snapshot",
+            ToolId::TerminalSnapshot,
             "读取终端快照",
             "读取指定终端或当前 Agent 绑定目标的最近输出快照。",
             ToolCategory::Terminal,
@@ -143,7 +146,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "terminal.resolve_agent_target",
+            ToolId::TerminalResolveAgentTarget,
             "解析 Agent 目标终端",
             "把 Kerminal Agent session id 解析为当前绑定的目标终端，并返回 live/stale 状态。",
             ToolCategory::Terminal,
@@ -155,7 +158,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
             )]),
         ),
         tool(
-            "kerminal.agent.current_session",
+            ToolId::KerminalAgentCurrentSession,
             "读取 Agent 会话",
             "读取当前 Kerminal Agent session 文件元数据、provider 和关键路径。",
             ToolCategory::Terminal,
@@ -167,7 +170,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
             )]),
         ),
         tool(
-            "kerminal.agent.target_context",
+            ToolId::KerminalAgentTargetContext,
             "读取 Agent 目标上下文",
             "读取当前 Agent 绑定目标、live/stale 状态和最近终端输出快照。",
             ToolCategory::Terminal,
@@ -178,7 +181,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "kerminal.config.validate",
+            ToolId::KerminalConfigValidate,
             "校验文件配置",
             "只读校验当前 Kerminal 文件型配置是否可被运行时代码加载；用于外部 Agent 编辑 settings/profiles/hosts/snippets/workflows 后验证，不做配置 CRUD，不读取 secrets。",
             ToolCategory::Diagnostics,
@@ -191,7 +194,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
             )]),
         ),
         tool(
-            "terminal.resize",
+            ToolId::TerminalResize,
             "调整终端尺寸",
             "同步 rows/cols 到后端会话。",
             ToolCategory::Terminal,
@@ -203,7 +206,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "terminal.list",
+            ToolId::TerminalList,
             "列出终端会话",
             "读取当前运行时本地终端会话摘要。",
             ToolCategory::Terminal,
@@ -211,7 +214,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
             object_schema(vec![]),
         ),
         tool_with_exposure(
-            "terminal.close",
+            ToolId::TerminalClose,
             "关闭终端会话",
             "关闭并移除指定本地终端会话；调用前确认由 MCP host 负责。",
             ToolCategory::Terminal,
@@ -221,7 +224,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
             object_schema(vec![string_field("sessionId", "终端 session id。", true)]),
         ),
         tool(
-            "terminal.log.start",
+            ToolId::TerminalLogStart,
             "开始终端日志",
             "开始把指定终端 session 的新输出写入本地日志文件。",
             ToolCategory::Terminal,
@@ -229,7 +232,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
             object_schema(vec![string_field("sessionId", "终端 session id。", true)]),
         ),
         tool(
-            "terminal.log.stop",
+            ToolId::TerminalLogStop,
             "停止终端日志",
             "停止日志记录并返回路径摘要。",
             ToolCategory::Terminal,
@@ -237,7 +240,7 @@ pub(super) fn foundation_tools() -> Vec<ToolDefinition> {
             object_schema(vec![string_field("sessionId", "终端 session id。", true)]),
         ),
         tool(
-            "terminal.log.state",
+            ToolId::TerminalLogState,
             "读取终端日志状态",
             "读取指定终端 session 当前日志记录状态。",
             ToolCategory::Terminal,

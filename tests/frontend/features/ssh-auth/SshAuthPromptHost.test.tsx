@@ -4,8 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SshAuthPromptRequest } from "../../../../src/lib/sshAuthApi";
 import { SshAuthPromptHost } from "../../../../src/features/ssh-auth/SshAuthPromptHost";
 import {
-  __resetSshAuthPromptStoreForTests,
-  requestSshAuthPrompt,
+  createSshAuthPromptStore,
+  type SshAuthPromptStore,
 } from "../../../../src/features/ssh-auth/sshAuthPromptStore";
 
 const apiMocks = vi.hoisted(() => ({
@@ -29,13 +29,18 @@ const targetPasswordPrompt: SshAuthPromptRequest = {
 };
 
 describe("SshAuthPromptHost", () => {
+  let store: SshAuthPromptStore;
+
   beforeEach(() => {
     apiMocks.submitSshAuthPromptResponse.mockReset();
-    __resetSshAuthPromptStoreForTests();
+    store = createSshAuthPromptStore();
   });
 
   afterEach(() => {
-    __resetSshAuthPromptStoreForTests();
+    const current = store.getCurrent();
+    if (current) {
+      store.cancel(current.id);
+    }
   });
 
   it("submits queued prompt responses through sshAuthApi", async () => {
@@ -44,9 +49,9 @@ describe("SshAuthPromptHost", () => {
       promptId: targetPasswordPrompt.promptId,
       secretKind: "password",
     });
-    render(<SshAuthPromptHost />);
+    render(<SshAuthPromptHost store={store} />);
 
-    const result = requestSshAuthPrompt({
+    const result = store.request({
       persistToHostId: "host-1",
       prompt: targetPasswordPrompt,
     });
@@ -73,9 +78,9 @@ describe("SshAuthPromptHost", () => {
     apiMocks.submitSshAuthPromptResponse.mockRejectedValue(
       new Error("vault write failed"),
     );
-    render(<SshAuthPromptHost />);
+    render(<SshAuthPromptHost store={store} />);
 
-    void requestSshAuthPrompt({
+    void store.request({
       persistToHostId: "host-1",
       prompt: targetPasswordPrompt,
     });
@@ -93,9 +98,9 @@ describe("SshAuthPromptHost", () => {
     apiMocks.submitSshAuthPromptResponse.mockRejectedValue(
       new Error("vault write failed"),
     );
-    render(<SshAuthPromptHost />);
+    render(<SshAuthPromptHost store={store} />);
 
-    const firstResult = requestSshAuthPrompt({
+    const firstResult = store.request({
       persistToHostId: "host-1",
       prompt: targetPasswordPrompt,
     });
@@ -110,7 +115,7 @@ describe("SshAuthPromptHost", () => {
       host: "next.example.com",
       promptId: "ssh-auth:target:kong@next.example.com:22:password",
     };
-    void requestSshAuthPrompt({ prompt: secondPrompt });
+    void store.request({ prompt: secondPrompt });
     await user.click(screen.getByRole("button", { name: "取消" }));
 
     await expect(firstResult).resolves.toBeNull();
@@ -122,9 +127,9 @@ describe("SshAuthPromptHost", () => {
 
   it("resolves null when the user cancels the prompt", async () => {
     const user = userEvent.setup();
-    render(<SshAuthPromptHost />);
+    render(<SshAuthPromptHost store={store} />);
 
-    const result = requestSshAuthPrompt({ prompt: targetPasswordPrompt });
+    const result = store.request({ prompt: targetPasswordPrompt });
     await user.click(await screen.findByRole("button", { name: "取消" }));
 
     await expect(result).resolves.toBeNull();

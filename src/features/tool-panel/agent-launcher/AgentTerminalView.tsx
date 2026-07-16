@@ -1,7 +1,12 @@
 // @author kongweiguang
 
-import { useCallback, useRef } from "react";
-import { ChevronLeft, Sparkles, Terminal, Wrench } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ChevronLeft,
+  Sparkles,
+  Terminal,
+  Wrench,
+} from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import {
   currentDesktopNotificationVisibility,
@@ -18,9 +23,19 @@ import { cn } from "../../../lib/cn";
 import type {
   ResolvedTheme,
   TerminalAppearance,
-} from "../../settings/settingsModel";
-import { XtermPane } from "../../terminal/XtermPane";
+} from "../../settings/contracts/index";
+import { XtermPane } from "../../terminal/xterm/index";
+import type { XtermPaneInputRequest } from "../../terminal/xterm/index";
+import type {
+  AgentWorkflowSendPreview,
+  AgentWorkflowPreviewResolution,
+} from "../../agent-workflow";
+import { AgentWorkflowSendPreviewPanel } from "../../agent-workflow";
 import type { AgentLaunchPermissionMode } from "./agentLauncherModel";
+import {
+  agentTerminalPaneId,
+  registerAgentPromptTerminal,
+} from "./agentPromptTransport";
 
 export interface AgentTerminalSession {
   agentSessionId: string;
@@ -50,6 +65,10 @@ export function AgentTerminalView({
   focused,
   onAgentSignal,
   onBack,
+  onCancelPreview,
+  onConfirmPreview,
+  preview,
+  previewBusy,
   resolvedTheme,
   session,
   terminalAppearance,
@@ -58,11 +77,20 @@ export function AgentTerminalView({
   focused: boolean;
   onAgentSignal: (signal: TerminalAgentSignal) => void;
   onBack: () => void;
+  onCancelPreview: (previewId: string) => AgentWorkflowPreviewResolution;
+  onConfirmPreview: (
+    previewId: string,
+    submit: boolean,
+  ) => Promise<AgentWorkflowPreviewResolution>;
+  preview: AgentWorkflowSendPreview | null;
+  previewBusy: boolean;
   resolvedTheme: ResolvedTheme;
   session: AgentTerminalSession;
   terminalAppearance: TerminalAppearance;
 }) {
-  const paneId = `agent-terminal-${session.agentSessionId}`;
+  const paneId = agentTerminalPaneId(session.agentSessionId);
+  const [inputRequest, setInputRequest] =
+    useState<XtermPaneInputRequest | null>(null);
   const Icon = agentTerminalIcons[session.agentId];
   const workspacePath = compactWorkspacePath(session.cwd);
   const title = session.title === "Custom" ? "自定义" : session.title;
@@ -73,6 +101,14 @@ export function AgentTerminalView({
     {},
   );
   const notifiedSessionIdsRef = useRef<Set<string>>(new Set());
+  useEffect(
+    () =>
+      registerAgentPromptTerminal(session.agentSessionId, {
+        paneId,
+        send: setInputRequest,
+      }),
+    [paneId, session.agentSessionId],
+  );
   const notifyAgentSessionFinished = useCallback(
     (event: { durationMs: number; sessionId: string }) => {
       if (!desktopNotifications?.enabled) {
@@ -99,7 +135,7 @@ export function AgentTerminalView({
     [desktopNotifications, session.agentSessionId, title],
   );
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--surface-terminal)]">
+    <section className="relative isolate flex h-full min-h-0 flex-col overflow-hidden bg-[var(--surface-terminal)]">
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface-solid)] px-2.5">
         <Button
           aria-label="Back to agent launcher"
@@ -138,14 +174,23 @@ export function AgentTerminalView({
           </span>
         ) : null}
       </header>
-      <div className="min-h-0 flex-1 p-2">
+      <div
+        aria-hidden={Boolean(preview)}
+        className={cn(
+          "min-h-0 flex-1 p-2",
+          preview && "pointer-events-none select-none",
+        )}
+        data-testid="agent-terminal-content"
+      >
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-[var(--border-subtle)] bg-[var(--surface-terminal)] shadow-sm shadow-black/5 dark:shadow-black/25">
           <XtermPane
             args={session.args}
             cwd={session.cwd}
             env={session.env}
-            focused={focused}
+            enableAgentSendActions={false}
+            focused={focused && !preview}
             inputCompatibilityMode="agentTui"
+            inputRequest={inputRequest}
             key={session.agentSessionId}
             onAgentSignal={onAgentSignal}
             paneId={paneId}
@@ -160,6 +205,19 @@ export function AgentTerminalView({
           />
         </div>
       </div>
+      {preview ? (
+        <div
+          className="absolute inset-x-0 bottom-0 top-10 z-10 min-h-0"
+          data-testid="agent-send-preview-mode"
+        >
+          <AgentWorkflowSendPreviewPanel
+            busy={previewBusy}
+            onCancel={onCancelPreview}
+            onConfirm={(previewId) => void onConfirmPreview(previewId, true)}
+            preview={preview}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -202,7 +260,5 @@ function agentSignalStatusView(signal: TerminalAgentSignal): {
 }
 
 function compactWorkspacePath(path: string): string {
-  return path.replace(/\\/g, "/").endsWith("/.kerminal")
-    ? "~/.kerminal"
-    : path;
+  return path.replace(/\\/g, "/").endsWith("/.kerminal") ? "~/.kerminal" : path;
 }

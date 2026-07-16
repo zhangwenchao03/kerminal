@@ -9,7 +9,7 @@ import { describe,
   expect,
   it } from "vitest";
 import {  createSftpTransferSummary,
-  eventMocks,
+  desktopRuntimeMocks,
   openCurrentDirectoryContextMenu,
   sftpApiMocks,
   sshMachine,
@@ -20,6 +20,7 @@ const sidebarViewScope = "sftp-sidebar:prod-api";
 
 describe("SftpToolContent events and dialogs", () => {
   it("updates transfer progress from Tauri events without waiting for polling", async () => {
+    const user = userEvent.setup();
     (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ =
       {};
     sftpApiMocks.listSftpTransfers.mockResolvedValue([]);
@@ -28,15 +29,15 @@ describe("SftpToolContent events and dialogs", () => {
 
     await screen.findByText("var");
     await waitFor(() =>
-      expect(eventMocks.listen).toHaveBeenCalledWith(
+      expect(desktopRuntimeMocks.listen).toHaveBeenCalledWith(
         "sftp-transfer-updated",
         expect.any(Function),
       ),
     );
 
     act(() => {
-      eventMocks.transferHandler?.({
-        payload: createSftpTransferSummary({
+      desktopRuntimeMocks.transferHandler?.(
+        createSftpTransferSummary({
           bytesTransferred: 512,
           cancelRequested: false,
           createdAt: 10,
@@ -51,7 +52,7 @@ describe("SftpToolContent events and dialogs", () => {
           updatedAt: 11,
           viewScope: sidebarViewScope,
         }),
-      });
+      );
     });
 
     expect(await screen.findByText("SFTP 传输队列")).toBeInTheDocument();
@@ -61,13 +62,13 @@ describe("SftpToolContent events and dialogs", () => {
     ).toHaveAttribute("aria-valuenow", "50");
 
     act(() => {
-      eventMocks.transferHandler?.({
-        payload: createSftpTransferSummary({
+      desktopRuntimeMocks.transferHandler?.(
+        createSftpTransferSummary({
           bytesTransferred: 512,
           cancelRequested: false,
           createdAt: 10,
           direction: "download",
-          error: "SSH 认证失败",
+          error: "SSH 认证失败 password=transfer-event-secret",
           hostId: "prod-api",
           id: "event-transfer-1",
           kind: "file",
@@ -78,11 +79,24 @@ describe("SftpToolContent events and dialogs", () => {
           updatedAt: 12,
           viewScope: sidebarViewScope,
         }),
-      });
+      );
     });
 
     expect(await screen.findByText("失败")).toBeInTheDocument();
-    expect(screen.getByText("SSH 认证失败")).toBeInTheDocument();
+    expect(screen.queryByText("SSH 认证失败")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/transfer-event-secret/),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "查看传输详情 app.log" }),
+    );
+
+    expect(await screen.findByText(/SSH 认证失败/)).toBeVisible();
+    expect(screen.getByText(/password="\[已隐藏\]"/)).toBeVisible();
+    expect(
+      screen.queryByText(/transfer-event-secret/),
+    ).not.toBeInTheDocument();
   });
 
   it("toggles hidden dot files from the context menu", async () => {

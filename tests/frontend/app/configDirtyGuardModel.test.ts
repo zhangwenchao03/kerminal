@@ -86,14 +86,14 @@ describe("configDirtyGuardModel", () => {
           ]),
         ],
       })?.message,
-    ).toBe("cfg: host changed externally; close + reopen");
+    ).toBe("当前主机已在外部更新，请关闭后重新打开。");
 
     expect(
       resolveConnectionEditConflict({
         editingHost: host,
         groups: [groupWithMachines([])],
       })?.message,
-    ).toBe("cfg: host deleted externally; close + reopen");
+    ).toBe("当前主机已在外部删除，请关闭后重新打开。");
   });
 
   it("detects changed and deleted group edit targets", () => {
@@ -111,14 +111,33 @@ describe("configDirtyGuardModel", () => {
         group,
         groups: [{ ...group, title: "prod", updatedAt: "2" }],
       })?.message,
-    ).toBe("cfg: group changed externally; close + reopen");
+    ).toBe("当前主机分组已在外部更新，请关闭后重新打开。");
 
     expect(
       resolveRemoteGroupEditConflict({
         group,
         groups: [],
       })?.message,
-    ).toBe("cfg: group deleted externally; close + reopen");
+    ).toBe("当前主机分组已在外部删除，请关闭后重新打开。");
+  });
+
+  it("keeps edit conflict messages in user language", () => {
+    const messages = [
+      resolveConnectionEditConflict({
+        editingHost: host,
+        groups: [groupWithMachines([])],
+      })?.message,
+      resolveRemoteGroupEditConflict({
+        group: groupWithMachines([]),
+        groups: [],
+      })?.message,
+    ];
+
+    for (const message of messages) {
+      expect(message).toBeDefined();
+      expect(message).toContain("请关闭后重新打开");
+      expect(message).not.toMatch(/cfg:|externally|close \+ reopen/i);
+    }
   });
 });
 

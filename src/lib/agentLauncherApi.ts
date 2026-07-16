@@ -30,7 +30,7 @@ export interface PrepareExternalAgentWorkspaceRequest {
   overwritePolicy?: ExternalAgentOverwritePolicy;
 }
 
-export type ExternalAgentOverwritePolicy =
+type ExternalAgentOverwritePolicy =
   | "backupAndReplaceInvalid"
   | "preserveUserContent";
 
@@ -58,14 +58,14 @@ export type ExternalAgentSessionStatus =
 
 export type AgentSessionRecordStatus = "active" | "archived" | "stale";
 
-export interface ExternalAgentValidatorStatus {
+interface ExternalAgentValidatorStatus {
   available: boolean;
   command: string;
   detail: string;
   status: string;
 }
 
-export interface ExternalAgentFileOperation {
+interface ExternalAgentFileOperation {
   path: string;
   action: "created" | "updated" | "unchanged";
   changed: boolean;
@@ -91,7 +91,7 @@ export interface AgentSessionTargetRequest {
   lastSeenAt?: string;
 }
 
-export interface AgentSessionTargetRecord extends AgentSessionTargetRequest {
+interface AgentSessionTargetRecord extends AgentSessionTargetRequest {
   binding_id?: string;
   binding_generation?: number;
   pane_id?: string;
@@ -110,6 +110,10 @@ export interface AgentSessionCreateRequest {
   mcpEndpoint?: string;
 }
 
+export interface AgentSessionUpdateRequest {
+  title?: string;
+}
+
 export interface AgentSessionRecord {
   session: {
     agentSessionId?: string;
@@ -121,6 +125,10 @@ export interface AgentSessionRecord {
     session_root?: string;
     workspaceRoot?: string;
     workspace_root?: string;
+    createdAt?: string;
+    created_at?: string;
+    updatedAt?: string;
+    updated_at?: string;
     status?: AgentSessionRecordStatus;
     launch: {
       commandLabel?: string;
@@ -170,6 +178,22 @@ export function listAgentSessions(): Promise<AgentSessionList> {
   return invoke<AgentSessionList>("agent_session_list");
 }
 
+export function updateAgentSession(
+  agentSessionId: string,
+  request: AgentSessionUpdateRequest,
+): Promise<AgentSessionRecord> {
+  if (!isTauri()) {
+    return Promise.resolve(
+      previewUpdatedAgentSessionRecord(agentSessionId, request),
+    );
+  }
+
+  return invoke<AgentSessionRecord>("agent_session_update", {
+    agentSessionId,
+    request,
+  });
+}
+
 export function archiveAgentSession(
   agentSessionId: string,
 ): Promise<AgentSessionRecord> {
@@ -179,24 +203,6 @@ export function archiveAgentSession(
 
   return invoke<AgentSessionRecord>("agent_session_archive", {
     agentSessionId,
-  });
-}
-
-export function rebindAgentSessionTarget(
-  agentSessionId: string,
-  target: AgentSessionTargetRequest,
-): Promise<AgentSessionRecord> {
-  if (!isTauri()) {
-    return Promise.resolve(previewAgentSessionRecord({
-      agentId: "custom",
-      target,
-      title: "Custom",
-    }));
-  }
-
-  return invoke<AgentSessionRecord>("agent_session_rebind_target", {
-    agentSessionId,
-    target,
   });
 }
 
@@ -383,6 +389,30 @@ function previewArchivedAgentSessionRecord(
       sessionRoot,
       status: "archived",
       title: "Archived Agent Session",
+      workspaceRoot,
+    },
+  };
+}
+
+function previewUpdatedAgentSessionRecord(
+  agentSessionId: string,
+  request: AgentSessionUpdateRequest,
+): AgentSessionRecord {
+  const workspaceRoot = "~/.kerminal";
+  const sessionRoot = `${workspaceRoot}/agents/sessions/${agentSessionId}`;
+  return {
+    session: {
+      agentId: "custom",
+      agentSessionId,
+      launch: {
+        args: [],
+        commandLabel: "custom",
+        cwd: sessionRoot,
+        shell: "",
+      },
+      sessionRoot,
+      status: "active",
+      title: request.title ?? "Custom",
       workspaceRoot,
     },
   };

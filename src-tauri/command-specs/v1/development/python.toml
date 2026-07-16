@@ -1,0 +1,38 @@
+schema_version = 1
+command = "python"
+aliases = ["python3"]
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Run the Python interpreter"
+tested_version = "Python 3.14"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "Python command line documentation"
+url = "https://docs.python.org/3/using/cmdline.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "-c"
+description = "Execute Python source code"
+
+[options.argument]
+kind = "string"
+placeholder = "COMMAND"
+
+[[options]]
+name = "-m"
+description = "Run a library module as a script"
+
+[options.argument]
+kind = "string"
+placeholder = "MODULE"
+
+[[options]]
+name = "--version"
+aliases = ["-V"]
+description = "Print the Python version"

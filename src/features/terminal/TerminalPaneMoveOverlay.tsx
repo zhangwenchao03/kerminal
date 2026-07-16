@@ -21,7 +21,7 @@ const moveZoneLabels: Record<TerminalPaneMoveDropZone, string> = {
 const activeZoneClassName =
   "absolute rounded-xl border border-sky-300/55 bg-sky-300/10 shadow-[inset_0_0_0_1px_rgba(125,211,252,0.58),0_18px_70px_rgba(8,47,73,0.18)] transition-[opacity,background-color,box-shadow] duration-150 dark:border-sky-200/35 dark:bg-sky-300/12 dark:shadow-black/30";
 const dragPreviewSurfaceClassName =
-  "pointer-events-none fixed z-[1000] aspect-[16/10] w-72 max-w-[calc(100vw-16px)] select-none overflow-hidden rounded-[4px] border border-sky-200/45 bg-[var(--surface-panel)]/92 text-zinc-800 shadow-2xl shadow-sky-950/20 ring-1 ring-white/35 backdrop-blur-[2px] dark:border-zinc-500/55 dark:text-zinc-200 dark:shadow-black/55 dark:ring-white/10";
+  "kerminal-layer-drag-preview pointer-events-none fixed aspect-[16/10] w-72 max-w-[calc(100vw-16px)] select-none overflow-hidden rounded-[var(--radius-control)] border border-[var(--border-strong)] bg-[var(--surface-panel)] text-[var(--text-primary)] shadow-[var(--shadow-floating)]";
 const previewFallbackLineClasses = [
   "w-10/12 bg-sky-400/28",
   "w-8/12 bg-zinc-400/35 dark:bg-zinc-600/55",
@@ -158,7 +158,7 @@ export function TerminalPaneMoveDragPreview({
   );
 }
 
-export function terminalPaneMovePreviewPosition(x: number, y: number) {
+function terminalPaneMovePreviewPosition(x: number, y: number) {
   const width = 288;
   const height = 180;
   if (typeof window === "undefined") {

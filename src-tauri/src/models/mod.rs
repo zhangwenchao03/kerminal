@@ -10,6 +10,7 @@ pub mod config_change;
 pub mod connection;
 pub mod diagnostics;
 pub mod docker;
+pub mod file_preview;
 pub mod mcp_server;
 pub mod port_forward;
 pub mod profile;

@@ -1,0 +1,41 @@
+schema_version = 1
+command = "rustup"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Manage Rust toolchains"
+tested_version = "rustup 1.28"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "rustup command line guide"
+url = "https://rust-lang.github.io/rustup/basics.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "component"
+description = "Manage installed components"
+
+[[subcommands]]
+name = "default"
+description = "Set the default toolchain"
+
+[[subcommands]]
+name = "target"
+description = "Manage compilation targets"
+
+[[subcommands]]
+name = "toolchain"
+description = "Manage Rust toolchains"
+
+[[subcommands]]
+name = "update"
+description = "Update toolchains and rustup"
+
+[[options]]
+name = "--version"
+description = "Print the rustup version"

@@ -2,6 +2,11 @@
 
 mod support;
 
+#[path = "../src/services/terminal_manager/managed_shell_channel.rs"]
+mod managed_shell_channel;
+#[path = "../src/services/terminal_manager/utf8_decoder.rs"]
+mod utf8_decoder;
+
 use kerminal_lib::{
     models::terminal::{
         TerminalAgentKind, TerminalAgentStatus, TerminalOutputKind,
@@ -9,17 +14,274 @@ use kerminal_lib::{
     },
     services::terminal_manager::TerminalManager,
 };
+use managed_shell_channel::{
+    managed_shell_command_channel, managed_shell_reader_channel, ManagedShellCommand,
+    ManagedShellQueueError, ManagedShellReaderMessage, MANAGED_SSH_READER_CHANNEL_CAPACITY,
+    MANAGED_SSH_READER_CHUNK_BYTES, MANAGED_SSH_WRITE_MAX_PENDING_BYTES, TERMINAL_WRITE_MAX_BYTES,
+};
 use std::{
-    sync::mpsc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Arc,
+    },
+    thread,
     time::{Duration, Instant},
 };
 use support::terminal_manager::{
     agent_signal_marker_request, assert_data_event_before_closed, collect_additional_events,
     collect_until_closed_events, collect_until_output_events,
     collect_until_output_events_without_frontend_reply, fast_bulk_output_request,
-    immediate_exit_request, short_lived_echo_request, short_lived_tail_request,
-    startup_cpr_query_request, stderr_tail_request, wait_for_output,
+    immediate_exit_request, interactive_shell_request, short_lived_echo_request,
+    short_lived_tail_request, startup_cpr_query_request, stderr_tail_request, wait_for_output,
 };
+use utf8_decoder::IncrementalUtf8Decoder;
+
+#[test]
+fn incremental_utf8_decoder_preserves_every_multibyte_split_point() {
+    let text = "A¢€😀中Z";
+    let bytes = text.as_bytes();
+
+    for split in 0..=bytes.len() {
+        let mut decoder = IncrementalUtf8Decoder::new();
+        let mut decoded = decoder.decode(&bytes[..split]);
+        decoded.push_str(&decoder.decode(&bytes[split..]));
+        decoded.push_str(&decoder.finish());
+        assert_eq!(decoded, text, "split at byte {split}");
+    }
+
+    let mut decoder = IncrementalUtf8Decoder::new();
+    let mut decoded = String::new();
+    for byte in bytes {
+        decoded.push_str(&decoder.decode(std::slice::from_ref(byte)));
+    }
+    decoded.push_str(&decoder.finish());
+    assert_eq!(decoded, text);
+}
+
+#[test]
+fn incremental_utf8_decoder_matches_lossy_semantics_for_invalid_sequences() {
+    let bytes = [
+        b'a', 0xf0, 0x28, 0x8c, 0x28, b'b', 0xe2, 0x82, b'c', 0xff, 0xc2, b'd',
+    ];
+    let expected = String::from_utf8_lossy(&bytes).into_owned();
+
+    for split in 0..=bytes.len() {
+        let mut decoder = IncrementalUtf8Decoder::new();
+        let mut decoded = decoder.decode(&bytes[..split]);
+        decoded.push_str(&decoder.decode(&bytes[split..]));
+        decoded.push_str(&decoder.finish());
+        assert_eq!(decoded, expected, "invalid sequence split at byte {split}");
+    }
+
+    let mut decoder = IncrementalUtf8Decoder::new();
+    let mut decoded = String::new();
+    for byte in bytes {
+        decoded.push_str(&decoder.decode(std::slice::from_ref(&byte)));
+    }
+    decoded.push_str(&decoder.finish());
+    assert_eq!(decoded, expected);
+}
+
+#[test]
+fn incremental_utf8_decoder_flushes_incomplete_eof_once() {
+    let mut decoder = IncrementalUtf8Decoder::new();
+
+    assert_eq!(decoder.decode(&[b'a', 0xe4, 0xb8]), "a");
+    assert_eq!(decoder.pending_len(), 2);
+    assert_eq!(decoder.finish(), "\u{fffd}");
+    assert_eq!(decoder.finish(), "");
+    assert_eq!(decoder.pending_len(), 0);
+}
+
+#[test]
+fn managed_ssh_command_queue_enforces_and_releases_pending_byte_budget() {
+    let (sender, mut receiver) = managed_shell_command_channel();
+    let chunk = vec![b'x'; TERMINAL_WRITE_MAX_BYTES];
+    let accepted = MANAGED_SSH_WRITE_MAX_PENDING_BYTES / TERMINAL_WRITE_MAX_BYTES;
+
+    for _ in 0..accepted {
+        sender.try_send_write(chunk.clone()).unwrap();
+    }
+    assert_eq!(
+        sender.pending_write_bytes(),
+        accepted * TERMINAL_WRITE_MAX_BYTES
+    );
+    assert!(matches!(
+        sender.try_send_write(vec![b'y']),
+        Err(ManagedShellQueueError::Backpressure { .. })
+    ));
+
+    let mut queued = receiver.try_recv().expect("receive one queued write");
+    assert_eq!(
+        sender.pending_write_bytes(),
+        accepted * TERMINAL_WRITE_MAX_BYTES
+    );
+    assert!(matches!(
+        queued.take_command(),
+        ManagedShellCommand::Write(data) if data.len() == TERMINAL_WRITE_MAX_BYTES
+    ));
+    drop(queued);
+    assert_eq!(
+        sender.pending_write_bytes(),
+        (accepted - 1) * TERMINAL_WRITE_MAX_BYTES
+    );
+    sender.try_send_write(chunk).unwrap();
+}
+
+#[test]
+fn managed_ssh_command_queue_rejects_single_oversized_write() {
+    let (sender, _receiver) = managed_shell_command_channel();
+
+    let error = sender
+        .try_send_write(vec![0; TERMINAL_WRITE_MAX_BYTES + 1])
+        .expect_err("oversized write should be rejected");
+    assert!(matches!(
+        &error,
+        ManagedShellQueueError::InputTooLarge { .. }
+    ));
+    assert_eq!(
+        error.into_io_error().kind(),
+        std::io::ErrorKind::InvalidInput
+    );
+    assert_eq!(sender.pending_write_bytes(), 0);
+}
+
+#[test]
+fn managed_ssh_command_queue_preserves_resize_and_closed_semantics() {
+    let (sender, mut receiver) = managed_shell_command_channel();
+    sender.try_send_resize(132, 43).unwrap();
+
+    let mut queued = receiver.try_recv().expect("receive queued resize");
+    assert!(matches!(
+        queued.take_command(),
+        ManagedShellCommand::Resize {
+            cols: 132,
+            rows: 43
+        }
+    ));
+    drop(receiver);
+
+    let error = sender
+        .try_send_write(vec![b'x'])
+        .expect_err("closed queue should reject writes");
+    assert_eq!(error, ManagedShellQueueError::Closed);
+    assert_eq!(error.into_io_error().kind(), std::io::ErrorKind::BrokenPipe);
+}
+
+#[test]
+fn managed_ssh_command_queue_reports_message_capacity_backpressure() {
+    let (sender, _receiver) = managed_shell_command_channel();
+    let mut error = None;
+
+    for _ in 0..=128 {
+        if let Err(queue_error) = sender.try_send_resize(80, 24) {
+            error = Some(queue_error);
+            break;
+        }
+    }
+
+    let error = error.expect("bounded command queue should reach message capacity");
+    assert!(matches!(&error, ManagedShellQueueError::QueueFull { .. }));
+    assert_eq!(error.into_io_error().kind(), std::io::ErrorKind::WouldBlock);
+}
+
+#[test]
+fn managed_ssh_internal_write_waits_for_budget_and_resumes() {
+    let (sender, mut receiver) = managed_shell_command_channel();
+    let chunk = vec![b'x'; TERMINAL_WRITE_MAX_BYTES];
+    let accepted = MANAGED_SSH_WRITE_MAX_PENDING_BYTES / TERMINAL_WRITE_MAX_BYTES;
+    for _ in 0..accepted {
+        sender.try_send_write(chunk.clone()).unwrap();
+    }
+
+    let keep_waiting = Arc::new(AtomicBool::new(true));
+    let waiting_flag = Arc::clone(&keep_waiting);
+    let waiting_sender = sender.clone();
+    let (started_sender, started_receiver) = mpsc::channel();
+    let (done_sender, done_receiver) = mpsc::channel();
+    thread::spawn(move || {
+        started_sender.send(()).unwrap();
+        done_sender
+            .send(
+                waiting_sender
+                    .send_write_with_backpressure(b"r", || waiting_flag.load(Ordering::SeqCst)),
+            )
+            .unwrap();
+    });
+
+    started_receiver
+        .recv_timeout(Duration::from_secs(1))
+        .expect("internal writer thread should start");
+    assert!(done_receiver
+        .recv_timeout(Duration::from_millis(100))
+        .is_err());
+    drop(receiver.try_recv().expect("release one pending write"));
+    assert!(done_receiver
+        .recv_timeout(Duration::from_secs(1))
+        .expect("internal write should resume after budget is released")
+        .is_ok());
+    keep_waiting.store(false, Ordering::SeqCst);
+}
+
+#[test]
+fn managed_ssh_reader_channel_blocks_before_exceeding_capacity_budget() {
+    let (sender, receiver) = managed_shell_reader_channel();
+    let payload =
+        vec![b'x'; MANAGED_SSH_READER_CHUNK_BYTES * (MANAGED_SSH_READER_CHANNEL_CAPACITY + 1)];
+    let (started_sender, started_receiver) = mpsc::channel();
+    let (done_sender, done_receiver) = mpsc::channel();
+
+    thread::spawn(move || {
+        started_sender.send(()).unwrap();
+        done_sender
+            .send(sender.send_data_while(payload, || true))
+            .unwrap();
+    });
+
+    started_receiver
+        .recv_timeout(Duration::from_secs(1))
+        .expect("reader sender thread should start");
+    assert!(
+        done_receiver
+            .recv_timeout(Duration::from_millis(100))
+            .is_err(),
+        "sender must block before enqueueing a chunk beyond the channel budget"
+    );
+
+    let first = receiver
+        .recv_timeout(Duration::from_secs(1))
+        .expect("receive the first bounded reader chunk");
+    assert!(matches!(
+        first,
+        ManagedShellReaderMessage::Data(data)
+            if data.len() == MANAGED_SSH_READER_CHUNK_BYTES
+    ));
+    assert!(done_receiver
+        .recv_timeout(Duration::from_secs(1))
+        .expect("sender should resume after capacity is released"));
+}
+
+#[test]
+fn managed_ssh_reader_channel_preserves_error_then_closed_order() {
+    let (sender, receiver) = managed_shell_reader_channel();
+    assert!(sender.send_error("read failed".to_owned()));
+    assert!(sender.send_closed());
+
+    assert!(matches!(
+        receiver.recv().unwrap(),
+        ManagedShellReaderMessage::Error(message) if message == "read failed"
+    ));
+    assert!(matches!(
+        receiver.recv().unwrap(),
+        ManagedShellReaderMessage::Closed
+    ));
+}
+
+#[test]
+fn managed_ssh_reader_channel_aborts_capacity_wait_after_close() {
+    let (sender, _receiver) = managed_shell_reader_channel();
+    assert!(!sender.send_data_while(vec![b'x'], || false));
+}
 
 #[test]
 fn pty_session_emits_output_for_short_lived_command() {
@@ -357,4 +619,23 @@ fn pty_session_coalesces_fast_bulk_output_and_snapshot_keeps_tail() {
         "fast 128 KiB output should be coalesced before emitting, got {data_events} data events",
     );
     assert!(snapshot.data.contains("kerminal-bulk-tail"));
+}
+
+#[test]
+fn terminal_write_rejects_input_larger_than_per_write_budget() {
+    let manager = TerminalManager::new();
+    let summary = manager
+        .create_session(interactive_shell_request(), |_| true)
+        .expect("create interactive terminal session");
+    let oversized = "x".repeat(TERMINAL_WRITE_MAX_BYTES + 1);
+
+    let error = manager
+        .write(&summary.id, &oversized)
+        .expect_err("oversized terminal input must be rejected");
+    manager.close(&summary.id).unwrap();
+
+    let message = error.to_string();
+    assert!(message.contains("terminal input exceeds per-write limit"));
+    assert!(message.contains(&(TERMINAL_WRITE_MAX_BYTES + 1).to_string()));
+    assert!(message.contains(&TERMINAL_WRITE_MAX_BYTES.to_string()));
 }

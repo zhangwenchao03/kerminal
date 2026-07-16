@@ -3,13 +3,12 @@ import {
   Box,
   ChevronDown,
   ChevronRight,
-  Cloud,
   Copy,
   Info,
   FolderOpen,
+  LoaderCircle,
   Monitor,
   Pencil,
-  Pin,
   Plus,
   Search,
   Server,
@@ -27,22 +26,31 @@ import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/cn";
-import type { Machine, MachineGroup, MachineStatus } from "../workspace/types";
-import {
-  CONTEXT_MENU_MARGIN,
-  statusClasses,
-  type ConnectionOpenOptions,
-  type SidebarContextMenuPayload,
+import type { Machine, MachineGroup } from "../workspace/contracts/index";
+import type {
+  ConnectionOpenOptions,
+  SidebarContextMenuPayload,
 } from "./MachineSidebar.shared";
 import {
   MACHINE_ASSET_MENU_DOMAIN,
-  type MachineSidebarMenuAction,
-  type MachineSidebarMenuDomain,
 } from "./machineSidebarMenuModel";
 import { buildVisibleMachineGroups } from "./machineSidebarVisibilityModel";
+import { MachineSidebarMachineRow } from "./MachineSidebarMachineRow";
+import {
+  ContextMenuItem,
+  PinnedGroupBadge,
+  isPinnedMachineGroup,
+} from "./MachineSidebar.primitives";
+
+export {
+  MachineDragPreviewCard,
+  ContextMenuItem,
+  clampContextMenuPosition,
+  isPinnedMachineGroup,
+} from "./MachineSidebar.primitives";
 
 const collapsedPopoverSurfaceClassName =
-  "kerminal-floating-enter fixed bottom-[84px] left-[72px] top-[56px] z-[1000] flex w-80 max-w-[calc(100vw-88px)] flex-col overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)] text-zinc-950 shadow-2xl shadow-black/20 backdrop-blur-xl dark:text-zinc-50 dark:shadow-black/50";
+  "kerminal-floating-surface kerminal-floating-enter kerminal-layer-popover fixed bottom-[84px] left-[72px] top-[56px] flex w-80 max-w-[calc(100vw-88px)] flex-col overflow-hidden rounded-[var(--radius-panel)] border text-[var(--text-primary)]";
 const sidebarPopoverHeaderClassName =
   "kerminal-sidebar-header flex items-start justify-between gap-2 border-b border-[var(--border-subtle)]";
 const sidebarSmallIconButtonClassName =
@@ -51,18 +59,8 @@ const sidebarGroupButtonClassName =
   "kerminal-focus-ring kerminal-pressable mb-1 flex h-8 w-full items-center justify-between rounded-lg px-2 text-left text-xs font-medium text-zinc-500 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-100";
 const sidebarCountBadgeClassName =
   "rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[11px] text-zinc-500 dark:text-zinc-400";
-const sidebarMachineButtonBaseClassName =
-  "kerminal-sidebar-machine-row kerminal-focus-ring kerminal-pressable flex w-full items-center rounded-xl text-left text-sm transition";
-const sidebarMachineDraggingClassName =
-  "scale-[0.98] bg-sky-500/6 opacity-35 ring-2 ring-dashed ring-sky-400/70 dark:bg-sky-400/8";
-const sidebarMachineSelectedClassName =
-  "bg-[var(--surface-selected)] text-zinc-950 shadow-sm shadow-sky-950/5 ring-1 ring-sky-500/15 dark:text-zinc-50 dark:ring-sky-300/15";
-const sidebarMachineIdleClassName =
-  "text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50";
-const sidebarStatusDotClassName =
-  "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-[var(--surface-nav-glass)]";
 const sidebarEmptyStateClassName =
-  "kerminal-muted-surface rounded-2xl border border-dashed px-3 py-6 text-center text-sm text-zinc-500";
+  "rounded-[var(--radius-card)] border border-dashed border-[var(--border-subtle)] px-3 py-6 text-center text-sm text-zinc-500";
 const collapsedSidebarRootClassName =
   "kerminal-material-nav kerminal-shell-sidebar relative flex h-full w-full min-w-0 flex-col border-r";
 const collapsedSidebarButtonBaseClassName =
@@ -75,26 +73,6 @@ const collapsedSidebarFooterClassName =
   "kerminal-sidebar-collapsed-stack flex flex-col items-center border-t border-[var(--border-subtle)]";
 const sidebarSettingsSelectedClassName =
   "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100";
-const contextMenuItemBaseClassName =
-  "kerminal-context-menu-item";
-const contextMenuItemIdleClassName =
-  "";
-const contextMenuItemDangerClassName =
-  "kerminal-context-menu-item--danger";
-const dragPreviewSurfaceClassName =
-  "pointer-events-none fixed z-[1000] w-64 select-none rounded-2xl border border-sky-300/60 bg-[var(--surface-overlay)] p-3 text-sm text-zinc-950 shadow-2xl shadow-sky-900/20 ring-4 ring-sky-400/18 backdrop-blur-xl dark:border-sky-300/35 dark:text-zinc-50 dark:shadow-black/50";
-const dragPreviewHintClassName =
-  "mt-2 rounded-xl bg-[var(--surface-selected)] px-3 py-1.5 text-xs font-medium text-sky-700 dark:text-sky-200";
-
-export function sidebarDisplayStatus(
-  machine: Machine,
-  hasOpenTerminalSession: boolean,
-): MachineStatus {
-  if (hasOpenTerminalSession) {
-    return "online";
-  }
-  return machine.kind === "local" ? "offline" : machine.status;
-}
 
 type CollapsedHostPopoverProps = {
   allGroupsCollapsed: boolean;
@@ -117,6 +95,7 @@ type CollapsedHostPopoverProps = {
   openMachineIdSet: ReadonlySet<string>;
   openMachineSession: (machine: Machine) => void;
   popoverRef: RefObject<HTMLDivElement | null>;
+  rdpOpeningMachineIdSet: ReadonlySet<string>;
   selectedMachineId: string;
   startPointerMachineDrag: (
     event: ReactPointerEvent<HTMLButtonElement>,
@@ -145,6 +124,7 @@ export function CollapsedHostPopover({
   openMachineIdSet,
   openMachineSession,
   popoverRef,
+  rdpOpeningMachineIdSet,
   selectedMachineId,
   startPointerMachineDrag,
   toggleAllGroups,
@@ -261,28 +241,15 @@ export function CollapsedHostPopover({
                 <div className="space-y-1">
                   {group.machines.map((machine) => {
                     const selected = machine.id === selectedMachineId;
-                    const Icon = machineIcon(machine, group);
-                    const displayStatus = sidebarDisplayStatus(
-                      machine,
-                      openMachineIdSet.has(machine.id),
-                    );
 
                     return (
-                      <button
-                        aria-grabbed={
-                          draggingMachineId === machine.id || undefined
-                        }
-                        aria-pressed={selected}
-                        className={cn(
-                          sidebarMachineButtonBaseClassName,
-                          onMoveMachine && "cursor-grab active:cursor-grabbing",
-                          draggingMachineId === machine.id &&
-                            sidebarMachineDraggingClassName,
-                          selected
-                            ? sidebarMachineSelectedClassName
-                            : sidebarMachineIdleClassName,
-                        )}
+                      <MachineSidebarMachineRow
+                        canMove={Boolean(onMoveMachine)}
+                        dragging={draggingMachineId === machine.id}
+                        group={group}
+                        hasOpenTerminalSession={openMachineIdSet.has(machine.id)}
                         key={machine.id}
+                        machine={machine}
                         onClick={() => handleMachineClick(machine)}
                         onContextMenu={(event) => {
                           onSelectMachine(machine.id);
@@ -292,43 +259,17 @@ export function CollapsedHostPopover({
                             type: "machine",
                           });
                         }}
-                        onDoubleClick={() => {
-                          if (machine.kind !== "dockerContainer") {
-                            openMachineSession(machine);
-                          }
-                        }}
+                        onDoubleClick={
+                          machine.kind === "dockerContainer"
+                            ? undefined
+                            : () => openMachineSession(machine)
+                        }
                         onPointerDown={(event) =>
                           startPointerMachineDrag(event, machine)
                         }
-                        title={machineTitle(machine)}
-                        type="button"
-                      >
-                        <span
-                          className={cn(
-                            "kerminal-sidebar-machine-icon relative flex shrink-0 items-center justify-center rounded-lg",
-                            machine.kind === "local"
-                              ? "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-400/12 dark:text-emerald-300"
-                              : "bg-sky-500/10 text-sky-600 dark:bg-sky-400/12 dark:text-sky-300",
-                          )}
-                        >
-                          <Icon className="h-4 w-4" />
-                          <span
-                            className={cn(
-                              sidebarStatusDotClassName,
-                              statusClasses[displayStatus],
-                            )}
-                            title={statusTitle(displayStatus)}
-                          />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">
-                            {machine.name}
-                          </span>
-                          <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">
-                            {machine.description}
-                          </span>
-                        </span>
-                      </button>
+                        rdpOpening={rdpOpeningMachineIdSet.has(machine.id)}
+                        selected={selected}
+                      />
                     );
                   })}
                 </div>
@@ -471,6 +412,7 @@ export function MachineContextMenuItems({
   onOpenSftpTransferWorkbench,
   onOpenTelnetTerminal,
   onOpenSerialTerminal,
+  rdpOpening = false,
   runMenuAction,
 }: {
   machine: Machine;
@@ -488,6 +430,7 @@ export function MachineContextMenuItems({
   onOpenSftpTransferWorkbench?: (machineId: string) => void;
   onOpenTelnetTerminal?: (machineId: string) => void;
   onOpenSerialTerminal?: (machineId: string) => void;
+  rdpOpening?: boolean;
   runMenuAction: (action?: () => void) => void;
 }) {
   const machineMenuDomain = MACHINE_ASSET_MENU_DOMAIN;
@@ -588,9 +531,15 @@ export function MachineContextMenuItems({
     return (
       <>
         <ContextMenuItem
-          disabled={!onOpenRdpConnection}
-          icon={<Monitor className="h-4 w-4" />}
-          label="打开 RDP 连接"
+          disabled={!onOpenRdpConnection || rdpOpening}
+          icon={
+            rdpOpening ? (
+              <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <Monitor className="h-4 w-4" />
+            )
+          }
+          label={rdpOpening ? "正在打开 RDP..." : "打开 RDP 连接"}
           menuAction="openRdpConnection"
           menuDomain={machineMenuDomain}
           onClick={() => runMenuAction(() => onOpenRdpConnection?.(machine.id))}
@@ -799,205 +748,4 @@ export function MachineContextMenuItems({
       />
     </>
   );
-}
-
-export function ContextMenuItem({
-  danger = false,
-  disabled,
-  icon,
-  label,
-  menuAction,
-  menuDomain,
-  onClick,
-}: {
-  danger?: boolean;
-  disabled?: boolean;
-  icon: ReactNode;
-  label: string;
-  menuAction?: MachineSidebarMenuAction;
-  menuDomain?: MachineSidebarMenuDomain;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      className={cn(
-        contextMenuItemBaseClassName,
-        danger ? contextMenuItemDangerClassName : contextMenuItemIdleClassName,
-      )}
-      disabled={disabled}
-      onClick={onClick}
-      role="menuitem"
-      data-menu-action={menuAction}
-      data-menu-domain={menuDomain}
-      type="button"
-    >
-      <span className="kerminal-context-menu-icon">
-        {icon}
-      </span>
-      <span className="kerminal-context-menu-label">{label}</span>
-    </button>
-  );
-}
-
-export function MachineDragPreviewCard({
-  externalTargetHint,
-  machine,
-  targetGroupTitle,
-  x,
-  y,
-}: {
-  externalTargetHint?: string;
-  machine: Machine;
-  targetGroupTitle: string | undefined;
-  x: number;
-  y: number;
-}) {
-  const Icon = previewMachineIcon(machine);
-  const displayStatus = sidebarDisplayStatus(machine, false);
-
-  return (
-    <div
-      aria-label="正在拖动主机"
-      className={dragPreviewSurfaceClassName}
-      role="status"
-      style={dragPreviewPosition(x, y)}
-    >
-      <div className="flex items-center gap-3">
-        <span
-          className={cn(
-            "relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
-            machine.kind === "local"
-              ? "bg-emerald-500/12 text-emerald-600 dark:bg-emerald-400/14 dark:text-emerald-300"
-              : "bg-sky-500/12 text-sky-600 dark:bg-sky-400/14 dark:text-sky-300",
-          )}
-        >
-          <Icon className="h-4 w-4" />
-          <span
-            className={cn(
-              sidebarStatusDotClassName,
-              statusClasses[displayStatus],
-            )}
-          />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-semibold">{machine.name}</span>
-          <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">
-            {machine.description}
-          </span>
-        </span>
-      </div>
-      <div className={dragPreviewHintClassName}>
-        {targetGroupTitle
-          ? `松开移动到 ${targetGroupTitle}`
-          : externalTargetHint
-            ? externalTargetHint
-          : "拖到分组后松开"}
-      </div>
-    </div>
-  );
-}
-
-export function dragPreviewPosition(x: number, y: number) {
-  const width = 264;
-  const height = 96;
-  if (typeof window === "undefined") {
-    return {
-      left: x + 16,
-      top: y + 12,
-      transform: "rotate(1deg)",
-    };
-  }
-  const maxLeft = Math.max(8, window.innerWidth - width - 8);
-  const maxTop = Math.max(8, window.innerHeight - height - 8);
-  return {
-    left: Math.min(Math.max(x + 16, 8), maxLeft),
-    top: Math.min(Math.max(y + 12, 8), maxTop),
-    transform: "rotate(1deg)",
-  };
-}
-
-export function PinnedGroupBadge() {
-  return (
-    <span
-      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-400/12 dark:text-sky-200"
-      title="已置顶"
-    >
-      <Pin className="h-3 w-3" />
-      置顶
-    </span>
-  );
-}
-
-export function isPinnedMachineGroup(group: MachineGroup | undefined) {
-  return Boolean(group?.pinned ?? ((group?.sortOrder ?? 0) < 0));
-}
-
-function previewMachineIcon(machine: Machine) {
-  if (machine.kind === "local" || machine.kind === "rdp") {
-    return Monitor;
-  }
-  if (machine.kind === "telnet" || machine.kind === "serial") {
-    return Terminal;
-  }
-  if (machine.kind === "dockerContainer") {
-    return Box;
-  }
-  if (machine.production) {
-    return Cloud;
-  }
-  return Server;
-}
-
-export function machineIcon(machine: Machine, group: MachineGroup) {
-  if (machine.kind === "local") {
-    return Monitor;
-  }
-  if (machine.kind === "rdp") {
-    return Monitor;
-  }
-  if (machine.kind === "telnet" || machine.kind === "serial") {
-    return Terminal;
-  }
-  if (machine.kind === "dockerContainer") {
-    return Box;
-  }
-  if (group.id === "cloud" || group.id === "group-cloud" || machine.production) {
-    return Cloud;
-  }
-  return Server;
-}
-
-export function machineTitle(machine: Machine) {
-  return [machine.name, machine.description, ...machine.tags].filter(Boolean).join(" · ");
-}
-
-export function statusTitle(status: Machine["status"]) {
-  if (status === "online") {
-    return "已打开会话";
-  }
-  if (status === "warning") {
-    return "需要注意";
-  }
-  return "未打开会话";
-}
-
-export function clampContextMenuPosition(
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-) {
-  const maxX = Math.max(
-    CONTEXT_MENU_MARGIN,
-    window.innerWidth - width - CONTEXT_MENU_MARGIN,
-  );
-  const maxY = Math.max(
-    CONTEXT_MENU_MARGIN,
-    window.innerHeight - height - CONTEXT_MENU_MARGIN,
-  );
-
-  return {
-    x: Math.round(Math.min(Math.max(x, CONTEXT_MENU_MARGIN), maxX)),
-    y: Math.round(Math.min(Math.max(y, CONTEXT_MENU_MARGIN), maxY)),
-  };
 }

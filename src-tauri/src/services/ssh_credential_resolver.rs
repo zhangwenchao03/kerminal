@@ -11,7 +11,7 @@ use crate::{
     models::remote_host::{
         parse_vault_secret_ref, RemoteHost, RemoteHostAuthType, SshJumpHostOptions,
     },
-    services::encrypted_vault_service::EncryptedVaultService,
+    services::encrypted_vault_service::{EncryptedVaultService, VaultKeyEntryReadError},
 };
 
 #[derive(Clone)]
@@ -204,14 +204,17 @@ impl SshCredentialResolver {
                 parsed.material
             )));
         }
-        let key = self
-            .vault
-            .read_key()
-            .map_err(|_| AppError::Credential("vault key is missing or unreadable".to_owned()))?;
         let entry_id = parsed.entry_id();
-        let entry = self
-            .vault
-            .entry_by_id(&entry_id)?
+        let (key, entry) =
+            self.vault
+                .read_key_and_entry(&entry_id)
+                .map_err(|error| match error {
+                    VaultKeyEntryReadError::Key => {
+                        AppError::Credential("vault key is missing or unreadable".to_owned())
+                    }
+                    VaultKeyEntryReadError::Vault(error) => error,
+                })?;
+        let entry = entry
             .ok_or_else(|| AppError::Credential(format!("vault entry is missing: {entry_id}")))?;
         let plaintext = self
             .vault

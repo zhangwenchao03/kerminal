@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import {
   restoredSelectedMachineId,
@@ -79,6 +81,18 @@ describe("workspaceSelectionModel", () => {
         terminalTabs: [terminalTab],
       }),
     ).toBe("host-pending");
+  });
+
+  it("恢复空工作区时不保留最近选择的主机", () => {
+    expect(
+      restoredSelectedMachineId({
+        activeTabId: "",
+        fallbackSelectedMachineId: "local-pwsh",
+        machineGroups,
+        selectedMachineId: "host-prod",
+        terminalTabs: [],
+      }),
+    ).toBe("");
   });
 
   it("only keeps pending active tab selection when the caller allows it", () => {

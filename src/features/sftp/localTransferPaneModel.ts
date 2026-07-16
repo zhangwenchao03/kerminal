@@ -157,7 +157,7 @@ export function visibleLocalDirectoryListing(
   };
 }
 
-export function isHiddenLocalDirectoryEntry(
+function isHiddenLocalDirectoryEntry(
   entry: LocalDirectoryListing["entries"][number],
 ) {
   return Boolean(entry.hidden) || entry.name.startsWith(".");

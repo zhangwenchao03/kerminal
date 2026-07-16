@@ -182,6 +182,9 @@ export function positionMonacoHoverNearTarget({
   const hoverHeight = hoverRect.height || hover.offsetHeight;
   const viewportWidth = ownerWindow.innerWidth;
   const viewportHeight = ownerWindow.innerHeight;
+  const minLeft = Math.max(margin, containerRect.left + margin);
+  const rightBoundary = Math.min(viewportWidth, containerRect.right) - margin;
+  const maxLeft = Math.max(minLeft, rightBoundary - hoverWidth);
   const topBelowTarget = targetRect.bottom + gap;
   const topAboveTarget = targetRect.top - hoverHeight - gap;
   const preferredTop =
@@ -189,11 +192,11 @@ export function positionMonacoHoverNearTarget({
       ? topBelowTarget
       : topAboveTarget;
   const top = Math.max(containerRect.top + margin, preferredTop);
-  const left = Math.max(
-    margin,
-    Math.min(
+  const left = Math.min(
+    maxLeft,
+    Math.max(
+      minLeft,
       targetRect.left + targetRect.width / 2 - hoverWidth / 2,
-      viewportWidth - hoverWidth - margin,
     ),
   );
 

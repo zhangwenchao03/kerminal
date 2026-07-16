@@ -2,17 +2,20 @@
 //!
 //! @author kongweiguang
 
-use crate::models::mcp_server::{ToolCategory, ToolDefinition};
+use crate::{
+    models::mcp_server::ToolCategory,
+    services::mcp_tool_catalog_service::{ToolDescriptor, ToolId},
+};
 
 use super::super::schema::{
     boolean_field, enum_field, number_field, object_schema, string_field, tool, tool_with_exposure,
     ToolEffect,
 };
 
-pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
+pub(super) fn sftp_tools() -> Vec<ToolDescriptor> {
     vec![
         tool(
-            "sftp.list",
+            ToolId::SftpList,
             "列出远程目录",
             "读取当前 SSH 主机上的远程目录内容。",
             ToolCategory::Sftp,
@@ -23,7 +26,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "sftp.rename",
+            ToolId::SftpRename,
             "重命名远程路径",
             "重命名远程文件或目录；调用前确认由 MCP host 负责。",
             ToolCategory::Sftp,
@@ -35,7 +38,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "sftp.move",
+            ToolId::SftpMove,
             "移动远程路径",
             "移动远程文件或目录；调用前确认由 MCP host 负责。",
             ToolCategory::Sftp,
@@ -47,7 +50,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "sftp.preview",
+            ToolId::SftpPreview,
             "预览远程文件",
             "读取远程文本文件预览。",
             ToolCategory::Sftp,
@@ -59,7 +62,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "sftp.download",
+            ToolId::SftpDownload,
             "下载远程文件",
             "下载远程文件到本地；调用前确认由 MCP host 负责。",
             ToolCategory::Sftp,
@@ -71,7 +74,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "sftp.upload",
+            ToolId::SftpUpload,
             "上传本地文件",
             "上传本地文件到远程；调用前确认由 MCP host 负责。",
             ToolCategory::Sftp,
@@ -83,7 +86,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool_with_exposure(
-            "sftp.delete",
+            ToolId::SftpDelete,
             "删除远程文件",
             "删除远程文件或空目录；调用前确认由 MCP host 负责。",
             ToolCategory::Sftp,
@@ -97,7 +100,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "sftp.create_directory",
+            ToolId::SftpCreateDirectory,
             "创建远程目录",
             "创建远程目录；调用前确认由 MCP host 负责。",
             ToolCategory::Sftp,
@@ -108,7 +111,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "sftp.chmod",
+            ToolId::SftpChmod,
             "修改远程权限",
             "修改远程路径权限；调用前确认由 MCP host 负责。",
             ToolCategory::Sftp,
@@ -120,7 +123,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "sftp.upload_directory",
+            ToolId::SftpUploadDirectory,
             "上传本地目录",
             "递归上传本地目录；调用前确认由 MCP host 负责。",
             ToolCategory::Sftp,
@@ -132,7 +135,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "sftp.download_directory",
+            ToolId::SftpDownloadDirectory,
             "下载远程目录",
             "递归下载远程目录；调用前确认由 MCP host 负责。",
             ToolCategory::Sftp,
@@ -144,7 +147,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "sftp.transfer.enqueue",
+            ToolId::SftpTransferEnqueue,
             "创建 SFTP 传输任务",
             "加入 SFTP 队列，返回任务 id。",
             ToolCategory::Sftp,
@@ -158,7 +161,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "sftp.transfer.list",
+            ToolId::SftpTransferList,
             "列出 SFTP 传输任务",
             "读取 SFTP 队列、状态和进度。",
             ToolCategory::Sftp,
@@ -166,7 +169,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
             object_schema(vec![]),
         ),
         tool(
-            "sftp.transfer.cancel",
+            ToolId::SftpTransferCancel,
             "取消 SFTP 传输任务",
             "取消指定传输任务；调用前确认由 MCP host 负责。",
             ToolCategory::Sftp,
@@ -174,7 +177,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
             object_schema(vec![string_field("transferId", "SFTP 传输任务 id。", true)]),
         ),
         tool(
-            "sftp.transfer.clear_completed",
+            ToolId::SftpTransferClearCompleted,
             "清理已结束 SFTP 任务",
             "清理成功、失败或取消的任务。",
             ToolCategory::Sftp,
@@ -182,7 +185,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
             object_schema(vec![]),
         ),
         tool(
-            "server_info.snapshot",
+            ToolId::ServerInfoSnapshot,
             "读取服务器信息",
             "读取 SSH 主机 CPU、内存、磁盘、网络和运行时间摘要。",
             ToolCategory::ServerInfo,
@@ -190,9 +193,9 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
             object_schema(vec![string_field("hostId", "远程主机 id。", true)]),
         ),
         tool(
-            "port_forward.create",
+            ToolId::PortForwardCreate,
             "创建端口转发",
-            "创建 SSH 端口转发或主机网络助手。",
+            "创建 SSH 端口转发，包括本机和远端 SOCKS 转发。",
             ToolCategory::PortForward,
             ToolEffect::Remote,
             object_schema(vec![
@@ -202,19 +205,13 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
                     "kind",
                     "转发类型。",
                     true,
-                    vec!["local", "remote", "dynamic"],
-                ),
-                enum_field(
-                    "purpose",
-                    "转发用途；hostNetworkAssist 建受管代理隧道。",
-                    false,
-                    vec!["generic", "hostNetworkAssist"],
+                    vec!["local", "remote", "remoteDynamic", "dynamic"],
                 ),
                 enum_field(
                     "proxyProtocol",
-                    "网络助手代理协议。",
+                    "SOCKS 转发代理协议。",
                     false,
-                    vec!["http", "socks5"],
+                    vec!["socks5"],
                 ),
                 string_field("bindHost", "监听地址，默认 127.0.0.1。", false),
                 string_field("localBindHost", "本机侧监听地址或本机代理绑定地址。", false),
@@ -222,16 +219,6 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
                 number_field("sourcePort", "监听端口；remote 时为远端端口。", true),
                 string_field("targetHost", "目标主机；dynamic 转发可为空。", false),
                 number_field("targetPort", "目标端口；dynamic 转发可为空。", false),
-                string_field(
-                    "localProxyHost",
-                    "HTTP 助手本机代理地址；为空自动分配。",
-                    false,
-                ),
-                number_field(
-                    "localProxyPort",
-                    "HTTP 助手本机代理端口；为空自动分配。",
-                    false,
-                ),
                 enum_field(
                     "remoteAccessScope",
                     "远端监听范围；非 loopback 需 GatewayPorts。",
@@ -253,7 +240,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "port_forward.list",
+            ToolId::PortForwardList,
             "列出端口转发",
             "读取端口转发配置和状态。",
             ToolCategory::PortForward,
@@ -261,7 +248,7 @@ pub(super) fn sftp_tools() -> Vec<ToolDefinition> {
             object_schema(vec![]),
         ),
         tool(
-            "port_forward.close",
+            ToolId::PortForwardClose,
             "停止端口转发",
             "停止转发会话并保留配置；调用前确认由 MCP host 负责。",
             ToolCategory::PortForward,

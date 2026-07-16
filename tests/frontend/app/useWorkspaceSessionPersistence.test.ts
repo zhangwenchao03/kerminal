@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { act, fireEvent, render } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,9 +17,9 @@ import {
   type WorkspaceSessionSnapshot,
 } from "../../../src/features/workspace/workspaceSession";
 import {
-  resetWorkspaceStore,
   useWorkspaceStore,
 } from "../../../src/features/workspace/workspaceStore";
+import { resetWorkspaceStore } from "../support/workspace/workspaceStore.testSupport";
 import type {
   Machine,
   MachineGroup,
@@ -30,7 +32,10 @@ const workspaceSessionApiMocks = vi.hoisted(() => ({
   saveWorkspaceSessionFile: vi.fn(),
 }));
 
-vi.mock("../../../src/lib/workspaceSessionApi", () => workspaceSessionApiMocks);
+vi.mock(
+  "../../../src/features/workspace/workspaceSessionApi",
+  () => workspaceSessionApiMocks,
+);
 
 function createManualTimer() {
   const callbacks = new Map<
@@ -450,6 +455,7 @@ describe("buildWorkspaceSessionSnapshot", () => {
       expect.objectContaining({
         activeTabId: "",
         focusedPaneId: "",
+        selectedMachineId: "",
         terminalPanes: [],
         terminalTabs: [],
       }),

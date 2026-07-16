@@ -26,9 +26,21 @@ describe("PortForwardSessionList", () => {
     expect(row).not.toBeNull();
     const actions = within(row as HTMLElement);
 
+    expect(row).toHaveTextContent(
+      "127.0.0.1:18080→127.0.0.1:80",
+    );
+    expect(actions.queryByText("方向")).not.toBeInTheDocument();
+    expect(actions.queryByText("来源")).not.toBeInTheDocument();
     expect(actions.queryByText("复制地址")).toBeNull();
     expect(actions.queryByText("编辑隧道")).toBeNull();
     expect(actions.queryByText("删除")).toBeNull();
+
+    fireEvent.click(
+      actions.getByRole("button", { name: "展开 HTTP 80 详情" }),
+    );
+    expect(actions.getByText("方向")).toBeInTheDocument();
+    expect(actions.getByText("来源")).toBeInTheDocument();
+    expect(actions.getByText("手动")).toBeInTheDocument();
 
     fireEvent.click(actions.getByRole("button", { name: "编辑隧道" }));
     expect(onEdit).toHaveBeenCalledWith(localForward);

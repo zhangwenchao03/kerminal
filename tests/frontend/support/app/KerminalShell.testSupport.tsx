@@ -114,6 +114,7 @@ const mocks = vi.hoisted(() => {
       renderCount: 0,
     },
     commandHistoryApi: {
+      listCommandHistory: vi.fn(async (_request: unknown) => []),
       recordCommandHistory: vi.fn(),
     },
     connectionApi: {
@@ -172,6 +173,7 @@ const mocks = vi.hoisted(() => {
       createSshTerminalSession: vi.fn(),
       createTerminalSession: vi.fn(),
       getTerminalLogState: vi.fn(),
+      listTerminalSessions: vi.fn(),
       reapOrphanTerminalSessions: vi.fn(),
       resizeTerminal: vi.fn(),
       startTerminalLog: vi.fn(),
@@ -230,6 +232,8 @@ vi.mock("@xterm/addon-search", () => ({
 }));
 
 vi.mock("../../../../src/lib/commandHistoryApi", () => ({
+  listCommandHistory: (request: unknown) =>
+    mocks.commandHistoryApi.listCommandHistory(request),
   recordCommandHistory: (...args: unknown[]) =>
     mocks.commandHistoryApi.recordCommandHistory(...args),
 }));
@@ -345,7 +349,7 @@ vi.mock("../../../../src/lib/serverInfoApi", () => ({
     mocks.serverInfoApi.getServerInfoSnapshot(...args),
 }));
 
-vi.mock("../../../../src/lib/settingsApi", () => ({
+vi.mock("../../../../src/features/settings/settingsApi", () => ({
   getSettings: (...args: unknown[]) => mocks.settingsApi.getSettings(...args),
   updateSettings: (...args: unknown[]) =>
     mocks.settingsApi.updateSettings(...args),
@@ -360,6 +364,8 @@ vi.mock("../../../../src/lib/terminalApi", () => ({
     mocks.terminalApi.createTerminalSession(...args),
   getTerminalLogState: (...args: unknown[]) =>
     mocks.terminalApi.getTerminalLogState(...args),
+  listTerminalSessions: (...args: unknown[]) =>
+    mocks.terminalApi.listTerminalSessions(...args),
   reapOrphanTerminalSessions: (...args: unknown[]) =>
     mocks.terminalApi.reapOrphanTerminalSessions(...args),
   resizeTerminal: (...args: unknown[]) =>
@@ -372,7 +378,7 @@ vi.mock("../../../../src/lib/terminalApi", () => ({
     mocks.terminalApi.writeTerminal(...args),
 }));
 
-vi.mock("../../../../src/lib/workspaceSessionApi", () => ({
+vi.mock("../../../../src/features/workspace/workspaceSessionApi", () => ({
   loadWorkspaceSessionFile: (...args: unknown[]) =>
     mocks.workspaceSessionApi.loadWorkspaceSessionFile(...args),
   saveWorkspaceSessionFile: (...args: unknown[]) =>

@@ -22,6 +22,8 @@ pub enum SuggestionProviderKind {
     Git,
     /// 离线 CLI specs provider。
     Spec,
+    /// 用户维护的命令片段 provider。
+    Snippet,
 }
 
 impl SuggestionProviderKind {
@@ -33,6 +35,7 @@ impl SuggestionProviderKind {
             Self::RemoteCommand => "remoteCommand",
             Self::Git => "git",
             Self::Spec => "spec",
+            Self::Snippet => "snippet",
         }
     }
 }
@@ -47,9 +50,32 @@ impl TryFrom<&str> for SuggestionProviderKind {
             "remoteCommand" => Ok(Self::RemoteCommand),
             "git" => Ok(Self::Git),
             "spec" => Ok(Self::Spec),
+            "snippet" => Ok(Self::Snippet),
             _ => Err(format!("未知命令建议 provider: {value}")),
         }
     }
+}
+
+/// 候选表达的业务对象类型。
+#[derive(Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum CommandSuggestionCandidateKind {
+    /// 普通命令候选；旧候选默认按此处理。
+    #[default]
+    Command,
+    /// 来自片段目录的可复用命令。
+    Snippet,
+}
+
+/// 接受候选后由前端执行的动作。
+#[derive(Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum CommandSuggestionActivation {
+    /// 只插入终端输入缓冲区，不执行命令。
+    #[default]
+    Insert,
+    /// 打开并聚焦右栏片段参数面板。
+    OpenSnippetPanel,
 }
 
 /// 建议的敏感度。
@@ -180,10 +206,31 @@ impl TryFrom<&str> for CommandSuggestionAuditDecision {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandSuggestionReplacementRange {
-    /// 起始字符偏移。
+    /// 起始 Unicode 标量值偏移，不是 UTF-8 字节偏移。
     pub start: usize,
-    /// 结束字符偏移。
+    /// 结束 Unicode 标量值偏移，不是 UTF-8 字节偏移。
     pub end: usize,
+}
+
+/// 命令建议查询的展示模式。
+#[derive(Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SuggestionQueryMode {
+    /// 查询用于低干扰的行内建议。
+    #[default]
+    Inline,
+    /// 查询用于主动打开的候选菜单。
+    Menu,
+}
+
+/// 命令建议允许进入的展示位置。
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SuggestionPresentation {
+    /// 允许作为行内 ghost text 展示。
+    Inline,
+    /// 允许在候选菜单中展示。
+    Menu,
 }
 
 /// 命令建议请求。
@@ -213,6 +260,13 @@ pub struct CommandSuggestionRequest {
     pub providers: Option<Vec<SuggestionProviderKind>>,
     /// 返回数量上限。
     pub limit: Option<usize>,
+    /// 查询展示模式；旧请求缺少该字段时保持 inline 行为。
+    #[serde(default)]
+    pub mode: SuggestionQueryMode,
+    /// 前端请求代次，仅用于关联诊断和丢弃过期响应。
+    pub generation: Option<u64>,
+    /// 前端计算的非敏感上下文键；后端不得把它当作安全边界。
+    pub context_key: Option<String>,
 }
 
 /// 刷新远端路径建议缓存的请求。
@@ -549,13 +603,17 @@ pub struct CommandSuggestionAuditRecordResult {
 }
 
 /// 一条命令建议候选。
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandSuggestionCandidate {
     /// 稳定候选 id。
     pub id: String,
     /// 候选来源 provider。
     pub provider: SuggestionProviderKind,
+    /// 候选的业务对象类型。
+    pub candidate_kind: CommandSuggestionCandidateKind,
+    /// 接受候选后的交互动作。
+    pub activation: CommandSuggestionActivation,
     /// UI 展示文本。
     pub display_text: String,
     /// 接受建议后写入的替换文本。
@@ -570,8 +628,98 @@ pub struct CommandSuggestionCandidate {
     pub sensitivity: CommandSuggestionSensitivity,
     /// 来源解释。
     pub description: Option<String>,
+    /// 对候选来源的稳定解释，供合并来源后的 UI 展示。
+    pub source_explanation: Option<String>,
+    /// 去重合并后保留的其它来源解释。
+    pub merged_source_explanations: Vec<String>,
     /// 上游记录 id。
     pub source_id: Option<String>,
     /// 轻量元数据。
     pub metadata: Option<BTreeMap<String, String>>,
+    /// 候选允许进入的展示位置。
+    pub allowed_presentations: Vec<SuggestionPresentation>,
+    /// 相对 replacement_text 的 Unicode 标量值结束偏移；为空时只允许整条接受。
+    pub accept_boundaries: Vec<usize>,
+    /// 产生候选时使用的非敏感上下文键。
+    pub context_key: Option<String>,
+}
+
+impl CommandSuggestionCandidate {
+    /// 返回新候选按敏感度应使用的安全展示位置。
+    pub fn presentations_for(
+        sensitivity: CommandSuggestionSensitivity,
+    ) -> Vec<SuggestionPresentation> {
+        match sensitivity {
+            CommandSuggestionSensitivity::Normal => {
+                vec![SuggestionPresentation::Inline, SuggestionPresentation::Menu]
+            }
+            CommandSuggestionSensitivity::Sensitive => Vec::new(),
+            CommandSuggestionSensitivity::Dangerous => vec![SuggestionPresentation::Menu],
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for CommandSuggestionCandidate {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct CandidatePayload {
+            id: String,
+            provider: SuggestionProviderKind,
+            #[serde(default)]
+            candidate_kind: CommandSuggestionCandidateKind,
+            #[serde(default)]
+            activation: CommandSuggestionActivation,
+            display_text: String,
+            replacement_text: String,
+            replacement_range: CommandSuggestionReplacementRange,
+            suffix: String,
+            score: f64,
+            sensitivity: CommandSuggestionSensitivity,
+            description: Option<String>,
+            source_explanation: Option<String>,
+            #[serde(default)]
+            merged_source_explanations: Vec<String>,
+            source_id: Option<String>,
+            metadata: Option<BTreeMap<String, String>>,
+            allowed_presentations: Option<Vec<SuggestionPresentation>>,
+            #[serde(default)]
+            accept_boundaries: Vec<usize>,
+            context_key: Option<String>,
+        }
+
+        let payload = CandidatePayload::deserialize(deserializer)?;
+        let allowed_presentations = match payload.allowed_presentations {
+            Some(presentations) => presentations,
+            None => match payload.sensitivity {
+                CommandSuggestionSensitivity::Normal => vec![SuggestionPresentation::Inline],
+                CommandSuggestionSensitivity::Sensitive => Vec::new(),
+                CommandSuggestionSensitivity::Dangerous => vec![SuggestionPresentation::Menu],
+            },
+        };
+
+        Ok(Self {
+            id: payload.id,
+            provider: payload.provider,
+            candidate_kind: payload.candidate_kind,
+            activation: payload.activation,
+            display_text: payload.display_text,
+            replacement_text: payload.replacement_text,
+            replacement_range: payload.replacement_range,
+            suffix: payload.suffix,
+            score: payload.score,
+            sensitivity: payload.sensitivity,
+            description: payload.description,
+            source_explanation: payload.source_explanation,
+            merged_source_explanations: payload.merged_source_explanations,
+            source_id: payload.source_id,
+            metadata: payload.metadata,
+            allowed_presentations,
+            accept_boundaries: payload.accept_boundaries,
+            context_key: payload.context_key,
+        })
+    }
 }

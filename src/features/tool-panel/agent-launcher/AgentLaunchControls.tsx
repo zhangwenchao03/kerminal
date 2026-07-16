@@ -1,6 +1,6 @@
 // @author kongweiguang
 
-import type { MouseEvent as ReactMouseEvent } from "react";
+import { useId, type MouseEvent as ReactMouseEvent } from "react";
 import {
   Loader2,
   ShieldOff,
@@ -23,7 +23,7 @@ const agentIcons = {
   custom: Wrench,
 };
 const agentLaunchContextMenuClassName =
-  "kerminal-context-menu kerminal-agent-launch-menu kerminal-floating-enter absolute z-[1000] w-[164px]";
+  "kerminal-context-menu kerminal-agent-launch-menu kerminal-floating-enter kerminal-layer-popover absolute w-[164px]";
 
 export type AgentLaunchTargetMode = "current" | "unbound";
 
@@ -45,6 +45,14 @@ export function AgentIconButton({
   const Icon = agentIcons[agent.agentId];
   const busy = actionState === agent.agentId;
   const disabled = actionState !== null || agent.disabled;
+  const disabledReason =
+    agent.disabledReason ??
+    (busy
+      ? "正在启动。"
+      : actionState !== null
+        ? "另一个 Agent 操作正在进行。"
+        : undefined);
+  const disabledReasonId = useId();
   const label = agent.agentId === "custom" ? "自定义" : agent.title;
 
   return (
@@ -52,19 +60,24 @@ export function AgentIconButton({
       aria-label={
         agent.agentId === "custom" ? "Open Custom Agent" : `Open ${agent.title}`
       }
+      aria-describedby={disabled && disabledReason ? disabledReasonId : undefined}
+      aria-disabled={disabled || undefined}
       className={cn(
-        "kerminal-pressable kerminal-focus-ring flex h-16 min-w-0 flex-col items-center justify-center gap-1.5 rounded-2xl border border-transparent bg-transparent text-zinc-700 transition hover:border-[var(--border-subtle)] hover:bg-[var(--surface-hover)] active:scale-[0.98] dark:text-zinc-200",
+        "kerminal-pressable kerminal-focus-ring flex h-16 min-w-0 flex-col items-center justify-center gap-1.5 rounded-lg border border-transparent bg-transparent text-zinc-700 transition hover:border-[var(--border-subtle)] hover:bg-[var(--surface-hover)] active:scale-[0.98] dark:text-zinc-200",
         disabled && "cursor-not-allowed opacity-45",
       )}
-      disabled={disabled}
-      onClick={() => onLaunch(agent.agentId)}
+      onClick={() => {
+        if (!disabled) {
+          onLaunch(agent.agentId);
+        }
+      }}
       onContextMenu={(event) => {
         if (disabled) {
           return;
         }
         onOpenMenu(agent, event);
       }}
-      title={agent.disabledReason ?? agent.statusDetail}
+      title={disabledReason ?? agent.availabilityDetail}
       type="button"
     >
       {busy ? (
@@ -75,6 +88,21 @@ export function AgentIconButton({
       <span className="max-w-full truncate text-[11px] font-medium">
         {label}
       </span>
+      <span
+        className={cn(
+          "max-w-full truncate text-[10px]",
+          agent.availabilityLabel === "可用"
+            ? "text-zinc-500 dark:text-zinc-400"
+            : "text-amber-700 dark:text-amber-300",
+        )}
+      >
+        {agent.availabilityLabel}
+      </span>
+      {disabled && disabledReason ? (
+        <span className="sr-only" id={disabledReasonId}>
+          {disabledReason}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -115,7 +143,7 @@ export function AgentLaunchContextMenu({
             className="kerminal-context-menu-item kerminal-agent-launch-menu-item"
             onClick={() => onLaunch("skipPermissions")}
             role="menuitem"
-            title={skipFlag}
+            title="将以跳过权限确认的模式启动"
             type="button"
           >
             <span className="kerminal-context-menu-icon">

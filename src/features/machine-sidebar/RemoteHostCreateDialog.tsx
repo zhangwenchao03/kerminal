@@ -1,6 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { testRemoteConnection } from "../../lib/connectionApi";
 import { detectShells, type ShellCandidate } from "../../lib/profileApi";
 import {
@@ -12,10 +21,13 @@ import type {
   RemoteHostGroup,
   SshOptions,
 } from "../../lib/remoteHostApi";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../lib/userFacingMessage";
 import { evaluateConnectionCheck } from "./remote-host-dialog/connection-check";
 import {
   buildLocalShellPresets,
-  buildLocalTerminalOptions,
   formatLocalArgs,
   formatLocalEnv,
 } from "./remote-host-dialog/local-form";
@@ -31,19 +43,11 @@ import {
   sectionTabsByMode,
 } from "./remote-host-dialog/model";
 import {
-  buildRdpHostRequest,
-  buildSerialHostRequest,
-  buildSshRequest,
-  buildTelnetHostRequest,
   isRdpRemoteHost,
   isSerialRemoteHost,
   isTelnetRemoteHost,
   normalizeSshOptionsForForm,
   readSerialTagValue,
-  validateRdpHostRequest,
-  validateSerialHostRequest,
-  validateSshRequest,
-  validateTelnetHostRequest,
 } from "./remote-host-dialog/request-builders";
 import { RemoteHostDialogSectionContent } from "./remote-host-dialog/section-content";
 import {
@@ -51,15 +55,13 @@ import {
   sectionButtonClassName,
 } from "./remote-host-dialog/shared-ui";
 import { RemoteHostGroupCreateDialog } from "./RemoteHostGroupCreateDialog";
+import { executeRemoteHostConfirm } from "./remote-host-dialog/confirm-controller";
 
 export type {
   LocalTerminalCreateOptions,
 } from "./remote-host-dialog/model";
 
-type ConnectionTestFeedback = {
-  message: string;
-  tone: "error" | "info" | "warning";
-};
+type ConnectionTestFeedback = UserFacingMessage;
 
 export function RemoteHostCreateDialog({
   defaultGroupId,
@@ -98,7 +100,9 @@ export function RemoteHostCreateDialog({
   const [authType, setAuthType] = useState<RemoteHostAuthType>("password");
   const [credentialRef, setCredentialRef] = useState("");
   const [credentialSecret, setCredentialSecret] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setErrorState] = useState<string | null>(null);
+  const [operationError, setOperationError] =
+    useState<UserFacingMessage | null>(null);
   const [groupId, setGroupId] = useState("");
   const [host, setHost] = useState("");
   const [inlineGroupDialogOpen, setInlineGroupDialogOpen] = useState(false);
@@ -143,11 +147,25 @@ export function RemoteHostCreateDialog({
   const [username, setUsername] = useState("");
   const initializedFormTargetKeyRef = useRef<string | null>(null);
   const credentialRevealRequestRef = useRef(0);
+  const setError = useCallback<Dispatch<SetStateAction<string | null>>>(
+    (nextError) => {
+      setOperationError(null);
+      setErrorState(nextError);
+    },
+    [],
+  );
   const formTargetKey = editingLocalMachine
     ? `local:${editingLocalMachine.id}`
     : editingHost
       ? `host:${editingHost.id}`
       : `create:${defaultMode}`;
+  const credentialHostId = editingHost?.id;
+  const credentialAuthType = editingHost?.authType;
+  const persistedCredentialRef = editingHost?.credentialRef;
+  const persistedCredentialSecret = editingHost?.credentialSecret;
+  const credentialHostUsesRdp = editingHost
+    ? isRdpRemoteHost(editingHost)
+    : false;
 
   useEffect(() => {
     if (!open) {
@@ -255,23 +273,25 @@ export function RemoteHostCreateDialog({
     setUsername(editingHost?.username ?? "");
   }, [
     defaultMode,
+    defaultGroupId,
     editingHost,
     editingLocalMachine,
     formTargetKey,
     open,
+    setError,
     targetGroups,
   ]);
 
   useEffect(() => {
-    if (!open || !editingHost) {
+    if (!open || !credentialHostId) {
       return undefined;
     }
-    if (editingHost.credentialSecret?.trim()) {
+    if (persistedCredentialSecret?.trim()) {
       return undefined;
     }
     const shouldReveal =
-      editingHost.authType === "password" ||
-      (editingHost.authType === "key" && !editingHost.credentialRef?.trim());
+      credentialAuthType === "password" ||
+      (credentialAuthType === "key" && !persistedCredentialRef?.trim());
     if (!shouldReveal) {
       return undefined;
     }
@@ -280,14 +300,14 @@ export function RemoteHostCreateDialog({
     const requestId = credentialRevealRequestRef.current + 1;
     credentialRevealRequestRef.current = requestId;
 
-    revealRemoteHostCredential(editingHost.id)
+    revealRemoteHostCredential(credentialHostId)
       .then((result) => {
         if (disposed || credentialRevealRequestRef.current !== requestId) {
           return;
         }
         if (result.status === "available" && result.credentialSecret) {
           setCredentialSecret(result.credentialSecret);
-          if (isRdpRemoteHost(editingHost)) {
+          if (credentialHostUsesRdp) {
             setRdpPassword(result.credentialSecret);
           }
           return;
@@ -300,18 +320,27 @@ export function RemoteHostCreateDialog({
         if (disposed || credentialRevealRequestRef.current !== requestId) {
           return;
         }
-        setError(`读取已保存凭据失败：${errorMessage(caught)}`);
+        setError(null);
+        setOperationError(
+          buildUserFacingError(caught, {
+            detail: "连接配置仍可编辑，但已保存的凭据暂时无法回显。",
+            recoveryAction: "请确认凭据保险箱可用后重试。",
+            title: "无法读取已保存凭据",
+          }),
+        );
       });
 
     return () => {
       disposed = true;
     };
   }, [
-    editingHost?.authType,
-    editingHost?.credentialRef,
-    editingHost?.credentialSecret,
-    editingHost?.id,
+    credentialAuthType,
+    credentialHostId,
+    credentialHostUsesRdp,
     open,
+    persistedCredentialRef,
+    persistedCredentialSecret,
+    setError,
   ]);
 
   useEffect(() => {
@@ -339,236 +368,22 @@ export function RemoteHostCreateDialog({
     };
   }, [open]);
 
+  const selectedProtocolLabel = (
+    protocolTabs.find((protocol) => protocol.id === mode) ?? protocolTabs[0]
+  ).label;
+
   const confirm = async () => {
     setConnectionTestFeedback(null);
-    if ((editingHost || editingLocalMachine) && externalConfigConflict) {
-      setError(externalConfigConflict);
-      return;
-    }
-    if (mode === "local") {
-      const localOptionsResult = buildLocalTerminalOptions(
-        {
-          args: localArgs,
-          cwd: localCwd,
-          env: localEnv,
-          groupId,
-          shell: localShell,
-          title: localTitle,
-        },
-        Boolean(editingLocalMachine),
-      );
-      if (localOptionsResult.error) {
-        setError(localOptionsResult.error);
-        return;
-      }
-
-      if (editingLocalMachine) {
-        if (!onUpdateLocal || !localOptionsResult.options) {
-          setError("当前运行环境不支持更新本地会话。");
-          return;
-        }
-        if (
-          editingLocalMachine.profileId &&
-          !localOptionsResult.options.shell?.trim()
-        ) {
-          setError("编辑已保存的本地终端需要指定 Shell。");
-          return;
-        }
-
-        setSavingAction("confirm");
-        setError(null);
-        try {
-          await onUpdateLocal(
-            editingLocalMachine.id,
-            localOptionsResult.options,
-          );
-          onClose();
-        } catch (caught) {
-          setError(caught instanceof Error ? caught.message : String(caught));
-        } finally {
-          setSavingAction(null);
-        }
-        return;
-      }
-
-      if (!onCreateLocal) {
-        setError("当前运行环境不支持创建本地会话。");
-        return;
-      }
-
-      setSavingAction("confirm");
-      setError(null);
-      try {
-        await onCreateLocal(localOptionsResult.options);
-        onClose();
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-      } finally {
-        setSavingAction(null);
-      }
-      return;
-    }
-
-    if (mode === "rdp") {
-      const request = buildRdpHostRequest({
-        existingAuthType:
-          editingHost && isRdpRemoteHost(editingHost)
-            ? editingHost.authType
-            : undefined,
-        groupId,
-        host,
-        name,
-        password: rdpPassword,
-        port,
-        production,
-        tags,
-        username: rdpUsername,
-      });
-      const validationError = validateRdpHostRequest(request);
-      if (validationError) {
-        setError(validationError);
-        return;
-      }
-
-      setSavingAction("confirm");
-      setError(null);
-      try {
-        const saved =
-          editingHost && onUpdateHost
-            ? await onUpdateHost({
-                ...request,
-                id: editingHost.id,
-                sortOrder: editingHost.sortOrder,
-              })
-            : await onCreateHost(request);
-        await onCreated?.(saved);
-        onClose();
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-      } finally {
-        setSavingAction(null);
-      }
-      return;
-    }
-
-    if (mode === "telnet") {
-      const request = buildTelnetHostRequest({
-        groupId,
-        host,
-        name,
-        port,
-        production,
-        tags,
-      });
-      const validationError = validateTelnetHostRequest(request);
-      if (validationError) {
-        setError(validationError);
-        return;
-      }
-
-      setSavingAction("confirm");
-      setError(null);
-      try {
-        const saved =
-          editingHost && onUpdateHost
-            ? await onUpdateHost({
-                ...request,
-                id: editingHost.id,
-                sortOrder: editingHost.sortOrder,
-              })
-            : await onCreateHost(request);
-        await onCreated?.(saved);
-        onClose();
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-      } finally {
-        setSavingAction(null);
-      }
-      return;
-    }
-
-    if (mode === "serial") {
-      const request = buildSerialHostRequest({
-        groupId,
-        name,
-        production,
-        serialBaud,
-        serialDataBits,
-        serialFlow,
-        serialParity,
-        serialPort,
-        serialStopBits,
-        tags,
-      });
-      const validationError = validateSerialHostRequest(request);
-      if (validationError) {
-        setError(validationError);
-        return;
-      }
-
-      setSavingAction("confirm");
-      setError(null);
-      try {
-        const saved =
-          editingHost && onUpdateHost
-            ? await onUpdateHost({
-                ...request,
-                id: editingHost.id,
-                sortOrder: editingHost.sortOrder,
-              })
-            : await onCreateHost(request);
-        await onCreated?.(saved);
-        onClose();
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-      } finally {
-        setSavingAction(null);
-      }
-      return;
-    }
-
-    if (mode !== "ssh") {
-      setError(`${selectedProtocolLabel} 暂未支持创建。`);
-      return;
-    }
-
-    const request = buildSshRequest({
-      authType,
-      credentialRef,
-      credentialSecret,
-      groupId,
-      host,
-      name,
-      port,
-      production,
-      sshOptions,
-      tags,
-      username,
+    await executeRemoteHostConfirm({
+      authType, credentialRef, credentialSecret, editingHost,
+      editingLocalMachine, externalConfigConflict, groupId, host,
+      localArgs, localCwd, localEnv, localShell, localTitle, mode, name,
+      onClose, onCreateHost, onCreateLocal, onCreated, onUpdateHost,
+      onUpdateLocal, port, production, rdpPassword, rdpUsername,
+      selectedProtocolLabel, serialBaud, serialDataBits, serialFlow,
+      serialParity, serialPort, serialStopBits, setError,
+      setOperationError, setSavingAction, sshOptions, tags, username,
     });
-    const validationError = validateSshRequest(request);
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
-
-    setSavingAction("confirm");
-    setError(null);
-    try {
-      const saved =
-        editingHost && onUpdateHost
-          ? await onUpdateHost({
-              ...request,
-              id: editingHost.id,
-              sortOrder: editingHost.sortOrder,
-            })
-          : await onCreateHost(request);
-      await onCreated?.(saved);
-      onClose();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setSavingAction(null);
-    }
   };
 
   const testConnection = async () => {
@@ -608,14 +423,17 @@ export function RemoteHostCreateDialog({
     });
     if (!result.ok) {
       setError(null);
-      setConnectionTestFeedback({ message: result.error, tone: "error" });
+      setConnectionTestFeedback({
+        severity: "error",
+        title: result.error,
+      });
       return;
     }
     if (!result.testRequest) {
       setError(null);
       setConnectionTestFeedback({
-        message: result.statusMessage,
-        tone: "info",
+        severity: "info",
+        title: result.statusMessage,
       });
       return;
     }
@@ -624,21 +442,24 @@ export function RemoteHostCreateDialog({
     setError(null);
     try {
       const testResult = await testRemoteConnection(result.testRequest);
-      setConnectionTestFeedback({ message: testResult.message, tone: "info" });
+      setConnectionTestFeedback({
+        severity: "info",
+        title: testResult.message,
+      });
     } catch (caught) {
       setError(null);
-      setConnectionTestFeedback({
-        message: caught instanceof Error ? caught.message : String(caught),
-        tone: "error",
-      });
+      setConnectionTestFeedback(
+        buildUserFacingError(caught, {
+          detail: `${selectedProtocolLabel} 未能完成连接测试。`,
+          recoveryAction: "请检查地址、网络和认证信息后重试。",
+          title: "连接测试失败",
+        }),
+      );
     } finally {
       setSavingAction(null);
     }
   };
 
-  const selectedProtocolLabel = (
-    protocolTabs.find((protocol) => protocol.id === mode) ?? protocolTabs[0]
-  ).label;
   const activeSections = sectionTabsByMode[mode] ?? sectionTabsByMode.ssh ?? [];
   const activeSectionDefinition =
     activeSections.find((section) => section.id === activeSection) ??
@@ -663,10 +484,16 @@ export function RemoteHostCreateDialog({
   ).includes(mode);
   const footerFeedback: ConnectionTestFeedback | null =
     connectionTestFeedback ??
+    operationError ??
     (error
-      ? { message: error, tone: "error" }
+      ? { severity: "error", title: error }
       : externalConfigConflict
-        ? { message: externalConfigConflict, tone: "warning" }
+        ? buildUserFacingError(externalConfigConflict, {
+            detail: "当前草稿已保留，但不能直接覆盖外部修改。",
+            recoveryAction: "请关闭并重新打开连接配置后再编辑。",
+            severity: "warning",
+            title: "连接配置已在外部更新",
+          })
         : null);
   const sectionContent = (
     <RemoteHostDialogSectionContent
@@ -752,21 +579,11 @@ export function RemoteHostCreateDialog({
         footer={
           <>
             {footerFeedback ? (
-              <p
-                className={[
-                  "mr-auto min-w-0 flex-1 rounded-xl border px-3 py-2 text-left text-xs leading-5",
-                  footerFeedback.tone === "error"
-                    ? "border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-300"
-                    : footerFeedback.tone === "warning"
-                      ? "border-amber-300/25 bg-amber-400/10 text-amber-800 dark:border-amber-300/20 dark:text-amber-100"
-                      : "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-200",
-                ].join(" ")}
-                role={
-                  footerFeedback.tone === "info" ? "status" : "alert"
-                }
-              >
-                {footerFeedback.message}
-              </p>
+              <UserFacingNotice
+                className="mr-auto min-w-0 flex-1 text-left"
+                compact
+                message={footerFeedback}
+              />
             ) : null}
             <Button onClick={onClose} type="button" variant="ghost">
               取消
@@ -791,18 +608,13 @@ export function RemoteHostCreateDialog({
             </Button>
           </>
         }
-        description={
-          editingHost || editingLocalMachine
-            ? "编辑已保存的连接配置。"
-            : "新增本地、SSH、RDP、Telnet 或 Serial 连接。"
-        }
         onClose={onClose}
         open={open}
         size="large"
         title={editingHost || editingLocalMachine ? "编辑连接配置" : "新建主机"}
       >
         <div className="space-y-4">
-          <div className="scrollbar-none flex gap-2 overflow-x-auto border-b border-[var(--border-subtle)] pb-3">
+          <div className="scrollbar-none flex gap-1 overflow-x-auto border-b border-[var(--border-subtle)] pb-3">
             {protocolTabs.map((protocol) => {
               const Icon = protocol.Icon;
               const selected = protocol.id === mode;
@@ -855,17 +667,17 @@ export function RemoteHostCreateDialog({
                   title={protocol.label}
                   type="button"
                 >
-                  <Icon className="h-5 w-5" />
+                  <Icon className="h-4 w-4" />
                   <span>{protocol.label}</span>
                 </button>
               );
             })}
           </div>
 
-          <div className="grid min-h-[424px] gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+          <div className="grid min-h-[424px] gap-4 md:grid-cols-[190px_minmax(0,1fr)]">
             <nav
               aria-label="连接配置分区"
-              className="kerminal-muted-surface rounded-2xl border p-2"
+              className="space-y-1 border-b border-[var(--border-subtle)] pb-3 md:border-b-0 md:border-r md:pb-0 md:pr-4"
             >
               {activeSections.map((section) => {
                 const Icon = section.Icon;
@@ -904,8 +716,4 @@ export function RemoteHostCreateDialog({
       ) : null}
     </>
   );
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }

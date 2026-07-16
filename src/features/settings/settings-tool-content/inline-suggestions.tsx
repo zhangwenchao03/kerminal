@@ -11,7 +11,8 @@ import {
   type TerminalInlineSuggestionSettings,
 } from "../settingsModel";
 
-const inlineSuggestionTileClassName = "kerminal-muted-surface rounded-xl border";
+const inlineSuggestionTileClassName =
+  "rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-content)]";
 
 export function InlineSuggestionPolicyStatus({
   inlineSuggestion,

@@ -33,7 +33,7 @@ export interface VaultKeyOperationResult {
   backupCreated: boolean;
 }
 
-export type WorkspaceSyncRunStatus =
+type WorkspaceSyncRunStatus =
   | "success"
   | "warning"
   | "conflict"
@@ -48,7 +48,7 @@ export interface WorkspaceSyncRunResult {
   status: WorkspaceSyncRunStatus;
 }
 
-export const browserWorkspaceSyncStatus: WorkspaceSyncStatus = {
+const browserWorkspaceSyncStatus: WorkspaceSyncStatus = {
   workspaceRoot: "~/.kerminal",
   git: {
     available: false,
@@ -80,28 +80,6 @@ export async function getWorkspaceSyncStatus(): Promise<WorkspaceSyncStatus> {
   }
 
   return invoke<WorkspaceSyncStatus>("workspace_sync_status");
-}
-
-export async function ensureWorkspaceSync(): Promise<WorkspaceSyncStatus> {
-  if (!isTauri()) {
-    return {
-      ...browserWorkspaceSyncStatus,
-      gitignore: {
-        ...browserWorkspaceSyncStatus.gitignore,
-        present: true,
-        hasRequiredRules: true,
-        missingRules: [],
-      },
-      vault: {
-        ...browserWorkspaceSyncStatus.vault,
-        vaultKeyPresent: true,
-        keyId: "workspace-default",
-        status: "keyPresent",
-      },
-    };
-  }
-
-  return invoke<WorkspaceSyncStatus>("workspace_sync_ensure");
 }
 
 export async function runWorkspaceSync(): Promise<WorkspaceSyncRunResult> {
@@ -148,55 +126,5 @@ export async function saveVaultKeyContent(
 
   return invoke<VaultKeyOperationResult>("workspace_sync_save_key", {
     request: { keyToml },
-  });
-}
-
-export async function exportVaultKey(): Promise<string> {
-  if (!isTauri()) {
-    return [
-      "schema_version = 1",
-      'key_id = "workspace-default"',
-      'algorithm = "xchacha20poly1305"',
-      'created_at = "0"',
-      'master_key = "browser-fallback"',
-      "",
-    ].join("\n");
-  }
-
-  return invoke<string>("workspace_sync_export_key");
-}
-
-export async function importVaultKey(
-  keyToml: string,
-  dryRun: boolean,
-): Promise<VaultKeyOperationResult> {
-  if (!isTauri()) {
-    return {
-      keyId: "workspace-default",
-      dryRun,
-      entryCount: 0,
-      backupCreated: !dryRun,
-    };
-  }
-
-  return invoke<VaultKeyOperationResult>("workspace_sync_import_key", {
-    request: { keyToml, dryRun },
-  });
-}
-
-export async function rotateVaultKey(
-  dryRun: boolean,
-): Promise<VaultKeyOperationResult> {
-  if (!isTauri()) {
-    return {
-      keyId: "workspace-default",
-      dryRun,
-      entryCount: 0,
-      backupCreated: !dryRun,
-    };
-  }
-
-  return invoke<VaultKeyOperationResult>("workspace_sync_rotate_key", {
-    request: { dryRun },
   });
 }

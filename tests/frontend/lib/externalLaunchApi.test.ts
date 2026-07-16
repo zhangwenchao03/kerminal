@@ -29,34 +29,20 @@ describe("externalLaunchApi", () => {
       .mockResolvedValueOnce([{ id: "launch-1" }])
       .mockResolvedValueOnce(1)
       .mockResolvedValueOnce({ targetId: "external:launch-1" })
-	      .mockResolvedValueOnce(2)
-	      .mockResolvedValueOnce(3)
-	      .mockResolvedValueOnce({
-	        intake: { pendingCount: 0 },
-	        secrets: { activeSecretCount: 0 },
-	      })
-	      .mockResolvedValueOnce({
-	        aliasDirectory: "C:\\Kerminal\\compat",
-	        aliases: [],
-	        kerminalExecutable: "C:\\Kerminal\\kerminal.exe",
-	        shimAvailable: true,
-	        shimExecutable: "C:\\Kerminal\\kerminal-launch-shim.exe",
-	      })
-	      .mockResolvedValueOnce([{ tool: "putty" }])
-	      .mockResolvedValueOnce([{ removedAlias: true, tool: "putty" }])
-	      .mockResolvedValueOnce("C:\\Kerminal\\compat");
-	    const {
-	      ackExternalSshLaunch,
-	      cancelExternalSshLaunch,
-	      closeExternalSshLaunch,
-	      deleteExternalLaunchAliases,
-	      generateExternalLaunchAliases,
-	      getExternalLaunchAliasStatus,
-	      getExternalLaunchSnapshot,
-	      materializeExternalSshLaunch,
-	      openExternalLaunchAliasDirectory,
-	      takePendingExternalSshLaunches,
-	    } = await import("../../../src/lib/externalLaunchApi");
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce({
+        intake: { pendingCount: 0 },
+        secrets: { activeSecretCount: 0 },
+      });
+    const {
+      ackExternalSshLaunch,
+      cancelExternalSshLaunch,
+      closeExternalSshLaunch,
+      getExternalLaunchSnapshot,
+      materializeExternalSshLaunch,
+      takePendingExternalSshLaunches,
+    } = await import("../../../src/lib/externalLaunchApi");
 
     await expect(takePendingExternalSshLaunches()).resolves.toEqual([
       { id: "launch-1" },
@@ -67,21 +53,9 @@ describe("externalLaunchApi", () => {
     ).resolves.toEqual({ targetId: "external:launch-1" });
     await expect(cancelExternalSshLaunch("launch-2")).resolves.toBe(2);
     await expect(closeExternalSshLaunch("launch-3")).resolves.toBe(3);
-	    await expect(getExternalLaunchSnapshot()).resolves.toMatchObject({
-	      intake: { pendingCount: 0 },
-	    });
-	    await expect(getExternalLaunchAliasStatus()).resolves.toMatchObject({
-	      shimAvailable: true,
-	    });
-	    await expect(
-	      generateExternalLaunchAliases({ tools: ["putty"], preferHardLink: false }),
-	    ).resolves.toEqual([{ tool: "putty" }]);
-	    await expect(
-	      deleteExternalLaunchAliases({ tools: ["putty"] }),
-	    ).resolves.toEqual([{ removedAlias: true, tool: "putty" }]);
-	    await expect(
-	      openExternalLaunchAliasDirectory("C:\\Kerminal\\compat"),
-	    ).resolves.toBe("C:\\Kerminal\\compat");
+    await expect(getExternalLaunchSnapshot()).resolves.toMatchObject({
+      intake: { pendingCount: 0 },
+    });
 
     expect(apiMocks.invoke).toHaveBeenNthCalledWith(
       1,
@@ -105,30 +79,11 @@ describe("externalLaunchApi", () => {
       "external_launch_close",
       { launchId: "launch-3" },
     );
-	    expect(apiMocks.invoke).toHaveBeenNthCalledWith(
-	      6,
-	      "external_launch_snapshot",
-	    );
-	    expect(apiMocks.invoke).toHaveBeenNthCalledWith(
-	      7,
-	      "external_launch_alias_status",
-	    );
-	    expect(apiMocks.invoke).toHaveBeenNthCalledWith(
-	      8,
-	      "external_launch_alias_generate",
-	      { request: { preferHardLink: false, tools: ["putty"] } },
-	    );
-	    expect(apiMocks.invoke).toHaveBeenNthCalledWith(
-	      9,
-	      "external_launch_alias_delete",
-	      { request: { tools: ["putty"] } },
-	    );
-	    expect(apiMocks.invoke).toHaveBeenNthCalledWith(
-	      10,
-	      "external_launch_alias_open_directory",
-	      { aliasDirectory: "C:\\Kerminal\\compat" },
-	    );
-	  });
+    expect(apiMocks.invoke).toHaveBeenNthCalledWith(
+      6,
+      "external_launch_snapshot",
+    );
+  });
 
   it("listens to queued external launch events and filters invalid payloads", async () => {
     apiMocks.isTauri.mockReturnValue(true);
@@ -176,17 +131,13 @@ describe("externalLaunchApi", () => {
 
   it("uses empty browser preview behavior without secrets or Tauri calls", async () => {
     apiMocks.isTauri.mockReturnValue(false);
-	    const {
-	      ackExternalSshLaunch,
-	      deleteExternalLaunchAliases,
-	      generateExternalLaunchAliases,
-	      getExternalLaunchAliasStatus,
-	      getExternalLaunchSnapshot,
-	      listenExternalSshLaunches,
-	      materializeExternalSshLaunch,
-	      openExternalLaunchAliasDirectory,
-	      takePendingExternalSshLaunches,
-	    } = await import("../../../src/lib/externalLaunchApi");
+    const {
+      ackExternalSshLaunch,
+      getExternalLaunchSnapshot,
+      listenExternalSshLaunches,
+      materializeExternalSshLaunch,
+      takePendingExternalSshLaunches,
+    } = await import("../../../src/lib/externalLaunchApi");
 
     await expect(takePendingExternalSshLaunches()).resolves.toEqual([]);
     await expect(ackExternalSshLaunch("launch-1")).resolves.toBe(0);
@@ -196,48 +147,19 @@ describe("externalLaunchApi", () => {
       targetId: "external:launch-1",
       username: "deploy",
     });
-	    await expect(getExternalLaunchSnapshot()).resolves.toMatchObject({
-	      intake: {
-	        pendingCount: 0,
+    await expect(getExternalLaunchSnapshot()).resolves.toMatchObject({
+      intake: {
+        pendingCount: 0,
         policy: {
           acceptVendorArgs: true,
           autoOpenSftp: false,
           disabledTools: [],
           enabled: true,
-          shimBridgeEnabled: true,
         },
-	      },
-	      secrets: { activeSecretCount: 0 },
-	    });
-	    await expect(getExternalLaunchAliasStatus()).resolves.toMatchObject({
-	      aliasDirectory:
-	        "C:\\Users\\kerminal\\.kerminal\\external-launch\\compatibility-aliases",
-	      aliases: expect.arrayContaining([
-	        expect.objectContaining({ state: "missing", tool: "putty" }),
-	      ]),
-	      shimAvailable: false,
-	    });
-	    await expect(
-	      generateExternalLaunchAliases({ tools: ["putty"] }),
-	    ).resolves.toEqual([
-	      expect.objectContaining({
-	        installMode: "copy",
-	        state: "managed",
-	        tool: "putty",
-	      }),
-	    ]);
-	    await expect(
-	      deleteExternalLaunchAliases({ tools: ["putty"] }),
-	    ).resolves.toEqual([
-	      expect.objectContaining({
-	        removedAlias: false,
-	        tool: "putty",
-	      }),
-	    ]);
-	    await expect(openExternalLaunchAliasDirectory()).resolves.toContain(
-	      ".kerminal\\external-launch\\compatibility-aliases",
-	    );
-	    const unlisten = await listenExternalSshLaunches(vi.fn());
+      },
+      secrets: { activeSecretCount: 0 },
+    });
+    const unlisten = await listenExternalSshLaunches(vi.fn());
     unlisten();
 
     expect(apiMocks.invoke).not.toHaveBeenCalled();

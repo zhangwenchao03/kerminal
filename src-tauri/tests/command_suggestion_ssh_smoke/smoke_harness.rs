@@ -81,6 +81,9 @@ impl SmokeHarness {
                 &self.storage,
                 &self.history,
                 CommandSuggestionRequest {
+                    context_key: None,
+                    generation: None,
+                    mode: Default::default(),
                     cursor: input.chars().count(),
                     cwd: Some(cwd.to_owned()),
                     input: input.to_owned(),

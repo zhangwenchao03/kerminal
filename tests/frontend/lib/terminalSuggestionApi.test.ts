@@ -36,10 +36,202 @@ describe("terminalSuggestionApi", () => {
         cwd: "/srv/app",
         input: "git status",
         limit: 50,
+        mode: "inline",
         providers: ["history", "git"],
         remoteHostId: "host-prod",
         target: "ssh",
       },
+    });
+  });
+
+  it("normalizes menu request generation and context key", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue([]);
+    const { listTerminalSuggestions } = await import(
+      "../../../src/lib/terminalSuggestionApi"
+    );
+
+    await listTerminalSuggestions({
+      contextKey: " ssh:host-prod:/srv ",
+      cursor: 2,
+      generation: 7,
+      input: "服务",
+      mode: "menu",
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith("command_suggestion_list", {
+      request: expect.objectContaining({
+        contextKey: "ssh:host-prod:/srv",
+        cursor: 2,
+        generation: 7,
+        input: "服务",
+        mode: "menu",
+      }),
+    });
+  });
+
+  it("normalizes legacy candidates to inline-only whole acceptance", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue([
+      {
+        displayText: "echo 服务器",
+        id: "history-unicode",
+        provider: "history",
+        replacementRange: { end: 7, start: 0 },
+        replacementText: "echo 服务器",
+        score: 0.9,
+        sensitivity: "normal",
+        suffix: "务器",
+      },
+    ]);
+    const { listTerminalSuggestions } = await import(
+      "../../../src/lib/terminalSuggestionApi"
+    );
+
+    const suggestions = await listTerminalSuggestions({
+      cursor: 7,
+      input: "echo 服务",
+    });
+
+    expect(suggestions[0]).toMatchObject({
+      acceptBoundaries: [],
+      activation: "insert",
+      allowedPresentations: ["inline"],
+      candidateKind: "command",
+      replacementRange: { end: 7, start: 0 },
+    });
+  });
+
+  it("normalizes snippet activation and merged source explanations", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue([
+      {
+        activation: "openSnippetPanel",
+        allowedPresentations: ["menu"],
+        candidateKind: "snippet",
+        displayText: "查看服务日志",
+        id: "snippet:service-logs",
+        mergedSourceExplanations: [" 命令规范 ", "个人片段", "个人片段"],
+        provider: "snippet",
+        replacementRange: { end: 3, start: 0 },
+        replacementText: "journalctl -u {{service}}",
+        score: 0.9,
+        sensitivity: "normal",
+        sourceExplanation: " 内置运维片段 ",
+        sourceId: " builtin.service-logs ",
+        suffix: "",
+      },
+    ]);
+    const { listTerminalSuggestions } = await import(
+      "../../../src/lib/terminalSuggestionApi"
+    );
+
+    const [suggestion] = await listTerminalSuggestions({
+      cursor: 3,
+      input: "jou",
+      mode: "menu",
+    });
+
+    expect(suggestion).toMatchObject({
+      activation: "openSnippetPanel",
+      candidateKind: "snippet",
+      mergedSourceExplanations: ["命令规范", "个人片段"],
+      provider: "snippet",
+      sourceExplanation: "内置运维片段",
+      sourceId: "builtin.service-logs",
+    });
+  });
+
+  it("forces dangerous candidates to menu-only presentation", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue([
+      {
+        acceptBoundaries: [8],
+        allowedPresentations: ["inline", "menu"],
+        displayText: "rm -rf ./build",
+        id: "history-dangerous",
+        provider: "history",
+        replacementRange: { end: 5, start: 0 },
+        replacementText: "rm -rf ./build",
+        score: 0.2,
+        sensitivity: "dangerous",
+        suffix: "f ./build",
+      },
+    ]);
+    const { listTerminalSuggestions } = await import(
+      "../../../src/lib/terminalSuggestionApi"
+    );
+
+    const suggestions = await listTerminalSuggestions({
+      cursor: 5,
+      input: "rm -r",
+    });
+
+    expect(suggestions[0]?.allowedPresentations).toEqual(["menu"]);
+  });
+
+  it("falls back to whole acceptance for invalid range or boundary", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue([
+      {
+        acceptBoundaries: [8, 999],
+        allowedPresentations: ["inline", "menu"],
+        displayText: "echo 服务器/日志",
+        id: "history-invalid-range",
+        provider: "history",
+        replacementRange: { end: 99, start: 8 },
+        replacementText: "echo 服务器/日志",
+        score: 0.9,
+        sensitivity: "normal",
+        suffix: "器/日志",
+      },
+    ]);
+    const { listTerminalSuggestions } = await import(
+      "../../../src/lib/terminalSuggestionApi"
+    );
+
+    const suggestions = await listTerminalSuggestions({
+      cursor: 7,
+      input: "echo 服务",
+    });
+
+    expect(suggestions[0]).toMatchObject({
+      acceptBoundaries: [],
+      replacementRange: { end: 7, start: 0 },
+    });
+  });
+
+  it("preserves valid Unicode code-point boundaries", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue([
+      {
+        acceptBoundaries: [8, 10],
+        allowedPresentations: ["inline", "menu"],
+        contextKey: " ssh:host-prod:/srv ",
+        displayText: "echo 服务器/日志",
+        id: "history-unicode-boundaries",
+        provider: "history",
+        replacementRange: { end: 7, start: 5 },
+        replacementText: "echo 服务器/日志",
+        score: 0.9,
+        sensitivity: "normal",
+        suffix: "器/日志",
+      },
+    ]);
+    const { listTerminalSuggestions } = await import(
+      "../../../src/lib/terminalSuggestionApi"
+    );
+
+    const suggestions = await listTerminalSuggestions({
+      contextKey: "ssh:host-prod:/srv",
+      cursor: 7,
+      input: "echo 服务",
+    });
+
+    expect(suggestions[0]).toMatchObject({
+      acceptBoundaries: [8, 10],
+      contextKey: "ssh:host-prod:/srv",
+      replacementRange: { end: 7, start: 5 },
     });
   });
 

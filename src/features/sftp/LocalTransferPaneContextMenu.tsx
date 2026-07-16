@@ -58,7 +58,7 @@ export function LocalTransferPaneContextMenu({
   return createPortal(
     <div
       aria-label="本地文件操作菜单"
-      className="kerminal-context-menu kerminal-floating-enter fixed z-[1000] w-56"
+      className="kerminal-context-menu kerminal-floating-enter kerminal-layer-popover fixed w-56"
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => {
         event.preventDefault();

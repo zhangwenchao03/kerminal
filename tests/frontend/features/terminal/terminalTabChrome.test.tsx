@@ -111,15 +111,16 @@ describe("TerminalTabGroupHeader", () => {
       <TerminalTabGroupHeader
         collapsed={false}
         group={{
-          accentClassName: "bg-sky-500",
-          activeContainerClassName: "border-sky-500/45",
           color: "blue",
-          colorClassName: "bg-sky-500/12 text-sky-700",
           colorLabel: "蓝色",
-          containerClassName: "border-sky-500/22",
           grouped: true,
           id: "sftpTransfer",
-          swatchClassName: "bg-sky-500",
+          identityAccent: {
+            accentClassName: "bg-sky-500",
+            color: "blue",
+            source: "automatic",
+            visible: true,
+          },
           tabs: [localTab, { ...localTab, id: "tab-sftp-2" }],
           title: "SFTP 传输",
         }}
@@ -134,8 +135,9 @@ describe("TerminalTabGroupHeader", () => {
 
     expect(groupButton).toHaveClass("h-9");
     expect(groupButton).toHaveClass("max-w-[220px]");
-    expect(groupButton).toHaveClass("rounded-xl");
+    expect(groupButton).toHaveClass("rounded-lg");
     expect(groupButton).toHaveClass("text-sm");
+    expect(groupButton.querySelector(".h-\\[18px\\]")).toBeInTheDocument();
   });
 });
 
@@ -162,15 +164,19 @@ describe("buildTerminalTabGroups", () => {
       id: "local-powershell",
       title: "本地运维",
     });
-    expect(groups[0].colorClassName).toContain("pink");
+    expect(groups[0].identityAccent).toMatchObject({
+      color: "pink",
+      source: "explicit",
+      visible: true,
+    });
     expect(groups[1]).toMatchObject({
       grouped: false,
       id: "host-prod",
       title: "prod",
     });
-    expect(groups[1].color).toBeDefined();
-    expect(groups[1].color).not.toBe("pink");
-    expect(groups[1].color).not.toBe(groups[2].color);
+    expect(groups[1].identityAccent.source).toBe("automatic");
+    expect(groups[1].identityAccent.visible).toBe(false);
+    expect(groups[2].identityAccent.source).toBe("automatic");
   });
 
   it("groups host container tabs under the parent host tab group", () => {

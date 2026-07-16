@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveContextLossRetryDelay,
   resolveTerminalRendererPolicy,
+  terminalRendererFallbackReasonFromState,
   type TerminalRendererPanePolicyInput,
 } from "../../../../src/features/terminal/terminalRendererPolicy";
 
@@ -139,14 +140,20 @@ describe("terminalRendererPolicy", () => {
     );
   });
 
-  it("prioritizes the focused visible pane when the WebGL budget is full", () => {
+  it("keeps healthy visible GPU owners when focus changes", () => {
     const result = resolveTerminalRendererPolicy({
-      config: { maxActiveGpuPanes: 2 },
+      config: { maxActiveGpuPanes: 1 },
       now: NOW,
       panes: [
-        pane("older", { lastUsedAt: 1 }),
-        pane("recent", { lastUsedAt: 2 }),
-        pane("focused", { focused: true }),
+        pane("resident", {
+          currentBackend: "gpu",
+          gpuOwnerSince: NOW - 30_000,
+          lastUsedAt: 1,
+        }),
+        pane("focused-newcomer", {
+          focused: true,
+          lastUsedAt: NOW,
+        }),
       ],
       requestedMode: "auto",
     });
@@ -155,17 +162,52 @@ describe("terminalRendererPolicy", () => {
       result.decisions.map((decision) => [decision.paneId, decision]),
     );
 
-    expect(result.effectiveGpuPanes).toBe(2);
-    expect(decisionsByPane.get("focused")).toEqual(
-      expect.objectContaining({ targetBackend: "gpu" }),
+    expect(result.effectiveGpuPanes).toBe(1);
+    expect(decisionsByPane.get("resident")).toEqual(
+      expect.objectContaining({
+        shouldReapWebgl: false,
+        targetBackend: "gpu",
+      }),
     );
-    expect(decisionsByPane.get("recent")).toEqual(
-      expect.objectContaining({ targetBackend: "gpu" }),
-    );
-    expect(decisionsByPane.get("older")).toEqual(
+    expect(decisionsByPane.get("focused-newcomer")).toEqual(
       expect.objectContaining({
         fallbackReason: "budget-limited",
-        shouldReapWebgl: true,
+        shouldReapWebgl: false,
+        targetBackend: "cpu",
+      }),
+    );
+  });
+
+  it("reserves a granted GPU owner while its attach is pending", () => {
+    const result = resolveTerminalRendererPolicy({
+      config: { maxActiveGpuPanes: 1 },
+      now: NOW,
+      panes: [
+        pane("pending-owner", {
+          gpuAttachPending: true,
+          gpuOwnerSince: NOW - 100,
+        }),
+        pane("focused-newcomer", {
+          focused: true,
+          lastUsedAt: NOW,
+        }),
+      ],
+      requestedMode: "auto",
+    });
+
+    const decisionsByPane = new Map(
+      result.decisions.map((decision) => [decision.paneId, decision]),
+    );
+
+    expect(decisionsByPane.get("pending-owner")).toEqual(
+      expect.objectContaining({
+        shouldAttemptImport: false,
+        targetBackend: "gpu",
+      }),
+    );
+    expect(decisionsByPane.get("focused-newcomer")).toEqual(
+      expect.objectContaining({
+        fallbackReason: "budget-limited",
         targetBackend: "cpu",
       }),
     );
@@ -232,5 +274,19 @@ describe("terminalRendererPolicy", () => {
     expect(resolveContextLossRetryDelay(0)).toBe(250);
     expect(resolveContextLossRetryDelay(3)).toBe(30_000);
     expect(resolveContextLossRetryDelay(99)).toBeUndefined();
+  });
+
+  it("accepts only renderer failures that the runtime can record", () => {
+    expect(terminalRendererFallbackReasonFromState("context-lost")).toBe(
+      "context-lost",
+    );
+    expect(terminalRendererFallbackReasonFromState("atlas-clear-failed")).toBe(
+      "atlas-clear-failed",
+    );
+    expect(terminalRendererFallbackReasonFromState("load-failed")).toBe(
+      "load-failed",
+    );
+    expect(terminalRendererFallbackReasonFromState("software-gpu")).toBeUndefined();
+    expect(terminalRendererFallbackReasonFromState(null)).toBeUndefined();
   });
 });

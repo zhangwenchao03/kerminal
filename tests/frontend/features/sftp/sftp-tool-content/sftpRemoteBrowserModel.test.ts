@@ -258,10 +258,14 @@ describe("sftpRemoteBrowserModel", () => {
     ).toBe("/var/log");
   });
 
-  it("normalizes loader errors for display", () => {
-    expect(normalizeSftpRemoteBrowserError(new Error("network down"))).toBe(
-      "network down",
+  it("normalizes loader errors for technical details", () => {
+    const detail = normalizeSftpRemoteBrowserError(
+      new Error("network down password=browser-model-secret"),
     );
+
+    expect(detail).toContain("network down");
+    expect(detail).toContain('password="[已隐藏]"');
+    expect(detail).not.toContain("browser-model-secret");
     expect(normalizeSftpRemoteBrowserError("plain failure")).toBe(
       "plain failure",
     );

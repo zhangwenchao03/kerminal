@@ -139,8 +139,9 @@ describe("terminalOutputWriter", () => {
       maxCharsPerFlush: 100,
       scheduler: manual.scheduler,
     });
-    const chunks = Array.from({ length: 250 }, (_, index) =>
-      `${index.toString().padStart(3, "0")}|`,
+    const chunks = Array.from(
+      { length: 250 },
+      (_, index) => `${index.toString().padStart(3, "0")}|`,
     );
 
     for (const chunk of chunks) {
@@ -202,6 +203,29 @@ describe("terminalOutputWriter", () => {
     expect(writer.pendingLength()).toBe(0);
   });
 
+  it("keeps a surrogate pair intact when only one code unit remains", () => {
+    const terminal = { write: vi.fn() };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      maxCharsPerFlush: 3,
+      scheduler: manual.scheduler,
+    });
+
+    writer.write("ab");
+    writer.write("\uD83D\uDE00cd");
+
+    manual.runNext();
+    manual.runNext();
+    manual.runNext();
+
+    expect(terminal.write.mock.calls.map(([data]) => data)).toEqual([
+      "ab",
+      "\uD83D\uDE00c",
+      "d",
+    ]);
+    expect(writer.pendingLength()).toBe(0);
+  });
+
   it("flushes queued data before immediate status output", () => {
     const terminal = { write: vi.fn() };
     const manual = createManualScheduler();
@@ -239,5 +263,189 @@ describe("terminalOutputWriter", () => {
     expect(manual.scheduler.cancel).toHaveBeenCalledTimes(1);
     expect(terminal.write).not.toHaveBeenCalled();
     expect(writer.pendingLength()).toBe(0);
+  });
+
+  it("keeps the writer alive when terminal.write rejects a batch synchronously", () => {
+    const writeErrors: unknown[] = [];
+    const terminal = {
+      write: vi
+        .fn()
+        .mockImplementationOnce(() => {
+          throw new Error("terminal write rejected");
+        })
+        .mockImplementation(() => undefined),
+    };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      onWriteError: (error) => writeErrors.push(error),
+      scheduler: manual.scheduler,
+    });
+
+    writer.write("\u0000\u001b]bad-binary");
+    manual.runNext();
+    writer.write("after-binary");
+    manual.runNext();
+
+    expect(terminal.write).toHaveBeenCalledTimes(2);
+    expect(terminal.write).toHaveBeenNthCalledWith(2, "after-binary");
+    expect(writer.pendingLength()).toBe(0);
+    expect(writeErrors).toHaveLength(1);
+    expect(writer.stats()).toMatchObject({
+      flushCount: 1,
+      totalFlushChars: "after-binary".length,
+      writeErrorCount: 1,
+    });
+  });
+
+  it("keeps exactly one callback-aware xterm write in flight", () => {
+    const callbacks: Array<() => void> = [];
+    const terminal = {
+      write: vi.fn((_data: string, callback?: () => void) => {
+        if (callback) {
+          callbacks.push(callback);
+        }
+      }),
+    };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      callbackMode: "required",
+      initialCharsPerFlush: 4,
+      maxCharsPerFlush: 4,
+      minCharsPerFlush: 4,
+      scheduler: manual.scheduler,
+    });
+
+    writer.write("abcdefgh");
+    manual.runNext();
+
+    expect(terminal.write).toHaveBeenCalledTimes(1);
+    expect(terminal.write.mock.calls[0]?.[0]).toBe("abcd");
+    expect(writer.stats().inFlight).toBe(true);
+    expect(manual.pendingCount()).toBe(0);
+
+    callbacks.shift()?.();
+
+    expect(writer.stats().inFlight).toBe(false);
+    expect(manual.pendingCount()).toBe(1);
+    manual.runNext();
+    expect(terminal.write.mock.calls[1]?.[0]).toBe("efgh");
+  });
+
+  it("adapts batch size with hysteresis inside configured bounds", () => {
+    let now = 0;
+    const callbacks: Array<() => void> = [];
+    const terminal = {
+      write: vi.fn((_data: string, callback?: () => void) => {
+        if (callback) {
+          callbacks.push(callback);
+        }
+      }),
+    };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      callbackMode: "required",
+      initialCharsPerFlush: 16,
+      maxCharsPerFlush: 16,
+      minCharsPerFlush: 4,
+      now: () => now,
+      scheduler: manual.scheduler,
+      targetWriteCallbackMs: 6,
+    });
+
+    for (let index = 0; index < 2; index += 1) {
+      writer.write("x".repeat(16));
+      manual.runNext();
+      now += 10;
+      callbacks.shift()?.();
+    }
+
+    expect(writer.stats()).toMatchObject({
+      adaptationDecreaseCount: 1,
+      currentCharsPerFlush: 12,
+    });
+
+    for (let index = 0; index < 2; index += 1) {
+      writer.write("y".repeat(16));
+      manual.runNext();
+      now += 1;
+      callbacks.shift()?.();
+    }
+
+    expect(writer.stats()).toMatchObject({
+      adaptationIncreaseCount: 1,
+      currentCharsPerFlush: 15,
+    });
+  });
+
+  it("uses hidden cadence but accelerates when backlog crosses pressure threshold", () => {
+    const terminal = { write: vi.fn() };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      cadence: "hidden",
+      scheduler: manual.scheduler,
+    });
+
+    writer.write("small");
+    expect(manual.scheduler.request).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      100,
+    );
+
+    writer.dispose();
+    const pressured = createTerminalOutputWriter(terminal, {
+      cadence: "hidden",
+      scheduler: manual.scheduler,
+    });
+    pressured.write("x".repeat(256 * 1024));
+
+    expect(manual.scheduler.request).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      16,
+    );
+  });
+
+  it("preserves writeNow ordering while an async write is in flight", () => {
+    const callbacks: Array<() => void> = [];
+    const terminal = {
+      write: vi.fn((_data: string, callback?: () => void) => {
+        if (callback) {
+          callbacks.push(callback);
+        }
+      }),
+    };
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(terminal, {
+      callbackMode: "required",
+      scheduler: manual.scheduler,
+    });
+
+    writer.write("queued");
+    writer.writeNow("status");
+
+    expect(terminal.write.mock.calls.map(([data]) => data)).toEqual(["queued"]);
+
+    callbacks.shift()?.();
+    manual.runNext();
+
+    expect(terminal.write.mock.calls.map(([data]) => data)).toEqual([
+      "queued",
+      "status",
+    ]);
+  });
+
+  it("reports UTF-8 pending bytes without retaining output content", () => {
+    const manual = createManualScheduler();
+    const writer = createTerminalOutputWriter(
+      { write: vi.fn() },
+      { scheduler: manual.scheduler },
+    );
+
+    writer.write("终端");
+
+    expect(writer.stats()).toMatchObject({
+      pendingBytes: 6,
+      pendingChars: 2,
+    });
+    expect(JSON.stringify(writer.stats())).not.toContain("终端");
   });
 });

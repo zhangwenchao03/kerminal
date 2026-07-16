@@ -1,41 +1,38 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  collectTerminalRuntimePerformanceSnapshot,
-  registerTerminalRuntimeDiagnosticsPane,
-  resetTerminalRuntimeDiagnosticsForTests,
-} from "../../../../src/features/terminal/terminalRuntimeDiagnosticsStore";
+import { createTerminalRuntimeDiagnosticsStore } from "../../../../src/features/terminal/terminalRuntimeDiagnosticsStore";
 import {
   findRuntimePerformanceSnapshotSensitiveKeys,
 } from "../../../../src/features/terminal/terminalRuntimeDiagnostics";
 import { terminalSuggestionProbeScheduler } from "../../../../src/features/terminal/terminalSuggestionProbeScheduler";
 import {
-  resetSftpRuntimeDiagnosticsForTests,
-  updateSftpRuntimeDiagnosticsPreflight,
-  updateSftpRuntimeDiagnosticsTransfers,
+  createSftpRuntimeDiagnostics,
 } from "../../../../src/features/sftp/sftpRuntimeDiagnostics";
 import type { SftpTransferSummary } from "../../../../src/lib/sftpApi";
 import type { TerminalPtyOutputPumpStats } from "../../../../src/lib/terminalApi";
 
 describe("terminalRuntimeDiagnosticsStore", () => {
+  let sftpDiagnostics: ReturnType<typeof createSftpRuntimeDiagnostics>;
+  let diagnosticsStore: ReturnType<typeof createTerminalRuntimeDiagnosticsStore>;
+
   beforeEach(() => {
-    resetTerminalRuntimeDiagnosticsForTests();
-    resetSftpRuntimeDiagnosticsForTests();
+    diagnosticsStore = createTerminalRuntimeDiagnosticsStore();
+    sftpDiagnostics = createSftpRuntimeDiagnostics();
     terminalSuggestionProbeScheduler.reset();
   });
 
   it("collects non-sensitive runtime diagnostics from registered providers", async () => {
-    updateSftpRuntimeDiagnosticsTransfers([
+    sftpDiagnostics.updateTransfers([
       transfer({ id: "running", status: "running" }),
       transfer({ id: "failed", status: "failed" }),
     ]);
-    updateSftpRuntimeDiagnosticsPreflight({
+    sftpDiagnostics.updatePreflight({
       checked: 4,
       conflicts: 1,
       inFlight: 1,
       queued: 3,
       total: 8,
     });
-    const unregister = registerTerminalRuntimeDiagnosticsPane({
+    const unregister = diagnosticsStore.register({
       getSnapshot: () => ({
         focused: false,
         historyStats: {
@@ -87,12 +84,13 @@ describe("terminalRuntimeDiagnosticsStore", () => {
           slowFlushCount: 0,
           splitFrameCount: 0,
           totalFlushChars: 80,
+          writeErrorCount: 1,
           writeNowCount: 1,
         },
       }),
     });
 
-    const snapshot = await collectTerminalRuntimePerformanceSnapshot({
+    const snapshot = await diagnosticsStore.collect({
       generatedAt: "2026-07-02T03:40:00.000Z",
       readManagedSshSnapshot: async () => ({
         activeChannels: 2,
@@ -126,6 +124,7 @@ describe("terminalRuntimeDiagnosticsStore", () => {
         ],
       }),
       readPtyPumpStats: async (sessionId) => ptyStats(sessionId),
+      readSftpSnapshot: sftpDiagnostics.getSnapshot,
     });
 
     expect(snapshot).toMatchObject({
@@ -210,6 +209,7 @@ describe("terminalRuntimeDiagnosticsStore", () => {
             visible: false,
             writerFlushCount: 3,
             writerSlowFlushCount: 0,
+            writerWriteErrorCount: 1,
           },
         ],
         storeUpdateCount: 1,

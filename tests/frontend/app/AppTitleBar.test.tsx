@@ -1,43 +1,24 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppTitleBar } from "../../../src/app/AppTitleBar";
 
-const tauriMocks = vi.hoisted(() => ({
-  close: vi.fn(),
-  isTauri: vi.fn(),
-  minimize: vi.fn(),
-  shortcutPlatform: vi.fn(),
-  startDragging: vi.fn(),
-  toggleMaximize: vi.fn(),
+const windowActionMocks = vi.hoisted(() => ({
+  runWindowAction: vi.fn(),
+  startWindowDragging: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/api/core", () => ({
-  isTauri: () => tauriMocks.isTauri(),
-}));
-
-vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({
-    close: tauriMocks.close,
-    minimize: tauriMocks.minimize,
-    startDragging: tauriMocks.startDragging,
-    toggleMaximize: tauriMocks.toggleMaximize,
-  }),
-}));
-
-vi.mock("../../../src/features/settings/keybindingUtils", () => ({
-  shortcutPlatform: () => tauriMocks.shortcutPlatform(),
+vi.mock("../../../src/lib/windowActions", () => ({
+  runWindowAction: (...args: unknown[]) =>
+    windowActionMocks.runWindowAction(...args),
+  startWindowDragging: (...args: unknown[]) =>
+    windowActionMocks.startWindowDragging(...args),
 }));
 
 describe("AppTitleBar", () => {
   beforeEach(() => {
-    tauriMocks.close.mockReset();
-    tauriMocks.isTauri.mockReset();
-    tauriMocks.minimize.mockReset();
-    tauriMocks.shortcutPlatform.mockReset();
-    tauriMocks.shortcutPlatform.mockReturnValue("windows");
-    tauriMocks.startDragging.mockReset();
-    tauriMocks.toggleMaximize.mockReset();
+    windowActionMocks.runWindowAction.mockReset();
+    windowActionMocks.startWindowDragging.mockReset();
   });
 
   it("does not render a settings shortcut in the custom title bar", () => {
@@ -63,7 +44,8 @@ describe("AppTitleBar", () => {
 
     expect(titleBar).not.toHaveClass("kerminal-material-nav");
     expect(titleBar).not.toHaveClass("border-b");
-    expect(titleBar).toHaveClass("text-zinc-100");
+    expect(titleBar).toHaveClass("text-[var(--text-primary)]");
+    expect(titleBar).toHaveAttribute("data-resolved-theme", "dark");
   });
 
   it("renders without descriptive Chinese title bar copy", () => {
@@ -82,8 +64,10 @@ describe("AppTitleBar", () => {
     expect(screen.queryByText("Kerminal")).not.toBeInTheDocument();
   });
 
-  it("keeps Windows-style window controls on the right by default", () => {
-    render(<AppTitleBar resolvedTheme="light" />);
+  it("keeps custom desktop window controls on the right", () => {
+    render(
+      <AppTitleBar desktopPlatform="windows" resolvedTheme="light" />,
+    );
 
     const titleBar = screen.getByRole("banner");
     const controls = screen.getByLabelText("窗口控制");
@@ -93,38 +77,69 @@ describe("AppTitleBar", () => {
       "h-7",
     );
     expect(screen.getByRole("button", { name: "关闭窗口" })).toHaveClass(
-      "rounded-lg",
+      "rounded-[var(--radius-control)]",
+    );
+    expect(screen.getByRole("button", { name: "最大化窗口" })).toHaveAttribute(
+      "title",
+      "最大化窗口",
     );
   });
 
-  it("moves macOS window controls to the left in traffic-light order", () => {
-    tauriMocks.shortcutPlatform.mockReturnValue("mac");
-
+  it("reserves the macOS traffic-light inset without rendering fake controls", () => {
     render(
       <AppTitleBar
+        desktopPlatform="macos"
         onLeftPanelCollapsedChange={vi.fn()}
         resolvedTheme="light"
       />,
     );
 
     const titleBar = screen.getByRole("banner");
-    const leftCluster = titleBar.firstElementChild;
-    const controls = screen.getByLabelText("窗口控制");
-    const buttons = within(controls).getAllByRole("button");
-
-    expect(leftCluster?.firstElementChild).toBe(controls);
-    expect(titleBar.lastElementChild).not.toBe(controls);
-    expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual([
-      "关闭窗口",
-      "最小化窗口",
-      "最大化或还原窗口",
-    ]);
-    expect(screen.getByRole("button", { name: "关闭窗口" })).toHaveClass(
-      "rounded-full",
-    );
+    expect(titleBar).toHaveAttribute("data-traffic-light-inset", "true");
+    expect(titleBar).toHaveStyle({ paddingLeft: "72px" });
+    expect(screen.queryByLabelText("窗口控制")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "折叠主机侧边栏" }),
     ).toBeInTheDocument();
+  });
+
+  it("renders the restore icon and matching accessible copy when maximized", () => {
+    render(
+      <AppTitleBar
+        desktopPlatform="linux"
+        resolvedTheme="dark"
+        windowFrameState="maximized"
+      />,
+    );
+
+    const restoreButton = screen.getByRole("button", { name: "还原窗口" });
+    expect(restoreButton).toHaveAttribute("title", "还原窗口");
+    expect(
+      restoreButton.querySelector('[data-window-control-icon="restore"]'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "最大化窗口" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("removes the ineffective maximize action in fullscreen without shifting controls", () => {
+    render(
+      <AppTitleBar
+        desktopPlatform="windows"
+        resolvedTheme="dark"
+        windowFrameState="fullscreen"
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "最大化窗口" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "还原窗口" }),
+    ).not.toBeInTheDocument();
+    expect(
+      document.querySelector('[data-window-control-placeholder="maximize"]'),
+    ).toHaveClass("h-7", "w-7");
   });
 
   it("toggles the left machine sidebar from the top-left control", async () => {
@@ -146,11 +161,11 @@ describe("AppTitleBar", () => {
   });
 
   it("starts native window dragging from the top-left control without toggling", () => {
-    tauriMocks.isTauri.mockReturnValue(true);
     const onLeftPanelCollapsedChange = vi.fn();
 
     render(
       <AppTitleBar
+        desktopPlatform="windows"
         onLeftPanelCollapsedChange={onLeftPanelCollapsedChange}
         resolvedTheme="light"
       />,
@@ -173,35 +188,47 @@ describe("AppTitleBar", () => {
     });
     fireEvent.click(collapseButton);
 
-    expect(tauriMocks.startDragging).toHaveBeenCalledTimes(1);
+    expect(windowActionMocks.startWindowDragging).toHaveBeenCalledTimes(1);
     expect(onLeftPanelCollapsedChange).not.toHaveBeenCalled();
   });
 
-  it("routes window controls through Tauri when running in desktop", async () => {
+  it("routes custom window controls through the shared window action facade", async () => {
     const user = userEvent.setup();
-    tauriMocks.isTauri.mockReturnValue(true);
 
-    render(<AppTitleBar resolvedTheme="light" />);
+    render(
+      <AppTitleBar desktopPlatform="windows" resolvedTheme="light" />,
+    );
 
     await user.click(screen.getByRole("button", { name: "最小化窗口" }));
-    await user.click(
-      screen.getByRole("button", { name: "最大化或还原窗口" }),
-    );
+    await user.click(screen.getByRole("button", { name: "最大化窗口" }));
     await user.click(screen.getByRole("button", { name: "关闭窗口" }));
 
-    expect(tauriMocks.minimize).toHaveBeenCalledTimes(1);
-    expect(tauriMocks.toggleMaximize).toHaveBeenCalledTimes(1);
-    expect(tauriMocks.close).toHaveBeenCalledTimes(1);
+    expect(windowActionMocks.runWindowAction.mock.calls).toEqual([
+      ["minimize"],
+      ["toggleMaximize"],
+      ["close"],
+    ]);
   });
 
-  it("keeps window controls harmless in browser preview", async () => {
-    const user = userEvent.setup();
-    tauriMocks.isTauri.mockReturnValue(false);
+  it("delegates blank-region double-click handling to Tauri without a duplicate action", () => {
+    render(
+      <AppTitleBar desktopPlatform="windows" resolvedTheme="light" />,
+    );
 
-    render(<AppTitleBar resolvedTheme="light" />);
+    const titleBar = screen.getByRole("banner");
+    expect(titleBar).toHaveAttribute("data-tauri-drag-region");
+    fireEvent.doubleClick(titleBar, { button: 0 });
 
-    await user.click(screen.getByRole("button", { name: "最小化窗口" }));
+    expect(windowActionMocks.runWindowAction).not.toHaveBeenCalled();
+  });
 
-    expect(tauriMocks.minimize).not.toHaveBeenCalled();
+  it("does not render desktop controls or customize double-click in browser", () => {
+    render(<AppTitleBar desktopPlatform="browser" resolvedTheme="light" />);
+
+    const titleBar = screen.getByRole("banner");
+    fireEvent.doubleClick(titleBar, { button: 0 });
+
+    expect(screen.queryByLabelText("窗口控制")).not.toBeInTheDocument();
+    expect(windowActionMocks.runWindowAction).not.toHaveBeenCalled();
   });
 });

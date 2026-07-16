@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  resetWorkspaceStore,
   useWorkspaceStore,
 } from "../../../../src/features/workspace/workspaceStore";
+import { resetWorkspaceStore } from "../../support/workspace/workspaceStore.testSupport";
 
 describe("workspaceStore workspace file tabs", () => {
   beforeEach(() => {

@@ -4,7 +4,7 @@
  * @author kongweiguang
  */
 
-import type { Machine, MachineGroup } from "../workspace/types";
+import type { Machine, MachineGroup } from "../workspace/contracts/index";
 
 export function buildVisibleMachineGroups(
   groups: MachineGroup[],

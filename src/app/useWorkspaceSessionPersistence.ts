@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
 import {
-  sidebarMachinesForWorkspaceSession,
   useWorkspaceStore,
   type WorkspaceState,
 } from "../features/workspace/workspaceStore";
@@ -19,6 +18,10 @@ import type {
   TerminalTab,
   TerminalTabGroupPreferences,
 } from "../features/workspace/types";
+import {
+  captureWorkspaceSession,
+  workspaceSessionStableKey,
+} from "../features/workspace/workspaceSessionCapture";
 import { WORKSPACE_SESSION_SAVE_DELAY_MS } from "./KerminalShell.static";
 
 interface WorkspaceSessionSnapshotInput {
@@ -50,17 +53,17 @@ export function buildWorkspaceSessionSnapshot({
   terminalTabGroupPreferences,
   terminalTabs,
 }: WorkspaceSessionSnapshotInput): WorkspaceSessionSnapshot {
-  return {
+  return captureWorkspaceSession({
     activeTabId,
     focusedPaneId,
-    selectedMachineId,
+    machineGroups,
     removedSidebarMachineIds,
+    selectedMachineId,
     shellLayout,
-    sidebarMachines: sidebarMachinesForWorkspaceSession(machineGroups),
-    terminalTabGroupPreferences,
     terminalPanes,
+    terminalTabGroupPreferences,
     terminalTabs,
-  };
+  });
 }
 
 export function buildWorkspaceSessionStableKey({
@@ -74,14 +77,14 @@ export function buildWorkspaceSessionStableKey({
   terminalTabGroupPreferences,
   terminalTabs,
 }: WorkspaceSessionSnapshotInput): string {
-  return JSON.stringify({
+  return workspaceSessionStableKey({
     activeTabId,
     focusedPaneId,
+    machineGroups,
     removedSidebarMachineIds,
     selectedMachineId,
     shellLayout,
-    sidebarMachines: sidebarMachinesForWorkspaceSession(machineGroups),
-    terminalPanes: terminalPanes.map(terminalPaneWithoutVolatileSessionFields),
+    terminalPanes,
     terminalTabGroupPreferences,
     terminalTabs,
   });
@@ -247,13 +250,27 @@ export function useWorkspaceSessionPersistence({
     void Promise.resolve()
       .then(() => beforeRestoreRef.current?.())
       .catch(() => undefined)
-      .then(() => loadWorkspaceSession().catch(() => null))
-      .then((session) => {
+      .then(() => ({
+        requestedFromStableKey: buildWorkspaceSessionStableKeyFromState(
+          useWorkspaceStore.getState(),
+          latestShellLayoutRef.current,
+        ),
+      }))
+      .then(async ({ requestedFromStableKey }) => ({
+        requestedFromStableKey,
+        session: await loadWorkspaceSession().catch(() => null),
+      }))
+      .then(({ requestedFromStableKey, session }) => {
         if (disposed) {
           return;
         }
 
-        if (session) {
+        const currentStableKey = buildWorkspaceSessionStableKeyFromState(
+          useWorkspaceStore.getState(),
+          latestShellLayoutRef.current,
+        );
+        const responseIsCurrent = requestedFromStableKey === currentStableKey;
+        if (session && responseIsCurrent) {
           if (!hasWorkspaceSessionTerminalSurface(session)) {
             canSaveEmptyWorkspaceSessionRef.current = true;
           }
@@ -318,18 +335,6 @@ function buildWorkspaceSessionStableKeyFromState(
     terminalTabGroupPreferences: state.terminalTabGroupPreferences,
     terminalTabs: state.terminalTabs,
   });
-}
-
-function terminalPaneWithoutVolatileSessionFields(pane: TerminalPane) {
-  const {
-    currentCwd: _currentCwd,
-    latencyMs: _latencyMs,
-    lines: _lines,
-    outputHistory: _outputHistory,
-    status: _status,
-    ...stablePane
-  } = pane;
-  return stablePane;
 }
 
 function hasWorkspaceSessionTerminalSurface(session: WorkspaceSessionSnapshot) {

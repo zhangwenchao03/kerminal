@@ -1,0 +1,183 @@
+import { Suspense, type ComponentProps, type CSSProperties, type RefObject } from "react";
+import {
+  CloseTabsConfirmationDialog,
+  CloseWorkspaceFileTabsConfirmationDialog,
+} from "../features/terminal/terminalTabChrome";
+import type { ResolvedTheme } from "../features/settings/settingsModel";
+import type { DesktopPlatform } from "../lib/desktopPlatform";
+import type { WindowFrameState } from "../lib/useTauriWindowFrameState";
+import type { ToolId } from "../features/workspace/types";
+import { cn } from "../lib/cn";
+import {
+  DeleteConfirmationDialog,
+  DialogLazyFallback,
+  ShellResizeSeparator,
+} from "./KerminalShell.helpers";
+import {
+  KerminalShellNotices,
+  ShellResponsiveToolPanel,
+  ShellToolRail,
+  ShellWindowChrome,
+} from "./KerminalShell.view";
+import {
+  LazyExternalLaunchHost,
+  LazyRemoteHostCreateDialog,
+  LazyRemoteHostGroupCreateDialog,
+  LazySettingsDialog,
+  LazySshAuthPromptHost,
+} from "./KerminalShell.static";
+import {
+  MachineSidebarStoreBridge,
+  SidebarFilePanelStoreBridge,
+  ToolPanelStoreBridge,
+  WorkspaceTerminalSurface,
+} from "./KerminalShell.workspaceBridge";
+import { KerminalShellContextWorkspaceStoreBridge } from "./KerminalShell.contextWorkspace";
+
+interface ShellFrameProps {
+  backgroundStyle: CSSProperties;
+  density: string;
+  desktopPlatform: DesktopPlatform;
+  gridTemplateColumns: string;
+  language: string;
+  lang: string;
+  resolvedTheme: ResolvedTheme;
+  windowFrameState: WindowFrameState;
+  workspaceFrameRef: RefObject<HTMLDivElement | null>;
+}
+
+export interface KerminalShellLayoutProps {
+  activeTool: ToolId | null;
+  compactShell: boolean;
+  contextWorkspaceProps: ComponentProps<
+    typeof KerminalShellContextWorkspaceStoreBridge
+  >;
+  deleteDialogProps: ComponentProps<typeof DeleteConfirmationDialog>;
+  frame: ShellFrameProps;
+  fileSeparatorProps: ComponentProps<typeof ShellResizeSeparator>;
+  leftSeparatorProps: ComponentProps<typeof ShellResizeSeparator>;
+  machineSidebarProps: ComponentProps<typeof MachineSidebarStoreBridge> | null;
+  noticesProps: ComponentProps<typeof KerminalShellNotices>;
+  remoteGroupDialogProps:
+    | ComponentProps<typeof LazyRemoteHostGroupCreateDialog>
+    | null;
+  remoteHostDialogProps:
+    | ComponentProps<typeof LazyRemoteHostCreateDialog>
+    | null;
+  rightSeparatorProps: ComponentProps<typeof ShellResizeSeparator>;
+  settingsDialogProps: ComponentProps<typeof LazySettingsDialog> | null;
+  shellWindowChromeProps: ComponentProps<typeof ShellWindowChrome>;
+  sidebarFilePanelProps:
+    | ComponentProps<typeof SidebarFilePanelStoreBridge>
+    | null;
+  tabsConfirmationProps: ComponentProps<typeof CloseTabsConfirmationDialog>;
+  toolPanelProps: ComponentProps<typeof ToolPanelStoreBridge>;
+  workspaceFileConfirmationProps: ComponentProps<
+    typeof CloseWorkspaceFileTabsConfirmationDialog
+  >;
+  workspaceTerminalProps: ComponentProps<typeof WorkspaceTerminalSurface>;
+  onActiveToolChange: ComponentProps<
+    typeof ShellToolRail
+  >["onActiveToolChange"];
+  onCloseToolPanel: () => void;
+}
+
+/** 主 Shell 的纯布局层；状态、副作用和业务编排仍由 KerminalShell 持有。 */
+export function KerminalShellLayout({
+  activeTool,
+  compactShell,
+  contextWorkspaceProps,
+  deleteDialogProps,
+  frame,
+  fileSeparatorProps,
+  leftSeparatorProps,
+  machineSidebarProps,
+  noticesProps,
+  onActiveToolChange,
+  onCloseToolPanel,
+  remoteGroupDialogProps,
+  remoteHostDialogProps,
+  rightSeparatorProps,
+  settingsDialogProps,
+  shellWindowChromeProps,
+  sidebarFilePanelProps,
+  tabsConfirmationProps,
+  toolPanelProps,
+  workspaceFileConfirmationProps,
+  workspaceTerminalProps,
+}: KerminalShellLayoutProps) {
+  return (
+    <div
+      ref={frame.workspaceFrameRef}
+      className={cn(
+        "relative grid h-screen overflow-hidden text-[var(--text-primary)]",
+        frame.resolvedTheme === "dark" && "dark",
+      )}
+      data-desktop-platform={frame.desktopPlatform}
+      data-density={frame.density}
+      data-language={frame.language}
+      data-theme={frame.resolvedTheme}
+      data-window-frame={frame.windowFrameState}
+      lang={frame.lang}
+      style={{
+        ...frame.backgroundStyle,
+        gridTemplateColumns: frame.gridTemplateColumns,
+        gridTemplateRows: "36px minmax(0, 1fr)",
+      }}
+    >
+      <ShellWindowChrome {...shellWindowChromeProps} />
+      {machineSidebarProps ? (
+        <div className="col-[1/2] row-[2/3] h-full overflow-hidden">
+          <MachineSidebarStoreBridge {...machineSidebarProps} />
+        </div>
+      ) : null}
+      <ShellResizeSeparator {...leftSeparatorProps} />
+      {sidebarFilePanelProps ? (
+        <div className="col-[3/4] row-[2/3] h-full min-w-0 overflow-hidden">
+          <SidebarFilePanelStoreBridge {...sidebarFilePanelProps} />
+        </div>
+      ) : null}
+      <ShellResizeSeparator {...fileSeparatorProps} />
+      <div
+        className="relative z-0 h-full min-w-0 flex-1 overflow-hidden"
+        style={{ gridColumn: "5 / 8", gridRow: "1 / 3" }}
+      >
+        <WorkspaceTerminalSurface {...workspaceTerminalProps} />
+      </div>
+      <ShellResizeSeparator {...rightSeparatorProps} />
+      <ShellResponsiveToolPanel
+        activeTool={activeTool}
+        compact={compactShell}
+        onClose={onCloseToolPanel}
+        panel={<ToolPanelStoreBridge {...toolPanelProps} />}
+        rail={<ShellToolRail onActiveToolChange={onActiveToolChange} />}
+      />
+      {settingsDialogProps ? (
+        <Suspense fallback={<DialogLazyFallback />}>
+          <LazySettingsDialog {...settingsDialogProps} />
+        </Suspense>
+      ) : null}
+      {remoteHostDialogProps ? (
+        <Suspense fallback={<DialogLazyFallback />}>
+          <LazyRemoteHostCreateDialog {...remoteHostDialogProps} />
+        </Suspense>
+      ) : null}
+      {remoteGroupDialogProps ? (
+        <Suspense fallback={<DialogLazyFallback />}>
+          <LazyRemoteHostGroupCreateDialog {...remoteGroupDialogProps} />
+        </Suspense>
+      ) : null}
+      <DeleteConfirmationDialog {...deleteDialogProps} />
+      <CloseTabsConfirmationDialog {...tabsConfirmationProps} />
+      <CloseWorkspaceFileTabsConfirmationDialog
+        {...workspaceFileConfirmationProps}
+      />
+      <KerminalShellNotices {...noticesProps} />
+      <KerminalShellContextWorkspaceStoreBridge {...contextWorkspaceProps} />
+      <Suspense fallback={null}>
+        <LazySshAuthPromptHost />
+        <LazyExternalLaunchHost />
+      </Suspense>
+    </div>
+  );
+}

@@ -16,10 +16,6 @@ type PendingTransferConflict = {
   run: (policy?: SftpTransferConflictPolicy) => Promise<void>;
 };
 
-export type SftpTransferConflictPromptState = {
-  conflictCount: number;
-};
-
 export function useSftpTransferConflictPrompt({
   onError,
   onProgress,

@@ -5,7 +5,7 @@ export type ConfigChangeDomain =
   | "snippets"
   | "workflows";
 
-export type ConfigChangeNoticeLevel = "info" | "warning" | "error";
+type ConfigChangeNoticeLevel = "info" | "warning" | "error";
 
 export type ConfigChangeStatus =
   | "ready"
@@ -50,8 +50,8 @@ export interface ConfigChangeNotice {
 }
 
 interface DomainLabel {
-  singular: string;
-  plural: string;
+  item: string;
+  reload: string;
 }
 
 interface DomainDiff {
@@ -65,20 +65,28 @@ const MAX_LABEL_LENGTH = 48;
 
 const domainLabels: Record<Exclude<ConfigChangeDomain, "settings">, DomainLabel> =
   {
-    hosts: { plural: "hosts", singular: "host" },
-    profiles: { plural: "profiles", singular: "profile" },
-    snippets: { plural: "snippets", singular: "snippet" },
-    workflows: { plural: "workflows", singular: "workflow" },
+    hosts: { item: "主机", reload: "主机配置" },
+    profiles: { item: "配置方案", reload: "配置方案" },
+    snippets: { item: "命令片段", reload: "命令片段" },
+    workflows: { item: "工作流", reload: "工作流" },
   };
 
 export function buildConfigChangeNotice(
   input: BuildConfigChangeNoticeInput,
 ): ConfigChangeNotice | null {
   if (input.status === "invalid") {
-    return notice(input, "error", "cfg: invalid TOML, kept last-known-good");
+    return notice(
+      input,
+      "error",
+      "配置文件有误，Kerminal 已继续使用上次有效设置。",
+    );
   }
   if (input.status === "watcher-unavailable") {
-    return notice(input, "warning", "cfg: watcher offline, auto-refresh paused");
+    return notice(
+      input,
+      "warning",
+      "暂时无法自动检查配置变化，请稍后重试。",
+    );
   }
   if (input.sourceHint === "kerminal") {
     return null;
@@ -91,7 +99,7 @@ export function buildConfigChangeNotice(
     return null;
   }
 
-  return notice(input, "info", `cfg: ${summaries.join(", ")}`);
+  return notice(input, "info", `${summaries.join("，")}。`);
 }
 
 export function configChangeNoticeSnapshot(input: {
@@ -131,13 +139,13 @@ function domainSummary(
 ) {
   if (domain === "settings") {
     return input.before?.settingsRevision !== input.after?.settingsRevision
-      ? "settings reloaded"
+      ? "设置已在外部更新"
       : null;
   }
   if (input.redactedSecretDomains?.includes(domain)) {
     return domain === "hosts"
-      ? "host credentials updated"
-      : `${domainLabels[domain].plural} reloaded`;
+      ? "主机凭据已更新"
+      : `${domainLabels[domain].reload}已重新加载`;
   }
 
   const before = input.before?.[domain] ?? [];
@@ -145,12 +153,12 @@ function domainSummary(
   const diff = diffItems(before, after);
   const label = domainLabels[domain];
   const parts = [
-    countSummary("+", diff.added, label),
-    countSummary("-", diff.removed, label),
-    countSummary("~", diff.updated, label),
+    countSummary("added", diff.added, label),
+    countSummary("removed", diff.removed, label),
+    countSummary("updated", diff.updated, label),
   ].filter((part): part is string => Boolean(part));
 
-  return parts.length > 0 ? parts.join(" ") : `${label.plural} reloaded`;
+  return parts.length > 0 ? parts.join("，") : `${label.reload}已重新加载`;
 }
 
 function diffItems(
@@ -170,7 +178,7 @@ function diffItems(
 }
 
 function countSummary(
-  prefix: "+" | "-" | "~",
+  change: keyof typeof changeVerbs,
   items: ConfigChangePublicItem[],
   label: DomainLabel,
 ) {
@@ -178,10 +186,16 @@ function countSummary(
     return null;
   }
   if (items.length === 1) {
-    return `${prefix}1 ${label.singular} ${quoteLabel(items[0].label)}`;
+    return `${changeVerbs[change]}${label.item}${quoteLabel(items[0].label)}`;
   }
-  return `${label.plural} ${prefix}${items.length}`;
+  return `${changeVerbs[change]}${items.length}个${label.item}`;
 }
+
+const changeVerbs = {
+  added: "已添加",
+  removed: "已移除",
+  updated: "已更新",
+} as const;
 
 function itemFingerprint(item: ConfigChangePublicItem) {
   return `${item.label}\n${item.revision ?? ""}`;
@@ -201,7 +215,7 @@ function normalizeItems(items: ConfigChangePublicItem[] | undefined) {
 }
 
 function quoteLabel(label: string) {
-  return `"${truncateMiddle(label.replace(/["\\\r\n\t]/g, " ").replace(/\s+/g, " ").trim(), MAX_LABEL_LENGTH)}"`;
+  return `“${truncateMiddle(label.replace(/["\\\r\n\t]/g, " ").replace(/\s+/g, " ").trim(), MAX_LABEL_LENGTH)}”`;
 }
 
 function truncateMiddle(value: string, maxLength: number) {

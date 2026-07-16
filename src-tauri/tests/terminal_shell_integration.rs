@@ -422,7 +422,7 @@ fn catalog(
     platform: ShellIntegrationPlatform,
     entries: Vec<AllowedShell>,
 ) -> ShellIntegrationCatalog {
-    ShellIntegrationCatalog::for_test(platform, entries)
+    ShellIntegrationCatalog::new(platform, entries)
 }
 
 fn fake_executable(path: PathBuf) -> PathBuf {

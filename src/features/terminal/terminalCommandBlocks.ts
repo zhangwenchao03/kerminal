@@ -4,12 +4,24 @@ import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 const GOLDEN_ANGLE_DEGREES = 137.508;
 const MAX_IMAGE_TEXT_LINES = 160;
 const MAX_IMAGE_LINE_LENGTH = 120;
+const OSC_SEQUENCE_RE = new RegExp(
+  String.raw`\x1B\][^\x07]*(?:\x07|\x1B\\)`,
+  "g",
+);
+const ANSI_ESCAPE_RE = new RegExp(
+  String.raw`\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])`,
+  "g",
+);
+const C0_CONTROL_RE = new RegExp(
+  String.raw`[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]`,
+  "g",
+);
 export const COMMAND_BLOCK_OUTPUT_MAX_CHARS = 128_000;
 export const COMMAND_BLOCKS_MAX_COUNT = 240;
 const INTERACTIVE_TUI_COMMAND_RE =
   /(?:^|[/\\\s])(codex|claude|vim|nvim|vi|nano|less|more|man|top|htop|btop|tmux)(?:\.(?:cmd|exe|ps1))?(?:\s|$)/i;
 
-export type TerminalBufferKind = "normal" | "alternate";
+type TerminalBufferKind = "normal" | "alternate";
 
 export interface TerminalCommandBlock {
   collapsed: boolean;
@@ -235,7 +247,7 @@ export function buildTerminalCommandBlockViews(
   return views.filter((view) => view.top + view.height > 0);
 }
 
-export function hasRunningInteractiveTuiCommand(
+function hasRunningInteractiveTuiCommand(
   blocks: TerminalCommandBlock[],
 ): boolean {
   let hasSeenInteractiveTuiCommand = false;
@@ -411,12 +423,12 @@ function estimateTerminalTextRows(text: string, cols: number) {
 
 function cleanTerminalText(text: string) {
   return text
-    .replace(/\x1B\][^\x07]*(?:\x07|\x1B\\)/g, "")
-    .replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "")
+    .replace(OSC_SEQUENCE_RE, "")
+    .replace(ANSI_ESCAPE_RE, "")
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
     .replace(/[^\S\n\t]+$/gm, "")
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+    .replace(C0_CONTROL_RE, "");
 }
 
 async function renderCommandBlockImageBlob(

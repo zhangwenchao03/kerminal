@@ -19,7 +19,7 @@ export interface SshSessionSecretReceipt {
   secretKind: SshAuthSecretKind;
 }
 
-export interface SshSessionSecretSnapshot {
+interface SshSessionSecretSnapshot {
   createdAt: string;
   lastUsedAt: string;
   promptId: string;
@@ -32,7 +32,7 @@ export interface SshAuthBrokerSnapshot {
   sessionOnlySecrets: SshSessionSecretSnapshot[];
 }
 
-export type SshAuthPromptRole = "target" | { jump: { index: number } };
+type SshAuthPromptRole = "target" | { jump: { index: number } };
 
 export interface SshAuthPromptRequest {
   host: string;

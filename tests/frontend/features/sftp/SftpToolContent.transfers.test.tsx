@@ -9,12 +9,12 @@ import { describe,
   it,
   vi } from "vitest";
 import {  containerFilesApiMocks,
+  desktopRuntimeMocks,
   fileDialogMocks,
   openCurrentDirectoryContextMenu,
   sftpApiMocks,
   sshMachine,
   containerMachine,
-  webviewMocks,
 } from "../../support/sftp/SftpToolContent.testSupport.tsx";
 import { SftpToolContent } from "../../../../src/features/sftp/SftpToolContent";
 
@@ -246,7 +246,7 @@ describe("SftpToolContent transfers and containers", () => {
     const uploadMenu = screen.getByRole("menu", { name: "上传菜单" });
     expect(uploadMenu).toHaveAttribute("data-sftp-upload-menu", "true");
     expect(uploadMenu).toHaveClass("fixed");
-    expect(uploadMenu).toHaveClass("z-[1000]");
+    expect(uploadMenu).toHaveClass("kerminal-layer-popover");
     expect(uploadMenu).toHaveClass("bg-[var(--surface-overlay)]");
     expect(document.body).toContainElement(uploadMenu);
   });
@@ -354,7 +354,7 @@ describe("SftpToolContent transfers and containers", () => {
     expect(sftpApiMocks.enqueueSftpTransfer).not.toHaveBeenCalled();
     expect(await screen.findByText("SFTP 传输队列")).toBeInTheDocument();
     expect(
-      screen.getByRole("group", { name: "SFTP 传输 release.tgz" }),
+      screen.getByRole("group", { name: "SFTP 上传 release.tgz" }),
     ).toBeInTheDocument();
     expect(screen.getByText("完成")).toBeInTheDocument();
   });
@@ -393,7 +393,7 @@ describe("SftpToolContent transfers and containers", () => {
     expect(sftpApiMocks.enqueueSftpTransfer).not.toHaveBeenCalled();
     expect(await screen.findByText("SFTP 传输队列")).toBeInTheDocument();
     expect(
-      screen.getByRole("group", { name: "SFTP 传输 package.json" }),
+      screen.getByRole("group", { name: "SFTP 下载 package.json" }),
     ).toBeInTheDocument();
     expect(screen.getByText("完成")).toBeInTheDocument();
   });
@@ -450,11 +450,11 @@ describe("SftpToolContent transfers and containers", () => {
   });
 
   it("uploads dropped local paths into the current SFTP directory", async () => {
-    const dragDropHandlers: Array<(event: { payload: unknown }) => void> = [];
+    const dragDropHandlers: Array<(payload: unknown) => void> = [];
     (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ =
       {};
-    webviewMocks.onDragDropEvent.mockImplementation(
-      async (handler: (event: { payload: unknown }) => void) => {
+    desktopRuntimeMocks.listenToDragDrop.mockImplementation(
+      async (handler: (payload: unknown) => void) => {
         dragDropHandlers.push(handler);
         return () => undefined;
       },
@@ -464,7 +464,7 @@ describe("SftpToolContent transfers and containers", () => {
 
     await screen.findByText("var");
     await waitFor(() =>
-      expect(webviewMocks.onDragDropEvent).toHaveBeenCalled(),
+      expect(desktopRuntimeMocks.listenToDragDrop).toHaveBeenCalled(),
     );
     const dropZone = screen.getByTestId("sftp-drop-zone");
     dropZone.getBoundingClientRect = () =>
@@ -481,11 +481,9 @@ describe("SftpToolContent transfers and containers", () => {
       }) as DOMRect;
 
     dragDropHandlers[0]({
-      payload: {
-        paths: ["/Users/me/release.tgz", "/Users/me/dist"],
-        position: { x: 24, y: 48 },
-        type: "drop",
-      },
+      paths: ["/Users/me/release.tgz", "/Users/me/dist"],
+      position: { x: 24, y: 48 },
+      type: "drop",
     });
 
     await waitFor(() =>

@@ -1,4 +1,4 @@
-import { Check, Image, Languages, MonitorCog } from "lucide-react";
+import { Check, Image, Languages } from "lucide-react";
 import { Select } from "../../../components/ui/select";
 import { Switch } from "../../../components/ui/switch";
 import { cn } from "../../../lib/cn";
@@ -18,24 +18,21 @@ interface AppearanceSettingsSectionProps {
   updateSettings: (settings: AppSettings) => void;
 }
 
-const appearancePanelClassName = "kerminal-solid-surface rounded-2xl border p-5";
 const appearanceCompactPanelClassName =
-  "kerminal-solid-surface rounded-2xl border p-4";
-const appearanceBadgeClassName =
-  "kerminal-muted-surface rounded-full border px-3 py-1 text-xs text-zinc-500 dark:text-zinc-400";
+  "kerminal-solid-surface rounded-[var(--radius-panel)] border p-4";
 const appearanceInlineButtonClassName =
-  "kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-200";
+  "kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex h-9 items-center justify-center gap-2 rounded-[var(--radius-control)] border px-3 text-[13px] text-[var(--text-primary)] transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60";
 const appearanceFieldClassName =
-  "kerminal-field-surface mt-1 h-10 w-full rounded-xl border px-3 text-sm text-zinc-950 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500";
+  "kerminal-field-surface mt-1 h-9 w-full rounded-[var(--radius-control)] border px-3 text-sm text-[var(--text-primary)] placeholder:text-zinc-400 dark:placeholder:text-zinc-500";
 
 function appearanceChoiceButtonClassName(
   selected: boolean,
   className?: string,
 ) {
   return cn(
-    "kerminal-focus-ring kerminal-pressable rounded-xl border text-left transition",
+    "kerminal-focus-ring kerminal-pressable rounded-[var(--radius-control)] border text-left transition",
     selected
-      ? "border-sky-500/45 bg-[var(--surface-selected)] text-sky-700 shadow-sm shadow-sky-950/5 ring-1 ring-sky-500/15 dark:border-sky-300/35 dark:text-sky-100 dark:ring-sky-300/15"
+      ? "border-sky-500/35 bg-[var(--surface-selected)] text-sky-700 ring-1 ring-sky-500/10 dark:border-sky-300/30 dark:text-sky-100 dark:ring-sky-300/10"
       : "kerminal-muted-surface text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50",
     className,
   );
@@ -49,21 +46,6 @@ export function AppearanceSettingsSection({
 }: AppearanceSettingsSectionProps) {
   return (
     <div className="space-y-4" id="settings-appearance-panel">
-      <section className={appearancePanelClassName} tabIndex={-1}>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-              <MonitorCog className="h-4 w-4 text-sky-500 dark:text-sky-300" />
-              界面外观
-            </div>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-              语言、主题、密度和工作台背景会立即保存。
-            </p>
-          </div>
-          <div className={appearanceBadgeClassName}>主题与背景</div>
-        </div>
-      </section>
-
       <div className="grid gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
         <section
           className={appearanceCompactPanelClassName}

@@ -5,7 +5,8 @@
 use kerminal_lib::{
     error::AppError,
     models::snippet::{
-        SnippetCreateRequest, SnippetListRequest, SnippetScope, SnippetUpdateRequest,
+        SnippetCatalogVariable, SnippetCreateRequest, SnippetImportCandidate, SnippetListRequest,
+        SnippetScope, SnippetUpdateRequest,
     },
     paths::KerminalPaths,
     state::AppState,
@@ -164,6 +165,71 @@ fn create_snippet_rejects_empty_or_too_long_values() {
         })
         .expect_err("reject long title");
     assert!(matches!(long_error, AppError::InvalidInput(_)));
+}
+
+#[test]
+fn import_snippets_is_atomic_and_rejects_sensitive_defaults() {
+    let (_home, state) = test_state();
+    let valid = SnippetImportCandidate {
+        title: "First".to_owned(),
+        command: "uptime".to_owned(),
+        description: None,
+        tags: Vec::new(),
+        scope: SnippetScope::Any,
+        category: Some("system".to_owned()),
+        risk: Some("inspect".to_owned()),
+        default_action: Some("insert".to_owned()),
+        variables: Vec::new(),
+        context_bindings: Vec::new(),
+        derived_from: None,
+    };
+    let invalid = SnippetImportCandidate {
+        title: "Second".to_owned(),
+        command: "echo {{ value }}".to_owned(),
+        variables: vec![SnippetCatalogVariable {
+            name: "value".to_owned(),
+            label: "Value".to_owned(),
+            description: String::new(),
+            kind: "text".to_owned(),
+            required: true,
+            default_value: Some("must-not-persist".to_owned()),
+            suggestions: Vec::new(),
+            validation: None,
+            render_strategy: "shellArg".to_owned(),
+            sensitive: true,
+        }],
+        ..valid.clone()
+    };
+
+    state
+        .snippets()
+        .import_snippets(vec![valid.clone(), invalid])
+        .expect_err("reject entire batch");
+    assert!(state
+        .snippets()
+        .list_snippets(SnippetListRequest::default())
+        .expect("list after rejected import")
+        .is_empty());
+
+    let imported = state
+        .snippets()
+        .import_snippets(vec![
+            valid.clone(),
+            SnippetImportCandidate {
+                title: "Second".to_owned(),
+                ..valid
+            },
+        ])
+        .expect("atomic import");
+    assert_eq!(imported.len(), 2);
+    assert_eq!(
+        state
+            .snippets()
+            .list_snippets(SnippetListRequest::default())
+            .expect("list imported")
+            .len(),
+        2
+    );
 }
 
 fn test_state() -> (TempDir, AppState) {

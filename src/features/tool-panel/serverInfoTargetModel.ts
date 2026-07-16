@@ -1,10 +1,13 @@
 import { targetStableId, type RemoteTargetRef } from "../../lib/targetModel";
-import type { Machine } from "../workspace/types";
+import type { Machine } from "../workspace/contracts/index";
 
-export type ServerInfoTargetRef =
+/** 系统信息面板当前支持的本机、SSH 主机和容器目标。 */
+type ServerInfoTargetRef =
+  | Extract<RemoteTargetRef, { kind: "local" }>
   | Extract<RemoteTargetRef, { kind: "ssh" }>
   | Extract<RemoteTargetRef, { kind: "dockerContainer" }>;
 
+/** 系统信息展示与采集共享的稳定目标上下文。 */
 export interface ServerInfoTargetContext {
   badgeText?: string;
   cacheKey: string;
@@ -15,11 +18,31 @@ export interface ServerInfoTargetContext {
   title: string;
 }
 
+/** 从当前工作区机器解析系统信息目标；不支持的目标返回空。 */
 export function serverInfoTargetContext(
   selectedMachine?: Machine,
 ): ServerInfoTargetContext | undefined {
   if (!selectedMachine) {
     return undefined;
+  }
+  if (selectedMachine.kind === "local") {
+    const target: ServerInfoTargetRef =
+      selectedMachine.target?.kind === "local"
+        ? selectedMachine.target
+        : {
+            kind: "local",
+            ...(selectedMachine.profileId
+              ? { profileId: selectedMachine.profileId }
+              : {}),
+          };
+    return {
+      cacheKey: targetStableId(target),
+      hostId: selectedMachine.id,
+      refreshAriaLabel: "刷新本机系统信息",
+      subtitle: localSystemSubtitle(selectedMachine),
+      target,
+      title: "本机系统",
+    };
   }
   if (selectedMachine.kind === "ssh") {
     const target: ServerInfoTargetRef =
@@ -81,4 +104,12 @@ export function serverInfoTargetContext(
     };
   }
   return undefined;
+}
+
+/** 生成本机目标的紧凑说明，避免名称、Shell 和描述重复显示。 */
+function localSystemSubtitle(machine: Machine) {
+  const detail = machine.shell ?? machine.description;
+  return detail && detail !== machine.name
+    ? `${machine.name} · ${detail}`
+    : machine.name || "本地终端";
 }

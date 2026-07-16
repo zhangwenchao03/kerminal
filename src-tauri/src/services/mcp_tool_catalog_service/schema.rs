@@ -6,6 +6,8 @@ use serde_json::{json, Value};
 
 use crate::models::mcp_server::{McpToolAnnotations, ToolCategory, ToolDefinition};
 
+use super::{ToolDescriptor, ToolId};
+
 #[derive(Debug, Clone, Copy)]
 pub(super) enum ToolEffect {
     Read,
@@ -37,13 +39,13 @@ impl ToolEffect {
 }
 
 pub(super) fn tool(
-    id: &str,
+    id: ToolId,
     title: &str,
     description: &str,
     category: ToolCategory,
     effect: ToolEffect,
     input_schema: Value,
-) -> ToolDefinition {
+) -> ToolDescriptor {
     tool_with_exposure(
         id,
         title,
@@ -58,7 +60,7 @@ pub(super) fn tool(
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn tool_with_exposure(
-    id: &str,
+    id: ToolId,
     title: &str,
     description: &str,
     category: ToolCategory,
@@ -66,9 +68,9 @@ pub(super) fn tool_with_exposure(
     enabled: bool,
     exposed_to_mcp: bool,
     input_schema: Value,
-) -> ToolDefinition {
-    ToolDefinition {
-        id: id.to_string(),
+) -> ToolDescriptor {
+    let definition = ToolDefinition {
+        id: id.as_str().to_owned(),
         title: title.to_string(),
         description: description.to_string(),
         category,
@@ -76,7 +78,8 @@ pub(super) fn tool_with_exposure(
         enabled,
         exposed_to_mcp,
         input_schema,
-    }
+    };
+    ToolDescriptor::new(id, definition)
 }
 
 pub(super) fn object_schema(fields: Vec<FieldSchema>) -> Value {

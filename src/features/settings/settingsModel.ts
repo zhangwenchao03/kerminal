@@ -23,34 +23,21 @@ import {
 } from "./settingsLimits";
 
 export {
-  defaultAppearanceSettings,
   defaultAppSettings,
-  defaultDesktopNotificationSettings,
-  defaultExternalLaunchSettings,
   defaultKeybindings,
-  defaultSftpPerformanceSettings,
   defaultTerminalAppearance,
 } from "./settingsDefaults";
 export {
-  SFTP_GLOBAL_TRANSFERS_DEFAULT,
   SFTP_GLOBAL_TRANSFERS_MAX,
   SFTP_GLOBAL_TRANSFERS_MIN,
-  SFTP_HOST_TRANSFERS_DEFAULT,
   SFTP_HOST_TRANSFERS_MAX,
   SFTP_HOST_TRANSFERS_MIN,
-  SFTP_PACKET_BYTES_DEFAULT,
   SFTP_PACKET_BYTES_MAX,
   SFTP_PACKET_BYTES_MIN,
-  SFTP_PIPELINE_DEPTH_DEFAULT,
   SFTP_PIPELINE_DEPTH_MAX,
   SFTP_PIPELINE_DEPTH_MIN,
-  SFTP_TIMEOUT_SECONDS_DEFAULT,
   SFTP_TIMEOUT_SECONDS_MAX,
   SFTP_TIMEOUT_SECONDS_MIN,
-  TERMINAL_INLINE_SUGGESTION_AUDIT_RETENTION_DAYS_DEFAULT,
-  TERMINAL_INLINE_SUGGESTION_FEEDBACK_RETENTION_DAYS_DEFAULT,
-  TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS_MAX,
-  TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS_MIN,
 } from "./settingsLimits";
 
 export {
@@ -82,6 +69,12 @@ export type TerminalFontWeight = "normal" | "medium" | "bold";
 export type TerminalRendererType = "auto" | "cpu" | "gpu";
 export type TerminalRightClickBehavior = "none" | "paste" | "menu";
 export type TerminalInlineSuggestionAcceptKey = "disabled" | "rightArrow";
+export type TerminalCommandSuggestionPresentation =
+  | "inline"
+  | "inlineAndMenu"
+  | "off";
+type TerminalCommandSuggestionMenuShortcut = "ctrlSpace";
+export type TerminalCommandSuggestionRemoteRefresh = "off" | "safe";
 export type TerminalInlineSuggestionProductionHostPolicy =
   | "normal"
   | "restricted";
@@ -115,6 +108,11 @@ export interface TerminalInlineSuggestionProviderSettings {
 export interface TerminalInlineSuggestionSettings {
   enabled: boolean;
   acceptKey: TerminalInlineSuggestionAcceptKey;
+  presentation: TerminalCommandSuggestionPresentation;
+  menuShortcut: TerminalCommandSuggestionMenuShortcut;
+  tabOpensMenu: boolean;
+  partialAccept: boolean;
+  remoteRefresh: TerminalCommandSuggestionRemoteRefresh;
   providers: TerminalInlineSuggestionProviderSettings;
   remoteProbeEnabled: boolean;
   productionHostPolicy: TerminalInlineSuggestionProductionHostPolicy;
@@ -160,14 +158,9 @@ export interface DesktopNotificationSettings {
   throttleMs: number;
 }
 
-export interface ExternalLaunchShimBridgeSettings {
-  enabled: boolean;
-}
-
 export interface ExternalLaunchSettings {
   enabled: boolean;
   acceptVendorArgs: boolean;
-  shimBridge: ExternalLaunchShimBridgeSettings;
   autoOpenSftp: boolean;
   disabledTools: ExternalLaunchSourceTool[];
 }
@@ -414,15 +407,9 @@ function normalizeKeybindings(
   ];
 }
 
-type ExternalLaunchSettingsInput = Partial<ExternalLaunchSettings> & {
-  shimBridgeEnabled?: unknown;
-};
-
 function normalizeExternalLaunch(
-  settings: ExternalLaunchSettingsInput | undefined,
+  settings: Partial<ExternalLaunchSettings> | undefined,
 ): ExternalLaunchSettings {
-  const shimBridge: Partial<ExternalLaunchShimBridgeSettings> =
-    settings?.shimBridge ?? {};
   return {
     acceptVendorArgs: readBoolean(
       settings?.acceptVendorArgs,
@@ -439,15 +426,6 @@ function normalizeExternalLaunch(
       settings?.enabled,
       defaultExternalLaunchSettings.enabled,
     ),
-    shimBridge: {
-      enabled: readBoolean(
-        shimBridge.enabled,
-        readBoolean(
-          settings?.shimBridgeEnabled,
-          defaultExternalLaunchSettings.shimBridge.enabled,
-        ),
-      ),
-    },
   };
 }
 
@@ -507,9 +485,35 @@ function normalizeTerminalInlineSuggestion(
   const defaults = defaultTerminalAppearance.inlineSuggestion;
   const providers: Partial<TerminalInlineSuggestionProviderSettings> =
     settings?.providers ?? {};
+  const enabled = readBoolean(settings?.enabled, defaults.enabled);
+  const remoteProbeEnabled = readBoolean(
+    settings?.remoteProbeEnabled,
+    defaults.remoteProbeEnabled,
+  );
+  const presentation = normalizeTerminalCommandSuggestionPresentation(
+    settings?.presentation,
+    enabled,
+  );
+  const remoteRefresh = normalizeTerminalCommandSuggestionRemoteRefresh(
+    settings?.remoteRefresh,
+    remoteProbeEnabled,
+  );
   return {
     acceptKey: normalizeTerminalInlineSuggestionAcceptKey(settings?.acceptKey),
-    enabled: readBoolean(settings?.enabled, defaults.enabled),
+    enabled: enabled && presentation !== "off",
+    presentation,
+    menuShortcut: normalizeTerminalCommandSuggestionMenuShortcut(
+      settings?.menuShortcut,
+    ),
+    tabOpensMenu: readBoolean(
+      settings?.tabOpensMenu,
+      defaults.tabOpensMenu,
+    ),
+    partialAccept: readBoolean(
+      settings?.partialAccept,
+      defaults.partialAccept,
+    ),
+    remoteRefresh,
     productionHostPolicy: normalizeTerminalInlineSuggestionProductionHostPolicy(
       settings?.productionHostPolicy,
     ),
@@ -526,10 +530,7 @@ function normalizeTerminalInlineSuggestion(
       ),
       spec: readBoolean(providers.spec, defaults.providers.spec),
     },
-    remoteProbeEnabled: readBoolean(
-      settings?.remoteProbeEnabled,
-      defaults.remoteProbeEnabled,
-    ),
+    remoteProbeEnabled: remoteProbeEnabled && remoteRefresh !== "off",
     auditRetentionDays: normalizeBoundedInteger(
       settings?.auditRetentionDays,
       defaults.auditRetentionDays,
@@ -543,6 +544,39 @@ function normalizeTerminalInlineSuggestion(
       TERMINAL_INLINE_SUGGESTION_RETENTION_DAYS_MAX,
     ),
   };
+}
+
+function normalizeTerminalCommandSuggestionPresentation(
+  value: TerminalCommandSuggestionPresentation | undefined,
+  legacyEnabled: boolean,
+): TerminalCommandSuggestionPresentation {
+  if (!legacyEnabled) {
+    return "off";
+  }
+  if (value === "inline" || value === "inlineAndMenu" || value === "off") {
+    return value;
+  }
+  return defaultTerminalAppearance.inlineSuggestion.presentation;
+}
+
+function normalizeTerminalCommandSuggestionMenuShortcut(
+  value: TerminalCommandSuggestionMenuShortcut | undefined,
+): TerminalCommandSuggestionMenuShortcut {
+  return value === "ctrlSpace"
+    ? value
+    : defaultTerminalAppearance.inlineSuggestion.menuShortcut;
+}
+
+function normalizeTerminalCommandSuggestionRemoteRefresh(
+  value: TerminalCommandSuggestionRemoteRefresh | undefined,
+  legacyEnabled: boolean,
+): TerminalCommandSuggestionRemoteRefresh {
+  if (!legacyEnabled) {
+    return "off";
+  }
+  return value === "off" || value === "safe"
+    ? value
+    : defaultTerminalAppearance.inlineSuggestion.remoteRefresh;
 }
 
 function normalizeTerminalInlineSuggestionAcceptKey(

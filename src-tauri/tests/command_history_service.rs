@@ -5,12 +5,13 @@
 use kerminal_lib::{
     error::AppError,
     models::command_history::{
-        CommandHistoryListRequest, CommandHistoryRecordRequest, CommandHistorySource,
-        CommandHistoryTarget,
+        CommandHistoryClearRequest, CommandHistoryListRequest, CommandHistoryRecordRequest,
+        CommandHistorySource, CommandHistoryTarget,
     },
     paths::KerminalPaths,
     state::AppState,
 };
+use rusqlite::{params_from_iter, types::Value, Connection};
 use tempfile::{tempdir, TempDir};
 
 #[test]
@@ -308,6 +309,61 @@ fn delete_and_clear_history_round_trip() {
 }
 
 #[test]
+fn clear_history_scoped_keeps_other_panes_and_hosts() {
+    let (_home, state) = test_state();
+    record_with_pane(
+        &state,
+        "echo prod left",
+        CommandHistorySource::User,
+        CommandHistoryTarget::Ssh,
+        "pane-left",
+        Some("host-prod"),
+    );
+    record_with_pane(
+        &state,
+        "echo prod right",
+        CommandHistorySource::User,
+        CommandHistoryTarget::Ssh,
+        "pane-right",
+        Some("host-prod"),
+    );
+    record_with_pane(
+        &state,
+        "echo stage left",
+        CommandHistorySource::User,
+        CommandHistoryTarget::Ssh,
+        "pane-left",
+        Some("host-stage"),
+    );
+
+    let cleared = state
+        .command_history()
+        .clear_history_scoped(
+            state.command_store(),
+            CommandHistoryClearRequest {
+                target: Some(CommandHistoryTarget::Ssh),
+                pane_id: Some(" pane-left ".to_owned()),
+                remote_host_id: Some(" host-prod ".to_owned()),
+                session_id: None,
+            },
+        )
+        .expect("clear scoped history");
+    assert_eq!(cleared, 1);
+
+    let remaining = state
+        .command_history()
+        .list_history(state.command_store(), CommandHistoryListRequest::default())
+        .expect("list remaining history");
+    assert_eq!(remaining.len(), 2);
+    assert!(remaining
+        .iter()
+        .any(|entry| entry.command == "echo prod right"));
+    assert!(remaining
+        .iter()
+        .any(|entry| entry.command == "echo stage left"));
+}
+
+#[test]
 fn record_history_rejects_empty_or_too_long_commands() {
     let (_home, state) = test_state();
 
@@ -352,6 +408,71 @@ fn record_history_rejects_empty_or_too_long_commands() {
         )
         .expect_err("reject long command");
     assert!(matches!(long, AppError::InvalidInput(_)));
+}
+
+#[test]
+fn feedback_batch_query_uses_replacement_index_for_8_32_and_64_candidates() {
+    let (_home, state) = test_state();
+    let database_file = state.command_store().database_file();
+    let conn = Connection::open(database_file).expect("open command database");
+
+    for candidate_count in [8usize, 32, 64] {
+        let values = std::iter::repeat_n("(?, ?)", candidate_count)
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "
+            EXPLAIN QUERY PLAN
+            WITH requested(provider, replacement_text) AS (
+                VALUES {values}
+            )
+            SELECT requested.provider, requested.replacement_text
+            FROM requested
+            LEFT JOIN command_suggestion_feedback AS feedback
+                INDEXED BY idx_command_suggestion_feedback_replacement
+              ON feedback.provider = requested.provider
+             AND feedback.replacement_text = requested.replacement_text
+             AND feedback.target = ?
+             AND (
+                (? IS NULL AND feedback.remote_host_id IS NULL)
+                OR (
+                    ? IS NOT NULL
+                    AND (
+                        feedback.remote_host_id IS NULL
+                        OR feedback.remote_host_id = ?
+                    )
+                )
+             )
+            GROUP BY requested.provider, requested.replacement_text
+            "
+        );
+        let mut parameters = Vec::with_capacity(candidate_count * 2 + 4);
+        for index in 0..candidate_count {
+            parameters.push(Value::Text("history".to_owned()));
+            parameters.push(Value::Text(format!("git status --short {index}")));
+        }
+        parameters.push(Value::Text("local".to_owned()));
+        parameters.extend([Value::Null, Value::Null, Value::Null]);
+
+        let mut stmt = conn.prepare(&sql).expect("prepare query plan");
+        let details = stmt
+            .query_map(params_from_iter(parameters), |row| row.get::<_, String>(3))
+            .expect("query plan")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect query plan");
+        println!(
+            "feedback_batch candidates={candidate_count} sqlite_round_trips=1 plan={}",
+            details.join(" | ")
+        );
+        assert!(
+            details.iter().any(|detail| {
+                detail.contains("idx_command_suggestion_feedback_replacement")
+                    && detail.contains("provider=?")
+                    && detail.contains("replacement_text=?")
+            }),
+            "candidate_count={candidate_count}, plan={details:?}"
+        );
+    }
 }
 
 fn record(

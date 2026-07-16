@@ -1,0 +1,35 @@
+schema_version = 1
+command = "ps"
+aliases = []
+platforms = ["macos", "linux"]
+shells = ["bash", "zsh", "fish"]
+description = "Report process status"
+tested_version = "procps-ng 4.0"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "procps ps manual"
+url = "https://man7.org/linux/man-pages/man1/ps.1.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "--all"
+aliases = ["-A"]
+description = "Select all processes"
+
+[[options]]
+name = "--forest"
+description = "Show the process hierarchy"
+
+[[options]]
+name = "--format"
+aliases = ["-o"]
+description = "Select output columns"
+
+[options.argument]
+kind = "string"
+placeholder = "FORMAT"

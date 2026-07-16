@@ -6,11 +6,10 @@ mod auth;
 mod connection;
 mod forwarded;
 mod output;
+mod remote_forward;
 
 use std::{
-    collections::HashMap,
     path::PathBuf,
-    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -44,10 +43,14 @@ use crate::{
     services::{
         ssh_credential_resolver::{NativeSshHopMaterial, NativeSshRouteMaterial},
         ssh_route_plan::build_ssh_route_plan,
-        ssh_runtime::{SshRuntimeExecRawOutput, SshRuntimeSftpStream, SshRuntimeShellRequest},
+        ssh_runtime::{
+            policy::known_hosts_revokes_key, SshRuntimeExecRawOutput, SshRuntimeSftpStream,
+            SshRuntimeShellRequest,
+        },
     },
 };
 pub(crate) use auth::resolve_native_auth_material;
+pub(crate) use remote_forward::{NativeRemoteForwardRegistry, NativeRemoteForwardTarget};
 
 use super::{
     normalize_command_script, normalize_output_bytes, normalize_timeout_seconds,
@@ -113,78 +116,6 @@ struct NativeCommandClientHandler {
     remote_forwards: NativeRemoteForwardRegistry,
 }
 
-#[derive(Debug, Clone, Default)]
-pub(crate) struct NativeRemoteForwardRegistry {
-    inner: Arc<Mutex<HashMap<NativeRemoteForwardKey, NativeRemoteForwardTarget>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct NativeRemoteForwardKey {
-    address: String,
-    port: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum NativeRemoteForwardTarget {
-    Local { host: String, port: u16 },
-    Socks5LocalDynamic,
-}
-
-impl NativeRemoteForwardTarget {
-    pub(crate) fn new(host: impl Into<String>, port: u16) -> Self {
-        Self::Local {
-            host: host.into(),
-            port,
-        }
-    }
-
-    pub(crate) fn socks5_local_dynamic() -> Self {
-        Self::Socks5LocalDynamic
-    }
-}
-
-impl NativeRemoteForwardRegistry {
-    pub(crate) fn register(
-        &self,
-        address: impl Into<String>,
-        port: u32,
-        target: NativeRemoteForwardTarget,
-    ) -> AppResult<()> {
-        self.inner
-            .lock()
-            .map_err(|_| AppError::StateLockPoisoned("native remote forward registry"))?
-            .insert(
-                NativeRemoteForwardKey {
-                    address: address.into(),
-                    port,
-                },
-                target,
-            );
-        Ok(())
-    }
-
-    pub(crate) fn unregister(&self, address: &str, port: u32) {
-        let Ok(mut forwards) = self.inner.lock() else {
-            return;
-        };
-        forwards.remove(&NativeRemoteForwardKey {
-            address: address.to_owned(),
-            port,
-        });
-    }
-
-    fn resolve(&self, address: &str, port: u32) -> Option<NativeRemoteForwardTarget> {
-        self.inner.lock().ok().and_then(|forwards| {
-            forwards
-                .get(&NativeRemoteForwardKey {
-                    address: address.to_owned(),
-                    port,
-                })
-                .cloned()
-        })
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum NativeHostKeyPolicy {
     RequireKnown,
@@ -198,6 +129,9 @@ impl client::Handler for NativeCommandClientHandler {
         &mut self,
         server_public_key: &PublicKey,
     ) -> Result<bool, Self::Error> {
+        if known_hosts_revokes_key(server_public_key, &self.known_hosts_path) {
+            return Ok(false);
+        }
         match keys::known_hosts::check_known_hosts_path(
             &self.host,
             self.port,

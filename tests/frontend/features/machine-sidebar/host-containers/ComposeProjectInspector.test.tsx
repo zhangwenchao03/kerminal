@@ -102,6 +102,48 @@ describe("ComposeProjectInspector", () => {
     expect(screen.getByLabelText("Compose YAML 预览")).toBeInTheDocument();
   });
 
+  it("summarizes YAML read failures and keeps redacted technical details collapsed", async () => {
+    const user = userEvent.setup();
+    vi.mocked(readRemoteWorkspaceTextFile).mockRejectedValue(
+      new Error(
+        "workspace_read_failed runtime lease token=compose-internal-secret",
+      ),
+    );
+
+    render(
+      <ComposeProjectInspector
+        hostId="ubuntu-dev"
+        onEnterContainer={vi.fn()}
+        onOpenContainerLogs={vi.fn()}
+        onRefresh={vi.fn()}
+        onSelectContainer={vi.fn()}
+        onTabChange={vi.fn()}
+        project={project}
+        tab="yaml"
+      />,
+    );
+
+    expect(
+      await screen.findByText("无法读取 Compose YAML"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("当前 YAML 文件暂时无法预览。")).toBeInTheDocument();
+    expect(
+      screen.getByText("请确认主机连接和文件路径有效，然后重试。"),
+    ).toBeInTheDocument();
+
+    const technicalDetail = screen.getByText(
+      /workspace_read_failed runtime lease/,
+    );
+    const details = technicalDetail.closest("details");
+    expect(technicalDetail).not.toBeVisible();
+    expect(details).not.toHaveAttribute("open");
+    expect(screen.queryByText(/compose-internal-secret/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByText("技术详情"));
+    expect(technicalDetail).toBeVisible();
+    expect(details).toHaveAttribute("open");
+  });
+
   it("opens Compose YAML in the central workspace tab when the action is available", async () => {
     const onOpenWorkspaceFileTab = vi.fn();
 

@@ -54,6 +54,32 @@ describe("RemoteHostGroupCreateDialog", () => {
     expect(onCreateGroup).not.toHaveBeenCalled();
   });
 
+  it("keeps group save failures behind a short recovery message", async () => {
+    const user = userEvent.setup();
+    const onCreateGroup = vi
+      .fn()
+      .mockRejectedValue(
+        new Error("group_write_failed token=group-internal-secret"),
+      );
+
+    render(
+      <RemoteHostGroupCreateDialog
+        onClose={vi.fn()}
+        onCreateGroup={onCreateGroup}
+        open
+      />,
+    );
+
+    await user.type(screen.getByLabelText("分组名称"), "实验室");
+    await user.click(screen.getByRole("button", { name: "创建分组" }));
+
+    expect(await screen.findByText("分组未创建")).toBeVisible();
+    expect(screen.getByText("请检查名称后重试。")).toBeVisible();
+    const technicalDetail = screen.getByText(/group_write_failed/);
+    expect(technicalDetail.closest("details")).not.toHaveAttribute("open");
+    expect(screen.queryByText(/group-internal-secret/)).not.toBeInTheDocument();
+  });
+
   it("renames an existing host group", async () => {
     const user = userEvent.setup();
     const onUpdateGroup = vi.fn().mockResolvedValue({
@@ -79,7 +105,9 @@ describe("RemoteHostGroupCreateDialog", () => {
       />,
     );
 
-    expect(screen.getByRole("dialog", { name: "重命名分组" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "重命名分组" }),
+    ).toBeInTheDocument();
 
     await user.clear(screen.getByLabelText("分组名称"));
     await user.type(screen.getByLabelText("分组名称"), "生产环境");
@@ -139,7 +167,10 @@ describe("RemoteHostGroupCreateDialog", () => {
     );
 
     expect(screen.getByLabelText("分组名称")).toHaveValue("草稿名称");
-    expect(screen.getByRole("alert")).toHaveTextContent(conflictMessage);
+    const conflictNotice = screen.getByRole("status");
+    expect(conflictNotice).toHaveTextContent("分组已在外部更新");
+    const technicalDetail = screen.getByText(conflictMessage);
+    expect(technicalDetail.closest("details")).not.toHaveAttribute("open");
     expect(screen.getByRole("button", { name: "保存分组" })).toBeDisabled();
     expect(onUpdateGroup).not.toHaveBeenCalled();
   });

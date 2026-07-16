@@ -1,0 +1,39 @@
+schema_version = 1
+command = "ansible"
+aliases = []
+platforms = ["macos", "linux"]
+shells = ["bash", "zsh", "fish"]
+description = "Run Ansible tasks on managed hosts"
+tested_version = "ansible-core 2.19"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "Ansible command line documentation"
+url = "https://docs.ansible.com/ansible/latest/command_guide/cheatsheet.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "--inventory"
+aliases = ["-i"]
+description = "Select an inventory source"
+
+[options.argument]
+kind = "file"
+placeholder = "INVENTORY"
+
+[[options]]
+name = "--module-name"
+aliases = ["-m"]
+description = "Select an Ansible module"
+
+[options.argument]
+kind = "string"
+placeholder = "MODULE"
+
+[[options]]
+name = "--check"
+description = "Predict changes without applying them"

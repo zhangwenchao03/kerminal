@@ -57,8 +57,10 @@ describe("useSftpRemoteCopyTaskRunner", () => {
   it("queues every remote copy request and refreshes the transfer list once", async () => {
     const firstSummary = transferSummary({
       createdAt: 1,
+      error: "password=remote-copy-summary-secret",
       id: "transfer-old",
       remotePath: "/backup/app.log",
+      status: "failed",
     });
     const secondSummary = transferSummary({
       createdAt: 3,
@@ -109,6 +111,14 @@ describe("useSftpRemoteCopyTaskRunner", () => {
       "existing",
       "transfer-old",
     ]);
+    expect(
+      transfersRef.current[transfersRef.current.length - 1]?.error,
+    ).toContain(
+      'password="[已隐藏]"',
+    );
+    expect(
+      transfersRef.current[transfersRef.current.length - 1]?.error,
+    ).not.toContain("remote-copy-summary-secret");
     expect(setOperationStatus).toHaveBeenLastCalledWith(null);
     expect(refreshTransfers).toHaveBeenCalledTimes(1);
   });
@@ -174,7 +184,9 @@ describe("useSftpRemoteCopyTaskRunner", () => {
     const firstSummary = transferSummary({ id: "transfer-queued" });
     sftpApiMock.enqueueSftpRemoteCopy
       .mockResolvedValueOnce(firstSummary)
-      .mockRejectedValueOnce(new Error("connection lost"));
+      .mockRejectedValueOnce(
+        new Error("connection lost token=remote-copy-enqueue-secret"),
+      );
 
     const transfersRef = { current: [] as SftpTransferSummary[] };
     const setOperationStatus = vi.fn();
@@ -200,8 +212,16 @@ describe("useSftpRemoteCopyTaskRunner", () => {
     expect(refreshTransfers).not.toHaveBeenCalled();
     expect(setOperationStatus).toHaveBeenLastCalledWith({
       kind: "error",
-      message: "跨主机传输入队失败：connection lost",
+      message: expect.stringContaining("跨主机传输入队失败："),
     });
+    const status =
+      setOperationStatus.mock.calls[
+        setOperationStatus.mock.calls.length - 1
+      ]?.[0] as
+      | { kind: string; message: string }
+      | null;
+    expect(status?.message).toContain('token="[已隐藏]"');
+    expect(status?.message).not.toContain("remote-copy-enqueue-secret");
   });
 });
 

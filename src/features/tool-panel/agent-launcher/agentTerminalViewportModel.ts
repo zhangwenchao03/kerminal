@@ -9,7 +9,7 @@ export interface AgentTerminalViewportStatus {
   tooSmall: boolean;
 }
 
-export const AGENT_TERMINAL_MIN_VIEWPORT = {
+const AGENT_TERMINAL_MIN_VIEWPORT = {
   cols: 80,
   rows: 24,
 } as const;

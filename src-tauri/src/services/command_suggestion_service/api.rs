@@ -1,4 +1,5 @@
 use super::*;
+use crate::models::command_suggestion::{SuggestionPresentation, SuggestionQueryMode};
 
 impl CommandSuggestionService {
     pub fn new() -> Self {
@@ -12,47 +13,64 @@ impl CommandSuggestionService {
         command_history: &CommandHistoryService,
         request: CommandSuggestionRequest,
     ) -> AppResult<Vec<CommandSuggestionCandidate>> {
+        self.list_suggestions_internal(storage, command_history, None, request)
+    }
+
+    /// 使用统一片段目录列出命令建议，生产 IPC 入口通过此方法同时发现内置和用户片段。
+    pub fn list_suggestions_with_snippets(
+        &self,
+        storage: &CommandSqliteStore,
+        command_history: &CommandHistoryService,
+        snippets: &SnippetService,
+        request: CommandSuggestionRequest,
+    ) -> AppResult<Vec<CommandSuggestionCandidate>> {
+        self.list_suggestions_internal(storage, command_history, Some(snippets), request)
+    }
+
+    fn list_suggestions_internal(
+        &self,
+        storage: &CommandSqliteStore,
+        command_history: &CommandHistoryService,
+        snippets: Option<&SnippetService>,
+        request: CommandSuggestionRequest,
+    ) -> AppResult<Vec<CommandSuggestionCandidate>> {
         let request = NormalizedSuggestionRequest::try_from(request)?;
         if request.prefix.trim().is_empty() {
             return Ok(Vec::new());
         }
 
-        let mut seen_replacements = HashSet::new();
         let mut candidates = Vec::new();
 
         if request.provider_enabled(SuggestionProviderKind::History) {
             let started = Instant::now();
             let before_count = candidates.len();
             let result = (|| -> AppResult<()> {
-                let history = command_history.list_history_by_command_prefix(
-                    storage,
-                    request.target,
-                    request.remote_host_id.as_deref(),
-                    request.prefix.trim(),
-                    HISTORY_SCAN_LIMIT,
-                )?;
-
-                for (index, entry) in history.into_iter().enumerate() {
-                    if candidates.len() >= request.limit {
-                        break;
+                let recall_limit = request.limit.saturating_mul(4).clamp(8, 64);
+                let history = match request.mode {
+                    SuggestionQueryMode::Inline => command_history.list_history_by_command_prefix(
+                        storage,
+                        request.target,
+                        request.remote_host_id.as_deref(),
+                        request.prefix.trim(),
+                        HISTORY_SCAN_LIMIT,
+                    )?,
+                    SuggestionQueryMode::Menu => command_history
+                        .list_recent_history_for_suggestions(
+                            storage,
+                            request.target,
+                            request.remote_host_id.as_deref(),
+                            HISTORY_MENU_SCAN_LIMIT,
+                        )?,
+                };
+                candidates.extend(match request.mode {
+                    SuggestionQueryMode::Inline => {
+                        local_history_candidates(&request, history, recall_limit)
                     }
-                    let Some(candidate) = history_candidate(&request, entry, index) else {
-                        continue;
-                    };
-                    if seen_replacements.insert(candidate.replacement_text.clone()) {
-                        candidates.push(candidate);
+                    SuggestionQueryMode::Menu => {
+                        menu_history_candidates(&request, history, recall_limit)
                     }
-                }
-                if candidates.len() < request.limit {
-                    for candidate in self.remote_history_candidates(storage, &request)? {
-                        if candidates.len() >= request.limit {
-                            break;
-                        }
-                        if seen_replacements.insert(candidate.replacement_text.clone()) {
-                            candidates.push(candidate);
-                        }
-                    }
-                }
+                });
+                candidates.extend(self.remote_history_candidates(storage, &request)?);
                 Ok(())
             })();
             self.record_provider_query(
@@ -68,11 +86,7 @@ impl CommandSuggestionService {
             let started = Instant::now();
             let before_count = candidates.len();
             let result = (|| -> AppResult<()> {
-                for candidate in self.remote_path_candidates(storage, &request)? {
-                    if seen_replacements.insert(candidate.replacement_text.clone()) {
-                        candidates.push(candidate);
-                    }
-                }
+                candidates.extend(self.remote_path_candidates(storage, &request)?);
                 Ok(())
             })();
             self.record_provider_query(
@@ -88,11 +102,7 @@ impl CommandSuggestionService {
             let started = Instant::now();
             let before_count = candidates.len();
             let result = (|| -> AppResult<()> {
-                for candidate in self.remote_command_candidates(storage, &request)? {
-                    if seen_replacements.insert(candidate.replacement_text.clone()) {
-                        candidates.push(candidate);
-                    }
-                }
+                candidates.extend(self.remote_command_candidates(storage, &request)?);
                 Ok(())
             })();
             self.record_provider_query(
@@ -108,11 +118,7 @@ impl CommandSuggestionService {
             let started = Instant::now();
             let before_count = candidates.len();
             let result = (|| -> AppResult<()> {
-                for candidate in self.git_candidates(storage, &request)? {
-                    if seen_replacements.insert(candidate.replacement_text.clone()) {
-                        candidates.push(candidate);
-                    }
-                }
+                candidates.extend(self.git_candidates(storage, &request)?);
                 Ok(())
             })();
             self.record_provider_query(
@@ -127,11 +133,7 @@ impl CommandSuggestionService {
         if request.provider_enabled(SuggestionProviderKind::Spec) {
             let started = Instant::now();
             let before_count = candidates.len();
-            for candidate in spec_candidates(&request) {
-                if seen_replacements.insert(candidate.replacement_text.clone()) {
-                    candidates.push(candidate);
-                }
-            }
+            candidates.extend(spec_candidates(&request));
             self.record_provider_query(
                 Some(storage),
                 SuggestionProviderKind::Spec,
@@ -140,23 +142,83 @@ impl CommandSuggestionService {
             );
         }
 
-        apply_feedback_scores(storage, &request, &mut candidates)?;
+        // snippet provider 必须由调用方显式开启；旧请求缺省不改变现有提示集合。
+        if request
+            .providers
+            .as_ref()
+            .is_some_and(|providers| providers.contains(&SuggestionProviderKind::Snippet))
+        {
+            let started = Instant::now();
+            let before_count = candidates.len();
+            if let Some(snippets) = snippets {
+                let catalog = snippet_catalog_service::list_catalog(
+                    snippets,
+                    storage,
+                    SnippetCatalogListRequest {
+                        query: Some(request.prefix.trim().to_owned()),
+                        origin: None,
+                        scope: match request.target {
+                            CommandHistoryTarget::Local => Some(SnippetScope::Local),
+                            CommandHistoryTarget::Ssh => Some(SnippetScope::Ssh),
+                            _ => None,
+                        },
+                        limit: Some(request.limit.saturating_mul(4).clamp(8, 200)),
+                    },
+                );
+                match catalog {
+                    Ok(items) => candidates.extend(snippet_catalog_candidates(&items, &request)),
+                    // 片段文件或偏好库暂时不可读时，保留内置静态表作为降级，不拖垮其它 provider。
+                    Err(_) => candidates.extend(snippet_candidates(&request)),
+                }
+            } else {
+                candidates.extend(snippet_candidates(&request));
+            }
+            self.record_provider_query(
+                Some(storage),
+                SuggestionProviderKind::Snippet,
+                started.elapsed(),
+                candidates.len().saturating_sub(before_count),
+            );
+        }
 
-        candidates.sort_by(|left, right| {
-            right
-                .score
-                .partial_cmp(&left.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| left.display_text.cmp(&right.display_text))
+        // 展示模式是后端安全边界的一部分：危险候选即使被 provider 召回，
+        // 也不能依赖前端二次过滤后才从 inline 路径移除。
+        candidates.retain(|candidate| {
+            let required_presentation = match request.mode {
+                SuggestionQueryMode::Inline => SuggestionPresentation::Inline,
+                SuggestionQueryMode::Menu => SuggestionPresentation::Menu,
+            };
+            candidate
+                .allowed_presentations
+                .contains(&required_presentation)
         });
-        candidates.truncate(request.limit);
-        Ok(candidates)
+
+        rank_candidates(storage, &request, candidates)
     }
 
     /// 记录用户对命令建议的反馈，用于后续排序调权。
     pub fn record_feedback(
         &self,
         storage: &CommandSqliteStore,
+        request: CommandSuggestionFeedbackRecordRequest,
+    ) -> AppResult<CommandSuggestionFeedbackRecordResult> {
+        self.record_feedback_internal(storage, None, request)
+    }
+
+    /// 生产入口额外校验用户片段身份，避免伪造或同名 ID 污染偏好统计。
+    pub fn record_feedback_with_snippets(
+        &self,
+        storage: &CommandSqliteStore,
+        snippets: &SnippetService,
+        request: CommandSuggestionFeedbackRecordRequest,
+    ) -> AppResult<CommandSuggestionFeedbackRecordResult> {
+        self.record_feedback_internal(storage, Some(snippets), request)
+    }
+
+    fn record_feedback_internal(
+        &self,
+        storage: &CommandSqliteStore,
+        snippets: Option<&SnippetService>,
         request: CommandSuggestionFeedbackRecordRequest,
     ) -> AppResult<CommandSuggestionFeedbackRecordResult> {
         let action = request.action;
@@ -175,8 +237,19 @@ impl CommandSuggestionService {
         let shell = normalize_optional_text("Shell", request.shell, MAX_CONTEXT_CHARS)?;
         let source_id =
             normalize_optional_text("建议来源 ID", request.source_id, MAX_CONTEXT_CHARS)?;
+        let accepted_snippet = if provider == SuggestionProviderKind::Snippet
+            && action == CommandSuggestionFeedbackAction::Accepted
+        {
+            source_id
+                .as_deref()
+                .and_then(|identity| resolve_snippet_usage_identity(identity, snippets))
+        } else {
+            None
+        };
         let target = request.target;
-        if is_sensitive_command(&replacement_text) || is_sensitive_command(&input) {
+        if provider != SuggestionProviderKind::Snippet
+            && (is_sensitive_command(&replacement_text) || is_sensitive_command(&input))
+        {
             self.record_feedback_event(Some(storage), provider, action, false);
             self.record_feedback_audit(
                 Some(storage),
@@ -199,22 +272,42 @@ impl CommandSuggestionService {
 
         let id = Uuid::new_v4().to_string();
         let created_at = SystemTime::now();
+        let persisted_replacement_text = if provider == SuggestionProviderKind::Snippet {
+            format!("@snippet:{}", source_id.as_deref().unwrap_or("unknown"))
+        } else {
+            replacement_text
+        };
+        let persisted_input = if provider == SuggestionProviderKind::Snippet {
+            "@snippet".to_owned()
+        } else {
+            input
+        };
         storage.insert_command_suggestion_feedback(&CommandSuggestionFeedbackWrite {
             action: request.action,
             created_at_unix_ms: unix_time_millis_i64(created_at),
             cwd: cwd.clone(),
             id: id.clone(),
-            input,
+            input: persisted_input,
             pane_id: pane_id.clone(),
             profile_id,
             provider,
             remote_host_id: remote_host_id.clone(),
-            replacement_text,
+            replacement_text: persisted_replacement_text,
             session_id: session_id.clone(),
             shell,
             source_id,
             target,
         })?;
+        if let Some((origin, snippet_id)) = accepted_snippet {
+            // 建议反馈已成功时用同一反馈 ID 去重；偏好库失败不反向破坏终端接受动作。
+            let _ = storage.record_snippet_usage(
+                &id,
+                origin,
+                &snippet_id,
+                crate::storage::snippet_preferences::SnippetUsageAction::Insert,
+                unix_time_millis_i64(created_at),
+            );
+        }
 
         self.record_feedback_event(Some(storage), provider, action, true);
         self.record_feedback_audit(
@@ -612,6 +705,36 @@ impl CommandSuggestionService {
             },
         );
     }
+}
+
+fn resolve_snippet_usage_identity(
+    identity: &str,
+    snippets: Option<&SnippetService>,
+) -> Option<(
+    crate::storage::snippet_preferences::SnippetPreferenceOrigin,
+    String,
+)> {
+    use crate::storage::snippet_preferences::SnippetPreferenceOrigin;
+
+    if let Some(snippet_id) = identity.strip_prefix("snippet:user:") {
+        let exists = snippets
+            .and_then(|service| service.list_snippet_documents().ok())
+            .is_some_and(|documents| {
+                documents
+                    .snippets
+                    .iter()
+                    .any(|snippet| snippet.id == snippet_id)
+            });
+        return exists.then(|| (SnippetPreferenceOrigin::User, snippet_id.to_owned()));
+    }
+    let snippet_id = identity
+        .strip_prefix("snippet:builtin:")
+        .or_else(|| identity.strip_prefix("snippet:"))
+        .unwrap_or(identity);
+    crate::services::snippet_catalog_registry::all()
+        .iter()
+        .any(|item| item.id == snippet_id)
+        .then(|| (SnippetPreferenceOrigin::Builtin, snippet_id.to_owned()))
 }
 
 fn config_file_error(error: FileStoreError) -> AppError {

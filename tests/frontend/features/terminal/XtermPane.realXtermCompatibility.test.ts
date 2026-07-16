@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { installShellIntegrationOscHandlers } from "../../../../src/features/terminal/XtermPane.shellIntegration";
+import { createTerminalOutputWriter } from "../../../../src/features/terminal/terminalOutputWriter";
 import { runTerminalPaneVisibleRecovery } from "../../../../src/features/terminal/terminalPaneVisibleRecovery";
+import { createTerminalShellIntegrationState } from "../../../../src/features/terminal/terminalShellIntegrationModel";
 
 describe("real xterm compatibility", () => {
   afterEach(() => {
@@ -87,8 +90,9 @@ describe("real xterm compatibility", () => {
       );
 
       const rawData = harness.data.join("");
-      expect(rawData).toMatch(/\x1b\[<0;\d+;\d+M/);
-      expect(rawData).toMatch(/\x1b\[<0;\d+;\d+m/);
+      const sgrMousePrefix = `${String.fromCharCode(27)}\\[<0;`;
+      expect(rawData).toMatch(new RegExp(`${sgrMousePrefix}\\d+;\\d+M`, "u"));
+      expect(rawData).toMatch(new RegExp(`${sgrMousePrefix}\\d+;\\d+m`, "u"));
     } finally {
       harness.dispose();
     }
@@ -165,7 +169,65 @@ describe("real xterm compatibility", () => {
       harness.dispose();
     }
   });
+
+  it("keeps real xterm parsing after an asynchronous OSC callback failure", async () => {
+    const harness = await createRealXtermHarness();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const state = createTerminalShellIntegrationState({ trusted: true });
+    const oscDisposables = installShellIntegrationOscHandlers(
+      harness.terminal,
+      {
+        onCurrentCwd: () => {
+          throw new Error("async cwd callback failed");
+        },
+        readState: () => state,
+        reduceState: vi.fn(),
+        writeState: vi.fn(),
+      },
+    );
+    const writer = createTerminalOutputWriter(harness.terminal);
+
+    try {
+      const failedOscParsed = waitForNextParsedWrite(harness.terminal);
+      writer.writeNow("\u0000\x1b]7;file:///tmp/async-osc\x07");
+      await failedOscParsed;
+
+      const followingOutputParsed = waitForNextParsedWrite(harness.terminal);
+      writer.writeNow("after-binary\r\n");
+      await followingOutputParsed;
+
+      expect(
+        harness.terminal.buffer.active.getLine(0)?.translateToString(true),
+      ).toContain("after-binary");
+      expect(consoleError).toHaveBeenCalledWith(
+        "terminal OSC 7 handler failed",
+        expect.any(Error),
+      );
+      expect(writer.stats()).toMatchObject({
+        flushCount: 2,
+        writeErrorCount: 0,
+        writeNowCount: 2,
+      });
+    } finally {
+      writer.dispose();
+      oscDisposables.forEach((disposable) => disposable.dispose());
+      consoleError.mockRestore();
+      harness.dispose();
+    }
+  });
 });
+
+function waitForNextParsedWrite(
+  terminal: Awaited<ReturnType<typeof createRealXtermHarness>>["terminal"],
+) {
+  return new Promise<void>((resolve) => {
+    const subscription: { disposable?: { dispose: () => void } } = {};
+    subscription.disposable = terminal.onWriteParsed(() => {
+      subscription.disposable?.dispose();
+      resolve();
+    });
+  });
+}
 
 async function createRealXtermHarness(options?: {
   rows?: number;

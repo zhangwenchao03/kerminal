@@ -1,0 +1,37 @@
+schema_version = 1
+command = "mv"
+aliases = []
+platforms = ["macos", "linux"]
+shells = ["bash", "zsh", "fish"]
+description = "Move or rename files and directories"
+tested_version = "GNU coreutils 9.7"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "GNU Coreutils mv manual"
+url = "https://www.gnu.org/software/coreutils/manual/html_node/mv-invocation.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "--interactive"
+aliases = ["-i"]
+description = "Prompt before overwriting"
+
+[[options]]
+name = "--no-clobber"
+aliases = ["-n"]
+description = "Do not overwrite existing destinations"
+
+[[options]]
+name = "--force"
+aliases = ["-f"]
+description = "Overwrite destinations without prompting"
+
+[options.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "This option can overwrite destination files"

@@ -23,7 +23,9 @@ use kerminal_lib::models::{
     workflow::{CommandWorkflow, CommandWorkflowStep, WorkflowScope},
 };
 use kerminal_lib::{
-    services::config_change_observer_service::ConfigChangeObserverService,
+    services::config_change_observer_service::{
+        ConfigChangeObserverService, ConfigWatchBackendPreference,
+    },
     storage::config_file_store::ConfigFileStore,
 };
 
@@ -140,6 +142,52 @@ fn watcher_status_uses_relative_roots_and_redacts_secret_files() {
         .iter()
         .all(|root| !root.contains("staging-api.toml")
             && !root.contains(temp.path().to_string_lossy().as_ref())));
+}
+
+#[test]
+fn watcher_stop_is_idempotent_and_allows_restart() {
+    let temp = tempfile::tempdir().expect("temp config root");
+    let service = ConfigChangeObserverService::new(ConfigFileStore::new(temp.path()));
+
+    service
+        .start_with_emitter(|_: &ConfigChangeBatch| Ok(()))
+        .expect("start config watcher");
+    assert!(service.status().enabled);
+
+    service.stop().expect("stop config watcher");
+    service.stop().expect("repeat config watcher stop");
+    assert!(!service.status().enabled);
+
+    service
+        .start_with_emitter(|_: &ConfigChangeBatch| Ok(()))
+        .expect("restart config watcher");
+    assert!(service.status().enabled);
+    service.stop().expect("final config watcher stop");
+}
+
+#[test]
+fn native_and_polling_backends_follow_explicit_strategy() {
+    for (preference, expected) in [
+        (
+            ConfigWatchBackendPreference::Native,
+            ConfigWatchBackend::Native,
+        ),
+        (
+            ConfigWatchBackendPreference::Polling,
+            ConfigWatchBackend::Polling,
+        ),
+    ] {
+        let temp = tempfile::tempdir().expect("temp config root");
+        let service = ConfigChangeObserverService::with_backend_preference(
+            ConfigFileStore::new(temp.path()),
+            preference,
+        );
+        service
+            .start_with_emitter(|_: &ConfigChangeBatch| Ok(()))
+            .expect("start explicit watcher backend");
+        assert_eq!(service.status().backend, expected);
+        service.stop().expect("stop explicit watcher backend");
+    }
 }
 
 #[test]
@@ -326,6 +374,12 @@ fn seed_rendered_config_files(root: &Path) {
                 sort_order: 10,
                 created_at: timestamp.clone(),
                 updated_at: timestamp.clone(),
+                category: None,
+                risk: None,
+                default_action: None,
+                variables: Vec::new(),
+                context_bindings: Vec::new(),
+                derived_from: None,
             }],
             &[],
         )

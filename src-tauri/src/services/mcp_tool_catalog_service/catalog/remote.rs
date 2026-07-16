@@ -2,16 +2,19 @@
 //!
 //! @author kongweiguang
 
-use crate::models::mcp_server::{ToolCategory, ToolDefinition};
+use crate::{
+    models::mcp_server::ToolCategory,
+    services::mcp_tool_catalog_service::{ToolDescriptor, ToolId},
+};
 
 use super::super::schema::{
     enum_field, number_field, object_schema, string_field, tool, ToolEffect,
 };
 
-pub(super) fn remote_tools() -> Vec<ToolDefinition> {
+pub(super) fn remote_tools() -> Vec<ToolDescriptor> {
     vec![
         tool(
-            "ssh.command",
+            ToolId::SshCommand,
             "执行远程命令",
             "在已保存 SSH 主机上执行非交互远程命令；调用前确认由 MCP host 负责。",
             ToolCategory::Ssh,
@@ -35,7 +38,7 @@ pub(super) fn remote_tools() -> Vec<ToolDefinition> {
             ]),
         ),
         tool(
-            "ssh.command_on_resolved_host",
+            ToolId::SshCommandOnResolvedHost,
             "解析目标后执行远程命令",
             "解析已保存 SSH 主机并执行非交互命令。",
             ToolCategory::Ssh,

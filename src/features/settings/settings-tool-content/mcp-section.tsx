@@ -6,6 +6,7 @@ import {
   PowerOff,
   Server,
 } from "lucide-react";
+import { UserFacingNotice } from "../../../components/ui/user-facing-notice";
 import { cn } from "../../../lib/cn";
 import {
   currentDesktopNotificationVisibility,
@@ -17,23 +18,31 @@ import {
   stopMcpHttpServer,
   type McpHttpServerStatus,
 } from "../../../lib/mcpServerApi";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../../lib/userFacingMessage";
 import type { DesktopNotificationSettings } from "../settingsModel";
 import { writeTextToClipboard } from "./clipboard";
+import { SettingsDisclosure } from "./shared-controls";
 import type { McpHttpServerLoadState } from "./types";
 
 const mcpSectionButtonClass =
-  "kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex h-9 items-center justify-center gap-2 rounded-xl border px-3 text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-200";
+  "kerminal-focus-ring kerminal-pressable kerminal-muted-surface inline-flex h-9 items-center justify-center gap-2 rounded-[var(--radius-control)] border px-3 text-[13px] text-[var(--text-primary)] transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60";
 
 interface McpSkillsSettingsSectionProps {
   desktopNotifications: DesktopNotificationSettings;
+  revealConnectionInfo?: boolean;
 }
 
 export function McpSkillsSettingsSection({
   desktopNotifications,
+  revealConnectionInfo = false,
 }: McpSkillsSettingsSectionProps) {
   const [httpServerStatus, setHttpServerStatus] =
     useState<McpHttpServerStatus | null>(null);
-  const [httpServerError, setHttpServerError] = useState<string | null>(null);
+  const [httpServerError, setHttpServerError] =
+    useState<UserFacingMessage | null>(null);
   const [httpServerState, setHttpServerState] =
     useState<McpHttpServerLoadState>("idle");
   const [copiedJson, setCopiedJson] = useState(false);
@@ -51,7 +60,11 @@ export function McpSkillsSettingsSection({
     } catch (nextError) {
       setHttpServerStatus(null);
       setHttpServerError(
-        nextError instanceof Error ? nextError.message : String(nextError),
+        buildUserFacingError(nextError, {
+          detail: "当前无法确认本机服务是否正在运行。",
+          recoveryAction: "请稍后重试。",
+          title: "无法读取 MCP 状态",
+        }),
       );
       setHttpServerState("error");
     }
@@ -64,16 +77,18 @@ export function McpSkillsSettingsSection({
       setHttpServerStatus(await startMcpHttpServer());
       setHttpServerState("idle");
     } catch (nextError) {
-      const errorMessage =
-        nextError instanceof Error ? nextError.message : String(nextError);
-      setHttpServerError(errorMessage);
+      const message = buildUserFacingError(nextError, {
+        detail: "本机服务没有开始监听。",
+        recoveryAction: "请检查端口占用后重试。",
+        title: "MCP 服务未启动",
+      });
+      setHttpServerError(message);
       setHttpServerState("error");
       void sendDesktopNotification({
         event: {
           kind: "mcp.server.failed",
           notificationKey: "mcp.server.failed:start",
           port: httpServerStatus?.port ?? undefined,
-          reason: errorMessage,
         },
         lastSentAtByKey: notificationLastSentAtByKeyRef.current,
         settings: desktopNotifications,
@@ -90,7 +105,11 @@ export function McpSkillsSettingsSection({
       setHttpServerState("idle");
     } catch (nextError) {
       setHttpServerError(
-        nextError instanceof Error ? nextError.message : String(nextError),
+        buildUserFacingError(nextError, {
+          detail: "本机服务可能仍在运行。",
+          recoveryAction: "请稍后重试；若端口仍被占用，可退出应用后重新打开。",
+          title: "MCP 服务未停止",
+        }),
       );
       setHttpServerState("error");
     }
@@ -121,71 +140,75 @@ export function McpSkillsSettingsSection({
   }, []);
 
   return (
-    <section className="kerminal-solid-surface rounded-2xl border p-5">
-      <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-        <Server className="h-4 w-4 text-sky-500 dark:text-sky-300" />
-        MCP
-      </h2>
-
-      <div className="mt-4 grid gap-3 text-sm text-zinc-600 dark:text-zinc-300">
-        <InfoRow label="状态">
+    <section className="kerminal-solid-surface rounded-[var(--radius-panel)] border p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+          <Server className="h-4 w-4 text-sky-500 dark:text-sky-300" />
+          MCP
+        </h2>
+        <div className="flex items-center gap-2">
           <span className={statusBadgeClass(httpServerStatus, httpServerState)}>
             {serverStatusLabel(httpServerStatus, httpServerState)}
           </span>
-        </InfoRow>
-        <InfoRow label="endpoint">
-          <code className="kerminal-field-surface min-w-0 break-all rounded-lg border px-2 py-1 font-mono text-[11px] text-zinc-700 dark:text-zinc-200">
-            {endpoint ?? "启动后显示"}
-          </code>
-        </InfoRow>
-        <InfoRow label="JSON">
-          <pre
-            aria-label="MCP JSON 配置"
-            className="kerminal-field-surface max-h-44 min-w-0 overflow-auto whitespace-pre-wrap break-all rounded-lg border px-3 py-2 font-mono text-[11px] leading-5 text-zinc-700 dark:text-zinc-200"
+          <button
+            className={mcpSectionButtonClass}
+            disabled={isLoading}
+            onClick={() =>
+              void (running ? stopHttpServer() : startHttpServer())
+            }
+            type="button"
           >
-            {displayedConfigJson}
-          </pre>
-        </InfoRow>
+            {running ? (
+              <PowerOff className="h-4 w-4" />
+            ) : (
+              <Power className="h-4 w-4" />
+            )}
+            {running ? "停止" : "启动"}
+          </button>
+        </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <button
-          className={mcpSectionButtonClass}
-          disabled={isLoading}
-          onClick={() =>
-            void (running ? stopHttpServer() : startHttpServer())
-          }
-          type="button"
+      <div className="mt-4">
+        <SettingsDisclosure
+          reveal={revealConnectionInfo}
+          summary={running ? "本机 HTTP" : "启动后可用"}
+          targetId="settings-mcp-connection-info"
+          title="连接信息"
         >
-          {running ? (
-            <PowerOff className="h-4 w-4" />
-          ) : (
-            <Power className="h-4 w-4" />
-          )}
-          {running ? "停止" : "启动"}
-        </button>
-        <button
-          className={mcpSectionButtonClass}
-          disabled={!configJson}
-          onClick={() => void copyJson()}
-          type="button"
-        >
-          {copiedJson ? (
-            <Check className="h-4 w-4" />
-          ) : (
-            <Clipboard className="h-4 w-4" />
-          )}
-          {copiedJson ? "已复制" : "复制 JSON"}
-        </button>
+          <div className="grid gap-3 text-sm text-zinc-600 dark:text-zinc-300">
+            <InfoRow label="endpoint">
+              <code className="kerminal-field-surface min-w-0 break-all rounded-lg border px-2 py-1 font-mono text-[11px] text-zinc-700 dark:text-zinc-200">
+                {endpoint ?? "启动后显示"}
+              </code>
+            </InfoRow>
+            <InfoRow label="JSON">
+              <pre
+                aria-label="MCP JSON 配置"
+                className="kerminal-field-surface max-h-44 min-w-0 overflow-auto whitespace-pre-wrap break-all rounded-lg border px-3 py-2 font-mono text-[11px] leading-5 text-zinc-700 dark:text-zinc-200"
+              >
+                {displayedConfigJson}
+              </pre>
+            </InfoRow>
+          </div>
+
+          <button
+            className={`${mcpSectionButtonClass} mt-3`}
+            disabled={!configJson}
+            onClick={() => void copyJson()}
+            type="button"
+          >
+            {copiedJson ? (
+              <Check className="h-4 w-4" />
+            ) : (
+              <Clipboard className="h-4 w-4" />
+            )}
+            {copiedJson ? "已复制" : "复制 JSON"}
+          </button>
+        </SettingsDisclosure>
       </div>
 
       {httpServerError ? (
-        <div
-          className="mt-3 rounded-lg border border-rose-300/25 bg-rose-500/10 px-3 py-2 text-xs leading-5 text-rose-700 dark:text-rose-100"
-          role="alert"
-        >
-          {httpServerError}
-        </div>
+        <UserFacingNotice className="mt-3" compact message={httpServerError} />
       ) : null}
       {copyError ? (
         <div

@@ -1,4 +1,5 @@
 use super::*;
+use kerminal_lib::models::command_suggestion::SuggestionQueryMode;
 
 #[test]
 fn history_suggestions_prefer_same_host_and_cwd() {
@@ -34,6 +35,9 @@ fn history_suggestions_prefer_same_host_and_cwd() {
             state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
+                context_key: None,
+                generation: None,
+                mode: Default::default(),
                 input: "git checkout ".to_owned(),
                 cursor: "git checkout ".chars().count(),
                 target: CommandHistoryTarget::Ssh,
@@ -85,6 +89,9 @@ fn provider_filter_can_disable_history_suggestions() {
             state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
+                context_key: None,
+                generation: None,
+                mode: Default::default(),
                 input: "kubectl".to_owned(),
                 cursor: "kubectl".chars().count(),
                 target: CommandHistoryTarget::Ssh,
@@ -101,6 +108,85 @@ fn provider_filter_can_disable_history_suggestions() {
         .expect("list suggestions");
 
     assert!(suggestions.is_empty());
+}
+
+#[test]
+fn menu_history_recalls_word_matches_without_weakening_inline_prefix_rules() {
+    let (_home, state) = test_state();
+    record(
+        &state,
+        "git checkout feature/current",
+        CommandHistoryTarget::Local,
+        None,
+        Some("C:/dev/rust/kerminal"),
+        Some("session-1"),
+    );
+    record(
+        &state,
+        "docker compose up --detach",
+        CommandHistoryTarget::Local,
+        None,
+        Some("C:/dev/rust/kerminal"),
+        Some("session-1"),
+    );
+
+    let request = |mode| CommandSuggestionRequest {
+        context_key: Some("local:C:/dev/rust/kerminal:pwsh".to_owned()),
+        generation: Some(1),
+        mode,
+        input: "checkout".to_owned(),
+        cursor: "checkout".chars().count(),
+        target: CommandHistoryTarget::Local,
+        session_id: Some("session-1".to_owned()),
+        pane_id: Some("pane-1".to_owned()),
+        profile_id: None,
+        remote_host_id: None,
+        cwd: Some("C:/dev/rust/kerminal".to_owned()),
+        shell: Some("pwsh.exe".to_owned()),
+        providers: Some(vec![SuggestionProviderKind::History]),
+        limit: Some(8),
+    };
+
+    let inline = state
+        .command_suggestions()
+        .list_suggestions(
+            state.command_store(),
+            state.command_history(),
+            request(SuggestionQueryMode::Inline),
+        )
+        .expect("inline suggestions");
+    assert!(inline.is_empty());
+
+    let menu = state
+        .command_suggestions()
+        .list_suggestions(
+            state.command_store(),
+            state.command_history(),
+            request(SuggestionQueryMode::Menu),
+        )
+        .expect("menu suggestions");
+    assert_eq!(menu.len(), 1);
+    assert_eq!(menu[0].replacement_text, "git checkout feature/current");
+    assert_eq!(menu[0].replacement_range.start, 0);
+    assert_eq!(menu[0].replacement_range.end, "checkout".chars().count());
+
+    let fuzzy_menu = state
+        .command_suggestions()
+        .list_suggestions(
+            state.command_store(),
+            state.command_history(),
+            CommandSuggestionRequest {
+                input: "g chk".to_owned(),
+                cursor: "g chk".chars().count(),
+                ..request(SuggestionQueryMode::Menu)
+            },
+        )
+        .expect("fuzzy menu suggestions");
+    assert_eq!(fuzzy_menu.len(), 1);
+    assert_eq!(
+        fuzzy_menu[0].replacement_text,
+        "git checkout feature/current"
+    );
 }
 
 #[test]
@@ -123,12 +209,15 @@ fn dangerous_history_suggestions_are_marked_and_demoted() {
         Some("session-1"),
     );
 
-    let suggestions = state
+    let inline_suggestions = state
         .command_suggestions()
         .list_suggestions(
             state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
+                context_key: None,
+                generation: None,
+                mode: Default::default(),
                 input: "rm -rf ".to_owned(),
                 cursor: "rm -rf ".chars().count(),
                 target: CommandHistoryTarget::Local,
@@ -144,13 +233,43 @@ fn dangerous_history_suggestions_are_marked_and_demoted() {
         )
         .expect("list suggestions");
 
-    assert_eq!(suggestions.len(), 2);
-    assert_eq!(suggestions[0].replacement_text, "rm -rf target");
+    assert_eq!(inline_suggestions.len(), 1);
+    assert_eq!(inline_suggestions[0].replacement_text, "rm -rf target");
+    assert!(inline_suggestions
+        .iter()
+        .all(|candidate| candidate.sensitivity != CommandSuggestionSensitivity::Dangerous));
+
+    let menu_suggestions = state
+        .command_suggestions()
+        .list_suggestions(
+            state.command_store(),
+            state.command_history(),
+            CommandSuggestionRequest {
+                context_key: None,
+                generation: None,
+                mode: SuggestionQueryMode::Menu,
+                input: "rm -rf ".to_owned(),
+                cursor: "rm -rf ".chars().count(),
+                target: CommandHistoryTarget::Local,
+                session_id: Some("session-1".to_owned()),
+                pane_id: None,
+                profile_id: None,
+                remote_host_id: None,
+                cwd: Some("C:/dev/rust/kerminal".to_owned()),
+                shell: Some("pwsh.exe".to_owned()),
+                providers: None,
+                limit: Some(5),
+            },
+        )
+        .expect("list menu suggestions");
+
+    assert_eq!(menu_suggestions.len(), 2);
+    assert_eq!(menu_suggestions[0].replacement_text, "rm -rf target");
     assert_eq!(
-        suggestions[1].sensitivity,
+        menu_suggestions[1].sensitivity,
         CommandSuggestionSensitivity::Dangerous
     );
-    assert!(suggestions[1].score < suggestions[0].score);
+    assert!(menu_suggestions[1].score < menu_suggestions[0].score);
 }
 
 #[test]
@@ -202,6 +321,9 @@ fn dismissed_feedback_demotes_matching_suggestion() {
             state.command_store(),
             state.command_history(),
             CommandSuggestionRequest {
+                context_key: None,
+                generation: None,
+                mode: Default::default(),
                 input: "git st".to_owned(),
                 cursor: "git st".chars().count(),
                 target: CommandHistoryTarget::Local,
@@ -267,4 +389,131 @@ fn sensitive_feedback_is_not_recorded() {
         .find(|provider| provider.provider == SuggestionProviderKind::History)
         .expect("history telemetry");
     assert_eq!(history.feedback_skipped_count, 1);
+}
+
+#[test]
+fn accepted_feedback_promotes_matching_suggestion() {
+    let (_home, state) = test_state();
+    record(
+        &state,
+        "git status",
+        CommandHistoryTarget::Local,
+        None,
+        Some("C:/dev/rust/kerminal"),
+        Some("session-1"),
+    );
+    record(
+        &state,
+        "git stash",
+        CommandHistoryTarget::Local,
+        None,
+        Some("C:/dev/rust/kerminal"),
+        Some("session-1"),
+    );
+
+    for _ in 0..4 {
+        state
+            .command_suggestions()
+            .record_feedback(
+                state.command_store(),
+                CommandSuggestionFeedbackRecordRequest {
+                    action: CommandSuggestionFeedbackAction::Accepted,
+                    cwd: Some("C:/dev/rust/kerminal".to_owned()),
+                    input: "git st".to_owned(),
+                    pane_id: Some("pane-1".to_owned()),
+                    profile_id: None,
+                    provider: SuggestionProviderKind::History,
+                    remote_host_id: None,
+                    replacement_text: "git status".to_owned(),
+                    session_id: Some("session-1".to_owned()),
+                    shell: Some("pwsh.exe".to_owned()),
+                    source_id: None,
+                    target: CommandHistoryTarget::Local,
+                },
+            )
+            .expect("record accepted feedback");
+    }
+
+    let suggestions = state
+        .command_suggestions()
+        .list_suggestions(
+            state.command_store(),
+            state.command_history(),
+            CommandSuggestionRequest {
+                context_key: None,
+                generation: None,
+                mode: Default::default(),
+                input: "git st".to_owned(),
+                cursor: "git st".chars().count(),
+                target: CommandHistoryTarget::Local,
+                session_id: Some("session-1".to_owned()),
+                pane_id: Some("pane-1".to_owned()),
+                profile_id: None,
+                remote_host_id: None,
+                cwd: Some("C:/dev/rust/kerminal".to_owned()),
+                shell: Some("pwsh.exe".to_owned()),
+                providers: Some(vec![SuggestionProviderKind::History]),
+                limit: Some(5),
+            },
+        )
+        .expect("list suggestions");
+
+    assert_eq!(suggestions[0].replacement_text, "git status");
+    assert_eq!(
+        suggestions[0]
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("feedbackAcceptedCount"))
+            .map(String::as_str),
+        Some("4")
+    );
+}
+
+#[test]
+fn repeated_queries_have_stable_order() {
+    let (_home, state) = test_state();
+    for command in ["git status", "git stash", "git stage"] {
+        record(
+            &state,
+            command,
+            CommandHistoryTarget::Local,
+            None,
+            Some("C:/dev/rust/kerminal"),
+            Some("session-1"),
+        );
+    }
+    let request = || CommandSuggestionRequest {
+        context_key: Some("stable-context".to_owned()),
+        generation: None,
+        mode: Default::default(),
+        input: "git st".to_owned(),
+        cursor: "git st".chars().count(),
+        target: CommandHistoryTarget::Local,
+        session_id: Some("session-1".to_owned()),
+        pane_id: Some("pane-1".to_owned()),
+        profile_id: None,
+        remote_host_id: None,
+        cwd: Some("C:/dev/rust/kerminal".to_owned()),
+        shell: Some("pwsh.exe".to_owned()),
+        providers: Some(vec![SuggestionProviderKind::History]),
+        limit: Some(5),
+    };
+
+    let first = state
+        .command_suggestions()
+        .list_suggestions(state.command_store(), state.command_history(), request())
+        .expect("first list")
+        .into_iter()
+        .map(|candidate| candidate.id)
+        .collect::<Vec<_>>();
+    for _ in 0..5 {
+        let current = state
+            .command_suggestions()
+            .list_suggestions(state.command_store(), state.command_history(), request())
+            .expect("repeat list")
+            .into_iter()
+            .map(|candidate| candidate.id)
+            .collect::<Vec<_>>();
+        assert_eq!(current, first);
+    }
 }

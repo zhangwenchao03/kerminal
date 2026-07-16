@@ -6,8 +6,10 @@ use super::diagnostics_common::{
     exposed_tool_definitions, runtime_snapshot_diagnostic, serialized_name,
 };
 use super::*;
+use crate::models::agent_session::AgentSessionDiagnostic;
 use crate::services::external_launch::{
     ExternalLaunchIntakeSnapshot, ExternalLaunchRejected, ExternalLaunchSecretBrokerSnapshot,
+    ExternalLaunchTaskSnapshot,
 };
 
 pub(super) fn execute_kerminal_runtime_snapshot(
@@ -22,7 +24,8 @@ pub(super) fn execute_kerminal_runtime_snapshot(
         Err(error) => {
             diagnostics.push(runtime_snapshot_diagnostic(
                 "terminal.list",
-                error.to_string(),
+                "terminalSessionsUnavailable",
+                &error,
             ));
             Vec::new()
         }
@@ -57,22 +60,15 @@ pub(super) fn execute_kerminal_runtime_snapshot(
     let agent_sessions = match context.agent_sessions.list_sessions() {
         Ok(list) => {
             for diagnostic in &list.diagnostics {
-                diagnostics.push(json!({
-                    "source": "agent.sessions",
-                    "severity": "warning",
-                    "code": diagnostic.code,
-                    "message": diagnostic.message,
-                    "path": diagnostic.path,
-                    "line": diagnostic.line,
-                    "column": diagnostic.column
-                }));
+                diagnostics.push(agent_session_runtime_diagnostic(diagnostic));
             }
             list.sessions
         }
         Err(error) => {
             diagnostics.push(runtime_snapshot_diagnostic(
                 "agent.sessions",
-                error.to_string(),
+                "agentSessionsUnavailable",
+                &error,
             ));
             Vec::new()
         }
@@ -125,7 +121,8 @@ pub(super) fn execute_kerminal_runtime_snapshot(
         Err(error) => {
             diagnostics.push(runtime_snapshot_diagnostic(
                 "port_forward.list",
-                error.to_string(),
+                "portForwardsUnavailable",
+                &error,
             ));
             Vec::new()
         }
@@ -143,7 +140,6 @@ pub(super) fn execute_kerminal_runtime_snapshot(
                 "hostName": summary.host_name,
                 "name": summary.name,
                 "kind": summary.kind,
-                "purpose": summary.purpose,
                 "origin": summary.origin,
                 "bindHost": summary.bind_host,
                 "sourcePort": summary.source_port,
@@ -156,23 +152,16 @@ pub(super) fn execute_kerminal_runtime_snapshot(
         })
         .collect::<Vec<_>>();
 
-    let local_proxy_entry_count = match context.local_network_proxy.active_entry_count() {
-        Ok(count) => count,
-        Err(error) => {
-            diagnostics.push(runtime_snapshot_diagnostic(
-                "local_network_proxy",
-                error.to_string(),
-            ));
-            0
-        }
-    };
+    // 兼容现有 runtime snapshot schema；本机 HTTP 代理服务已移除。
+    let local_proxy_entry_count = 0;
 
     let external_launch_intake = match context.external_launch_intake.snapshot() {
         Ok(snapshot) => Some(snapshot),
         Err(error) => {
             diagnostics.push(runtime_snapshot_diagnostic(
                 "external_launch.intake",
-                error.to_string(),
+                "externalLaunchIntakeUnavailable",
+                &error,
             ));
             None
         }
@@ -182,7 +171,19 @@ pub(super) fn execute_kerminal_runtime_snapshot(
         Err(error) => {
             diagnostics.push(runtime_snapshot_diagnostic(
                 "external_launch.secrets",
-                error.to_string(),
+                "externalLaunchSecretBrokerUnavailable",
+                &error,
+            ));
+            None
+        }
+    };
+    let external_launch_tasks = match context.external_launch_tasks.snapshot() {
+        Ok(snapshot) => Some(snapshot),
+        Err(error) => {
+            diagnostics.push(runtime_snapshot_diagnostic(
+                "external_launch.tasks",
+                "externalLaunchTasksUnavailable",
+                &error,
             ));
             None
         }
@@ -198,6 +199,7 @@ pub(super) fn execute_kerminal_runtime_snapshot(
     let external_launch_runtime = external_launch_snapshot_json(
         external_launch_intake.as_ref(),
         external_launch_secrets.as_ref(),
+        external_launch_tasks.as_ref(),
     );
 
     let managed_ssh_runtime = match context.ssh_runtime.snapshot() {
@@ -205,7 +207,8 @@ pub(super) fn execute_kerminal_runtime_snapshot(
         Err(error) => {
             diagnostics.push(runtime_snapshot_diagnostic(
                 "ssh_runtime.snapshot",
-                error.to_string(),
+                "managedSshRuntimeUnavailable",
+                &error,
             ));
             None
         }
@@ -362,26 +365,81 @@ pub(super) fn execute_kerminal_runtime_snapshot(
     }
 }
 
+/// 将 Agent session 文件诊断投影为不含路径和正文的稳定 MCP 诊断。
+fn agent_session_runtime_diagnostic(diagnostic: &AgentSessionDiagnostic) -> Value {
+    let code = match diagnostic.code.as_str() {
+        "invalidSessionDirectoryName"
+        | "invalidSessionId"
+        | "sessionIdMismatch"
+        | "invalidSession"
+        | "invalidProvider"
+        | "invalidTargetBinding"
+        | "invalidMcpEndpoint"
+        | "fileNotFound"
+        | "fileReadFailed"
+        | "tomlParseFailed"
+        | "jsonParseFailed" => diagnostic.code.as_str(),
+        _ => "agentSessionDiagnostic",
+    };
+
+    json!({
+        "source": "agent.sessions",
+        "code": code,
+        "status": "degraded",
+        "severity": "warning",
+        "summary": "部分 Agent session 元数据不可读取，已跳过异常记录。"
+    })
+}
+
 fn external_launch_snapshot_json(
     intake: Option<&ExternalLaunchIntakeSnapshot>,
     secrets: Option<&ExternalLaunchSecretBrokerSnapshot>,
+    tasks: Option<&ExternalLaunchTaskSnapshot>,
 ) -> Value {
     json!({
         "intake": intake.map(|snapshot| {
             json!({
                 "pendingCount": snapshot.pending_count,
-                "pendingLaunchIds": &snapshot.pending_launch_ids,
+                "pendingRequestHashes": snapshot.pending_launch_ids.iter().map(|launch_id| {
+                    crate::services::external_launch::redaction::opaque_id_hash(launch_id)
+                }).collect::<Vec<_>>(),
+                "claimedCount": snapshot.claimed_count,
+                "claimedRequestHashes": snapshot.claimed_launch_ids.iter().map(|launch_id| {
+                    crate::services::external_launch::redaction::opaque_id_hash(launch_id)
+                }).collect::<Vec<_>>(),
                 "acceptedCount": snapshot.accepted_count,
                 "rejectedCount": snapshot.rejected_count,
                 "noopCount": snapshot.noop_count,
                 "lastRejection": snapshot.last_rejection.as_ref().map(external_launch_rejection_json),
-                "policy": &snapshot.policy
+                "policy": &snapshot.policy,
+                "health": {
+                    "backpressureCount": snapshot.health.backpressure_count,
+                    "expiryCount": snapshot.health.expiry_count,
+                    "cancelCount": snapshot.health.cancel_count,
+                    "oldestLaunchAgeMs": snapshot.health.oldest_launch_age_ms,
+                    "lastIntakeLatencyMs": snapshot.health.last_intake_latency_ms
+                }
             })
         }),
         "secrets": secrets.map(|snapshot| {
             json!({
                 "activeSecretCount": snapshot.active_secret_count,
-                "launchIds": &snapshot.launch_ids
+                "requestHashes": snapshot.launch_ids.iter().map(|launch_id| {
+                    crate::services::external_launch::redaction::opaque_id_hash(launch_id)
+                }).collect::<Vec<_>>()
+            })
+        }),
+        "tasks": tasks.map(|snapshot| {
+            json!({
+                "queuedCount": snapshot.queued_count,
+                "inFlightCount": snapshot.in_flight_count,
+                "connectedCount": snapshot.connected_count,
+                "cancelledCount": snapshot.cancelled_count,
+                "deadlineCount": snapshot.deadline_count,
+                "lateCleanupCount": snapshot.late_cleanup_count,
+                "completedCount": snapshot.completed_count,
+                "oldestTaskAgeMs": snapshot.oldest_task_age_ms,
+                "lastConnectLatencyMs": snapshot.last_connect_latency_ms
             })
         }),
         "configuration": {
@@ -390,7 +448,7 @@ fn external_launch_snapshot_json(
             "validator": "kerminal.config.validate",
             "mcpCrudBoundary": "external_launch.* control/configuration tools are intentionally absent; edit settings.toml and validate."
         },
-        "secretBoundary": "External launch passwords, URL passwords, password file contents, private keys, and key passphrases are never included in runtime snapshots; only counts and launch ids are exposed."
+        "secretBoundary": "External launch passwords, URL passwords, password file contents, private keys, key passphrases, and actionable launch ids are never included in runtime snapshots; only counts and irreversible request hashes are exposed."
     })
 }
 
@@ -403,4 +461,41 @@ fn external_launch_rejection_json(rejection: &ExternalLaunchRejected) -> Value {
         "rawHash": rejection.raw_hash,
         "cwdPresent": rejection.cwd_present
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::agent_session_runtime_diagnostic;
+    use crate::models::agent_session::AgentSessionDiagnostic;
+
+    #[test]
+    fn agent_runtime_diagnostic_never_serializes_message_or_path() {
+        let canary = "KERM_AGENT_DIAGNOSTIC_CANARY";
+        let diagnostic = AgentSessionDiagnostic {
+            path: Some(format!("C:\\Users\\alice\\{canary}\\session.toml")),
+            code: format!("unknown-{canary}"),
+            message: format!("{canary} prompt正文 terminal正文"),
+            line: Some(42),
+            column: Some(7),
+        };
+
+        let public_diagnostic = agent_session_runtime_diagnostic(&diagnostic);
+        let serialized = public_diagnostic.to_string();
+
+        assert_eq!(public_diagnostic["source"], "agent.sessions");
+        assert_eq!(public_diagnostic["code"], "agentSessionDiagnostic");
+        assert_eq!(public_diagnostic["status"], "degraded");
+        assert_eq!(
+            public_diagnostic["summary"],
+            "部分 Agent session 元数据不可读取，已跳过异常记录。"
+        );
+        assert!(!serialized.contains(canary));
+        assert!(!serialized.contains("session.toml"));
+        assert!(!serialized.contains("prompt正文"));
+        assert!(!serialized.contains("terminal正文"));
+        assert!(public_diagnostic.get("path").is_none());
+        assert!(public_diagnostic.get("message").is_none());
+        assert!(public_diagnostic.get("line").is_none());
+        assert!(public_diagnostic.get("column").is_none());
+    }
 }

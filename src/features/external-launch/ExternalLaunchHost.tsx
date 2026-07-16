@@ -1,32 +1,46 @@
-import { AlertTriangle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import {
   ackExternalSshLaunch,
   cancelExternalSshLaunch,
+  inspectExternalLaunchHostKey,
   listenExternalSshLaunches,
   materializeExternalSshLaunch,
   takePendingExternalSshLaunches,
+  trustExternalLaunchHostKey,
+  type ExternalHostKeyInspection,
+  type ExternalLaunchMaterializedTarget,
   type ExternalSshLaunchRequest,
 } from "../../lib/externalLaunchApi";
-import { useWorkspaceStore } from "../workspace/workspaceStore";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../lib/userFacingMessage";
+import { useWorkspaceStore } from "../workspace/state/index";
 import { ExternalLaunchResolutionDialog } from "./ExternalLaunchResolutionDialog";
 import {
   applyExternalSshLaunchMaterializedTarget,
+  externalSshLaunchMachineId,
   externalSshLaunchNeedsUsername,
   externalSshLaunchSourceLabel,
-  formatExternalSshLaunchError,
   type ExternalSshLaunchResolvedRequest,
 } from "./externalSshLaunchModel";
 
 interface ExternalLaunchFailure {
   launch: ExternalSshLaunchResolvedRequest;
-  message: string;
+  message: UserFacingMessage;
 }
 
 interface ExternalLaunchNotice {
-  message: string;
+  message: UserFacingMessage;
+}
+
+interface ExternalLaunchSecurityConfirmation {
+  hostKey: ExternalHostKeyInspection;
+  launch: ExternalSshLaunchResolvedRequest;
+  materialized: ExternalLaunchMaterializedTarget;
 }
 
 export function ExternalLaunchHost() {
@@ -40,30 +54,69 @@ export function ExternalLaunchHost() {
     null,
   );
   const [notice, setNotice] = useState<ExternalLaunchNotice | null>(null);
+  const [securityConfirmation, setSecurityConfirmation] =
+    useState<ExternalLaunchSecurityConfirmation | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserFacingMessage | null>(null);
+  const activeRef = useRef(true);
   const processingLaunchIdRef = useRef<string | null>(null);
+  const knownLaunchIdsRef = useRef(new Set<string>());
   const enqueueLaunches = useCallback(
     (launches: ExternalSshLaunchRequest[]) => {
-      if (launches.length === 0) {
+      if (!activeRef.current || launches.length === 0) {
         return;
       }
-      setQueue((current) => {
-        const existing = new Set(current.map((launch) => launch.id));
-        return [
-          ...current,
-          ...launches.filter((launch) => !existing.has(launch.id)),
-        ];
-      });
+      const next: ExternalSshLaunchRequest[] = [];
+      for (const launch of launches) {
+        if (knownLaunchIdsRef.current.has(launch.id)) {
+          continue;
+        }
+        knownLaunchIdsRef.current.add(launch.id);
+        // WebView 重载后工作区 pane 仍可能存在，此时只补 ACK，不能重复物化和建 pane。
+        const alreadyOpened = useWorkspaceStore
+          .getState()
+          .terminalPanes.some(
+            (pane) => pane.machineId === externalSshLaunchMachineId(launch),
+          );
+        if (alreadyOpened) {
+          void ackExternalSshLaunch(launch.id).catch((nextError) => {
+            if (!activeRef.current) {
+              return;
+            }
+            const message = buildUserFacingError(nextError, {
+              detail: "已打开的外部 SSH 请求尚未完成确认。",
+              recoveryAction: "Kerminal 将在请求租约到期后再次恢复。",
+              title: "外部 SSH 请求未确认",
+            });
+            setError(message);
+            setNotice({ message });
+          });
+          continue;
+        }
+        next.push(launch);
+      }
+      if (next.length > 0) {
+        setQueue((current) => [...current, ...next]);
+      }
     },
     [],
   );
 
   const drainPendingLaunches = useCallback(async () => {
     try {
-      enqueueLaunches(await takePendingExternalSshLaunches());
+      const launches = await takePendingExternalSshLaunches();
+      if (activeRef.current) {
+        enqueueLaunches(launches);
+      }
     } catch (nextError) {
-      const message = formatExternalSshLaunchError(nextError);
+      if (!activeRef.current) {
+        return;
+      }
+      const message = buildUserFacingError(nextError, {
+        detail: "Kerminal 暂时无法读取待处理的外部 SSH 请求。",
+        recoveryAction: "请重新发起连接请求。",
+        title: "外部 SSH 请求未读取",
+      });
       setError(message);
       setNotice({ message });
     }
@@ -77,44 +130,121 @@ export function ExternalLaunchHost() {
       setFailedLaunch(null);
       setNotice(null);
       try {
+        // ACK 失败后 pane 已存在时只补确认，避免重试再次建 pane 和执行远程命令。
+        if (isExternalLaunchPaneOpen(launch)) {
+          await ackExternalSshLaunch(launch.id);
+          return;
+        }
         const materialized = await materializeExternalSshLaunch({
           launchId: launch.id,
           username: launch.target.username,
         });
-        openExternalSshLaunch(
-          applyExternalSshLaunchMaterializedTarget(launch, materialized),
+        validateMaterializedTarget(launch, materialized);
+        if (!activeRef.current) {
+          return;
+        }
+        const resolved = applyExternalSshLaunchMaterializedTarget(
+          launch,
+          materialized,
         );
+        const hostKey = await inspectExternalLaunchHostKey(launch.id);
+        validateHostKeyInspection(resolved, materialized, hostKey);
+        if (!activeRef.current) {
+          return;
+        }
+        if (hostKey.status === "changed") {
+          throw new Error(
+            "SSH 主机密钥已变化。请先核验目标身份并处理 known_hosts 冲突。",
+          );
+        }
+        if (
+          hostKey.status === "unknown" ||
+          materialized.safety !== "known-non-production" ||
+          Boolean(resolved.options.remoteCommand?.trim()) ||
+          resolved.source.entrypoint === "protocol"
+        ) {
+          setSecurityConfirmation({ hostKey, launch: resolved, materialized });
+          return;
+        }
+        if (!isExternalLaunchPaneOpen(resolved)) {
+          openExternalSshLaunch(resolved);
+        }
         await ackExternalSshLaunch(launch.id);
       } catch (nextError) {
-        const message = formatExternalSshLaunchError(nextError);
+        if (!activeRef.current) {
+          return;
+        }
+        const message = buildUserFacingError(nextError, {
+          detail: "该请求尚未打开。",
+          recoveryAction: "可重试或取消该请求。",
+          title: "外部 SSH 启动失败",
+        });
         setError(message);
         setFailedLaunch({ launch, message });
       } finally {
         processingLaunchIdRef.current = null;
-        setBusy(false);
+        if (activeRef.current) {
+          setBusy(false);
+        }
       }
     },
     [openExternalSshLaunch],
   );
 
   useEffect(() => {
-    void drainPendingLaunches();
+    activeRef.current = true;
+    return () => {
+      activeRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
-    void listenExternalSshLaunches((payload) => {
-      if (payload.kind === "queued") {
-        void drainPendingLaunches();
-      } else if (payload.message) {
-        setError(payload.message);
-        setNotice({ message: payload.message });
+    const startDelivery = async () => {
+      try {
+        const nextUnlisten = await listenExternalSshLaunches((payload) => {
+          if (!activeRef.current) {
+            return;
+          }
+          if (payload.kind === "queued") {
+            void drainPendingLaunches();
+          } else if (payload.message) {
+            const message = buildUserFacingError(payload.message, {
+              detail: "启动请求未通过接收校验。",
+              recoveryAction: "请检查来源参数后重试。",
+              title: "外部 SSH 请求未接收",
+            });
+            setError(message);
+            setNotice({ message });
+          }
+        });
+        if (disposed) {
+          nextUnlisten();
+          return;
+        }
+        unlisten = nextUnlisten;
+
+        // listener ready 后双重 drain，封闭订阅建立前后事件交错造成的 lost-wakeup 窗口。
+        await drainPendingLaunches();
+        await Promise.resolve();
+        if (!disposed) {
+          await drainPendingLaunches();
+        }
+      } catch (nextError) {
+        if (disposed) {
+          return;
+        }
+        const message = buildUserFacingError(nextError, {
+          detail: "Kerminal 暂时无法监听外部 SSH 请求。",
+          recoveryAction: "请重新发起连接请求。",
+          title: "外部 SSH 请求未接收",
+        });
+        setError(message);
+        setNotice({ message });
       }
-    }).then((nextUnlisten) => {
-      if (disposed) {
-        nextUnlisten();
-        return;
-      }
-      unlisten = nextUnlisten;
-    });
+    };
+    void startDelivery();
     return () => {
       disposed = true;
       unlisten?.();
@@ -125,6 +255,7 @@ export function ExternalLaunchHost() {
     if (
       busy ||
       resolutionLaunch ||
+      securityConfirmation ||
       queue.length === 0 ||
       processingLaunchIdRef.current
     ) {
@@ -143,7 +274,90 @@ export function ExternalLaunchHost() {
       return;
     }
     void openAndAckLaunch(nextLaunch as ExternalSshLaunchResolvedRequest);
-  }, [busy, openAndAckLaunch, queue, resolutionLaunch]);
+  }, [busy, openAndAckLaunch, queue, resolutionLaunch, securityConfirmation]);
+
+  const confirmSecurity = useCallback(async () => {
+    if (!securityConfirmation || busy) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      if (securityConfirmation.hostKey.status === "unknown") {
+        const trustedHostKey = await trustExternalLaunchHostKey(
+          securityConfirmation.launch.id,
+          securityConfirmation.hostKey.fingerprint,
+        );
+        validateTrustedHostKey(
+          securityConfirmation,
+          trustedHostKey,
+          securityConfirmation.hostKey.fingerprint,
+        );
+        if (!activeRef.current) {
+          return;
+        }
+        setSecurityConfirmation((current) =>
+          current?.launch.id === securityConfirmation.launch.id
+            ? { ...current, hostKey: trustedHostKey }
+            : current,
+        );
+      }
+      if (!activeRef.current) {
+        return;
+      }
+      if (!isExternalLaunchPaneOpen(securityConfirmation.launch)) {
+        openExternalSshLaunch(securityConfirmation.launch);
+      }
+      await ackExternalSshLaunch(securityConfirmation.launch.id);
+      if (activeRef.current) {
+        setSecurityConfirmation(null);
+      }
+    } catch (nextError) {
+      if (!activeRef.current) {
+        return;
+      }
+      setError(
+        buildUserFacingError(nextError, {
+          detail: "主机身份或远程命令尚未确认。",
+          recoveryAction: "重新核对 fingerprint 和目标后再试。",
+          title: "外部 SSH 安全确认失败",
+        }),
+      );
+    } finally {
+      if (activeRef.current) {
+        setBusy(false);
+      }
+    }
+  }, [busy, openExternalSshLaunch, securityConfirmation]);
+
+  const cancelSecurity = useCallback(async () => {
+    if (!securityConfirmation || busy) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await cancelExternalSshLaunch(securityConfirmation.launch.id);
+      if (activeRef.current) {
+        setSecurityConfirmation(null);
+      }
+    } catch (nextError) {
+      if (!activeRef.current) {
+        return;
+      }
+      setError(
+        buildUserFacingError(nextError, {
+          detail: "该外部 SSH 请求仍在待处理列表中。",
+          recoveryAction: "请稍后再次取消。",
+          title: "请求未取消",
+        }),
+      );
+    } finally {
+      if (activeRef.current) {
+        setBusy(false);
+      }
+    }
+  }, [busy, securityConfirmation]);
 
   const cancelResolution = useCallback(async () => {
     if (!resolutionLaunch || busy) {
@@ -153,11 +367,24 @@ export function ExternalLaunchHost() {
     setError(null);
     try {
       await cancelExternalSshLaunch(resolutionLaunch.id);
-      setResolutionLaunch(null);
+      if (activeRef.current) {
+        setResolutionLaunch(null);
+      }
     } catch (nextError) {
-      setError(formatExternalSshLaunchError(nextError));
+      if (!activeRef.current) {
+        return;
+      }
+      setError(
+        buildUserFacingError(nextError, {
+          detail: "该外部 SSH 请求仍在待处理列表中。",
+          recoveryAction: "请稍后再次取消。",
+          title: "请求未取消",
+        }),
+      );
     } finally {
-      setBusy(false);
+      if (activeRef.current) {
+        setBusy(false);
+      }
     }
   }, [busy, resolutionLaunch]);
 
@@ -188,14 +415,25 @@ export function ExternalLaunchHost() {
     setError(null);
     try {
       await cancelExternalSshLaunch(failedLaunch.launch.id);
-      setFailedLaunch(null);
+      if (activeRef.current) {
+        setFailedLaunch(null);
+      }
     } catch (nextError) {
+      if (!activeRef.current) {
+        return;
+      }
       setFailedLaunch({
         ...failedLaunch,
-        message: formatExternalSshLaunchError(nextError),
+        message: buildUserFacingError(nextError, {
+          detail: "该外部 SSH 请求仍在待处理列表中。",
+          recoveryAction: "请稍后再次取消。",
+          title: "请求未取消",
+        }),
       });
     } finally {
-      setBusy(false);
+      if (activeRef.current) {
+        setBusy(false);
+      }
     }
   }, [busy, failedLaunch]);
 
@@ -209,6 +447,13 @@ export function ExternalLaunchHost() {
         onResolve={resolveLaunch}
         open={Boolean(resolutionLaunch)}
       />
+      <ExternalLaunchSecurityDialog
+        busy={busy}
+        confirmation={securityConfirmation}
+        error={securityConfirmation ? error : null}
+        onCancel={() => void cancelSecurity()}
+        onConfirm={() => void confirmSecurity()}
+      />
       <ExternalLaunchFailureDialog
         busy={busy}
         failure={failedLaunch}
@@ -220,6 +465,180 @@ export function ExternalLaunchHost() {
         onClose={() => setNotice(null)}
       />
     </>
+  );
+}
+
+function isExternalLaunchPaneOpen(
+  launch: ExternalSshLaunchRequest | ExternalSshLaunchResolvedRequest,
+): boolean {
+  const machineId = externalSshLaunchMachineId(launch);
+  return useWorkspaceStore
+    .getState()
+    .terminalPanes.some((pane) => pane.machineId === machineId);
+}
+
+/**
+ * 后端物化结果必须仍绑定当前 requestId，并保持 safety/production 不变量。
+ * 这是前端最后一道过期响应防线，不能让旧请求或降级后的安全级别进入工作区。
+ */
+function validateMaterializedTarget(
+  launch: ExternalSshLaunchResolvedRequest,
+  materialized: ExternalLaunchMaterializedTarget,
+): void {
+  const expectedTargetId = externalSshLaunchMachineId(launch);
+  const validSafety = [
+    "restricted-unknown",
+    "known-non-production",
+    "production",
+  ].includes(materialized.safety);
+  const validAuthType = ["password", "key", "agent"].includes(
+    materialized.authType,
+  );
+  const expectedProduction = materialized.safety !== "known-non-production";
+  if (
+    !validSafety ||
+    !validAuthType ||
+    materialized.launchId !== launch.id ||
+    materialized.targetId !== expectedTargetId ||
+    !materialized.host.trim() ||
+    !Number.isInteger(materialized.port) ||
+    materialized.port < 1 ||
+    materialized.port > 65_535 ||
+    materialized.production !== expectedProduction
+  ) {
+    throw new Error("物化目标与当前启动请求不一致，已拒绝连接。");
+  }
+}
+
+/** 主机身份确认必须精确绑定本次物化后的 host、port 和 launch。 */
+function validateHostKeyInspection(
+  launch: ExternalSshLaunchResolvedRequest,
+  materialized: ExternalLaunchMaterializedTarget,
+  inspection: ExternalHostKeyInspection,
+): void {
+  const validStatus = ["known", "unknown", "changed"].includes(
+    inspection.status,
+  );
+  if (
+    !validStatus ||
+    inspection.launchId !== launch.id ||
+    inspection.host !== materialized.host ||
+    inspection.port !== materialized.port ||
+    !inspection.algorithm.trim() ||
+    !inspection.fingerprint.startsWith("SHA256:")
+  ) {
+    throw new Error("主机身份结果与当前启动请求不一致，已拒绝连接。");
+  }
+}
+
+function validateTrustedHostKey(
+  confirmation: ExternalLaunchSecurityConfirmation,
+  trusted: ExternalHostKeyInspection,
+  expectedFingerprint: string,
+): void {
+  validateHostKeyInspection(
+    confirmation.launch,
+    confirmation.materialized,
+    trusted,
+  );
+  if (
+    trusted.status !== "known" ||
+    trusted.fingerprint !== expectedFingerprint
+  ) {
+    throw new Error("主机指纹确认结果已变化，已拒绝连接。");
+  }
+}
+
+function ExternalLaunchSecurityDialog({
+  busy,
+  confirmation,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  busy: boolean;
+  confirmation: ExternalLaunchSecurityConfirmation | null;
+  error: UserFacingMessage | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (!confirmation) {
+    return null;
+  }
+  const { hostKey, launch, materialized } = confirmation;
+  const remoteCommand = launch.options.remoteCommand?.trim();
+  return (
+    <ModalShell
+      description={`${launch.target.username}@${hostKey.host}:${hostKey.port}`}
+      footer={
+        <>
+          <Button disabled={busy} onClick={onCancel} size="sm" variant="ghost">
+            取消该请求
+          </Button>
+          <Button disabled={busy} onClick={onConfirm} size="sm" type="button">
+            {hostKey.status === "unknown" ? "信任并连接" : "确认并连接"}
+          </Button>
+        </>
+      }
+      maxWidthClassName="max-w-xl"
+      onClose={onCancel}
+      open
+      size="small"
+      title="确认外部 SSH 目标"
+    >
+      <div className="space-y-3 text-[13px] text-[var(--text-secondary)]">
+        <div className="divide-y divide-[var(--border-subtle)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-content)]">
+          {hostKey.status === "unknown" ? (
+            <div className="px-3 py-2.5">
+              <div className="font-medium text-[var(--text-primary)]">
+                首次连接主机指纹
+              </div>
+              <div className="mt-1 text-xs">{hostKey.algorithm}</div>
+              <div className="mt-1 break-all font-mono text-xs text-[var(--text-primary)]">
+                {hostKey.fingerprint}
+              </div>
+            </div>
+          ) : null}
+          {materialized.safety === "production" ? (
+            <div className="bg-amber-500/10 px-3 py-2.5 text-amber-800 dark:text-amber-100">
+              <div className="font-medium">生产目标</div>
+              <div className="mt-1 text-xs">
+                该连接按生产主机保护，确认后才会创建终端。
+              </div>
+            </div>
+          ) : null}
+          {materialized.safety === "restricted-unknown" ? (
+            <div className="bg-amber-500/10 px-3 py-2.5 text-amber-800 dark:text-amber-100">
+              <div className="font-medium">受限的未知目标</div>
+              <div className="mt-1 text-xs">
+                该目标未精确匹配已保存的非生产主机，默认按受限目标保护。
+              </div>
+            </div>
+          ) : null}
+          {launch.source.entrypoint === "protocol" ? (
+            <div className="px-3 py-2.5">
+              <div className="font-medium text-[var(--text-primary)]">
+                系统协议链接
+              </div>
+              <div className="mt-1 text-xs">
+                此请求由外部链接发起，请确认目标与来源符合预期。
+              </div>
+            </div>
+          ) : null}
+          {remoteCommand ? (
+            <div className="px-3 py-2.5">
+              <div className="font-medium text-[var(--text-primary)]">
+                连接后执行命令
+              </div>
+              <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-[var(--radius-control)] bg-[var(--surface-field)] p-2 font-mono text-xs">
+                {remoteCommand}
+              </pre>
+            </div>
+          ) : null}
+        </div>
+        {error ? <UserFacingNotice message={error} /> : null}
+      </div>
+    </ModalShell>
   );
 }
 
@@ -247,12 +666,7 @@ function ExternalLaunchNoticeDialog({
       size="small"
       title="外部 SSH 启动未接收"
     >
-      <div className="flex gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-field)] p-3">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500 dark:text-amber-300" />
-        <p className="min-w-0 text-sm leading-5 text-zinc-700 dark:text-zinc-200">
-          {notice.message}
-        </p>
-      </div>
+      <UserFacingNotice message={notice.message} />
     </ModalShell>
   );
 }
@@ -293,12 +707,7 @@ function ExternalLaunchFailureDialog({
       size="small"
       title="外部 SSH 启动失败"
     >
-      <div className="flex gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-field)] p-3">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500 dark:text-amber-300" />
-        <p className="min-w-0 text-sm leading-5 text-zinc-700 dark:text-zinc-200">
-          {message}
-        </p>
-      </div>
+      <UserFacingNotice message={message} />
     </ModalShell>
   );
 }

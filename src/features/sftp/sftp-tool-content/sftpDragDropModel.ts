@@ -1,10 +1,7 @@
-import { isTauri } from "@tauri-apps/api/core";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { writeDesktopClipboardText } from "../../../lib/desktopClipboardApi";
-import type {
-  SftpDragDropPayload,
-  SftpSelectionEvent,
-} from "./types";
+import { desktopRuntime } from "../../../lib/desktopRuntimeApi";
+import type { SftpDragDropPayload } from "./types";
 
 export function clampContextMenuPosition(x: number, y: number) {
   const padding = 8;
@@ -20,7 +17,7 @@ export function clampContextMenuPosition(x: number, y: number) {
 
 export const isRunningInTauriWebview = () => {
   return (
-    isTauri() ||
+    desktopRuntime.mode === "desktop" ||
     Boolean(
       (window as Window & { __TAURI_INTERNALS__?: unknown })
         .__TAURI_INTERNALS__,
@@ -29,6 +26,9 @@ export const isRunningInTauriWebview = () => {
 };
 
 export const unwrapDragDropPayload = (event: unknown): SftpDragDropPayload => {
+  if (isDragDropPayload(event)) {
+    return event;
+  }
   const payload = (event as { payload?: unknown }).payload;
   if (isDragDropPayload(payload)) {
     return payload;
@@ -40,7 +40,7 @@ export const unwrapDragDropPayload = (event: unknown): SftpDragDropPayload => {
   return { type: "leave" };
 };
 
-export const isDragDropPayload = (value: unknown): value is SftpDragDropPayload => {
+const isDragDropPayload = (value: unknown): value is SftpDragDropPayload => {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -68,16 +68,12 @@ export const isDragPositionInsideDropZone = (
   return scale !== 1 && isPointInsideRect(x / scale, y / scale, rect);
 };
 
-export const isPointInsideRect = (x: number, y: number, rect: DOMRect) => {
+const isPointInsideRect = (x: number, y: number, rect: DOMRect) => {
   return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 };
 
 export const isFileManagerShortcut = (event: ReactKeyboardEvent<HTMLElement>) => {
   return (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
-};
-
-export const isExtendedSelectionEvent = (event: SftpSelectionEvent) => {
-  return event.ctrlKey || event.metaKey || event.shiftKey;
 };
 
 export const isEditableKeyboardTarget = (target: EventTarget | null) => {

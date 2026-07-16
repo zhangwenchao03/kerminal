@@ -7,16 +7,21 @@
 import { Copy, FileCode2, RefreshCw, ScrollText, Terminal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../../components/ui/button";
+import { UserFacingNotice } from "../../../components/ui/user-facing-notice";
 import { cn } from "../../../lib/cn";
 import { writeDesktopClipboardText } from "../../../lib/desktopClipboardApi";
 import { configureKerminalMonaco } from "../../../lib/monacoTheme";
-import { MonacoTextEditor } from "../../sftp/MonacoTextEditor";
-import { languageForPath } from "../../sftp/remoteWorkspaceEditorModel";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../../lib/userFacingMessage";
+import { MonacoTextEditor } from "../../sftp/editor/index";
+import { languageForPath } from "../../sftp/editor/index";
 import {
   readRemoteWorkspaceTextFile,
   type RemoteWorkspaceReadTextFileResponse,
-} from "../../sftp/remoteWorkspaceEditorTransport";
-import type { OpenWorkspaceFileTabOptions } from "../../workspace/workspaceStore";
+} from "../../sftp/editor/index";
+import type { OpenWorkspaceFileTabOptions } from "../../workspace/state/index";
 import type { ComposeProjectView } from "./composeProjectModel";
 import {
   canEnterHostContainer,
@@ -24,6 +29,16 @@ import {
   hostContainerStatusTone,
   type HostContainerMetadata,
 } from "./hostContainerDialogModel";
+import {
+  Field,
+  Metric,
+  PathList,
+  StateMessage,
+  YamlMetadata,
+  buildYamlMetadataItems,
+  composeYamlRootPath,
+  useMonacoThemeName,
+} from "./composeProjectInspectorPresenter";
 
 export type ComposeProjectInspectorTab = "overview" | "containers" | "yaml";
 
@@ -46,7 +61,7 @@ const statusToneClassNames = {
 const inspectorIconButtonClassName =
   "h-8 w-8 rounded-lg text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50";
 const inspectorPanelClassName =
-  "grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-overlay)]/88 p-3 shadow-sm shadow-black/5 dark:shadow-black/20";
+  "grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-content)] p-3";
 const inspectorHeaderClassName =
   "grid h-[5.75rem] grid-rows-[minmax(0,2.25rem)_2rem] gap-3 border-b border-[var(--border-subtle)] pb-3";
 const inspectorTabsClassName =
@@ -61,7 +76,7 @@ type YamlPreviewState = {
   bytesRead?: number;
   content: string;
   encoding?: string;
-  error: string | null;
+  error: UserFacingMessage | null;
   lineEnding?: string;
   loading: boolean;
   maxBytes?: number;
@@ -93,8 +108,9 @@ export function ComposeProjectInspector({
   tab: ComposeProjectInspectorTab;
 }) {
   const configPathKey = project?.configPaths.join("\n") ?? "";
+  const firstConfigPath = project?.configPaths[0];
   const [selectedPath, setSelectedPath] = useState<string | undefined>(
-    project?.configPaths[0],
+    firstConfigPath,
   );
   const [yamlState, setYamlState] = useState<YamlPreviewState>({
     content: "",
@@ -106,14 +122,14 @@ export function ComposeProjectInspector({
 
   useEffect(() => {
     yamlRequestSequenceRef.current += 1;
-    setSelectedPath(project?.configPaths[0]);
+    setSelectedPath(firstConfigPath);
     setYamlState({
       content: "",
       error: null,
       loading: false,
       truncated: false,
     });
-  }, [project?.id, configPathKey]);
+  }, [configPathKey, firstConfigPath, project?.id]);
 
   const loadYaml = useCallback(async () => {
     if (!project || !selectedPath) {
@@ -157,7 +173,11 @@ export function ComposeProjectInspector({
       }
       setYamlState({
         content: "",
-        error: error instanceof Error ? error.message : String(error),
+        error: buildUserFacingError(error, {
+          detail: "当前 YAML 文件暂时无法预览。",
+          recoveryAction: "请确认主机连接和文件路径有效，然后重试。",
+          title: "无法读取 Compose YAML",
+        }),
         loading: false,
         path: requestedPath,
         truncated: false,
@@ -305,7 +325,6 @@ export function ComposeProjectInspector({
     </aside>
   );
 }
-
 function ProjectOverview({
   project,
   warningText,
@@ -327,7 +346,6 @@ function ProjectOverview({
     </div>
   );
 }
-
 function ProjectContainers({
   onEnterContainer,
   onOpenContainerLogs,
@@ -425,7 +443,7 @@ function ProjectYaml({
   project: ComposeProjectView;
   selectedPath?: string;
   yamlContent: string;
-  yamlError: string | null;
+  yamlError: UserFacingMessage | null;
   yamlMetadata: {
     bytesRead?: number;
     encoding?: string;
@@ -531,8 +549,12 @@ function ProjectYaml({
           className={yamlPreviewFrameClassName}
           role="region"
         >
-          <div className="flex h-full min-h-0 items-center justify-center px-4 text-center text-sm text-red-700 dark:text-red-200">
-            {yamlError}
+          <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto p-4">
+            <UserFacingNotice
+              className="w-full max-w-lg text-left"
+              compact
+              message={yamlError}
+            />
           </div>
         </div>
       ) : (
@@ -575,239 +597,6 @@ function ProjectYaml({
           <YamlMetadata metadataItems={metadataItems} />
         </div>
       )}
-    </div>
-  );
-}
-
-function buildYamlMetadataItems(
-  metadata: {
-    bytesRead?: number;
-    encoding?: string;
-    lineEnding?: string;
-    maxBytes?: number;
-    readonly?: boolean;
-    revision?: RemoteWorkspaceReadTextFileResponse["revision"];
-  },
-  truncated: boolean,
-) {
-  const items: string[] = [];
-  const size = metadata.revision?.size ?? metadata.bytesRead;
-  if (typeof size === "number") {
-    const readPrefix =
-      truncated && typeof metadata.bytesRead === "number"
-        ? `${formatByteCount(metadata.bytesRead)}/`
-        : "";
-    items.push(`${readPrefix}${formatByteCount(size)}`);
-  }
-  if (metadata.revision?.permissions) {
-    items.push(metadata.revision.permissions);
-  }
-  if (metadata.encoding) {
-    items.push(metadata.encoding.toUpperCase());
-  }
-  if (metadata.lineEnding) {
-    items.push(formatLineEnding(metadata.lineEnding));
-  }
-  if (typeof metadata.readonly === "boolean") {
-    items.push(metadata.readonly ? "RO" : "RW");
-  }
-  const modified = formatModifiedTime(metadata.revision?.modified);
-  if (modified) {
-    items.push(modified);
-  }
-  return items;
-}
-
-function YamlMetadata({ metadataItems }: { metadataItems: string[] }) {
-  if (metadataItems.length === 0) {
-    return null;
-  }
-
-  return (
-    <div
-      aria-label="Compose YAML 元数据"
-      className="scrollbar-none flex min-w-0 shrink-0 items-center gap-1 overflow-x-auto"
-    >
-      {metadataItems.map((item) => (
-        <span
-          className="shrink-0 rounded-md bg-black/5 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500 dark:bg-white/10 dark:text-zinc-400"
-          key={item}
-        >
-          {item}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function formatByteCount(value: number) {
-  if (!Number.isFinite(value) || value < 0) {
-    return "-";
-  }
-  if (value < 1024) {
-    return `${value} B`;
-  }
-  const units = ["KB", "MB", "GB"];
-  let size = value / 1024;
-  let unitIndex = 0;
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex += 1;
-  }
-  return `${size >= 10 ? size.toFixed(0) : size.toFixed(1)} ${units[unitIndex]}`;
-}
-
-function formatLineEnding(value: string) {
-  if (value === "\r\n" || value.toLowerCase() === "crlf") {
-    return "CRLF";
-  }
-  if (value === "\n" || value.toLowerCase() === "lf") {
-    return "LF";
-  }
-  return value.toUpperCase();
-}
-
-function formatModifiedTime(value?: string | null) {
-  if (!value) {
-    return "";
-  }
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) {
-    return "";
-  }
-  const date = new Date(timestamp);
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hour = String(date.getHours()).padStart(2, "0");
-  const minute = String(date.getMinutes()).padStart(2, "0");
-  return `${month}-${day} ${hour}:${minute}`;
-}
-
-function composeYamlRootPath(project: ComposeProjectView, path: string) {
-  if (project.workingDir) {
-    return project.workingDir;
-  }
-  const normalizedPath = path.replace(/\\/g, "/");
-  const slashIndex = normalizedPath.lastIndexOf("/");
-  if (slashIndex <= 0) {
-    return "/";
-  }
-  return normalizedPath.slice(0, slashIndex);
-}
-
-function useMonacoThemeName() {
-  const [theme, setTheme] = useState(() => resolveMonacoThemeName());
-
-  useEffect(() => {
-    if (typeof document === "undefined") {
-      return undefined;
-    }
-    const root = document.documentElement;
-    const updateTheme = () => setTheme(resolveMonacoThemeName());
-    const observer = new MutationObserver(updateTheme);
-    observer.observe(root, {
-      attributeFilter: ["class", "data-theme"],
-      attributes: true,
-    });
-    updateTheme();
-    return () => observer.disconnect();
-  }, []);
-
-  return theme;
-}
-
-function resolveMonacoThemeName() {
-  if (typeof document === "undefined") {
-    return "kerminal-dark";
-  }
-  const root = document.documentElement;
-  return root.dataset.theme === "light" && !root.classList.contains("dark")
-    ? "vs"
-    : "kerminal-dark";
-}
-
-function Field({
-  label,
-  mono = false,
-  value,
-}: {
-  label: string;
-  mono?: boolean;
-  value: string;
-}) {
-  return (
-    <div className="grid gap-0.5">
-      <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
-        {label}
-      </span>
-      <span
-        className={cn(
-          "min-w-0 truncate text-zinc-800 dark:text-zinc-200",
-          mono && "font-mono text-[11px]",
-        )}
-        title={value}
-      >
-        {value || "-"}
-      </span>
-    </div>
-  );
-}
-
-function PathList({ label, values }: { label: string; values: string[] }) {
-  return (
-    <div className="grid gap-1.5">
-      <div className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
-        {label}
-      </div>
-      <div className="grid gap-1">
-        {values.length ? (
-          values.map((value) => (
-            <span
-              className="truncate rounded-lg bg-black/5 px-2 py-1 font-mono text-[11px] text-zinc-600 dark:bg-white/10 dark:text-zinc-300"
-              key={value}
-              title={value}
-            >
-              {value}
-            </span>
-          ))
-        ) : (
-          <span className="text-zinc-400 dark:text-zinc-500">-</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="rounded-xl bg-black/5 px-2.5 py-2 dark:bg-white/10">
-      <div className="font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-        {value}
-      </div>
-      <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
-        {label}
-      </div>
-    </div>
-  );
-}
-
-function StateMessage({
-  children,
-  tone = "muted",
-}: {
-  children: string;
-  tone?: "danger" | "muted";
-}) {
-  return (
-    <div
-      className={cn(
-        "flex min-h-32 items-center justify-center rounded-2xl border px-4 py-8 text-center text-sm",
-        tone === "danger"
-          ? "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-200"
-          : "border-dashed border-[var(--border-subtle)] text-zinc-500 dark:text-zinc-400",
-      )}
-    >
-      {children}
     </div>
   );
 }

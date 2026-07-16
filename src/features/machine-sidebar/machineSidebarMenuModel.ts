@@ -4,7 +4,7 @@
  * @author kongweiguang
  */
 
-import type { Machine } from "../workspace/types";
+import type { Machine } from "../workspace/contracts/index";
 
 export const MACHINE_SIDEBAR_ROOT_MENU_DOMAIN = "machineSidebarRoot";
 export const MACHINE_GROUP_MENU_DOMAIN = "machineGroup";

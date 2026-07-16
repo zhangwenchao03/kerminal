@@ -1,25 +1,16 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  ExternalAgentId,
-  ExternalAgentWorkspaceStatus,
-} from "../../../../src/lib/agentLauncherApi";
-import {
-  registerTerminalPaneSession,
-  resetTerminalPaneSessionsForTests,
-} from "../../../../src/features/terminal/terminalSessionRegistry";
-import { tools } from "../../../../src/features/workspace/workspaceData";
-import { AgentLauncherToolContent } from "../../../../src/features/tool-panel/AgentLauncherToolContent";
-import { ToolPanel } from "../../../../src/features/tool-panel/ToolPanel";
-
-const apiMocks = vi.hoisted(() => ({
+import type { ExternalAgentId, ExternalAgentWorkspaceStatus } from "../../../../src/lib/agentLauncherApi";
+import { registerTerminalPaneSession } from "../../../../src/features/terminal/terminalSessionRegistry";
+import { unregisterTestTerminalPaneSessions } from "../../support/terminalSessionRegistry.testSupport";import { AgentLauncherToolContent } from "../../../../src/features/tool-panel/AgentLauncherToolContent";const apiMocks = vi.hoisted(() => ({
   archiveAgentSession: vi.fn(),
   createAgentSession: vi.fn(),
   getExternalAgentWorkspaceStatus: vi.fn(),
   listAgentSessions: vi.fn(),
   prepareExternalAgentWorkspace: vi.fn(),
   rebindAgentSessionTarget: vi.fn(),
+  updateAgentSession: vi.fn(),
 }));
 
 const terminalMocks = vi.hoisted(() => ({
@@ -53,6 +44,8 @@ vi.mock("../../../../src/lib/agentLauncherApi", () => ({
     apiMocks.prepareExternalAgentWorkspace(...args),
   rebindAgentSessionTarget: (...args: unknown[]) =>
     apiMocks.rebindAgentSessionTarget(...args),
+  updateAgentSession: (...args: unknown[]) =>
+    apiMocks.updateAgentSession(...args),
 }));
 
 vi.mock("../../../../src/lib/fileDialogApi", () => ({
@@ -117,6 +110,7 @@ describe("AgentLauncherToolContent", () => {
     apiMocks.listAgentSessions.mockReset();
     apiMocks.prepareExternalAgentWorkspace.mockReset();
     apiMocks.rebindAgentSessionTarget.mockReset();
+    apiMocks.updateAgentSession.mockReset();
     terminalMocks.renderXtermPane.mockClear();
     notificationMocks.currentDesktopNotificationVisibility.mockReset();
     notificationMocks.sendDesktopNotification.mockReset();
@@ -128,7 +122,7 @@ describe("AgentLauncherToolContent", () => {
       requestedPermission: false,
       sent: true,
     });
-    resetTerminalPaneSessionsForTests();
+    unregisterTestTerminalPaneSessions();
     apiMocks.getExternalAgentWorkspaceStatus.mockResolvedValue(workspaceStatus());
     apiMocks.listAgentSessions.mockResolvedValue({
       diagnostics: [],
@@ -142,6 +136,17 @@ describe("AgentLauncherToolContent", () => {
         title: "Archived",
       },
     });
+    apiMocks.updateAgentSession.mockImplementation(
+      async (agentSessionId: string, request: { title?: string }) => ({
+        session: {
+          agentId: "codex",
+          agentSessionId,
+          launch: { args: [], cwd: "", shell: "codex" },
+          status: "active",
+          title: request.title ?? "Codex",
+        },
+      }),
+    );
     apiMocks.createAgentSession.mockImplementation(
       async ({
         agentId,
@@ -207,17 +212,47 @@ describe("AgentLauncherToolContent", () => {
   });
 
   it("starts as three minimal launcher buttons", async () => {
-    renderAgentLauncher();
+    const user = userEvent.setup();
+    const { container } = renderAgentLauncher();
 
     expect(await screen.findByRole("button", { name: "Open Codex" })).toBeInTheDocument();
-    expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label"))
+        .filter(Boolean),
+    ).toEqual([
+      "查看 Agent 技术详情",
       "Open Codex",
       "Open Claude",
       "Open Custom Agent",
     ]);
+    expect(await screen.findByText("可用")).toBeInTheDocument();
+    expect(screen.getAllByText("需设置")).toHaveLength(2);
+    expect(screen.getByTestId("agent-current-target")).toHaveTextContent(
+      "新建对话当前目标 · 未绑定",
+    );
     expect(
       screen.queryByRole("textbox", { name: "Custom agent command" }),
     ).not.toBeInTheDocument();
+    expect(container.textContent).not.toMatch(
+      /config\.toml|\.mcp\.json|127\.0\.0\.1:37657|workspaceDir|pane-|session-/i,
+    );
+    for (const button of screen.getAllByRole("button")) {
+      expect(button.getAttribute("title") ?? "").not.toMatch(
+        /CLI detected|MCP config|config\.toml|\.mcp\.json|127\.0\.0\.1:37657/i,
+      );
+    }
+
+    expect(
+      screen.queryByRole("region", { name: "Agent 技术详情" }),
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "查看 Agent 技术详情" }),
+    );
+    expect(
+      screen.getByRole("region", { name: "Agent 技术详情" }),
+    ).toHaveTextContent("config.toml");
   });
 
   it("keeps the same three launchers while workspace status is loading", () => {
@@ -225,7 +260,13 @@ describe("AgentLauncherToolContent", () => {
 
     renderAgentLauncher();
 
-    expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label"))
+        .filter(Boolean),
+    ).toEqual([
+      "查看 Agent 技术详情",
       "Open Codex",
       "Open Claude",
       "Open Custom Agent",
@@ -435,10 +476,17 @@ describe("AgentLauncherToolContent", () => {
           id: "pane-prod",
           mode: "ssh",
           shell: "bash",
+          title: "prod web",
         } as never}
       />,
     );
 
+    expect(await screen.findByTestId("agent-current-target")).toHaveTextContent(
+      "新建对话当前目标 · prod web",
+    );
+    expect(screen.getByTestId("agent-current-target")).not.toHaveTextContent(
+      /pane-prod|term-prod|tab-main/,
+    );
     await user.click(await screen.findByRole("button", { name: "Open Codex" }));
 
     await waitFor(() => {
@@ -454,7 +502,7 @@ describe("AgentLauncherToolContent", () => {
           targetRef: "ssh:prod-web",
           targetTerminalSessionId: "term-prod",
         },
-        title: "Codex",
+        title: "Codex · prod web",
       });
     });
     expect(screen.queryByTestId("agent-target-chip")).not.toBeInTheDocument();
@@ -562,600 +610,8 @@ describe("AgentLauncherToolContent", () => {
     );
   });
 
-  it("continues a persisted Claude agent session", async () => {
-    const user = userEvent.setup();
-    apiMocks.listAgentSessions.mockResolvedValue({
-      diagnostics: [],
-      sessions: [
-        {
-          session: {
-            agentId: "claude",
-            agentSessionId: "ags-restored-claude",
-            launch: {
-              args: [],
-              commandLabel: "claude",
-              cwd: "C:/Users/me/.kerminal/agents/sessions/ags-restored-claude",
-              shell: "claude",
-            },
-            sessionRoot: "C:/Users/me/.kerminal/agents/sessions/ags-restored-claude",
-            status: "active",
-            target: {
-              tabId: "tab-main",
-            },
-            title: "Claude",
-            workspaceRoot: "C:/Users/me/.kerminal",
-          },
-        },
-      ],
-    });
 
-    renderAgentLauncher();
-
-    await user.click(await screen.findByRole("button", { name: "Open Claude" }));
-    await user.click(await screen.findByRole("button", { name: "继续上次" }));
-
-    await waitFor(() => {
-      expect(apiMocks.createAgentSession).not.toHaveBeenCalled();
-      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
-        agentId: "claude",
-        agentSessionId: "ags-restored-claude",
-        resumeProviderSession: true,
-      });
-    });
-    expect(await screen.findByTestId("agent-xterm")).toHaveTextContent("Claude");
-  });
-
-  it("creates a fresh provider session when the restore choice selects new session", async () => {
-    const user = userEvent.setup();
-    apiMocks.listAgentSessions.mockResolvedValue({
-      diagnostics: [],
-      sessions: [
-        {
-          session: {
-            agentId: "codex",
-            agentSessionId: "ags-restored-codex",
-            launch: {
-              args: [],
-              commandLabel: "codex",
-              cwd: "C:/Users/me/.kerminal/agents/sessions/ags-restored-codex",
-              shell: "codex",
-            },
-            sessionRoot: "C:/Users/me/.kerminal/agents/sessions/ags-restored-codex",
-            status: "active",
-            target: {
-              tabId: "tab-main",
-            },
-            title: "Codex",
-            workspaceRoot: "C:/Users/me/.kerminal",
-          },
-        },
-      ],
-    });
-
-    renderAgentLauncher();
-
-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
-    await user.click(await screen.findByRole("button", { name: "新会话" }));
-
-    await waitFor(() => {
-      expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
-        agentId: "codex",
-        target: {
-          liveStatus: "unbound",
-        },
-        title: "Codex",
-      });
-      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
-        agentId: "codex",
-        agentSessionId: "ags-codex",
-        resumeProviderSession: false,
-      });
-    });
-    expect(await screen.findByTestId("agent-xterm")).toHaveAttribute(
-      "data-cwd",
-      "C:/Users/me/.kerminal/agents/sessions/ags-codex",
-    );
-  });
-
-  it("shows stale persisted agent target as invalid after restore", async () => {
-    const user = userEvent.setup();
-    apiMocks.listAgentSessions.mockResolvedValue({
-      diagnostics: [],
-      sessions: [
-        {
-          session: {
-            agentId: "codex",
-            agentSessionId: "ags-stale-codex",
-            launch: {
-              args: [],
-              commandLabel: "codex",
-              cwd: "C:/Users/me/.kerminal/agents/sessions/ags-stale-codex",
-              shell: "codex",
-            },
-            sessionRoot: "C:/Users/me/.kerminal/agents/sessions/ags-stale-codex",
-            target: {
-              cwd: "/srv/app",
-              liveStatus: "stale",
-              paneId: "pane-old",
-              shell: "bash",
-              tabId: "tab-old",
-              targetKind: "ssh",
-              targetRef: "ssh:prod-web",
-              targetTerminalSessionId: "term-old",
-            },
-            title: "Codex",
-            workspaceRoot: "C:/Users/me/.kerminal",
-          },
-        },
-      ],
-    });
-
-    renderAgentLauncher({ activeTab: terminalTab("tab-old") });
-
-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
-
-    expect(await screen.findByTestId("agent-restore-target-chip")).toHaveTextContent(
-      "已失效",
-    );
-
-    await user.click(screen.getByRole("button", { name: "继续上次" }));
-
-    await waitFor(() => {
-      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
-        agentId: "codex",
-        agentSessionId: "ags-stale-codex",
-        resumeProviderSession: true,
-      });
-    });
-    expect(screen.queryByTestId("agent-target-chip")).not.toBeInTheDocument();
-  });
-
-  it("returns to the launcher without closing the active agent terminal", async () => {
-    const user = userEvent.setup();
-
-    renderAgentLauncher();
-
-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
-
-    await waitFor(() => {
-      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledTimes(1);
-    });
-    expect(await screen.findByTestId("agent-xterm")).toHaveAttribute(
-      "data-focused",
-      "true",
-    );
-
-    await user.click(
-      screen.getByRole("button", { name: "Back to agent launcher" }),
-    );
-
-    expect(
-      await screen.findByRole("button", { name: "Open Codex" }),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("agent-xterm")).toBeInTheDocument();
-    expect(screen.getByTestId("agent-xterm")).toHaveAttribute(
-      "data-focused",
-      "false",
-    );
-
-    await user.click(screen.getByRole("button", { name: "Open Codex" }));
-
-    expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledTimes(1);
-    await waitFor(() => {
-      expect(screen.getByTestId("agent-xterm")).toHaveAttribute(
-        "data-focused",
-        "true",
-      );
-    });
-  });
-
-  it("keeps Codex and Claude in independent right-panel terminal sessions", async () => {
-    const user = userEvent.setup();
-    apiMocks.prepareExternalAgentWorkspace.mockImplementation(
-      async ({
-        agentId,
-        agentSessionId,
-      }: {
-        agentId: "codex" | "claude";
-        agentSessionId: string;
-      }) => ({
-        agentId,
-        agentSessionId,
-        args: [
-          "-NoLogo",
-          "-NoProfile",
-          "-NoExit",
-          "-Command",
-          agentId,
-        ],
-        cwd: `C:/Users/me/.kerminal/agents/sessions/${agentSessionId}`,
-        message: `${agentId} workspace prepared.`,
-        shell: "pwsh.exe",
-        title: agentId === "codex" ? "Codex" : "Claude",
-      }),
-    );
-
-    renderAgentLauncher();
-
-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
-
-    await waitFor(() => {
-      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
-        agentId: "codex",
-        agentSessionId: "ags-codex",
-        resumeProviderSession: false,
-      });
-    });
-
-    await user.click(
-      screen.getByRole("button", { name: "Back to agent launcher" }),
-    );
-
-    await user.click(await screen.findByRole("button", { name: "Open Claude" }));
-
-    await waitFor(() => {
-      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
-        agentId: "claude",
-        agentSessionId: "ags-claude",
-        resumeProviderSession: false,
-      });
-    });
-    expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledTimes(2);
-
-    const terminals = screen.getAllByTestId("agent-xterm");
-    expect(terminals).toHaveLength(2);
-    expect(terminalByTitle("Codex")).toHaveAttribute("data-focused", "false");
-    expect(terminalByTitle("Codex")).toHaveAttribute(
-      "data-cwd",
-      "C:/Users/me/.kerminal/agents/sessions/ags-codex",
-    );
-    expect(terminalByTitle("Claude")).toHaveAttribute("data-focused", "true");
-    expect(terminalByTitle("Claude")).toHaveAttribute(
-      "data-cwd",
-      "C:/Users/me/.kerminal/agents/sessions/ags-claude",
-    );
-
-    await user.click(
-      screen.getByRole("button", { name: "Back to agent launcher" }),
-    );
-    await user.click(screen.getByRole("button", { name: "Open Codex" }));
-
-    expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledTimes(2);
-    await waitFor(() => {
-      expect(terminalByTitle("Codex")).toHaveAttribute("data-focused", "true");
-      expect(terminalByTitle("Claude")).toHaveAttribute(
-        "data-focused",
-        "false",
-      );
-    });
-  });
-
-  it("scopes right-panel agent terminals to the active workspace tab", async () => {
-    const user = userEvent.setup();
-    let nextSessionIndex = 0;
-    apiMocks.createAgentSession.mockImplementation(
-      async ({
-        agentId,
-        target,
-      }: {
-        agentId: string;
-        target?: unknown;
-      }) => {
-        nextSessionIndex += 1;
-        const agentSessionId = `ags-${agentId}-${nextSessionIndex}`;
-        return {
-          session: {
-            agentId,
-            agentSessionId,
-            launch: {
-              args: [],
-              commandLabel: agentId,
-              cwd: `C:/Users/me/.kerminal/agents/sessions/${agentSessionId}`,
-              shell: agentId,
-            },
-            sessionRoot: `C:/Users/me/.kerminal/agents/sessions/${agentSessionId}`,
-            target,
-            title: agentId === "claude" ? "Claude" : "Codex",
-            workspaceRoot: "C:/Users/me/.kerminal",
-          },
-        };
-      },
-    );
-    const { rerender } = renderAgentLauncher({
-      activeTab: terminalTab("tab-a"),
-    });
-
-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
-    await waitFor(() => {
-      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
-        agentId: "codex",
-        agentSessionId: "ags-codex-1",
-        resumeProviderSession: false,
-      });
-    });
-    expect(terminalByCwd("C:/Users/me/.kerminal/agents/sessions/ags-codex-1"))
-      .toHaveAttribute("data-focused", "true");
-
-    rerender(
-      <AgentLauncherToolContent activeTab={terminalTab("tab-b")} />,
-    );
-    expect(screen.getByRole("button", { name: "Open Codex" })).toBeInTheDocument();
-    expect(terminalByCwd("C:/Users/me/.kerminal/agents/sessions/ags-codex-1"))
-      .toHaveAttribute("data-focused", "false");
-
-    await user.click(screen.getByRole("button", { name: "Open Codex" }));
-    await waitFor(() => {
-      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
-        agentId: "codex",
-        agentSessionId: "ags-codex-2",
-        resumeProviderSession: false,
-      });
-    });
-    expect(apiMocks.createAgentSession).toHaveBeenCalledTimes(2);
-    expect(terminalByCwd("C:/Users/me/.kerminal/agents/sessions/ags-codex-1"))
-      .toHaveAttribute("data-focused", "false");
-    expect(terminalByCwd("C:/Users/me/.kerminal/agents/sessions/ags-codex-2"))
-      .toHaveAttribute("data-focused", "true");
-
-    rerender(
-      <AgentLauncherToolContent activeTab={terminalTab("tab-a")} />,
-    );
-
-    expect(terminalByCwd("C:/Users/me/.kerminal/agents/sessions/ags-codex-1"))
-      .toHaveAttribute("data-focused", "true");
-    expect(terminalByCwd("C:/Users/me/.kerminal/agents/sessions/ags-codex-2"))
-      .toHaveAttribute("data-focused", "false");
-  });
-
-  it("archives and removes the agent terminal when its workspace tab closes", async () => {
-    const user = userEvent.setup();
-    const tabA = terminalTab("tab-a");
-    const tabB = terminalTab("tab-b");
-    const { rerender } = renderAgentLauncher({
-      activeTab: tabA,
-      terminalTabs: [tabA, tabB],
-    });
-
-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
-    await waitFor(() => {
-      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
-        agentId: "codex",
-        agentSessionId: "ags-codex",
-        resumeProviderSession: false,
-      });
-    });
-    expect(screen.getByTestId("agent-xterm")).toHaveAttribute(
-      "data-cwd",
-      "C:/Users/me/.kerminal/agents/sessions/ags-codex",
-    );
-
-    rerender(
-      <AgentLauncherToolContent activeTab={tabB} terminalTabs={[tabB]} />,
-    );
-
-    await waitFor(() => {
-      expect(apiMocks.archiveAgentSession).toHaveBeenCalledWith("ags-codex");
-    });
-    expect(screen.queryByTestId("agent-xterm")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open Codex" })).toBeInTheDocument();
-  });
-
-  it("sends a desktop notification when an enabled agent terminal finishes", async () => {
-    const user = userEvent.setup();
-
-    renderAgentLauncher({
-      desktopNotifications: {
-        backgroundOnly: true,
-        enabled: true,
-        importantOnly: false,
-        minDurationMs: 10_000,
-        throttleMs: 30_000,
-      },
-    });
-
-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
-    await waitFor(() => {
-      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledTimes(1);
-    });
-
-    const terminalCalls = terminalMocks.renderXtermPane.mock.calls;
-    const terminalProps = terminalCalls[terminalCalls.length - 1]?.[0] as
-      | {
-          onSessionFinished?: (event: {
-            durationMs: number;
-            sessionId: string;
-          }) => void;
-        }
-      | undefined;
-    expect(terminalProps?.onSessionFinished).toEqual(expect.any(Function));
-
-    act(() => {
-      terminalProps?.onSessionFinished?.({
-        durationMs: 12_500,
-        sessionId: "term-agent-codex",
-      });
-    });
-
-    expect(notificationMocks.sendDesktopNotification).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: {
-          agentName: "Codex",
-          durationMs: 12_500,
-          exitCode: null,
-          kind: "agent.process.finished",
-          notificationKey: "agent.process.finished:ags-codex",
-        },
-        permissionPrompt: "important-event",
-        settings: expect.objectContaining({ enabled: true }),
-        visibility: "hidden",
-      }),
-    );
-    expect(
-      JSON.stringify(notificationMocks.sendDesktopNotification.mock.calls[0][0]),
-    ).not.toContain("C:/Users/me/.kerminal");
-    expect(
-      JSON.stringify(notificationMocks.sendDesktopNotification.mock.calls[0][0]),
-    ).not.toContain("KERMINAL_MCP_ENDPOINT");
-    expect(
-      JSON.stringify(notificationMocks.sendDesktopNotification.mock.calls[0][0]),
-    ).not.toContain("-NoLogo");
-  });
-
-  it("renders from ToolPanel as the external agent launcher", async () => {
-    render(
-      <ToolPanel
-        activeTab={terminalTab("tab-main")}
-        activeTool="agentLauncher"
-        onActiveToolChange={vi.fn()}
-        tools={tools}
-      />,
-    );
-
-    expect(await screen.findByRole("button", { name: "Open Codex" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open Claude" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open Custom Agent" })).toBeInTheDocument();
-  });
-
-  it("keeps a launched agent terminal while switching right-panel tools", async () => {
-    const user = userEvent.setup();
-    const { rerender } = render(
-      <ToolPanel
-        activeTab={terminalTab("tab-main")}
-        activeTool="agentLauncher"
-        onActiveToolChange={vi.fn()}
-        tools={tools}
-      />,
-    );
-
-    await user.click(await screen.findByRole("button", { name: "Open Codex" }));
-
-    await waitFor(() => {
-      expect(apiMocks.createAgentSession).toHaveBeenCalledTimes(1);
-      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledTimes(1);
-    });
-    expect(await screen.findByTestId("agent-xterm")).toHaveAttribute(
-      "data-cwd",
-      "C:/Users/me/.kerminal/agents/sessions/ags-codex",
-    );
-
-    rerender(
-      <ToolPanel
-        activeTab={terminalTab("tab-main")}
-        activeTool="logs"
-        onActiveToolChange={vi.fn()}
-        tools={tools}
-      />,
-    );
-
-    expect(await screen.findByTestId("logs-tool")).toBeInTheDocument();
-    expect(screen.getByTestId("agent-xterm")).toHaveAttribute(
-      "data-cwd",
-      "C:/Users/me/.kerminal/agents/sessions/ags-codex",
-    );
-
-    rerender(
-      <ToolPanel
-        activeTab={terminalTab("tab-main")}
-        activeTool="agentLauncher"
-        onActiveToolChange={vi.fn()}
-        tools={tools}
-      />,
-    );
-
-    expect(screen.getByTestId("agent-xterm")).toHaveAttribute(
-      "data-cwd",
-      "C:/Users/me/.kerminal/agents/sessions/ags-codex",
-    );
-    expect(apiMocks.createAgentSession).toHaveBeenCalledTimes(1);
-    expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledTimes(1);
-  });
-
-  it("launches a user supplied custom CLI command inside the right panel", async () => {
-    const user = userEvent.setup();
-    apiMocks.prepareExternalAgentWorkspace.mockImplementationOnce(async (request) => ({
-      agentId: "custom",
-      agentSessionId: request.agentSessionId,
-      args: [
-        "-NoLogo",
-        "-NoProfile",
-        "-NoExit",
-        "-Command",
-        "kimi --fast",
-      ],
-      cwd: "C:/Users/me/.kerminal/agents/sessions/ags-custom",
-      message: "Custom workspace prepared.",
-      shell: "pwsh.exe",
-      title: "Custom Agent",
-    }));
-
-    renderAgentLauncher();
-
-    await user.click(await screen.findByRole("button", { name: "Open Custom Agent" }));
-    await user.type(screen.getByRole("textbox", { name: "Custom agent command" }), "kimi --fast");
-    await user.click(
-      screen.getByRole("button", { name: "Open custom agent command" }),
-    );
-
-    await waitFor(() => {
-      expect(apiMocks.createAgentSession).toHaveBeenCalledWith({
-        agentId: "custom",
-        target: {
-          liveStatus: "unbound",
-        },
-        title: "Custom",
-      });
-      expect(apiMocks.prepareExternalAgentWorkspace).toHaveBeenCalledWith({
-        agentId: "custom",
-        agentSessionId: "ags-custom",
-        customCommand: "kimi --fast",
-      });
-    });
-    expect(await screen.findByTestId("agent-xterm")).toHaveAttribute("data-shell", "pwsh.exe");
-    expect(screen.getByTestId("agent-xterm")).toHaveAttribute(
-      "data-args",
-      "-NoLogo -NoProfile -NoExit -Command kimi --fast",
-    );
-    expect(screen.getByTestId("agent-terminal-command")).toHaveTextContent(
-      "kimi --fast · C:/Users/me/.kerminal/agents/sessions/ags-custom",
-    );
-  });
-
-  it("keeps the custom launch submit disabled for an empty command", async () => {
-    const user = userEvent.setup();
-
-    renderAgentLauncher();
-
-    await user.click(await screen.findByRole("button", { name: "Open Custom Agent" }));
-
-    expect(
-      screen.getByRole("button", { name: "Open custom agent command" }),
-    ).toBeDisabled();
-
-    await user.keyboard("{Enter}");
-
-    expect(apiMocks.prepareExternalAgentWorkspace).not.toHaveBeenCalled();
-  });
 });
-
-function terminalByTitle(title: string): HTMLElement {
-  const terminal = screen
-    .getAllByTestId("agent-xterm")
-    .find((current) => current.textContent === title);
-  if (!terminal) {
-    throw new Error(`Expected ${title} agent terminal to be rendered.`);
-  }
-  return terminal;
-}
-
-function terminalByCwd(cwd: string): HTMLElement {
-  const terminal = screen
-    .getAllByTestId("agent-xterm")
-    .find((current) => current.getAttribute("data-cwd") === cwd);
-  if (!terminal) {
-    throw new Error(`Expected agent terminal with cwd ${cwd} to be rendered.`);
-  }
-  return terminal;
-}
 
 function renderAgentLauncher(
   props: Partial<Parameters<typeof AgentLauncherToolContent>[0]> = {},

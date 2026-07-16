@@ -1,3 +1,4 @@
+import { useWorkspaceStore } from "../../../../src/features/workspace/workspaceStore";
 import type { DockerContainerSummary } from "../../../../src/lib/dockerApi";
 import type { TerminalProfile } from "../../../../src/lib/profileApi";
 import {
@@ -5,6 +6,10 @@ import {
   type RemoteHostGroupWithHosts,
 } from "../../../../src/lib/remoteHostApi";
 import { dockerContainerTarget } from "../../../../src/lib/targetModel";
+
+export function resetWorkspaceStore() {
+  useWorkspaceStore.setState(useWorkspaceStore.getInitialState(), true);
+}
 
 export const pwshProfile: TerminalProfile = {
   args: ["-NoLogo"],

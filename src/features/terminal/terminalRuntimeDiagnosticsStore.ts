@@ -4,25 +4,28 @@ import {
 } from "../../lib/diagnosticsApi";
 import type { TerminalPtyOutputPumpStats } from "../../lib/terminalApi";
 import { getTerminalPtyOutputPumpStats } from "../../lib/terminalApi";
-import { getSftpRuntimeDiagnosticsSnapshot } from "../sftp/sftpRuntimeDiagnostics";
+import { getSftpRuntimeDiagnosticsSnapshot } from "../sftp/runtime/index";
 import { terminalRendererRegistry } from "./terminalRendererRegistry";
+import { terminalChromeRuntimeStore } from "./terminalChromeRuntimeStore";
 import {
   createRuntimePerformanceSnapshot,
   createRuntimeTerminalOutputPaneSnapshot,
   type RuntimeDiagnosticsDegradeState,
   type RuntimePerformanceSnapshot,
   type RuntimePtyPumpSessionSnapshot,
+  type RuntimeSftpSnapshot,
   type RuntimeSuggestionSchedulerSnapshot,
   type RuntimeTerminalOutputPaneSnapshotInput,
 } from "./terminalRuntimeDiagnostics";
 import type { SshTerminalFailure } from "./terminalSshFailurePolicy";
+import { runtimeCompatibilityDiagnostics } from "../../platform/runtime/compatibilityDiagnostics";
 
-export interface TerminalReconnectRuntimeDiagnostics {
+interface TerminalReconnectRuntimeDiagnostics {
   reconnecting: boolean;
   sshReconnectAttempt: number;
 }
 
-export interface TerminalRuntimeDiagnosticsPaneProviderSnapshot
+interface TerminalRuntimeDiagnosticsPaneProviderSnapshot
   extends RuntimeTerminalOutputPaneSnapshotInput {
   sessionId?: string;
   sshFailure?: SshTerminalFailure;
@@ -41,43 +44,73 @@ type ManagedSshSnapshotReader = () => Promise<
   ManagedSshRuntimeSnapshot | undefined
 >;
 type SuggestionSnapshotReader = () => Promise<RuntimeSuggestionSchedulerSnapshot>;
+type SftpSnapshotReader = () => RuntimeSftpSnapshot;
 
-const paneProviders = new Set<TerminalRuntimeDiagnosticsPaneProvider>();
-const listeners = new Set<() => void>();
+export interface TerminalRuntimeDiagnosticsStore {
+  collect(
+    options?: TerminalRuntimeDiagnosticsCollectionOptions,
+  ): Promise<RuntimePerformanceSnapshot>;
+  getProviderCount(): number;
+  register(provider: TerminalRuntimeDiagnosticsPaneProvider): () => void;
+  subscribe(listener: () => void): () => void;
+}
+
+interface TerminalRuntimeDiagnosticsCollectionOptions {
+  generatedAt?: string;
+  readManagedSshSnapshot?: ManagedSshSnapshotReader;
+  readPtyPumpStats?: PtyPumpStatsReader;
+  readSftpSnapshot?: SftpSnapshotReader;
+  readSuggestionSnapshot?: SuggestionSnapshotReader;
+}
+
+/** 创建实例级诊断注册表，避免测试与多窗口生命周期共享 provider。 */
+export function createTerminalRuntimeDiagnosticsStore(): TerminalRuntimeDiagnosticsStore {
+  const paneProviders = new Set<TerminalRuntimeDiagnosticsPaneProvider>();
+  const listeners = new Set<() => void>();
+  const emitChange = () => {
+    for (const listener of listeners) {
+      listener();
+    }
+  };
+
+  return {
+    collect: (options) =>
+      collectTerminalRuntimePerformanceSnapshotFrom(paneProviders, options),
+    getProviderCount: () => paneProviders.size,
+    register(provider) {
+      paneProviders.add(provider);
+      emitChange();
+      return () => {
+        paneProviders.delete(provider);
+        emitChange();
+      };
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+}
+
+const defaultTerminalRuntimeDiagnosticsStore =
+  createTerminalRuntimeDiagnosticsStore();
 
 export function registerTerminalRuntimeDiagnosticsPane(
   provider: TerminalRuntimeDiagnosticsPaneProvider,
 ) {
-  paneProviders.add(provider);
-  emitChange();
-  return () => {
-    paneProviders.delete(provider);
-    emitChange();
-  };
+  return defaultTerminalRuntimeDiagnosticsStore.register(provider);
 }
 
-export function subscribeTerminalRuntimeDiagnostics(listener: () => void) {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-export function getTerminalRuntimeDiagnosticsProviderCount() {
-  return paneProviders.size;
-}
-
-export async function collectTerminalRuntimePerformanceSnapshot({
-  generatedAt,
-  readManagedSshSnapshot = readManagedSshRuntimeDiagnosticsSnapshot,
-  readPtyPumpStats = getTerminalPtyOutputPumpStats,
-  readSuggestionSnapshot = readTerminalSuggestionDiagnosticsSnapshot,
-}: {
-  generatedAt?: string;
-  readManagedSshSnapshot?: ManagedSshSnapshotReader;
-  readPtyPumpStats?: PtyPumpStatsReader;
-  readSuggestionSnapshot?: SuggestionSnapshotReader;
-} = {}): Promise<RuntimePerformanceSnapshot> {
+async function collectTerminalRuntimePerformanceSnapshotFrom(
+  paneProviders: ReadonlySet<TerminalRuntimeDiagnosticsPaneProvider>,
+  {
+    generatedAt,
+    readManagedSshSnapshot = readManagedSshRuntimeDiagnosticsSnapshot,
+    readPtyPumpStats = getTerminalPtyOutputPumpStats,
+    readSftpSnapshot = getSftpRuntimeDiagnosticsSnapshot,
+    readSuggestionSnapshot = readTerminalSuggestionDiagnosticsSnapshot,
+  }: TerminalRuntimeDiagnosticsCollectionOptions = {},
+): Promise<RuntimePerformanceSnapshot> {
   const paneSnapshots = Array.from(paneProviders, (provider) =>
     provider.getSnapshot(),
   );
@@ -93,6 +126,7 @@ export async function collectTerminalRuntimePerformanceSnapshot({
   const degraded = collectDegradedStates(paneSnapshots, suggestions);
 
   return createRuntimePerformanceSnapshot({
+    compatibility: runtimeCompatibilityDiagnostics.getSnapshot(),
     degraded,
     generatedAt,
     managedSsh,
@@ -103,9 +137,10 @@ export async function collectTerminalRuntimePerformanceSnapshot({
         0,
       ),
     },
-    sftp: getSftpRuntimeDiagnosticsSnapshot(),
+    sftp: readSftpSnapshot(),
     ssh: createSshRuntimeSnapshot(paneSnapshots),
     suggestions,
+    terminalChromeActivity: terminalChromeRuntimeStore.diagnosticsSnapshot(),
     terminalOutput: {
       panes: terminalOutputPanes,
       storeUpdateCount: terminalOutputPanes.reduce(
@@ -123,11 +158,6 @@ export async function collectTerminalRuntimePerformanceSnapshot({
     },
     terminalRenderer: terminalRendererRegistry.getSnapshot(),
   });
-}
-
-export function resetTerminalRuntimeDiagnosticsForTests() {
-  paneProviders.clear();
-  emitChange();
 }
 
 async function collectPtyPumpSessions(
@@ -242,11 +272,5 @@ async function readManagedSshRuntimeDiagnosticsSnapshot() {
     return await getManagedSshRuntimeSnapshot();
   } catch {
     return undefined;
-  }
-}
-
-function emitChange() {
-  for (const listener of listeners) {
-    listener();
   }
 }

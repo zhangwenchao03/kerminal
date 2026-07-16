@@ -45,7 +45,7 @@ export interface ServerInfoSnapshot {
   capturedAt: string;
 }
 
-export interface ServerDiskInfo {
+interface ServerDiskInfo {
   filesystem: string;
   mount: string;
   totalBytes?: number | null;
@@ -53,13 +53,13 @@ export interface ServerDiskInfo {
   availableBytes?: number | null;
 }
 
-export interface ServerNetworkInterfaceInfo {
+interface ServerNetworkInterfaceInfo {
   name: string;
   rxBytes?: number | null;
   txBytes?: number | null;
 }
 
-export interface ServerProcessInfo {
+interface ServerProcessInfo {
   pid: number;
   name: string;
   cpuUsagePercent?: number | null;

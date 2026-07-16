@@ -1,5 +1,3 @@
-import { isTauri } from "@tauri-apps/api/core";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { useRef, useState, type ReactNode } from "react";
 import {
   Download,
@@ -14,6 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import packageJson from "../../../../package.json";
+import { UserFacingNotice } from "../../../components/ui/user-facing-notice";
 import { cn } from "../../../lib/cn";
 import {
   currentDesktopNotificationVisibility,
@@ -27,20 +26,26 @@ import {
   type AppUpdateInstallResult,
   type AppUpdateProgress,
 } from "../../../lib/updaterApi";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../../lib/userFacingMessage";
 import type { DesktopNotificationSettings } from "../settingsModel";
+import { desktopRuntime } from "../../../lib/desktopRuntimeApi";
 
 const githubRepositoryUrl = "https://github.com/kongweiguang/kerminal";
 const appVersion = `v${packageJson.version}`;
 const licenseName = packageJson.license ?? "AGPL-3.0-only";
-const aboutPanelClassName = "kerminal-solid-surface rounded-2xl border p-5";
+const aboutPanelClassName =
+  "kerminal-solid-surface rounded-[var(--radius-panel)] border p-4";
 const aboutListClassName =
-  "mt-5 overflow-hidden rounded-xl border border-black/10 bg-black/[0.025] dark:border-white/10 dark:bg-black/20";
+  "mt-4 overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-content)]";
 const aboutRowClassName =
-  "flex flex-wrap items-center justify-between gap-3 border-b border-black/10 px-4 py-3 last:border-b-0 dark:border-white/10";
+  "flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-3 py-2.5 last:border-b-0";
 const aboutButtonClassName =
-  "kerminal-focus-ring kerminal-pressable inline-flex h-8 items-center gap-1.5 rounded-lg border border-black/10 bg-white/70 px-2.5 text-xs font-medium text-zinc-700 transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/8 dark:text-zinc-200";
+  "kerminal-focus-ring kerminal-pressable inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-content)] px-2.5 text-xs font-medium text-[var(--text-primary)] transition hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60";
 const aboutPrimaryButtonClassName =
-  "kerminal-focus-ring kerminal-pressable inline-flex h-8 items-center gap-1.5 rounded-lg border border-sky-400/25 bg-[var(--surface-selected)] px-2.5 text-xs font-medium text-sky-700 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 dark:text-sky-100";
+  "kerminal-focus-ring kerminal-pressable inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-control)] border border-sky-400/25 bg-[var(--surface-selected)] px-2.5 text-xs font-medium text-sky-700 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 dark:text-sky-100";
 
 type UpdateCheckState =
   | "idle"
@@ -61,10 +66,10 @@ export function AboutSettingsSection({
   desktopNotifications,
 }: AboutSettingsSectionProps) {
   const [checkState, setCheckState] = useState<UpdateCheckState>("idle");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserFacingMessage | null>(null);
   const [installResult, setInstallResult] =
     useState<AppUpdateInstallResult | null>(null);
-  const [linkError, setLinkError] = useState<string | null>(null);
+  const [linkError, setLinkError] = useState<UserFacingMessage | null>(null);
   const [progress, setProgress] = useState<AppUpdateProgress | null>(null);
   const [updateResult, setUpdateResult] = useState<AppUpdateCheckResult | null>(
     null,
@@ -102,7 +107,12 @@ export function AboutSettingsSection({
         });
       }
     } catch (nextError) {
-      setError(errorMessage(nextError));
+      setError(
+        buildUserFacingError(nextError, {
+          recoveryAction: "请检查网络连接后重试。",
+          title: "检查更新失败",
+        }),
+      );
       setCheckState("error");
     }
   };
@@ -117,7 +127,12 @@ export function AboutSettingsSection({
       setInstallResult(result);
       setCheckState("ready-to-restart");
     } catch (nextError) {
-      setError(errorMessage(nextError));
+      setError(
+        buildUserFacingError(nextError, {
+          recoveryAction: "请稍后重新安装。",
+          title: "安装更新失败",
+        }),
+      );
       setCheckState("error");
     }
   };
@@ -128,7 +143,12 @@ export function AboutSettingsSection({
     try {
       await relaunchApp();
     } catch (nextError) {
-      setError(errorMessage(nextError));
+      setError(
+        buildUserFacingError(nextError, {
+          recoveryAction: "请手动重新启动 Kerminal。",
+          title: "自动重启失败",
+        }),
+      );
       setCheckState("ready-to-restart");
     }
   };
@@ -138,25 +158,20 @@ export function AboutSettingsSection({
     try {
       await openExternalUrl(githubRepositoryUrl);
     } catch (nextError) {
-      setLinkError(`GitHub 打开失败：${errorMessage(nextError)}`);
+      setLinkError(
+        buildUserFacingError(nextError, {
+          recoveryAction: "请检查系统默认浏览器设置后重试。",
+          title: "无法打开 GitHub",
+        }),
+      );
     }
   };
 
   return (
     <section className={aboutPanelClassName} id="settings-about-panel">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-            <Info className="h-4 w-4 text-sky-500 dark:text-sky-300" />
-            关于 Kerminal
-          </div>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-            本地智能终端工作台。
-          </p>
-        </div>
-        <span className="rounded-full border border-sky-400/25 bg-sky-400/10 px-3 py-1 text-xs font-medium text-sky-700 dark:text-sky-100">
-          {appVersion}
-        </span>
+      <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+        <Info className="h-4 w-4 text-sky-500 dark:text-sky-300" />
+        关于 Kerminal
       </div>
 
       <div className={aboutListClassName}>
@@ -262,7 +277,7 @@ function AboutRowLabel({
   status,
   value,
 }: {
-  error?: string | null;
+  error?: UserFacingMessage | null;
   icon: LucideIcon;
   label: string;
   status?: ReactNode;
@@ -282,12 +297,7 @@ function AboutRowLabel({
           {value}
         </p>
         {error ? (
-          <p
-            className="mt-1 text-xs leading-5 text-rose-700 dark:text-rose-100"
-            role="alert"
-          >
-            {error}
-          </p>
+          <UserFacingNotice className="mt-2" compact message={error} />
         ) : null}
       </div>
     </div>
@@ -404,15 +414,6 @@ function versionLabel(version: string) {
   return version.startsWith("v") ? version : `v${version}`;
 }
 
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
-
 async function openExternalUrl(url: string) {
-  if (isTauri()) {
-    await openUrl(url);
-    return;
-  }
-
-  window.open(url, "_blank", "noopener,noreferrer");
+  await desktopRuntime.openUrl(url);
 }

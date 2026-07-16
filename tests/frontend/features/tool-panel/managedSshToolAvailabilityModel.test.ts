@@ -49,9 +49,10 @@ describe("managedSshToolAvailabilityModel", () => {
       canAttemptConnection: true,
       canUseConnectedSession: true,
       kind: "managed-reusable",
-      label: "Managed reusable",
+      label: "已连接",
       targetLabel: "deploy@prod.internal:22",
     });
+    expectUserFacingCopy(availability);
   });
 
   it("does not treat a matching legacy terminal pane as reusable", () => {
@@ -66,8 +67,9 @@ describe("managedSshToolAvailabilityModel", () => {
       canAttemptConnection: true,
       canUseConnectedSession: false,
       kind: "legacy-terminal-only",
-      label: "Legacy terminal only",
+      label: "需连接",
     });
+    expectUserFacingCopy(availability);
   });
 
   it("requires auth when no managed session exists for an SSH target", () => {
@@ -81,15 +83,16 @@ describe("managedSshToolAvailabilityModel", () => {
       canAttemptConnection: true,
       canUseConnectedSession: false,
       kind: "auth-required",
-      label: "Auth required",
+      label: "需认证",
     });
+    expectUserFacingCopy(availability);
   });
 
   it.each([
-    ["Unknown server key", "SSH 主机密钥尚未信任"],
+    ["Unknown server key", "需要先确认主机身份"],
     [
       "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!",
-      "SSH 主机密钥已变化",
+      "主机身份信息已变化",
     ],
   ])("surfaces host key problem %s before claiming reuse", (lastError, detail) => {
     const availability = resolveManagedSshToolAvailability({
@@ -104,10 +107,10 @@ describe("managedSshToolAvailabilityModel", () => {
       canAttemptConnection: false,
       canUseConnectedSession: false,
       kind: "host-key-required",
-      label: "Host key required",
+      label: "需确认主机",
     });
     expect(availability.detail).toContain(detail);
-    expect(availability.detail).toContain("下一步");
+    expectUserFacingCopy(availability);
   });
 
   it("surfaces bad credentials as an auth action with next step copy", () => {
@@ -123,11 +126,11 @@ describe("managedSshToolAvailabilityModel", () => {
       canAttemptConnection: false,
       canUseConnectedSession: false,
       kind: "auth-required",
-      label: "Auth required",
+      label: "需认证",
     });
-    expect(availability.detail).toContain("SSH 凭据认证失败");
-    expect(availability.detail).toContain("下一步");
-    expect(availability.detail).not.toContain("连接失败");
+    expect(availability.detail).toContain("认证失败");
+    expect(availability.detail).toContain("用户名");
+    expectUserFacingCopy(availability);
   });
 
   it("marks unsupported capability fallback as unsupported", () => {
@@ -152,9 +155,12 @@ describe("managedSshToolAvailabilityModel", () => {
       canAttemptConnection: false,
       canUseConnectedSession: false,
       kind: "unsupported",
-      label: "Unsupported",
+      label: "当前不可用",
     });
-    expect(availability.detail).toContain("下一步");
+    expect(availability.detail).toContain("当前主机不支持此操作");
+    expect(availability.legacyFallback?.reason).toBe("backend unsupported");
+    expect(availability.session?.sessionId).toBe("session-1");
+    expectUserFacingCopy(availability);
   });
 
   it("surfaces retryable timeout diagnostics as action required", () => {
@@ -171,10 +177,10 @@ describe("managedSshToolAvailabilityModel", () => {
       canAttemptConnection: true,
       canUseConnectedSession: false,
       kind: "action-required",
-      label: "Action required",
+      label: "需处理",
     });
-    expect(availability.detail).toContain("SSH 操作超时");
-    expect(availability.detail).toContain("下一步");
+    expect(availability.detail).toContain("连接或操作超时");
+    expectUserFacingCopy(availability);
   });
 
   it("returns unsupported for non-SSH targets", () => {
@@ -193,7 +199,9 @@ describe("managedSshToolAvailabilityModel", () => {
       canAttemptConnection: false,
       canUseConnectedSession: false,
       kind: "unsupported",
+      label: "当前不可用",
     });
+    expectUserFacingCopy(availability);
   });
 
   it("returns no target when no machine is selected", () => {
@@ -203,10 +211,30 @@ describe("managedSshToolAvailabilityModel", () => {
       canAttemptConnection: false,
       canUseConnectedSession: false,
       kind: "no-target",
-      label: "No target",
+      label: "未选择主机",
     });
+    expectUserFacingCopy(availability);
   });
 });
+
+function expectUserFacingCopy(
+  availability: ReturnType<typeof resolveManagedSshToolAvailability>,
+) {
+  const visibleCopy = `${availability.label}\n${availability.detail}`;
+  for (const internalTerm of [
+    /ready managed session/i,
+    /SshAuthBroker/i,
+    /legacy fallback/i,
+    /legacy terminal/i,
+    /unsupported/i,
+    /unwired/i,
+    /managed SSH runtime/i,
+    /\bbackend\b/i,
+    /\bPTY\b/i,
+  ]) {
+    expect(visibleCopy).not.toMatch(internalTerm);
+  }
+}
 
 function snapshot(
   overrides: Partial<ManagedSshSessionSnapshot> = {},

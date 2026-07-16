@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { ExternalSshLaunchResolvedRequest } from "../../../../src/features/external-launch/externalSshLaunchModel";
 import {
-  resetWorkspaceStore,
   useWorkspaceStore,
 } from "../../../../src/features/workspace/workspaceStore";
+import { resetWorkspaceStore } from "../../support/workspace/workspaceStore.testSupport";
 
 describe("workspaceStore external SSH launch", () => {
   beforeEach(() => {

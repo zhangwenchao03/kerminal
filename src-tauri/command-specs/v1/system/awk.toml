@@ -1,0 +1,35 @@
+schema_version = 1
+command = "awk"
+aliases = []
+platforms = ["macos", "linux"]
+shells = ["bash", "zsh", "fish"]
+description = "Process and report on structured text"
+tested_version = "GNU awk 5.3"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "GNU awk manual"
+url = "https://www.gnu.org/software/gawk/manual/gawk.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "--field-separator"
+aliases = ["-F"]
+description = "Set the input field separator"
+
+[options.argument]
+kind = "string"
+placeholder = "SEPARATOR"
+
+[[options]]
+name = "--file"
+aliases = ["-f"]
+description = "Read the program from a file"
+
+[options.argument]
+kind = "file"
+placeholder = "PROGRAM"

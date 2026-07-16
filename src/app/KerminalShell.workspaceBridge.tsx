@@ -287,30 +287,41 @@ export function ToolPanelStoreBridge({
     getToolPanelWorkspaceSnapshot,
   );
   const workspaceContext = useMemo(
-    () =>
-      buildToolPanelWorkspaceContext(
+    () => {
+      void toolPanelWorkspaceSnapshot;
+      return buildToolPanelWorkspaceContext(
         useWorkspaceStore.getState(),
         machineGroups,
-      ),
+      );
+    },
     [machineGroups, toolPanelWorkspaceSnapshot],
   );
   const closePane = useWorkspaceStore((state) => state.closePane);
   const openTmuxAttachTerminal = useWorkspaceStore(
     (state) => state.openTmuxAttachTerminal,
   );
+  const openWorkspaceFileTab = useWorkspaceStore(
+    (state) => state.openWorkspaceFileTab,
+  );
+  const workspaceFileDirtyState = useWorkspaceStore(
+    (state) => state.workspaceFileDirtyState,
+  );
 
   return (
     <ToolPanel
       {...props}
-      activeMachine={
-        workspaceContext.activeMachine ?? workspaceContext.selectedMachine
-      }
+      activeMachine={workspaceContext.activeMachine}
       activeTab={workspaceContext.activeTab}
       focusedPane={workspaceContext.focusedPane}
+      selectedMachine={workspaceContext.selectedMachine}
+      workspaceContext={workspaceContext.projection}
       onClosePane={closePane}
+      onOpenWorkspaceFileTab={openWorkspaceFileTab}
       onOpenTmuxTerminal={openTmuxAttachTerminal}
       terminalPanes={workspaceContext.terminalPanes}
       terminalTabs={workspaceContext.terminalTabs}
+      sftpRevealRequest={workspaceContext.sftpRevealRequest}
+      workspaceFileDirtyState={workspaceFileDirtyState}
       tools={rightPanelTools}
     />
   );

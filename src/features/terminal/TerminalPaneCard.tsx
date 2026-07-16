@@ -5,12 +5,12 @@ import { cn } from "../../lib/cn";
 import type {
   ResolvedTheme,
   TerminalAppearance,
-} from "../settings/settingsModel";
+} from "../settings/contracts/index";
 import type {
   MachineGroup,
   TerminalPane,
   TerminalSplitDirection,
-} from "../workspace/types";
+} from "../workspace/contracts/index";
 import { XtermPane } from "./XtermPane";
 import { TerminalSplitTargetSelector } from "./TerminalSplitTargetSelector";
 import { buildTerminalPaneCardModel } from "./terminalPaneCardModel";
@@ -97,7 +97,7 @@ export function TerminalPaneCard({
     <section
       aria-label={model.ariaLabel}
       className={cn(
-        "kerminal-terminal-surface flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border transition-[opacity,transform,box-shadow] duration-[180ms] ease-out",
+        "kerminal-terminal-surface flex h-full min-h-0 flex-col overflow-hidden rounded-[var(--radius-panel)] border transition-[opacity,transform,box-shadow] duration-[180ms] ease-out",
         dragging &&
           "scale-[0.985] opacity-35 ring-2 ring-dashed ring-sky-400/70",
       )}
@@ -130,7 +130,18 @@ export function TerminalPaneCard({
               <GripVertical className="h-4 w-4" />
             </button>
           ) : null}
-          <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+          {pane.status !== "online" ? (
+            <span
+              aria-label={
+                pane.status === "warning" ? "连接警告" : "连接已断开"
+              }
+              className={cn(
+                "h-2.5 w-2.5 rounded-full",
+                pane.status === "warning" ? "bg-amber-400" : "bg-red-400",
+              )}
+              title={pane.status === "warning" ? "连接警告" : "连接已断开"}
+            />
+          ) : null}
           <span className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">
             {model.title}
           </span>

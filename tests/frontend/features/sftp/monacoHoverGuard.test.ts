@@ -147,7 +147,7 @@ describe("monacoHoverGuard", () => {
     disposable.dispose();
   });
 
-  it("repositions existing Monaco hover DOM under the hovered editor target", () => {
+  it("keeps Monaco hover DOM beside the target and inside the editor boundary", () => {
     const container = document.createElement("div");
     const target = document.createElement("button");
     const hoverContainer = document.createElement("div");
@@ -157,15 +157,17 @@ describe("monacoHoverGuard", () => {
     hoverContainer.appendChild(hover);
     container.appendChild(target);
     document.body.append(container, hoverContainer);
-    container.getBoundingClientRect = () => rect({ top: 160, bottom: 600 });
+    container.getBoundingClientRect = () =>
+      rect({ left: 100, right: 500, top: 160, bottom: 600, width: 400 });
     target.getBoundingClientRect = () =>
-      rect({ left: 420, right: 440, top: 220, bottom: 240, width: 20 });
+      rect({ left: 470, right: 490, top: 220, bottom: 240, width: 20 });
     hover.getBoundingClientRect = () =>
       rect({ left: 0, right: 180, top: 0, bottom: 24, width: 180, height: 24 });
 
     positionMonacoHoverNearTarget({ container, ownerDocument: document, target });
 
     expect(hoverContainer.style.position).toBe("fixed");
+    expect(hoverContainer.style.left).toBe("312px");
     expect(hoverContainer.style.top).toBe("246px");
     expect(hoverContainer.style.visibility).toBe("visible");
   });

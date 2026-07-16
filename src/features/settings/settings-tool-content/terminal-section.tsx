@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { Select } from "../../../components/ui/select";
 import { cn } from "../../../lib/cn";
-import { terminalRendererRegistry } from "../../terminal/terminalRendererRegistry";
+import { terminalRendererRegistry } from "../../terminal/runtime/renderer/index";
 import {
   terminalCursorStyleOptions,
   terminalFontOptions,
@@ -19,32 +19,37 @@ import {
   type ResolvedTheme,
   type TerminalAppearance,
 } from "../settingsModel";
-import { NumberSetting, PolicyToggle } from "./shared-controls";
+import {
+  NumberSetting,
+  PolicyToggle,
+  SettingsDisclosure,
+} from "./shared-controls";
 import {
   CursorStylePreview,
   TerminalAppearancePreview,
   TerminalSchemePicker,
 } from "./terminal-preview";
-import { buildTerminalRendererStatusView } from "./terminal-renderer-status";
+import {
+  buildTerminalRendererStatusView,
+  isRetryableRendererFallback,
+} from "./terminal-renderer-status";
 
 interface TerminalSettingsSectionProps {
   normalizedSettings: AppSettings;
+  revealRenderer?: boolean;
   resolvedTheme: ResolvedTheme;
   updateTerminal: (terminal: Partial<TerminalAppearance>) => void;
 }
 
-const terminalPanelClassName =
-  "kerminal-solid-surface min-w-0 overflow-hidden rounded-2xl border p-5";
+const terminalPanelClassName = "min-w-0 space-y-4";
 const terminalSubpanelClassName =
-  "kerminal-muted-surface min-w-0 rounded-xl border p-4";
-const terminalBadgeClassName =
-  "kerminal-muted-surface rounded-full border px-3 py-1 text-xs text-zinc-500 dark:text-zinc-400";
+  "kerminal-solid-surface min-w-0 rounded-[var(--radius-panel)] border p-4";
 
 function terminalChoiceButtonClassName(selected: boolean, className?: string) {
   return cn(
-    "kerminal-focus-ring kerminal-pressable rounded-xl border text-left transition",
+    "kerminal-focus-ring kerminal-pressable rounded-[var(--radius-control)] border text-left transition",
     selected
-      ? "border-sky-500/45 bg-[var(--surface-selected)] text-sky-700 shadow-sm shadow-sky-950/5 ring-1 ring-sky-500/15 dark:border-sky-300/35 dark:text-sky-100 dark:ring-sky-300/15"
+      ? "border-sky-500/35 bg-[var(--surface-selected)] text-sky-700 ring-1 ring-sky-500/10 dark:border-sky-300/30 dark:text-sky-100 dark:ring-sky-300/10"
       : "kerminal-muted-surface text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50",
     className,
   );
@@ -52,6 +57,7 @@ function terminalChoiceButtonClassName(selected: boolean, className?: string) {
 
 export function TerminalSettingsSection({
   normalizedSettings,
+  revealRenderer = false,
   resolvedTheme,
   updateTerminal,
 }: TerminalSettingsSectionProps) {
@@ -61,29 +67,26 @@ export function TerminalSettingsSection({
     terminalRendererRegistry.getSnapshot,
   );
   const rendererStatus = buildTerminalRendererStatusView(rendererSnapshot);
+  const retryableRendererPaneIds = rendererSnapshot.panes
+    .filter(
+      (pane) =>
+        isRetryableRendererFallback(pane.fallbackReason) || pane.circuitOpen,
+    )
+    .map((pane) => pane.paneId);
+  const retryGlobalRendererFallback =
+    rendererSnapshot.suggestedFallback === "cpu";
+  const canRetryGpu =
+    rendererSnapshot.requestedMode !== "cpu" &&
+    (retryGlobalRendererFallback || retryableRendererPaneIds.length > 0);
 
   return (
     <section className={terminalPanelClassName} id="settings-terminal-panel">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-            <Terminal className="h-4 w-4 text-sky-500 dark:text-sky-300" />
-            终端
-          </div>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-            统一设置终端主题、字体、渲染和交互。
-          </p>
-        </div>
-        <span className={terminalBadgeClassName}>终端设置</span>
-      </div>
-
-      <div className="mt-5 space-y-4">
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-          <section
-            className={terminalSubpanelClassName}
-            id="settings-terminal-theme-panel"
-            tabIndex={-1}
-          >
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <section
+          className={terminalSubpanelClassName}
+          id="settings-terminal-theme-panel"
+          tabIndex={-1}
+        >
             <div className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
               <Terminal className="h-4 w-4 text-zinc-400" />
               终端主题
@@ -104,13 +107,13 @@ export function TerminalSettingsSection({
                 value={normalizedSettings.terminal.darkColorScheme}
               />
             </div>
-          </section>
+        </section>
 
-          <section
-            className={terminalSubpanelClassName}
-            id="settings-terminal-font-panel"
-            tabIndex={-1}
-          >
+        <section
+          className={terminalSubpanelClassName}
+          id="settings-terminal-font-panel"
+          tabIndex={-1}
+        >
             <div className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
               <Type className="h-4 w-4 text-zinc-400" />
               字体配置
@@ -165,69 +168,76 @@ export function TerminalSettingsSection({
               resolvedTheme={resolvedTheme}
               terminal={normalizedSettings.terminal}
             />
-          </section>
+        </section>
+      </div>
+
+      <SettingsDisclosure
+        reveal={revealRenderer}
+        summary={rendererStatus.badgeLabel}
+        targetId="settings-terminal-renderer-panel"
+        title="终端渲染"
+      >
+        <div
+          className={cn(
+            "rounded-[var(--radius-control)] border px-3 py-2 text-xs leading-5",
+            rendererStatus.tone === "warning"
+              ? "border-amber-400/35 bg-amber-50 text-amber-800 dark:border-amber-300/25 dark:bg-amber-400/10 dark:text-amber-100"
+              : "kerminal-solid-surface text-zinc-500 dark:text-zinc-400",
+          )}
+        >
+          {rendererStatus.detail}
         </div>
 
-        <section
-          className={terminalSubpanelClassName}
-          id="settings-terminal-renderer-panel"
-          tabIndex={-1}
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
-                <Terminal className="h-4 w-4 text-zinc-400" />
-                终端渲染
-              </div>
-              <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-                控制 xterm 绘制路径，高输出场景优先释放主线程压力。
-              </p>
-            </div>
-            <span className={terminalBadgeClassName}>
-              {rendererStatus.badgeLabel}
-            </span>
-          </div>
-          <div
-            className={cn(
-              "mt-3 rounded-xl border px-3 py-2 text-xs leading-5",
-              rendererStatus.tone === "warning"
-                ? "border-amber-400/35 bg-amber-50 text-amber-800 dark:border-amber-300/25 dark:bg-amber-400/10 dark:text-amber-100"
-                : "kerminal-muted-surface text-zinc-500 dark:text-zinc-400",
-            )}
+        {canRetryGpu ? (
+          <button
+            aria-label="重新尝试 GPU"
+            className="kerminal-focus-ring kerminal-pressable mt-3 inline-flex h-9 items-center gap-2 rounded-[var(--radius-control)] border border-amber-400/35 bg-amber-400/10 px-3 text-[13px] font-medium text-amber-800 transition hover:bg-amber-400/15 dark:border-amber-300/25 dark:text-amber-100"
+            onClick={() => {
+              if (retryGlobalRendererFallback) {
+                terminalRendererRegistry.retryGpu();
+                return;
+              }
+              for (const paneId of retryableRendererPaneIds) {
+                terminalRendererRegistry.retryGpu(paneId);
+              }
+            }}
+            type="button"
           >
-            {rendererStatus.detail}
-          </div>
+            <RotateCcw className="h-4 w-4" />
+            重新尝试 GPU
+          </button>
+        ) : null}
 
-          <div className="mt-4 grid gap-2 md:grid-cols-3">
-            {terminalRendererTypeOptions.map((option) => {
-              const selected =
-                normalizedSettings.terminal.rendererType === option.value;
-              return (
-                <button
-                  aria-pressed={selected}
-                  className={terminalChoiceButtonClassName(selected, "min-h-24 p-3")}
-                  key={option.value}
-                  onClick={() => updateTerminal({ rendererType: option.value })}
-                  type="button"
-                >
-                  <span className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold">{option.label}</span>
-                    {selected ? <Check className="h-4 w-4" /> : null}
-                  </span>
-                  <span className="mt-1 block text-xs leading-5 opacity-80">
-                    {option.description}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
+        <div className="mt-4 grid gap-2 md:grid-cols-3">
+          {terminalRendererTypeOptions.map((option) => {
+            const selected =
+              normalizedSettings.terminal.rendererType === option.value;
+            return (
+              <button
+                aria-pressed={selected}
+                className={terminalChoiceButtonClassName(selected, "min-h-24 p-3")}
+                key={option.value}
+                onClick={() => updateTerminal({ rendererType: option.value })}
+                type="button"
+              >
+                <span className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold">{option.label}</span>
+                  {selected ? <Check className="h-4 w-4" /> : null}
+                </span>
+                <span className="mt-1 block text-xs leading-5 opacity-80">
+                  {option.description}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </SettingsDisclosure>
 
-        <section
-          className={terminalSubpanelClassName}
-          id="settings-terminal-interaction-panel"
-          tabIndex={-1}
-        >
+      <section
+        className={terminalSubpanelClassName}
+        id="settings-terminal-interaction-panel"
+        tabIndex={-1}
+      >
           <div className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
             <MousePointerClick className="h-4 w-4 text-zinc-400" />
             终端交互
@@ -262,7 +272,7 @@ export function TerminalSettingsSection({
                   updateTerminal({ macOptionIsMeta })
                 }
               />
-              <label className="kerminal-muted-surface block rounded-xl border px-3 py-2 md:col-span-2">
+              <label className="block rounded-[var(--radius-control)] border border-[var(--border-subtle)] bg-[var(--surface-content)] px-3 py-2 md:col-span-2">
                 <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                   右键行为
                 </span>
@@ -304,13 +314,13 @@ export function TerminalSettingsSection({
               />
             </div>
           </div>
-        </section>
+      </section>
 
-        <section
-          className={terminalSubpanelClassName}
-          id="settings-terminal-cursor-panel"
-          tabIndex={-1}
-        >
+      <section
+        className={terminalSubpanelClassName}
+        id="settings-terminal-cursor-panel"
+        tabIndex={-1}
+      >
           <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
             光标形态
           </div>
@@ -342,8 +352,7 @@ export function TerminalSettingsSection({
               );
             })}
           </div>
-        </section>
-      </div>
+      </section>
     </section>
   );
 }

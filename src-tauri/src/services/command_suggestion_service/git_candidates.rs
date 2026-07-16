@@ -25,11 +25,25 @@ pub(super) fn git_ref_candidate(
     metadata.insert("kind".to_owned(), git_ref_kind_name(entry.kind).to_owned());
     metadata.insert("subcommand".to_owned(), token.subcommand.clone());
     metadata.insert("ttlSeconds".to_owned(), cache_entry.ttl_seconds.to_string());
+    insert_provider_cache_freshness_metadata(
+        &mut metadata,
+        cache_entry.expires_at,
+        SystemTime::now(),
+    );
     if let Some(repo_root) = cache_entry.repo_root.as_ref() {
         metadata.insert("repoRoot".to_owned(), repo_root.clone());
     }
 
     Some(CommandSuggestionCandidate {
+        activation: CommandSuggestionActivation::Insert,
+        candidate_kind: CommandSuggestionCandidateKind::Command,
+        merged_source_explanations: Vec::new(),
+        source_explanation: None,
+        accept_boundaries: Vec::new(),
+        allowed_presentations: CommandSuggestionCandidate::presentations_for(
+            CommandSuggestionSensitivity::Normal,
+        ),
+        context_key: request.context_key.clone(),
         id: format!(
             "git:{}:{}:{}",
             request.remote_host_id.as_deref().unwrap_or_default(),

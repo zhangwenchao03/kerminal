@@ -2,7 +2,15 @@ use std::collections::BTreeSet;
 
 use serde_json::Value;
 
-const CASES_JSON: &str = include_str!("fixtures/external_launch/cases.json");
+const CASES_JSON: &[&str] = &[
+    include_str!("fixtures/external_launch/cases.json"),
+    include_str!("fixtures/external_launch/cases-putty.json"),
+    include_str!("fixtures/external_launch/cases-mobaxterm.json"),
+    include_str!("fixtures/external_launch/cases-xshell.json"),
+    include_str!("fixtures/external_launch/cases-securecrt.json"),
+    include_str!("fixtures/external_launch/cases-openssh.json"),
+    include_str!("fixtures/external_launch/cases-kerminal-native.json"),
+];
 
 const ALLOWED_PRIORITIES: &[&str] = &["P0", "P1", "P2"];
 const ALLOWED_SOURCE_TOOLS: &[&str] = &[
@@ -13,13 +21,8 @@ const ALLOWED_SOURCE_TOOLS: &[&str] = &[
     "openssh",
     "kerminal-native",
 ];
-const ALLOWED_ENTRYPOINTS: &[&str] = &[
-    "direct-argv",
-    "single-instance",
-    "shim-ipc",
-    "protocol",
-    "session-file",
-];
+const ALLOWED_ENTRYPOINTS: &[&str] =
+    &["direct-argv", "single-instance", "protocol", "session-file"];
 const FIXTURE_SECRET_MARKER: &str = "KERM_FIXTURE_";
 
 #[test]
@@ -32,6 +35,7 @@ fn external_launch_fixtures_have_stable_contract_shape() {
 
     let mut ids = BTreeSet::new();
     let mut tools = BTreeSet::new();
+    let mut tool_counts = std::collections::BTreeMap::new();
 
     for case in &cases {
         let id = required_text(case, "id");
@@ -49,6 +53,7 @@ fn external_launch_fixtures_have_stable_contract_shape() {
             "{id}: unsupported sourceTool {source_tool}"
         );
         tools.insert(source_tool.to_string());
+        *tool_counts.entry(source_tool.to_string()).or_insert(0usize) += 1;
 
         let entrypoint = required_text(case, "entrypoint");
         assert!(
@@ -69,6 +74,10 @@ fn external_launch_fixtures_have_stable_contract_shape() {
 
     for tool in ALLOWED_SOURCE_TOOLS {
         assert!(tools.contains(*tool), "missing fixture for {tool}");
+        assert!(
+            tool_counts.get(*tool).copied().unwrap_or_default() >= 10,
+            "{tool} must have at least 10 representative fixtures"
+        );
     }
 }
 
@@ -103,10 +112,15 @@ fn external_launch_fixture_secrets_are_fake_and_redacted() {
 }
 
 fn fixture_cases() -> Vec<Value> {
-    let root: Value = serde_json::from_str(CASES_JSON).expect("parse external launch fixtures");
-    root.as_array()
-        .expect("fixture root must be an array")
-        .to_vec()
+    CASES_JSON
+        .iter()
+        .flat_map(|source| {
+            let root: Value = serde_json::from_str(source).expect("parse external launch fixtures");
+            root.as_array()
+                .expect("fixture root must be an array")
+                .to_vec()
+        })
+        .collect()
 }
 
 fn validate_expected(id: &str, expected: &serde_json::Map<String, Value>) {

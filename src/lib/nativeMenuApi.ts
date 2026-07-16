@@ -26,7 +26,7 @@ export const nativeMenuActions = [
 
 export type NativeMenuAction = (typeof nativeMenuActions)[number];
 
-export interface NativeMenuActionPayload {
+interface NativeMenuActionPayload {
   action: NativeMenuAction;
 }
 

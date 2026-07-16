@@ -6,6 +6,7 @@ use std::{
     collections::{HashMap, HashSet},
     env,
     path::{Path, PathBuf},
+    sync::{Arc, RwLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -24,12 +25,16 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct ProfileService {
     config: ConfigFileStore,
+    read_only_fallback: Arc<RwLock<Option<Vec<TerminalProfile>>>>,
 }
 
 impl ProfileService {
     /// 创建 Profile 服务。
     pub fn new(config: ConfigFileStore) -> Self {
-        Self { config }
+        Self {
+            config,
+            read_only_fallback: Arc::new(RwLock::new(None)),
+        }
     }
 
     /// 初始化默认终端 Profile。
@@ -38,25 +43,7 @@ impl ProfileService {
             return Ok(());
         }
 
-        let timestamp = timestamp_now();
-        let profiles = self
-            .detect_shells()
-            .into_iter()
-            .enumerate()
-            .map(|(index, candidate)| TerminalProfile {
-                id: format!("profile-{}", candidate.id),
-                name: candidate.name,
-                shell: candidate.shell,
-                args: candidate.args,
-                cwd: None,
-                env: HashMap::new(),
-                is_default: index == 0,
-                sidebar_group_id: None,
-                sort_order: ((index + 1) * 10) as i64,
-                created_at: timestamp.clone(),
-                updated_at: timestamp.clone(),
-            })
-            .collect::<Vec<_>>();
+        let profiles = self.default_profiles();
 
         self.config
             .apply_profile_change_set(&profiles, &[])
@@ -65,6 +52,14 @@ impl ProfileService {
 
     /// 列出终端 Profile。
     pub fn list_profiles(&self) -> AppResult<Vec<TerminalProfile>> {
+        if let Some(profiles) = self
+            .read_only_fallback
+            .read()
+            .map_err(|_| AppError::StateLockPoisoned("profile_recovery"))?
+            .clone()
+        {
+            return Ok(profiles);
+        }
         self.config.list_profiles().map_err(config_file_error)
     }
 
@@ -75,6 +70,7 @@ impl ProfileService {
 
     /// 创建终端 Profile。
     pub fn create_profile(&self, request: ProfileCreateRequest) -> AppResult<TerminalProfile> {
+        self.reject_recovery_write()?;
         let mut profiles = self.list_profiles()?;
         let timestamp = timestamp_now();
         let profile = TerminalProfile {
@@ -104,6 +100,7 @@ impl ProfileService {
 
     /// 更新终端 Profile。
     pub fn update_profile(&self, request: ProfileUpdateRequest) -> AppResult<TerminalProfile> {
+        self.reject_recovery_write()?;
         let mut profiles = self.list_profiles()?;
         let index = profiles
             .iter()
@@ -141,6 +138,7 @@ impl ProfileService {
 
     /// 删除终端 Profile；至少保留一个本地 profile。
     pub fn delete_profile(&self, profile_id: &str) -> AppResult<bool> {
+        self.reject_recovery_write()?;
         let mut profiles = self.list_profiles()?;
         if profiles.len() <= 1 {
             return Err(AppError::InvalidInput(
@@ -166,6 +164,51 @@ impl ProfileService {
             .apply_profile_change_set(&writes, &[removed.id])
             .map_err(config_file_error)?;
         Ok(true)
+    }
+
+    /// 损坏 profile 集合使用进程内 shell 探测结果，并拒绝一切持久化修改。
+    pub fn enter_read_only_recovery(&self) -> AppResult<()> {
+        *self
+            .read_only_fallback
+            .write()
+            .map_err(|_| AppError::StateLockPoisoned("profile_recovery"))? =
+            Some(self.default_profiles());
+        Ok(())
+    }
+
+    fn reject_recovery_write(&self) -> AppResult<()> {
+        if self
+            .read_only_fallback
+            .read()
+            .map_err(|_| AppError::StateLockPoisoned("profile_recovery"))?
+            .is_some()
+        {
+            return Err(AppError::InvalidInput(
+                "profiles/*.toml 处于只读恢复；请修复原文件并重新启动 Kerminal".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn default_profiles(&self) -> Vec<TerminalProfile> {
+        let timestamp = timestamp_now();
+        self.detect_shells()
+            .into_iter()
+            .enumerate()
+            .map(|(index, candidate)| TerminalProfile {
+                id: format!("profile-{}", candidate.id),
+                name: candidate.name,
+                shell: candidate.shell,
+                args: candidate.args,
+                cwd: None,
+                env: HashMap::new(),
+                is_default: index == 0,
+                sidebar_group_id: None,
+                sort_order: ((index + 1) * 10) as i64,
+                created_at: timestamp.clone(),
+                updated_at: timestamp.clone(),
+            })
+            .collect()
     }
 }
 

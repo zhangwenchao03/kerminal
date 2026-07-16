@@ -4,17 +4,20 @@
 
 use std::{
     collections::HashMap,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    sync::{Arc, Mutex},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+use tokio::sync::Mutex as AsyncMutex;
+
+mod parsing;
+
+pub use parsing::{parse_proc_net_dev, parse_server_info_output, ProcNetDevSnapshot};
 
 use crate::{
     error::{AppError, AppResult},
     models::{
         remote_host::{RemoteHost, RemoteHostAuthType},
-        server_info::{
-            ServerDiskInfo, ServerGpuInfo, ServerInfoRequest, ServerInfoSnapshot,
-            ServerNetworkInterfaceInfo, ServerProcessInfo,
-        },
+        server_info::{ServerInfoRequest, ServerInfoSnapshot},
         ssh_command::SshCommandRequest,
         target::RemoteTargetRef,
     },
@@ -27,15 +30,39 @@ use crate::{
 
 const SERVER_INFO_TIMEOUT: Duration = Duration::from_secs(15);
 const SERVER_INFO_OUTPUT_BYTES: usize = 128 * 1024;
+const SERVER_INFO_SINGLE_FLIGHT_WINDOW: Duration = Duration::from_millis(750);
+const SERVER_INFO_SLOW_REFRESH_INTERVAL: Duration = Duration::from_secs(15);
+const SERVER_INFO_STATIC_REFRESH_INTERVAL: Duration = Duration::from_secs(300);
 
 /// 服务器信息采集业务入口。
 #[derive(Debug, Default)]
-pub struct ServerInfoService;
+pub struct ServerInfoService {
+    targets: Mutex<HashMap<String, Arc<AsyncMutex<ServerInfoTargetCache>>>>,
+}
+
+#[derive(Debug, Default)]
+struct ServerInfoTargetCache {
+    snapshot: Option<ServerInfoSnapshot>,
+    collected_at: Option<Instant>,
+    slow_collected_at: Option<Instant>,
+    static_collected_at: Option<Instant>,
+}
+
+/// 系统信息脚本的采集层级。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServerInfoCollectionTier {
+    /// 仅采集高频变化的 CPU、内存、负载与网络计数。
+    Fast,
+    /// 在高频指标之外刷新磁盘、进程与 GPU。
+    FastAndSlow,
+    /// 首次或静态缓存到期时采集完整系统信息。
+    Full,
+}
 
 impl ServerInfoService {
     /// 创建服务器信息服务。
     pub fn new() -> Self {
-        Self
+        Self::default()
     }
 
     /// 使用远程主机记录里的 SSH 认证信息采集 SSH 主机或容器目标的系统信息快照。
@@ -47,13 +74,43 @@ impl ServerInfoService {
         request: ServerInfoRequest,
     ) -> AppResult<ServerInfoSnapshot> {
         let target = Self::target_from_request(request)?;
+        let target_key = server_info_target_key(&target);
+        let target_cache = {
+            let mut targets = self
+                .targets
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            Arc::clone(
+                targets
+                    .entry(target_key)
+                    .or_insert_with(|| Arc::new(AsyncMutex::new(ServerInfoTargetCache::default()))),
+            )
+        };
+        let mut target_cache = target_cache.lock().await;
+        let now = Instant::now();
+        if target_cache.collected_at.is_some_and(|collected_at| {
+            now.duration_since(collected_at) < SERVER_INFO_SINGLE_FLIGHT_WINDOW
+        }) {
+            if let Some(snapshot) = target_cache.snapshot.clone() {
+                return Ok(snapshot);
+            }
+        }
+        let tier = select_server_info_collection_tier(
+            target_cache.snapshot.is_some(),
+            target_cache
+                .slow_collected_at
+                .map(|value| now.duration_since(value)),
+            target_cache
+                .static_collected_at
+                .map(|value| now.duration_since(value)),
+        );
         let host_id = target.host_id().ok_or_else(|| {
             AppError::InvalidInput("服务器信息目标必须是 SSH 主机或容器".to_owned())
         })?;
         let host = ssh_commands
             .resolve_native_runtime_host_metadata(paths, host_id)
             .map_err(server_info_transport_error)?;
-        let command_request = build_server_info_command_request(&host, &target)?;
+        let command_request = build_server_info_command_request_for_tier(&host, &target, tier)?;
         let output = ssh_commands
             .execute_native(paths, command_request)
             .await
@@ -63,8 +120,23 @@ impl ServerInfoService {
             return Err(server_info_command_failure(&output.stdout, &output.stderr));
         }
 
-        let mut snapshot = parse_server_info_output(&host, &output.stdout, unix_timestamp());
+        let partial = parse_server_info_output(&host, &output.stdout, unix_timestamp());
+        let mut snapshot = match target_cache.snapshot.as_ref() {
+            Some(cached) => merge_server_info_snapshot(cached, partial, tier),
+            None => partial,
+        };
         apply_target_metadata(&mut snapshot, &target);
+        target_cache.snapshot = Some(snapshot.clone());
+        target_cache.collected_at = Some(now);
+        if matches!(
+            tier,
+            ServerInfoCollectionTier::FastAndSlow | ServerInfoCollectionTier::Full
+        ) {
+            target_cache.slow_collected_at = Some(now);
+        }
+        if tier == ServerInfoCollectionTier::Full {
+            target_cache.static_collected_at = Some(now);
+        }
 
         Ok(snapshot)
     }
@@ -83,6 +155,26 @@ impl ServerInfoService {
             ));
         }
         Ok(target)
+    }
+}
+
+/// 根据缓存年龄选择下一次采集层级。
+pub fn select_server_info_collection_tier(
+    has_snapshot: bool,
+    slow_age: Option<Duration>,
+    static_age: Option<Duration>,
+) -> ServerInfoCollectionTier {
+    if !has_snapshot
+        || static_age.is_none()
+        || static_age.is_some_and(|age| age >= SERVER_INFO_STATIC_REFRESH_INTERVAL)
+    {
+        ServerInfoCollectionTier::Full
+    } else if slow_age.is_none()
+        || slow_age.is_some_and(|age| age >= SERVER_INFO_SLOW_REFRESH_INTERVAL)
+    {
+        ServerInfoCollectionTier::FastAndSlow
+    } else {
+        ServerInfoCollectionTier::Fast
     }
 }
 
@@ -116,9 +208,18 @@ pub fn build_server_info_command_request(
     host: &RemoteHost,
     target: &RemoteTargetRef,
 ) -> AppResult<SshCommandRequest> {
+    build_server_info_command_request_for_tier(host, target, ServerInfoCollectionTier::Full)
+}
+
+/// 按采集层级构建服务器信息命令请求。
+pub fn build_server_info_command_request_for_tier(
+    host: &RemoteHost,
+    target: &RemoteTargetRef,
+    tier: ServerInfoCollectionTier,
+) -> AppResult<SshCommandRequest> {
     Ok(SshCommandRequest {
         host_id: host.id.clone(),
-        command: build_server_info_script_for_target(host, target)?,
+        command: build_server_info_script_for_target_tier(host, target, tier)?,
         timeout_seconds: Some(SERVER_INFO_TIMEOUT.as_secs()),
         max_output_bytes: Some(SERVER_INFO_OUTPUT_BYTES),
     })
@@ -160,9 +261,18 @@ fn build_server_info_script_for_target(
     host: &RemoteHost,
     target: &RemoteTargetRef,
 ) -> AppResult<String> {
+    build_server_info_script_for_target_tier(host, target, ServerInfoCollectionTier::Full)
+}
+
+fn build_server_info_script_for_target_tier(
+    host: &RemoteHost,
+    target: &RemoteTargetRef,
+    tier: ServerInfoCollectionTier,
+) -> AppResult<String> {
     ensure_target_matches_host(host, target)?;
+    let script = server_info_script_for_tier(tier);
     match target {
-        RemoteTargetRef::Ssh { .. } => Ok(SERVER_INFO_SCRIPT.to_owned()),
+        RemoteTargetRef::Ssh { .. } => Ok(script),
         RemoteTargetRef::DockerContainer {
             container_id,
             runtime,
@@ -172,7 +282,7 @@ fn build_server_info_script_for_target(
             Ok(build_container_exec_script(
                 *runtime,
                 &container_id,
-                SERVER_INFO_SCRIPT,
+                &script,
                 &[],
             ))
         }
@@ -182,6 +292,38 @@ fn build_server_info_script_for_target(
             "服务器信息目标必须是 SSH 主机或容器".to_owned(),
         )),
     }
+}
+
+fn server_info_target_key(target: &RemoteTargetRef) -> String {
+    target.stable_id()
+}
+
+fn merge_server_info_snapshot(
+    cached: &ServerInfoSnapshot,
+    mut fresh: ServerInfoSnapshot,
+    tier: ServerInfoCollectionTier,
+) -> ServerInfoSnapshot {
+    if tier != ServerInfoCollectionTier::Full {
+        fresh.hostname = cached.hostname.clone();
+        fresh.os = cached.os.clone();
+        fresh.architecture = cached.architecture.clone();
+        fresh.kernel = cached.kernel.clone();
+        fresh.cpu_count = cached.cpu_count;
+        fresh.cpu_model = cached.cpu_model.clone();
+    }
+    if tier == ServerInfoCollectionTier::Fast {
+        fresh.disk_total_bytes = cached.disk_total_bytes;
+        fresh.disk_used_bytes = cached.disk_used_bytes;
+        fresh.disk_available_bytes = cached.disk_available_bytes;
+        fresh.disk_mount = cached.disk_mount.clone();
+        fresh.disks = cached.disks.clone();
+        fresh.process_count = cached.process_count;
+        fresh.running_process_count = cached.running_process_count;
+        fresh.top_processes = cached.top_processes.clone();
+        fresh.gpu_probe_status = cached.gpu_probe_status.clone();
+        fresh.gpus = cached.gpus.clone();
+    }
+    fresh
 }
 
 fn ensure_target_matches_host(host: &RemoteHost, target: &RemoteTargetRef) -> AppResult<()> {
@@ -267,255 +409,6 @@ fn auth_args(auth_type: RemoteHostAuthType) -> Vec<String> {
     ]
 }
 
-/// 解析远端 key=value 输出为服务器信息快照。
-pub fn parse_server_info_output(
-    host: &RemoteHost,
-    stdout: &str,
-    captured_at: String,
-) -> ServerInfoSnapshot {
-    let values = key_value_lines(stdout);
-
-    ServerInfoSnapshot {
-        host_id: host.id.clone(),
-        host_name: host.name.clone(),
-        host: host.host.clone(),
-        port: host.port,
-        username: host.username.clone(),
-        hostname: optional_text(&values, "hostname"),
-        os: optional_text(&values, "os"),
-        architecture: optional_text(&values, "architecture"),
-        kernel: optional_text(&values, "kernel"),
-        uptime_seconds: parse_u64(&values, "uptime_seconds"),
-        load_average: parse_load_average(&values),
-        cpu_usage_percent: parse_f64(&values, "cpu_usage_percent"),
-        cpu_count: parse_u64(&values, "cpu_count"),
-        cpu_model: optional_text(&values, "cpu_model"),
-        cpu_core_usage_percents: parse_cpu_core_usage_percents(&values),
-        process_count: parse_u64(&values, "process_count"),
-        running_process_count: parse_u64(&values, "running_process_count"),
-        memory_total_bytes: parse_u64(&values, "memory_total_bytes"),
-        memory_used_bytes: parse_u64(&values, "memory_used_bytes"),
-        memory_available_bytes: parse_u64(&values, "memory_available_bytes"),
-        memory_buffers_bytes: parse_u64(&values, "memory_buffers_bytes"),
-        memory_cached_bytes: parse_u64(&values, "memory_cached_bytes"),
-        swap_total_bytes: parse_u64(&values, "swap_total_bytes"),
-        swap_used_bytes: parse_u64(&values, "swap_used_bytes"),
-        disk_total_bytes: parse_u64(&values, "disk_total_bytes"),
-        disk_used_bytes: parse_u64(&values, "disk_used_bytes"),
-        disk_available_bytes: parse_u64(&values, "disk_available_bytes"),
-        disk_mount: optional_text(&values, "disk_mount"),
-        disks: parse_server_disks(&values),
-        network_rx_bytes: parse_u64(&values, "network_rx_bytes"),
-        network_tx_bytes: parse_u64(&values, "network_tx_bytes"),
-        network_interfaces: parse_network_interfaces(&values),
-        top_processes: parse_server_processes(&values),
-        gpu_probe_status: optional_text(&values, "gpu_probe_status"),
-        gpus: parse_server_gpus(&values),
-        captured_at,
-    }
-}
-
-fn key_value_lines(stdout: &str) -> HashMap<String, String> {
-    stdout
-        .lines()
-        .filter_map(|line| line.split_once('='))
-        .map(|(key, value)| (key.trim().to_owned(), value.trim().to_owned()))
-        .filter(|(key, _)| !key.is_empty())
-        .collect()
-}
-
-fn optional_text(values: &HashMap<String, String>, key: &str) -> Option<String> {
-    values
-        .get(key)
-        .map(|value| value.trim().to_owned())
-        .filter(|value| !value.is_empty())
-}
-
-fn parse_u64(values: &HashMap<String, String>, key: &str) -> Option<u64> {
-    values
-        .get(key)?
-        .split_once('.')
-        .map(|(integer, _)| integer)
-        .unwrap_or_else(|| values.get(key).expect("checked above"))
-        .parse()
-        .ok()
-}
-
-fn parse_u32(values: &HashMap<String, String>, key: &str) -> Option<u32> {
-    parse_u64(values, key).and_then(|value| u32::try_from(value).ok())
-}
-
-fn parse_f64(values: &HashMap<String, String>, key: &str) -> Option<f64> {
-    values.get(key)?.parse().ok()
-}
-
-fn parse_load_average(values: &HashMap<String, String>) -> Option<[f64; 3]> {
-    let parts = values
-        .get("load_average")?
-        .split_whitespace()
-        .filter_map(|part| part.parse::<f64>().ok())
-        .collect::<Vec<_>>();
-    if parts.len() < 3 {
-        return None;
-    }
-    Some([parts[0], parts[1], parts[2]])
-}
-
-fn parse_cpu_core_usage_percents(values: &HashMap<String, String>) -> Vec<f64> {
-    let mut entries = values
-        .keys()
-        .filter_map(|key| {
-            let rest = key.strip_prefix("cpu_core_")?;
-            let index = rest.strip_suffix("_usage_percent")?;
-            index.parse::<usize>().ok().map(|index| (index, key))
-        })
-        .collect::<Vec<_>>();
-    entries.sort_by_key(|(index, _)| *index);
-
-    entries
-        .into_iter()
-        .filter_map(|(_, key)| values.get(key)?.parse::<f64>().ok())
-        .collect()
-}
-
-fn parse_server_disks(values: &HashMap<String, String>) -> Vec<ServerDiskInfo> {
-    let mut indices = values
-        .keys()
-        .filter_map(|key| {
-            let rest = key.strip_prefix("disk_")?;
-            let (index, field) = rest.split_once('_')?;
-            if field == "mount" {
-                index.parse::<usize>().ok()
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-    indices.sort_unstable();
-    indices.dedup();
-
-    indices
-        .into_iter()
-        .filter_map(|index| {
-            let prefix = format!("disk_{index}_");
-            let mount = optional_text(values, &format!("{prefix}mount"))?;
-            let filesystem = optional_text(values, &format!("{prefix}filesystem"))
-                .unwrap_or_else(|| "-".to_owned());
-            Some(ServerDiskInfo {
-                available_bytes: parse_u64(values, &format!("{prefix}available_bytes")),
-                filesystem,
-                mount,
-                total_bytes: parse_u64(values, &format!("{prefix}total_bytes")),
-                used_bytes: parse_u64(values, &format!("{prefix}used_bytes")),
-            })
-        })
-        .collect()
-}
-
-fn parse_network_interfaces(values: &HashMap<String, String>) -> Vec<ServerNetworkInterfaceInfo> {
-    let mut indices = values
-        .keys()
-        .filter_map(|key| {
-            let rest = key.strip_prefix("network_interface_")?;
-            let (index, field) = rest.split_once('_')?;
-            if field == "name" {
-                index.parse::<usize>().ok()
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-    indices.sort_unstable();
-    indices.dedup();
-
-    indices
-        .into_iter()
-        .filter_map(|index| {
-            let prefix = format!("network_interface_{index}_");
-            Some(ServerNetworkInterfaceInfo {
-                name: optional_text(values, &format!("{prefix}name"))?,
-                rx_bytes: parse_u64(values, &format!("{prefix}rx_bytes")),
-                tx_bytes: parse_u64(values, &format!("{prefix}tx_bytes")),
-            })
-        })
-        .collect()
-}
-
-fn parse_server_processes(values: &HashMap<String, String>) -> Vec<ServerProcessInfo> {
-    let mut indices = values
-        .keys()
-        .filter_map(|key| {
-            let rest = key.strip_prefix("process_")?;
-            let (index, field) = rest.split_once('_')?;
-            if field == "pid" {
-                index.parse::<usize>().ok()
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-    indices.sort_unstable();
-    indices.dedup();
-
-    indices
-        .into_iter()
-        .filter_map(|index| {
-            let prefix = format!("process_{index}_");
-            Some(ServerProcessInfo {
-                cpu_usage_percent: parse_f64(values, &format!("{prefix}cpu_usage_percent")),
-                memory_bytes: parse_u64(values, &format!("{prefix}memory_bytes")),
-                memory_percent: parse_f64(values, &format!("{prefix}memory_percent")),
-                name: optional_text(values, &format!("{prefix}name"))?,
-                pid: parse_u32(values, &format!("{prefix}pid"))?,
-            })
-        })
-        .collect()
-}
-
-fn parse_server_gpus(values: &HashMap<String, String>) -> Vec<ServerGpuInfo> {
-    let mut indices = values
-        .keys()
-        .filter_map(|key| {
-            let rest = key.strip_prefix("gpu_")?;
-            let (index, field) = rest.split_once('_')?;
-            if field == "name" {
-                index.parse::<usize>().ok()
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-    indices.sort_unstable();
-    indices.dedup();
-
-    indices
-        .into_iter()
-        .filter_map(|index| {
-            let prefix = format!("gpu_{index}_");
-            let name = optional_text(values, &format!("{prefix}name"))?;
-            if is_gpu_probe_error_name(&name) {
-                return None;
-            }
-            Some(ServerGpuInfo {
-                driver_version: optional_text(values, &format!("{prefix}driver_version")),
-                memory_total_bytes: parse_u64(values, &format!("{prefix}memory_total_bytes")),
-                memory_used_bytes: parse_u64(values, &format!("{prefix}memory_used_bytes")),
-                name,
-                temperature_celsius: parse_f64(values, &format!("{prefix}temperature_celsius")),
-                utilization_percent: parse_f64(values, &format!("{prefix}utilization_percent")),
-                vendor: optional_text(values, &format!("{prefix}vendor")),
-            })
-        })
-        .collect()
-}
-
-fn is_gpu_probe_error_name(name: &str) -> bool {
-    let normalized = name.trim().to_ascii_lowercase();
-    normalized.starts_with("nvidia-smi has failed")
-        || normalized.starts_with("failed to initialize nvml")
-        || normalized == "no devices were found"
-}
-
 fn unix_timestamp() -> String {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -523,7 +416,44 @@ fn unix_timestamp() -> String {
         .unwrap_or_else(|_| "0".to_owned())
 }
 
+fn server_info_script_for_tier(tier: ServerInfoCollectionTier) -> String {
+    let mut active_tier = None;
+    SERVER_INFO_SCRIPT
+        .lines()
+        .filter(|line| match line.trim() {
+            "# KERMINAL_TIER_STATIC_BEGIN" => {
+                active_tier = Some(ServerInfoCollectionTier::Full);
+                false
+            }
+            "# KERMINAL_TIER_FAST_BEGIN" => {
+                active_tier = Some(ServerInfoCollectionTier::Fast);
+                false
+            }
+            "# KERMINAL_TIER_SLOW_BEGIN" => {
+                active_tier = Some(ServerInfoCollectionTier::FastAndSlow);
+                false
+            }
+            "# KERMINAL_TIER_END" => {
+                active_tier = None;
+                false
+            }
+            _ => match (tier, active_tier) {
+                (ServerInfoCollectionTier::Full, _) => true,
+                (ServerInfoCollectionTier::FastAndSlow, Some(section)) => {
+                    section != ServerInfoCollectionTier::Full
+                }
+                (ServerInfoCollectionTier::Fast, Some(section)) => {
+                    section == ServerInfoCollectionTier::Fast
+                }
+                (_, None) => line.trim().is_empty(),
+            },
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 const SERVER_INFO_SCRIPT: &str = r#"
+# KERMINAL_TIER_STATIC_BEGIN
 printf 'hostname=%s\n' "$(hostname 2>/dev/null)"
 if [ -r /etc/os-release ]; then
   os_pretty="$(awk -F= '/^PRETTY_NAME=/ {
@@ -541,7 +471,9 @@ else
 fi
 printf 'architecture=%s\n' "$(uname -m 2>/dev/null)"
 printf 'kernel=%s\n' "$(uname -r 2>/dev/null)"
+# KERMINAL_TIER_END
 
+# KERMINAL_TIER_FAST_BEGIN
 if [ -r /proc/uptime ]; then
   awk '{ printf "uptime_seconds=%s\n", $1 }' /proc/uptime
 fi
@@ -549,7 +481,9 @@ fi
 if [ -r /proc/loadavg ]; then
   awk '{ printf "load_average=%s %s %s\n", $1, $2, $3 }' /proc/loadavg
 fi
+# KERMINAL_TIER_END
 
+# KERMINAL_TIER_STATIC_BEGIN
 cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null)"
 if [ -n "$cpu_count" ]; then
   printf 'cpu_count=%s\n' "$cpu_count"
@@ -567,7 +501,9 @@ if [ -r /proc/cpuinfo ]; then
     }
   ' /proc/cpuinfo
 fi
+# KERMINAL_TIER_END
 
+# KERMINAL_TIER_FAST_BEGIN
 if [ -r /proc/stat ]; then
   read_cpu_snapshot() {
     awk '/^cpu[0-9]* / {
@@ -634,7 +570,9 @@ if [ -r /proc/meminfo ]; then
     }
   ' /proc/meminfo
 fi
+# KERMINAL_TIER_END
 
+# KERMINAL_TIER_SLOW_BEGIN
 df -Pk / 2>/dev/null | awk 'NR==2 {
   printf "disk_total_bytes=%.0f\n", $2*1024
   printf "disk_used_bytes=%.0f\n", $3*1024
@@ -651,26 +589,18 @@ df -Pk 2>/dev/null | awk 'NR > 1 {
   printf "disk_%d_mount=%s\n", idx, $6
   idx++
 }'
+# KERMINAL_TIER_END
 
+# KERMINAL_TIER_FAST_BEGIN
 if [ -r /proc/net/dev ]; then
   awk 'NR > 2 {
-    split($0, parts, ":")
-    name=parts[1]
-    sub(/^[[:space:]]+/, "", name)
-    sub(/[[:space:]]+$/, "", name)
-    split(parts[2], fields, /[[:space:]]+/)
-    rx += fields[1]
-    tx += fields[9]
-    printf "network_interface_%d_name=%s\n", idx, name
-    printf "network_interface_%d_rx_bytes=%.0f\n", idx, fields[1]
-    printf "network_interface_%d_tx_bytes=%.0f\n", idx, fields[9]
+    printf "proc_net_dev_line_%d=%s\n", idx, $0
     idx++
-  } END {
-    printf "network_rx_bytes=%.0f\n", rx
-    printf "network_tx_bytes=%.0f\n", tx
   }' /proc/net/dev
 fi
+# KERMINAL_TIER_END
 
+# KERMINAL_TIER_SLOW_BEGIN
 if command -v ps >/dev/null 2>&1; then
   ps -eo stat= 2>/dev/null | awk '{
     count++
@@ -781,4 +711,5 @@ elif command -v lspci >/dev/null 2>&1; then
 else
   printf 'gpu_probe_status=no_probe_command\n'
 fi
+# KERMINAL_TIER_END
 "#;

@@ -7,17 +7,20 @@ use uuid::Uuid;
 use crate::{
     error::{AppError, AppResult},
     models::command_history::{
-        CommandHistoryEntry, CommandHistoryListRequest, CommandHistoryRecordRequest,
-        CommandHistoryRecordResult, CommandHistoryTarget,
+        CommandHistoryClearRequest, CommandHistoryEntry, CommandHistoryListRequest,
+        CommandHistoryRecordRequest, CommandHistoryRecordResult, CommandHistoryTarget,
     },
     storage::{
-        command_history::{CommandHistoryListFilter, CommandHistoryWrite},
+        command_history::{
+            CommandHistoryClearFilter, CommandHistoryListFilter, CommandHistoryWrite,
+        },
         CommandSqliteStore,
     },
 };
 
 const DEFAULT_LIMIT: usize = 100;
 const MAX_LIMIT: usize = 500;
+const MAX_SUGGESTION_SCAN_LIMIT: usize = 2_048;
 const MAX_COMMAND_CHARS: usize = 4_000;
 const MAX_ID_CHARS: usize = 160;
 const MAX_PATH_CHARS: usize = 1_000;
@@ -92,6 +95,23 @@ impl CommandHistoryService {
         )
     }
 
+    /// 返回有界最近历史，供候选菜单在内存中做词级匹配。
+    pub fn list_recent_history_for_suggestions(
+        &self,
+        storage: &CommandSqliteStore,
+        target: CommandHistoryTarget,
+        remote_host_id: Option<&str>,
+        limit: usize,
+    ) -> AppResult<Vec<CommandHistoryEntry>> {
+        storage.list_recent_command_history_for_suggestions(
+            target,
+            remote_host_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty()),
+            limit.clamp(1, MAX_SUGGESTION_SCAN_LIMIT),
+        )
+    }
+
     /// 记录一条命令历史。
     pub fn record_command(
         &self,
@@ -142,6 +162,24 @@ impl CommandHistoryService {
     /// 清空所有命令历史。
     pub fn clear_history(&self, storage: &CommandSqliteStore) -> AppResult<usize> {
         storage.clear_command_history()
+    }
+
+    /// 按终端上下文清理历史；空范围保留全局清空兼容行为。
+    pub fn clear_history_scoped(
+        &self,
+        storage: &CommandSqliteStore,
+        request: CommandHistoryClearRequest,
+    ) -> AppResult<usize> {
+        let pane_id = normalize_optional_text("pane id", request.pane_id, MAX_ID_CHARS)?;
+        let remote_host_id =
+            normalize_optional_text("SSH 主机 id", request.remote_host_id, MAX_ID_CHARS)?;
+        let session_id = normalize_optional_text("session id", request.session_id, MAX_ID_CHARS)?;
+        storage.clear_command_history_filtered(&CommandHistoryClearFilter {
+            target: request.target,
+            pane_id: pane_id.as_deref(),
+            remote_host_id: remote_host_id.as_deref(),
+            session_id: session_id.as_deref(),
+        })
     }
 }
 

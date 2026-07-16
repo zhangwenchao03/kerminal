@@ -29,7 +29,7 @@ export interface DesktopNotificationRequest {
   visibility: DesktopNotificationVisibility;
 }
 
-export type DesktopNotificationSendReason =
+type DesktopNotificationSendReason =
   | DesktopNotificationDecisionReason
   | "not-tauri"
   | "transport-error";

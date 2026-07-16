@@ -1,7 +1,7 @@
 import type {
   MachineStatus,
   TerminalPane,
-} from "../workspace/types";
+} from "../workspace/contracts/index";
 
 export type BroadcastTargetMode = "focused" | "all" | "custom";
 

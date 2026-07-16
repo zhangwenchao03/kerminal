@@ -1,22 +1,41 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getRuntimeHealthSnapshot } from "../../lib/diagnosticsApi";
 import {
   getServerInfoSnapshot,
   type ServerInfoSnapshot,
 } from "../../lib/serverInfoApi";
 import {
-  cachedNetworkTraffic,
-  clearServerInfoMetricsCacheForTest,
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../lib/userFacingMessage";
+import {
+  createServerInfoMetricsCache,
+  type ServerInfoMetricsCache,
   type NetworkTrafficSnapshot,
-  updateNetworkTrafficCache,
 } from "./serverInfoMetricsModel";
+import { localServerInfoSnapshot } from "./localServerInfoModel";
 import type { ServerInfoTargetContext } from "./serverInfoTargetModel";
 
-const serverInfoSnapshotCache = new Map<string, ServerInfoSnapshot>();
-const serverInfoInFlight = new Map<string, Promise<ServerInfoSnapshot>>();
+export interface ServerInfoSnapshotRuntime {
+  inFlight: Map<string, Promise<ServerInfoSnapshot>>;
+  metrics: ServerInfoMetricsCache;
+  snapshots: Map<string, ServerInfoSnapshot>;
+}
+
+/** 创建实例级采集缓存，测试与独立窗口无需清理进程级单例。 */
+export function createServerInfoSnapshotRuntime(): ServerInfoSnapshotRuntime {
+  return {
+    inFlight: new Map(),
+    metrics: createServerInfoMetricsCache(),
+    snapshots: new Map(),
+  };
+}
+
+const defaultServerInfoSnapshotRuntime = createServerInfoSnapshotRuntime();
 const DEFAULT_REFRESH_INTERVAL_MS = 3_000;
 const DEFAULT_HIDDEN_REFRESH_INTERVAL_MS = 30_000;
 
-export type VisibilityChangeSubscriber = (onChange: () => void) => () => void;
+type VisibilityChangeSubscriber = (onChange: () => void) => () => void;
 
 export const serverInfoRefreshOptions = [
   { label: "手动", value: 0 },
@@ -29,15 +48,10 @@ export const serverInfoRefreshOptions = [
   { label: "5min", value: 300_000 },
 ];
 
-export function clearServerInfoSnapshotCacheForTest() {
-  serverInfoSnapshotCache.clear();
-  serverInfoInFlight.clear();
-  clearServerInfoMetricsCacheForTest();
-}
-
 export interface UseServerInfoSnapshotOptions {
   documentVisible?: () => boolean;
   hiddenRefreshIntervalMs?: number;
+  runtime?: ServerInfoSnapshotRuntime;
   subscribeToVisibilityChange?: VisibilityChangeSubscriber;
 }
 
@@ -53,31 +67,33 @@ const defaultSubscribeToVisibilityChange: VisibilityChangeSubscriber = (
   return () => document.removeEventListener("visibilitychange", onChange);
 };
 
+/** 管理本机、SSH 主机或容器的系统信息快照、缓存与定时刷新。 */
 export function useServerInfoSnapshot(
   targetContext: ServerInfoTargetContext | undefined,
   {
     documentVisible = defaultDocumentVisible,
     hiddenRefreshIntervalMs = DEFAULT_HIDDEN_REFRESH_INTERVAL_MS,
+    runtime = defaultServerInfoSnapshotRuntime,
     subscribeToVisibilityChange = defaultSubscribeToVisibilityChange,
   }: UseServerInfoSnapshotOptions = {},
 ) {
   const selectedTargetKey = targetContext?.cacheKey;
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserFacingMessage | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(
     DEFAULT_REFRESH_INTERVAL_MS,
   );
   const [snapshot, setSnapshot] = useState<ServerInfoSnapshot | null>(() =>
     selectedTargetKey
-      ? (serverInfoSnapshotCache.get(selectedTargetKey) ?? null)
+      ? (runtime.snapshots.get(selectedTargetKey) ?? null)
       : null,
   );
   const [networkTraffic, setNetworkTraffic] =
     useState<NetworkTrafficSnapshot | null>(() =>
       selectedTargetKey
-        ? cachedNetworkTraffic(
+        ? runtime.metrics.cached(
             selectedTargetKey,
-            serverInfoSnapshotCache.get(selectedTargetKey),
+            runtime.snapshots.get(selectedTargetKey),
           )
         : null,
     );
@@ -95,11 +111,11 @@ export function useServerInfoSnapshot(
       if (loadingRef.current) {
         return;
       }
-      const cachedSnapshot = serverInfoSnapshotCache.get(targetContext.cacheKey);
+      const cachedSnapshot = runtime.snapshots.get(targetContext.cacheKey);
       if (cachedSnapshot && !options?.force) {
         setSnapshot(cachedSnapshot);
         setNetworkTraffic(
-          cachedNetworkTraffic(targetContext.cacheKey, cachedSnapshot),
+          runtime.metrics.cached(targetContext.cacheKey, cachedSnapshot),
         );
         return;
       }
@@ -110,29 +126,36 @@ export function useServerInfoSnapshot(
       setLoading(true);
       setError(null);
       try {
-        let snapshotRequest = serverInfoInFlight.get(targetContext.cacheKey);
+        let snapshotRequest = runtime.inFlight.get(targetContext.cacheKey);
         if (!snapshotRequest) {
-          snapshotRequest = getServerInfoSnapshot({
-            hostId: targetContext.hostId,
-            target: targetContext.target,
-          }).finally(() => {
-            serverInfoInFlight.delete(targetContext.cacheKey);
+          snapshotRequest = loadTargetSnapshot(targetContext).finally(() => {
+            runtime.inFlight.delete(targetContext.cacheKey);
           });
-          serverInfoInFlight.set(targetContext.cacheKey, snapshotRequest);
+          runtime.inFlight.set(targetContext.cacheKey, snapshotRequest);
         }
         const nextSnapshot = await snapshotRequest;
         if (requestIdRef.current === requestId) {
-          const nextNetworkTraffic = updateNetworkTrafficCache(
+          const nextNetworkTraffic = runtime.metrics.update(
             targetContext.cacheKey,
             nextSnapshot,
           );
-          serverInfoSnapshotCache.set(targetContext.cacheKey, nextSnapshot);
+          runtime.snapshots.set(targetContext.cacheKey, nextSnapshot);
           setSnapshot(nextSnapshot);
           setNetworkTraffic(nextNetworkTraffic);
         }
       } catch (nextError) {
         if (requestIdRef.current === requestId) {
-          setError(errorMessage(nextError));
+          const localTarget = targetContext.target.kind === "local";
+          setError(
+            buildUserFacingError(nextError, {
+              recoveryAction: localTarget
+                ? "请稍后重试。"
+                : "请检查连接后重试。",
+              title: localTarget
+                ? "无法读取本机系统信息"
+                : "无法读取服务器信息",
+            }),
+          );
         }
       } finally {
         if (requestIdRef.current === requestId) {
@@ -141,16 +164,16 @@ export function useServerInfoSnapshot(
         }
       }
     },
-    [targetContext],
+    [runtime, targetContext],
   );
 
   useEffect(() => {
     setError(null);
     if (selectedTargetKey) {
-      const cachedSnapshot = serverInfoSnapshotCache.get(selectedTargetKey) ?? null;
+      const cachedSnapshot = runtime.snapshots.get(selectedTargetKey) ?? null;
       setSnapshot(cachedSnapshot);
       setNetworkTraffic(
-        cachedNetworkTraffic(selectedTargetKey, cachedSnapshot ?? undefined),
+        runtime.metrics.cached(selectedTargetKey, cachedSnapshot ?? undefined),
       );
       setLoading(false);
       if (!cachedSnapshot) {
@@ -165,7 +188,7 @@ export function useServerInfoSnapshot(
       requestIdRef.current += 1;
       loadingRef.current = false;
     };
-  }, [refresh, selectedTargetKey]);
+  }, [refresh, runtime, selectedTargetKey]);
 
   useEffect(() => {
     if (!selectedTargetKey || refreshIntervalMs <= 0) {
@@ -250,8 +273,17 @@ export function useServerInfoSnapshot(
   };
 }
 
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
+/** 按目标边界选择只读采集源，本机不经过只支持 SSH/容器的远程 IPC。 */
+async function loadTargetSnapshot(targetContext: ServerInfoTargetContext) {
+  if (targetContext.target.kind === "local") {
+    const runtimeSnapshot = await getRuntimeHealthSnapshot();
+    return localServerInfoSnapshot(runtimeSnapshot, targetContext.hostId);
+  }
+
+  return getServerInfoSnapshot({
+    hostId: targetContext.hostId,
+    target: targetContext.target,
+  });
 }
 
 export function resolveServerInfoRefreshDelay({

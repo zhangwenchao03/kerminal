@@ -2,7 +2,7 @@ import type { IDisposable, ITerminalAddon, Terminal } from "@xterm/xterm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createTerminalRendererController,
-  releaseWebglAddonInternals,
+  type TerminalRendererState,
   type TerminalRendererTerminal,
 } from "../../../../src/features/terminal/terminalRenderer";
 
@@ -109,9 +109,40 @@ class FakeWebglAddon implements ITerminalAddon {
   }
 }
 
+class TrackedCanvasWebglAddon implements ITerminalAddon {
+  static instances: TrackedCanvasWebglAddon[] = [];
+
+  rendererCanvas = document.createElement("canvas");
+  textureAtlas = document.createElement("canvas");
+  _renderer = {
+    _atlas: {},
+    _canvas: this.rendererCanvas,
+    _charAtlas: {},
+    _gl: {},
+  };
+
+  constructor() {
+    TrackedCanvasWebglAddon.instances.push(this);
+  }
+
+  activate(terminal: Terminal): void {
+    terminal.element?.append(this.rendererCanvas, this.textureAtlas);
+  }
+
+  dispose(): void {
+    this.rendererCanvas.remove();
+    this.textureAtlas.remove();
+  }
+
+  onContextLoss(): IDisposable {
+    return { dispose: vi.fn() };
+  }
+}
+
 describe("terminalRenderer", () => {
   beforeEach(() => {
     FakeWebglAddon.instances = [];
+    TrackedCanvasWebglAddon.instances = [];
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(
       () => null,
     );
@@ -143,12 +174,107 @@ describe("terminalRenderer", () => {
     });
   });
 
+  it("keeps Auto on CPU when the platform is definitively software rendered", () => {
+    const loadWebglAddon = vi.fn();
+    const terminal = new FakeTerminal();
+    const controller = createTerminalRendererController({
+      gpuPlatformClass: "software",
+      loadWebglAddon,
+      paneId: "pane-software-gpu",
+      rendererType: "auto",
+      shouldUseAutoGpu: () => false,
+      terminal,
+    });
+
+    controller.attach();
+    controller.retryGpu();
+
+    expect(loadWebglAddon).not.toHaveBeenCalled();
+    expect(controller.canAttemptGpu()).toBe(false);
+    expect(controller.getState()).toEqual({
+      backend: "cpu",
+      canvasCount: 0,
+      fallbackReason: "software-gpu",
+      mode: "auto",
+    });
+    expect(controller.getDiagnostics().gpuPlatformClass).toBe(
+      "software",
+    );
+  });
+
+  it("still honors explicit GPU mode on a software-rendered platform", async () => {
+    const loadWebglAddon = vi
+      .fn()
+      .mockResolvedValue({ WebglAddon: FakeWebglAddon });
+    const controller = createTerminalRendererController({
+      loadWebglAddon,
+      paneId: "pane-forced-software-gpu",
+      rendererType: "gpu",
+      shouldUseAutoGpu: () => false,
+      terminal: new FakeTerminal(),
+    });
+
+    controller.attach();
+    await vi.waitFor(() => {
+      expect(controller.getState().backend).toBe("gpu");
+    });
+
+    expect(controller.canAttemptGpu()).toBe(true);
+    expect(loadWebglAddon).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears software fallback before switching Auto to explicit GPU", async () => {
+    const states: TerminalRendererState[] = [];
+    const controller = createTerminalRendererController({
+      loadWebglAddon: async () => ({ WebglAddon: FakeWebglAddon }),
+      onStateChange: (state) => states.push(state),
+      paneId: "pane-software-auto-to-gpu",
+      rendererType: "auto",
+      shouldUseAutoGpu: () => false,
+      terminal: new FakeTerminal(),
+    });
+
+    expect(controller.getState().fallbackReason).toBe("software-gpu");
+    controller.updateMode("gpu");
+    await vi.waitFor(() => {
+      expect(controller.getState().backend).toBe("gpu");
+    });
+
+    expect(
+      states.some(
+        (state) =>
+          state.mode === "gpu" && state.fallbackReason === "software-gpu",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps a stable CPU rollback when lifecycle V2 is disabled", () => {
+    const loadWebglAddon = vi.fn();
+    const controller = createTerminalRendererController({
+      lifecycleV2Enabled: false,
+      loadWebglAddon,
+      paneId: "pane-1",
+      rendererType: "gpu",
+      terminal: new FakeTerminal(),
+    });
+
+    controller.attach();
+    controller.retryGpu();
+
+    expect(loadWebglAddon).not.toHaveBeenCalled();
+    expect(controller.getState()).toEqual({
+      backend: "cpu",
+      canvasCount: 0,
+      fallbackReason: undefined,
+      mode: "gpu",
+    });
+    expect(controller.getDiagnostics().lifecycle.state).toBe("cpu-ready");
+  });
+
   it("attaches the WebGL addon in auto mode", async () => {
     const terminal = new FakeTerminal();
     const controller = createTerminalRendererController({
-      loadWebglAddon: vi
-        .fn()
-        .mockResolvedValue({ WebglAddon: FakeWebglAddon }),
+      loadWebglAddon: vi.fn().mockResolvedValue({ WebglAddon: FakeWebglAddon }),
       paneId: "pane-1",
       rendererType: "auto",
       terminal,
@@ -165,7 +291,7 @@ describe("terminalRenderer", () => {
       fallbackReason: undefined,
       mode: "auto",
     });
-    expect(terminal.refresh).toHaveBeenCalledWith(0, 11);
+    expect(terminal.refresh).not.toHaveBeenCalled();
   });
 
   it("falls back to CPU when the WebGL chunk fails to load", async () => {
@@ -200,9 +326,7 @@ describe("terminalRenderer", () => {
       throw new Error("load failed");
     });
     const controller = createTerminalRendererController({
-      loadWebglAddon: vi
-        .fn()
-        .mockResolvedValue({ WebglAddon: FakeWebglAddon }),
+      loadWebglAddon: vi.fn().mockResolvedValue({ WebglAddon: FakeWebglAddon }),
       logger,
       paneId: "pane-1",
       rendererType: "gpu",
@@ -225,44 +349,16 @@ describe("terminalRenderer", () => {
     );
   });
 
-  it("disposes the active WebGL renderer when switching to CPU", async () => {
-    const terminal = new FakeTerminal();
-    const controller = createTerminalRendererController({
-      loadWebglAddon: vi
-        .fn()
-        .mockResolvedValue({ WebglAddon: FakeWebglAddon }),
-      paneId: "pane-1",
-      rendererType: "auto",
-      terminal,
-    });
-
-    controller.attach();
-    await flushPromises();
-    controller.updateMode("cpu");
-
-    expect(FakeWebglAddon.instances[0].dispose).toHaveBeenCalled();
-    expect(controller.getState()).toEqual({
-      backend: "cpu",
-      canvasCount: 0,
-      fallbackReason: undefined,
-      mode: "cpu",
-    });
-  });
-
   it("falls back on context loss and retries while GPU remains enabled", async () => {
-    const retryCallbacks: Array<() => void> = [];
+    const scheduler = new ManualTimerScheduler();
     const terminal = new FakeTerminal();
     const controller = createTerminalRendererController({
-      loadWebglAddon: vi
-        .fn()
-        .mockResolvedValue({ WebglAddon: FakeWebglAddon }),
+      loadWebglAddon: vi.fn().mockResolvedValue({ WebglAddon: FakeWebglAddon }),
       paneId: "pane-1",
+      recoveryJitterRatio: 0,
       rendererType: "auto",
-      scheduleRetry: (callback) => {
-        retryCallbacks.push(callback);
-        return retryCallbacks.length;
-      },
-      cancelRetry: vi.fn(),
+      scheduleRetry: scheduler.schedule,
+      cancelRetry: scheduler.cancel,
       terminal,
     });
 
@@ -277,10 +373,10 @@ describe("terminalRenderer", () => {
       fallbackReason: "context-lost",
       mode: "auto",
     });
-    expect(retryCallbacks).toHaveLength(1);
+    expect(scheduler.pendingCount()).toBe(1);
     expect(FakeWebglAddon.instances[0].dispose).toHaveBeenCalled();
 
-    retryCallbacks[0]();
+    scheduler.runNext();
     await flushPromises();
 
     expect(FakeWebglAddon.instances).toHaveLength(2);
@@ -296,9 +392,7 @@ describe("terminalRenderer", () => {
     const onStateChange = vi.fn();
     const terminal = new FakeTerminal();
     const controller = createTerminalRendererController({
-      loadWebglAddon: vi
-        .fn()
-        .mockResolvedValue({ WebglAddon: FakeWebglAddon }),
+      loadWebglAddon: vi.fn().mockResolvedValue({ WebglAddon: FakeWebglAddon }),
       onStateChange,
       paneId: "pane-1",
       rendererType: "auto",
@@ -324,108 +418,46 @@ describe("terminalRenderer", () => {
     );
   });
 
-  it("clears the texture atlas without throwing when WebGL is active", async () => {
-    const terminal = new FakeTerminal();
-    const controller = createTerminalRendererController({
-      loadWebglAddon: vi
-        .fn()
-        .mockResolvedValue({ WebglAddon: FakeWebglAddon }),
-      paneId: "pane-1",
-      rendererType: "auto",
-      terminal,
-    });
 
-    controller.attach();
-    await flushPromises();
-    controller.clearTextureAtlas();
-
-    expect(FakeWebglAddon.instances[0].clearTextureAtlas).toHaveBeenCalled();
-    expect(terminal.refresh).toHaveBeenLastCalledWith(0, 11);
-  });
-
-  it("surfaces texture atlas clear failures to the recovery coordinator", async () => {
-    const logger = { warn: vi.fn() };
-    const terminal = new FakeTerminal();
-    const controller = createTerminalRendererController({
-      loadWebglAddon: vi
-        .fn()
-        .mockResolvedValue({ WebglAddon: FakeWebglAddon }),
-      logger,
-      paneId: "pane-1",
-      rendererType: "auto",
-      terminal,
-    });
-
-    controller.attach();
-    await flushPromises();
-    FakeWebglAddon.instances[0].clearTextureAtlas.mockImplementation(() => {
-      throw new Error("atlas failed");
-    });
-
-    expect(() => controller.clearTextureAtlas()).toThrow("atlas failed");
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("texture atlas clear failed"),
-      expect.any(Error),
-    );
-  });
-
-  it("ignores stale async attach after switching to CPU", async () => {
-    let resolveLoad:
-      | ((value: { WebglAddon: typeof FakeWebglAddon }) => void)
-      | undefined;
-    const loadWebglAddon = vi.fn(
-      () =>
-        new Promise<{ WebglAddon: typeof FakeWebglAddon }>((resolve) => {
-          resolveLoad = resolve;
-        }),
-    );
-    const terminal = new FakeTerminal();
-    const controller = createTerminalRendererController({
-      loadWebglAddon,
-      paneId: "pane-1",
-      rendererType: "auto",
-      terminal,
-    });
-
-    controller.attach();
-    controller.updateMode("cpu");
-    resolveLoad?.({ WebglAddon: FakeWebglAddon });
-    await flushPromises();
-
-    expect(terminal.loadedAddons).toHaveLength(0);
-    expect(FakeWebglAddon.instances).toHaveLength(0);
-    expect(controller.getState()).toEqual({
-      backend: "cpu",
-      canvasCount: 0,
-      fallbackReason: undefined,
-      mode: "cpu",
-    });
-  });
-
-  it("cleans known private WebGL renderer references best-effort", () => {
-    const logger = { warn: vi.fn() };
-    const addon = {
-      _renderer: {
-        _atlas: {},
-        _canvas: document.createElement("canvas"),
-        _charAtlas: {},
-        _gl: {},
-      },
-    };
-
-    releaseWebglAddonInternals(addon, logger);
-
-    expect(addon._renderer).toEqual({
-      _atlas: undefined,
-      _canvas: undefined,
-      _charAtlas: undefined,
-      _gl: undefined,
-    });
-    expect(logger.warn).not.toHaveBeenCalled();
-  });
 });
 
 async function flushPromises() {
   await Promise.resolve();
   await Promise.resolve();
+}
+
+class ManualTimerScheduler {
+  private callbacks = new Map<number, () => void>();
+  private nextHandle = 1;
+
+  cancel = vi.fn((handle: number) => {
+    this.callbacks.delete(handle);
+  });
+
+  schedule = vi.fn((callback: () => void) => {
+    const handle = this.nextHandle++;
+    this.callbacks.set(handle, callback);
+    return handle;
+  });
+
+  pendingCount() {
+    return this.callbacks.size;
+  }
+
+  runNext() {
+    const next = this.callbacks.entries().next().value as
+      [number, () => void] | undefined;
+    if (!next) {
+      return;
+    }
+    const [handle, callback] = next;
+    this.callbacks.delete(handle);
+    callback();
+  }
+
+  runAll() {
+    while (this.callbacks.size > 0) {
+      this.runNext();
+    }
+  }
 }

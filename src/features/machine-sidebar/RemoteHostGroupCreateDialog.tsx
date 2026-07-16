@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { FolderPlus } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import type {
   RemoteHostGroup,
   RemoteHostGroupCreateRequest,
   RemoteHostGroupUpdateRequest,
 } from "../../lib/remoteHostApi";
-import type { MachineGroup } from "../workspace/types";
+import {
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../lib/userFacingMessage";
+import type { MachineGroup } from "../workspace/contracts/index";
 
 interface RemoteHostGroupCreateDialogProps {
   externalConfigConflict?: string;
@@ -34,6 +38,8 @@ export function RemoteHostGroupCreateDialog({
 }: RemoteHostGroupCreateDialogProps) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [operationError, setOperationError] =
+    useState<UserFacingMessage | null>(null);
   const [saving, setSaving] = useState(false);
   const initializedGroupTargetRef = useRef<string | null>(null);
   const groupTargetKey = group?.id ?? "__create__";
@@ -49,23 +55,25 @@ export function RemoteHostGroupCreateDialog({
     initializedGroupTargetRef.current = groupTargetKey;
     setName(group?.title ?? "");
     setError(null);
+    setOperationError(null);
     setSaving(false);
   }, [group?.id, group?.title, groupTargetKey, open]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (group && externalConfigConflict) {
-      setError(externalConfigConflict);
       return;
     }
     const trimmedName = name.trim();
     if (!trimmedName) {
+      setOperationError(null);
       setError("请输入分组名称。");
       return;
     }
 
     setSaving(true);
     setError(null);
+    setOperationError(null);
     try {
       const savedGroup =
         group && onUpdateGroup
@@ -78,52 +86,57 @@ export function RemoteHostGroupCreateDialog({
       await onCreated?.(savedGroup);
       onClose();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      setOperationError(
+        buildUserFacingError(caught, {
+          detail: group ? "分组名称尚未更新。" : "新分组尚未保存。",
+          recoveryAction: "请检查名称后重试。",
+          title: group ? "分组未重命名" : "分组未创建",
+        }),
+      );
     } finally {
       setSaving(false);
     }
   };
+  const conflictNotice = externalConfigConflict
+    ? buildUserFacingError(externalConfigConflict, {
+        detail: "当前名称草稿已保留，但不能覆盖外部修改。",
+        recoveryAction: "请关闭并重新打开分组后再编辑。",
+        severity: "warning",
+        title: "分组已在外部更新",
+      })
+    : null;
 
   return (
     <ModalShell
-      description="整理主机分组。"
       onClose={onClose}
       open={open}
       size="small"
       title={group ? "重命名分组" : "新建分组"}
     >
-      <form className="space-y-4" onSubmit={submit}>
-        <div className="kerminal-solid-surface rounded-2xl border p-4">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <FolderPlus className="h-4 w-4 text-sky-500 dark:text-sky-300" />
-            分组信息
-          </div>
-          <label className="mt-4 block">
-            <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-              分组名称
-            </span>
-            <input
-              autoFocus
-              className="kerminal-field-surface mt-1 h-9 w-full rounded-xl border px-3 text-sm"
-              onChange={(event) => setName(event.currentTarget.value)}
-              placeholder="例如：开发环境"
-              value={name}
-            />
-          </label>
-          {error ? (
-            <p className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
-              {error}
-            </p>
-          ) : null}
-          {externalConfigConflict ? (
-            <p
-              className="mt-3 rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 font-mono text-xs text-amber-800 dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100"
-              role="alert"
-            >
-              {externalConfigConflict}
-            </p>
-          ) : null}
-        </div>
+      <form className="space-y-3" onSubmit={submit}>
+        <label className="block">
+          <span className="text-xs font-medium text-[var(--text-secondary)]">
+            分组名称
+          </span>
+          <input
+            autoFocus
+            className="kerminal-field-surface mt-1 h-9 w-full rounded-[var(--radius-control)] border px-3 text-sm text-[var(--text-primary)]"
+            onChange={(event) => setName(event.currentTarget.value)}
+            placeholder="例如：开发环境"
+            value={name}
+          />
+        </label>
+        {error ? (
+          <p className="rounded-[var(--radius-control)] border border-red-500/20 bg-red-500/10 px-3 py-2 text-[13px] leading-5 text-red-600 dark:text-red-300">
+            {error}
+          </p>
+        ) : null}
+        {operationError ? (
+          <UserFacingNotice compact message={operationError} />
+        ) : null}
+        {conflictNotice ? (
+          <UserFacingNotice compact message={conflictNotice} />
+        ) : null}
 
         <div className="flex justify-end gap-2">
           <Button onClick={onClose} type="button" variant="ghost">

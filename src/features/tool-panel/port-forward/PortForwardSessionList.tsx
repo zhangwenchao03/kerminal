@@ -1,4 +1,5 @@
 import {
+  ChevronDown,
   Copy,
   Network,
   Pencil,
@@ -8,7 +9,7 @@ import {
   Trash2,
   Wifi,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useId, useMemo, useState } from "react";
 import { Button } from "../../../components/ui/button";
 import { cn } from "../../../lib/cn";
 import type { PortForwardSummary } from "../../../lib/portForwardApi";
@@ -16,12 +17,13 @@ import {
   buildUserProxySetupScript,
   buildUserProxyUndoScript,
   copyAddressForSession,
+  isLegacyHttpNetworkAssist,
+  isRemoteDynamicSocks,
   proxyUrlForSession,
   sessionDirectionLabel,
   sessionHostEndpoint,
   sessionLocalEndpoint,
   sessionOrigin,
-  sessionPurpose,
 } from "./portForwardWorkbenchModel";
 
 export function PortForwardSessionList({
@@ -52,19 +54,15 @@ export function PortForwardSessionList({
   sessions: PortForwardSummary[];
 }) {
   return (
-    <div className="kerminal-solid-surface rounded-2xl border p-2">
-      <div className="flex items-center justify-between gap-2 px-2 py-1.5">
-        <div>
-          <h4 className="text-sm font-semibold text-zinc-950 dark:text-zinc-100">
-            当前主机会话
-          </h4>
+    <section
+      aria-label="隧道会话"
+      className="kerminal-solid-surface rounded-[var(--radius-card)] border p-2"
+    >
+      {loading ? (
+        <div className="px-2 py-1.5 text-right text-xs text-zinc-500 dark:text-zinc-400">
+          正在同步
         </div>
-        {loading ? (
-          <span className="text-xs text-zinc-500 dark:text-zinc-400">
-            正在同步
-          </span>
-        ) : null}
-      </div>
+      ) : null}
       {sessions.length === 0 ? (
         <div className="px-2 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
           当前主机暂无隧道会话。
@@ -89,7 +87,7 @@ export function PortForwardSessionList({
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -118,15 +116,18 @@ function PortForwardSessionRow({
   onToggleAutoUse: (session: PortForwardSummary) => void;
   session: PortForwardSummary;
 }) {
-  const isNetworkAssist = sessionPurpose(session) === "hostNetworkAssist";
+  const isRemoteSocks = isRemoteDynamicSocks(session);
+  const isLegacyHttp = isLegacyHttpNetworkAssist(session);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsId = useId();
   const proxyUrl = proxyUrlForSession(session);
   const activeProxyUrl = session.status === "running" ? proxyUrl : undefined;
-  const inactiveNetworkAssistReason =
+  const inactiveRemoteSocksReason =
     session.status === "running"
       ? undefined
-      : "该隧道已退出，请重新启动后再使用网络助手。";
+      : "该隧道已退出，请重新启动后再使用远端 SOCKS。";
   const effectiveInjectDisabledReason =
-    inactiveNetworkAssistReason ?? injectDisabledReason;
+    inactiveRemoteSocksReason ?? injectDisabledReason;
   const userSetupScript = useMemo(
     () =>
       session.status === "running" ? buildUserProxySetupScript(session) : undefined,
@@ -136,10 +137,11 @@ function PortForwardSessionRow({
     () => buildUserProxyUndoScript(session),
     [session],
   );
+  const route = sessionRoute(session);
   return (
     <article className="kerminal-muted-surface rounded-xl border p-3">
       <div className="flex items-start gap-3">
-        {isNetworkAssist ? (
+        {isRemoteSocks ? (
           <Wifi className="mt-0.5 h-4 w-4 shrink-0 text-sky-600 dark:text-sky-300" />
         ) : (
           <Network className="mt-0.5 h-4 w-4 shrink-0 text-sky-600 dark:text-sky-300" />
@@ -151,33 +153,74 @@ function PortForwardSessionRow({
             </div>
             <StatusBadge status={session.status} />
           </div>
-          <div className="mt-2 grid gap-2 text-xs min-[520px]:grid-cols-2">
-            <SessionFact label="方向" value={sessionDirectionLabel(session)} />
-            <SessionFact
-              label="来源"
-              value={originLabel(sessionOrigin(session))}
-            />
-            <SessionFact label="主机端点" value={sessionHostEndpoint(session)} />
-            <SessionFact label="本机端点" value={sessionLocalEndpoint(session)} />
+          <div className="mt-2 flex min-w-0 items-center gap-2 font-mono text-[11px] text-zinc-700 dark:text-zinc-200">
+            <span className="truncate">{route.from}</span>
+            <span aria-hidden="true" className="shrink-0 text-zinc-400">
+              →
+            </span>
+            <span className="truncate">{route.to}</span>
           </div>
-          {proxyUrl ? (
-            <div className="mt-2 break-all rounded-lg bg-[var(--surface-field)] px-2 py-1.5 font-mono text-[11px] text-zinc-600 dark:text-zinc-300">
-              {proxyUrl}
+          {detailsOpen ? (
+            <div className="mt-3 space-y-2" id={detailsId}>
+              <div className="grid gap-2 text-xs min-[520px]:grid-cols-2">
+                <SessionFact
+                  label="方向"
+                  value={sessionDirectionLabel(session)}
+                />
+                <SessionFact
+                  label="来源"
+                  value={originLabel(sessionOrigin(session))}
+                />
+                <SessionFact
+                  label="主机端点"
+                  value={sessionHostEndpoint(session)}
+                />
+                <SessionFact
+                  label="本机端点"
+                  value={sessionLocalEndpoint(session)}
+                />
+              </div>
+              {proxyUrl ? (
+                <div className="break-all rounded-lg bg-[var(--surface-field)] px-2 py-1.5 font-mono text-[11px] text-zinc-600 dark:text-zinc-300">
+                  {proxyUrl}
+                </div>
+              ) : null}
+              {isRemoteSocks && userSetupScript && userUndoScript ? (
+                <div className="rounded-lg border border-sky-300/15 bg-sky-400/10 px-2 py-2 text-[11px] leading-4 text-sky-800 dark:text-sky-100">
+                  脚本只写当前用户 home，不需要 root；提供备份和撤销脚本。
+                </div>
+              ) : null}
             </div>
           ) : null}
-          {isNetworkAssist && (!canInject || inactiveNetworkAssistReason) ? (
+          {isRemoteSocks && (!canInject || inactiveRemoteSocksReason) ? (
             <div className="mt-2 text-[11px] leading-4 text-amber-700 dark:text-amber-200">
               {effectiveInjectDisabledReason}
             </div>
           ) : null}
-          {isNetworkAssist && userSetupScript && userUndoScript ? (
-            <div className="mt-2 rounded-lg border border-sky-300/15 bg-sky-400/10 px-2 py-2 text-[11px] leading-4 text-sky-800 dark:text-sky-100">
-              脚本只写当前用户 home，不需要 root；提供备份和撤销脚本。
+          {isLegacyHttp ? (
+            <div className="mt-2 text-[11px] leading-4 text-amber-700 dark:text-amber-200">
+              旧版 HTTP 网络助手已移除；该记录仅支持停止或删除，请改用远端 SOCKS。
             </div>
           ) : null}
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
+        <Button
+          aria-controls={detailsId}
+          aria-expanded={detailsOpen}
+          aria-label={`${detailsOpen ? "收起" : "展开"} ${session.name} 详情`}
+          onClick={() => setDetailsOpen((current) => !current)}
+          size="icon"
+          title={`${detailsOpen ? "收起" : "展开"}完整信息`}
+          variant="secondary"
+        >
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 transition-transform",
+              detailsOpen && "rotate-180",
+            )}
+          />
+        </Button>
         <Button
           aria-label="复制地址"
           onClick={() => void onCopy(copyAddressForSession(session))}
@@ -189,14 +232,15 @@ function PortForwardSessionRow({
         </Button>
         <Button
           aria-label="编辑隧道"
+          disabled={isLegacyHttp}
           onClick={() => onEdit(session)}
           size="icon"
-          title="编辑隧道"
+          title={isLegacyHttp ? "旧版 HTTP 网络助手不可编辑" : "编辑隧道"}
           variant="secondary"
         >
           <Pencil className="h-4 w-4" />
         </Button>
-        {isNetworkAssist ? (
+        {isRemoteSocks ? (
           <Button
             aria-label="注入代理环境"
             disabled={!canInject || !activeProxyUrl}
@@ -214,7 +258,7 @@ function PortForwardSessionRow({
             <Terminal className="h-4 w-4" />
           </Button>
         ) : null}
-        {isNetworkAssist ? (
+        {isRemoteSocks ? (
           <Button
             aria-label={autoUseEnabled ? "关闭新终端自动使用" : "新终端自动使用"}
             disabled={!activeProxyUrl}
@@ -223,14 +267,14 @@ function PortForwardSessionRow({
             title={
               activeProxyUrl
                 ? "控制新 SSH 终端自动使用代理"
-                : inactiveNetworkAssistReason ?? "该会话没有可用于新终端的代理地址"
+                : inactiveRemoteSocksReason ?? "该会话没有可用于新终端的代理地址"
             }
             variant={autoUseEnabled ? "primary" : "secondary"}
           >
             <Terminal className="h-4 w-4" />
           </Button>
         ) : null}
-        {isNetworkAssist && userSetupScript ? (
+        {isRemoteSocks && userSetupScript ? (
           <Button
             aria-label="复制配置脚本"
             onClick={() => void onCopy(userSetupScript)}
@@ -241,7 +285,7 @@ function PortForwardSessionRow({
             <Copy className="h-4 w-4" />
           </Button>
         ) : null}
-        {isNetworkAssist && userUndoScript ? (
+        {isRemoteSocks && userUndoScript ? (
           <Button
             aria-label="复制撤销脚本"
             onClick={() => void onCopy(userUndoScript)}
@@ -265,9 +309,10 @@ function PortForwardSessionRow({
         ) : (
           <Button
             aria-label="启动隧道"
+            disabled={isLegacyHttp}
             onClick={() => void onStart(session.id)}
             size="icon"
-            title="启动隧道"
+            title={isLegacyHttp ? "旧版 HTTP 网络助手不可启动" : "启动隧道"}
             variant="secondary"
           >
             <Play className="h-4 w-4" />
@@ -318,7 +363,7 @@ function StatusBadge({ status }: { status: PortForwardSummary["status"] }) {
 
 function originLabel(origin: ReturnType<typeof sessionOrigin>) {
   if (origin === "networkAssist") {
-    return "网络助手";
+    return "旧版网络助手";
   }
   if (origin === "mcpTool") {
     return "MCP 工具";
@@ -327,4 +372,14 @@ function originLabel(origin: ReturnType<typeof sessionOrigin>) {
     return "主机预设";
   }
   return "手动";
+}
+
+function sessionRoute(session: PortForwardSummary) {
+  const localEndpoint = sessionLocalEndpoint(session);
+  const hostEndpoint = sessionHostEndpoint(session);
+  const hostToLocal =
+    session.kind === "remote" || session.kind === "remoteDynamic";
+  return hostToLocal
+    ? { from: hostEndpoint, to: localEndpoint }
+    : { from: localEndpoint, to: hostEndpoint };
 }

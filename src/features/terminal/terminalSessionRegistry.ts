@@ -12,12 +12,12 @@ import {
   registerTerminalSessionBinding,
 } from "../../lib/paneSessionTraceApi";
 import {
-  getHostNetworkAssistAutoInjection,
-  resetHostNetworkAssistAutoInjectionForTests,
+  getRemoteSocksAutoInjection,
 } from "./terminalProxyAutoInjection";
 
 export interface PaneSessionRecord {
   sessionId: string;
+  connectionGeneration: number;
   commandBlockText?: string;
   containerId?: string;
   containerRuntime?: string;
@@ -42,7 +42,8 @@ export interface TerminalPaneRuntimeContext {
 }
 
 const paneSessions = new Map<string, PaneSessionRecord>();
-const hostNetworkAssistInjectionTasks = new Map<string, Promise<void>>();
+const paneConnectionGenerations = new Map<string, number>();
+const remoteSocksInjectionTasks = new Map<string, Promise<void>>();
 
 export interface BroadcastWriteRequest {
   command?: string;
@@ -57,6 +58,10 @@ export interface BroadcastWriteResult {
 
 export interface SnippetWriteRequest {
   command: string;
+  expectedConnectionGeneration?: number;
+  expectedSessionId?: string;
+  expectedTargetRef?: string;
+  recordHistory?: boolean;
   paneId: string;
   tabId?: string;
 }
@@ -70,7 +75,7 @@ export interface PaneCommandWriteRequest {
 
 export interface PaneCommandWriteResult {
   paneId: string;
-  reason?: "empty-command" | "missing-session";
+  reason?: "empty-command" | "missing-session" | "stale-binding" | "multiline-unsupported";
   sent: boolean;
   sessionId?: string;
   target?: CommandHistoryTarget;
@@ -84,9 +89,12 @@ export function registerTerminalPaneSession(
   sessionId: string,
   metadata: Partial<Omit<PaneSessionRecord, "sessionId">> = {},
 ) {
+  const connectionGeneration = (paneConnectionGenerations.get(paneId) ?? 0) + 1;
+  paneConnectionGenerations.set(paneId, connectionGeneration);
   const record = {
     containerId: metadata.containerId,
     containerRuntime: metadata.containerRuntime,
+    connectionGeneration,
     sessionId,
     targetRef: metadata.targetRef,
     targetToken: metadata.targetToken,
@@ -99,7 +107,7 @@ export function registerTerminalPaneSession(
   };
   paneSessions.set(paneId, record);
   reportTerminalSessionRegistered(paneId, record);
-  void injectHostNetworkAssistIfEnabled(paneId, record)?.catch(() => undefined);
+  void injectRemoteSocksIfEnabled(paneId, record)?.catch(() => undefined);
 }
 
 export function unregisterTerminalPaneSession(
@@ -110,7 +118,7 @@ export function unregisterTerminalPaneSession(
   if (sessionId && currentSession?.sessionId !== sessionId) {
     return;
   }
-  clearInjectedHostNetworkAssistSessions(paneId, currentSession?.sessionId);
+  clearInjectedRemoteSocksSessions(paneId, currentSession?.sessionId);
   paneSessions.delete(paneId);
   if (currentSession) {
     reportTerminalSessionClosed(paneId, currentSession.sessionId);
@@ -186,12 +194,6 @@ export function markTerminalPaneSessionReconnected(
     return;
   }
   reportTerminalSessionRegistered(paneId, currentSession);
-}
-
-export function resetTerminalPaneSessionsForTests() {
-  paneSessions.clear();
-  hostNetworkAssistInjectionTasks.clear();
-  resetHostNetworkAssistAutoInjectionForTests();
 }
 
 function reportTerminalSessionRegistered(
@@ -277,7 +279,7 @@ function joinTargetRefParts(parts: Array<string | undefined>): string {
     .join(":");
 }
 
-function injectHostNetworkAssistIfEnabled(
+function injectRemoteSocksIfEnabled(
   paneId: string,
   session: PaneSessionRecord,
 ): Promise<void> | undefined {
@@ -285,7 +287,7 @@ function injectHostNetworkAssistIfEnabled(
     return undefined;
   }
 
-  const injection = getHostNetworkAssistAutoInjection(session.remoteHostId);
+  const injection = getRemoteSocksAutoInjection(session.remoteHostId);
   if (!injection) {
     return undefined;
   }
@@ -298,7 +300,7 @@ function injectHostNetworkAssistIfEnabled(
   const injectionKey = [paneId, session.sessionId, injectionSessionId].join(
     "\u0000",
   );
-  const existingTask = hostNetworkAssistInjectionTasks.get(injectionKey);
+  const existingTask = remoteSocksInjectionTasks.get(injectionKey);
   if (existingTask) {
     return existingTask;
   }
@@ -319,22 +321,22 @@ function injectHostNetworkAssistIfEnabled(
     )
     .then(() => undefined)
     .catch(() => {
-      hostNetworkAssistInjectionTasks.delete(injectionKey);
+      remoteSocksInjectionTasks.delete(injectionKey);
     });
-  hostNetworkAssistInjectionTasks.set(injectionKey, task);
+  remoteSocksInjectionTasks.set(injectionKey, task);
   return task;
 }
 
-function clearInjectedHostNetworkAssistSessions(
+function clearInjectedRemoteSocksSessions(
   paneId: string,
   sessionId?: string,
 ) {
   const prefix = sessionId
     ? `${paneId}\u0000${sessionId}\u0000`
     : `${paneId}\u0000`;
-  for (const key of hostNetworkAssistInjectionTasks.keys()) {
+  for (const key of remoteSocksInjectionTasks.keys()) {
     if (key.startsWith(prefix)) {
-      hostNetworkAssistInjectionTasks.delete(key);
+      remoteSocksInjectionTasks.delete(key);
     }
   }
 }
@@ -390,10 +392,10 @@ export async function writePaneCommand({
   }
 
   const autoInjectionCommand = session.remoteHostId
-    ? getHostNetworkAssistAutoInjection(session.remoteHostId)?.command.trim()
+    ? getRemoteSocksAutoInjection(session.remoteHostId)?.command.trim()
     : undefined;
   if (autoInjectionCommand && autoInjectionCommand !== normalizedCommand) {
-    await injectHostNetworkAssistIfEnabled(paneId, session);
+    await injectRemoteSocksIfEnabled(paneId, session);
   }
 
   await writeTerminal(session.sessionId, `${normalizedCommand}\r`);
@@ -421,7 +423,74 @@ export async function writePaneCommand({
 export async function writeSnippetCommand(
   request: SnippetWriteRequest,
 ): Promise<SnippetWriteResult> {
+  const normalizedCommand = request.command.trim();
+  if (!normalizedCommand) {
+    return { paneId: request.paneId, reason: "empty-command", sent: false };
+  }
+  if (/[\r\n]/.test(normalizedCommand)) {
+    return {
+      paneId: request.paneId,
+      reason: "multiline-unsupported",
+      sent: false,
+    };
+  }
+  const session = paneSessions.get(request.paneId);
+  if (!session) {
+    return { paneId: request.paneId, reason: "missing-session", sent: false };
+  }
+  if (!snippetBindingMatches(request, session)) {
+    return { paneId: request.paneId, reason: "stale-binding", sent: false };
+  }
+  await writeTerminal(session.sessionId, normalizedCommand);
+  return {
+    paneId: request.paneId,
+    sent: true,
+    sessionId: session.sessionId,
+    target: session.target,
+  };
+}
+
+/** 显式运行片段；旧右栏在 V2 切换前继续使用该入口。 */
+export async function runSnippetCommand(
+  request: SnippetWriteRequest,
+): Promise<SnippetWriteResult> {
+  const session = paneSessions.get(request.paneId);
+  if (!session) {
+    return { paneId: request.paneId, reason: "missing-session", sent: false };
+  }
+  if (!snippetBindingMatches(request, session)) {
+    return { paneId: request.paneId, reason: "stale-binding", sent: false };
+  }
+  if (request.recordHistory === false) {
+    const command = request.command.trim();
+    if (!command) {
+      return { paneId: request.paneId, reason: "empty-command", sent: false };
+    }
+    await writeTerminal(session.sessionId, `${command}\r`);
+    return {
+      paneId: request.paneId,
+      sent: true,
+      sessionId: session.sessionId,
+      target: session.target,
+    };
+  }
   return writePaneCommand({ ...request, source: "snippet" });
+}
+
+/** 确认弹框期间连接发生重建或换目标时，旧意图不得写入新会话。 */
+function snippetBindingMatches(
+  request: SnippetWriteRequest,
+  session: PaneSessionRecord,
+): boolean {
+  return (
+    (request.expectedSessionId === undefined ||
+      request.expectedSessionId === session.sessionId) &&
+    (request.expectedConnectionGeneration === undefined ||
+      request.expectedConnectionGeneration === session.connectionGeneration) &&
+    (request.expectedTargetRef === undefined ||
+      request.expectedTargetRef ===
+        (session.targetRef ?? session.remoteHostId ?? session.sessionId))
+  );
 }
 
 export async function writeWorkflowCommand(

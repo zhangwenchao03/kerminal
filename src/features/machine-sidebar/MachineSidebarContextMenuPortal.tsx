@@ -1,7 +1,7 @@
 import { FolderPlus, Pencil, Pin, Plus, Trash2 } from "lucide-react";
 import type { RefObject } from "react";
 import { createPortal } from "react-dom";
-import type { Machine, MachineGroup } from "../workspace/types";
+import type { Machine, MachineGroup } from "../workspace/contracts/index";
 import type {
   MachineSidebarProps,
   SidebarContextMenu,
@@ -17,7 +17,7 @@ import {
 } from "./machineSidebarMenuModel";
 
 const sidebarContextMenuSurfaceClassName =
-  "kerminal-context-menu kerminal-floating-enter fixed z-[1000] w-56";
+  "kerminal-context-menu kerminal-floating-enter kerminal-layer-popover fixed w-56";
 
 type MachineSidebarContextMenuPortalProps = Pick<
   MachineSidebarProps,
@@ -46,6 +46,7 @@ type MachineSidebarContextMenuPortalProps = Pick<
   contextMachine?: Machine;
   contextMenu: SidebarContextMenu | null;
   menuRef: RefObject<HTMLDivElement | null>;
+  rdpOpeningMachineIdSet: ReadonlySet<string>;
   runMenuAction: (action?: () => void) => void;
 };
 
@@ -74,6 +75,7 @@ export function MachineSidebarContextMenuPortal({
   onOpenTelnetTerminal,
   onOpenSerialTerminal,
   onPinGroup,
+  rdpOpeningMachineIdSet,
   runMenuAction,
 }: MachineSidebarContextMenuPortalProps) {
   if (!contextMenu || typeof document === "undefined") {
@@ -184,6 +186,7 @@ export function MachineSidebarContextMenuPortal({
           onOpenSftpTransferWorkbench={onOpenSftpTransferWorkbench}
           onOpenTelnetTerminal={onOpenTelnetTerminal}
           onOpenSerialTerminal={onOpenSerialTerminal}
+          rdpOpening={rdpOpeningMachineIdSet.has(contextMachine.id)}
           runMenuAction={runMenuAction}
         />
       ) : null}

@@ -5,7 +5,7 @@ import {
   isTerminalKeyEventTarget,
   KERMINAL_TEXT_EDIT_COMMAND_EVENT,
   shouldAppHandleKeybinding,
-} from "../../../src/app/appKeybindingPolicy";
+} from "../../../src/contracts/textEditCommands";
 
 describe("appKeybindingPolicy", () => {
   it("lets focused xterm DOM receive keydown before app keybindings", () => {
@@ -16,7 +16,33 @@ describe("appKeybindingPolicy", () => {
     terminal.append(textarea);
 
     expect(isTerminalKeyEventTarget(textarea)).toBe(true);
-    expect(shouldAppHandleKeybinding(keydownFor(textarea, "Enter"))).toBe(false);
+    expect(shouldAppHandleKeybinding(keydownFor(textarea, "Enter"))).toBe(
+      false,
+    );
+  });
+
+  it("allows only an explicitly approved global action through xterm", () => {
+    const terminal = document.createElement("div");
+    terminal.className = "xterm";
+    const textarea = document.createElement("textarea");
+    textarea.className = "xterm-helper-textarea";
+    terminal.append(textarea);
+
+    expect(
+      shouldAppHandleKeybinding(keydownFor(textarea, "p"), {
+        allowTerminalTarget: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps IME composing events protected even for global terminal actions", () => {
+    const terminal = document.createElement("div");
+    terminal.className = "xterm";
+    const event = keydownFor(terminal, "p", { isComposing: true });
+
+    expect(
+      shouldAppHandleKeybinding(event, { allowTerminalTarget: true }),
+    ).toBe(false);
   });
 
   it("supports explicit terminal input markers outside xterm internals", () => {
@@ -73,11 +99,16 @@ describe("appKeybindingPolicy", () => {
   });
 });
 
-function keydownFor(target: Element, key: string) {
+function keydownFor(
+  target: Element,
+  key: string,
+  options: KeyboardEventInit = {},
+) {
   const event = new KeyboardEvent("keydown", {
     bubbles: true,
     cancelable: true,
     key,
+    ...options,
   });
   Object.defineProperty(event, "target", {
     configurable: true,

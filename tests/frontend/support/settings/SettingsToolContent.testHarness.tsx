@@ -1,7 +1,7 @@
 // @author kongweiguang
 import { render, screen } from "@testing-library/react";
 import type { RenderResult } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import type userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, vi } from "vitest";
 import { SettingsToolContent } from "../../../../src/features/settings/SettingsToolContent";
@@ -50,7 +50,7 @@ const settingsToolContentMocks = vi.hoisted(() => ({
   },
 }));
 
-export const {
+const {
   agentLauncherApiMock,
   clipboardMock,
   desktopNotificationApiMock,
@@ -62,7 +62,7 @@ export const {
   updaterApiMock,
 } = settingsToolContentMocks;
 
-export const AGENT_WORKSPACE_DIRECTORY = "C:\\Users\\dev\\.kerminal";
+const AGENT_WORKSPACE_DIRECTORY = "C:\\Users\\dev\\.kerminal";
 export const AGENT_MCP_ENDPOINT = "http://127.0.0.1:30456/mcp";
 
 vi.mock(
@@ -117,7 +117,7 @@ export async function chooseSelectOption(
   );
 }
 
-export function installClipboardMock() {
+function installClipboardMock() {
   const clipboard = {
     writeText: clipboardMock.writeText,
   };
@@ -174,7 +174,7 @@ export function renderControlledSettings({
   return render(<ControlledSettings />);
 }
 
-export function resetSettingsToolContentMocks() {
+function resetSettingsToolContentMocks() {
   agentLauncherApiMock.getExternalAgentWorkspaceStatus.mockReset();
   agentLauncherApiMock.getExternalAgentWorkspaceStatus.mockResolvedValue({
     agents: {
@@ -337,4 +337,13 @@ beforeEach(() => {
   resetSettingsToolContentMocks();
 });
 
-export { SettingsToolContent, defaultAppSettings };
+export {
+  clipboardMock,
+  defaultAppSettings,
+  desktopNotificationApiMock,
+  fileDialogMock,
+  mcpServerApiMock,
+  openerApiMock,
+  terminalSuggestionApiMock,
+  updaterApiMock,
+};

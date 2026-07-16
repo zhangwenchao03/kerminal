@@ -53,7 +53,7 @@ export function LocalDeleteConfirmDialog({
       title="删除本机项目"
     >
       <div className="space-y-3">
-        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-3 text-sm text-red-700 dark:text-red-100">
+        <div className="rounded-[var(--radius-control)] border border-red-500/20 bg-red-500/10 px-3 py-3 text-sm text-red-700 dark:text-red-100">
           <div className="flex items-center gap-2 font-medium">
             <Trash2 className="h-4 w-4" />
             将删除本机{entry.kind === "directory" ? "目录" : "文件"}：
@@ -75,7 +75,7 @@ export function LocalDeleteConfirmDialog({
           <input
             aria-label="输入名称确认删除"
             autoFocus
-            className="kerminal-field-surface mt-1 h-9 w-full rounded-xl border px-3 font-mono text-xs text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600"
+            className="kerminal-field-surface mt-1 h-9 w-full rounded-[var(--radius-control)] border px-3 font-mono text-xs text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600"
             onChange={(event) => setConfirmName(event.target.value)}
             placeholder={entry.name}
             spellCheck={false}

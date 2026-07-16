@@ -1,0 +1,79 @@
+schema_version = 1
+command = "systemctl"
+aliases = []
+platforms = ["linux"]
+shells = ["bash", "zsh", "fish"]
+description = "systemd service manager command line"
+tested_version = "257"
+owner = "kerminal"
+updated_at = "2026-07-10"
+
+[source]
+name = "systemctl manual"
+url = "https://www.freedesktop.org/software/systemd/man/latest/systemctl.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "daemon-reload"
+description = "Reload systemd manager configuration"
+
+[[subcommands]]
+name = "disable"
+description = "Disable units"
+
+[[subcommands]]
+name = "enable"
+description = "Enable units"
+
+[[subcommands]]
+name = "is-active"
+description = "Check whether units are active"
+
+[[subcommands]]
+name = "restart"
+description = "Restart units"
+
+[subcommands.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "Restarting a unit can interrupt an active service"
+
+[[subcommands]]
+name = "start"
+description = "Start units"
+
+[[subcommands]]
+name = "status"
+description = "Show unit status"
+
+[[subcommands]]
+name = "stop"
+description = "Stop units"
+
+[subcommands.safety]
+sensitivity = "dangerous"
+allow_inline = false
+warning = "Stopping a unit can interrupt an active service"
+
+[[options]]
+name = "--failed"
+description = "Show failed units"
+
+[[options]]
+name = "--global"
+description = "Operate on the global user configuration"
+
+[[options]]
+name = "--no-pager"
+description = "Do not pipe output into a pager"
+
+[[options]]
+name = "--now"
+description = "Apply the action immediately"
+
+[[options]]
+name = "--user"
+description = "Operate on the user service manager"

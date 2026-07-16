@@ -1,21 +1,27 @@
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
+import type { DesktopPlatform } from "./desktopPlatform";
+import type { WindowFrameState } from "./useTauriWindowFrameState";
 
 type DocumentTheme = "dark" | "light";
 
 interface DocumentThemeAttributes {
   density?: string;
+  desktopPlatform?: DesktopPlatform;
   language?: string;
   lang?: string;
   theme: DocumentTheme;
+  windowFrame?: WindowFrameState;
 }
 
 export function useDocumentTheme({
   density,
+  desktopPlatform,
   language,
   lang,
   theme,
+  windowFrame,
 }: DocumentThemeAttributes) {
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof document === "undefined") {
       return undefined;
     }
@@ -24,23 +30,35 @@ export function useDocumentTheme({
     const previousDark = root.classList.contains("dark");
     const previousTheme = root.getAttribute("data-theme");
     const previousDensity = root.getAttribute("data-density");
+    const previousDesktopPlatform = root.getAttribute(
+      "data-desktop-platform",
+    );
     const previousLanguage = root.getAttribute("data-language");
     const previousLang = root.getAttribute("lang");
+    const previousWindowFrame = root.getAttribute("data-window-frame");
 
     root.classList.toggle("dark", theme === "dark");
     setOptionalAttribute(root, "data-theme", theme);
     setOptionalAttribute(root, "data-density", density);
+    setOptionalAttribute(root, "data-desktop-platform", desktopPlatform);
     setOptionalAttribute(root, "data-language", language);
     setOptionalAttribute(root, "lang", lang);
+    setOptionalAttribute(root, "data-window-frame", windowFrame);
 
     return () => {
       root.classList.toggle("dark", previousDark);
       restoreAttribute(root, "data-theme", previousTheme);
       restoreAttribute(root, "data-density", previousDensity);
+      restoreAttribute(
+        root,
+        "data-desktop-platform",
+        previousDesktopPlatform,
+      );
       restoreAttribute(root, "data-language", previousLanguage);
       restoreAttribute(root, "lang", previousLang);
+      restoreAttribute(root, "data-window-frame", previousWindowFrame);
     };
-  }, [density, language, lang, theme]);
+  }, [density, desktopPlatform, language, lang, theme, windowFrame]);
 }
 
 function setOptionalAttribute(

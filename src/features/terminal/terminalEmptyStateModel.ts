@@ -1,9 +1,9 @@
-export type TerminalEmptyStateActionId =
+type TerminalEmptyStateActionId =
   | "createTerminal"
   | "openConnection"
   | "openAgentTool";
 
-export type TerminalEmptyStateActionVariant = "primary" | "secondary" | "ghost";
+type TerminalEmptyStateActionVariant = "primary" | "secondary" | "ghost";
 
 export interface TerminalEmptyStateAction {
   id: TerminalEmptyStateActionId;

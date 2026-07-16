@@ -25,7 +25,8 @@ describe("commandHistoryApi", () => {
         target: "local",
       },
     ]);
-    const { listCommandHistory } = await import("../../../src/lib/commandHistoryApi");
+    const { listCommandHistory } =
+      await import("../../../src/lib/commandHistoryApi");
 
     const history = await listCommandHistory({
       limit: 900,
@@ -52,7 +53,8 @@ describe("commandHistoryApi", () => {
       recorded: false,
       skipReason: "skip",
     });
-    const { recordCommandHistory } = await import("../../../src/lib/commandHistoryApi");
+    const { recordCommandHistory } =
+      await import("../../../src/lib/commandHistoryApi");
 
     await recordCommandHistory({
       command: "git status",
@@ -71,11 +73,38 @@ describe("commandHistoryApi", () => {
     });
   });
 
+  it("clears only the normalized terminal scope through Tauri", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue(2);
+    const { clearCommandHistory } =
+      await import("../../../src/lib/commandHistoryApi");
+
+    await expect(
+      clearCommandHistory({
+        paneId: " pane-1 ",
+        remoteHostId: " host-prod ",
+        target: "ssh",
+      }),
+    ).resolves.toBe(2);
+
+    expect(invokeMock).toHaveBeenCalledWith("command_history_clear", {
+      request: {
+        paneId: "pane-1",
+        remoteHostId: "host-prod",
+        target: "ssh",
+      },
+    });
+  });
+
   it("uses searchable browser preview history outside Tauri", async () => {
     isTauriMock.mockReturnValue(false);
-    const { listCommandHistory } = await import("../../../src/lib/commandHistoryApi");
+    const { listCommandHistory } =
+      await import("../../../src/lib/commandHistoryApi");
 
-    const history = await listCommandHistory({ query: "journalctl", target: "ssh" });
+    const history = await listCommandHistory({
+      query: "journalctl",
+      target: "ssh",
+    });
 
     expect(history).toEqual([
       expect.objectContaining({

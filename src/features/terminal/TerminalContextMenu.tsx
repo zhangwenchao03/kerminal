@@ -10,16 +10,14 @@ import {
 
 export {
   splitDirectionForMenuAction,
-  terminalContextMenuGroups,
 } from "./terminalContextMenuModel";
 export type {
   TerminalContextMenuAction,
-  TerminalContextMenuItemModel,
   TerminalContextMenuPosition,
 } from "./terminalContextMenuModel";
 
 const terminalMenuSurfaceClassName =
-  "kerminal-context-menu kerminal-floating-enter fixed z-[1000] w-56";
+  "kerminal-context-menu kerminal-floating-enter kerminal-layer-popover fixed w-56";
 const terminalMenuDividerClassName =
   "kerminal-context-menu-group";
 const terminalMenuItemClassName =
@@ -30,6 +28,8 @@ interface TerminalContextMenuProps {
   canCopySessionId?: boolean;
   canDisconnect?: boolean;
   canReconnect?: boolean;
+  canSendSelectionToAgent?: boolean;
+  canSendToAgent?: boolean;
   canSplit?: boolean;
   onAction: (action: TerminalContextMenuAction) => void;
   onClose: () => void;
@@ -41,6 +41,8 @@ export function TerminalContextMenu({
   canCopySessionId = true,
   canDisconnect = true,
   canReconnect = true,
+  canSendSelectionToAgent = false,
+  canSendToAgent = true,
   canSplit = true,
   onAction,
   onClose,
@@ -48,23 +50,26 @@ export function TerminalContextMenu({
 }: TerminalContextMenuProps) {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [resolvedPosition, setResolvedPosition] = useState(position);
+  const { x, y } = position;
   const groups = terminalContextMenuGroups({
     canCopy,
     canCopySessionId,
     canDisconnect,
     canReconnect,
+    canSendSelectionToAgent,
+    canSendToAgent,
     canSplit,
   });
 
   useLayoutEffect(() => {
     const menu = menuRef.current;
     if (!menu || typeof window === "undefined") {
-      setResolvedPosition(position);
+      setResolvedPosition({ x, y });
       return;
     }
 
     const rect = menu.getBoundingClientRect();
-    const nextPosition = resolveTerminalContextMenuPosition(position, {
+    const nextPosition = resolveTerminalContextMenuPosition({ x, y }, {
       menuSize: {
         height: menu.offsetHeight || rect.height,
         width: menu.offsetWidth || rect.width,
@@ -84,9 +89,11 @@ export function TerminalContextMenu({
     canCopySessionId,
     canDisconnect,
     canReconnect,
+    canSendSelectionToAgent,
+    canSendToAgent,
     canSplit,
-    position.x,
-    position.y,
+    x,
+    y,
   ]);
 
   useEffect(() => {

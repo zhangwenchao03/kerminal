@@ -76,17 +76,6 @@ export async function writeAppLog(
   }
 }
 
-export const appLog = {
-  debug: (entry: AppLogEntry, options?: AppLogWriteOptions) =>
-    writeAppLog("debug", entry, options),
-  error: (entry: AppLogEntry, options?: AppLogWriteOptions) =>
-    writeAppLog("error", entry, options),
-  info: (entry: AppLogEntry, options?: AppLogWriteOptions) =>
-    writeAppLog("info", entry, options),
-  warn: (entry: AppLogEntry, options?: AppLogWriteOptions) =>
-    writeAppLog("warn", entry, options),
-};
-
 export function redactSensitiveText(value: string): string {
   return value
     .replace(
@@ -103,7 +92,7 @@ export function redactSensitiveText(value: string): string {
     .replace(/\b(?:\/Users|\/home)\/[^/\s]+\/[^\s,;]+/g, "[local-path]");
 }
 
-export function redactLogKeyValues(
+function redactLogKeyValues(
   keyValues: Record<string, unknown> = {},
 ): Record<string, string | undefined> {
   const redacted: Record<string, string | undefined> = {};

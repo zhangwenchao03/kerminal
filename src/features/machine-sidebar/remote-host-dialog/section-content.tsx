@@ -4,7 +4,7 @@ import type {
   RemoteHostAuthType,
   SshOptions,
 } from "../../../lib/remoteHostApi";
-import type { Machine } from "../../workspace/types";
+import type { Machine } from "../../workspace/contracts/index";
 import { LocalEnvironmentPanel, LocalPropertiesPanel } from "./local-panels";
 import {
   type ConnectionMode,

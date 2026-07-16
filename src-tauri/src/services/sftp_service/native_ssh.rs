@@ -18,7 +18,9 @@ use russh::{
 use crate::{
     error::{AppError, AppResult},
     models::remote_host::{RemoteHost, RemoteHostAuthType, SshJumpHostOptions},
-    services::ssh_identity_file::resolve_identity_file_path,
+    services::{
+        ssh_identity_file::resolve_identity_file_path, ssh_runtime::policy::known_hosts_revokes_key,
+    },
 };
 
 use super::backend::{SftpAuthMaterial, SftpEndpoint, SftpPrivateKey, SftpRuntimeSettings};
@@ -77,6 +79,9 @@ impl client::Handler for NativeClientHandler {
         &mut self,
         server_public_key: &PublicKey,
     ) -> Result<bool, Self::Error> {
+        if known_hosts_revokes_key(server_public_key, &self.known_hosts_path) {
+            return Ok(false);
+        }
         match keys::known_hosts::check_known_hosts_path(
             &self.host,
             self.port,
@@ -312,11 +317,9 @@ fn build_native_jump_execution(
 }
 
 fn host_key_policy_for_endpoint(endpoint: &SftpEndpoint) -> HostKeyPolicy {
-    if crate::services::external_launch::is_external_target_id(&endpoint.host.id) {
-        HostKeyPolicy::TrustUnknown
-    } else {
-        HostKeyPolicy::RequireKnown
-    }
+    let _ = endpoint;
+    // SFTP 与 terminal/exec 共用 fail-closed 主机身份策略；首次信任只能走显式确认入口。
+    HostKeyPolicy::RequireKnown
 }
 
 fn resolve_native_jump_auth_material(

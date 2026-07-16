@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Headless Chrome smoke for the real React/Vite app terminal ghost overlay.
+ * 真实 React/Vite 应用终端 ghost overlay 的 Headless Chrome smoke。
  *
  * @author kongweiguang
  */
@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import { spawn } from "node:child_process";
 
+import { browserBootstrapScript } from "./support/terminal-ghost-browser-bootstrap.mjs";
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -25,6 +26,10 @@ const chromePath = findChromePath();
 const chromePort = 9480 + Math.floor(Math.random() * 300);
 const vitePort = 9780 + Math.floor(Math.random() * 300);
 const forceOptimizeDeps = process.env.KERMINAL_GHOST_FORCE_OPTIMIZE !== "0";
+const warmSampleCount = parsePositiveInteger(
+  process.env.KERMINAL_GHOST_APP_WARM_SAMPLES,
+  20,
+);
 const userDataDir = path.join(
   tmpdir(),
   `kerminal-terminal-ghost-app-${Date.now()}`,
@@ -87,6 +92,7 @@ async function main() {
     client = await CdpClient.connect(target.webSocketDebuggerUrl);
     await client.send("Runtime.enable");
     await client.send("Page.enable");
+    const browserVersion = await client.send("Browser.getVersion");
     await client.send("Emulation.setDeviceMetricsOverride", {
       deviceScaleFactor: 1,
       height: 900,
@@ -120,6 +126,8 @@ async function main() {
       { returnByValue: true },
     );
 
+    await measureGhostLatencySamples(client, warmSampleCount);
+
     for (const char of "jour") {
       await client.send("Input.dispatchKeyEvent", {
         text: char,
@@ -136,7 +144,7 @@ async function main() {
         if (!ghost) return false;
         const rect = ghost.getBoundingClientRect();
         return ghost.textContent === "nalctl"
-          && ghost.getAttribute("data-provider") === "remoteCommand"
+          && ghost.getAttribute("data-provider") === "spec"
           && rect.width > 0
           && rect.height > 0;
       })()`,
@@ -175,18 +183,51 @@ async function main() {
       { returnByValue: true },
     );
     const smokeState = state.result?.value;
-    const failures = validateSmokeState(visibleGhost, smokeState);
+    const performanceReport = summarizeGhostPerformance(
+      smokeState?.performanceSamples ?? [],
+    );
+    const failures = validateSmokeState(
+      visibleGhost,
+      smokeState,
+      performanceReport,
+      warmSampleCount,
+    );
     const result = {
+      schemaVersion: 1,
+      benchmark: "terminal-ghost-app",
       appUrl: `http://127.0.0.1:${vitePort}/`,
       artifacts: {
         json: outputJson,
         screenshot: outputPng,
       },
+      dataScale: {
+        historyRows: [10_000, 100_000],
+        remoteCommands: 5_000,
+        remotePaths: 1_000,
+        gitRefs: 1_000,
+      },
+      environment: {
+        architecture: process.arch,
+        chrome: browserVersion.product,
+        chromeJavaScriptVersion: browserVersion.jsVersion,
+        node: process.version,
+        platform: process.platform,
+        viewport: {
+          deviceScaleFactor: 1,
+          height: 900,
+          width: 1360,
+        },
+      },
       ghost: visibleGhost,
       invocations: smokeState?.invocations?.map((item) => item.cmd) ?? [],
+      performance: performanceReport,
       pass: failures.length === 0,
       failures,
-      writes: smokeState?.writes ?? [],
+      sampleCount: {
+        cold: performanceReport.cold.sampleCount,
+        warm: performanceReport.warm.sampleCount,
+      },
+      writeSummary: summarizeWrites(smokeState?.writes ?? []),
     };
 
     mkdirSync(outputDir, { recursive: true });
@@ -234,7 +275,6 @@ async function collectFailureDiagnostics(client) {
       ariaLabels: Array.from(document.querySelectorAll("[aria-label]"))
         .slice(0, 40)
         .map((node) => node.getAttribute("aria-label")),
-      bodyText: document.body?.innerText?.slice(0, 2000) ?? "",
       location: window.location.href,
       readyState: document.readyState,
       resourceEntries: performance.getEntriesByType("resource")
@@ -244,14 +284,44 @@ async function collectFailureDiagnostics(client) {
           initiatorType: entry.initiatorType,
           name: entry.name,
         })),
-      rootHtml: document.querySelector("#root")?.innerHTML?.slice(0, 2000) ?? null,
       scripts: Array.from(document.scripts).map((script) => ({
         src: script.src,
         type: script.type,
       })),
-      smokeState: window.__kerminalAppSmokeState ?? null,
+      smokeState: window.__kerminalAppSmokeState
+        ? {
+            auditRequestCount:
+              window.__kerminalAppSmokeState.auditRequests.length,
+            feedbackRequestCount:
+              window.__kerminalAppSmokeState.feedbackRequests.length,
+            invocationCommands:
+              window.__kerminalAppSmokeState.invocations.map((item) => item.cmd),
+            performanceSamples:
+              window.__kerminalAppSmokeState.performanceSamples,
+            refreshRequestCount:
+              window.__kerminalAppSmokeState.refreshRequests.length,
+            sessionCount: window.__kerminalAppSmokeState.sessions.length,
+            suggestionRequestCount:
+              window.__kerminalAppSmokeState.suggestionRequests.length,
+            suggestionRequestSummaries:
+              window.__kerminalAppSmokeState.suggestionRequests.map(
+                (request) => ({
+                  cursor: request.cursor,
+                  inputLength: String(request.input ?? "").length,
+                  providers: request.providers ?? [],
+                  remoteHostIdPresent: Boolean(request.remoteHostId),
+                  target: request.target,
+                }),
+              ),
+            writeCount: window.__kerminalAppSmokeState.writes.length,
+            writeUtf16Units:
+              window.__kerminalAppSmokeState.writes.reduce(
+                (total, item) => total + String(item).length,
+                0,
+              ),
+          }
+        : null,
       smokeErrors: window.__kerminalAppSmokeErrors ?? [],
-      storageSession: window.localStorage.getItem("kerminal.workspace.session.v1"),
       title: document.title,
     }))()`,
     { returnByValue: true },
@@ -259,25 +329,25 @@ async function collectFailureDiagnostics(client) {
   return result.result?.value;
 }
 
-function validateSmokeState(ghost, state) {
+function validateSmokeState(ghost, state, performanceReport, expectedWarmSamples) {
   const failures = [];
   const writes = state?.writes ?? [];
   const accepted = state?.feedbackRequests?.find(
     (request) =>
       request.action === "accepted" &&
-      request.provider === "remoteCommand" &&
+      request.provider === "spec" &&
       request.replacementText === "journalctl",
   );
   const suggestionRequest = state?.suggestionRequests?.find(
     (request) =>
       request.target === "ssh" &&
       request.remoteHostId === "prod-api" &&
-      request.providers?.includes("remoteCommand"),
+      request.providers?.includes("spec"),
   );
   if (ghost?.text !== "nalctl") {
     failures.push("wrong-ghost-text");
   }
-  if (ghost?.provider !== "remoteCommand") {
+  if (ghost?.provider !== "spec") {
     failures.push("wrong-provider");
   }
   if (ghost?.ariaLabel !== "终端命令灰色提示") {
@@ -303,10 +373,120 @@ function validateSmokeState(ghost, state) {
   if (!accepted) {
     failures.push("missing-accepted-feedback");
   }
-  if (writes.join("") !== "journalctl") {
+  if (!writes.join("").endsWith("journalctl")) {
     failures.push("accepted-write-mismatch");
   }
+  if (performanceReport.cold.sampleCount !== 1) {
+    failures.push("missing-cold-performance-sample");
+  }
+  if (performanceReport.warm.sampleCount !== expectedWarmSamples) {
+    failures.push("missing-warm-performance-samples");
+  }
   return failures;
+}
+
+async function measureGhostLatencySamples(client, targetWarmSamples) {
+  const phases = ["cold", ...Array(targetWarmSamples).fill("warm")];
+  for (let index = 0; index < phases.length; index += 1) {
+    await evaluate(
+      client,
+      `window.__beginKerminalGhostLatencySample(${JSON.stringify(phases[index])})`,
+      { returnByValue: true },
+    );
+    for (const char of "jour") {
+      await client.send("Input.dispatchKeyEvent", {
+        text: char,
+        type: "char",
+        unmodifiedText: char,
+      });
+      await delay(10);
+    }
+    await waitForBrowserExpression(
+      client,
+      `window.__kerminalAppSmokeState.performanceSamples.length > ${index}`,
+      10_000,
+    );
+    for (let deleteIndex = 0; deleteIndex < 4; deleteIndex += 1) {
+      await dispatchKey(client, {
+        code: "Backspace",
+        key: "Backspace",
+        nativeVirtualKeyCode: 8,
+        windowsVirtualKeyCode: 8,
+      });
+    }
+    await waitForBrowserExpression(
+      client,
+      "document.querySelector('[aria-label=\"终端命令灰色提示\"]') === null",
+      5_000,
+    );
+  }
+}
+
+async function dispatchKey(client, key) {
+  await client.send("Input.dispatchKeyEvent", {
+    ...key,
+    type: "keyDown",
+  });
+  await client.send("Input.dispatchKeyEvent", {
+    ...key,
+    type: "keyUp",
+  });
+}
+
+function summarizeGhostPerformance(samples) {
+  const byPhase = (phase) =>
+    summarizeDurations(
+      samples
+        .filter((sample) => sample.phase === phase)
+        .map((sample) => Number(sample.durationMs)),
+    );
+  return {
+    cold: byPhase("cold"),
+    warm: byPhase("warm"),
+  };
+}
+
+function summarizeDurations(samples) {
+  if (samples.length === 0) {
+    return {
+      maxMs: 0,
+      p50Ms: 0,
+      p95Ms: 0,
+      p99Ms: 0,
+      sampleCount: 0,
+    };
+  }
+  const sorted = [...samples].sort((left, right) => left - right);
+  const percentile = (ratio) =>
+    sorted[
+      Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)
+    ];
+  return {
+    maxMs: roundMilliseconds(sorted[sorted.length - 1]),
+    p50Ms: roundMilliseconds(percentile(0.5)),
+    p95Ms: roundMilliseconds(percentile(0.95)),
+    p99Ms: roundMilliseconds(percentile(0.99)),
+    sampleCount: sorted.length,
+  };
+}
+
+function summarizeWrites(writes) {
+  return {
+    count: writes.length,
+    utf16Units: writes.reduce(
+      (total, item) => total + String(item).length,
+      0,
+    ),
+  };
+}
+
+function roundMilliseconds(value) {
+  return Number(Number(value).toFixed(3));
+}
+
+function parsePositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 async function getGhostSnapshot(client) {
@@ -353,346 +533,6 @@ async function getGhostSnapshot(client) {
   return result.result?.value;
 }
 
-function browserBootstrapScript() {
-  const workspaceSession = {
-    activeTabId: "tab-ssh-smoke",
-    focusedPaneId: "pane-ssh-smoke",
-    selectedMachineId: "prod-api",
-    sidebarMachines: [],
-    terminalPanes: [
-      {
-        currentCwd: "/srv/app",
-        cwd: "/srv/app",
-        id: "pane-ssh-smoke",
-        lines: [],
-        machineId: "prod-api",
-        mode: "ssh",
-        prompt: "deploy@prod-api:/srv/app$",
-        remoteHostId: "prod-api",
-        remoteHostProduction: false,
-        status: "online",
-        target: { hostId: "prod-api", kind: "ssh" },
-        title: "prod-api",
-      },
-    ],
-    terminalTabs: [
-      {
-        id: "tab-ssh-smoke",
-        layout: { paneId: "pane-ssh-smoke", type: "pane" },
-        machineId: "prod-api",
-        title: "prod-api",
-      },
-    ],
-    version: 1,
-  };
-  return `
-    (() => {
-      window.__kerminalAppSmokeErrors = [];
-      const recordSmokeError = (kind, value) => {
-        const message =
-          value?.reason?.stack ??
-          value?.reason?.message ??
-          value?.error?.stack ??
-          value?.error?.message ??
-          value?.message ??
-          String(value);
-        window.__kerminalAppSmokeErrors.push({ kind, message });
-      };
-      window.addEventListener("error", (event) =>
-        recordSmokeError("error", event),
-      );
-      window.addEventListener("unhandledrejection", (event) =>
-        recordSmokeError("unhandledrejection", event),
-      );
-      localStorage.setItem("kerminal.workspace.session.v1", ${JSON.stringify(
-        JSON.stringify(workspaceSession),
-      )});
-      const callbacks = new Map();
-      const channelIndexes = new Map();
-      const sessions = new Map();
-      let nextCallbackId = 1;
-      let nextSessionId = 1;
-      window.isTauri = true;
-      window.__kerminalAppSmokeState = {
-        auditRequests: [],
-        feedbackRequests: [],
-        invocations: [],
-        refreshRequests: [],
-        sessions: [],
-        suggestionRequests: [],
-        writes: [],
-      };
-      window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
-        unregisterListener() {},
-      };
-      window.__TAURI_INTERNALS__ = {
-        callbacks,
-        convertFileSrc(filePath) {
-          return String(filePath);
-        },
-        metadata: {
-          currentWebview: { label: "main" },
-          currentWindow: { label: "main" },
-        },
-        runCallback(id, payload) {
-          callbacks.get(id)?.(payload);
-        },
-        transformCallback(callback, once = false) {
-          const id = nextCallbackId++;
-          callbacks.set(id, (payload) => {
-            callback(payload);
-            if (once) {
-              callbacks.delete(id);
-            }
-          });
-          return id;
-        },
-        unregisterCallback(id) {
-          callbacks.delete(id);
-        },
-        async invoke(cmd, args = {}) {
-          window.__kerminalAppSmokeState.invocations.push({
-            args: sanitizeArgs(args),
-            cmd,
-          });
-          switch (cmd) {
-            case "plugin:event|listen":
-              return "event-smoke-1";
-            case "plugin:event|unlisten":
-              return null;
-            case "profile_list":
-              return [
-                {
-                  args: [],
-                  createdAt: "app-smoke",
-                  env: {},
-                  id: "profile-app-smoke",
-                  isDefault: true,
-                  name: "App smoke shell",
-                  shell: "ssh",
-                  sortOrder: 10,
-                  updatedAt: "app-smoke",
-                },
-              ];
-            case "remote_host_tree":
-              return [
-                {
-                  createdAt: "app-smoke",
-                  hosts: [
-                    {
-                      authType: "password",
-                      createdAt: "app-smoke",
-                      groupId: "smoke-group",
-                      host: "127.0.0.1",
-                      id: "prod-api",
-                      name: "prod-api",
-                      port: 22,
-                      production: false,
-                      sortOrder: 10,
-                      tags: ["smoke"],
-                      updatedAt: "app-smoke",
-                      username: "deploy",
-                    },
-                  ],
-                  id: "smoke-group",
-                  name: "Smoke",
-                  sortOrder: 10,
-                  updatedAt: "app-smoke",
-                },
-              ];
-            case "settings_get":
-              return appSmokeSettings();
-            case "settings_update":
-              return args.settings;
-            case "ssh_create_session": {
-              const id = "ssh-app-smoke-" + nextSessionId++;
-              const channelId = args.output?.id;
-              sessions.set(id, { channelId });
-              window.__kerminalAppSmokeState.sessions.push({
-                channelId,
-                id,
-                request: args.request,
-              });
-              queueMicrotask(() => {
-                emitTerminal(channelId, {
-                  data: "deploy@prod-api:/srv/app$ ",
-                  kind: "data",
-                  sessionId: id,
-                });
-              });
-              return {
-                cols: args.request?.cols ?? 80,
-                cwd: "/srv/app",
-                id,
-                rows: args.request?.rows ?? 24,
-                shell: "ssh",
-                status: "running",
-              };
-            }
-            case "terminal_resize":
-              return null;
-            case "terminal_log_state":
-              return { active: false, bytesWritten: 0 };
-            case "terminal_close":
-              sessions.delete(args.sessionId);
-              return null;
-            case "terminal_write": {
-              window.__kerminalAppSmokeState.writes.push(args.data);
-              const session = sessions.get(args.sessionId);
-              emitTerminal(session?.channelId, {
-                data: args.data,
-                kind: "data",
-                sessionId: args.sessionId,
-              });
-              return null;
-            }
-            case "command_suggestion_list":
-              window.__kerminalAppSmokeState.suggestionRequests.push(args.request);
-              return appSmokeSuggestions(args.request);
-            case "command_suggestion_record_feedback":
-              window.__kerminalAppSmokeState.feedbackRequests.push(args.request);
-              return { recorded: true, skipReason: undefined };
-            case "command_suggestion_record_audit_event":
-              window.__kerminalAppSmokeState.auditRequests.push(args.request);
-              return { eventId: "audit-app-smoke", recorded: true };
-            case "command_suggestion_refresh_remote_commands":
-            case "command_suggestion_refresh_remote_history":
-            case "command_suggestion_refresh_remote_paths":
-            case "command_suggestion_refresh_git_refs":
-              window.__kerminalAppSmokeState.refreshRequests.push({ args, cmd });
-              return refreshResult(cmd, args.request);
-            case "command_history_record":
-              return { entry: null, recorded: true, skipReason: null };
-            default:
-              throw new Error("Unexpected app smoke invoke: " + cmd);
-          }
-        },
-      };
-
-      function emitTerminal(channelId, message) {
-        if (!channelId || !callbacks.has(channelId)) {
-          return;
-        }
-        const index = channelIndexes.get(channelId) ?? 0;
-        channelIndexes.set(channelId, index + 1);
-        callbacks.get(channelId)({ index, message });
-      }
-
-      function appSmokeSettings() {
-        return {
-          interfaceDensity: "comfortable",
-          terminal: {
-            autoReconnect: false,
-            colorScheme: "kerminal",
-            confirmCloseTab: false,
-            cursorBlink: true,
-            cursorStyle: "block",
-            darkColorScheme: "kerminal",
-            fontFamily:
-              '"JetBrains Mono", "SF Mono", "Cascadia Code", Consolas, monospace',
-            fontSize: 13,
-            fontWeight: "normal",
-            inlineSuggestion: {
-              acceptKey: "rightArrow",
-              auditRetentionDays: 30,
-              enabled: true,
-              feedbackRetentionDays: 365,
-              productionHostPolicy: "restricted",
-              providers: {
-                git: true,
-                history: true,
-                remoteCommand: true,
-                remotePath: true,
-                spec: true,
-              },
-              remoteProbeEnabled: true,
-            },
-            lightColorScheme: "kerminal",
-            lineHeight: 1.35,
-            macOptionIsMeta: false,
-            rightClickBehavior: "menu",
-            scrollback: 5000,
-            selectionCopy: false,
-            showTabNumbers: false,
-          },
-          themeMode: "dark",
-        };
-      }
-
-      function appSmokeSuggestions(request) {
-        const input = String(request?.input ?? "");
-        const cursor = Number(request?.cursor ?? input.length);
-        const prefix = Array.from(input).slice(0, cursor).join("");
-        const trimmed = prefix.trim();
-        const command = "journalctl";
-        if (
-          request?.target !== "ssh" ||
-          request?.remoteHostId !== "prod-api" ||
-          !request?.providers?.includes("remoteCommand") ||
-          !trimmed ||
-          !command.startsWith(trimmed)
-        ) {
-          return [];
-        }
-        return [
-          {
-            description: "远端 PATH 命令，来自 app smoke fake IPC",
-            displayText: command,
-            id: "app-smoke-remote-command-journalctl",
-            metadata: { source: "appSmoke" },
-            provider: "remoteCommand",
-            replacementRange: { end: cursor, start: 0 },
-            replacementText: command,
-            score: 0.98,
-            sensitivity: "normal",
-            sourceId: "app-smoke-remote-command",
-            suffix: command.slice(trimmed.length),
-          },
-        ];
-      }
-
-      function refreshResult(cmd, request) {
-        const now = Date.now();
-        if (cmd.endsWith("remote_paths")) {
-          return {
-            cachedAtUnixMs: now,
-            entryCount: 0,
-            hostId: request.hostId,
-            path: request.path,
-            ttlSeconds: request.ttlSeconds ?? 30,
-          };
-        }
-        if (cmd.endsWith("git_refs")) {
-          return {
-            cachedAtUnixMs: now,
-            cwd: request.cwd,
-            entryCount: 0,
-            hostId: request.hostId,
-            repoRoot: null,
-            ttlSeconds: request.ttlSeconds ?? 60,
-          };
-        }
-        return {
-          cachedAtUnixMs: now,
-          commandCount: 0,
-          hostId: request.hostId,
-          ttlSeconds: request.ttlSeconds ?? 300,
-        };
-      }
-
-      function sanitizeArgs(value) {
-        return JSON.parse(
-          JSON.stringify(value, (_key, item) => {
-            if (item && typeof item === "object" && "id" in item) {
-              return { id: item.id };
-            }
-            return item;
-          }),
-        );
-      }
-    })();
-  `;
-}
 
 function findChromePath() {
   const candidates = [

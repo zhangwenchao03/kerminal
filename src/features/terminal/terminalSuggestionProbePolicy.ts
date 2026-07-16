@@ -8,7 +8,7 @@ export type TerminalSuggestionProbeDisabledReason =
   | "slow-probe"
   | "visible-degraded";
 
-export type TerminalSuggestionProbeWorkMode = "active" | "deferred" | "paused";
+type TerminalSuggestionProbeWorkMode = "active" | "deferred" | "paused";
 
 export interface TerminalSuggestionProbePolicyConfig {
   baseDelayMs: number;
@@ -107,7 +107,7 @@ export function resolveTerminalSuggestionProbePolicy({
   };
 }
 
-export function resolveTerminalSuggestionProbePolicyConfig(
+function resolveTerminalSuggestionProbePolicyConfig(
   config: Partial<TerminalSuggestionProbePolicyConfig> = {},
 ): TerminalSuggestionProbePolicyConfig {
   return {

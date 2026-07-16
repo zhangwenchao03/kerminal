@@ -78,7 +78,8 @@ export function LocalPropertiesPanel({
       setLocalShellPresetId(CUSTOM_LOCAL_SHELL_PRESET_ID);
       setLocalShell(selected);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      console.warn("Failed to select a local shell file", caught);
+      setError("无法选择启动文件，请重试。");
     }
   };
 
@@ -91,7 +92,8 @@ export function LocalPropertiesPanel({
       setError(null);
       setLocalCwd(selected);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      console.warn("Failed to select a local working directory", caught);
+      setError("无法选择工作目录，请重试。");
     }
   };
 
@@ -117,7 +119,7 @@ export function LocalPropertiesPanel({
         <div className="grid gap-2">
           <Select
             aria-label="Shell"
-            buttonClassName="h-10"
+            buttonClassName="h-9"
             onValueChange={selectShellPreset}
             options={localShellPresets.map((preset) => ({
               label: preset.label,
@@ -174,10 +176,10 @@ export function LocalPropertiesPanel({
           value={localArgs}
         />
       </FieldRow>
-      <div className="kerminal-solid-surface rounded-2xl border p-4">
+      <div className="rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-content)] p-3">
         <div className="flex items-start gap-3">
           <Monitor className="mt-0.5 h-4 w-4 text-sky-500 dark:text-sky-300" />
-          <p className="min-w-0 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
+          <p className="min-w-0 text-[13px] leading-6 text-[var(--text-secondary)]">
             {editing
               ? "保存到左侧本地终端；已打开会话不重启。"
               : "留空则使用默认终端 profile。"}

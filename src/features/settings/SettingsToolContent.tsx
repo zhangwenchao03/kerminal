@@ -4,18 +4,11 @@ import { cn } from "../../lib/cn";
 import { selectLocalFile } from "../../lib/fileDialogApi";
 import {
   normalizeAppSettings,
-  type AppearanceSettings,
-  type AppSettings,
-  type DesktopNotificationSettings,
-  type ExternalLaunchSettings,
   type KeybindingPlatform,
   type ResolvedTheme,
-  type SftpPerformanceSettings,
-  type TerminalAppearance,
-  type TerminalInlineSuggestionProviderSettings,
-  type TerminalInlineSuggestionSettings,
   type ThemeMode,
 } from "./settingsModel";
+import { createSettingsDraftController } from "./settingsDraftController";
 import { shortcutPlatform } from "./keybindingUtils";
 import { AboutSettingsSection } from "./settings-tool-content/about-section";
 import { AppearanceSettingsSection } from "./settings-tool-content/appearance-section";
@@ -43,22 +36,29 @@ export type {
 } from "./settings-tool-content/types";
 
 type SettingsSearchEntry = (typeof settingsSearchEntries)[number];
+const defaultVisibleSettingsSectionId =
+  settingsSections[0]?.id ?? "settings-appearance";
 
 export function SettingsToolContent({
   externalChangeNotice,
-  initialSectionId = "settings-appearance",
+  initialSectionId,
   onSettingsChange,
   resolvedTheme,
   saveError,
   saveState = "idle",
   settings,
 }: SettingsToolContentProps) {
+  const resolvedInitialSectionId =
+    resolveVisibleSettingsSectionId(initialSectionId);
   const [activeSectionId, setActiveSectionId] =
-    useState<VisibleSettingsSectionId>(initialSectionId);
+    useState<VisibleSettingsSectionId>(resolvedInitialSectionId);
   const [selectedKeybindingPlatform, setSelectedKeybindingPlatform] =
     useState<KeybindingPlatform>(() => shortcutPlatform());
   const [settingsSearchQuery, setSettingsSearchQuery] = useState("");
   const [pendingSearchTargetId, setPendingSearchTargetId] = useState<
+    string | null
+  >(null);
+  const [revealedSearchTargetId, setRevealedSearchTargetId] = useState<
     string | null
   >(null);
   const normalizedSettings = normalizeAppSettings(settings);
@@ -71,10 +71,14 @@ export function SettingsToolContent({
     () => searchSettings(trimmedSettingsSearchQuery),
     [trimmedSettingsSearchQuery],
   );
+  const draftController = createSettingsDraftController(
+    normalizedSettings,
+    onSettingsChange,
+  );
 
   useEffect(() => {
-    setActiveSectionId(initialSectionId);
-  }, [initialSectionId]);
+    setActiveSectionId(resolvedInitialSectionId);
+  }, [resolvedInitialSectionId]);
 
   useEffect(() => {
     if (!pendingSearchTargetId) {
@@ -107,56 +111,16 @@ export function SettingsToolContent({
     return () => window.cancelAnimationFrame(frame);
   }, [activeSectionId, pendingSearchTargetId]);
 
-  const updateSettings = (next: AppSettings) => {
-    onSettingsChange(normalizeAppSettings(next));
-  };
-
-  const updateAppearance = (appearance: Partial<AppearanceSettings>) => {
-    updateSettings({
-      ...normalizedSettings,
-      appearance: {
-        ...normalizedSettings.appearance,
-        ...appearance,
-      },
-    });
-  };
-
-  const updateTerminal = (terminal: Partial<TerminalAppearance>) => {
-    updateSettings({
-      ...normalizedSettings,
-      terminal: {
-        ...normalizedSettings.terminal,
-        ...terminal,
-      },
-    });
-  };
-
-  const updateTerminalInlineSuggestion = (
-    inlineSuggestion: Partial<TerminalInlineSuggestionSettings>,
-  ) => {
-    updateTerminal({
-      inlineSuggestion: {
-        ...normalizedSettings.terminal.inlineSuggestion,
-        ...inlineSuggestion,
-        providers: {
-          ...normalizedSettings.terminal.inlineSuggestion.providers,
-          ...(inlineSuggestion.providers ?? {}),
-        },
-      },
-    });
-  };
-
-  const updateTerminalInlineSuggestionProvider = (
-    provider: keyof TerminalInlineSuggestionProviderSettings,
-    enabled: boolean,
-  ) => {
-    updateTerminalInlineSuggestion({
-      providers: {
-        ...normalizedSettings.terminal.inlineSuggestion.providers,
-        [provider]: enabled,
-      },
-    });
-  };
+  const {
+    replace: updateSettings,
+    updateAppearance,
+    updateDesktopNotifications,
+    updateExternalLaunch,
+    updateSftp,
+    updateTerminal,
+    updateTerminalInlineSuggestion,
+    updateTerminalInlineSuggestionProvider,
+  } = draftController;
 
   const chooseBackgroundImage = () => {
     void selectLocalFile().then((backgroundImagePath) => {
@@ -170,58 +134,21 @@ export function SettingsToolContent({
     });
   };
 
-  const updateSftp = (sftp: Partial<SftpPerformanceSettings>) => {
-    updateSettings({
-      ...normalizedSettings,
-      sftp: {
-        ...normalizedSettings.sftp,
-        ...sftp,
-      },
-    });
-  };
-
-  const updateDesktopNotifications = (
-    desktopNotifications: Partial<DesktopNotificationSettings>,
-  ) => {
-    updateSettings({
-      ...normalizedSettings,
-      desktopNotifications: {
-        ...normalizedSettings.desktopNotifications,
-        ...desktopNotifications,
-      },
-    });
-  };
-
-  const updateExternalLaunch = (
-    externalLaunch: Partial<ExternalLaunchSettings>,
-  ) => {
-    updateSettings({
-      ...normalizedSettings,
-      externalLaunch: {
-        ...normalizedSettings.externalLaunch,
-        ...externalLaunch,
-        disabledTools:
-          externalLaunch.disabledTools ??
-          normalizedSettings.externalLaunch.disabledTools,
-        shimBridge: {
-          ...normalizedSettings.externalLaunch.shimBridge,
-          ...(externalLaunch.shimBridge ?? {}),
-        },
-      },
-    });
-  };
-
   const navigateToSearchResult = (result: SettingsSearchEntry) => {
     setActiveSectionId(result.sectionId);
     setPendingSearchTargetId(result.targetId);
+    setRevealedSearchTargetId(result.targetId);
     setSettingsSearchQuery("");
   };
 
   return (
-    <section className="grid gap-5 lg:grid-cols-[196px_minmax(0,1fr)]">
-      <nav aria-label="设置分类" className="lg:sticky lg:top-0 lg:self-start">
-        <div className="kerminal-solid-surface rounded-2xl border p-2">
-          <label className="kerminal-field-surface flex h-10 items-center gap-2 rounded-xl border px-2 text-sm text-zinc-950 dark:text-zinc-100">
+    <section className="grid gap-4 lg:grid-cols-[190px_minmax(0,1fr)]">
+      <nav
+        aria-label="设置分类"
+        className="border-b border-[var(--border-subtle)] pb-4 lg:sticky lg:top-0 lg:self-start lg:border-b-0 lg:border-r lg:pb-0 lg:pr-4"
+      >
+        <div>
+          <label className="kerminal-field-surface flex h-9 items-center gap-2 rounded-[var(--radius-control)] border px-2 text-[13px] text-[var(--text-primary)]">
             <Search className="h-4 w-4 shrink-0 text-zinc-400" />
             <input
               aria-label="搜索设置"
@@ -244,16 +171,13 @@ export function SettingsToolContent({
             ) : null}
           </label>
 
-          <div className="px-2 pb-2 pt-3 text-xs font-medium text-zinc-500 dark:text-zinc-400">
-            功能分类
-          </div>
           {trimmedSettingsSearchQuery ? (
-            <div className="space-y-1">
+            <div className="mt-2 space-y-1">
               {settingsSearchResults.length > 0 ? (
                 settingsSearchResults.map((result) => (
                   <button
                     aria-label={`打开设置项：${result.title}`}
-                    className="kerminal-focus-ring kerminal-pressable kerminal-muted-surface block w-full rounded-xl border px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-zinc-50"
+                    className="kerminal-focus-ring kerminal-pressable block w-full rounded-[var(--radius-control)] px-2.5 py-2 text-left text-[13px] text-[var(--text-primary)] transition hover:bg-[var(--surface-hover)]"
                     key={`${result.sectionId}:${result.targetId}:${result.title}`}
                     onClick={() => navigateToSearchResult(result)}
                     type="button"
@@ -268,13 +192,13 @@ export function SettingsToolContent({
                   </button>
                 ))
               ) : (
-                <div className="kerminal-muted-surface rounded-xl border px-3 py-3 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+                <div className="rounded-[var(--radius-control)] px-2.5 py-3 text-xs leading-5 text-[var(--text-secondary)]">
                   没有找到匹配设置。
                 </div>
               )}
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="mt-2 space-y-1">
               {settingsSections.map((section) => {
                 const Icon = section.icon;
                 const selected = activeSectionId === section.id;
@@ -282,15 +206,19 @@ export function SettingsToolContent({
                 return (
                   <button
                     aria-controls={`${section.id}-panel`}
+                    aria-label={`打开设置分类：${section.label}`}
                     aria-pressed={selected}
                     className={cn(
-                      "kerminal-focus-ring kerminal-pressable flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm",
+                      "kerminal-focus-ring kerminal-pressable flex min-h-10 w-full items-center gap-2 rounded-[var(--radius-control)] px-2 py-1.5 text-left text-[13px]",
                       selected
                         ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
-                        : "text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50",
+                        : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]",
                     )}
                     key={section.id}
-                    onClick={() => setActiveSectionId(section.id)}
+                    onClick={() => {
+                      setActiveSectionId(section.id);
+                      setRevealedSearchTargetId(null);
+                    }}
                     type="button"
                   >
                     <span
@@ -298,18 +226,13 @@ export function SettingsToolContent({
                         "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
                         selected
                           ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
-                          : "bg-[var(--surface-muted)] text-sky-600 dark:text-sky-300",
+                          : "bg-[var(--surface-muted)] text-[var(--text-secondary)]",
                       )}
                     >
                       <Icon className="h-4 w-4" />
                     </span>
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium">
-                        {section.label}
-                      </span>
-                      <span className="block truncate text-xs text-zinc-500 dark:text-zinc-500">
-                        {section.description}
-                      </span>
+                    <span className="min-w-0 truncate font-medium">
+                      {section.label}
                     </span>
                   </button>
                 );
@@ -319,10 +242,10 @@ export function SettingsToolContent({
         </div>
       </nav>
 
-      <div className="min-w-0 space-y-5">
+      <div className="min-w-0 space-y-4">
         {externalChangeNotice ? (
           <div
-            className="rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 font-mono text-xs text-amber-800 dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100"
+            className="rounded-[var(--radius-control)] border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-xs leading-5 text-amber-800 dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100"
             role="status"
           >
             {externalChangeNotice}
@@ -341,6 +264,9 @@ export function SettingsToolContent({
         {activeSectionId === "settings-terminal" ? (
           <TerminalSettingsSection
             normalizedSettings={normalizedSettings}
+            revealRenderer={
+              revealedSearchTargetId === "settings-terminal-renderer-panel"
+            }
             resolvedTheme={previewResolvedTheme}
             updateTerminal={updateTerminal}
           />
@@ -360,6 +286,9 @@ export function SettingsToolContent({
           <div className="space-y-4" id="settings-mcp-panel">
             <McpSkillsSettingsSection
               desktopNotifications={normalizedSettings.desktopNotifications}
+              revealConnectionInfo={
+                revealedSearchTargetId === "settings-mcp-connection-info"
+              }
             />
           </div>
         ) : null}
@@ -383,6 +312,10 @@ export function SettingsToolContent({
         {activeSectionId === "settings-external-launch" ? (
           <ExternalLaunchSettingsSection
             externalLaunch={normalizedSettings.externalLaunch}
+            revealCompatibility={
+              revealedSearchTargetId ===
+              "settings-external-launch-compatibility"
+            }
             updateExternalLaunch={updateExternalLaunch}
           />
         ) : null}
@@ -456,5 +389,18 @@ function sectionLabelFor(sectionId: VisibleSettingsSectionId): string {
   return (
     settingsSections.find((section) => section.id === sectionId)?.label ??
     "设置"
+  );
+}
+
+/**
+ * 设置入口可能来自持久化状态或跨模块消息，运行时值不一定仍属于当前菜单。
+ * 统一回退到菜单第一项，避免没有选中项时右侧内容完全为空。
+ */
+function resolveVisibleSettingsSectionId(
+  sectionId: VisibleSettingsSectionId | null | undefined,
+): VisibleSettingsSectionId {
+  return (
+    settingsSections.find((section) => section.id === sectionId)?.id ??
+    defaultVisibleSettingsSectionId
   );
 }

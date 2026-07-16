@@ -52,6 +52,28 @@ describe("agentLauncherApi", () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
+  it("updates an agent session title through Tauri", async () => {
+    isTauriMock.mockReturnValue(true);
+    invokeMock.mockResolvedValue({
+      session: {
+        agentSessionId: "ags-title",
+        launch: { args: [], cwd: "C:/sessions/ags-title", shell: "codex" },
+        status: "active",
+        title: "发布检查",
+      },
+    });
+    const { updateAgentSession } = await import(
+      "../../../src/lib/agentLauncherApi"
+    );
+
+    await updateAgentSession("ags-title", { title: "发布检查" });
+
+    expect(invokeMock).toHaveBeenCalledWith("agent_session_update", {
+      agentSessionId: "ags-title",
+      request: { title: "发布检查" },
+    });
+  });
+
   it("normalizes missing record status as active for legacy records", async () => {
     const { agentSessionRecordStatus } = await import("../../../src/lib/agentLauncherApi");
 

@@ -13,8 +13,8 @@ import {
   buildAgentConfigSnippet,
   buildAgentLauncherViewModel,
   getMcpStatusView,
-  parseAgentCommandLine,
 } from "../../../../../src/features/tool-panel/agent-launcher/agentLauncherModel";
+import { parseAgentCommandLine } from "../../../../../src/lib/agentCommandLine";
 
 const readyCodex: ExternalAgentStatus = {
   cliCommand: "codex",
@@ -36,7 +36,10 @@ describe("agentLauncherModel", () => {
     expect(view.installLabel).toBe("Installed");
     expect(view.configLabel).toBe("Config ready");
     expect(view.actionLabel).toBe("Open Codex");
+    expect(view.availabilityLabel).toBe("可用");
+    expect(view.availabilityDetail).toBe("可直接打开。");
     expect(view.disabled).toBe(false);
+    expect(view.statusDetail).toBe("Codex CLI detected.");
     expect(view.tone).toBe("ready");
   });
 
@@ -60,6 +63,8 @@ describe("agentLauncherModel", () => {
     expect(view.installLabel).toBe("Missing CLI");
     expect(view.configLabel).toBe("Config needs update");
     expect(view.actionLabel).toBe("Prepare & Open");
+    expect(view.availabilityLabel).toBe("需安装");
+    expect(view.availabilityDetail).toBe("Claude 尚未安装。");
     expect(view.disabled).toBe(false);
     expect(view.disabledReason).toBeUndefined();
     expect(view.tone).toBe("warning");
@@ -79,6 +84,8 @@ describe("agentLauncherModel", () => {
     );
 
     expect(view.actionLabel).toBe("Prepare & Open");
+    expect(view.availabilityLabel).toBe("需设置");
+    expect(view.availabilityDetail).toContain("必要设置");
     expect(view.disabled).toBe(false);
     expect(view.configLabel).toBe("Config needs update");
   });
@@ -103,6 +110,8 @@ describe("agentLauncherModel", () => {
 
     expect(view.configLabel).toBe("Enter command");
     expect(view.configPath).toBe("User supplied CLI");
+    expect(view.availabilityLabel).toBe("需设置");
+    expect(view.availabilityDetail).toBe("输入自定义命令后打开。");
     expect(view.disabledReason).toBeUndefined();
     expect(view.disabled).toBe(false);
   });
@@ -114,12 +123,37 @@ describe("agentLauncherModel", () => {
     });
 
     expect(view.actionLabel).toBe("Start & Open Codex");
+    expect(view.availabilityLabel).toBe("可用");
     expect(view.disabled).toBe(false);
     expect(view.disabledReason).toBeUndefined();
     expect(view.statusDetail).toBe(
       "Kerminal MCP Server will be started before launch.",
     );
     expect(view.tone).toBe("ready");
+  });
+
+  it("keeps diagnostic fields without leaking them into short availability copy", () => {
+    const view = buildAgentActionViewModel(
+      {
+        ...readyCodex,
+        configPath: "C:/internal/workspace/.codex/config.toml",
+        statusDetail:
+          "command=codex endpoint=http://127.0.0.1:37657/mcp workspaceId=ws-42",
+      },
+      {
+        mcpServerRunning: true,
+        terminalLauncherAvailable: true,
+      },
+    );
+
+    expect(view.configPath).toContain(".codex/config.toml");
+    expect(view.statusDetail).toContain("endpoint=");
+    expect(`${view.availabilityLabel} ${view.availabilityDetail}`).toBe(
+      "可用 可直接打开。",
+    );
+    expect(`${view.availabilityLabel} ${view.availabilityDetail}`).not.toMatch(
+      /command=|endpoint=|workspaceId|config\.toml/i,
+    );
   });
 
   it("orders Codex, Claude, and Custom cards from workspace status", () => {

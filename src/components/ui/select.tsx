@@ -35,7 +35,7 @@ interface SelectProps {
 }
 
 const baseButtonClassName =
-  "kerminal-focus-ring group inline-flex w-full items-center justify-between gap-2 rounded-xl border text-left font-medium outline-none transition-[background-color,border-color,box-shadow,transform,opacity] duration-150 disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.99]";
+  "kerminal-focus-ring group inline-flex w-full items-center justify-between gap-2 rounded-[var(--radius-control)] border text-left font-medium outline-none transition-[background-color,border-color,box-shadow,transform,opacity] duration-150 disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.99]";
 
 const variantClassNames = {
   field: "kerminal-field-surface text-zinc-950 dark:text-zinc-100",
@@ -190,7 +190,7 @@ export function Select({
       {open ? (
         <div
           className={cn(
-            "kerminal-floating-surface kerminal-floating-enter absolute z-50 min-w-full overflow-hidden rounded-2xl border p-1 text-sm text-zinc-950 dark:text-zinc-100",
+            "kerminal-floating-surface kerminal-floating-enter kerminal-layer-popover absolute min-w-full overflow-hidden rounded-[var(--radius-card)] border p-1 text-[13px] text-[var(--text-primary)]",
             side === "top"
               ? "bottom-[calc(100%+0.375rem)] top-auto"
               : "top-[calc(100%+0.375rem)]",
@@ -209,10 +209,10 @@ export function Select({
                 <button
                   aria-selected={selected}
                   className={cn(
-                    "flex w-full items-start justify-between gap-3 rounded-xl px-2.5 py-2 text-left transition-colors duration-150",
+                    "flex w-full items-start justify-between gap-3 rounded-[var(--radius-control)] px-2.5 py-2 text-left transition-colors duration-150",
                     highlighted || selected
-                      ? "bg-[var(--surface-selected)] text-sky-700 dark:text-sky-100"
-                      : "text-zinc-700 hover:bg-[var(--surface-hover)] dark:text-zinc-300",
+                      ? "bg-[var(--surface-selected)] text-[rgb(var(--app-accent))]"
+                      : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]",
                     option.disabled
                       ? "cursor-not-allowed opacity-45 hover:bg-transparent"
                       : "",

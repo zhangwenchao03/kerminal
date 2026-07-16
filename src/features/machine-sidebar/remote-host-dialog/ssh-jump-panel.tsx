@@ -7,7 +7,7 @@ import type {
   SshJumpHostOptions,
   SshOptions,
 } from "../../../lib/remoteHostApi";
-import type { Machine } from "../../workspace/types";
+import type { Machine } from "../../workspace/contracts/index";
 import { authOptions } from "./model";
 import {
   moveAt,
@@ -168,7 +168,7 @@ export function SshJumpPanel({
           <div className="grid gap-3 md:grid-cols-[184px_minmax(0,1fr)]">
             <Select
               aria-label="跳板机认证方式"
-              buttonClassName="h-10"
+              buttonClassName="h-9"
               onValueChange={(value) => {
                 const authType = value as RemoteHostAuthType;
                 updateDraft({
@@ -184,7 +184,7 @@ export function SshJumpPanel({
               value={draft.authType}
             />
             {draft.authType === "agent" ? (
-              <div className="flex h-10 items-center rounded-xl border border-dashed border-[var(--border-subtle)] px-3 text-sm text-zinc-500 dark:text-zinc-400">
+              <div className="flex h-9 items-center rounded-[var(--radius-control)] border border-dashed border-[var(--border-subtle)] px-3 text-[13px] text-[var(--text-secondary)]">
                 使用 ssh-agent，不需要额外配置
               </div>
             ) : draft.authType === "password" ? (
@@ -217,7 +217,7 @@ export function SshJumpPanel({
           {draft.authType !== "agent" ? (
             <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
               {draft.authType === "password"
-                ? "跳板机密码随主机保存。"
+                ? "跳板机密码保存在凭据保险箱中。"
                 : "跳板机密钥认证使用本机可访问的私钥路径。"}
             </p>
           ) : null}
@@ -229,7 +229,7 @@ export function SshJumpPanel({
           </Button>
         </div>
         {draftError ? (
-          <p className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
+          <p className="rounded-[var(--radius-control)] border border-red-500/20 bg-red-500/10 px-3 py-2 text-[13px] leading-5 text-red-600 dark:text-red-300">
             {draftError}
           </p>
         ) : null}
@@ -278,12 +278,6 @@ export function SshJumpPanel({
   );
 }
 
-export function formatSshMachineDescription(machine: Machine) {
-  const username = trimText(machine.username) || "未设置用户";
-  const host = trimText(machine.host) || machine.description;
-  const port = machine.port ?? 22;
-  return `${username}@${host}:${port}`;
-}
 
 export function jumpHostDraftFromMachine(machine: Machine): SshJumpHostOptions {
   const authType = machine.authType ?? "agent";

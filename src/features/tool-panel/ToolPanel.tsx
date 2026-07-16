@@ -1,11 +1,17 @@
+/**
+ * @author kongweiguang
+ */
+
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   Bot,
   Cpu,
   FileText,
+  FolderOpen,
   History,
   Network,
   PanelsTopLeft,
+  ScanSearch,
 } from "lucide-react";
 import { RenderErrorBoundary } from "../../components/RenderErrorBoundary";
 import { Button } from "../../components/ui/button";
@@ -20,20 +26,32 @@ import {
   type AppSettings,
   type ResolvedTheme,
   type TerminalAppearance,
-} from "../settings/settingsModel";
-import type { SettingsSectionId } from "../settings/SettingsToolContent";
+} from "../settings/contracts/index";
+import type { SettingsSectionId } from "../settings/view/index";
 import type {
   Machine,
   TerminalPane,
   TerminalTab,
   ToolId,
   ToolSummary,
-} from "../workspace/types";
+  WorkspaceFileDirtyState,
+  WorkspaceFileRevealRequest,
+} from "../workspace/contracts/index";
+import { isWorkspaceFileTab } from "../workspace/contracts/index";
 import type {
   AddTerminalTabOptions,
+  OpenWorkspaceFileTabOptions,
   TmuxAttachPlacement,
-} from "../workspace/workspaceStore";
+} from "../workspace/state/index";
+import type { WorkspaceContextProjection } from "../workspace/context";
+import type { TerminalArtifactActionRequest } from "../terminal/artifacts/public/index";
 import type { TmuxAttachLaunch } from "../../lib/tmuxApi";
+import { sftpSidebarTransferViewScope } from "../sftp/tool/scope/index";
+import {
+  claimAgentSendRequestAutoOpen,
+  useAgentSendRequestSnapshot,
+} from "../agent-workflow/state/index";
+import { resolveToolPanelBinding } from "./toolPanelContextModel";
 
 interface ToolPanelProps {
   activeTool: ToolId | null;
@@ -42,20 +60,26 @@ interface ToolPanelProps {
   defaultRemoteGroupId?: string;
   defaultRemoteHostId?: string;
   focusedPane?: TerminalPane;
+  selectedMachine?: Machine;
   terminalPanes?: TerminalPane[];
   terminalTabs?: TerminalTab[];
+  workspaceFileDirtyState?: WorkspaceFileDirtyState;
   tools: ToolSummary[];
   settings?: AppSettings;
   snippetConfigRevision?: number;
+  sftpRevealRequest?: WorkspaceFileRevealRequest | null;
   resolvedTheme?: ResolvedTheme;
   terminalAppearance?: TerminalAppearance;
   workflowConfigRevision?: number;
+  workspaceContext?: WorkspaceContextProjection;
+  onArtifactActionRequest?: (request: TerminalArtifactActionRequest) => void;
   onActiveToolChange: (toolId: ToolId) => void;
   onCreateTerminal?: (options?: AddTerminalTabOptions) => void;
   onFocusTab?: (tabId: string) => void;
   onClosePane?: (paneId: string) => void;
   onOpenSettingsSection?: (sectionId: SettingsSectionId) => void;
   onOpenSshTerminal?: (hostId: string) => void;
+  onOpenWorkspaceFileTab?: (options: OpenWorkspaceFileTabOptions) => void;
   onOpenTmuxTerminal?: (
     launch: TmuxAttachLaunch,
     placement?: TmuxAttachPlacement,
@@ -67,13 +91,18 @@ interface ToolPanelProps {
 
 const toolIcons: Partial<Record<ToolId, typeof Bot>> = {
   agentLauncher: Bot,
+  context: ScanSearch,
   system: Cpu,
+  sftp: FolderOpen,
   ports: Network,
   tmux: PanelsTopLeft,
   snippets: FileText,
   logs: History,
 };
 
+const SftpToolContent = lazy(async () => ({
+  default: (await import("../sftp/tool/view/index")).SftpToolContent,
+}));
 const ServerInfoToolContent = lazy(async () => ({
   default: (await import("./ServerInfoToolContent")).ServerInfoToolContent,
 }));
@@ -81,10 +110,10 @@ const PortForwardToolContent = lazy(async () => ({
   default: (await import("./PortForwardToolContent")).PortForwardToolContent,
 }));
 const SnippetToolContent = lazy(async () => ({
-  default: (await import("../snippets/SnippetToolContent")).SnippetToolContent,
+  default: (await import("../snippets/view/index")).SnippetToolContent,
 }));
 const LogToolContent = lazy(async () => ({
-  default: (await import("../logs/LogToolContent")).LogToolContent,
+  default: (await import("../logs")).LogToolContent,
 }));
 const AgentLauncherToolContent = lazy(async () => ({
   default: (await import("./AgentLauncherToolContent"))
@@ -93,35 +122,45 @@ const AgentLauncherToolContent = lazy(async () => ({
 const TmuxToolContent = lazy(async () => ({
   default: (await import("./TmuxToolContent")).TmuxToolContent,
 }));
+const ContextInspectorToolContent = lazy(async () => ({
+  default: (await import("./context-inspector")).ContextInspectorToolContent,
+}));
+const ContextInspectorTerminalArtifacts = lazy(async () => ({
+  default: (await import("./context-inspector"))
+    .ContextInspectorTerminalArtifacts,
+}));
 
 export function ToolPanel({
   activeTool,
   activeMachine,
   activeTab,
   focusedPane,
+  selectedMachine,
   onClosePane,
   onActiveToolChange,
+  onArtifactActionRequest,
   onFocusTab,
+  onOpenWorkspaceFileTab,
   onOpenTmuxTerminal,
   resolvedTheme = "dark",
   settings,
   snippetConfigRevision,
+  sftpRevealRequest,
   terminalPanes,
   terminalTabs,
   terminalAppearance,
+  workspaceFileDirtyState,
+  workspaceContext,
   tools,
 }: ToolPanelProps) {
-  const railTools = useMemo(
-    () => tools.filter((tool) => tool.id !== "sftp"),
-    [tools],
-  );
+  const railTools = tools;
   const defaultContentToolId =
-    railTools.find((tool) => tool.id !== "settings")?.id ?? null;
+    tools.find((tool) => tool.id === "agentLauncher")?.id ??
+    tools.find((tool) => tool.id !== "settings")?.id ??
+    null;
   const contentTool =
     activeTool === null
       ? null
-      : activeTool === "sftp"
-        ? null
       : activeTool === "settings"
         ? defaultContentToolId
         : activeTool;
@@ -129,7 +168,7 @@ export function ToolPanel({
     contentTool ? [contentTool] : [],
   );
   const renderedToolIds = useMemo(() => {
-    const availableToolIds = new Set(railTools.map((tool) => tool.id));
+    const availableToolIds = new Set(tools.map((tool) => tool.id));
     const nextToolIds = mountedToolIds.filter((toolId) =>
       availableToolIds.has(toolId),
     );
@@ -137,15 +176,16 @@ export function ToolPanel({
       return [...nextToolIds, contentTool];
     }
     return nextToolIds;
-  }, [contentTool, mountedToolIds, railTools]);
+  }, [contentTool, mountedToolIds, tools]);
   const renderedTools = useMemo(
     () =>
       renderedToolIds
-        .map((toolId) => railTools.find((tool) => tool.id === toolId))
+        .map((toolId) => tools.find((tool) => tool.id === toolId))
         .filter((tool): tool is ToolSummary => Boolean(tool)),
-    [renderedToolIds, railTools],
+    [renderedToolIds, tools],
   );
   const diagnosticsBundle = useDiagnosticsBundleController();
+  const agentSendRequest = useAgentSendRequestSnapshot().request;
   const active = contentTool
     ? (tools.find((tool) => tool.id === contentTool) ?? railTools[0])
     : undefined;
@@ -166,8 +206,8 @@ export function ToolPanel({
   const railButtonDensityClassName = compactDensity
     ? "h-7 w-7 rounded-lg"
     : spaciousDensity
-      ? "h-9 w-9 rounded-xl"
-      : "h-8 w-8 rounded-xl";
+      ? "h-9 w-9 rounded-lg"
+      : "h-8 w-8 rounded-lg";
 
   useEffect(() => {
     if (!contentTool) {
@@ -177,6 +217,21 @@ export function ToolPanel({
       current.includes(contentTool) ? current : [...current, contentTool],
     );
   }, [contentTool]);
+
+  useEffect(() => {
+    if (
+      !agentSendRequest ||
+      !claimAgentSendRequestAutoOpen(agentSendRequest.id)
+    ) {
+      return;
+    }
+    if (
+      activeTool !== "agentLauncher" &&
+      tools.some((tool) => tool.id === "agentLauncher")
+    ) {
+      onActiveToolChange("agentLauncher");
+    }
+  }, [activeTool, agentSendRequest, onActiveToolChange, tools]);
 
   return (
     <aside
@@ -189,7 +244,17 @@ export function ToolPanel({
           {renderedTools.map((tool) => {
             const toolId = tool.id;
             const selected = toolId === contentTool;
-            const fullHeightTool = toolId === "agentLauncher";
+            const binding = resolveToolPanelBinding(toolId, {
+              activeMachine,
+              activeTab,
+              focusedPane,
+              selectedMachine,
+              workspaceRevision: workspaceContext?.revision,
+            });
+            const fullHeightTool =
+              toolId === "agentLauncher" || toolId === "sftp";
+            const contentOwnsHeader =
+              toolId === "system" || toolId === "ports" || toolId === "tmux";
             return (
               <div
                 aria-hidden={!selected}
@@ -202,32 +267,20 @@ export function ToolPanel({
                 hidden={!selected}
                 key={toolId}
               >
-                {fullHeightTool ? null : (
-                  <header className="mb-4">
-                    <p className="text-xs font-medium uppercase tracking-normal text-zinc-500">
-                      当前工具
-                    </p>
-                    <div className="mt-1 flex items-center justify-between gap-3">
-                      <h2 className="min-w-0 text-lg font-semibold text-zinc-950 dark:text-zinc-50">
-                        {tool.title}
-                      </h2>
-                      {toolId === "logs" ? (
-                        <DiagnosticsBundleButton
-                          controller={diagnosticsBundle}
-                        />
-                      ) : null}
-                    </div>
-                    <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                      {tool.description}
-                    </p>
+                {fullHeightTool || contentOwnsHeader ? null : (
+                  <header className="mb-3 flex items-center justify-between gap-3">
+                    <h2 className="min-w-0 text-lg font-semibold text-zinc-950 dark:text-zinc-50">
+                      {tool.title}
+                    </h2>
+                    {toolId === "logs" ? (
+                      <DiagnosticsBundleButton controller={diagnosticsBundle} />
+                    ) : null}
                   </header>
                 )}
 
                 <RenderErrorBoundary
                   fallback={() => (
-                    <ToolContentCrashFallback
-                      title={tool.title}
-                    />
+                    <ToolContentCrashFallback title={tool.title} />
                   )}
                 >
                   <Suspense
@@ -235,54 +288,125 @@ export function ToolPanel({
                   >
                     {toolId === "agentLauncher" ? (
                       <AgentLauncherToolContent
-                        activeTab={activeTab}
+                        activeTab={binding.activeTab}
                         desktopNotifications={settings?.desktopNotifications}
-                        focusedPane={focusedPane}
+                        focusedPane={binding.focusedPane}
                         resolvedTheme={resolvedTheme}
                         terminalAppearance={
                           terminalAppearance ??
                           settings?.terminal ??
                           defaultTerminalAppearance
                         }
+                        terminalPanes={terminalPanes}
                         terminalTabs={terminalTabs}
                       />
                     ) : null}
                     {toolId === "system" ? (
-                      <ServerInfoToolContent selectedMachine={activeMachine} />
+                      <ServerInfoToolContent
+                        active={selected}
+                        selectedMachine={binding.machine}
+                      />
+                    ) : null}
+                    {toolId === "context" && workspaceContext ? (
+                      <ContextInspectorToolContent
+                        active={selected}
+                        context={workspaceContext}
+                        isNavigationAvailable={(navigationId) =>
+                          Boolean(onFocusTab && navigationId.startsWith("tab:"))
+                        }
+                        onNavigate={(navigationId) => {
+                          if (navigationId.startsWith("tab:")) {
+                            onFocusTab?.(navigationId.slice(4));
+                          }
+                        }}
+                      />
+                    ) : null}
+                    {toolId === "context" && workspaceContext?.focusedPaneId ? (
+                      <ContextInspectorTerminalArtifacts
+                        onActionRequest={onArtifactActionRequest}
+                        paneId={workspaceContext.focusedPaneId}
+                      />
+                    ) : null}
+                    {toolId === "sftp" ? (
+                      <SftpToolContent
+                        active={selected}
+                        followedLocalPath={
+                          binding.focusedPane?.mode === "local" &&
+                          binding.focusedPane.machineId === binding.machine?.id
+                            ? (binding.focusedPane.currentCwd ??
+                              binding.focusedPane.cwd)
+                            : undefined
+                        }
+                        followedRemotePath={
+                          binding.focusedPane?.mode === "ssh" &&
+                          binding.focusedPane.remoteHostId === binding.machine?.id
+                            ? (binding.focusedPane.currentCwd ??
+                              binding.focusedPane.cwd)
+                            : binding.focusedPane?.mode === "container" &&
+                                binding.focusedPane.machineId ===
+                                  binding.machine?.id
+                              ? binding.focusedPane.currentCwd
+                              : undefined
+                        }
+                        interfaceDensity={interfaceDensity}
+                        onOpenWorkspaceFileTab={onOpenWorkspaceFileTab}
+                        selectedMachine={binding.machine}
+                        sftpRevealRequest={sftpRevealRequest}
+                        transferViewScope={sftpSidebarTransferViewScope({
+                          hostId: binding.machine?.id,
+                          tabId: binding.activeTab?.id,
+                        })}
+                        workspaceFileDirtyState={workspaceFileDirtyState}
+                        workspaceFileTabs={terminalTabs?.filter(
+                          isWorkspaceFileTab,
+                        )}
+                      />
                     ) : null}
                     {toolId === "ports" ? (
                       <PortForwardToolContent
-                        focusedPane={focusedPane}
-                        selectedMachine={activeMachine}
+                        active={selected}
+                        focusedPane={binding.focusedPane}
+                        selectedMachine={binding.machine}
                       />
                     ) : null}
                     {toolId === "tmux" ? (
                       <TmuxToolContent
-                        activeMachine={activeMachine}
-                        activeTab={activeTab}
-                        focusedPane={focusedPane}
+                        active={selected}
+                        activeMachine={
+                          binding.source === "selectedMachine"
+                            ? undefined
+                            : binding.machine
+                        }
+                        activeTab={binding.activeTab}
+                        focusedPane={binding.focusedPane}
                         onClosePane={onClosePane}
                         onFocusTab={onFocusTab}
                         onOpenTmuxTerminal={onOpenTmuxTerminal}
+                        selectedMachine={
+                          binding.source === "selectedMachine"
+                            ? binding.machine
+                            : undefined
+                        }
                         terminalPanes={terminalPanes}
                         terminalTabs={terminalTabs}
                       />
                     ) : null}
                     {toolId === "snippets" ? (
                       <SnippetToolContent
-                        activeTabId={activeTab?.id}
+                        activeTabId={binding.activeTab?.id}
                         configRevision={snippetConfigRevision}
-                        focusedPane={focusedPane}
+                        focusedPane={binding.focusedPane}
                       />
                     ) : null}
                     {toolId === "logs" ? (
                       <LogToolContent
+                        active={selected}
                         diagnosticsBundleNotice={
                           <DiagnosticsBundleNotice
                             controller={diagnosticsBundle}
                           />
                         }
-                        focusedPane={focusedPane}
+                        focusedPane={binding.focusedPane}
                       />
                     ) : null}
                   </Suspense>
@@ -312,6 +436,7 @@ export function ToolPanel({
               aria-pressed={selected}
               className={cn(
                 railButtonDensityClassName,
+                tool.id === "logs" && "mt-auto",
                 selected &&
                   "bg-[var(--surface-selected)] text-sky-700 shadow-sm shadow-sky-500/10 dark:text-sky-100",
               )}
@@ -334,7 +459,7 @@ function ToolContentLoadingFallback({ title }: { title?: string }) {
   return (
     <div
       aria-live="polite"
-      className="kerminal-solid-surface rounded-2xl border px-4 py-3 text-sm text-zinc-600 dark:text-zinc-300"
+      className="kerminal-solid-surface rounded-lg border px-4 py-3 text-sm text-zinc-600 dark:text-zinc-300"
     >
       <div className="font-medium text-zinc-800 dark:text-zinc-100">
         正在加载{title ?? "工具"}
@@ -348,7 +473,7 @@ function ToolContentLoadingFallback({ title }: { title?: string }) {
 
 function ToolContentCrashFallback({ title }: { title?: string }) {
   return (
-    <div className="rounded-2xl border border-rose-300/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-100">
+    <div className="rounded-lg border border-rose-300/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-100">
       <div className="font-medium">{title ?? "工具"}加载失败</div>
       <div className="mt-1 text-xs opacity-80">
         收起右栏后重新打开可重试，详细信息已写入应用日志。

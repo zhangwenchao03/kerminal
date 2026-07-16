@@ -29,7 +29,7 @@ describe("configRefreshCoordinator", () => {
     expect(refreshHosts).toHaveBeenCalledTimes(1);
     expect(coordinator.revision("hosts")).toBe(1);
     expect(onNotice).toHaveBeenCalledWith(
-      expect.objectContaining({ text: 'cfg: +1 host "staging-api"' }),
+      expect.objectContaining({ text: "已添加主机“staging-api”。" }),
     );
   });
 
@@ -89,14 +89,14 @@ describe("configRefreshCoordinator", () => {
       1,
       expect.objectContaining({
         level: "error",
-        text: "cfg: invalid TOML, kept last-known-good",
+        text: "配置文件有误，Kerminal 已继续使用上次有效设置。",
       }),
     );
     expect(onNotice).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         level: "warning",
-        text: "cfg: watcher offline, auto-refresh paused",
+        text: "暂时无法自动检查配置变化，请稍后重试。",
       }),
     );
   });
@@ -118,7 +118,7 @@ describe("configRefreshCoordinator", () => {
     expect(onNotice).toHaveBeenCalledWith(
       expect.objectContaining({
         level: "warning",
-        text: "cfg: refresh failed, kept last-known-good",
+        text: "配置更新失败，Kerminal 已继续使用上次有效数据。",
       }),
     );
   });
@@ -159,7 +159,7 @@ describe("configRefreshCoordinator", () => {
 
     expect(onNotice).toHaveBeenCalledTimes(1);
     expect(onNotice).toHaveBeenCalledWith(
-      expect.objectContaining({ text: 'cfg: +1 snippet "new"' }),
+      expect.objectContaining({ text: "已添加命令片段“new”。" }),
     );
   });
 });

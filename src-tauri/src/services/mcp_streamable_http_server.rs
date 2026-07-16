@@ -6,10 +6,9 @@ use std::{
     future::Future,
     io::ErrorKind,
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::{Arc, Mutex},
 };
 
-use axum::{extract::OriginalUri, http::request::Parts, Router};
+use axum::{extract::OriginalUri, http::request::Parts};
 use rmcp::{
     model::{
         object, CallToolRequestParams, CallToolResult, GetPromptRequestParams, GetPromptResult,
@@ -18,23 +17,19 @@ use rmcp::{
         ServerCapabilities, ServerInfo as RmcpServerInfo, Tool, ToolAnnotations,
     },
     service::{MaybeSendFuture, RequestContext, RoleServer},
-    transport::streamable_http_server::{
-        session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
-    },
     ErrorData as McpError, ServerHandler,
 };
 use serde_json::{json, Value};
 use tauri::Manager;
-use tokio_util::sync::CancellationToken;
 
 use crate::{
     error::{AppError, AppResult},
-    models::{
-        agent_session::AgentSessionId,
-        mcp_server::{McpHttpServerStartRequest, McpHttpServerStatus, ToolDefinition},
-    },
-    services::mcp_tool_executor_service::{
-        McpToolExecutionContext, McpToolExecutionOutput, McpToolExecutionStatus,
+    models::{agent_session::AgentSessionId, mcp_server::ToolDefinition},
+    services::{
+        mcp_tool_catalog_service::ToolId,
+        mcp_tool_executor_service::{
+            McpToolExecutionContext, McpToolExecutionOutput, McpToolExecutionStatus,
+        },
     },
     state::AppState,
 };
@@ -84,123 +79,9 @@ pub mod rules {
     }
 }
 
-/// Streamable HTTP MCP Server 生命周期服务。
-#[derive(Debug, Clone, Default)]
-pub struct McpStreamableHttpServerService {
-    inner: Arc<Mutex<Option<McpStreamableHttpServerHandle>>>,
-}
-
-#[derive(Debug, Clone)]
-struct McpStreamableHttpServerHandle {
-    endpoint: String,
-    bind_address: String,
-    port: u16,
-    cancellation: CancellationToken,
-}
-
-#[derive(Clone)]
-struct KerminalMcpServer<R: tauri::Runtime> {
-    app: tauri::AppHandle<R>,
-}
-
-impl McpStreamableHttpServerService {
-    /// 创建 Streamable HTTP MCP Server 生命周期服务。
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// 返回当前运行状态。
-    pub fn status(&self) -> AppResult<McpHttpServerStatus> {
-        let guard = self
-            .inner
-            .lock()
-            .map_err(|_| AppError::StateLockPoisoned("mcp_http_server"))?;
-        Ok(status_from_handle(guard.as_ref()))
-    }
-
-    /// 启动本地 Streamable HTTP MCP Server。
-    pub async fn start<R: tauri::Runtime>(
-        &self,
-        app: tauri::AppHandle<R>,
-        request: Option<McpHttpServerStartRequest>,
-    ) -> AppResult<McpHttpServerStatus> {
-        {
-            let guard = self
-                .inner
-                .lock()
-                .map_err(|_| AppError::StateLockPoisoned("mcp_http_server"))?;
-            if let Some(handle) = guard.as_ref() {
-                return Ok(status_from_handle(Some(handle)));
-            }
-        }
-
-        let request = request.unwrap_or_default();
-        let bind_address = normalize_bind_address(request.host.as_deref())?;
-        let port = requested_start_port(request.port);
-        let (listener, local_addr) = bind_loopback_port_from(port).await?;
-        let endpoint = format!(
-            "http://{}:{}{}",
-            DEFAULT_BIND_ADDRESS,
-            local_addr.port(),
-            MCP_PATH
-        );
-        let cancellation = CancellationToken::new();
-
-        let config = StreamableHttpServerConfig::default()
-            .with_stateful_mode(true)
-            .with_allowed_hosts(["localhost", DEFAULT_BIND_ADDRESS, "::1"])
-            .with_cancellation_token(cancellation.child_token());
-        let session_manager = Arc::new(LocalSessionManager::default());
-        let service: StreamableHttpService<KerminalMcpServer<R>, LocalSessionManager> =
-            StreamableHttpService::new(
-                {
-                    let app = app.clone();
-                    move || Ok(KerminalMcpServer { app: app.clone() })
-                },
-                session_manager,
-                config,
-            );
-        let router = Router::new()
-            .nest_service(MCP_AGENT_PATH, service.clone())
-            .nest_service(MCP_PATH, service);
-        let shutdown = cancellation.child_token();
-
-        tauri::async_runtime::spawn(async move {
-            if let Err(error) = axum::serve(listener, router)
-                .with_graceful_shutdown(shutdown.cancelled_owned())
-                .await
-            {
-                eprintln!("Kerminal Streamable HTTP MCP server stopped with error: {error}");
-            }
-        });
-
-        let handle = McpStreamableHttpServerHandle {
-            endpoint,
-            bind_address,
-            port: local_addr.port(),
-            cancellation,
-        };
-        let status = status_from_handle(Some(&handle));
-        let mut guard = self
-            .inner
-            .lock()
-            .map_err(|_| AppError::StateLockPoisoned("mcp_http_server"))?;
-        *guard = Some(handle);
-        Ok(status)
-    }
-
-    /// 停止本地 Streamable HTTP MCP Server。
-    pub fn stop(&self) -> AppResult<McpHttpServerStatus> {
-        let mut guard = self
-            .inner
-            .lock()
-            .map_err(|_| AppError::StateLockPoisoned("mcp_http_server"))?;
-        if let Some(handle) = guard.take() {
-            handle.cancellation.cancel();
-        }
-        Ok(status_from_handle(None))
-    }
-}
+mod lifecycle;
+use lifecycle::KerminalMcpServer;
+pub use lifecycle::McpStreamableHttpServerService;
 
 #[allow(clippy::manual_async_fn)]
 impl<R: tauri::Runtime> ServerHandler for KerminalMcpServer<R> {
@@ -319,8 +200,11 @@ impl<R: tauri::Runtime> KerminalMcpServer<R> {
             ));
         }
 
+        let typed_tool_id = ToolId::parse(&tool_id).ok_or_else(|| {
+            McpError::invalid_params(format!("工具未登记到 typed catalog: {tool_id}"), None)
+        })?;
         let arguments = scoped_tool_arguments(
-            &tool_id,
+            typed_tool_id,
             request.arguments.unwrap_or_default(),
             scoped_agent_session_id_from_request_context(&context).as_deref(),
         )?;
@@ -374,7 +258,7 @@ fn externally_callable_tool_definitions(state: &AppState) -> Result<Vec<ToolDefi
 }
 
 fn scoped_tool_arguments(
-    tool_id: &str,
+    tool_id: ToolId,
     mut arguments: serde_json::Map<String, Value>,
     scoped_agent_session_id: Option<&str>,
 ) -> Result<serde_json::Map<String, Value>, McpError> {
@@ -404,14 +288,14 @@ fn scoped_tool_arguments(
     Ok(arguments)
 }
 
-fn accepts_scoped_agent_session_id(tool_id: &str) -> bool {
+fn accepts_scoped_agent_session_id(tool_id: ToolId) -> bool {
     matches!(
         tool_id,
-        "kerminal.agent.current_session"
-            | "kerminal.agent.target_context"
-            | "terminal.resolve_agent_target"
-            | "terminal.snapshot"
-            | "terminal.write"
+        ToolId::KerminalAgentCurrentSession
+            | ToolId::KerminalAgentTargetContext
+            | ToolId::TerminalResolveAgentTarget
+            | ToolId::TerminalSnapshot
+            | ToolId::TerminalWrite
     )
 }
 
@@ -462,32 +346,13 @@ fn execution_context<'a>(state: &'a AppState) -> McpToolExecutionContext<'a> {
         sftp: state.sftp(),
         docker_hosts: state.docker_hosts(),
         external_launch_intake: state.external_launch_intake(),
+        external_launch_tasks: state.external_launch_tasks(),
         tmux: state.tmux(),
         port_forwards: state.port_forwards(),
-        local_network_proxy: state.local_network_proxy(),
         ssh_commands: state.ssh_commands(),
         ssh_runtime: state.ssh_runtime(),
         paths: state.paths(),
         storage: state.storage(),
-    }
-}
-
-fn status_from_handle(handle: Option<&McpStreamableHttpServerHandle>) -> McpHttpServerStatus {
-    match handle {
-        Some(handle) => McpHttpServerStatus {
-            running: true,
-            endpoint: Some(handle.endpoint.clone()),
-            bind_address: handle.bind_address.clone(),
-            port: Some(handle.port),
-            local_only: true,
-        },
-        None => McpHttpServerStatus {
-            running: false,
-            endpoint: None,
-            bind_address: DEFAULT_BIND_ADDRESS.to_owned(),
-            port: None,
-            local_only: true,
-        },
     }
 }
 

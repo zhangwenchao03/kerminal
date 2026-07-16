@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   KERMINAL_TEXT_EDIT_COMMAND_EVENT,
   type KerminalTextEditCommandEventDetail,
-} from "../../../../src/app/appKeybindingPolicy";
+} from "../../../../src/contracts/textEditCommands";
 import { RemoteWorkspaceEditor } from "../../../../src/features/sftp/RemoteWorkspaceEditor";
 
 const sftpApiMocks = vi.hoisted(() => ({
@@ -23,6 +23,39 @@ const desktopClipboardApiMocks = vi.hoisted(() => ({
   readDesktopClipboardText: vi.fn(),
   writeDesktopClipboardText: vi.fn(),
 }));
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
+function sftpReadResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    binary: false,
+    bytesRead: 10,
+    content: "port=8080\n",
+    encoding: "utf-8",
+    hostId: "prod-api",
+    lineEnding: "lf",
+    maxBytes: 1024,
+    path: "/etc/app.conf",
+    readonly: false,
+    revision: {
+      contentSha256: "sha-a",
+      modified: "Jun 18 16:30",
+      permissions: "-rw-r--r--",
+      permissionsMode: 420,
+      size: 10,
+    },
+    truncated: false,
+    ...overrides,
+  };
+}
 
 const monacoEditorMocks = vi.hoisted(() => {
   const actionRuns = new Map<string, ReturnType<typeof vi.fn>>();
@@ -217,25 +250,7 @@ describe("RemoteWorkspaceEditor", () => {
         };
       },
     );
-    sftpApiMocks.readSftpTextFile.mockResolvedValue({
-      binary: false,
-      bytesRead: 10,
-      content: "port=8080\n",
-      encoding: "utf-8",
-      hostId: "prod-api",
-      lineEnding: "lf",
-      maxBytes: 1024,
-      path: "/etc/app.conf",
-      readonly: false,
-      revision: {
-        contentSha256: "sha-a",
-        modified: "Jun 18 16:30",
-        permissions: "-rw-r--r--",
-        permissionsMode: 420,
-        size: 10,
-      },
-      truncated: false,
-    });
+    sftpApiMocks.readSftpTextFile.mockResolvedValue(sftpReadResponse());
     sftpApiMocks.writeSftpTextFile.mockResolvedValue({
       bytesWritten: 10,
       encoding: "utf-8",
@@ -270,7 +285,7 @@ describe("RemoteWorkspaceEditor", () => {
       binary: false,
       bytesRead: 18,
       containerId: "container-api",
-      content: "{\"name\":\"api\"}\n",
+      content: '{"name":"api"}\n',
       encoding: "utf-8",
       hostId: "prod-api",
       lineEnding: "lf",
@@ -315,9 +330,7 @@ describe("RemoteWorkspaceEditor", () => {
     render(<RemoteWorkspaceEditor hostId="prod-api" rootPath="/" />);
 
     await user.click(await screen.findByRole("treeitem", { name: "etc" }));
-    await user.click(
-      await screen.findByRole("treeitem", { name: "app.conf" }),
-    );
+    await user.click(await screen.findByRole("treeitem", { name: "app.conf" }));
     await screen.findByLabelText("Monaco 编辑器");
 
     expect(monacoEditorMocks.editor.addCommand).toHaveBeenCalledWith(
@@ -344,6 +357,145 @@ describe("RemoteWorkspaceEditor", () => {
     );
   });
 
+  it("blocks known non-text files before starting a remote read", async () => {
+    render(
+      <RemoteWorkspaceEditor
+        hostId="prod-api"
+        openCommand={{ nonce: 1, path: "/contracts/agreement.PDF" }}
+        rootPath="/"
+      />,
+    );
+
+    expect(await screen.findByText("此文件不支持文本预览")).toBeVisible();
+    expect(
+      screen.getByText(
+        "PDF 或电子书文件不能在文本编辑器中预览，可下载后使用对应阅读应用查看。",
+      ),
+    ).toBeVisible();
+    expect(sftpApiMocks.readSftpTextFile).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Monaco 编辑器")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重新加载" })).toBeDisabled();
+  });
+
+  it("shows unknown binary content as unsupported and releases the stale editor", async () => {
+    sftpApiMocks.readSftpTextFile
+      .mockResolvedValueOnce(sftpReadResponse())
+      .mockResolvedValueOnce(
+        sftpReadResponse({
+          binary: true,
+          bytesRead: 4096,
+          content: "",
+          encoding: "binary",
+          path: "/srv/blob.unknown",
+          readonly: true,
+          revision: {
+            contentSha256: "sha-binary",
+            size: 4096,
+          },
+        }),
+      );
+    const view = render(
+      <RemoteWorkspaceEditor
+        hostId="prod-api"
+        openCommand={{ nonce: 1, path: "/etc/app.conf" }}
+        rootPath="/"
+      />,
+    );
+    await screen.findByLabelText("Monaco 编辑器");
+
+    view.rerender(
+      <RemoteWorkspaceEditor
+        hostId="prod-api"
+        openCommand={{ nonce: 2, path: "/srv/blob.unknown" }}
+        rootPath="/"
+      />,
+    );
+
+    expect(await screen.findByText("此文件不支持文本预览")).toBeVisible();
+    expect(
+      screen.getByText(
+        "已检测到二进制内容，Kerminal 未将文件加载到文本编辑器。",
+      ),
+    ).toBeVisible();
+    expect(screen.queryByLabelText("Monaco 编辑器")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查找" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "替换" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重新加载" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+
+    const detail: KerminalTextEditCommandEventDetail = {
+      command: "selectAll",
+      handled: false,
+    };
+    window.dispatchEvent(
+      new CustomEvent<KerminalTextEditCommandEventDetail>(
+        KERMINAL_TEXT_EDIT_COMMAND_EVENT,
+        { detail },
+      ),
+    );
+    expect(detail.handled).toBe(false);
+  });
+
+  it("ignores a stale reload after the same path is closed and reopened", async () => {
+    const user = userEvent.setup();
+    const staleReload = createDeferred<ReturnType<typeof sftpReadResponse>>();
+    sftpApiMocks.readSftpTextFile
+      .mockResolvedValueOnce(sftpReadResponse())
+      .mockImplementationOnce(() => staleReload.promise)
+      .mockResolvedValueOnce(
+        sftpReadResponse({
+          content: "port=9090\n",
+          revision: {
+            contentSha256: "sha-new",
+            modified: "Jun 18 16:35",
+            permissions: "-rw-r--r--",
+            permissionsMode: 420,
+            size: 10,
+          },
+        }),
+      );
+    const view = render(
+      <RemoteWorkspaceEditor
+        hostId="prod-api"
+        openCommand={{ nonce: 1, path: "/etc/app.conf" }}
+        rootPath="/"
+      />,
+    );
+    await screen.findByDisplayValue("port=8080");
+
+    await user.click(screen.getByRole("button", { name: "重新加载" }));
+    expect(await screen.findByText("正在打开 app.conf...")).toBeVisible();
+    await user.click(screen.getByLabelText("关闭 app.conf"));
+    await waitFor(() =>
+      expect(screen.queryByLabelText("关闭 app.conf")).not.toBeInTheDocument(),
+    );
+
+    view.rerender(
+      <RemoteWorkspaceEditor
+        hostId="prod-api"
+        openCommand={{ nonce: 2, path: "/etc/app.conf" }}
+        rootPath="/"
+      />,
+    );
+    expect(await screen.findByDisplayValue("port=9090")).toBeVisible();
+
+    staleReload.resolve(
+      sftpReadResponse({
+        content: "port=7000\n",
+        revision: {
+          contentSha256: "sha-stale",
+          modified: "Jun 18 16:33",
+          permissions: "-rw-r--r--",
+          permissionsMode: 420,
+          size: 10,
+        },
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("Monaco 编辑器")).toHaveValue("port=9090\n"),
+    );
+  });
+
   it("loads a remote tree, opens a text file, and saves edits", async () => {
     const user = userEvent.setup();
     const onStatus = vi.fn();
@@ -357,9 +509,7 @@ describe("RemoteWorkspaceEditor", () => {
     );
 
     await user.click(await screen.findByRole("treeitem", { name: "etc" }));
-    await user.click(
-      await screen.findByRole("treeitem", { name: "app.conf" }),
-    );
+    await user.click(await screen.findByRole("treeitem", { name: "app.conf" }));
     const editor = await screen.findByLabelText("Monaco 编辑器");
     await user.clear(editor);
     await user.type(editor, "port=9090\n");
@@ -394,9 +544,7 @@ describe("RemoteWorkspaceEditor", () => {
     render(<RemoteWorkspaceEditor hostId="prod-api" rootPath="/" />);
 
     await user.click(await screen.findByRole("treeitem", { name: "etc" }));
-    await user.click(
-      await screen.findByRole("treeitem", { name: "app.conf" }),
-    );
+    await user.click(await screen.findByRole("treeitem", { name: "app.conf" }));
     const editor = await screen.findByLabelText("Monaco 编辑器");
 
     fireEvent.contextMenu(editor, { clientX: 88, clientY: 96 });
@@ -418,9 +566,7 @@ describe("RemoteWorkspaceEditor", () => {
     render(<RemoteWorkspaceEditor hostId="prod-api" rootPath="/" />);
 
     await user.click(await screen.findByRole("treeitem", { name: "etc" }));
-    await user.click(
-      await screen.findByRole("treeitem", { name: "app.conf" }),
-    );
+    await user.click(await screen.findByRole("treeitem", { name: "app.conf" }));
     await screen.findByLabelText("Monaco 编辑器");
 
     const detail: KerminalTextEditCommandEventDetail = {
@@ -449,9 +595,7 @@ describe("RemoteWorkspaceEditor", () => {
     render(<RemoteWorkspaceEditor hostId="prod-api" rootPath="/" />);
 
     await user.click(await screen.findByRole("treeitem", { name: "etc" }));
-    await user.click(
-      await screen.findByRole("treeitem", { name: "app.conf" }),
-    );
+    await user.click(await screen.findByRole("treeitem", { name: "app.conf" }));
     await screen.findByLabelText("Monaco 编辑器");
 
     const detail: KerminalTextEditCommandEventDetail = {
@@ -501,7 +645,7 @@ describe("RemoteWorkspaceEditor", () => {
     );
     const editor = await screen.findByLabelText("Monaco 编辑器");
     await user.clear(editor);
-    fireEvent.change(editor, { target: { value: "{\"name\":\"api2\"}\n" } });
+    fireEvent.change(editor, { target: { value: '{"name":"api2"}\n' } });
     await user.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() =>
@@ -509,7 +653,7 @@ describe("RemoteWorkspaceEditor", () => {
         containerFilesApiMocks.writeDockerContainerTextFile,
       ).toHaveBeenCalledWith({
         containerId: "container-api",
-        content: "{\"name\":\"api2\"}\n",
+        content: '{"name":"api2"}\n',
         create: false,
         encoding: "utf-8",
         expectedRevision: {
@@ -531,7 +675,9 @@ describe("RemoteWorkspaceEditor", () => {
   it("offers overwrite save after a remote revision conflict", async () => {
     const user = userEvent.setup();
     sftpApiMocks.writeSftpTextFile
-      .mockRejectedValueOnce(new Error("远端文件已变更，请重新加载或选择覆盖后再保存"))
+      .mockRejectedValueOnce(
+        new Error("远端文件已变更，请重新加载或选择覆盖后再保存"),
+      )
       .mockResolvedValueOnce({
         bytesWritten: 10,
         encoding: "utf-8",
@@ -550,15 +696,15 @@ describe("RemoteWorkspaceEditor", () => {
     render(<RemoteWorkspaceEditor hostId="prod-api" rootPath="/" />);
 
     await user.click(await screen.findByRole("treeitem", { name: "etc" }));
-    await user.click(
-      await screen.findByRole("treeitem", { name: "app.conf" }),
-    );
+    await user.click(await screen.findByRole("treeitem", { name: "app.conf" }));
     const editor = await screen.findByLabelText("Monaco 编辑器");
     await user.clear(editor);
     await user.type(editor, "port=9090\n");
     await user.click(screen.getByRole("button", { name: "保存" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("远端文件已变更");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "远端文件已变更",
+    );
     await user.click(screen.getByRole("button", { name: "覆盖保存" }));
 
     await waitFor(() =>
@@ -577,9 +723,7 @@ describe("RemoteWorkspaceEditor", () => {
     render(<RemoteWorkspaceEditor hostId="prod-api" rootPath="/" />);
 
     await user.click(await screen.findByRole("treeitem", { name: "etc" }));
-    await user.click(
-      await screen.findByRole("treeitem", { name: "app.conf" }),
-    );
+    await user.click(await screen.findByRole("treeitem", { name: "app.conf" }));
     const editor = await screen.findByLabelText("Monaco 编辑器");
     await user.clear(editor);
     await user.type(editor, "port=9090\n");

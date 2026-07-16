@@ -298,7 +298,7 @@ describe("useSftpDialogActions", () => {
 
   it("keeps failed operations open and clears busy state", async () => {
     sftpApiMocks.createSftpDirectory.mockRejectedValueOnce(
-      new Error("permission denied"),
+      new Error("permission denied password=dialog-secret"),
     );
     const { result, setters } = renderDialogHook({
       dialogAction: { kind: "mkdir", path: "/srv/logs" },
@@ -310,8 +310,20 @@ describe("useSftpDialogActions", () => {
 
     expect(setters.setDialogStatus).toHaveBeenLastCalledWith({
       kind: "error",
-      message: "操作失败：/srv/logs：permission denied",
+      message: "文件操作未完成。请检查名称、权限或目标位置后重试。",
     });
+    expect(setters.setOperationStatus).toHaveBeenLastCalledWith({
+      kind: "error",
+      message: expect.stringContaining("/srv/logs"),
+    });
+    const status =
+      setters.setOperationStatus.mock.calls[
+        setters.setOperationStatus.mock.calls.length - 1
+      ]?.[0] as
+      | SftpStatus
+      | null;
+    expect(status?.message).toContain('password="[已隐藏]"');
+    expect(status?.message).not.toContain("dialog-secret");
     expect(setters.setDialogAction).not.toHaveBeenCalledWith(null);
     expect(setters.loadDirectory).not.toHaveBeenCalled();
     expect(setters.setDialogBusy).toHaveBeenLastCalledWith(false);
@@ -326,7 +338,9 @@ describe("useSftpDialogActions", () => {
     });
     sftpApiMocks.deleteSftpPath
       .mockResolvedValueOnce(true)
-      .mockRejectedValueOnce(new Error("permission denied"));
+      .mockRejectedValueOnce(
+        new Error("permission denied token=dialog-batch-secret"),
+      );
     const { result, setters } = renderDialogHook({
       dialogAction: { entries: [file, directory], kind: "delete" },
     });
@@ -349,8 +363,21 @@ describe("useSftpDialogActions", () => {
     expect(setters.setDialogAction).not.toHaveBeenCalledWith(null);
     expect(setters.setDialogStatus).toHaveBeenLastCalledWith({
       kind: "error",
-      message: "已完成 1 项，1 项失败：/srv/logs：permission denied",
+      message:
+        "已完成 1 项，1 项未处理。请检查权限或目标位置后重试。",
     });
+    expect(setters.setOperationStatus).toHaveBeenLastCalledWith({
+      kind: "error",
+      message: expect.stringContaining("/srv/logs"),
+    });
+    const status =
+      setters.setOperationStatus.mock.calls[
+        setters.setOperationStatus.mock.calls.length - 1
+      ]?.[0] as
+      | SftpStatus
+      | null;
+    expect(status?.message).toContain('token="[已隐藏]"');
+    expect(status?.message).not.toContain("dialog-batch-secret");
   });
 });
 

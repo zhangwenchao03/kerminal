@@ -1,0 +1,117 @@
+schema_version = 1
+command = "cargo"
+aliases = []
+platforms = ["windows", "macos", "linux"]
+shells = ["bash", "zsh", "fish", "power_shell", "cmd"]
+description = "Rust package manager and build tool"
+tested_version = "1.88"
+owner = "kerminal"
+updated_at = "2026-07-10"
+
+[source]
+name = "Cargo Book"
+url = "https://doc.rust-lang.org/cargo/commands/index.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "add"
+description = "Add dependencies to Cargo.toml"
+
+[[subcommands]]
+name = "build"
+description = "Compile the current package"
+
+[[subcommands]]
+name = "check"
+description = "Check the current package without producing binaries"
+
+[[subcommands]]
+name = "clean"
+description = "Remove generated artifacts"
+
+[[subcommands]]
+name = "clippy"
+description = "Run Clippy checks"
+
+[[subcommands]]
+name = "doc"
+description = "Build package documentation"
+
+[[subcommands]]
+name = "fmt"
+description = "Format Rust source"
+
+[[subcommands]]
+name = "install"
+description = "Install a Rust binary"
+
+[[subcommands]]
+name = "run"
+description = "Run a package binary"
+
+[[subcommands]]
+name = "test"
+description = "Run package tests"
+
+[[subcommands]]
+name = "update"
+description = "Update dependencies in Cargo.lock"
+
+[[options]]
+name = "--all-features"
+description = "Activate all available features"
+
+[[options]]
+name = "--bin"
+description = "Select a binary target"
+
+[options.argument]
+kind = "string"
+placeholder = "NAME"
+
+[[options]]
+name = "--features"
+description = "Activate a comma-separated feature list"
+
+[options.argument]
+kind = "string"
+placeholder = "FEATURES"
+
+[[options]]
+name = "--locked"
+description = "Require Cargo.lock to remain unchanged"
+
+[[options]]
+name = "--manifest-path"
+description = "Use the specified Cargo.toml"
+
+[options.argument]
+kind = "file"
+placeholder = "PATH"
+
+[[options]]
+name = "--package"
+description = "Select a package"
+
+[options.argument]
+kind = "string"
+placeholder = "SPEC"
+
+[[options]]
+name = "--release"
+description = "Build artifacts with the release profile"
+
+[[options]]
+name = "--target"
+description = "Build for the target triple"
+
+[options.argument]
+kind = "string"
+placeholder = "TRIPLE"
+
+[[options]]
+name = "--workspace"
+description = "Operate on all workspace members"

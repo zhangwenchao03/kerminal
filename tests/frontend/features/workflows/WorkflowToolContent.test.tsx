@@ -19,10 +19,14 @@ vi.mock("../../../../src/lib/workflowApi", () => ({
     workflowApiMocks.createWorkflow(...args),
   deleteWorkflow: (...args: unknown[]) =>
     workflowApiMocks.deleteWorkflow(...args),
-  listWorkflows: (...args: unknown[]) => workflowApiMocks.listWorkflows(...args),
+  listWorkflows: (...args: unknown[]) =>
+    workflowApiMocks.listWorkflows(...args),
 }));
 
-vi.mock("../../../../src/features/terminal/terminalSessionRegistry", () => terminalSessionRegistryMocks);
+vi.mock(
+  "../../../../src/features/terminal/terminalSessionRegistry",
+  () => terminalSessionRegistryMocks,
+);
 
 describe("WorkflowToolContent", () => {
   beforeEach(() => {
@@ -58,14 +62,20 @@ describe("WorkflowToolContent", () => {
 
   it("announces workflow load failures", async () => {
     workflowApiMocks.listWorkflows.mockRejectedValueOnce(
-      new Error("workflow list failed"),
+      new Error("workflow_list_failed token=workflow-internal-secret"),
     );
 
     render(<WorkflowToolContent />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "workflow list failed",
+      "加载工作流失败",
     );
+    expect(screen.getByText("请稍后重试。")).toBeVisible();
+    const technicalDetail = screen.getByText(/workflow_list_failed/);
+    expect(technicalDetail.closest("details")).not.toHaveAttribute("open");
+    expect(
+      screen.queryByText(/workflow-internal-secret/),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("暂无命令工作流。")).not.toBeInTheDocument();
   });
 
@@ -97,7 +107,7 @@ describe("WorkflowToolContent", () => {
 
     expect(screen.getByLabelText("工作流标题")).toHaveValue("外部刷新草稿");
     expect(
-      await screen.findByText("cfg: workflows reloaded; draft kept"),
+      await screen.findByText("工作流已更新，当前编辑内容已保留。"),
     ).toBeInTheDocument();
   });
 });

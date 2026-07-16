@@ -1,6 +1,6 @@
 import { writeTerminal } from "../../../lib/terminalApi";
 import type { TmuxSessionSummary, TmuxTargetRef } from "../../../lib/tmuxApi";
-import { getTerminalPaneSession } from "../../terminal/terminalSessionRegistry";
+import { getTerminalPaneSession } from "../../terminal/session/index";
 import { tmuxShortcutData } from "./tmuxQuickrefModel";
 
 export function buildTmuxAttachCommand(

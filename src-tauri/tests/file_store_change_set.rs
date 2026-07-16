@@ -56,7 +56,7 @@ fn lock_file_rejects_second_holder_until_released() {
     assert!(matches!(second_error, FileStoreError::Locked(_)));
 
     drop(first_lock);
-    store.acquire_lock().expect("lock released");
+    let _released_lock = store.acquire_lock().expect("lock released");
 }
 
 #[test]
@@ -119,6 +119,34 @@ fn change_set_applies_multiple_files_and_persists_manifest() {
 }
 
 #[test]
+fn legacy_change_set_keeps_last_write_wins_for_duplicate_paths() {
+    let temp = tempdir().expect("temp dir");
+    let store = FileStore::new(temp.path());
+    fs::write(temp.path().join("settings.toml"), "old").expect("seed target");
+
+    store
+        .apply_change_set(
+            "duplicate-path",
+            "2026-06-24T10:01:00+08:00",
+            vec![
+                FileStoreChange::new("settings.toml", b"first".to_vec()).expect("first change"),
+                FileStoreChange::new("settings.toml", b"last".to_vec()).expect("last change"),
+            ],
+        )
+        .expect("apply duplicate legacy changes");
+
+    assert_eq!(
+        fs::read_to_string(temp.path().join("settings.toml")).expect("target"),
+        "last"
+    );
+    assert_eq!(
+        fs::read_to_string(temp.path().join("backups/duplicate-path/settings.toml"))
+            .expect("backup"),
+        "old"
+    );
+}
+
+#[test]
 fn restoring_change_set_deletes_file_that_had_no_backup() {
     let temp = tempdir().expect("temp dir");
     let store = FileStore::new(temp.path());
@@ -152,7 +180,32 @@ fn restoring_change_set_deletes_file_that_had_no_backup() {
 }
 
 #[test]
-fn restore_change_set_recovers_partial_write_from_backup() {
+fn restore_change_set_preserves_external_edit_and_reports_conflict() {
+    let temp = tempdir().expect("temp dir");
+    let store = FileStore::new(temp.path());
+    fs::write(temp.path().join("settings.toml"), "old").expect("seed target");
+    store
+        .apply_change_set(
+            "external-conflict",
+            "2026-06-24T10:00:00+08:00",
+            vec![FileStoreChange::new("settings.toml", b"new".to_vec()).expect("change")],
+        )
+        .expect("apply change");
+    fs::write(temp.path().join("settings.toml"), "external").expect("external edit");
+
+    let error = store
+        .restore_change_set("external-conflict", "2026-06-24T10:00:01+08:00")
+        .expect_err("restore must preserve external edit");
+
+    assert!(matches!(error, FileStoreError::TransactionConflict(_)));
+    assert_eq!(
+        fs::read_to_string(temp.path().join("settings.toml")).expect("target"),
+        "external"
+    );
+}
+
+#[test]
+fn failed_change_set_rolls_back_partial_write_and_manual_restore_is_idempotent() {
     let temp = tempdir().expect("temp dir");
     let store = FileStore::new(temp.path());
     fs::write(
@@ -180,22 +233,22 @@ fn restore_change_set_recovers_partial_write_from_backup() {
             ],
         )
         .expect_err("second write should fail");
-    let failed_manifest = store.read_storage_manifest().expect("failed manifest");
-    let failed_change_set = failed_manifest
+    let recovered_manifest = store.read_storage_manifest().expect("recovered manifest");
+    let recovered_change_set = recovered_manifest
         .change_set("change-3")
-        .expect("failed change");
+        .expect("recovered change");
 
     assert!(matches!(apply_error, FileStoreError::Io(_)));
-    assert_eq!(failed_change_set.status, ChangeSetStatus::Failed);
-    assert!(failed_manifest.repair_state.is_some());
+    assert_eq!(recovered_change_set.status, ChangeSetStatus::Repaired);
+    assert!(recovered_manifest.repair_state.is_none());
     assert_eq!(
-        fs::read_to_string(temp.path().join("settings.toml")).expect("partial settings"),
-        "schema_version = 1\nname = \"new\"\n"
+        fs::read_to_string(temp.path().join("settings.toml")).expect("restored settings"),
+        "schema_version = 1\nname = \"old\"\n"
     );
 
     let repaired_manifest = store
         .restore_change_set("change-3", "2026-06-24T10:02:01+08:00")
-        .expect("restore change set");
+        .expect("idempotent restore change set");
     let repaired_change_set = repaired_manifest
         .change_set("change-3")
         .expect("repaired change");

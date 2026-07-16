@@ -2,6 +2,7 @@ import { Plus, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { ModalShell } from "../../components/ui/modal-shell";
+import { UserFacingNotice } from "../../components/ui/user-facing-notice";
 import { cn } from "../../lib/cn";
 import { writeDesktopClipboardText } from "../../lib/desktopClipboardApi";
 import {
@@ -10,28 +11,25 @@ import {
   listPortForwards,
   startPortForward,
   stopPortForward,
-  type PortForwardProxyProtocol,
   type PortForwardSummary,
 } from "../../lib/portForwardApi";
-import { writePaneCommand } from "../terminal/terminalSessionRegistry";
 import {
-  clearHostNetworkAssistAutoInjection,
-  getHostNetworkAssistAutoInjection,
-  isHostNetworkAssistAutoInjectionEnabled,
-  setHostNetworkAssistAutoInjection,
-  type HostNetworkAssistAutoInjection,
-} from "../terminal/terminalProxyAutoInjection";
-import type { Machine, TerminalPane } from "../workspace/types";
+  buildUserFacingError,
+  type UserFacingMessage,
+} from "../../lib/userFacingMessage";
+import { writePaneCommand } from "../terminal/session/index";
 import {
-  BindAddressControl,
-  CommandPreview,
-  EndpointHeader,
+  clearRemoteSocksAutoInjection,
+  getRemoteSocksAutoInjection,
+  isRemoteSocksAutoInjectionEnabled,
+  setRemoteSocksAutoInjection,
+  type RemoteSocksAutoInjection,
+} from "../terminal/runtime/proxy/index";
+import type { Machine, TerminalPane } from "../workspace/contracts/index";
+import {
   ExposureWarning,
   FieldInput,
-  PreviewValue,
-  ProtocolToggle,
   RouteEditor,
-  SocksModeToggle,
 } from "./port-forward/PortForwardRouteEditor";
 import { PortForwardSessionList } from "./port-forward/PortForwardSessionList";
 import {
@@ -40,98 +38,89 @@ import {
   type PortForwardSessionMetadata,
 } from "./port-forward/portForwardCreateRequestModel";
 import {
-  buildNetworkAssistCommand,
-  buildProxyUrl,
+  buildRemoteSocksCommand,
   flowForScenario,
+  isLegacyHttpNetworkAssist,
   opensshForScenario,
   portForwardScenarioOptions,
   proxyUrlForSession,
   resolveBindHost,
-  sessionProxyProtocol,
-  type BindAddressMode,
-  type PortForwardScenario,
-  type SocksAdvancedMode,
 } from "./port-forward/portForwardWorkbenchModel";
+import { usePortForwardForm } from "./port-forward/usePortForwardForm";
+import { usePortForwardLifecycle } from "./port-forward/usePortForwardLifecycle";
+import { PortForwardEndpointFields } from "./port-forward/PortForwardEndpointFields";
 
 interface PortForwardToolContentProps {
+  active?: boolean;
   focusedPane?: TerminalPane;
   selectedMachine?: Machine;
 }
 
 export function PortForwardToolContent({
+  active = true,
   focusedPane,
   selectedMachine,
 }: PortForwardToolContentProps) {
   const selectedHostId =
     selectedMachine?.kind === "ssh" ? selectedMachine.id : undefined;
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserFacingMessage | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [dialogHostId, setDialogHostId] = useState<string | null>(null);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [name, setName] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
-  const [scenario, setScenario] =
-    useState<PortForwardScenario>("hostService");
   const [sessions, setSessions] = useState<PortForwardSummary[]>([]);
-  const [sessionsLoaded, setSessionsLoaded] = useState(false);
+  const [sessionsLoadedHostId, setSessionsLoadedHostId] = useState<
+    string | null
+  >(null);
   const [sessionMetadata, setSessionMetadata] = useState<
     Record<string, PortForwardSessionMetadata>
   >({});
   const [autoInjection, setAutoInjection] = useState<
-    HostNetworkAssistAutoInjection | undefined
+    RemoteSocksAutoInjection | undefined
   >(() =>
     selectedHostId
-      ? getHostNetworkAssistAutoInjection(selectedHostId)
+      ? getRemoteSocksAutoInjection(selectedHostId)
       : undefined,
   );
 
-  const [localBindMode, setLocalBindMode] =
-    useState<BindAddressMode>("loopback");
-  const [localCustomBindHost, setLocalCustomBindHost] = useState("127.0.0.1");
-  const [remoteBindMode, setRemoteBindMode] =
-    useState<BindAddressMode>("loopback");
-  const [remoteCustomBindHost, setRemoteCustomBindHost] =
-    useState("127.0.0.1");
-
-  const [localListenPort, setLocalListenPort] = useState("15432");
-  const [hostTargetHost, setHostTargetHost] = useState("127.0.0.1");
-  const [hostTargetPort, setHostTargetPort] = useState("5432");
-  const [remoteListenPort, setRemoteListenPort] = useState("18080");
-  const [localTargetHost, setLocalTargetHost] = useState("127.0.0.1");
-  const [localTargetPort, setLocalTargetPort] = useState("3000");
-  const [localProxyHost, setLocalProxyHost] = useState("127.0.0.1");
-  const [localProxyPort, setLocalProxyPort] = useState("18081");
-  const [localSocksPort, setLocalSocksPort] = useState("1080");
-  const [proxyProtocol, setProxyProtocol] =
-    useState<PortForwardProxyProtocol>("http");
-  const [socksMode, setSocksMode] =
-    useState<SocksAdvancedMode>("localDynamic");
+  const form = usePortForwardForm(selectedHostId);
+  const {
+    applySession,
+    hostTargetHost,
+    hostTargetPort,
+    localBindMode,
+    localCustomBindHost,
+    localListenPort,
+    localSocksPort,
+    localTargetHost,
+    localTargetPort,
+    name,
+    remoteBindMode,
+    remoteCustomBindHost,
+    remoteListenPort,
+    scenario,
+    setName,
+    setScenario,
+    socksMode,
+  } = form;
+  const {
+    beginListRequest,
+    captureBinding,
+    invalidateListRequests,
+    isCurrentBinding,
+    isCurrentListRequest,
+    runAction,
+  } = usePortForwardLifecycle({
+    active,
+    hostId: selectedHostId,
+    onError: setError,
+    onLoadingChange: setLoading,
+    onNotice: setNotice,
+  });
 
   const localBindHost = resolveBindHost(localBindMode, localCustomBindHost);
   const remoteBindHost = resolveBindHost(remoteBindMode, remoteCustomBindHost);
-  const remoteProxyPortNumber = Number(remoteListenPort);
-  const networkProxyUrlPreview =
-    Number.isInteger(remoteProxyPortNumber) && remoteProxyPortNumber > 0
-      ? buildProxyUrl({
-          bindHost: remoteBindHost,
-          port: remoteProxyPortNumber,
-          protocol: proxyProtocol,
-        })
-      : "端口有效后生成代理地址";
-  const networkCommandPreview =
-    typeof networkProxyUrlPreview === "string" &&
-    networkProxyUrlPreview.startsWith("http")
-      ? buildNetworkAssistCommand({
-          protocol: proxyProtocol,
-          proxyUrl: networkProxyUrlPreview,
-        })
-      : networkProxyUrlPreview.startsWith("socks5h://")
-        ? buildNetworkAssistCommand({
-            protocol: proxyProtocol,
-            proxyUrl: networkProxyUrlPreview,
-          })
-        : "";
-
   const enrichedSessions = useMemo(
     () =>
       sessions.map((session) =>
@@ -163,12 +152,12 @@ export function PortForwardToolContent({
       setAutoInjection(undefined);
       return;
     }
-    const current = getHostNetworkAssistAutoInjection(selectedHostId);
+    const current = getRemoteSocksAutoInjection(selectedHostId);
     if (!current) {
       setAutoInjection(undefined);
       return;
     }
-    if (!sessionsLoaded) {
+    if (sessionsLoadedHostId !== selectedHostId) {
       setAutoInjection(current);
       return;
     }
@@ -180,12 +169,24 @@ export function PortForwardToolContent({
           proxyUrlForSession(session),
       )
     ) {
-      clearHostNetworkAssistAutoInjection(selectedHostId, current.sessionId);
+      clearRemoteSocksAutoInjection(selectedHostId, current.sessionId);
       setAutoInjection(undefined);
       return;
     }
     setAutoInjection(current);
-  }, [selectedHostId, selectedHostSessions, sessionsLoaded]);
+  }, [selectedHostId, selectedHostSessions, sessionsLoadedHostId]);
+
+  useEffect(() => {
+    setCreateDialogOpen(false);
+    setDialogHostId(null);
+    setEditingSessionId(null);
+    setError(null);
+    setNotice(null);
+    setLoading(false);
+    setSessions([]);
+    setSessionsLoadedHostId(null);
+    setSessionMetadata({});
+  }, [selectedHostId]);
 
   const canInjectIntoFocusedPane =
     selectedMachine?.kind === "ssh" &&
@@ -197,29 +198,41 @@ export function PortForwardToolContent({
     : "聚焦终端不是当前 SSH 主机。";
 
   const refresh = useCallback(async () => {
-    if (!selectedHostId) {
-      setSessions([]);
-      setSessionsLoaded(false);
+    const token = beginListRequest();
+    if (!token || !selectedHostId) {
       setLoading(false);
-      setError(null);
       return;
     }
     setLoading(true);
-    setSessionsLoaded(false);
+    setSessionsLoadedHostId(null);
     setError(null);
     try {
-      setSessions(await listPortForwards());
-      setSessionsLoaded(true);
+      const nextSessions = await listPortForwards();
+      if (isCurrentListRequest(token)) {
+        setSessions(nextSessions);
+        setSessionsLoadedHostId(selectedHostId);
+      }
     } catch (nextError) {
-      setError(errorMessage(nextError));
+      if (isCurrentListRequest(token)) {
+        setError(
+          buildUserFacingError(nextError, {
+            detail: "当前主机的端口转发列表暂时不可用。",
+            recoveryAction: "请确认 SSH 连接可用后重试。",
+            title: "无法读取隧道",
+          }),
+        );
+      }
     } finally {
-      setLoading(false);
+      if (isCurrentListRequest(token)) {
+        setLoading(false);
+      }
     }
-  }, [selectedHostId]);
+  }, [beginListRequest, isCurrentListRequest, selectedHostId]);
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    return invalidateListRequests;
+  }, [invalidateListRequests, refresh]);
 
   if (!selectedMachine || selectedMachine.kind !== "ssh") {
     const message =
@@ -227,43 +240,43 @@ export function PortForwardToolContent({
         ? "当前容器目标不支持直接创建 SSH 隧道。请切回宿主 SSH 主机管理端口转发。"
         : "请选择 SSH 主机。";
     return (
-      <section className="kerminal-solid-surface rounded-2xl border p-4 text-sm text-zinc-500 dark:text-zinc-400">
+      <section className="kerminal-solid-surface rounded-[var(--radius-card)] border p-4 text-sm text-zinc-500 dark:text-zinc-400">
         <h3 className="font-medium text-zinc-950 dark:text-zinc-100">
           SSH 隧道
         </h3>
-        <p className="mt-2 leading-6">
-          {message}
-        </p>
+        <p className="mt-2 leading-6">{message}</p>
       </section>
     );
   }
 
   const remoteExposureActive =
     scenario === "localService" ||
-    scenario === "hostNetwork" ||
     (scenario === "socksAdvanced" && socksMode === "remoteDynamic");
   const localExposureActive =
     scenario === "hostService" ||
     (scenario === "socksAdvanced" && socksMode === "localDynamic");
 
   async function handleCreate() {
-    if (!selectedMachine || selectedMachine.kind !== "ssh") {
+    if (
+      !selectedMachine ||
+      selectedMachine.kind !== "ssh" ||
+      !selectedHostId ||
+      !dialogHostId ||
+      dialogHostId !== selectedHostId
+    ) {
       return;
     }
 
     const request = buildPortForwardCreateRequest({
-      hostId: selectedMachine.id,
+      hostId: dialogHostId,
       hostTargetHost,
       hostTargetPort,
       localBindHost,
       localListenPort,
-      localProxyHost,
-      localProxyPort,
       localSocksPort,
       localTargetHost,
       localTargetPort,
       name,
-      proxyProtocol,
       remoteBindHost,
       remoteBindMode,
       remoteListenPort,
@@ -271,179 +284,215 @@ export function PortForwardToolContent({
       socksMode,
     });
     if ("error" in request) {
-      setError(request.error);
+      setError(portForwardUserError(request.error));
       return;
     }
 
-    setLoading(true);
-    setError(null);
-    setNotice(null);
-    try {
-      if (editingSessionId) {
-        await deletePortForward(editingSessionId);
-      }
-      const created = await createPortForward(request.value);
-      const metadata = metadataFromCreateRequest(request.value);
-      setSessionMetadata((current) => ({
-        ...current,
-        [created.id]: metadata,
-      }));
-      const listed = await listPortForwards();
-      setSessions(
-        listed.some((session) => session.id === created.id)
-          ? listed
-          : [...listed, created],
-      );
-      setNotice(
-        editingSessionId
-          ? "隧道配置已更新。"
-          : scenario === "hostNetwork"
-          ? "网络助手已创建，可复制或注入。"
-          : "隧道会话已创建。",
-      );
-      setEditingSessionId(null);
-      setCreateDialogOpen(false);
-    } catch (nextError) {
-      setError(errorMessage(nextError));
-    } finally {
-      setLoading(false);
-    }
+    await runAction(
+      async (token) => {
+        if (editingSessionId) {
+          await deletePortForward(editingSessionId);
+        }
+        const created = await createPortForward(request.value);
+        const listed = await listPortForwards();
+        if (!isCurrentBinding(token)) {
+          return;
+        }
+        setSessionMetadata((current) => ({
+          ...current,
+          [created.id]: metadataFromCreateRequest(request.value),
+        }));
+        setSessions(
+          listed.some((session) => session.id === created.id)
+            ? listed
+            : [...listed, created],
+        );
+        setNotice(
+          editingSessionId ? "隧道配置已更新。" : "隧道会话已创建。",
+        );
+        setEditingSessionId(null);
+        setDialogHostId(null);
+        setCreateDialogOpen(false);
+      },
+      (nextError) =>
+        buildUserFacingError(nextError, {
+          detail: "隧道配置尚未创建。",
+          recoveryAction: "请检查端口、绑定地址和 SSH 连接后重试。",
+          title: "无法创建隧道",
+        }),
+    );
   }
 
   function handleOpenCreateDialog() {
+    if (!active || !selectedHostId) {
+      return;
+    }
     setError(null);
     setNotice(null);
     setEditingSessionId(null);
+    setDialogHostId(selectedHostId);
     setCreateDialogOpen(true);
   }
 
   function handleCloseCreateDialog() {
     setCreateDialogOpen(false);
+    setDialogHostId(null);
     setEditingSessionId(null);
     setError(null);
   }
-
   function handleEdit(session: PortForwardSummary) {
-    applySessionToForm(session);
+    if (!active || !selectedHostId || session.hostId !== selectedHostId) {
+      return;
+    }
+    if (isLegacyHttpNetworkAssist(session)) {
+      setError(
+        portForwardUserError(
+          "旧版 HTTP 网络助手已移除。",
+          "请删除该记录并创建远端 SOCKS。",
+        ),
+      );
+      return;
+    }
+    applySession(session);
     setError(null);
     setNotice(null);
     setEditingSessionId(session.id);
+    setDialogHostId(selectedHostId);
     setCreateDialogOpen(true);
   }
-
   async function handleStart(forwardId: string) {
-    setLoading(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const started = await startPortForward(forwardId);
-      setSessions(await listPortForwards());
-      setNotice(`${started.name} 已启动。`);
-    } catch (nextError) {
-      setError(errorMessage(nextError));
-    } finally {
-      setLoading(false);
-    }
+    await runAction(
+      async (token) => {
+        const started = await startPortForward(forwardId);
+        if (!isCurrentBinding(token)) return;
+        const nextSessions = await listPortForwards();
+        if (!isCurrentBinding(token)) return;
+        setSessions(nextSessions);
+        setNotice(`${started.name} 已启动。`);
+      },
+      (nextError) =>
+        buildUserFacingError(nextError, {
+          detail: "保存的隧道仍然保留。",
+          recoveryAction: "请确认 SSH 连接可用后重试。",
+          title: "无法启动隧道",
+        }),
+    );
   }
-
   async function handleStop(forwardId: string) {
-    setLoading(true);
-    setError(null);
-    setNotice(null);
-    try {
-      await stopPortForward(forwardId);
-      if (
-        selectedHostId &&
-        autoInjection?.sessionId === forwardId &&
-        clearHostNetworkAssistAutoInjection(selectedHostId, forwardId)
-      ) {
-        setAutoInjection(undefined);
-      }
-      setSessions(await listPortForwards());
-      setNotice("隧道已停止，配置仍保留。");
-    } catch (nextError) {
-      setError(errorMessage(nextError));
-    } finally {
-      setLoading(false);
-    }
+    await runAction(
+      async (token) => {
+        await stopPortForward(forwardId);
+        const cleared = clearCurrentAutoInjection(forwardId);
+        if (!isCurrentBinding(token)) return;
+        if (cleared) setAutoInjection(undefined);
+        const nextSessions = await listPortForwards();
+        if (!isCurrentBinding(token)) return;
+        setSessions(nextSessions);
+        setNotice("隧道已停止，配置仍保留。");
+      },
+      (nextError) =>
+        buildUserFacingError(nextError, {
+          detail: "隧道可能仍在运行。",
+          recoveryAction: "请刷新状态，确认 SSH 连接可用后重试。",
+          title: "无法停止隧道",
+        }),
+    );
   }
-
   async function handleDelete(forwardId: string) {
-    setLoading(true);
-    setError(null);
-    setNotice(null);
-    try {
-      await deletePortForward(forwardId);
-      setSessionMetadata((current) => {
-        const next = { ...current };
-        delete next[forwardId];
-        return next;
-      });
-      if (
-        selectedHostId &&
-        autoInjection?.sessionId === forwardId &&
-        clearHostNetworkAssistAutoInjection(selectedHostId, forwardId)
-      ) {
-        setAutoInjection(undefined);
-      }
-      setSessions(await listPortForwards());
-      setNotice("隧道配置已删除。");
-    } catch (nextError) {
-      setError(errorMessage(nextError));
-    } finally {
-      setLoading(false);
-    }
+    await runAction(
+      async (token) => {
+        await deletePortForward(forwardId);
+        const cleared = clearCurrentAutoInjection(forwardId);
+        if (!isCurrentBinding(token)) return;
+        setSessionMetadata((current) => {
+          const next = { ...current };
+          delete next[forwardId];
+          return next;
+        });
+        if (cleared) setAutoInjection(undefined);
+        const nextSessions = await listPortForwards();
+        if (!isCurrentBinding(token)) return;
+        setSessions(nextSessions);
+        setNotice("隧道配置已删除。");
+      },
+      (nextError) =>
+        buildUserFacingError(nextError, {
+          detail: "隧道配置仍然保留。",
+          recoveryAction: "请刷新状态后重试删除。",
+          title: "无法删除隧道",
+        }),
+    );
+  }
+  function clearCurrentAutoInjection(forwardId: string) {
+    return Boolean(
+      selectedHostId &&
+      autoInjection?.sessionId === forwardId &&
+      clearRemoteSocksAutoInjection(selectedHostId, forwardId),
+    );
   }
 
   async function handleCopy(value: string) {
+    const token = captureBinding();
+    if (!token) return;
     const result = await writeDesktopClipboardText(value);
+    if (!isCurrentBinding(token)) return;
     if (!result.ok) {
-      setError("当前环境不支持复制到剪贴板。");
+      setError(
+        portForwardUserError(
+          "当前环境不支持复制到剪贴板。",
+          "请手动选择并复制地址。",
+        ),
+      );
       return;
     }
     setNotice("已复制地址。");
   }
 
   async function handleInject(session: PortForwardSummary) {
+    const token = captureBinding();
+    if (!token) return;
     if (!focusedPane || !canInjectIntoFocusedPane) {
-      setError(injectDisabledReason);
+      setError(portForwardUserError(injectDisabledReason));
       return;
     }
     if (session.status !== "running") {
-      setError("该隧道已退出，请重新启动后再注入代理环境。");
+      setError(
+        portForwardUserError("该隧道已退出。", "请重新启动后再注入代理环境。"),
+      );
       return;
     }
     const proxyUrl = proxyUrlForSession(session);
     if (!proxyUrl) {
-      setError("该会话没有可注入的代理地址。");
+      setError(portForwardUserError("该会话没有可注入的代理地址。"));
       return;
     }
     await writePaneCommand({
-      command: buildNetworkAssistCommand({
-        protocol: sessionProxyProtocol(session),
-        proxyUrl,
-      }),
+      command: buildRemoteSocksCommand({ proxyUrl }),
       paneId: focusedPane.id,
       source: "tool",
     });
-    setNotice("已注入当前终端，不会写入远端 profile。");
+    if (isCurrentBinding(token)) {
+      setNotice("已注入当前终端，不会写入远端 profile。");
+    }
   }
 
   function handleToggleAutoUse(session: PortForwardSummary) {
-    if (!selectedHostId) {
+    if (!active || !selectedHostId) {
       return;
     }
     if (session.status !== "running") {
-      setError("该隧道已退出，请重新启动后再用于新终端。");
+      setError(
+        portForwardUserError("该隧道已退出。", "请重新启动后再用于新终端。"),
+      );
       return;
     }
     if (
-      isHostNetworkAssistAutoInjectionEnabled({
+      isRemoteSocksAutoInjectionEnabled({
         hostId: selectedHostId,
         sessionId: session.id,
       })
     ) {
-      clearHostNetworkAssistAutoInjection(selectedHostId, session.id);
+      clearRemoteSocksAutoInjection(selectedHostId, session.id);
       setAutoInjection(undefined);
       setNotice("已关闭后续新终端自动使用。");
       return;
@@ -451,27 +500,26 @@ export function PortForwardToolContent({
 
     const proxyUrl = proxyUrlForSession(session);
     if (!proxyUrl) {
-      setError("该会话没有可用于新终端的代理地址。");
+      setError(portForwardUserError("该会话没有可用于新终端的代理地址。"));
       return;
     }
-    const injection: HostNetworkAssistAutoInjection = {
-      command: buildNetworkAssistCommand({
-        protocol: sessionProxyProtocol(session),
-        proxyUrl,
-      }),
+    const injection: RemoteSocksAutoInjection = {
+      command: buildRemoteSocksCommand({ proxyUrl }),
       hostId: selectedHostId,
-      protocol: sessionProxyProtocol(session),
+      protocol: "socks5",
       proxyUrl,
       sessionId: session.id,
     };
-    setHostNetworkAssistAutoInjection(injection);
+    setRemoteSocksAutoInjection(injection);
     setAutoInjection(injection);
-    setNotice("同主机后续新 SSH 终端会自动执行代理 export，不会写入远端 profile。");
+    setNotice(
+      "同主机后续新 SSH 终端会自动执行代理 export，不会写入远端 profile。",
+    );
   }
 
   return (
     <section className="space-y-3">
-      <div className="kerminal-solid-surface rounded-2xl border p-4">
+      <div className="kerminal-solid-surface rounded-[var(--radius-card)] border p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="font-medium text-zinc-950 dark:text-zinc-100">
@@ -495,9 +543,7 @@ export function PortForwardToolContent({
         </div>
 
         {error ? (
-          <div className="mt-3 rounded-xl border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100">
-            {error}
-          </div>
+          <UserFacingNotice className="mt-3" compact message={error} />
         ) : null}
         {notice ? (
           <div className="mt-3 rounded-xl border border-emerald-300/20 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-100">
@@ -561,21 +607,17 @@ export function PortForwardToolContent({
               onClick={() => void handleCreate()}
             >
               <Plus className="h-4 w-4" />
-              {editingSessionId
-                ? "保存修改"
-                : scenario === "hostNetwork"
-                  ? "开启网络助手"
-                  : "开启隧道"}
+              {editingSessionId ? "保存修改" : "开启隧道"}
             </Button>
           </>
         }
         onClose={handleCloseCreateDialog}
-        open={createDialogOpen}
+        open={createDialogOpen && dialogHostId === selectedHostId}
         size="large"
         title={editingSessionId ? "编辑 SSH 隧道" : "添加 SSH 隧道"}
       >
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             {portForwardScenarioOptions.map((option) => (
               <button
                 aria-pressed={scenario === option.id}
@@ -606,16 +648,14 @@ export function PortForwardToolContent({
             id="forward-name"
             label="名称"
             onChange={setName}
-            placeholder={
-              scenario === "hostNetwork" ? "例如 主机网络助手" : "例如 PostgreSQL 隧道"
-            }
+            placeholder="例如 PostgreSQL 隧道"
             value={name}
           />
 
           <RouteEditor
             flow={flowForScenario(scenario, socksMode)}
-            host={renderHostEndpointFields()}
-            local={renderLocalEndpointFields()}
+            host={<PortForwardEndpointFields form={form} remoteBindHost={remoteBindHost} side="host" />}
+            local={<PortForwardEndpointFields form={form} remoteBindHost={remoteBindHost} side="local" />}
             openssh={opensshForScenario(scenario, socksMode)}
           />
 
@@ -634,286 +674,21 @@ export function PortForwardToolContent({
             />
           ) : null}
 
-          {error ? (
-            <div className="rounded-xl border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-100">
-              {error}
-            </div>
-          ) : null}
+          {error ? <UserFacingNotice compact message={error} /> : null}
         </div>
       </ModalShell>
     </section>
   );
 
-  function renderHostEndpointFields() {
-    if (scenario === "hostService") {
-      return (
-        <>
-          <EndpointHeader
-            detail="SSH 连接另一侧"
-            title="主机目标服务"
-          />
-          <FieldInput
-            id="forward-host-target-host"
-            label="主机目标地址"
-            onChange={setHostTargetHost}
-            value={hostTargetHost}
-          />
-          <FieldInput
-            id="forward-host-target-port"
-            label="主机目标端口"
-            onChange={setHostTargetPort}
-            value={hostTargetPort}
-          />
-        </>
-      );
-    }
-
-    if (scenario === "localService") {
-      return (
-        <>
-          <EndpointHeader detail="远端入口" title="主机监听" />
-          <BindAddressControl
-            customHost={remoteCustomBindHost}
-            idPrefix="forward-remote-service-bind"
-            label="主机监听范围"
-            mode={remoteBindMode}
-            onCustomHostChange={setRemoteCustomBindHost}
-            onModeChange={setRemoteBindMode}
-          />
-          <FieldInput
-            id="forward-remote-service-port"
-            label="主机监听端口"
-            onChange={setRemoteListenPort}
-            value={remoteListenPort}
-          />
-        </>
-      );
-    }
-
-    if (scenario === "hostNetwork") {
-      return (
-        <>
-          <EndpointHeader detail="远端代理" title="主机代理" />
-          <ProtocolToggle
-            onChange={setProxyProtocol}
-            value={proxyProtocol}
-          />
-          <BindAddressControl
-            customHost={remoteCustomBindHost}
-            idPrefix="forward-network-bind"
-            label="主机监听范围"
-            mode={remoteBindMode}
-            onCustomHostChange={setRemoteCustomBindHost}
-            onModeChange={setRemoteBindMode}
-          />
-          <FieldInput
-            id="forward-network-port"
-            label="主机代理端口"
-            onChange={setRemoteListenPort}
-            value={remoteListenPort}
-          />
-          <PreviewValue label="远端代理 URL" value={networkProxyUrlPreview} />
-        </>
-      );
-    }
-
-    if (socksMode === "remoteDynamic") {
-      return (
-        <>
-          <EndpointHeader detail="远端 SOCKS 代理" title="主机 SOCKS" />
-          <BindAddressControl
-            customHost={remoteCustomBindHost}
-            idPrefix="forward-remote-socks-bind"
-            label="主机监听范围"
-            mode={remoteBindMode}
-            onCustomHostChange={setRemoteCustomBindHost}
-            onModeChange={setRemoteBindMode}
-          />
-          <FieldInput
-            id="forward-remote-socks-port"
-            label="主机 SOCKS 端口"
-            onChange={setRemoteListenPort}
-            value={remoteListenPort}
-          />
-        </>
-      );
-    }
-
-    return (
-      <>
-        <EndpointHeader detail="经由 SSH 主机" title="主机网络出口" />
-        <PreviewValue label="出口" value="主机网络" />
-      </>
-    );
-  }
-
-  function applySessionToForm(session: PortForwardSummary) {
-    setName(session.name);
-    if (session.kind === "local") {
-      setScenario("hostService");
-      setLocalCustomBindHost(session.localBindHost ?? session.bindHost);
-      setLocalBindMode(bindModeFromHost(session.localBindHost ?? session.bindHost));
-      setLocalListenPort(String(session.sourcePort));
-      setHostTargetHost(session.targetHost ?? session.remoteEndpoint?.host ?? "127.0.0.1");
-      setHostTargetPort(String(session.targetPort ?? session.remoteEndpoint?.port ?? 80));
-      return;
-    }
-    if (session.kind === "dynamic") {
-      setScenario("socksAdvanced");
-      setSocksMode("localDynamic");
-      setLocalCustomBindHost(session.localBindHost ?? session.bindHost);
-      setLocalBindMode(bindModeFromHost(session.localBindHost ?? session.bindHost));
-      setLocalSocksPort(String(session.sourcePort));
-      return;
-    }
-    if (session.purpose === "hostNetworkAssist") {
-      if (session.proxyProtocol === "socks5" && !session.targetHost) {
-        setScenario("socksAdvanced");
-        setSocksMode("remoteDynamic");
-      } else {
-        setScenario("hostNetwork");
-      }
-      setProxyProtocol(session.proxyProtocol ?? "http");
-      setRemoteCustomBindHost(session.remoteBindHost ?? session.bindHost);
-      setRemoteBindMode(bindModeFromHost(session.remoteBindHost ?? session.bindHost));
-      setRemoteListenPort(String(session.sourcePort));
-      setLocalProxyHost(session.localEndpoint?.host ?? session.targetHost ?? "127.0.0.1");
-      setLocalProxyPort(String(session.localEndpoint?.port ?? session.targetPort ?? 18081));
-      return;
-    }
-    setScenario("localService");
-    setRemoteCustomBindHost(session.remoteBindHost ?? session.bindHost);
-    setRemoteBindMode(bindModeFromHost(session.remoteBindHost ?? session.bindHost));
-    setRemoteListenPort(String(session.sourcePort));
-    setLocalTargetHost(session.targetHost ?? session.localEndpoint?.host ?? "127.0.0.1");
-    setLocalTargetPort(String(session.targetPort ?? session.localEndpoint?.port ?? 3000));
-  }
-
-  function renderLocalEndpointFields() {
-    if (scenario === "hostService") {
-      return (
-        <>
-          <EndpointHeader detail="本机入口" title="本机监听" />
-          <BindAddressControl
-            customHost={localCustomBindHost}
-            idPrefix="forward-local-bind"
-            label="本机监听范围"
-            mode={localBindMode}
-            onCustomHostChange={setLocalCustomBindHost}
-            onModeChange={setLocalBindMode}
-          />
-          <FieldInput
-            id="forward-local-listen-port"
-            label="本机监听端口"
-            onChange={setLocalListenPort}
-            value={localListenPort}
-          />
-        </>
-      );
-    }
-
-    if (scenario === "localService") {
-      return (
-        <>
-          <EndpointHeader detail="本机真实服务" title="本机服务" />
-          <FieldInput
-            id="forward-local-target-host"
-            label="本机目标地址"
-            onChange={setLocalTargetHost}
-            value={localTargetHost}
-          />
-          <FieldInput
-            id="forward-local-target-port"
-            label="本机目标端口"
-            onChange={setLocalTargetPort}
-            value={localTargetPort}
-          />
-        </>
-      );
-    }
-
-    if (scenario === "hostNetwork") {
-      return (
-        <>
-          <EndpointHeader detail="不写 profile" title="本机网络出口" />
-          {proxyProtocol === "http" ? (
-            <>
-              <FieldInput
-                id="forward-local-proxy-host"
-                label="本机受管代理地址"
-                onChange={setLocalProxyHost}
-                value={localProxyHost}
-              />
-              <FieldInput
-                id="forward-local-proxy-port"
-                label="本机受管代理端口"
-                onChange={setLocalProxyPort}
-                value={localProxyPort}
-              />
-            </>
-          ) : (
-            <PreviewValue
-              label="本机侧"
-              value="OpenSSH remote dynamic SOCKS"
-            />
-          )}
-          {networkCommandPreview ? (
-            <CommandPreview value={networkCommandPreview} />
-          ) : null}
-        </>
-      );
-    }
-
-    return (
-      <>
-        <EndpointHeader detail="本机应用配置 SOCKS" title="本机 SOCKS" />
-        <SocksModeToggle onChange={setSocksMode} value={socksMode} />
-        {socksMode === "localDynamic" ? (
-          <>
-            <BindAddressControl
-              customHost={localCustomBindHost}
-              idPrefix="forward-local-socks-bind"
-              label="本机监听范围"
-              mode={localBindMode}
-              onCustomHostChange={setLocalCustomBindHost}
-              onModeChange={setLocalBindMode}
-            />
-            <FieldInput
-              id="forward-local-socks-port"
-              label="本机 SOCKS 端口"
-              onChange={setLocalSocksPort}
-              value={localSocksPort}
-            />
-          </>
-        ) : (
-          <PreviewValue
-            label="远端注入"
-            value={buildNetworkAssistCommand({
-              protocol: "socks5",
-              proxyUrl: buildProxyUrl({
-                bindHost: remoteBindHost,
-                port: Number(remoteListenPort) || 0,
-                protocol: "socks5",
-              }),
-            }).split("\n")[0]}
-          />
-        )}
-      </>
-    );
-  }
 }
 
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function bindModeFromHost(host: string | undefined): BindAddressMode {
-  const value = host?.trim();
-  if (!value || value === "127.0.0.1" || value === "localhost" || value === "::1") {
-    return "loopback";
-  }
-  if (value === "0.0.0.0" || value === "::") {
-    return "all";
-  }
-  return "custom";
+function portForwardUserError(
+  title: string,
+  recoveryAction?: string,
+): UserFacingMessage {
+  return {
+    recoveryAction,
+    severity: "error",
+    title,
+  };
 }

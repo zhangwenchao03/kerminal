@@ -9,6 +9,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use zeroize::Zeroize;
 
 use crate::error::{AppError, AppResult};
 
@@ -57,13 +58,12 @@ impl ExternalLaunchSourceTool {
 pub enum ExternalLaunchEntrypoint {
     DirectArgv,
     SingleInstance,
-    ShimIpc,
     Protocol,
     SessionFile,
 }
 
 /// Parser input before it is normalized into an SSH launch request.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ExternalLaunchParseInput {
     pub source_tool: Option<ExternalLaunchSourceTool>,
     pub entrypoint: ExternalLaunchEntrypoint,
@@ -128,7 +128,7 @@ impl ExternalLaunchParseInput {
 }
 
 /// External launch source metadata.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExternalLaunchSource {
     pub tool: ExternalLaunchSourceTool,
@@ -184,13 +184,10 @@ impl fmt::Debug for ExternalSshTarget {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("ExternalSshTarget")
-            .field("host", &self.host)
+            .field("host", &"<redacted>")
             .field("port", &self.port)
-            .field(
-                "username",
-                &self.username.as_deref().map(redacted_external_username),
-            )
-            .field("route", &self.route)
+            .field("username_present", &self.username.is_some())
+            .field("route_hops", &self.route.len())
             .finish()
     }
 }
@@ -216,7 +213,7 @@ pub struct ExternalSshAuth {
 
 impl ExternalSshAuth {
     pub fn has_password(&self) -> bool {
-        self.password.is_some()
+        self.password.is_some() || self.password_file.is_some()
     }
 
     pub fn has_secret_material(&self) -> bool {
@@ -345,8 +342,42 @@ impl ExternalSecretMaterial {
         &self.value
     }
 
-    pub(crate) fn into_value(self) -> String {
-        self.value
+    pub(crate) fn into_value(mut self) -> String {
+        std::mem::take(&mut self.value)
+    }
+}
+
+impl fmt::Debug for ExternalLaunchSource {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ExternalLaunchSource")
+            .field("tool", &self.tool)
+            .field("entrypoint", &self.entrypoint)
+            .field("persona_present", &self.persona.is_some())
+            .field("argv0_present", &self.argv0.is_some())
+            .finish()
+    }
+}
+
+impl fmt::Debug for ExternalLaunchParseInput {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ExternalLaunchParseInput")
+            .field("source_tool", &self.source_tool)
+            .field("entrypoint", &self.entrypoint)
+            .field("arg_count", &self.argv.len())
+            .field("persona_present", &self.persona.is_some())
+            .field(
+                "parent_command_line_present",
+                &self.parent_command_line.is_some(),
+            )
+            .finish()
+    }
+}
+
+impl Drop for ExternalSecretMaterial {
+    fn drop(&mut self) {
+        self.value.zeroize();
     }
 }
 
@@ -375,7 +406,10 @@ impl fmt::Debug for ExternalSessionSecretRef {
         formatter
             .debug_struct("ExternalSessionSecretRef")
             .field("ref_id", &"<redacted>")
-            .field("launch_id", &self.launch_id)
+            .field(
+                "request_hash",
+                &super::redaction::opaque_id_hash(&self.launch_id),
+            )
             .field("kind", &self.kind)
             .field("source", &self.source)
             .finish()
@@ -397,23 +431,20 @@ impl fmt::Debug for ExternalSshLaunchOptions {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("ExternalSshLaunchOptions")
+            .field("display_name_present", &self.display_name.is_some())
+            .field("remote_command_present", &self.remote_command.is_some())
             .field(
-                "display_name",
-                &self.display_name.as_deref().map(redact_b64_text),
+                "remote_command_file_present",
+                &self.remote_command_file.is_some(),
             )
-            .field("remote_command", &self.remote_command)
-            .field("remote_command_file", &self.remote_command_file)
             .field("open_sftp", &self.open_sftp)
-            .field(
-                "session_name",
-                &self.session_name.as_deref().map(redact_b64_text),
-            )
+            .field("session_name_present", &self.session_name.is_some())
             .finish()
     }
 }
 
 /// Redacted parser diagnostics.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExternalLaunchRequestDiagnostics {
     pub parser: String,
@@ -423,8 +454,20 @@ pub struct ExternalLaunchRequestDiagnostics {
     pub warnings: Vec<String>,
 }
 
+impl fmt::Debug for ExternalLaunchRequestDiagnostics {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ExternalLaunchRequestDiagnostics")
+            .field("parser", &self.parser)
+            .field("arg_count", &self.argv_redacted.len())
+            .field("raw_hash", &self.raw_hash)
+            .field("warning_count", &self.warnings.len())
+            .finish()
+    }
+}
+
 /// Normalized external SSH launch request.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ExternalSshLaunchRequest {
     pub id: String,
     pub source: ExternalLaunchSource,
@@ -433,6 +476,21 @@ pub struct ExternalSshLaunchRequest {
     pub auth: ExternalSshAuth,
     pub options: ExternalSshLaunchOptions,
     pub diagnostics: ExternalLaunchRequestDiagnostics,
+}
+
+impl fmt::Debug for ExternalSshLaunchRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ExternalSshLaunchRequest")
+            .field("request_hash", &super::redaction::opaque_id_hash(&self.id))
+            .field("source", &self.source)
+            .field("received_at", &self.received_at)
+            .field("target", &self.target)
+            .field("auth", &self.auth)
+            .field("options", &self.options)
+            .field("diagnostics", &self.diagnostics)
+            .finish()
+    }
 }
 
 impl ExternalSshLaunchRequest {
@@ -489,16 +547,6 @@ fn looks_like_opaque_external_username(username: &str) -> bool {
         .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '+' | '/' | '='))
         .count();
     token_chars * 100 / username.len() >= 80
-}
-
-fn redact_b64_text(value: &str) -> String {
-    if let Some(index) = value.to_ascii_lowercase().find("b64>>") {
-        let mut redacted = value[..index].to_owned();
-        redacted.push_str("b64>><redacted>");
-        redacted
-    } else {
-        value.to_owned()
-    }
 }
 
 fn unix_timestamp() -> String {

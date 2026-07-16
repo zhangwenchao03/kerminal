@@ -1,4 +1,5 @@
-import type { TerminalRendererType } from "../settings/settingsModel";
+import type { TerminalRendererType } from "../settings/contracts/index";
+import type { TerminalRendererDiagnostics } from "./terminalRenderer";
 import {
   TERMINAL_RENDERER_DEFAULT_POLICY,
   resolveTerminalRendererPolicy,
@@ -18,13 +19,17 @@ export interface TerminalRendererControllerState {
 
 export interface TerminalRendererRegistryController {
   attach(): void;
+  canAttemptGpu?(): boolean;
   clearTextureAtlas?(): void;
   dispose(): void;
+  getDiagnostics?(): TerminalRendererDiagnostics;
   getState(): TerminalRendererControllerState;
+  retryGpu?(): void;
+  /** 从 CPU 切换到 auto/gpu 时负责启动一次 attach。 */
   updateMode(mode: TerminalRendererType): void;
 }
 
-export interface RegisterTerminalRendererPaneOptions {
+interface RegisterTerminalRendererPaneOptions {
   controller: TerminalRendererRegistryController;
   focused?: boolean;
   paneId: string;
@@ -44,17 +49,29 @@ export interface TerminalRendererRegistrySnapshot {
   webglCanvasCount: number;
 }
 
-export interface TerminalRendererPaneSnapshot {
+interface TerminalRendererPaneSnapshot {
   backend: TerminalRendererBackend;
   canvasCount: number;
+  circuitOpen?: boolean;
+  contextLossCount?: number;
   failureCount: number;
   fallbackReason?: string;
   focused: boolean;
+  /** attach 尚未提交时为 true，用于诊断重复 attach 风险。 */
+  gpuAttachPending?: boolean;
+  gpuPlatformClass?: TerminalRendererDiagnostics["gpuPlatformClass"];
+  /** 当前 GPU lease 的授予时间；CPU 非 owner 不携带该值。 */
+  gpuOwnerSince?: number;
   lastAttachAt?: number;
   lastContextLossAt?: number;
   lastRecoveryAt?: number;
+  lifecycleGeneration?: number;
+  lifecycleState?: string;
   paneId: string;
   recoveryCount: number;
+  rendererActiveTimerCount?: number;
+  rendererRetryCount?: number;
+  staleCommitRejectedCount?: number;
   visible: boolean;
 }
 
@@ -62,16 +79,17 @@ export interface TerminalRendererRegistry {
   clearTextureAtlas(paneId?: string): void;
   dispose(): void;
   getSnapshot(): TerminalRendererRegistrySnapshot;
-  recordPaneFailure(paneId: string, reason: TerminalRendererFallbackReason): void;
+  recordPaneFailure(
+    paneId: string,
+    reason: TerminalRendererFallbackReason,
+  ): void;
   registerPane(options: RegisterTerminalRendererPaneOptions): () => void;
   reconcile(): void;
+  retryGpu(paneId?: string): void;
   subscribe(listener: () => void): () => void;
   updateMode(mode: TerminalRendererType): void;
   updatePaneFocus(paneId: string, focused: boolean): void;
-  updatePaneState(
-    paneId: string,
-    state: TerminalRendererControllerState,
-  ): void;
+  updatePaneState(paneId: string, state: TerminalRendererControllerState): void;
   updatePaneVisibility(paneId: string, visible: boolean): void;
 }
 
@@ -91,6 +109,8 @@ interface RegisteredRendererPane {
   failureCount: number;
   fallbackReason?: string;
   focused: boolean;
+  gpuAttachPending: boolean;
+  gpuOwnerSince?: number;
   hiddenSince?: number;
   lastAttachAt?: number;
   lastContextLossAt?: number;
@@ -139,6 +159,12 @@ export function createTerminalRendererRegistry({
     pane.reaperTimer = undefined;
   };
 
+  /** 释放 pane 的 GPU lease；失败、CPU 决策和隐藏回收可越过驻留稳定性。 */
+  const releaseGpuOwner = (pane: RegisteredRendererPane) => {
+    pane.gpuAttachPending = false;
+    pane.gpuOwnerSince = undefined;
+  };
+
   const scheduleHiddenReaper = (pane: RegisteredRendererPane) => {
     cancelReaper(pane);
     if (pane.visible || pane.currentBackend !== "gpu") {
@@ -155,15 +181,25 @@ export function createTerminalRendererRegistry({
     }, delayMs);
   };
 
-  const syncPaneState = (pane: RegisteredRendererPane) => {
-    const state = pane.controller.getState();
+  const syncPaneState = (
+    pane: RegisteredRendererPane,
+    state = pane.controller.getState(),
+  ) => {
+    const previousBackend = pane.currentBackend;
     pane.currentBackend = state.backend;
     if (state.fallbackReason !== undefined || state.backend === "gpu") {
       pane.fallbackReason = state.fallbackReason;
     }
     if (state.backend === "gpu") {
-      pane.lastAttachAt = now();
+      const attachedAt = now();
+      pane.gpuAttachPending = false;
+      pane.gpuOwnerSince ??= attachedAt;
+      if (previousBackend !== "gpu") {
+        pane.lastAttachAt = attachedAt;
+      }
       pane.retryCount = 0;
+    } else if (state.mode === "cpu" || state.fallbackReason !== undefined) {
+      releaseGpuOwner(pane);
     }
   };
 
@@ -172,6 +208,7 @@ export function createTerminalRendererRegistry({
     decision: TerminalRendererPanePolicyDecision,
   ) => {
     if (decision.targetBackend === "cpu") {
+      releaseGpuOwner(pane);
       pane.controller.updateMode("cpu");
       if (decision.shouldReapWebgl) {
         cancelReaper(pane);
@@ -181,8 +218,30 @@ export function createTerminalRendererRegistry({
     }
 
     if (pane.visible) {
-      pane.controller.updateMode(requestedMode === "cpu" ? "cpu" : requestedMode);
-      if (decision.shouldAttemptImport || pane.currentBackend !== "gpu") {
+      const targetMode = requestedMode === "cpu" ? "cpu" : requestedMode;
+      const controllerState = pane.controller.getState();
+      const modeChanged = controllerState.mode !== targetMode;
+      const shouldStartAttach =
+        pane.currentBackend !== "gpu" &&
+        !pane.gpuAttachPending &&
+        (decision.shouldAttemptImport || modeChanged);
+      pane.gpuOwnerSince ??= now();
+      if (shouldStartAttach) {
+        // 先占用 lease，再启动异步 attach；同步状态回调也不会重复发起。
+        pane.gpuAttachPending = true;
+      }
+      if (modeChanged) {
+        // capability 依赖 controller 的当前模式；先提交显式 GPU 模式，
+        // 避免软件平台仍按旧 Auto 状态拒绝用户主动尝试。
+        pane.controller.updateMode(targetMode);
+      }
+      if (pane.controller.canAttemptGpu?.() === false) {
+        releaseGpuOwner(pane);
+        pane.gpuAttachPending = false;
+        syncPaneState(pane);
+        return;
+      }
+      if (!modeChanged && shouldStartAttach) {
         pane.controller.attach();
       }
       syncPaneState(pane);
@@ -198,18 +257,24 @@ export function createTerminalRendererRegistry({
       config: resolvedConfig,
       failureEvents,
       now: now(),
-      panes: [...panes.values()].map((pane) => ({
-        currentBackend: pane.currentBackend,
-        failureCount: pane.failureCount,
-        focused: pane.focused,
-        hiddenSince: pane.hiddenSince,
-        lastFailureAt: pane.lastFailureAt,
-        lastFailureReason: pane.lastFailureReason,
-        lastUsedAt: pane.lastUsedAt,
-        paneId: pane.paneId,
-        retryCount: pane.retryCount,
-        visible: pane.visible,
-      })),
+      panes: [...panes.values()].map((pane) => {
+        const diagnostics = pane.controller.getDiagnostics?.();
+        return {
+          currentBackend: pane.currentBackend,
+          failureCount: pane.failureCount,
+          focused: pane.focused,
+          gpuAttachPending: pane.gpuAttachPending,
+          gpuPlatformClass: diagnostics?.gpuPlatformClass,
+          gpuOwnerSince: pane.gpuOwnerSince,
+          hiddenSince: pane.hiddenSince,
+          lastFailureAt: pane.lastFailureAt,
+          lastFailureReason: pane.lastFailureReason,
+          lastUsedAt: pane.lastUsedAt,
+          paneId: pane.paneId,
+          retryCount: pane.retryCount,
+          visible: pane.visible,
+        };
+      }),
       requestedMode,
       suggestedFallback,
     });
@@ -242,6 +307,8 @@ export function createTerminalRendererRegistry({
       failureCount: 0,
       fallbackReason: state.fallbackReason,
       focused,
+      gpuAttachPending: false,
+      gpuOwnerSince: state.backend === "gpu" ? registeredAt : undefined,
       hiddenSince: visible ? undefined : registeredAt,
       lastUsedAt: focused || visible ? registeredAt : 0,
       paneId,
@@ -274,6 +341,7 @@ export function createTerminalRendererRegistry({
     failureEvents.length = 0;
     for (const pane of panes.values()) {
       pane.failureCount = 0;
+      pane.fallbackReason = undefined;
       pane.lastFailureAt = undefined;
       pane.lastFailureReason = undefined;
       pane.retryCount = 0;
@@ -289,14 +357,7 @@ export function createTerminalRendererRegistry({
     if (!pane) {
       return;
     }
-    pane.currentBackend = state.backend;
-    if (state.fallbackReason !== undefined || state.backend === "gpu") {
-      pane.fallbackReason = state.fallbackReason;
-    }
-    if (state.backend === "gpu") {
-      pane.lastAttachAt = now();
-      pane.retryCount = 0;
-    }
+    syncPaneState(pane, state);
     emitChange();
   };
 
@@ -343,6 +404,7 @@ export function createTerminalRendererRegistry({
     pane.fallbackReason = reason;
     pane.lastFailureAt = event.at;
     pane.lastFailureReason = reason;
+    releaseGpuOwner(pane);
     if (reason === "context-lost") {
       pane.lastContextLossAt = event.at;
       pane.retryCount += 1;
@@ -360,32 +422,65 @@ export function createTerminalRendererRegistry({
     pane.fallbackReason = reason;
     pane.lastFailureAt = at;
     pane.lastFailureReason = reason;
+    releaseGpuOwner(pane);
     if (reason === "context-lost") {
       pane.lastContextLossAt = at;
       pane.retryCount += 1;
     }
   };
 
-  const clearTextureAtlas = (paneId?: string) => {
-    const requestedTargets =
+  const retryGpu = (paneId?: string) => {
+    if (requestedMode === "cpu") {
+      return;
+    }
+    const targets =
       typeof paneId === "string"
         ? [...panes.values()].filter((pane) => pane.paneId === paneId)
-        : [...panes.values()].filter((pane) => pane.currentBackend === "gpu");
-    const relatedGpuPanes =
-      typeof paneId === "string"
-        ? [...panes.values()].filter((pane) => pane.currentBackend === "gpu")
-        : requestedTargets;
-    const targets = new Map<string, RegisteredRendererPane>();
-    for (const pane of [...requestedTargets, ...relatedGpuPanes]) {
-      targets.set(pane.paneId, pane);
+        : [...panes.values()];
+    if (targets.length === 0) {
+      return;
     }
-    if (targets.size === 0) {
+    // 人工恢复明确覆盖自动 cooldown/global fallback，但只重置目标 pane 的局部故障账本。
+    suggestedFallback = undefined;
+    failureEvents.length = 0;
+    for (const pane of targets) {
+      if (pane.controller.canAttemptGpu?.() === false) {
+        continue;
+      }
+      pane.failureCount = 0;
+      pane.fallbackReason = undefined;
+      pane.gpuAttachPending = true;
+      pane.lastFailureAt = undefined;
+      pane.lastFailureReason = undefined;
+      pane.retryCount = 0;
+      const state = pane.controller.getState();
+      if (state.mode !== requestedMode) {
+        pane.controller.updateMode(requestedMode);
+      } else if (pane.controller.retryGpu) {
+        pane.controller.retryGpu();
+      } else {
+        // 兼容尚未实现专用 retry API 的 controller，避免留下永久 pending lease。
+        pane.controller.attach();
+      }
+      syncPaneState(pane);
+    }
+    reconcile();
+  };
+
+  const clearTextureAtlas = (paneId?: string) => {
+    const targets =
+      typeof paneId === "string"
+        ? [...panes.values()].filter(
+            (pane) => pane.paneId === paneId && pane.currentBackend === "gpu",
+          )
+        : [...panes.values()].filter((pane) => pane.currentBackend === "gpu");
+    if (targets.length === 0) {
       return;
     }
     const recoveredAt = now();
     let clearedCount = 0;
     let firstError: unknown;
-    for (const pane of targets.values()) {
+    for (const pane of targets) {
       try {
         pane.controller.clearTextureAtlas?.();
       } catch (error) {
@@ -415,17 +510,29 @@ export function createTerminalRendererRegistry({
     }
     const paneSnapshots = [...panes.values()].map((pane) => {
       const state = pane.controller.getState();
+      const diagnostics = pane.controller.getDiagnostics?.();
       return {
         backend: state.backend,
         canvasCount: state.canvasCount ?? 0,
+        circuitOpen: diagnostics?.circuitOpen,
+        contextLossCount: diagnostics?.contextLossCount,
         failureCount: pane.failureCount,
         fallbackReason: pane.fallbackReason ?? state.fallbackReason,
         focused: pane.focused,
+        gpuAttachPending: pane.gpuAttachPending,
+        gpuPlatformClass: diagnostics?.gpuPlatformClass,
+        gpuOwnerSince: pane.gpuOwnerSince,
         lastAttachAt: pane.lastAttachAt,
         lastContextLossAt: pane.lastContextLossAt,
         lastRecoveryAt: pane.lastRecoveryAt,
+        lifecycleGeneration: diagnostics?.lifecycle.generation,
+        lifecycleState: diagnostics?.lifecycle.state,
         paneId: pane.paneId,
         recoveryCount: pane.recoveryCount,
+        rendererActiveTimerCount: diagnostics?.activeTimerCount,
+        rendererRetryCount: diagnostics?.retryCount,
+        staleCommitRejectedCount:
+          diagnostics?.telemetry.counters.staleCommitRejectedCount,
         visible: pane.visible,
       };
     });
@@ -472,6 +579,7 @@ export function createTerminalRendererRegistry({
     recordPaneFailure,
     registerPane,
     reconcile,
+    retryGpu,
     subscribe,
     updateMode,
     updatePaneFocus,
@@ -481,5 +589,5 @@ export function createTerminalRendererRegistry({
 }
 
 export const terminalRendererRegistry = createTerminalRendererRegistry({
-  rendererType: "auto",
+  rendererType: "cpu",
 });

@@ -1,6 +1,6 @@
-import type { TerminalPane } from "../workspace/types";
+import type { TerminalPane } from "../workspace/contracts/index";
 
-export type BroadcastRisk = "batch" | "remote" | "destructive";
+type BroadcastRisk = "batch" | "remote" | "destructive";
 
 export interface BroadcastCommandTarget {
   mode: TerminalPane["mode"];

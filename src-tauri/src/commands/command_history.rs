@@ -4,8 +4,8 @@
 
 use crate::{
     models::command_history::{
-        CommandHistoryEntry, CommandHistoryListRequest, CommandHistoryRecordRequest,
-        CommandHistoryRecordResult,
+        CommandHistoryClearRequest, CommandHistoryEntry, CommandHistoryListRequest,
+        CommandHistoryRecordRequest, CommandHistoryRecordResult,
     },
     state::AppState,
 };
@@ -47,11 +47,14 @@ pub fn command_history_delete(
         .map_err(|error| error.to_string())
 }
 
-/// 清空所有命令历史。
+/// 按指定终端上下文清空命令历史；缺省请求兼容旧版全局清空。
 #[tauri::command]
-pub fn command_history_clear(state: State<'_, AppState>) -> Result<usize, String> {
+pub fn command_history_clear(
+    state: State<'_, AppState>,
+    request: Option<CommandHistoryClearRequest>,
+) -> Result<usize, String> {
     state
         .command_history()
-        .clear_history(state.command_store())
+        .clear_history_scoped(state.command_store(), request.unwrap_or_default())
         .map_err(|error| error.to_string())
 }

@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import {
   appendTerminalOutputHistory,
@@ -6,6 +8,21 @@ import {
 } from "../../../../src/features/workspace/workspaceSession";
 
 describe("workspaceSession", () => {
+  it("归一化空工作区时清除持久化的最近主机选择", () => {
+    const session = normalizeWorkspaceSessionSnapshot({
+      activeTabId: "",
+      focusedPaneId: "",
+      selectedMachineId: "host-prod",
+      sidebarMachines: [],
+      terminalPanes: [],
+      terminalTabs: [],
+    });
+
+    expect(session.activeTabId).toBe("");
+    expect(session.focusedPaneId).toBe("");
+    expect(session.selectedMachineId).toBe("");
+  });
+
   it("normalizes a persisted session without trusting stale focus", () => {
     const session = normalizeWorkspaceSessionSnapshot({
       activeTabId: "missing-tab",

@@ -1,0 +1,40 @@
+schema_version = 1
+command = "ip"
+aliases = []
+platforms = ["linux"]
+shells = ["bash", "zsh", "fish"]
+description = "Inspect and configure Linux networking"
+tested_version = "iproute2 6.15"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "iproute2 ip manual"
+url = "https://man7.org/linux/man-pages/man8/ip.8.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[subcommands]]
+name = "address"
+aliases = ["addr"]
+description = "Manage protocol addresses"
+
+[[subcommands]]
+name = "link"
+description = "Manage network devices"
+
+[[subcommands]]
+name = "route"
+description = "Manage routing tables"
+
+[[options]]
+name = "--brief"
+aliases = ["-br"]
+description = "Print a concise summary"
+
+[[options]]
+name = "--json"
+aliases = ["-j"]
+description = "Produce JSON output"

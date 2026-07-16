@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -118,6 +118,10 @@ describe("SettingsToolContent sync page", () => {
     render(<ControlledSyncSettings />);
 
     const keyInput = await screen.findByLabelText("密钥文件内容");
+    await waitFor(() => {
+      expect(keyInput).toBeEnabled();
+      expect(keyInput).toHaveValue(sampleKeyToml());
+    });
     await user.clear(keyInput);
     await user.type(keyInput, editedKeyToml());
     await user.click(screen.getByRole("button", { name: /^保存$/ }));
@@ -131,11 +135,36 @@ describe("SettingsToolContent sync page", () => {
     render(<ControlledSyncSettings />);
 
     const keyInput = await screen.findByLabelText("密钥文件内容");
+    await waitFor(() => {
+      expect(keyInput).toBeEnabled();
+      expect(keyInput).toHaveValue(sampleKeyToml());
+    });
     await user.clear(keyInput);
     await user.click(screen.getByRole("button", { name: /^保存$/ }));
 
     expect(workspaceSyncApiMock.saveVaultKeyContent).not.toHaveBeenCalled();
     expect(await screen.findByText("密钥内容不能为空。")).toBeInTheDocument();
+  });
+
+  it("keeps unknown sync failures in collapsed technical details", async () => {
+    const user = userEvent.setup();
+    workspaceSyncApiMock.runWorkspaceSync.mockRejectedValueOnce(
+      new Error(
+        'git runtime failed at C:\\private\\sync.json with "token": "sync-secret"',
+      ),
+    );
+
+    render(<ControlledSyncSettings />);
+    await user.click(await screen.findByRole("button", { name: /^同步$/ }));
+
+    expect(await screen.findByText("同步失败")).toBeVisible();
+    expect(screen.getByText("请检查同步配置后重试。")).toBeVisible();
+    const detail = screen.getByText(/git runtime failed/);
+    expect(detail.closest("details")).not.toHaveAttribute("open");
+    expect(detail).not.toHaveTextContent("sync-secret");
+
+    await user.click(screen.getByText("技术详情"));
+    expect(detail.closest("details")).toHaveAttribute("open");
   });
 });
 

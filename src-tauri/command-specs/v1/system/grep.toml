@@ -1,0 +1,32 @@
+schema_version = 1
+command = "grep"
+aliases = []
+platforms = ["macos", "linux"]
+shells = ["bash", "zsh", "fish"]
+description = "Search text for matching patterns"
+tested_version = "GNU grep 3.12"
+owner = "kerminal"
+updated_at = "2026-07-11"
+
+[source]
+name = "GNU grep manual"
+url = "https://www.gnu.org/software/grep/manual/grep.html"
+
+[safety]
+sensitivity = "normal"
+allow_inline = true
+
+[[options]]
+name = "--recursive"
+aliases = ["-r"]
+description = "Search directories recursively"
+
+[[options]]
+name = "--ignore-case"
+aliases = ["-i"]
+description = "Ignore case distinctions"
+
+[[options]]
+name = "--line-number"
+aliases = ["-n"]
+description = "Print line numbers"

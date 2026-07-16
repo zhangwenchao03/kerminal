@@ -1,40 +1,5 @@
 use super::*;
 
-pub(super) fn apply_feedback_scores(
-    storage: &CommandSqliteStore,
-    request: &NormalizedSuggestionRequest,
-    candidates: &mut [CommandSuggestionCandidate],
-) -> AppResult<()> {
-    for candidate in candidates {
-        let feedback = storage.command_suggestion_feedback_score(
-            candidate.provider,
-            request.target,
-            candidate.replacement_text.as_str(),
-            request.remote_host_id.as_deref(),
-        )?;
-        if feedback.accepted_count == 0 && feedback.dismissed_count == 0 {
-            continue;
-        }
-
-        let accepted_count = feedback.accepted_count.min(FEEDBACK_SCORE_COUNT_CAP);
-        let dismissed_count = feedback.dismissed_count.min(FEEDBACK_SCORE_COUNT_CAP);
-        let delta = accepted_count as f64 * FEEDBACK_ACCEPTED_SCORE_BONUS
-            - dismissed_count as f64 * FEEDBACK_DISMISSED_SCORE_PENALTY;
-        candidate.score = (candidate.score + delta).clamp(0.0, 1.0);
-        let metadata = candidate.metadata.get_or_insert_with(BTreeMap::new);
-        metadata.insert(
-            "feedbackAcceptedCount".to_owned(),
-            feedback.accepted_count.to_string(),
-        );
-        metadata.insert(
-            "feedbackDismissedCount".to_owned(),
-            feedback.dismissed_count.to_string(),
-        );
-    }
-
-    Ok(())
-}
-
 pub(super) fn normalize_required_text(
     field: &str,
     value: String,
