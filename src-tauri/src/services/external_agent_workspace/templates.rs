@@ -164,7 +164,7 @@ Minimal example:
 ```toml
 schema_version = 1
 themeMode = "dark"
-interfaceDensity = "comfortable"
+interfaceDensity = "compact"
 ```
 
 Known settings groups:

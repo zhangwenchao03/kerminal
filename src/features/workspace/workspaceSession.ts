@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   collectPaneIds,
   findFirstPaneId,
@@ -579,7 +581,8 @@ function resolveWorkspaceSessionSelection({
     return {
       activeTabId: "",
       focusedPaneId: "",
-      selectedMachineId,
+      // 空工作区没有当前目标，避免持久化的最近主机污染 Context Inspector。
+      selectedMachineId: "",
     };
   }
 

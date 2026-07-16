@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
@@ -14,7 +16,7 @@ describe("SftpToolContent terminal directory follow behavior", () => {
     document.documentElement.classList.remove("dark");
   });
 
-  it("follows the focused terminal directory when the switch is enabled", async () => {
+  it("follows the focused terminal directory when the control is enabled", async () => {
     const user = userEvent.setup();
 
 
@@ -35,7 +37,9 @@ describe("SftpToolContent terminal directory follow behavior", () => {
 
     expect(await screen.findByText("var")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("switch", { name: "跟随终端目录" }));
+    const followButton = screen.getByRole("button", { name: "跟随终端目录" });
+    await user.click(followButton);
+    expect(followButton).toHaveAttribute("aria-pressed", "true");
 
 
 
@@ -73,7 +77,9 @@ describe("SftpToolContent terminal directory follow behavior", () => {
 
     expect(await screen.findByText("var")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("switch", { name: "跟随终端目录" }));
+    const followButton = screen.getByRole("button", { name: "跟随终端目录" });
+    await user.click(followButton);
+    expect(followButton).toHaveAttribute("aria-pressed", "true");
 
     expect(await screen.findByText("app.log")).toBeInTheDocument();
 

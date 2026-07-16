@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import type {
   AppearanceSettings,
   AppSettings,
@@ -258,7 +260,7 @@ export const defaultAppSettings: AppSettings = {
   appearance: defaultAppearanceSettings,
   desktopNotifications: defaultDesktopNotificationSettings,
   externalLaunch: defaultExternalLaunchSettings,
-  interfaceDensity: "comfortable",
+  interfaceDensity: "compact",
   keybindings: defaultKeybindings,
   sftp: defaultSftpPerformanceSettings,
   terminal: defaultTerminalAppearance,

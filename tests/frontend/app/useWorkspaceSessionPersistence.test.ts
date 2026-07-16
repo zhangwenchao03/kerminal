@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { act, fireEvent, render } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -453,6 +455,7 @@ describe("buildWorkspaceSessionSnapshot", () => {
       expect.objectContaining({
         activeTabId: "",
         focusedPaneId: "",
+        selectedMachineId: "",
         terminalPanes: [],
         terminalTabs: [],
       }),

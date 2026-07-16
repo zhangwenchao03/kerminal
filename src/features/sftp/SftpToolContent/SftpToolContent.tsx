@@ -1,3 +1,7 @@
+/**
+ * @author kongweiguang
+ */
+
 import type { Dispatch, SetStateAction } from "react";
 import type { Machine, WorkspaceFileDirtyState, WorkspaceFileRevealRequest, WorkspaceFileTab } from "../../workspace/contracts/index";
 import type { OpenWorkspaceFileTabOptions } from "../../workspace/state/index";
@@ -19,6 +23,7 @@ export type SftpToolContentProps = {
   onSftpClipboardChange?: (clipboard: SftpClipboard | null) => void;
   selectedMachine?: Machine;
   showLocalTransferActions?: boolean;
+  showTerminalDirectoryControls?: boolean;
   showTransferStatusBar?: boolean;
   sftpClipboard?: SftpClipboard | null;
   transferViewScope?: string | null;

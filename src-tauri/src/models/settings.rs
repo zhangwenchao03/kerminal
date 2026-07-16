@@ -55,9 +55,9 @@ pub enum ThemeMode {
 #[serde(rename_all = "camelCase")]
 pub enum InterfaceDensity {
     /// 更紧凑的标签栏和终端间距。
-    Compact,
-    /// 默认舒适密度。
     #[default]
+    Compact,
+    /// 舒适密度。
     Comfortable,
     /// 更宽松的阅读密度。
     Spacious,
@@ -600,7 +600,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             appearance: AppearanceSettings::default(),
-            interface_density: InterfaceDensity::Comfortable,
+            interface_density: InterfaceDensity::default(),
             theme_mode: ThemeMode::Dark,
             terminal: TerminalAppearance::default(),
             keybindings: default_keybindings(),

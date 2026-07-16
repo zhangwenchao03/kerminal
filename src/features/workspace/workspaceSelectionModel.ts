@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { findMachine } from "./workspaceMachineModel";
 import type { MachineGroup, TerminalTab } from "./types";
 import { isSftpTransferWorkspaceTab, isWorkspaceFileTab } from "./types";
@@ -53,8 +55,14 @@ export function restoredSelectedMachineId({
   selectedMachineId,
   terminalTabs,
 }: RestoredSelectedMachineIdOptions): string {
+  const activeTab =
+    terminalTabs.find((tab) => tab.id === activeTabId) ?? terminalTabs[0];
+  // 空工作区没有当前目标，历史侧栏选择不能恢复成运行态上下文。
+  if (!activeTab) {
+    return "";
+  }
   const activeTabCandidate = selectedMachineIdCandidateFromTab(
-    terminalTabs.find((tab) => tab.id === activeTabId) ?? terminalTabs[0],
+    activeTab,
   );
 
   return (

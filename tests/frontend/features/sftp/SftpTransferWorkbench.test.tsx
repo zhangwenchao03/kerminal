@@ -1,3 +1,7 @@
+/**
+ * @author kongweiguang
+ */
+
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -41,6 +45,7 @@ vi.mock("../../../../src/features/sftp/SftpToolContent", () => ({
     onSftpClipboardChange,
     selectedMachine,
     showLocalTransferActions,
+    showTerminalDirectoryControls,
     showTransferStatusBar,
     sftpClipboard,
     transferTarget,
@@ -52,6 +57,7 @@ vi.mock("../../../../src/features/sftp/SftpToolContent", () => ({
     onSftpClipboardChange: (clipboard: SftpClipboard | null) => void;
     selectedMachine: { id: string; name: string };
     showLocalTransferActions?: boolean;
+    showTerminalDirectoryControls?: boolean;
     showTransferStatusBar?: boolean;
     sftpClipboard: SftpClipboard | null;
     transferTarget?: SftpTransferTarget;
@@ -69,6 +75,9 @@ vi.mock("../../../../src/features/sftp/SftpToolContent", () => ({
         <span>active:{String(active)}</span>
         <span>compact:{String(compactHeader)}</span>
         <span>local-actions:{String(showLocalTransferActions)}</span>
+        <span>
+          terminal-directory-controls:{String(showTerminalDirectoryControls)}
+        </span>
         <span>transfer-status:{String(showTransferStatusBar)}</span>
         <span>transfer-scope:{transferViewScope ?? "none"}</span>
         <span>transfer-target:{transferTargetLabel}</span>
@@ -289,6 +298,9 @@ describe("SftpTransferWorkbench", () => {
     expect(screen.getByLabelText("SFTP 面板 right")).toBeInTheDocument();
     expect(screen.getByText("目标：right:/")).toBeInTheDocument();
     expect(screen.getByText("compact:true")).toBeInTheDocument();
+    expect(
+      screen.getByText("terminal-directory-controls:false"),
+    ).toBeInTheDocument();
     expect(screen.getByText("transfer-status:false")).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByText("local-actions:false")).toBeInTheDocument(),

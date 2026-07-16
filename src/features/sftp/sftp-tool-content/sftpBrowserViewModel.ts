@@ -1,3 +1,7 @@
+/**
+ * @author kongweiguang
+ */
+
 import {
   useId,
   useMemo,
@@ -134,6 +138,7 @@ interface SftpBrowserCapabilities {
   interfaceDensity: InterfaceDensity;
   setupRemoteCwdTracking: () => Promise<void>;
   showLocalTransferActions: boolean;
+  showTerminalDirectoryControls: boolean;
   showTransferStatusBar: boolean;
   supportsSftpAdvancedActions: boolean;
   trustHostKey: () => Promise<void>;

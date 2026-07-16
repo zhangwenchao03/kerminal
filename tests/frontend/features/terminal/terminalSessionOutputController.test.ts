@@ -1,7 +1,17 @@
+/**
+ * @author kongweiguang
+ */
+
 import { describe, expect, it, vi } from "vitest";
 import { createTerminalSessionOutputController } from "../../../../src/features/terminal/terminalSessionOutputController";
 
-function createHarness(overrides: { current?: boolean; remote?: boolean } = {}) {
+function createHarness(
+  overrides: {
+    current?: boolean;
+    remote?: boolean;
+    remoteCwdTracking?: boolean;
+  } = {},
+) {
   const order: string[] = [];
   const onAgentSignal = vi.fn();
   const onReadError = vi.fn();
@@ -15,6 +25,7 @@ function createHarness(overrides: { current?: boolean; remote?: boolean } = {}) 
     write: vi.fn((data: string) => order.push(`write:${data}`)),
     writeNow: vi.fn((data: string) => order.push(`now:${data}`)),
   };
+  const onCurrentCwd = vi.fn();
   const controller = createTerminalSessionOutputController({
     activityRuntime: { markOutput: () => order.push("activity") },
     artifactRuntime: { queueOutput: () => order.push("artifact") },
@@ -30,7 +41,7 @@ function createHarness(overrides: { current?: boolean; remote?: boolean } = {}) 
     isCurrent: () => overrides.current ?? true,
     isSshTerminalTarget: true,
     onAgentSignal,
-    onCurrentCwd: vi.fn(),
+    onCurrentCwd,
     onReadError,
     onSessionClosed,
     outputHistoryBuffer: {
@@ -41,12 +52,19 @@ function createHarness(overrides: { current?: boolean; remote?: boolean } = {}) 
       stats: vi.fn(),
     },
     outputWriter,
-    remoteCwdTracking: false,
+    remoteCwdTracking: overrides.remoteCwdTracking ?? false,
     sshFailureTracker: { append: () => order.push("ssh") },
     transientStartupNoticeVisible: true,
     visibleRef: { current: true },
   });
-  return { controller, onAgentSignal, onReadError, onSessionClosed, order };
+  return {
+    controller,
+    onAgentSignal,
+    onCurrentCwd,
+    onReadError,
+    onSessionClosed,
+    order,
+  };
 }
 
 describe("terminalSessionOutputController", () => {
@@ -143,5 +161,23 @@ describe("terminalSessionOutputController", () => {
     expect(harness.onReadError).toHaveBeenCalledWith(
       expect.objectContaining({ data: "failed", kind: "error" }),
     );
+  });
+
+  it("does not let prompt heuristics override an established cwd protocol", () => {
+    const harness = createHarness({ remoteCwdTracking: true });
+
+    harness.controller({
+      data: "\u001b]7;file://prod.internal/srv/app\u0007",
+      kind: "data",
+      sessionId: "session-1",
+    });
+    harness.controller({
+      data: "\r\nroot@prod.internal:/stale# ",
+      kind: "data",
+      sessionId: "session-1",
+    });
+
+    expect(harness.onCurrentCwd).toHaveBeenCalledTimes(1);
+    expect(harness.onCurrentCwd).toHaveBeenCalledWith("/srv/app");
   });
 });

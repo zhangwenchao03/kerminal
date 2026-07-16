@@ -1,3 +1,7 @@
+/**
+ * @author kongweiguang
+ */
+
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   Bot,
@@ -336,7 +340,8 @@ export function ToolPanel({
                         followedRemotePath={
                           binding.focusedPane?.mode === "ssh" &&
                           binding.focusedPane.remoteHostId === binding.machine?.id
-                            ? binding.focusedPane.currentCwd
+                            ? (binding.focusedPane.currentCwd ??
+                              binding.focusedPane.cwd)
                             : binding.focusedPane?.mode === "container" &&
                                 binding.focusedPane.machineId ===
                                   binding.machine?.id

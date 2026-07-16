@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import {
   type SetStateAction,
   useCallback,
@@ -90,6 +92,7 @@ export function SftpTargetBoundContent({
   setShowHiddenFiles,
   setSftpClipboard,
   showLocalTransferActions = true,
+  showTerminalDirectoryControls = true,
   showHiddenFiles,
   showTransferStatusBar = true,
   sftpClipboard,
@@ -117,10 +120,8 @@ export function SftpTargetBoundContent({
   );
   const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
   const [dragDropActive, setDragDropActive] = useState(false);
-  const [remoteDownloadDragActive, setRemoteDownloadDragActive] =
-    useState(false);
-  const [remoteDownloadDropActive, setRemoteDownloadDropActive] =
-    useState(false);
+  const [remoteDownloadDragActive, setRemoteDownloadDragActive] = useState(false);
+  const [remoteDownloadDropActive, setRemoteDownloadDropActive] = useState(false);
   const lastAutoFollowedPathRef = useRef<string | undefined>(undefined);
   const followTerminalDirectoryRef = useRef(followTerminalDirectory);
   const remoteBrowserStateRef = useRef(remoteBrowserState);
@@ -180,8 +181,7 @@ export function SftpTargetBoundContent({
     selectedEntryPaths,
   } = remoteBrowserState;
   const currentPath = listing?.path ?? "/";
-  const normalizedFollowedPath =
-    normalizeFollowedRemotePath(followedRemotePath);
+  const normalizedFollowedPath = normalizeFollowedRemotePath(followedRemotePath);
   const entries = listing?.entries ?? EMPTY_SFTP_ENTRIES;
   const visibleEntries = useMemo(
     () =>
@@ -466,8 +466,6 @@ export function SftpTargetBoundContent({
     normalizedFollowedPath,
     fileTarget,
   ]);
-
-
   const openContextMenuAt = (
     clientX: number,
     clientY: number,
@@ -703,6 +701,7 @@ export function SftpTargetBoundContent({
           interfaceDensity,
           setupRemoteCwdTracking,
           showLocalTransferActions,
+          showTerminalDirectoryControls,
           showTransferStatusBar,
           supportsSftpAdvancedActions,
           trustHostKey,

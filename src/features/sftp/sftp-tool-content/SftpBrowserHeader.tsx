@@ -1,3 +1,7 @@
+/**
+ * @author kongweiguang
+ */
+
 import {
   ArrowLeft,
   ArrowRight,
@@ -57,6 +61,7 @@ interface SftpBrowserHeaderProps {
     setEnabled: Dispatch<SetStateAction<boolean>>;
     setup: () => Promise<void>;
     supported: boolean;
+    visible: boolean;
   };
   navigation: {
     currentPath: string;
@@ -136,13 +141,13 @@ export function SftpBrowserHeader({
           >
             <CornerDownRight className="h-3.5 w-3.5" />
           </Button>
+          {follow.visible ? <DirectoryFollowControls follow={follow} /> : null}
         </form>
         {!chrome.compact ? (
           <div className="mt-2 truncate font-mono text-xs text-zinc-500 dark:text-zinc-400">
             {navigation.fileTarget.summary}
           </div>
         ) : null}
-        {!chrome.compact ? <DirectoryFollowStatus follow={follow} /> : null}
       </div>
 
       <div
@@ -234,70 +239,56 @@ export function SftpBrowserHeader({
   );
 }
 
-function DirectoryFollowStatus({
+function DirectoryFollowControls({
   follow,
 }: Pick<SftpBrowserHeaderProps, "follow">) {
+  const followTitle = follow.enabled
+    ? `关闭目录跟随${follow.normalizedPath ? "（已同步终端目录）" : "（等待终端目录）"}`
+    : "开启目录跟随";
+
   return (
-    <div className="kerminal-muted-surface mt-3 flex items-center gap-2 rounded-[var(--radius-control)] border px-2 py-1.5">
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-300">
+    <div
+      aria-label="目录跟随控制"
+      className="flex shrink-0 items-center gap-1"
+      role="group"
+    >
+      <button
+        aria-label="跟随终端目录"
+        aria-pressed={follow.enabled}
+        className={cn(
+          "kerminal-focus-ring kerminal-pressable relative flex h-8 w-8 items-center justify-center rounded-md border transition",
+          follow.enabled
+            ? "border-emerald-400/45 bg-emerald-500/12 text-emerald-700 hover:bg-emerald-500/18 dark:border-emerald-300/35 dark:bg-emerald-300/12 dark:text-emerald-200 dark:hover:bg-emerald-300/18"
+            : "kerminal-muted-surface text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50",
+        )}
+        onClick={() => follow.setEnabled((current) => !current)}
+        title={followTitle}
+        type="button"
+      >
         <Terminal className="h-3.5 w-3.5" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-            目录跟随
-          </span>
+        {follow.enabled ? (
           <span
-            className={cn(
-              "h-1.5 w-1.5 rounded-full",
-              follow.enabled
-                ? "bg-emerald-400"
-                : "bg-zinc-400 dark:bg-zinc-600",
-            )}
+            aria-hidden="true"
+            className="absolute bottom-1 right-1 h-1.5 w-1.5 rounded-full border border-white/80 bg-emerald-500 dark:border-zinc-900"
           />
-        </div>
-        <div className="mt-0.5 truncate text-[11px] text-zinc-500 dark:text-zinc-400">
-          {follow.normalizedPath ? "已同步终端目录" : "等待终端目录"}
-        </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-1.5">
-        {follow.supported ? (
-          <Button
-            aria-label="自动设置 SFTP 目录跟随"
-            className="kerminal-focus-ring kerminal-pressable h-7 w-7 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-0 text-emerald-700 hover:border-emerald-500/35 hover:bg-emerald-500/15 hover:text-emerald-800 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-300 dark:hover:border-emerald-300/35 dark:hover:bg-emerald-300/15 dark:hover:text-emerald-200"
-            disabled={follow.busy}
-            onClick={() => void follow.setup()}
-            size="sm"
-            title="自动配置目录跟随"
-            type="button"
-            variant="ghost"
-          >
-            <Settings2
-              className={cn("h-3.5 w-3.5", follow.busy && "animate-spin")}
-            />
-          </Button>
         ) : null}
-        <button
-          aria-checked={follow.enabled}
-          aria-label="跟随终端目录"
-          className={cn(
-            "kerminal-focus-ring kerminal-pressable relative h-5 w-9 shrink-0 rounded-full border transition",
-            follow.enabled
-              ? "border-emerald-400/50 bg-emerald-500"
-              : "border-[var(--border-strong)] bg-[var(--surface-muted)]",
-          )}
-          onClick={() => follow.setEnabled((current) => !current)}
-          role="switch"
+      </button>
+      {follow.supported ? (
+        <Button
+          aria-label="自动设置 SFTP 目录跟随"
+          className="kerminal-focus-ring kerminal-pressable kerminal-muted-surface h-8 w-8 rounded-md border px-0 text-zinc-600 hover:bg-[var(--surface-hover)] hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50"
+          disabled={follow.busy}
+          onClick={() => void follow.setup()}
+          size="sm"
+          title="自动配置目录跟随"
           type="button"
+          variant="ghost"
         >
-          <span
-            className={cn(
-              "absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-white shadow-sm transition",
-              follow.enabled ? "left-[1.125rem]" : "left-0.5",
-            )}
+          <Settings2
+            className={cn("h-3.5 w-3.5", follow.busy && "animate-spin")}
           />
-        </button>
-      </div>
+        </Button>
+      ) : null}
     </div>
   );
 }

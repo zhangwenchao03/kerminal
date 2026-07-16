@@ -1,3 +1,7 @@
+/**
+ * @author kongweiguang
+ */
+
 import type {
   TerminalAgentSignal,
   TerminalOutputEvent,
@@ -9,7 +13,7 @@ import {
 import type { TerminalOutputHistoryBuffer } from "./terminalOutputHistoryBuffer";
 import type { TerminalOutputWriter } from "./terminalOutputWriter";
 import type { InitialRemoteOutputGate } from "./terminalInitialRemoteOutputGate";
-import { collectCurrentDirOscSequences } from "./XtermPane.helpers";
+import { collectCurrentDirObservations } from "./XtermPane.helpers";
 
 interface RefBox<T> {
   current: T;
@@ -70,6 +74,7 @@ export function createTerminalSessionOutputController({
   visibleRef,
 }: CreateTerminalSessionOutputControllerOptions) {
   let transientStartupNoticeVisible = initialStartupNoticeVisible;
+  let remoteCwdProtocolEstablished = false;
 
   return (event: TerminalOutputEvent) => {
     if (!isCurrent()) {
@@ -97,14 +102,20 @@ export function createTerminalSessionOutputController({
           "cwdOsc",
           event.data.length,
           () =>
-            collectCurrentDirOscSequences(
+            collectCurrentDirObservations(
               cwdTrackingBufferRef.current,
               event.data,
             ),
         );
         cwdTrackingBufferRef.current = tracked.buffer;
-        for (const nextCwd of tracked.paths) {
-          onCurrentCwd(nextCwd);
+        for (const observation of tracked.observations) {
+          if (observation.source === "prompt" && remoteCwdProtocolEstablished) {
+            continue;
+          }
+          if (observation.source !== "prompt") {
+            remoteCwdProtocolEstablished = true;
+          }
+          onCurrentCwd(observation.path);
         }
       }
       if (assistEnabled) {

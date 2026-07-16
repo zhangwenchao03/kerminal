@@ -1,3 +1,7 @@
+/**
+ * @author kongweiguang
+ */
+
 import "../../support/tool-panel/ToolPanel.testSupport";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -22,6 +26,51 @@ import {
 } from "../../support/tool-panel/ToolPanel.testSupport";
 
 describe("ToolPanel target tools", () => {
+  it("falls back to the bound pane cwd until a live SSH cwd arrives", async () => {
+    const paneWithBootstrapCwd = {
+      ...focusedSshPane,
+      currentCwd: undefined,
+      cwd: "/srv/bootstrap",
+    };
+    const view = render(
+      <ToolPanel
+        activeTool="sftp"
+        activeMachine={sshMachine}
+        focusedPane={paneWithBootstrapCwd}
+        onActiveToolChange={vi.fn()}
+        tools={tools}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole(
+        "button",
+        { name: "跟随终端目录" },
+        { timeout: 10000 },
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("当前远程路径")).toHaveValue(
+        "/srv/bootstrap",
+      ),
+    );
+
+    view.rerender(
+      <ToolPanel
+        activeTool="sftp"
+        activeMachine={sshMachine}
+        focusedPane={{ ...paneWithBootstrapCwd, currentCwd: "/srv/live" }}
+        onActiveToolChange={vi.fn()}
+        tools={tools}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("当前远程路径")).toHaveValue("/srv/live"),
+    );
+  });
+
 it("opens the tmux tool from the rail", async () => {
   const user = userEvent.setup();
   const onActiveToolChange = vi.fn();

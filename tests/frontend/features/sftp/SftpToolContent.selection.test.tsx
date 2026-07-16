@@ -124,6 +124,38 @@ describe("SftpToolContent selection behavior", () => {
       "36",
     );
   });
+
+  it("keeps directory follow available in compact headers", () => {
+    render(<SftpToolContent compactHeader selectedMachine={sshMachine} />);
+
+    const followButton = screen.getByRole("button", {
+      name: "跟随终端目录",
+    });
+    expect(followButton).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(followButton);
+
+    expect(followButton).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("button", { name: "自动设置 SFTP 目录跟随" }),
+    ).toBeVisible();
+  });
+
+  it("hides terminal directory actions when the host has no terminal context", () => {
+    render(
+      <SftpToolContent
+        selectedMachine={sshMachine}
+        showTerminalDirectoryControls={false}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "跟随终端目录" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "自动设置 SFTP 目录跟随" }),
+    ).not.toBeInTheDocument();
+  });
 });
 
 function buildRemoteEntries(count: number) {

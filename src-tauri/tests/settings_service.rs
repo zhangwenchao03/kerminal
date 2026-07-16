@@ -30,6 +30,7 @@ fn settings_service_returns_defaults_before_user_changes() {
         .load_settings()
         .expect("load default settings");
 
+    assert_eq!(settings.interface_density, InterfaceDensity::Compact);
     assert_eq!(settings, AppSettings::default());
 }
 
@@ -41,7 +42,7 @@ fn settings_service_persists_settings_in_toml() {
     {
         let state = AppState::initialize_with_paths(paths.clone()).expect("initialize app state");
         let mut settings = AppSettings {
-            interface_density: InterfaceDensity::Compact,
+            interface_density: InterfaceDensity::Spacious,
             theme_mode: ThemeMode::Light,
             ..AppSettings::default()
         };
@@ -109,7 +110,7 @@ fn settings_service_persists_settings_in_toml() {
             .expect("save settings");
 
         assert_eq!(stored.theme_mode, ThemeMode::Light);
-        assert_eq!(stored.interface_density, InterfaceDensity::Compact);
+        assert_eq!(stored.interface_density, InterfaceDensity::Spacious);
         assert_eq!(
             stored.appearance.interface_language,
             InterfaceLanguage::EnUs
@@ -146,7 +147,7 @@ fn settings_service_persists_settings_in_toml() {
     let settings = state.settings().load_settings().expect("reload settings");
 
     assert_eq!(settings.theme_mode, ThemeMode::Light);
-    assert_eq!(settings.interface_density, InterfaceDensity::Compact);
+    assert_eq!(settings.interface_density, InterfaceDensity::Spacious);
     assert_eq!(
         settings.appearance.interface_language,
         InterfaceLanguage::EnUs

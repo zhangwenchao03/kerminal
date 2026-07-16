@@ -1,3 +1,7 @@
+/**
+ * @author kongweiguang
+ */
+
 import { Plus, Search } from "lucide-react";
 import {
   useCallback,
@@ -239,6 +243,7 @@ export function RemoteHostPaneBody({
       onSftpClipboardChange={onClipboardChange}
       selectedMachine={selectedMachine}
       showLocalTransferActions={!transferTarget}
+      showTerminalDirectoryControls={false}
       showTransferStatusBar={false}
       sftpClipboard={remoteClipboardFromWorkbenchClipboard(clipboard)}
       transferTarget={transferTarget}

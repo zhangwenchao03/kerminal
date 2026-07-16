@@ -1,3 +1,7 @@
+/**
+ * @author kongweiguang
+ */
+
 import { Check, Download, FolderOpen, RefreshCw, Upload } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Button } from "../../../components/ui/button";
@@ -42,6 +46,7 @@ export function SftpBrowserView({
     hostKeyTrustBusy,
     setupRemoteCwdTracking,
     showLocalTransferActions,
+    showTerminalDirectoryControls,
     showTransferStatusBar,
     supportsSftpAdvancedActions,
     trustHostKey,
@@ -202,6 +207,7 @@ export function SftpBrowserView({
           setEnabled: setFollowTerminalDirectory,
           setup: setupRemoteCwdTracking,
           supported: supportsSftpAdvancedActions,
+          visible: showTerminalDirectoryControls,
         }}
         navigation={{
           currentPath,

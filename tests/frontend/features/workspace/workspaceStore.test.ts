@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { beforeEach, describe, expect, it } from "vitest";
 import { defaultAppSettings } from "../../../../src/features/settings/settingsModel";
 import { browserPreviewProfiles } from "../../../../src/lib/profileApi";
@@ -258,7 +260,7 @@ describe("workspaceStore", () => {
     });
   });
 
-  it("keeps a restored sidebar-only SSH selection until remote hosts load", () => {
+  it("clears a restored sidebar-only SSH selection for an empty workspace", () => {
     useWorkspaceStore.getState().restoreWorkspaceSession({
       activeTabId: "",
       focusedPaneId: "",
@@ -268,13 +270,13 @@ describe("workspaceStore", () => {
       terminalTabs: [],
     });
 
-    expect(useWorkspaceStore.getState().selectedMachineId).toBe("host-lab");
+    expect(useWorkspaceStore.getState().selectedMachineId).toBe("");
 
     useWorkspaceStore.getState().setProfiles([pwshProfile, bashProfile]);
-    expect(useWorkspaceStore.getState().selectedMachineId).toBe("host-lab");
+    expect(useWorkspaceStore.getState().selectedMachineId).toBe("");
 
     useWorkspaceStore.getState().setRemoteHostTree(remoteHostTree);
-    expect(useWorkspaceStore.getState().selectedMachineId).toBe("host-lab");
+    expect(useWorkspaceStore.getState().selectedMachineId).toBe("");
   });
 
   it("stores normalized app settings", () => {

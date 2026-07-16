@@ -1,3 +1,5 @@
+// @author kongweiguang
+
 import { describe, expect, it } from "vitest";
 import {
   defaultAppSettings,
@@ -10,6 +12,8 @@ import {
 
 describe("settingsModel", () => {
   it("defaults terminal rendering to CPU without rewriting explicit modes", () => {
+    expect(defaultAppSettings.interfaceDensity).toBe("compact");
+    expect(normalizeAppSettings().interfaceDensity).toBe("compact");
     expect(defaultAppSettings.terminal.rendererType).toBe("cpu");
     expect(normalizeAppSettings().terminal.rendererType).toBe("cpu");
 

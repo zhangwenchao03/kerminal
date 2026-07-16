@@ -1,3 +1,7 @@
+/**
+ * @author kongweiguang
+ */
+
 import type { ISearchOptions } from "@xterm/addon-search";
 import type { Terminal as XtermTerminal } from "@xterm/xterm";
 import type { TerminalCreateRequest } from "../../lib/terminalApi";
@@ -20,6 +24,7 @@ import {
   createTerminalInputModelState,
   type TerminalInputModelState,
 } from "./terminalInputModel";
+import { parseTerminalShellIntegrationCwd } from "./terminalShellIntegrationModel";
 
 export type ConnectionState =
   | "connecting"
@@ -38,7 +43,8 @@ export interface TerminalGhostSuggestion {
   top: number;
 }
 
-const CURRENT_DIR_OSC_PREFIX = "\u001b]1337;CurrentDir=";
+const CURRENT_DIR_OSC_1337_PREFIX = "\u001b]1337;CurrentDir=";
+const CURRENT_DIR_OSC_7_PREFIX = "\u001b]7;";
 const OSC_BEL_TERMINATOR = "\u0007";
 const OSC_ST_TERMINATOR = "\u001b\\";
 const MAX_CWD_TRACKING_BUFFER_LENGTH = 4096;
@@ -470,43 +476,94 @@ export function collectCurrentDirOscSequences(
   currentBuffer: string,
   data: string,
 ): { buffer: string; paths: string[] } {
+  const state = collectCurrentDirObservations(currentBuffer, data);
+  return {
+    buffer: state.buffer,
+    paths: state.observations.map(({ path }) => path),
+  };
+}
+
+export type TerminalCwdObservation = {
+  path: string;
+  source: "osc7" | "osc1337" | "prompt";
+};
+
+/** 按来源保留远端目录观测，供会话优先使用协议结果而非提示符猜测。 */
+export function collectCurrentDirObservations(
+  currentBuffer: string,
+  data: string,
+): { buffer: string; observations: TerminalCwdObservation[] } {
   const combinedBuffer = limitCwdTrackingBuffer(currentBuffer + data);
   const promptState = collectCurrentDirPromptPaths(combinedBuffer);
-  const paths: string[] = [];
+  const observations: TerminalCwdObservation[] = [];
   let buffer = combinedBuffer;
 
   while (buffer) {
-    const startIndex = buffer.indexOf(CURRENT_DIR_OSC_PREFIX);
-    if (startIndex === -1) {
+    const nextOsc = findNextCurrentDirOsc(buffer);
+    if (!nextOsc) {
       return {
         buffer: nextCwdTrackingBuffer(combinedBuffer, promptState.buffer),
-        paths: [...paths, ...promptState.paths],
+        observations:
+          observations.length > 0
+            ? observations
+            : promptState.paths.map((path) => ({ path, source: "prompt" })),
       };
     }
 
-    if (startIndex > 0) {
-      buffer = buffer.slice(startIndex);
+    if (nextOsc.index > 0) {
+      buffer = buffer.slice(nextOsc.index);
     }
 
-    const payloadStart = CURRENT_DIR_OSC_PREFIX.length;
+    const payloadStart = nextOsc.prefix.length;
     const terminator = findCurrentDirOscTerminator(buffer, payloadStart);
     if (!terminator) {
       return {
         buffer: limitCwdTrackingBuffer(buffer),
-        paths,
+        observations,
       };
     }
 
-    const path = sanitizeCurrentDirOscPath(
-      buffer.slice(payloadStart, terminator.index),
-    );
+    const payload = buffer.slice(payloadStart, terminator.index);
+    const path =
+      nextOsc.protocol === "osc7"
+        ? sanitizeCurrentDirOscPath(
+            parseTerminalShellIntegrationCwd(payload) ?? "",
+          )
+        : sanitizeCurrentDirOscPath(payload);
     if (path) {
-      paths.push(path);
+      observations.push({ path, source: nextOsc.protocol });
     }
     buffer = buffer.slice(terminator.index + terminator.length);
   }
 
-  return { buffer: promptState.buffer, paths: [...paths, ...promptState.paths] };
+  return {
+    buffer: promptState.buffer,
+    observations:
+      observations.length > 0
+        ? observations
+        : promptState.paths.map((path) => ({ path, source: "prompt" })),
+  };
+}
+
+function findNextCurrentDirOsc(buffer: string): {
+  index: number;
+  prefix: string;
+  protocol: "osc7" | "osc1337";
+} | null {
+  const candidates = [
+    { prefix: CURRENT_DIR_OSC_1337_PREFIX, protocol: "osc1337" as const },
+    { prefix: CURRENT_DIR_OSC_7_PREFIX, protocol: "osc7" as const },
+  ];
+  let next:
+    | { index: number; prefix: string; protocol: "osc7" | "osc1337" }
+    | undefined;
+  for (const candidate of candidates) {
+    const index = buffer.indexOf(candidate.prefix);
+    if (index >= 0 && (!next || index < next.index)) {
+      next = { ...candidate, index };
+    }
+  }
+  return next ?? null;
 }
 
 function findCurrentDirOscTerminator(
@@ -591,14 +648,18 @@ function stripTerminalControlsForPrompt(value: string): string {
 }
 
 function trailingPotentialCurrentDirOscPrefix(buffer: string): string {
-  const maxLength = Math.min(buffer.length, CURRENT_DIR_OSC_PREFIX.length - 1);
-  for (let length = maxLength; length > 0; length -= 1) {
-    const tail = buffer.slice(-length);
-    if (CURRENT_DIR_OSC_PREFIX.startsWith(tail)) {
-      return tail;
+  let longest = "";
+  for (const prefix of [CURRENT_DIR_OSC_1337_PREFIX, CURRENT_DIR_OSC_7_PREFIX]) {
+    const maxLength = Math.min(buffer.length, prefix.length - 1);
+    for (let length = maxLength; length > longest.length; length -= 1) {
+      const tail = buffer.slice(-length);
+      if (prefix.startsWith(tail)) {
+        longest = tail;
+        break;
+      }
     }
   }
-  return "";
+  return longest;
 }
 
 function nextCwdTrackingBuffer(buffer: string, promptBuffer: string): string {
