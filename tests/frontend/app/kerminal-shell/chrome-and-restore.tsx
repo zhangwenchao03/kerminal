@@ -129,7 +129,7 @@ export function registerChromeAndRestoreTests() {
     expect(shell).toHaveStyle({
       gridTemplateRows: "36px minmax(0, 1fr)",
     });
-    expect(workspace.parentElement).toHaveStyle({ gridColumn: "3 / 6" });
+    expect(workspace.parentElement).toHaveStyle({ gridColumn: "5 / 8" });
 
     const content = container.querySelector(
       "[data-terminal-workspace-content]",
@@ -141,7 +141,7 @@ export function registerChromeAndRestoreTests() {
     expect(
       screen.getByRole("complementary", { name: "工具面板" }),
     ).toHaveAttribute("aria-expanded", "true");
-    expect(workspace.parentElement).toHaveStyle({ gridColumn: "3 / 6" });
+    expect(workspace.parentElement).toHaveStyle({ gridColumn: "5 / 8" });
     expect(screen.getByLabelText("终端标签栏").parentElement).not.toHaveStyle({
       marginRight: "340px",
     });
@@ -519,7 +519,8 @@ export function registerChromeAndRestoreTests() {
 
     await waitFor(() => {
       expect(shell).toHaveStyle({
-        gridTemplateColumns: "312px 0px minmax(0, 1fr) 0px 44px",
+        gridTemplateColumns:
+          "312px 0px 0px 0px minmax(0, 1fr) 0px 44px",
       });
     });
     const groupButton = await screen.findByRole("button", { name: /bwy/ });

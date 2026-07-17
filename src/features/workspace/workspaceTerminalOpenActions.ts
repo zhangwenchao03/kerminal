@@ -151,7 +151,7 @@ export function createWorkspaceTerminalOpenActions(
             tabId: counters.nextTabId("tab-ssh"),
             title: machine.name,
           }),
-          ...(launch.options.openSftp ? { activeTool: "sftp" as const } : {}),
+          ...(launch.options.openSftp ? { activeTool: null } : {}),
           machineGroups,
         };
       }),

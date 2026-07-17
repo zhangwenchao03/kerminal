@@ -47,7 +47,7 @@ export function revealWorkspaceFileInSftpState(
   if (!isWorkspaceFileTab(tab)) return {};
   return {
     activeTabId: tab.id,
-    activeTool: "sftp" as const,
+    activeTool: null,
     focusedPaneId: "",
     selectedMachineId: tab.machineId,
     workspaceFileRevealRequest: {
