@@ -340,11 +340,13 @@ export function SidebarFilePanelStoreBridge({
     getToolPanelWorkspaceSnapshot,
   );
   const workspaceContext = useMemo(
-    () =>
-      buildSidebarFilePanelWorkspaceContext(
+    () => {
+      void filePanelWorkspaceSnapshot;
+      return buildSidebarFilePanelWorkspaceContext(
         useWorkspaceStore.getState(),
         machineGroups,
-      ),
+      );
+    },
     [filePanelWorkspaceSnapshot, machineGroups],
   );
   const openWorkspaceFileTab = useWorkspaceStore(
