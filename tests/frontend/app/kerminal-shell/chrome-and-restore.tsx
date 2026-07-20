@@ -64,7 +64,7 @@ export function registerChromeAndRestoreTests() {
     });
     const rightTitleStrip = dragRegions.find((element) => {
       const className = element.getAttribute("class") ?? "";
-      return className.includes("col-[2/6]") && className.includes("row-[1/2]");
+      return className.includes("col-[2/8]") && className.includes("row-[1/2]");
     });
 
     expect(leftTitleStrip).toBeInTheDocument();
@@ -130,6 +130,12 @@ export function registerChromeAndRestoreTests() {
       gridTemplateRows: "36px minmax(0, 1fr)",
     });
     expect(workspace.parentElement).toHaveStyle({ gridColumn: "5 / 8" });
+    expect(
+      screen.getByRole("complementary", { name: "工具面板" }).parentElement,
+    ).toHaveStyle({ gridColumn: "7 / 8" });
+    expect(
+      container.querySelector("[data-right-tool-rail-titlebar-fill]"),
+    ).toHaveClass("col-[2/8]");
 
     const content = container.querySelector(
       "[data-terminal-workspace-content]",

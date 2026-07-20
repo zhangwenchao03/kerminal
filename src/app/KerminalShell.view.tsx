@@ -294,7 +294,7 @@ export function ShellResponsiveToolPanel({
     <>
       <div
         className="relative z-[var(--layer-chrome)] h-full overflow-hidden"
-        style={{ gridColumn: "5 / 6", gridRow: "2 / 3" }}
+        style={{ gridColumn: "7 / 8", gridRow: "2 / 3" }}
       >
         {open ? (compact ? null : panel) : rail}
       </div>
@@ -330,11 +330,11 @@ export function ShellWindowChrome({
         data-tauri-drag-region
       />
       <div
-        className="kerminal-material-nav col-[2/6] row-[1/2] border-b"
+        className="kerminal-material-nav col-[2/8] row-[1/2] border-b"
         data-tauri-drag-region
       />
       <div
-        className="pointer-events-none relative z-10 col-[2/6] row-[1/2] justify-self-end kerminal-material-nav"
+        className="pointer-events-none relative z-10 col-[2/8] row-[1/2] justify-self-end kerminal-material-nav"
         data-right-tool-rail-titlebar-fill
         style={{
           height: "calc(100% + 1px)",
